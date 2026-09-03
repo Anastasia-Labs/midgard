@@ -316,7 +316,7 @@ const canonicalAbsenceScans = [
       "demo/midgard-sdk/src/fraud-proof/validation-dispute.ts",
       "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
       "demo/midgard-validation/src/validation-machine-data.ts",
-      "demo/midgard-validation/src/validation-machine.ts",
+      "demo/midgard-validation/src/validation-machine",
       "onchain/aiken/lib/midgard/validation-claim-v1.ak",
       "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
       "onchain/aiken/lib/midgard/validation-game-v1.ak",

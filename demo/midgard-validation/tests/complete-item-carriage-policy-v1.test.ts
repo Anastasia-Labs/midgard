@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -14,7 +14,13 @@ import { describe, expect, it } from "vitest";
 const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
-const machineSource = read("../src/validation-machine.ts");
+const machineSource = readdirSync(
+  fileURLToPath(new URL("../src/validation-machine/", import.meta.url)),
+)
+  .filter((name) => name.endsWith(".ts"))
+  .sort()
+  .map((name) => read(`../src/validation-machine/${name}`))
+  .join("\n");
 const encoderSource = read("../src/validation-machine-data.ts");
 const sdkProofItemSource = read(
   "../../midgard-sdk/src/fraud-proof/validation-proof-item-v1.ts",

@@ -239,7 +239,7 @@
         "demo/midgard-sdk/src/fraud-proof/validation-dispute.ts",
         "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
         "demo/midgard-validation/src/validation-machine-data.ts",
-        "demo/midgard-validation/src/validation-machine.ts",
+        "demo/midgard-validation/src/validation-machine",
         "onchain/aiken/lib/midgard/validation-claim-v1.ak",
         "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
         "onchain/aiken/lib/midgard/validation-game-v1.ak",
@@ -3466,7 +3466,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-validation/src/validation-machine.ts",
+          "path": "demo/midgard-validation/src/validation-machine/redeemer-purpose.ts",
           "symbols": [
             "redeemerTagForPurposeKindV1",
             "purposeKindForRedeemerTagV1",
@@ -3522,7 +3522,7 @@
           "persistence": "Nested in native witness preimages, script-purpose commitments, and validation work witnesses; no compatibility mapping.",
           "encoders": [
             {
-              "path": "demo/midgard-validation/src/validation-machine.ts",
+              "path": "demo/midgard-validation/src/validation-machine/redeemer-purpose.ts",
               "symbols": ["redeemerTagForPurposeKindV1"]
             },
             {
@@ -3532,7 +3532,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-validation/src/validation-machine.ts",
+              "path": "demo/midgard-validation/src/validation-machine/redeemer-purpose.ts",
               "symbols": [
                 "purposeKindForRedeemerTagV1",
                 "redeemerPointerMatchesPurposeV1"
@@ -9030,7 +9030,7 @@
           ]
         },
         {
-          "path": "demo/midgard-validation/src/validation-machine.ts",
+          "path": "demo/midgard-validation/src/validation-machine/native-script-frame.ts",
           "symbols": ["ValidationMachineNativeScriptFrameV1"]
         }
       ],
@@ -9831,7 +9831,7 @@
           ]
         },
         {
-          "path": "demo/midgard-validation/src/validation-machine.ts",
+          "path": "demo/midgard-validation/src/validation-machine/input-resolution.ts",
           "symbols": [
             "prependMidgardInputResolutionScheduleV1",
             "advanceMidgardResolvedInputsAccumulatorV1",
@@ -9905,7 +9905,7 @@
               ]
             },
             {
-              "path": "demo/midgard-validation/src/validation-machine.ts",
+              "path": "demo/midgard-validation/src/validation-machine/input-resolution.ts",
               "symbols": [
                 "prependMidgardInputResolutionScheduleV1",
                 "advanceMidgardResolvedInputsAccumulatorV1"
@@ -9918,7 +9918,7 @@
               "symbols": ["transaction_resolution_schedule_hash"]
             },
             {
-              "path": "demo/midgard-validation/src/validation-machine.ts",
+              "path": "demo/midgard-validation/src/validation-machine/input-resolution.ts",
               "symbols": ["emptyMidgardInputResolutionScheduleV1"]
             }
           ]
@@ -10027,7 +10027,7 @@
           ]
         },
         {
-          "path": "demo/midgard-validation/src/validation-machine.ts",
+          "path": "demo/midgard-validation/src/validation-machine/redeemer-purpose.ts",
           "symbols": [
             "redeemerTagForPurposeKindV1",
             "purposeKindForRedeemerTagV1",
@@ -10099,7 +10099,7 @@
               "symbols": ["redeemer_tag_for_purpose_kind_v1"]
             },
             {
-              "path": "demo/midgard-validation/src/validation-machine.ts",
+              "path": "demo/midgard-validation/src/validation-machine/redeemer-purpose.ts",
               "symbols": ["redeemerTagForPurposeKindV1"]
             }
           ],
@@ -10109,7 +10109,7 @@
               "symbols": ["redeemer_pointer_matches_purpose_v1"]
             },
             {
-              "path": "demo/midgard-validation/src/validation-machine.ts",
+              "path": "demo/midgard-validation/src/validation-machine/redeemer-purpose.ts",
               "symbols": [
                 "purposeKindForRedeemerTagV1",
                 "redeemerPointerMatchesPurposeV1"

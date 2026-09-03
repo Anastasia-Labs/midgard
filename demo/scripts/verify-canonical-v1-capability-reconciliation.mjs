@@ -16,7 +16,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,8 +63,19 @@ assert.equal(
 // digest while the reconciliation it guards was still correct.
 const sourceText = {};
 for (const [name, source] of Object.entries(evidence.sources)) {
-  const bytes = await readFile(resolve(repositoryRoot, source.path));
-  sourceText[name] = bytes.toString("utf8");
+  const absolutePath = resolve(repositoryRoot, source.path);
+  // A directory binds every TypeScript module inside it, concatenated in
+  // name order, so a module split does not loosen the content assertions.
+  sourceText[name] = (await stat(absolutePath)).isDirectory()
+    ? (
+        await Promise.all(
+          (await readdir(absolutePath))
+            .filter((entry) => entry.endsWith(".ts"))
+            .sort()
+            .map((entry) => readFile(resolve(absolutePath, entry), "utf8")),
+        )
+      ).join("\n")
+    : (await readFile(absolutePath)).toString("utf8");
 }
 
 // Statuses are classified by base role, so a decoration that records how a
@@ -265,7 +276,7 @@ assert.doesNotMatch(
 assert.equal(evidence.wholePreimageFinding.status, "RESOLVED_ABI");
 assert.deepEqual(evidence.wholePreimageFinding.removedFrom, [
   "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
-  "demo/midgard-validation/src/validation-machine.ts",
+  "demo/midgard-validation/src/validation-machine",
   "demo/midgard-validation/src/validation-machine-data.ts",
   "onchain/aiken/lib/midgard/validation-machine-v1.ak",
 ]);

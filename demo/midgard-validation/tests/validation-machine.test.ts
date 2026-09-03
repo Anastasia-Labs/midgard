@@ -333,10 +333,12 @@ describe("V1 purpose-kind to redeemer-pointer mapping", () => {
 
 describe("C21 challenged auxiliary carrier policy", () => {
   it("excludes retired whole-output and whole-script wire fields", () => {
-    const machineSource = readFileSync(
-      resolve(process.cwd(), "src/validation-machine.ts"),
-      "utf8",
-    );
+    const machineDirectory = resolve(process.cwd(), "src/validation-machine");
+    const machineSource = readdirSync(machineDirectory)
+      .filter((name) => name.endsWith(".ts"))
+      .sort()
+      .map((name) => readFileSync(resolve(machineDirectory, name), "utf8"))
+      .join("\n");
     const encoderSource = readFileSync(
       resolve(process.cwd(), "src/validation-machine-data.ts"),
       "utf8",

@@ -368,7 +368,7 @@ below 14,396 bytes fit representation 2 (`deriveValidationProofItemPublicationV1
 plus `VerifyReference`); the producer keeps the complete-item witness for
 every item at or below `maxSinglePublicationCompleteItemBytes` and emits
 chunks only above it
-(`demo/midgard-validation/src/validation-machine.ts`, single guarded site,
+(`demo/midgard-validation/src/validation-machine/`, single guarded site,
 pinned by `demo/midgard-validation/tests/complete-item-carriage-policy-v1.test.ts`).
 Both representations authenticate the same bounded-item commitment and the
 equivalence and rejection tests live at

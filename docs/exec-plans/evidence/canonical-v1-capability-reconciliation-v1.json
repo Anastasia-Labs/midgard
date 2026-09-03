@@ -9,7 +9,7 @@
   },
   "sources": {
     "goalSpec": {
-      "path": "GOAL_SPEC.md"
+      "path": "docs/exec-plans/GOAL_SPEC.md"
     },
     "p2Matrix": {
       "path": "docs/exec-plans/cardano-capability-p2-closure-matrix-2026-07-26.md"
@@ -18,7 +18,7 @@
       "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak"
     },
     "validationMachineTypeScript": {
-      "path": "demo/midgard-validation/src/validation-machine.ts"
+      "path": "demo/midgard-validation/src/validation-machine"
     },
     "validationMachineDataTypeScript": {
       "path": "demo/midgard-validation/src/validation-machine-data.ts"
@@ -305,7 +305,7 @@
     "constructor": "TransactionFieldPreimageWitness",
     "removedFrom": [
       "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
-      "demo/midgard-validation/src/validation-machine.ts",
+      "demo/midgard-validation/src/validation-machine",
       "demo/midgard-validation/src/validation-machine-data.ts",
       "onchain/aiken/lib/midgard/validation-machine-v1.ak"
     ],

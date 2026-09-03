@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -540,8 +540,14 @@ describe("canonical V1 validation tail controls", () => {
   });
 
   it("contains no retired V2/V3 validation-tail production identity", () => {
+    const machineDirectory = fileURLToPath(
+      new URL("../src/validation-machine/", import.meta.url),
+    );
     const sources = [
-      "../src/validation-machine.ts",
+      ...readdirSync(machineDirectory)
+        .filter((name) => name.endsWith(".ts"))
+        .sort()
+        .map((name) => `../src/validation-machine/${name}`),
       "../src/validation-machine-data.ts",
       "../../../onchain/aiken/lib/midgard/validation-machine-v1.ak",
     ].map((path) =>
