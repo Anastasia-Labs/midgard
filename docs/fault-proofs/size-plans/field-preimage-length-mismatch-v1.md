@@ -159,6 +159,60 @@ authentication, inline and certified carriage, cancellation at every physical
 state, mint, and removal. Central watcher/registry registration remains outside
 this family-local change boundary.
 
+### Audit against the program contract (2026-09-04)
+
+The family was re-audited item by item against the program's §5.1–§5.4 and
+the Wave 1 gate on blueprint SHA-256
+`172c72d392706de52b5665dc0c1b208354a490298fba5ac0f411597f8454d10b`
+(`aiken v1.1.23+5adf783`, `aiken build --env testnet`). No applied script
+changed; every hash in the ledger above is the registered one.
+
+- **Registered chain.** The lifecycle suite
+  (`tests/field-preimage-length-mismatch-lifecycle.test.ts`) drives
+  `harness.contracts.fraudProofContracts.fieldPreimageLengthMismatch`, the
+  chain the harness folds into the catalogue root, and pins it with
+  `expectRegisteredChainParity` against both the family SDK builder
+  (`buildFieldPreimageLengthMismatchFaultProofContracts`) and the central SDK
+  chain builder (`buildFaultProofContracts`), plus the catalogue category's
+  first-step hash and ID `00000020`. Removal resolves through the canonical
+  catalogue record by category name.
+- **On-chain refusals, not preparer refusals.** Every §5.3 negative is now a
+  refusal by the applied script under local UPLC evaluation, recorded by the
+  suite as it runs and closed by `assertCompleteLifecycleCoverage`: honest
+  accepted block (terminal), honest forced rejection over a truly mismatched
+  leaf (terminal), reason/coordinate mutation on both doors, subject
+  transaction-id mutation, substituted transaction leaf (PHAS membership),
+  substituted forced leaf (forced-transactions root), flipped preimage byte,
+  reordered certified chunks, and the forced authenticator offered as the
+  accepted successor. The wrongful-acceptance direction additionally completes
+  through the forced door over a `ForcedTxValid` leaf whose committed vector
+  overstates field 0, so both physical authenticators reach the proof mint.
+  Leaves that whole-block reconstruction refuses by design are opened straight
+  from the retained root entries
+  (`tests/support/field-preimage-length-mismatch-forced-fixture.ts`), the same
+  provenance the accepted preparer uses.
+- **Aiken selectors.** `authenticated.test.ak` adds 18 selectors over the real
+  verified proof source and committed structures: both successful directions,
+  a witness-set field, both honest refusals, mutated reason coordinate and
+  other reason constructor, coordinate nine / negative / body-claim-on-witness
+  field, non-canonical length vector, compact of another transaction, padded
+  preimage, substituted witness set, the 32,768-byte certified maximum, the
+  32,769-byte adjacent refusal at the door, a certificate naming another
+  field, and reordered chunks. With `rule.test.ak` the family selector
+  `midgard/fraud_proofs/field_preimage_length_mismatch.{..}` collects 26.
+  There is no resumable checkpoint, so the malformed-checkpoint arm does not
+  apply; the wrong-successor arm is the lifecycle's on-chain refusal above.
+- **Adjacent over-bound.** A 32,769-byte field has no admissible carriage:
+  the workflow preparer and the carriage planner both refuse before any
+  transaction exists, and the applied reducer's own bound is exercised by the
+  certified-carriage selector.
+- **Ledger.** Regenerated against the fresh blueprint in the shared
+  `midgard-van-rossem-fit-ledger-v1` schema, 35 rows. Minimum margins: 512
+  signed bytes (the two full 15,872-byte certified chunk publications, exactly
+  at the reserve target), 13,407,804 memory and 8,948,409,811 CPU (the
+  forced-accepted removal). The 32,768-byte certified authentication measures
+  821 bytes / 1,103,604 memory / 393,210,335 CPU.
+
 ## Central wiring intentionally deferred
 
 This family document and implementation do not edit catalogue order/root, SDK
