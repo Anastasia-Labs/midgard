@@ -149,10 +149,12 @@ export const createManifestBoundReceivePurposeLanguageWorkflow = async (
     };
   const chain = binding.resolvedContracts.contracts.receivePurposeLanguage;
   const hubOraclePolicyId = raw.deploymentInfo.hubOracleMint?.scriptHash;
+  const stateQueuePolicyId = raw.resolvedContracts.stateQueuePolicyId;
   if (
     chain === undefined ||
     chain.steps.length !== 3 ||
-    hubOraclePolicyId === undefined
+    hubOraclePolicyId === undefined ||
+    stateQueuePolicyId === undefined
   )
     throw new Error("receivePurposeLanguage manifest omitted three-step chain");
   const bind = (name: string, utxo: UTxO) =>
@@ -196,6 +198,7 @@ export const createManifestBoundReceivePurposeLanguageWorkflow = async (
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: binding.resolvedContracts.contracts.fraudProof,
     hubOraclePolicyId,
+    stateQueuePolicyId,
   };
   const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,

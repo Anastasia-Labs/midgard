@@ -184,21 +184,10 @@ export const createReceivePurposeLanguageActuator = (
             awaitConfirmation: false,
           });
         });
+      // A registered family resolves its removal contracts through the
+      // canonical catalogue; an explicit category object is refused there.
       return await captureCursorRemoval({
-        category: {
-          name: "receivePurposeLanguage",
-          categoryId,
-          firstStepDeploymentEntry: "fraudProofReceivePurposeLanguage",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash:
-              config.binding.resolvedContracts.contracts.fraudProof
-                .spendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: "receivePurposeLanguage",
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,
