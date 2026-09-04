@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
+  buildMintDeclaredAssetLimitFaultProofContracts,
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
@@ -14,6 +15,10 @@ import {
   buildMintDeclaredAssetLimitArtifact,
   mintDeclaredAssetLimitArtifactDigest,
 } from "../src/mint-declared-asset-limit/artifact.js";
+import {
+  applyMintDeclaredAssetLimitScripts,
+  MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
+} from "../src/mint-declared-asset-limit/contracts.js";
 import {
   classifyMintDeclaredAssetLimitFinding,
   decodeMintDeclaredPolicyHeader,
@@ -35,6 +40,7 @@ import {
   hashMintDeclaredWalkCheckpoint,
   planMintDeclaredAssetLimitStagedWalk,
 } from "../src/mint-declared-asset-limit/staged-plan.js";
+import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 
 const txId = "00".repeat(31).concat("01");
 const accepted = acceptedVerdictSubject(txId);
@@ -233,3 +239,22 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
 });
 
 const rejectedEvidence = (item: Buffer) => evidence(rejected(0), item);
+
+describe("mintDeclaredAssetLimit registered-chain parity", () => {
+  it("applies the same chain the SDK registers for the same shared policies", async () => {
+    const fixture = await buildRegisteredChainFixture(
+      buildMintDeclaredAssetLimitFaultProofContracts,
+    );
+    const registered = fixture.contracts.mintDeclaredAssetLimit;
+    const applied = applyMintDeclaredAssetLimitScripts(fixture.applyParams);
+    expect(applied.map((step) => step.spendingScriptHash)).toStrictEqual(
+      registered.steps.map((step) => step.spendingScriptHash),
+    );
+    expect(registered.firstStep.spendingScriptHash).toBe(
+      applied[0].spendingScriptHash,
+    );
+    expect(applied.map((step) => step.blueprintTitle)).toStrictEqual([
+      ...MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
+    ]);
+  });
+});

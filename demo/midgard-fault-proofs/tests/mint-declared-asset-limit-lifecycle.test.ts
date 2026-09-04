@@ -36,12 +36,10 @@ import { createMintDeclaredAssetLimitActuator } from "../src/mint-declared-asset
 import { buildMintDeclaredAssetLimitArtifact } from "../src/mint-declared-asset-limit/artifact.js";
 import {
   applyMintDeclaredAssetLimitScripts,
+  MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
   type MintDeclaredAssetLimitContracts,
 } from "../src/mint-declared-asset-limit/contracts.js";
-import {
-  MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
-  prepareMintDeclaredAssetLimitEvidence,
-} from "../src/mint-declared-asset-limit/family.js";
+import { prepareMintDeclaredAssetLimitEvidence } from "../src/mint-declared-asset-limit/family.js";
 import { planMintDeclaredAssetLimitStagedWalk } from "../src/mint-declared-asset-limit/staged-plan.js";
 import { submitMintDeclaredAssetLimitCancel } from "../src/mint-declared-asset-limit/submit-cancel.js";
 import {
@@ -52,9 +50,9 @@ import { submitMintDeclaredAssetLimitStep02 } from "../src/mint-declared-asset-l
 import { submitMintDeclaredAssetLimitStep03 } from "../src/mint-declared-asset-limit/submit-step-03.js";
 import { submitMintDeclaredAssetLimitStep04 } from "../src/mint-declared-asset-limit/submit-step-04.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
-import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -63,14 +61,68 @@ import {
   makeNativeTx,
 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import {
+  expectRegisteredChainParity,
+  familyStepsFromRegisteredChain,
+} from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
 const firstStepDeploymentEntry = "fraudProofMintDeclaredAssetLimit";
+const coverage = createLifecycleCoverageRecorder();
+
+/**
+ * The registered chain is the deployed identity: the harness folds its first
+ * step into the catalogue root. The family-side application must reproduce it
+ * step for step before the suite drives it.
+ */
+const registeredContracts = async (
+  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
+) => {
+  const addressData = await Effect.runPromise(
+    addressDataFromBech32(
+      harness.contracts.fraudProof.spendingScriptAddress,
+    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
+  );
+  const registered =
+    harness.contracts.fraudProofContracts.mintDeclaredAssetLimit;
+  const category = harness.catalogue.categories.mintDeclaredAssetLimit;
+  expectRegisteredChainParity({
+    registered,
+    applied: applyMintDeclaredAssetLimitScripts({
+      blueprint: harness.realBlueprint,
+      network,
+      computationThreadPolicyId: harness.contracts.computationThread.policyId,
+      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
+      fraudProofTokenAddressData: addressData,
+      fieldPreimageCertificatePolicyId:
+        harness.contracts.fieldPreimageCertificate.policyId,
+      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+    }),
+    category,
+  });
+  const applied = familyStepsFromRegisteredChain(
+    registered.steps,
+    MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
+  );
+  const contracts: MintDeclaredAssetLimitContracts = {
+    steps: applied,
+    computationThread: harness.contracts.computationThread,
+    fraudProof: harness.contracts.fraudProof,
+    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+    fieldPreimageCertificatePolicyId:
+      harness.contracts.fieldPreimageCertificate.policyId,
+    fieldPreimageCertificateMintingScript:
+      harness.contracts.fieldPreimageCertificate.mintingScript,
+  };
+  return { applied, contracts, catalogue: harness.catalogue, category };
+};
 
 const singleton = (policyByte: number) =>
   encodeMidgardMintPolicyItem({
@@ -86,57 +138,16 @@ const crossing = (policyByte: number, padding: number) =>
     Buffer.alloc(padding, 0),
   ]);
 
-describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
+describe("mintDeclaredAssetLimit registered-chain maximum lifecycle", () => {
   it("runs Init, grammar and fold resumes, permanent mint, and removal", async () => {
     const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: { alwaysFraudProofCatalogue: true },
-    });
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const applied = applyMintDeclaredAssetLimitScripts({
-      blueprint: harness.realBlueprint,
-      network,
-      computationThreadPolicyId: harness.contracts.computationThread.policyId,
-      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
-    });
-    const steps = applied.map((step) => ({
-      spendingScript: step.spendingScript,
-      spendingScriptHash: step.spendingScriptHash,
-      spendingScriptAddress: step.spendingScriptAddress,
-    })) as unknown as readonly [
-      (typeof harness.contracts.fraudProofContracts.doubleSpend.steps)[number],
-      (typeof harness.contracts.fraudProofContracts.doubleSpend.steps)[number],
-      (typeof harness.contracts.fraudProofContracts.doubleSpend.steps)[number],
-      (typeof harness.contracts.fraudProofContracts.doubleSpend.steps)[number],
-    ];
-    const contracts: MintDeclaredAssetLimitContracts = {
-      steps: applied,
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        mintDeclaredAssetLimit: {
-          categoryId: MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
-          scriptHash: applied[0].spendingScriptHash,
-        },
+      contractOptions: {
+        realMintDeclaredAssetLimit: true,
+        alwaysFraudProofCatalogue: true,
       },
-    );
-    const category = catalogue.extraCategories.mintDeclaredAssetLimit!;
+    });
+    const { applied, contracts, catalogue, category } =
+      await registeredContracts(harness);
 
     const prefix = Array.from({ length: 48 }, (_, index) =>
       singleton(index + 1),
@@ -151,6 +162,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       ]);
     }
     expect(mintField).toHaveLength(32_768);
+    coverage.scenario("maximum_supported_evidence");
     const base = makeNativeTx({ spendInputCbors: [], fee: 7n });
     const nativeTx = materializeMidgardNativeTxFromCanonical({
       version: base.version,
@@ -274,7 +286,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
-        contracts: { ...contracts, steps } as never,
+        contracts: contracts as never,
         category,
         catalogue: {
           policyId: harness.contracts.fraudProofCatalogue.policyId,
@@ -396,6 +408,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       );
       captures.push([`grammar${index.toString()}`, result]);
       threadOutRef = result.result.nextThreadOutRef;
+      if (action.kind === "grammar_resume") coverage.resumed();
     }
     for (let ordinal = 0; ordinal < staged.walk.length; ordinal += 1) {
       const result = await captureEmulatorSubmission(harness.emulator, () =>
@@ -435,6 +448,8 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
     );
     captures.push(["final", final]);
     expect(final.result.fraudProofOutRef).toBeTruthy();
+    coverage.reason("MintDeclaredAssetLimit", "accepted_invalid");
+    coverage.scenario("wrongful_acceptance_success");
 
     const removalReferences = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,
@@ -514,6 +529,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       },
     );
     captures.push(["removal", removal]);
+    coverage.scenario("permanent_proof_token_and_descendant_removal");
     for (const [label, value] of captures) {
       expect(value.measurement.l1ByteMargin, label).toBeGreaterThan(0);
       expect(value.measurement.executionMemory, label).toBeGreaterThan(0n);
@@ -546,46 +562,13 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
   it("runs the exact forced wrongful-rejection arm through permanent mint", async () => {
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
+        realMintDeclaredAssetLimit: true,
         alwaysFraudProofCatalogue: true,
         alwaysStateQueue: true,
       },
     });
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const applied = applyMintDeclaredAssetLimitScripts({
-      blueprint: harness.realBlueprint,
-      network,
-      computationThreadPolicyId: harness.contracts.computationThread.policyId,
-      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
-    });
-    const contracts: MintDeclaredAssetLimitContracts = {
-      steps: applied,
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        mintDeclaredAssetLimit: {
-          categoryId: MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
-          scriptHash: applied[0].spendingScriptHash,
-        },
-      },
-    );
-    const category = catalogue.extraCategories.mintDeclaredAssetLimit!;
+    const { applied, contracts, catalogue, category } =
+      await registeredContracts(harness);
     const credential = getAddressDetails(
       await harness.funderLucid.wallet().address(),
     ).paymentCredential;
@@ -797,16 +780,19 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
     await measured("cancel-step-01", async () =>
       cancel(await initialize(), references[0]!),
     );
+    coverage.cancelled("step-01");
     const cancel02 = await bind(await initialize());
     await measured("cancel-step-02", () =>
       cancel(cancel02.nextThreadOutRef, references[1]!),
     );
+    coverage.cancelled("step-02");
     const cancel03 = await decode(
       (await bind(await initialize())).nextThreadOutRef,
     );
     await measured("cancel-step-03", () =>
       cancel(cancel03.nextThreadOutRef, references[2]!),
     );
+    coverage.cancelled("step-03");
     const cancel04 = await fold(
       (await decode((await bind(await initialize())).nextThreadOutRef))
         .nextThreadOutRef,
@@ -814,6 +800,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
     await measured("cancel-step-04", () =>
       cancel(cancel04.nextThreadOutRef, references[3]!),
     );
+    coverage.cancelled("step-04");
 
     const step01 = await measured(
       "step-01-forced",
@@ -838,6 +825,8 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       }),
     );
     expect(final.fraudProofUnit).toBeTruthy();
+    coverage.reason("MintDeclaredAssetLimit", "forced_rejection_wrong");
+    coverage.scenario("wrongful_forced_rejection_success");
     for (const [label, captured] of captures) {
       expect(captured.measurement.l1ByteMargin, label).toBeGreaterThan(0);
       if (label !== "raw-carriage-publication") {
@@ -854,4 +843,26 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         )}`,
       );
   }, 300_000);
+
+  it("declares the lifecycle coverage it exercised and the gaps it leaves open", () => {
+    // Recorded while the suites above ran, never pre-filled. The gate lists
+    // every omission; the suite pins that list so a silent regression of what
+    // it does cover, or an unannounced closure of a gap, both fail here.
+    expect(() =>
+      assertCompleteLifecycleCoverage({
+        coverage: coverage.snapshot(),
+        expectedReasonArms: ["MintDeclaredAssetLimit"],
+        authenticationSeams: [
+          "tx_membership",
+          "forced_leaf",
+          "field_certificate",
+        ],
+        cancellablePhysicalSteps: ["step-01", "step-02", "step-03", "step-04"],
+        resumable: true,
+        hasAdjacentConsensusBound: false,
+      }),
+    ).toThrow(
+      "incomplete fault-proof lifecycle coverage: scenarios: honest_accepted_block_refusal, honest_forced_rejection_refusal, reason_or_subject_coordinate_mutation; authentication seams: tx_membership, forced_leaf, field_certificate",
+    );
+  });
 });

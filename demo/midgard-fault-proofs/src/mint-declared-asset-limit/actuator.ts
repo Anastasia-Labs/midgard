@@ -264,21 +264,11 @@ export const createMintDeclaredAssetLimitActuator = (
             awaitConfirmation: false,
           });
         });
+      // A registered family resolves removal through the canonical catalogue:
+      // the deployment manifest's `fraudProofMintDeclaredAssetLimit` entry
+      // pins the step-01 script, so no explicit category is described here.
       return await captureCursorRemoval({
-        category: {
-          name: MINT_DECLARED_ASSET_LIMIT_CATEGORY,
-          categoryId,
-          firstStepDeploymentEntry: "fraudProofMintDeclaredAssetLimit",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash:
-              config.binding.resolvedContracts.contracts.fraudProof
-                .spendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: MINT_DECLARED_ASSET_LIMIT_CATEGORY,
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,
