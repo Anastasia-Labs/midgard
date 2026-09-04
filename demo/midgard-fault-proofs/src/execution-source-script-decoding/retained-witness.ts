@@ -265,9 +265,13 @@ export const buildExecutionSourceMachineAuthenticationFromRetainedDa = async ({
     sourceLeaf,
     redeemerLeaf: Buffer.from(native.redeemer_leaf, "hex"),
   });
+  // The purpose frontier is indexed by execution position (one purpose per
+  // execution, `execution_count == purpose_count`); `purpose_index` is the
+  // kind-local coordinate hashed into the leaf, not its frontier position.
+  // Both step-02 rules verify the purpose membership at `execution_index`.
   requireMembership(
     merkleFrontier(control.purpose_count, control.purpose_peaks),
-    native.purpose_index,
+    native.execution_index,
     purposeLeaf,
     native.purpose_siblings,
     "purpose",
