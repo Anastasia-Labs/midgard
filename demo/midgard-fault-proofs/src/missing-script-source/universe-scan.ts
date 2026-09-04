@@ -4,6 +4,18 @@ import { Effect } from "effect";
 
 export const MISSING_SCRIPT_SOURCE_SCAN_BUDGET = 24 as const;
 
+/**
+ * Sources the driver advances per scan transaction under the repository's 20%
+ * execution reserve. Every source costs its Merkle sibling depth on chain, so
+ * a frontier above 1,024 sources (sibling depth 11 and 12 up to the
+ * consensus maximum of 3,339) takes 20 per batch: the frozen 24-source batch
+ * measured 13,211,702 memory at depth 12, over the 13,200,000 reserve, while
+ * 20 sources stay under it. The on-chain cap remains
+ * `MISSING_SCRIPT_SOURCE_SCAN_BUDGET`; this only chooses a smaller batch.
+ */
+export const missingScriptSourceDriverBatch = (sourceCount: number): number =>
+  sourceCount <= 1024 ? MISSING_SCRIPT_SOURCE_SCAN_BUDGET : 20;
+
 export type MissingScriptSourceUniverseSource = Readonly<{
   sourceIndex: number;
   locationKind: 0 | 1;

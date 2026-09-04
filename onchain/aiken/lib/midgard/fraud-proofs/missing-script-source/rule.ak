@@ -460,6 +460,36 @@ pub fn scan_source_v1(
   }
 }
 
+/// Advances the scan over one batch in frontier order. The hash the state
+/// expects next is the finalizer's exactly when the batch reaches the
+/// authenticated scan limit. A wrongful-rejection prefix ends at the matching
+/// source, before the complete frontier, so the limit and never the frontier
+/// count decides the successor.
+pub fn advance_scan_v1(
+  state: SourceScanStateV1,
+  sources: List<SourceDescriptorV1>,
+  scan_script_hash: ByteArray,
+  final_script_hash: ByteArray,
+) -> SourceScanStateV1 {
+  when sources is {
+    [] -> state
+    [source, ..rest] -> {
+      let next_cursor = state.cursor + 1
+      let next_hash = if next_cursor == state.authenticated.purpose.scan_limit {
+        final_script_hash
+      } else {
+        scan_script_hash
+      }
+      advance_scan_v1(
+        scan_source_v1(state, source, next_hash),
+        rest,
+        scan_script_hash,
+        final_script_hash,
+      )
+    }
+  }
+}
+
 pub fn scan_complete_v1(state: SourceScanStateV1) -> Bool {
   and {
     state_is_authentic_v1(state),

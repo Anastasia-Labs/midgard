@@ -116,6 +116,16 @@ fn initial(
   direction: Int,
   hashes: List<ByteArray>,
 ) -> Pair<rule.SourceScanStateV1, List<ByteArray>> {
+  initial_with_limit(direction, hashes, list.length(hashes))
+}
+
+/// A scan state over the complete frontier of `hashes` whose authenticated
+/// scan limit may stop short of it: the wrongful-rejection prefix shape.
+fn initial_with_limit(
+  direction: Int,
+  hashes: List<ByteArray>,
+  scan_limit: Int,
+) -> Pair<rule.SourceScanStateV1, List<ByteArray>> {
   let leaves = hashes
     |> list.indexed_map(
         fn(index, hash) {
@@ -137,12 +147,12 @@ fn initial(
     prior_ledger_root: h32,
     required_script_hash: h28a,
     source_count: frontier.count,
-    scan_limit: frontier.count,
+    scan_limit,
     source_peaks: frontier.peaks,
   }
   let tx = rule.authenticate_transaction_sources_v1(
     purpose,
-    if frontier.count > 0 {
+    if scan_limit > 0 {
       1
     } else {
       0
@@ -150,13 +160,36 @@ fn initial(
   )
   let resolved = rule.authenticate_resolved_sources_v1(
     tx,
-    if frontier.count > 1 {
-      frontier.count - 1
+    if scan_limit > 1 {
+      scan_limit - 1
     } else {
       0
     },
   )
   Pair(rule.initial_scan_v1(resolved, scan_hash), leaves)
+}
+
+fn descriptors(
+  leaves: List<ByteArray>,
+  hashes: List<ByteArray>,
+  count: Int,
+) -> List<rule.SourceDescriptorV1> {
+  hashes
+    |> list.take(count)
+    |> list.indexed_map(
+        fn(index, hash) {
+          descriptor(
+            leaves,
+            index,
+            if index == 0 {
+              0
+            } else {
+              1
+            },
+            hash,
+          )
+        },
+      )
 }
 
 fn complete(direction: Int, hashes: List<ByteArray>) -> rule.SourceScanStateV1 {
@@ -260,6 +293,70 @@ test honest_acceptance_presence_refuses() fail {
 
 test honest_rejection_absence_refuses() fail {
   rule.terminal_contradiction_v1(complete(1, [h28b, h28b, h28b]))
+}
+
+test batch_advance_over_the_complete_frontier_agrees_with_source_scan() {
+  let hashes = [h28b, h28b, h28b]
+  let Pair(state, leaves) = initial(0, hashes)
+  let advanced = rule.advance_scan_v1(
+    state,
+    descriptors(leaves, hashes, 3),
+    scan_hash,
+    final_hash,
+  )
+  and {
+    advanced == complete(0, hashes),
+    advanced.next_expected_script_hash == final_hash,
+    rule.terminal_contradiction_v1(advanced),
+  }
+}
+
+test batch_advance_hands_the_scan_back_to_itself_before_the_limit() {
+  let hashes = [h28b, h28b, h28b]
+  let Pair(state, leaves) = initial(0, hashes)
+  let advanced = rule.advance_scan_v1(
+    state,
+    descriptors(leaves, hashes, 2),
+    scan_hash,
+    final_hash,
+  )
+  and {
+    advanced.cursor == 2,
+    advanced.next_expected_script_hash == scan_hash,
+    !rule.scan_complete_v1(advanced),
+  }
+}
+
+test prefix_scan_finalizes_at_the_scan_limit_not_the_frontier_end() {
+  // A wrongful rejection whose matching source is the second of three: the
+  // authenticated prefix is two sources long and the finalizer is the
+  // successor exactly when the walk reaches it, with the found flag set.
+  let hashes = [h28b, h28a, h28b]
+  let Pair(state, leaves) = initial_with_limit(1, hashes, 2)
+  let advanced = rule.advance_scan_v1(
+    state,
+    descriptors(leaves, hashes, 2),
+    scan_hash,
+    final_hash,
+  )
+  and {
+    advanced.cursor == 2,
+    advanced.found,
+    advanced.next_expected_script_hash == final_hash,
+    rule.scan_complete_v1(advanced),
+    rule.terminal_contradiction_v1(advanced),
+  }
+}
+
+test prefix_scan_refuses_sources_beyond_the_scan_limit() fail {
+  let hashes = [h28b, h28a, h28b]
+  let Pair(state, leaves) = initial_with_limit(1, hashes, 2)
+  rule.advance_scan_v1(
+    state,
+    descriptors(leaves, hashes, 3),
+    scan_hash,
+    final_hash,
+  ).cursor == 3
 }
 
 test partial_scan_cannot_finalize() fail {

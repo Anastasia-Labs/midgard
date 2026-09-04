@@ -86,7 +86,29 @@ type ParsedControl = Readonly<{
   }>;
 }>;
 
-const parseStageNineControl = (witnessCbor: string): ParsedControl => {
+/** The ScriptSources stage a retained control witness carries, if any. */
+const retainedScriptSourcesStage = (witnessCbor: string): bigint | null => {
+  try {
+    const value = decodeSingleCbor(Buffer.from(witnessCbor, "hex"));
+    if (!Array.isArray(value) || value.length !== 31) return null;
+    const stage: unknown = value[9];
+    return typeof stage === "bigint" || typeof stage === "number"
+      ? BigInt(stage)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Parses one retained stage-9 ScriptSources control into its redeemer shape
+ * and the discovery facts the universe builder selects on. Exported so a
+ * suite can point the family's own builders at any retained witness (a
+ * prefix a lying prover might claim) without a second decoder.
+ */
+export const parseRetainedScriptSourcesStageNineControl = (
+  witnessCbor: string,
+): ParsedControl => {
   const value = list(
     decodeSingleCbor(Buffer.from(witnessCbor, "hex")),
     "ScriptSources control",
@@ -311,7 +333,9 @@ export const discoverRetainedMissingScriptSourceCoordinates = ({
       continue;
     let control: ParsedControl;
     try {
-      control = parseStageNineControl(witness.witness_cbor);
+      control = parseRetainedScriptSourcesStageNineControl(
+        witness.witness_cbor,
+      );
     } catch {
       continue;
     }
@@ -365,7 +389,9 @@ export const buildRetainedMissingScriptSourceUniverse = async ({
   const terminalCandidates = retained.flatMap((entry) => {
     if (entry.witness.phase !== 8n) return [];
     try {
-      const control = parseStageNineControl(entry.witness.witness_cbor);
+      const control = parseRetainedScriptSourcesStageNineControl(
+        entry.witness.witness_cbor,
+      );
       const scannedSource = auxiliaryObject<SourceScanWitness>(
         entry.witness,
         "ScriptSourceScanWitness",
@@ -389,6 +415,10 @@ export const buildRetainedMissingScriptSourceUniverse = async ({
   if (terminalCandidates.length !== 1)
     return fail("exact terminal purpose scan is absent or duplicated");
   const terminal = terminalCandidates[0]!;
+  // The discovery loop opens every purpose with a stage-8 purpose scan. The
+  // receive-source scan (stage 7) also retains purpose-scan witnesses for
+  // receive candidates under the same (kind, index) coordinate; they are
+  // not the discovery's opening and never select the universe.
   const purposeCandidates = retained.filter(({ key, witness }) => {
     if (key.execution_index >= terminal.key.execution_index) return false;
     const purpose = auxiliaryObject<PurposeScanWitness>(
@@ -397,7 +427,8 @@ export const buildRetainedMissingScriptSourceUniverse = async ({
     );
     return (
       purpose?.purpose_kind === BigInt(purposeKind) &&
-      purpose?.purpose_index === BigInt(purposeIndex)
+      purpose?.purpose_index === BigInt(purposeIndex) &&
+      retainedScriptSourcesStage(witness.witness_cbor) === 8n
     );
   });
   if (purposeCandidates.length !== 1)

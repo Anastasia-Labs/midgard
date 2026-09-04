@@ -5,8 +5,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_script_source/rule.{
-  SourceDescriptorV1, SourceScanStateV1, scan_complete_v1, scan_source_v1,
-  staged_source_budget, state_is_authentic_v1,
+  advance_scan_v1, scan_complete_v1, staged_source_budget, state_is_authentic_v1,
 }
 use midgard/fraud_proofs/missing_script_source/step_05.{
   Args, Datum, SpendRedeemer,
@@ -54,7 +53,7 @@ validator main(
             state_is_authentic_v1(state),
             state.next_expected_script_hash == own_hash,
           }
-        let advanced = advance(
+        let advanced = advance_scan_v1(
           state,
           sources,
           own_hash,
@@ -80,30 +79,5 @@ validator main(
 
   else(_) {
     fail
-  }
-}
-
-fn advance(
-  state: SourceScanStateV1,
-  sources: List<SourceDescriptorV1>,
-  own_hash: ByteArray,
-  final_hash: ByteArray,
-) -> SourceScanStateV1 {
-  when sources is {
-    [] -> state
-    [source, ..rest] -> {
-      let next_cursor = state.cursor + 1
-      let next_hash = if next_cursor == state.authenticated.purpose.source_count {
-        final_hash
-      } else {
-        own_hash
-      }
-      advance(
-        scan_source_v1(state, source, next_hash),
-        rest,
-        own_hash,
-        final_hash,
-      )
-    }
   }
 }

@@ -30,7 +30,7 @@ import {
   SourceDescriptorSchema,
 } from "./schemas.js";
 import {
-  MISSING_SCRIPT_SOURCE_SCAN_BUDGET,
+  missingScriptSourceDriverBatch,
   missingScriptSourceOnchainCheckpoint,
 } from "./universe-scan.js";
 
@@ -45,6 +45,7 @@ export const submitMissingScriptSourceStep05 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
+  itemBudget,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -55,10 +56,22 @@ export const submitMissingScriptSourceStep05 = async ({
   threadOutRef: string;
   evidence: MissingScriptSourceEvidence;
   referenceScriptUtxo: UTxO;
+  /**
+   * Sources advanced by this batch; defaults to
+   * `missingScriptSourceDriverBatch` for the authenticated frontier. The
+   * validator caps it at the frozen `staged_source_budget`; the emulator
+   * suites raise or zero it to reach the on-chain refusal.
+   */
+  itemBudget?: number;
   preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
+  if (
+    itemBudget !== undefined &&
+    (!Number.isSafeInteger(itemBudget) || itemBudget < 0)
+  )
+    throw new Error(`${FAMILY}: item budget must be a natural number`);
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
@@ -84,10 +97,12 @@ export const submitMissingScriptSourceStep05 = async ({
     state.authenticated.purpose.scan_limit !== BigInt(evidence.sources.length)
   )
     throw new Error(`${FAMILY}: scan cursor/source frontier changed`);
-  const batch = evidence.sources.slice(
-    cursor,
-    cursor + MISSING_SCRIPT_SOURCE_SCAN_BUDGET,
-  );
+  const budget =
+    itemBudget ??
+    missingScriptSourceDriverBatch(
+      Number(state.authenticated.purpose.source_count),
+    );
+  const batch = evidence.sources.slice(cursor, cursor + budget);
   const sources: Data.Static<typeof SourceDescriptorSchema>[] = batch.map(
     (source, offset) => {
       if (source.sourceIndex !== cursor + offset)
@@ -187,7 +202,7 @@ export const submitMissingScriptSourceStep05 = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             sources,
-            item_budget: BigInt(MISSING_SCRIPT_SOURCE_SCAN_BUDGET),
+            item_budget: BigInt(budget),
           },
         ],
       } as never,
