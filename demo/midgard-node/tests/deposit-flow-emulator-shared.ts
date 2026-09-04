@@ -15,6 +15,7 @@ import { inspect } from "node:util";
 
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -66,7 +67,6 @@ import { buildTransferTx } from "../src/commands/submit-l2-transfer.js";
 import { withdrawalEventIdFromBuildMetadata } from "../src/commands/submit-withdrawal.js";
 import { utxosProgram } from "../src/commands/utxos.js";
 import { withdrawalStatusProgram } from "../src/commands/withdrawal-status.js";
-import { loadDaLibp2pIdentity } from "../src/da/libp2p-identity.js";
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../src/database/confirmedLedger.js";
 import {
   AddressHistoryDB,

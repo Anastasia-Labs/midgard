@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 
 import { createWatcherApiServer } from "./api/server.js";
 import { loadWatcherConfig } from "./config.js";
@@ -16,7 +17,6 @@ import {
   DaLibp2pNode,
   DaLibp2pPayloadSource,
   DaPeerRegistry,
-  loadDaLibp2pIdentity,
   StoreBackedDaAttestationProtocol,
 } from "./da/libp2p/index.js";
 import { daAttestationReaderFromConfig } from "./l1/da-attestation-reader.js";

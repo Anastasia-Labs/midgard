@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
@@ -14,7 +15,6 @@ import type {
   Libp2pDaPeerConfig,
   Libp2pDaTransportConfig,
 } from "da-committee-node/config";
-import { loadDaLibp2pIdentity } from "da-committee-node/da/libp2p";
 import { JsonFileWatcherStore } from "da-committee-node/store";
 import { build as bundleWithTsup } from "tsup";
 import { describe, expect, it } from "vitest";

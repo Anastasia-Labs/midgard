@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
@@ -25,7 +26,6 @@ import {
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { loadDaLibp2pIdentity } from "../src/da/libp2p-identity.js";
 import {
   assertDaEnvelopeCapabilityQuorum,
   closeDaLibp2pPublicationTransport,

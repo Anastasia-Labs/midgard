@@ -1,3 +1,4 @@
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
   DA_PUBLIC_RETAINED_DA_PROTOCOLS,
   DA_TRANSPORT_LIMITS,
@@ -33,7 +34,6 @@ import {
   writeDaStreamFrame,
 } from "../src/da/libp2p/DaStreamCodec.js";
 import { createDaTopicAllowlist } from "../src/da/libp2p/DaTopics.js";
-import { loadDaLibp2pIdentity } from "../src/da/libp2p/identity.js";
 import { createDaConnectionGater } from "../src/da/libp2p/index.js";
 import { DaLibp2pPayloadSource } from "../src/da/libp2p/payload-source.js";
 import { PublicRetainedDaListener } from "../src/da/libp2p/PublicRetainedDaListener.js";

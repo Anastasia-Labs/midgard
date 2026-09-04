@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
@@ -16,7 +17,6 @@ import {
   createDaLibp2pPayloadRequestHandlers,
   DaLibp2pNode,
   DaPayloadSubmitAdmission,
-  loadDaLibp2pIdentity,
 } from "da-committee-node/da/libp2p";
 import { JsonFileWatcherStore } from "da-committee-node/store";
 import { Effect } from "effect";

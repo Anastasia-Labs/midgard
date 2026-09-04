@@ -1,6 +1,7 @@
 import { createServer } from "node:net";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
@@ -17,7 +18,6 @@ import {
   createDaLibp2pPayloadRequestHandlers,
   DaLibp2pNode,
   DaPayloadSubmitAdmission,
-  loadDaLibp2pIdentity,
 } from "da-committee-node/da/libp2p";
 import {
   readSingleDaStreamFrame,

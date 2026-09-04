@@ -1,3 +1,4 @@
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import type { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
@@ -24,7 +25,6 @@ import {
   writeDaStreamFrame,
 } from "./DaStreamCodec.js";
 import { createDaTopicAllowlist } from "./DaTopics.js";
-import { loadDaLibp2pIdentity } from "./identity.js";
 
 export type DaLibp2pStream = AsyncIterable<DaStreamChunk> & {
   send(data: Uint8Array): boolean;

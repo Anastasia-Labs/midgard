@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { loadDaLibp2pIdentity } from "./da/libp2p/identity.js";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
+
 import { PublicRetainedDaListener } from "./da/libp2p/PublicRetainedDaListener.js";
 import { loadPublicRetainedDaRuntimeConfig } from "./public-retained-da-config.js";
 import { stopPublicRetainedDaRuntime } from "./public-retained-da-runtime.js";
