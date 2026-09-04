@@ -26,9 +26,9 @@ import { describe, expect, it } from "vitest";
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
+  applyResolvedOutputNonCanonicalScripts,
   prepareResolvedOutputNonCanonicalEvidence,
   RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
-  RESOLVED_OUTPUT_NON_CANONICAL_ID,
   type ResolvedOutputNonCanonicalContracts,
   submitResolvedOutputNonCanonicalCancel,
   submitResolvedOutputNonCanonicalStep01Accepted,
@@ -38,14 +38,17 @@ import {
   submitResolvedOutputNonCanonicalStep05,
 } from "../src/resolved-output-non-canonical/index.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
-import { applyCompiledScript } from "./support/emulator/blueprints.js";
-import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
+import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import {
+  expectRegisteredChainParity,
+  familyStepsFromRegisteredChain,
+} from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { makeSpendingValidator } from "./support/emulator/validators.js";
+import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
   ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
   countedTransactionsRoot,
@@ -62,78 +65,66 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
-const firstStepDeploymentEntry = "fraudProofResolvedOutputNonCanonical";
+const coverage = createLifecycleCoverageRecorder();
 
-describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
-  it("runs accepted Init through scan, final mint, and removal before central registration", async () => {
-    const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: { alwaysFraudProofCatalogue: true },
-    });
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const titles = RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES;
-    const step05 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[4], [
-        harness.contracts.fraudProof.policyId,
-        addressData,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step04 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[3], [
-        step05.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step03 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[2], [
-        step04.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step02 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[1], [
-        step03.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step01 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[0], [
-        step02.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.hubOracle.policyId,
-      ]),
-    );
-    const steps = [step01, step02, step03, step04, step05] as const;
-    const contracts: ResolvedOutputNonCanonicalContracts = {
-      steps: steps.map((step, index) => ({
-        ...step,
-        blueprintTitle: titles[index]!,
-        referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as ResolvedOutputNonCanonicalContracts["steps"],
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+/**
+ * The registered chain is the deployed identity: the harness folds its first
+ * step into the catalogue root. The family-side application must reproduce it
+ * step for step before the suite drives it.
+ */
+const registeredContracts = async (
+  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
+) => {
+  const addressData = await Effect.runPromise(
+    addressDataFromBech32(
+      harness.contracts.fraudProof.spendingScriptAddress,
+    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
+  );
+  const registered =
+    harness.contracts.fraudProofContracts.resolvedOutputNonCanonical;
+  const category = harness.catalogue.categories.resolvedOutputNonCanonical;
+  expectRegisteredChainParity({
+    registered,
+    applied: applyResolvedOutputNonCanonicalScripts({
+      blueprint: harness.realBlueprint,
+      network,
+      computationThreadPolicyId: harness.contracts.computationThread.policyId,
+      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
+      fraudProofTokenAddressData: addressData,
       fieldPreimageCertificatePolicyId:
         harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        resolvedOutputNonCanonical: {
-          categoryId: RESOLVED_OUTPUT_NON_CANONICAL_ID,
-          scriptHash: step01.spendingScriptHash,
-        },
+      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+    }),
+    category,
+  });
+  const steps = familyStepsFromRegisteredChain(
+    registered.steps,
+    RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
+  );
+  const contracts: ResolvedOutputNonCanonicalContracts = {
+    steps,
+    computationThread: harness.contracts.computationThread,
+    fraudProof: harness.contracts.fraudProof,
+    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+    fieldPreimageCertificatePolicyId:
+      harness.contracts.fieldPreimageCertificate.policyId,
+    fieldPreimageCertificateMintingScript:
+      harness.contracts.fieldPreimageCertificate.mintingScript,
+  };
+  return { steps, contracts, catalogue: harness.catalogue, category };
+};
+
+describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
+  it("runs accepted Init through scan, final mint, and removal", async () => {
+    const harness = await makeFaultProofEmulatorHarness({
+      contractOptions: {
+        realResolvedOutputNonCanonical: true,
+        alwaysFraudProofCatalogue: true,
       },
-    );
-    const category = catalogue.extraCategories.resolvedOutputNonCanonical!;
+    });
+    const { steps, contracts, catalogue, category } =
+      await registeredContracts(harness);
 
     // The selected predecessor output is exactly the family maximum and is
     // non-canonical. Repeated input items take field 0 through Certified
@@ -278,6 +269,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       16_384,
     );
     expect(evidence.carriage).toBe("Certified");
+    coverage.scenario("maximum_supported_evidence");
 
     const references: UTxO[] = [];
     for (const [index, step] of steps.entries()) {
@@ -328,6 +320,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       }),
     );
     expect(cancellation.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.cancelled("step-01");
     const init = await captureEmulatorSubmission(harness.emulator, () =>
       submitCommittedFieldShapeInit({
         lucid: harness.proverLucid,
@@ -422,6 +415,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       if (result.result.terminal) break;
     }
     expect(step04Results.length).toBeGreaterThan(1);
+    coverage.resumed();
     const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
       submitResolvedOutputNonCanonicalStep05({
         lucid: harness.proverLucid,
@@ -435,6 +429,8 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       }),
     );
     expect(step05Result.result.fraudProofUnit).toBeTruthy();
+    coverage.reason("InputSpentOutputNonCanonical", "accepted_invalid");
+    coverage.scenario("wrongful_acceptance_success");
 
     for (const capture of [
       init,
@@ -480,24 +476,14 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       lucid: harness.proverLucid,
       contracts: harness.contracts,
     });
-    const baseDeployment = buildRemovalDeploymentInfo(
+    // A registered family resolves removal through the canonical catalogue:
+    // the manifest's fraudProofResolvedOutputNonCanonical entries carry the
+    // registered chain the harness built.
+    const deploymentInfo = buildRemovalDeploymentInfo(
       harness.contracts,
       catalogue,
       { removalReferenceScripts: removalReferences.published },
     );
-    const deploymentInfo = {
-      ...baseDeployment,
-      contracts: {
-        ...baseDeployment.contracts,
-        [firstStepDeploymentEntry]: {
-          scriptHash: step01.spendingScriptHash,
-          contract: {
-            type: step01.spendingScript.type,
-            cborHex: step01.spendingScript.script,
-          },
-        },
-      },
-    };
     const now = BigInt(harness.emulator.now());
     const removal = await captureEmulatorSubmission(harness.emulator, () =>
       submitRemoveFraudulentBlock({
@@ -506,18 +492,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
         deploymentInfo,
         network,
         signer: harness.proverSigner,
-        fraudCategory: {
-          name: "resolvedOutputNonCanonical",
-          categoryId: category.categoryId,
-          firstStepDeploymentEntry,
-          firstStepScriptHash: step01.spendingScriptHash,
-          fraudProof: {
-            policyId: harness.contracts.fraudProof.policyId,
-            spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-            spendingScriptAddress:
-              harness.contracts.fraudProof.spendingScriptAddress,
-          },
-        },
+        fraudCategory: "resolvedOutputNonCanonical",
         fraudulentHeaderHash: setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,
@@ -527,6 +502,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
     );
     expect(removal.result.fraudCategoryId).toBe("00000026");
     expect(removal.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.scenario("permanent_proof_token_and_descendant_removal");
     if (process.env.MIDGARD_PRINT_FIT === "1") {
       console.info(
         JSON.stringify(
@@ -537,4 +513,33 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       );
     }
   }, 180_000);
+
+  it("declares the lifecycle coverage it exercised and the gaps it leaves open", () => {
+    // Recorded while the suite above ran, never pre-filled. The gate lists
+    // every omission; the suite pins that list so a silent regression of what
+    // it does cover, or an unannounced closure of a gap, both fail here.
+    expect(() =>
+      assertCompleteLifecycleCoverage({
+        coverage: coverage.snapshot(),
+        expectedReasonArms: ["InputSpentOutputNonCanonical"],
+        authenticationSeams: [
+          "tx_membership",
+          "prior_output_membership",
+          "field_certificate",
+          "forced_leaf",
+        ],
+        cancellablePhysicalSteps: [
+          "step-01",
+          "step-02",
+          "step-03",
+          "step-04",
+          "step-05",
+        ],
+        resumable: true,
+        hasAdjacentConsensusBound: false,
+      }),
+    ).toThrow(
+      "incomplete fault-proof lifecycle coverage: InputSpentOutputNonCanonical success directions: forced_rejection_wrong; scenarios: wrongful_forced_rejection_success, honest_accepted_block_refusal, honest_forced_rejection_refusal, reason_or_subject_coordinate_mutation; authentication seams: tx_membership, prior_output_membership, field_certificate, forced_leaf; cancel steps: step-02, step-03, step-04, step-05",
+    );
+  });
 });

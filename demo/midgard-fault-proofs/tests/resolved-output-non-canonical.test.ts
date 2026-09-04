@@ -9,17 +9,23 @@ import {
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
+  buildResolvedOutputNonCanonicalFaultProofContracts,
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
 import {
+  applyResolvedOutputNonCanonicalScripts,
+  RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
+} from "../src/resolved-output-non-canonical/contracts.js";
+import {
   classifyResolvedOutputNonCanonicalFinding,
   detectResolvedOutputNonCanonicalCompleteReplay,
   RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY,
   RESOLVED_OUTPUT_NON_CANONICAL_ID,
 } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 const txId = "11".repeat(32);
@@ -192,5 +198,24 @@ describe("resolvedOutputNonCanonical V1 family boundary", () => {
         priorLedger: ledger(canonicalOutput),
       }),
     ).toThrow(/transaction identity was substituted/u);
+  });
+});
+
+describe("resolvedOutputNonCanonical registered-chain parity", () => {
+  it("applies the same chain the SDK registers for the same shared policies", async () => {
+    const fixture = await buildRegisteredChainFixture(
+      buildResolvedOutputNonCanonicalFaultProofContracts,
+    );
+    const registered = fixture.contracts.resolvedOutputNonCanonical;
+    const applied = applyResolvedOutputNonCanonicalScripts(fixture.applyParams);
+    expect(applied.map((step) => step.spendingScriptHash)).toStrictEqual(
+      registered.steps.map((step) => step.spendingScriptHash),
+    );
+    expect(registered.firstStep.spendingScriptHash).toBe(
+      applied[0].spendingScriptHash,
+    );
+    expect(applied.map((step) => step.blueprintTitle)).toStrictEqual([
+      ...RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
+    ]);
   });
 });
