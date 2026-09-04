@@ -4,6 +4,10 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1': 6.2.0-2
+  '@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-1': 6.2.0-2
+
 patchedDependencies:
   blake2b@2.1.4:
     hash: amsgm2cgjjoucvcdg3i4tuosl4
@@ -13,6 +17,9 @@ importers:
 
   .:
     devDependencies:
+      '@eslint/js':
+        specifier: ^9.21.0
+        version: 9.21.0
       '@typescript-eslint/parser':
         specifier: ^8.25.0
         version: 8.25.0(eslint@9.21.0)(typescript@5.7.3)
@@ -22,12 +29,21 @@ importers:
       eslint-plugin-simple-import-sort:
         specifier: ^12.1.1
         version: 12.1.1(eslint@9.21.0)
+      globals:
+        specifier: ^15.15.0
+        version: 15.15.0
       prettier:
         specifier: ^3.5.2
         version: 3.5.2
+      typescript-eslint:
+        specifier: ^8.25.0
+        version: 8.25.0(eslint@9.21.0)(typescript@5.7.3)
       vitest:
         specifier: ^1.3.1
         version: 1.6.1(@types/node@22.19.17)
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
 
   da-committee-node:
     dependencies:
@@ -40,6 +56,9 @@ importers:
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
+      '@al-ft/midgard-validation':
+        specifier: workspace:*
+        version: link:../midgard-validation
       '@chainsafe/libp2p-noise':
         specifier: 17.0.0
         version: 17.0.0
@@ -68,8 +87,8 @@ importers:
         specifier: 11.0.22
         version: 11.0.22
       '@lucid-evolution/lucid':
-        specifier: 0.6.0
-        version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
       '@lucid-evolution/scalus-uplc':
         specifier: 0.1.3
         version: 0.1.3
@@ -89,24 +108,30 @@ importers:
         specifier: ^8.21.0
         version: 8.22.0
     devDependencies:
+      '@al-ft/midgard-test-support':
+        specifier: workspace:*
+        version: link:../midgard-test-support
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
+      midgard-watcher:
+        specifier: workspace:*
+        version: link:../midgard-watcher
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
       vitest:
         specifier: ^3.0.7
-        version: 3.0.7(@types/node@22.19.17)
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
   lucid-midgard:
     dependencies:
@@ -123,9 +148,12 @@ importers:
         specifier: ^3.14.22
         version: 3.21.2
     devDependencies:
+      '@al-ft/midgard-test-support':
+        specifier: workspace:*
+        version: link:../midgard-test-support
       '@lucid-evolution/lucid':
-        specifier: 0.6.0
-        version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
@@ -134,19 +162,28 @@ importers:
         version: 6.1.3
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
       vitest:
         specifier: ^3.0.7
-        version: 3.0.7(@types/node@22.19.17)
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
   midgard-core:
     dependencies:
+      '@libp2p/crypto':
+        specifier: 5.1.20
+        version: 5.1.20
+      '@libp2p/interface':
+        specifier: 3.2.4
+        version: 3.2.4
+      '@libp2p/peer-id':
+        specifier: 6.0.11
+        version: 6.0.11
       '@lucid-evolution/lucid':
-        specifier: 0.6.0
-        version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0
@@ -154,6 +191,12 @@ importers:
         specifier: ^4.5.8
         version: 4.5.8
     devDependencies:
+      '@aiken-lang/merkle-patricia-forestry':
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+      '@al-ft/midgard-test-support':
+        specifier: workspace:*
+        version: link:../midgard-test-support
       '@harmoniclabs/cardano-costmodels-ts':
         specifier: 1.4.0
         version: 1.4.0
@@ -165,13 +208,13 @@ importers:
         version: 6.1.3
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
       vitest:
         specifier: ^3.0.7
-        version: 3.0.7(@types/node@22.19.17)
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
   midgard-fault-proofs:
     dependencies:
@@ -184,16 +227,25 @@ importers:
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
+      '@al-ft/midgard-validation':
+        specifier: workspace:*
+        version: link:../midgard-validation
       '@harmoniclabs/cbor':
         specifier: 1.6.6
         version: 1.6.6
       '@lucid-evolution/lucid':
-        specifier: 0.6.0
-        version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
       effect:
         specifier: ^3.14.22
         version: 3.21.2
     devDependencies:
+      '@al-ft/midgard-test-support':
+        specifier: workspace:*
+        version: link:../midgard-test-support
+      '@lucid-evolution/scalus-uplc':
+        specifier: 0.1.3
+        version: 0.1.3
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
@@ -202,13 +254,13 @@ importers:
         version: 6.1.3
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
       vitest:
         specifier: ^3.0.7
-        version: 3.0.7(@types/node@22.19.17)
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
   midgard-node:
     dependencies:
@@ -221,6 +273,9 @@ importers:
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
+      '@al-ft/midgard-fault-proofs':
+        specifier: workspace:*
+        version: link:../midgard-fault-proofs
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
@@ -291,11 +346,11 @@ importers:
         specifier: 11.0.22
         version: 11.0.22
       '@lucid-evolution/lucid':
-        specifier: 0.6.0
-        version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
       '@lucid-evolution/uplc':
-        specifier: 0.2.22
-        version: 0.2.22
+        specifier: 0.2.23
+        version: 0.2.23
       '@multiformats/multiaddr':
         specifier: 13.0.3
         version: 13.0.3
@@ -358,35 +413,225 @@ importers:
         version: 7.25.0
       vitest:
         specifier: ^3.0.7
-        version: 3.0.7(@types/node@22.19.17)
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
     devDependencies:
+      '@al-ft/midgard-test-support':
+        specifier: workspace:*
+        version: link:../midgard-test-support
       '@effect/vitest':
         specifier: ^0.22.0
-        version: 0.22.5(effect@3.21.2)(vitest@3.0.7(@types/node@22.19.17))
+        version: 0.22.5(effect@3.21.2)(vitest@3.0.7(@types/node@22.19.17)(yaml@2.9.0))
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
+      da-committee-node:
+        specifier: workspace:*
+        version: link:../da-committee-node
       esbuild:
         specifier: 0.25.0
         version: 0.25.0
       fast-check:
         specifier: ^4.5.3
         version: 4.7.0
+      midgard-node-tools:
+        specifier: workspace:*
+        version: link:../midgard-node-tools
       prettier:
         specifier: ^3.5.2
         version: 3.5.2
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
       vite:
         specifier: ^6.3.5
-        version: 6.4.2(@types/node@22.19.17)
+        version: 6.4.2(@types/node@22.19.17)(yaml@2.9.0)
+
+  midgard-node-tools:
+    dependencies:
+      '@aiken-lang/merkle-patricia-forestry':
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+      '@al-ft/lucid-midgard':
+        specifier: workspace:*
+        version: link:../lucid-midgard
+      '@al-ft/midgard-core':
+        specifier: workspace:*
+        version: link:../midgard-core
+      '@al-ft/midgard-fault-proofs':
+        specifier: workspace:*
+        version: link:../midgard-fault-proofs
+      '@al-ft/midgard-sdk':
+        specifier: workspace:*
+        version: link:../midgard-sdk
+      '@al-ft/midgard-validation':
+        specifier: workspace:*
+        version: link:../midgard-validation
+      '@chainsafe/libp2p-noise':
+        specifier: 17.0.0
+        version: 17.0.0
+      '@chainsafe/libp2p-yamux':
+        specifier: 8.0.1
+        version: 8.0.1
+      '@effect/experimental':
+        specifier: ^0.46.0
+        version: 0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)
+      '@effect/opentelemetry':
+        specifier: ^0.44.6
+        version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.30.0)(effect@3.21.2)
+      '@effect/platform':
+        specifier: ^0.80.0
+        version: 0.80.21(effect@3.21.2)
+      '@effect/platform-node':
+        specifier: ^0.80.0
+        version: 0.80.3(@effect/cluster@0.33.3(@effect/platform@0.80.21(effect@3.21.2))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@effect/sql':
+        specifier: ^0.34.1
+        version: 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)
+      '@effect/sql-pg':
+        specifier: ^0.35.1
+        version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@harmoniclabs/bytestring':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@harmoniclabs/cbor':
+        specifier: 1.6.6
+        version: 1.6.6
+      '@harmoniclabs/pair':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@harmoniclabs/plutus-data':
+        specifier: 1.2.6
+        version: 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)
+      '@harmoniclabs/plutus-machine':
+        specifier: 2.1.3
+        version: 2.1.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))(@harmoniclabs/uplc@1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)))
+      '@harmoniclabs/uplc':
+        specifier: 1.4.1
+        version: 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))
+      '@libp2p/bootstrap':
+        specifier: 12.0.25
+        version: 12.0.25
+      '@libp2p/crypto':
+        specifier: 5.1.20
+        version: 5.1.20
+      '@libp2p/gossipsub':
+        specifier: 16.0.3
+        version: 16.0.3
+      '@libp2p/identify':
+        specifier: 4.1.8
+        version: 4.1.8
+      '@libp2p/interface':
+        specifier: 3.2.4
+        version: 3.2.4
+      '@libp2p/peer-id':
+        specifier: 6.0.11
+        version: 6.0.11
+      '@libp2p/tcp':
+        specifier: 11.0.22
+        version: 11.0.22
+      '@lucid-evolution/lucid':
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+      '@lucid-evolution/uplc':
+        specifier: 0.2.23
+        version: 0.2.23
+      '@multiformats/multiaddr':
+        specifier: 13.0.3
+        version: 13.0.3
+      '@noble/hashes':
+        specifier: ^2.0.1
+        version: 2.2.0
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.0
+      '@opentelemetry/exporter-prometheus':
+        specifier: ^0.57.2
+        version: 0.57.2(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-trace-otlp-http':
+        specifier: ^0.57.2
+        version: 0.57.2(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-base':
+        specifier: ^1.30.1
+        version: 1.30.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-node':
+        specifier: ^1.30.1
+        version: 1.30.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-web':
+        specifier: ^1.30.1
+        version: 1.30.1(@opentelemetry/api@1.9.0)
+      bip39:
+        specifier: ^3.1.0
+        version: 3.1.0
+      blake2b:
+        specifier: 2.1.4
+        version: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
+      cborg:
+        specifier: ^4.5.8
+        version: 4.5.8
+      chalk:
+        specifier: ^5.4.1
+        version: 5.4.1
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.4.7
+      effect:
+        specifier: ^3.14.22
+        version: 3.21.2
+      level:
+        specifier: ^10.0.0
+        version: 10.0.0
+      libp2p:
+        specifier: 3.3.4
+        version: 3.3.4
+      libsodium-wrappers-sumo:
+        specifier: 0.7.15
+        version: 0.7.15
+      midgard-node:
+        specifier: workspace:*
+        version: link:../midgard-node
+      undici:
+        specifier: ^7.25.0
+        version: 7.25.0
+    devDependencies:
+      '@al-ft/midgard-test-support':
+        specifier: workspace:*
+        version: link:../midgard-test-support
+      '@types/node':
+        specifier: ^22.17.0
+        version: 22.19.17
+      da-committee-node:
+        specifier: workspace:*
+        version: link:../da-committee-node
+      prettier:
+        specifier: ^3.5.2
+        version: 3.5.2
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      tsup:
+        specifier: ^8.4.0
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.7.3
+      vite:
+        specifier: ^6.3.5
+        version: 6.4.2(@types/node@22.19.17)(yaml@2.9.0)
+      vitest:
+        specifier: ^3.0.7
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
   midgard-sdk:
     dependencies:
+      '@al-ft/midgard-core':
+        specifier: workspace:*
+        version: link:../midgard-core
       '@harmoniclabs/cbor':
         specifier: 1.6.6
         version: 1.6.6
@@ -400,21 +645,21 @@ importers:
       '@aiken-lang/merkle-patricia-forestry':
         specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
         version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
-      '@al-ft/midgard-core':
+      '@al-ft/midgard-test-support':
         specifier: workspace:*
-        version: link:../midgard-core
+        version: link:../midgard-test-support
       '@effect/vitest':
         specifier: ^0.17.8
-        version: 0.17.8(effect@3.21.2)(vitest@2.1.8(@types/node@22.13.5))
+        version: 0.17.8(effect@3.21.2)(vitest@2.1.8(@types/node@22.19.17))
       '@lucid-evolution/lucid':
-        specifier: 0.6.0
-        version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
       '@sinclair/typebox':
         specifier: ^0.34.28
         version: 0.34.28
       '@types/node':
-        specifier: ^22.13.5
-        version: 22.13.5
+        specifier: ^22.17.0
+        version: 22.19.17
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.25.0
         version: 8.25.0(@typescript-eslint/parser@8.25.0(eslint@9.21.0)(typescript@5.7.3))(eslint@9.21.0)(typescript@5.7.3)
@@ -438,34 +683,55 @@ importers:
         version: 6.1.3
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.13.5)(typescript@5.7.3)
+        version: 10.9.2(@types/node@22.19.17)(typescript@5.7.3)
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
       vitest:
         specifier: 2.1.8
-        version: 2.1.8(@types/node@22.13.5)
+        version: 2.1.8(@types/node@22.19.17)
+
+  midgard-test-support:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.17.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: ^3.0.7
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
   midgard-validation:
     dependencies:
+      '@aiken-lang/merkle-patricia-forestry':
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
+      '@harmoniclabs/cardano-costmodels-ts':
+        specifier: 1.4.0
+        version: 1.4.0
+      '@harmoniclabs/cbor':
+        specifier: 1.6.6
+        version: 1.6.6
       '@harmoniclabs/plutus-data':
         specifier: 1.2.6
-        version: 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)
+        version: 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)
       '@harmoniclabs/plutus-machine':
         specifier: 2.1.3
-        version: 2.1.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1))(@harmoniclabs/uplc@1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)))
+        version: 2.1.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))(@harmoniclabs/uplc@1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)))
       '@harmoniclabs/uplc':
         specifier: 1.4.1
-        version: 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1))
+        version: 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))
       '@lucid-evolution/lucid':
-        specifier: 0.6.0
-        version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0
@@ -473,6 +739,15 @@ importers:
         specifier: ^3.14.22
         version: 3.21.2
     devDependencies:
+      '@al-ft/midgard-fault-proofs':
+        specifier: workspace:*
+        version: link:../midgard-fault-proofs
+      '@al-ft/midgard-sdk':
+        specifier: workspace:*
+        version: link:../midgard-sdk
+      '@al-ft/midgard-test-support':
+        specifier: workspace:*
+        version: link:../midgard-test-support
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
@@ -481,13 +756,74 @@ importers:
         version: 6.1.3
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
       vitest:
         specifier: ^3.0.7
-        version: 3.0.7(@types/node@22.19.17)
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
+
+  midgard-watcher:
+    dependencies:
+      '@al-ft/midgard-core':
+        specifier: workspace:*
+        version: link:../midgard-core
+      '@al-ft/midgard-fault-proofs':
+        specifier: workspace:*
+        version: link:../midgard-fault-proofs
+      '@al-ft/midgard-sdk':
+        specifier: workspace:*
+        version: link:../midgard-sdk
+      '@al-ft/midgard-validation':
+        specifier: workspace:*
+        version: link:../midgard-validation
+      '@chainsafe/libp2p-noise':
+        specifier: 17.0.0
+        version: 17.0.0
+      '@chainsafe/libp2p-yamux':
+        specifier: 8.0.1
+        version: 8.0.1
+      '@libp2p/peer-id':
+        specifier: 6.0.11
+        version: 6.0.11
+      '@libp2p/tcp':
+        specifier: 11.0.22
+        version: 11.0.22
+      '@lucid-evolution/lucid':
+        specifier: 0.6.4
+        version: 0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+      '@multiformats/multiaddr':
+        specifier: 13.0.3
+        version: 13.0.3
+      '@noble/hashes':
+        specifier: ^2.0.1
+        version: 2.2.0
+      libp2p:
+        specifier: 3.3.4
+        version: 3.3.4
+    devDependencies:
+      '@aiken-lang/merkle-patricia-forestry':
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+      '@al-ft/midgard-test-support':
+        specifier: workspace:*
+        version: link:../midgard-test-support
+      '@types/node':
+        specifier: ^22.17.0
+        version: 22.19.17
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      tsup:
+        specifier: ^8.4.0
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: ^3.0.7
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
 packages:
 
@@ -498,14 +834,14 @@ packages:
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
     resolution: {integrity: sha512-sSPPjO1Zye82YVqrUGIKrli/Zt2pPkZkQd/jv9k6AzjIZdNPD3hvuB2yH6RHeZUO8+K57bu9r7Rlyf7VGbhhTQ==}
 
-  '@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-1':
-    resolution: {integrity: sha512-Xu4qOzpXll5CWm//DnR9DDwUCnGrOfN77JdhM0nzTHKBSz5rZpFei2j9iH719dKS4vI7fsvHTkMfXnl1TsHNsQ==}
+  '@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-2':
+    resolution: {integrity: sha512-C8RPb3ybLO2WvfVr4wuhmbiBNAGXM6XGmHcK17C40Dcf4sH8zY6CD6gXOjaejSupMflnge4ODwJmG2lO9z2cgQ==}
 
   '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.0.2-2':
     resolution: {integrity: sha512-KLYHyJWtFsTUUbIVz9dn5GiCbI4Mrx5mRpDWXa3lVLWFKok6AkvYlyHk4OH4NNa4JBerrHTB6ZJrk75UgKAaMA==}
 
-  '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1':
-    resolution: {integrity: sha512-OusE82Tl0obCkdxu0N7XB1OohA/gKmB53F6SsDqz9K8Cc/kfl27F4B6efMlg/fIgFQNz2WNFguPAJq+7zc4piw==}
+  '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-2':
+    resolution: {integrity: sha512-z5mycSYtYLuZxJ07ja0Buqd6cjnysREnabVQliMB29MMeli4KAjcakSk0nbbtLnFGi1zMI4DXjkUEqhth4Cxrw==}
 
   '@biglup/is-cid@1.0.3':
     resolution: {integrity: sha512-R0XPZ/IQhU2TtetSFI9vI+7kJOJYNiCncn5ixEBW+/LNaZCo2HK37Mq3pRNzrM4FryuAkyeqY7Ujmj3I3e3t9g==}
@@ -1019,6 +1355,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@eslint-community/eslint-utils@4.10.1':
+    resolution: {integrity: sha512-cuadcxVFE8sDK6iWJbs8Sn0av2Nrh2QSGQhVlBW9AaAHqHwjWsZHT8LJ4hFGPh7ASBV2deFdM7H/DPjulmh8rg==}
+    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
+    peerDependencies:
+      eslint: ^6.0.0 || ^7.0.0 || >=8.0.0
+
   '@eslint-community/eslint-utils@4.4.1':
     resolution: {integrity: sha512-s3O3waFUrMV8P/XaF/+ZTp1X9XBZW1a4B97ZnjQF2KYWaFD2A8KyFBsrsfSjEmjn3RGWAIuvlneuZm3CUK3jbA==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
@@ -1220,35 +1562,38 @@ packages:
   '@lucid-evolution/core-utils@0.1.16':
     resolution: {integrity: sha512-fNKZiGl1h6tf48bji067uxHZpDlhkrIDrwhZLt5DQC/c6GVdZb4TSvqgs7MOmMqp1dj9dy6NDYWnCHeTqZAhJw==}
 
+  '@lucid-evolution/core-utils@0.1.17':
+    resolution: {integrity: sha512-oyFARz6FTPn/eiOj+B6x0TmYm00g+rpvQOAoiO2KCqZHIgX6I2XKbsp4CPKHiz99b+QF+Td6/UFQF9WDzRbnaw==}
+
   '@lucid-evolution/crc8@0.1.8':
     resolution: {integrity: sha512-88+/S6n+sPgxYtG05rvbJDVb8MoFGzckkR3p26uGrzngYzlJGfxBWIzNhVwfI2mgINPo2C5lkZW3GYnfY0MjuA==}
 
-  '@lucid-evolution/lucid@0.6.0':
-    resolution: {integrity: sha512-CGPtoO/BezZ5Sfcn26S6xgh+DErr5NIWouFIbpjMqzvwdxOMWK8yAoPhEP1JFeuy6gtgKbf8VB9fMzbzNgykWg==}
+  '@lucid-evolution/lucid@0.6.4':
+    resolution: {integrity: sha512-Xje9VlWLuW3DyaudcYn1Nmlfdewo2mZFlQbS6VQ22yx+KYSPdL5j4tt60MlrTsGhTEQROCm9sDr5EUOcoKUwZg==}
 
-  '@lucid-evolution/plutus@0.1.35':
-    resolution: {integrity: sha512-dhOpt6c2hamHM+xsNE0CJlftLnFJXBqcBTguu7GRTIZ+HenH+nCm+LOmy944Y29lZp0uEbx+J+CfsFfWiNi6YQ==}
+  '@lucid-evolution/plutus@0.1.36':
+    resolution: {integrity: sha512-z6hvFbKDXvSyobuP9Z9DC1doO6W87aMa/Yq6YUvUdn/FZjMZ1aENJBuKlioSmxiP84EhhyVeafWRjcbLcniatQ==}
 
-  '@lucid-evolution/provider@0.2.0':
-    resolution: {integrity: sha512-byHbFU0//h/3hAmcI0o4vbRj1HhTm3V8PwoaJrh5GRjI3NcL+97dQVX0yx3XHhYDGa+0zZUcQ6p0sIVwPEMcSg==}
+  '@lucid-evolution/provider@0.2.3':
+    resolution: {integrity: sha512-AAT3FB5HJcTD7riTwFBzMJGXQuuCwfbtQLn+o97F8oCbOnQ74g7EZ42Gs3zgGWs1w0nyttCWyTznlQs9nB3Mdw==}
 
   '@lucid-evolution/scalus-uplc@0.1.3':
     resolution: {integrity: sha512-IKy6740g0es3FWLUYpT16I0OMokaLoPUcz0nhFBSL7Zoat3JB68Cx7rwSWJ/24bjfPQ7oIBTIKQa2EZplBXfhg==}
 
-  '@lucid-evolution/sign_data@0.1.31':
-    resolution: {integrity: sha512-g7rLI0wIHYeOsg1vr2tLxzkf7r+jE2RWWhPkvw+WSfIGqijysQSJx4zW3bVvK6IrhV55y0AkUJ/+pXnqd4wQTQ==}
+  '@lucid-evolution/sign_data@0.1.32':
+    resolution: {integrity: sha512-hYf96efISGhixHVPcM7kdlK6pxLuIMYB5baIdAdxd7xIFJ/50ehZIS6pPW+cjxT9jABPklTdL0OJPpB3y0yi+w==}
 
-  '@lucid-evolution/tx-graph@0.0.4':
-    resolution: {integrity: sha512-0P5RcyR5sItR+yHqwh2d7vJxBWsxRuwKtkbfEE5Ld3pjHRVG6i5zPWfEhe8rIMyZdbt3JZQw8KmHnRRPwNV+5Q==}
+  '@lucid-evolution/tx-graph@0.0.6':
+    resolution: {integrity: sha512-qJe1PJiIuuSB/HYtfDQgUWtju7nyKG7Qe3GEztcX0B3rPSs4/IU4mFMD8FL0EZ/hcfmGOXGvWaVH5SoCH/tL9Q==}
 
-  '@lucid-evolution/uplc@0.2.22':
-    resolution: {integrity: sha512-Xqh+Z6XKE8w9UC5wTQr5wNoKJi1AG6cymuBJaK3mJI0tq592Bu2dapSuxGLko3KReExrzh+Z4AR1HIHBPbwQPw==}
+  '@lucid-evolution/uplc@0.2.23':
+    resolution: {integrity: sha512-D0Qk+FnfePqqnT68IPRVy+2v1FahfkCVlgj31uoQ9aGPrwphKlvgp04UEl/lBNuzJw0avYNM8knO4hptMSFP8Q==}
 
-  '@lucid-evolution/utils@0.1.72':
-    resolution: {integrity: sha512-J5vVpj6dGQeqBpZKVcXuRXIkD6l0Iok1jBJe8LjiFeb29k8w252wk94dbtCPX/W0CGrWCBaI41vZRrcwZIO+fQ==}
+  '@lucid-evolution/utils@0.1.74':
+    resolution: {integrity: sha512-bS5WwnfUciDbpOymRCohG1jUBanMz/SU5HBdnLsA2w4wB+pg73UYwF1leSf129zUGQX8xWARfNqvsUuR6+IZuA==}
 
-  '@lucid-evolution/wallet@0.2.0':
-    resolution: {integrity: sha512-9moJ3Ii4R8dlBAOlFctxHoroMQM3VzwWJFw8t73vrsRzfGKLhQhvUZ21KtaSPVIHsuVJAMZAxhvFXKErY6FfZA==}
+  '@lucid-evolution/wallet@0.2.2':
+    resolution: {integrity: sha512-Ks5stxITiFY0wMiww6kR7fsxNvkPZs1u9wukHIkM8GP0BEPf48FN+Au/Qgb0x8g1ALopNt9MB2AAFSXrtjdLDw==}
 
   '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.3':
     resolution: {integrity: sha512-QZHtlVgbAdy2zAqNA9Gu1UpIuI8Xvsd1v8ic6B2pZmeFnFcMWiPLfWXh7TVw4eGEZ/C9TH281KwhVoeQUKbyjw==}
@@ -1801,9 +2146,6 @@ packages:
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
-
-  '@types/node@22.13.5':
-    resolution: {integrity: sha512-+lTU0PxZXn0Dr1NBtC7Y8cR21AJr87dLLU953CWA6pMxxv/UDc7jYAY90upcrie1nRcD6XNG5HOYEDtgW5TxAg==}
 
   '@types/node@22.19.17':
     resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
@@ -2382,14 +2724,6 @@ packages:
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
 
-  fdir@6.4.3:
-    resolution: {integrity: sha512-PMXmW2y1hDDfTSRc9gaXIuCCRpuoz3Kaz8cUelp3smouvfT632ozg2vrT6lJsHKKOF59YLbOGfAWGUcKEfRMQw==}
-    peerDependencies:
-      picomatch: ^3 || ^4
-    peerDependenciesMeta:
-      picomatch:
-        optional: true
-
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
     engines: {node: '>=12.0.0'}
@@ -2481,6 +2815,10 @@ packages:
 
   globals@14.0.0:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
+    engines: {node: '>=18'}
+
+  globals@15.15.0:
+    resolution: {integrity: sha512-7ACyT3wmyp3I61S4fG682L0VA2RGD9otkqGJIwNUMF1SWUombIIk+af1unuDYgMm082aHYwD+mzJvv9Iu8dsgg==}
     engines: {node: '>=18'}
 
   gopd@1.2.0:
@@ -2838,10 +3176,6 @@ packages:
 
   minimatch@9.0.5:
     resolution: {integrity: sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow==}
-    engines: {node: '>=16 || 14 >=14.17'}
-
-  minipass@7.1.2:
-    resolution: {integrity: sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==}
     engines: {node: '>=16 || 14 >=14.17'}
 
   minipass@7.1.3:
@@ -3354,10 +3688,6 @@ packages:
   tinyexec@0.3.2:
     resolution: {integrity: sha512-KQQR9yN7R5+OSwaK0XQoj22pwHoTlgYqmUscPYoknOoWCWfj/5/ABTMRi69FrKU5ffPVh5QcFikpWJI/P1ocHA==}
 
-  tinyglobby@0.2.12:
-    resolution: {integrity: sha512-qkf4trmKSIiMTs/E63cxH+ojC2unam7rJ0WrauAzpT3ECNTxGRMlaXxVbfxMUC/w0LaYk6jQ4y/nGR9uBO3tww==}
-    engines: {node: '>=12.0.0'}
-
   tinyglobby@0.2.16:
     resolution: {integrity: sha512-pn99VhoACYR8nFHhxqix+uvsbXineAasWm5ojXoN8xEwK5Kd3/TrhNn1wByuD52UxWRLy8pu+kRMniEi6Eq9Zg==}
     engines: {node: '>=12.0.0'}
@@ -3469,6 +3799,13 @@ packages:
     resolution: {integrity: sha512-nAYYwfY3qnzX30IkA6AQZjVbtK6duGontcQm1WSG1MD94YLqK0515GNApXkoxKOWMusVssAHWLh9SeaoefYFGw==}
     engines: {node: '>= 0.4'}
 
+  typescript-eslint@8.25.0:
+    resolution: {integrity: sha512-TxRdQQLH4g7JkoFlYG3caW5v1S6kEkz8rqt80iQJZUYPq1zD1Ra7HfQBJJ88ABRaMvHAXnwRvRB4V+6sQ9xN5Q==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      eslint: ^8.57.0 || ^9.0.0
+      typescript: '>=4.8.4 <5.8.0'
+
   typescript@5.7.3:
     resolution: {integrity: sha512-84MVSjMEHP+FQRPy3pX9sTVV/INIex71s9TL2Gm5FG/WG1SqXeKyZ0k7/blY/4FdOzI12CBy1vGc4og/eus0fw==}
     engines: {node: '>=14.17'}
@@ -3494,9 +3831,6 @@ packages:
 
   uint8arrays@6.1.1:
     resolution: {integrity: sha512-iz7JN0XCSZYA111lhFG2Ui9EhFvTNekqSRHw3lvMHq+dzwWy1OQftxFQREEh4rffU0oSoXdQHsk2TiHKVm4fsA==}
-
-  undici-types@6.20.0:
-    resolution: {integrity: sha512-Ny6QZ2Nju20vw1SRHe3d9jVu6gJ+4e3+MMpqu7pqE5HT6WsTSlce++GQmK5UXS8mzV8DSYHrQH+Xrf2jVcuKNg==}
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
@@ -3768,6 +4102,11 @@ packages:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
     engines: {node: '>=0.4'}
 
+  yaml@2.9.0:
+    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   yn@3.1.1:
     resolution: {integrity: sha512-Ux4ygGWsu2c7isFWe8Yu1YluJmqVhxqK2cLXNQA5AcC3QfbGNpM7fu0Y8b/z16pXLnFxZYvWhd3fhBY9DLmC6Q==}
     engines: {node: '>=6'}
@@ -3789,11 +4128,11 @@ snapshots:
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2': {}
 
-  '@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-1': {}
+  '@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-2': {}
 
   '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.0.2-2': {}
 
-  '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1': {}
+  '@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-2': {}
 
   '@biglup/is-cid@1.0.3':
     dependencies:
@@ -4025,15 +4364,15 @@ snapshots:
       effect: 3.21.2
       uuid: 11.1.0
 
-  '@effect/vitest@0.17.8(effect@3.21.2)(vitest@2.1.8(@types/node@22.13.5))':
+  '@effect/vitest@0.17.8(effect@3.21.2)(vitest@2.1.8(@types/node@22.19.17))':
     dependencies:
       effect: 3.21.2
-      vitest: 2.1.8(@types/node@22.13.5)
+      vitest: 2.1.8(@types/node@22.19.17)
 
-  '@effect/vitest@0.22.5(effect@3.21.2)(vitest@3.0.7(@types/node@22.19.17))':
+  '@effect/vitest@0.22.5(effect@3.21.2)(vitest@3.0.7(@types/node@22.19.17)(yaml@2.9.0))':
     dependencies:
       effect: 3.21.2
-      vitest: 3.0.7(@types/node@22.19.17)
+      vitest: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
   '@emurgo/cardano-message-signing-browser@1.1.0': {}
 
@@ -4183,6 +4522,11 @@ snapshots:
   '@esbuild/win32-x64@0.25.0':
     optional: true
 
+  '@eslint-community/eslint-utils@4.10.1(eslint@9.21.0)':
+    dependencies:
+      eslint: 9.21.0
+      eslint-visitor-keys: 3.4.3
+
   '@eslint-community/eslint-utils@4.4.1(eslint@9.21.0)':
     dependencies:
       eslint: 9.21.0
@@ -4300,19 +4644,6 @@ snapshots:
       '@harmoniclabs/plutus-data': 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)
       '@harmoniclabs/uint8array-utils': 1.0.4
       '@harmoniclabs/uplc': 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))
-
-  '@harmoniclabs/plutus-machine@2.1.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1))(@harmoniclabs/uplc@1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)))':
-    dependencies:
-      '@harmoniclabs/bigint-utils': 1.0.0
-      '@harmoniclabs/bytestring': 1.0.0
-      '@harmoniclabs/cardano-costmodels-ts': 1.4.0
-      '@harmoniclabs/cbor': 2.0.1
-      '@harmoniclabs/crypto': 0.3.0
-      '@harmoniclabs/obj-utils': 1.0.0
-      '@harmoniclabs/pair': 1.0.0
-      '@harmoniclabs/plutus-data': 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)
-      '@harmoniclabs/uint8array-utils': 1.0.4
-      '@harmoniclabs/uplc': 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1))
 
   '@harmoniclabs/uint8array-utils@1.0.3': {}
 
@@ -4556,31 +4887,36 @@ snapshots:
 
   '@lucid-evolution/core-types@0.3.0':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
 
   '@lucid-evolution/core-utils@0.1.16':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-2
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-2
 
+  '@lucid-evolution/core-utils@0.1.17':
+    dependencies:
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
+
   '@lucid-evolution/crc8@0.1.8': {}
 
-  '@lucid-evolution/lucid@0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)':
+  '@lucid-evolution/lucid@0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@effect/schema': 0.66.16(effect@3.21.2)(fast-check@4.7.0)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
-      '@lucid-evolution/plutus': 0.1.35
-      '@lucid-evolution/provider': 0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
-      '@lucid-evolution/sign_data': 0.1.31
-      '@lucid-evolution/tx-graph': 0.0.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
-      '@lucid-evolution/uplc': 0.2.22
-      '@lucid-evolution/utils': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
-      '@lucid-evolution/wallet': 0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/core-utils': 0.1.17
+      '@lucid-evolution/plutus': 0.1.36
+      '@lucid-evolution/provider': 0.2.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/sign_data': 0.1.32
+      '@lucid-evolution/tx-graph': 0.0.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/uplc': 0.2.23
+      '@lucid-evolution/utils': 0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/wallet': 0.2.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       effect: 3.21.2
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
@@ -4596,21 +4932,21 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/lucid@0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)':
+  '@lucid-evolution/lucid@0.6.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@effect/schema': 0.66.16(effect@3.21.2)(fast-check@4.7.0)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
-      '@lucid-evolution/plutus': 0.1.35
-      '@lucid-evolution/provider': 0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
-      '@lucid-evolution/sign_data': 0.1.31
-      '@lucid-evolution/tx-graph': 0.0.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
-      '@lucid-evolution/uplc': 0.2.22
-      '@lucid-evolution/utils': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
-      '@lucid-evolution/wallet': 0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/core-utils': 0.1.17
+      '@lucid-evolution/plutus': 0.1.36
+      '@lucid-evolution/provider': 0.2.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/sign_data': 0.1.32
+      '@lucid-evolution/tx-graph': 0.0.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/uplc': 0.2.23
+      '@lucid-evolution/utils': 0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/wallet': 0.2.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       effect: 3.21.2
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
@@ -4626,24 +4962,24 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/plutus@0.1.35':
+  '@lucid-evolution/plutus@0.1.36':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
+      '@lucid-evolution/core-utils': 0.1.17
       '@sinclair/typebox': 0.32.35
 
-  '@lucid-evolution/provider@0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/provider@0.2.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@effect/platform': 0.71.7(effect@3.21.2)
       '@effect/schema': 0.68.27(effect@3.21.2)
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
-      '@lucid-evolution/utils': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
-      '@lucid-evolution/wallet': 0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/core-utils': 0.1.17
+      '@lucid-evolution/utils': 0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/wallet': 0.2.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       effect: 3.21.2
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
@@ -4658,16 +4994,16 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/provider@0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/provider@0.2.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@effect/platform': 0.71.7(effect@3.21.2)
       '@effect/schema': 0.68.27(effect@3.21.2)
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
-      '@lucid-evolution/utils': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
-      '@lucid-evolution/wallet': 0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/core-utils': 0.1.17
+      '@lucid-evolution/utils': 0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/wallet': 0.2.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       effect: 3.21.2
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
@@ -4684,29 +5020,29 @@ snapshots:
 
   '@lucid-evolution/scalus-uplc@0.1.3':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@lucid-evolution/core-types': 0.3.0
       '@lucid-evolution/core-utils': 0.1.16
       cbor-x: 1.6.4
       scalus: 0.18.1
 
-  '@lucid-evolution/sign_data@0.1.31':
+  '@lucid-evolution/sign_data@0.1.32':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@emurgo/cardano-message-signing-browser': 1.1.0
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
+      '@lucid-evolution/core-utils': 0.1.17
 
-  '@lucid-evolution/tx-graph@0.0.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/tx-graph@0.0.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
-      '@lucid-evolution/utils': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/core-utils': 0.1.17
+      '@lucid-evolution/utils': 0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -4720,13 +5056,13 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/tx-graph@0.0.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/tx-graph@0.0.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
-      '@lucid-evolution/utils': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/core-utils': 0.1.17
+      '@lucid-evolution/utils': 0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -4740,21 +5076,21 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/uplc@0.2.22': {}
+  '@lucid-evolution/uplc@0.2.23': {}
 
-  '@lucid-evolution/utils@0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/utils@0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@cardano-sdk/core': 0.46.12(encoding@0.1.13)
       '@effect/schema': 0.68.27(effect@3.21.2)
       '@harmoniclabs/plutus-data': 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)
       '@harmoniclabs/uplc': 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
+      '@lucid-evolution/core-utils': 0.1.17
       '@lucid-evolution/crc8': 0.1.8
-      '@lucid-evolution/plutus': 0.1.35
-      '@lucid-evolution/uplc': 0.2.22
+      '@lucid-evolution/plutus': 0.1.36
+      '@lucid-evolution/uplc': 0.2.23
       bip39: 3.1.0
       cbor-x: 1.6.4
       effect: 3.21.2
@@ -4771,19 +5107,19 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/utils@0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/utils@0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@cardano-sdk/core': 0.46.12(encoding@0.1.13)
       '@effect/schema': 0.68.27(effect@3.21.2)
       '@harmoniclabs/plutus-data': 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)
       '@harmoniclabs/uplc': 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1))
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
+      '@lucid-evolution/core-utils': 0.1.17
       '@lucid-evolution/crc8': 0.1.8
-      '@lucid-evolution/plutus': 0.1.35
-      '@lucid-evolution/uplc': 0.2.22
+      '@lucid-evolution/plutus': 0.1.36
+      '@lucid-evolution/uplc': 0.2.23
       bip39: 3.1.0
       cbor-x: 1.6.4
       effect: 3.21.2
@@ -4800,14 +5136,14 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/wallet@0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/wallet@0.2.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
-      '@lucid-evolution/sign_data': 0.1.31
-      '@lucid-evolution/utils': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/core-utils': 0.1.17
+      '@lucid-evolution/sign_data': 0.1.32
+      '@lucid-evolution/utils': 0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       bip39: 3.1.0
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
@@ -4822,14 +5158,14 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/wallet@0.2.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/wallet@0.2.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
-      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
-      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
       '@lucid-evolution/core-types': 0.3.0
-      '@lucid-evolution/core-utils': 0.1.16
-      '@lucid-evolution/sign_data': 0.1.31
-      '@lucid-evolution/utils': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/core-utils': 0.1.17
+      '@lucid-evolution/sign_data': 0.1.32
+      '@lucid-evolution/utils': 0.1.74(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       bip39: 3.1.0
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
@@ -5269,10 +5605,6 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/node@22.13.5':
-    dependencies:
-      undici-types: 6.20.0
-
   '@types/node@22.19.17':
     dependencies:
       undici-types: 6.21.0
@@ -5346,7 +5678,7 @@ snapshots:
 
   '@typescript-eslint/utils@8.25.0(eslint@9.21.0)(typescript@5.7.3)':
     dependencies:
-      '@eslint-community/eslint-utils': 4.4.1(eslint@9.21.0)
+      '@eslint-community/eslint-utils': 4.10.1(eslint@9.21.0)
       '@typescript-eslint/scope-manager': 8.25.0
       '@typescript-eslint/types': 8.25.0
       '@typescript-eslint/typescript-estree': 8.25.0(typescript@5.7.3)
@@ -5380,21 +5712,21 @@ snapshots:
       chai: 5.2.0
       tinyrainbow: 2.0.0
 
-  '@vitest/mocker@2.1.8(vite@5.4.14(@types/node@22.13.5))':
+  '@vitest/mocker@2.1.8(vite@5.4.14(@types/node@22.19.17))':
     dependencies:
       '@vitest/spy': 2.1.8
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
-      vite: 5.4.14(@types/node@22.13.5)
+      vite: 5.4.14(@types/node@22.19.17)
 
-  '@vitest/mocker@3.0.7(vite@6.4.2(@types/node@22.19.17))':
+  '@vitest/mocker@3.0.7(vite@6.4.2(@types/node@22.19.17)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 3.0.7
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
-      vite: 6.4.2(@types/node@22.19.17)
+      vite: 6.4.2(@types/node@22.19.17)(yaml@2.9.0)
 
   '@vitest/pretty-format@2.1.8':
     dependencies:
@@ -6014,10 +6346,6 @@ snapshots:
     dependencies:
       reusify: 1.1.0
 
-  fdir@6.4.3(picomatch@4.0.2):
-    optionalDependencies:
-      picomatch: 4.0.2
-
   fdir@6.5.0(picomatch@4.0.2):
     optionalDependencies:
       picomatch: 4.0.2
@@ -6103,7 +6431,7 @@ snapshots:
       foreground-child: 3.3.1
       jackspeak: 3.4.3
       minimatch: 9.0.5
-      minipass: 7.1.2
+      minipass: 7.1.3
       package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
 
@@ -6114,6 +6442,8 @@ snapshots:
       path-scurry: 2.0.2
 
   globals@14.0.0: {}
+
+  globals@15.15.0: {}
 
   gopd@1.2.0: {}
 
@@ -6476,8 +6806,6 @@ snapshots:
     dependencies:
       brace-expansion: 2.0.1
 
-  minipass@7.1.2: {}
-
   minipass@7.1.3: {}
 
   mlly@1.7.4:
@@ -6624,7 +6952,7 @@ snapshots:
   path-scurry@1.11.1:
     dependencies:
       lru-cache: 10.4.3
-      minipass: 7.1.2
+      minipass: 7.1.3
 
   path-scurry@2.0.2:
     dependencies:
@@ -6701,11 +7029,12 @@ snapshots:
 
   possible-typed-array-names@1.1.0: {}
 
-  postcss-load-config@6.0.1(postcss@8.5.3):
+  postcss-load-config@6.0.1(postcss@8.5.3)(yaml@2.9.0):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       postcss: 8.5.3
+      yaml: 2.9.0
 
   postcss@8.5.3:
     dependencies:
@@ -6996,11 +7325,6 @@ snapshots:
 
   tinyexec@0.3.2: {}
 
-  tinyglobby@0.2.12:
-    dependencies:
-      fdir: 6.4.3(picomatch@4.0.2)
-      picomatch: 4.0.2
-
   tinyglobby@0.2.16:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.4)
@@ -7046,14 +7370,14 @@ snapshots:
 
   ts-log@2.2.7: {}
 
-  ts-node@10.9.2(@types/node@22.13.5)(typescript@5.7.3):
+  ts-node@10.9.2(@types/node@22.19.17)(typescript@5.7.3):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       '@tsconfig/node10': 1.0.11
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.4
-      '@types/node': 22.13.5
+      '@types/node': 22.19.17
       acorn: 8.14.0
       acorn-walk: 8.3.4
       arg: 4.1.3
@@ -7064,7 +7388,7 @@ snapshots:
       v8-compile-cache-lib: 3.0.1
       yn: 3.1.1
 
-  tsup@8.4.0(postcss@8.5.3)(typescript@5.7.3):
+  tsup@8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.25.0)
       cac: 6.7.14
@@ -7074,13 +7398,13 @@ snapshots:
       esbuild: 0.25.0
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(postcss@8.5.3)
+      postcss-load-config: 6.0.1(postcss@8.5.3)(yaml@2.9.0)
       resolve-from: 5.0.0
-      rollup: 4.34.8
+      rollup: 4.60.2
       source-map: 0.8.0-beta.0
       sucrase: 3.35.0
       tinyexec: 0.3.2
-      tinyglobby: 0.2.12
+      tinyglobby: 0.2.16
       tree-kill: 1.2.2
     optionalDependencies:
       postcss: 8.5.3
@@ -7104,6 +7428,16 @@ snapshots:
       call-bound: 1.0.4
       es-errors: 1.3.0
       is-typed-array: 1.1.15
+
+  typescript-eslint@8.25.0(eslint@9.21.0)(typescript@5.7.3):
+    dependencies:
+      '@typescript-eslint/eslint-plugin': 8.25.0(@typescript-eslint/parser@8.25.0(eslint@9.21.0)(typescript@5.7.3))(eslint@9.21.0)(typescript@5.7.3)
+      '@typescript-eslint/parser': 8.25.0(eslint@9.21.0)(typescript@5.7.3)
+      '@typescript-eslint/utils': 8.25.0(eslint@9.21.0)(typescript@5.7.3)
+      eslint: 9.21.0
+      typescript: 5.7.3
+    transitivePeerDependencies:
+      - supports-color
 
   typescript@5.7.3: {}
 
@@ -7134,8 +7468,6 @@ snapshots:
   uint8arrays@6.1.1:
     dependencies:
       multiformats: 14.0.0
-
-  undici-types@6.20.0: {}
 
   undici-types@6.21.0: {}
 
@@ -7181,13 +7513,13 @@ snapshots:
       - supports-color
       - terser
 
-  vite-node@2.1.8(@types/node@22.13.5):
+  vite-node@2.1.8(@types/node@22.19.17):
     dependencies:
       cac: 6.7.14
       debug: 4.4.0
       es-module-lexer: 1.6.0
       pathe: 1.1.2
-      vite: 5.4.14(@types/node@22.13.5)
+      vite: 5.4.14(@types/node@22.19.17)
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -7199,13 +7531,13 @@ snapshots:
       - supports-color
       - terser
 
-  vite-node@3.0.7(@types/node@22.19.17):
+  vite-node@3.0.7(@types/node@22.19.17)(yaml@2.9.0):
     dependencies:
       cac: 6.7.14
       debug: 4.4.0
       es-module-lexer: 1.6.0
       pathe: 2.0.3
-      vite: 6.4.2(@types/node@22.19.17)
+      vite: 6.4.2(@types/node@22.19.17)(yaml@2.9.0)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -7220,15 +7552,6 @@ snapshots:
       - tsx
       - yaml
 
-  vite@5.4.14(@types/node@22.13.5):
-    dependencies:
-      esbuild: 0.21.5
-      postcss: 8.5.3
-      rollup: 4.34.8
-    optionalDependencies:
-      '@types/node': 22.13.5
-      fsevents: 2.3.3
-
   vite@5.4.14(@types/node@22.19.17):
     dependencies:
       esbuild: 0.21.5
@@ -7238,7 +7561,7 @@ snapshots:
       '@types/node': 22.19.17
       fsevents: 2.3.3
 
-  vite@6.4.2(@types/node@22.19.17):
+  vite@6.4.2(@types/node@22.19.17)(yaml@2.9.0):
     dependencies:
       esbuild: 0.25.0
       fdir: 6.5.0(picomatch@4.0.2)
@@ -7249,6 +7572,7 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.19.17
       fsevents: 2.3.3
+      yaml: 2.9.0
 
   vitest@1.6.1(@types/node@22.19.17):
     dependencies:
@@ -7284,10 +7608,10 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@2.1.8(@types/node@22.13.5):
+  vitest@2.1.8(@types/node@22.19.17):
     dependencies:
       '@vitest/expect': 2.1.8
-      '@vitest/mocker': 2.1.8(vite@5.4.14(@types/node@22.13.5))
+      '@vitest/mocker': 2.1.8(vite@5.4.14(@types/node@22.19.17))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.8
       '@vitest/snapshot': 2.1.8
@@ -7303,11 +7627,11 @@ snapshots:
       tinyexec: 0.3.2
       tinypool: 1.0.2
       tinyrainbow: 1.2.0
-      vite: 5.4.14(@types/node@22.13.5)
-      vite-node: 2.1.8(@types/node@22.13.5)
+      vite: 5.4.14(@types/node@22.19.17)
+      vite-node: 2.1.8(@types/node@22.19.17)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 22.13.5
+      '@types/node': 22.19.17
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -7319,10 +7643,10 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@3.0.7(@types/node@22.19.17):
+  vitest@3.0.7(@types/node@22.19.17)(yaml@2.9.0):
     dependencies:
       '@vitest/expect': 3.0.7
-      '@vitest/mocker': 3.0.7(vite@6.4.2(@types/node@22.19.17))
+      '@vitest/mocker': 3.0.7(vite@6.4.2(@types/node@22.19.17)(yaml@2.9.0))
       '@vitest/pretty-format': 3.0.7
       '@vitest/runner': 3.0.7
       '@vitest/snapshot': 3.0.7
@@ -7338,8 +7662,8 @@ snapshots:
       tinyexec: 0.3.2
       tinypool: 1.0.2
       tinyrainbow: 2.0.0
-      vite: 6.4.2(@types/node@22.19.17)
-      vite-node: 3.0.7(@types/node@22.19.17)
+      vite: 6.4.2(@types/node@22.19.17)(yaml@2.9.0)
+      vite-node: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.17
@@ -7425,6 +7749,8 @@ snapshots:
   ws@8.20.0: {}
 
   xtend@4.0.2: {}
+
+  yaml@2.9.0: {}
 
   yn@3.1.1: {}
 

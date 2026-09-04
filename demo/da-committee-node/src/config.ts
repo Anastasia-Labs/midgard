@@ -1,7 +1,22 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { parseDaLibp2pRuntimeManifestDeploymentIdentity } from "@al-ft/midgard-core/da-transport";
+import { assertRetentionWindowCoversDeployment } from "@al-ft/midgard-core";
+import {
+  assertMidgardConsensusReleaseReady,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
+import {
+  type DaLibp2pRuntimeManifest,
+  parseDaLibp2pRuntimeManifest,
+} from "@al-ft/midgard-core/da-transport";
+import {
+  type DeploymentManifestAvailabilityChallenge,
+  parseDeploymentManifestAvailabilityChallenge,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { multiaddr } from "@multiformats/multiaddr";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -22,6 +37,66 @@ export type LocalStateConfig =
   | { readonly kind: "file"; readonly path: string }
   | { readonly kind: "database"; readonly url: string };
 
+export type CardanoL1SourceConfig =
+  | {
+      readonly sourceMode: "local_node";
+      readonly authorityNodeId: string;
+      readonly authorityDigest: string;
+      readonly networkMagic: number;
+    }
+  | {
+      readonly sourceMode: "external_providers";
+      readonly providerAuthorityIds: readonly string[];
+      readonly authorityDigest: string;
+      readonly networkMagic: number;
+    };
+
+export type L1SourceConfig =
+  | {
+      readonly sourceMode: "local_node";
+      readonly authorityNodeId: string;
+      readonly chainSyncProviderUrl: string;
+      readonly chainSyncCursorPath?: string;
+      readonly queryProviderUrls: readonly string[];
+    }
+  | {
+      readonly sourceMode: "external_providers";
+      readonly providers: readonly {
+        readonly identity: string;
+        readonly url: string;
+        readonly operationalIdentity: {
+          readonly operatorId: string;
+          readonly transport: "blockfrost_https" | "kupmios" | "fixture";
+          readonly normalizedEndpoints: readonly string[];
+          readonly backendKey: string;
+        };
+      }[];
+    };
+
+export const l1SourceAuthorityDigest = (
+  network: string,
+  source: L1SourceConfig,
+): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        source.sourceMode === "local_node"
+          ? {
+              network,
+              sourceMode: source.sourceMode,
+              authorityNodeId: source.authorityNodeId,
+              chainSyncProviderUrl: source.chainSyncProviderUrl,
+              queryProviderUrls: source.queryProviderUrls,
+            }
+          : {
+              network,
+              sourceMode: source.sourceMode,
+              providers: source.providers,
+            },
+      ),
+    )
+    .digest("hex");
+
 export type WatcherConfig = {
   readonly network: string;
   readonly deploymentManifestPath: string;
@@ -32,7 +107,10 @@ export type WatcherConfig = {
   readonly deploymentManifestRaw: string;
   readonly deploymentManifest: Record<string, unknown>;
   readonly contractDeploymentInfo: Record<string, unknown>;
-  readonly midgardNodeDeployment?: MidgardNodeDeployment;
+  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly midgardNodeDeployment: MidgardNodeDeployment;
+  readonly l1Source: L1SourceConfig;
   readonly cardanoProviderUrls: readonly string[];
   readonly finalityDepth: number;
   readonly daTransport: Libp2pDaTransportConfig;
@@ -55,6 +133,10 @@ export type WatcherConfig = {
   readonly daParamsGovernorAddress: string;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
+  readonly hubOraclePolicyId: string;
+  readonly correctionLockAddress: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofAddress: string;
   readonly peerRequestTimeoutMs: number;
   readonly peerReplayWindowMs: number;
   readonly peerMaxBodyBytes: number;
@@ -66,6 +148,10 @@ export type WatcherConfig = {
   readonly apiHost: string;
   readonly apiPort: number;
   readonly pollIntervalMs: number;
+};
+
+export type LoadedWatcherConfig = WatcherConfig & {
+  readonly cardanoL1Source: CardanoL1SourceConfig;
 };
 
 export type Libp2pDaRole =
@@ -113,6 +199,30 @@ export type Libp2pDaTransportConfig = {
   readonly peers: readonly Libp2pDaPeerConfig[];
 };
 
+export type PublicRetainedDaConfig = {
+  readonly peerId: string;
+  readonly privateKeySource: string;
+  readonly listenMultiaddrs: readonly string[];
+  readonly announceMultiaddrs: readonly string[];
+  readonly protocols: readonly string[];
+  readonly limits: {
+    readonly maxStreamsPerPeer: number;
+    readonly maxInflightRequests: number;
+    readonly maxInflightRequestsPerPeer: number;
+    readonly maxInflightProofRequests: number;
+    readonly requestTimeoutMs: number;
+  };
+};
+
+/** Minimal authority set for the separate public retained-DA executable. */
+export type PublicRetainedDaRuntimeConfig = {
+  readonly deploymentFingerprint: string;
+  readonly publicRetainedDa: PublicRetainedDaConfig;
+  readonly dataLimits: Libp2pDaTransportLimits;
+  readonly databaseUrl: string;
+  readonly databaseRole: string;
+};
+
 export type L1SubmitterPreflightConfig = {
   readonly enabled: boolean;
   readonly minPlainAdaLovelace: bigint;
@@ -136,7 +246,7 @@ export const DEFAULT_L1_SUBMITTER_PREFLIGHT = {
 } as const;
 
 export const LIBP2P_DA_TRANSPORT_LIMITS = {
-  maxPayloadBytes: 67_108_864,
+  maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
   maxInlineResponseBytes: 1_048_576,
   maxChunkBytes: 1_048_576,
   maxStreamsPerPeer: 16,
@@ -145,12 +255,9 @@ export const LIBP2P_DA_TRANSPORT_LIMITS = {
 
 export const LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES = 65_536;
 export const LIBP2P_DA_MIN_RETENTION_DAYS = 15;
-const CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION =
-  "midgard-deployment-manifest-v2";
-
 export const loadWatcherConfig = async (
   env: Env = process.env,
-): Promise<WatcherConfig> => {
+): Promise<LoadedWatcherConfig> => {
   const deploymentManifestPath = requireEnv(
     env,
     "MIDGARD_DEPLOYMENT_MANIFEST_PATH",
@@ -168,6 +275,7 @@ export const loadWatcherConfig = async (
     deploymentManifestRaw,
     deploymentManifestPath,
   );
+  const runtimeManifest = parseDaLibp2pRuntimeManifest(deploymentManifest);
   const contractDeploymentInfo = parseJsonObject(
     contractDeploymentInfoRaw,
     contractDeploymentInfoPath,
@@ -178,103 +286,63 @@ export const loadWatcherConfig = async (
   const contractDeploymentInfoSha256 = createHash("sha256")
     .update(contractDeploymentInfoRaw)
     .digest("hex");
-  const contractDeploymentManifestId = contractDeploymentManifestIdConfig(
+  const {
+    manifestId: contractDeploymentManifestId,
+    consensusProfile,
+    network: contractDeploymentNetwork,
+    daRetentionDays: manifestDaRetentionDays,
+    finalityDepth: manifestFinalityDepth,
+    availabilityChallenge: manifestAvailabilityChallenge,
+  } = contractDeploymentManifestConfig(
     contractDeploymentInfo,
     contractDeploymentInfoPath,
   );
+  const network = runtimeManifest.network;
+  if (network !== contractDeploymentNetwork) {
+    throw new Error(
+      `DA runtime manifest network must exactly match contract deployment manifest network: runtime=${network}, contract=${contractDeploymentNetwork}`,
+    );
+  }
+  if (env.MIDGARD_NETWORK !== undefined && env.MIDGARD_NETWORK !== network) {
+    throw new Error(
+      `MIDGARD_NETWORK must exactly match runtime manifest network ${network}`,
+    );
+  }
   const deploymentFingerprint = deploymentFingerprintConfig(
-    deploymentManifest,
+    runtimeManifest,
     contractDeploymentManifestId,
   );
   const libp2pDaTransport = libp2pDaTransportConfig({
     env,
-    deploymentManifest,
+    runtimeManifest,
     deploymentFingerprint,
   });
+  assertLibp2pDaRetentionDays({
+    runtimeRetentionDays: libp2pDaTransport.retentionDays,
+    manifestRetentionDays: manifestDaRetentionDays,
+  });
   const libp2pPrivateKeySource = libp2pPrivateKeySourceConfig(env);
-  const network =
-    env.MIDGARD_NETWORK ??
-    optionalString(deploymentManifest, "network") ??
-    stringAt(deploymentManifest, ["deployment", "cardano_network"]) ??
-    stringAt(deploymentManifest, ["deployment", "midgard_network"]) ??
-    optionalString(deploymentManifest, "networkId");
-  if (network === undefined || network.trim() === "") {
-    throw new Error("MIDGARD_NETWORK or manifest network is required");
-  }
+  rejectPublicRetainedDaCoHosting(env);
   const midgardNodeDeployment = parseMidgardNodeDeploymentInfo(
     contractDeploymentInfo,
     network,
   );
 
-  const daAttestationPolicyId = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "daAttestation", "policyId"],
-      ["daAttestation", "policyId"],
-      ["da_attestation", "policy_id"],
-    ],
-    "DA attestation policy id",
-    () => midgardNodeDeployment?.daAttestation.policyId,
-  );
-  const daAttestationAddress = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "daAttestation", "spendingScriptAddress"],
-      ["contracts", "daAttestation", "address"],
-      ["daAttestation", "spendingScriptAddress"],
-      ["da_attestation", "address"],
-    ],
-    "DA attestation address",
-    () => midgardNodeDeployment?.daAttestation.spendingScriptAddress,
-  );
-  const daParamsGovernorPolicyId = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "daParamsGovernor", "policyId"],
-      ["daParamsGovernor", "policyId"],
-      ["da_params_governor", "policy_id"],
-    ],
-    "DA params governor policy id",
-    () => midgardNodeDeployment?.daParamsGovernor.policyId,
-  );
-  const daParamsGovernorAddress = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "daParamsGovernor", "spendingScriptAddress"],
-      ["contracts", "daParamsGovernor", "address"],
-      ["daParamsGovernor", "spendingScriptAddress"],
-      ["da_params_governor", "address"],
-    ],
-    "DA params governor address",
-    () => midgardNodeDeployment?.daParamsGovernor.spendingScriptAddress,
-  );
-  const stateQueuePolicyId = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "stateQueue", "policyId"],
-      ["stateQueue", "policyId"],
-      ["state_queue", "policy_id"],
-    ],
-    "state queue policy id",
-    () => midgardNodeDeployment?.stateQueue.policyId,
-  );
-  const stateQueueAddress = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "stateQueue", "spendingScriptAddress"],
-      ["contracts", "stateQueue", "address"],
-      ["stateQueue", "spendingScriptAddress"],
-      ["state_queue", "address"],
-    ],
-    "state queue address",
-    () => midgardNodeDeployment?.stateQueue.spendingScriptAddress,
-  );
+  const daAttestationPolicyId = midgardNodeDeployment.daAttestation.policyId;
+  const daAttestationAddress =
+    midgardNodeDeployment.daAttestation.spendingScriptAddress;
+  const daParamsGovernorPolicyId =
+    midgardNodeDeployment.daParamsGovernor.policyId;
+  const daParamsGovernorAddress =
+    midgardNodeDeployment.daParamsGovernor.spendingScriptAddress;
+  const stateQueuePolicyId = midgardNodeDeployment.stateQueue.policyId;
+  const stateQueueAddress =
+    midgardNodeDeployment.stateQueue.spendingScriptAddress;
+  const hubOraclePolicyId = midgardNodeDeployment.hubOraclePolicyId;
+  const correctionLockAddress = midgardNodeDeployment.correctionLockAddress;
+  const fraudProofPolicyId = midgardNodeDeployment.fraudProof.policyId;
+  const fraudProofAddress =
+    midgardNodeDeployment.fraudProof.spendingScriptAddress;
   const l1SubmitterKeySource = optionalKeySource(
     env.L1_SUBMITTER_KEY_SOURCE,
     "L1_SUBMITTER_KEY_SOURCE",
@@ -292,6 +360,12 @@ export const loadWatcherConfig = async (
   const cardanoProviderUrls = splitList(
     requireEnv(env, "CARDANO_PROVIDER_URLS"),
   );
+  const cardanoL1Source = cardanoL1SourceConfig({
+    env,
+    network,
+    cardanoProviderUrls,
+  });
+  const l1Source = parseL1SourceConfig(env, cardanoProviderUrls);
   const daCommitteeMembers = libp2pDaTransport.peers.map((member) => ({
     index: member.signerIndex,
     vkey: member.daVkey,
@@ -307,11 +381,6 @@ export const loadWatcherConfig = async (
     );
   }
   if (l1SubmissionEnabled) {
-    if (midgardNodeDeployment === undefined) {
-      throw new Error(
-        "L1 submission requires Midgard node deployment-info with script CBOR and reference-script UTxOs",
-      );
-    }
     if (!isLiveLucidProviderUrl(cardanoProviderUrls[0]!)) {
       throw new Error(
         "L1 submission requires a blockfrost: or kupmios: CARDANO_PROVIDER_URLS entry",
@@ -324,15 +393,25 @@ export const loadWatcherConfig = async (
     l1SubmitterKeySource,
   });
   const maybeSigner = optionalSignerConfig(env);
-  const daParams = daParamsConfig(env, deploymentManifest, daCommitteeMembers);
+  const daParams = daParamsConfig(env, runtimeManifest, daCommitteeMembers);
   validateLibp2pCommitteeMatchesDaParams(libp2pDaTransport, daParams);
   const l1SubmitterSignerIndexes = parseL1SubmitterSignerIndexes(
     env,
     daCommitteeMembers,
   );
+  const configuredFinalityDepth = nonNegativeInt(
+    requireEnv(env, "CARDANO_FINALITY_DEPTH"),
+    "CARDANO_FINALITY_DEPTH",
+  );
+  if (configuredFinalityDepth !== manifestFinalityDepth) {
+    throw new Error(
+      `CARDANO_FINALITY_DEPTH must exactly equal the verified deployment manifest l1Finality.confirmationDepth: runtime=${configuredFinalityDepth.toString()}, manifest=${manifestFinalityDepth.toString()}`,
+    );
+  }
 
   return {
     network,
+    cardanoL1Source,
     deploymentManifestPath,
     contractDeploymentInfoPath,
     deploymentFingerprint,
@@ -341,12 +420,12 @@ export const loadWatcherConfig = async (
     deploymentManifestRaw,
     deploymentManifest,
     contractDeploymentInfo,
+    availabilityChallenge: manifestAvailabilityChallenge,
+    consensusProfile,
     midgardNodeDeployment,
+    l1Source,
     cardanoProviderUrls,
-    finalityDepth: nonNegativeInt(
-      requireEnv(env, "CARDANO_FINALITY_DEPTH"),
-      "CARDANO_FINALITY_DEPTH",
-    ),
+    finalityDepth: configuredFinalityDepth,
     daTransport: libp2pDaTransport,
     libp2pPrivateKeySource,
     ...maybeSigner,
@@ -383,6 +462,10 @@ export const loadWatcherConfig = async (
       byteLength: 28,
     }),
     stateQueueAddress,
+    hubOraclePolicyId,
+    correctionLockAddress,
+    fraudProofPolicyId,
+    fraudProofAddress,
     peerRequestTimeoutMs: positiveInt(
       env.DA_PEER_REQUEST_TIMEOUT_MS ?? "5000",
       "DA_PEER_REQUEST_TIMEOUT_MS",
@@ -480,8 +563,501 @@ const optionalSplitList = (value: string | undefined): readonly string[] => {
   return trimmed === undefined ? [] : splitList(trimmed);
 };
 
+export const parseL1SourceConfig = (
+  env: Env,
+  cardanoProviderUrls: readonly string[],
+): L1SourceConfig => {
+  const sourceMode = requireEnv(env, "CARDANO_L1_SOURCE_MODE");
+  const testMode = booleanEnv(env.CARDANO_L1_TEST_MODE, false);
+  if (sourceMode !== "local_node" && sourceMode !== "external_providers") {
+    throw new Error(
+      "CARDANO_L1_SOURCE_MODE must be local_node or external_providers",
+    );
+  }
+  if (
+    !testMode &&
+    cardanoProviderUrls.some((url) => isFixtureProviderUrl(url))
+  ) {
+    throw new Error(
+      "fixture:/file: Cardano providers require explicit CARDANO_L1_TEST_MODE=true",
+    );
+  }
+  if (sourceMode === "local_node") {
+    if (
+      optionalNonEmpty(env.CARDANO_EXTERNAL_PROVIDER_IDENTITIES) !== undefined
+    ) {
+      throw new Error(
+        "CARDANO_EXTERNAL_PROVIDER_IDENTITIES is forbidden in local_node mode",
+      );
+    }
+    const chainSyncProviderUrl = localChainSyncUrl(
+      requireEnv(env, "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL"),
+      testMode,
+    );
+    if (!testMode) {
+      assertLocalQuerySurfacesShareAuthority(
+        chainSyncProviderUrl,
+        cardanoProviderUrls,
+      );
+    }
+    return {
+      sourceMode,
+      authorityNodeId: boundedIdentity(
+        requireEnv(env, "CARDANO_LOCAL_NODE_AUTHORITY_ID"),
+        "CARDANO_LOCAL_NODE_AUTHORITY_ID",
+      ),
+      chainSyncProviderUrl,
+      chainSyncCursorPath: requireEnv(
+        env,
+        "CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH",
+      ),
+      queryProviderUrls: cardanoProviderUrls,
+    };
+  }
+  if (
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_AUTHORITY_ID) !== undefined ||
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_CHAIN_SYNC_URL) !== undefined ||
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH) !==
+      undefined
+  ) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_* configuration is forbidden in external_providers mode",
+    );
+  }
+  if (cardanoProviderUrls.length < 2) {
+    throw new Error(
+      "external_providers mode requires at least two operationally independent CARDANO_PROVIDER_URLS entries",
+    );
+  }
+  const identities = splitList(
+    requireEnv(env, "CARDANO_EXTERNAL_PROVIDER_IDENTITIES"),
+  ).map((identity) =>
+    boundedIdentity(identity, "CARDANO_EXTERNAL_PROVIDER_IDENTITIES"),
+  );
+  if (identities.length !== cardanoProviderUrls.length) {
+    throw new Error(
+      "CARDANO_EXTERNAL_PROVIDER_IDENTITIES must contain one identity per CARDANO_PROVIDER_URLS entry",
+    );
+  }
+  if (new Set(identities).size !== identities.length) {
+    throw new Error(
+      "external_providers mode requires distinct operational provider identities",
+    );
+  }
+  const operationalIdentities = cardanoProviderUrls.map((url, index) =>
+    operationalProviderIdentity(url, identities[index]!, testMode),
+  );
+  const endpointOwners = new Map<string, string>();
+  for (const identity of operationalIdentities) {
+    for (const endpoint of identity.normalizedEndpoints) {
+      const existingOwner = endpointOwners.get(endpoint);
+      if (existingOwner !== undefined) {
+        throw new Error(
+          `external_providers mode requires operationally independent backends; ${existingOwner} and ${identity.operatorId} share normalized endpoint ${endpoint}`,
+        );
+      }
+      endpointOwners.set(endpoint, identity.operatorId);
+    }
+  }
+  if (
+    new Set(operationalIdentities.map(({ backendKey }) => backendKey)).size !==
+    operationalIdentities.length
+  ) {
+    throw new Error(
+      "external_providers mode requires distinct normalized provider backends",
+    );
+  }
+  return {
+    sourceMode,
+    providers: cardanoProviderUrls.map((url, index) => ({
+      identity: identities[index]!,
+      url,
+      operationalIdentity: operationalIdentities[index]!,
+    })),
+  };
+};
+
+const localChainSyncUrl = (value: string, testMode: boolean): string => {
+  if (!value.startsWith("chain-sync:") || value === "chain-sync:") {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL must use the chain-sync:<provider> form",
+    );
+  }
+  const provider = value.slice("chain-sync:".length);
+  if (!testMode && isFixtureProviderUrl(provider)) {
+    throw new Error(
+      "fixture:/file: local chain-sync sources require explicit CARDANO_L1_TEST_MODE=true",
+    );
+  }
+  if (
+    !provider.startsWith("kupmios:") &&
+    !provider.startsWith("ogmios:") &&
+    !provider.startsWith("fixture:") &&
+    !provider.startsWith("file:")
+  ) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL authority must be a local ogmios: or kupmios: surface (fixture:/file: only in tests)",
+    );
+  }
+  return value;
+};
+
+const assertLocalQuerySurfacesShareAuthority = (
+  chainSyncProviderUrl: string,
+  queryProviderUrls: readonly string[],
+): void => {
+  const authorityProvider = chainSyncProviderUrl.slice("chain-sync:".length);
+  const authorityOgmiosUrl = authorityProvider.startsWith("ogmios:")
+    ? authorityProvider.slice("ogmios:".length)
+    : authorityProvider.startsWith("kupmios:")
+      ? authorityProvider.slice("kupmios:".length).split("|")[1]
+      : undefined;
+  if (authorityOgmiosUrl === undefined) {
+    throw new Error(
+      "production local_node chain sync requires an Ogmios authority endpoint",
+    );
+  }
+  const normalizedAuthority = normalizeOperationalEndpoint(
+    authorityOgmiosUrl,
+    "local authority Ogmios",
+  );
+  for (const [index, providerUrl] of queryProviderUrls.entries()) {
+    if (!providerUrl.startsWith("kupmios:")) {
+      throw new Error(
+        `production local_node query surface ${index.toString()} must be kupmios: backed by the local authority`,
+      );
+    }
+    const [, queryOgmiosUrl, extra] = providerUrl
+      .slice("kupmios:".length)
+      .split("|");
+    if (queryOgmiosUrl === undefined || extra !== undefined) {
+      throw new Error(
+        "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+      );
+    }
+    const normalizedQueryAuthority = normalizeOperationalEndpoint(
+      queryOgmiosUrl,
+      "query Ogmios",
+    );
+    if (normalizedQueryAuthority !== normalizedAuthority) {
+      throw new Error(
+        `production local_node query surface ${index.toString()} is not backed by the configured chain-sync authority`,
+      );
+    }
+  }
+};
+
+const isFixtureProviderUrl = (value: string): boolean =>
+  value.startsWith("fixture:") || value.startsWith("file:");
+
+const operationalProviderIdentity = (
+  value: string,
+  operatorId: string,
+  testMode: boolean,
+): {
+  readonly operatorId: string;
+  readonly transport: "blockfrost_https" | "kupmios" | "fixture";
+  readonly normalizedEndpoints: readonly string[];
+  readonly backendKey: string;
+} => {
+  if (value.startsWith("blockfrost:")) {
+    const raw = value.slice("blockfrost:".length);
+    const projectSeparator = raw.lastIndexOf("#");
+    if (projectSeparator <= 0 || projectSeparator === raw.length - 1) {
+      throw new Error(
+        "blockfrost provider URL must be blockfrost:<api-url>#<project-id>",
+      );
+    }
+    const endpoint = normalizeOperationalEndpoint(
+      raw.slice(0, projectSeparator),
+      "blockfrost",
+    );
+    if (!endpoint.startsWith("https://")) {
+      throw new Error(
+        "external Blockfrost providers require HTTPS transport evidence",
+      );
+    }
+    return {
+      operatorId,
+      transport: "blockfrost_https",
+      normalizedEndpoints: [endpoint],
+      backendKey: `blockfrost:${endpoint}`,
+    };
+  }
+  if (value.startsWith("kupmios:")) {
+    const [kupoUrl, ogmiosUrl, extra] = value
+      .slice("kupmios:".length)
+      .split("|");
+    if (
+      kupoUrl === undefined ||
+      ogmiosUrl === undefined ||
+      extra !== undefined
+    ) {
+      throw new Error(
+        "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+      );
+    }
+    const normalizedKupo = normalizeOperationalEndpoint(kupoUrl, "Kupo");
+    const normalizedOgmios = normalizeOperationalEndpoint(ogmiosUrl, "Ogmios");
+    if (
+      !testMode &&
+      (!normalizedKupo.startsWith("https://") ||
+        !normalizedOgmios.startsWith("https://"))
+    ) {
+      throw new Error(
+        "external Kupmios providers require HTTPS Kupo and TLS-protected WSS/HTTPS Ogmios transport evidence",
+      );
+    }
+    const endpoints = [normalizedKupo, normalizedOgmios].sort();
+    return {
+      operatorId,
+      transport: "kupmios",
+      normalizedEndpoints: endpoints,
+      backendKey: `kupmios:${endpoints.join("|")}`,
+    };
+  }
+  if (testMode && isFixtureProviderUrl(value)) {
+    const endpoint = value.startsWith("file:")
+      ? new URL(value).pathname
+      : value.slice("fixture:".length);
+    const normalized = `fixture:${endpoint}`;
+    return {
+      operatorId,
+      transport: "fixture",
+      normalizedEndpoints: [normalized],
+      backendKey: normalized,
+    };
+  }
+  throw new Error(
+    `unsupported external Cardano provider ${value}; operational identity evidence requires blockfrost: or kupmios:`,
+  );
+};
+
+const normalizeOperationalEndpoint = (value: string, label: string): string => {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${label} operational endpoint must be an absolute URL`);
+  }
+  if (
+    parsed.protocol !== "https:" &&
+    parsed.protocol !== "http:" &&
+    parsed.protocol !== "wss:" &&
+    parsed.protocol !== "ws:"
+  ) {
+    throw new Error(`${label} operational endpoint uses unsupported transport`);
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new Error(
+      `${label} operational endpoint must not embed credentials in its identity`,
+    );
+  }
+  const canonicalProtocol =
+    parsed.protocol === "wss:"
+      ? "https:"
+      : parsed.protocol === "ws:"
+        ? "http:"
+        : parsed.protocol;
+  const defaultPort =
+    canonicalProtocol === "https:" && parsed.port === "443"
+      ? ""
+      : canonicalProtocol === "http:" && parsed.port === "80"
+        ? ""
+        : parsed.port;
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/u, "");
+  return `${canonicalProtocol}//${hostname}${defaultPort === "" ? "" : `:${defaultPort}`}`;
+};
+
+const boundedIdentity = (value: string, name: string): string => {
+  if (!/^[a-z][a-z0-9-]{2,63}$/u.test(value)) {
+    throw new Error(`${name} entries must be lowercase operational identities`);
+  }
+  return value;
+};
+
 const isLiveLucidProviderUrl = (value: string): boolean =>
   value.startsWith("blockfrost:") || value.startsWith("kupmios:");
+
+const CARDANO_NAMED_NETWORK_MAGIC = {
+  Mainnet: 764_824_073,
+  Preprod: 1,
+  Preview: 2,
+} as const;
+const CARDANO_NETWORK_MAGIC_MAX = 4_294_967_295;
+const CARDANO_AUTHORITY_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u;
+const LOWER_HEX_32 = /^[0-9a-f]{64}$/u;
+
+const cardanoL1SourceConfig = ({
+  env,
+  network,
+  cardanoProviderUrls,
+}: {
+  readonly env: Env;
+  readonly network: string;
+  readonly cardanoProviderUrls: readonly string[];
+}): CardanoL1SourceConfig => {
+  const sourceMode = requireEnv(env, "CARDANO_L1_SOURCE_MODE");
+  if (sourceMode !== "local_node" && sourceMode !== "external_providers") {
+    throw new Error(
+      "CARDANO_L1_SOURCE_MODE must be local_node or external_providers",
+    );
+  }
+  const networkMagic = cardanoNetworkMagic(env, network);
+  if (sourceMode === "local_node") {
+    if (
+      cardanoProviderUrls.some(
+        (url) =>
+          !url.startsWith("kupmios:") &&
+          !url.startsWith("fixture:") &&
+          !url.startsWith("file:"),
+      )
+    ) {
+      throw new Error(
+        "local_node mode permits only same-node kupmios query surfaces or deterministic fixtures",
+      );
+    }
+    const authorityNodeId = requireEnv(env, "CARDANO_LOCAL_NODE_AUTHORITY_ID");
+    if (!CARDANO_AUTHORITY_ID.test(authorityNodeId)) {
+      throw new Error(
+        "CARDANO_LOCAL_NODE_AUTHORITY_ID must be a stable public identifier",
+      );
+    }
+    if (optionalNonEmpty(env.CARDANO_PROVIDER_AUTHORITY_IDS) !== undefined) {
+      throw new Error(
+        "CARDANO_PROVIDER_AUTHORITY_IDS must be omitted in local_node mode",
+      );
+    }
+    const authorityDigest = cardanoAuthorityDigest({
+      sourceMode,
+      network,
+      networkMagic,
+      authorityNodeId,
+      querySurfaces: cardanoProviderUrls.map(providerPublicIdentity).sort(),
+    });
+    return {
+      sourceMode,
+      authorityNodeId,
+      authorityDigest,
+      networkMagic,
+    };
+  }
+
+  if (optionalNonEmpty(env.CARDANO_LOCAL_NODE_AUTHORITY_ID) !== undefined) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_AUTHORITY_ID must be omitted in external_providers mode",
+    );
+  }
+  if (cardanoProviderUrls.length < 2) {
+    throw new Error(
+      "external_providers mode requires at least two Cardano provider URLs",
+    );
+  }
+  if (cardanoProviderUrls.some((url) => !isLiveLucidProviderUrl(url))) {
+    throw new Error(
+      "external_providers mode requires live blockfrost or kupmios providers",
+    );
+  }
+  const providerAuthorityIds = splitList(
+    requireEnv(env, "CARDANO_PROVIDER_AUTHORITY_IDS"),
+  );
+  if (providerAuthorityIds.length !== cardanoProviderUrls.length) {
+    throw new Error(
+      "CARDANO_PROVIDER_AUTHORITY_IDS must contain exactly one identity per CARDANO_PROVIDER_URLS entry",
+    );
+  }
+  if (providerAuthorityIds.some((identity) => !LOWER_HEX_32.test(identity))) {
+    throw new Error(
+      "CARDANO_PROVIDER_AUTHORITY_IDS entries must be lowercase SHA-256 identities",
+    );
+  }
+  if (
+    new Set(providerAuthorityIds).size !== providerAuthorityIds.length ||
+    new Set(cardanoProviderUrls.map(providerPublicIdentity)).size !==
+      cardanoProviderUrls.length
+  ) {
+    throw new Error(
+      "external_providers mode requires operationally independent provider authorities and endpoints",
+    );
+  }
+  const providers = cardanoProviderUrls
+    .map((url, index) => ({
+      authorityId: providerAuthorityIds[index]!,
+      endpoint: providerPublicIdentity(url),
+    }))
+    .sort((left, right) => left.authorityId.localeCompare(right.authorityId));
+  const authorityDigest = cardanoAuthorityDigest({
+    sourceMode,
+    network,
+    networkMagic,
+    providers,
+  });
+  return {
+    sourceMode,
+    providerAuthorityIds,
+    authorityDigest,
+    networkMagic,
+  };
+};
+
+const cardanoNetworkMagic = (env: Env, network: string): number => {
+  const configured = optionalNonEmpty(env.CARDANO_NETWORK_MAGIC);
+  if (network === "Custom") {
+    if (configured === undefined) {
+      throw new Error("CARDANO_NETWORK_MAGIC is required for Custom network");
+    }
+    return networkMagicInteger(configured);
+  }
+  if (network === "Mainnet" || network === "Preprod" || network === "Preview") {
+    if (configured !== undefined) {
+      throw new Error(
+        "CARDANO_NETWORK_MAGIC must be omitted for named Cardano networks",
+      );
+    }
+    return CARDANO_NAMED_NETWORK_MAGIC[network];
+  }
+  throw new Error(
+    "Cardano network must be Mainnet, Preprod, Preview, or Custom",
+  );
+};
+
+const networkMagicInteger = (value: string): number => {
+  if (!/^(?:0|[1-9][0-9]*)$/u.test(value)) {
+    throw new Error(
+      "CARDANO_NETWORK_MAGIC must be a canonical unsigned 32-bit integer",
+    );
+  }
+  const parsed = Number(value);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0 ||
+    parsed > CARDANO_NETWORK_MAGIC_MAX
+  ) {
+    throw new Error(
+      "CARDANO_NETWORK_MAGIC must be a canonical unsigned 32-bit integer",
+    );
+  }
+  return parsed;
+};
+
+const cardanoAuthorityDigest = (identity: object): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        schemaVersion: "midgard-da-cardano-l1-authority-v1",
+        ...identity,
+      }),
+    )
+    .digest("hex");
+
+const providerPublicIdentity = (url: string): string => {
+  if (url.startsWith("blockfrost:")) {
+    const raw = url.slice("blockfrost:".length);
+    const projectSeparator = raw.lastIndexOf("#");
+    return `blockfrost:${projectSeparator < 0 ? raw : raw.slice(0, projectSeparator)}`;
+  }
+  return url;
+};
 
 const booleanEnv = (
   value: string | undefined,
@@ -599,10 +1175,8 @@ const optionalSignerConfig = (
   env: Env,
 ): Pick<WatcherConfig, "signerIndex" | "signerKeySource"> => {
   const configuredMode = optionalNonEmpty(env.DA_MODE);
-  if (configuredMode !== undefined && configuredMode !== "unified") {
-    throw new Error(
-      "DA_MODE has been removed; omit it or set DA_MODE=unified while migrating",
-    );
+  if (configuredMode !== undefined) {
+    throw new Error("DA_MODE has been removed and must be omitted");
   }
   const index = optionalNonEmpty(env.DA_SIGNER_INDEX);
   const keySource = optionalNonEmpty(env.DA_SIGNER_KEY_SOURCE);
@@ -680,121 +1254,162 @@ const LIBP2P_DA_URL_ENV_OVERRIDES = [
   "DA_PUBLIC_BASE_URL",
 ] as const;
 
-const contractDeploymentManifestIdConfig = (
+const contractDeploymentManifestConfig = (
   contractDeploymentInfo: Record<string, unknown>,
   path: string,
-): string => {
-  const schemaVersion = optionalString(contractDeploymentInfo, "schemaVersion");
-  if (schemaVersion !== CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION) {
-    throw new Error(
-      `${path} must be a ${CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION} contract deployment manifest`,
+): {
+  readonly manifestId: string;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly network: string;
+  readonly daRetentionDays: number;
+  readonly finalityDepth: number;
+  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
+} => {
+  const verified = verifyFinalizedDeploymentManifest(contractDeploymentInfo);
+  const exactProfile = verified.consensusProfile;
+  if (!isMidgardConsensusProfile(exactProfile)) {
+    throw new Error(`${path} does not contain the exact V1 consensus profile`);
+  }
+  assertMidgardConsensusReleaseReady();
+  const manifestId = verified.manifestId as string;
+  const network = verified.network;
+  if (typeof network !== "string" || network.length === 0) {
+    throw new Error(`${path} does not contain a deployment network`);
+  }
+  // Q54: the retention window is part of deployment identity, so read it from
+  // the *verified* deployment manifest rather than from the runtime manifest.
+  const daRetentionDays = assertRetentionWindowCoversDeployment(verified);
+  const l1Finality = verified.l1Finality as Record<string, unknown>;
+  const finalityDepth = l1Finality.confirmationDepth;
+  if (
+    typeof finalityDepth !== "number" ||
+    !Number.isSafeInteger(finalityDepth) ||
+    finalityDepth < 0
+  ) {
+    // `verifyFinalizedDeploymentManifest` already establishes this shape.
+    // Keep the local assertion at the boundary so a future parser change
+    // cannot silently turn release finality back into caller configuration.
+    throw new Error(`${path} has invalid l1Finality.confirmationDepth`);
+  }
+  return {
+    manifestId: normalizeHex(manifestId, {
+      fieldName: "contract deployment manifestId",
+      byteLength: 32,
+    }),
+    consensusProfile: exactProfile,
+    network,
+    daRetentionDays,
+    finalityDepth,
+    availabilityChallenge: parseDeploymentManifestAvailabilityChallenge(
+      verified.availabilityChallenge,
+    ),
+  };
+};
+
+export class DaRetentionWindowConfigError extends Error {
+  public override readonly name = "DaRetentionWindowConfigError";
+}
+
+/**
+ * Fail-closed startup binding of the committee's configured retention window
+ * (GOAL_SPEC 9.4 / Q54). The runtime manifest's `da_transport.retention_days`
+ * must both clear the canonical floor and exactly equal the verified deployment
+ * manifest's `da.transportProfile.retentionDays`.
+ */
+export const assertLibp2pDaRetentionDays = (args: {
+  readonly runtimeRetentionDays: number;
+  readonly manifestRetentionDays: number;
+}): number => {
+  const { runtimeRetentionDays, manifestRetentionDays } = args;
+  if (!Number.isSafeInteger(runtimeRetentionDays) || runtimeRetentionDays < 0) {
+    throw new DaRetentionWindowConfigError(
+      "da_transport.retention_days must be a non-negative safe integer",
     );
   }
-  const manifestId = optionalString(contractDeploymentInfo, "manifestId");
-  if (manifestId === undefined) {
-    throw new Error(`${path} is missing manifestId`);
+  if (runtimeRetentionDays < LIBP2P_DA_MIN_RETENTION_DAYS) {
+    throw new DaRetentionWindowConfigError(
+      `da_transport.retention_days must be at least ${LIBP2P_DA_MIN_RETENTION_DAYS.toString()} days, got ${runtimeRetentionDays.toString()}`,
+    );
   }
-  return normalizeHex(manifestId, {
-    fieldName: "contract deployment manifestId",
-    byteLength: 32,
-  });
+  if (runtimeRetentionDays !== manifestRetentionDays) {
+    throw new DaRetentionWindowConfigError(
+      `da_transport.retention_days must exactly equal the verified deployment manifest da.transportProfile.retentionDays: runtime=${runtimeRetentionDays.toString()}, manifest=${manifestRetentionDays.toString()}`,
+    );
+  }
+  return runtimeRetentionDays;
 };
 
 const deploymentFingerprintConfig = (
-  deploymentManifest: Record<string, unknown>,
+  runtimeManifest: DaLibp2pRuntimeManifest,
   contractDeploymentManifestId: string,
 ): string => {
-  const identity = parseDaLibp2pRuntimeManifestDeploymentIdentity(
-    deploymentManifest,
-    "watcher DA libp2p runtime manifest",
-  );
-  if (identity.contractDeploymentManifestId !== contractDeploymentManifestId) {
+  const { deployment } = runtimeManifest;
+  if (
+    deployment.contract_deployment_manifest_id !== contractDeploymentManifestId
+  ) {
     throw new Error(
-      `deployment.contract_deployment_manifest_id does not match contract deployment manifestId: runtime=${identity.contractDeploymentManifestId}, contract=${contractDeploymentManifestId}`,
+      `deployment.contract_deployment_manifest_id does not match contract deployment manifestId: runtime=${deployment.contract_deployment_manifest_id}, contract=${contractDeploymentManifestId}`,
     );
   }
-  return identity.fingerprint;
+  return deployment.fingerprint;
 };
 
 const libp2pDaTransportConfig = ({
   env,
-  deploymentManifest,
+  runtimeManifest,
   deploymentFingerprint,
 }: {
   readonly env: Env;
-  readonly deploymentManifest: Record<string, unknown>;
+  readonly runtimeManifest: DaLibp2pRuntimeManifest;
   readonly deploymentFingerprint: string;
 }): Libp2pDaTransportConfig => {
   rejectLibp2pDaUrlEnvOverrides(env);
-  const daTransport = daTransportObject(deploymentManifest);
-  if (daTransport === undefined) {
-    throw new Error("da_transport.kind=libp2p is required");
+  if (runtimeManifest.runtime_topology.target !== "watcher") {
+    throw new Error("runtime_topology.target must be watcher");
   }
-  const kind = optionalString(daTransport, "kind");
-  if (kind !== "libp2p") {
-    throw new Error("da_transport.kind must be libp2p");
-  }
-  const daCommittee = daCommitteeObject(deploymentManifest);
-  if (daCommittee === undefined) {
-    throw new Error("da_committee is required for libp2p DA mode");
-  }
+  const { da_committee: daCommittee, da_transport: daTransport } =
+    runtimeManifest;
   rejectUrlShapedLibp2pDaConfig(daTransport, "da_transport");
   rejectUrlShapedLibp2pDaConfig(daCommittee, "da_committee");
-  const noHttpDaTransport = daTransport.no_http_da_transport;
-  if (noHttpDaTransport !== true) {
-    throw new Error(
-      "da_transport.no_http_da_transport must be true in libp2p DA mode",
-    );
-  }
-  const gossip = parseLibp2pGossipConfig(daTransport);
-  const limits = parseLibp2pLimitsConfig(daTransport);
-  const threshold = requiredLibp2pDaCommitteeThreshold(daCommittee);
-  const peers = parseLibp2pDaCommitteePeers(daCommittee, threshold);
+  const threshold = daCommittee.threshold;
+  const peers = parseLibp2pDaCommitteePeers(daCommittee);
   return {
     kind: "libp2p",
     deploymentFingerprint,
-    noHttpDaTransport,
+    noHttpDaTransport: true,
     threshold,
     listenMultiaddrs: requiredMultiaddrList(
-      daTransport,
-      "listen_multiaddrs",
+      daTransport.listen_multiaddrs,
       "da_transport.listen_multiaddrs",
       { requirePeerId: false },
     ),
     announceMultiaddrs: requiredMultiaddrList(
-      daTransport,
-      "announce_multiaddrs",
+      daTransport.announce_multiaddrs,
       "da_transport.announce_multiaddrs",
       { requirePeerId: true },
     ),
     bootstrapMultiaddrs: requiredMultiaddrList(
-      daTransport,
-      "bootstrap_multiaddrs",
+      daTransport.bootstrap_multiaddrs,
       "da_transport.bootstrap_multiaddrs",
       { requirePeerId: true },
     ),
-    gossip,
-    limits,
-    retentionDays: parseLibp2pRetentionDays({
-      daTransport,
-      daCommittee,
-      legacyDa: objectAt(deploymentManifest, ["da"]),
-    }),
+    gossip: {
+      strictSign: true,
+      emitSelf: false,
+      allowedTopicsOnly: true,
+      maxGossipMessageBytes: daTransport.gossip.max_gossip_message_bytes,
+    },
+    limits: {
+      maxPayloadBytes: daTransport.limits.max_payload_bytes,
+      maxInlineResponseBytes: daTransport.limits.max_inline_response_bytes,
+      maxChunkBytes: daTransport.limits.max_chunk_bytes,
+      maxStreamsPerPeer: daTransport.limits.max_streams_per_peer,
+      requestTimeoutMs: daTransport.limits.request_timeout_ms,
+    },
+    retentionDays: daTransport.retention_days,
     peers,
   };
 };
-
-const daTransportObject = (
-  deploymentManifest: Record<string, unknown>,
-): Record<string, unknown> | undefined =>
-  objectAt(deploymentManifest, ["da_transport"]) ??
-  objectAt(deploymentManifest, ["daTransport"]);
-
-const daCommitteeObject = (
-  deploymentManifest: Record<string, unknown>,
-): Record<string, unknown> | undefined =>
-  objectAt(deploymentManifest, ["da_committee"]) ??
-  objectAt(deploymentManifest, ["daCommittee"]);
 
 const rejectLibp2pDaUrlEnvOverrides = (env: Env): void => {
   for (const name of LIBP2P_DA_URL_ENV_OVERRIDES) {
@@ -826,116 +1441,6 @@ const rejectUrlShapedLibp2pDaConfig = (value: unknown, path: string): void => {
   }
 };
 
-const parseLibp2pGossipConfig = (
-  daTransport: Record<string, unknown>,
-): Libp2pDaGossipConfig => {
-  const gossip = objectAt(daTransport, ["gossip"]);
-  if (gossip === undefined) {
-    throw new Error("da_transport.gossip is required in libp2p DA mode");
-  }
-  requireExactBoolean(gossip, "strict_sign", true, "da_transport.gossip");
-  requireExactBoolean(gossip, "emit_self", false, "da_transport.gossip");
-  requireExactBoolean(
-    gossip,
-    "allowed_topics_only",
-    true,
-    "da_transport.gossip",
-  );
-  requireExactNumber(
-    gossip,
-    "max_gossip_message_bytes",
-    LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
-    "da_transport.gossip",
-  );
-  return {
-    strictSign: true,
-    emitSelf: false,
-    allowedTopicsOnly: true,
-    maxGossipMessageBytes: LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
-  };
-};
-
-const parseLibp2pLimitsConfig = (
-  daTransport: Record<string, unknown>,
-): Libp2pDaTransportLimits => {
-  const limits = objectAt(daTransport, ["limits"]);
-  if (limits === undefined) {
-    throw new Error("da_transport.limits is required in libp2p DA mode");
-  }
-  requireExactNumber(
-    limits,
-    "max_payload_bytes",
-    LIBP2P_DA_TRANSPORT_LIMITS.maxPayloadBytes,
-    "da_transport.limits",
-  );
-  requireExactNumber(
-    limits,
-    "max_inline_response_bytes",
-    LIBP2P_DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
-    "da_transport.limits",
-  );
-  requireExactNumber(
-    limits,
-    "max_chunk_bytes",
-    LIBP2P_DA_TRANSPORT_LIMITS.maxChunkBytes,
-    "da_transport.limits",
-  );
-  requireExactNumber(
-    limits,
-    "max_streams_per_peer",
-    LIBP2P_DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
-    "da_transport.limits",
-  );
-  requireExactNumber(
-    limits,
-    "request_timeout_ms",
-    LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
-    "da_transport.limits",
-  );
-  return LIBP2P_DA_TRANSPORT_LIMITS;
-};
-
-const parseLibp2pRetentionDays = ({
-  daTransport,
-  daCommittee,
-  legacyDa,
-}: {
-  readonly daTransport: Record<string, unknown>;
-  readonly daCommittee: Record<string, unknown>;
-  readonly legacyDa?: Record<string, unknown>;
-}): number => {
-  const days =
-    numberAt(daTransport, ["retention_days"]) ??
-    numberAt(daTransport, ["retentionDays"]) ??
-    numberAt(daCommittee, ["retention_days"]) ??
-    numberAt(daCommittee, ["retentionDays"]) ??
-    (legacyDa === undefined
-      ? undefined
-      : (numberAt(legacyDa, ["retention_days"]) ??
-        numberAt(legacyDa, ["retentionDays"])));
-  const slots =
-    numberAt(daTransport, ["retention_slots"]) ??
-    numberAt(daTransport, ["retentionSlots"]) ??
-    numberAt(daCommittee, ["retention_slots"]) ??
-    numberAt(daCommittee, ["retentionSlots"]) ??
-    (legacyDa === undefined
-      ? undefined
-      : (numberAt(legacyDa, ["retention_slots"]) ??
-        numberAt(legacyDa, ["retentionSlots"])));
-  const retentionDays =
-    days ?? (slots === undefined ? undefined : slots / 86_400);
-  if (
-    retentionDays === undefined ||
-    !Number.isFinite(retentionDays) ||
-    retentionDays < LIBP2P_DA_MIN_RETENTION_DAYS
-  ) {
-    throw new Error(
-      `libp2p DA retention must be at least ${LIBP2P_DA_MIN_RETENTION_DAYS.toString()} days`,
-    );
-  }
-  return retentionDays;
-};
-
 const libp2pPrivateKeySourceConfig = (env: Env): string => {
   const source = optionalNonEmpty(env.DA_LIBP2P_PRIVATE_KEY_SOURCE);
   if (source === undefined) {
@@ -945,6 +1450,19 @@ const libp2pPrivateKeySourceConfig = (env: Env): string => {
   }
   validateLibp2pPrivateKeySource(source);
   return source;
+};
+
+const rejectPublicRetainedDaCoHosting = (env: Env): void => {
+  if (
+    env.DA_PUBLIC_RETAINED_DA_ENABLED !== undefined ||
+    env.DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE !== undefined ||
+    env.DA_PUBLIC_RETAINED_DA_DATABASE_URL !== undefined ||
+    env.DA_PUBLIC_RETAINED_DA_DATABASE_ROLE !== undefined
+  ) {
+    throw new Error(
+      "public retained-DA must run as the dedicated midgard-public-retained-da process, not inside da-committee-node",
+    );
+  }
 };
 
 const validateLibp2pPrivateKeySource = (source: string): void => {
@@ -977,24 +1495,13 @@ const validateLibp2pPrivateKeySource = (source: string): void => {
 };
 
 const parseLibp2pDaCommitteePeers = (
-  daCommittee: Record<string, unknown>,
-  threshold: number,
+  daCommittee: DaLibp2pRuntimeManifest["da_committee"],
 ): readonly Libp2pDaPeerConfig[] => {
   const members = daCommittee.members;
-  if (!Array.isArray(members) || members.length === 0) {
-    throw new Error("da_committee.members must be a non-empty array");
-  }
   const seenIndexes = new Set<number>();
   const seenPeerIds = new Set<string>();
   const peers = members.map((member, memberPosition) => {
-    if (!isRecord(member)) {
-      throw new Error("da_committee.members entries must be objects");
-    }
-    const signerIndex = requiredSignerIndex(
-      member,
-      "da_committee.members",
-      memberPosition,
-    );
+    const signerIndex = member.signer_index;
     if (seenIndexes.has(signerIndex)) {
       throw new Error(
         `duplicate da_committee.members signer_index ${signerIndex.toString()}`,
@@ -1002,11 +1509,7 @@ const parseLibp2pDaCommitteePeers = (
     }
     seenIndexes.add(signerIndex);
     const peerId = requiredPeerId(
-      stringField(
-        member,
-        ["peer_id", "peerId"],
-        `da_committee.members[${memberPosition.toString()}].peer_id`,
-      ),
+      member.peer_id,
       `da_committee.members[${memberPosition.toString()}].peer_id`,
     );
     if (seenPeerIds.has(peerId)) {
@@ -1015,21 +1518,13 @@ const parseLibp2pDaCommitteePeers = (
     seenPeerIds.add(peerId);
     return {
       signerIndex,
-      daVkey: normalizeHex(
-        stringField(
-          member,
-          ["da_vkey", "daVkey", "vkey"],
-          `da_committee.members[${memberPosition.toString()}].da_vkey`,
-        ),
-        {
-          fieldName: `da_committee.members[${memberPosition.toString()}].da_vkey`,
-          byteLength: 32,
-        },
-      ),
+      daVkey: normalizeHex(member.da_vkey, {
+        fieldName: `da_committee.members[${memberPosition.toString()}].da_vkey`,
+        byteLength: 32,
+      }),
       peerId,
       multiaddrs: requiredMultiaddrList(
-        member,
-        "multiaddrs",
+        member.multiaddrs,
         `da_committee.members[${memberPosition.toString()}].multiaddrs`,
         { requirePeerId: true, expectedPeerId: peerId },
       ),
@@ -1039,44 +1534,7 @@ const parseLibp2pDaCommitteePeers = (
       ),
     };
   });
-  if (threshold > peers.length) {
-    throw new Error(
-      "da_committee.threshold must be no greater than member count",
-    );
-  }
   return peers.sort((left, right) => left.signerIndex - right.signerIndex);
-};
-
-const requiredLibp2pDaCommitteeThreshold = (
-  daCommittee: Record<string, unknown>,
-): number => {
-  const threshold = numberAt(daCommittee, ["threshold"]);
-  if (
-    threshold === undefined ||
-    !Number.isSafeInteger(threshold) ||
-    threshold <= 0
-  ) {
-    throw new Error("da_committee.threshold must be a positive integer");
-  }
-  return threshold;
-};
-
-const requiredSignerIndex = (
-  member: Record<string, unknown>,
-  collectionName: string,
-  memberPosition: number,
-): number => {
-  const value = member.signer_index ?? member.signerIndex ?? member.index;
-  if (
-    !Number.isSafeInteger(value) ||
-    (value as number) < 0 ||
-    (value as number) > 255
-  ) {
-    throw new Error(
-      `${collectionName}[${memberPosition.toString()}].signer_index must fit in one byte`,
-    );
-  }
-  return value as number;
 };
 
 const requiredPeerId = (value: string, fieldName: string): string => {
@@ -1116,8 +1574,7 @@ const isLibp2pDaRole = (value: string): value is Libp2pDaRole =>
   (LIBP2P_DA_ROLES as readonly string[]).includes(value);
 
 const requiredMultiaddrList = (
-  source: Record<string, unknown>,
-  key: string,
+  values: readonly string[],
   fieldName: string,
   {
     requirePeerId,
@@ -1127,19 +1584,15 @@ const requiredMultiaddrList = (
     readonly expectedPeerId?: string;
   },
 ): readonly string[] => {
-  const values = source[key];
-  if (!Array.isArray(values) || values.length === 0) {
+  if (values.length === 0) {
     throw new Error(`${fieldName} must be a non-empty multiaddr array`);
   }
-  return values.map((entry, index) => {
-    if (typeof entry !== "string") {
-      throw new Error(`${fieldName}[${index.toString()}] must be a string`);
-    }
-    return normalizeMultiaddr(entry, `${fieldName}[${index.toString()}]`, {
+  return values.map((entry, index) =>
+    normalizeMultiaddr(entry, `${fieldName}[${index.toString()}]`, {
       requirePeerId,
       expectedPeerId,
-    });
-  });
+    }),
+  );
 };
 
 const normalizeMultiaddr = (
@@ -1174,42 +1627,6 @@ const normalizeMultiaddr = (
   return parsed.toString();
 };
 
-const requireExactBoolean = (
-  source: Record<string, unknown>,
-  key: string,
-  expected: boolean,
-  objectName: string,
-): void => {
-  if (source[key] !== expected) {
-    throw new Error(`${objectName}.${key} must be ${expected.toString()}`);
-  }
-};
-
-const requireExactNumber = (
-  source: Record<string, unknown>,
-  key: string,
-  expected: number,
-  objectName: string,
-): void => {
-  if (source[key] !== expected) {
-    throw new Error(`${objectName}.${key} must be ${expected.toString()}`);
-  }
-};
-
-const stringField = (
-  source: Record<string, unknown>,
-  keys: readonly string[],
-  fieldName: string,
-): string => {
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === "string" && value.trim() !== "") {
-      return value;
-    }
-  }
-  throw new Error(`${fieldName} is required`);
-};
-
 const validateLibp2pCommitteeMatchesDaParams = (
   transport: Libp2pDaTransportConfig,
   daParams: DaParamsConfig,
@@ -1239,40 +1656,46 @@ const validateLibp2pCommitteeMatchesDaParams = (
 
 const daParamsConfig = (
   env: Env,
-  deploymentManifest: Record<string, unknown>,
+  runtimeManifest: DaLibp2pRuntimeManifest,
   daCommitteeMembers: readonly DaCommitteeMember[],
 ): DaParamsConfig => {
   const memberKeys = daCommitteeMembers.map((member) => member.vkey);
-  const committeeHex = normalizeHex(
-    env.DA_COMMITTEE_HEX ?? memberKeys.join(""),
-    { fieldName: "DA committee" },
-  );
+  const committeeHex = normalizeHex(memberKeys.join(""), {
+    fieldName: "DA committee",
+  });
   if (committeeHex.length === 0 || committeeHex.length % 64 !== 0) {
     throw new Error("DA committee must be packed 32-byte verification keys");
+  }
+  if (
+    env.DA_COMMITTEE_HEX !== undefined &&
+    normalizeHex(env.DA_COMMITTEE_HEX, {
+      fieldName: "DA_COMMITTEE_HEX",
+    }) !== committeeHex
+  ) {
+    throw new Error("DA_COMMITTEE_HEX must exactly match da_committee.members");
   }
   const computedCommitteeHash = bytesToHex(
     blake2b(hexToBytes(committeeHex, "DA committee"), { dkLen: 32 }),
   );
-  const committeeSignersHash = normalizeHex(
-    env.DA_COMMITTEE_SIGNERS_HASH ??
-      stringAt(deploymentManifest, ["da", "committeeSignersHash"]) ??
-      stringAt(deploymentManifest, ["da_committee", "committeeSignersHash"]) ??
-      stringAt(deploymentManifest, [
-        "da_committee",
-        "committee_signers_hash",
-      ]) ??
-      stringAt(deploymentManifest, ["daCommittee", "committeeSignersHash"]) ??
-      computedCommitteeHash,
-    { fieldName: "DA committee signers hash", byteLength: 32 },
-  );
-  const threshold = positiveInt(
-    env.DA_THRESHOLD ??
-      numberAt(deploymentManifest, ["da", "threshold"])?.toString() ??
-      numberAt(deploymentManifest, ["da_committee", "threshold"])?.toString() ??
-      numberAt(deploymentManifest, ["daCommittee", "threshold"])?.toString() ??
-      "",
-    "DA_THRESHOLD",
-  );
+  if (
+    env.DA_COMMITTEE_SIGNERS_HASH !== undefined &&
+    normalizeHex(env.DA_COMMITTEE_SIGNERS_HASH, {
+      fieldName: "DA_COMMITTEE_SIGNERS_HASH",
+      byteLength: 32,
+    }) !== computedCommitteeHash
+  ) {
+    throw new Error(
+      "DA_COMMITTEE_SIGNERS_HASH must exactly match da_committee.members",
+    );
+  }
+  const committeeSignersHash = computedCommitteeHash;
+  const threshold = runtimeManifest.da_committee.threshold;
+  if (
+    env.DA_THRESHOLD !== undefined &&
+    positiveInt(env.DA_THRESHOLD, "DA_THRESHOLD") !== threshold
+  ) {
+    throw new Error("DA_THRESHOLD must exactly match da_committee.threshold");
+  }
   return { committeeHex, committeeSignersHash, threshold };
 };
 
@@ -1303,67 +1726,6 @@ const parseJsonObject = (
   }
   return parsed;
 };
-
-const requireDeploymentString = (
-  manifest: Record<string, unknown>,
-  deploymentInfo: Record<string, unknown>,
-  paths: readonly (readonly string[])[],
-  label: string,
-  fallback?: () => string | undefined,
-): string => {
-  for (const path of paths) {
-    const value = stringAt(manifest, path) ?? stringAt(deploymentInfo, path);
-    if (value !== undefined && value.trim() !== "") {
-      return value;
-    }
-  }
-  const fallbackValue = fallback?.();
-  if (fallbackValue !== undefined && fallbackValue.trim() !== "") {
-    return fallbackValue;
-  }
-  throw new Error(`missing ${label} in deployment manifest/deployment info`);
-};
-
-const optionalString = (
-  object: Record<string, unknown>,
-  key: string,
-): string | undefined => {
-  const value = object[key];
-  return typeof value === "string" ? value : undefined;
-};
-
-const stringAt = (
-  root: Record<string, unknown>,
-  path: readonly string[],
-): string | undefined => {
-  const value = valueAt(root, path);
-  return typeof value === "string" ? value : undefined;
-};
-
-const numberAt = (
-  root: Record<string, unknown>,
-  path: readonly string[],
-): number | undefined => {
-  const value = valueAt(root, path);
-  return typeof value === "number" ? value : undefined;
-};
-
-const objectAt = (
-  root: Record<string, unknown>,
-  path: readonly string[],
-): Record<string, unknown> | undefined => {
-  const value = valueAt(root, path);
-  return isRecord(value) ? value : undefined;
-};
-
-const valueAt = (
-  root: Record<string, unknown>,
-  path: readonly string[],
-): unknown =>
-  path.reduce<unknown>(
-    (current, key) => (isRecord(current) ? current[key] : undefined),
-    root,
-  );
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

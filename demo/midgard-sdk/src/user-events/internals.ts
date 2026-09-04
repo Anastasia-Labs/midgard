@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import { aikenSerialisedPlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
@@ -21,7 +22,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import { scriptRewardAddress } from "@/cardano-addresses.js";
+import { scriptRewardAddress } from "../cardano-addresses.js";
 import {
   Bech32DeserializationError,
   GenericErrorFields,
@@ -31,21 +32,21 @@ import {
   MidgardValidators,
   OutputReference,
   POSIXTime,
-} from "@/common.js";
+} from "../common.js";
 import {
   fetchHubOracleUTxOProgram,
   HubOracleDatum,
   HubOracleError,
   makeHubOracleDatum,
-} from "@/hub-oracle.js";
-import { getProtocolParameters } from "@/protocol-parameters.js";
+} from "../hub-oracle.js";
+import { getProtocolParameters } from "../protocol-parameters.js";
 import {
   requireInputIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireSinglePublishRedeemerIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
+} from "../tx-context-redeemer.js";
 
 export class UserEventBuildError extends EffectData.TaggedError(
   "UserEventBuildError",
@@ -116,8 +117,9 @@ export const UserEventMintRedeemerSchema = Data.Enum([
 export type UserEventMintRedeemer = Data.Static<
   typeof UserEventMintRedeemerSchema
 >;
-export const UserEventMintRedeemer =
-  UserEventMintRedeemerSchema as unknown as UserEventMintRedeemer;
+export const UserEventMintRedeemer = asDataType<UserEventMintRedeemer>(
+  UserEventMintRedeemerSchema,
+);
 
 export const UserEventWitnessPublishRedeemerSchema = Data.Enum([
   Data.Object({
@@ -140,30 +142,42 @@ export type UserEventWitnessPublishRedeemer = Data.Static<
   typeof UserEventWitnessPublishRedeemerSchema
 >;
 export const UserEventWitnessPublishRedeemer =
-  UserEventWitnessPublishRedeemerSchema as unknown as UserEventWitnessPublishRedeemer;
+  asDataType<UserEventWitnessPublishRedeemer>(
+    UserEventWitnessPublishRedeemerSchema,
+  );
 
-type UserEventAuthenticateMintRedeemerParams = {
+export type UserEventAuthenticateMintRedeemerParams = {
   readonly nonceInputIndex: bigint;
   readonly eventOutputIndex: bigint;
   readonly hubRefInputIndex: bigint;
   readonly witnessRegistrationRedeemerIndex: bigint;
 };
 
+/**
+ * The typed `user_events.MintRedeemer` for an authenticating mint.
+ *
+ * Exported as a *value* rather than only as encoded bytes because one policy — the
+ * tx-order minting policy — carries this redeemer nested inside its own
+ * `MintRedeemer` beside the §8 carriage vector (#594), so it needs the value and
+ * cannot use the encoder. Hand-copying the four-field mapping there instead is how
+ * a renamed or reordered field ends up spelled two ways.
+ */
+export const userEventAuthenticateMintRedeemer = (
+  params: UserEventAuthenticateMintRedeemerParams,
+): UserEventMintRedeemer => ({
+  AuthenticateEvent: {
+    nonce_input_index: params.nonceInputIndex,
+    event_output_index: params.eventOutputIndex,
+    hub_ref_input_index: params.hubRefInputIndex,
+    witness_registration_redeemer_index:
+      params.witnessRegistrationRedeemerIndex,
+  },
+});
+
 const encodeUserEventAuthenticateMintRedeemer = (
   params: UserEventAuthenticateMintRedeemerParams,
 ): string =>
-  Data.to(
-    {
-      AuthenticateEvent: {
-        nonce_input_index: params.nonceInputIndex,
-        event_output_index: params.eventOutputIndex,
-        hub_ref_input_index: params.hubRefInputIndex,
-        witness_registration_redeemer_index:
-          params.witnessRegistrationRedeemerIndex,
-      },
-    } satisfies UserEventMintRedeemer,
-    UserEventMintRedeemer,
-  );
+  Data.to(userEventAuthenticateMintRedeemer(params), UserEventMintRedeemer);
 
 export const encodeUserEventWitnessMintOrBurnRedeemer = (
   targetPolicy: PolicyId,
@@ -178,7 +192,7 @@ export const USER_EVENT_WITNESS_SCRIPT_POSTFIX = "0001";
 // Mirrors `user_events_witness_script_prefix` in
 // `onchain/aiken/env/testnet.ak`.
 export const USER_EVENT_WITNESS_SCRIPT_PREFIX =
-  "5902ce0101003229800aba2aba1aab9faab9eaab9dab9a9bae002488888896600264653001300800198041804800cc0200092225980099b8748018c020dd500146600260126ea800a6e1d20029b874800260106ea800d222232332259800980280244c8c966002602a0050048b2026375c602600260206ea802a2b30013006004899192cc004c05400a00916404c6eb4c04c004c040dd5005456600266e1d2004004899192cc004c05400a00916404c6eb4c04c004c040dd500545900e201c40382653001300100198071baa0099180918099809980998099809800a444b3001300700289919912cc004c028006260160051598009805800c4cdc38012400314a0809901319199119801001000912cc004006007132325980099b910150018acc004cdc780a800c4dd6980c001401501644cc010010c06c00d0161bae30160013018001405c6464660020026eacc060c064c064c064c064c058dd5007112cc004006007132325980099b910070018acc004cdc7803800c4dd5980c801401501744cc010010c07000d0171bae301700130190014060297adef6c60148000c048dd50031bae301430123754019159800980400144c8c96600266ebc00401e2b3001300930133754003132598009805980a1baa0018acc004cdd7980b980a9baa00230173015375400314a316404d16404c602c602e005164049164048602a002660066eb0c004c048dd50051bad301430123754019159800980418089baa0058992cc004c020c048dd5000c56600266ebcc054c04cdd5000980a98099baa0068a518b20228b20223014330033758600260246ea8028dd6980a18091baa00c8b202040408080444b30013371200290004400a2b30010028a5eb8233001003980a0014cdc0000a40028019012201e375a602000a601e60200088b200e180400098021baa0088a4d1365640084c01225820";
+  "5902e20101003229800aba2aba1aab9faab9eaab9dab9a9bae002488888896600264653001300800198041804800cc0200092225980099b8748018c020dd500146600260126ea800a6e1d20029b874800260106ea800d222232332259800980280244c8c966002602a0050048b2026375c602600260206ea802a2b30013006004899192cc004c05400a00916404c6eb4c04c004c040dd5005456600266e1d2004004899192cc004c05400a00916404c6eb4c04c004c040dd500545900e201c40382653001300100198071baa0099180918099809980998099809800a444b3001300700289919912cc004c028006260160051598009805800c4cdc3a400200514a0809901319199119801001000912cc004006007132325980099b910150018acc004cdc780a800c4dd6980c001401501644cc010010c06c00d0161bae30160013018001405c6464660020026eacc060c064c064c064c064c058dd5007112cc004006007132325980099b910070018acc004cdc7803800c4dd5980c801401501744cc010010c07000d0171bae301700130190014060297adef6c60148000c048dd50031bae301430123754019159800980400144c8c966002003168992cc004cdd78008044566002601460286ea8006264b3001300c3015375400315980099baf3018301637540046030602c6ea800629462c80a22c80a0c05c00a2c809a2c8098c058009015180b000998019bac3001301237540146eb4c050c048dd50064566002601060226ea8016264b30010018b44c966002601260266ea80062b30013375e602c60286ea8004c058c050dd5003c528c59012459012180a800a028330033758600260246ea8028dd6980a18091baa00c8b202040408080444b30013371200290004400a2b30010028a5eb8233001003980a0014cdc0240020028019012201e375a602000a601e60200088b200e180400098021baa0088a4d1365640084c1225820";
 
 export const buildUserEventWitnessCertificateValidator = (
   nonceAssetName: string,
@@ -238,7 +252,9 @@ export const slotToUnixTimeForLucid = (
   slot: number,
 ): number | undefined => {
   try {
-    const unixTime = lucid.slotToUnixTime(slot);
+    const unixTime = (
+      lucid as unknown as { slotToUnixTime(value: number): number }
+    ).slotToUnixTime(slot);
     return Number.isSafeInteger(unixTime) ? unixTime : undefined;
   } catch {
     return undefined;
@@ -311,6 +327,11 @@ export type PrepareUserEventMintContextParams = {
   readonly eventPolicyId: PolicyId;
   readonly hubOraclePolicyField: HubOraclePolicyField;
   readonly hubOracleAddressField: HubOracleAddressField;
+  /**
+   * A previously reserved nonce is required by staged V1 tx orders,
+   * whose field fragments are published before the final event is minted.
+   */
+  readonly nonceInput?: UTxO;
 };
 
 export type UserEventMintContext = {
@@ -334,6 +355,7 @@ export const prepareUserEventMintContext = ({
   eventPolicyId,
   hubOraclePolicyField,
   hubOracleAddressField,
+  nonceInput: requestedNonceInput,
 }: PrepareUserEventMintContextParams): Effect.Effect<
   UserEventMintContext,
   | HubOracleError
@@ -380,7 +402,9 @@ export const prepareUserEventMintContext = ({
       );
     }
 
-    const nonceInput = yield* selectWalletNonceInputProgram(lucid, label);
+    const nonceInput =
+      requestedNonceInput ??
+      (yield* selectWalletNonceInputProgram(lucid, label));
     const eventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
     const nonceAssetName = yield* hashHexWithBlake2b(eventIdCbor, 32);
     const witnessScript =
@@ -416,11 +440,30 @@ export type BuildCompletedUserEventMintTxParams = {
   readonly witnessScript: CertificateValidator;
   readonly witnessRegistrationRedeemer: string;
   readonly label: string;
+  /**
+   * Wraps or replaces the mint redeemer this event policy expects.
+   *
+   * Every user-event policy but one takes `user_events.MintRedeemer` unchanged,
+   * which is the default. The tx-order policy takes it inside its own
+   * `MintRedeemer` beside the §8 carriage vector for the order's material
+   * (#594), and that vector's reference-input indices are positional in the
+   * *final* transaction — so the hook is handed the resolved redeemer context
+   * rather than being allowed to guess them from the order the builder collected
+   * reference inputs in.
+   */
+  readonly encodeMintRedeemer?: (params: {
+    readonly layout: UserEventAuthenticateMintRedeemerParams;
+    readonly ctx: Parameters<BuildTxWithRedeemer>[0];
+  }) => string;
 };
 
 type UserEventMintRedeemerParams = Pick<
   BuildCompletedUserEventMintTxParams,
-  "eventUnit" | "hubOracleRefInput" | "label" | "nonceInput"
+  | "encodeMintRedeemer"
+  | "eventUnit"
+  | "hubOracleRefInput"
+  | "label"
+  | "nonceInput"
 >;
 
 type UserEventMintRedeemerLayout = UserEventAuthenticateMintRedeemerParams;
@@ -453,12 +496,16 @@ const deriveUserEventMintRedeemerLayout = (
 const makeUserEventMintRedeemer =
   (
     params: UserEventMintRedeemerParams,
-    onLayout?: (layout: UserEventMintRedeemerLayout) => void,
+    onEncoded?: (redeemer: string) => void,
   ): BuildTxWithRedeemer =>
   (ctx) => {
     const layout = deriveUserEventMintRedeemerLayout(params, ctx);
-    onLayout?.(layout);
-    return encodeUserEventAuthenticateMintRedeemer(layout);
+    const redeemer =
+      params.encodeMintRedeemer === undefined
+        ? encodeUserEventAuthenticateMintRedeemer(layout)
+        : params.encodeMintRedeemer({ layout, ctx });
+    onEncoded?.(redeemer);
+    return redeemer;
   };
 
 export const buildCompletedUserEventMintTxProgram = (
@@ -495,20 +542,24 @@ export const buildCompletedUserEventMintTxProgram = (
           );
       };
 
-      let resolvedLayout: UserEventMintRedeemerLayout | undefined;
+      // Two passes: the first resolves the positional redeemer against the
+      // completed transaction, the second rebuilds with that redeemer as a fixed
+      // string so nothing can shift under it. The encoded bytes are captured
+      // rather than re-derived from the layout, because a redeemer may carry more
+      // than the layout does — the tx-order policy's carries the §8 carriage
+      // vector — and re-deriving would silently drop it in the second pass.
+      let resolvedRedeemer: string | undefined;
       await buildTx(
-        makeUserEventMintRedeemer(params, (layout) => {
-          resolvedLayout = layout;
+        makeUserEventMintRedeemer(params, (redeemer) => {
+          resolvedRedeemer = redeemer;
         }),
       ).complete({ localUPLCEval: true });
-      if (resolvedLayout === undefined) {
+      if (resolvedRedeemer === undefined) {
         throw new Error(
           `Failed to resolve ${params.label} mint redeemer context`,
         );
       }
-      return buildTx(
-        encodeUserEventAuthenticateMintRedeemer(resolvedLayout),
-      ).complete({ localUPLCEval: true });
+      return buildTx(resolvedRedeemer).complete({ localUPLCEval: true });
     },
     catch: (cause) =>
       new UserEventBuildError({

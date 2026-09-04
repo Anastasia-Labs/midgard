@@ -1,4 +1,4 @@
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 
 const LENGTH_PREFIX_BYTES = 4;
 
@@ -168,7 +168,7 @@ export const writeDaStreamFrame = async (
 
 const frameLimit = (options: DaStreamFrameOptions): number => {
   const maxFrameBytes =
-    options.maxFrameBytes ?? DA_TRANSPORT_LIMITS_V1.maxPayloadBytes;
+    options.maxFrameBytes ?? DA_TRANSPORT_LIMITS.maxPayloadBytes;
   if (
     !Number.isSafeInteger(maxFrameBytes) ||
     maxFrameBytes <= 0 ||

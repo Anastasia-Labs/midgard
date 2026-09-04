@@ -3,9 +3,27 @@
  * This module groups endpoint handlers and access control in one place while
  * delegating startup checks and response shaping to narrower modules.
  */
+import {
+  decodeMidgardCekProgramMaterialSidecar,
+  decodeMidgardProofSubmission,
+  encodeMidgardCekProgramMaterialSidecar,
+  verifyMidgardCekProgramMaterialBundle,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
+import {
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  HttpIncomingMessage,
   HttpRouter,
   HttpServerRequest,
   HttpServerResponse,
@@ -17,29 +35,6 @@ import { toHex } from "@lucid-evolution/lucid";
 import { Cause, Duration, Effect, Exit, Metric, Option, Ref } from "effect";
 
 import {
-  parseAddressArgument,
-  parseTxOutRefCborHex,
-} from "@/commands/command-utils.js";
-import * as DepositStatusCommand from "@/commands/deposit-status.js";
-import {
-  type L1ProviderPreflightReport,
-  runL1ProviderPreflight,
-} from "@/commands/l1-provider-preflight.js";
-import {
-  failWith500,
-  handleStateQueueGetFailure,
-} from "@/commands/listen-response.js";
-import {
-  authorizeAdminRoute,
-  isAdminRoutePath,
-  normalizeSubmitTxCanonicalCborToNative,
-  validateSubmitTxCanonicalCbor,
-} from "@/commands/listen-utils.js";
-import * as ProtocolInfoCommand from "@/commands/protocol-info.js";
-import { evaluateReadiness } from "@/commands/readiness.js";
-import { resolveTxStatus, resolveTxStatusBatch } from "@/commands/tx-status.js";
-import * as UtxosCommand from "@/commands/utxos.js";
-import {
   AddressHistoryDB,
   BlocksDB,
   DaPayloadPublicationsDB,
@@ -48,12 +43,13 @@ import {
   MempoolDB,
   MempoolLedgerDB,
   MutationJobsDB,
+  PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
   TxRejectionsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   admissionFailureDefinitelyDidNotInsert,
   blockCommitmentAction,
@@ -62,13 +58,13 @@ import {
   releaseAdmissionBacklogSlot,
   requestTxQueueProcessorWakeup,
   reserveAdmissionBacklogSlot,
-} from "@/fibers/index.js";
-import * as Genesis from "@/genesis.js";
+} from "../fibers/index.js";
+import * as Genesis from "../genesis.js";
 import {
   localOgmiosSubmitSlotEvidence,
   readLocalOgmiosSubmitSlot,
   type SubmitSlotSnapshot,
-} from "@/local-ogmios-slot.js";
+} from "../local-ogmios-slot.js";
 import {
   AdmissionWriter,
   type AdmissionWriterShutdownError,
@@ -79,33 +75,51 @@ import {
   MempoolLedgerCache,
   ValidationPool,
   WriteBehind,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
+  ContractDeploymentIdentity,
   Globals,
   Lucid,
   MidgardContracts,
   nextL1ProviderHealthEvidence,
   NodeConfig,
   withL1ControlPlaneIfAvailable,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   fetchStateQueueTopologyProgram,
   formatStateQueueTopology,
-} from "@/services/state-queue-topology.js";
-import * as Initialization from "@/transactions/initialization.js";
+} from "../services/state-queue-topology.js";
+import * as Initialization from "../transactions/initialization.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
   referenceScriptTargetsByCommand,
-} from "@/transactions/reference-scripts.js";
+} from "../transactions/reference-scripts.js";
 import {
   classifyOldestQueuedBlockReadiness,
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeMaturityWindow,
   planMergePreflight,
-} from "@/transactions/state-queue/merge-readiness.js";
-import * as SubmitDeposit from "@/transactions/submit-deposit.js";
-import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+} from "../transactions/state-queue/merge-readiness.js";
+import * as SubmitDeposit from "../transactions/submit-deposit.js";
+import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import { parseAddressArgument, parseTxOutRefCborHex } from "./command-utils.js";
+import * as DepositStatusCommand from "./deposit-status.js";
+import {
+  type L1ProviderPreflightReport,
+  runL1ProviderPreflight,
+} from "./l1-provider-preflight.js";
+import { failWith500, handleStateQueueGetFailure } from "./listen-response.js";
+import {
+  authorizeAdminRoute,
+  isAdminRoutePath,
+  normalizeSubmitTxCanonicalCborToNative,
+  validateSubmitTxCanonicalCbor,
+} from "./listen-utils.js";
+import * as ProtocolInfoCommand from "./protocol-info.js";
+import { evaluateReadiness } from "./readiness.js";
+import { resolveTxStatus, resolveTxStatusBatch } from "./tx-status.js";
+import * as UtxosCommand from "./utxos.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -711,8 +725,123 @@ const submitQueueOfferFailureCounter = Metric.counter(
   },
 );
 
-const isApplicationCbor = (contentType: string | undefined): boolean =>
-  contentType?.split(";")[0]?.trim().toLowerCase() === "application/cbor";
+const V1_SUBMISSION_MEDIA_TYPE = "application/vnd.midgard.v1+cbor";
+export const SUBMIT_HTTP_BODY_MAX_BYTES =
+  MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes;
+
+type SubmitIngressPool = {
+  readonly concurrency: Effect.Semaphore;
+  readonly bytes: Effect.Semaphore;
+};
+
+const submitIngressPools = new Map<string, SubmitIngressPool>();
+
+const submitIngressPool = ({
+  maxConcurrency,
+  maxInFlightBytes,
+}: {
+  readonly maxConcurrency: number;
+  readonly maxInFlightBytes: number;
+}): SubmitIngressPool => {
+  const key = `${maxConcurrency.toString()}:${maxInFlightBytes.toString()}`;
+  const existing = submitIngressPools.get(key);
+  if (existing !== undefined) return existing;
+  const created = {
+    concurrency: Effect.unsafeMakeSemaphore(maxConcurrency),
+    bytes: Effect.unsafeMakeSemaphore(maxInFlightBytes),
+  };
+  submitIngressPools.set(key, created);
+  return created;
+};
+
+export type SubmitIngressReservation =
+  | { readonly kind: "invalid_content_length" }
+  | { readonly kind: "too_large"; readonly declaredBytes: number }
+  | {
+      readonly kind: "ready";
+      readonly declaredBytes: number | null;
+      readonly permitBytes: number;
+    };
+
+/**
+ * Resolves the request's resource weight without consuming its body. Requests
+ * without a trustworthy length reserve the full protocol envelope, while a
+ * declared bounded length reserves its exact byte weight.
+ */
+export const resolveSubmitIngressReservation = (
+  contentLength: string | undefined,
+  maxBodyBytes = SUBMIT_HTTP_BODY_MAX_BYTES,
+): SubmitIngressReservation => {
+  if (contentLength === undefined) {
+    return {
+      kind: "ready",
+      declaredBytes: null,
+      permitBytes: maxBodyBytes,
+    };
+  }
+  if (!/^(?:0|[1-9][0-9]*)$/u.test(contentLength)) {
+    return { kind: "invalid_content_length" };
+  }
+  const declaredBytes = Number(contentLength);
+  if (!Number.isSafeInteger(declaredBytes)) {
+    return { kind: "invalid_content_length" };
+  }
+  if (declaredBytes > maxBodyBytes) {
+    return { kind: "too_large", declaredBytes };
+  }
+  return {
+    kind: "ready",
+    declaredBytes,
+    permitBytes: Math.max(1, declaredBytes),
+  };
+};
+
+export const readSubmitBodyWithProtocolLimit = (
+  request: HttpServerRequest.HttpServerRequest,
+) =>
+  HttpIncomingMessage.withMaxBodySize(
+    request.arrayBuffer,
+    Option.some(SUBMIT_HTTP_BODY_MAX_BYTES),
+  );
+
+/**
+ * Runs the body-read/decode/verification path only while both global
+ * request-count and byte-weighted permits are held. Ingress is fail-fast when
+ * either bound is exhausted so waiting sockets cannot become an unbounded
+ * queue. Both permits are released by Effect on every exit.
+ */
+export const withSubmitIngressPermit = <A, E, R>({
+  maxConcurrency,
+  maxInFlightBytes,
+  permitBytes,
+  effect,
+}: {
+  readonly maxConcurrency: number;
+  readonly maxInFlightBytes: number;
+  readonly permitBytes: number;
+  readonly effect: Effect.Effect<A, E, R>;
+}): Effect.Effect<Option.Option<A>, E, R> => {
+  if (
+    !Number.isSafeInteger(maxConcurrency) ||
+    maxConcurrency <= 0 ||
+    !Number.isSafeInteger(maxInFlightBytes) ||
+    maxInFlightBytes <= 0 ||
+    !Number.isSafeInteger(permitBytes) ||
+    permitBytes <= 0 ||
+    permitBytes > maxInFlightBytes
+  ) {
+    return Effect.dieMessage("Invalid submit ingress permit configuration");
+  }
+  const pool = submitIngressPool({ maxConcurrency, maxInFlightBytes });
+  return pool.concurrency
+    .withPermitsIfAvailable(
+      1,
+    )(pool.bytes.withPermitsIfAvailable(permitBytes)(effect))
+    .pipe(Effect.map(Option.flatten));
+};
+
+const requestMediaType = (contentType: string | undefined): string =>
+  contentType?.split(";")[0]?.trim().toLowerCase() ?? "";
 
 const parseFixedHexParam = (
   value: unknown,
@@ -1007,10 +1136,10 @@ const getTxHandler = Effect.gen(function* () {
   const txHashBytes = parseFixedHexParam(txHashParam, 32);
   if (txHashBytes === null) {
     yield* Effect.logInfo(
-      `GET /${TX_ENDPOINT} - Invalid transaction hash: ${txHashParam}`,
+      `GET /${TX_ENDPOINT} - Invalid transaction hash: ${String(txHashParam)}`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: ${txHashParam}` },
+      { error: `Invalid transaction hash: ${String(txHashParam)}` },
       { status: 404 },
     );
   }
@@ -1023,14 +1152,14 @@ const getTxHandler = Effect.gen(function* () {
         const fromImmutable =
           yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
         yield* Effect.logInfo(
-          `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${txHashParam}`,
+          `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${String(txHashParam)}`,
         );
         return fromImmutable;
       }),
     ),
   );
   yield* Effect.logInfo(
-    `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
+    `GET /${TX_ENDPOINT} - Transaction found in mempool: ${String(txHashParam)}`,
   );
   yield* Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor));
   return yield* HttpServerResponse.json({
@@ -1057,10 +1186,10 @@ const getUtxosHandler = Effect.gen(function* () {
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(
-      `GET /${UTXOS_ENDPOINT} - Invalid address type: ${addr}`,
+      `GET /${UTXOS_ENDPOINT} - Invalid address type: ${String(addr)}`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid address type: ${addr}` },
+      { error: `Invalid address type: ${String(addr)}` },
       { status: 400 },
     );
   }
@@ -1205,7 +1334,7 @@ const getTxStatusHandler = Effect.gen(function* () {
   const txHashBytes = parseFixedHexParam(txHashParam, 32);
   if (txHashBytes === null) {
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: ${txHashParam}` },
+      { error: `Invalid transaction hash: ${String(txHashParam)}` },
       { status: 400 },
     );
   }
@@ -1864,10 +1993,17 @@ type PipelineStatusCountRow = {
   readonly count: bigint | number | string;
 };
 
-type PipelineStatusOldestActiveRow = {
+export const PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES = [
+  PendingBlockFinalizationsDB.Status.PendingSubmission,
+  PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
+  PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
+  PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+] as const satisfies readonly PendingBlockFinalizationsDB.Status[];
+
+export type PipelineStatusOldestActiveRow = {
   readonly header_hash: string;
   readonly submitted_tx_hash: string | null;
-  readonly status: string;
+  readonly status: (typeof PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES)[number];
   readonly created_at: Date;
   readonly updated_at: Date;
   readonly observed_confirmed_at_ms: bigint | number | string | null;
@@ -1879,6 +2015,27 @@ type PipelineStatusCountOnlyRow = {
 
 const bigintString = (value: bigint | number | string): string =>
   BigInt(value).toString();
+
+export const encodePipelineStatusOldestActive = (
+  oldestActive: PipelineStatusOldestActiveRow | undefined,
+  now: Date,
+) =>
+  oldestActive === undefined
+    ? null
+    : {
+        headerHash: oldestActive.header_hash,
+        submittedTxHash: oldestActive.submitted_tx_hash,
+        status: oldestActive.status,
+        ageMs: Math.max(0, now.getTime() - oldestActive.created_at.getTime()),
+        createdAt: oldestActive.created_at.toISOString(),
+        updatedAt: oldestActive.updated_at.toISOString(),
+        observedConfirmedAt:
+          oldestActive.observed_confirmed_at_ms === null
+            ? null
+            : new Date(
+                Number(oldestActive.observed_confirmed_at_ms),
+              ).toISOString(),
+      };
 
 const getPipelineStatusHandler = Effect.gen(function* () {
   const globals = yield* Globals;
@@ -1908,7 +2065,9 @@ const getPipelineStatusHandler = Effect.gen(function* () {
           updated_at,
           observed_confirmed_at_ms
         FROM pending_block_finalizations
-        WHERE status IN ('prepared', 'submitted', 'confirmed')
+        WHERE ${sql(PendingBlockFinalizationsDB.Columns.STATUS)} IN ${sql.in(
+          PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
+        )}
         ORDER BY created_at ASC
         LIMIT 1`,
       TxAdmissionsDB.countBacklog,
@@ -1952,26 +2111,7 @@ const getPipelineStatusHandler = Effect.gen(function* () {
       countsByStatus: Object.fromEntries(
         pendingCounts.map((row) => [row.status, bigintString(row.count)]),
       ),
-      oldestActive:
-        oldestActive === undefined
-          ? null
-          : {
-              headerHash: oldestActive.header_hash,
-              submittedTxHash: oldestActive.submitted_tx_hash,
-              status: oldestActive.status,
-              ageMs: Math.max(
-                0,
-                now.getTime() - oldestActive.created_at.getTime(),
-              ),
-              createdAt: oldestActive.created_at.toISOString(),
-              updatedAt: oldestActive.updated_at.toISOString(),
-              observedConfirmedAt:
-                oldestActive.observed_confirmed_at_ms === null
-                  ? null
-                  : new Date(
-                      Number(oldestActive.observed_confirmed_at_ms),
-                    ).toISOString(),
-            },
+      oldestActive: encodePipelineStatusOldestActive(oldestActive, now),
     },
     stateQueue: {
       queueLength,
@@ -2013,11 +2153,14 @@ const getPipelineStatusHandler = Effect.gen(function* () {
 const getProtocolInfoHandler = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const lucid = yield* Lucid;
+  const deploymentIdentity = yield* ContractDeploymentIdentity;
   const response = yield* Effect.try({
     try: () =>
       ProtocolInfoCommand.encodeProtocolInfo({
         nodeConfig,
         currentSlot: lucid.api.currentSlot(),
+        deploymentMarker: deploymentIdentity.deploymentMarker,
+        consensusProfile: deploymentIdentity.consensusProfile,
       }),
     catch: (error) => error,
   });
@@ -2031,22 +2174,22 @@ const getBlockHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
   const hdrHash = params["header_hash"];
   yield* Effect.logInfo(
-    `GET /block - Request received for header_hash: ${hdrHash}`,
+    `GET /block - Request received for header_hash: ${String(hdrHash)}`,
   );
 
   const headerHash = parseFixedHexParam(hdrHash, 28);
   if (headerHash === null) {
     yield* Effect.logInfo(
-      `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${hdrHash}`,
+      `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${String(hdrHash)}`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid block hash: ${hdrHash}` },
+      { error: `Invalid block hash: ${String(hdrHash)}` },
       { status: 400 },
     );
   }
   const hashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
   yield* Effect.logInfo(
-    `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
+    `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${String(hdrHash)}`,
   );
   return yield* HttpServerResponse.json({
     hashes: hashes.map(SDK.bufferToHex),
@@ -2119,12 +2262,12 @@ const getCommitEndpoint = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${COMMIT_ENDPOINT} - Manual block commitment order received`,
   );
-  const result = yield* blockCommitmentAction;
+  yield* blockCommitmentAction;
   yield* Effect.logInfo(
-    `GET /${COMMIT_ENDPOINT} - Block commitment successful: ${result}`,
+    `GET /${COMMIT_ENDPOINT} - Block commitment successful`,
   );
   return yield* HttpServerResponse.json({
-    message: `Block commitment successful: ${result}`,
+    message: "Block commitment successful",
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
@@ -2199,10 +2342,10 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(
-      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: ${addr}`,
+      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: ${String(addr)}`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid address type: ${addr}` },
+      { error: `Invalid address type: ${String(addr)}` },
       { status: 400 },
     );
   }
@@ -2302,8 +2445,7 @@ const getStateQueueHandler = Effect.gen(function* () {
           );
           return classifyOldestQueuedBlockReadiness({
             headerHash,
-            currentDaAttestation: stateQueueNode.da_attestation,
-            requiredDaAttestation: contracts.daAttestation.policyId,
+            currentDaAvailability: stateQueueNode.da_attestation,
             readyAfterUnixTime: maturity.readyAfterUnixTime,
             nowUnixTime: Date.now(),
           });
@@ -2585,145 +2727,306 @@ const postSubmitHandler = <R>(
       const nodeConfig = yield* NodeConfig;
       const request = yield* HttpServerRequest.HttpServerRequest;
 
-      if (!isApplicationCbor(request.headers["content-type"])) {
+      if (
+        requestMediaType(request.headers["content-type"]) !==
+        V1_SUBMISSION_MEDIA_TYPE
+      ) {
         yield* Effect.logInfo(
-          `▫️ Invalid submit payload: expected application/cbor`,
+          `▫️ Invalid submit payload: expected ${V1_SUBMISSION_MEDIA_TYPE}`,
         );
         yield* recordLatency();
         return yield* HttpServerResponse.json(
           {
-            error:
-              "Request body must be raw Midgard canonical transaction CBOR with Content-Type application/cbor",
+            error: `V1 requests must be a canonical proof submission envelope with Content-Type ${V1_SUBMISSION_MEDIA_TYPE}`,
           },
           { status: 415 },
         );
       }
 
-      const bodyReadStartedAt = Date.now();
-      const bodyBytes = yield* Effect.either(request.arrayBuffer);
-      yield* submitBodyReadDurationTimer(
-        Effect.succeed(Duration.millis(Date.now() - bodyReadStartedAt)),
+      const ingressReservation = resolveSubmitIngressReservation(
+        request.headers["content-length"],
       );
-      if (bodyBytes._tag === "Left") {
-        yield* Effect.logInfo(
-          `▫️ Submit rejected: failed to read request body`,
-        );
+      if (ingressReservation.kind === "invalid_content_length") {
         yield* recordLatency();
         return yield* HttpServerResponse.json(
-          { error: "Invalid canonical transaction CBOR payload" },
+          { error: "Invalid Content-Length for V1 submission" },
           { status: 400 },
         );
       }
-
-      const normalizeStartedAt = Date.now();
-      const validation = validateSubmitTxCanonicalCbor(
-        new Uint8Array(bodyBytes.right),
-        nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
-      );
-      if (!validation.ok) {
-        yield* submitNormalizeDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
-        );
-        yield* Effect.logInfo(`▫️ Submit rejected: ${validation.error}`);
+      if (ingressReservation.kind === "too_large") {
         yield* recordLatency();
         return yield* HttpServerResponse.json(
-          { error: validation.error },
-          { status: validation.status },
+          {
+            error: `V1 submission exceeds the DA proof envelope (${ingressReservation.declaredBytes.toString()} > ${SUBMIT_HTTP_BODY_MAX_BYTES.toString()})`,
+          },
+          { status: 413 },
         );
       }
 
-      const normalized = normalizeSubmitTxCanonicalCborToNative(
-        validation.txCanonicalCbor,
-      );
-      if (!normalized.ok) {
-        yield* submitNormalizeDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
-        );
-        yield* Effect.logInfo(`▫️ ${normalized.error}`);
-        yield* Effect.logInfo(`▫️ ${normalized.detail}`);
-        yield* recordLatency();
-        return yield* HttpServerResponse.json(
-          { error: normalized.error },
-          { status: 400 },
-        );
-      }
-      yield* submitNormalizeDurationTimer(
-        Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
-      );
-
-      const durableAdmissionStartedAt = Date.now();
-      const reservation = yield* reserveAdmissionBacklogSlot(
-        nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-      );
-      const admissionWriter = yield* AdmissionWriter;
-      const admissionEffect: Effect.Effect<
-        TxAdmissionsDB.AdmitResult,
-        | DatabaseError
-        | TxAdmissionsDB.TxAdmissionConflictError
-        | TxAdmissionsDB.TxAdmissionBacklogFullError
-        | AdmissionWriterShutdownError,
-        SqlClient
-      > = reservation.reserved
-        ? admissionWriter.admitReserved({
-            txId: normalized.txId,
-            txCanonicalCbor: normalized.txCanonicalCbor,
-            submitSource: normalized.source,
-          })
-        : TxAdmissionsDB.admit({
-            txId: normalized.txId,
-            txCanonicalCbor: normalized.txCanonicalCbor,
-            submitSource: normalized.source,
-            currentBacklog: reservation.currentBacklog,
-            maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-          });
-      const admitted = yield* admissionEffect.pipe(
-        Effect.onExit((exit) => {
-          if (!reservation.reserved) return Effect.void;
-          if (Exit.isSuccess(exit)) {
-            return exit.value.kind === "new"
-              ? commitAdmissionBacklogSlot
-              : releaseAdmissionBacklogSlot;
+      const permittedResponse = yield* withSubmitIngressPermit({
+        maxConcurrency: nodeConfig.SUBMIT_INGRESS_MAX_CONCURRENCY,
+        maxInFlightBytes: nodeConfig.SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES,
+        permitBytes: ingressReservation.permitBytes,
+        effect: Effect.gen(function* () {
+          const bodyReadStartedAt = Date.now();
+          const bodyBytes = yield* Effect.either(
+            readSubmitBodyWithProtocolLimit(request),
+          );
+          yield* submitBodyReadDurationTimer(
+            Effect.succeed(Duration.millis(Date.now() - bodyReadStartedAt)),
+          );
+          if (bodyBytes._tag === "Left") {
+            yield* Effect.logInfo(
+              `▫️ Submit rejected: request body exceeded or failed the bounded HTTP read`,
+            );
+            yield* recordLatency();
+            return HttpServerResponse.json(
+              {
+                error: `V1 submission exceeds or could not be read within the DA proof envelope (${SUBMIT_HTTP_BODY_MAX_BYTES.toString()} bytes)`,
+              },
+              { status: 413 },
+            );
           }
-          const failure = Option.getOrUndefined(
-            Cause.failureOption(exit.cause),
-          );
-          // Conflict/backlog errors prove no row was inserted. A SqlError,
-          // interruption, or defect can be observed after PostgreSQL committed,
-          // so retain the slot conservatively until the next live-count refresh.
-          return admissionFailureDefinitelyDidNotInsert(failure)
-            ? releaseAdmissionBacklogSlot
-            : commitAdmissionBacklogSlot;
-        }),
-      );
-      yield* submitDurableAdmissionDurationTimer(
-        Effect.succeed(Duration.millis(Date.now() - durableAdmissionStartedAt)),
-      );
-      if (admitted.kind === "new") {
-        if (!reservation.reserved) {
-          return yield* Effect.dieMessage(
-            "Durable admission inserted without a reserved backlog slot",
-          );
-        }
-        yield* wakeTxQueueProcessor;
-      }
 
-      Effect.runSync(Metric.increment(txCounter));
-      yield* recordLatency();
-      const responseStartedAt = Date.now();
-      const response = yield* HttpServerResponse.json(
-        {
-          txId: normalized.txIdHex,
-          status: admitted.entry.status,
-          firstSeenAt: admitted.entry.first_seen_at.toISOString(),
-          lastSeenAt: admitted.entry.last_seen_at.toISOString(),
-          duplicate: admitted.kind === "duplicate",
-        },
-        { status: admitted.kind === "new" ? 202 : 200 },
-      );
-      yield* submitResponseDurationTimer(
-        Effect.succeed(Duration.millis(Date.now() - responseStartedAt)),
-      );
-      return response;
+          const requestBody = Buffer.from(bodyBytes.right);
+          if (
+            ingressReservation.declaredBytes !== null &&
+            requestBody.length !== ingressReservation.declaredBytes
+          ) {
+            yield* recordLatency();
+            return HttpServerResponse.json(
+              { error: "V1 submission Content-Length mismatch" },
+              { status: 400 },
+            );
+          }
+          if (requestBody.length > SUBMIT_HTTP_BODY_MAX_BYTES) {
+            yield* recordLatency();
+            return HttpServerResponse.json(
+              {
+                error: `V1 submission exceeds the DA proof envelope (${requestBody.length.toString()} > ${SUBMIT_HTTP_BODY_MAX_BYTES.toString()})`,
+              },
+              { status: 413 },
+            );
+          }
+          const decodedSubmission = yield* Effect.either(
+            Effect.try({
+              try: () => decodeMidgardProofSubmission(requestBody),
+              catch: (cause) => cause,
+            }),
+          );
+          if (decodedSubmission._tag === "Left") {
+            yield* Effect.logInfo(
+              `▫️ Submit rejected: malformed V1 submission envelope`,
+            );
+            yield* recordLatency();
+            return HttpServerResponse.json(
+              { error: "Invalid canonical V1 submission envelope" },
+              { status: 400 },
+            );
+          }
+          const transactionBytes = decodedSubmission.right.transactionCbor;
+          const programMaterial = decodedSubmission.right.programMaterial;
+          const programMaterialSidecarCbor =
+            encodeMidgardCekProgramMaterialSidecar(programMaterial);
+          // Re-decode the independently stored representation at the admission
+          // boundary; database replay must never depend on the HTTP wrapper.
+          decodeMidgardCekProgramMaterialSidecar(programMaterialSidecarCbor);
+
+          const normalizeStartedAt = Date.now();
+          const validation = validateSubmitTxCanonicalCbor(
+            transactionBytes,
+            Math.min(
+              nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
+              MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
+            ),
+          );
+          if (!validation.ok) {
+            yield* submitNormalizeDurationTimer(
+              Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+            );
+            yield* Effect.logInfo(`▫️ Submit rejected: ${validation.error}`);
+            yield* recordLatency();
+            return HttpServerResponse.json(
+              { error: validation.error },
+              { status: validation.status },
+            );
+          }
+
+          const normalized = normalizeSubmitTxCanonicalCborToNative(
+            validation.txCanonicalCbor,
+          );
+          if (!normalized.ok) {
+            yield* submitNormalizeDurationTimer(
+              Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+            );
+            yield* Effect.logInfo(`▫️ ${normalized.error}`);
+            yield* Effect.logInfo(`▫️ ${normalized.detail}`);
+            yield* recordLatency();
+            return HttpServerResponse.json(
+              { error: normalized.error },
+              { status: 400 },
+            );
+          }
+          const proofViolation = validateMidgardConsensusTxCbor(
+            normalized.txCanonicalCbor,
+          );
+          if (proofViolation !== null) {
+            yield* submitNormalizeDurationTimer(
+              Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+            );
+            yield* recordLatency();
+            return HttpServerResponse.json(
+              {
+                error: proofViolation.code,
+                feature: proofViolation.featureId,
+                detail: proofViolation.detail,
+              },
+              { status: 400 },
+            );
+          }
+          const materialValidation = yield* Effect.either(
+            Effect.try({
+              try: () => {
+                const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+                  normalized.txCanonicalCbor,
+                );
+                const envelopes = collectMidgardAttachedProgramEnvelopes(tx);
+                const hasUnresolvedReferenceInputs =
+                  decodeMidgardNativeByteListPreimage(
+                    tx.body.referenceInputsPreimageCbor,
+                    "reference_inputs_preimage",
+                  ).length > 0;
+                // Reference-input program envelopes are ledger-state dependent and
+                // become authoritative in Phase B. The one bundle traversal still
+                // proves every attached envelope and preserves envelope position.
+                verifyMidgardCekProgramMaterialBundle(
+                  envelopes,
+                  programMaterial,
+                  hasUnresolvedReferenceInputs
+                    ? { allowUnreachable: true }
+                    : undefined,
+                );
+              },
+              catch: (cause) => cause,
+            }),
+          );
+          if (materialValidation._tag === "Left") {
+            yield* submitNormalizeDurationTimer(
+              Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+            );
+            yield* recordLatency();
+            return HttpServerResponse.json(
+              {
+                error: "E_CEK_PROGRAM_MATERIAL",
+                detail:
+                  "V1 program material does not cover every attached program envelope",
+              },
+              { status: 400 },
+            );
+          }
+          yield* submitNormalizeDurationTimer(
+            Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+          );
+
+          // Return the durable work as a suspended effect so both ingress
+          // permits are released immediately after verification. PostgreSQL's
+          // direct/microbatch admission quotas remain the durable queue bound.
+          return Effect.gen(function* () {
+            const durableAdmissionStartedAt = Date.now();
+            const reservation = yield* reserveAdmissionBacklogSlot(
+              nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+            );
+            const admissionWriter = yield* AdmissionWriter;
+            const admissionEffect: Effect.Effect<
+              TxAdmissionsDB.AdmitResult,
+              | DatabaseError
+              | TxAdmissionsDB.TxAdmissionConflictError
+              | TxAdmissionsDB.TxAdmissionBacklogFullError
+              | AdmissionWriterShutdownError,
+              SqlClient
+            > = reservation.reserved
+              ? admissionWriter.admitReserved({
+                  txId: normalized.txId,
+                  txCanonicalCbor: normalized.txCanonicalCbor,
+                  programMaterialSidecarCbor,
+                  submitSource: normalized.source,
+                  maxBacklogBytes:
+                    nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+                })
+              : TxAdmissionsDB.admit({
+                  txId: normalized.txId,
+                  txCanonicalCbor: normalized.txCanonicalCbor,
+                  programMaterialSidecarCbor,
+                  submitSource: normalized.source,
+                  currentBacklog: reservation.currentBacklog,
+                  maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+                  maxBacklogBytes:
+                    nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
+                });
+            const admitted = yield* admissionEffect.pipe(
+              Effect.onExit((exit) => {
+                if (!reservation.reserved) return Effect.void;
+                if (Exit.isSuccess(exit)) {
+                  return exit.value.kind === "new"
+                    ? commitAdmissionBacklogSlot
+                    : releaseAdmissionBacklogSlot;
+                }
+                const failure = Option.getOrUndefined(
+                  Cause.failureOption(exit.cause),
+                );
+                // Conflict/backlog errors prove no row was inserted. A SqlError,
+                // interruption, or defect can be observed after PostgreSQL committed,
+                // so retain the slot conservatively until the next live-count refresh.
+                return admissionFailureDefinitelyDidNotInsert(failure)
+                  ? releaseAdmissionBacklogSlot
+                  : commitAdmissionBacklogSlot;
+              }),
+            );
+            yield* submitDurableAdmissionDurationTimer(
+              Effect.succeed(
+                Duration.millis(Date.now() - durableAdmissionStartedAt),
+              ),
+            );
+            if (admitted.kind === "new") {
+              if (!reservation.reserved) {
+                return yield* Effect.dieMessage(
+                  "Durable admission inserted without a reserved backlog slot",
+                );
+              }
+              yield* wakeTxQueueProcessor;
+            }
+
+            Effect.runSync(Metric.increment(txCounter));
+            yield* recordLatency();
+            const responseStartedAt = Date.now();
+            const response = yield* HttpServerResponse.json(
+              {
+                txId: normalized.txIdHex,
+                status: admitted.entry.status,
+                firstSeenAt: admitted.entry.first_seen_at.toISOString(),
+                lastSeenAt: admitted.entry.last_seen_at.toISOString(),
+                duplicate: admitted.kind === "duplicate",
+              },
+              { status: admitted.kind === "new" ? 202 : 200 },
+            );
+            yield* submitResponseDurationTimer(
+              Effect.succeed(Duration.millis(Date.now() - responseStartedAt)),
+            );
+            return response;
+          });
+        }),
+      });
+      if (Option.isNone(permittedResponse)) {
+        yield* Metric.increment(submitQueueOfferFailureCounter);
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          {
+            error: "Submit ingress capacity is full; retry later",
+          },
+          { status: 503 },
+        );
+      }
+      return yield* permittedResponse.value;
     }).pipe(
       Effect.catchTag("TxAdmissionConflictError", (e) =>
         Effect.gen(function* () {
@@ -2742,6 +3045,16 @@ const postSubmitHandler = <R>(
         Effect.gen(function* () {
           yield* Metric.increment(submitQueueOfferFailureCounter);
           yield* recordLatency();
+          if (e.unit === "bytes") {
+            return yield* HttpServerResponse.json(
+              {
+                error: "Durable submission admission byte backlog is full",
+                backlogBytes: e.backlog.toString(),
+                maxBacklogBytes: e.maxBacklog.toString(),
+              },
+              { status: 503 },
+            );
+          }
           return yield* HttpServerResponse.json(
             {
               error: "Durable submission admission backlog is full",
@@ -2785,17 +3098,26 @@ const postSubmitHandler = <R>(
 /**
  * Focused router used by the admission integration harness. Keeping this as a
  * real HttpRouter (rather than calling the handler as a function) makes route,
- * request-body, status-code, and response-body compatibility executable while
+ * request-body, status-code, and response-body contract executable while
  * allowing the harness to hold validation wakeups at a deterministic boundary.
  */
 export const buildSubmitRouter = <R>(
   wakeTxQueueProcessor: Effect.Effect<void, never, R>,
   withMonitoring?: boolean,
+  consensusProfile: MidgardConsensusProfile = MIDGARD_CONSENSUS_PROFILE,
 ) =>
   HttpRouter.empty.pipe(
     HttpRouter.post(
       `/${SUBMIT_ENDPOINT}`,
-      postSubmitHandler(withMonitoring, wakeTxQueueProcessor),
+      postSubmitHandler(withMonitoring, wakeTxQueueProcessor).pipe(
+        Effect.provideService(
+          ContractDeploymentIdentity,
+          ContractDeploymentIdentity.make({
+            kind: "derived",
+            consensusProfile,
+          }),
+        ),
+      ),
     ),
   );
 
@@ -2816,6 +3138,7 @@ export const buildListenRouter = (
   | Lucid
   | NodeConfig
   | MidgardContracts
+  | ContractDeploymentIdentity
   | SqlClient
   | HttpServerRequest.HttpServerRequest
   | Globals

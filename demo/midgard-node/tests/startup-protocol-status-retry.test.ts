@@ -2,8 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { fetchProtocolDeploymentStatusWithStartupRetry } from "@/commands/listen-startup.js";
-import type { ProtocolDeploymentStatus } from "@/transactions/initialization.js";
+import { fetchProtocolDeploymentStatusWithStartupRetry } from "../src/commands/listen-startup.js";
+import type { ProtocolDeploymentStatus } from "../src/transactions/initialization.js";
 
 const completeStatus = {
   hubOracleWitness: null,

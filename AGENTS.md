@@ -22,6 +22,18 @@ and evidence another engineer can verify.
 
 Tradeoff order: correctness, safety, liveness, performance, convenience.
 
+## Engineering Principles
+
+- Grow the system in layers. Start from the smallest version that works end to
+  end, and add each new capability on top of a product that already works.
+  Never trade a working product for unfinished complexity.
+- Keep components modular and concerns clearly separated.
+- Prefer established, well-maintained libraries when they reduce overall
+  complexity or improve reliability. Do not reimplement common functionality
+  without a clear reason.
+- Make architectural decisions for the long term. Do not accept a stopgap that
+  only works for now and is meant to be replaced later.
+
 ## Repo Shape
 
 - `onchain/aiken`: Plutus V3 contracts.
@@ -39,12 +51,38 @@ targets another environment.
 
 - Strict behavior is the default. Demo, benchmark, migration, or compatibility
   shortcuts must be explicit, isolated, and unavailable by default.
+- Before mainnet launch, undeployed versions have no compatibility contract:
+  replace V1 and database schemas in place, remove obsolete branches, and
+  wipe/redeploy development state instead of adding compatibility layers or
+  migrations. Keep versioning seams for post-launch upgrades, but preserve or
+  migrate only versions that actually shipped.
 - Named plan docs, review docs, commands, and verification surfaces are the
   source of truth before improvising.
+- Import workspace packages by name (`@al-ft/midgard-core/hex`,
+  `da-committee-node/config`), never through `../<package>/src` or `dist`;
+  ESLint `no-restricted-imports` enforces it, so a missing subpath means adding
+  a workspace dependency and an `exports` entry, not a relative path. Every
+  package's `exports` carries a `midgard-source` condition that tsc
+  (`customConditions`), typescript-eslint, and vitest (`resolve.conditions`)
+  resolve first, so typecheck, lint, and test suites read sibling source and
+  never need a prior `pnpm build`. Plain `node` scripts still resolve `dist`,
+  so anything that shells out to `node` keeps building first.
+- Names carry no version, no `production-` prefix, and no ticket id; the
+  version lives in wire and manifest values. See
+  `docs/agents/naming-and-versioning.md` before naming or renaming anything.
 - Preserve user work: check dirty state, do not clean or revert unrelated
   changes, and keep patches scoped to the request.
 - Before finalizing changes, run the narrow checks that prove the touched
   behavior and report exactly what ran.
+- Install the repository hooks once per clone: `bash .githooks/install` (or
+  `pnpm --dir demo run hooks:install`). The pre-commit hook formats and lints
+  exactly what you staged — Prettier and ESLint over `demo/**/*.{ts,tsx,md}`,
+  the pinned fork's `aiken fmt` plus CI's trailing-whitespace normalization
+  over `*.ak` — so `static-demo-format`, `static-demo-lint`, `watcher-format`,
+  `watcher-lint` and the CI Aiken formatter check cannot go red on formatting
+  alone. It re-stages only the paths it touched, skips files that are only
+  partially staged rather than committing the unstaged half, and preserves any
+  hook already installed as `<hook>.local`. `MIDGARD_SKIP_HOOKS=1` bypasses it.
 
 ## Observed Pitfalls
 
@@ -52,6 +90,9 @@ targets another environment.
   boundary.
 - Dirty worktrees and generated artifacts have been mistaken for cleanup
   targets. Leave unrelated state alone.
+- When a path is explicitly protected, search only individually named tracked
+  files. Shell wildcards expand before tool-level exclusions, so a later
+  `--glob` or ignore rule does not protect an argument the shell already added.
 - Loose smoke tests have replaced plan-requested checks. Run named checks
   first.
 - Demo or benchmark behavior has leaked into defaults. Keep production
@@ -62,3 +103,6 @@ targets another environment.
 Open `docs/agents/production-l2.md`, `state-reset.md`,
 `transaction-finalization.md`, `midgard-node.md`, or `README.md` only when the
 task enters that domain.
+
+Withdraw-zero yielding: open `docs/agents/withdraw-zero-yielding.md` when a
+spending validator delegates a redeemer arm to a rewarding validator.

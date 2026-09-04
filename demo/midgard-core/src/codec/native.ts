@@ -1,13 +1,7 @@
 import { CML } from "@lucid-evolution/lucid";
 
 import { decodeMidgardAddressBytes } from "./address.js";
-import {
-  asArray,
-  asBytes,
-  asMap,
-  decodeSingleCbor,
-  encodeCbor,
-} from "./cbor.js";
+import { asBytes, decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
 import {
@@ -29,9 +23,15 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
+import { midgardRedeemersToCardano } from "./native-redeemer.js";
+import { decodeMidgardFieldPreimage } from "./native-tx-field-access.js";
+import {
+  decodeMidgardFieldItems,
+  decodeMidgardSpendInputItem,
+} from "./native-tx-field-item-decoders.js";
 import {
   asFixedArray,
-  asSigned,
+  asUnsigned,
   decodeValidityCode,
   decodeVersion,
   encodeValidityCode,
@@ -61,6 +61,8 @@ export {
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
 export {
+  decodeValidityCode,
+  encodeValidityCode,
   type MidgardTxValidity,
   MidgardTxValidityCodes,
 } from "./native-validation.js";
@@ -125,8 +127,34 @@ export type MidgardNativeTxFull = MidgardNativeTxCanonical & {
   readonly compact: MidgardNativeTxCompact;
 };
 
-export type MidgardNativeCodecOptions = {
-  readonly enforceConsistency?: boolean;
+/**
+ * Compact L1 source for the canonical V1 transaction proof.
+ *
+ * The compact transaction commits all six body-field preimages and the hash
+ * of the compact witness set. The compact witness set commits the remaining
+ * three witness-field preimages. Neither source member contains the aggregate
+ * canonical transaction, so membership proofs remain bounded when the full
+ * transaction is larger than one L1 proof envelope.
+ */
+export type MidgardNativeTxProofSource = {
+  readonly compactCbor: Buffer;
+  readonly witnessSetCompactCbor: Buffer;
+  readonly fieldPreimageLengthsCbor: Buffer;
+};
+
+const requireNativeTxVersion = (
+  value: unknown,
+  fieldName: string,
+): typeof MIDGARD_NATIVE_TX_VERSION => {
+  const version = decodeVersion(value, fieldName);
+  if (version !== MIDGARD_NATIVE_TX_VERSION) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} must equal ${MIDGARD_NATIVE_TX_VERSION.toString()}`,
+      `actual=${version.toString()}`,
+    );
+  }
+  return MIDGARD_NATIVE_TX_VERSION;
 };
 
 const encodeNativeTxCompactValue = (
@@ -137,7 +165,7 @@ const encodeNativeTxCompactValue = (
   Hash32,
   bigint,
 ] => [
-  decodeVersion(tx.version, "transaction_compact.version"),
+  requireNativeTxVersion(tx.version, "transaction_compact.version"),
   encodeNativeTxBodyCompactValue(tx.transactionBody),
   ensureHash32(
     tx.transactionWitnessSetHash,
@@ -152,7 +180,7 @@ const decodeNativeTxCompactValue = (
 ): MidgardNativeTxCompact => {
   const v = asFixedArray(value, 4, fieldName);
   return {
-    version: decodeVersion(v[0], `${fieldName}[0]`),
+    version: requireNativeTxVersion(v[0], `${fieldName}[0]`),
     transactionBody: decodeNativeTxBodyCompactValue(v[1], `${fieldName}[1]`),
     transactionWitnessSetHash: ensureHash32(
       asBytes(v[2], `${fieldName}[2]`),
@@ -208,6 +236,7 @@ export const deriveMidgardNativeTxCompact = (
   validity: MidgardTxValidity,
   version = MIDGARD_NATIVE_TX_VERSION,
 ): MidgardNativeTxCompact => {
+  requireNativeTxVersion(version, "transaction_compact.version");
   const bodyCompact = deriveMidgardNativeTxBodyCompact(body);
   const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(witnessSet);
   return {
@@ -223,10 +252,11 @@ export const deriveMidgardNativeTxCompact = (
 export const materializeMidgardNativeTxFromCanonical = (
   canonical: MidgardNativeTxCanonical,
 ): MidgardNativeTxFull => {
-  const version = decodeVersion(
+  const version = requireNativeTxVersion(
     canonical.version,
     "transaction_canonical.version",
   );
+  validateMidgardNativeTxCanonical(canonical);
   const compact = deriveMidgardNativeTxCompact(
     canonical.body,
     canonical.witnessSet,
@@ -282,8 +312,7 @@ export const decodeMidgardNativeTxBodyCanonical = (
 
 export const encodeMidgardNativeTxWitnessPreimages = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
-  version = MIDGARD_NATIVE_TX_VERSION,
-): Buffer => encodeNativeTxWitnessPreimagesCbor(witnessSet, version);
+): Buffer => encodeNativeTxWitnessPreimagesCbor(witnessSet);
 
 export const decodeMidgardNativeTxWitnessPreimages = (
   bytes: Uint8Array,
@@ -294,14 +323,61 @@ const hasDerivedCompact = (
   tx: MidgardNativeTxCanonical | MidgardNativeTxFull,
 ): tx is MidgardNativeTxFull => "compact" in tx;
 
+/**
+ * §5.1's fail-closed check over all nine field preimages: wrapper/length
+ * mismatch, a non-minimal header, an item count disagreeing with the walked
+ * content, and trailing bytes after item `N-1` all reject.
+ *
+ * This is the canonical form's only structural validator, and it is deliberately
+ * **not** inside {@link deriveNativeTxBodyCompact}. §4 defines a field commitment
+ * over bytes, so the hash must not depend on a parse, and the Aiken twins keep
+ * the two apart for the same reason (`field_commitment` first, then an in-place
+ * walk). It runs where given bytes become a committed transaction — the encoder,
+ * the canonical decoder, and materialisation — so a caller cannot obtain a
+ * commitment for a preimage no decoder would accept, while a caller that already
+ * holds producer-built bytes pays only for the hash.
+ *
+ * The retired counted derivation provided this incidentally: building a bounded
+ * collection had to split every preimage into items first, so this function used
+ * to be a bare `deriveMidgardNativeTxCompact` call kept for its exceptions.
+ * Under §4 nothing forces the split, so the check is stated rather than borrowed.
+ */
+const validateMidgardNativeTxCanonical = (
+  tx: MidgardNativeTxCanonical,
+): void => {
+  const fields: readonly (readonly [string, Uint8Array])[] = [
+    ["spend_inputs", tx.body.spendInputsPreimageCbor],
+    ["reference_inputs", tx.body.referenceInputsPreimageCbor],
+    ["outputs", tx.body.outputsPreimageCbor],
+    ["required_observers", tx.body.requiredObserversPreimageCbor],
+    ["required_signers", tx.body.requiredSignersPreimageCbor],
+    ["mint", tx.body.mintPreimageCbor],
+    ["script_tx_wits", tx.witnessSet.scriptTxWitsPreimageCbor],
+    ["addr_tx_wits", tx.witnessSet.addrTxWitsPreimageCbor],
+    ["redeemer_tx_wits", tx.witnessSet.redeemerTxWitsPreimageCbor],
+  ];
+  for (const [fieldName, preimage] of fields) {
+    try {
+      decodeMidgardFieldPreimage(preimage);
+    } catch (error) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.CborDecode,
+        `transaction_canonical.${fieldName} is not a canonical §5.1 field preimage`,
+        String(error),
+      );
+    }
+  }
+};
+
 export const encodeMidgardNativeTxCanonical = (
   tx: MidgardNativeTxCanonical | MidgardNativeTxFull,
-  options: MidgardNativeCodecOptions = {},
 ): Buffer => {
-  if (options.enforceConsistency !== false && hasDerivedCompact(tx)) {
+  const version = requireNativeTxVersion(tx.version, "transaction.version");
+  if (hasDerivedCompact(tx)) {
     verifyMidgardNativeTxFullConsistency(tx);
+  } else {
+    validateMidgardNativeTxCanonical(tx);
   }
-  const version = decodeVersion(tx.version, "transaction.version");
   return encodeCbor([
     version,
     encodeNativeTxBodyCanonicalValue(tx.body),
@@ -310,34 +386,67 @@ export const encodeMidgardNativeTxCanonical = (
   ]);
 };
 
-export const decodeMidgardNativeTxCanonical = (
+const encodeMidgardNativeTxCanonicalEnvelope = (
+  tx: MidgardNativeTxCanonical,
+): Buffer =>
+  encodeCbor([
+    requireNativeTxVersion(tx.version, "transaction.version"),
+    encodeNativeTxBodyCanonicalValue(tx.body),
+    encodeNativeTxWitnessSetCanonicalValue(tx.version, tx.witnessSet),
+    encodeValidityCode(tx.validity),
+  ]);
+
+/**
+ * Decodes the exact outer native-V1 transaction envelope for fraud evidence.
+ *
+ * Unlike {@link decodeMidgardNativeTxCanonical}, this boundary deliberately
+ * keeps the nine committed field-preimage byte strings opaque. It exists so a
+ * watcher can authenticate and prove a block whose operator committed a
+ * malformed §5.1 field envelope. The outer transaction/body/witness records,
+ * version, scalar fields, hashes and CBOR encoding remain strict and canonical;
+ * normal transaction admission must continue to use the strict decoder below.
+ */
+export const decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidence = (
   bytes: Uint8Array,
 ): MidgardNativeTxCanonical => {
-  const decoded = decodeSingleCbor(bytes);
-  const v = asFixedArray(decoded, 4, "transaction");
-  const version = decodeVersion(v[0], "transaction[0]");
-  return {
+  const source = Buffer.from(bytes);
+  const decoded = decodeSingleCbor(source);
+  const value = asFixedArray(decoded, 4, "transaction");
+  const version = requireNativeTxVersion(value[0], "transaction[0]");
+  const tx: MidgardNativeTxCanonical = {
     version,
-    body: decodeNativeTxBodyCanonicalValue(v[1], "transaction[1]"),
+    body: decodeNativeTxBodyCanonicalValue(value[1], "transaction[1]"),
     witnessSet: decodeNativeTxWitnessSetCanonicalValue(
-      v[2],
+      value[2],
       "transaction[2]",
       version,
     ),
-    validity: decodeValidityCode(v[3], "transaction[3]"),
+    validity: decodeValidityCode(value[3], "transaction[3]"),
   };
+  if (!encodeMidgardNativeTxCanonicalEnvelope(tx).equals(source)) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.CborDecode,
+      "fault-evidence transaction envelope is not canonical CBOR",
+    );
+  }
+  return tx;
+};
+
+export const decodeMidgardNativeTxCanonical = (
+  bytes: Uint8Array,
+): MidgardNativeTxCanonical => {
+  const tx = decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidence(bytes);
+  validateMidgardNativeTxCanonical(tx);
+  return tx;
 };
 
 export const decodeMidgardNativeTxFullFromCanonicalCbor = (
   bytes: Uint8Array,
-  options: MidgardNativeCodecOptions = {},
 ): MidgardNativeTxFull => {
   const tx = materializeMidgardNativeTxFromCanonical(
     decodeMidgardNativeTxCanonical(bytes),
   );
-  if (options.enforceConsistency !== false) {
-    verifyMidgardNativeTxFullConsistency(tx);
-  }
+  verifyMidgardNativeTxFullConsistency(tx);
   return tx;
 };
 
@@ -345,18 +454,390 @@ export const computeMidgardNativeTxId = (
   tx: MidgardNativeTxFull | MidgardNativeTxCompact,
 ): Buffer => {
   const compact = "compact" in tx ? tx.compact : tx;
+  const version = requireNativeTxVersion(
+    compact.version,
+    "transaction_compact.version",
+  );
+  const bodyCbor = encodeMidgardNativeTxBodyCompact(compact.transactionBody);
   return computeHash32(
-    encodeMidgardNativeTxBodyCompact(compact.transactionBody),
+    Buffer.concat([
+      Buffer.from("MidgardNativeTxBodyV1", "ascii"),
+      encodeCbor(version),
+      bodyCbor,
+    ]),
   );
 };
 
+const MIDGARD_NATIVE_TX_FULL_HASH_DOMAIN = Buffer.from(
+  "MidgardNativeTxFullV1",
+  "ascii",
+);
+
+/**
+ * Commits already-validated canonical V1 transaction bytes without decoding
+ * or normalizing them. Admission persistence uses this form so an integrity
+ * check commits the exact bytes that crossed the strict ingress boundary.
+ */
+export const computeMidgardNativeTxFullHashFromCanonicalCbor = (
+  canonicalTransactionCbor: Uint8Array,
+): Buffer =>
+  computeHash32(
+    Buffer.concat([
+      MIDGARD_NATIVE_TX_FULL_HASH_DOMAIN,
+      encodeCbor(MIDGARD_NATIVE_TX_VERSION),
+      Buffer.from(canonicalTransactionCbor),
+    ]),
+  );
+
+/**
+ * Commits the exact canonical V1 full transaction, including all witness
+ * preimages. This is distinct from the transaction id, which intentionally
+ * identifies the compact body.
+ */
+export const computeMidgardNativeTxFullHash = (
+  tx: MidgardNativeTxFull,
+): Buffer => {
+  if (tx.version !== MIDGARD_NATIVE_TX_VERSION) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "Full transaction commitment requires native transaction V1",
+      `actual=${tx.version.toString()}`,
+    );
+  }
+  const canonicalCbor = encodeMidgardNativeTxCanonical(tx);
+  return computeMidgardNativeTxFullHashFromCanonicalCbor(canonicalCbor);
+};
+
+const MIDGARD_NATIVE_TX_PROOF_SOURCE_DOMAIN = Buffer.from(
+  "MidgardNativeTxProofSourceV1",
+  "ascii",
+);
+
+export const encodeMidgardNativeTxProofSource = (
+  source: MidgardNativeTxProofSource,
+): Buffer =>
+  encodeCbor([
+    Buffer.from(source.compactCbor),
+    Buffer.from(source.witnessSetCompactCbor),
+    Buffer.from(source.fieldPreimageLengthsCbor),
+  ]);
+
+export const decodeMidgardNativeTxProofFieldLengths = (
+  fieldPreimageLengthsCbor: Uint8Array,
+): readonly number[] => {
+  const values = asFixedArray(
+    decodeSingleCbor(fieldPreimageLengthsCbor),
+    9,
+    "proof_source.field_preimage_lengths",
+  );
+  return values.map((value, index) => {
+    const length = asUnsigned(
+      value,
+      `proof_source.field_preimage_lengths[${index.toString()}]`,
+    );
+    if (length > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        "V1 field-preimage length exceeds the exact integer range",
+        `index=${index.toString()},length=${length.toString()}`,
+      );
+    }
+    return Number(length);
+  });
+};
+
+/**
+ * The nine field-preimage byte lengths **in `docs/spec/midgard-tx.md` §2.4 wire
+ * order** — which is not the record's declaration order.
+ *
+ * §2.4 places `script_witnesses` at wire position 6 and `address_witnesses` at
+ * 7, transposed relative to `NativeTxFieldPreimageLengthsV1`, which declares
+ * address before script. Both twins already agree on this and MUST NOT change
+ * it, so this is where the transposition lives on the TypeScript side and the
+ * only place it can be observed: `encodeMidgardNativeTxProofFieldLengths`
+ * below takes an already-ordered array and cannot express it.
+ *
+ * Exported so the §2.4 cross-language golden vector can drive this function
+ * rather than a positional array — a vector that only re-serialises nine
+ * numbers proves array order, not wire order, and would still pass with the two
+ * witness slots swapped.
+ */
+export const midgardNativeTxProofFieldPreimageLengths = ({
+  body,
+  witnessSet,
+}: {
+  readonly body: MidgardNativeTxBodyCanonical;
+  readonly witnessSet: MidgardNativeTxWitnessSetCanonical;
+}): readonly number[] => [
+  body.spendInputsPreimageCbor.length,
+  body.referenceInputsPreimageCbor.length,
+  body.outputsPreimageCbor.length,
+  body.requiredObserversPreimageCbor.length,
+  body.requiredSignersPreimageCbor.length,
+  body.mintPreimageCbor.length,
+  witnessSet.scriptTxWitsPreimageCbor.length,
+  witnessSet.addrTxWitsPreimageCbor.length,
+  witnessSet.redeemerTxWitsPreimageCbor.length,
+];
+
+const proofFieldPreimageLengths = (
+  tx: MidgardNativeTxFull,
+): readonly number[] =>
+  midgardNativeTxProofFieldPreimageLengths({
+    body: tx.body,
+    witnessSet: tx.witnessSet,
+  });
+
+export const encodeMidgardNativeTxProofFieldLengths = (
+  lengths: readonly number[],
+): Buffer => {
+  if (
+    lengths.length !== 9 ||
+    lengths.some((length) => !Number.isSafeInteger(length) || length < 0)
+  ) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "V1 field-preimage lengths must contain exactly nine non-negative safe integers",
+    );
+  }
+  return encodeCbor(lengths.map((length) => BigInt(length)));
+};
+
+export const computeMidgardNativeTxCanonicalSizeFromProofSource = (
+  source: MidgardNativeTxProofSource,
+): number => {
+  const compact = decodeMidgardNativeTxCompact(source.compactCbor);
+  const lengths = decodeMidgardNativeTxProofFieldLengths(
+    source.fieldPreimageLengthsCbor,
+  );
+  return encodeCbor([
+    compact.version,
+    [
+      Buffer.alloc(lengths[0]!),
+      Buffer.alloc(lengths[1]!),
+      Buffer.alloc(lengths[2]!),
+      compact.transactionBody.fee,
+      compact.transactionBody.validityIntervalStart,
+      compact.transactionBody.validityIntervalEnd,
+      Buffer.alloc(lengths[3]!),
+      Buffer.alloc(lengths[4]!),
+      Buffer.alloc(lengths[5]!),
+      compact.transactionBody.scriptIntegrityHash,
+      compact.transactionBody.auxiliaryDataHash,
+      compact.transactionBody.networkId,
+    ],
+    [
+      Buffer.alloc(lengths[7]!),
+      Buffer.alloc(lengths[6]!),
+      Buffer.alloc(lengths[8]!),
+    ],
+    encodeValidityCode(compact.validity),
+  ]).length;
+};
+
+export const computeMidgardNativeTxProofCommitment = (
+  source: MidgardNativeTxProofSource,
+): Buffer =>
+  computeHash32(
+    Buffer.concat([
+      MIDGARD_NATIVE_TX_PROOF_SOURCE_DOMAIN,
+      encodeCbor(1n),
+      encodeMidgardNativeTxProofSource(source),
+    ]),
+  );
+
+export const deriveMidgardNativeTxProofSource = (
+  tx: MidgardNativeTxFull,
+): MidgardNativeTxProofSource => {
+  if (tx.version !== MIDGARD_NATIVE_TX_VERSION) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "V1 transaction sources require native transaction version 1",
+      `actual=${tx.version.toString()}`,
+    );
+  }
+  verifyMidgardNativeTxFullConsistency(tx);
+  return {
+    compactCbor: encodeMidgardNativeTxCompact(tx.compact),
+    witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+      deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet),
+    ),
+    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(
+      proofFieldPreimageLengths(tx),
+    ),
+  };
+};
+
+export const deriveMidgardNativeTxProofSourceFromCanonicalCbor = (
+  canonicalTransactionCbor: Uint8Array,
+): MidgardNativeTxProofSource =>
+  deriveMidgardNativeTxProofSource(
+    decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTransactionCbor),
+  );
+
+export type MidgardNativeTxFaultEvidenceMaterial = Readonly<{
+  canonical: MidgardNativeTxCanonical;
+  compact: MidgardNativeTxCompact;
+  transactionId: Buffer;
+  proofSource: MidgardNativeTxProofSource;
+  fieldPreimages: readonly Buffer[];
+}>;
+
+/**
+ * Derives the one canonical compact/source identity from a raw fault-evidence
+ * envelope without first accepting the nine inner field grammars.
+ */
+export const deriveMidgardNativeTxFaultEvidenceMaterial = (
+  canonicalTransactionCbor: Uint8Array,
+): MidgardNativeTxFaultEvidenceMaterial => {
+  const canonical = decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidence(
+    canonicalTransactionCbor,
+  );
+  const compact = deriveMidgardNativeTxCompact(
+    canonical.body,
+    canonical.witnessSet,
+    canonical.validity,
+    canonical.version,
+  );
+  const witnessSetCompact = deriveMidgardNativeTxWitnessSetCompact(
+    canonical.witnessSet,
+  );
+  const proofSource: MidgardNativeTxProofSource = {
+    compactCbor: encodeMidgardNativeTxCompact(compact),
+    witnessSetCompactCbor:
+      encodeMidgardNativeTxWitnessSetCompact(witnessSetCompact),
+    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(
+      midgardNativeTxProofFieldPreimageLengths(canonical),
+    ),
+  };
+  return Object.freeze({
+    canonical,
+    compact,
+    transactionId: computeMidgardNativeTxId(compact),
+    proofSource,
+    fieldPreimages: Object.freeze([
+      Buffer.from(canonical.body.spendInputsPreimageCbor),
+      Buffer.from(canonical.body.referenceInputsPreimageCbor),
+      Buffer.from(canonical.body.outputsPreimageCbor),
+      Buffer.from(canonical.body.requiredObserversPreimageCbor),
+      Buffer.from(canonical.body.requiredSignersPreimageCbor),
+      Buffer.from(canonical.body.mintPreimageCbor),
+      Buffer.from(canonical.witnessSet.scriptTxWitsPreimageCbor),
+      Buffer.from(canonical.witnessSet.addrTxWitsPreimageCbor),
+      Buffer.from(canonical.witnessSet.redeemerTxWitsPreimageCbor),
+    ]),
+  });
+};
+
+/**
+ * Stamps the operator's adjudicated validity onto a decoded transaction —
+ * both the canonical scalar and its compact twin, so the result still
+ * satisfies {@link verifyMidgardNativeTxFullConsistency}.
+ *
+ * A forced-inclusion leaf must carry the operator's verdict in its embedded
+ * validity scalar (§2.4.3(e) bit equality), while admission requires every
+ * submitted transaction to claim `TxIsValid`. Every producer or verifier of a
+ * forced-source triple therefore adjudicates through this one helper before
+ * deriving the proof source, so the committed bytes cannot drift between the
+ * leaf, the validation-machine states, and DA reconstruction. `tx_id` hashes
+ * the body only and is invariant under adjudication.
+ */
+export const adjudicateMidgardNativeTxFullValidity = (
+  tx: MidgardNativeTxFull,
+  validity: MidgardTxValidity,
+): MidgardNativeTxFull =>
+  tx.validity === validity && tx.compact.validity === validity
+    ? tx
+    : {
+        ...tx,
+        validity,
+        compact: { ...tx.compact, validity },
+      };
+
+export const verifyMidgardNativeTxProofSource = ({
+  transactionId,
+  source,
+}: {
+  readonly transactionId: Uint8Array;
+  readonly source: MidgardNativeTxProofSource;
+}): MidgardNativeTxCompact => {
+  const compact = decodeMidgardNativeTxCompact(source.compactCbor);
+  const canonicalCompact = encodeMidgardNativeTxCompact(compact);
+  if (!canonicalCompact.equals(source.compactCbor)) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "V1 compact transaction source is not canonical",
+    );
+  }
+  if (compact.version !== MIDGARD_NATIVE_TX_VERSION) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "V1 compact transaction source has an unsupported native version",
+      `actual=${compact.version.toString()}`,
+    );
+  }
+  const witnessSetCompact = decodeMidgardNativeTxWitnessSetCompact(
+    source.witnessSetCompactCbor,
+  );
+  const canonicalWitnessSetCompact =
+    encodeMidgardNativeTxWitnessSetCompact(witnessSetCompact);
+  if (!canonicalWitnessSetCompact.equals(source.witnessSetCompactCbor)) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "V1 compact witness-set source is not canonical",
+    );
+  }
+  const expectedWitnessSetHash = computeHash32(canonicalWitnessSetCompact);
+  if (!expectedWitnessSetHash.equals(compact.transactionWitnessSetHash)) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.HashMismatch,
+      "V1 compact witness set does not match the transaction source",
+    );
+  }
+  const fieldLengths = decodeMidgardNativeTxProofFieldLengths(
+    source.fieldPreimageLengthsCbor,
+  );
+  const canonicalFieldLengths =
+    encodeMidgardNativeTxProofFieldLengths(fieldLengths);
+  if (!canonicalFieldLengths.equals(source.fieldPreimageLengthsCbor)) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "V1 field-preimage lengths are not canonical",
+    );
+  }
+  const expectedTransactionId = computeMidgardNativeTxId(compact);
+  if (!expectedTransactionId.equals(transactionId)) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.HashMismatch,
+      "V1 compact transaction does not match the transaction id",
+    );
+  }
+  return compact;
+};
+
+/**
+ * §5.1's one uniform byte-list decode, which all nine fields share.
+ *
+ * Under the retired counted scheme this was a general `asArray`/`asBytes` pass
+ * that accepted any CBOR array of byte strings. §5.1 is narrower and fails
+ * closed: a non-minimal array or item header, an item count that disagrees with
+ * the walked content, and trailing bytes after item `N-1` all reject. Routing
+ * this through the one §5.1 decoder is what makes the loose reader and the
+ * field-access door agree on which byte forms exist.
+ */
 export const decodeMidgardNativeByteListPreimage = (
   preimageCbor: Uint8Array,
   fieldName = "preimage_cbor",
 ): Buffer[] => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  const arr = asArray(decoded, fieldName);
-  return arr.map((item, index) => asBytes(item, `${fieldName}[${index}]`));
+  try {
+    return [...decodeMidgardFieldPreimage(preimageCbor)];
+  } catch (error) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.CborDecode,
+      `${fieldName} is not a canonical §5.1 field preimage`,
+      String(error),
+    );
+  }
 };
 
 export const cardanoTxBytesToMidgardNativeTxFull = (
@@ -479,17 +960,38 @@ const decodeNativeObserversToWithdrawals = (
   return withdrawals;
 };
 
+/**
+ * §5.3 fields 0/1 read back into CML.
+ *
+ * The item cannot be handed to `CML.TransactionInput.from_cbor_bytes` directly:
+ * §5.3 fixes the output index at the 3-byte `19 XXXX` form, which is not
+ * minimal CBOR, so CML's strict reader refuses it. The item is decoded through
+ * the §5.3 twin and the input rebuilt from its two parts.
+ */
 const decodeNativeInputsToCardano = (
   preimageCbor: Uint8Array,
   fieldName: string,
 ): CML.TransactionInputList => {
-  const inputBytes = decodeMidgardNativeByteListPreimage(
-    preimageCbor,
-    fieldName,
-  );
   const inputs = CML.TransactionInputList.new();
-  for (let i = 0; i < inputBytes.length; i++) {
-    inputs.add(CML.TransactionInput.from_cbor_bytes(inputBytes[i]));
+  for (const item of decodeMidgardFieldPreimage(preimageCbor)) {
+    let input;
+    try {
+      input = decodeMidgardSpendInputItem(item);
+    } catch (error) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.CborDecode,
+        `${fieldName} item is not a canonical §5.3 input`,
+        String(error),
+      );
+    }
+    // The Cardano side re-minimises the index on its own, which is correct — it
+    // is a Cardano input now, not a Midgard field item.
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_raw_bytes(input.txId),
+        BigInt(input.outputIndex),
+      ),
+    );
   }
   return inputs;
 };
@@ -638,61 +1140,26 @@ const valueFromMultiasset = (multiasset: CML.MultiAsset): CML.Value =>
 export const decodeMidgardNativeMint = (
   preimageCbor: Uint8Array,
 ): DecodedMidgardNativeMint | undefined => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded)) {
-    if (decoded.length === 0) {
-      return undefined;
-    }
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.InvalidFieldType,
-      "Midgard mint preimage must be an empty array or a CBOR map",
-      "native.mint",
-    );
-  }
-
-  const policies = asMap(decoded, "native.mint");
-  if (policies.size === 0) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.InvalidFieldType,
-      "Midgard mint map cannot be empty",
-      "native.mint",
-    );
+  // §5.6: field 5 is the enveloped list of per-policy items. The decoder checks
+  // policy-id and asset-name ordering and rejects duplicates, so CML never sees
+  // a mint the committed bytes did not canonically spell. An empty field is
+  // exactly `80`, like every other field — the retired raw-map form spelled it
+  // `a0` and is prohibited.
+  const items = decodeMidgardFieldItems(5, preimageCbor).items;
+  if (items.length === 0) {
+    return undefined;
   }
 
   const mint = CML.Mint.new();
-  for (const [policyBytesValue, assetsValue] of policies.entries()) {
-    const policyBytes = asBytes(policyBytesValue, "native.mint.policy");
-    if (policyBytes.length !== 28) {
-      throw new MidgardTxCodecError(
-        MidgardTxCodecErrorCodes.InvalidFieldType,
-        "Mint policy id must be 28 bytes",
-        "native.mint.policy",
-      );
-    }
-
-    const assetsMap = asMap(assetsValue, "native.mint.assets");
-    if (assetsMap.size === 0) {
-      throw new MidgardTxCodecError(
-        MidgardTxCodecErrorCodes.InvalidFieldType,
-        "Mint policy asset map cannot be empty",
-        "native.mint.assets",
-      );
-    }
+  for (const item of items) {
     const assets = CML.MapAssetNameToNonZeroInt64.new();
-    for (const [assetNameValue, quantityValue] of assetsMap.entries()) {
-      const assetName = asBytes(assetNameValue, "native.mint.asset_name");
-      const quantity = asSigned(quantityValue, "native.mint.quantity");
-      if (quantity === 0n) {
-        throw new MidgardTxCodecError(
-          MidgardTxCodecErrorCodes.InvalidFieldType,
-          "Mint quantity cannot be zero",
-          "native.mint.quantity",
-        );
-      }
-      assets.insert(CML.AssetName.from_raw_bytes(assetName), quantity);
+    for (const asset of item.assets) {
+      assets.insert(
+        CML.AssetName.from_raw_bytes(asset.assetName),
+        asset.quantity,
+      );
     }
-
-    mint.insert_assets(CML.ScriptHash.from_raw_bytes(policyBytes), assets);
+    mint.insert_assets(CML.ScriptHash.from_raw_bytes(item.policyId), assets);
   }
 
   const policyIds = Array.from({ length: mint.keys().len() }, (_, index) =>
@@ -710,15 +1177,23 @@ export const decodeMidgardNativeMint = (
 const decodeNativeRedeemersToCardano = (
   preimageCbor: Uint8Array,
 ): CML.Redeemers | undefined => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded) && decoded.length === 0) {
-    return undefined;
-  }
-  return CML.Redeemers.from_cbor_bytes(preimageCbor);
+  return midgardRedeemersToCardano(preimageCbor);
 };
 
 export type MidgardToCardanoTxEncodingOptions = {
   readonly omitVkeyWitnesses?: boolean;
+};
+
+export const assertNativePosixTimeOrNone = (
+  value: bigint,
+  fieldName: string,
+): bigint => {
+  if (value < MIDGARD_POSIX_TIME_NONE) {
+    throw new Error(
+      `${fieldName} must be ${MIDGARD_POSIX_TIME_NONE.toString(10)} or a nonnegative POSIX time`,
+    );
+  }
+  return value;
 };
 
 export const midgardNativeTxFullToCardanoTxEncoding = (
@@ -746,11 +1221,19 @@ export const midgardNativeTxFullToCardanoTxEncoding = (
     body.set_reference_inputs(referenceInputs);
   }
 
-  if (tx.body.validityIntervalStart !== MIDGARD_POSIX_TIME_NONE) {
-    body.set_validity_interval_start(tx.body.validityIntervalStart);
+  const validityIntervalStart = assertNativePosixTimeOrNone(
+    tx.body.validityIntervalStart,
+    "native.validity_interval_start",
+  );
+  const validityIntervalEnd = assertNativePosixTimeOrNone(
+    tx.body.validityIntervalEnd,
+    "native.validity_interval_end",
+  );
+  if (validityIntervalStart !== MIDGARD_POSIX_TIME_NONE) {
+    body.set_validity_interval_start(validityIntervalStart);
   }
-  if (tx.body.validityIntervalEnd !== MIDGARD_POSIX_TIME_NONE) {
-    body.set_ttl(tx.body.validityIntervalEnd);
+  if (validityIntervalEnd !== MIDGARD_POSIX_TIME_NONE) {
+    body.set_ttl(validityIntervalEnd);
   }
 
   const withdrawals = decodeNativeObserversToWithdrawals(

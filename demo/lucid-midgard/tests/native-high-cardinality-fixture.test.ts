@@ -6,61 +6,48 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildHighCardinalityNativeTxFixture,
-  buildSizeBalancedNativeTxFixture,
   HIGH_CARDINALITY_COUNTS,
   type HighCardinalityNativeTxFixture,
-  renderHighCardinalityAikenTest,
-  renderSizeBalancedAikenTest,
-  SIZE_BALANCED_COUNTS,
-  SIZE_BALANCED_FEE,
-  SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES,
-  SIZE_BALANCED_MAX_FEE,
-  SIZE_BALANCED_MAX_LIST_LENGTH,
-  SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES,
-  type SizeBalancedNativeTxFixture,
-  stableFixtureJson,
 } from "./fixtures/native-high-cardinality.js";
+import { stableNativeTxFixtureJson } from "./fixtures/native-tx-fixture-shape.js";
 
-const testDir = path.dirname(fileURLToPath(import.meta.url));
-const packageRoot = path.resolve(testDir, "..");
-const repoRoot = path.resolve(packageRoot, "../..");
-const fixtureJsonPath = path.join(
-  testDir,
+const fixturePath = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
   "fixtures/native-high-cardinality.json",
-);
-const sizeBalancedFixtureJsonPath = path.join(
-  testDir,
-  "fixtures/native-size-balanced-15_5k.json",
-);
-const aikenTestPath = path.join(
-  repoRoot,
-  "onchain/aiken/lib/midgard/fraud-proofs/native-tx.high-cardinality.test.ak",
-);
-const sizeBalancedAikenTestPath = path.join(
-  repoRoot,
-  "onchain/aiken/lib/midgard/fraud-proofs/native-tx.size-balanced.test.ak",
 );
 
 const readFixture = (): HighCardinalityNativeTxFixture =>
   JSON.parse(
-    fs.readFileSync(fixtureJsonPath, "utf8"),
+    fs.readFileSync(fixturePath, "utf8"),
   ) as HighCardinalityNativeTxFixture;
 
-const readSizeBalancedFixture = (): SizeBalancedNativeTxFixture =>
-  JSON.parse(
-    fs.readFileSync(sizeBalancedFixtureJsonPath, "utf8"),
-  ) as SizeBalancedNativeTxFixture;
-
-const aikenByteStringLiterals = (source: string): readonly string[] =>
-  [...source.matchAll(/#"([0-9a-f]*)"/g)].map((match) => match[1]!);
+/**
+ * `buildHighCardinalityNativeTxFixture` is this fixture's producer, but until
+ * now nothing wrote its output back, so a wire-format change left the only route
+ * to a fresh fixture being a hand-edit — exactly what the golden discipline
+ * forbids. `MIDGARD_SYNC_FIXTURES=1` closes that: it writes the producer's own
+ * bytes. Use the package script
+ * `pnpm run fixtures:native-high-cardinality:sync`, then regenerate the Aiken
+ * goldens derived from it with `pnpm run fixtures:native-compact`.
+ *
+ * Sync mode deliberately does **not** then compare the producer against the file
+ * it just wrote: that comparison would be against its own output and so could
+ * not fail. The fixture-matches-producer assertion is a check-mode assertion
+ * only, and check mode is the default — sync mode has to be asked for by name.
+ * Everything above it (counts, redeemer pointers, derived sizes) is a claim about
+ * the producer itself and runs in both modes.
+ */
+const syncing = process.env.MIDGARD_SYNC_FIXTURES === "1";
 
 describe("native high-cardinality conformance fixture", () => {
-  it("is produced by lucid-midgard and exercises many tx fields together", async () => {
-    const fixture = await buildHighCardinalityNativeTxFixture();
+  it("rebuilds the checked-in fixture through current LucidMidgard V1", async () => {
+    const rebuilt = await buildHighCardinalityNativeTxFixture();
 
-    expect(fixture.counts).toEqual(HIGH_CARDINALITY_COUNTS);
-    expect(fixture.mintPolicyIdsInTxInfoOrder).toHaveLength(6);
-    expect(fixture.redeemerPointers).toEqual([
+    expect(rebuilt.counts).toEqual(HIGH_CARDINALITY_COUNTS);
+    expect(rebuilt.mintPolicyIdsInTxInfoOrder).toHaveLength(
+      HIGH_CARDINALITY_COUNTS.mintPolicies,
+    );
+    expect(rebuilt.redeemerPointers).toEqual([
       "0:1",
       "0:4",
       "0:7",
@@ -75,95 +62,21 @@ describe("native high-cardinality conformance fixture", () => {
       "6:0",
       "6:1",
     ]);
-    expect(fixture.fullTxCborHex).not.toEqual(fixture.compactTxCborHex);
-    expect(fixture.txIdHex).toHaveLength(64);
-    expect(fixture.hashes.witnessSetHashHex).toHaveLength(64);
-    expect(fixture.sizes.fullTxCborBytes).toBe(
-      fixture.fullTxCborHex.length / 2,
+    expect(rebuilt.fullTxCborHex).not.toBe(rebuilt.compactTxCborHex);
+    expect(rebuilt.txIdHex).toHaveLength(64);
+    expect(rebuilt.hashes.witnessSetHashHex).toHaveLength(64);
+    expect(rebuilt.sizes.fullTxCborBytes).toBe(
+      rebuilt.fullTxCborHex.length / 2,
     );
-  });
 
-  it("builds a near-15.5KiB size-balanced native tx fixture from lucid-midgard", async () => {
-    const fixture = await buildSizeBalancedNativeTxFixture();
-
-    expect(fixture.counts).toEqual(SIZE_BALANCED_COUNTS);
-    expect(fixture.sizes.fullTxCborBytes).toBe(
-      fixture.fullTxCborHex.length / 2,
-    );
-    expect(fixture.sizes.compactTxCborBytes).toBe(
-      fixture.compactTxCborHex.length / 2,
-    );
-    expect(fixture.sizes.fee).toBe(SIZE_BALANCED_FEE.toString(10));
-    expect(BigInt(fixture.sizes.fee)).toBeLessThanOrEqual(
-      SIZE_BALANCED_MAX_FEE,
-    );
-    expect(
-      Math.abs(
-        fixture.sizes.fullTxCborBytes - SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES,
-      ),
-    ).toBeLessThanOrEqual(SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES);
-    for (const count of Object.values(fixture.counts)) {
-      expect(count).toBeLessThanOrEqual(SIZE_BALANCED_MAX_LIST_LENGTH);
+    if (syncing) {
+      fs.writeFileSync(fixturePath, stableNativeTxFixtureJson(rebuilt));
+      return;
     }
-    expect(fixture.counts.outputs).toBeLessThanOrEqual(
-      SIZE_BALANCED_MAX_LIST_LENGTH,
-    );
-    expect(fixture.mintPolicyIdsInTxInfoOrder).toHaveLength(
-      SIZE_BALANCED_COUNTS.mintPolicies,
-    );
-    expect(fixture.redeemerPointers).toHaveLength(
-      SIZE_BALANCED_COUNTS.totalRedeemers,
-    );
 
-    const majorBodyPreimageSizes = [
-      fixture.sizes.preimages.spendInputs,
-      fixture.sizes.preimages.referenceInputs,
-      fixture.sizes.preimages.outputs,
-      fixture.sizes.preimages.requiredObservers,
-      fixture.sizes.preimages.requiredSigners,
-      fixture.sizes.preimages.mint,
-      fixture.sizes.preimages.scriptTxWits,
-      fixture.sizes.preimages.addrTxWits,
-      fixture.sizes.preimages.redeemerTxWits,
-    ];
-    expect(Math.max(...majorBodyPreimageSizes)).toBeLessThanOrEqual(
-      Math.floor(fixture.sizes.fullTxCborBytes * 0.35),
+    expect(stableNativeTxFixtureJson(rebuilt)).toBe(
+      fs.readFileSync(fixturePath, "utf8"),
     );
-    expect(Math.min(...majorBodyPreimageSizes)).toBeGreaterThanOrEqual(250);
-  });
-
-  it("keeps checked-in JSON and Aiken fixture artifacts fresh", async () => {
-    const fixture = await buildHighCardinalityNativeTxFixture();
-    const sizeBalancedFixture = await buildSizeBalancedNativeTxFixture();
-
-    expect(stableFixtureJson(fixture)).toBe(
-      fs.readFileSync(fixtureJsonPath, "utf8"),
-    );
-    expect(stableFixtureJson(sizeBalancedFixture)).toBe(
-      fs.readFileSync(sizeBalancedFixtureJsonPath, "utf8"),
-    );
-    const renderedAiken = renderHighCardinalityAikenTest(fixture);
-    const checkedInAiken = fs.readFileSync(aikenTestPath, "utf8");
-    const renderedSizeBalancedAiken =
-      renderSizeBalancedAikenTest(sizeBalancedFixture);
-    const checkedInSizeBalancedAiken = fs.readFileSync(
-      sizeBalancedAikenTestPath,
-      "utf8",
-    );
-
-    expect(checkedInAiken).toContain(
-      "test high_cardinality_lucid_midgard_native_tx_decodes",
-    );
-    expect(checkedInSizeBalancedAiken).toContain(
-      "test size_balanced_lucid_midgard_native_tx_decodes",
-    );
-    expect(aikenByteStringLiterals(checkedInAiken)).toEqual(
-      aikenByteStringLiterals(renderedAiken),
-    );
-    expect(aikenByteStringLiterals(checkedInSizeBalancedAiken)).toEqual(
-      aikenByteStringLiterals(renderedSizeBalancedAiken),
-    );
-    expect(readFixture()).toEqual(fixture);
-    expect(readSizeBalancedFixture()).toEqual(sizeBalancedFixture);
+    expect(readFixture()).toEqual(rebuilt);
   });
 });

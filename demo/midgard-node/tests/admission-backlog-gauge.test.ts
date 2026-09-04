@@ -1,29 +1,21 @@
 import { SqlClient } from "@effect/sql";
-import {
-  Deferred,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Ref,
-  Schedule,
-} from "effect";
+import { Deferred, Duration, Effect, Exit, Fiber, Ref, Schedule } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  admissionBacklogGaugeFiber,
   beginAdmissionBacklogRefresh,
   commitAdmissionBacklogSlot,
   completeAdmissionBacklogRefresh,
-  admissionBacklogGaugeFiber,
   noteLocalAdmit,
   readAdmissionBacklogGauge,
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
-} from "@/fibers/admission-backlog-gauge.js";
+} from "../src/fibers/admission-backlog-gauge.js";
 import {
   type AdmissionBacklogGaugeState,
   Globals,
-} from "@/services/globals.js";
+} from "../src/services/globals.js";
 
 describe("admission backlog gauge", () => {
   it("preserves the reported value during refresh and retains interleaved admits", () => {
@@ -131,10 +123,7 @@ describe("admission backlog gauge", () => {
         yield* Effect.yieldNow();
         return yield* Fiber.interrupt(fiber);
       }).pipe(
-        Effect.provideService(
-          SqlClient.SqlClient,
-          {} as SqlClient.SqlClient,
-        ),
+        Effect.provideService(SqlClient.SqlClient, {} as SqlClient.SqlClient),
         Effect.provide(Globals.Default),
       ),
     );

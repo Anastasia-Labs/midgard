@@ -120,12 +120,15 @@ describe("DA attestation transaction builders", () => {
 const HEADER_HASH = "01".repeat(28);
 
 const contracts: DaAttestationValidatorSet = {
+  hubOracle: validator("99".repeat(28), "addr_test1huboracle"),
+  availabilityChallenge: validator("ee".repeat(28), "addr_test1availability"),
   daAttestation: validator("aa".repeat(28), "addr_test1daattestation"),
   daParamsGovernor: validator("bb".repeat(28), "addr_test1daparams"),
-  stateQueue: validator("cc".repeat(28), "addr_test1statequeue"),
+  stateQueue: stateQueueValidator("cc".repeat(28), "addr_test1statequeue"),
 };
 
 const referenceScripts: DaAttestationReferenceScripts = {
+  availabilityChallengeMinting: utxo("08", 0),
   daAttestationMinting: utxo("04", 0),
   daAttestationSpending: utxo("05", 0),
   stateQueueMinting: utxo("06", 0),
@@ -134,11 +137,49 @@ const referenceScripts: DaAttestationReferenceScripts = {
 
 const baseAttestationDatum = (): SDK.DaAttestationDatum => ({
   header_hash: HEADER_HASH,
+  availability_commitment: SDK.buildDaAvailabilityCommitment({
+    deploymentIdentity: "99".repeat(28),
+    headerHash: HEADER_HASH,
+    payload: Buffer.from("public retained DA"),
+    bondOwner: "76".repeat(28),
+    responseGeometry: SDK.availabilityResponseGeometry({
+      chunkByteLength: 14_020,
+      trancheByteLength: 4 * 1_024 * 1_024,
+      maxTrancheCount: 16,
+    }),
+  }),
   da_threshold: 2n,
   committee_signers_hash: "02".repeat(32),
+  rescue_beneficiary: {
+    paymentCredential: { PublicKeyCredential: ["56".repeat(28)] },
+    stakeCredential: null,
+  },
   attested_signers: "00".repeat(32),
   attestation_count: 0n,
 });
+
+function stateQueueValidator(
+  policyId: string,
+  spendingScriptAddress: string,
+): DaAttestationValidatorSet["stateQueue"] {
+  const yieldValidator = (
+    role: string,
+  ): DaAttestationValidatorSet["stateQueue"]["yields"]["commit"] => ({
+    withdrawalScriptCBOR: "",
+    withdrawalScript: { type: "PlutusV3", script: "00" } as never,
+    withdrawalScriptHash: role,
+  });
+  return {
+    ...validator(policyId, spendingScriptAddress),
+    yields: {
+      commit: yieldValidator("c1".repeat(28)),
+      unattestedTimeout: yieldValidator("c2".repeat(28)),
+      unavailableTimeout: yieldValidator("c3".repeat(28)),
+      fraudRemoval: yieldValidator("c4".repeat(28)),
+      merge: yieldValidator("c5".repeat(28)),
+    },
+  };
+}
 
 function validator(
   policyId: string,

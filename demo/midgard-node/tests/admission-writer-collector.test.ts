@@ -1,20 +1,22 @@
 import { createHash } from "node:crypto";
 
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { it } from "@effect/vitest";
 import { Deferred, Duration, Effect, Fiber, Ref, TestClock } from "effect";
 import { describe, expect } from "vitest";
 
-import * as TxAdmissionsDB from "@/database/txAdmissions.js";
+import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import {
   ADMISSION_WRITE_BATCH_DEADLINE_MS,
   ADMISSION_WRITE_BATCH_MAX_ROWS,
   ADMISSION_WRITE_BATCH_TARGET_ROWS,
   makeAdmissionWriterWithOptions,
-} from "@/services/admission-writer.js";
+} from "../src/services/admission-writer.js";
 
 const request = (label: string): TxAdmissionsDB.ReservedAdmissionRequest => ({
   txId: createHash("sha256").update(`collector:${label}`).digest(),
   txCanonicalCbor: Buffer.from(label),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   submitSource: "native",
 });
 

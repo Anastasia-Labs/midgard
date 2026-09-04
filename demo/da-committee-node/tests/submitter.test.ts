@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   type LucidEvolution,
@@ -23,28 +24,13 @@ import {
 import { tempDir } from "./helpers.js";
 
 describe("L1 submitter helpers", () => {
-  it("classifies expected, empty, and foreign DA attestation markers", () => {
-    expect(
-      classifyDaAttestationMarker("", contracts.daAttestation.policyId),
-    ).toEqual({ kind: "unattested" });
-    expect(
-      classifyDaAttestationMarker(
-        contracts.daAttestation.policyId.toUpperCase(),
-        contracts.daAttestation.policyId,
-      ),
-    ).toEqual({
-      kind: "already_attested_expected",
-      policyId: contracts.daAttestation.policyId,
+  it("classifies unattested and attested DA availability statuses", () => {
+    expect(classifyDaAttestationMarker(SDK.NO_DA_ATTESTATION)).toEqual({
+      kind: "unattested",
     });
-    expect(
-      classifyDaAttestationMarker(
-        "ff".repeat(28),
-        contracts.daAttestation.policyId,
-      ),
-    ).toEqual({
-      kind: "already_attested_foreign",
-      policyId: "ff".repeat(28),
-      expectedPolicyId: contracts.daAttestation.policyId,
+    expect(classifyDaAttestationMarker(attestedStatus())).toEqual({
+      kind: "already_attested_expected",
+      availabilityKind: "Attested",
     });
   });
 
@@ -480,13 +466,16 @@ describe("L1 submitter helpers", () => {
       lucid: {} as LucidEvolution,
       contracts,
       referenceScripts: {} as never,
+      availabilityParameters,
       postSubmitVerificationRetryCount: 1,
       postSubmitVerificationDelayMs: 0,
     });
     const probe = submitter as unknown as SubmitterProbe;
-    const states = ["", contracts.daAttestation.policyId];
+    const states = [SDK.NO_DA_ATTESTATION, attestedStatus()];
     probe.findStateQueueHeader = async () => ({
-      stateQueueNode: { da_attestation: states.shift() ?? "" },
+      stateQueueNode: {
+        da_attestation: states.shift() ?? SDK.NO_DA_ATTESTATION,
+      },
     });
 
     await expect(
@@ -500,6 +489,7 @@ describe("L1 submitter helpers", () => {
       lucid: {} as LucidEvolution,
       contracts,
       referenceScripts: {} as never,
+      availabilityParameters,
       signSubmit: async () => {
         signCalls += 1;
         return "txhash";
@@ -507,7 +497,7 @@ describe("L1 submitter helpers", () => {
     });
     const probe = submitter as unknown as SubmitterProbe;
     probe.findStateQueueHeader = async () => ({
-      stateQueueNode: { da_attestation: contracts.daAttestation.policyId },
+      stateQueueNode: { da_attestation: attestedStatus() },
     });
 
     await expect(
@@ -521,37 +511,84 @@ describe("L1 submitter helpers", () => {
     expect(signCalls).toBe(0);
   });
 
-  it("rejects apply verification for an unexpected attestation policy", async () => {
+  it("rejects apply verification while the state-queue node stays unattested", async () => {
     const submitter = new LucidDaAttestationSubmitter({
       lucid: {} as LucidEvolution,
       contracts,
       referenceScripts: {} as never,
+      availabilityParameters,
       postSubmitVerificationRetryCount: 0,
       postSubmitVerificationDelayMs: 0,
     });
     const probe = submitter as unknown as SubmitterProbe;
     probe.findStateQueueHeader = async () => ({
-      stateQueueNode: { da_attestation: "ff".repeat(28) },
+      stateQueueNode: { da_attestation: SDK.NO_DA_ATTESTATION },
     });
 
     await expect(probe.waitForApplied("01".repeat(28))).rejects.toThrow(
-      /unexpected policy/,
+      /did not show DA attestation policy/,
     );
   });
 });
 
 type SubmitterProbe = {
   findStateQueueHeader(headerHash: string): Promise<{
-    readonly stateQueueNode: { readonly da_attestation: string };
+    readonly stateQueueNode: {
+      readonly da_attestation: SDK.DaAvailabilityStateQueueStatus;
+    };
   }>;
   waitForApplied(headerHash: string): Promise<void>;
 };
 
+const attestedStatus = (): SDK.DaAvailabilityStateQueueStatus => ({
+  Attested: { da_bond_asset_name: "aa".repeat(32) },
+});
+
+const availabilityParameters = SDK.daAvailabilityParameters({
+  responseGeometry: SDK.availabilityResponseGeometry({
+    chunkByteLength: 14_020,
+    trancheByteLength: 4 * 1_024 * 1_024,
+    maxTrancheCount: 16,
+  }),
+  daBondLovelace: 10_000_000_000n,
+  challengerBondLovelace: 10_000_000_000n,
+  maxOpenFeeLovelace: 500_000n,
+  maxPublicationFeeLovelace: 500_000n,
+  maxSettlementFeeLovelace: 500_000n,
+  maxCloseFeeLovelace: 1_000_000n,
+  maxTimeoutFeeLovelace: 1_200_000n,
+});
+
 const contracts: DaAttestationValidatorSet = {
+  hubOracle: validator("99".repeat(28), "addr_test1huboracle"),
+  availabilityChallenge: validator("ee".repeat(28), "addr_test1availability"),
   daAttestation: validator("aa".repeat(28), "addr_test1daattestation"),
   daParamsGovernor: validator("bb".repeat(28), "addr_test1daparams"),
-  stateQueue: validator("cc".repeat(28), "addr_test1statequeue"),
+  stateQueue: stateQueueValidator("cc".repeat(28), "addr_test1statequeue"),
 };
+
+function stateQueueValidator(
+  policyId: string,
+  spendingScriptAddress: string,
+): DaAttestationValidatorSet["stateQueue"] {
+  const yieldValidator = (
+    role: string,
+  ): DaAttestationValidatorSet["stateQueue"]["yields"]["commit"] => ({
+    withdrawalScriptCBOR: "",
+    withdrawalScript: { type: "PlutusV3", script: "00" } as never,
+    withdrawalScriptHash: role,
+  });
+  return {
+    ...validator(policyId, spendingScriptAddress),
+    yields: {
+      commit: yieldValidator("c1".repeat(28)),
+      unattestedTimeout: yieldValidator("c2".repeat(28)),
+      unavailableTimeout: yieldValidator("c3".repeat(28)),
+      fraudRemoval: yieldValidator("c4".repeat(28)),
+      merge: yieldValidator("c5".repeat(28)),
+    },
+  };
+}
 
 function validator(
   policyId: string,

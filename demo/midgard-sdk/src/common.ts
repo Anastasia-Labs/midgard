@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Credential,
@@ -21,6 +22,7 @@ import {
   LucidError,
   UnauthenticUtxoError,
 } from "./errors.js";
+import type { FaultProofContractChains } from "./fraud-proof/contracts/index.js";
 import { getStateToken } from "./internals.js";
 import { RetiredOperatorUTxO } from "./retired-operators.js";
 
@@ -79,6 +81,13 @@ const validateProviderUtxos = (value: unknown): UTxO[] => {
 /**
  * Silently drops the UTxOs without proper authentication NFTs.
  */
+const addressOrCredentialLabel = (
+  addressOrCred: Address | Credential,
+): string =>
+  typeof addressOrCred === "string"
+    ? addressOrCred
+    : `${addressOrCred.type}:${addressOrCred.hash}`;
+
 export const utxosAtByNFTPolicyId = (
   lucid: LucidEvolution,
   addressOrCred: Address | Credential,
@@ -88,10 +97,18 @@ export const utxosAtByNFTPolicyId = (
     const providerResult: unknown = yield* Effect.tryPromise({
       // Lucid 0.6 provides a provider-neutral policy query with a native
       // Kupmios fast path and a correct address-wide fallback.
-      try: () => lucid.utxosAtWithPolicy(addressOrCred, policyId),
+      try: () =>
+        (
+          lucid as unknown as {
+            utxosAtWithPolicy(
+              address: Address | Credential,
+              policy: PolicyId,
+            ): Promise<unknown>;
+          }
+        ).utxosAtWithPolicy(addressOrCred, policyId),
       catch: (e) => {
         return new LucidError({
-          message: `Failed to fetch UTxOs at: ${addressOrCred}`,
+          message: `Failed to fetch UTxOs at: ${addressOrCredentialLabel(addressOrCred)}`,
           cause: e,
         });
       },
@@ -100,7 +117,7 @@ export const utxosAtByNFTPolicyId = (
       try: () => validateProviderUtxos(providerResult),
       catch: (e) =>
         new LucidError({
-          message: `Failed to fetch UTxOs at: ${addressOrCred}`,
+          message: `Failed to fetch UTxOs at: ${addressOrCredentialLabel(addressOrCred)}`,
           cause: e,
         }),
     });
@@ -133,7 +150,7 @@ export const utxosAtByNFTPolicyId = (
     Effect.catchAllDefect(
       (d) =>
         new LucidError({
-          message: `Unexpected error while fetching UTxOs at: ${addressOrCred}`,
+          message: `Unexpected error while fetching UTxOs at: ${addressOrCredentialLabel(addressOrCred)}`,
           cause: d,
         }),
     ),
@@ -172,7 +189,7 @@ export const bufferToHex = (buf: Buffer): string => buf.toString("hex");
 
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
-export const H32 = H32Schema as unknown as H32;
+export const H32 = asDataType<H32>(H32Schema);
 
 export type MintingValidator = {
   mintingScriptCBOR: string;
@@ -195,15 +212,141 @@ export type WithdrawalValidator = {
 
 export type AuthenticatedValidator = SpendingValidator & MintingValidator;
 
-// TODO: We'll need a more elaborate design to allow multiple steps for each
-//       proof.
+export type StateQueueYieldValidators = {
+  readonly commit: WithdrawalValidator;
+  readonly unattestedTimeout: WithdrawalValidator;
+  readonly unavailableTimeout: WithdrawalValidator;
+  readonly fraudRemoval: WithdrawalValidator;
+  readonly merge: WithdrawalValidator;
+};
+
+export type StateQueueValidator = AuthenticatedValidator & {
+  readonly yields: StateQueueYieldValidators;
+};
+
+export type ValidationTraceDisputeValidators = SpendingValidator & {
+  readonly source: SpendingValidator;
+  readonly game: SpendingValidator;
+  readonly boundary: SpendingValidator;
+  readonly timeout: SpendingValidator;
+  readonly award: SpendingValidator;
+};
+
 export type FraudProofs = {
   doubleSpend: SpendingValidator;
   nonExistentInput: SpendingValidator;
   nonExistentInputNoIndex: SpendingValidator;
   invalidRange: SpendingValidator;
   transitionTrace: SpendingValidator;
+  /**
+   * V1 stateful dispute game for a transaction-validation trace.
+   */
+  validationTraceDispute: ValidationTraceDisputeValidators;
   zeroInput: SpendingValidator;
+  /**
+   * Q44 `da-hash-preimage`: a committed `transactions_root` leaf whose key is
+   * not the canonical native-V1 transaction id of its own value.
+   */
+  daHashPreimage: SpendingValidator;
+  /**
+   * Q18 `no-reference-input`: a committed transaction reads an input that
+   * never existed in the block's prev ledger and was not produced in-block.
+   */
+  noReferenceInput: SpendingValidator;
+  /**
+   * Q31 `reference-input-no-idx`: a committed transaction reads an output
+   * index its in-block producing transaction never created.
+   */
+  referenceInputNoIdx: SpendingValidator;
+  /**
+   * Q15 `invalid-signature`: a committed transaction's address-witness set
+   * does not authorize one of the inputs it spends.
+   */
+  invalidSignature: SpendingValidator;
+  fabricatedDeposit: SpendingValidator;
+  fabricatedWithdrawal: SpendingValidator;
+  nativeScriptDecoding: SpendingValidator;
+  missingSignature: SpendingValidator;
+  missingNativeScriptTx: SpendingValidator;
+  withdrawnReferenceInput: SpendingValidator;
+  canonicalDecodability: SpendingValidator;
+  committedFieldShape: SpendingValidator;
+  minFee: SpendingValidator;
+  withdrawalMistag: SpendingValidator;
+  doubleWithdraw: SpendingValidator;
+  crossBlockDuplicateEvent: SpendingValidator;
+  l2TxMistag: SpendingValidator;
+  withdrawnInput: SpendingValidator;
+  /**
+   * `value-not-preserved`: a committed ACCEPTED transaction creates strictly
+   * more of some asset than it consumes and mints.
+   */
+  valueNotPreserved: SpendingValidator;
+  /**
+   * `input-set-uniqueness`: a committed ACCEPTED transaction's intra-tx input
+   * sets violate uniqueness/disjointness.
+   */
+  inputSetUniqueness: SpendingValidator;
+  /**
+   * `mint-authorization`: a committed ACCEPTED transaction mints or burns
+   * under a policy that never authorized it.
+   */
+  mintAuthorization: SpendingValidator;
+  /**
+   * Q35 `network-id`: a committed accepted native transaction or one of its
+   * protected output addresses targets a network other than the deployment.
+   */
+  networkId: SpendingValidator;
+  /** Q33: a consumed UTxO requires a native script absent from tx witnesses. */
+  missingNativeScriptUtxo: SpendingValidator;
+  /** Q34: an authenticated native script evaluates false in tx context. */
+  nativeScriptInvalid: SpendingValidator;
+  /** Q27: an accepted output or newly introduced UTxO is below min-Ada. */
+  minAda: SpendingValidator;
+  /** A committed field preimage disagrees with its authenticated byte length. */
+  fieldPreimageLengthMismatch: SpendingValidator;
+  /** A committed field item violates the field-specific width rule. */
+  fieldItemWidthIllegal: SpendingValidator;
+  /** A field-6 native-script witness fails canonical structural decoding. */
+  witnessScriptDecoding: SpendingValidator;
+  /** The script-integrity hash is absent despite an effectful script purpose. */
+  scriptIntegrityHashMissing: SpendingValidator;
+  /** A committed transaction output is not a canonical ledger-output encoding. */
+  transactionOutputNonCanonical: SpendingValidator;
+  /** A spent input resolves to a non-canonical prior ledger output. */
+  resolvedOutputNonCanonical: SpendingValidator;
+  /** A mint policy declares more assets than the protocol limit. */
+  mintDeclaredAssetLimit: SpendingValidator;
+  /** A spent input is not authorized by any valid matching key witness. */
+  spendInputSignerMissing: SpendingValidator;
+  /** A protected output credential has no valid matching key witness. */
+  protectedOutputSignerMissing: SpendingValidator;
+  /** An untagged-network transaction carries a non-empty observer set. */
+  observersForbiddenOnUntaggedNetwork: SpendingValidator;
+  /** The observer field is not in canonical order. */
+  observerOrderInvalid: SpendingValidator;
+  /** A redeemer item is not canonically encoded Plutus Data. */
+  redeemerCanonicity: SpendingValidator;
+  /** A canonical output carries a malformed or over-limit reference script. */
+  outputReferenceScriptDecoding: SpendingValidator;
+  /** A selected native execution source is malformed or over structural limits. */
+  executionSourceScriptDecoding: SpendingValidator;
+  /** A selected, well-formed native execution source evaluates false. */
+  executionNativeScriptInvalid: SpendingValidator;
+  /** A receive purpose selects forbidden Plutus V3 execution. */
+  receivePurposeLanguage: SpendingValidator;
+  /** A committed witness script is not selected by any canonical purpose. */
+  unusedScriptWitness: SpendingValidator;
+  /** A canonical execution purpose has no matching script source. */
+  missingScriptSource: SpendingValidator;
+  /** A canonical Plutus purpose has no matching redeemer pointer. */
+  missingRedeemer: SpendingValidator;
+  /** A committed redeemer pointer is not selected by any execution purpose. */
+  unusedRedeemer: SpendingValidator;
+  /** The committed script-integrity hash differs from the canonical language views. */
+  scriptIntegrityHashMismatch: SpendingValidator;
+  /** ValueAndMint crosses the consensus distinct-asset accumulator limit. */
+  distinctAssetAccumulationLimit: SpendingValidator;
 };
 
 export type MidgardValidators = {
@@ -211,20 +354,48 @@ export type MidgardValidators = {
   hubOracle: AuthenticatedValidator;
   daParamsGovernor: AuthenticatedValidator;
   daAttestation: AuthenticatedValidator;
-  stateQueue: AuthenticatedValidator;
+  /** Per-header retained DA bond, challenge, tranche and carrier authority. */
+  availabilityChallenge: AuthenticatedValidator;
+  /** Deployment-bound singleton which serializes state correction. */
+  correctionLock: SpendingValidator;
+  stateQueue: StateQueueValidator;
   scheduler: AuthenticatedValidator;
   registeredOperators: AuthenticatedValidator;
   activeOperators: AuthenticatedValidator;
   retiredOperators: AuthenticatedValidator;
   escapeHatch: AuthenticatedValidator;
   fraudProofCatalogue: AuthenticatedValidator;
+  /** Canonical computation-thread policy shared by every fraud-proof family. */
+  computationThread: MintingValidator;
   fraudProof: AuthenticatedValidator;
+  /** Shared published verifier for staged MPF proof chunks. */
+  chunkedVerify: WithdrawalValidator;
+  /** Shared published verifier for direct MPF non-membership claims. */
+  pexcludes: WithdrawalValidator;
   deposit: AuthenticatedValidator;
   withdrawal: AuthenticatedValidator;
   txOrder: AuthenticatedValidator;
+  /**
+   * The §8.6 field-preimage certificate. #594 retired the receipt family and
+   * replaced it with this policy: the tx-order mint and every field-opening
+   * step take its policy id as a parameter, and the field-access door checks
+   * tier-3 chunk digests against a certificate minted under it. #579 gave it
+   * a deployment role so that one deployed policy serves every reader rather
+   * than each load site rederiving it. The validator takes no parameters, so
+   * its policy id is a pure function of the blueprint.
+   */
+  fieldPreimageCertificate: SpendingValidator & MintingValidator;
+  /**
+   * Permissionless append-only L1 availability for content-addressed V1
+   * CEK material. Its validator has no successful spending path.
+   */
+  cekProgramMaterial: SpendingValidator;
   settlement: AuthenticatedValidator;
   reserve: SpendingValidator & WithdrawalValidator;
   payout: AuthenticatedValidator;
+  /** Full ordered validator chains for every registered fraud category. */
+  fraudProofContracts: FaultProofContractChains;
+  /** First-step validators only, used to construct the catalogue MPF. */
   fraudProofs: FraudProofs;
 };
 
@@ -233,8 +404,9 @@ export const OutputReferenceSchema = Data.Object({
   outputIndex: Data.Integer(),
 });
 export type OutputReference = Data.Static<typeof OutputReferenceSchema>;
-export const OutputReference =
-  OutputReferenceSchema as unknown as OutputReference;
+export const OutputReference = asDataType<OutputReference>(
+  OutputReferenceSchema,
+);
 
 export const outputReferenceFromUTxO = (
   utxo: Pick<UTxO, "txHash" | "outputIndex">,
@@ -248,23 +420,24 @@ export const AssetsSchema = Data.Object({
   assetName: Data.Bytes(),
 });
 export type Assets = Data.Static<typeof AssetsSchema>;
-export const Assets = AssetsSchema as unknown as Assets;
+export const Assets = asDataType<Assets>(AssetsSchema);
 
 export const ValueSchema = Data.Map(
   Data.Bytes(),
   Data.Map(Data.Bytes(), Data.Integer()),
 );
 export type Value = Data.Static<typeof ValueSchema>;
-export const Value = ValueSchema as unknown as Value;
+export const Value = asDataType<Value>(ValueSchema);
 
 export const POSIXTimeSchema = Data.Integer();
 export type POSIXTime = Data.Static<typeof POSIXTimeSchema>;
-export const POSIXTime = POSIXTimeSchema as unknown as POSIXTime;
+export const POSIXTime = asDataType<POSIXTime>(POSIXTimeSchema);
 
 export const PosixTimeDurationSchema = Data.Integer();
 export type PosixTimeDuration = Data.Static<typeof PosixTimeDurationSchema>;
-export const PosixTimeDuration =
-  PosixTimeDurationSchema as unknown as PosixTimeDuration;
+export const PosixTimeDuration = asDataType<PosixTimeDuration>(
+  PosixTimeDurationSchema,
+);
 
 export const VerificationKeyHashSchema = Data.Bytes({
   minLength: 28,
@@ -277,7 +450,7 @@ export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
 export const MerkleRootSchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type MerkleRoot = Data.Static<typeof MerkleRootSchema>;
-export const MerkleRoot = MerkleRootSchema as unknown as MerkleRoot;
+export const MerkleRoot = asDataType<MerkleRoot>(MerkleRootSchema);
 
 export const CredentialSchema = Data.Enum([
   Data.Object({
@@ -288,7 +461,7 @@ export const CredentialSchema = Data.Enum([
   }),
 ]);
 export type CredentialD = Data.Static<typeof CredentialSchema>;
-export const CredentialD = CredentialSchema as unknown as CredentialD;
+export const CredentialD = asDataType<CredentialD>(CredentialSchema);
 
 export const AddressSchema = Data.Object({
   paymentCredential: CredentialSchema,
@@ -308,17 +481,15 @@ export const AddressSchema = Data.Object({
   ),
 });
 export type AddressData = Data.Static<typeof AddressSchema>;
-export const AddressData = AddressSchema as unknown as AddressData;
+export const AddressData = asDataType<AddressData>(AddressSchema);
 
 export const NeighborSchema = Data.Object({
-  Neighbor: Data.Object({
-    nibble: Data.Integer(),
-    prefix: Data.Bytes(),
-    root: Data.Bytes(),
-  }),
+  nibble: Data.Integer(),
+  prefix: Data.Bytes(),
+  root: Data.Bytes(),
 });
 export type Neighbor = Data.Static<typeof NeighborSchema>;
-export const Neighbor = NeighborSchema as unknown as Neighbor;
+export const Neighbor = asDataType<Neighbor>(NeighborSchema);
 
 export const ProofStepSchema = Data.Enum([
   Data.Object({
@@ -342,11 +513,11 @@ export const ProofStepSchema = Data.Enum([
   }),
 ]);
 export type ProofStep = Data.Static<typeof ProofStepSchema>;
-export const ProofStep = ProofStepSchema as unknown as ProofStep;
+export const ProofStep = asDataType<ProofStep>(ProofStepSchema);
 
 export const ProofSchema = Data.Array(ProofStepSchema);
 export type Proof = Data.Static<typeof ProofSchema>;
-export const Proof = ProofSchema as unknown as Proof;
+export const Proof = asDataType<Proof>(ProofSchema);
 
 /**
  * TODO: Note that this function does not support pointer addresses.

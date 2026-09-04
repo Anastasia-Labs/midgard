@@ -1,8 +1,8 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { Worker } from "node:worker_threads";
 
-import { resolveWorkerEntry } from "@/fibers/resolve-worker-entry.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
+import { resolveWorkerEntry } from "../../fibers/resolve-worker-entry.js";
 import type {
   MpfRootBuilderRequest,
   MpfRootBuilderResponse,
@@ -252,7 +252,7 @@ export const prewarmMpfRootWorkers = async (): Promise<void> => {
       const offsets = new ArrayBuffer(0);
       return pool!.run(
         {
-          domain: SDK.ROOT_DOMAINS.transactions,
+          domain: SDK.ROOT_DOMAINS.transactionsV1,
           counted: true,
           keys,
           values,
@@ -342,7 +342,7 @@ export const buildPhasMpfRootInWorker = (
   return pool
     .run(
       {
-        domain: SDK.ROOT_DOMAINS.transactions,
+        domain: SDK.ROOT_DOMAINS.transactionsV1,
         counted: false,
         keys,
         values,

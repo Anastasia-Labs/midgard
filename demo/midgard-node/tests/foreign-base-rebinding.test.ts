@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { selectAuthenticatedForeignBaseCandidate } from "@/workers/commit-block-header.js";
+import { selectAuthenticatedForeignBaseCandidate } from "../src/workers/commit-block-header.js";
 
 describe("authenticated foreign commit-base rebinding", () => {
   it("reuses an authenticated parent snapshot when the foreign tip keeps its UTxO root", () => {

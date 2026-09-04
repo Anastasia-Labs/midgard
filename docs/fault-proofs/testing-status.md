@@ -1,110 +1,155 @@
-# Testing Status
+# Fault-Proof Testing Status
 
-> Audited 2026-07-10 against branch `tx-validation` (HEAD `269bf6b3`) plus its
-> contemporaneous working tree; reconstructed on clean base `55afdc54`. Source
-> paths and CI claims below were reconciled to that clean base. What is tested,
-> at which fidelity (pure unit → emulator → integration → real network), and what
-> CI actually runs.
->
-> Commands, CI wiring, and top-level gaps were revalidated 2026-07-22 against
-> `tx-validation` HEAD `0aeaa700`; the full proof audit date remains 2026-07-10.
+Current test inventory reviewed against the working tree on 2026-09-01.
 
-## 1. Fidelity ladder for the fault-proof system
+## Inventory
 
-| Level                                       | Exists?                                   | Where                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Aiken unit/property tests                   | 🟠 partial                                | transition-trace proof families (23), native-tx codec, counted roots, invalid-range normalization, and zero-input step-02 full-handler accept/reject fixtures — **nothing** for computation-thread, fault-proof token, catalogue, or state-queue removal at the Aiken level ([`onchain-reference.md`](onchain-reference.md) §6)                                                                                                                                                                                    |
-| TypeScript unit tests                       | ✅ broad                                  | prepare-\* logic, MPF proofs, lease protocol, contract inspection, transition-trace detection/reconstruction (all 11 files in `demo/midgard-fault-proofs/tests/`)                                                                                                                                                                                                                                                                                                                                                  |
-| Lucid Emulator end-to-end                   | ✅ for 5 families                         | `submit-init-emulator.test.ts`: full chains for double-spend, invalid-range, non-existent-input, transition-trace, and zero-input from `submitInit` through fault-proof-token mint to `submitRemoveFaultyBlock`, incl. tail + non-tail removal topologies and lease edge cases; `spend-input-witness.test.ts` (180-input witness)                                                                                                                                                                                  |
-| Cross-process / network integration         | 🟠 adjacent only                          | DA layer: `da-committee-node` in-process protocol tests, `multi-node-integration.test.ts`, node-side `da-multi-process-50k-integration` (CI + nightly). Nothing drives a fault proof across processes                                                                                                                                                                                                                                                                                                              |
-| Preprod / real testnet                      | 🟠 reported, not independently reproduced | PR #461's author supplied a preprod zero-input transaction sequence through removal after the counted-root/native-MPF changes. This hardening review did not rerun it, and the repository still lacks a reproducible automated preprod acceptance artifact. The older operator-local 2026-05-08 canonical-root report predates counted roots and the MPF rewrite. System-wide readiness therefore remains unconfirmed; `public_testnet_readiness.md` still lists fault proofs "Partial, not public-testnet ready". |
-| Autonomous end-to-end (detect→prove→remove) | ❌                                        | no watcher exists                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Surface                                                      | Current inventory | Judgement                                                   |
+| ------------------------------------------------------------ | ----------------: | ----------------------------------------------------------- |
+| Aiken fault-proof test declarations under validator families |               768 | Broad; family and shared-boundary depth varies              |
+| TypeScript test files in `demo/midgard-fault-proofs/tests`   |               169 | Broad unit, workflow, and emulator coverage                 |
+| `submit-init-emulator*.test.ts` files                        |                82 | Broad Lucid Evolution coverage; two suites on fixture drift |
+| Catalogue categories                                         |                32 | All compiled and registered                                 |
+| Production workflow runner factories                         |                25 | Library runtime incomplete for seven categories             |
+| Watcher-installed workflow categories                        |                25 | Autonomous application incomplete for seven categories      |
 
-## 2. Test inventory — `demo/midgard-fault-proofs/tests/`
+The generated testnet blueprint on the working tree (built 2026-09-01 with
+`v1.1.23+5adf783`) contains 567 validators and has SHA-256
+`597c38912123f7f2c167bb73b61c3b37be44cd274be506538ee9bd4437711c96`, and a
+rebuild from the working tree with the pinned fork reproduces it
+byte-for-byte. The inspection suite pins catalogue root
+`85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90`, but that
+suite currently fails on deployment-fixture drift (see below), so the pin is
+not re-verified against this blueprint.
 
-| File                                                                                                                                   | Fidelity                                 | Proves                                                                                                                        |
-| -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `submit-init-emulator.test.ts`                                                                                                         | Emulator + real `plutus.json`            | the strongest e2e evidence in the repo (see above)                                                                            |
-| `spend-input-witness.test.ts`                                                                                                          | Emulator                                 | reference-witness publication under real UPLC cost accounting                                                                 |
-| `transition-trace-challenger.test.ts`                                                                                                  | unit (synthetic fixtures, mocked libp2p) | reconstruction, all detection families, witness building, retained-DA fetch protocol                                          |
-| `prepare-double-spend.test.ts` / `prepare-invalid-range.test.ts` / `prepare-non-existent-input.test.ts` / `prepare-zero-input.test.ts` | unit (mocked fetch/file)                 | violation detection + MPF proof generation per family; zero-input also pins and requires authoritative counted-root agreement |
-| `remove-fraudulent-block.test.ts`                                                                                                      | unit (mocked `fetch`)                    | lease-protocol correctness only — not removal tx logic                                                                        |
-| `submit-init.test.ts`                                                                                                                  | unit (fake lucid)                        | signer precedence, per-category deployment-readiness gating                                                                   |
-| `inspect-contracts.test.ts`                                                                                                            | unit + real blueprint                    | blueprint↔deployment consistency, catalogue root/membership                                                                  |
-| `bin.test.ts`                                                                                                                          | unit                                     | CLI parsing, including zero-input category and mandatory preparation root                                                     |
+## Fidelity
 
-## 3. Exact local verification commands
+| Level                              | Status                    | What it establishes                                                                                                                                           |
+| ---------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Aiken unit/property                | Broad                     | Family predicates, exact successor binding, cancellation, maximum frontiers, shared machinery, removal, and protocol controls                                 |
+| TypeScript unit                    | Broad                     | Codecs, evidence, retained-DA replay, production artifacts, journals, runner admission, funding, reconciliation, and classifiers                              |
+| Lucid Evolution                    | Final families green      | Shared state-queue setup fits; missing-native-script-UTxO, native-script-invalid (29/33-signer staged frontiers), and both min-ADA polarities pass            |
+| Real-node/cross-process            | Partial adjacent coverage | DA and correction components have focused integration, but no complete fault proof is driven across independent production processes                          |
+| Preprod                            | Missing current artifact  | No reproducible proof-through-removal artifact is bound to the current 32-category identity                                                                   |
+| Autonomous detect → prove → remove | Incomplete                | Watcher application installs 25/32 categories; no complete release acceptance artifact exists                                                                 |
+| Van Rossem resource admission      | Enforced                  | Shared harness pins 16,384 bytes, 16.5M memory, and 10B CPU; state-queue publication, the min-ADA split, and every exercised final-family lifecycle obey them |
+
+## Exact emulator status
+
+Dedicated standalone lifecycle tests cover `missingNativeScriptUtxo`,
+`nativeScriptInvalid`, and both `minAda` polarities, and all of them pass
+under the shared Van Rossem limits. Fabricated deposit and withdrawal drive
+removal, and value-not-preserved and mint-authorization drive
+cancellation/resume.
+
+The shared harness is pinned to Van Rossem's 16,384-byte transaction limit,
+16,500,000 memory units, and 10,000,000,000 CPU steps. State-queue setup
+uses five authenticated withdraw-zero rewarding scripts for commit,
+unattested-timeout removal, unavailable-timeout removal, fraud removal, and
+merge. The 5,222-byte applied minting policy publishes in 5,498 bytes; the
+5,652–8,347-byte rewarding scripts publish in 6,161–8,842 bytes. A focused
+admission test publishes all six under the shared limit.
+
+The former 28,658-byte monolithic `fraudProofMinAdaStep02` script no longer
+exists. Step 02 is a 3,319-byte authenticated dispatcher
+(`onchain/aiken/validators/fraud-proofs/min-ada/step-02.ak`) whose
+transaction and UTxO branches are separate withdraw-zero rewarding validators
+in `onchain/aiken/validators/fraud-proofs/min-ada/step-02-yields.ak` (15,522
+and 6,571 bytes in the generated blueprint), each with its own
+reference-script role NFT in `demo/midgard-sdk/src/reference-scripts.ts`.
+`submit-init-emulator-min-ada-standalone.test.ts` asserts that the signed
+publication transaction for each of the three scripts fits within 16,384
+bytes, then drives both polarities through cancel/resume, header removal, and
+permanent-evidence retention.
+
+The native-script-invalid direct lifecycle passes, and the 29-signer and
+33-signer maximum frontiers pass through the deterministic staged route with
+Van Rossem headroom; a forced 29-signer direct submission is rejected before
+builder work. Missing-native-script-UTxO passes both its direct and its staged
+step-05→06→07 predecessor-material paths, including cancel/resume and removal.
+
+Emulator green is not deployability. The `validationTraceDispute`,
+`transitionTrace`, and `withdrawalMistag` lifecycles publish 50 reference
+scripts whose raw bodies exceed 16,384 bytes through the harness's
+`oversized: true` publication path, which skips the L1 byte-margin assertion
+(the validation-dispute suite additionally raises `maxTxSize` to 262,144 for
+those publications). The mint-authorization, network-id, and
+value-not-preserved helpers use the same flag for every step, so their
+publication fit is unasserted even though their bodies are under the limit.
+Production publication refuses oversized bodies, so the three affected
+families cannot be deployed as compiled; see the size table in
+[`catalogue-status.md`](catalogue-status.md).
+
+Two suites in the package are currently red because their fixtures predate
+the reference-script role-NFT change, not because of a validator or
+transaction-fit problem: `inspect-contracts.test.ts` (9 of 12 tests fail on
+the `referenceScriptAuthPolicy` deployment-info shape check) and
+`submit-init-emulator-min-ada.test.ts` (the validation-dispute journey to
+the `E_MIN_ADA` conviction fails at stage setup with "Reference-script auth
+policy must be a native script").
+
+## Verification commands
 
 ```bash
-# On-chain (Aiken v1.1.21, pinned in onchain/aiken/aiken.toml:3)
-cd onchain/aiken && aiken fmt --check && aiken check
-aiken build --env testnet                      # blueprint used by TS tests/deploys
+# Aiken source and generated blueprint
+cd onchain/aiken
+aiken fmt --check
+aiken check
+aiken build --env testnet
 
-# Plutarch (legacy MPF; not CI-wired)
-cd onchain/plutarch && cabal test helpers-tests
+# Fault-proof package
+pnpm --dir demo/midgard-fault-proofs typecheck
+pnpm --dir demo/midgard-fault-proofs test
 
-# Fault-proof package (unit + emulator e2e; CI-wired)
-pnpm --dir demo/midgard-fault-proofs test      # vitest run
-
-# Local validation / SDK
-pnpm --dir demo/midgard-validation test
-pnpm --dir demo/midgard-sdk test
-
-# DA layer
+# Shared codecs and validation
 pnpm --dir demo/midgard-core test
+pnpm --dir demo/midgard-sdk test
+pnpm --dir demo/midgard-validation test
+
+# Watcher, node, and DA
+pnpm --dir demo/midgard-watcher test
+pnpm --dir demo/midgard-node test
 pnpm --dir demo/da-committee-node test
-
-# Node
-pnpm --dir demo/midgard-node test              # NODE_ENV=emulator
-pnpm --dir demo/midgard-node run test:da-phase5-e2e
-
-# Haskell offchain (mockchain; not CI-wired)
-cd offchain && cabal test mockchain-tests
 ```
 
-On reconstructed base `55afdc54`, pinned Aiken v1.1.21 passes all 96 tests and
-the `testnet` build, but `aiken fmt --check` reports three pre-existing files:
-`validators/da-attestation.ak`,
-`lib/midgard/fraud-proofs/transition-trace/proof.ak`, and
-`lib/midgard/fraud-proofs/transition-trace/proof.test.ak`. This documentation
-change does not touch `onchain/aiken/**`, so the path-filtered Aiken workflow is
-not a check on this PR; the formatter debt remains a repository hygiene item.
+The Aiken project must use the repository-pinned fork and the `testnet`
+environment. The legacy Plutarch/Haskell helper suites remain manual unless
+their dependencies are retired with replacement evidence.
 
-Live-stack acceptance: `.agents/skills/midgard-e2e-acceptance/SKILL.md` (local Kupmios
-only; real DA attestation required — `attest-state-queue-once` forbidden as an acceptance
-path, `:78-81,822-829`). Contract building: `.agents/skills/aiken-contract-build/SKILL.md`
-(`aiken build --env testnet`; default env is not e2e-compatible, `:31-33`).
+## CI
 
-## 4. CI wiring
+Primary Aiken formatting/check/build and the core, SDK, validation,
+fault-proof, Lucid, node, watcher, and DA package checks are CI-wired. CI does
+not currently establish:
 
-| Suite                                                                            | CI                                                                             |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `aiken fmt --check` + `aiken check`                                              | ✅ `.github/workflows/aiken-ci.yml`                                            |
-| `aiken build --env testnet`                                                      | ✅ `.github/workflows/midgard-node-ci.yml`                                     |
-| midgard-core / da-committee-node / lucid-midgard / midgard-node / DA phase-5 e2e | ✅ `.github/workflows/midgard-node-ci.yml` (+ nightly benchmark workflow)      |
-| `demo/midgard-fault-proofs` build/typecheck/tests                                | ✅ `.github/workflows/midgard-node-ci.yml`; package paths trigger the workflow |
-| midgard-sdk / midgard-validation build/typecheck/tests                           | ✅ `.github/workflows/midgard-node-ci.yml`                                     |
-| Plutarch / Haskell offchain                                                      | ❌ manual only                                                                 |
-| tx-prep / preprod operator-lifecycle                                             | ❌ manual, env-gated                                                           |
+- a clean public deployment;
+- a full rollback/restart/concurrent-correction matrix;
+- all 32 watcher installations;
+- a maximum-shape lifecycle sweep for every category under the shared Van
+  Rossem limits (the three final families are green; the sweep is not a gate);
+- repair of the inspection-suite and min-ADA dispute-journey fixture drift so
+  those suites are green again;
+- preprod proof-through-removal acceptance.
 
-## 5. Known coverage gaps (test debt, ordered)
+## Last focused verification
 
-1. **CI**: wire the legacy Plutarch helper suite into CI or retire the remaining
-   dependency on it with explicit replacement evidence. The TypeScript fault-proof,
-   validation, and SDK suites are already required by `midgard-node-ci.yml`.
-2. **Aiken-level tests** for computation-thread Init/Success/cancel, fault-proof mint
-   coupling, catalogue immutability, and both `RemoveFaultyBlockHeader` branches —
-   including a regression for the cross-operator descendant case
-   (`state-queue.ak:661`) and a duplicate-`Init` double-mint probe.
-3. **Transition-trace sub-variant gaps**: `SourcePhaseMismatch` (0 tests), `CountFault`
-   (1/5), `OmittedDueL1Event`/`OutOfWindowSourceEvent` (deposit-only).
-4. **Phase A/B reject codes never exercised**: `UnsupportedFieldNonEmpty`,
-   `PlutusEvaluationUnavailable`, `CertificatesForbidden`, `NonZeroWithdrawal`
-   (21/25 covered by `phase-a.test.ts`/`phase-b.test.ts`).
-5. **Preprod re-run** of one full family (double-spend) with publishable evidence to
-   confirm or supersede the operator-local canonical-root mismatch report.
-6. **Removal integration** against a real node (`/stateQueueMutationLease` currently
-   mocked-fetch only) and a post-removal event re-inclusion scenario.
-7. **DA**: compression has startup and payload-envelope/sizing coverage, but no
-   focused codec property suite; committee-store retention behavior remains untestable
-   because no retention code exists.
+On 2026-09-01, after rebuilding the `midgard-core`, `midgard-sdk`, and
+`midgard-validation` dists (stale dists produce phantom failures in consumer
+suites):
+
+- the Van Rossem limit-pin regression passed (1/1);
+- both min-ADA standalone polarities passed, including the three-script
+  publication-size assertions, cancel/resume, header removal, and
+  permanent-evidence retention (2/2);
+- the native-script-invalid standalone lifecycle passed, including the
+  29-signer and 33-signer staged frontiers and the forced-direct rejection
+  (4/4);
+- the missing-native-script-UTxO standalone lifecycle passed on both the
+  direct and the staged predecessor-material paths (2/2);
+- `inspect-contracts.test.ts` failed 9/12 on deployment-fixture drift
+  (`referenceScriptAuthPolicy` shape), so the catalogue-root pin was not
+  re-verified;
+- `submit-init-emulator-min-ada.test.ts` failed 1/1 at stage setup on the
+  same reference-script auth-policy fixture drift.
+
+These focused checks are not a substitute for the complete commands above.

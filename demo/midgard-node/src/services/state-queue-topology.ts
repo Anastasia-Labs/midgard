@@ -2,11 +2,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
 
-import type { Globals } from "@/services/globals.js";
 import {
   type SerializedStateQueueUTxO,
   serializeStateQueueUTxO,
-} from "@/workers/utils/commit-block-header.js";
+} from "../workers/utils/commit-block-header.js";
+import type { Globals } from "./globals.js";
 
 /**
  * Summary of the current on-chain state-queue topology.

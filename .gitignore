@@ -8,6 +8,8 @@ build/
 .direnv
 utils.log
 .codex
+.claude/
+node_modules/
 deploymentInfo/
 demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md
 demo/midgard-node/docs/FAULT_PROOF_SUPPORT_IMPLEMENTATION_APPROACH.md
@@ -19,6 +21,7 @@ demo/midgard-node/docs/tasks/MPF_MIGRATION_B_ROOT_REGISTRY_TX_ID.md
 demo/midgard-node/docs/tasks/MPF_MIGRATION_C_NODE_INTEGRATION.md
 demo/midgard-node/docs/tasks/MPF_MIGRATION_D_ACCEPTANCE_TESTS.md
 .agents/skills/midgard-e2e-acceptance/SKILL.md
+demo/midgard-watcher/native-chain-sync/midgard-watcher-native-chain-sync
 
 # Point-in-time local review artifacts (durable policy/status docs stay tracked)
 /docs/DOCUMENTATION_AUDIT_*.md

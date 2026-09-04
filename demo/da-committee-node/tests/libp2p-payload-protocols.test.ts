@@ -1,25 +1,39 @@
-import { wrapDaPayloadV3 } from "@al-ft/midgard-core/da-payload-envelope";
-import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
+import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DaRequestTimeoutError } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
-  type DaPayloadChunkManifestV1,
+  DA_TRANSPORT_LIMITS,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaCapabilitiesResponseV1Cbor,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
-  decodeDaPayloadChunkResponseV1Cbor,
-  decodeDaPayloadSubmitResponseV1Cbor,
-  encodeDaCapabilitiesRequestV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadChunkRequestV1Cbor,
-  encodeDaPayloadSubmitRequestV1Cbor,
+  decodeDaAttestationsByHeaderResponseCbor,
+  decodeDaCapabilitiesResponseCbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadByHeaderResponseCbor,
+  decodeDaPayloadChunkResponseCbor,
+  decodeDaPayloadSubmitResponseCbor,
+  encodeDaAttestationsByHeaderRequestCbor,
+  encodeDaAttestationsByHeaderResponseCbor,
+  encodeDaCapabilitiesRequestCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadChunkRequestCbor,
+  encodeDaPayloadSubmitRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { encodeDaStreamFrame } from "../src/da/libp2p/DaStreamCodec.js";
+import {
+  DaLibp2pAttestationExchange,
+  StoreBackedDaAttestationProtocol,
+} from "../src/da/libp2p/attestations.js";
+import type {
+  DaLibp2pStream,
+  DaLibp2pStreamHandler,
+} from "../src/da/libp2p/DaLibp2pNode.js";
+import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
+import {
+  encodeDaStreamFrame,
+  readSingleDaStreamFrame,
+} from "../src/da/libp2p/DaStreamCodec.js";
 import {
   DaLibp2pPayloadProtocolError,
   DaLibp2pPayloadProtocolHandlers,
@@ -29,775 +43,574 @@ import {
   DaPayloadSubmitAdmission,
   processWideDaPayloadSubmitAdmission,
 } from "../src/da/libp2p/payload-source.js";
-import type { Header, PayloadRootSet } from "../src/domain.js";
+import type {
+  DaSignatureRecord,
+  DaStoredPayloadRootSet,
+  Header,
+} from "../src/domain.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
 
 const deploymentFingerprint = "01".repeat(32);
 const deploymentFingerprintBytes = Buffer.from(deploymentFingerprint, "hex");
-const payloadSchemaVersion = Number(SDK.DA_PAYLOAD_V2_VERSION);
+const payloadSubmitProtocolId = daRequestResponseProtocolId(
+  deploymentFingerprint,
+  DaRequestResponseProtocol.payloadSubmit,
+);
+const availabilityCommitmentAuthority = {
+  deploymentIdentity: "99".repeat(28),
+  bondOwnerCredential: "44".repeat(28),
+  responseGeometry: {
+    chunkByteLength: 4_096,
+    trancheByteLength: 4 * 1_024 * 1_024,
+    maxTrancheCount: 16,
+  },
+};
 
-describe("DA libp2p payload protocol handlers", () => {
-  it("advertises exact decoder and transport capabilities", async () => {
+describe("canonical V1 DA libp2p payload protocols", () => {
+  it("advertises only the exact V1 payload and envelope capabilities", async () => {
     const { handlers } = await makeHandlers({
-      maxChunkBytes: 1234,
+      maxChunkBytes: 1_234,
       maxStreamsPerPeer: 7,
-      requestTimeoutMs: 4321,
+      requestTimeoutMs: 4_321,
     });
-    const capabilities = decodeDaCapabilitiesResponseV1Cbor(
+    const capabilities = decodeDaCapabilitiesResponseCbor(
       await handlers.handleCapabilities(
-        encodeDaCapabilitiesRequestV1Cbor({
+        encodeDaCapabilitiesRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
         }),
       ),
     );
+
     expect(capabilities).toMatchObject({
       transportProtocolVersion: 1,
-      payloadSchemaVersions: [2, 3],
+      payloadSchemaVersions: [1],
       envelopeContentEncodings: [0, 1],
-      maxChunkBytes: 1234,
+      maxChunkBytes: 1_234,
       maxStreamsPerPeer: 7,
-      requestTimeoutMs: 4321,
+      requestTimeoutMs: 4_321,
     });
-    await expect(
-      handlers.handleCapabilities(
-        encodeDaCapabilitiesRequestV1Cbor({
-          deploymentFingerprint: Buffer.alloc(32, 0xff),
-        }),
-      ),
-    ).rejects.toThrow(/deployment fingerprint mismatch/);
   });
 
-  it("serializes payload decoding through process-wide admission", async () => {
-    const admission = processWideDaPayloadSubmitAdmission;
+  it("serializes expensive submit admission and releases the slot", async () => {
+    const admission = new DaPayloadSubmitAdmission(1);
     let active = 0;
     let peak = 0;
+
     await Promise.all(
       Array.from({ length: 4 }, (_, index) =>
         admission.run(async () => {
           active += 1;
           peak = Math.max(peak, active);
-          await new Promise((resolve) => setTimeout(resolve, 5 + index));
+          await new Promise((resolve) => setTimeout(resolve, 3 + index));
           active -= 1;
         }),
       ),
     );
+
     expect(peak).toBe(1);
     expect(admission.active).toBe(0);
   });
 
-  it("cancels a queued admission when its absolute request deadline expires", async () => {
-    const admission = new DaPayloadSubmitAdmission(1);
-    let releaseActive!: () => void;
-    const activeGate = new Promise<void>((resolve) => {
-      releaseActive = resolve;
-    });
-    const active = admission.run(() => activeGate);
-    while (admission.active !== 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
-    }
-    let queuedOperationStarted = false;
-    const queued = withDaRequestDeadline({
-      timeoutMs: 20,
-      open: async (signal) => signal,
-      run: (signal) =>
-        admission.run(
-          () => {
-            queuedOperationStarted = true;
-          },
-          { signal },
-        ),
-      abort: () => undefined,
-    });
-
-    await expect(queued).rejects.toThrow(/deadline/);
-    expect(queuedOperationStarted).toBe(false);
-    expect(admission.active).toBe(1);
-    releaseActive();
-    await active;
-    await expect(admission.run(() => "next")).resolves.toBe("next");
-    expect(admission.active).toBe(0);
-  });
-
-  it("shares admission across independently-created handler maps before frame reads", async () => {
-    const { payloadCbor, headerHash } = await makePayloadFixture();
-    const payloadHash = computeDaSha256Hash(payloadCbor);
+  it("shares process admission and times out a queued submit before frame read", async () => {
+    expect(processWideDaPayloadSubmitAdmission.active).toBe(0);
+    const fixture = await makePayloadFixture();
     const frame = encodeDaStreamFrame(
-      encodeDaPayloadSubmitRequestV1Cbor({
-        deploymentFingerprint: deploymentFingerprintBytes,
-        headerHash: Buffer.from(headerHash, "hex"),
-        payloadHash,
-        payloadSchemaVersion,
-        mode: "inline",
-        payloadBytes: payloadCbor,
-        chunkManifest: null,
-      }),
-      { maxFrameBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes },
+      encodeSubmit(fixture.headerHash, fixture.payloadCbor),
+      { maxFrameBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes },
     );
     const firstStore = await JsonFileWatcherStore.open(await tempDir());
     const secondStore = await JsonFileWatcherStore.open(await tempDir());
-    const limits = DA_TRANSPORT_LIMITS_V1;
-    const protocolId = daRequestResponseProtocolId(
-      deploymentFingerprint,
-      DaRequestResponseProtocol.payloadSubmit,
-    );
+    const firstLimits = {
+      ...DA_TRANSPORT_LIMITS,
+      requestTimeoutMs: 1_000,
+    };
+    const queuedLimits = {
+      ...DA_TRANSPORT_LIMITS,
+      requestTimeoutMs: 200,
+    };
     const firstHandler = createDaLibp2pPayloadRequestHandlers({
       deploymentFingerprint,
       store: firstStore,
-      limits,
-    }).get(protocolId)!;
-    const secondHandler = createDaLibp2pPayloadRequestHandlers({
+      limits: firstLimits,
+    }).get(payloadSubmitProtocolId)!;
+    const queuedHandler = createDaLibp2pPayloadRequestHandlers({
       deploymentFingerprint,
       store: secondStore,
-      limits,
-    }).get(protocolId)!;
+      limits: queuedLimits,
+    }).get(payloadSubmitProtocolId)!;
+    const reads: string[] = [];
     let releaseFirst!: () => void;
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
-    const reads: string[] = [];
-    const stream = (label: string, gate?: Promise<void>) => ({
-      send: () => true,
-      close: async () => undefined,
-      async *[Symbol.asyncIterator]() {
-        reads.push(label);
-        await gate;
+    const firstMock = makeMockStream(
+      (async function* () {
+        reads.push("first");
+        await firstGate;
         yield frame;
-      },
+      })(),
+    );
+    const queuedMock = makeMockStream(
+      (async function* () {
+        reads.push("queued");
+        yield frame;
+      })(),
+    );
+    let firstRequest: Promise<void> | undefined;
+    let queuedRequest: Promise<void> | undefined;
+    try {
+      firstRequest = invokePayloadSubmitHandler(firstHandler, firstMock.stream);
+      await waitFor(
+        () =>
+          processWideDaPayloadSubmitAdmission.active === 1 &&
+          reads.includes("first"),
+        "first payload-submit admission",
+      );
+      queuedRequest = invokePayloadSubmitHandler(
+        queuedHandler,
+        queuedMock.stream,
+      );
+
+      await expect(queuedRequest).rejects.toBeInstanceOf(DaRequestTimeoutError);
+      expect(reads).toEqual(["first"]);
+      expect(queuedMock.state.aborted).toBeInstanceOf(DaRequestTimeoutError);
+      expect(queuedMock.state.sent).toHaveLength(0);
+      expect(queuedMock.state.closed).toBe(false);
+      await expect(
+        secondStore.getDaPayload(fixture.headerHash),
+      ).resolves.toBeUndefined();
+      expect(processWideDaPayloadSubmitAdmission.active).toBe(1);
+    } finally {
+      releaseFirst();
+      await firstRequest?.catch(() => undefined);
+      await queuedRequest?.catch(() => undefined);
+    }
+
+    expect(firstMock.state.aborted).toBeUndefined();
+    expect(firstMock.state.closed).toBe(true);
+    const response = decodeDaPayloadSubmitResponseCbor(
+      await readSingleDaStreamFrame(firstMock.state.sent, {
+        maxFrameBytes: firstLimits.maxPayloadBytes,
+      }),
+    );
+    expect(response).toMatchObject({ status: "accepted", reasonCode: null });
+    await expect(
+      firstStore.getDaPayload(fixture.headerHash),
+    ).resolves.toMatchObject({
+      payloadCborHex: fixture.payloadCbor.toString("hex"),
+      validationStatus: "fetched",
     });
-    const first = Promise.resolve(
-      firstHandler({
-        protocolId,
-        protocolName: DaRequestResponseProtocol.payloadSubmit,
-        stream: stream("first", firstGate),
-        connection: {},
-      }),
-    );
-    while (!reads.includes("first"))
-      await new Promise((resolve) => setTimeout(resolve, 1));
-    const second = Promise.resolve(
-      secondHandler({
-        protocolId,
-        protocolName: DaRequestResponseProtocol.payloadSubmit,
-        stream: stream("second"),
-        connection: {},
-      }),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(reads).toEqual(["first"]);
-    expect(processWideDaPayloadSubmitAdmission.active).toBe(1);
-    releaseFirst();
-    await Promise.all([first, second]);
-    expect(reads).toEqual(["first", "second"]);
+    expect(processWideDaPayloadSubmitAdmission.active).toBe(0);
   });
 
-  it("aborts a stalled inbound submit and releases process-wide admission", async () => {
+  it("aborts a stalled inbound submit, releases admission, and recovers", async () => {
     const store = await JsonFileWatcherStore.open(await tempDir());
-    const stalledLimits = {
-      ...DA_TRANSPORT_LIMITS_V1,
-      requestTimeoutMs: 50,
+    const admission = new DaPayloadSubmitAdmission(1);
+    const limits = {
+      ...DA_TRANSPORT_LIMITS,
+      requestTimeoutMs: 200,
     };
-    const protocolId = daRequestResponseProtocolId(
-      deploymentFingerprint,
-      DaRequestResponseProtocol.payloadSubmit,
-    );
     const handler = createDaLibp2pPayloadRequestHandlers({
       deploymentFingerprint,
       store,
-      limits: stalledLimits,
-    }).get(protocolId)!;
+      limits,
+      payloadSubmitAdmission: admission,
+    }).get(payloadSubmitProtocolId)!;
     let rejectRead!: (error: Error) => void;
-    let aborted = false;
     const stalledRead = new Promise<never>((_resolve, reject) => {
       rejectRead = reject;
     });
-    const stalledStream = {
-      send: () => true,
-      close: async () => undefined,
-      abort: (error: Error) => {
-        aborted = true;
-        rejectRead(error);
-      },
-      async *[Symbol.asyncIterator]() {
+    const stalledMock = makeMockStream(
+      (async function* () {
         await stalledRead;
-      },
-    };
+      })(),
+      rejectRead,
+    );
 
     await expect(
-      handler({
-        protocolId,
-        protocolName: DaRequestResponseProtocol.payloadSubmit,
-        stream: stalledStream,
-        connection: {},
-      }),
-    ).rejects.toThrow(/deadline/);
-    expect(aborted).toBe(true);
-    while (processWideDaPayloadSubmitAdmission.active !== 0) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
-    }
-    expect(processWideDaPayloadSubmitAdmission.active).toBe(0);
+      invokePayloadSubmitHandler(handler, stalledMock.stream),
+    ).rejects.toBeInstanceOf(DaRequestTimeoutError);
+    expect(stalledMock.state.aborted).toBeInstanceOf(DaRequestTimeoutError);
+    expect(stalledMock.state.sent).toHaveLength(0);
+    expect(stalledMock.state.closed).toBe(false);
+    await waitFor(
+      () => admission.active === 0,
+      "stalled payload-submit admission release",
+    );
+    expect(admission.active).toBe(0);
 
     const recoveryLimits = {
-      ...DA_TRANSPORT_LIMITS_V1,
+      ...DA_TRANSPORT_LIMITS,
       requestTimeoutMs: 1_000,
     };
     const recoveryHandler = createDaLibp2pPayloadRequestHandlers({
       deploymentFingerprint,
       store,
       limits: recoveryLimits,
-    }).get(protocolId)!;
-    const { payloadCbor, headerHash } = await makePayloadFixture();
-    const payloadHash = computeDaSha256Hash(payloadCbor);
-    const frame = encodeDaStreamFrame(
-      encodeDaPayloadSubmitRequestV1Cbor({
-        deploymentFingerprint: deploymentFingerprintBytes,
-        headerHash: Buffer.from(headerHash, "hex"),
-        payloadHash,
-        payloadSchemaVersion,
-        mode: "inline",
-        payloadBytes: payloadCbor,
-        chunkManifest: null,
-      }),
-      { maxFrameBytes: recoveryLimits.maxPayloadBytes },
+      payloadSubmitAdmission: admission,
+    }).get(payloadSubmitProtocolId)!;
+    const fixture = await makePayloadFixture();
+    const healthyMock = makeMockStream(
+      (async function* () {
+        yield encodeDaStreamFrame(
+          encodeSubmit(fixture.headerHash, fixture.payloadCbor),
+          { maxFrameBytes: recoveryLimits.maxPayloadBytes },
+        );
+      })(),
     );
-    const responses: Uint8Array[] = [];
-    await recoveryHandler({
-      protocolId,
-      protocolName: DaRequestResponseProtocol.payloadSubmit,
-      stream: {
-        send: (bytes) => {
-          responses.push(bytes);
-          return true;
-        },
-        close: async () => undefined,
-        abort: () => undefined,
-        async *[Symbol.asyncIterator]() {
-          yield frame;
-        },
+    await invokePayloadSubmitHandler(recoveryHandler, healthyMock.stream);
+    expect(healthyMock.state.aborted).toBeUndefined();
+    expect(healthyMock.state.closed).toBe(true);
+    const response = decodeDaPayloadSubmitResponseCbor(
+      await readSingleDaStreamFrame(healthyMock.state.sent, {
+        maxFrameBytes: recoveryLimits.maxPayloadBytes,
+      }),
+    );
+    expect(response).toMatchObject({ status: "accepted", reasonCode: null });
+    await expect(store.getDaPayload(fixture.headerHash)).resolves.toMatchObject(
+      {
+        payloadCborHex: fixture.payloadCbor.toString("hex"),
+        validationStatus: "fetched",
       },
-      connection: {},
-    });
-    expect(responses).toHaveLength(1);
-    expect(processWideDaPayloadSubmitAdmission.active).toBe(0);
+    );
+    expect(admission.active).toBe(0);
   });
 
-  it.each(["identity", "zstd"] as const)(
-    "accepts a schema-v3 %s envelope while preserving envelope hash identity",
-    async (mode) => {
-      const { handlers, store } = await makeHandlers();
-      const { payloadCbor, headerHash } = await makePayloadFixture();
-      const envelope = await wrapDaPayloadV3(payloadCbor, {
-        mode,
-        zstdLevel: 3,
-      });
-      const payloadHash = computeDaSha256Hash(envelope);
+  it("rejects an incomplete frame without response or persistence and recovers", async () => {
+    const fixture = await makePayloadFixture();
+    const store = await JsonFileWatcherStore.open(await tempDir());
+    const admission = new DaPayloadSubmitAdmission(1);
+    const limits = {
+      ...DA_TRANSPORT_LIMITS,
+      requestTimeoutMs: 1_000,
+    };
+    const handler = createDaLibp2pPayloadRequestHandlers({
+      deploymentFingerprint,
+      store,
+      limits,
+      payloadSubmitAdmission: admission,
+    }).get(payloadSubmitProtocolId)!;
+    const requestCbor = encodeSubmit(fixture.headerHash, fixture.payloadCbor);
+    const incompleteFrame = Buffer.alloc(4 + requestCbor.length);
+    incompleteFrame.writeUInt32BE(requestCbor.length + 1, 0);
+    requestCbor.copy(incompleteFrame, 4);
+    const malformedMock = makeMockStream(
+      (async function* () {
+        yield incompleteFrame;
+      })(),
+    );
 
-      const response = decodeDaPayloadSubmitResponseV1Cbor(
-        await handlers.handlePayloadSubmit(
-          encodeDaPayloadSubmitRequestV1Cbor({
-            deploymentFingerprint: deploymentFingerprintBytes,
-            headerHash: Buffer.from(headerHash, "hex"),
-            payloadHash,
-            payloadSchemaVersion: 3,
-            mode: "inline",
-            payloadBytes: envelope,
-            chunkManifest: null,
-          }),
-        ),
-      );
-      expect(response).toMatchObject({ status: "accepted", reasonCode: null });
-      await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
-        payloadSchemaVersion: 3,
-        payloadCborHex: envelope.toString("hex"),
-        payloadSha256: payloadHash.toString("hex"),
-      });
+    await expect(
+      invokePayloadSubmitHandler(handler, malformedMock.stream),
+    ).rejects.toThrow(/incomplete DA libp2p stream frame/);
+    expect(malformedMock.state.aborted).toBeUndefined();
+    expect(malformedMock.state.sent).toHaveLength(0);
+    expect(malformedMock.state.closed).toBe(false);
+    await expect(
+      store.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
+    await waitFor(
+      () => admission.active === 0,
+      "malformed payload-submit admission release",
+    );
+    expect(admission.active).toBe(0);
 
-      const metadata = decodeDaMetadataByHeaderResponseV1Cbor(
-        await handlers.handleMetadataByHeader(
-          encodeDaPayloadByHeaderRequestV1Cbor({
-            deploymentFingerprint: deploymentFingerprintBytes,
-            headerHash: Buffer.from(headerHash, "hex"),
-            acceptedPayloadHashes: [payloadHash],
-            maxInlineBytes: 0,
-          }),
-        ),
-      );
-      expect(metadata).toMatchObject({
-        status: "found",
-        payloadSchemaVersion: 3,
-        payloadBytes: envelope.length,
-      });
-    },
-  );
+    const healthyMock = makeMockStream(
+      (async function* () {
+        yield encodeDaStreamFrame(requestCbor, {
+          maxFrameBytes: limits.maxPayloadBytes,
+        });
+      })(),
+    );
+    await invokePayloadSubmitHandler(handler, healthyMock.stream);
+    expect(healthyMock.state.aborted).toBeUndefined();
+    expect(healthyMock.state.closed).toBe(true);
+    const response = decodeDaPayloadSubmitResponseCbor(
+      await readSingleDaStreamFrame(healthyMock.state.sent, {
+        maxFrameBytes: limits.maxPayloadBytes,
+      }),
+    );
+    expect(response).toMatchObject({ status: "accepted", reasonCode: null });
+    await expect(store.getDaPayload(fixture.headerHash)).resolves.toMatchObject(
+      {
+        payloadCborHex: fixture.payloadCbor.toString("hex"),
+        validationStatus: "fetched",
+      },
+    );
+    expect(admission.active).toBe(0);
+  });
 
-  it("accepts inline payload submits and serves inline payload plus metadata", async () => {
+  it("durably accepts an inline V1 envelope and serves bytes plus metadata", async () => {
     const { handlers, store } = await makeHandlers();
-    const { payloadCbor, headerHash } = await makePayloadFixture();
-    const payloadHash = computeDaSha256Hash(payloadCbor);
+    const fixture = await makePayloadFixture();
+    const payloadHash = computeDaSha256Hash(fixture.payloadCbor);
 
-    const submitResponse = decodeDaPayloadSubmitResponseV1Cbor(
+    const submit = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
-        encodeDaPayloadSubmitRequestV1Cbor({
+        encodeSubmit(fixture.headerHash, fixture.payloadCbor),
+      ),
+    );
+    expect(submit).toMatchObject({ status: "accepted", reasonCode: null });
+    await expect(store.getDaPayload(fixture.headerHash)).resolves.toMatchObject(
+      {
+        payloadSchemaVersion: 1,
+        payloadCborHex: fixture.payloadCbor.toString("hex"),
+        payloadSha256: payloadHash.toString("hex"),
+        validationStatus: "fetched",
+      },
+    );
+
+    const byHeader = decodeDaPayloadByHeaderResponseCbor(
+      await handlers.handlePayloadByHeader(
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash,
-          payloadSchemaVersion,
-          mode: "inline",
-          payloadBytes: payloadCbor,
-          chunkManifest: null,
+          headerHash: Buffer.from(fixture.headerHash, "hex"),
+          acceptedPayloadHashes: [payloadHash],
+          maxInlineBytes: fixture.payloadCbor.length,
         }),
       ),
     );
-    expect(submitResponse).toMatchObject({
+    expect(byHeader.status).toBe("found_inline");
+    expect(byHeader.payloadBytes?.equals(fixture.payloadCbor)).toBe(true);
+
+    const metadata = decodeDaMetadataByHeaderResponseCbor(
+      await handlers.handleMetadataByHeader(
+        encodeDaPayloadByHeaderRequestCbor({
+          deploymentFingerprint: deploymentFingerprintBytes,
+          headerHash: Buffer.from(fixture.headerHash, "hex"),
+          acceptedPayloadHashes: [payloadHash],
+          maxInlineBytes: 0,
+        }),
+      ),
+    );
+    expect(metadata).toMatchObject({
+      status: "found",
+      payloadSchemaVersion: 1,
+      payloadBytes: fixture.payloadCbor.length,
+      localStatus: "staged",
+    });
+  });
+
+  it("retains malformed and header-mismatched inner payloads as unverified envelopes", async () => {
+    const { handlers, store } = await makeHandlers();
+    const fixture = await makePayloadFixture();
+    const malformedInnerEnvelope = await wrapDaPayload(
+      Buffer.from("deadbeef", "hex"),
+      { mode: "identity" },
+    );
+    const mismatchedHeaderHash = "fe".repeat(28);
+
+    const malformed = decodeDaPayloadSubmitResponseCbor(
+      await handlers.handlePayloadSubmit(
+        encodeSubmit(fixture.headerHash, malformedInnerEnvelope),
+      ),
+    );
+    expect(malformed).toMatchObject({ status: "accepted", reasonCode: null });
+    const retainedMalformed = await store.getDaPayload(fixture.headerHash);
+    expect(retainedMalformed).toMatchObject({
+      payloadCborHex: malformedInnerEnvelope.toString("hex"),
+      validationStatus: "fetched",
+    });
+    expect(retainedMalformed?.rootSummary).toBeUndefined();
+    expect(retainedMalformed?.verifiedAt).toBeUndefined();
+
+    const headerMismatched = decodeDaPayloadSubmitResponseCbor(
+      await handlers.handlePayloadSubmit(
+        encodeSubmit(mismatchedHeaderHash, fixture.payloadCbor),
+      ),
+    );
+    expect(headerMismatched).toMatchObject({
       status: "accepted",
       reasonCode: null,
     });
-    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
-      deploymentFingerprint,
-      headerHash,
-      payloadCborHex: payloadCbor.toString("hex"),
-      payloadSha256: payloadHash.toString("hex"),
+    await expect(
+      store.getDaPayload(mismatchedHeaderHash),
+    ).resolves.toMatchObject({
+      payloadCborHex: fixture.payloadCbor.toString("hex"),
       validationStatus: "fetched",
     });
 
-    const byHeaderResponse = decodeDaPayloadByHeaderResponseV1Cbor(
-      await handlers.handlePayloadByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          acceptedPayloadHashes: [payloadHash],
-          maxInlineBytes: payloadCbor.length,
-        }),
-      ),
-    );
-    expect(byHeaderResponse.status).toBe("found_inline");
-    expect(byHeaderResponse.payloadHash?.equals(payloadHash)).toBe(true);
-    expect(byHeaderResponse.payloadBytes?.equals(payloadCbor)).toBe(true);
-    expect(byHeaderResponse.chunkManifest).toBeNull();
-
-    const metadataResponse = decodeDaMetadataByHeaderResponseV1Cbor(
+    const metadata = decodeDaMetadataByHeaderResponseCbor(
       await handlers.handleMetadataByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          acceptedPayloadHashes: null,
+          headerHash: Buffer.from(fixture.headerHash, "hex"),
+          acceptedPayloadHashes: [computeDaSha256Hash(malformedInnerEnvelope)],
           maxInlineBytes: 0,
         }),
       ),
     );
-    expect(metadataResponse).toMatchObject({
-      status: "found",
-      payloadSchemaVersion,
-      payloadBytes: payloadCbor.length,
-      rootSummaryHash: null,
-      localStatus: "staged",
-    });
-    expect(metadataResponse.payloadHash?.equals(payloadHash)).toBe(true);
-  });
+    expect(metadata).toMatchObject({ status: "found", localStatus: "staged" });
 
-  it("does not emit an accepted response before durable persistence completes", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
-    let markSaveStarted!: () => void;
-    const saveStarted = new Promise<void>((resolve) => {
-      markSaveStarted = resolve;
-    });
-    let releaseSave!: () => void;
-    const saveGate = new Promise<void>((resolve) => {
-      releaseSave = resolve;
-    });
-    const handlers = new DaLibp2pPayloadProtocolHandlers({
+    const attestationProtocol = new StoreBackedDaAttestationProtocol({
       deploymentFingerprint,
-      store: {
-        getDaPayload: (headerHash) => store.getDaPayload(headerHash),
-        saveDaPayload: async (record) => {
-          markSaveStarted();
-          await saveGate;
-          return store.saveDaPayload(record);
-        },
+      localPeerId: "committee-peer",
+      committeeValidation: {
+        committeeKeys: [],
+        committeeSignersHash: "00".repeat(32),
+        threshold: 0,
       },
-    });
-    const { payloadCbor, headerHash } = await makePayloadFixture();
-    const payloadHash = computeDaSha256Hash(payloadCbor);
-    const responsePromise = handlers.handlePayloadSubmit(
-      encodeDaPayloadSubmitRequestV1Cbor({
-        deploymentFingerprint: deploymentFingerprintBytes,
-        headerHash: Buffer.from(headerHash, "hex"),
-        payloadHash,
-        payloadSchemaVersion,
-        mode: "inline",
-        payloadBytes: payloadCbor,
-        chunkManifest: null,
-      }),
-    );
-    let responseSettled = false;
-    void responsePromise.then(
-      () => {
-        responseSettled = true;
-      },
-      () => {
-        responseSettled = true;
-      },
-    );
-    await saveStarted;
-    await Promise.resolve();
-    expect(responseSettled).toBe(false);
-    await expect(store.getDaPayload(headerHash)).resolves.toBeUndefined();
-
-    releaseSave();
-    const response = decodeDaPayloadSubmitResponseV1Cbor(await responsePromise);
-    expect(response.status).toBe("accepted");
-    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
-      payloadSha256: payloadHash.toString("hex"),
-    });
-
-    const failureBackingStore = await JsonFileWatcherStore.open(
-      await tempDir(),
-    );
-    const failingHandlers = new DaLibp2pPayloadProtocolHandlers({
-      deploymentFingerprint,
-      store: {
-        getDaPayload: (requestedHeaderHash) =>
-          failureBackingStore.getDaPayload(requestedHeaderHash),
-        saveDaPayload: () => Promise.reject(new Error("durable write failed")),
-      },
+      availabilityCommitmentAuthority,
+      store,
     });
     await expect(
-      failingHandlers.handlePayloadSubmit(
-        encodeDaPayloadSubmitRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash,
-          payloadSchemaVersion,
-          mode: "inline",
-          payloadBytes: payloadCbor,
-          chunkManifest: null,
-        }),
-      ),
-    ).rejects.toThrow("durable write failed");
-  });
-
-  it("treats duplicate submits as idempotent and detects conflicting bytes", async () => {
-    const { handlers, store } = await makeHandlers();
-    const { payload, payloadCbor, headerHash } = await makePayloadFixture();
-    const payloadHash = computeDaSha256Hash(payloadCbor);
-    const request = encodeDaPayloadSubmitRequestV1Cbor({
-      deploymentFingerprint: deploymentFingerprintBytes,
-      headerHash: Buffer.from(headerHash, "hex"),
-      payloadHash,
-      payloadSchemaVersion,
-      mode: "inline",
-      payloadBytes: payloadCbor,
-      chunkManifest: null,
-    });
-
-    expect(
-      decodeDaPayloadSubmitResponseV1Cbor(
-        await handlers.handlePayloadSubmit(request),
-      ).status,
-    ).toBe("accepted");
-    expect(
-      decodeDaPayloadSubmitResponseV1Cbor(
-        await handlers.handlePayloadSubmit(request),
-      ).status,
-    ).toBe("duplicate");
-
-    const [depositKey] = payload.block_body.deposits[0]!;
-    const conflictingPayload = SDK.encodeDaPayloadV2({
-      ...payload,
-      block_body: {
-        ...payload.block_body,
-        deposits: [[depositKey, "de"]],
-      },
-    });
-    const conflictingHash = computeDaSha256Hash(conflictingPayload);
-    const conflictResponse = decodeDaPayloadSubmitResponseV1Cbor(
-      await handlers.handlePayloadSubmit(
-        encodeDaPayloadSubmitRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash: conflictingHash,
-          payloadSchemaVersion,
-          mode: "inline",
-          payloadBytes: conflictingPayload,
-          chunkManifest: null,
-        }),
-      ),
-    );
-    expect(conflictResponse).toMatchObject({
-      status: "conflict",
-      reasonCode: "conflicting_payload_bytes",
-    });
-    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
-      payloadSha256: conflictingHash.toString("hex"),
-      validationStatus: "conflicted",
-      conflictStatus: "conflicting_bytes",
-    });
-
-    const byHeaderResponse = decodeDaPayloadByHeaderResponseV1Cbor(
-      await handlers.handlePayloadByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          acceptedPayloadHashes: null,
-          maxInlineBytes: payloadCbor.length,
-        }),
-      ),
-    );
-    expect(byHeaderResponse).toMatchObject({
-      status: "conflict",
-      reasonCode: "stored_conflict",
-    });
-  });
-
-  it("serves chunked retrieval with bounded chunks and checked hashes", async () => {
-    const { handlers } = await makeHandlers({
-      maxChunkBytes: 64,
-      maxInlineResponseBytes: 32,
-    });
-    const { payloadCbor, headerHash } = await makePayloadFixture();
-    const payloadHash = computeDaSha256Hash(payloadCbor);
-    await handlers.handlePayloadSubmit(
-      encodeDaPayloadSubmitRequestV1Cbor({
-        deploymentFingerprint: deploymentFingerprintBytes,
-        headerHash: Buffer.from(headerHash, "hex"),
-        payloadHash,
-        payloadSchemaVersion,
-        mode: "inline",
-        payloadBytes: payloadCbor,
-        chunkManifest: null,
+      attestationProtocol.acceptAttestation({
+        // The eligibility gate must reject before inspecting a peer signature.
+        record: { headerHash: fixture.headerHash } as DaSignatureRecord,
+        sourcePeerId: "remote-peer",
       }),
+    ).resolves.toEqual({
+      status: "rejected",
+      reason: "verified payload is not available",
+    });
+  });
+
+  it("serves bounded authenticated chunks when inline delivery is unavailable", async () => {
+    const fixture = await makePayloadFixture();
+    const { handlers } = await makeHandlers({
+      maxInlineResponseBytes: 0,
+      maxChunkBytes: 128,
+    });
+    await handlers.handlePayloadSubmit(
+      encodeSubmit(fixture.headerHash, fixture.payloadCbor),
     );
 
-    const byHeaderResponse = decodeDaPayloadByHeaderResponseV1Cbor(
+    const byHeader = decodeDaPayloadByHeaderResponseCbor(
       await handlers.handlePayloadByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
+          headerHash: Buffer.from(fixture.headerHash, "hex"),
           acceptedPayloadHashes: null,
           maxInlineBytes: 0,
         }),
       ),
     );
-    expect(byHeaderResponse.status).toBe("found_chunked");
-    expect(byHeaderResponse.payloadBytes).toBeNull();
-    expect(byHeaderResponse.chunkManifest).toMatchObject({
-      totalBytes: payloadCbor.length,
-      chunkSize: 64,
-    });
-    expect(
-      byHeaderResponse.chunkManifest?.payloadHash.equals(payloadHash),
-    ).toBe(true);
+    expect(byHeader.status).toBe("found_chunked");
+    expect(byHeader.chunkManifest?.chunkSize).toBe(128);
 
-    const chunkResponse = decodeDaPayloadChunkResponseV1Cbor(
+    const chunk = decodeDaPayloadChunkResponseCbor(
       await handlers.handlePayloadChunk(
-        encodeDaPayloadChunkRequestV1Cbor({
+        encodeDaPayloadChunkRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash,
-          chunkIndex: 1,
-        }),
-      ),
-    );
-    const expectedChunk = payloadCbor.subarray(64, 128);
-    expect(chunkResponse.status).toBe("found");
-    expect(chunkResponse.chunkBytes?.equals(expectedChunk)).toBe(true);
-    expect(
-      chunkResponse.chunkHash?.equals(computeDaSha256Hash(expectedChunk)),
-    ).toBe(true);
-    expect(chunkResponse.chunkBytes?.length).toBeLessThanOrEqual(64);
-
-    const outOfRange = decodeDaPayloadChunkResponseV1Cbor(
-      await handlers.handlePayloadChunk(
-        encodeDaPayloadChunkRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash,
-          chunkIndex: 999,
-        }),
-      ),
-    );
-    expect(outOfRange.status).toBe("not_found");
-
-    const wrongHash = decodeDaPayloadChunkResponseV1Cbor(
-      await handlers.handlePayloadChunk(
-        encodeDaPayloadChunkRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash: Buffer.alloc(32, 0xff),
+          headerHash: Buffer.from(fixture.headerHash, "hex"),
+          payloadHash: computeDaSha256Hash(fixture.payloadCbor),
           chunkIndex: 0,
         }),
       ),
     );
-    expect(wrongHash.status).toBe("not_found");
+    expect(chunk.status).toBe("found");
+    expect(chunk.chunkBytes).toHaveLength(128);
+    expect(
+      chunk.chunkHash?.equals(computeDaSha256Hash(chunk.chunkBytes!)),
+    ).toBe(true);
   });
 
-  it("validates chunked submit manifests and defers chunk acquisition", async () => {
-    const { handlers } = await makeHandlers({ maxChunkBytes: 64 });
-    const { payloadCbor, headerHash } = await makePayloadFixture();
-    const manifest = chunkManifestFor(payloadCbor, 64);
-    const deferred = decodeDaPayloadSubmitResponseV1Cbor(
-      await handlers.handlePayloadSubmit(
-        encodeDaPayloadSubmitRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash: manifest.payloadHash,
-          payloadSchemaVersion,
-          mode: "chunked",
-          payloadBytes: null,
-          chunkManifest: manifest,
-        }),
-      ),
-    );
-    expect(deferred).toMatchObject({
-      status: "deferred",
-      reasonCode: "chunked_submit_deferred",
-    });
+  it("treats identical submits as duplicates and valid divergent envelopes as conflicts", async () => {
+    const fixture = await makePayloadFixture();
+    const { handlers } = await makeHandlers();
 
-    const rejected = decodeDaPayloadSubmitResponseV1Cbor(
+    await handlers.handlePayloadSubmit(
+      encodeSubmit(fixture.headerHash, fixture.payloadCbor),
+    );
+    const duplicate = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
-        encodeDaPayloadSubmitRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash: manifest.payloadHash,
-          payloadSchemaVersion,
-          mode: "chunked",
-          payloadBytes: null,
-          chunkManifest: {
-            ...manifest,
-            chunkSize: 65,
-          },
-        }),
+        encodeSubmit(fixture.headerHash, fixture.payloadCbor),
       ),
     );
-    expect(rejected).toMatchObject({
-      status: "rejected",
-      reasonCode: "chunk_too_large",
+    expect(duplicate.status).toBe("duplicate");
+
+    const zstdEnvelope = await wrapDaPayload(fixture.innerPayloadCbor, {
+      mode: "zstd",
     });
+    const conflict = decodeDaPayloadSubmitResponseCbor(
+      await handlers.handlePayloadSubmit(
+        encodeSubmit(fixture.headerHash, zstdEnvelope),
+      ),
+    );
+    expect(conflict.status).toBe("conflict");
   });
 
-  it("returns verified metadata from stored root summaries", async () => {
+  it("returns verified root metadata from a canonical stored record", async () => {
+    const fixture = await makePayloadFixture();
     const { handlers, store } = await makeHandlers();
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
-    const payloadHash = computeDaSha256Hash(payloadCbor);
+    const payloadHash = computeDaSha256Hash(fixture.payloadCbor);
     await store.saveDaPayload({
       deploymentFingerprint,
-      headerHash,
-      payloadCborHex: payloadCbor.toString("hex"),
+      headerHash: fixture.headerHash,
+      payloadSchemaVersion: 1,
+      payloadCborHex: fixture.payloadCbor.toString("hex"),
       payloadSha256: payloadHash.toString("hex"),
-      sourcePeerId: "libp2p-fixture",
-      fetchedAt: "2026-06-21T00:00:00.000Z",
-      verifiedAt: "2026-06-21T00:00:01.000Z",
-      rootSummary: rootSummaryFromHeader(header),
+      sourcePeerId: "fixture",
+      fetchedAt: "2026-07-24T00:00:00.000Z",
+      verifiedAt: "2026-07-24T00:00:01.000Z",
+      rootSummary: rootSummaryFromHeader(fixture.header),
       validationStatus: "verified",
     });
 
-    const metadataResponse = decodeDaMetadataByHeaderResponseV1Cbor(
+    const metadata = decodeDaMetadataByHeaderResponseCbor(
       await handlers.handleMetadataByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
+          headerHash: Buffer.from(fixture.headerHash, "hex"),
           acceptedPayloadHashes: [payloadHash],
           maxInlineBytes: 0,
         }),
       ),
     );
-    expect(metadataResponse.status).toBe("found");
-    expect(metadataResponse.rootSummaryHash).toHaveLength(32);
-    expect(metadataResponse.transitionTraceRoot?.toString("hex")).toBe(
-      header.transitionTraceRoot,
+    expect(metadata.localStatus).toBe("verified");
+    expect(metadata.rootSummaryHash).toHaveLength(32);
+    expect(metadata.transitionTraceRoot?.toString("hex")).toBe(
+      fixture.header.transitionTraceRoot,
     );
-    expect(metadataResponse.eventToStepRoot?.toString("hex")).toBe(
-      header.eventToStepRoot,
-    );
-    expect(metadataResponse.localStatus).toBe("verified");
   });
 
-  it("does not report stale missing metadata after verified bytes are stored", async () => {
-    const { handlers, store } = await makeHandlers();
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
-    const payloadHash = computeDaSha256Hash(payloadCbor);
-    await store.saveDaPayload({
-      deploymentFingerprint,
-      headerHash,
-      payloadCborHex: "",
-      payloadSha256: "",
-      sourcePeerId: "",
-      fetchedAt: "2026-06-21T00:00:00.000Z",
-      payloadFetchStatus: "missing_da",
-      validationStatus: "missing_da",
-    });
-    await store.saveDaPayload({
-      deploymentFingerprint,
-      headerHash,
-      payloadCborHex: payloadCbor.toString("hex"),
-      payloadSha256: payloadHash.toString("hex"),
-      sourcePeerId: "libp2p-fixture",
-      fetchedAt: "2026-06-21T00:00:01.000Z",
-      verifiedAt: "2026-06-21T00:00:02.000Z",
-      rootSummary: rootSummaryFromHeader(header),
-      payloadFetchStatus: "available",
-      validationStatus: "verified",
-    });
-
-    const metadataResponse = decodeDaMetadataByHeaderResponseV1Cbor(
-      await handlers.handleMetadataByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          acceptedPayloadHashes: null,
-          maxInlineBytes: 0,
-        }),
-      ),
-    );
-
-    expect(metadataResponse.status).toBe("found");
-    expect(metadataResponse.localStatus).toBe("verified");
-    expect(metadataResponse.payloadHash?.equals(payloadHash)).toBe(true);
-  });
-
-  it("rejects malformed, oversized, and hash-mismatched submit requests", async () => {
-    const { payloadCbor, headerHash } = await makePayloadFixture();
-    const { handlers } = await makeHandlers({
-      maxPayloadBytes: payloadCbor.length - 1,
+  it("rejects outer-envelope, schema, oversized, and hash mutations before storage", async () => {
+    const fixture = await makePayloadFixture();
+    const { handlers, store } = await makeHandlers({
+      maxPayloadBytes: fixture.payloadCbor.length - 1,
       maxChunkBytes: 64,
     });
+
     await expect(
       handlers.handlePayloadSubmit(Buffer.from([0xff])),
     ).rejects.toBeInstanceOf(DaLibp2pPayloadProtocolError);
-
-    const oversized = decodeDaPayloadSubmitResponseV1Cbor(
+    const oversized = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
-        encodeDaPayloadSubmitRequestV1Cbor({
-          deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
-          payloadHash: computeDaSha256Hash(payloadCbor),
-          payloadSchemaVersion,
-          mode: "inline",
-          payloadBytes: payloadCbor,
-          chunkManifest: null,
-        }),
+        encodeSubmit(fixture.headerHash, fixture.payloadCbor),
       ),
     );
     expect(oversized).toMatchObject({
       status: "rejected",
       reasonCode: "payload_too_large",
     });
+    await expect(
+      store.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
 
-    const permissive = (
-      await makeHandlers({
-        maxPayloadBytes: payloadCbor.length,
-        maxChunkBytes: 64,
-      })
-    ).handlers;
-    const mismatched = decodeDaPayloadSubmitResponseV1Cbor(
+    const { handlers: permissive, store: permissiveStore } =
+      await makeHandlers();
+    const malformedEnvelope = Buffer.from(fixture.payloadCbor);
+    malformedEnvelope[0] = (malformedEnvelope[0] ?? 0) ^ 0x01;
+    const malformed = decodeDaPayloadSubmitResponseCbor(
       await permissive.handlePayloadSubmit(
-        encodeDaPayloadSubmitRequestV1Cbor({
+        encodeSubmit(fixture.headerHash, malformedEnvelope),
+      ),
+    );
+    expect(malformed).toMatchObject({ status: "rejected" });
+    await expect(
+      permissiveStore.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
+
+    const mismatched = decodeDaPayloadSubmitResponseCbor(
+      await permissive.handlePayloadSubmit(
+        encodeDaPayloadSubmitRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
-          headerHash: Buffer.from(headerHash, "hex"),
+          headerHash: Buffer.from(fixture.headerHash, "hex"),
           payloadHash: Buffer.alloc(32, 0xaa),
-          payloadSchemaVersion,
+          payloadSchemaVersion: 1,
           mode: "inline",
-          payloadBytes: payloadCbor,
+          payloadBytes: fixture.payloadCbor,
           chunkManifest: null,
         }),
       ),
@@ -806,8 +619,156 @@ describe("DA libp2p payload protocol handlers", () => {
       status: "rejected",
       reasonCode: "payload_hash_mismatch",
     });
+    await expect(
+      permissiveStore.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
+
+    const mutatedSchema = decodeSingleCbor(
+      encodeSubmit(fixture.headerHash, fixture.payloadCbor),
+    ) as unknown[];
+    mutatedSchema[3] = 2n;
+    await expect(
+      permissive.handlePayloadSubmit(encodeCbor(mutatedSchema)),
+    ).rejects.toBeInstanceOf(DaLibp2pPayloadProtocolError);
+    await expect(
+      permissiveStore.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
+  });
+
+  it("honors an exact zero attestation result limit", async () => {
+    const protocol = new StoreBackedDaAttestationProtocol({
+      deploymentFingerprint,
+      localPeerId: "committee-peer",
+      committeeValidation: {
+        committeeKeys: [],
+        committeeSignersHash: "00".repeat(32),
+        threshold: 0,
+      },
+      availabilityCommitmentAuthority,
+      store: {
+        getDaPayload: async () => undefined,
+        getL1SourceState: async () => undefined,
+        saveDaSignature: async () => undefined,
+        listDaSignatures: async () => [{} as never],
+        saveDaConflictEvidence: async () => true,
+      },
+    });
+
+    const response = decodeDaAttestationsByHeaderResponseCbor(
+      await protocol.handleAttestationsByHeaderRequest(
+        encodeDaAttestationsByHeaderRequestCbor({
+          deploymentFingerprint: deploymentFingerprintBytes,
+          headerHash: Buffer.alloc(28, 0x02),
+          acceptedSignerIndexes: null,
+          maxAttestations: 0,
+        }),
+      ),
+    );
+
+    expect(response).toMatchObject({
+      status: "not_found",
+      attestations: [],
+      reasonCode: null,
+    });
+  });
+
+  it("rejects an attestation whose announced peer differs from the remote peer", async () => {
+    let touchedPayloadContext = false;
+    const daVkey = Buffer.alloc(32, 0x0c);
+    const protocolStore = {
+      getDaPayload: async () => undefined,
+      getL1SourceState: async () => undefined,
+      saveDaSignature: async () => undefined,
+      listDaSignatures: async () => [],
+      saveDaConflictEvidence: async () => true,
+    };
+    const protocol = new StoreBackedDaAttestationProtocol({
+      deploymentFingerprint,
+      localPeerId: "local-peer",
+      committeeValidation: {
+        committeeKeys: [daVkey.toString("hex")],
+        committeeSignersHash: "00".repeat(32),
+        threshold: 1,
+      },
+      availabilityCommitmentAuthority,
+      store: protocolStore,
+    });
+    const exchange = new DaLibp2pAttestationExchange({
+      deploymentFingerprint,
+      localPeerId: "local-peer",
+      node: {
+        request: async () =>
+          encodeDaAttestationsByHeaderResponseCbor({
+            status: "found",
+            headerHash: Buffer.alloc(28, 0x02),
+            attestations: [
+              {
+                deploymentFingerprint: deploymentFingerprintBytes,
+                headerHash: Buffer.alloc(28, 0x02),
+                payloadHash: Buffer.alloc(32, 0x03),
+                availabilityCommitmentCbor: Buffer.alloc(32, 0x05),
+                availabilityCommitmentDigest: Buffer.alloc(32, 0x06),
+                signerIndex: 0,
+                daVkey,
+                onChainWitness: Buffer.alloc(65, 0x04),
+                retentionUntilSlot: 42,
+                announcedByPeerId: "forged-peer",
+              },
+            ],
+            reasonCode: null,
+          }),
+        publishGossip: async () => undefined,
+      },
+      registry: new DaPeerRegistry([
+        {
+          peerId: "remote-peer",
+          signerIndex: 0,
+          daVkey: daVkey.toString("hex"),
+          roles: ["committee"],
+          multiaddrs: [],
+          bootstrap: false,
+        },
+      ]),
+      protocol,
+      committeeValidation: {
+        committeeKeys: [daVkey.toString("hex")],
+        committeeSignersHash: "00".repeat(32),
+        threshold: 1,
+      },
+      store: {
+        getDaPayload: async () => {
+          touchedPayloadContext = true;
+          return undefined;
+        },
+        getStateQueueHeader: async () => {
+          touchedPayloadContext = true;
+          return undefined;
+        },
+      },
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(
+      exchange.attestationsByHeader({
+        peer: { peerId: "remote-peer", signerIndex: 0 },
+        deploymentFingerprint,
+        headerHash: "02".repeat(28),
+      }),
+    ).resolves.toEqual([]);
+    expect(touchedPayloadContext).toBe(false);
   });
 });
+
+const encodeSubmit = (headerHash: string, payloadBytes: Buffer): Buffer =>
+  encodeDaPayloadSubmitRequestCbor({
+    deploymentFingerprint: deploymentFingerprintBytes,
+    headerHash: Buffer.from(headerHash, "hex"),
+    payloadHash: computeDaSha256Hash(payloadBytes),
+    payloadSchemaVersion: 1,
+    mode: "inline",
+    payloadBytes,
+    chunkManifest: null,
+  });
 
 const makeHandlers = async (
   limits: Partial<{
@@ -822,34 +783,76 @@ const makeHandlers = async (
   readonly store: JsonFileWatcherStore;
 }> => {
   const store = await JsonFileWatcherStore.open(await tempDir());
-  const handlers = new DaLibp2pPayloadProtocolHandlers({
-    deploymentFingerprint,
-    store,
-    limits,
-    now: () => new Date("2026-06-21T00:00:00.000Z"),
-  });
-  return { handlers, store };
-};
-
-const chunkManifestFor = (
-  payloadBytes: Buffer,
-  chunkSize: number,
-): DaPayloadChunkManifestV1 => {
-  const chunkHashes: Buffer[] = [];
-  for (let offset = 0; offset < payloadBytes.length; offset += chunkSize) {
-    chunkHashes.push(
-      computeDaSha256Hash(payloadBytes.subarray(offset, offset + chunkSize)),
-    );
-  }
   return {
-    payloadHash: computeDaSha256Hash(payloadBytes),
-    totalBytes: payloadBytes.length,
-    chunkSize,
-    chunkHashes,
+    store,
+    handlers: new DaLibp2pPayloadProtocolHandlers({
+      deploymentFingerprint,
+      store,
+      limits,
+      now: () => new Date("2026-07-24T00:00:00.000Z"),
+    }),
   };
 };
 
-const rootSummaryFromHeader = (header: Header): PayloadRootSet => ({
+type MockDaStreamState = {
+  readonly sent: Buffer[];
+  closed: boolean;
+  aborted?: Error;
+};
+
+const makeMockStream = (
+  chunks: AsyncIterable<Buffer>,
+  onAbort?: (error: Error) => void,
+): { readonly stream: DaLibp2pStream; readonly state: MockDaStreamState } => {
+  const state: MockDaStreamState = { sent: [], closed: false };
+  return {
+    state,
+    stream: {
+      async *[Symbol.asyncIterator](): AsyncGenerator<Buffer> {
+        yield* chunks;
+      },
+      send(data: Uint8Array): boolean {
+        state.sent.push(Buffer.from(data));
+        return true;
+      },
+      close(): void {
+        state.closed = true;
+      },
+      abort(error: Error): void {
+        state.aborted = error;
+        onAbort?.(error);
+      },
+    },
+  };
+};
+
+const invokePayloadSubmitHandler = (
+  handler: DaLibp2pStreamHandler,
+  stream: DaLibp2pStream,
+): Promise<void> =>
+  Promise.resolve(
+    handler({
+      protocolId: payloadSubmitProtocolId,
+      protocolName: DaRequestResponseProtocol.payloadSubmit,
+      stream,
+      connection: {},
+    }),
+  );
+
+const waitFor = async (
+  predicate: () => boolean,
+  label: string,
+): Promise<void> => {
+  const deadline = Date.now() + 1_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out waiting for ${label}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+};
+
+const rootSummaryFromHeader = (header: Header): DaStoredPayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -857,4 +860,5 @@ const rootSummaryFromHeader = (header: Header): PayloadRootSet => ({
   depositsRoot: header.depositsRoot,
   transitionTraceRoot: header.transitionTraceRoot,
   eventToStepRoot: header.eventToStepRoot,
+  validationTracesRoot: header.validationTracesRoot,
 });

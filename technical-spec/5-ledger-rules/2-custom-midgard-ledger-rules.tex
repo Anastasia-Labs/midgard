@@ -5,22 +5,91 @@
 \section{Custom Midgard ledger rules}
 \label{h:custom-midgard-ledger-rules}
 
+These rules apply to the exact canonical protocol-version (1) profile. Its
+mint and burn, reference-input, script, redeemer, observer, reference-script,
+script-credential, and protected-output surfaces are enabled normative
+features; they are not optional proof obligations that an implementation may
+disable.
+
 \subsection{Rule: Is valid}
 
-% must be true! until we have scripts
+Every normal canonical V1 L2 transaction has the canonical \code{TxIsValid} tag.
+A forced transaction carries the operator's claimed validity, which is checked
+by the same deterministic validation machine used for normal transactions.
+A valid forced transaction applies the accepted ledger delta; an invalid
+forced transaction is an exact no-op. Either misclassification is
+challengeable on L1 (see \cref{h:transaction-order-event}).
 
 \subsection{Rule: No auxiliary data}
 
-% TODO: hash is still allowed, right?
+Canonical V1 carries no auxiliary-data preimage or metadata.  Its
+\code{auxiliary\_data\_hash} MUST equal the empty-null root, defined as
+the \code{blake2b\_256} hash of the canonical CBOR encoding of \code{null}.
+Any other hash is invalid and MUST fail closed, because no authenticated
+auxiliary-data preimage is carried by the native transaction (see
+\cref{h:midgard-simplified-transaction-types}).
 
 \subsection{Rule: Certificates empty}
 
-% TODO: clarify
+Certificates are not fields in the canonical V1 native transaction wire
+format (see \cref{h:midgard-simplified-transaction-types}).  An empty Cardano
+certificate collection is therefore acceptable at the conversion boundary,
+but a transaction containing any certificate is not convertible to the native
+format without loss and MUST be rejected.
 
 \subsection{Rule: Only zero withdrawals}
 
-\subsection{Rule: No mints}
+Withdrawals are not fields in the canonical V1 native transaction wire format.
+The native \code{required\_observers} field is the observer representation and
+MUST NOT be interpreted as a withdrawal map.  At the Cardano conversion
+boundary, every represented withdrawal MUST have amount zero and a script
+reward-account credential; its credential is converted to a required observer.
+Conversely, conversion from native V1 emits only zero-amount withdrawals for
+the required observers.  A non-zero withdrawal or a non-script reward account
+MUST be rejected as non-convertible.
 
-% TODO: clarify
+\subsection{Rule: Mint and burn authorization}
+
+For every canonical V1 transaction (t), the multi-asset conservation equation is:
+\begin{equation*}
+    \T{inputs}(t) + \T{mint}(t) -
+    \T{fee}(t) - \T{outputs}(t) = 0.
+\end{equation*}
+Every non-zero policy in \code{mint} must be authorized by the corresponding
+native, PlutusV3, or MidgardV1 policy execution. Both the conservation equation
+and the policy verdict are instructions in the L1-disputable validation
+machine. The Ada component of \code{mint} remains zero under
+\cref{rule:no-ada-minted}; non-Ada mint and burn remain part of the
+conservation equation. Mint/burn APIs are therefore enabled across the SDK,
+admission, DA, and proof surfaces.
+
+\subsection{Rule: Canonical V1 script surface}
+
+Canonical V1 supports reference inputs, inline and reference scripts, script
+witnesses, redeemers, required observers, script payment credentials, and
+protected outputs. Their source resolution, purpose construction, integrity
+binding, execution, and resulting ledger delta are deterministic
+validation-machine instructions independently verifiable on L1.
+
+Unknown languages, program versions, purposes, redeemer encodings, reference
+sources, or instructions fail closed.
+
+\subsection{Rule: Forced program-material availability}
+
+A canonical V1 forced submitter may publish each canonical CEK material node at
+the permissionless program-material validator before publishing the
+transaction order. Each inline datum contains the material kind, its
+32-byte typed content root, and one bounded preimage. The validator has no
+successful spending path, so published material is append-only. The program
+envelope in the transaction commits the term root, reachable-node count, and
+material-byte count; no unbounded list of publication references is added to
+the order datum.
+
+The node recomputes every typed root, traverses the graph from the committed
+term root, and persists only canonical nodes. Missing or malformed material
+cannot be interpreted as a script failure: a due canonical V1 block build fails
+closed until the complete authenticated graph is available. A challenger may
+reveal the same independently bounded node preimages to the L1 validation
+machine.
 
 \end{document}

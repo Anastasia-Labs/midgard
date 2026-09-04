@@ -5,11 +5,13 @@ on:
     branches: ["main"]
     paths:
       - "demo/midgard-node/**"
+      - "demo/midgard-node-tools/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-sdk/**"
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-core/**"
       - "demo/da-committee-node/**"
+      - "demo/midgard-watcher/**"
       - "demo/midgard-validation/**"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
@@ -22,11 +24,13 @@ on:
   pull_request:
     paths:
       - "demo/midgard-node/**"
+      - "demo/midgard-node-tools/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-sdk/**"
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-core/**"
       - "demo/da-committee-node/**"
+      - "demo/midgard-watcher/**"
       - "demo/midgard-validation/**"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
@@ -36,6 +40,50 @@ on:
       - "demo/patches/**"
       - "scripts/ci/**"
       - ".github/workflows/midgard-node-ci.yml"
+
+# THE COMPILER PIN. Issue #579, rider 1, and the owner's 2026-08-13 ruling A:
+# the patched fork is the SOLE compiler, and it is what defines deployed script
+# identity. Stock v1.1.22 is retired from every role and is no longer installed
+# by this workflow.
+#
+# The job below is not a bystander to that ruling. Its `aiken build --env
+# testnet` produces the testnet blueprint the node, SDK, validation and
+# fault-proof suites resolve script hashes from, so the compiler chosen here is
+# the compiler whose identity those suites assert; and the seven golden-vector
+# channels below shell out to `aiken fmt` through
+# `demo/midgard-core/scripts/golden-channel.mjs` — in `--check` mode as well as
+# `:sync` — so it is also the formatting authority whose output those
+# cross-language claims are compared against.
+# Under stock v1.1.22 both were measured against the wrong artifact: stock keys
+# generated expect-decoders by LOCAL type name with no module path (issue
+# #521), so two same-named types in different modules share one decoder, and
+# the retirement snapshot recorded in `aiken-ci.yml` measured the consequence
+# on this tree — `user_events/tx_order_v1.mint` diverges (stock 81fa79f4…,
+# 9,851 bytes; fork b5541807…, 10,071 bytes).
+#
+# All four arms of rider 1's pin, so a reviewer on other hardware can reproduce
+# the toolchain rather than take it on trust:
+#   repo    https://github.com/Anastasia-Labs/aiken   (org-controlled)
+#   tag     midgard-5adf7837                          (annotated, immutable)
+#   commit  5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
+#   md5     ea9b39054f166e94771f838a662712f7          (published in the tag
+#                                                      message, so it is fixed
+#                                                      once for everyone)
+# The version string `v1.1.23+5adf783` is derived from the commit at build
+# time, so it is the arm that reproduces from source anywhere; the md5 is the
+# tagging build's own artifact hash and is pinned as provenance, not as a
+# build-time equality check (two honest builds of one tag on two machines need
+# not agree byte for byte).
+#
+# The 2026-08-27 advance from midgard-2a78108c to midgard-5adf7837, and the
+# measured blueprint/exunit invariance that makes it a pin bump rather than a
+# re-derivation, are recorded once in `.github/workflows/aiken-ci.yml`.
+env:
+  AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
+  AIKEN_FORK_TAG: midgard-5adf7837
+  AIKEN_FORK_REV: 5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
+  AIKEN_FORK_VERSION: aiken v1.1.23+5adf783
+  AIKEN_FORK_BINARY_MD5: ea9b39054f166e94771f838a662712f7
 
 jobs:
   test:
@@ -74,9 +122,58 @@ jobs:
       TESTNET_GENESIS_WALLET_SEED_PHRASE_C: "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil"
     steps:
       - uses: actions/checkout@v4
-      - uses: aiken-lang/setup-aiken@v1.0.3
+      # No `setup-aiken` step: the fork is the compiler here for the reason
+      # given at the top of this file, and it is installed exactly the way
+      # `aiken-ci` installs it with the same cache path, key shape, and rev, so
+      # the blueprint this job builds cannot come from a different compiler
+      # than the one that workflow judges.
+      - name: Cache the pinned Aiken fork
+        id: aiken-fork
+        uses: actions/cache@v4
         with:
-          version: v1.1.21
+          path: ~/.aiken-fork
+          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
+      - name: Build the pinned Aiken fork
+        if: steps.aiken-fork.outputs.cache-hit != 'true'
+        run: |
+          # The fork's toolchain is selected explicitly with `cargo +1.94.1`
+          # rather than by changing the default, so this leaves the 1.91.0
+          # toolchain the native MPF steps below install untouched.
+          rustup toolchain install 1.94.1 --profile minimal
+          # --locked honours the fork's committed Cargo.lock; without it cargo
+          # re-resolves every dependency on each cache miss, so an unrelated
+          # crate release could redden this branch or silently change the
+          # compiler the blueprint below was produced by.
+          cargo +1.94.1 install \
+            --git "$AIKEN_FORK_REPO" \
+            --rev "$AIKEN_FORK_REV" \
+            --locked \
+            --root ~/.aiken-fork \
+            aiken
+      # Assert, don't just print: a cache poisoned by an earlier rev must fail
+      # here rather than silently changing which compiler produced the testnet
+      # blueprint the suites below assert hashes against. Putting the fork on
+      # PATH is what makes it the compiler for `aiken build --env testnet` AND
+      # for the golden channels that spawn a bare `aiken fmt`. There is no
+      # second compiler on PATH to fall through to.
+      - name: Assert the pinned compiler identity and put it on PATH
+        run: |
+          set -euo pipefail
+          patched="$(~/.aiken-fork/bin/aiken --version)"
+          printf 'pinned fork: %s\nexpected:    %s\n' "$patched" "$AIKEN_FORK_VERSION"
+          test "$patched" = "$AIKEN_FORK_VERSION"
+          test "$patched" = "aiken v1.1.23+${AIKEN_FORK_REV:0:7}"
+          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
+      - name: Assert no stock compiler is reachable
+        run: |
+          set -euo pipefail
+          # Fail closed if a stock binary ever returns to PATH: a step that
+          # silently compiled under v1.1.22 would publish the wrong identity,
+          # and this is the cheapest place to notice.
+          resolved="$(command -v aiken)"
+          version="$(aiken --version)"
+          printf 'aiken on PATH: %s (%s)\n' "$resolved" "$version"
+          test "$version" = "$AIKEN_FORK_VERSION"
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -94,14 +191,91 @@ jobs:
         run: pnpm --dir demo/lucid-midgard run build
       - name: Build and test Midgard core DA transport
         run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
-      - name: Build, typecheck, and test Midgard validation
-        run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
+      - name: Check canonical V1 profile documentation
+        run: pnpm --dir demo/midgard-core run docs:consensus-profile-v1:check
+      # Both artifacts of the native-V1 field-access golden channel — the JSON
+      # fixture and the generated Aiken module — are regenerated from the
+      # TypeScript twin, never hand-edited. Without this gate an edited
+      # `native-tx-field-access-v1-golden.test.ak` passes the Aiken suite and
+      # the vitest suite while no longer being what the twin produces, which is
+      # exactly the cross-language drift the channel exists to catch. The step
+      # runs `aiken fmt` on a temp file, so it needs the Aiken this job already
+      # installs.
+      - name: Check native V1 field-access golden vectors
+        run: pnpm --dir demo/midgard-core run fixtures:native-tx-field-access-v1:check
+      # The per-field half of the same channel (#569): for every field index
+      # 0..8, what §5.3's `enc_i` actually is. It gates on the identical
+      # footing and for the identical reason — the JSON fixture and the
+      # generated Aiken module are produced from the TypeScript twins and are
+      # never hand-edited, so without this step a hand-edited vector passes
+      # both language suites while no longer being what the producers emit.
+      - name: Check native V1 per-field item golden vectors
+        run: pnpm --dir demo/midgard-core run fixtures:native-tx-field-items-v1:check
+      # The §8.6/§8.8 **wire** channel (#574). It lives in the SDK rather than
+      # midgard-core because what it pins is Plutus Data encoding and the
+      # producer of that is `Data.to` against the SDK schemas, but it gates on
+      # exactly the footing of the two above, and it needs the gate more than
+      # either: one generator run emits both the JSON fixture and the generated
+      # Aiken module, so an edited producer plus a `:sync` re-greens the vitest
+      # suite and the Aiken suite in the same stroke. Without this step the
+      # cross-language claim is unfalsifiable.
+      - name: Check native V1 carriage wire golden vectors
+        run: pnpm --dir demo/midgard-sdk run fixtures:native-tx-carriage-wire-v1:check
+      # The `n01`-`n09` transaction vectors (#588). Same footing as the three
+      # channels above, with one difference worth naming: the eleven Aiken
+      # constants this gates live inside a hand-written 1,700-line test module, so
+      # the generator rebinds them in place rather than emitting the module. That
+      # makes the gate more load-bearing, not less — nothing about the module's
+      # appearance reveals which of its constants are generated.
+      - name: Check native V1 n01-n09 transaction vectors
+        run: pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:check
+      # The §12.7 canonical-decodability channel (#596). It emits both artifacts
+      # from one generator run on exactly the footing of the four above, and it
+      # was left unwired when it landed — so an edited producer plus a `:sync`
+      # re-greened the vitest suite and the Aiken suite in the same stroke with
+      # nothing to notice. Wired here by #601 rather than left for #579, because
+      # a golden channel no step runs is a gate that cannot fail (#519/#523).
+      - name: Check canonical-decodability golden vectors
+        run: pnpm --dir demo/midgard-sdk run fixtures:canonical-decodability-v1:check
+      # The §12.8 committed-field-shape channel (#601). Same footing as the five
+      # above, with the difference that makes it matter more: its verdict takes
+      # **two** arguments, so a twin that transposed the slot or read §5.3's
+      # stride table one row differently would agree with its partner on most
+      # inputs and disagree on exactly the ones the fault kind exists for. The
+      # generator also enforces the partition against §12.7 — no vector may be
+      # convicted by both fault kinds — and that check only runs here.
+      - name: Check committed-field-shape golden vectors
+        run: pnpm --dir demo/midgard-sdk run fixtures:committed-field-shape-v1:check
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
+      - name: Build, typecheck, and test Midgard validation
+        run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
+      # The C20-6, C20-7 and field-8 maximum constant families in
+      # `native-tx-v1.test.ak` and `native-tx.max-redeemers.test.ak` are produced by
+      # the three ordered-collection boundary suites, which is why this gate runs
+      # them again rather than recomputing anything: the genuine signed-Cardano
+      # boundary is only findable under vitest. Without it, those constants are
+      # hand-mirrored twins again the moment the boundary moves (#588).
+      - name: Check ordered-collection boundary Aiken constants
+        run: pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:check
+      # The V1 CEK core-step channel. Before it the Aiken CEK and the TypeScript
+      # CEK were pinned against each other by seventeen integer tags and one
+      # hand-pasted CBOR vector; nothing proved that a step the TypeScript trace
+      # builder emits is a step `verify_core_step_v1` accepts. The generator
+      # compiles the curated programs, emits every step's `CoreStepEvidenceV1`
+      # CBOR and state hashes plus per-program negative twists, and writes both
+      # the JSON fixture and the generated Aiken module. Same footing as the
+      # channels above: both artifacts are regenerated from the TypeScript twins
+      # and never hand-edited, so without this step an edited producer plus a
+      # `:sync` re-greens both language suites unnoticed.
+      - name: Check V1 CEK core-step golden vectors
+        run: pnpm --dir demo/midgard-validation run fixtures:cek-core-step-v1:check
       - name: Build, typecheck, and test fault-proof tooling
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
       - name: Verify DA committee transport and admission
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
+      - name: Build, typecheck, lint, format-check, and test Midgard watcher
+        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher test
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard
@@ -120,16 +294,22 @@ jobs:
         run: pnpm --dir demo/midgard-node run db:migrate
       - name: Test Midgard node
         run: pnpm --dir demo/midgard-node test
+      - name: Typecheck, lint, build, and test Midgard node tools
+        run: |
+          pnpm --dir demo/midgard-node-tools run typecheck
+          pnpm --dir demo/midgard-node-tools run lint
+          pnpm --dir demo/midgard-node-tools run build
+          node demo/midgard-node-tools/dist/index.js --help >/dev/null
+          pnpm --dir demo/midgard-node-tools test
       - name: Verify offline throughput gates
         run: |
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-corpus
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-gate-config
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-soak
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-closure
-          pnpm --dir demo/midgard-node run test:phase5:distribution-verifier
-          node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs demo/midgard-node/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node/devnet/phase4-process/tests/custom-chain-config.test.mjs
-      - name: Verify Phase 5 real multi-process DA path
+          node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs
+      - name: Verify canonical V1 retained multi-peer DA paths
         env:
           MIDGARD_RUN_DA_PHASE5_JOINED_E2E: "1"
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm --dir demo/midgard-node run test:da-phase5-e2e
+        run: pnpm --dir demo/midgard-node run test:da-canonical-v1-e2e

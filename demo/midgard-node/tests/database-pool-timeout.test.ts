@@ -2,11 +2,14 @@ import { SqlError } from "@effect/sql";
 import { Duration } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { DatabaseError, formatDatabaseError } from "@/database/utils/common.js";
+import {
+  DatabaseError,
+  formatDatabaseError,
+} from "../src/database/utils/common.js";
 import {
   databaseConnectTimeout,
   type DatabasePoolRole,
-} from "@/services/database.js";
+} from "../src/services/database.js";
 
 describe("database pool connection establishment timeout", () => {
   it.each<DatabasePoolRole>(["admission", "batch", "worker"])(

@@ -3,6 +3,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -71,12 +72,17 @@ const protocolInfo = (
   network: opts.network ?? "Preview",
   midgardNativeTxVersion: opts.nativeVersion ?? 1,
   currentSlot: opts.currentSlot ?? 0n,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: {
     minFeeA: opts.minFeeA ?? 0n,
     minFeeB: opts.minFeeB ?? 0n,
   },
-  submissionLimits: { maxSubmitTxCborBytes: 32768 },
+  submissionLimits: {
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
+  },
   validation: {
     strictnessProfile: "phase1_midgard",
     localValidationIsAuthoritative: false,
@@ -287,12 +293,13 @@ describe("provider switching and wallet input overrides", () => {
           endpoint: "memory://bad-source",
         }) as unknown as ReturnType<MidgardProvider["diagnostics"]>,
     });
-    const missingFallbackReason = makeProvider({
-      name: "bad-fallback",
-      diagnostics: () => ({
-        endpoint: "memory://bad-fallback",
-        protocolInfoSource: "fallback",
-      }),
+    const unsupportedSource = makeProvider({
+      name: "bad-source",
+      diagnostics: () =>
+        ({
+          endpoint: "memory://bad-source",
+          protocolInfoSource: "unsupported-source",
+        }) as unknown as ReturnType<MidgardProvider["diagnostics"]>,
     });
     const midgard = await LucidMidgard.new(first, {
       network: "Preview",
@@ -307,7 +314,7 @@ describe("provider switching and wallet input overrides", () => {
     );
 
     await expect(
-      midgard.switchProvider(missingFallbackReason),
+      midgard.switchProvider(unsupportedSource),
     ).rejects.toBeInstanceOf(ProviderPayloadError);
     expect(midgard.config().providerGeneration).toBe(0);
   });

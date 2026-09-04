@@ -1,8 +1,18 @@
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+import {
+  computeMidgardNativeTxId,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,8 +30,10 @@ import {
   buildScenarioEnvironment,
   phase1FormalHarnessIds,
 } from "../scripts/benchmark-scenario.mjs";
+import { assertPhase1FormalBindingOutputAvailable } from "../scripts/create-phase1-formal-binding.mjs";
 import {
   loadPhase1FormalBindingSync,
+  parsePhase1FormalBindingDocument,
   extractStressCorpusEnvironment,
   PHASE1_FORMAL_BINDING_SCHEMA,
   PHASE1_FORMAL_CHAIN_COUNT,
@@ -32,7 +44,11 @@ import {
   verifyPhase1LivePreflight,
 } from "../scripts/phase1-formal-identity.mjs";
 import {
+  loadCorpusIndex,
   openStreamingCorpusReader,
+  parseCorpusManifest,
+  parseCorpusRowLine,
+  scanCorpusPrefixEvidence,
   validateCorpusSlice,
   verifyCorpusArtifactIdentity,
 } from "../scripts/throughput-valid-stress-corpus.mjs";
@@ -90,6 +106,61 @@ describe("calibrated live client capacity", () => {
 });
 
 describe("corpus artifact report binding", () => {
+  const canonicalManifest = ({
+    corpusPath,
+    indexPath,
+    corpusSha256,
+    indexSha256,
+  }) => ({
+    schemaVersion: "midgard-stress-corpus-manifest-v1",
+    targetRateTps: 1,
+    durationMs: 1_000,
+    warmupCount: 0,
+    cooldownCount: 0,
+    safetyFactor: 1,
+    assumedAcceptanceLatencyMs: 1_000,
+    chainCount: 1,
+    chainDepth: 1,
+    corpusShape: "chain",
+    corpusSliceIds: ["slice-a"],
+    generatedAtIso: "2026-07-27T00:00:00.000Z",
+    generatorGitSha: "test",
+    lucidMidgardVersion: "test",
+    feeParams: { minFeeA: "0", minFeeB: "0" },
+    network: "Preprod",
+    networkId: "0",
+    maxSubmitTxCborBytes: 32_768,
+    amountTemplate: {
+      lovelace: "1",
+      shape: "self-transfer-change-chain",
+    },
+    verification: {
+      rebuildSampleRate: 1,
+      rebuildSampleAlgorithm: "sha256-corpus-chain-id-order-v1",
+    },
+    fundingSummary: {
+      walletCount: 1,
+      perWalletFundingLovelace: "1",
+      totalFundingLovelace: "1",
+    },
+    walletSetIdentity: {
+      walletCount: 1,
+      fundingRowCount: 1,
+      uniqueFirstFundingOutrefCount: 1,
+      walletSetHashAlgorithm: "sha256-wallet-id-l2-address-lines-v1",
+      walletSetSha256: "00".repeat(32),
+      fundingSetHashAlgorithm:
+        "sha256-wallet-id-outref-output-cbor-sha256-lines-v1",
+      fundingSetSha256: "11".repeat(32),
+    },
+    sliceSummary: [{ corpusSliceId: "slice-a", walletCount: 1, rowCount: 1 }],
+    files: {
+      corpus: { path: corpusPath, sha256: corpusSha256, rowCount: 1 },
+      index: { path: indexPath, sha256: indexSha256, rowCount: 1 },
+      shards: ["shard-0.ndjson"],
+    },
+  });
+
   it("hashes all three artifacts and rejects corpus drift from the manifest", async () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "midgard-corpus-identity-"),
@@ -100,12 +171,12 @@ describe("corpus artifact report binding", () => {
     const corpusBytes = Buffer.from('{"row":1}\n');
     const indexBytes = Buffer.from('{"entry":1}\n');
     const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-    const manifest = {
-      files: {
-        corpus: { sha256: sha256(corpusBytes) },
-        index: { sha256: sha256(indexBytes) },
-      },
-    };
+    const manifest = canonicalManifest({
+      corpusPath,
+      indexPath,
+      corpusSha256: sha256(corpusBytes),
+      indexSha256: sha256(indexBytes),
+    });
     fs.writeFileSync(corpusPath, corpusBytes);
     fs.writeFileSync(indexPath, indexBytes);
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
@@ -124,6 +195,18 @@ describe("corpus artifact report binding", () => {
       manifestMatchesArtifacts: true,
     });
 
+    await expect(
+      verifyCorpusArtifactIdentity({
+        corpusPath,
+        indexPath,
+        manifestPath,
+        manifest: {
+          ...manifest,
+          generatedAtIso: "2026-07-27T00:00:01.000Z",
+        },
+      }),
+    ).rejects.toThrow("does not match the persisted manifest bytes");
+
     fs.appendFileSync(corpusPath, "drift\n");
     await expect(
       verifyCorpusArtifactIdentity({
@@ -134,13 +217,99 @@ describe("corpus artifact report binding", () => {
       }),
     ).rejects.toThrow("does not match manifest");
   });
+
+  it("rejects incomplete, extra-key, and wrong-version corpus manifests", () => {
+    const manifest = canonicalManifest({
+      corpusPath: "corpus.ndjson",
+      indexPath: "corpus.ndjson.index.ndjson",
+      corpusSha256: "22".repeat(32),
+      indexSha256: "33".repeat(32),
+    });
+    expect(() =>
+      parseCorpusManifest({ ...manifest, schemaVersion: "legacy-v2" }),
+    ).toThrow("unsupported corpus manifest schemaVersion");
+    const { files: _files, ...missing } = manifest;
+    expect(() => parseCorpusManifest(missing)).toThrow("missing=[files]");
+    expect(() =>
+      parseCorpusManifest({ ...manifest, unexpected: true }),
+    ).toThrow("extra=[unexpected]");
+    const { sha256: _sha256, ...corpusWithoutSha256 } = manifest.files.corpus;
+    expect(() =>
+      parseCorpusManifest({
+        ...manifest,
+        files: {
+          ...manifest.files,
+          corpus: corpusWithoutSha256,
+        },
+      }),
+    ).toThrow("missing=[sha256]");
+    expect(() =>
+      parseCorpusManifest({ ...manifest, network: "preprod" }),
+    ).toThrow("network is unsupported");
+    expect(() =>
+      parseCorpusManifest({
+        ...manifest,
+        walletSetIdentity: {
+          ...manifest.walletSetIdentity,
+          walletSetHashAlgorithm: "legacy",
+        },
+      }),
+    ).toThrow("hash algorithm is unsupported");
+    expect(() =>
+      parseCorpusManifest({ ...manifest, generatedAtIso: "2026-07-27" }),
+    ).toThrow("canonical ISO-8601");
+    expect(() => parseCorpusManifest({ ...manifest, networkId: "1" })).toThrow(
+      "does not match network",
+    );
+    expect(() =>
+      parseCorpusManifest({
+        ...manifest,
+        fundingSummary: {
+          ...manifest.fundingSummary,
+          totalFundingLovelace: "2",
+        },
+      }),
+    ).toThrow("cardinality binding is inconsistent");
+    expect(() =>
+      parseCorpusManifest({
+        ...manifest,
+        files: {
+          ...manifest.files,
+          shards: [manifest.files.shards[0], manifest.files.shards[0]],
+        },
+      }),
+    ).toThrow("must be non-empty and unique");
+  });
 });
 
 describe("bounded corpus uniqueness validation", () => {
   const corpusRow = (index) => {
-    const cbor = Buffer.from([index]);
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
+      validity: "TxIsValid",
+      body: {
+        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+        referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+        outputsPreimageCbor: EMPTY_CBOR_LIST,
+        fee: BigInt(index),
+        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+        requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+        mintPreimageCbor: EMPTY_CBOR_LIST,
+        scriptIntegrityHash: EMPTY_NULL_ROOT,
+        auxiliaryDataHash: EMPTY_NULL_ROOT,
+        networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+      },
+      witnessSet: {
+        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      },
+    });
+    const cbor = encodeMidgardNativeTxCanonical(nativeTx);
     return {
-      txHash: createHash("sha256").update(`tx-${index}`).digest("hex"),
+      txHash: computeMidgardNativeTxId(nativeTx).toString("hex"),
       canonicalCborHex: cbor.toString("hex"),
       canonicalCborSha256: createHash("sha256").update(cbor).digest("hex"),
       canonicalCborByteLength: cbor.length,
@@ -177,6 +346,78 @@ describe("bounded corpus uniqueness validation", () => {
     };
   };
 
+  it("rejects corpus rows, indices, and prefix evidence with non-exact keys", async () => {
+    const row = corpusRow(0);
+    const { parentTxHash: _parentTxHash, ...missingParent } = row;
+    expect(() =>
+      parseCorpusRowLine(JSON.stringify(missingParent), "missing parent"),
+    ).toThrow("missing=[parentTxHash]");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, historicalExtension: true }),
+        "extended row",
+      ),
+    ).toThrow("extra=[historicalExtension]");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, senderWalletId: " wallet-0" }),
+        "spaced wallet",
+      ),
+    ).toThrow("exact non-empty string");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, txHash: "00".repeat(32) }),
+        "mismatched hash",
+      ),
+    ).toThrow("does not bind canonicalCborHex");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, selectedInputOutref: "bad" }),
+        "invalid input",
+      ),
+    ).toThrow("must be canonical");
+    expect(() =>
+      parseCorpusRowLine(
+        JSON.stringify({ ...row, outputOutrefs: [`${row.txHash}#0`] }),
+        "invalid outputs",
+      ),
+    ).toThrow("must exactly enumerate");
+
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "midgard-exact-index-"),
+    );
+    const indexPath = path.join(directory, "index.ndjson");
+    fs.writeFileSync(
+      indexPath,
+      `${JSON.stringify({
+        corpusSliceId: "slice-a",
+        planShape: "chain",
+        chainId: "chain-a",
+        startByteOffset: 0,
+        endByteOffset: 1,
+        rowCount: 1,
+        extension: "legacy",
+      })}\n`,
+    );
+    await expect(loadCorpusIndex(indexPath)).rejects.toThrow(
+      "extra=[extension]",
+    );
+    await expect(
+      scanCorpusPrefixEvidence({
+        corpusPath: "unused",
+        fullIndex: [],
+        selectedEntries: [],
+        consumption: {
+          schemaVersion: "midgard-stress-corpus-prefix-evidence-v1",
+          rowCount: 0,
+          chains: [],
+          historicalBinding: true,
+        },
+        expectedCorpusSha256: "00".repeat(32),
+      }),
+    ).rejects.toThrow("extra=[historicalBinding]");
+  });
+
   it("validates exact uniqueness across bounded sorted chunks", async () => {
     const fixture = writeCorpus([0, 1, 2, 3].map(corpusRow));
     await expect(
@@ -193,7 +434,14 @@ describe("bounded corpus uniqueness validation", () => {
 
   it("rejects duplicate transaction hashes split across chunks", async () => {
     const rows = [0, 1, 2, 3].map(corpusRow);
-    rows[2].txHash = rows[0].txHash;
+    rows[2] = {
+      ...rows[2],
+      txHash: rows[0].txHash,
+      canonicalCborHex: rows[0].canonicalCborHex,
+      canonicalCborSha256: rows[0].canonicalCborSha256,
+      canonicalCborByteLength: rows[0].canonicalCborByteLength,
+      outputOutrefs: rows[0].outputOutrefs,
+    };
     await expect(
       validateCorpusSlice({
         ...writeCorpus(rows),
@@ -526,7 +774,9 @@ describe("Phase 1 formal scenario contracts", () => {
       source.indexOf("const summarizeCursorContinuity"),
     );
     expect(selfCheck).toContain("`${noOpEndpoint}/submit`");
-    expect(selfCheck).toContain('"content-type": "application/cbor"');
+    expect(selfCheck).toContain(
+      '"content-type": "application/vnd.midgard.v1+cbor"',
+    );
     expect(selfCheck).toContain("body: Buffer.from([0])");
     expect(selfCheck).toContain(".request(endpoint, requestOptions)");
     expect(selfCheck).toContain("Math.min(httpConnections, submitConcurrency)");
@@ -725,26 +975,55 @@ describe("Phase 1 formal scenario contracts", () => {
   it("does not clobber an existing formal binding output", () => {
     const fixture = makeFormalFixture();
     const before = fs.readFileSync(fixture.binding.path);
-    const result = spawnSync(
-      process.execPath,
-      [
-        "scripts/create-phase1-formal-binding.mjs",
-        "--out",
-        fixture.binding.path,
-        "--generation-result",
-        path.join(fixture.binding.path, "missing-generation-result.json"),
-        "--deployment-manifest-id",
-        fixture.bindingDocument.deploymentManifestId,
-        "--node-image-id",
-        fixture.bindingDocument.nodeImageId,
-        "--node-container-id",
-        fixture.bindingDocument.nodeContainerId,
-      ],
-      { cwd: process.cwd(), env: { ...process.env, ...fixture.baseEnv } },
-    );
-    expect(result.status).not.toBe(0);
-    expect(result.stderr.toString()).toMatch(/Refusing to overwrite existing Phase 1 binding/);
+    expect(() =>
+      assertPhase1FormalBindingOutputAvailable(fixture.binding.path),
+    ).toThrow(/Refusing to overwrite existing Phase 1 binding/);
     expect(fs.readFileSync(fixture.binding.path)).toEqual(before);
+  });
+
+  it("accepts only the exact canonical Phase 1 formal binding V1 language", () => {
+    const fixture = makeFormalFixture();
+    expect(
+      parsePhase1FormalBindingDocument(
+        fixture.bindingDocument,
+        fixture.binding.path,
+      ),
+    ).toEqual(fixture.bindingDocument);
+    const mutations = [
+      (binding) => {
+        binding.schemaVersion = "midgard-phase1-live-corpus-binding-v2";
+      },
+      (binding) => {
+        binding.unknown = true;
+      },
+      (binding) => {
+        binding.corpus.unknown = true;
+      },
+      (binding) => {
+        binding.corpus.path = "./corpus.ndjson";
+      },
+      (binding) => {
+        binding.walletSetSha256 = binding.walletSetSha256.toUpperCase();
+      },
+      (binding) => {
+        binding.livePreflight.entries[1].walletId =
+          binding.livePreflight.entries[0].walletId;
+      },
+      (binding) => {
+        binding.livePreflight.entries[0].firstInputOutref = `${"0".repeat(64)}#00`;
+      },
+      (binding) => {
+        binding.stressCorpusEnv.STRESS_CORPUS_WALLET_SEED_PHRASE =
+          "must-not-be-accepted";
+      },
+    ];
+    for (const mutate of mutations) {
+      const binding = structuredClone(fixture.bindingDocument);
+      mutate(binding);
+      expect(() =>
+        parsePhase1FormalBindingDocument(binding, fixture.binding.path),
+      ).toThrow();
+    }
   });
 
   it("pins the five-minute 5k admission gate", () => {
@@ -1029,7 +1308,8 @@ describe("Phase 1 formal scenario contracts", () => {
   it("requires the deterministic live sample to contain exact outref and output bytes", async () => {
     const output = Buffer.from("8200", "hex");
     const outputCborSha256 = createHash("sha256").update(output).digest("hex");
-    const expectedOutrefCbor = `825820${"a".repeat(64)}00`;
+    // §5.3 field-0/1 item form: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`.
+    const expectedOutrefCbor = `825820${"a".repeat(64)}190000`;
     const expected = {
       algorithm: "sha256-corpus-chain-id-order-v1",
       sampleSize: 1,

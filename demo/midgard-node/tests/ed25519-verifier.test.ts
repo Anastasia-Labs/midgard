@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_NODE_ED25519_CACHE_MAX_ENTRIES,
   NodeEd25519Verifier,
-} from "@/workers/utils/ed25519-verifier.js";
+} from "../src/workers/utils/ed25519-verifier.js";
 
 const witness = (
   vkey: Buffer,

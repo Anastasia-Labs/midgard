@@ -12,11 +12,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { Lucid } from "@lucid-evolution/lucid";
+
 import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
   discoverArchitectureGSourceFiles,
   resolveArchitectureGGateConfig,
+  validateArchitectureGCommitCandidateInputV1,
+  validateArchitectureGCommitCandidateSeedInputV1,
+  validateArchitectureGCorpusPreparationV1,
+  validateArchitectureGCorpusFundingV1,
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGCrossGateFixtureIdentity,
   validateArchitectureGCrossGateSourceIdentity,
@@ -26,6 +32,11 @@ import {
   validateArchitectureGSourceFileList,
   validateCommitCandidateProbeResult,
 } from "./mpf-architecture-g-gate-config.mjs";
+import {
+  buildNodeSlotConfigEvidenceV1,
+  fetchOgmiosGenesisPayloadV1,
+  readNodeSlotConfigEvidenceV1,
+} from "./node-slot-config-evidence.mjs";
 
 test("candidate gate requires exact root-gate source identity", () => {
   const identity = {
@@ -53,6 +64,12 @@ test("candidate gate requires exact root-gate source identity", () => {
     validateArchitectureGCrossGateSourceIdentity({
       expected: {},
       current: identity,
+    }),
+  );
+  assert.throws(() =>
+    validateArchitectureGCrossGateSourceIdentity({
+      expected: identity,
+      current: { ...identity, unknown: true },
     }),
   );
 });
@@ -217,6 +234,93 @@ const runtimeIdentity = {
   executableSha256: hash(89),
 };
 
+const candidateSeedInputDocument = () => ({
+  schemaVersion: "midgard-architecture-g-commit-candidate-seed-v1",
+  phase1FormalBinding: structuredClone(phase1FormalBindingIdentity),
+  runtimeIdentity: structuredClone(runtimeIdentity),
+  corpusSlicePath: "/evidence/canonical-corpus-slice.ndjson",
+  corpusSliceSha256: hash(90),
+  fundingMapPath: "/evidence/canonical-corpus-funding.json",
+  fundingMapSha256: hash(91),
+  expectedTransactionCount: 50_000,
+  firstTimestampIso: "2026-07-28T00:00:00.000Z",
+});
+
+test("candidate seed input has one exact bounded V1 producer language", () => {
+  const valid = candidateSeedInputDocument();
+  assert.equal(validateArchitectureGCommitCandidateSeedInputV1(valid), valid);
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void delete value.fundingMapSha256,
+    (value) => void (value.schemaVersion = "candidate-seed-v2"),
+    (value) => void (value.phase1FormalBinding.unknown = true),
+    (value) => void (value.runtimeIdentity.unknown = true),
+    (value) => void (value.corpusSlicePath = "relative/slice.ndjson"),
+    (value) => void (value.corpusSlicePath = "/evidence/\0slice.ndjson"),
+    (value) => void (value.corpusSlicePath = `/${"a".repeat(4096)}`),
+    (value) => void (value.corpusSliceSha256 = "bad"),
+    (value) => void (value.expectedTransactionCount = 0),
+    (value) => void (value.firstTimestampIso = "2026-07-28T00:00:00Z"),
+  ]) {
+    const invalid = structuredClone(valid);
+    mutate(invalid);
+    assert.throws(() =>
+      validateArchitectureGCommitCandidateSeedInputV1(invalid),
+    );
+  }
+});
+
+const corpusFundingDocument = () => {
+  const roots = [
+    { walletId: "wallet-0", outref: `${hash(92)}#0` },
+    { walletId: "wallet-1", outref: `${hash(93)}#1` },
+  ];
+  return {
+    roots,
+    artifact: {
+      schemaVersion: "midgard-architecture-g-corpus-funding-v1",
+      corpusSha256: hash(94),
+      sliceSha256: hash(95),
+      entries: roots.map((root, index) => ({
+        ...root,
+        outputCbor: index.toString(16).padStart(2, "0"),
+      })),
+    },
+  };
+};
+
+test("canonical corpus funding binds exact roots and bounded outputs before write", () => {
+  const valid = corpusFundingDocument();
+  const validate = (value) =>
+    validateArchitectureGCorpusFundingV1({
+      artifact: value,
+      expectedCorpusSha256: hash(94),
+      expectedSliceSha256: hash(95),
+      expectedFundingRoots: valid.roots,
+    });
+  assert.equal(validate(valid.artifact), valid.artifact);
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void delete value.entries,
+    (value) => void (value.schemaVersion = "corpus-funding-v2"),
+    (value) => void (value.corpusSha256 = hash(96)),
+    (value) => void (value.sliceSha256 = hash(97)),
+    (value) => void (value.entries[0].unknown = true),
+    (value) => void (value.entries[0].walletId = "different"),
+    (value) => void (value.entries[0].walletId = "wallet\0zero"),
+    (value) => void (value.entries[0].outref = `${hash(98)}#0`),
+    (value) => void (value.entries[1].walletId = value.entries[0].walletId),
+    (value) => void (value.entries[1].outref = value.entries[0].outref),
+    (value) => void (value.entries[0].outputCbor = "0"),
+    (value) => void (value.entries[0].outputCbor = "AA"),
+    (value) => void (value.entries[0].outputCbor = "00".repeat(524_289)),
+  ]) {
+    const invalid = structuredClone(valid.artifact);
+    mutate(invalid);
+    assert.throws(() => validate(invalid));
+  }
+});
+
 test("Phase 3 evidence resolves the explicit current Phase 1 binding and rejects every stale identity edge", () => {
   const cwd = mkdtempSync(join(tmpdir(), "midgard-arch-g-phase1-binding-"));
   try {
@@ -266,7 +370,7 @@ test("Phase 3 evidence resolves the explicit current Phase 1 binding and rejects
       outputCborSha256: hash(92 + index),
     }));
     const binding = {
-      schemaVersion: "midgard-phase1-live-corpus-binding-v2",
+      schemaVersion: "midgard-phase1-live-corpus-binding-v1",
       deploymentManifestId: "deployment-id",
       nodeImageId: "sha256:node-image",
       nodeContainerId: "node-container-id",
@@ -441,6 +545,29 @@ const rootGateExecutableIdentity = {
   binarySha256: hash(71),
 };
 
+const rootGateProvenance = {
+  generatedAt: "2026-07-27T00:00:00.000Z",
+  gitHead: "ab".repeat(20),
+  sourceSha256: hash(60),
+  diffSha256: hash(61),
+  gitStatusSha256: createHash("sha256").update("").digest("hex"),
+  gitStatusEntries: [],
+  sourceFiles: ["package.json", "scripts/mpf-architecture-g-gate.mjs"],
+  nodeOptions: "--max-old-space-size=4096",
+  cgroup: {
+    membership: "0::/midgard",
+    memoryMaxPath: "/sys/fs/cgroup/midgard/memory.max",
+    memoryMax: "4294967296",
+  },
+  percentileMethod:
+    "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
+};
+
+const rootGateFundingRoots = [
+  { walletId: "wallet-0", outref: `${"aa".repeat(32)}#0` },
+  { walletId: "wallet-1", outref: `${"bb".repeat(32)}#1` },
+];
+
 const rootGateCanonicalCorpus = {
   corpusPath: "/evidence/corpus.ndjson",
   manifestPath: "/evidence/corpus.ndjson.manifest.json",
@@ -450,7 +577,9 @@ const rootGateCanonicalCorpus = {
   indexSha256: hash(74),
   verificationPath: "/evidence/generate-result.json",
   verificationSha256: hash(75),
-  fundingRootsSha256: hash(76),
+  fundingRootsSha256: createHash("sha256")
+    .update(JSON.stringify(rootGateFundingRoots))
+    .digest("hex"),
   fundingMapPath: "/evidence/canonical-corpus-funding.json",
   fundingMapSha256: hash(77),
   fundingEntryCount: 2,
@@ -463,6 +592,51 @@ const rootGateCanonicalCorpus = {
   verifiedCorpusChainCount: 10,
   completeChainCount: 1,
   finalChainPrefixLength: 1,
+  sliceChainsContiguous: true,
+  chainsCrossSliceBoundaries: false,
+  selectionAlgorithm: "named-slice-file-order-prefix-v1",
+  sourceCorpusRowRange: { start: 11, end: 12 },
+  sourceSliceOrdinalRange: { start: 1, end: 2 },
+  fundingRootOutrefs: rootGateFundingRoots.map((root) => root.outref),
+  fundingRoots: structuredClone(rootGateFundingRoots),
+};
+
+const rootGateOwnerDiagnostics = (durableRoot) => ({
+  ownerEpoch: { type: "Buffer", data: Array(16).fill(7) },
+  durableRoot,
+  residentNodes: 10,
+  residentEdges: 9,
+  residentBytes: 1024,
+  activeGenerations: 0,
+  generatedNodes: 20,
+  generatedBytes: 2048,
+  rssBytes: 4096,
+  peakRssBytes: 8192,
+  childRestarts: 0,
+});
+
+const rootGatePathHydration = {
+  prefetchMs: 0,
+  uniquePaths: 2,
+  nodesRequested: 0,
+  hydrationHits: 0,
+  hydrationMisses: 0,
+  loadedNodes: 0,
+  maxInFlight: 0,
+  maxBatchKeys: 0,
+  maxFrontierPaths: 0,
+  retainedBytesEstimate: 0,
+  chunkCount: 1,
+  checkpointMs: 0,
+  authenticationMs: 0,
+  materializeMs: 0,
+  collapseMs: 0,
+  checkpointSerializedNodes: 0,
+  checkpointSerializedBytes: 0,
+  verifiedUpperNodes: 0,
+  retainedUpperNodes: 0,
+  collapsedNodes: 0,
+  peakDecodedNodes: 0,
 };
 
 const rootGateGroup = ({ initialUtxos, durations, transactions = 2 }) => {
@@ -484,6 +658,7 @@ const rootGateGroup = ({ initialUtxos, durations, transactions = 2 }) => {
   };
   const results = durations.map((durationMs) => ({
     ...structuredClone(roots),
+    engine: "architecture_g",
     probePath: rootGateExecutableIdentity.probePath,
     probeSha256: rootGateExecutableIdentity.probeSha256,
     binarySha256: rootGateExecutableIdentity.binarySha256,
@@ -500,14 +675,37 @@ const rootGateGroup = ({ initialUtxos, durations, transactions = 2 }) => {
     cpuAffinity: "28-31",
     transactionCount: transactions,
     initialUtxoCount: initialUtxos,
+    levelBackedInitialView: true,
+    reusedLevelFixture: true,
+    ledgerOpCount: transactions * 2,
+    startupMs: 1,
     confirmedLedgerFullScans: 0,
     durationMs,
+    buildPlusCaptureMs: durationMs,
+    phaseMs: {
+      transactionSourceRoot: 1,
+      transitionTraceBuild: 2,
+      transactionMpfApply: 3,
+      auxiliaryRoots: 4,
+    },
+    nativePhaseMs: {
+      validation: 1,
+      eventLogEncode: 2,
+      ownerApply: 3,
+      ownerProofArena: 4,
+      ownerMutation: 5,
+      memberAssembly: 6,
+      retainedRoots: 7,
+    },
+    pathHydration: structuredClone(rootGatePathHydration),
     workloadSha256: hash(50),
-    ownerBefore: { durableRoot },
+    ownerBefore: rootGateOwnerDiagnostics(durableRoot),
+    ownerAfter: rootGateOwnerDiagnostics(durableRoot),
   }));
   return {
     initialUtxos,
     fixtureCreation: {
+      path: `/evidence/fixture-create-${initialUtxos.toString()}.json`,
       sha256: hash(30),
       initialUtxoCount: initialUtxos,
       marker: hash(31),
@@ -517,11 +715,15 @@ const rootGateGroup = ({ initialUtxos, durations, transactions = 2 }) => {
       },
     },
     fixtureBefore: {
+      path: `/fixtures/utxos-${initialUtxos.toString()}-level`,
+      directoryBytes: initialUtxos * 80,
       marker: hash(31),
       logicalSha256: hash(32),
       records: initialUtxos + 1,
     },
     fixtureAfter: {
+      path: `/fixtures/utxos-${initialUtxos.toString()}-level`,
+      directoryBytes: initialUtxos * 80,
       marker: hash(31),
       logicalSha256: hash(32),
       records: initialUtxos + 1,
@@ -570,6 +772,7 @@ const rootGateSummary = (mode = "50k") => {
     schemaVersion: "midgard-architecture-g-production-root-gate-v1",
     formal: true,
     profile: "formal",
+    ...structuredClone(rootGateProvenance),
     mode,
     requiredCardinality:
       mode === "50k"
@@ -612,6 +815,81 @@ const validateRootGateSummary = (summary) =>
     cpuSet: "28-31",
   });
 
+test("corpus preparation uses the exact root-gate canonical corpus language", () => {
+  const summary = rootGateSummary();
+  const valid = {
+    schemaVersion: "midgard-architecture-g-corpus-preparation-v1",
+    formalGateEvidence: false,
+    phase1FormalBinding: structuredClone(summary.phase1FormalBinding),
+    runtimeIdentity: structuredClone(summary.runtimeIdentity),
+    canonicalCorpus: structuredClone(summary.canonicalCorpus),
+  };
+  const validate = (artifact) =>
+    validateArchitectureGCorpusPreparationV1({
+      artifact,
+      transactions: 2,
+    });
+  assert.equal(validate(valid), valid);
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void (value.formalGateEvidence = true),
+    (value) => void (value.phase1FormalBinding.unknown = true),
+    (value) => void (value.runtimeIdentity.unknown = true),
+    (value) => void (value.canonicalCorpus.unknown = true),
+    (value) => void (value.canonicalCorpus.sourceCorpusRowRange.unknown = true),
+    (value) => void (value.canonicalCorpus.corpusSha256 = hash(90)),
+    (value) => void (value.canonicalCorpus.sliceSha256 = "bad"),
+    (value) => void (value.canonicalCorpus.sliceRowCount = 1),
+    (value) => void value.canonicalCorpus.fundingRootOutrefs.pop(),
+    (value) => void (value.canonicalCorpus.fundingRoots[0].unknown = true),
+    (value) =>
+      void (value.canonicalCorpus.fundingRoots[1].walletId =
+        value.canonicalCorpus.fundingRoots[0].walletId),
+    (value) => void (value.canonicalCorpus.fundingRootsSha256 = hash(91)),
+  ]) {
+    const invalid = structuredClone(valid);
+    mutate(invalid);
+    assert.throws(() => validate(invalid));
+  }
+});
+
+const rootGateSmokeSummary = ({ canonical }) => {
+  const value = rootGateSummary();
+  value.schemaVersion = "midgard-architecture-g-root-diagnostic-smoke-v1";
+  value.formal = false;
+  value.profile = "smoke";
+  for (const group of value.groups) {
+    group.fixtureCreation = null;
+    if (!canonical) {
+      for (const result of group.results) {
+        result.canonicalCorpusSlice = null;
+        result.canonicalFunding = null;
+      }
+    }
+  }
+  if (!canonical) value.canonicalCorpus = null;
+  return value;
+};
+
+test("root smoke summary is exact and cannot claim formal evidence", () => {
+  for (const canonical of [true, false]) {
+    const valid = rootGateSmokeSummary({ canonical });
+    assert.equal(validateRootGateSummary(valid), valid);
+  }
+  for (const mutate of [
+    (value) =>
+      void (value.schemaVersion =
+        "midgard-architecture-g-production-root-gate-v1"),
+    (value) => void (value.formal = true),
+    (value) => void (value.groups[0].fixtureCreation = {}),
+    (value) => void (value.groups[0].results[0].canonicalFunding = {}),
+  ]) {
+    const invalid = rootGateSmokeSummary({ canonical: false });
+    mutate(invalid);
+    assert.throws(() => validateRootGateSummary(invalid));
+  }
+});
+
 test("formal root summary validator recomputes all 50k evidence and rejects mutations", () => {
   const valid = rootGateSummary();
   assert.equal(validateRootGateSummary(valid), valid);
@@ -652,6 +930,70 @@ test("formal root summary validator recomputes growth slope and workload identit
     mutate(invalid);
     assert.throws(() => validateRootGateSummary(invalid));
   }
+});
+
+test("formal root summary rejects incomplete, extended, or noncanonical V1 documents", () => {
+  const mutations = [
+    (value) => void (value.unknown = true),
+    (value) => void delete value.generatedAt,
+    (value) => void (value.generatedAt = "2026-07-27T00:00:00Z"),
+    (value) => void (value.requiredCardinality.unknown = true),
+    (value) => void (value.phase1FormalBinding.unknown = true),
+    (value) => void (value.phase1FormalBinding.corpus.unknown = true),
+    (value) => void (value.runtimeIdentity.unknown = true),
+    (value) => void (value.canonicalCorpus.unknown = true),
+    (value) => void (value.canonicalCorpus.sourceCorpusRowRange.unknown = true),
+    (value) => void (value.canonicalCorpus.sliceChainsContiguous = false),
+    (value) => void value.canonicalCorpus.fundingRootOutrefs.pop(),
+    (value) => void (value.canonicalCorpus.fundingRoots[0].unknown = true),
+    (value) =>
+      void (value.canonicalCorpus.fundingRoots[0].outref = `${hash(98)}#0`),
+    (value) => void (value.cgroup.unknown = true),
+    (value) => void (value.gitStatusSha256 = hash(99)),
+    (value) => void value.sourceFiles.reverse(),
+    (value) => void (value.groups[0].unknown = true),
+    (value) => void (value.groups[0].fixtureCreation.unknown = true),
+    (value) =>
+      void (value.groups[0].fixtureCreation.utxoPayloadAggregate.unknown = true),
+    (value) => void (value.groups[0].fixtureBefore.unknown = true),
+    (value) => void (value.groups[0].roots.unknown = true),
+    (value) => void (value.groups[0].durationMs.unknown = true),
+    (value) => void (value.groups[0].results[0].unknown = true),
+    (value) =>
+      void (value.groups[0].results[0].canonicalCorpusSlice.unknown = true),
+    (value) => void (value.groups[0].results[0].phaseMs.unknown = true),
+    (value) => void (value.groups[0].results[0].nativePhaseMs.unknown = true),
+    (value) => void (value.groups[0].results[0].pathHydration.unknown = true),
+    (value) =>
+      void (value.groups[0].results[0].pathHydration.uniquePaths = 1.5),
+    (value) => void (value.groups[0].results[0].ownerBefore.unknown = true),
+    (value) =>
+      void value.groups[0].results[0].ownerBefore.ownerEpoch.data.pop(),
+    (value) => void (value.groups[0].results[0].ownerAfter.childRestarts = 1),
+    (value) =>
+      void (value.groups[0].results[0].transitionRoots[0].unknown = true),
+    (value) => void (value.verdict.unknown = true),
+  ];
+  for (const mutate of mutations) {
+    const invalid = rootGateSummary();
+    mutate(invalid);
+    assert.throws(() => validateRootGateSummary(invalid));
+  }
+});
+
+test("formal root summary binds canonical nonempty git-status bytes", () => {
+  const valid = rootGateSummary();
+  valid.gitStatusEntries = [
+    " M scripts/mpf-architecture-g-gate.mjs",
+    "?? logs/evidence.json",
+  ];
+  valid.gitStatusSha256 = createHash("sha256")
+    .update(`${valid.gitStatusEntries.join("\0")}\0`)
+    .digest("hex");
+  assert.equal(validateRootGateSummary(valid), valid);
+
+  valid.gitStatusEntries.reverse();
+  assert.throws(() => validateRootGateSummary(valid));
 });
 
 test("formal root summary validator rejects a contradictory profile", () => {
@@ -733,7 +1075,6 @@ test("formal root summary validator requires every canonical corpus hash and cou
     "parentSliceChainCount",
     "verifiedCorpusChainCount",
     "completeChainCount",
-    "finalChainPrefixLength",
     "fundingEntryCount",
     "sliceRowCount",
   ]) {
@@ -741,6 +1082,8 @@ test("formal root summary validator requires every canonical corpus hash and cou
     invalid.canonicalCorpus[field] = 0;
     assert.throws(() => validateRootGateSummary(invalid));
   }
+  valid.canonicalCorpus.finalChainPrefixLength = 0;
+  assert.equal(validateRootGateSummary(valid), valid);
 });
 
 for (const field of [
@@ -776,14 +1119,68 @@ test("formal root summary validator binds every run to canonical workload identi
 });
 
 test("fixture evidence binds actual path, marker, cardinality, and aggregate", () => {
+  const diagnostics = Object.fromEntries(
+    [
+      "entries",
+      "storePuts",
+      "storeDels",
+      "serialiseCalls",
+      "serialiseMs",
+      "deferredMaterializedEstimatedBytes",
+      "deferredMaterializedActualBytes",
+      "deferredLazyReads",
+      "deferredLazySerialiseMs",
+      "deferredLazySerialisedBytes",
+      "arenaCheckpointCalls",
+      "arenaCheckpointMs",
+      "arenaCheckpointNodes",
+      "arenaCheckpointBytes",
+      "pathCacheEntries",
+      "pathCacheBytes",
+      "pathCacheHits",
+      "liveArenaPrunedNodes",
+      "liveArenaPromotedNodes",
+      "liveArenaPromotedBytes",
+      "retainedSnapshotAuthentications",
+      "retainedSnapshotAuthenticationMs",
+      "transientLiveNodes",
+      "transientLiveBytes",
+      "transientDirtyNodes",
+      "transientSnapshotsCaptured",
+      "eventAtomicFinalizations",
+      "eventAtomicDirtyNodes",
+      "eventAtomicMaxDirtyNodes",
+      "levelGets",
+      "levelGetManyCalls",
+      "levelGetManyMaxKeys",
+      "levelGetMs",
+      "jsonCodecMs",
+      "overlayHits",
+      "readCacheHits",
+      "levelBatchWrites",
+      "bytesFlushed",
+      "overlayEntries",
+      "overlayBytes",
+      "overlaySpills",
+      "overlaySpillMs",
+      "flushMs",
+    ].map((field) => [field, 0]),
+  );
   const artifact = {
     fixtureCreated: true,
     fixturePath: "/fixtures/1m",
     marker: "ab".repeat(32),
     initialUtxoCount: 1_000_000,
+    durationMs: 100,
+    diagnostics,
     utxoPayloadAggregate: {
       entryCount: 1_000_000,
       encodedTupleBytes: 80_000_000,
+    },
+    canonicalFunding: {
+      path: "/evidence/canonical-corpus-funding.json",
+      sha256: hash(123),
+      entryCount: 50_000,
     },
   };
   assert.deepEqual(
@@ -806,6 +1203,16 @@ test("fixture evidence binds actual path, marker, cardinality, and aggregate", (
         entryCount: 100_000,
       },
     },
+    { ...artifact, unknown: true },
+    { ...artifact, diagnostics: { ...diagnostics, unknown: 0 } },
+    {
+      ...artifact,
+      canonicalFunding: { ...artifact.canonicalFunding, unknown: true },
+    },
+    {
+      ...artifact,
+      diagnostics: { ...diagnostics, serialiseMs: Number.NaN },
+    },
   ]) {
     assert.throws(() =>
       validateArchitectureGFixtureCreationEvidence({
@@ -816,6 +1223,16 @@ test("fixture evidence binds actual path, marker, cardinality, and aggregate", (
       }),
     );
   }
+  const withoutCanonicalFunding = { ...artifact, canonicalFunding: null };
+  assert.deepEqual(
+    validateArchitectureGFixtureCreationEvidence({
+      artifact: withoutCanonicalFunding,
+      expectedFixturePath: artifact.fixturePath,
+      expectedMarker: artifact.marker,
+      expectedUtxos: 1_000_000,
+    }),
+    artifact.utxoPayloadAggregate,
+  );
 });
 
 test("formal gate cardinalities are exact and cannot be reduced", () => {
@@ -877,6 +1294,301 @@ test("numeric arguments reject partial, unsafe, zero, and negative values", () =
   }
 });
 
+const candidateInputDocument = (forcedValidationSlotConfigArtifact) => {
+  const submittedTxHash = hash(124);
+  const blockEndTimeMs = 1_700_000_000_000;
+  return {
+    schemaVersion: "midgard-architecture-g-commit-candidate-input-v1",
+    phase1FormalBinding: structuredClone(phase1FormalBindingIdentity),
+    runtimeIdentity: structuredClone(runtimeIdentity),
+    levelPath: "/fixtures/utxos-1000000-level",
+    binaryPath: "/release/native/architecture-g-owner",
+    binarySha256: hash(125),
+    sidecarPath: "/fixtures/utxos-1000000-level.candidate.sidecar",
+    expectedTransactionCount: 50_000,
+    corpusSha256: phase1FormalBindingIdentity.corpus.corpusSha256,
+    corpusSliceSha256: hash(126),
+    fundingMapSha256: hash(127),
+    fixtureCreationPath: "/evidence/fixture-create-1000000.json",
+    fixtureCreationSha256: hash(128),
+    fixtureInitialUtxoCount: 1_000_000,
+    baseUtxoPayloadAggregate: {
+      entryCount: 1_000_000,
+      encodedTupleBytes: 80_000_000,
+    },
+    forcedValidationSlotConfigArtifact,
+    workerInput: {
+      data: {
+        availableConfirmedBlock: "",
+        availableLocalFinalizationBlock: "",
+        currentBlockStartTimeMs: blockEndTimeMs,
+        forcedValidationSlotConfig: structuredClone(
+          forcedValidationSlotConfigArtifact.document.slotConfig,
+        ),
+        localFinalizationPending: false,
+        ledgerStoreLeaseOwner: "commit:123e4567-e89b-42d3-a456-426614174000",
+        mempoolTxsCountSoFar: 0,
+        sizeOfProcessedTxsSoFar: 0,
+        baseSnapshotId: `architecture-g-candidate:${submittedTxHash}`,
+        stateQueueHasUnmergedTail: true,
+        speculativeBuild: {
+          base: {
+            headerHash: submittedTxHash.slice(0, 56),
+            utxosRoot: hash(129),
+            blockEndTimeMs,
+            submittedTxHash,
+          },
+          watermarks: {
+            depositMs: blockEndTimeMs + 180_000,
+            withdrawalMs: blockEndTimeMs + 180_000,
+            txOrderMs: blockEndTimeMs + 180_000,
+            refreshedAtMs: blockEndTimeMs + 180_000,
+          },
+          excludedMempoolTxIds: [],
+          excludedDepositEventIds: [],
+          excludedForcedTransactionEventIds: [],
+          excludedWithdrawalEventIds: [],
+        },
+      },
+    },
+  };
+};
+
+test("candidate input validator accepts only the complete producer language", () => {
+  const directory = mkdtempSync(join(tmpdir(), "midgard-slot-config-"));
+  const artifactPath = join(directory, "slot-config.json");
+  const document = {
+    schemaVersion: "midgard-node-slot-config-evidence-v1",
+    capturedAtIso: "2026-07-28T00:00:00.000Z",
+    network: "Preprod",
+    source: { kind: "lucid_network_table", lucidVersion: "0.6.0" },
+    slotConfig: {
+      zeroTime: 1_655_769_600_000,
+      zeroSlot: 86_400,
+      slotLength: 1_000,
+    },
+  };
+  const artifactBytes = Buffer.from(`${JSON.stringify(document)}\n`);
+  writeFileSync(artifactPath, artifactBytes);
+  const artifact = {
+    path: artifactPath,
+    sha256: createHash("sha256").update(artifactBytes).digest("hex"),
+    document,
+  };
+  const valid = candidateInputDocument(artifact);
+  try {
+    assert.equal(validateArchitectureGCommitCandidateInputV1(valid), valid);
+    for (const mutate of [
+      (value) => void (value.unknown = true),
+      (value) => void (value.phase1FormalBinding.unknown = true),
+      (value) => void (value.runtimeIdentity.unknown = true),
+      (value) => void (value.baseUtxoPayloadAggregate.unknown = true),
+      (value) => void (value.workerInput.unknown = true),
+      (value) => void (value.workerInput.data.unknown = true),
+      (value) => void delete value.workerInput.data.ledgerStoreLeaseOwner,
+      (value) =>
+        void (value.workerInput.data.ledgerStoreLeaseOwner = "commit:shared"),
+      (value) => void (value.workerInput.data.speculativeBuild.unknown = true),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.base.unknown = true),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.watermarks.unknown = true),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.base.headerHash =
+          hash(1)),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.base.utxosRoot = "bad"),
+      (value) =>
+        void value.workerInput.data.speculativeBuild.excludedMempoolTxIds.push(
+          hash(2),
+        ),
+      (value) => void (value.levelPath = "relative/fixture"),
+      (value) => void (value.corpusSha256 = hash(3)),
+      (value) => void (value.baseUtxoPayloadAggregate.entryCount = 999_999),
+      (value) =>
+        void (value.workerInput.data.forcedValidationSlotConfig.slotLength = 2_000),
+      (value) =>
+        void (value.forcedValidationSlotConfigArtifact.document.slotConfig.slotLength = 2_000),
+      (value) =>
+        void (value.forcedValidationSlotConfigArtifact.sha256 = hash(4)),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.watermarks.depositMs =
+          value.workerInput.data.currentBlockStartTimeMs),
+    ]) {
+      const invalid = structuredClone(valid);
+      mutate(invalid);
+      assert.throws(() => validateArchitectureGCommitCandidateInputV1(invalid));
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("node slot-config evidence pins Lucid tables and Custom Ogmios genesis identity", async () => {
+  for (const network of ["Mainnet", "Preview", "Preprod"]) {
+    const lucid = await Lucid(undefined, network);
+    const document = buildNodeSlotConfigEvidenceV1({
+      network,
+      capturedAtIso: "2026-07-28T00:00:00.000Z",
+    });
+    assert.deepEqual(document.slotConfig, lucid.config().slotConfig);
+  }
+
+  const directory = mkdtempSync(join(tmpdir(), "midgard-slot-genesis-"));
+  try {
+    const ogmiosGenesisPayload = {
+      jsonrpc: "2.0",
+      result: {
+        startTime: "2026-07-28T00:00:00.000Z",
+        slotLength: { milliseconds: 1_000 },
+      },
+      id: "midgard-node-slot-config-evidence",
+    };
+    const document = buildNodeSlotConfigEvidenceV1({
+      network: "Custom",
+      ogmiosUrl: "ws://127.0.0.1:1337/",
+      ogmiosGenesisPayload,
+      capturedAtIso: "2026-07-28T00:01:00.000Z",
+    });
+    assert.deepEqual(document.slotConfig, {
+      zeroTime: 1_785_196_800_000,
+      zeroSlot: 0,
+      slotLength: 1_000,
+    });
+
+    const artifactPath = join(directory, "slot-config.json");
+    const artifactBytes = Buffer.from(`${JSON.stringify(document)}\n`);
+    writeFileSync(artifactPath, artifactBytes);
+    assert.deepEqual(
+      readNodeSlotConfigEvidenceV1({
+        path: artifactPath,
+        expectedSha256: createHash("sha256")
+          .update(artifactBytes)
+          .digest("hex"),
+      }),
+      document,
+    );
+
+    const reorderedDocument = buildNodeSlotConfigEvidenceV1({
+      network: "Custom",
+      ogmiosUrl: "http://127.0.0.1:1337",
+      ogmiosGenesisPayload: {
+        id: "midgard-node-slot-config-evidence",
+        result: {
+          slotLength: { milliseconds: 1_000 },
+          startTime: "2026-07-28T00:00:00.000Z",
+        },
+        jsonrpc: "2.0",
+      },
+      capturedAtIso: "2026-07-28T00:01:00.000Z",
+    });
+    assert.deepEqual(reorderedDocument.source, document.source);
+
+    const alternateGenesis = buildNodeSlotConfigEvidenceV1({
+      network: "Custom",
+      ogmiosUrl: "http://127.0.0.1:1337",
+      ogmiosGenesisPayload: {
+        ...ogmiosGenesisPayload,
+        result: {
+          ...ogmiosGenesisPayload.result,
+          startTime: "2026-07-28T00:00:01.000Z",
+        },
+      },
+      capturedAtIso: "2026-07-28T00:01:00.000Z",
+    });
+    assert.notEqual(
+      alternateGenesis.source.configurationSha256,
+      document.source.configurationSha256,
+    );
+    assert.throws(
+      () =>
+        buildNodeSlotConfigEvidenceV1({
+          network: "Custom",
+          capturedAtIso: "2026-07-28T00:01:00.000Z",
+        }),
+      /requires an Ogmios URL and genesis response/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("Custom slot-config capture bounds Ogmios response time and bytes", async () => {
+  const oversized = JSON.stringify({
+    jsonrpc: "2.0",
+    result: { padding: "x".repeat(256) },
+    id: "midgard-node-slot-config-evidence",
+  });
+  await assert.rejects(
+    fetchOgmiosGenesisPayloadV1({
+      ogmiosUrl: "ws://127.0.0.1:1337/",
+      maxResponseBytes: 64,
+      fetchImpl: async () =>
+        new Response(oversized, {
+          status: 200,
+          headers: { "content-length": String(Buffer.byteLength(oversized)) },
+        }),
+    }),
+    /response exceeds 64 bytes/u,
+  );
+
+  let cancelled = false;
+  await assert.rejects(
+    fetchOgmiosGenesisPayloadV1({
+      ogmiosUrl: "ws://127.0.0.1:1337/",
+      maxResponseBytes: 64,
+      fetchImpl: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(Buffer.alloc(40));
+              controller.enqueue(Buffer.alloc(40));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+          { status: 200 },
+        ),
+    }),
+    /response exceeds 64 bytes/u,
+  );
+  assert.equal(cancelled, true);
+
+  await assert.rejects(
+    fetchOgmiosGenesisPayloadV1({
+      ogmiosUrl: "ws://127.0.0.1:1337/",
+      timeoutMs: 10,
+      fetchImpl: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener(
+            "abort",
+            () => reject(init.signal.reason),
+            { once: true },
+          );
+        }),
+    }),
+    /timed out after 10 ms/u,
+  );
+
+  const credentialBearingUrl =
+    "http://user:SUPERSECRET@127.0.0.1:9/?token=QUERYSECRET";
+  await assert.rejects(
+    fetchOgmiosGenesisPayloadV1({
+      ogmiosUrl: credentialBearingUrl,
+      fetchImpl: async (url) => {
+        throw new Error(`connect failed for ${url}`);
+      },
+    }),
+    (error) => {
+      assert.equal(error.message, "Ogmios genesis query transport failed");
+      assert.equal(error.message.includes("SUPERSECRET"), false);
+      assert.equal(error.message.includes("QUERYSECRET"), false);
+      return true;
+    },
+  );
+});
+
 const candidateProbeResult = () => ({
   schemaVersion: "midgard-architecture-g-commit-candidate-probe-v1",
   probePath: "/probes/mpf-commit-candidate-probe.js",
@@ -901,9 +1613,36 @@ const candidateProbeResult = () => ({
   submissionAttempts: 0,
   journalRowsBefore: 0,
   journalRowsAfter: 0,
+  candidateConfig: {
+    mpfEngine: "architecture_g",
+    scratchBuild: "fromlist",
+    payloadRootCheck: "off",
+    parallelRoots: true,
+    costModel: "ewma",
+    mempoolRetrievePageSize: 50_000,
+    maxL2TxCount: 50_000,
+    maxLedgerOpCount: 150_000,
+    maxTransitionStepCount: 50_000,
+  },
   candidate: {
+    candidateId: "123e4567-e89b-42d3-a456-426614174000",
+    baseHeaderHash: hash(121).slice(0, 56),
+    endTimeMs: 1_700_000_000_000,
+    builtAtMs: 1_700_000_000_100,
     expectedL2TransactionCount: 50_000,
     buildDurationMs: 8_900,
+    invalidationKey: `${hash(121).slice(0, 56)}:1700000000000:1699999999000`,
+    watermarks: {
+      depositMs: 1_699_999_999_000,
+      withdrawalMs: 1_699_999_999_100,
+      txOrderMs: 1_699_999_999_200,
+      refreshedAtMs: 1_700_000_000_050,
+    },
+    expectedUserEventCounts: {
+      deposits: 0,
+      forcedTransactions: 0,
+      withdrawals: 0,
+    },
     roots: Object.fromEntries(
       [
         "utxos",
@@ -920,6 +1659,8 @@ const candidateProbeResult = () => ({
       ]),
     ),
   },
+  ownerBefore: rootGateOwnerDiagnostics(hash(120)),
+  ownerAfter: rootGateOwnerDiagnostics(hash(120)),
 });
 
 test("candidate result validator binds count, affinity, no-scan, no-submit, journal, and roots", () => {
@@ -954,7 +1695,47 @@ test("candidate result validator binds count, affinity, no-scan, no-submit, jour
     (value) => void (value.fundingMapSha256 = "bad"),
     (value) => void (value.fixtureCreationSha256 = "bad"),
     (value) => void (value.baseUtxoPayloadAggregate.entryCount = 99),
+    (value) => void (value.candidateConfig.scratchBuild = "overlay"),
+    (value) => void (value.candidateConfig.maxLedgerOpCount = 149_999),
+    (value) => void (value.candidate.candidateId = "not-a-uuid"),
+    (value) => void (value.candidate.baseHeaderHash = "bad"),
+    (value) => void (value.candidate.invalidationKey = "stale"),
+    (value) => void (value.candidate.watermarks.depositMs = -1),
+    (value) => void (value.candidate.expectedUserEventCounts.deposits = -1),
+    (value) => void (value.ownerAfter.durableRoot = hash(122)),
     (value) => void (value.candidate.roots.utxos = "bad"),
+  ]) {
+    const invalid = structuredClone(valid);
+    mutate(invalid);
+    assert.throws(() =>
+      validateCommitCandidateProbeResult({
+        result: invalid,
+        transactions: 50_000,
+        cpuSet: "2-9",
+        fixtureSize: 1_000_000,
+        inputPath: valid.inputPath,
+        inputSha256: valid.inputSha256,
+        probePath: valid.probePath,
+        probeSha256: valid.probeSha256,
+        binarySha256: valid.binarySha256,
+      }),
+    );
+  }
+});
+
+test("candidate result validator rejects incomplete or extended V1 documents", () => {
+  const valid = candidateProbeResult();
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void delete value.candidateConfig,
+    (value) => void (value.baseUtxoPayloadAggregate.unknown = true),
+    (value) => void (value.candidateConfig.unknown = true),
+    (value) => void (value.candidate.unknown = true),
+    (value) => void (value.candidate.watermarks.unknown = true),
+    (value) => void (value.candidate.expectedUserEventCounts.unknown = true),
+    (value) => void (value.candidate.roots.unknown = hash(123)),
+    (value) => void (value.ownerBefore.unknown = true),
+    (value) => void (value.ownerAfter.ownerEpoch.unknown = true),
   ]) {
     const invalid = structuredClone(valid);
     mutate(invalid);

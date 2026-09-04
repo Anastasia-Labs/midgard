@@ -12,6 +12,8 @@ import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
+import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   deserializePhaseACandidate,
@@ -33,14 +35,12 @@ import {
 } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { nodeUtxoFromCorpusFunding } from "@/commands/stress-corpus/build-chain.js";
-import type { OpenLoopCorpusRow } from "@/commands/stress-open-loop.js";
 import {
   DepositsDB,
   MempoolLedgerDB,
   MigrationRunner,
-} from "@/database/index.js";
-import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
+} from "../../src/database/index.js";
+import { projectDepositsToMempoolLedger } from "../../src/fibers/project-deposits-to-mempool-ledger.js";
 import {
   txQueueProcessorDrainOnce,
   validationBatchDurationSummary,
@@ -50,31 +50,33 @@ import {
   validationMempoolInsertDurationTimer,
   validationPhaseADurationTimer,
   validationPhaseBDurationTimer,
-} from "@/fibers/tx-queue-processor.js";
-import { NodeConfig } from "@/services/config.js";
-import { BatchSql } from "@/services/database.js";
-import { Globals } from "@/services/globals.js";
-import { Lucid } from "@/services/lucid.js";
+} from "../../src/fibers/tx-queue-processor.js";
+import type { OpenLoopCorpusRow } from "../../src/open-loop-corpus-format.js";
+import { nodeUtxoFromCorpusFunding } from "../../src/open-loop-corpus-format.js";
+import { NodeConfig } from "../../src/services/config.js";
+import { BatchSql } from "../../src/services/database.js";
+import { Globals } from "../../src/services/globals.js";
+import { Lucid } from "../../src/services/lucid.js";
 import {
   makeMempoolLedgerCacheService,
   MempoolLedgerCache,
   validationLedgerCacheDeltaApplyCounter,
   validationLedgerCacheFullReloadCounter,
-} from "@/services/mempool-ledger-cache.js";
+} from "../../src/services/mempool-ledger-cache.js";
 import {
   FixedValidationWorkerPool,
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,
-} from "@/services/validation-pool.js";
+} from "../../src/services/validation-pool.js";
 import {
   makeWriteBehind,
   readWriteBehindTelemetry,
   summarizeWriteBehindTelemetry,
   WriteBehind,
-} from "@/services/write-behind.js";
-import type { ValidationCacheStats } from "@/workers/utils/validation-pool.js";
-import { packPhaseAJob } from "@/workers/utils/validation-pool.js";
+} from "../../src/services/write-behind.js";
+import type { ValidationCacheStats } from "../../src/workers/utils/validation-pool.js";
+import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 
 type WorkerCacheSnapshot = {
   readonly publicKeyCache: ValidationCacheStats;
@@ -100,7 +102,7 @@ type CorpusManifest = {
 type AdmissionInsert = {
   readonly tx_id: Buffer;
   readonly tx_canonical_cbor: Buffer;
-  readonly tx_canonical_cbor_sha256: Buffer;
+  readonly tx_full_hash_v1: Buffer;
   readonly arrival_seq: bigint;
   readonly status: "queued";
   readonly submit_source: "native";
@@ -762,19 +764,17 @@ const preloadAdmissions = async (
             inserting.map(
               ({
                 tx_canonical_cbor: _cbor,
-                tx_canonical_cbor_sha256: _hash,
+                tx_full_hash_v1: _hash,
                 ...admission
               }) => admission,
             ),
           )}`;
           yield* sql`INSERT INTO tx_admission_payloads ${sql.insert(
-            inserting.map(
-              ({ tx_id, tx_canonical_cbor, tx_canonical_cbor_sha256 }) => ({
-                tx_id,
-                tx_canonical_cbor,
-                tx_canonical_cbor_sha256,
-              }),
-            ),
+            inserting.map(({ tx_id, tx_canonical_cbor, tx_full_hash_v1 }) => ({
+              tx_id,
+              tx_canonical_cbor,
+              tx_full_hash_v1,
+            })),
           )}`;
           yield* sql`INSERT INTO phase2_expected_tx_ids ${sql.insert(
             inserting.map(({ tx_id }) => ({ tx_id })),
@@ -803,7 +803,7 @@ const preloadAdmissions = async (
     batch.push({
       tx_id: Buffer.from(row.txHash, "hex"),
       tx_canonical_cbor: txCbor,
-      tx_canonical_cbor_sha256: Buffer.from(row.canonicalCborSha256, "hex"),
+      tx_full_hash_v1: computeMidgardNativeTxFullHashFromCanonicalCbor(txCbor),
       arrival_seq: arrivalSeq,
       status: "queued",
       submit_source: "native",
@@ -883,6 +883,7 @@ const drainReplica = async (
   const phaseAStats = { durationMs: 0, serializationMs: 0 };
   const validationPool: ValidationPoolService = {
     poolSize,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     ready: Effect.void,
     stats: Effect.sync(() => pool.stats()),
     runPhaseAChunk: (txs) =>
@@ -1427,6 +1428,7 @@ describe("Phase 2 sustained real-Postgres Stage B operator benchmark", () => {
         minFeeB: BigInt(manifest.feeParams.minFeeB),
         concurrency: 1,
         strictnessProfile: "phase2_stage_b_operator",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       } as const;
       const probeRows = await readCorpusRows(corpusPath, batchSize);
       const probeQueued = probeRows.map((row, index) =>

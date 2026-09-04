@@ -3,41 +3,48 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
+import type {
+  Libp2pDaPeerConfig,
+  Libp2pDaTransportConfig,
+} from "da-committee-node/config";
+import {
+  createDaLibp2pPayloadRequestHandlers,
+  DaLibp2pNode,
+  DaPayloadSubmitAdmission,
+} from "da-committee-node/da/libp2p";
+import { JsonFileWatcherStore } from "da-committee-node/store";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import {
   closeDaLibp2pPublicationTransport,
   createDaLibp2pProducerTransport,
   type DaProducerCommitteePeer,
   type DaProducerPublicationManifest,
   getDaPublicationTransportForTest,
+  parseDaProducerPublicationManifest,
   probeDaEnvelopeCapabilities,
-} from "@/da/libp2p-producer.js";
-import { DaPayloadPublicationsDB, DaPayloadsDB } from "@/database/index.js";
-import { reconcileDaPublicationsOnce } from "@/fibers/da-publication-reconciler.js";
-
-import type {
-  Libp2pDaPeerConfig,
-  Libp2pDaTransportConfig,
-} from "../../da-committee-node/src/config.js";
+} from "../src/da/libp2p-producer.js";
 import {
-  createDaLibp2pPayloadRequestHandlers,
-  DaLibp2pNode,
-  DaPayloadSubmitAdmission,
-  loadDaLibp2pIdentity,
-} from "../../da-committee-node/src/da/libp2p/index.js";
-import { JsonFileWatcherStore } from "../../da-committee-node/src/store.js";
-import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+  DaPayloadPublicationsDB,
+  DaPayloadsDB,
+} from "../src/database/index.js";
+import { reconcileDaPublicationsOnce } from "../src/fibers/da-publication-reconciler.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const enabled = process.env.MIDGARD_RUN_DA_PHASE5_JOINED_E2E === "1";
 const DEPLOYMENT = "c7".repeat(32);
-const RETENTION_DAYS = DA_TRANSPORT_LIMITS_V1.minimumRetentionDays;
+const RETENTION_DAYS = DA_TRANSPORT_LIMITS.minimumRetentionDays;
+// A dedicated, non-committee Noise identity for the public retained-DA
+// plane, as parseDaLibp2pRuntimeManifest requires.
+const PEER_RETAINED = "12D3KooWQYV9dGMFoRzNStwpXztXaBUjtPqi6aU76ZgUriHhKust";
 const ENV_KEYS = [
   "MIDGARD_DEPLOYMENT_MANIFEST_PATH",
   "DA_LIBP2P_PRIVATE_KEY_SOURCE",
@@ -105,14 +112,14 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
           strictSign: true,
           emitSelf: false,
           allowedTopicsOnly: true,
-          maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+          maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
         },
         limits: {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-          maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-          maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-          maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-          requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+          maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+          maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+          maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+          requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
         },
         retentionDays: RETENTION_DAYS,
         peers: [...committeePeers, producerPeer],
@@ -133,13 +140,13 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       contractDeploymentManifestId: DEPLOYMENT,
       localPrivateKeySource: producerSeed,
       threshold: 2,
-      requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-      maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-      maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-      maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
-      listenMultiaddrs: [],
+      requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+      maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+      maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
+      listenMultiaddrs: ["/ip4/127.0.0.1/tcp/0"],
       announceMultiaddrs: [
         "/ip4/127.0.0.1/tcp/0/p2p/" + producerIdentity.peerId,
       ],
@@ -147,19 +154,23 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       committeePeers,
     };
     const manifestPath = join(temp, "producer-manifest.json");
+    const runtimeManifestValue = runtimeManifest(manifest, committeePeers);
     let readinessTransport:
       | Awaited<ReturnType<typeof createDaLibp2pProducerTransport>>
       | undefined;
     try {
-      await writeFile(
-        manifestPath,
-        JSON.stringify(runtimeManifest(manifest, committeePeers)),
-      );
+      await writeFile(manifestPath, JSON.stringify(runtimeManifestValue));
       process.env.MIDGARD_DEPLOYMENT_MANIFEST_PATH = manifestPath;
       process.env.DA_LIBP2P_PRIVATE_KEY_SOURCE = producerSeed;
       process.env.MIDGARD_DA_PUBLISH_CONCURRENCY = "3";
       process.env.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS = "1";
       process.env.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS = "1";
+      expect(
+        parseDaProducerPublicationManifest(runtimeManifestValue),
+      ).toMatchObject({
+        deploymentFingerprint: DEPLOYMENT,
+        threshold: 2,
+      });
 
       for (const node of committeeNodes) {
         await node.start();
@@ -266,7 +277,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       await expect(
         stores[2]!.getDaPayload(fixture.headerHash),
       ).resolves.toMatchObject({
-        payloadSchemaVersion: 2,
+        payloadSchemaVersion: 1,
         payloadCborHex: fixture.payloadCbor.toString("hex"),
       });
     } finally {
@@ -314,12 +325,18 @@ const runtimeManifest = (
   manifest: DaProducerPublicationManifest,
   peers: readonly DaProducerCommitteePeer[],
 ): Record<string, unknown> => ({
-  schemaVersion: "midgard-da-libp2p-runtime-manifest-v2",
+  schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
+  network: "Preview",
   deployment: {
     fingerprint: manifest.deploymentFingerprint,
     contract_deployment_manifest_id: manifest.deploymentFingerprint,
     contract_deployment_info_sha256: "cd".repeat(32),
     identity_source: "contract_deployment_manifest_id",
+  },
+  runtime_topology: {
+    target: "producer",
+    profile: "public",
+    producer_peer_id: manifest.announceMultiaddrs[0]!.split("/p2p/")[1],
   },
   da_transport: {
     kind: "libp2p",
@@ -327,6 +344,7 @@ const runtimeManifest = (
     listen_multiaddrs: manifest.listenMultiaddrs,
     announce_multiaddrs: manifest.announceMultiaddrs,
     bootstrap_multiaddrs: manifest.bootstrapMultiaddrs,
+    retention_days: RETENTION_DAYS,
     gossip: {
       strict_sign: true,
       emit_self: false,
@@ -339,6 +357,29 @@ const runtimeManifest = (
       max_chunk_bytes: manifest.maxChunkBytes,
       max_streams_per_peer: manifest.maxStreamsPerPeer,
       request_timeout_ms: manifest.requestTimeoutMs,
+    },
+  },
+  public_retained_da: {
+    profile: "public-retained-da-v1",
+    access_policy: "any_noise_authenticated_peer",
+    peer_id: PEER_RETAINED,
+    listen_multiaddrs: ["/ip4/127.0.0.1/tcp/0"],
+    announce_multiaddrs: [`/dns4/public.example/tcp/4003/p2p/${PEER_RETAINED}`],
+    protocols: [
+      "capabilities",
+      "payload-by-header",
+      "payload-chunk",
+      "metadata-by-header",
+      "proof-bundle-by-header",
+      "trace-step-by-index",
+      "event-to-step-by-event",
+    ],
+    limits: {
+      max_streams_per_peer: 4,
+      max_inflight_requests: 32,
+      max_inflight_requests_per_peer: 2,
+      max_inflight_proof_requests: 1,
+      request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
     },
   },
   da_committee: {
@@ -357,7 +398,8 @@ const insertFromFixture = (
   fixture: Awaited<ReturnType<typeof makePayloadFixture>>,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.VERSION]: 2,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
+  [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: fixture.payloadCbor,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(
     fixture.payloadCbor,
@@ -371,6 +413,8 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]:
     fixture.header.transitionTraceRoot,
   [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: fixture.header.eventToStepRoot,
+  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
+    fixture.header.validationTracesRoot,
   [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: fixture.header.withdrawalCount,
   [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]:
     fixture.header.forcedTransactionCount,
@@ -380,6 +424,8 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: fixture.header.totalEventCount,
   [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]:
     fixture.header.transitionStepCount,
+  [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]:
+    fixture.header.validationTraceCount,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(1),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(2),
 });

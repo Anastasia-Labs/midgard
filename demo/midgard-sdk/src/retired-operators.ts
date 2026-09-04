@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Data,
   fromText,
@@ -6,15 +7,19 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { SlashingArgumentsSchema } from "./active-operators.js";
 import {
   AuthenticatedValidator,
   LucidError,
   OutputReferenceSchema,
   POSIXTimeSchema,
-} from "@/common.js";
-import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
-
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+} from "./common.js";
+import { authenticateUTxOs, AuthenticUTxO } from "./internals.js";
+import {
+  incompleteInitLinkedListTxProgram,
+  LinkedListDatum,
+  linkedListDatumToNodeView,
+} from "./linked-list.js";
 
 export const RETIRED_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_RETIRED_OPERATORS",
@@ -26,8 +31,9 @@ export const RetiredOperatorDatumSchema = Data.Object({
 export type RetiredOperatorDatum = Data.Static<
   typeof RetiredOperatorDatumSchema
 >;
-export const RetiredOperatorDatum =
-  RetiredOperatorDatumSchema as unknown as RetiredOperatorDatum;
+export const RetiredOperatorDatum = asDataType<RetiredOperatorDatum>(
+  RetiredOperatorDatumSchema,
+);
 export const castRetiredOperatorDatumToData = (
   datum: RetiredOperatorDatum,
 ): unknown => Data.castTo(datum, RetiredOperatorDatum);
@@ -58,7 +64,7 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     SlashOperator: Data.Object({
-      slashing_arguments: Data.Any(),
+      slashing_arguments: SlashingArgumentsSchema,
     }),
   }),
 ]);
@@ -66,7 +72,7 @@ export type RetiredOperatorMintRedeemer = Data.Static<
   typeof RetiredOperatorMintRedeemerSchema
 >;
 export const RetiredOperatorMintRedeemer =
-  RetiredOperatorMintRedeemerSchema as unknown as RetiredOperatorMintRedeemer;
+  asDataType<RetiredOperatorMintRedeemer>(RetiredOperatorMintRedeemerSchema);
 
 export type RetiredOperatorInitParams = {
   validator: AuthenticatedValidator;
@@ -100,10 +106,22 @@ export const fetchRetiredOperatorUTxOs = (
         cause: "No UTxOs found in Retired Operators Contract address",
       });
     }
-    return yield* authenticateUTxOs<RetiredOperatorDatum>(
+    const linkedListUTxOs = yield* authenticateUTxOs<LinkedListDatum>(
       allUtxos,
       params.retiredOperatorPolicyId,
-      RetiredOperatorDatum,
+      LinkedListDatum,
+    );
+    return yield* Effect.allSuccesses(
+      linkedListUTxOs.map(({ assetName, utxo, datum }) =>
+        Effect.try(() => ({
+          assetName,
+          utxo,
+          datum: Data.castFrom(
+            linkedListDatumToNodeView(datum, assetName).data as never,
+            RetiredOperatorDatum as never,
+          ) as RetiredOperatorDatum,
+        })),
+      ),
     );
   });
 

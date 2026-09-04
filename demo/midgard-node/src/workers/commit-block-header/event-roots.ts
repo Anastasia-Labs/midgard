@@ -1,13 +1,16 @@
+import {
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
 import { Effect, Option } from "effect";
 
 import {
   DepositsDB,
   ForcedTransactionsDB,
   WithdrawalsDB,
-} from "@/database/index.js";
-import type { DatabaseError } from "@/database/utils/common.js";
-import type { MpfError } from "@/workers/utils/mpf.js";
-
+} from "../../database/index.js";
+import type { DatabaseError } from "../../database/utils/common.js";
+import type { MpfError } from "../../mpf/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
 
 export const resolveDepositsRoot = (
@@ -53,13 +56,14 @@ export const resolveWithdrawalsRoot = (
 
 export const resolveForcedTransactionsRoot = (
   forcedTransactionEntries: readonly ForcedTransactionsDB.Entry[],
+  _consensusProfile: MidgardConsensusProfile = MIDGARD_CONSENSUS_PROFILE,
 ): Effect.Effect<Option.Option<string>, MpfError, never> =>
   Effect.gen(function* () {
     if (forcedTransactionEntries.length <= 0) {
       return Option.none();
     }
     const root = yield* buildAuthenticatedRootFromEncodedEntries(
-      "ForcedTransactionsRootDomain",
+      "ForcedTransactionsV1RootDomain",
       forcedTransactionEntries.map(ForcedTransactionsDB.toRootKeyValue),
     );
     return Option.some(root.root);

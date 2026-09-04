@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Data,
   fromText,
@@ -6,8 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { AuthenticatedValidator, OutputReferenceSchema } from "@/common.js";
-
+import { AuthenticatedValidator, OutputReferenceSchema } from "./common.js";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const REGISTERED_OPERATORS_ROOT_ASSET_NAME = fromText(
@@ -20,8 +20,9 @@ export const RegisteredOperatorDatumSchema = Data.Object({
 export type RegisteredOperatorDatum = Data.Static<
   typeof RegisteredOperatorDatumSchema
 >;
-export const RegisteredOperatorDatum =
-  RegisteredOperatorDatumSchema as unknown as RegisteredOperatorDatum;
+export const RegisteredOperatorDatum = asDataType<RegisteredOperatorDatum>(
+  RegisteredOperatorDatumSchema,
+);
 export const castRegisteredOperatorDatumToData = (
   datum: RegisteredOperatorDatum,
 ): unknown => Data.castTo(datum, RegisteredOperatorDatum);
@@ -38,8 +39,9 @@ export const DuplicateOperatorStatusSchema = Data.Enum([
 export type DuplicateOperatorStatus = Data.Static<
   typeof DuplicateOperatorStatusSchema
 >;
-export const DuplicateOperatorStatus =
-  DuplicateOperatorStatusSchema as unknown as DuplicateOperatorStatus;
+export const DuplicateOperatorStatus = asDataType<DuplicateOperatorStatus>(
+  DuplicateOperatorStatusSchema,
+);
 
 export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -89,7 +91,9 @@ export type RegisteredOperatorMintRedeemer = Data.Static<
   typeof RegisteredOperatorMintRedeemerSchema
 >;
 export const RegisteredOperatorMintRedeemer =
-  RegisteredOperatorMintRedeemerSchema as unknown as RegisteredOperatorMintRedeemer;
+  asDataType<RegisteredOperatorMintRedeemer>(
+    RegisteredOperatorMintRedeemerSchema,
+  );
 
 export type RegisteredOperatorInitParams = {
   validator: AuthenticatedValidator;

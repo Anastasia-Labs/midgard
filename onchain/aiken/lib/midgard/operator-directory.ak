@@ -89,15 +89,15 @@ pub fn operator_is_not_a_member(
   reference_inputs: List<Input>,
   element_ref_input_index: Int,
 ) -> linked_list.ElementEval<Bool> {
-  expect Some(element_input) =
-    reference_inputs |> list.at(element_ref_input_index)
+  expect Some(element_input) = reference_inputs
+    |> list.at(element_ref_input_index)
   let
-    _element_address,
-    _element_lovelace,
-    m_smaller_key,
-    _element_data,
-    larger_link,
-  <- linked_list.get_element_info(element_input.output)
+      _element_address,
+      _element_lovelace,
+      m_smaller_key,
+      _element_data,
+      larger_link
+    <- linked_list.get_element_info(element_input.output)
   and {
     when m_smaller_key is {
       Some(smaller_key) -> bytearray.compare(smaller_key, operator) == Less
@@ -106,6 +106,33 @@ pub fn operator_is_not_a_member(
     when larger_link is {
       Some(larger_key) -> bytearray.compare(operator, larger_key) == Less
       None -> True
+    },
+  }
+}
+
+pub fn transferred_operator_bond_tranche_is_exact_v1(
+  node_lovelace: Int,
+  penalize_for_inactivity: Bool,
+) -> Bool {
+  node_lovelace == if penalize_for_inactivity {
+    env.required_bond - env.inactivity_slashing_penalty
+  } else {
+    env.required_bond
+  }
+}
+
+pub fn fraudulent_operator_slash_economics_are_exact_v1(
+  node_lovelace: Int,
+  fee: Int,
+) -> Bool {
+  or {
+    and {
+      node_lovelace == env.required_bond,
+      fee == env.slashing_penalty,
+    },
+    and {
+      node_lovelace == env.required_bond - env.inactivity_slashing_penalty,
+      fee == env.slashing_penalty - env.inactivity_slashing_penalty,
     },
   }
 }
@@ -138,57 +165,51 @@ pub fn validate_transferred_operator_insertion(
     Bool,
 ) -> linked_list.ElementEval<Bool> {
   // 1. The minting redeemer of the origin operators list must be invoked.
-  let origin_list_redeemer_data =
-    redeemers
-      |> utils.get_redeemer_at(
-          expected_purpose: Mint(origin_list_policy_id),
-          redeemer_index: origin_list_redeemer_index,
-        )
+  let origin_list_redeemer_data = redeemers
+    |> utils.get_redeemer_at(
+        expected_purpose: Mint(origin_list_policy_id),
+        redeemer_index: origin_list_redeemer_index,
+      )
 
-  let (operator_from_origin_list_redeemer, must_penalize) =
-    origin_list_redeemer_to_operator_and_penalty_flag(origin_list_redeemer_data)
+  let (operator_from_origin_list_redeemer, must_penalize) = origin_list_redeemer_to_operator_and_penalty_flag(
+    origin_list_redeemer_data,
+  )
 
   // 2. The operator from target list's redeemer must agree with the one
   //    extracted from the origin list's redeemer.
   expect operator == operator_from_origin_list_redeemer
 
   // 3. Specified outputs related to the linked list must exist.
-  expect Some(target_list_anchor_element_output) =
-    outputs |> list.at(target_list_anchor_element_output_index)
-  expect Some(target_list_inserted_node) =
-    outputs |> list.at(target_list_inserted_node_output_index)
+  expect Some(target_list_anchor_element_output) = outputs
+    |> list.at(target_list_anchor_element_output_index)
+  expect Some(target_list_inserted_node) = outputs
+    |> list.at(target_list_inserted_node_output_index)
 
   // 4. Ordered insertion in the linked list must be proper.
   let
-    _anchor_input,
-    anchor_lovelace_change,
-    m_anchor_key,
-    _anchor_data,
-    inserted_node_lovelace,
-    inserted_node_key,
-    inserted_node_data,
-    inserted_node_link,
-  <-
-    linked_list.insert_ascending(
-      continued_anchor_element_output: target_list_anchor_element_output,
-      new_node_output: target_list_inserted_node,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _anchor_input,
+      anchor_lovelace_change,
+      m_anchor_key,
+      _anchor_data,
+      inserted_node_lovelace,
+      inserted_node_key,
+      inserted_node_data,
+      inserted_node_link
+    <- linked_list.insert_ascending(
+    continued_anchor_element_output: target_list_anchor_element_output,
+    new_node_output: target_list_inserted_node,
+    inputs: inputs,
+    tx_mint: mint,
+  )
 
   // 5. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
 
   expect
-    if must_penalize {
-      // 6a. ADA bond must be transferred from the origin operator node, without
-      //     the inactivity slashing penalty (paid as transaction fees only,
-      //     TODO?).
-      inserted_node_lovelace >= env.required_bond - env.inactivity_slashing_penalty
-    } else {
-      // 6b. ADA bond must be transferred from the origin operator node.
-      inserted_node_lovelace >= env.required_bond
-    }
+    transferred_operator_bond_tranche_is_exact_v1(
+      inserted_node_lovelace,
+      must_penalize,
+    )
 
   // 7. The newly inserted node must carry the same operator as the one
   //    provided via the redeemer as its key.
@@ -232,57 +253,59 @@ pub fn slash_fraudulent_operator_and_get_info(
   ) ->
     Bool,
 ) -> linked_list.ElementEval<Bool> {
-  let SlashingArguments {
-    slashed_operator,
-    hub_oracle_ref_input_index,
-    slashed_operator_anchor_element_input_outref,
-    slashed_operator_anchor_element_output_index,
-    slashing_reason,
-  } = slashing_arguments
+  let
+      SlashingArguments {
+        slashed_operator,
+        hub_oracle_ref_input_index,
+        slashed_operator_anchor_element_input_outref,
+        slashed_operator_anchor_element_output_index,
+        slashing_reason,
+      }
+    = slashing_arguments
 
-  let Transaction {
-    inputs,
-    outputs,
-    reference_inputs,
-    mint,
-    fee,
-    redeemers,
-    ..
-  } = tx
+  let
+      Transaction {
+        inputs,
+        outputs,
+        reference_inputs,
+        mint,
+        fee,
+        redeemers,
+        ..
+      }
+    = tx
 
   // 1. Transaction must refer to the authentic hub oracle UTxO to allow
   //    extraction of relevant addresses or policy IDs.
-  let hub_datum =
-    hub.get_datum(
-      reference_inputs,
-      hub_oracle_script_hash,
-      hub_oracle_ref_input_index,
-    )
+  let hub_datum = hub.get_datum(
+    reference_inputs,
+    hub_oracle_script_hash,
+    hub_oracle_ref_input_index,
+  )
 
   // 2. Specified output for removal of the slashed operator's node from the
   //    linked list must exist at its index.
-  expect Some(slashed_operator_anchor_element_output) =
-    outputs |> list.at(slashed_operator_anchor_element_output_index)
+  expect Some(slashed_operator_anchor_element_output) = outputs
+    |> list.at(slashed_operator_anchor_element_output_index)
 
   // 3. Linked list's removal logic must be valid for the specified inputs and
   //    output.
   let
-    _anchor_input,
-    anchor_lovelace_change,
-    m_anchor_key,
-    _anchor_data,
-    _slashed_operator_node_input,
-    slashed_operator_node_lovelace,
-    slashed_operator_node_key,
-    _slashed_operator_node_data,
-    slashed_operator_node_link,
-  <-
-    linked_list.remove(
-      anchor_input_outref: slashed_operator_anchor_element_input_outref,
-      continued_anchor_element_output: slashed_operator_anchor_element_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _anchor_input,
+      anchor_lovelace_change,
+      m_anchor_key,
+      _anchor_data,
+      _slashed_operator_node_input,
+      slashed_operator_node_lovelace,
+      slashed_operator_node_key,
+      _slashed_operator_node_data,
+      slashed_operator_node_link
+    <- linked_list.remove(
+    anchor_input_outref: slashed_operator_anchor_element_input_outref,
+    continued_anchor_element_output: slashed_operator_anchor_element_output,
+    inputs: inputs,
+    tx_mint: mint,
+  )
 
   // 4. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
@@ -291,18 +314,19 @@ pub fn slash_fraudulent_operator_and_get_info(
   //    of the removed node.
   expect slashed_operator_node_key == slashed_operator
 
+  // 6. The transaction fee is the pinned destination of the residual bond
+  //    (F04 §2.3: the penalty is paid to the Cardano treasury as fee, and
+  //    "the reward output and exact fee conserve the complete designated bond
+  //    tranche"). The complementary half — routing exactly
+  //    `env.fraud_prover_reward` to the fraud prover instead of letting the
+  //    submitter keep it as change — is enforced by the state queue's
+  //    `RemoveFraudulentBlockHeader` handler, which is the only endpoint that
+  //    may pay the reward (2026-08-11 owner ruling 7, D3/D4).
   expect
-    if slashed_operator_node_lovelace < env.required_bond {
-      // 6a. If the operator is partially slashed, the portion already sent to
-      //     the Cardano treasury doesn't need to be deposited again (since
-      //     partial slashing is entirely paid as tx fee).
-      fee >= env.slashing_penalty - env.inactivity_slashing_penalty
-    } else {
-      // 6b. Slashing penalty must be paid to the Cardano treasury via the
-      //     transaction fee. Fraud prover is assumed to be the signer of the
-      //     transaction, and therefore will receive the remaining bond.
-      fee >= env.slashing_penalty
-    }
+    fraudulent_operator_slash_economics_are_exact_v1(
+      slashed_operator_node_lovelace,
+      fee,
+    )
 
   // 7. Given custom validations must pass.
   expect
@@ -322,12 +346,12 @@ pub fn slash_fraudulent_operator_and_get_info(
       //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
       //     there must agree with the `slashed_operator` redeemer argument
       //     here.
-      expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
-        redeemers
-          |> utils.get_redeemer_at(
-              expected_purpose: Mint(hub_datum.state_queue),
-              redeemer_index: state_queue_redeemer_index,
-            )
+      expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. }
+        = redeemers
+        |> utils.get_redeemer_at(
+            expected_purpose: Mint(hub_datum.state_queue),
+            redeemer_index: state_queue_redeemer_index,
+          )
       expect fraudulent_operator == slashed_operator
 
       // Done.
@@ -339,14 +363,13 @@ pub fn slash_fraudulent_operator_and_get_info(
     } -> {
       // 8b. A settlement UTxO must be getting spent via the
       //     `DisproveResolutionClaim` redeemer.
-      expect settlement.DisproveResolutionClaim { operator, .. } =
-        utils.get_spending_redeemer_data_at(
-          hub_datum.settlement_addr,
-          settlement_input_index,
-          settlement_redeemer_index,
-          inputs,
-          redeemers,
-        )
+      expect settlement.DisproveResolutionClaim { operator, .. } = utils.get_spending_redeemer_data_at(
+        hub_datum.settlement_addr,
+        settlement_input_index,
+        settlement_redeemer_index,
+        inputs,
+        redeemers,
+      )
       expect operator == slashed_operator
 
       // Done.
@@ -362,14 +385,53 @@ pub fn cross_validate_slashing_reason(
   redeemer_to_slashing_arguments: fn(Redeemer) -> SlashingArguments,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> SlashingReason {
-  let target_operators_set_redeemer_data =
-    utils.get_redeemer_at(
-      redeemers: redeemers,
-      expected_purpose: Mint(target_operators_set_policy_id),
-      redeemer_index: target_operators_set_redeemer_index,
-    )
-  let SlashingArguments { slashed_operator, slashing_reason, .. } =
-    redeemer_to_slashing_arguments(target_operators_set_redeemer_data)
+  let target_operators_set_redeemer_data = utils.get_redeemer_at(
+    redeemers: redeemers,
+    expected_purpose: Mint(target_operators_set_policy_id),
+    redeemer_index: target_operators_set_redeemer_index,
+  )
+  let SlashingArguments { slashed_operator, slashing_reason, .. } = redeemer_to_slashing_arguments(
+    target_operators_set_redeemer_data,
+  )
   expect fraudulent_operator == slashed_operator
   slashing_reason
+}
+
+test q53_operator_bond_tranches_are_exact() {
+  let full = env.required_bond
+  let partial = env.required_bond - env.inactivity_slashing_penalty
+  and {
+    transferred_operator_bond_tranche_is_exact_v1(full, False),
+    transferred_operator_bond_tranche_is_exact_v1(partial, True),
+    !transferred_operator_bond_tranche_is_exact_v1(full - 1, False),
+    !transferred_operator_bond_tranche_is_exact_v1(full + 1, False),
+    !transferred_operator_bond_tranche_is_exact_v1(partial - 1, True),
+    !transferred_operator_bond_tranche_is_exact_v1(partial + 1, True),
+    !transferred_operator_bond_tranche_is_exact_v1(
+      env.required_bond - env.inactivity_slashing_penalty - 2,
+      True,
+    ),
+  }
+}
+
+test q53_fraud_slash_fee_and_tranche_are_exact() {
+  let full = env.required_bond
+  let partial = env.required_bond - env.inactivity_slashing_penalty
+  let full_fee = env.slashing_penalty
+  let partial_fee = env.slashing_penalty - env.inactivity_slashing_penalty
+  and {
+    fraudulent_operator_slash_economics_are_exact_v1(full, full_fee),
+    fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee),
+    !fraudulent_operator_slash_economics_are_exact_v1(full, full_fee - 1),
+    !fraudulent_operator_slash_economics_are_exact_v1(full, full_fee + 1),
+    !fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee - 1),
+    !fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee + 1),
+    !fraudulent_operator_slash_economics_are_exact_v1(full - 1, full_fee),
+    !fraudulent_operator_slash_economics_are_exact_v1(full + 1, full_fee),
+    !fraudulent_operator_slash_economics_are_exact_v1(partial - 1, partial_fee),
+    !fraudulent_operator_slash_economics_are_exact_v1(
+      env.required_bond - env.inactivity_slashing_penalty - 2,
+      partial_fee,
+    ),
+  }
 }

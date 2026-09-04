@@ -7,42 +7,42 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Option, Ref } from "effect";
 
-import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
-import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import {
   ConfirmedLedgerDB,
   PendingBlockFinalizationsDB,
-} from "@/database/index.js";
+} from "../database/index.js";
+import {
+  computeLedgerMpfRootFromLedgerEntries,
+  synchronizeCommitMpfStoresFromLedgerEntries,
+} from "../mpf/index.js";
+import {
+  fetchCanonicalCommittedHeaders,
+  localJournalHasPayloadMembers,
+  reviveEarliestCanonicalPayloadJournal,
+} from "../services/canonical-journal-recovery.js";
 import {
   Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
-import {
-  fetchCanonicalCommittedHeaders,
-  localJournalHasPayloadMembers,
-  reviveEarliestCanonicalPayloadJournal,
-} from "@/services/canonical-journal-recovery.js";
+} from "../services/index.js";
 import {
   fetchStateQueueSnapshotProgram,
   formatStateQueueTopology,
   refreshStateQueueGlobalsFromSnapshot,
-} from "@/services/state-queue-topology.js";
-import * as Initialization from "@/transactions/initialization.js";
+} from "../services/state-queue-topology.js";
+import * as Initialization from "../transactions/initialization.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
-} from "@/transactions/reference-scripts.js";
+} from "../transactions/reference-scripts.js";
 import {
+  applyConfirmedLedgerDeltaChainTransaction,
   materializeConfirmedLedgerSnapshot,
-  replaceConfirmedLedgerWithEntriesTransaction,
-} from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  synchronizeCommitMpfStoresFromLedgerEntries,
-} from "@/workers/utils/mpf.js";
+} from "../transactions/state-queue/confirmed-ledger-snapshot.js";
+import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import * as ContractDeploymentInfo from "./contract-deployment-info.js";
+import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 const STARTUP_BACKGROUND_PROVIDER_TIMEOUT = Duration.seconds(90);
 
@@ -80,7 +80,6 @@ const writeStartupContractDeploymentInfoAfterFreshInit = (initTxHash: string) =>
               txHash: initTxHash,
             },
           },
-          requireReadyManifest: true,
         },
       );
     yield* Effect.logInfo(
@@ -334,14 +333,14 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
           finalizedJournal.value,
         );
         if (finalizedSnapshot.root === onChainUtxoRoot) {
-          yield* replaceConfirmedLedgerWithEntriesTransaction(
-            finalizedSnapshot.entries,
-          );
-          const syncResult = yield* synchronizeCommitMpfStoresFromLedgerEntries(
-            finalizedSnapshot.entries,
-          );
+          const recoveredEntries =
+            yield* applyConfirmedLedgerDeltaChainTransaction(finalizedSnapshot);
+          const syncResult =
+            yield* synchronizeCommitMpfStoresFromLedgerEntries(
+              recoveredEntries,
+            );
           yield* Effect.logWarning(
-            `Startup repaired confirmed_ledger and commit MPFs from finalized clean-queue journal (header=${snapshot.tailCommitBase.headerHash},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot},previous_confirmed_ledger_root=${confirmedLedgerRoot}).`,
+            `Startup applied ${finalizedSnapshot.deltaChain.length.toString()} authenticated finalized-journal delta(s) to confirmed_ledger and synchronized commit MPFs (header=${snapshot.tailCommitBase.headerHash},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot},previous_confirmed_ledger_root=${confirmedLedgerRoot}).`,
           );
         } else if (confirmedLedgerEntries.length > 0) {
           return yield* Effect.fail(

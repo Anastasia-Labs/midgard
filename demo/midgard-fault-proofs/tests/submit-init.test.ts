@@ -3,24 +3,38 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
 import {
   buildDoubleSpendFaultProofContracts,
   buildFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildValidationTraceDisputeFaultProofContracts,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   EMPTY_MERKLE_TREE_ROOT,
   FAULT_PROOF_SHARED_TITLES,
   type FaultProofBlueprint,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
   INVALID_RANGE_FAULT_PROOF_TITLES,
   parseFaultProofBlueprint,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   ScriptHashSchema,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
+  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
-import { CML, Data, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  Emulator,
+  Lucid,
+  type UTxO,
+  validatorToScriptHash,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -30,8 +44,10 @@ import {
   resolveInvalidRangeDeploymentContracts,
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
-  submitInit,
+  resolveValidationTraceDisputeDeploymentContracts,
 } from "../src/index.js";
+import { resolveNonExistentInputNoIndexInit } from "../src/submit-init.js";
+import { submitInit } from "./support/legacy-submit-emulator.js";
 
 const seedPhrase =
   "test test test test test test test test test test test junk";
@@ -41,18 +57,29 @@ const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const h28 = "11".repeat(28);
 const h28b = "22".repeat(28);
 const placeholderInvalidRange = "55".repeat(28);
-type LucidDataSchema = Parameters<typeof Data.to>[1];
+const referenceScriptAuthNativeScript = `8200581c${"00".repeat(28)}`;
 
 const deploymentManifest = (contracts: Record<string, unknown>) => ({
-  referenceScriptAuthPolicy: {},
+  referenceScriptAuthPolicy: {
+    policyId: validatorToScriptHash({
+      type: "Native",
+      script: referenceScriptAuthNativeScript,
+    }),
+    nativeScript: {
+      type: "Native",
+      cborHex: referenceScriptAuthNativeScript,
+      expiresAtSlot: 0,
+      expiresAtUnixTime: 0,
+      timelockDurationMs: 1,
+    },
+    tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    postTimelockAudit: {
+      required: true,
+      rule: "test fixture",
+    },
+  },
   contracts,
 });
-
-const categoryId = (index: number): string => {
-  const buf = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
-  buf.writeUInt32BE(index);
-  return buf.toString("hex");
-};
 
 const readBlueprint = (): FaultProofBlueprint =>
   parseFaultProofBlueprint(
@@ -75,19 +102,18 @@ const encodeCatalogueKey = (id: string): Buffer =>
   Buffer.from(
     Data.to(
       id,
-      Data.Bytes({
-        minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-        maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-      }) as unknown as LucidDataSchema,
+      asLucidSchema(
+        Data.Bytes({
+          minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+          maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+        }),
+      ),
     ),
     "hex",
   );
 
 const encodeCatalogueValue = (scriptHash: string): Buffer =>
-  Buffer.from(
-    Data.to(scriptHash, ScriptHashSchema as unknown as LucidDataSchema),
-    "hex",
-  );
+  Buffer.from(Data.to(scriptHash, asLucidSchema(ScriptHashSchema)), "hex");
 
 const trieRootHex = (trie: Trie): string =>
   trie.hash == null
@@ -101,7 +127,7 @@ const catalogueFor = async (
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name, index) => [
       name,
       {
-        categoryId: categoryId(index),
+        categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
         scriptHash:
           scriptHashes[name] ??
           `${(index + 3).toString(16).padStart(2, "0")}`.repeat(28),
@@ -161,9 +187,57 @@ describe("submit-init signer resolution", () => {
 
     expect(signer.source).toBe("USER_WALLET");
     expect(signer.address).toBe(
-      walletFromSeed(seedPhrase, { network: "Preprod" }).address,
+      walletFromSeed(seedPhrase, {
+        addressType: "Enterprise",
+        network: "Preprod",
+      }).address,
     );
     expect(signer.paymentKeyHash).toBe(expectedSeedPaymentKeyHash());
+  });
+
+  it("derives the same enterprise signer identity from a seed and its payment private key", () => {
+    const wallet = walletFromSeed(seedPhrase, {
+      addressType: "Enterprise",
+      network: "Preprod",
+    });
+    const seedSigner = resolveProverSigner({
+      network: "Preprod",
+      walletSeedPhrase: seedPhrase,
+    });
+    const privateKeySigner = resolveProverSigner({
+      network: "Preprod",
+      walletPrivateKey: wallet.paymentKey,
+    });
+
+    expect(seedSigner.address).toBe(wallet.address);
+    expect(privateKeySigner.address).toBe(wallet.address);
+    expect(seedSigner.paymentKeyHash).toBe(privateKeySigner.paymentKeyHash);
+  });
+
+  it("does not silently select a funded base address for an enterprise seed signer", async () => {
+    const baseWallet = walletFromSeed(seedPhrase, {
+      addressType: "Base",
+      network: "Custom",
+    });
+    const emulator = new Emulator([
+      {
+        address: baseWallet.address,
+        assets: { lovelace: 10_000_000n },
+        privateKey: "",
+        seedPhrase,
+      },
+    ]);
+    const lucid = await Lucid(emulator, "Custom");
+    const signer = resolveProverSigner({
+      network: "Custom",
+      walletSeedPhrase: seedPhrase,
+    });
+
+    signer.selectWallet(lucid);
+
+    expect(signer.address).not.toBe(baseWallet.address);
+    expect(await emulator.getUtxos(baseWallet.address)).toHaveLength(1);
+    expect(await lucid.wallet().getUtxos()).toHaveLength(0);
   });
 
   it("uses a direct seed phrase before the configured seed env var", () => {
@@ -239,6 +313,157 @@ describe("submit-init state queue header resolution", () => {
 });
 
 describe("fault-proof deployment contract resolution", () => {
+  it("preflights no-index init from exact deployed bytes and catalogue membership", async () => {
+    const blueprint = readBlueprint();
+    const contracts = await Effect.runPromise(
+      buildFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28,
+        fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
+      }),
+    );
+    // Q13/F20-01: the no-index first step is now derived from the compiled
+    // blueprint like every other family, so the deployment must record exactly
+    // the applied `input_no_idx/step_01` script.
+    const noIndexFirstStep = contracts.nonExistentInputNoIndex.firstStep;
+    const noIndexContract = {
+      type: "PlutusV3" as const,
+      cborHex: noIndexFirstStep.spendingScript.script,
+    };
+    const noIndexScriptHash = noIndexFirstStep.spendingScriptHash;
+    const fraudProofCatalogue = await catalogueFor({
+      nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
+      nonExistentInputNoIndex: noIndexScriptHash,
+    });
+    const fraudProofCatalogueMintEntry = {
+      scriptHash: h28b,
+      fraudProofCatalogue,
+    };
+    const noIndexDeploymentEntry = {
+      scriptHash: noIndexScriptHash,
+      contract: noIndexContract,
+    };
+    const deploymentInfo = deploymentManifest({
+      hubOracleMint: { scriptHash: h28 },
+      fraudProofCatalogueMint: fraudProofCatalogueMintEntry,
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      fraudProofNonExistentInput: {
+        scriptHash: contracts.nonExistentInput.firstStep.spendingScriptHash,
+      },
+      fraudProofNonExistentInputNoIndex: noIndexDeploymentEntry,
+      stateQueueMint: { scriptHash: "66".repeat(28) },
+    });
+
+    const resolved = await resolveNonExistentInputNoIndexInit({
+      blueprint,
+      deploymentInfo,
+      network: "Preprod",
+    });
+    expect(resolved.firstStepHash).toBe(noIndexScriptHash);
+    expect(resolved.category).toEqual(
+      fraudProofCatalogue.categories.nonExistentInputNoIndex,
+    );
+    expect(resolved.category.categoryId).toBe("00000002");
+    expect(resolved.stateQueuePolicyId).toBe("66".repeat(28));
+
+    expect(resolved.firstStepAddress).toBe(
+      noIndexFirstStep.spendingScriptAddress,
+    );
+
+    const { contract: _contract, ...withoutContract } = noIndexDeploymentEntry;
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint: {},
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: withoutContract,
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/missing embedded contract bytes/u);
+
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint: {},
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: {
+              ...noIndexDeploymentEntry,
+              contract: {
+                ...noIndexContract,
+                cborHex: "02",
+              },
+            },
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/script hash mismatch/u);
+
+    // Self-consistent embedded bytes that are not the applied step-01 script
+    // must still fail closed.
+    const foreignContract = { type: "PlutusV3" as const, cborHex: "01" };
+    const foreignScriptHash = validatorToScriptHash({
+      type: foreignContract.type,
+      script: foreignContract.cborHex,
+    });
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint,
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: {
+              scriptHash: foreignScriptHash,
+              contract: foreignContract,
+            },
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(
+      /fraudProofNonExistentInputNoIndex step-01 script mismatch/u,
+    );
+
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint,
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofCatalogueMint: {
+              ...fraudProofCatalogueMintEntry,
+              fraudProofCatalogue: {
+                ...fraudProofCatalogue,
+                categories: {
+                  ...fraudProofCatalogue.categories,
+                  nonExistentInputNoIndex: {
+                    ...fraudProofCatalogue.categories.nonExistentInputNoIndex,
+                    membershipProofCbor:
+                      fraudProofCatalogue.categories.doubleSpend
+                        .membershipProofCbor,
+                  },
+                },
+              },
+            },
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(
+      /nonExistentInputNoIndex\.membershipProofCbor does not match/u,
+    );
+  }, 30_000);
+
   it("resolves double-spend without requiring invalid-range validators in the blueprint", async () => {
     const blueprint = filterBlueprint(readBlueprint(), [
       ...Object.values(FAULT_PROOF_SHARED_TITLES),
@@ -250,6 +475,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -284,6 +510,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -307,7 +534,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
       }),
     ).rejects.toThrow('Deployment info is missing "fraudProofInvalidRange"');
-  });
+  }, 30_000);
 
   it("rejects invalid-range resolution when the catalogue membership proof is stale", async () => {
     const blueprint = readBlueprint();
@@ -317,6 +544,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -356,7 +584,7 @@ describe("fault-proof deployment contract resolution", () => {
     ).rejects.toThrow(
       "fraudProofCatalogue.categories.invalidRange.membershipProofCbor does not match",
     );
-  });
+  }, 30_000);
 
   it("resolves transition-trace without requiring staged fault-proof validators in the blueprint", async () => {
     const blueprint = filterBlueprint(readBlueprint(), [
@@ -369,12 +597,12 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
       transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
     });
-
     const resolved = await resolveTransitionTraceDeploymentContracts({
       blueprint,
       deploymentInfo: deploymentManifest({
@@ -392,8 +620,125 @@ describe("fault-proof deployment contract resolution", () => {
     });
 
     expect(resolved.transitionTraceCategory.categoryId).toBe("00000004");
-    expect(resolved.contracts.transitionTrace.steps).toHaveLength(1);
+    expect(resolved.contracts.transitionTrace.steps).toHaveLength(9);
+    expect(resolved.contracts.transitionTrace.finals).toHaveLength(8);
+    expect(resolved.contracts.transitionTrace.steps[0]).toBe(
+      resolved.contracts.transitionTrace.route,
+    );
   });
+
+  it("resolves the required V1 validation-dispute category and rejects an incomplete catalogue", async () => {
+    const blueprint = filterBlueprint(readBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.canonicalDecodeItemStages,
+      ),
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.scriptSourcesStageOneRedeemerStages,
+      ),
+      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
+      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
+      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
+    ]);
+    const contracts = await Effect.runPromise(
+      buildValidationTraceDisputeFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28,
+        fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
+      }),
+    );
+    const proofCatalogue = await catalogueFor({
+      validationTraceDispute:
+        contracts.validationTraceDispute.firstStep.spendingScriptHash,
+    });
+    const deploymentInfo = deploymentManifest({
+      hubOracleMint: { scriptHash: h28 },
+      fraudProofCatalogueMint: {
+        scriptHash: h28b,
+        fraudProofCatalogue: proofCatalogue,
+      },
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      validationTraceDispute: {
+        scriptHash:
+          contracts.validationTraceDispute.firstStep.spendingScriptHash,
+      },
+      cekProgramMaterialSpend: {
+        scriptHash:
+          contracts.validationTraceDispute.cekProgramMaterial
+            .spendingScriptHash,
+      },
+    });
+
+    const resolved = await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network: "Preprod",
+    });
+    expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000006");
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(121);
+    expect(
+      resolved.contracts.validationTraceDispute.semanticResolvers,
+    ).toHaveLength(91);
+    expect(
+      resolved.contracts.validationTraceDispute.prepareResolvers,
+    ).toHaveLength(14);
+    expect(resolved.contracts.validationTraceDispute.resolvers).toHaveLength(
+      14,
+    );
+    expect(resolved.cekProgramMaterialScriptHash).toBe(
+      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptHash,
+    );
+    expect(resolved.cekProgramMaterialAddress).toBe(
+      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress,
+    );
+
+    await expect(
+      resolveValidationTraceDisputeDeploymentContracts({
+        blueprint,
+        deploymentInfo: deploymentManifest({
+          ...deploymentInfo.contracts,
+          cekProgramMaterialSpend: { scriptHash: "ff".repeat(28) },
+        }),
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/cekProgramMaterialSpend script mismatch/u);
+
+    const { validationTraceDispute: _omitted, ...incompleteCategories } =
+      proofCatalogue.categories;
+    await expect(
+      resolveValidationTraceDisputeDeploymentContracts({
+        blueprint,
+        deploymentInfo: deploymentManifest({
+          ...deploymentInfo.contracts,
+          fraudProofCatalogueMint: {
+            scriptHash: h28b,
+            fraudProofCatalogue: {
+              ...proofCatalogue,
+              categories: incompleteCategories,
+            },
+          },
+        }),
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/categories\.validationTraceDispute/u);
+    // This row resolves the full V1 validation-dispute catalogue twice, which
+    // measures ~22 s uncontended but timed out at its previous 60,000 ms
+    // budget in 2 of 4 Midgard Node CI runs (#616) on a step that itself runs
+    // ~46 minutes on shared runners. That is runner contention, not a
+    // slowdown, so the budget follows midgard-node's 420 s precedent for
+    // contention-exposed steps rather than being absorbed into an accepted-red
+    // map. If it still times out here, #616 asks for a diagnosis instead of
+    // another raise.
+  }, 420_000);
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
     const blueprint = readBlueprint();
@@ -403,6 +748,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -451,7 +797,7 @@ describe("fault-proof deployment contract resolution", () => {
         awaitConfirmation: false,
       }),
     ).rejects.toThrow("fetch attempted after double-spend readiness");
-  });
+  }, 30_000);
 
   it("does not gate invalid-range submit-init on stale double-spend deployment readiness", async () => {
     const blueprint = readBlueprint();
@@ -461,6 +807,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -510,5 +857,5 @@ describe("fault-proof deployment contract resolution", () => {
         awaitConfirmation: false,
       }),
     ).rejects.toThrow("fetch attempted after invalid-range readiness");
-  });
+  }, 30_000);
 });

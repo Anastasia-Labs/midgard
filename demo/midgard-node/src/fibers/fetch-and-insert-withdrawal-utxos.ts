@@ -2,8 +2,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Ref, Schedule } from "effect";
 
-import { WithdrawalsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import { WithdrawalsDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import {
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+} from "../services/index.js";
 import {
   logReconciledVisibleUserEvents,
   persistVisibleUserEventUTxOs,
@@ -11,13 +17,7 @@ import {
   runCommitTimeUserEventIngestionBarrier,
   type UserEventFetchBounds,
   type UserEventReconcileResult,
-} from "@/fibers/user-event-ingestion.js";
-import {
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-} from "@/services/index.js";
+} from "./user-event-ingestion.js";
 
 /**
  * Fetches the currently visible withdrawal UTxO set.

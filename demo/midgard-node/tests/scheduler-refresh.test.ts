@@ -8,8 +8,8 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { createSlotAwareDueWorkRegistry } from "@/fibers/slot-aware-due-work.js";
-import { NoInlineSubmitDefer } from "@/transactions/utils.js";
+import { createSlotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
+import { NoInlineSubmitDefer } from "../src/transactions/utils.js";
 import {
   captureSchedulerSlotSnapshot,
   filterLocallyConsumedUtxos,
@@ -27,7 +27,7 @@ import {
   schedulerRefreshStartTimeModeForSpendingScriptHash,
   schedulerSlotSnapshotFromSubmitSlot,
   schedulerStateCoversCommitTarget,
-} from "@/workers/utils/scheduler-refresh.js";
+} from "../src/workers/utils/scheduler-refresh.js";
 
 const mkUtxo = (txHash: string, outputIndex: number): UTxO =>
   ({
@@ -376,7 +376,7 @@ describe("scheduler refresh witness selection", () => {
     const emulator = new Emulator([operator]);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(operator.seedPhrase);
-    await emulator.awaitSlot(60);
+    emulator.awaitSlot(60);
 
     const snapshot = captureSchedulerSlotSnapshot(lucid);
     const targetCommitEndTime = BigInt(

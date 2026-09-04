@@ -1,0 +1,358 @@
+{
+  "schema": "midgard-native-tx-carriage-wire-golden",
+  "version": 1,
+  "specDocument": "docs/spec/midgard-tx.md",
+  "generator": "demo/midgard-sdk/scripts/generate-native-tx-carriage-wire-v1-goldens.mjs",
+  "constructorIndexes": {
+    "FieldCarriageV1": {
+      "Inline": 0,
+      "RawUtxo": 1,
+      "Certified": 2
+    },
+    "FieldViewV1": {
+      "Whole": 0,
+      "Chunked": 1,
+      "ProvisionalWhole": 2
+    },
+    "FieldPreimageCertificateMintRedeemerV1": {
+      "Certify": 0,
+      "Retire": 1
+    }
+  },
+  "vectors": [
+    {
+      "label": "carriage_inline_chunked_preimage",
+      "aikenType": "FieldCarriageV1",
+      "value": {
+        "Inline": {
+          "preimage": "939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc"
+        }
+      },
+      "cborHex": "d8799f5f5840939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c50535a61686f767d848b9299a0a7aeb5bcffff"
+    },
+    {
+      "label": "carriage_inline_63_byte_preimage",
+      "aikenType": "FieldCarriageV1",
+      "value": {
+        "Inline": {
+          "preimage": "636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e15"
+        }
+      },
+      "cborHex": "d8799f583f636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e15ff"
+    },
+    {
+      "label": "carriage_inline_64_byte_preimage",
+      "aikenType": "FieldCarriageV1",
+      "value": {
+        "Inline": {
+          "preimage": "737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c"
+        }
+      },
+      "cborHex": "d8799f5840737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252cff"
+    },
+    {
+      "label": "carriage_inline_empty_field",
+      "aikenType": "FieldCarriageV1",
+      "value": {
+        "Inline": {
+          "preimage": "80"
+        }
+      },
+      "cborHex": "d8799f4180ff"
+    },
+    {
+      "label": "carriage_raw_utxo",
+      "aikenType": "FieldCarriageV1",
+      "value": {
+        "RawUtxo": {
+          "ref_input_index": "3n"
+        }
+      },
+      "cborHex": "d87a9f03ff"
+    },
+    {
+      "label": "carriage_certified_three_chunks",
+      "aikenType": "FieldCarriageV1",
+      "value": {
+        "Certified": {
+          "cert_ref_input_index": "0n",
+          "chunk_ref_input_indices": [
+            "1n",
+            "2n",
+            "3n"
+          ]
+        }
+      },
+      "cborHex": "d87b9f009f010203ffff"
+    },
+    {
+      "label": "view_whole_empty_field",
+      "aikenType": "FieldViewV1",
+      "value": {
+        "Whole": {
+          "bytes": "80",
+          "count": "0n",
+          "stride": "40n"
+        }
+      },
+      "cborHex": "d8799f4180001828ff"
+    },
+    {
+      "label": "view_chunked_three_chunk_corner",
+      "aikenType": "FieldViewV1",
+      "value": {
+        "Chunked": {
+          "chunks": [
+            "232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3",
+            "010203"
+          ],
+          "chunk_digests": [
+            "3333333333333333333333333333333333333333333333333333333333333333",
+            "4444444444444444444444444444444444444444444444444444444444444444"
+          ],
+          "count": "819n",
+          "stride": "40n"
+        }
+      },
+      "cborHex": "d87a9f9f5f5840232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc41e3ff43010203ff9f5820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444ff1903331828ff"
+    },
+    {
+      "label": "certificate_three_chunk_corner",
+      "aikenType": "FieldPreimageCertificateV1",
+      "value": {
+        "owner": "11111111111111111111111111111111111111111111111111111111",
+        "tx_id": "2222222222222222222222222222222222222222222222222222222222222222",
+        "field_index": "5n",
+        "field_hash": "6666666666666666666666666666666666666666666666666666666666666666",
+        "total_length": "32763n",
+        "chunk_digests": [
+          "3333333333333333333333333333333333333333333333333333333333333333",
+          "4444444444444444444444444444444444444444444444444444444444444444",
+          "5555555555555555555555555555555555555555555555555555555555555555"
+        ]
+      },
+      "cborHex": "d8799f581c11111111111111111111111111111111111111111111111111111111582022222222222222222222222222222222222222222222222222222222222222220558206666666666666666666666666666666666666666666666666666666666666666197ffb9f582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555ffff"
+    },
+    {
+      "label": "mint_redeemer_certify_chunked_arguments",
+      "aikenType": "FieldPreimageCertificateMintRedeemerV1",
+      "value": {
+        "Certify": {
+          "compact_cbor": "141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9",
+          "witness_set_compact_cbor": "434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f26",
+          "chunk_ref_input_indices": [
+            "1n",
+            "2n",
+            "3n"
+          ],
+          "output_index": "0n"
+        }
+      },
+      "cborHex": "d8799f5f5840141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cd5824d4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9ff5f5840434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc46030a11181f26ff9f010203ff00ff"
+    },
+    {
+      "label": "mint_redeemer_certify_short_arguments",
+      "aikenType": "FieldPreimageCertificateMintRedeemerV1",
+      "value": {
+        "Certify": {
+          "compact_cbor": "a10203",
+          "witness_set_compact_cbor": "b204",
+          "chunk_ref_input_indices": [
+            "0n",
+            "1n"
+          ],
+          "output_index": "2n"
+        }
+      },
+      "cborHex": "d8799f43a1020342b2049f0001ff02ff"
+    },
+    {
+      "label": "mint_redeemer_retire",
+      "aikenType": "FieldPreimageCertificateMintRedeemerV1",
+      "value": "Retire",
+      "cborHex": "d87a80"
+    }
+  ],
+  "negativeVectors": [
+    {
+      "label": "carriage_trailing_bytes",
+      "aikenType": "FieldCarriageV1",
+      "cborHex": "d8799f4180ff00",
+      "reason": "a valid `Inline` encoding followed by a complete extra CBOR item; a fail-closed decoder consumes the whole payload or refuses it",
+      "rejectedBy": {
+        "aiken": "cbor-parse",
+        "typescript": "tolerates-trailing-bytes"
+      }
+    },
+    {
+      "label": "carriage_constructor_index_out_of_range",
+      "aikenType": "FieldCarriageV1",
+      "cborHex": "d87c9f4180ff",
+      "reason": "constructor index 3; FieldCarriageV1 declares exactly Inline/RawUtxo/Certified at 0/1/2",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "carriage_inline_preimage_as_integer",
+      "aikenType": "FieldCarriageV1",
+      "cborHex": "d8799f05ff",
+      "reason": "`Inline.preimage` is a ByteArray; this vector puts an Integer there",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "carriage_inline_extra_field",
+      "aikenType": "FieldCarriageV1",
+      "cborHex": "d8799f418043010203ff",
+      "reason": "`Inline` has arity 1; a decoder that reads the first field and ignores the rest accepts this",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "view_trailing_bytes",
+      "aikenType": "FieldViewV1",
+      "cborHex": "d8799f4180001828ff00",
+      "reason": "a valid `Whole` encoding followed by a complete extra CBOR item",
+      "rejectedBy": {
+        "aiken": "cbor-parse",
+        "typescript": "tolerates-trailing-bytes"
+      }
+    },
+    {
+      "label": "view_constructor_index_out_of_range",
+      "aikenType": "FieldViewV1",
+      "cborHex": "d87c9f4180001828ff",
+      "reason": "constructor index 3; FieldViewV1 declares exactly Whole/Chunked/ProvisionalWhole at 0/1/2",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "view_whole_missing_stride",
+      "aikenType": "FieldViewV1",
+      "cborHex": "d8799f418000ff",
+      "reason": "`Whole` has arity 3 (bytes, count, stride); this vector carries 2",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "view_whole_count_as_bytes",
+      "aikenType": "FieldViewV1",
+      "cborHex": "d8799f4180430102031828ff",
+      "reason": "`Whole.count` is an Integer; this vector puts a ByteArray there",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "view_chunked_chunks_as_bytes",
+      "aikenType": "FieldViewV1",
+      "cborHex": "d87a9f430102039f58203333333333333333333333333333333333333333333333333333333333333333ff011828ff",
+      "reason": "`Chunked.chunks` is a List<ByteArray>; this vector puts a bare ByteArray there",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "certificate_trailing_bytes",
+      "aikenType": "FieldPreimageCertificateV1",
+      "cborHex": "d8799f581c11111111111111111111111111111111111111111111111111111111582022222222222222222222222222222222222222222222222222222222222222220558206666666666666666666666666666666666666666666666666666666666666666197ffb9f582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555ffff00",
+      "reason": "a valid certificate datum followed by a complete extra CBOR item; a datum is one value and a manifest that decodes past its own end is not one",
+      "rejectedBy": {
+        "aiken": "cbor-parse",
+        "typescript": "tolerates-trailing-bytes"
+      }
+    },
+    {
+      "label": "certificate_missing_chunk_digests",
+      "aikenType": "FieldPreimageCertificateV1",
+      "cborHex": "d8799f581c11111111111111111111111111111111111111111111111111111111582022222222222222222222222222222222222222222222222222222222222222220558206666666666666666666666666666666666666666666666666666666666666666197ffbff",
+      "reason": "the certificate record has 6 fields; dropping `chunk_digests` is the shape that would let a manifest certify nothing",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "certificate_missing_field_hash",
+      "aikenType": "FieldPreimageCertificateV1",
+      "cborHex": "d8799f581c111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222205197ffb9f582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555ffff",
+      "reason": "the pre-#606 5-field shape — a datum without the mint-welded `field_hash` is a certificate the door has no anchored equality to hold, and the frozen wire format refuses it at decode",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "certificate_field_index_as_bytes",
+      "aikenType": "FieldPreimageCertificateV1",
+      "cborHex": "d8799f581c1111111111111111111111111111111111111111111111111111111158202222222222222222222222222222222222222222222222222222222222222222410558206666666666666666666666666666666666666666666666666666666666666666197ffb9f582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555ffff",
+      "reason": "`field_index` is an Integer; a one-byte ByteArray with the same value must not pass for it",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "mint_redeemer_trailing_bytes",
+      "aikenType": "FieldPreimageCertificateMintRedeemerV1",
+      "cborHex": "d87a8000",
+      "reason": "a valid `Retire` encoding followed by a complete extra CBOR item",
+      "rejectedBy": {
+        "aiken": "cbor-parse",
+        "typescript": "tolerates-trailing-bytes"
+      }
+    },
+    {
+      "label": "mint_redeemer_constructor_index_out_of_range",
+      "aikenType": "FieldPreimageCertificateMintRedeemerV1",
+      "cborHex": "d87b80",
+      "reason": "constructor index 2; the mint redeemer declares exactly Certify/Retire at 0/1, and a third arm is how a burn-only policy would be talked into minting",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "mint_redeemer_certify_indices_as_bytes",
+      "aikenType": "FieldPreimageCertificateMintRedeemerV1",
+      "cborHex": "d8799f43a1020342b2044301020302ff",
+      "reason": "`Certify.chunk_ref_input_indices` is a List<Int>; this vector puts a ByteArray there",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "mint_redeemer_certify_missing_output_index",
+      "aikenType": "FieldPreimageCertificateMintRedeemerV1",
+      "cborHex": "d8799f43a1020342b2049f0001ffff",
+      "reason": "`Certify` has arity 4; without `output_index` the policy has no named output to check",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    },
+    {
+      "label": "mint_redeemer_retire_extra_field",
+      "aikenType": "FieldPreimageCertificateMintRedeemerV1",
+      "cborHex": "d87a9f00ff",
+      "reason": "`Retire` has arity 0; a decoder that only checks the constructor index accepts this",
+      "rejectedBy": {
+        "aiken": "data-cast",
+        "typescript": "throws"
+      }
+    }
+  ]
+}

@@ -8,13 +8,17 @@ import {
   EMPTY_NULL_ROOT,
   MIDGARD_POSIX_TIME_NONE,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   BuilderInvariantError,
+  CompleteTx,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
@@ -35,9 +39,14 @@ const fakeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 44n, minFeeB: 155381n },
-    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    submissionLimits: {
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
+    },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -69,9 +78,14 @@ const zeroFeeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    submissionLimits: {
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
+    },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -91,10 +105,10 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
   outputIndex,
 });
 
-const scriptAddress = (scriptHash: string): string =>
+const enterpriseAddressFor = (privateKey: CML.PrivateKey): string =>
   CML.EnterpriseAddress.new(
     0,
-    CML.Credential.new_script(CML.ScriptHash.from_hex(scriptHash)),
+    CML.Credential.new_pub_key(privateKey.to_public().hash()),
   )
     .to_address()
     .to_bech32();
@@ -102,11 +116,28 @@ const scriptAddress = (scriptHash: string): string =>
 const makeUtxo = (
   ref: OutRef,
   assets: Readonly<Record<string, bigint>>,
+  outputAddress = address,
 ): MidgardUtxo =>
   decodeMidgardUtxo({
     outRef: ref,
     outRefCbor: outRefToCbor(ref),
-    outputCbor: encodeMidgardTxOutput(address, assets),
+    outputCbor: encodeMidgardTxOutput(outputAddress, assets),
+  });
+
+const makeReferenceUtxo = (ref: OutRef, script: Uint8Array): MidgardUtxo =>
+  decodeMidgardUtxo({
+    outRef: ref,
+    outRefCbor: outRefToCbor(ref),
+    outputCbor: encodeMidgardTxOutput(
+      address,
+      { lovelace: 3_000_000n },
+      {
+        scriptRef: {
+          type: "MidgardV1",
+          script: Buffer.from(script).toString("hex"),
+        },
+      },
+    ),
   });
 
 describe("TxBuilder finalization", () => {
@@ -123,7 +154,7 @@ describe("TxBuilder finalization", () => {
       ])
       .addSigner("bb".repeat(28))
       .pay.ToAddress(address, { lovelace: 1_000_000n })
-      .pay.ToProtectedAddress(address, { lovelace: 2_000_000n })
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
       .complete();
 
     const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
@@ -159,6 +190,266 @@ describe("TxBuilder finalization", () => {
     expect(completed.metadata.fee).toBe(10n);
   });
 
+  it("requires exact material for historical reference-script envelopes", async () => {
+    const midgard = await LucidMidgard.new(zeroFeeProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const canonical = buildMidgardCanonicalCekProgram(
+      Buffer.from("010100200101", "hex"),
+    );
+    const spend = makeUtxo(makeOutRef(0x31), { lovelace: 2_000_000n });
+    const reference = makeReferenceUtxo(
+      makeOutRef(0x32),
+      canonical.envelopeCbor,
+    );
+    const builder = midgard
+      .newTx()
+      .collectFrom([spend])
+      .readFrom([reference])
+      .pay.ToAddress(address, { lovelace: 2_000_000n });
+
+    await expect(builder.complete({ fee: 0n })).rejects.toThrow(
+      /Incomplete or mismatched CEK program material/u,
+    );
+
+    const material = [...canonical.material.values()];
+    const completed = await builder.complete({
+      fee: 0n,
+      programMaterial: material,
+    });
+    expect(completed.programMaterial).toEqual(
+      [...material].sort((left, right) =>
+        Buffer.compare(Buffer.from(left.root), Buffer.from(right.root)),
+      ),
+    );
+
+    const corrupted = material.map((entry, index) =>
+      index === 0
+        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
+        : entry,
+    );
+    await expect(
+      builder.complete({ fee: 0n, programMaterial: corrupted }),
+    ).rejects.toThrow(/Invalid canonical CEK program material/u);
+
+    const rawReference = makeReferenceUtxo(
+      makeOutRef(0x33),
+      Buffer.from("010100200101", "hex"),
+    );
+    await expect(
+      midgard
+        .newTx()
+        .collectFrom([spend])
+        .readFrom([rawReference])
+        .pay.ToAddress(address, { lovelace: 2_000_000n })
+        .complete({ fee: 0n, programMaterial: material }),
+    ).rejects.toThrow(
+      /V1 reference script must contain a canonical CEK program envelope/u,
+    );
+    const importedRaw = midgard.fromTx(completed.txHex, {
+      resolvedSpendInputs: [spend],
+      resolvedReferenceInputs: [reference],
+      programMaterial: material,
+    });
+    expect(importedRaw.txHex).toBe(completed.txHex);
+    const detached = new CompleteTx(completed.tx, completed.metadata, {
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      networkId: 0n,
+      programMaterial: material,
+      resolvedReferenceOutputsByOutRef: new Map([
+        [
+          Buffer.from(outRefToCbor(reference)).toString("hex"),
+          Buffer.from(reference.cbor!.output!),
+        ],
+      ]),
+    });
+    expect(() => midgard.fromTx(detached)).toThrow(
+      /Missing resolved reference input/u,
+    );
+    expect(
+      midgard.fromTx(detached, {
+        resolvedSpendInputs: [spend],
+        resolvedReferenceInputs: [reference],
+      }).txHex,
+    ).toBe(completed.txHex);
+    expect(midgard.fromTx(completed).txHex).toBe(completed.txHex);
+    const conflictingReference = makeUtxo(makeOutRef(0x32), {
+      lovelace: 4_000_000n,
+    });
+    expect(() =>
+      midgard.fromTx(completed, {
+        resolvedSpendInputs: [spend],
+        resolvedReferenceInputs: [conflictingReference],
+      }),
+    ).toThrow(/Conflicting resolved reference inputs/u);
+
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        resolvedSpendInputs: [spend],
+        programMaterial: material,
+      }),
+    ).toThrow(/Missing resolved reference input/u);
+
+    const wrongReference = makeReferenceUtxo(
+      makeOutRef(0x34),
+      canonical.envelopeCbor,
+    );
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        resolvedSpendInputs: [spend],
+        resolvedReferenceInputs: [wrongReference],
+        programMaterial: material,
+      }),
+    ).toThrow(/Unexpected resolved reference input/u);
+
+    const corruptedRawMaterial = material.map((entry, index) =>
+      index === 0
+        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
+        : entry,
+    );
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        resolvedSpendInputs: [spend],
+        resolvedReferenceInputs: [reference],
+        programMaterial: corruptedRawMaterial,
+      }),
+    ).toThrow(/Invalid canonical CEK program material/u);
+
+    const signer = CML.PrivateKey.generate_ed25519();
+    const signerAddress = enterpriseAddressFor(signer);
+    const signerSpend = makeUtxo(
+      makeOutRef(0x37),
+      { lovelace: 2_000_000n },
+      signerAddress,
+    );
+    const signable = await midgard
+      .newTx()
+      .collectFrom([signerSpend])
+      .readFrom([reference])
+      .addSigner(signer.to_public().hash().to_hex())
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
+      .complete({ fee: 0n, programMaterial: material });
+    const assembled = signable.assemble(
+      await signable.sign.withPrivateKey(signer).partial(),
+    );
+    expect(assembled).toBeInstanceOf(CompleteTx);
+    if (assembled instanceof CompleteTx) {
+      expect(
+        midgard.fromTx(assembled, { resolvedSpendInputs: [signerSpend] }).txHex,
+      ).toBe(assembled.txHex);
+    }
+  });
+
+  it("requires exact resolution for native reference inputs", async () => {
+    const midgard = await LucidMidgard.new(zeroFeeProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const spend = makeUtxo(makeOutRef(0x35), { lovelace: 2_000_000n });
+    const reference = makeUtxo(makeOutRef(0x36), { lovelace: 3_000_000n });
+    const completed = await midgard
+      .newTx()
+      .collectFrom([spend])
+      .readFrom([reference])
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
+      .complete({ fee: 0n });
+
+    expect(completed.programMaterial).toEqual([]);
+    expect(() =>
+      midgard.fromTx(completed.txHex, { resolvedSpendInputs: [spend] }),
+    ).toThrow(/Missing resolved reference input/u);
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        partial: true,
+        resolvedSpendInputs: [spend],
+      }),
+    ).toThrow(/Missing resolved reference input/u);
+
+    const imported = midgard.fromTx(completed.txHex, {
+      resolvedSpendInputs: [spend],
+      resolvedReferenceInputs: [reference],
+    });
+    expect(imported.programMaterial).toEqual([]);
+    const partial = midgard.fromTx(completed.txHex, {
+      partial: true,
+      resolvedSpendInputs: [spend],
+      resolvedReferenceInputs: [reference],
+    });
+    expect("submit" in partial).toBe(false);
+  });
+
+  it("rejects metadata-only non-native references from both metadata ingress APIs", async () => {
+    const midgard = await LucidMidgard.new(zeroFeeProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const spend = makeUtxo(makeOutRef(0x34), { lovelace: 2_000_000n });
+    const reference = makeUtxo(makeOutRef(0x35), { lovelace: 3_000_000n });
+    const metadata = {
+      ...makeOutRef(0x35),
+      language: "MidgardV1" as const,
+      scriptHash: "44".repeat(28),
+    };
+    const makeBuilder = () =>
+      midgard
+        .newTx()
+        .collectFrom([spend])
+        .readFrom([reference])
+        .observe(metadata.scriptHash, {
+          data: CML.PlutusData.new_integer(CML.BigInteger.from_str("0")),
+        })
+        .pay.ToAddress(address, { lovelace: 2_000_000n });
+
+    const builders = [
+      midgard
+        .newTx()
+        .collectFrom([spend])
+        .readFrom([reference], { trustedReferenceScripts: [metadata] })
+        .observe(metadata.scriptHash, {
+          data: CML.PlutusData.new_integer(CML.BigInteger.from_str("0")),
+        })
+        .pay.ToAddress(address, { lovelace: 2_000_000n }),
+      makeBuilder().attach.ReferenceScriptMetadata(metadata),
+    ];
+
+    for (const builder of builders) {
+      await expect(builder.complete({ fee: 0n })).rejects.toMatchObject({
+        name: "BuilderInvariantError",
+        message: expect.stringContaining(
+          "Metadata-only non-native reference scripts require",
+        ),
+        detail: expect.stringContaining(
+          `reference:${metadata.txHash}#${metadata.outputIndex}`,
+        ),
+      });
+    }
+  });
+
+  it("preserves metadata-only NativeCardano reference inputs", async () => {
+    const midgard = await LucidMidgard.new(zeroFeeProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const spend = makeUtxo(makeOutRef(0x36), { lovelace: 2_000_000n });
+    const reference = makeUtxo(makeOutRef(0x37), { lovelace: 3_000_000n });
+    const metadata = {
+      ...makeOutRef(0x37),
+      language: "NativeCardano" as const,
+      scriptHash: "55".repeat(28),
+    };
+
+    const completed = await midgard
+      .newTx()
+      .collectFrom([spend])
+      .readFrom([reference], { trustedReferenceScripts: [metadata] })
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
+      .complete({ fee: 0n });
+
+    expect(completed.metadata.referenceInputCount).toBe(1);
+    expect(completed.programMaterial).toEqual([]);
+  });
+
   it("materializes canonical hashes, empty buckets, and default sentinels", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",
@@ -173,29 +464,44 @@ describe("TxBuilder finalization", () => {
     const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
       tx.witnessSet,
     );
+    // §4: one plain `blake2b_256` per field over its §5.1 preimage bytes. The
+    // field index is not an argument because it is not in the hash input — field
+    // identity is positional, carried by the compact slot being compared.
+    const fieldCommitment = (_fieldIndex: number, preimageCbor: Uint8Array) =>
+      midgardFieldCommitment(preimageCbor);
 
     expect(tx.compact.transactionBody.spendInputsHash).toEqual(
-      computeHash32(tx.body.spendInputsPreimageCbor),
+      fieldCommitment(0, tx.body.spendInputsPreimageCbor),
     );
     expect(tx.compact.transactionBody.referenceInputsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      fieldCommitment(1, EMPTY_CBOR_LIST),
     );
     expect(tx.compact.transactionBody.requiredObserversHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      fieldCommitment(3, EMPTY_CBOR_LIST),
+    );
+    expect(tx.compact.transactionBody.requiredSignersHash).toEqual(
+      fieldCommitment(4, EMPTY_CBOR_LIST),
     );
     expect(tx.compact.transactionBody.mintHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      fieldCommitment(5, EMPTY_CBOR_LIST),
     );
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
     expect(tx.body.auxiliaryDataHash).toEqual(EMPTY_NULL_ROOT);
     expect(witnessCompact.addrTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      fieldCommitment(7, EMPTY_CBOR_LIST),
     );
     expect(witnessCompact.scriptTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      fieldCommitment(6, EMPTY_CBOR_LIST),
     );
     expect(witnessCompact.redeemerTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      fieldCommitment(8, EMPTY_CBOR_LIST),
+    );
+    // §4 is plain hashing over the preimage bytes, so the committed field hash
+    // *is* `blake2b_256` of the preimage. Under the retired counted scheme this
+    // was deliberately unequal — a domain-tagged Merkle root over decomposed
+    // items — and the inequality was what the assertion pinned.
+    expect(tx.compact.transactionBody.spendInputsHash).toEqual(
+      computeHash32(tx.body.spendInputsPreimageCbor),
     );
     expect(tx.body.validityIntervalStart).toBe(MIDGARD_POSIX_TIME_NONE);
     expect(tx.body.validityIntervalEnd).toBe(MIDGARD_POSIX_TIME_NONE);
@@ -213,7 +519,7 @@ describe("TxBuilder finalization", () => {
         makeUtxo(makeOutRef(0x11, 0), { lovelace: 1_000_000n }),
       ])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
-      .pay.ToProtectedAddress(address, { lovelace: 2_000_000n })
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
       .complete();
     const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
@@ -238,11 +544,7 @@ describe("TxBuilder finalization", () => {
     ).toBe(true);
     expect(
       outputs[1]?.equals(
-        encodeMidgardTxOutput(
-          address,
-          { lovelace: 2_000_000n },
-          { kind: "protected" },
-        ),
+        encodeMidgardTxOutput(address, { lovelace: 2_000_000n }),
       ),
     ).toBe(true);
   });
@@ -346,9 +648,8 @@ describe("TxBuilder finalization", () => {
   });
 
   it("runs shared Phase B local validation against explicit pre-state", async () => {
-    const children = CML.NativeScriptList.new();
-    const native = CML.NativeScript.new_script_all(children);
-    const nativeAddress = scriptAddress(native.hash().to_hex());
+    const privateKey = CML.PrivateKey.generate_ed25519();
+    const inputAddress = enterpriseAddressFor(privateKey);
     const midgard = await LucidMidgard.new(zeroFeeProvider, {
       network: "Preview",
       networkId: 0,
@@ -356,25 +657,25 @@ describe("TxBuilder finalization", () => {
     const input = decodeMidgardUtxo({
       outRef: makeOutRef(0x11),
       outRefCbor: outRefToCbor(makeOutRef(0x11)),
-      outputCbor: encodeMidgardTxOutput(nativeAddress, {
+      outputCbor: encodeMidgardTxOutput(inputAddress, {
         lovelace: 1_000_000n,
       }),
     });
     const inputOutRefCbor = Buffer.from(input.cbor!.outRef!);
     const inputOutputCbor = Buffer.from(input.cbor!.output!);
-    const completed = await midgard
+    const unsigned = await midgard
       .newTx()
-      .attach.NativeScript(native)
       .collectFrom([input])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
-      .complete({
-        localValidation: "phase-b",
-        localPreState: new Map([
-          [inputOutRefCbor.toString("hex"), inputOutputCbor],
-        ]),
-      });
+      .complete();
+    const completed = await unsigned.sign.withPrivateKey(privateKey).complete();
+    const report = await completed.validate("phase-b", {
+      localPreState: new Map([
+        [inputOutRefCbor.toString("hex"), inputOutputCbor],
+      ]),
+    });
 
-    expect(completed.metadata.localValidation).toMatchObject({
+    expect(report).toMatchObject({
       phase: "phase-b",
       acceptedTxIds: [completed.txIdHex],
       rejected: [],
@@ -385,9 +686,8 @@ describe("TxBuilder finalization", () => {
   });
 
   it("runs explicit Phase B local preflight against shared validator pre-state", async () => {
-    const children = CML.NativeScriptList.new();
-    const native = CML.NativeScript.new_script_all(children);
-    const nativeAddress = scriptAddress(native.hash().to_hex());
+    const privateKey = CML.PrivateKey.generate_ed25519();
+    const inputAddress = enterpriseAddressFor(privateKey);
     const midgard = await LucidMidgard.new(zeroFeeProvider, {
       network: "Preview",
       networkId: 0,
@@ -395,18 +695,18 @@ describe("TxBuilder finalization", () => {
     const input = decodeMidgardUtxo({
       outRef: makeOutRef(0x12),
       outRefCbor: outRefToCbor(makeOutRef(0x12)),
-      outputCbor: encodeMidgardTxOutput(nativeAddress, {
+      outputCbor: encodeMidgardTxOutput(inputAddress, {
         lovelace: 1_000_000n,
       }),
     });
     const inputOutRefCbor = Buffer.from(input.cbor!.outRef!);
     const inputOutputCbor = Buffer.from(input.cbor!.output!);
-    const completed = await midgard
+    const unsigned = await midgard
       .newTx()
-      .attach.NativeScript(native)
       .collectFrom([input])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
       .complete();
+    const completed = await unsigned.sign.withPrivateKey(privateKey).complete();
 
     const report = await completed.validate("phase-b", {
       localPreState: new Map([

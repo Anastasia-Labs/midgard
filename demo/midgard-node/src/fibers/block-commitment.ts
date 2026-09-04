@@ -22,13 +22,10 @@ import {
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
   WithdrawalsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import {
-  reduceSpeculativeCommitState,
-  type SpeculativeCommitState,
-} from "@/fibers/speculative-commit-state.js";
-import { publishMempoolLedgerDelta } from "@/services/globals.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
+import { publishMempoolLedgerDelta } from "../services/globals.js";
 import {
   type CommitPipelinePhase,
   Database,
@@ -37,33 +34,32 @@ import {
   MidgardContracts,
   NodeConfig,
   withL1ControlPlane,
-} from "@/services/index.js";
+} from "../services/index.js";
 import type {
   NativeMpfGenerationHandle,
   NativeMpfOwnerService,
   PersistedNativeMpfReplay,
-} from "@/services/mpf-native-owner/index.js";
+} from "../services/mpf-native-owner/index.js";
 import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
   type StateQueueSnapshot,
-} from "@/services/state-queue-topology.js";
+} from "../services/state-queue-topology.js";
 import {
   type SerializedStateQueueUTxO,
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
+} from "../workers/utils/commit-block-header.js";
 import type {
   CommitSchedulerStateQueueEvidence,
   EarliestCommitSchedulerPlan,
-} from "@/workers/utils/commit-block-planner.js";
-import { COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS } from "@/workers/utils/commit-end-time.js";
-import { WorkerError } from "@/workers/utils/common.js";
+} from "../workers/utils/commit-block-planner.js";
+import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../workers/utils/commit-end-time.js";
+import { WorkerError } from "../workers/utils/common.js";
 import {
   fetchRealStateQueueWitnessContext,
   resolveEarliestCommitSchedulerDueWorkPlan,
-} from "@/workers/utils/scheduler-refresh.js";
-
+} from "../workers/utils/scheduler-refresh.js";
 import { classifyCommitWorkerOutputForMutationLease } from "./commit-worker-failure-classification.js";
 import {
   publishFinalizedDaPayloadBestEffort,
@@ -78,6 +74,10 @@ import {
   registerSlotAwareDueWork,
   type SlotAwareDueWork,
 } from "./slot-aware-due-work.js";
+import {
+  reduceSpeculativeCommitState,
+  type SpeculativeCommitState,
+} from "./speculative-commit-state.js";
 import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
 
 /**
@@ -324,6 +324,8 @@ export const publishCommitMempoolLedgerMutation = (
   workerOutput: WorkerOutput,
   deltaLogMax: number,
 ): Effect.Effect<void> => {
+  // Only outputs that mutate the mempool ledger require work here.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (workerOutput.type) {
     case "SuccessfulSubmissionOutput":
     case "SuccessfulLocalFinalizationRecoveryOutput":
@@ -495,7 +497,7 @@ const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
     );
     const mempoolTxCount = yield* MempoolDB.retrieveTxCount;
     const pendingUserEventCount = yield* pendingUserEventCountUpTo(
-      new Date(Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS),
+      new Date(Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS),
     );
     if (
       shouldAttemptCommitPipeline({
@@ -526,8 +528,7 @@ const isDetailedSchedulerAlignmentDueWork = (
 const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const alignedEndTime =
-    Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+  const alignedEndTime = Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
   const alignment = yield* fetchRealStateQueueWitnessContext(
     lucid.api,
     contracts,
@@ -724,8 +725,7 @@ const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
   }
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const alignedEndTime =
-    Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+  const alignedEndTime = Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
   const alignment = yield* Effect.either(
     fetchRealStateQueueWitnessContext(
       lucid.api,
@@ -961,6 +961,9 @@ export const buildAndSubmitCommitmentBlockAction = (
               availableLocalFinalizationBlock:
                 AVAILABLE_LOCAL_FINALIZATION_BLOCK,
               currentBlockStartTimeMs: CURRENT_BLOCK_START_TIME_MS,
+              forcedValidationSlotConfig: canonicalSlotConfigForLucid(
+                lucid.api,
+              ),
               localFinalizationPending: LOCAL_FINALIZATION_PENDING,
               ledgerStoreLeaseOwner,
               mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,

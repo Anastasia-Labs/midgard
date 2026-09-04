@@ -1,10 +1,14 @@
+import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
-import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 
-import { getMpfScratchBuild, MidgardMpf, MpfError } from "../mpf.js";
+import {
+  getMpfScratchBuild,
+  MidgardMpf,
+  MpfError,
+} from "../../../mpf/index.js";
 
 export type KeyValuePhasEntry = {
   readonly key: Buffer;
@@ -175,10 +179,7 @@ export const keyValuePhasNonMembershipProof = (
         ),
       );
     }
-    const mpf = yield* createPhasScratch(
-      "phas-non-membership-proof",
-      entries,
-    );
+    const mpf = yield* createPhasScratch("phas-non-membership-proof", entries);
     const root = yield* mpf.rootHex();
     yield* mpf.insert(key, NON_MEMBERSHIP_DUMMY_VALUE);
     const proof = yield* mpf.prove(key);
@@ -316,7 +317,7 @@ const traversePhasProof = (
   }
   if ("Fork" in step) {
     const skip = parseProofInteger(step.Fork.skip, "fork skip");
-    const neighbor = step.Fork.neighbor.Neighbor;
+    const neighbor = step.Fork.neighbor;
     if (mode.kind === "excluding" && proof[index + 1] === undefined) {
       const prefixParts =
         skip === 0

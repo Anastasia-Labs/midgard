@@ -11,21 +11,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data, Duration, Effect, Schedule } from "effect";
 
-import * as BlocksDB from "@/database/blocks.js";
-import { ImmutableDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import * as BlocksDB from "../database/blocks.js";
+import { ImmutableDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
-import { Database } from "@/services/index.js";
+} from "../local-ledger-slot.js";
+import { Database } from "../services/index.js";
 import {
   type InlineWaitPolicy,
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
   type SubmitTimingPlan,
-} from "@/transactions/submit-timing.js";
+} from "./submit-timing.js";
 
 /**
  * Shared transaction signing, submission, confirmation, and recovery helpers.
@@ -1197,7 +1197,7 @@ export function handleSignSubmit(
     );
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
-      Effect.logError(`TxSignError: ${e}`),
+      Effect.logError(`TxSignError: ${e.message}`),
     ),
   );
 }
@@ -1261,9 +1261,15 @@ export const awaitSubmittedTransactionConfirmation = (
     yield* awaitWithTimeout;
     yield* reconcileWalletUtxosFromSignedTx(lucid, submission);
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
-    yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
-    yield* Effect.sleep(PAUSE_DURATION);
-    yield* Effect.logInfo("✅ Pause ended.");
+    // A remote provider can lag briefly after reporting confirmation, so keep
+    // the historical propagation pause there. Lucid's in-memory emulator has
+    // already advanced and reconciled its wallet state at this point; sleeping
+    // in that case only adds five seconds to every submitted test transaction.
+    if (emulatorTimeProvider(lucid) === null) {
+      yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
+      yield* Effect.sleep(PAUSE_DURATION);
+      yield* Effect.logInfo("✅ Pause ended.");
+    }
     return txHash;
   });
 
@@ -1319,7 +1325,7 @@ export function handleSignSubmitNoConfirmation(
     return submission.txHash;
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
-      Effect.logError(`TxSignError: ${e}`),
+      Effect.logError(`TxSignError: ${e.message}`),
     ),
   );
 }

@@ -1,19 +1,20 @@
-import { Effect } from "effect";
 import { randomUUID } from "node:crypto";
+
+import { Effect } from "effect";
 
 import {
   ConfirmedLedgerDB,
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
-} from "@/database/index.js";
-import { Database, NodeConfig } from "@/services/index.js";
+} from "../database/index.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
   MidgardMpf,
   setMpfScratchBuild,
-} from "@/workers/utils/mpf.js";
+} from "../mpf/index.js";
+import { Database, NodeConfig } from "../services/index.js";
 
 export type MpfAuditResult = {
   readonly persistedRoot: string;

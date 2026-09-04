@@ -1,8 +1,8 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Schedule } from "effect";
 
-import { DatabaseError } from "@/database/utils/common.js";
-import { Database, Globals, withL1ControlPlane } from "@/services/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { Database, Globals, withL1ControlPlane } from "../services/index.js";
 
 export type UserEventFetchBounds = Pick<
   SDK.UserEventFetchConfig,

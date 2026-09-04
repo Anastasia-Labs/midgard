@@ -4,7 +4,14 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
-import { resolveTxStatus } from "@/commands/tx-status.js";
+import {
+  arrayOf,
+  booleanValue,
+  exactRecord,
+  nonEmptyString,
+  oneOf,
+  openRecord,
+} from "../artifact-schema.js";
 import {
   BlocksDB,
   DaPayloadsDB,
@@ -17,37 +24,40 @@ import {
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
   TxRejectionsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
-import { mergeAction } from "@/fibers/merge.js";
-import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { reconcileVisibleDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
+import { mergeAction } from "../fibers/merge.js";
+import { projectDepositsToMempoolLedger } from "../fibers/project-deposits-to-mempool-ledger.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
+  ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   ensurePhasMembershipRewardAccountRegisteredProgram,
   queryPhasMembershipRewardAccountRegisteredProgram,
-} from "@/transactions/phas-membership-registration.js";
+} from "../transactions/phas-membership-registration.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
-} from "@/transactions/reference-scripts.js";
+} from "../transactions/reference-scripts.js";
 import {
   type DepositSubmissionReconciliationResult,
   reconcileDepositSubmissionAttemptProgram,
-} from "@/transactions/submit-deposit.js";
-import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
+} from "../transactions/submit-deposit.js";
+import { runCommitBlockHeaderWorkerProgram } from "../workers/commit-block-header.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput as CommitBlockWorkerInput,
-} from "@/workers/utils/commit-block-header.js";
+} from "../workers/utils/commit-block-header.js";
+import { parseEventId } from "./command-utils.js";
+import { resolveTxStatus } from "./tx-status.js";
 
 export const RECONCILIATION_SCHEMA_VERSION =
   "midgard-e2e-reconciliation-v1" as const;
@@ -76,6 +86,209 @@ export type ReconciliationResult = {
   readonly repairActions: readonly string[];
 };
 
+const parseReconciliationEvidence = (
+  value: unknown,
+  label: string,
+): ReconciliationEvidence => {
+  const input = exactRecord(value, label, ["kind", "detail"]);
+  return {
+    kind: nonEmptyString(input.kind, `${label}.kind`),
+    // Evidence detail is deliberately open because each milestone has a
+    // different diagnostic payload. The enclosing evidence record is exact.
+    detail: openRecord(input.detail, `${label}.detail`),
+  };
+};
+
+const RECONCILIATION_MILESTONES = [
+  "phas-registered",
+  "reference-scripts-complete",
+  "deposit-projected",
+  "tx-committed",
+  "da-attested",
+  "block-committed",
+  "local-finalization",
+  "merge-complete",
+] as const;
+
+type ReconciliationMilestone = (typeof RECONCILIATION_MILESTONES)[number];
+
+const canonicalString = (value: unknown, label: string): string => {
+  const parsed = nonEmptyString(value, label);
+  if (parsed !== parsed.trim()) {
+    throw new Error(`${label} must not contain surrounding whitespace`);
+  }
+  return parsed;
+};
+
+const lowerHex = (
+  value: unknown,
+  label: string,
+  byteLength: number,
+): string => {
+  const parsed = canonicalString(value, label);
+  if (parsed.length !== byteLength * 2 || !/^[0-9a-f]+$/u.test(parsed)) {
+    throw new Error(
+      `${label} must be ${byteLength.toString()} bytes of lowercase hexadecimal`,
+    );
+  }
+  return parsed;
+};
+
+const parseReconciliationTarget = (
+  value: unknown,
+  milestone: ReconciliationMilestone,
+  label: string,
+): Readonly<Record<string, unknown>> => {
+  if (milestone === "phas-registered") {
+    const target = exactRecord(value, label, ["rewardAddress", "scriptHash"]);
+    return {
+      rewardAddress: canonicalString(
+        target.rewardAddress,
+        `${label}.rewardAddress`,
+      ),
+      scriptHash: lowerHex(target.scriptHash, `${label}.scriptHash`, 28),
+    };
+  }
+  if (milestone === "reference-scripts-complete") {
+    const target = exactRecord(value, label, [
+      "scope",
+      "address",
+      "authPolicyId",
+    ]);
+    if (target.scope !== "node-runtime") {
+      throw new Error(`${label}.scope must be node-runtime`);
+    }
+    return {
+      scope: "node-runtime",
+      address: canonicalString(target.address, `${label}.address`),
+      authPolicyId: lowerHex(target.authPolicyId, `${label}.authPolicyId`, 28),
+    };
+  }
+  if (milestone === "deposit-projected") {
+    const target = exactRecord(value, label, [], ["eventId", "cardanoTxHash"]);
+    if (target.eventId === undefined && target.cardanoTxHash === undefined) {
+      throw new Error(`${label} must identify eventId or cardanoTxHash`);
+    }
+    const eventId =
+      target.eventId === undefined
+        ? undefined
+        : canonicalString(target.eventId, `${label}.eventId`);
+    if (
+      eventId !== undefined &&
+      (!/^(?:[0-9a-f]{2})+$/u.test(eventId) ||
+        parseEventId(eventId, `${label}.eventId`).toString("hex") !== eventId)
+    ) {
+      throw new Error(
+        `${label}.eventId must be canonical OutputReference CBOR`,
+      );
+    }
+    return {
+      ...(eventId === undefined ? {} : { eventId }),
+      ...(target.cardanoTxHash === undefined
+        ? {}
+        : {
+            cardanoTxHash: lowerHex(
+              target.cardanoTxHash,
+              `${label}.cardanoTxHash`,
+              32,
+            ),
+          }),
+    };
+  }
+  const target = exactRecord(value, label, [
+    milestone === "tx-committed" ? "txHash" : "headerHash",
+  ]);
+  return milestone === "tx-committed"
+    ? { txHash: lowerHex(target.txHash, `${label}.txHash`, 32) }
+    : { headerHash: lowerHex(target.headerHash, `${label}.headerHash`, 28) };
+};
+
+export const parseReconciliationResult = (
+  value: unknown,
+): ReconciliationResult => {
+  const label = "E2E reconciliation";
+  const input = exactRecord(value, label, [
+    "schemaVersion",
+    "milestone",
+    "target",
+    "status",
+    "safeToRetryOriginalStep",
+    "evidence",
+    "nextAction",
+    "repairActions",
+  ]);
+  if (input.schemaVersion !== RECONCILIATION_SCHEMA_VERSION) {
+    throw new Error(
+      `${label}.schemaVersion must be ${RECONCILIATION_SCHEMA_VERSION}`,
+    );
+  }
+  const milestone = oneOf(
+    input.milestone,
+    `${label}.milestone`,
+    RECONCILIATION_MILESTONES,
+  );
+  const parsed: ReconciliationResult = {
+    schemaVersion: RECONCILIATION_SCHEMA_VERSION,
+    milestone,
+    target: parseReconciliationTarget(
+      input.target,
+      milestone,
+      `${label}.target`,
+    ),
+    status: oneOf(input.status, `${label}.status`, [
+      "satisfied",
+      "pending",
+      "repaired",
+      "blocked",
+      "ambiguous",
+      "failed",
+    ]),
+    safeToRetryOriginalStep: booleanValue(
+      input.safeToRetryOriginalStep,
+      `${label}.safeToRetryOriginalStep`,
+    ),
+    evidence: arrayOf(
+      input.evidence,
+      `${label}.evidence`,
+      parseReconciliationEvidence,
+    ),
+    nextAction:
+      input.nextAction === null
+        ? null
+        : nonEmptyString(input.nextAction, `${label}.nextAction`),
+    repairActions: arrayOf(
+      input.repairActions,
+      `${label}.repairActions`,
+      (entry, entryLabel) =>
+        oneOf(entry, entryLabel, [
+          "register_phas_membership_reward_account",
+          "ensure_node_runtime_reference_scripts",
+          "reconcile_deposit_submission_attempt",
+          "reconcile_visible_deposit_utxos",
+          "project_deposits_to_mempool_ledger",
+          "backfill_missing_da_payload",
+          "recover_local_finalization",
+          "merge_action",
+        ]),
+    ),
+  };
+  if (
+    new Set(parsed.repairActions).size !== parsed.repairActions.length ||
+    ((parsed.status === "ambiguous" ||
+      parsed.status === "blocked" ||
+      parsed.status === "failed") &&
+      parsed.safeToRetryOriginalStep) ||
+    (parsed.status === "satisfied" && parsed.nextAction !== null) ||
+    (parsed.status === "repaired" &&
+      (parsed.repairActions.length === 0 || parsed.nextAction !== null))
+  ) {
+    throw new Error(
+      `${label} status, retry, or repair binding is inconsistent`,
+    );
+  }
+  return parsed;
+};
+
 const evidence = (
   kind: string,
   detail: Readonly<Record<string, unknown>>,
@@ -100,16 +313,17 @@ const result = ({
   evidence: evidenceEntries = [],
   nextAction = null,
   repairActions = [],
-}: ReconciliationResultInput): ReconciliationResult => ({
-  schemaVersion: RECONCILIATION_SCHEMA_VERSION,
-  milestone,
-  target,
-  status,
-  safeToRetryOriginalStep,
-  evidence: evidenceEntries,
-  nextAction,
-  repairActions,
-});
+}: ReconciliationResultInput): ReconciliationResult =>
+  parseReconciliationResult({
+    schemaVersion: RECONCILIATION_SCHEMA_VERSION,
+    milestone,
+    target,
+    status,
+    safeToRetryOriginalStep,
+    evidence: evidenceEntries,
+    nextAction,
+    repairActions,
+  });
 
 const bufferHex = (value: Buffer | null | undefined): string | null =>
   value === null || value === undefined ? null : value.toString("hex");
@@ -635,7 +849,7 @@ export const reconcileTxCommittedProgram = ({
       milestone: "tx-committed",
       target: { txHash: txHash.toString("hex") },
       status: milestoneStatus,
-      safeToRetryOriginalStep: status.status === "not_found",
+      safeToRetryOriginalStep: false,
       evidence: [evidence("tx_status", status), optionRecordEvidence(active)],
       nextAction:
         milestoneStatus === "pending"
@@ -646,56 +860,115 @@ export const reconcileTxCommittedProgram = ({
     });
   });
 
-const readWatcherHeaderStatus = ({
-  watcherUrl,
-  deploymentFingerprint,
+export type CanonicalDaAttestationObservation = {
+  readonly datumHeaderHash: string;
+  readonly computedHeaderHash: string;
+  readonly daAvailability: SDK.DaAvailabilityStateQueueStatus;
+  readonly outRef: string;
+};
+
+export type CanonicalDaAttestationDecision = {
+  readonly status: ReconciliationStatus;
+  readonly reason:
+    | "attestation_applied"
+    | "attestation_pending"
+    | "canonical_header_absent"
+    | "canonical_header_not_unique"
+    | "header_hash_mismatch"
+    | "local_payload_missing";
+  readonly nextAction: string | null;
+};
+
+export const classifyCanonicalDaAttestation = ({
   headerHash,
+  localPayloadPresent,
+  observations,
 }: {
-  readonly watcherUrl: string;
-  readonly deploymentFingerprint: string;
   readonly headerHash: string;
-}): Effect.Effect<unknown, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const url = `${watcherUrl.replace(/\/+$/, "")}/v1/deployments/${encodeURIComponent(
-        deploymentFingerprint,
-      )}/headers/${encodeURIComponent(headerHash)}/status`;
-      const response = await fetch(url);
-      const body = await response.text();
-      if (!response.ok) {
-        return {
-          ok: false,
-          status: response.status,
-          body: body.slice(0, 1_000),
-        };
-      }
-      return JSON.parse(body) as unknown;
-    },
-    catch: (cause) => ({
-      ok: false,
-      error: formatUnknownError(cause),
-    }),
-  }).pipe(Effect.catchAll((value) => Effect.succeed(value)));
+  readonly localPayloadPresent: boolean;
+  readonly observations: readonly CanonicalDaAttestationObservation[];
+}): CanonicalDaAttestationDecision => {
+  const matches = observations.filter(
+    (observation) => observation.datumHeaderHash === headerHash,
+  );
+  if (matches.length === 0) {
+    return {
+      status: "ambiguous",
+      reason: "canonical_header_absent",
+      nextAction:
+        "The configured Cardano source has no exact canonical state-queue node for this header; do not claim DA attestation from local or watcher-only evidence.",
+    };
+  }
+  if (matches.length !== 1) {
+    return {
+      status: "blocked",
+      reason: "canonical_header_not_unique",
+      nextAction:
+        "The configured Cardano source returned multiple canonical state-queue nodes for this header; resolve the inconsistent L1 view before continuing.",
+    };
+  }
 
-const arrayField = (value: unknown, field: string): readonly unknown[] =>
-  typeof value === "object" &&
-  value !== null &&
-  Array.isArray((value as Record<string, unknown>)[field])
-    ? ((value as Record<string, unknown>)[field] as readonly unknown[])
-    : [];
+  const matched = matches[0]!;
+  if (matched.computedHeaderHash !== headerHash) {
+    return {
+      status: "blocked",
+      reason: "header_hash_mismatch",
+      nextAction:
+        "The canonical state-queue datum key does not match its recomputed HeaderV1 hash; quarantine this observation and reconcile the L1 source.",
+    };
+  }
+  if (matched.daAvailability !== SDK.NO_DA_ATTESTATION) {
+    return {
+      status: "satisfied",
+      reason: "attestation_applied",
+      nextAction: null,
+    };
+  }
+  if (!localPayloadPresent) {
+    return {
+      status: "blocked",
+      reason: "local_payload_missing",
+      nextAction:
+        "The canonical state-queue node is not DA-attested and the exact local payload is missing; restore the canonical payload before attestation.",
+    };
+  }
+  return {
+    status: "pending",
+    reason: "attestation_pending",
+    nextAction:
+      "The exact canonical state-queue node is present but has no on-chain DA-attestation marker yet; wait for the canonical watcher/submitter pipeline.",
+  };
+};
 
-export const reconcileDaAttestedProgram = ({
-  headerHash,
-  watcherUrl,
-  deploymentFingerprint,
-  repair,
-}: {
+const fetchCanonicalDaAttestationObservations = Effect.gen(function* () {
+  const canonicalHeaders = yield* fetchCanonicalStateQueueHeaders;
+  const observations: CanonicalDaAttestationObservation[] = [];
+  for (const canonicalHeader of canonicalHeaders) {
+    const node = yield* SDK.getStateQueueNodeFromStateQueueDatum(
+      canonicalHeader.utxo.datum,
+    );
+    observations.push({
+      datumHeaderHash: canonicalHeader.headerHash,
+      computedHeaderHash: yield* SDK.hashBlockHeader(node.header),
+      daAvailability: node.da_attestation,
+      outRef: canonicalHeader.outRef,
+    });
+  }
+  return observations;
+});
+
+export const reconcileDaAttestedProgram = (options: {
   readonly headerHash: Buffer;
   readonly watcherUrl?: string;
   readonly deploymentFingerprint?: string;
   readonly repair: boolean;
-}): Effect.Effect<ReconciliationResult, DatabaseError, Database> =>
+}): Effect.Effect<
+  ReconciliationResult,
+  DatabaseError,
+  Database | Lucid | MidgardContracts
+> =>
   Effect.gen(function* () {
+    const { headerHash, repair } = options;
     const headerHashHex = headerHash.toString("hex");
     let localPayload = yield* DaPayloadsDB.retrieveByHeaderHash(headerHash);
     const repairActions: string[] = [];
@@ -713,9 +986,21 @@ export const reconcileDaAttestedProgram = ({
     }
 
     const evidenceEntries: ReconciliationEvidence[] = [
-      evidence("local_da_payload", {
-        present: Option.isSome(localPayload),
-      }),
+      evidence(
+        "local_da_payload",
+        Option.isNone(localPayload)
+          ? { present: false, headerHash: headerHashHex }
+          : {
+              present: true,
+              headerHash: headerHashHex,
+              consensusProfileId:
+                localPayload.value[DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID],
+              payloadSha256:
+                localPayload.value[
+                  DaPayloadsDB.Columns.PAYLOAD_SHA256
+                ].toString("hex"),
+            },
+      ),
     ];
     if (backfillSkipped.length > 0) {
       evidenceEntries.push(
@@ -724,58 +1009,63 @@ export const reconcileDaAttestedProgram = ({
         }),
       );
     }
-    if (watcherUrl !== undefined && deploymentFingerprint !== undefined) {
-      const watcher = yield* readWatcherHeaderStatus({
-        watcherUrl,
-        deploymentFingerprint,
-        headerHash: headerHashHex,
-      });
-      const l1Submissions = arrayField(watcher, "l1Submissions");
-      const candidates = arrayField(watcher, "attestationCandidates");
-      const signatures = arrayField(watcher, "signatures");
+
+    const contracts = yield* MidgardContracts;
+    const canonicalAttempt = yield* Effect.either(
+      fetchCanonicalDaAttestationObservations,
+    );
+    if (canonicalAttempt._tag === "Left") {
       evidenceEntries.push(
-        evidence("watcher_header_status", {
-          l1SubmissionCount: l1Submissions.length,
-          attestationCandidateCount: candidates.length,
-          signatureCount: signatures.length,
-          raw: watcher,
+        evidence("canonical_l1_da_attestation_query_error", {
+          stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+          stateQueuePolicyId: contracts.stateQueue.policyId,
+          availabilityPolicyId: contracts.availabilityChallenge.policyId,
+          error: formatUnknownError(canonicalAttempt.left, {
+            includeCause: true,
+          }),
         }),
       );
-      if (l1Submissions.length > 0) {
-        return result({
-          milestone: "da-attested",
-          target: { headerHash: headerHashHex },
-          status: "satisfied",
-          evidence: evidenceEntries,
-          repairActions,
-        });
-      }
-      if (candidates.length > 0 || signatures.length > 0) {
-        return result({
-          milestone: "da-attested",
-          target: { headerHash: headerHashHex },
-          status: "pending",
-          evidence: evidenceEntries,
-          repairActions,
-          nextAction:
-            "Watcher has DA evidence but no L1 submission yet; wait for submitter reconciliation or run one copied DA watcher tick.",
-        });
-      }
+      return result({
+        milestone: "da-attested",
+        target: { headerHash: headerHashHex },
+        status: "blocked",
+        evidence: evidenceEntries,
+        repairActions,
+        nextAction:
+          "The configured Cardano source could not prove the canonical state-queue attestation marker; restore a consistent L1 query path before continuing.",
+      });
     }
 
+    const decision = classifyCanonicalDaAttestation({
+      headerHash: headerHashHex,
+      localPayloadPresent: Option.isSome(localPayload),
+      observations: canonicalAttempt.right,
+    });
+    evidenceEntries.push(
+      evidence("canonical_l1_da_attestation", {
+        source: "configured_cardano_l1_query",
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+        availabilityPolicyId: contracts.availabilityChallenge.policyId,
+        targetHeaderHash: headerHashHex,
+        decisionReason: decision.reason,
+        observations: canonicalAttempt.right,
+      }),
+    );
     return result({
       milestone: "da-attested",
       target: { headerHash: headerHashHex },
-      status: Option.isSome(localPayload) ? "pending" : "blocked",
+      status: decision.status,
       evidence: evidenceEntries,
       repairActions,
-      nextAction: backfillSkipped.some((entry) =>
-        entry.reason.includes("journal excluded by status: abandoned"),
-      )
-        ? "Canonical journal is abandoned locally; revive it through confirmation recovery and complete local finalization before DA payload backfill."
-        : watcherUrl === undefined || deploymentFingerprint === undefined
-          ? "Provide --watcher-url and --contract-deployment-info to prove DA attestation; local payload presence alone is not DA submission."
-          : "DA payload or watcher witness evidence is missing.",
+      nextAction:
+        decision.status === "satisfied"
+          ? null
+          : backfillSkipped.some((entry) =>
+                entry.reason.includes("journal excluded by status: abandoned"),
+              )
+            ? "Canonical journal is abandoned locally; revive it through confirmation recovery and complete local finalization before DA payload backfill."
+            : decision.nextAction,
     });
   });
 
@@ -833,7 +1123,7 @@ export const reconcileLocalFinalizationProgram = ({
 }): Effect.Effect<
   ReconciliationResult,
   unknown,
-  Database | Lucid | MidgardContracts | NodeConfig
+  Database | Lucid | MidgardContracts | ContractDeploymentIdentity | NodeConfig
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");
@@ -1040,7 +1330,7 @@ export const reconcileMergeCompleteProgram = ({
       ],
       repairActions,
       nextAction: canonical
-        ? "Header is still queued; run with --repair only after DA/finality gates are satisfied."
+        ? "HeaderV1 is still queued; run with --repair only after DA/finality gates are satisfied."
         : "Local block rows are missing for this header; inspect local finalization before claiming merge complete.",
     });
   });

@@ -1,44 +1,52 @@
 import {
   computeMidgardNativeTxId,
+  decodeMidgardFieldPreimage,
+  decodeMidgardMintFieldPreimage,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxCompact,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
   deriveMidgardNativeTxWitnessSetCompact,
-  EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardFieldPreimage,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardHash28Item,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
+  MIDGARD_MAX_OUTPUT_INDEX,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
+  midgardRedeemerPurposeFromTag,
+  MidgardScriptHashPrefixes,
   MidgardTxCodecError,
   MidgardTxCodecErrorCodes,
   type MidgardTxOutput,
+  sortMidgardMintItems,
 } from "@al-ft/midgard-core/codec";
 import {
-  asBytes,
-  asMap,
-  decodeSingleCbor,
-  encodeCbor,
-  encodeCborBytes,
-  encodeCborInteger,
-  encodeCborMapRaw,
+  readCborArrayHeader,
+  readCborBytes,
+  readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
 import { CML } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
   decodeMidgardRedeemers,
   redeemerDataFromCborHex,
 } from "../midgard-redeemers.js";
 import { plutusDataToCborHex } from "../plutus-data.js";
-import { decodeCanonicalTransactionInput } from "./canonical-cardano-fast-path.js";
 import type {
   MidgardAssetName,
   MidgardCredentialHash,
@@ -96,6 +104,32 @@ export class MidgardLedgerTxDecodeError extends Error {
   }
 }
 
+export type MidgardProjectedRawScriptWitness = Readonly<{
+  index: number;
+  languageTag: 0 | 3 | 128;
+  scriptBytes: Buffer;
+  versionedItemBytes: Buffer;
+  hash: MidgardScriptHash;
+}>;
+
+export type MidgardRawEnvelopePhaseAProjection = Readonly<{
+  canonical: ReturnType<
+    typeof deriveMidgardNativeTxFaultEvidenceMaterial
+  >["canonical"];
+  transactionId: Buffer;
+  scriptWitnesses: readonly MidgardProjectedRawScriptWitness[];
+  ledgerTx: Omit<
+    MidgardLedgerTx,
+    "scriptWitnesses" | "nativeScriptHashes" | "plutusScriptHashes"
+  > &
+    Readonly<{
+      scriptWitnesses: readonly MidgardProjectedRawScriptWitness[];
+      nativeScriptHashes: readonly MidgardScriptHash[];
+      plutusScriptHashes: readonly MidgardScriptHash[];
+    }>;
+  canonicalSubmittedTx: MidgardSubmittedTx | null;
+}>;
+
 class MidgardLedgerOutputDecodeError extends Error {
   readonly causeValue: unknown;
 
@@ -105,17 +139,6 @@ class MidgardLedgerOutputDecodeError extends Error {
     this.causeValue = causeValue;
   }
 }
-
-const compareBytes = (left: Uint8Array, right: Uint8Array): number => {
-  const limit = Math.min(left.length, right.length);
-  for (let i = 0; i < limit; i += 1) {
-    const diff = left[i] - right[i];
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-  return left.length - right.length;
-};
 
 const copyBuffer = (value: Uint8Array): Buffer => Buffer.from(value);
 
@@ -221,37 +244,58 @@ const copyNativeWitnessSetCompact = (
   redeemerTxWitsHash: copyBuffer(witnessSet.redeemerTxWitsHash),
 });
 
+/**
+ * The §5.1 envelope over `enc_i` bytes the caller already has. Routed through
+ * `midgard-core`'s one §5.1 encoder so the producer shares its width rules with
+ * `decodeMidgardNativeByteListPreimage`, which is what reads these back.
+ */
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  encodeCbor(items.map((item) => copyBuffer(item)));
+  encodeMidgardFieldPreimage(items);
 
-const decodeOutRefWithCml = (inputBytes: Uint8Array): MidgardOutRef => {
-  const input = CML.TransactionInput.from_cbor_bytes(inputBytes);
-  try {
-    const transactionId = input.transaction_id();
-    try {
-      return {
-        txId: Buffer.from(transactionId.to_raw_bytes()),
-        index: BigInt(input.index()),
-      };
-    } finally {
-      transactionId.free();
-    }
-  } finally {
-    input.free();
-  }
-};
-
+/**
+ * §5.3 fields 0/1: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes.
+ *
+ * A Midgard out-ref has exactly one byte spelling, and this is it — ledger MPF
+ * trie keys, field-0/1 preimage items and transition-effect source keys are all
+ * these same 38 bytes, so this is the inverse of `encodeOutRef` below and of
+ * on-chain `decode_midgard_tx_input_cbor`. Every other shape throws: a
+ * development ledger written under any other spelling must be reset, not
+ * migrated (`docs/spec/midgard-tx.md` §5.3). Tolerating a second shape here
+ * would be worse than useless — a stale 36-byte key would decode and re-encode
+ * to different bytes, silently re-keying the row instead of failing.
+ */
 export const decodeMidgardOutRefBytes = (
   inputBytes: Uint8Array,
-): MidgardOutRef =>
-  decodeCanonicalTransactionInput(inputBytes) ??
-  decodeOutRefWithCml(inputBytes);
+): MidgardOutRef => {
+  const decoded = decodeMidgardSpendInputItem(inputBytes);
+  return {
+    txId: Buffer.from(decoded.txId) as MidgardTxId,
+    index: BigInt(decoded.outputIndex),
+  };
+};
 
-const encodeOutRef = (outRef: MidgardOutRef, fieldName: string): Buffer =>
-  encodeCbor([
-    copyBuffer(assertHash32(outRef.txId, `${fieldName}.txId`)),
-    outRef.index,
-  ]);
+/**
+ * §5.3 fields 0/1: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes.
+ *
+ * This must be the same encoder that produces the ledger MPF trie key
+ * (`midgardOutRefToCbor`), because `toNativeTx` re-encodes a decoded ledger
+ * transaction and asserts the recomputed tx id: a minimal output index here and
+ * a fixed one there would make every round trip fail. On-chain the two are
+ * literally one function — `ledger_outref_key` calls `encode_midgard_tx_input`,
+ * the field-0/1 item encoder. See `docs/spec/midgard-tx.md` §5.3.
+ */
+const encodeOutRef = (outRef: MidgardOutRef, fieldName: string): Buffer => {
+  if (outRef.index < 0n || outRef.index > BigInt(MIDGARD_MAX_OUTPUT_INDEX)) {
+    failEncode(
+      `${fieldName}.index must be 0..65,535 (§5.3 fixed uint16 output index)`,
+      `index=${outRef.index.toString()}`,
+    );
+  }
+  return encodeMidgardSpendInputItem({
+    txId: copyBuffer(assertHash32(outRef.txId, `${fieldName}.txId`)),
+    outputIndex: Number(outRef.index),
+  });
+};
 
 const decodeOutRefList = (
   preimageCbor: Uint8Array,
@@ -317,12 +361,19 @@ const decodeHashList = (
     },
   );
 
+/**
+ * §5.3 fields 3/4: the item *is* the raw 28-byte hash. `encodeMidgardHash28Item`
+ * is the §5.3 encoder; `assertHash28` stays in front of it only to name the field
+ * and index in the diagnostic, which the grammar-level encoder cannot.
+ */
 const encodeHashList = (
   hashes: readonly Uint8Array[],
   fieldName: string,
 ): Buffer =>
   encodeByteList(
-    hashes.map((hash, index) => assertHash28(hash, `${fieldName}[${index}]`)),
+    hashes.map((hash, index) =>
+      encodeMidgardHash28Item(assertHash28(hash, `${fieldName}[${index}]`)),
+    ),
   );
 
 const decodeObserverHashes = (preimageCbor: Uint8Array): MidgardScriptHash[] =>
@@ -435,12 +486,14 @@ const encodeVKeyWitnesses = (
       seenKeyHashes.add(keyHashHex);
       derivedWitnessKeyHashes.push(derivedKeyHash);
     }
-    return Buffer.from(
-      CML.Vkeywitness.new(
-        publicKey,
-        CML.Ed25519Signature.from_raw_bytes(witness.signature),
-      ).to_cbor_bytes(),
-    );
+    // §5.3 field 7 is `82 ‖ 58 20 vkey ‖ 58 40 signature`, a Midgard grammar rule
+    // — not "whatever CML serializes a Vkeywitness to". They agree today, which is
+    // exactly why the dependency was invisible; `encodeMidgardAddressWitnessItem`
+    // is the encoder that owes the on-chain reader its 101-byte width.
+    return encodeMidgardAddressWitnessItem({
+      verificationKey: Buffer.from(publicKey.to_raw_bytes()),
+      signature: witness.signature,
+    });
   });
 
   assertBufferArrayEquals(
@@ -514,64 +567,32 @@ const encodeScriptWitnesses = (
   return encodeMidgardVersionedScriptListPreimage(scripts);
 };
 
-const signedBigInt = (value: unknown, fieldName: string): bigint => {
-  if (typeof value === "bigint") {
-    return value;
-  }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return BigInt(value);
-  }
-  return failDecode(`${fieldName} must be an integer`);
-};
-
+/**
+ * §5.6: field 5 is the enveloped list of per-policy items. The §5.3 decoder
+ * enforces policy-id and asset-name ordering, rejects duplicates, an assetless
+ * policy and a zero quantity, and requires the 28-byte policy id — so the checks
+ * this function used to spell against a raw CBOR map now have exactly one home,
+ * shared with the producer's twin. An empty mint is `80`, like every other field.
+ */
 const decodeMint = (preimageCbor: Uint8Array): MidgardLedgerMint => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded)) {
-    if (decoded.length === 0) {
-      return { assets: [] };
-    }
-    failDecode("native.mint must be an empty array or a CBOR map");
-  }
-
-  const policies = asMap(decoded, "native.mint");
-  if (policies.size === 0) {
-    failDecode("Midgard mint map cannot be empty");
+  let items;
+  try {
+    items = decodeMidgardMintFieldPreimage(preimageCbor);
+  } catch (e) {
+    return failDecode(
+      "native.mint is not a canonical \u00a75.6 mint field preimage",
+      String(e),
+    );
   }
   const assets: MidgardLedgerMintAsset[] = [];
-  let policyIndex = 0;
-  for (const [policyValue, assetsValue] of policies.entries()) {
-    const policyId = asBytes(policyValue, `native.mint[${policyIndex}].policy`);
-    if (policyId.length !== HASH28_LENGTH) {
-      failDecode(
-        "mint policy id must be 28 bytes",
-        `native.mint[${policyIndex}].policy length=${policyId.length}`,
-      );
-    }
-    const assetMap = asMap(assetsValue, `native.mint[${policyIndex}].assets`);
-    if (assetMap.size === 0) {
-      failDecode("Mint policy asset map cannot be empty");
-    }
-    let assetIndex = 0;
-    for (const [assetNameValue, quantityValue] of assetMap.entries()) {
-      const assetName = asBytes(
-        assetNameValue,
-        `native.mint[${policyIndex}].assets[${assetIndex}].name`,
-      );
-      const quantity = signedBigInt(
-        quantityValue,
-        `native.mint[${policyIndex}].assets[${assetIndex}].quantity`,
-      );
-      if (quantity === 0n) {
-        failDecode("mint quantity cannot be zero");
-      }
+  for (const policy of items) {
+    for (const asset of policy.assets) {
       assets.push({
-        policyId: copyBuffer(policyId),
-        assetName: copyBuffer(assetName),
-        quantity,
+        policyId: copyBuffer(policy.policyId),
+        assetName: copyBuffer(asset.assetName),
+        quantity: asset.quantity,
       });
-      assetIndex += 1;
     }
-    policyIndex += 1;
   }
   return { assets };
 };
@@ -590,11 +611,17 @@ const ensureAssetName = (
   return assetName;
 };
 
+/**
+ * §5.6: `82 \u2016 58 1C policy_id \u2016 map(k) \u2016 asset entries` per policy item, inside
+ * the §5.1 envelope. The retired raw-map form is prohibited.
+ *
+ * The flat asset list is grouped by policy here — that grouping and its
+ * duplicate check are this module's own invariant about `MidgardLedgerMint`'s
+ * shape, and they have no counterpart in the byte grammar. Ordering is then
+ * *enforced* by `encodeMidgardFieldPreimageForField` at both levels rather
+ * than merely applied here.
+ */
 const encodeMint = (mint: MidgardLedgerMint): Buffer => {
-  if (mint.assets.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
-  }
-
   const policies = new Map<
     string,
     {
@@ -638,23 +665,15 @@ const encodeMint = (mint: MidgardLedgerMint): Buffer => {
     policies.set(policyKey, policy);
   }
 
-  const policyEntries = [...policies.values()]
-    .map((policy) => {
-      const policyKey = encodeCborBytes(policy.policyId);
-      const assetEntries = [...policy.assets.values()]
-        .map(
-          (asset) =>
-            [
-              encodeCborBytes(asset.assetName),
-              encodeCborInteger(asset.quantity),
-            ] as const,
-        )
-        .sort(([left], [right]) => compareBytes(left, right));
-      return [policyKey, encodeCborMapRaw(assetEntries)] as const;
-    })
-    .sort(([left], [right]) => compareBytes(left, right));
-
-  return encodeCborMapRaw(policyEntries);
+  return encodeMidgardFieldPreimageForField({
+    fieldIndex: 5,
+    items: sortMidgardMintItems(
+      [...policies.values()].map((policy) => ({
+        policyId: policy.policyId,
+        assets: [...policy.assets.values()],
+      })),
+    ),
+  });
 };
 
 const decodeRedeemers = (preimageCbor: Uint8Array): MidgardLedgerRedeemer[] =>
@@ -668,12 +687,14 @@ const decodeRedeemers = (preimageCbor: Uint8Array): MidgardLedgerRedeemer[] =>
     },
   }));
 
+/**
+ * §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. Pointer ordering and
+ * duplicate rejection stay here — they are this module's invariant about which
+ * redeemers may coexist, not a property of the byte grammar.
+ */
 const encodeRedeemers = (
   redeemers: readonly MidgardLedgerRedeemer[],
 ): Buffer => {
-  if (redeemers.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
-  }
   const seen = new Set<string>();
   const ordered = [...redeemers].sort((left, right) => {
     if (left.tag !== right.tag) {
@@ -681,24 +702,28 @@ const encodeRedeemers = (
     }
     return left.index < right.index ? -1 : left.index > right.index ? 1 : 0;
   });
-  return encodeCbor(
-    ordered.map((redeemer) => {
+  return encodeMidgardFieldPreimageForField({
+    fieldIndex: 8,
+    items: ordered.map((redeemer) => {
       const key = `${redeemer.tag}:${redeemer.index.toString(10)}`;
       if (seen.has(key)) {
         failEncode("duplicate redeemer pointer", key);
       }
       seen.add(key);
-      return [
-        BigInt(redeemer.tag),
-        redeemer.index,
-        Buffer.from(
+      return {
+        purpose: midgardRedeemerPurposeFromTag(redeemer.tag),
+        index: redeemer.index,
+        redeemerCbor: Buffer.from(
           plutusDataToCborHex(redeemer.data, { canonical: true }),
           "hex",
         ),
-        [redeemer.exUnits.memory, redeemer.exUnits.steps],
-      ];
+        executionUnits: {
+          memory: redeemer.exUnits.memory,
+          steps: redeemer.exUnits.steps,
+        },
+      };
     }),
-  );
+  });
 };
 
 const expectedRequiresPlutusEvaluation = (
@@ -857,6 +882,190 @@ export const decodeMidgardSubmittedTxFromCanonicalCbor = (
       e instanceof MidgardLedgerOutputDecodeError ? e.causeValue : e,
       e instanceof MidgardLedgerOutputDecodeError,
     );
+  }
+};
+
+const projectRawScriptWitnesses = (
+  preimageCbor: Uint8Array,
+): readonly MidgardProjectedRawScriptWitness[] =>
+  decodeMidgardFieldPreimage(preimageCbor).map((item, index) => {
+    const outer = readCborArrayHeader(item, 0, "raw_script_witness");
+    if (outer.length !== 2)
+      failDecode("raw script witness must contain two fields");
+    const language = readCborUnsigned(
+      item,
+      outer.nextOffset,
+      "raw_script_witness.language",
+    );
+    if (
+      language.value !== 0n &&
+      language.value !== 3n &&
+      language.value !== 128n
+    )
+      failDecode("raw script witness language is unsupported");
+    const payload = readCborBytes(
+      item,
+      language.nextOffset,
+      "raw_script_witness.payload",
+    );
+    if (payload.nextOffset !== item.length)
+      failDecode("raw script witness has trailing bytes");
+    const languageTag = Number(language.value) as 0 | 3 | 128;
+    const prefix =
+      languageTag === 0
+        ? MidgardScriptHashPrefixes.NativeCardano
+        : languageTag === 3
+          ? MidgardScriptHashPrefixes.PlutusV3
+          : MidgardScriptHashPrefixes.MidgardV1;
+    return Object.freeze({
+      index,
+      languageTag,
+      scriptBytes: Buffer.from(payload.value),
+      versionedItemBytes: Buffer.from(item),
+      hash: Buffer.from(
+        blake2b(
+          Buffer.concat([Buffer.from([prefix]), Buffer.from(payload.value)]),
+          { dkLen: 28 },
+        ),
+      ) as MidgardScriptHash,
+    });
+  });
+
+const validateRawProjectionNonScriptFields = (
+  canonical: ReturnType<
+    typeof deriveMidgardNativeTxFaultEvidenceMaterial
+  >["canonical"],
+): void => {
+  decodeOutRefList(
+    canonical.body.spendInputsPreimageCbor,
+    "native.spend_inputs",
+  );
+  decodeOutRefList(
+    canonical.body.referenceInputsPreimageCbor,
+    "native.reference_inputs",
+  );
+  decodeOutputs(canonical.body.outputsPreimageCbor);
+  decodeObserverHashes(canonical.body.requiredObserversPreimageCbor);
+  decodeHashList(
+    canonical.body.requiredSignersPreimageCbor,
+    "native.required_signers",
+  );
+  decodeMint(canonical.body.mintPreimageCbor);
+  decodeVKeyWitnesses(canonical.witnessSet.addrTxWitsPreimageCbor);
+  decodeRedeemers(canonical.witnessSet.redeemerTxWitsPreimageCbor);
+};
+
+/**
+ * Total Phase-A projection for the sole case where an authenticated field-6
+ * native payload is structurally malformed. Every non-field-6 grammar remains
+ * strict, while the exact native payload bytes and their script hash survive.
+ */
+export const projectMidgardRawEnvelopeForPhaseAV1 = (
+  txCbor: Uint8Array,
+): MidgardRawEnvelopePhaseAProjection => {
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(txCbor);
+  try {
+    validateRawProjectionNonScriptFields(material.canonical);
+    const scriptWitnesses = projectRawScriptWitnesses(
+      material.canonical.witnessSet.scriptTxWitsPreimageCbor,
+    );
+    let canonicalSubmittedTx: MidgardSubmittedTx | null = null;
+    try {
+      canonicalSubmittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(txCbor);
+    } catch (error) {
+      const cause =
+        error instanceof MidgardLedgerTxDecodeError
+          ? error.causeValue
+          : undefined;
+      if (
+        !(error instanceof MidgardLedgerTxDecodeError) ||
+        error.stage !== "ledger" ||
+        !(cause instanceof MidgardTxCodecError) ||
+        cause.code !== MidgardTxCodecErrorCodes.CborDecode ||
+        !/^native\.script_tx_wits\[\d+\] is not a canonical versioned script$/u.test(
+          cause.message,
+        )
+      )
+        throw error;
+      // The opaque field-6 native payload is the sole admitted decode gap;
+      // all other envelope/body/witness grammars were checked above.
+    }
+    if (canonicalSubmittedTx !== null) {
+      if (
+        canonicalSubmittedTx.ledgerTx.scriptWitnesses.length !==
+          scriptWitnesses.length ||
+        canonicalSubmittedTx.ledgerTx.scriptWitnesses.some(
+          (witness, index) =>
+            !Buffer.from(witness.hash).equals(scriptWitnesses[index]!.hash),
+        )
+      )
+        failDecode("raw projection differs from canonical script witnesses");
+    }
+    const nativeScriptHashes = scriptWitnesses
+      .filter(({ languageTag }) => languageTag === 0)
+      .map(({ hash }) => hash);
+    const plutusScriptHashes = scriptWitnesses
+      .filter(({ languageTag }) => languageTag !== 0)
+      .map(({ hash }) => hash);
+    const vkeyWitnesses = decodeVKeyWitnesses(
+      material.canonical.witnessSet.addrTxWitsPreimageCbor,
+    );
+    const redeemers = decodeRedeemers(
+      material.canonical.witnessSet.redeemerTxWitsPreimageCbor,
+    );
+    const ledgerTx: MidgardRawEnvelopePhaseAProjection["ledgerTx"] = {
+      txId: Buffer.from(material.transactionId) as MidgardTxId,
+      validity: material.canonical.validity,
+      fee: material.canonical.body.fee,
+      networkId: optionalNetworkId(material.canonical.body.networkId),
+      validityIntervalStart: optionalPosixTime(
+        material.canonical.body.validityIntervalStart,
+      ),
+      validityIntervalEnd: optionalPosixTime(
+        material.canonical.body.validityIntervalEnd,
+      ),
+      auxiliaryDataHash: copyBuffer(material.canonical.body.auxiliaryDataHash),
+      scriptIntegrityHash: copyBuffer(
+        material.canonical.body.scriptIntegrityHash,
+      ),
+      spendInputs: decodeOutRefList(
+        material.canonical.body.spendInputsPreimageCbor,
+        "native.spend_inputs",
+      ),
+      referenceInputs: decodeOutRefList(
+        material.canonical.body.referenceInputsPreimageCbor,
+        "native.reference_inputs",
+      ),
+      outputs: decodeOutputs(material.canonical.body.outputsPreimageCbor),
+      requiredSignerHashes: decodeHashList(
+        material.canonical.body.requiredSignersPreimageCbor,
+        "native.required_signers",
+      ),
+      requiredObserverHashes: decodeObserverHashes(
+        material.canonical.body.requiredObserversPreimageCbor,
+      ),
+      vkeyWitnesses: vkeyWitnesses.vkeyWitnesses,
+      witnessKeyHashes: vkeyWitnesses.witnessKeyHashes,
+      scriptWitnesses,
+      nativeScriptHashes,
+      plutusScriptHashes,
+      redeemers,
+      mint: decodeMint(material.canonical.body.mintPreimageCbor),
+      requiresPlutusEvaluation: expectedRequiresPlutusEvaluation({
+        plutusScriptHashes,
+        redeemers,
+        scriptIntegrityHash: material.canonical.body.scriptIntegrityHash,
+      }),
+    };
+    return Object.freeze({
+      canonical: material.canonical,
+      transactionId: Buffer.from(material.transactionId),
+      scriptWitnesses: Object.freeze(scriptWitnesses),
+      ledgerTx: Object.freeze(ledgerTx),
+      canonicalSubmittedTx,
+    });
+  } catch (error) {
+    throw new MidgardLedgerTxDecodeError("ledger", error);
   }
 };
 

@@ -5,11 +5,12 @@
 \section{Transaction Order event}
 \label{h:transaction-order-event}
 
-A forced transaction set is a finite map from transaction order ID to the compact transaction order source value:
+A canonical V1 forced transaction set is a finite map from transaction order ID
+to the authenticated forced-inclusion source value:
 \begin{align*}
-    \T{ForcedTransactionSet} &\coloneq \T{Map(TxOrderId, ForcedInclusionTx)} \\
+    \T{ForcedTransactionSetV1} &\coloneq \T{Map(TxOrderId, ForcedInclusionTxV1)} \\
       &\coloneq \Bigl\{
-        (k_i: \T{TxOrderId}, v_i: \T{ForcedInclusionTx}) \mid \forall i \neq j.\; k_i \neq k_j
+        (k_i: \T{TxOrderId}, v_i: \T{ForcedInclusionTxV1}) \mid \forall i \neq j.\; k_i \neq k_j
     \Bigr\}
 \end{align*}
 
@@ -21,11 +22,12 @@ This invalidity claim itself can then be subject to fraud proofs if the operator
 \begingroup
 \allowdisplaybreaks{}
 \begin{align*}
-    \T{TxOrderEvent} &\coloneq \T{(TxOrderId, MidgardTxCompactWithoutValidity)} \\
+    \T{TxOrderEventV1} &\coloneq \T{(TxOrderId, MidgardTxCompactWithoutValidity)} \\
     \T{TxOrderId} &\coloneq \T{OutputRef} \\
-    \T{ForcedInclusionTx} &\coloneq \left\{
+    \T{ForcedInclusionTxV1} &\coloneq \left\{
     \begin{array}{ll}
-        \T{tx\_compact} : & \T{MidgardTxCompactWithoutValidity} \\
+        \T{tx\_id} : & \T{TxId} \\
+        \T{source} : & \T{NativeTxProofSourceV1} \\
         \T{operator\_validity} : & \T{MidgardTxValidity}
     \end{array} \right\}
 \end{align*}
@@ -35,16 +37,47 @@ The \code{TxOrderId} of a transaction order event corresponds to one of the inpu
 This key is needed to identify the L1 transaction order utxo, and ensure that each order is unique.
 The forced transaction source root is keyed by this L1 order identity, not by the L2 transaction ID.
 This permits multiple L1 orders for the same L2 transaction to be represented and challenged independently.
-The L2 transaction ID is derived from \code{tx\_compact.body}; it is not repeated in \code{ForcedInclusionTx}.
+The L2 transaction ID is derived from the compact transaction body and is
+repeated as \code{tx\_id} inside \code{ForcedInclusionTxV1} so the source value
+authenticates its own key-independent transaction identity.  The compact,
+witness-set, and field-length CBOR values are carried by the nested
+\code{NativeTxProofSourceV1}; there is no alternate \code{compact\_tx} or
+\code{field\_preimage\_hashes} projection.
 The transaction validity interval is also part of the compact body, so transaction-order due checks use that validity range rather than a separate inclusion timestamp.
 
 The effect of a valid included transaction order on a block's utxo set is identical to a valid L2 transaction request.
 It removes all of the transaction's inputs from the ledger and adds all of its outputs.
 Invalid included transaction orders are represented as forced transaction trace steps whose operator validity classification is challengeable.
 
-The current transition-trace launch gate intentionally supports only invalid/no-op forced transaction steps in production block construction.
-An operator must not commit an effectful \code{TxIsValid} forced transaction trace step until the forced-transaction ledger deltas and proof preimages needed by the one-step verifier are available.
-The Aiken transition-trace proof validator rejects the unsupported valid-forced redeemer path, so this is a fail-closed deployment restriction rather than an alternate validity rule.
+In canonical V1, every canonical field preimage is published as an independently
+locked fragment. A second transaction references that fragment and may mint a
+compact field-receipt NFT only after the receipt policy recomputes the compact
+source, field hash, canonical encoding, and compiled field bound on L1. The
+receipt datum binds the \code{TxOrderId}, transaction commitment, field index,
+and exact fragment output reference. This two-transaction sequence avoids a
+circular attempt to place a publishing transaction's own ID in one of its
+inline output datums.
+
+The final transaction-order mint references exactly nine compact receipts,
+not all nine large field fragments. It verifies the ordered receipt NFT and
+datum for every committed field and records both ordered reference lists in
+the order datum. When the order is consumed, all fragments and receipts must
+also be consumed, the order NFT and all receipt NFTs must be burned, and the
+fragment/receipt spending validators independently enforce those burns.
+Missing, duplicate, non-canonical, mismatched, oversized, or unreceipted
+fragments fail closed.
+
+The canonical V1 validation trace uses the same machine for normal and forced
+transactions. A valid forced transaction therefore applies the exact accepted
+ledger delta, while an invalid forced transaction commits an exact no-op.
+An operator verdict that differs from the L1-computed terminal verdict is a
+fault in either direction.
+
+Canonical V1 contains no valid-forced rejection gate. The accepted-effectful
+and rejected-no-op paths are both part of the canonical validation machine and
+are bound to the forced source, terminal verdict, and resulting ledger root.
+Activation remains fail closed until concrete validator-hash-bound release
+evidence covers both paths.
 
 \Cref{h:transaction-order} describes the lifecycle of a transaction order request in further detail.
 

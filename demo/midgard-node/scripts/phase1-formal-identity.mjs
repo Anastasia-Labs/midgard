@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { CML } from "@lucid-evolution/lucid";
+import { outRefToCbor } from "@al-ft/lucid-midgard";
 
 export const PHASE1_FORMAL_BINDING_SCHEMA =
-  "midgard-phase1-live-corpus-binding-v2";
+  "midgard-phase1-live-corpus-binding-v1";
 export const PHASE1_FORMAL_SCENARIO = "phase1-starvation-2x-soak";
 export const PHASE1_FORMAL_CHAIN_COUNT = 4_096;
 export const PHASE1_FORMAL_CHAIN_DEPTH = 748;
@@ -34,18 +34,22 @@ const requireObject = (value, label) => {
 };
 
 const requireNonEmptyString = (value, label) => {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${label} must be a non-empty string`);
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value !== value.trim()
+  ) {
+    throw new Error(`${label} must be a canonical non-empty string`);
   }
-  return value.trim();
+  return value;
 };
 
 const requireSha256 = (value, label) => {
-  const normalized = requireNonEmptyString(value, label).toLowerCase();
-  if (!SHA256_PATTERN.test(normalized)) {
+  const canonical = requireNonEmptyString(value, label);
+  if (!SHA256_PATTERN.test(canonical)) {
     throw new Error(`${label} must be 32-byte lowercase hex`);
   }
-  return normalized;
+  return canonical;
 };
 
 const canonicalObject = (entries) =>
@@ -55,15 +59,27 @@ const canonicalObject = (entries) =>
     ),
   );
 
-const requireOnlyKeys = (value, allowed, label) => {
-  const extras = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (extras.length > 0) {
-    throw new Error(`${label} contains unsupported keys: ${extras.join(",")}`);
+const requireExactKeys = (value, expected, label) => {
+  const actual = Object.keys(value).sort();
+  const canonicalExpected = [...expected].sort();
+  const missing = canonicalExpected.filter((key) => !actual.includes(key));
+  const extras = actual.filter((key) => !canonicalExpected.includes(key));
+  if (missing.length > 0 || extras.length > 0) {
+    throw new Error(
+      `${label} must use the exact V1 keys; missing=[${missing.join(",")}], extra=[${extras.join(",")}]`,
+    );
   }
 };
 
-const resolvedPath = (value, label) =>
-  path.resolve(requireNonEmptyString(value, label));
+const resolvedPath = (value, label) => {
+  const canonical = requireNonEmptyString(value, label);
+  if (!path.isAbsolute(canonical) || path.resolve(canonical) !== canonical) {
+    throw new Error(
+      `${label} must be a canonical absolute corpus path or artifact path`,
+    );
+  }
+  return canonical;
+};
 
 export const sha256FileSync = (filePath) =>
   createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
@@ -87,7 +103,7 @@ export const extractStressCorpusEnvironment = (env) => {
 
 const parseLivePreflight = (value, label) => {
   const live = requireObject(value, label);
-  requireOnlyKeys(live, ["algorithm", "sampleSize", "entries"], label);
+  requireExactKeys(live, ["algorithm", "sampleSize", "entries"], label);
   if (live.algorithm !== PHASE1_FORMAL_SAMPLE_ALGORITHM) {
     throw new Error(
       `${label}.algorithm must be ${PHASE1_FORMAL_SAMPLE_ALGORITHM}`,
@@ -105,7 +121,7 @@ const parseLivePreflight = (value, label) => {
   }
   const entries = live.entries.map((entry, index) => {
     const row = requireObject(entry, `${label}.entries[${index}]`);
-    requireOnlyKeys(
+    requireExactKeys(
       row,
       ["walletId", "l2Address", "firstInputOutref", "outputCborSha256"],
       `${label}.entries[${index}]`,
@@ -113,7 +129,7 @@ const parseLivePreflight = (value, label) => {
     const firstInputOutref = requireNonEmptyString(
       row.firstInputOutref,
       `${label}.entries[${index}].firstInputOutref`,
-    ).toLowerCase();
+    );
     if (!/^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u.test(firstInputOutref)) {
       throw new Error(`${label}.entries[${index}].firstInputOutref is invalid`);
     }
@@ -139,9 +155,9 @@ const parseLivePreflight = (value, label) => {
   return { algorithm: live.algorithm, sampleSize: live.sampleSize, entries };
 };
 
-const parseBinding = (binding, bindingPath) => {
+export const parsePhase1FormalBindingDocument = (binding, bindingPath) => {
   const document = requireObject(binding, "Phase 1 binding artifact");
-  requireOnlyKeys(
+  requireExactKeys(
     document,
     [
       "schemaVersion",
@@ -175,7 +191,7 @@ const parseBinding = (binding, bindingPath) => {
     document.generationResult,
     "Phase 1 binding artifact generationResult",
   );
-  requireOnlyKeys(
+  requireExactKeys(
     generationResult,
     ["path", "sha256"],
     "Phase 1 binding artifact generationResult",
@@ -185,6 +201,11 @@ const parseBinding = (binding, bindingPath) => {
       document.stressCorpusEnv,
       "Phase 1 binding artifact stressCorpusEnv",
     ),
+  );
+  requireExactKeys(
+    stressCorpusEnv,
+    REQUIRED_STRESS_CORPUS_ENV,
+    "Phase 1 binding artifact stressCorpusEnv",
   );
   for (const name of REQUIRED_STRESS_CORPUS_ENV) {
     requireNonEmptyString(stressCorpusEnv[name], `stressCorpusEnv.${name}`);
@@ -216,18 +237,33 @@ const parseBinding = (binding, bindingPath) => {
       document.fundingSetSha256,
       "fundingSetSha256",
     ),
-    corpus: {
-      path: resolvedPath(corpus.path, "corpus.path"),
-      indexPath: resolvedPath(corpus.indexPath, "corpus.indexPath"),
-      manifestPath: resolvedPath(corpus.manifestPath, "corpus.manifestPath"),
-      sliceId: requireNonEmptyString(corpus.sliceId, "corpus.sliceId"),
-      corpusSha256: requireSha256(corpus.corpusSha256, "corpus.corpusSha256"),
-      indexSha256: requireSha256(corpus.indexSha256, "corpus.indexSha256"),
-      manifestSha256: requireSha256(
-        corpus.manifestSha256,
-        "corpus.manifestSha256",
-      ),
-    },
+    corpus: (() => {
+      requireExactKeys(
+        corpus,
+        [
+          "path",
+          "indexPath",
+          "manifestPath",
+          "sliceId",
+          "corpusSha256",
+          "indexSha256",
+          "manifestSha256",
+        ],
+        "Phase 1 binding artifact corpus",
+      );
+      return {
+        path: resolvedPath(corpus.path, "corpus.path"),
+        indexPath: resolvedPath(corpus.indexPath, "corpus.indexPath"),
+        manifestPath: resolvedPath(corpus.manifestPath, "corpus.manifestPath"),
+        sliceId: requireNonEmptyString(corpus.sliceId, "corpus.sliceId"),
+        corpusSha256: requireSha256(corpus.corpusSha256, "corpus.corpusSha256"),
+        indexSha256: requireSha256(corpus.indexSha256, "corpus.indexSha256"),
+        manifestSha256: requireSha256(
+          corpus.manifestSha256,
+          "corpus.manifestSha256",
+        ),
+      };
+    })(),
     generationResult: {
       path: resolvedPath(generationResult.path, "generationResult.path"),
       sha256: requireSha256(generationResult.sha256, "generationResult.sha256"),
@@ -236,10 +272,17 @@ const parseBinding = (binding, bindingPath) => {
       document.livePreflight,
       "Phase 1 binding artifact livePreflight",
     ),
-    harness: {
-      scenarioId: requireSha256(harness.scenarioId, "harness.scenarioId"),
-      engineId: requireSha256(harness.engineId, "harness.engineId"),
-    },
+    harness: (() => {
+      requireExactKeys(
+        harness,
+        ["scenarioId", "engineId"],
+        "Phase 1 binding artifact harness",
+      );
+      return {
+        scenarioId: requireSha256(harness.scenarioId, "harness.scenarioId"),
+        engineId: requireSha256(harness.engineId, "harness.engineId"),
+      };
+    })(),
     stressCorpusEnv,
   };
 };
@@ -257,7 +300,7 @@ export const loadPhase1FormalBindingSync = (bindingPath) => {
   return {
     path: absolutePath,
     sha256: sha256FileSync(absolutePath),
-    document: parseBinding(parsed, absolutePath),
+    document: parsePhase1FormalBindingDocument(parsed, absolutePath),
   };
 };
 
@@ -280,7 +323,7 @@ const loadAndValidateGenerationResult = (binding, corpusManifest) => {
     JSON.parse(fs.readFileSync(document.generationResult.path, "utf8")),
     "generation result artifact",
   );
-  requireOnlyKeys(
+  requireExactKeys(
     parsed,
     [
       "schemaVersion",
@@ -304,7 +347,7 @@ const loadAndValidateGenerationResult = (binding, corpusManifest) => {
     parsed.verified,
     "generation result verified",
   );
-  requireOnlyKeys(
+  requireExactKeys(
     verification,
     [
       "rowCount",
@@ -351,7 +394,7 @@ const loadAndValidateGenerationResult = (binding, corpusManifest) => {
     verification.rebuildSample,
     "generation result rebuildSample",
   );
-  requireOnlyKeys(
+  requireExactKeys(
     rebuild,
     [
       "algorithm",
@@ -696,12 +739,14 @@ export const verifyPhase1LivePreflight = async ({ expected, fetchUtxos }) => {
   for (const entry of expected.entries) {
     const utxos = await fetchUtxos(entry.l2Address);
     const [transactionId, outputIndex] = entry.firstInputOutref.split("#");
-    const expectedOutrefCbor = Buffer.from(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_raw_bytes(Buffer.from(transactionId, "hex")),
-        BigInt(outputIndex),
-      ).to_cbor_bytes(),
-    ).toString("hex");
+    // The ledger `outref` column carries the §5.3 field-0/1 item bytes
+    // (`82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes), not CML's
+    // minimal-index `TransactionInput` CBOR — so the expected bytes must come
+    // from the shared encoder.
+    const expectedOutrefCbor = outRefToCbor({
+      txHash: transactionId,
+      outputIndex: Number(outputIndex),
+    }).toString("hex");
     const live = utxos.find(
       (utxo) => String(utxo.outref).toLowerCase() === expectedOutrefCbor,
     );

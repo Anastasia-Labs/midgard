@@ -4,30 +4,9 @@ import { describe, expect, it } from "vitest";
 import { onChainCoordinatorFromConfig } from "../src/coordinator/factory.js";
 import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";
 import type { L1SubmitterPreflightOptions } from "../src/l1/submitter.js";
-import { minimalConfig } from "./helpers.js";
+import { minimalConfig, minimalStateQueueYields } from "./helpers.js";
 
 describe("onChainCoordinatorFromConfig", () => {
-  it("fails closed without Midgard node deployment metadata", async () => {
-    const config = {
-      ...minimalConfig({
-        dir: "/tmp",
-        manifestPath: "/tmp/manifest.json",
-        deploymentInfoPath: "/tmp/deployment.json",
-        signerSeed: "00".repeat(32),
-        signerPublicKey: "11".repeat(32),
-      }),
-      mode: "coordinator" as const,
-      l1SubmitterKeySource: "private-key:ed25519_sk_test",
-      cardanoProviderUrls: [
-        "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-      ],
-    };
-
-    await expect(onChainCoordinatorFromConfig(config)).rejects.toThrow(
-      /deployment-info/,
-    );
-  });
-
   it("fails closed without an L1 submitter key source", async () => {
     const config = {
       ...minimalConfig({
@@ -39,9 +18,15 @@ describe("onChainCoordinatorFromConfig", () => {
       }),
       mode: "coordinator" as const,
       midgardNodeDeployment: {
+        hubOraclePolicyId: "99".repeat(28),
+        correctionLockAddress: "addr_test1correctionlock",
+        hubOracle: fakeDeployment("99".repeat(28)),
+        availabilityChallenge: fakeDeployment("ee".repeat(28)),
+        fraudProof: fakeDeployment("dd".repeat(28)),
         daAttestation: fakeDeployment("aa".repeat(28)),
         daParamsGovernor: fakeDeployment("bb".repeat(28)),
         stateQueue: fakeDeployment("cc".repeat(28)),
+        stateQueueYields: minimalStateQueueYields(),
       },
       cardanoProviderUrls: [
         "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
@@ -58,7 +43,7 @@ describe("onChainCoordinatorFromConfig", () => {
     let referenceScriptsResolved = false;
 
     await expect(
-      onChainCoordinatorFromConfig(config, undefined, undefined, {
+      onChainCoordinatorFromConfig(config, fakeChainReader, undefined, {
         lucidFromProviderUrl: async () => ({
           lucid: {} as LucidEvolution,
           providerSource: "test",
@@ -129,6 +114,13 @@ describe("onChainCoordinatorFromConfig", () => {
       "reference-scripts",
     ]);
   });
+
+  it("does not construct an unproven fallback chain reader", async () => {
+    const config = l1ReadyConfig();
+    await expect(onChainCoordinatorFromConfig(config)).rejects.toThrow(
+      /canonical configured DA chain reader/u,
+    );
+  });
 });
 
 const l1ReadyConfig = () => ({
@@ -152,9 +144,15 @@ const l1ReadyConfig = () => ({
     retryDelayMs: 5_000,
   },
   midgardNodeDeployment: {
+    hubOraclePolicyId: "99".repeat(28),
+    correctionLockAddress: "addr_test1correctionlock",
+    hubOracle: fakeDeployment("99".repeat(28)),
+    availabilityChallenge: fakeDeployment("ee".repeat(28)),
+    fraudProof: fakeDeployment("dd".repeat(28)),
     daAttestation: fakeDeployment("aa".repeat(28)),
     daParamsGovernor: fakeDeployment("bb".repeat(28)),
     stateQueue: fakeDeployment("cc".repeat(28)),
+    stateQueueYields: minimalStateQueueYields(),
   },
   cardanoProviderUrls: [
     "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
@@ -190,6 +188,7 @@ const fakeReferenceUtxo = {
 } as UTxO;
 
 const fakeReferenceScripts = {
+  availabilityChallengeMinting: fakeReferenceUtxo,
   daAttestationMinting: fakeReferenceUtxo,
   daAttestationSpending: fakeReferenceUtxo,
   stateQueueMinting: fakeReferenceUtxo,

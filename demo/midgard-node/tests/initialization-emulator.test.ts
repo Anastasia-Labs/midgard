@@ -1,3 +1,4 @@
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
@@ -13,20 +14,19 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
   fetchHubOracleWitness,
   fetchProtocolDeploymentStatus,
   isSchedulerInitialized,
-} from "@/transactions/initialization.js";
-import { verifyNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
+} from "../src/transactions/initialization.js";
+import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "@/transactions/register-active-operator.js";
-
+} from "../src/transactions/register-active-operator.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const loadContracts = (
@@ -37,19 +37,57 @@ const loadContracts = (
   referenceScriptAuth?: SDK.MintingValidator,
 ) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
 
+// The real-envelope pin (`maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize`)
+// is SUSPENDED per Anastasia-Labs/midgard#649. `state_queue.mint` is no longer
+// the blocker: removing the claim registry dropped two of its parameters and
+// the InitV1/Deinit registry checks, taking it from 16,835 to 16,139 bytes
+// unapplied, inside the 16,384-byte L1 envelope. `availability_challenge`
+// remains over at 19,956 bytes unapplied on both legs, so publishing the roster
+// as reference scripts still fails at fixture bring-up and would block every
+// atomic-initialization assertion in this file. The fit property is not lost —
+// `tests/scratch-cg1-publication-fit.test.ts` stays pinned at the real envelope
+// and is skipped with the same #649 citation, and un-skipping it is what proves
+// #649 fixed. Restore the pin then.
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+  maxTxSize: 65_536,
   maxCollateralInputs: 3,
 } as const;
 
+// Wave-current on-chain bond. `operator-directory/registered-operators.ak` now
+// enforces `registered_node_lovelace == env.required_bond` (it used to accept
+// `>=`), and `env/testnet.ak` — the env this blueprint is built with, matching
+// `.github/workflows/midgard-node-ci.yml` — sets
+// `required_bond = slashing_penalty (500_000_000) + fraud_prover_reward
+// (400_000_000)`. `SDK.getProtocolParameters` carries the same 900_000_000n for
+// every non-mainnet profile. Any other value now makes the registration mint
+// crash, so this constant is derived from the contract, not chosen.
+const EMULATOR_REQUIRED_BOND_LOVELACE = 900_000_000n;
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
+
+/**
+ * Dev/emulator DA cosigner seed.
+ *
+ * Q63 (F04 §4) floors `da_threshold` and `update_threshold` at two, so the
+ * bootstrap needs a second key before the governor will accept its params. The
+ * emulator has no committee peers, so the harness holds that key itself and
+ * passes it as `DA_COSIGNER_SEED_PHRASE`. It only ever signs attestation
+ * messages, so it never needs emulator funds.
+ */
+const TEST_DA_COSIGNER_SEED_PHRASE =
+  "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee";
+
+/**
+ * A floor-compliant 2-of-2 committee with a 2-of-2 owner set. Both sets are
+ * sorted-unique because `valid_datum` measures them with its `sorted_unique_*`
+ * walkers.
+ */
 const TEST_DA_PARAMS: SDK.DaParamsDatum = {
-  committee: "00".repeat(32),
+  committee: "00".repeat(32) + "01".repeat(32),
   committee_signers_hash: "11".repeat(32),
-  da_threshold: 1n,
-  owners: ["22".repeat(28)],
-  update_threshold: 1n,
+  da_threshold: 2n,
+  owners: ["22".repeat(28), "33".repeat(28)],
+  update_threshold: 2n,
 };
 
 const buildAtomicInitializationTx = async (
@@ -73,6 +111,7 @@ const buildAtomicInitializationTx = async (
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
         L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+        DA_COSIGNER_SEED_PHRASE: TEST_DA_COSIGNER_SEED_PHRASE,
         NETWORK: "Preprod",
       },
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
@@ -220,6 +259,7 @@ describe("initialization emulator", () => {
       const initTx = await Effect.runPromise(
         SDK.incompleteInitializationTxProgram(fakeLucid, {
           midgardValidators: contracts,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
           daParams: TEST_DA_PARAMS,
           oneShotNonceUTxO: nonceUtxo,
@@ -231,7 +271,14 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      expect(outputAssets).toHaveLength(8);
+      // Nine protocol-root outputs, one per NFT the atomic init mints:
+      // da-params governor, hub oracle, scheduler, state-queue root, the three
+      // operator-set roots, the fraud-proof catalogue, and — under the same hub
+      // oracle policy — the correction lock. The old pin of 8 predates the
+      // correction lock, which `src/transactions/initialization.ts` already
+      // requires (it reports a deployment missing it as a "correction-lock"
+      // root); removing the claim registry from the protocol dropped the tenth.
+      expect(outputAssets).toHaveLength(9);
       expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
         true,
       );
@@ -545,7 +592,7 @@ describe("initialization emulator", () => {
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -554,7 +601,7 @@ describe("initialization emulator", () => {
       activateOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );

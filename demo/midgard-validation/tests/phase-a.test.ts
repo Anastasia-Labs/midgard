@@ -1,4 +1,13 @@
-import { computeHash32 } from "@al-ft/midgard-core/codec";
+import {
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  hashMidgardCekTermNode,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  computeHash32,
+  encodeMidgardSpendInputItem,
+} from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -28,6 +37,7 @@ import {
   makeQueued,
   nativeScriptWitness,
   outRefFromByte,
+  TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
 
 const phaseAConfig = {
@@ -38,9 +48,67 @@ const phaseAConfig = {
   strictnessProfile: "phase-a-unit",
 };
 
+const addressAtRawNetworkNibble = (networkNibble: number): Buffer => {
+  const address = Buffer.from(TEST_ADDRESS_BYTES);
+  address[0] = (address[0] & 0xf0) | networkNibble;
+  return address;
+};
+
+/**
+ * This suite used to assert that `midgardOutRefToCbor` reproduced CML's
+ * canonical `TransactionInput` CBOR. That is no longer the contract, and the
+ * change is deliberate (#586's owner ruling): the ledger out-ref key is spec
+ * §5.3's field-0/1 item, `82 ‖ 58 20 tx_id ‖ 19 index_be16`, a fixed 38 bytes
+ * with a non-minimal 3-byte index — the same bytes on-chain `ledger_outref_key`
+ * derives. CML minimises the index, so it disagrees for every index below 256,
+ * and it is the *disagreement* that has to be pinned now.
+ */
 describe("outref projection", () => {
-  it.each([0n, 23n, 24n, 255n, 256n, 65_535n, 65_536n, 0xffff_ffff_ffff_ffffn])(
-    "matches CML canonical TransactionInput CBOR for index %s",
+  it.each([0n, 23n, 24n, 255n, 256n, 65_535n])(
+    "encodes the §5.3 fixed-index ledger key for index %s",
+    (index) => {
+      const txId = Buffer.alloc(32, Number(index & 0xffn));
+      const encoded = midgardOutRefToCbor({ txId, index });
+
+      expect(encoded).toStrictEqual(
+        encodeMidgardSpendInputItem({ txId, outputIndex: Number(index) }),
+      );
+      // The fixed width is the point of the encoding: it is what makes the
+      // stride-40 arithmetic access in the field-access door sound.
+      expect(encoded.length).toBe(38);
+      expect(encoded.subarray(0, 3)).toStrictEqual(
+        Buffer.from([0x82, 0x58, 0x20]),
+      );
+      expect(encoded.subarray(3, 35)).toStrictEqual(txId);
+      expect(encoded.subarray(35)).toStrictEqual(
+        Buffer.from([0x19, Number(index >> 8n), Number(index & 0xffn)]),
+      );
+    },
+  );
+
+  it.each([0n, 23n, 24n, 255n])(
+    "deliberately differs from CML's minimal-index CBOR for index %s",
+    (index) => {
+      const txId = Buffer.alloc(32, Number(index & 0xffn));
+      const hash = CML.TransactionHash.from_raw_bytes(txId);
+      const input = CML.TransactionInput.new(hash, index);
+      try {
+        // Below 256 CML spells the index in one or two bytes, so its encoding is
+        // 36 or 37 bytes. Accepting it as a ledger key would mean two byte forms
+        // for one out-ref — exactly what on-chain `decode_midgard_tx_input_cbor`
+        // rejects when it asserts the `0x19` head.
+        expect(Buffer.from(input.to_cbor_bytes())).not.toStrictEqual(
+          midgardOutRefToCbor({ txId, index }),
+        );
+      } finally {
+        input.free();
+        hash.free();
+      }
+    },
+  );
+
+  it.each([256n, 65_535n])(
+    "coincides with CML's minimal-index CBOR only where minimal is already uint16, at index %s",
     (index) => {
       const txId = Buffer.alloc(32, Number(index & 0xffn));
       const hash = CML.TransactionHash.from_raw_bytes(txId);
@@ -53,6 +121,14 @@ describe("outref projection", () => {
         input.free();
         hash.free();
       }
+    },
+  );
+
+  it.each([65_536n, 0xffff_ffff_ffff_ffffn])(
+    "refuses index %s, which is outside §5.3's uint16 output-index domain",
+    (index) => {
+      const txId = Buffer.alloc(32, Number(index & 0xffn));
+      expect(() => midgardOutRefToCbor({ txId, index })).toThrow();
     },
   );
 });
@@ -218,11 +294,9 @@ describe("phase A validation", () => {
 
   it("materializes Phase B candidate metadata from accepted native transaction CBOR", async () => {
     const spent = outRefFromByte(0x01);
-    const referenceInput = outRefFromByte(0x02, 1n);
     const output = makeOutput(8n);
     const fixture = makeNativeTx({
       spendInputs: [spent],
-      referenceInputs: [referenceInput],
       outputs: [output],
       fee: 2n,
       validityIntervalStart: 10n,
@@ -233,9 +307,7 @@ describe("phase A validation", () => {
     const accepted = await expectSinglePhaseAAcceptance(fixture);
 
     expect(accepted.graph.spentOutRefHexes).toEqual([spent.toString("hex")]);
-    expect(accepted.graph.referenceOutRefHexes).toEqual([
-      referenceInput.toString("hex"),
-    ]);
+    expect(accepted.graph.referenceOutRefHexes).toEqual([]);
     expect(accepted.ledgerTx.fee).toBe(2n);
     expect(accepted.derived.outputSum.lovelace).toBe(8n);
     expect(
@@ -267,7 +339,7 @@ describe("phase A validation", () => {
   });
 
   it("rejects native validity values other than TxIsValid", async () => {
-    const fixture = makeNativeTx({ validity: "InvalidSignature" });
+    const fixture = makeNativeTx({ validity: "TxIsInvalid" });
     await expectSinglePhaseARejection(
       fixture,
       RejectCodes.IsValidFalseForbidden,
@@ -284,6 +356,61 @@ describe("phase A validation", () => {
   it("rejects explicit Cardano network ids that do not match configuration", async () => {
     const fixture = makeNativeTx({ networkId: 1n });
     await expectSinglePhaseARejection(fixture, RejectCodes.NetworkIdMismatch);
+  });
+
+  it.each([
+    { label: "testnet output on mainnet", expected: 1n, rawNibble: 0 },
+    { label: "mainnet output on testnet", expected: 0n, rawNibble: 1 },
+    {
+      label: "foreign unprotected network nibble 2",
+      expected: 0n,
+      rawNibble: 2,
+    },
+    {
+      label: "foreign protected network nibble 15",
+      expected: 0n,
+      rawNibble: 15,
+    },
+  ])("defers $label to the staged output scan", ({ expected, rawNibble }) => {
+    const fixture = makeNativeTx({
+      outputs: [makeOutput(10n, addressAtRawNetworkNibble(rawNibble))],
+    });
+    const admitted = validatePhaseASingle(
+      makeQueued(fixture.txId, fixture.txCbor),
+      {
+        ...phaseAConfig,
+        expectedNetworkId: expected,
+      },
+    );
+    expect(admitted).toHaveProperty("ledgerTx");
+    if ("ledgerTx" in admitted) {
+      expect(admitted.derived.expectedNetworkId).toBe(expected);
+    }
+  });
+
+  it("accepts matching protected output networks", () => {
+    const fixture = makeNativeTx({
+      outputs: [makeOutput(10n, addressAtRawNetworkNibble(8))],
+    });
+    expect(
+      validatePhaseASingle(
+        makeQueued(fixture.txId, fixture.txCbor),
+        phaseAConfig,
+      ),
+    ).toHaveProperty("ledgerTx");
+  });
+
+  it("preserves validity rejection priority over a wrong-network output", () => {
+    const fixture = makeNativeTx({
+      validity: "TxIsInvalid",
+      outputs: [makeOutput(10n, addressAtRawNetworkNibble(15))],
+    });
+    expect(
+      validatePhaseASingle(
+        makeQueued(fixture.txId, fixture.txCbor),
+        phaseAConfig,
+      ),
+    ).toMatchObject({ code: RejectCodes.IsValidFalseForbidden });
   });
 
   it("rejects transactions below the configured minimum fee", async () => {
@@ -359,7 +486,7 @@ describe("phase A validation", () => {
     await expectSinglePhaseARejection(fixture, RejectCodes.InvalidSignature);
   });
 
-  it("rejects native script witnesses that fail their signer policy", async () => {
+  it("rejects an unsatisfied native script before Phase B", async () => {
     const fixture = makeNativeTx({
       scriptWitnesses: [
         nativeScriptWitness({
@@ -383,5 +510,76 @@ describe("phase A validation", () => {
       },
     });
     await expectSinglePhaseARejection(fixture, RejectCodes.InvalidFieldType);
+  });
+
+  it("requires V1 material and rejects a non-canonical profile tuple", async () => {
+    const fixture = makeNativeTx();
+    const queued = makeQueued(fixture.txId, fixture.txCbor);
+    const v1Config = {
+      ...phaseAConfig,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    };
+    const missing = validatePhaseASingle(
+      { ...queued, programMaterialSidecarCbor: undefined },
+      v1Config,
+    );
+    expect(missing).toMatchObject({
+      code: RejectCodes.CekProgramMaterial,
+    });
+
+    const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
+    const accepted = validatePhaseASingle(
+      { ...queued, programMaterialSidecarCbor: sidecar },
+      v1Config,
+    );
+    expect("ledgerTx" in accepted).toBe(true);
+    if ("ledgerTx" in accepted) {
+      expect(accepted.submission.programMaterialSidecarCbor).toEqual(sidecar);
+    }
+
+    const unsupportedProfile = validatePhaseASingle(queued, {
+      ...phaseAConfig,
+      consensusProfile: {
+        ...MIDGARD_CONSENSUS_PROFILE,
+        protocolVersion: 2,
+      } as unknown as typeof MIDGARD_CONSENSUS_PROFILE,
+    });
+    expect(unsupportedProfile).toMatchObject({
+      code: RejectCodes.TxVersion,
+    });
+  });
+
+  it("rejects unclaimed material unless reference programs remain unresolved", () => {
+    const node = { kind: "error" as const };
+    const materialSidecar = encodeMidgardCekProgramMaterialSidecar([
+      {
+        kind: "term",
+        root: hashMidgardCekTermNode(node),
+        preimage: encodeMidgardCekTermNode(node),
+      },
+    ]);
+    const withoutReferences = makeNativeTx();
+    const rejected = validatePhaseASingle(
+      {
+        ...makeQueued(withoutReferences.txId, withoutReferences.txCbor),
+        programMaterialSidecarCbor: materialSidecar,
+      },
+      phaseAConfig,
+    );
+    expect(rejected).toMatchObject({
+      code: RejectCodes.CekProgramMaterial,
+    });
+
+    const unresolvedReference = makeNativeTx({
+      referenceInputs: [outRefFromByte(0x72)],
+    });
+    const deferred = validatePhaseASingle(
+      {
+        ...makeQueued(unresolvedReference.txId, unresolvedReference.txCbor),
+        programMaterialSidecarCbor: materialSidecar,
+      },
+      phaseAConfig,
+    );
+    expect("ledgerTx" in deferred).toBe(true);
   });
 });

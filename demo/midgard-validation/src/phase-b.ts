@@ -1,14 +1,30 @@
+import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
+import {
+  decodeMidgardCekProgramEnvelope,
+  decodeMidgardCekProgramMaterialSidecar,
+  verifyMidgardCekProgramMaterialBundle,
+} from "@al-ft/midgard-core/cek-proof";
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   type MidgardTxOutput,
   type MidgardValue,
   type ScriptLanguageName,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import {
+  collectMidgardAttachedProgramEnvelopes,
+  decodeMidgardScriptProgramEnvelope,
+} from "@al-ft/midgard-core/script-proof";
 import { Effect } from "effect";
 
+import {
+  buildMidgardCekExecutionGraph,
+  executeMidgardCekStructuralProgram,
+} from "./cek-executor.js";
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import type {
   MidgardLedgerOutput,
@@ -17,6 +33,7 @@ import type {
 import {
   encodeScriptContextCbor,
   evaluateScriptWithHarmonic,
+  type LocalScriptEvalResult,
 } from "./local-script-eval.js";
 import {
   findRedeemerByPointer,
@@ -26,7 +43,7 @@ import {
   MidgardScriptPurpose,
 } from "./midgard-redeemers.js";
 import {
-  buildMidgardV1ScriptContext,
+  buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
   ScriptContextView,
 } from "./script-context.js";
@@ -48,9 +65,62 @@ import {
   describeValueDelta,
   isZeroValueDelta,
   mintDeltaToScriptMintValue,
+  outputCborMeetsMinAda,
+  outputCborMinAdaLovelace,
   sumMidgardValues,
   valuePreservationDelta,
 } from "./value-accounting.js";
+
+/**
+ * `E_MIN_ADA` / MIN-ADA-TX (#618 ruling 1; R8 of decision 0005): the first
+ * output of this transaction that does not fund the parameterized minimum-Ada
+ * floor, or `null` when every output does.
+ *
+ * The bytes measured here are `graph.produced[i][LedgerColumns.OUTPUT]` -- the
+ * canonical output encoding Phase A already committed to the ledger entry, and
+ * therefore exactly the bytes the on-chain output descriptor's `total_length`
+ * binds (`buildMidgardLedgerOutputMaterialV1` sets `totalLength` from them).
+ * Re-encoding the output here would risk measuring a different serialization
+ * than the one the L1 machine convicts on.
+ *
+ * WHY THIS RUNS IN PHASE B, AND HERE. The on-chain twin rejects on the
+ * ValueAndMint stage-3 output-descriptor step, so this rejection must carry the
+ * `valueAndMint` consensus phase; and because `orderedPhases` in
+ * ./validation-machine.ts places `valueAndMint` after `resolveInputs`,
+ * `scriptSources`, `nativeScripts`, `scriptIntegrity` and `cek`, the check has
+ * to run after everything those phases decide, and before the stage-5
+ * value-preservation conjunct that shares the phase. Hoisting it into Phase A
+ * admission -- where the rule would also be computable, since it is stateless
+ * -- would invert the phase order and make the operator's claimed terminal
+ * unprovable against the machine.
+ */
+const minAdaViolation = (
+  candidate: PhaseAValidatedTx,
+): { readonly index: number; readonly detail: string } | null => {
+  const outputs = candidate.ledgerTx.outputs;
+  const produced = candidate.graph.produced;
+  for (let index = 0; index < produced.length; index += 1) {
+    const outputCbor = produced[index]![LedgerColumns.OUTPUT];
+    const lovelace = outputs[index]?.value.lovelace;
+    if (lovelace === undefined) {
+      // Phase A builds one produced entry per output; a mismatch is a
+      // construction bug, not a transaction fault, and must not be silently
+      // read as "meets the floor".
+      throw new Error(
+        `phase B min-Ada scan: produced entry ${index.toString()} has no matching ledger output`,
+      );
+    }
+    if (!outputCborMeetsMinAda(outputCbor, lovelace)) {
+      return {
+        index,
+        detail: `output[${index.toString()}] ${lovelace.toString()} < ${outputCborMinAdaLovelace(
+          outputCbor,
+        ).toString()} for ${outputCbor.length.toString()} serialized bytes`,
+      };
+    }
+  }
+  return null;
+};
 
 type UTxOState = Map<string, Buffer>;
 type PreState = readonly LedgerEntry[] | UTxOState;
@@ -152,10 +222,12 @@ const reject = (
   txId: Buffer,
   code: RejectedTx["code"],
   detail: string | null = null,
+  consensusPhase: MidgardValidationPhaseName = "resolveInputs",
 ): RejectedTx => ({
   txId,
   code,
   detail,
+  consensusPhase,
 });
 
 const resolveReferenceInputs = (
@@ -202,6 +274,36 @@ const resolveReferenceInputs = (
     scriptHashes.add(source.scriptHash);
   }
 
+  const sidecar = node.candidate.submission.programMaterialSidecarCbor;
+  if (sidecar !== null) {
+    try {
+      const material = decodeMidgardCekProgramMaterialSidecar(sidecar);
+      const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+        node.candidate.submission.txCbor,
+      );
+      const envelopes = [
+        ...collectMidgardAttachedProgramEnvelopes(canonicalTx),
+      ];
+      for (const input of inputs) {
+        if (input.output.script_ref === undefined) continue;
+        const envelope = decodeMidgardScriptProgramEnvelope(
+          input.output.script_ref,
+        );
+        if (envelope !== null) {
+          envelopes.push(envelope);
+        }
+      }
+      verifyMidgardCekProgramMaterialBundle(envelopes, material);
+    } catch (cause) {
+      return reject(
+        node.candidate.ledgerTx.txId,
+        RejectCodes.CekProgramMaterial,
+        `invalid exact attached/reference-script CEK material: ${String(cause)}`,
+        "scriptSources",
+      );
+    }
+  }
+
   return { inputs, scriptSources, scriptHashes };
 };
 
@@ -217,6 +319,7 @@ type LocalScriptValidationResult =
       readonly kind: "rejected";
       readonly code: RejectedTx["code"];
       readonly detail: string;
+      readonly consensusPhase: MidgardValidationPhaseName;
     };
 
 const ledgerOutputToTxOutput = (
@@ -288,6 +391,7 @@ const discoverLocalScriptExecutions = (
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
         detail: `duplicate redeemer ${key}`,
+        consensusPhase: "scriptSources",
       };
     }
     seenRedeemerPointers.add(key);
@@ -317,6 +421,7 @@ const discoverLocalScriptExecutions = (
         kind: "rejected",
         code: RejectCodes.MissingRequiredWitness,
         detail: `missing script source for ${purpose.kind} ${purpose.scriptHash}`,
+        consensusPhase: "scriptSources",
       };
     }
     if (resolved.version !== "NativeCardano") {
@@ -326,6 +431,7 @@ const discoverLocalScriptExecutions = (
           kind: "rejected",
           code: RejectCodes.MissingRequiredWitness,
           detail: `missing redeemer for ${purpose.kind} ${purpose.scriptHash}`,
+          consensusPhase: "scriptSources",
         };
       }
     }
@@ -342,6 +448,7 @@ const discoverLocalScriptExecutions = (
         kind: "rejected",
         code: RejectCodes.InputNotFound,
         detail: outRefHex,
+        consensusPhase: "resolveInputs",
       };
     }
     const output = decodeMidgardTxOutput(outputBytes);
@@ -391,6 +498,16 @@ const discoverLocalScriptExecutions = (
   for (let index = 0; index < outputs.length; index += 1) {
     const output = outputs[index];
     const outputAddress = decodeMidgardAddressBytes(output.address);
+    if (
+      BigInt(outputAddress.networkId) !== candidate.derived.expectedNetworkId
+    ) {
+      return {
+        kind: "rejected",
+        code: RejectCodes.NetworkIdMismatch,
+        detail: `output ${index.toString()} network ${outputAddress.networkId.toString()} != ${candidate.derived.expectedNetworkId.toString()}`,
+        consensusPhase: "scriptSources",
+      };
+    }
     if (!outputAddress.protected) {
       continue;
     }
@@ -402,6 +519,7 @@ const discoverLocalScriptExecutions = (
           kind: "rejected",
           code: RejectCodes.MissingRequiredWitness,
           detail: `missing witness for protected output signer ${pubKey}`,
+          consensusPhase: "scriptSources",
         };
       }
       continue;
@@ -428,6 +546,7 @@ const discoverLocalScriptExecutions = (
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
         detail: `extraneous redeemer ${midgardRedeemerPointerKey(redeemer)}`,
+        consensusPhase: "scriptSources",
       };
     }
   }
@@ -481,6 +600,23 @@ const runLocalScriptEvaluation = (
     if (discovered.kind === "rejected") {
       return discovered;
     }
+    let proofProgramMaterial: ReturnType<
+      typeof decodeMidgardCekProgramMaterialSidecar
+    > | null = null;
+    if (candidate.submission.programMaterialSidecarCbor !== null) {
+      try {
+        proofProgramMaterial = decodeMidgardCekProgramMaterialSidecar(
+          candidate.submission.programMaterialSidecarCbor,
+        );
+      } catch (cause) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.CekProgramMaterial,
+          detail: `invalid V1 CEK material during execution: ${String(cause)}`,
+          consensusPhase: "scriptSources",
+        };
+      }
+    }
 
     const usedInlineSourceIds = new Set(
       discovered.executions
@@ -495,6 +631,7 @@ const runLocalScriptEvaluation = (
           kind: "rejected",
           code: RejectCodes.InvalidFieldType,
           detail: `extraneous ${kind} script witness ${source.sourceId}`,
+          consensusPhase: "scriptSources",
         };
       }
     }
@@ -515,6 +652,7 @@ const runLocalScriptEvaluation = (
           kind: "rejected",
           code: RejectCodes.NativeScriptInvalid,
           detail: `native script verification failed for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
+          consensusPhase: "nativeScripts",
         };
       }
     }
@@ -535,6 +673,7 @@ const runLocalScriptEvaluation = (
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
         detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
+        consensusPhase: "scriptIntegrity",
       };
     }
 
@@ -552,12 +691,13 @@ const runLocalScriptEvaluation = (
           kind: "rejected",
           code: RejectCodes.PlutusScriptInvalid,
           detail: "ReceivingScript requires MidgardV1 context",
+          consensusPhase: "cek",
         };
       }
 
       const context =
         execution.resolved.version === "MidgardV1"
-          ? buildMidgardV1ScriptContext(
+          ? buildMidgardScriptContext(
               discovered.contextView,
               execution.purpose,
               redeemer,
@@ -567,21 +707,78 @@ const runLocalScriptEvaluation = (
               execution.purpose,
               redeemer,
             );
-      const result =
-        config.evaluateScript === undefined
-          ? evaluateScriptWithHarmonic(
+      const contextCbor = encodeScriptContextCbor(context);
+      const executionBudget =
+        config.enforceScriptBudget === false
+          ? undefined
+          : {
+              cpu: redeemer.exUnits.steps,
+              memory: redeemer.exUnits.memory,
+            };
+      let result: LocalScriptEvalResult;
+      if (proofProgramMaterial !== null) {
+        if (config.evaluateProofScript !== undefined) {
+          result = yield* config.evaluateProofScript(
+            execution.resolved.source.scriptBytes,
+            contextCbor,
+            executionBudget,
+          );
+        } else {
+          try {
+            const envelope = decodeMidgardCekProgramEnvelope(
               execution.resolved.source.scriptBytes,
-              context,
-            )
-          : yield* config.evaluateScript(
-              execution.resolved.source.scriptBytes,
-              encodeScriptContextCbor(context),
             );
+            const graph = buildMidgardCekExecutionGraph(
+              envelope,
+              proofProgramMaterial,
+              contextCbor,
+            );
+            const cek = executeMidgardCekStructuralProgram({
+              root: graph.root,
+              material: graph.material.values(),
+              constantWitnesses: graph.constantWitnesses,
+              maxSteps: MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+              executionBudget,
+            });
+            result =
+              cek.stopReason === "budgetExceeded" ||
+              cek.terminalState.mode === "haltSuccess"
+                ? {
+                    kind: "accepted",
+                    budget: {
+                      cpu: cek.terminalState.cpu,
+                      memory: cek.terminalState.memory,
+                    },
+                  }
+                : {
+                    kind: "script_invalid",
+                    detail: `V1 CEK halted with error ${cek.terminalState.auxiliary.toString(10)}`,
+                  };
+          } catch (cause) {
+            result = {
+              kind: "script_invalid",
+              detail: `V1 CEK execution failed closed: ${String(cause)}`,
+            };
+          }
+        }
+      } else {
+        result =
+          config.evaluateScript === undefined
+            ? evaluateScriptWithHarmonic(
+                execution.resolved.source.scriptBytes,
+                context,
+              )
+            : yield* config.evaluateScript(
+                execution.resolved.source.scriptBytes,
+                contextCbor,
+              );
+      }
       if (result.kind === "script_invalid") {
         return {
           kind: "rejected",
           code: RejectCodes.PlutusScriptInvalid,
           detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+          consensusPhase: "cek",
         };
       }
       if (
@@ -593,6 +790,7 @@ const runLocalScriptEvaluation = (
           kind: "rejected",
           code: RejectCodes.PlutusScriptInvalid,
           detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: budget exceeded (spent mem=${result.budget.memory} cpu=${result.budget.cpu}, declared mem=${redeemer.exUnits.memory} cpu=${redeemer.exUnits.steps})`,
+          consensusPhase: "cek",
         };
       }
     }
@@ -761,10 +959,14 @@ const validateCandidateAgainstState = (
   Effect.gen(function* () {
     const candidate = node.candidate;
     const { ledgerTx } = candidate;
-    const fail = (code: RejectedTx["code"], detail: string | null = null) => ({
+    const fail = (
+      code: RejectedTx["code"],
+      detail: string | null = null,
+      consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+    ) => ({
       index: node.index,
       accepted: false as const,
-      rejection: reject(ledgerTx.txId, code, detail),
+      rejection: reject(ledgerTx.txId, code, detail, consensusPhase),
     });
 
     if (
@@ -824,6 +1026,7 @@ const validateCandidateAgainstState = (
       return fail(
         RejectCodes.MissingRequiredWitness,
         `missing script witness ${scriptHash} for ${context}`,
+        "scriptSources",
       );
     };
 
@@ -901,8 +1104,17 @@ const validateCandidateAgainstState = (
         config,
       );
       if (localScriptEvaluation.kind === "rejected") {
-        return fail(localScriptEvaluation.code, localScriptEvaluation.detail);
+        return fail(
+          localScriptEvaluation.code,
+          localScriptEvaluation.detail,
+          localScriptEvaluation.consensusPhase,
+        );
       }
+    }
+
+    const underFundedOutput = minAdaViolation(candidate);
+    if (underFundedOutput !== null) {
+      return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");
     }
 
     const delta = valuePreservationDelta(
@@ -915,6 +1127,7 @@ const validateCandidateAgainstState = (
       return fail(
         RejectCodes.ValueNotPreserved,
         `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+        "valueAndMint",
       );
     }
 
@@ -933,10 +1146,14 @@ const validatePlainCandidateAgainstState = (
   const candidate = node.candidate;
   if (candidate.derived.requiresLocalScriptDiscovery) return undefined;
   const { ledgerTx } = candidate;
-  const fail = (code: RejectedTx["code"], detail: string | null = null) => ({
+  const fail = (
+    code: RejectedTx["code"],
+    detail: string | null = null,
+    consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+  ) => ({
     index: node.index,
     accepted: false as const,
-    rejection: reject(ledgerTx.txId, code, detail),
+    rejection: reject(ledgerTx.txId, code, detail, consensusPhase),
   });
 
   if (
@@ -999,6 +1216,24 @@ const validatePlainCandidateAgainstState = (
     }
   }
 
+  for (const [outputIndex, output] of ledgerTx.outputs.entries()) {
+    const observedNetworkId = BigInt(
+      decodeMidgardAddressBytes(output.address).networkId,
+    );
+    if (observedNetworkId !== candidate.derived.expectedNetworkId) {
+      return fail(
+        RejectCodes.NetworkIdMismatch,
+        `output ${outputIndex.toString()} network ${observedNetworkId.toString()} != ${candidate.derived.expectedNetworkId.toString()}`,
+        "scriptSources",
+      );
+    }
+  }
+
+  const underFundedOutput = minAdaViolation(candidate);
+  if (underFundedOutput !== null) {
+    return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");
+  }
+
   const delta = valuePreservationDelta(
     sumMidgardValues(inputValues),
     ledgerTx.fee,
@@ -1009,6 +1244,7 @@ const validatePlainCandidateAgainstState = (
     return fail(
       RejectCodes.ValueNotPreserved,
       `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+      "valueAndMint",
     );
   }
   return { index: node.index, accepted: true };

@@ -1,5 +1,20 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  type FileHandle,
+  mkdir,
+  open as openFile,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
+
+import {
+  assertDeploymentMarkerMatches,
+  type DeploymentMarker,
+  parseDeploymentMarker,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import type {
   DaAttestationCandidateRecord,
@@ -8,21 +23,26 @@ import type {
   DaPeerHealthRecord,
   DaPeerNonceRecord,
   DaSignatureRecord,
+  DaSignatureRecordV1,
+  DaStoredConflictEvidenceRecord,
+  DaStoredPayloadRecord,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
+import {
+  parseDaSignatureRecord,
+  parseDaStoredConflictEvidenceRecord,
+  parseDaStoredPayloadRecord,
+} from "./domain.js";
+import type { StateQueueReplayAnchor } from "./l1/state-queue-scanner.js";
 
 type StoreData = {
-  readonly deployment?: {
-    readonly fingerprint: string;
-    readonly manifestSha256: string;
-    readonly contractDeploymentInfoSha256?: string;
-    readonly manifestRaw: string;
-  };
-  readonly chainCursor?: Record<string, unknown>;
+  readonly deployment?: WatcherDeploymentRecord;
+  readonly chainCursor?: L1SourceState;
   readonly stateQueueHeaders: Record<string, StateQueueHeaderRecord>;
-  readonly daPayloads: Record<string, DaPayloadRecord>;
-  readonly daSignatures: Record<string, DaSignatureRecord>;
+  readonly daPayloads: Record<string, DaStoredPayloadRecord>;
+  readonly daSignatures: Record<string, DaSignatureRecordV1>;
+  readonly daConflictEvidence: Record<string, DaStoredConflictEvidenceRecord>;
   readonly daAttestationCandidates: Record<
     string,
     DaAttestationCandidateRecord
@@ -31,24 +51,100 @@ type StoreData = {
   readonly peerBroadcasts: Record<string, DaPeerBroadcastRecord>;
   readonly peerHealth: Record<string, DaPeerHealthRecord>;
   readonly peerNonces: Record<string, DaPeerNonceRecord>;
+  readonly decisionOutbox: Record<string, DecisionOutboxRecord>;
+};
+
+export type DecisionOutboxStatus =
+  | "pending"
+  | "published"
+  | "failed"
+  | "reconciled";
+
+export const DECISION_EFFECT_PENDING_LEASE_MS = 5 * 60 * 1_000;
+
+export type DecisionOutboxRecord = {
+  readonly schemaVersion: 1;
+  readonly effectId: string;
+  readonly deploymentFingerprint: string;
+  readonly sourceMode: L1SourceState["sourceMode"];
+  readonly network: string;
+  readonly effectKind: "signature_publish" | "l1_reconcile";
+  readonly headerHash: string;
+  readonly stateQueueOutRef: string;
+  readonly signerIndex?: number;
+  readonly slot?: number;
+  readonly blockHash?: string;
+  readonly finalized: true;
+  readonly status: DecisionOutboxStatus;
+  readonly attemptCount: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly lastError?: string;
+  readonly quarantineReason?: string;
+  readonly quarantinedAt?: string;
+};
+
+export type L1ObservedDecision = {
+  readonly headerHash: string;
+  readonly stateQueueOutRef: string;
+  readonly stateQueueStatus: StateQueueHeaderRecord["status"];
+  readonly slot?: number;
+  readonly blockHash?: string;
+  readonly finalized: boolean;
+  readonly hasPersistedDecision: boolean;
+};
+
+export type L1SourceState = {
+  readonly schemaVersion: 1;
+  readonly sourceMode: "local_node" | "external_providers";
+  readonly network: string;
+  readonly authoritySha256: string;
+  readonly status: "healthy" | "quarantined";
+  readonly observations: readonly L1ObservedDecision[];
+  readonly observedAt: string;
+  readonly stateQueueReplayAnchor?: StateQueueReplayAnchor;
+  readonly quarantineReason?: string;
+  readonly quarantinedAt?: string;
 };
 
 export type WatcherDeploymentRecord = {
-  readonly fingerprint: string;
+  readonly marker: DeploymentMarker;
   readonly manifestSha256: string;
-  readonly contractDeploymentInfoSha256?: string;
+  readonly contractDeploymentInfoSha256: string;
   readonly manifestRaw: string;
 };
 
 export interface WatcherStore {
   close?(): Promise<void>;
   initDeployment(args: {
-    readonly fingerprint: string;
+    readonly marker: DeploymentMarker;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void>;
   getDeployment(): Promise<WatcherDeploymentRecord | undefined>;
+  getL1SourceState(): Promise<L1SourceState | undefined>;
+  saveL1SourceState(state: L1SourceState): Promise<void>;
+  getDecisionOutbox(
+    effectId: string,
+  ): Promise<DecisionOutboxRecord | undefined>;
+  listDecisionOutbox(
+    headerHash?: string,
+  ): Promise<readonly DecisionOutboxRecord[]>;
+  beginDecisionEffect(args: {
+    readonly effect: DecisionOutboxRecord;
+    readonly sourceState: L1SourceState;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void>;
+  completeDecisionEffect(args: {
+    readonly effectId: string;
+    readonly expectedAttemptCount: number;
+    readonly status: Exclude<DecisionOutboxStatus, "pending">;
+    readonly updatedAt: string;
+    readonly lastError?: string;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void>;
+  quarantineL1Decisions(state: L1SourceState): Promise<void>;
   upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void>;
   listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]>;
   getStateQueueHeader(
@@ -56,12 +152,26 @@ export interface WatcherStore {
   ): Promise<StateQueueHeaderRecord | undefined>;
   saveDaPayload(record: DaPayloadRecord): Promise<DaPayloadRecord>;
   getDaPayload(headerHash: string): Promise<DaPayloadRecord | undefined>;
+  /** Q54 retention enforcement: full retained DA payload set. */
+  listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]>;
+  /**
+   * Q54 retention enforcement: removes one retained DA payload. Returns whether
+   * a row existed. Callers must consult `daRetentionPruneDecisionV1` first.
+   */
+  deleteDaPayload(headerHash: string): Promise<boolean>;
   saveDaSignature(record: DaSignatureRecord): Promise<void>;
   getDaSignature(args: {
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaSignatureRecord | undefined>;
   listDaSignatures(headerHash?: string): Promise<readonly DaSignatureRecord[]>;
+  saveDaConflictEvidence(
+    record: DaStoredConflictEvidenceRecord,
+  ): Promise<boolean>;
+  listDaConflictEvidence(
+    headerHash?: string,
+  ): Promise<readonly DaStoredConflictEvidenceRecord[]>;
   saveDaAttestationCandidate(
     record: DaAttestationCandidateRecord,
   ): Promise<void>;
@@ -74,6 +184,7 @@ export interface WatcherStore {
   getPeerBroadcast(args: {
     readonly peerId: string;
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined>;
   listPeerBroadcasts(
@@ -86,39 +197,101 @@ export interface WatcherStore {
 
 export class JsonFileWatcherStore implements WatcherStore {
   private readonly filePath: string;
+  private readonly lockPath: string;
+  private readonly lockHandle: FileHandle;
+  private readonly lockOwner: string;
   private writeQueue: Promise<void> = Promise.resolve();
+  private closePromise: Promise<void> | undefined;
+  private closing = false;
+  private closed = false;
 
-  private constructor(filePath: string) {
-    this.filePath = filePath;
+  private constructor(args: {
+    readonly filePath: string;
+    readonly lockPath: string;
+    readonly lockHandle: FileHandle;
+    readonly lockOwner: string;
+  }) {
+    this.filePath = args.filePath;
+    this.lockPath = args.lockPath;
+    this.lockHandle = args.lockHandle;
+    this.lockOwner = args.lockOwner;
   }
 
   static async open(path: string): Promise<JsonFileWatcherStore> {
     const filePath = path.endsWith(".json") ? path : join(path, "watcher.json");
     await mkdir(dirname(filePath), { recursive: true });
-    const store = new JsonFileWatcherStore(filePath);
-    await store.read();
-    return store;
+    const lockPath = `${filePath}.lock`;
+    const lockOwner = `${process.pid.toString()}:${randomUUID()}`;
+    let lockHandle: FileHandle;
+    try {
+      lockHandle = await openFile(lockPath, "wx", 0o600);
+    } catch (error) {
+      if (isNodeError(error) && error.code === "EEXIST") {
+        throw new Error(
+          `watcher file store is already exclusively leased: ${lockPath}; close the active watcher or perform explicit stale-lock recovery`,
+        );
+      }
+      throw error;
+    }
+    const store = new JsonFileWatcherStore({
+      filePath,
+      lockPath,
+      lockHandle,
+      lockOwner,
+    });
+    try {
+      await lockHandle.writeFile(
+        `${JSON.stringify({ schemaVersion: 1, owner: lockOwner })}\n`,
+        "utf8",
+      );
+      await lockHandle.sync();
+      await store.read();
+      return store;
+    } catch (error) {
+      await lockHandle.close().catch(() => undefined);
+      await unlink(lockPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this.closePromise === undefined) {
+      this.closing = true;
+      this.closePromise = (async () => {
+        await this.writeQueue.catch(() => undefined);
+        await this.lockHandle.close();
+        await unlink(this.lockPath);
+        this.closed = true;
+      })();
+    }
+    await this.closePromise;
   }
 
   async initDeployment(args: {
-    readonly fingerprint: string;
+    readonly marker: DeploymentMarker;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void> {
     await this.mutate((data) => {
-      if (
-        data.deployment !== undefined &&
-        data.deployment.fingerprint !== args.fingerprint
-      ) {
-        throw new Error(
-          `stale_deployment_state_requires_fresh_redeploy: stored_fingerprint=${data.deployment.fingerprint}, canonical_manifest_id=${args.fingerprint}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
-        );
+      const marker = parseDeploymentMarker(args.marker);
+      if (data.deployment !== undefined) {
+        try {
+          assertDeploymentMarkerMatches(
+            marker,
+            data.deployment.marker,
+            "DA file store",
+          );
+        } catch {
+          throw new Error(
+            `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${data.deployment.marker.manifestId}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
+          );
+        }
       }
       return {
         ...data,
         deployment: {
-          fingerprint: args.fingerprint,
+          marker,
           manifestSha256: args.manifestSha256,
           contractDeploymentInfoSha256: args.contractDeploymentInfoSha256,
           manifestRaw: args.manifestRaw,
@@ -130,6 +303,245 @@ export class JsonFileWatcherStore implements WatcherStore {
   async getDeployment(): Promise<WatcherDeploymentRecord | undefined> {
     const data = await this.read();
     return data.deployment;
+  }
+
+  async getL1SourceState(): Promise<L1SourceState | undefined> {
+    const data = await this.read();
+    return data.chainCursor;
+  }
+
+  async saveL1SourceState(state: L1SourceState): Promise<void> {
+    const canonical = parseL1SourceState(state);
+    await this.mutate((data) => ({
+      ...data,
+      chainCursor: mergeL1SourceState(data.chainCursor, canonical),
+    }));
+  }
+
+  async getDecisionOutbox(
+    effectId: string,
+  ): Promise<DecisionOutboxRecord | undefined> {
+    return (await this.read()).decisionOutbox[effectId];
+  }
+
+  async listDecisionOutbox(
+    headerHash?: string,
+  ): Promise<readonly DecisionOutboxRecord[]> {
+    return Object.values((await this.read()).decisionOutbox)
+      .filter(
+        (record) =>
+          headerHash === undefined || record.headerHash === headerHash,
+      )
+      .sort((left, right) => left.effectId.localeCompare(right.effectId));
+  }
+
+  async beginDecisionEffect(args: {
+    readonly effect: DecisionOutboxRecord;
+    readonly sourceState: L1SourceState;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    const effect = parseDecisionOutboxRecord(args.effect);
+    if (effect.status !== "pending") {
+      throw new Error("decision outbox begin requires pending status");
+    }
+    const proposedSourceState = parseL1SourceState(args.sourceState);
+    const signature =
+      args.signature === undefined
+        ? undefined
+        : parseDaSignatureRecord(args.signature);
+    assertDecisionSignature(effect, signature);
+    await this.mutate((data) => {
+      const sourceState = mergeL1SourceState(
+        data.chainCursor,
+        proposedSourceState,
+      );
+      assertDecisionSourceState(effect, sourceState);
+      assertDecisionRetry(data.decisionOutbox[effect.effectId], effect);
+      return {
+        ...data,
+        chainCursor: sourceState,
+        decisionOutbox: {
+          ...data.decisionOutbox,
+          [effect.effectId]: effect,
+        },
+        ...(signature === undefined
+          ? {}
+          : {
+              daSignatures: {
+                ...data.daSignatures,
+                [signatureKey(
+                  signature.headerHash,
+                  signature.availabilityCommitmentDigest,
+                  signature.signerIndex,
+                )]: signature,
+              },
+            }),
+      };
+    });
+  }
+
+  async completeDecisionEffect(args: {
+    readonly effectId: string;
+    readonly expectedAttemptCount: number;
+    readonly status: Exclude<DecisionOutboxStatus, "pending">;
+    readonly updatedAt: string;
+    readonly lastError?: string;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    await this.mutate((data) => {
+      const existing = data.decisionOutbox[args.effectId];
+      if (existing === undefined) {
+        throw new Error(`decision outbox effect ${args.effectId} is missing`);
+      }
+      if (
+        existing.status !== "pending" ||
+        existing.attemptCount !== args.expectedAttemptCount ||
+        existing.quarantineReason !== undefined ||
+        existing.quarantinedAt !== undefined
+      ) {
+        throw new Error(
+          "decision outbox completion does not match the pending attempt",
+        );
+      }
+      if (data.chainCursor === undefined) {
+        throw new Error("decision outbox completion lacks L1 source state");
+      }
+      assertDecisionSourceState(existing, data.chainCursor);
+      const signature =
+        args.signature === undefined
+          ? undefined
+          : parseDaSignatureRecord(args.signature);
+      assertDecisionSignature(existing, signature);
+      const completed = parseDecisionOutboxRecord({
+        ...existing,
+        status: args.status,
+        updatedAt: args.updatedAt,
+        ...(args.lastError === undefined
+          ? { lastError: undefined }
+          : { lastError: args.lastError }),
+      });
+      return {
+        ...data,
+        decisionOutbox: {
+          ...data.decisionOutbox,
+          [args.effectId]: completed,
+        },
+        ...(signature === undefined
+          ? {}
+          : {
+              daSignatures: {
+                ...data.daSignatures,
+                [signatureKey(
+                  signature.headerHash,
+                  signature.availabilityCommitmentDigest,
+                  signature.signerIndex,
+                )]: signature,
+              },
+            }),
+      };
+    });
+  }
+
+  async quarantineL1Decisions(state: L1SourceState): Promise<void> {
+    const canonical = parseL1SourceState(state);
+    if (canonical.status !== "quarantined") {
+      throw new Error(
+        "L1 decision quarantine requires quarantined source state",
+      );
+    }
+    await this.mutate((data) => {
+      const quarantined = mergeQuarantinedL1SourceState(
+        data.chainCursor,
+        canonical,
+      );
+      const affectedHeaders = new Set(
+        quarantined.observations
+          .filter(({ hasPersistedDecision }) => hasPersistedDecision)
+          .map(({ headerHash }) => headerHash),
+      );
+      const reason = quarantined.quarantineReason!;
+      const errorCode = `l1_source_quarantined:${reason}`;
+      return {
+        ...data,
+        chainCursor: quarantined,
+        stateQueueHeaders: Object.fromEntries(
+          Object.entries(data.stateQueueHeaders).map(([key, record]) => [
+            key,
+            affectedHeaders.has(record.headerHash)
+              ? {
+                  ...record,
+                  status: "conflicted",
+                  validationErrors: [
+                    ...new Set([...record.validationErrors, errorCode]),
+                  ],
+                  updatedAt: quarantined.quarantinedAt!,
+                }
+              : record,
+          ]),
+        ),
+        daPayloads: Object.fromEntries(
+          Object.entries(data.daPayloads).map(([key, record]) => [
+            key,
+            affectedHeaders.has(record.headerHash)
+              ? {
+                  ...record,
+                  validationStatus: "conflicted",
+                  validationError: errorCode,
+                }
+              : record,
+          ]),
+        ),
+        daSignatures: Object.fromEntries(
+          Object.entries(data.daSignatures).map(([key, record]) => [
+            key,
+            affectedHeaders.has(record.headerHash)
+              ? { ...record, broadcastStatus: "post_failed" }
+              : record,
+          ]),
+        ),
+        l1Submissions: Object.fromEntries(
+          Object.entries(data.l1Submissions).map(([key, record]) => [
+            key,
+            affectedHeaders.has(record.headerHash)
+              ? {
+                  ...record,
+                  resultStatus: "failed",
+                  failureCause: errorCode,
+                }
+              : record,
+          ]),
+        ),
+        peerBroadcasts: Object.fromEntries(
+          Object.entries(data.peerBroadcasts).map(([key, record]) => [
+            key,
+            affectedHeaders.has(record.headerHash)
+              ? {
+                  ...record,
+                  status: "failed",
+                  nextAttemptAt: undefined,
+                  lastError: errorCode,
+                  updatedAt: quarantined.quarantinedAt!,
+                }
+              : record,
+          ]),
+        ),
+        decisionOutbox: Object.fromEntries(
+          Object.entries(data.decisionOutbox).map(([key, record]) => [
+            key,
+            affectedHeaders.has(record.headerHash)
+              ? {
+                  ...record,
+                  status: "failed",
+                  lastError: errorCode,
+                  quarantineReason: reason,
+                  quarantinedAt: quarantined.quarantinedAt!,
+                  updatedAt: quarantined.quarantinedAt!,
+                }
+              : record,
+          ]),
+        ),
+      };
+    });
   }
 
   async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
@@ -156,48 +568,91 @@ export class JsonFileWatcherStore implements WatcherStore {
     return data.stateQueueHeaders[headerHash];
   }
 
-  async saveDaPayload(record: DaPayloadRecord): Promise<DaPayloadRecord> {
-    let saved = record;
+  async saveDaPayload(record: DaPayloadRecord): Promise<DaStoredPayloadRecord> {
+    const canonicalRecord = parseDaStoredPayloadRecord(record);
+    let saved: DaStoredPayloadRecord = canonicalRecord;
     await this.mutate((data) => {
-      const existing = data.daPayloads[record.headerHash];
-      saved = resolveDaPayloadSave(existing, record);
+      const existing = data.daPayloads[canonicalRecord.headerHash];
+      saved = resolveDaPayloadSave(existing, canonicalRecord);
       return {
         ...data,
         daPayloads: {
           ...data.daPayloads,
-          [record.headerHash]: saved,
+          [canonicalRecord.headerHash]: saved,
         },
       };
     });
     return saved;
   }
 
-  async getDaPayload(headerHash: string): Promise<DaPayloadRecord | undefined> {
+  async getDaPayload(
+    headerHash: string,
+  ): Promise<DaStoredPayloadRecord | undefined> {
     const data = await this.read();
     return data.daPayloads[headerHash];
   }
 
+  async listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]> {
+    const data = await this.read();
+    return Object.values(data.daPayloads).sort((left, right) =>
+      left.headerHash.localeCompare(right.headerHash),
+    );
+  }
+
+  async deleteDaPayload(headerHash: string): Promise<boolean> {
+    let deleted = false;
+    await this.mutate((data) => {
+      if (data.daPayloads[headerHash] === undefined) {
+        return data;
+      }
+      deleted = true;
+      const daPayloads = { ...data.daPayloads };
+      delete daPayloads[headerHash];
+      return { ...data, daPayloads };
+    });
+    return deleted;
+  }
+
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
-    await this.mutate((data) => ({
-      ...data,
-      daSignatures: {
-        ...data.daSignatures,
-        [signatureKey(record.headerHash, record.signerIndex)]: record,
-      },
-    }));
+    const canonicalRecord = parseDaSignatureRecord(record);
+    await this.mutate((data) => {
+      if (data.chainCursor?.status === "quarantined") {
+        throw new Error(
+          "cannot persist a DA signature while the L1 source is quarantined",
+        );
+      }
+      return {
+        ...data,
+        daSignatures: {
+          ...data.daSignatures,
+          [signatureKey(
+            canonicalRecord.headerHash,
+            canonicalRecord.availabilityCommitmentDigest,
+            canonicalRecord.signerIndex,
+          )]: canonicalRecord,
+        },
+      };
+    });
   }
 
   async getDaSignature(args: {
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
-  }): Promise<DaSignatureRecord | undefined> {
+  }): Promise<DaSignatureRecordV1 | undefined> {
     const data = await this.read();
-    return data.daSignatures[signatureKey(args.headerHash, args.signerIndex)];
+    return data.daSignatures[
+      signatureKey(
+        args.headerHash,
+        args.availabilityCommitmentDigest,
+        args.signerIndex,
+      )
+    ];
   }
 
   async listDaSignatures(
     headerHash?: string,
-  ): Promise<readonly DaSignatureRecord[]> {
+  ): Promise<readonly DaSignatureRecordV1[]> {
     const data = await this.read();
     return Object.values(data.daSignatures)
       .filter(
@@ -207,7 +662,49 @@ export class JsonFileWatcherStore implements WatcherStore {
       .sort(
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
+          left.availabilityCommitmentDigest.localeCompare(
+            right.availabilityCommitmentDigest,
+          ) ||
           left.signerIndex - right.signerIndex,
+      );
+  }
+
+  async saveDaConflictEvidence(
+    record: DaStoredConflictEvidenceRecord,
+  ): Promise<boolean> {
+    const canonicalRecord = parseDaStoredConflictEvidenceRecord(record);
+    let accepted = false;
+    await this.mutate((data) => {
+      const key = conflictEvidenceKey(canonicalRecord);
+      if (data.daConflictEvidence[key] !== undefined) {
+        return data;
+      }
+      accepted = true;
+      return {
+        ...data,
+        daConflictEvidence: {
+          ...data.daConflictEvidence,
+          [key]: canonicalRecord,
+        },
+      };
+    });
+    return accepted;
+  }
+
+  async listDaConflictEvidence(
+    headerHash?: string,
+  ): Promise<readonly DaStoredConflictEvidenceRecord[]> {
+    const data = await this.read();
+    return Object.values(data.daConflictEvidence)
+      .filter(
+        (record) =>
+          headerHash === undefined || record.headerHash === headerHash,
+      )
+      .sort(
+        (left, right) =>
+          left.headerHash.localeCompare(right.headerHash) ||
+          left.signerIndex - right.signerIndex ||
+          left.evidenceHash.localeCompare(right.evidenceHash),
       );
   }
 
@@ -267,6 +764,7 @@ export class JsonFileWatcherStore implements WatcherStore {
         [peerBroadcastKey(
           record.peerId,
           record.headerHash,
+          record.availabilityCommitmentDigest,
           record.signerIndex,
         )]: record,
       },
@@ -276,11 +774,17 @@ export class JsonFileWatcherStore implements WatcherStore {
   async getPeerBroadcast(args: {
     readonly peerId: string;
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined> {
     const data = await this.read();
     return data.peerBroadcasts[
-      peerBroadcastKey(args.peerId, args.headerHash, args.signerIndex)
+      peerBroadcastKey(
+        args.peerId,
+        args.headerHash,
+        args.availabilityCommitmentDigest,
+        args.signerIndex,
+      )
     ];
   }
 
@@ -296,6 +800,9 @@ export class JsonFileWatcherStore implements WatcherStore {
       .sort(
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
+          left.availabilityCommitmentDigest.localeCompare(
+            right.availabilityCommitmentDigest,
+          ) ||
           left.signerIndex - right.signerIndex ||
           left.peerId.localeCompare(right.peerId),
       );
@@ -342,11 +849,15 @@ export class JsonFileWatcherStore implements WatcherStore {
   }
 
   private async mutate(update: (data: StoreData) => StoreData): Promise<void> {
-    this.writeQueue = this.writeQueue.then(async () => {
+    if (this.closing || this.closed) {
+      throw new Error("watcher file store is closed");
+    }
+    const operation = this.writeQueue.then(async () => {
       const data = await this.read();
       await this.write(update(data));
     });
-    await this.writeQueue;
+    this.writeQueue = operation.catch(() => undefined);
+    await operation;
   }
 
   private async read(): Promise<StoreData> {
@@ -364,20 +875,33 @@ export class JsonFileWatcherStore implements WatcherStore {
   }
 
   private async write(data: StoreData): Promise<void> {
-    const tmpPath = `${this.filePath}.${process.pid.toString()}.tmp`;
+    const tmpPath = `${this.filePath}.${this.lockOwner.replace(":", "-")}.tmp`;
     await writeFile(tmpPath, `${JSON.stringify(data, jsonReplacer, 2)}\n`);
     await rename(tmpPath, this.filePath);
   }
 }
 
-const signatureKey = (headerHash: string, signerIndex: number): string =>
-  `${headerHash}:${signerIndex.toString()}`;
+const signatureKey = (
+  headerHash: string,
+  availabilityCommitmentDigest: string,
+  signerIndex: number,
+): string =>
+  `${headerHash}:${availabilityCommitmentDigest}:${signerIndex.toString()}`;
+
+const conflictEvidenceKey = (
+  record: Pick<
+    DaStoredConflictEvidenceRecord,
+    "deploymentFingerprint" | "evidenceHash"
+  >,
+): string => `${record.deploymentFingerprint}:${record.evidenceHash}`;
 
 const peerBroadcastKey = (
   peerId: string,
   headerHash: string,
+  availabilityCommitmentDigest: string,
   signerIndex: number,
-): string => `${peerId}:${headerHash}:${signerIndex.toString()}`;
+): string =>
+  `${peerId}:${headerHash}:${availabilityCommitmentDigest}:${signerIndex.toString()}`;
 
 const peerNonceKey = (
   deploymentFingerprint: string,
@@ -396,9 +920,9 @@ const terminalPayloadStatuses = new Set<DaPayloadRecord["validationStatus"]>([
 ]);
 
 export const resolveDaPayloadSave = (
-  existing: DaPayloadRecord | undefined,
-  record: DaPayloadRecord,
-): DaPayloadRecord => {
+  existing: DaStoredPayloadRecord | undefined,
+  record: DaStoredPayloadRecord,
+): DaStoredPayloadRecord => {
   if (existing === undefined) {
     return withDerivedPayloadFetchStatus(record);
   }
@@ -432,11 +956,11 @@ export const resolveDaPayloadSave = (
 export const libp2pSubmittedDaPayloadRecord = (args: {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
-  readonly payloadSchemaVersion: number;
+  readonly payloadSchemaVersion: 1;
   readonly payloadCbor: Uint8Array;
   readonly payloadSha256: string;
   readonly receivedAt: Date;
-}): DaPayloadRecord => ({
+}): DaStoredPayloadRecord => ({
   deploymentFingerprint: args.deploymentFingerprint,
   headerHash: args.headerHash,
   payloadSchemaVersion: args.payloadSchemaVersion,
@@ -445,12 +969,14 @@ export const libp2pSubmittedDaPayloadRecord = (args: {
   sourcePeerId: "libp2p:payload-submit",
   fetchedAt: args.receivedAt.toISOString(),
   payloadFetchStatus: "available",
+  // A payload-submit ACK proves retention only.  The watcher must promote
+  // this to "verified" after strict inner payload/header validation.
   validationStatus: "fetched",
 });
 
 const withDerivedPayloadFetchStatus = (
-  record: DaPayloadRecord,
-): DaPayloadRecord => {
+  record: DaStoredPayloadRecord,
+): DaStoredPayloadRecord => {
   if (record.payloadFetchStatus !== undefined) {
     return record;
   }
@@ -467,30 +993,679 @@ const emptyStoreData = (): StoreData => ({
   stateQueueHeaders: {},
   daPayloads: {},
   daSignatures: {},
+  daConflictEvidence: {},
   daAttestationCandidates: {},
   l1Submissions: {},
   peerBroadcasts: {},
   peerHealth: {},
   peerNonces: {},
+  decisionOutbox: {},
 });
 
 const normalizeStoreData = (value: unknown): StoreData => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return emptyStoreData();
+    throw new Error("watcher store data must be an object");
   }
   const record = value as Partial<StoreData>;
   return {
-    deployment: record.deployment,
-    chainCursor: record.chainCursor,
+    ...(record.deployment === undefined
+      ? {}
+      : { deployment: parseWatcherDeploymentRecord(record.deployment) }),
+    chainCursor:
+      record.chainCursor === undefined
+        ? undefined
+        : parseL1SourceState(record.chainCursor),
     stateQueueHeaders: record.stateQueueHeaders ?? {},
-    daPayloads: record.daPayloads ?? {},
-    daSignatures: record.daSignatures ?? {},
+    daPayloads: parseStoredRecordMap(
+      record.daPayloads,
+      parseDaStoredPayloadRecord,
+      (entry) => entry.headerHash,
+      "DA stored payload records V1",
+    ),
+    daSignatures: parseStoredRecordMap(
+      record.daSignatures,
+      parseDaSignatureRecord,
+      (entry) =>
+        signatureKey(
+          entry.headerHash,
+          entry.availabilityCommitmentDigest,
+          entry.signerIndex,
+        ),
+      "DA signature records V1",
+    ),
+    daConflictEvidence: parseStoredRecordMap(
+      record.daConflictEvidence,
+      parseDaStoredConflictEvidenceRecord,
+      conflictEvidenceKey,
+      "DA conflict evidence records V1",
+    ),
     daAttestationCandidates: record.daAttestationCandidates ?? {},
     l1Submissions: record.l1Submissions ?? {},
     peerBroadcasts: record.peerBroadcasts ?? {},
     peerHealth: record.peerHealth ?? {},
     peerNonces: record.peerNonces ?? {},
+    decisionOutbox: parseStoredRecordMap(
+      record.decisionOutbox,
+      parseDecisionOutboxRecord,
+      (entry) => entry.effectId,
+      "decision outbox records V1",
+    ),
   };
+};
+
+const parseWatcherDeploymentRecord = (
+  value: unknown,
+): WatcherDeploymentRecord => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("watcher deployment marker record must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  const expected = [
+    "marker",
+    "manifestSha256",
+    "contractDeploymentInfoSha256",
+    "manifestRaw",
+  ] as const;
+  if (
+    Object.keys(record).length !== expected.length ||
+    expected.some((key) => !Object.prototype.hasOwnProperty.call(record, key))
+  ) {
+    throw new Error(
+      "watcher deployment marker record must contain exactly marker, manifestSha256, contractDeploymentInfoSha256, and manifestRaw",
+    );
+  }
+  const digest = (field: "manifestSha256" | "contractDeploymentInfoSha256") => {
+    const entry = record[field];
+    if (typeof entry !== "string" || !/^[0-9a-f]{64}$/u.test(entry)) {
+      throw new Error(
+        `watcher deployment marker record ${field} must be lowercase SHA-256 hex`,
+      );
+    }
+    return entry;
+  };
+  if (typeof record.manifestRaw !== "string") {
+    throw new Error(
+      "watcher deployment marker record manifestRaw must be a string",
+    );
+  }
+  return {
+    marker: parseDeploymentMarker(record.marker),
+    manifestSha256: digest("manifestSha256"),
+    contractDeploymentInfoSha256: digest("contractDeploymentInfoSha256"),
+    manifestRaw: record.manifestRaw,
+  };
+};
+
+export const decisionEffectId = (args: {
+  readonly deploymentFingerprint: string;
+  readonly headerHash: string;
+  readonly stateQueueOutRef: string;
+  readonly effectKind: DecisionOutboxRecord["effectKind"];
+  readonly signerIndex?: number;
+}): string =>
+  [
+    args.deploymentFingerprint,
+    args.headerHash,
+    args.stateQueueOutRef,
+    args.effectKind,
+    args.signerIndex === undefined ? "-" : args.signerIndex.toString(),
+  ].join(":");
+
+export const parseDecisionOutboxRecord = (
+  value: unknown,
+): DecisionOutboxRecord => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("decision outbox record must be an object");
+  }
+  const record = value as Partial<DecisionOutboxRecord>;
+  const allowedKeys = new Set([
+    "schemaVersion",
+    "effectId",
+    "deploymentFingerprint",
+    "sourceMode",
+    "network",
+    "effectKind",
+    "headerHash",
+    "stateQueueOutRef",
+    "signerIndex",
+    "slot",
+    "blockHash",
+    "finalized",
+    "status",
+    "attemptCount",
+    "createdAt",
+    "updatedAt",
+    "lastError",
+    "quarantineReason",
+    "quarantinedAt",
+  ]);
+  const signerMatchesKind =
+    record.effectKind === "signature_publish"
+      ? Number.isInteger(record.signerIndex) &&
+        record.signerIndex! >= 0 &&
+        record.signerIndex! <= 255
+      : record.signerIndex === undefined;
+  if (
+    Object.keys(record).some((key) => !allowedKeys.has(key)) ||
+    record.schemaVersion !== 1 ||
+    typeof record.effectId !== "string" ||
+    typeof record.deploymentFingerprint !== "string" ||
+    record.deploymentFingerprint.length === 0 ||
+    (record.sourceMode !== "local_node" &&
+      record.sourceMode !== "external_providers") ||
+    typeof record.network !== "string" ||
+    record.network.length === 0 ||
+    (record.effectKind !== "signature_publish" &&
+      record.effectKind !== "l1_reconcile") ||
+    typeof record.headerHash !== "string" ||
+    !/^[0-9a-f]{56}$/u.test(record.headerHash) ||
+    typeof record.stateQueueOutRef !== "string" ||
+    !/^[0-9a-f]{64}#[0-9]+$/u.test(record.stateQueueOutRef) ||
+    !signerMatchesKind ||
+    (record.slot !== undefined &&
+      (!Number.isSafeInteger(record.slot) || record.slot < 0)) ||
+    (record.blockHash !== undefined &&
+      (typeof record.blockHash !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(record.blockHash))) ||
+    record.finalized !== true ||
+    (record.status !== "pending" &&
+      record.status !== "published" &&
+      record.status !== "failed" &&
+      record.status !== "reconciled") ||
+    !Number.isSafeInteger(record.attemptCount) ||
+    record.attemptCount! < 1 ||
+    typeof record.createdAt !== "string" ||
+    !isCanonicalIsoTimestamp(record.createdAt) ||
+    typeof record.updatedAt !== "string" ||
+    !isCanonicalIsoTimestamp(record.updatedAt) ||
+    (record.lastError !== undefined &&
+      (typeof record.lastError !== "string" ||
+        record.lastError.length === 0)) ||
+    (record.quarantineReason !== undefined &&
+      (typeof record.quarantineReason !== "string" ||
+        record.quarantineReason.length === 0)) ||
+    (record.quarantinedAt !== undefined &&
+      (typeof record.quarantinedAt !== "string" ||
+        !isCanonicalIsoTimestamp(record.quarantinedAt)))
+  ) {
+    throw new Error("decision outbox record is malformed");
+  }
+  if (
+    record.slot === undefined ||
+    record.blockHash === undefined ||
+    (record.quarantineReason === undefined) !==
+      (record.quarantinedAt === undefined) ||
+    (record.quarantineReason !== undefined && record.status !== "failed") ||
+    (record.status === "failed" && record.lastError === undefined) ||
+    (record.status !== "failed" && record.lastError !== undefined)
+  ) {
+    throw new Error(
+      "decision outbox record has inconsistent finality or terminal status",
+    );
+  }
+  const canonical: DecisionOutboxRecord = {
+    schemaVersion: 1,
+    effectId: record.effectId,
+    deploymentFingerprint: record.deploymentFingerprint,
+    sourceMode: record.sourceMode,
+    network: record.network,
+    effectKind: record.effectKind,
+    headerHash: record.headerHash,
+    stateQueueOutRef: record.stateQueueOutRef,
+    ...(record.signerIndex === undefined
+      ? {}
+      : { signerIndex: record.signerIndex }),
+    ...(record.slot === undefined ? {} : { slot: record.slot }),
+    ...(record.blockHash === undefined ? {} : { blockHash: record.blockHash }),
+    finalized: true,
+    status: record.status,
+    attemptCount: record.attemptCount!,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    ...(record.lastError === undefined ? {} : { lastError: record.lastError }),
+    ...(record.quarantineReason === undefined
+      ? {}
+      : { quarantineReason: record.quarantineReason }),
+    ...(record.quarantinedAt === undefined
+      ? {}
+      : { quarantinedAt: record.quarantinedAt }),
+  };
+  if (
+    canonical.effectId !==
+    decisionEffectId({
+      deploymentFingerprint: canonical.deploymentFingerprint,
+      headerHash: canonical.headerHash,
+      stateQueueOutRef: canonical.stateQueueOutRef,
+      effectKind: canonical.effectKind,
+      ...(canonical.signerIndex === undefined
+        ? {}
+        : { signerIndex: canonical.signerIndex }),
+    })
+  ) {
+    throw new Error("decision outbox effectId does not match record identity");
+  }
+  return canonical;
+};
+
+const assertDecisionRetry = (
+  existing: DecisionOutboxRecord | undefined,
+  next: DecisionOutboxRecord,
+): void => {
+  if (existing === undefined) {
+    return;
+  }
+  if (
+    existing.effectId !== next.effectId ||
+    existing.deploymentFingerprint !== next.deploymentFingerprint ||
+    existing.sourceMode !== next.sourceMode ||
+    existing.network !== next.network ||
+    existing.effectKind !== next.effectKind ||
+    existing.headerHash !== next.headerHash ||
+    existing.stateQueueOutRef !== next.stateQueueOutRef ||
+    existing.signerIndex !== next.signerIndex ||
+    existing.slot !== next.slot ||
+    existing.blockHash !== next.blockHash ||
+    existing.finalized !== next.finalized ||
+    existing.createdAt !== next.createdAt ||
+    next.attemptCount !== existing.attemptCount + 1
+  ) {
+    throw new Error("decision outbox retry does not match durable identity");
+  }
+  assertDecisionPendingLeaseExpired(existing, next);
+};
+
+export const assertDecisionPendingLeaseExpired = (
+  existing: DecisionOutboxRecord,
+  next: DecisionOutboxRecord,
+): void => {
+  if (
+    existing.status === "pending" &&
+    Date.parse(next.updatedAt) - Date.parse(existing.updatedAt) <
+      DECISION_EFFECT_PENDING_LEASE_MS
+  ) {
+    throw new Error("decision outbox pending attempt lease has not expired");
+  }
+};
+
+export const mergeL1SourceState = (
+  current: L1SourceState | undefined,
+  proposed: L1SourceState,
+): L1SourceState => {
+  if (current === undefined) {
+    return proposed;
+  }
+  if (
+    current.sourceMode !== proposed.sourceMode ||
+    current.network !== proposed.network
+  ) {
+    throw new Error("watcher L1 source authority changed without a reset");
+  }
+  if (current.status === "quarantined") {
+    if (proposed.status === "healthy") {
+      throw new Error("quarantined watcher L1 source state is terminal");
+    }
+    return current;
+  }
+  if (
+    proposed.status === "quarantined" &&
+    current.observations.some(
+      ({ hasPersistedDecision }) => hasPersistedDecision,
+    )
+  ) {
+    throw new Error(
+      "persisted L1 decisions must be quarantined atomically with their artifacts",
+    );
+  }
+  if (proposed.status === "quarantined") {
+    return proposed;
+  }
+  return {
+    ...proposed,
+    observations: mergePersistedDecisionObservations(
+      current.observations,
+      proposed.observations,
+    ),
+  };
+};
+
+const mergePersistedDecisionObservations = (
+  current: readonly L1ObservedDecision[],
+  proposed: readonly L1ObservedDecision[],
+): readonly L1ObservedDecision[] => {
+  const observations = new Map(
+    proposed.map((entry) => [entry.headerHash, entry] as const),
+  );
+  for (const prior of current) {
+    if (!prior.hasPersistedDecision) {
+      continue;
+    }
+    const next = observations.get(prior.headerHash);
+    if (next === undefined) {
+      observations.set(prior.headerHash, prior);
+      continue;
+    }
+    const expectedAttestationAdvance =
+      (prior.stateQueueStatus === "unattested" ||
+        prior.stateQueueStatus === "attesting") &&
+      next.stateQueueStatus === "attested" &&
+      prior.slot !== undefined &&
+      next.slot !== undefined &&
+      next.slot > prior.slot &&
+      next.stateQueueOutRef !== prior.stateQueueOutRef &&
+      next.finalized;
+    if (
+      (!expectedAttestationAdvance &&
+        next.stateQueueOutRef !== prior.stateQueueOutRef) ||
+      (!expectedAttestationAdvance &&
+        (next.stateQueueStatus !== prior.stateQueueStatus ||
+          next.slot !== prior.slot ||
+          next.blockHash !== prior.blockHash))
+    ) {
+      throw new Error(
+        "persisted L1 decision changed canonical output or chain point",
+      );
+    }
+    observations.set(prior.headerHash, {
+      ...next,
+      hasPersistedDecision: true,
+    });
+  }
+  return [...observations.values()].sort((left, right) =>
+    left.headerHash.localeCompare(right.headerHash),
+  );
+};
+
+export const mergeQuarantinedL1SourceState = (
+  current: L1SourceState | undefined,
+  proposed: L1SourceState,
+): L1SourceState => {
+  if (proposed.status !== "quarantined") {
+    throw new Error("L1 source quarantine state is required");
+  }
+  if (current === undefined) {
+    return proposed;
+  }
+  if (
+    current.sourceMode !== proposed.sourceMode ||
+    current.network !== proposed.network
+  ) {
+    throw new Error("watcher L1 source authority changed without a reset");
+  }
+  if (current.status === "quarantined") {
+    return current;
+  }
+  return {
+    ...proposed,
+    observations: mergePersistedDecisionObservations(
+      current.observations,
+      proposed.observations,
+    ),
+  };
+};
+
+const assertDecisionSourceState = (
+  effect: DecisionOutboxRecord,
+  sourceState: L1SourceState,
+): void => {
+  const observation = sourceState.observations.find(
+    ({ headerHash }) => headerHash === effect.headerHash,
+  );
+  if (
+    sourceState.status !== "healthy" ||
+    sourceState.sourceMode !== effect.sourceMode ||
+    sourceState.network !== effect.network ||
+    observation?.stateQueueOutRef !== effect.stateQueueOutRef ||
+    observation.finalized !== true ||
+    observation.hasPersistedDecision !== true ||
+    observation.slot !== effect.slot ||
+    observation.blockHash !== effect.blockHash
+  ) {
+    throw new Error("decision outbox lacks matching durable L1 observation");
+  }
+};
+
+const assertDecisionSignature = (
+  effect: DecisionOutboxRecord,
+  signature: DaSignatureRecordV1 | undefined,
+): void => {
+  if (
+    (effect.effectKind === "signature_publish" &&
+      (signature === undefined ||
+        signature.deploymentFingerprint !== effect.deploymentFingerprint ||
+        signature.headerHash !== effect.headerHash ||
+        signature.signerIndex !== effect.signerIndex ||
+        signature.validation.stateQueueOutRef !== effect.stateQueueOutRef ||
+        signature.l1ChainPoint.slot !== effect.slot ||
+        signature.l1ChainPoint.blockHash !== effect.blockHash)) ||
+    (effect.effectKind === "l1_reconcile" && signature !== undefined)
+  ) {
+    throw new Error("decision outbox signature does not match effect identity");
+  }
+};
+
+const parseStateQueueReplayAnchor = (
+  value: unknown,
+): StateQueueReplayAnchor | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const anchor = value as Partial<StateQueueReplayAnchor>;
+  const keys = [
+    "deploymentIdentityDigest",
+    "stateQueuePolicyId",
+    "queue",
+    "blockNo",
+    "transactionIndex",
+  ];
+  if (
+    Object.keys(anchor).length !== keys.length ||
+    !Object.keys(anchor).every((key) => keys.includes(key)) ||
+    typeof anchor.deploymentIdentityDigest !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(anchor.deploymentIdentityDigest) ||
+    typeof anchor.stateQueuePolicyId !== "string" ||
+    !/^[0-9a-f]{56}$/u.test(anchor.stateQueuePolicyId) ||
+    typeof anchor.blockNo !== "string" ||
+    !/^(?:0|[1-9][0-9]*)$/u.test(anchor.blockNo) ||
+    typeof anchor.transactionIndex !== "string" ||
+    !/^(?:0|[1-9][0-9]*)$/u.test(anchor.transactionIndex) ||
+    !Array.isArray(anchor.queue) ||
+    anchor.queue.length === 0
+  ) {
+    return undefined;
+  }
+  const queue = anchor.queue.map((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return null;
+    }
+    const node = value as { headerHash?: unknown; outRef?: unknown };
+    return Object.keys(node).length === 2 &&
+      (node.headerHash === null ||
+        (typeof node.headerHash === "string" &&
+          /^[0-9a-f]{56}$/u.test(node.headerHash))) &&
+      typeof node.outRef === "string" &&
+      /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u.test(node.outRef)
+      ? { headerHash: node.headerHash as string | null, outRef: node.outRef }
+      : null;
+  });
+  if (
+    queue.some((node) => node === null) ||
+    queue[0]?.headerHash !== null ||
+    new Set(queue.map((node) => node!.headerHash)).size !== queue.length ||
+    new Set(queue.map((node) => node!.outRef)).size !== queue.length
+  ) {
+    return undefined;
+  }
+  return {
+    deploymentIdentityDigest: anchor.deploymentIdentityDigest,
+    stateQueuePolicyId: anchor.stateQueuePolicyId,
+    queue: queue as StateQueueReplayAnchor["queue"],
+    blockNo: anchor.blockNo,
+    transactionIndex: anchor.transactionIndex,
+  };
+};
+
+export const parseL1SourceState = (value: unknown): L1SourceState => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("watcher L1 source state must be an object");
+  }
+  const state = value as Partial<L1SourceState>;
+  const stateKeys = new Set([
+    "schemaVersion",
+    "sourceMode",
+    "network",
+    "authoritySha256",
+    "status",
+    "observations",
+    "observedAt",
+    "stateQueueReplayAnchor",
+    "quarantineReason",
+    "quarantinedAt",
+  ]);
+  if (
+    Object.keys(state).some((key) => !stateKeys.has(key)) ||
+    state.schemaVersion !== 1 ||
+    (state.sourceMode !== "local_node" &&
+      state.sourceMode !== "external_providers") ||
+    typeof state.network !== "string" ||
+    state.network.trim() !== state.network ||
+    state.network.length === 0 ||
+    typeof state.authoritySha256 !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(state.authoritySha256) ||
+    (state.status !== "healthy" && state.status !== "quarantined") ||
+    typeof state.observedAt !== "string" ||
+    !isCanonicalIsoTimestamp(state.observedAt) ||
+    !Array.isArray(state.observations)
+  ) {
+    throw new Error("watcher L1 source state is malformed");
+  }
+  if (
+    state.status === "quarantined" &&
+    (typeof state.quarantineReason !== "string" ||
+      state.quarantineReason.length === 0 ||
+      typeof state.quarantinedAt !== "string" ||
+      !isCanonicalIsoTimestamp(state.quarantinedAt))
+  ) {
+    throw new Error("quarantined watcher L1 source state lacks evidence");
+  }
+  if (
+    state.status === "healthy" &&
+    (state.quarantineReason !== undefined || state.quarantinedAt !== undefined)
+  ) {
+    throw new Error(
+      "healthy watcher L1 source state contains quarantine fields",
+    );
+  }
+  const observations = state.observations.map((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new Error("watcher L1 source observation is malformed");
+    }
+    const record = entry as Partial<L1ObservedDecision>;
+    const observationKeys = new Set([
+      "headerHash",
+      "stateQueueOutRef",
+      "stateQueueStatus",
+      "slot",
+      "blockHash",
+      "finalized",
+      "hasPersistedDecision",
+    ]);
+    if (
+      Object.keys(record).some((key) => !observationKeys.has(key)) ||
+      typeof record.headerHash !== "string" ||
+      !/^[0-9a-f]{56}$/u.test(record.headerHash) ||
+      typeof record.stateQueueOutRef !== "string" ||
+      !/^[0-9a-f]{64}#[0-9]+$/u.test(record.stateQueueOutRef) ||
+      (record.stateQueueStatus !== "unattested" &&
+        record.stateQueueStatus !== "attesting" &&
+        record.stateQueueStatus !== "attested" &&
+        record.stateQueueStatus !== "merged" &&
+        record.stateQueueStatus !== "removed" &&
+        record.stateQueueStatus !== "conflicted") ||
+      typeof record.finalized !== "boolean" ||
+      typeof record.hasPersistedDecision !== "boolean" ||
+      (record.slot !== undefined &&
+        (!Number.isSafeInteger(record.slot) || record.slot < 0)) ||
+      (record.blockHash !== undefined &&
+        (typeof record.blockHash !== "string" ||
+          !/^[0-9a-f]{64}$/u.test(record.blockHash)))
+    ) {
+      throw new Error("watcher L1 source observation is malformed");
+    }
+    return {
+      headerHash: record.headerHash,
+      stateQueueOutRef: record.stateQueueOutRef,
+      stateQueueStatus: record.stateQueueStatus,
+      ...(record.slot === undefined ? {} : { slot: record.slot }),
+      ...(record.blockHash === undefined
+        ? {}
+        : { blockHash: record.blockHash }),
+      finalized: record.finalized,
+      hasPersistedDecision: record.hasPersistedDecision,
+    };
+  });
+  observations.sort((left, right) =>
+    left.headerHash.localeCompare(right.headerHash),
+  );
+  if (
+    new Set(observations.map(({ headerHash }) => headerHash)).size !==
+    observations.length
+  ) {
+    throw new Error("watcher L1 source observations contain duplicate headers");
+  }
+  const stateQueueReplayAnchor = parseStateQueueReplayAnchor(
+    state.stateQueueReplayAnchor,
+  );
+  if (
+    state.stateQueueReplayAnchor !== undefined &&
+    stateQueueReplayAnchor === undefined
+  ) {
+    throw new Error("watcher L1 source replay anchor is malformed");
+  }
+  return {
+    schemaVersion: 1,
+    sourceMode: state.sourceMode,
+    network: state.network,
+    authoritySha256: state.authoritySha256,
+    status: state.status,
+    observations,
+    observedAt: state.observedAt,
+    ...(stateQueueReplayAnchor === undefined ? {} : { stateQueueReplayAnchor }),
+    ...(state.quarantineReason === undefined
+      ? {}
+      : { quarantineReason: state.quarantineReason }),
+    ...(state.quarantinedAt === undefined
+      ? {}
+      : { quarantinedAt: state.quarantinedAt }),
+  };
+};
+
+const isCanonicalIsoTimestamp = (value: string): boolean => {
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
+};
+
+const parseStoredRecordMap = <T>(
+  value: unknown,
+  parseRecord: (entry: unknown) => T,
+  expectedKey: (entry: T) => string,
+  label: string,
+): Record<string, T> => {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, rawEntry]) => {
+      const entry = parseRecord(rawEntry);
+      if (key !== expectedKey(entry)) {
+        throw new Error(`${label} key ${key} does not match record identity`);
+      }
+      return [key, entry];
+    }),
+  );
 };
 
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
@@ -507,10 +1682,19 @@ export const jsonReviver = (_key: string, value: unknown): unknown => {
     value !== null &&
     !Array.isArray(value) &&
     (value as { __midgardWatcherType?: unknown }).__midgardWatcherType ===
-      "bigint" &&
-    typeof (value as { value?: unknown }).value === "string"
+      "bigint"
   ) {
-    return BigInt((value as { value: string }).value);
+    const record = value as Record<string, unknown>;
+    if (
+      Object.keys(record).length !== 2 ||
+      !Object.hasOwn(record, "__midgardWatcherType") ||
+      !Object.hasOwn(record, "value") ||
+      typeof record.value !== "string" ||
+      !/^(?:0|-?[1-9][0-9]*)$/.test(record.value)
+    ) {
+      throw new Error("invalid canonical watcher bigint encoding");
+    }
+    return BigInt(record.value);
   }
   return value;
 };

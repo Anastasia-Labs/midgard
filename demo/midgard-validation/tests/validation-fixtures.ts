@@ -1,29 +1,34 @@
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeHash32,
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
+  decodeMidgardTxOutput,
   deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxCompact,
   EMPTY_NULL_ROOT,
   encodeMidgardAddressText,
+  encodeMidgardFieldPreimageForField,
   encodeMidgardNativeScript,
-  encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
+  midgardFieldCommitment,
   type MidgardNativeScript,
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
+  midgardRedeemerPurposeFromTag,
   type MidgardTxOutput,
   type MidgardTxValidity,
   type MidgardVersionedScript,
   protectMidgardAddress,
   type ScriptLanguageName,
+  sortMidgardMintItems,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
@@ -32,6 +37,10 @@ import { LedgerColumns, type LedgerEntry } from "../src/ledger.js";
 import { decodeMidgardSubmittedTxFromCanonicalCbor } from "../src/ledger-tx/codec.js";
 import type { PhaseAValidatedTx, QueuedTx } from "../src/types.js";
 import { buildPhaseAValidatedTx } from "../src/validation-candidate.js";
+import {
+  MIDGARD_COINS_PER_UTXO_BYTE,
+  minAdaLovelace,
+} from "../src/value-accounting.js";
 
 export const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 export const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
@@ -59,15 +68,18 @@ type NativeTxOptions = {
   readonly validity?: MidgardTxValidity;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
+  readonly requiredObserverItems?: readonly Uint8Array[];
   readonly requiredSignerItems?: readonly Uint8Array[];
   readonly scriptWitnesses?: readonly MidgardVersionedScript[];
   readonly redeemerTxWitsPreimageCbor?: Buffer;
+  readonly mintPreimageCbor?: Buffer;
   readonly scriptLanguages?: readonly ScriptLanguageName[];
   readonly auxiliaryDataHash?: Buffer;
   readonly networkId?: bigint;
   readonly invalidVkeyWitness?: true;
   readonly omitVkeyWitness?: true;
   readonly privateKey?: CML.PrivateKey;
+  readonly version?: 1n;
 };
 
 export type NativeTxFixture = {
@@ -79,35 +91,193 @@ export type NativeTxFixture = {
 export const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
   encodeCbor(items.map((item) => Buffer.from(item)));
 
+// Out-ref bytes are §5.3's fixed-index field-0/1 item (38 bytes), which is also
+// the ledger MPF trie key on-chain `ledger_outref_key` derives. Fixtures have to
+// build them with the same encoder the production producers use: CML's
+// minimal-index TransactionInput CBOR would make every fixture transaction
+// re-encode to a different tx id than the one it was built with.
 export const outRefFromByte = (byte: number, index = 0n): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(Buffer.alloc(32, byte).toString("hex")),
-      index,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItem({
+    txId: Buffer.alloc(32, byte),
+    outputIndex: Number(index),
+  });
 
 export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(txId),
-      index,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItem({ txId, outputIndex: Number(index) });
+
+/**
+ * The lovelace every fixture output that a fixture transaction PRODUCES is
+ * funded with.
+ *
+ * RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1; R8 of decision 0005). These
+ * fixtures used to produce 10-lovelace outputs, which was admissible while the
+ * minimum-Ada floor was unwired arithmetic. The ValueAndMint output-descriptor
+ * scan now convicts an under-funded output with `E_MIN_ADA`, so a 10-lovelace
+ * output is no longer a valid transaction at all and a fixture built from one
+ * measures the min-Ada rejection instead of whatever it was written to
+ * measure.
+ *
+ * 10 ADA is a round number chosen to clear the floor with room to spare rather
+ * than to sit on it: at the pinned rate it funds any canonical output up to
+ * 2,160 serialized bytes, which is far past every shape these fixtures build.
+ * `phase B validation > funds every produced fixture output above the minimum-Ada floor`
+ * measures that headroom rather than asserting it, so a rate or intercept
+ * change fails there instead of scattering `E_MIN_ADA` across unrelated
+ * fixtures. The adjacent boundary itself is pinned where it belongs -- in
+ * min-ada-twin-cross-check.test.ts and in the Aiken wiring vectors -- not
+ * here.
+ *
+ * Pre-state (input and reference) outputs are deliberately NOT re-funded: the
+ * wiring gates outputs a transaction produces (MIN-ADA-TX), not outputs it
+ * resolves from prior state, whose under-funding is the separate
+ * MIN-ADA-UTXO shape Q27 owns.
+ */
+export const FUNDED_OUTPUT_LOVELACE = 10_000_000n;
 
 export const makeOutput = (
   lovelace: bigint,
   address = TEST_ADDRESS_BYTES,
+  assets: ReadonlyMap<string, ReadonlyMap<string, bigint>> = new Map(),
 ): Buffer => {
   const output: MidgardTxOutput = {
     address,
     value: {
       lovelace,
-      assets: new Map(),
+      assets,
     },
   };
   return encodeMidgardTxOutput(output);
 };
+
+const encodeBoundedDatumChunk = (payload: Buffer): Buffer => {
+  if (payload.length < 24) {
+    return Buffer.concat([Buffer.from([0x40 + payload.length]), payload]);
+  }
+  if (payload.length <= 0xff) {
+    return Buffer.concat([Buffer.from([0x58, payload.length]), payload]);
+  }
+  throw new Error("bounded datum chunk must stay below 256 bytes");
+};
+
+/**
+ * A canonical Plutus-data filler whose ENCODED length is exactly `datumBytes`:
+ * one definite byte string when one fits, otherwise an indefinite list of
+ * bounded byte strings, which matches Aiken's `cbor.serialise` convention.
+ *
+ * Sizing by encoded length rather than by payload length is what makes every
+ * target reachable. A chunk of `take` data bytes costs `(take < 24 ? 1 : 2) +
+ * take` bytes, so a list of 64-byte chunks plus one remainder only reaches
+ * `2 + 66k + c` for `c` in `{0} u {2..24} u {26..66}` -- two lengths in every
+ * 66 are skipped, and a payload-driven search simply fails on them. Handing
+ * one full chunk back and closing the gap with a pair of chunks reaches both
+ * skipped residues, so every length from 67 up is constructible.
+ */
+export const canonicalDatumOfExactLength = (datumBytes: number): Buffer => {
+  const unreachable = (): never => {
+    throw new Error(
+      `no canonical datum encodes to exactly ${datumBytes.toString()} bytes`,
+    );
+  };
+  const chunkBytes = (take: number): number => (take < 24 ? 1 : 2) + take;
+  if (datumBytes <= 66) {
+    const take = datumBytes <= 24 ? datumBytes - 1 : datumBytes - 2;
+    if (take < 0 || chunkBytes(take) !== datumBytes) {
+      return unreachable();
+    }
+    return encodeBoundedDatumChunk(Buffer.alloc(take, 0xa5));
+  }
+  const takes: number[] = [];
+  let remaining = datumBytes - 2;
+  while (remaining > 66) {
+    takes.push(64);
+    remaining -= 66;
+  }
+  if (remaining === 1 || remaining === 25) {
+    if (takes.length === 0) {
+      return unreachable();
+    }
+    takes.pop();
+    takes.push(63);
+    remaining += 66 - chunkBytes(63);
+  }
+  if (remaining > 0) {
+    takes.push(remaining <= 24 ? remaining - 1 : remaining - 2);
+  }
+  return Buffer.concat([
+    Buffer.from([0x9f]),
+    ...takes.map((take) => encodeBoundedDatumChunk(Buffer.alloc(take, 0xa5))),
+    Buffer.from([0xff]),
+  ]);
+};
+
+/**
+ * Builds a canonical output item whose exact encoded length equals
+ * `targetItemBytes`, funded at exactly its own minimum-Ada floor.
+ *
+ * RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1; R8 of decision 0005). The four
+ * carriage suites each carried their own copy of this builder, each producing
+ * 10-lovelace items, which the ValueAndMint output-descriptor scan now
+ * convicts with `E_MIN_ADA` -- and it would convict every one of them, since
+ * the whole point of those suites is items at and beyond the carriage
+ * frontiers. The four copies are now this one, so the exact-length algorithm
+ * and the funding rule cannot drift apart between them.
+ *
+ * Funding is at the floor rather than at `FUNDED_OUTPUT_LOVELACE` on
+ * purpose: these items are sized in bytes, and a fixed lovelace amount would
+ * make the item's own length depend on how wide that amount happens to encode.
+ * The floor, `coins_per_utxo_byte * (160 + targetItemBytes)`, is computable up
+ * front precisely because the total length is what this builder pins, so
+ * funding changes no measured length -- every carriage measurement over these
+ * items measures the same number of bytes it did before the wiring.
+ */
+export const makeMinAdaFundedExactSizeOutputItem = (
+  targetItemBytes: number,
+): Buffer => {
+  const lovelace = minAdaLovelace(
+    MIDGARD_COINS_PER_UTXO_BYTE,
+    BigInt(targetItemBytes),
+  );
+  const encodeWithDatum = (datumBytes: number): Buffer =>
+    encodeMidgardTxOutput({
+      address: TEST_ADDRESS_BYTES,
+      value: { lovelace, assets: new Map() },
+      datum: {
+        kind: "inline",
+        cbor: canonicalDatumOfExactLength(datumBytes),
+      },
+    });
+  // The output framing around the datum is a fixed prefix plus one CBOR byte
+  // string header, so the item length is the datum length plus an overhead
+  // that moves only when that header changes width. Measure the overhead at a
+  // reference size, solve for the datum length, and re-solve if the solution
+  // crossed a header boundary -- which converges in one further round.
+  const referenceDatumBytes = 1_024;
+  let datumBytes =
+    targetItemBytes -
+    (encodeWithDatum(referenceDatumBytes).length - referenceDatumBytes);
+  for (let round = 0; round < 4; round += 1) {
+    const candidate = encodeWithDatum(datumBytes);
+    if (candidate.length === targetItemBytes) {
+      return candidate;
+    }
+    datumBytes += targetItemBytes - candidate.length;
+  }
+  throw new Error(
+    `could not size an exact ${targetItemBytes.toString()}-byte output item`,
+  );
+};
+
+/**
+ * The lovelace a resolved input must carry to fund `outputs` exactly, so a
+ * fixture transaction that produces min-Ada-funded outputs still settles to
+ * zero at stage five instead of being convicted with `E_VALUE_NOT_PRESERVED`.
+ * Fixture transactions here pay no fee, so the sum is exact.
+ */
+export const fundingLovelaceForOutputs = (outputs: readonly Buffer[]): bigint =>
+  outputs.reduce(
+    (total, output) => total + decodeMidgardTxOutput(output).value.lovelace,
+    0n,
+  );
 
 export const makeProtectedScriptOutput = (
   scriptHash: string,
@@ -149,18 +319,42 @@ export const makeRedeemersCbor = (
   }[],
 ): Buffer => {
   const emptyData = Buffer.from(Data.to(new Constr(0, [])), "hex");
-  return encodeCbor(
-    items.map((item) => [
-      item.tag,
-      item.index,
-      Buffer.from(item.data ?? emptyData),
-      [
-        item.exUnits?.[0] ?? 1_000_000_000n,
-        item.exUnits?.[1] ?? 1_000_000_000n,
-      ],
-    ]),
-  );
+  // §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. The retired counted
+  // scheme spelled this as a bare CBOR array of four-element arrays.
+  return encodeMidgardFieldPreimageForField({
+    fieldIndex: 8,
+    items: items.map((item) => ({
+      purpose: midgardRedeemerPurposeFromTag(item.tag),
+      index: item.index,
+      redeemerCbor: Buffer.from(item.data ?? emptyData),
+      executionUnits: {
+        memory: item.exUnits?.[0] ?? 1_000_000_000n,
+        steps: item.exUnits?.[1] ?? 1_000_000_000n,
+      },
+    })),
+  });
 };
+
+/**
+ * §5.6: a field-5 preimage from a policy → asset-name → quantity map, sorted into
+ * canonical key order at both levels. The retired scheme committed the raw map
+ * itself, which is why so many fixtures spelled `encodeCbor(new Map(...))` here.
+ */
+export const makeMintPreimageCbor = (
+  policies: ReadonlyMap<Uint8Array, ReadonlyMap<Uint8Array, bigint>>,
+): Buffer =>
+  encodeMidgardFieldPreimageForField({
+    fieldIndex: 5,
+    items: sortMidgardMintItems(
+      [...policies.entries()].map(([policyId, assets]) => ({
+        policyId,
+        assets: [...assets.entries()].map(([assetName, quantity]) => ({
+          assetName,
+          quantity,
+        })),
+      })),
+    ),
+  });
 
 export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
   const spendInputs = opts.spendInputs ?? [outRefFromByte(0x11)];
@@ -177,7 +371,7 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
     opts.scriptLanguages === undefined
       ? EMPTY_NULL_ROOT
       : computeScriptIntegrityHashForLanguages(
-          computeHash32(redeemerTxWitsPreimageCbor),
+          midgardFieldCommitment(redeemerTxWitsPreimageCbor),
           opts.scriptLanguages,
         );
 
@@ -189,17 +383,24 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
     validityIntervalStart:
       opts.validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: opts.validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+    requiredObserversPreimageCbor: encodeByteList(
+      opts.requiredObserverItems ?? [],
+    ),
     requiredSignersPreimageCbor: encodeByteList(requiredSignerItems),
-    mintPreimageCbor: EMPTY_CBOR_LIST,
+    mintPreimageCbor: opts.mintPreimageCbor ?? EMPTY_CBOR_LIST,
     scriptIntegrityHash,
     auxiliaryDataHash: opts.auxiliaryDataHash ?? EMPTY_NULL_ROOT,
     networkId: opts.networkId ?? MIDGARD_NATIVE_NETWORK_ID_NONE,
   };
 
-  const bodyHash = computeHash32(
-    encodeMidgardNativeTxBodyCompact(deriveMidgardNativeTxBodyCompact(body)),
-  );
+  const version = opts.version ?? MIDGARD_NATIVE_TX_VERSION;
+  const bodyCompact = deriveMidgardNativeTxBodyCompact(body);
+  const bodyHash = computeMidgardNativeTxId({
+    version,
+    transactionBody: bodyCompact,
+    transactionWitnessSetHash: Buffer.alloc(32),
+    validity: opts.validity ?? "TxIsValid",
+  });
   const signedBodyHash =
     opts.invalidVkeyWitness === true ? Buffer.alloc(32, 0x7f) : bodyHash;
   const addrTxWitsPreimageCbor =
@@ -221,9 +422,9 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
   };
   const validity = opts.validity ?? "TxIsValid";
   const tx: MidgardNativeTxFull = {
-    version: MIDGARD_NATIVE_TX_VERSION,
+    version,
     validity,
-    compact: deriveMidgardNativeTxCompact(body, witnessSet, validity),
+    compact: deriveMidgardNativeTxCompact(body, witnessSet, validity, version),
     body,
     witnessSet,
   };
@@ -262,6 +463,7 @@ export const makeQueued = (
   txCbor,
   arrivalSeq,
   createdAt: new Date(0),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
 });
 
 export const ledgerEntry = (outRef: Buffer, output: Buffer): LedgerEntry => ({
@@ -280,6 +482,7 @@ type PhaseBCandidateOptions = Omit<
   readonly referenceInputs?: readonly Buffer[];
   readonly outputLovelace?: bigint;
   readonly outputs?: readonly Buffer[];
+  readonly programMaterialSidecarCbor?: Buffer | null;
 };
 
 export const makePhaseBCandidate = (
@@ -287,7 +490,7 @@ export const makePhaseBCandidate = (
 ): PhaseAValidatedTx => {
   const spent = opts.spent ?? [outRefFromByte(0x11)];
   const referenceInputs = opts.referenceInputs ?? [];
-  const outputLovelace = opts.outputLovelace ?? 10n;
+  const outputLovelace = opts.outputLovelace ?? FUNDED_OUTPUT_LOVELACE;
   const outputs = opts.outputs ?? [makeOutput(outputLovelace)];
   const fixture = makeNativeTx({
     ...opts,
@@ -298,7 +501,9 @@ export const makePhaseBCandidate = (
   const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(fixture.txCbor);
   return buildPhaseAValidatedTx({
     ledgerTx: submittedTx.ledgerTx,
+    expectedNetworkId: 0n,
     txCbor: submittedTx.txCbor,
+    programMaterialSidecarCbor: opts.programMaterialSidecarCbor ?? null,
     arrivalSeq: opts.arrivalSeq ?? 0n,
     createdAt: new Date(0),
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,

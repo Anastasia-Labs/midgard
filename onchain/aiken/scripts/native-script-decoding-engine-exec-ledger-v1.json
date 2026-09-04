@@ -1,0 +1,201 @@
+{
+  "measurement": "native-script-decoding-engine-exec-ledger",
+  "issue": "#635 — the standalone native-script decoding-fault computation-thread family (originating divergence #633). Rows pinned with the family's first commit, because the design's §6 throughput figures were derived from the SCAN ledger's one-shot rates rather than measured on this thread's own fold, and a step family whose scan step cannot fit an L1 transaction adjudicates nothing.",
+  "spec": "docs/fault-proofs/native-script-decoding-fault-thread-design-v1.md §3 (contract set), §5 (byte authentication — option (a), reference_script_item_commitment as the anchor), §6 (budget math, derived-from-pinned-rates and now compared against these rows), §7 (adversarial selectors the neutralisation entries keep live); GOAL_SPEC §3.3 for the basis.",
+  "note": "**What the rows are.** Two groups. (1) The engine fold group (module `exec_measure_v1.test`) drives `engine.budgeted_scan_v1` — bind the canonical `[0, payload]` wrapper, fold to the exact terminal through the frozen scan primitives — over the same programmatic worst-shape vectors the scan ledger's curves use (`midgard/native_script_payload_vectors_v1`), at 9 and 17 nodes per shape with a fixture-only twin beside every measured row, so the realized mem-per-node rate is a slope of whole-test readings with the harness share measured rather than argued. (2) The step groups pin one whole-L1-step reading per validator arm of the thread (bind subject, open claim, bind outpoint, scan, verdict, finalize) from the family's own positive selectors, which is what prices the per-step thread envelope the fold rows exclude.\n\n**The headline finding: the realized fold rate is ≈3.5× the design's §6 rates.** §6 derived its throughput from the PINNED one-shot rates of `native-script-scan-exec-ledger-v1.json` — ≈197,726 mem/node deep, ≈174,338 wide — and predicted ≈61–69 nodes per scan transaction and a ≈100-transaction worst case. The staged fold measured here costs more per node than the one-shot: the deep slope between the 9- and 17-node rows is ≈746K mem/node (fixture share ≈66K) and the wide slope ≈655K (fixture share ≈11K), i.e. ≈680K/≈644K net — the per-step price of the hash-chained control/frame commitments (`hash_machine_control_v1` re-encode + `hash_frame_v1` per push/pop) that the one-shot predicate's in-memory stack never pays. CPU shows the same multiple (deep ≈302M cpu/node against §6's ≈66.1M) and stays non-binding. At the §3.3 basis minus the ≈1.0M step envelope the step rows price, that is ≈16–18 nodes per scan transaction, so the 5,447-node reachable worst case takes ≈320–340 scan steps ≈ 330–350 L1 transactions in either direction, ≈480–510 ADA at §6's stated fee assumption — still under 0.7% of the 75,000-ADA fraud_prover_reward and, at 1 tx/block, ≈2 hours against the half-of-seven-days maturity fit, so §6's CONCLUSIONS survive with ≈3.5× the transaction count and none of its decisions flip. §6 itself anticipated only the favourable direction of this delta (\"if re-measurement comes in materially better\"); the unfavourable one is recorded here and in the wave report rather than silently absorbed. 65-node vectors were measured once during row selection (deep 48.44M mem / 19.55B cpu, wide 42.74M / 16.61B) and are OVER the basis on both axes — which is exactly the §6 staged-machine premise, one transaction cannot carry a big scan — so they are not pinnable as `within` rows and are recorded here as readings instead.\n\n**What the rows do NOT claim.** (1) That any single L1 transaction scans a worst-case payload — the family is a staged machine precisely because none can. (2) That the fold's per-node rate is optimal; it prices the commitment discipline §7.4/§7.5 require (cursor replay and payload substitution die on the hash chain), and an owner who wants the §6 count back can weigh cheaper state commitments against those selectors. (3) That the step rows are worst-case L1 steps — they are the family's positive selectors at fixture cardinalities; the fold rows are what scale.\n\nRegenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. `--update` rewrites the raw mem/cpu rows and nothing else; a selector that did not run, a row that did not run, or a fresh reading that contradicts a `within` judgement fails in update mode too, and the ledger is not rewritten when it does.",
+  "compiler": "Readings taken with the patched fork `aiken v1.1.23+6801f62` (md5 d3b909a22ad3b29dfb4079cf416a5021, /home/gumbo/.aiken/bin/aiken). Earlier ledgers in this directory were taken under the fork's +2a78108 rev; +6801f62 is the currently installed fork build, and the rev is recorded here precisely so a re-take under a different build reads as a re-take. Stock aiken is never a reading source. Rows are env-independent: no module measured here reads `env`.",
+  "basis": {
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000,
+    "source": "GOAL_SPEC §3.3 — 20% margin off the supported L1 floor MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits of 16,500,000 mem. Taken from GOAL_SPEC_EXECUTION_BASIS_V1 in scripts/exec-ledger-within-basis-v1.mjs, never from this file."
+  },
+  "modules": [
+    {
+      "module": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test",
+      "neutralisationNote": "Two selectors. `decoding_measure_harness_refuses_a_malformed_payload` is the discrimination guard: the same bind-and-fold driver the rows price must refuse the vectors module's canonical malformed payload, so a fold that terminally accepted anything would go red here before its rows could be re-pinned. `decoding_measure_vectors_carry_the_advertised_node_counts` is the shape guard: every node count the note's slopes divide by is asserted against the vectors module, so shrinking a vector to cheapen a row goes red before the rate moves.",
+      "neutralisation": [
+        "decoding_measure_harness_refuses_a_malformed_payload",
+        "decoding_measure_vectors_carry_the_advertised_node_counts"
+      ],
+      "rows": {
+        "decoding_measure_deep_9_nodes": {
+          "mem": 6699789,
+          "cpu": 2667230989,
+          "basisFit": "within"
+        },
+        "decoding_measure_deep_9_nodes_fixture_only": {
+          "mem": 569140,
+          "cpu": 282897147,
+          "basisFit": "within"
+        },
+        "decoding_measure_deep_17_nodes": {
+          "mem": 12666128,
+          "cpu": 5080012828,
+          "basisFit": "within"
+        },
+        "decoding_measure_deep_17_nodes_fixture_only": {
+          "mem": 1108343,
+          "cpu": 558603738,
+          "basisFit": "within"
+        },
+        "decoding_measure_wide_9_nodes": {
+          "mem": 6021402,
+          "cpu": 2315301048,
+          "basisFit": "within"
+        },
+        "decoding_measure_wide_9_nodes_fixture_only": {
+          "mem": 120748,
+          "cpu": 34790081,
+          "basisFit": "within"
+        },
+        "decoding_measure_wide_17_nodes": {
+          "mem": 11267541,
+          "cpu": 4357995839,
+          "basisFit": "within"
+        },
+        "decoding_measure_wide_17_nodes_fixture_only": {
+          "mem": 209559,
+          "cpu": 60627904,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/native_script_decoding/step_01",
+      "neutralisationNote": "The leaf-is-acceptance predicate and the counted-root binding must both be falsifiable: a committed leaf with a rejecting validity scalar, and a forged transactions root, must each refuse the bind.",
+      "neutralisation": [
+        "decoding_step_01_rejects_a_normal_leaf_with_an_invalid_scalar",
+        "decoding_step_01_rejects_a_forged_transactions_root"
+      ],
+      "rows": {
+        "decoding_step_01_binds_an_accepted_normal_transaction": {
+          "mem": 1739421,
+          "cpu": 647473650,
+          "basisFit": "within"
+        },
+        "decoding_step_01_binds_a_published_chunk_membership_proof": {
+          "mem": 2887611,
+          "cpu": 1085023337,
+          "basisFit": "within"
+        },
+        "decoding_step_01_records_a_forced_source_for_either_direction": {
+          "mem": 1624564,
+          "cpu": 710550748,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/native_script_decoding/step_02",
+      "neutralisationNote": "The claim opening must be falsifiable on the two axes a false claim would use: a rejection arm outside the decoding family, and a forced leaf whose embedded validity scalar contradicts its operator verdict.",
+      "neutralisation": [
+        "decoding_step_02_rejects_a_foreign_rejection_arm",
+        "decoding_step_02_rejects_a_verdict_scalar_mismatch"
+      ],
+      "rows": {
+        "decoding_step_02_opens_a_normal_claim": {
+          "mem": 1117159,
+          "cpu": 588131541,
+          "basisFit": "within"
+        },
+        "decoding_step_02_opens_a_forced_acceptance": {
+          "mem": 2415247,
+          "cpu": 1164445877,
+          "basisFit": "within"
+        },
+        "decoding_step_02_copies_a_malformed_accusation_verbatim": {
+          "mem": 2422893,
+          "cpu": 1173592356,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/native_script_decoding/step_03_open_subject",
+      "neutralisationNote": "OpenSubject must reject the two state-machine substitutions at its boundary: an out-of-domain direction-A close and a second opening of an already committed subject.",
+      "neutralisation": [
+        "open_subject_rejects_an_out_of_domain_direction_a_ordinal",
+        "open_subject_rejects_a_second_open"
+      ],
+      "rows": {
+        "open_subject_commits_the_authenticated_outpoint": {
+          "mem": 2643685,
+          "cpu": 1139876543,
+          "basisFit": "within"
+        },
+        "open_subject_closes_an_out_of_domain_direction_b_ordinal": {
+          "mem": 2494535,
+          "cpu": 1089747584,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/native_script_decoding/step_03_bind_descriptor",
+      "neutralisationNote": "BindDescriptor must reject substitution of the OpenSubject key, substitution of the ledger's descriptor, and the wrong polarity for a non-native descriptor contradiction.",
+      "neutralisation": [
+        "bind_descriptor_rejects_a_substituted_outpoint_key",
+        "bind_descriptor_rejects_a_descriptor_the_ledger_never_held",
+        "bind_descriptor_rejects_direction_a_for_a_non_native_descriptor"
+      ],
+      "rows": {
+        "bind_descriptor_authenticates_and_starts_the_machine": {
+          "mem": 3529483,
+          "cpu": 1396940410,
+          "basisFit": "within"
+        },
+        "bind_descriptor_closes_a_non_native_direction_b_descriptor": {
+          "mem": 2602137,
+          "cpu": 1021459663,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/native_script_decoding/step_03_advance_or_close",
+      "neutralisationNote": "AdvanceOrClose keeps both §7 substitution axes live (cursor replay and payload substitution) and rejects a refusing scan in direction B, where it corroborates rather than contradicts the operator.",
+      "neutralisation": [
+        "advance_or_close_rejects_a_replayed_control",
+        "advance_or_close_rejects_substituted_chunk_bytes",
+        "advance_or_close_rejects_a_direction_b_refusal"
+      ],
+      "rows": {
+        "advance_or_close_commits_a_partial_advance": {
+          "mem": 3329705,
+          "cpu": 1368407064,
+          "basisFit": "within"
+        },
+        "advance_or_close_closes_direction_b_at_the_exact_terminal": {
+          "mem": 3579557,
+          "cpu": 1438286068,
+          "basisFit": "within"
+        },
+        "advance_or_close_closes_a_direction_a_refusal": {
+          "mem": 2708220,
+          "cpu": 1118982047,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/native_script_decoding/step_04",
+      "neutralisationNote": "The finalize gate must refuse an unclosed verdict and a direction-B state without the contradiction marker, or the shape checks it performs price nothing.",
+      "neutralisation": [
+        "decoding_step_04_rejects_a_pending_class",
+        "decoding_step_04_rejects_direction_b_without_the_marker"
+      ],
+      "rows": {
+        "decoding_step_04_finalizes_a_wrongful_acceptance": {
+          "mem": 867692,
+          "cpu": 375686195,
+          "basisFit": "within"
+        },
+        "decoding_step_04_finalizes_a_wrongful_rejection": {
+          "mem": 876697,
+          "cpu": 379180333,
+          "basisFit": "within"
+        }
+      }
+    }
+  ]
+}

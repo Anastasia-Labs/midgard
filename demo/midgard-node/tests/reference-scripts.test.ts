@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
 import {
   type Assets,
@@ -10,7 +11,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   buildReferenceScriptDeploymentPlan,
   buildReferenceScriptSweepPlan,
@@ -23,7 +24,7 @@ import {
   referenceScriptWalletStatusProgram,
   resolveSpendableWalletUtxos,
   verifyNodeRuntimeReferenceScriptsProgram,
-} from "@/transactions/reference-scripts.js";
+} from "../src/transactions/reference-scripts.js";
 
 const REFERENCE_SCRIPT_ADDRESS = "addr_test1reference";
 const RETURN_ADDRESS = "addr_test1return";
@@ -105,6 +106,52 @@ describe("node-runtime reference-script registry", () => {
     expect(names).toContain("reserve observer");
     expect(names).toContain("payout spending");
     expect(names).toContain("payout minting");
+    expect(
+      names.filter((name) => name.startsWith("V1 validation-trace ")),
+    ).toEqual([
+      "V1 validation-trace dispute",
+      "V1 validation-trace source",
+      "V1 validation-trace game",
+      "V1 validation-trace boundary",
+      "V1 validation-trace timeout",
+      "V1 validation-trace award",
+    ]);
+    const registeredFraudProofNames = names.filter((name) =>
+      name.startsWith("V1 fraud-proof "),
+    );
+    // Node-runtime publishes EVERY `V1 fraud-proof ` role the canonical
+    // manifest declares. This is stated as the set rather than as a count
+    // because it is a coverage requirement, not a pin to maintain: a manifest
+    // is only valid when `validateReferenceScripts` finds a confirmed
+    // reference script for every declared role, so a family the registry does
+    // not enumerate is a deployment that cannot pass startup verification. A
+    // count let that gap sit as a stale number; the set names it.
+    expect([...registeredFraudProofNames].sort()).toEqual(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE)
+        .filter((role) => role.startsWith("V1 fraud-proof "))
+        .sort(),
+    );
+    expect(registeredFraudProofNames).toContain(
+      "V1 fraud-proof missing-signature step-04",
+    );
+    expect(registeredFraudProofNames).toContain(
+      "V1 fraud-proof missing-native-script-tx step-06",
+    );
+    expect(
+      registeredFraudProofNames.filter((name) =>
+        name.startsWith("V1 fraud-proof transition-trace "),
+      ),
+    ).toEqual([
+      "V1 fraud-proof transition-trace route",
+      "V1 fraud-proof transition-trace final-0",
+      "V1 fraud-proof transition-trace final-1",
+      "V1 fraud-proof transition-trace final-2",
+      "V1 fraud-proof transition-trace final-3",
+      "V1 fraud-proof transition-trace final-4",
+      "V1 fraud-proof transition-trace final-5",
+      "V1 fraud-proof transition-trace final-6",
+      "V1 fraud-proof transition-trace final-7",
+    ]);
   });
 
   it("derives protocol-init as a strict subset of node-runtime", async () => {

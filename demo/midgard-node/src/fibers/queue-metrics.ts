@@ -1,6 +1,6 @@
 import { Effect, Metric, Ref } from "effect";
 
-import { Globals } from "@/services/index.js";
+import { Globals } from "../services/index.js";
 
 /**
  * Background metrics emission for queue-related in-memory node state.

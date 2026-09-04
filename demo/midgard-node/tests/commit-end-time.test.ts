@@ -9,14 +9,17 @@ import {
   alignedUnixTimeStrictlyAfter,
   alignUnixTimeToSlotBoundary,
   COMMIT_MIN_PRE_SUBMIT_BUDGET_MS,
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_VALIDITY_BACKDATE_MS,
+  COMMIT_VALIDITY_MAX_RANGE_MS,
   commitTimingBudget,
   EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   makeSubmitSlotAnchoredClock,
   resolveAlignedCommitEndTime,
   resolveCommitEndTimeFit,
+  resolveCommitValidityInterval,
   resolveExplicitCommitCandidateEndTimeMs,
-} from "@/workers/utils/commit-end-time.js";
+} from "../src/workers/utils/commit-end-time.js";
 
 /**
  * Builds a Lucid instance for commit-end-time tests.
@@ -68,7 +71,7 @@ describe("commit end-time resolver", () => {
       latestEndTime: slotStartMs,
       candidateEndTime: slotStartMs,
       nowMs: anchoredNow(),
-      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
 
     vi.spyOn(Date, "now").mockReturnValue(slotStartMs + 86_400_000);
@@ -79,7 +82,7 @@ describe("commit end-time resolver", () => {
         latestEndTime: slotStartMs,
         candidateEndTime: slotStartMs,
         nowMs: anchoredNow(),
-        minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+        minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
       expect(refreshed.minimumCurrentTimeEndTime).toBeGreaterThan(
         first.minimumCurrentTimeEndTime,
@@ -96,10 +99,9 @@ describe("commit end-time resolver", () => {
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(operator.seedPhrase);
 
-    await emulator.awaitSlot(16 * 60);
+    emulator.awaitSlot(16 * 60);
     const firstNowMs = emulator.now();
-    const firstFloorMs =
-      firstNowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+    const firstFloorMs = firstNowMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
     expect(
       alignUnixTimeToSlotBoundary(lucid, firstFloorMs),
     ).toBeGreaterThanOrEqual(firstFloorMs - 999);
@@ -111,21 +113,21 @@ describe("commit end-time resolver", () => {
       latestEndTime: firstNowMs - 1,
       candidateEndTime: firstNowMs,
       nowMs: firstNowMs,
-      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
     expect(first.minimumCurrentTimeEndTime).toBeGreaterThan(firstFloorMs);
     expect(first.resolvedEndTime).toBeGreaterThanOrEqual(
       first.minimumCurrentTimeEndTime,
     );
 
-    await emulator.awaitSlot(60);
+    emulator.awaitSlot(60);
     const refreshedNowMs = emulator.now();
     const refreshed = resolveAlignedCommitEndTime({
       lucid,
       latestEndTime: firstNowMs - 1,
       candidateEndTime: firstNowMs,
       nowMs: refreshedNowMs,
-      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
     expect(refreshed.minimumCurrentTimeEndTime).toBeGreaterThan(
       first.minimumCurrentTimeEndTime,
@@ -207,11 +209,66 @@ describe("commit end-time resolver", () => {
       latestEndTime,
       candidateEndTime: latestEndTime,
       nowMs,
-      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
 
     expect(resolvedEndTime).toBeGreaterThanOrEqual(
-      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      nowMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+    );
+  });
+
+  it("builds a backdated bounded validity interval and exposes its inclusive upper bound", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const validToMs = alignedUnixTimeStrictlyAfter(
+      lucid,
+      slotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+    );
+
+    const interval = resolveCommitValidityInterval({
+      lucid,
+      submitSlotSnapshot: {
+        source: "test",
+        currentSlot,
+        observedAtMs: slotStartMs,
+        slotLengthMs: 1_000,
+      },
+      validToMs,
+    });
+
+    expect(interval.validFromMs).toBe(
+      slotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
+    );
+    expect(interval.validToMs - interval.validFromMs).toBeLessThanOrEqual(
+      COMMIT_VALIDITY_MAX_RANGE_MS,
+    );
+    expect(interval.inclusiveUpperBoundMs).toBe(validToMs - 1);
+  });
+
+  it("moves an old lower bound forward when a later validTo would exceed the range limit", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const validToMs =
+      slotStartMs + COMMIT_VALIDITY_MAX_RANGE_MS + COMMIT_VALIDITY_BACKDATE_MS;
+
+    const interval = resolveCommitValidityInterval({
+      lucid,
+      submitSlotSnapshot: {
+        source: "test",
+        currentSlot,
+        observedAtMs: slotStartMs,
+        slotLengthMs: 1_000,
+      },
+      validToMs,
+    });
+
+    expect(interval.validFromMs).toBeGreaterThan(
+      slotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
+    );
+    expect(interval.validToMs - interval.validFromMs).toBeLessThanOrEqual(
+      COMMIT_VALIDITY_MAX_RANGE_MS,
     );
   });
 
@@ -219,15 +276,14 @@ describe("commit end-time resolver", () => {
     const lucid = await makeLucid();
     const latestEndTime = currentSlotStartMs(lucid);
     const nowMs = latestEndTime + 10_000;
-    const maximumEndTimeMs =
-      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS + 5_000;
+    const maximumEndTimeMs = nowMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS + 5_000;
 
     const fit = resolveCommitEndTimeFit({
       lucid,
       latestEndTime,
       candidateEndTime: latestEndTime,
       nowMs,
-      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       maximumEndTimeMs,
     });
 
@@ -235,7 +291,7 @@ describe("commit end-time resolver", () => {
     expect(fit.maximumEndTimeMs).toBe(maximumEndTimeMs);
     expect(fit.resolvedEndTime).toBeLessThanOrEqual(maximumEndTimeMs);
     expect(fit.minimumCurrentTimeEndTime).toBeGreaterThanOrEqual(
-      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      nowMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     );
   });
 
@@ -243,15 +299,14 @@ describe("commit end-time resolver", () => {
     const lucid = await makeLucid();
     const latestEndTime = currentSlotStartMs(lucid);
     const nowMs = latestEndTime + 10_000;
-    const maximumEndTimeMs =
-      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS - 60_000;
+    const maximumEndTimeMs = nowMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS - 60_000;
 
     const fit = resolveCommitEndTimeFit({
       lucid,
       latestEndTime,
       candidateEndTime: latestEndTime,
       nowMs,
-      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       maximumEndTimeMs,
     });
 
@@ -260,21 +315,20 @@ describe("commit end-time resolver", () => {
       throw new Error("expected production current-time floor to exceed cap");
     }
     expect(fit.resolvedEndTime).toBeGreaterThan(maximumEndTimeMs);
-    expect(fit.reason).toContain("minimum_current_time_end_time_ms=");
+    expect(fit.reason).toContain("minimum_current_time_valid_to_ms=");
   });
 
   it("keeps the monotonic latest-block lower bound when it is later than the production current-time floor", async () => {
     const lucid = await makeLucid();
     const nowMs = currentSlotStartMs(lucid);
-    const latestEndTime =
-      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS + 30_000;
+    const latestEndTime = nowMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS + 30_000;
 
     const fit = resolveCommitEndTimeFit({
       lucid,
       latestEndTime,
       candidateEndTime: nowMs,
       nowMs,
-      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       maximumEndTimeMs: latestEndTime + 5_000,
     });
 
@@ -289,14 +343,14 @@ describe("commit end-time resolver", () => {
     const lucid = await makeLucid();
     const latestEndTime = currentSlotStartMs(lucid);
     const nowMs = latestEndTime + 10_000;
-    const maximumEndTimeMs = nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+    const maximumEndTimeMs = nowMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
 
     const fit = resolveCommitEndTimeFit({
       lucid,
       latestEndTime,
       candidateEndTime: latestEndTime,
       nowMs,
-      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       maximumEndTimeMs,
     });
 
@@ -338,7 +392,7 @@ describe("commit end-time resolver", () => {
       candidateEndTime,
     });
 
-    expect(alignedCandidateEndTime).toBe(latestEndTime + 2_000);
+    expect(alignedCandidateEndTime).toBe(latestEndTime + 3_000);
     expect(minimumMonotonicEndTime).toBeGreaterThan(latestEndTime);
     expect(resolvedEndTime).toBeGreaterThanOrEqual(alignedCandidateEndTime);
     expect(resolvedEndTime).toBeGreaterThanOrEqual(minimumMonotonicEndTime);

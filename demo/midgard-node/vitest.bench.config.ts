@@ -1,6 +1,5 @@
 import fs from "node:fs";
 
-import path from "path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -25,9 +24,10 @@ export default defineConfig({
     bail: 1,
     environment: "node",
   },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+  ssr: {
+    resolve: {
+      // Same source-first workspace resolution as vitest.config.ts.
+      conditions: ["midgard-source", "node", "development|production"],
     },
   },
   esbuild: {

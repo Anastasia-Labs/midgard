@@ -726,7 +726,7 @@ describe("Phase 2 benchmark report gate", () => {
   });
 
   it("enforces script latency and leak-soak evidence", () => {
-    const productionScriptReport = scriptHeavyReport({
+    const scriptReport = scriptHeavyReport({
       gateMode: "production_default_chunk64",
       chunkSize: 64,
       chunkAbExperimentId: undefined,
@@ -736,12 +736,12 @@ describe("Phase 2 benchmark report gate", () => {
       corpusRowCount: undefined,
     });
     expect(
-      verifyPhase2BenchmarkReports("script-heavy", [productionScriptReport]),
+      verifyPhase2BenchmarkReports("script-heavy", [scriptReport]),
     ).toBeDefined();
     expect(() =>
       verifyPhase2BenchmarkReports("script-heavy", [
         {
-          ...productionScriptReport,
+          ...scriptReport,
           eventLoopDelayP99Ms: 50,
         },
       ]),
@@ -763,16 +763,16 @@ describe("Phase 2 benchmark report gate", () => {
     ] as const) {
       expect(() =>
         verifyPhase2BenchmarkReports("script-heavy", [
-          { ...productionScriptReport, [field]: value },
+          { ...scriptReport, [field]: value },
         ]),
       ).toThrow();
     }
     expect(() =>
       verifyPhase2BenchmarkReports("script-heavy", [
         {
-          ...productionScriptReport,
+          ...scriptReport,
           containerIdentity: {
-            ...productionScriptReport.containerIdentity,
+            ...scriptReport.containerIdentity,
             imageId: undefined,
           },
         },
@@ -781,9 +781,9 @@ describe("Phase 2 benchmark report gate", () => {
     expect(() =>
       verifyPhase2BenchmarkReports("script-heavy", [
         {
-          ...productionScriptReport,
+          ...scriptReport,
           containerIdentity: {
-            ...productionScriptReport.containerIdentity,
+            ...scriptReport.containerIdentity,
             imageId: `sha256:${"ef".repeat(32)}`,
           },
         },

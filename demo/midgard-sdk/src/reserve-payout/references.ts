@@ -7,8 +7,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { isSameScriptRef } from "@/reference-scripts.js";
-import * as SDK from "@/reserve-payout/primitives.js";
+import { isSameScriptRef } from "../reference-scripts.js";
+import * as SDK from "./primitives.js";
 
 type ReferenceScriptTarget = {
   readonly name: string;

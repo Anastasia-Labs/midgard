@@ -2,9 +2,9 @@ import { normalizeTxHash } from "@al-ft/midgard-core/out-ref";
 import type { Assets, Network, UTxO } from "@lucid-evolution/lucid";
 import * as LE from "@lucid-evolution/lucid";
 
-import { resolveNetwork } from "@/commands/address-from-seed.js";
-import { parseAddressArgument } from "@/commands/command-utils.js";
-import { compareOutRefs } from "@/tx-context.js";
+import { compareOutRefs } from "../tx-context.js";
+import { resolveNetwork } from "./address-from-seed.js";
+import { parseAddressArgument } from "./command-utils.js";
 
 export type L1Utxo = {
   readonly txHash: string;

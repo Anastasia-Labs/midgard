@@ -9,8 +9,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { normalizeRootIndefiniteArrayEncoding } from "@/cbor.js";
-import type { AuthenticatedValidator } from "@/common.js";
+import { normalizeRootIndefiniteArrayEncoding } from "./cbor.js";
+import type { AuthenticatedValidator } from "./common.js";
 import {
   SCHEDULER_ASSET_NAME,
   type SchedulerDatum,
@@ -18,14 +18,14 @@ import {
   SchedulerError,
   type SchedulerSpendRedeemer,
   SchedulerSpendRedeemer as SchedulerSpendRedeemerSchema,
-} from "@/scheduler.js";
-import { completeOptionsWithLocalEval } from "@/tx-completion.js";
+} from "./scheduler.js";
+import { completeOptionsWithLocalEval } from "./tx-completion.js";
 import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
+} from "./tx-context-redeemer.js";
 
 export type SchedulerRefreshNodeWitness = {
   readonly utxo: UTxO;
@@ -342,7 +342,10 @@ export const buildUnsignedSchedulerRefreshTxProgram = (
           }),
         ),
       catch: (cause) =>
-        schedulerError(`Failed to build scheduler refresh tx: ${cause}`, cause),
+        schedulerError(
+          `Failed to build scheduler refresh tx: ${String(cause)}`,
+          cause,
+        ),
     });
     if (callbackCount < 1) {
       return yield* failScheduler(
@@ -370,7 +373,7 @@ export const buildUnsignedSchedulerRefreshTxProgram = (
         ),
       catch: (cause) =>
         schedulerError(
-          `Failed to rebuild scheduler refresh tx: ${cause}`,
+          `Failed to rebuild scheduler refresh tx: ${String(cause)}`,
           cause,
         ),
     });

@@ -2,28 +2,36 @@
   "name": "midgard-demo",
   "private": true,
   "scripts": {
-    "build": "pnpm -r --if-present --workspace-concurrency=1 run build",
+    "build": "pnpm -r --if-present --workspace-concurrency=4 run build",
     "bench:aiken:native-tx-decoders": "node ../onchain/aiken/scripts/native-tx-decoder-benchmark-report.mjs",
-    "lint": "eslint . --max-warnings=0",
-    "lint:fix": "eslint . --fix",
-    "typecheck": "pnpm -r --if-present --workspace-concurrency=1 run typecheck",
+    "lint": "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js . --max-warnings=0",
+    "lint:fix": "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js . --fix",
+    "typecheck": "pnpm -r --if-present --workspace-concurrency=4 run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
+    "format-check": "prettier --check \"**/*.{ts,tsx,md}\" \"!**/.architecture-f-wasm/**\" \"!**/coverage/**\" \"!**/deploymentInfo/**\" \"!**/dist/**\" \"!**/logs/**\" \"!**/node_modules/**\"",
+    "hooks:install": "bash ../.githooks/install",
     "test:tx-prep:sdk": "pnpm --filter @al-ft/lucid-midgard test && pnpm --filter @al-ft/midgard-sdk test",
-    "test:tx-prep:node": "pnpm --filter midgard-node run test:tx-prep:node",
-    "test:tx-prep:emulator": "pnpm --filter midgard-node run test:tx-prep:emulator && pnpm --filter @al-ft/midgard-fault-proofs exec vitest run tests/submit-init-emulator.test.ts",
+    "test:tx-prep:node": "pnpm --filter midgard-node run test:tx-prep:node && pnpm --filter midgard-node-tools run test:e2e-reliability",
+    "test:tx-prep:emulator": "pnpm --filter midgard-node run test:tx-prep:emulator && pnpm --filter @al-ft/midgard-fault-proofs exec vitest run --pool=forks --no-file-parallelism tests/submit-init-emulator",
     "test:tx-prep:local": "pnpm run test:tx-prep:sdk && pnpm run test:tx-prep:node && pnpm run test:tx-prep:emulator",
-    "test": "pnpm run typecheck && pnpm -r --if-present --workspace-concurrency=1 run test",
+    "fixtures:transaction-root-v1": "pnpm --dir midgard-node run fixtures:transaction-root-v1",
+    "fixtures:transaction-root-v1:check": "pnpm --dir midgard-node run fixtures:transaction-root-v1:check",
+    "test": "node scripts/run-test-lanes-v1.mjs",
+    "test:serial": "pnpm run typecheck && pnpm -r --if-present --workspace-concurrency=1 run test",
     "clean": "pnpm -r --if-present --workspace-concurrency=1 run clean && rm -rf node_modules",
     "install-sdk": "pnpm --filter midgard-sdk install",
     "repack-sdk": "pnpm --filter midgard-sdk repack"
   },
   "devDependencies": {
+    "@eslint/js": "^9.21.0",
     "@typescript-eslint/parser": "^8.25.0",
     "eslint": "^9.21.0",
     "eslint-plugin-simple-import-sort": "^12.1.1",
+    "globals": "^15.15.0",
     "prettier": "^3.5.2",
-    "vitest": "^1.3.1"
+    "typescript-eslint": "^8.25.0",
+    "vitest": "^1.3.1",
+    "yaml": "2.9.0"
   },
   "engines": {
     "node": ">=22.16.0"
@@ -32,6 +40,10 @@
   "pnpm": {
     "patchedDependencies": {
       "blake2b@2.1.4": "patches/blake2b@2.1.4.patch"
+    },
+    "overrides": {
+      "@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1": "6.2.0-2",
+      "@anastasia-labs/cardano-multiplatform-lib-browser@6.2.0-1": "6.2.0-2"
     }
   }
 }

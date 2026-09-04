@@ -4,11 +4,12 @@ description: "How the watcher plan held up under a production-readiness review, 
 ---
 
 <Callout type="warn" title="Design-stage review">
-This is an
-[adversarial review](https://github.com/Anastasia-Labs/midgard/tree/main/demo/midgard-watcher)
-of the design-only watcher plan: planning documents, not shipped code. The working
-implementation is [`demo/da-committee-node`](/docs/watchers/da-committee-node)
-(package/bin name `midgard-watcher`).
+  This is an [adversarial
+  review](https://github.com/Anastasia-Labs/midgard/tree/main/demo/midgard-watcher)
+  of the design-only watcher plan: planning documents, not shipped code. The
+  working implementation is
+  [`demo/da-committee-node`](/docs/watchers/da-committee-node) (package/bin name
+  `midgard-watcher`).
 </Callout>
 
 ## Verdict
@@ -23,9 +24,10 @@ deployment identity, finality/rollback, CI, and acceptance gates remain blockers
 The reviewer's single strongest correction:
 
 <Callout type="error" title="Move the hard problems into Milestone 0/1">
-Move proof coverage, DA / header binding, transition-trace design, consensus feature gates, and
-finality / provider policy into the earliest milestones. Building a broad verifier before those are
-frozen risks producing a watcher that can detect real faults it cannot prove or stop.
+  Move proof coverage, DA / header binding, transition-trace design, consensus
+  feature gates, and finality / provider policy into the earliest milestones.
+  Building a broad verifier before those are frozen risks producing a watcher
+  that can detect real faults it cannot prove or stop.
 </Callout>
 
 ## Findings
@@ -60,10 +62,13 @@ or be rejected/disabled in consensus.
 
 ### 4. Critical: L1 finality and provider consistency were not strong enough
 
-The first plan accepted "at least one provider, with a path to multiple", conflicting with the
-architecture's requirement for at least two independent L1 sources and first-visibility
-finalization. **Disposition:** make multi-provider same-chain-point validation, explicit finality
-depth, rollback quarantine, and provider-disagreement tests mandatory for production.
+The first plan accepted an ambiguous "at least one provider, with a path to
+multiple" policy. **Disposition:** require an explicit source discriminator.
+`local_node` uses the watcher's own full node and chain-sync stream as the sole
+consensus authority, with rollback propagation and same-node query/index
+alignment. `external_providers` requires at least two operationally independent
+providers to agree on network and compatible chain point. Both modes require
+explicit finality, fail-closed mismatch handling, and rollback quarantine.
 
 ### 5. High: Spec, implementation, and proof roots required one conformance rule
 

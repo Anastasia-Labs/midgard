@@ -1,0 +1,341 @@
+{
+  "schema": "midgard.canonical-v1-fault-proof-reconciliation.v1",
+  "generatedAt": "2026-08-04",
+  "source": {
+    "path": "docs/fault-proofs/coverage-matrix.md"
+  },
+  "coverageContract": [
+    "rule",
+    "enabledState",
+    "proofFamily",
+    "currentBinding",
+    "catalogueReachability",
+    "tooling",
+    "tests",
+    "emulatorEvidence",
+    "preprodEvidence",
+    "remainingTask"
+  ],
+  "coverageRows": [
+    82, 83, 84, 85, 86, 87, 93, 94, 95, 96, 97, 98, 99, 105, 106, 107, 108, 114,
+    115, 116, 117, 118, 124, 125, 126, 127, 128, 129, 130, 131, 137, 138, 139,
+    140, 141, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 163, 164,
+    165, 166, 167, 173, 174, 175, 176, 182, 183, 184, 185, 186, 187
+  ],
+  "structuralRows": [295, 296, 297, 298, 299, 300, 301, 302, 303],
+  "locallyCompleteRows": [93, 94, 95, 96, 137, 150, 174, 176, 182],
+  "structuralOrNARows": [
+    82, 83, 116, 139, 295, 296, 297, 298, 299, 300, 301, 302, 303
+  ],
+  "openRows": [
+    84, 85, 86, 87, 97, 98, 99, 105, 106, 107, 108, 114, 115, 117, 118, 124,
+    125, 126, 127, 128, 129, 130, 131, 138, 140, 141, 147, 148, 149, 151, 152,
+    153, 154, 155, 156, 157, 163, 164, 165, 166, 167, 173, 175, 183, 184, 185,
+    186, 187
+  ],
+  "summary": {
+    "total": 70,
+    "coverageRows": 61,
+    "structuralRows": 9,
+    "locallyComplete": 9,
+    "structuralOrNA": 13,
+    "open": 48,
+    "preprodComplete": 0,
+    "focusedChecksPassed": 45,
+    "focusedChecksTotal": 45,
+    "focusedCheckName": "family-scaffold.test.ts strict scanner",
+    "focusedCommand": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/family-scaffold.test.ts"
+  },
+  "bindingInventory": {
+    "compiledStandaloneFamilies": 13,
+    "nativeV1Families": [
+      "double-spend",
+      "input-no-idx",
+      "invalid-range",
+      "invalid-signature",
+      "min-fee",
+      "missing-native-script-tx",
+      "missing-signature",
+      "no-input",
+      "no-reference-input",
+      "reference-input-no-idx",
+      "transition-trace",
+      "withdrawn-reference-input",
+      "zero-input"
+    ],
+    "legacyPlutusDataFamilies": [],
+    "registeredCatalogueCategories": 11,
+    "initializationCliCategories": 11,
+    "inspectionCategories": 11,
+    "registeredCategoryNames": [
+      "doubleSpend",
+      "nonExistentInput",
+      "nonExistentInputNoIndex",
+      "invalidRange",
+      "transitionTrace",
+      "zeroInput",
+      "validationTraceDispute",
+      "daHashPreimage",
+      "noReferenceInput",
+      "referenceInputNoIdx",
+      "invalidSignature"
+    ],
+    "deployedValidatorDirectories": [
+      "canonical-decodability",
+      "committed-field-shape",
+      "da-hash-preimage",
+      "double-spend",
+      "input-no-idx",
+      "invalid-range",
+      "invalid-signature",
+      "min-fee",
+      "missing-native-script-tx",
+      "missing-signature",
+      "mpf-chunked-proof",
+      "no-input",
+      "no-reference-input",
+      "reference-input-no-idx",
+      "transition-trace",
+      "validation-trace",
+      "withdrawn-reference-input",
+      "zero-input"
+    ],
+    "unregisteredValidatorDirectories": [
+      "canonical-decodability",
+      "committed-field-shape",
+      "min-fee",
+      "missing-native-script-tx",
+      "missing-signature",
+      "mpf-chunked-proof",
+      "withdrawn-reference-input"
+    ]
+  },
+  "initialLaunchScope": {
+    "sourceAnchor": "GOAL_SPEC.md §9.1 and §9.3; current deployed positional catalogue",
+    "status": "INITIAL_ONLY",
+    "families": [
+      "double-spend",
+      "no-input",
+      "input-no-idx",
+      "invalid-range",
+      "transition-trace",
+      "zero-input",
+      "validation-trace-dispute",
+      "da-hash-preimage"
+    ],
+    "count": 8,
+    "note": "This is F20's concrete initial §9.1 list, not a final launch decision or a LOCAL_PASS/LIVE_PASS promotion. Q50/Q55 own final route and enabled-state integration."
+  },
+  "taskResidues": {
+    "completedPrerequisites": ["Q00", "Q02", "Q03", "Q24", "Q25", "Q44", "Q54"],
+    "completedFamilyLifecycle": ["Q13"],
+    "openFamilyClosures": ["Q14", "Q15", "Q16", "Q17", "Q18", "Q19", "Q20"],
+    "openStructural": [],
+    "openLifecycleAndAcceptance": [
+      "Q50",
+      "Q51",
+      "Q52",
+      "Q53",
+      "Q55",
+      "Q56",
+      "Q57",
+      "Q58",
+      "Q59",
+      "Q60",
+      "Q61",
+      "Q62",
+      "Q63",
+      "QG1",
+      "QG2",
+      "QG3"
+    ]
+  },
+  "documentationAnchors": {
+    "docs/fault-proofs/README.md": "Q00/Q02/Q03 and Q13 are complete in their assigned scope",
+    "docs/fault-proofs/architecture.md": "eleven positional categories",
+    "docs/fault-proofs/onchain-reference.md": "All eleven transaction-proof step-01 validator chains use the native V1",
+    "docs/fault-proofs/offchain-reference.md": "accepts exactly eleven values",
+    "docs/fault-proofs/catalogue-status.md": "Native V1 binding is complete; closure is still family-specific",
+    "docs/fault-proofs/coverage-matrix.md": "Q13 `LOCAL_PASS`; live evidence remains Q57/QG3",
+    "docs/fault-proofs/testing-status.md": "Q13 `input-no-idx` init → all steps",
+    "docs/fault-proofs/execution-plan.md": "Completed native-V1 binding port.",
+    "docs/fault-proofs/offchain-builder-staleness-575.md": "**The validators take a new parameter.**",
+    "docs/fault-proofs/parameter-application-audit-609.md": "zero additional under-applied validators were found"
+  },
+  "criticalFindings": [
+    {
+      "id": "F20-01",
+      "finding": "the eight registered categories are exact today, but they are only F20's initial launch-scope inventory; Q50/Q55 must still reconcile enabled routes, reference scripts, applied hashes, and final positional deployment",
+      "sources": [
+        "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
+        "demo/midgard-fault-proofs/src/submit-init.ts",
+        "demo/midgard-fault-proofs/src/inspect-contracts.ts"
+      ],
+      "remainingTasks": ["Q50", "Q55"]
+    },
+    {
+      "id": "F20-02",
+      "finding": "all twelve standalone families now bind canonical native V1 counted roots; the unresolved residue is atomic family closure for Q14–Q20, including public evidence, proof-fit, tooling, valid-block negatives, and lifecycle evidence rather than a legacy-binding port",
+      "sources": ["onchain/aiken/lib/midgard/fraud-proofs/common.ak"],
+      "remainingTasks": ["Q14", "Q15", "Q16", "Q17", "Q18", "Q19", "Q20"]
+    },
+    {
+      "id": "F20-03",
+      "finding": "the min-fee proof step still returns zero instead of the canonical parameterized formula",
+      "sources": [
+        "onchain/aiken/lib/midgard/fraud-proofs/min-fee/step-02.ak",
+        "onchain/aiken/lib/midgard/validation-machine-v1.ak"
+      ],
+      "remainingTasks": ["Q20"]
+    },
+    {
+      "id": "F20-04",
+      "finding": "availability challenge, unified proof journal/resume API, and tracked preprod proof evidence remain absent; Q54's retention enforcement is complete, while the committee-pruner residual is routed to Q58",
+      "sources": ["docs/fault-proofs/coverage-matrix.md"],
+      "remainingTasks": ["Q51", "Q57", "Q58", "Q59"]
+    },
+    {
+      "id": "F20-05",
+      "finding": "cross-operator correction requires the same fraudulent operator identity and slashing economics remain zero-valued",
+      "sources": [
+        "onchain/aiken/lib/midgard/state-queue.ak",
+        "onchain/aiken/env/default.ak"
+      ],
+      "remainingTasks": ["Q52", "Q53"]
+    },
+    {
+      "id": "F20-06",
+      "finding": "the initial launch-scope list is eight currently registered routes, but six deployed validator directories remain outside that positional catalogue and missing-family decisions remain open",
+      "sources": [
+        "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
+        "onchain/aiken/validators/fraud-proofs/input-no-idx/step-01.ak"
+      ],
+      "remainingTasks": [
+        "Q23",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q45",
+        "Q46",
+        "Q47",
+        "Q48",
+        "Q49",
+        "Q50",
+        "Q55"
+      ]
+    }
+  ],
+  "structuralAudit": {
+    "status": "PASS",
+    "summary": {
+      "rows": 9,
+      "pass": 9,
+      "partial": 0,
+      "open": 0
+    },
+    "rows": {
+      "L295": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "transactions_root MPF key uniqueness",
+          "DA/block construction rejection"
+        ]
+      },
+      "L296": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "CommitBlockHeader validator",
+          "state-queue HeaderV1 selectors"
+        ]
+      },
+      "L297": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": ["deposit token-count boundary selectors"]
+      },
+      "L298": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "onchain/aiken/validators/fraud-proofs/no-input/step-01.ak: no_input_step_01_binds_native_v1_block_fixture, no_input_step_01_rejects_forged_transactions_root",
+          "onchain/aiken/validators/fraud-proofs/no-input/step-02.ak: no_input_step_02_forwards_the_challenged_spend_input, no_input_step_02_rejects_a_substituted_inputs_preimage",
+          "onchain/aiken/validators/fraud-proofs/no-input/step-03.ak: no_input_step_03_excludes_the_input_from_a_genesis_initial_ledger, no_input_step_03_excludes_the_input_from_a_populated_initial_ledger, no_input_step_03_rejects_a_non_membership_claim_for_another_key",
+          "onchain/aiken/validators/fraud-proofs/no-input/step-04.ak: no_input_step_04_excludes_the_producing_transaction, no_input_step_04_rejects_valid_block_challenge"
+        ]
+      },
+      "L299": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "demo/midgard-validation/src/phase-b.ts",
+          "demo/midgard-validation/tests/phase-b.test.ts: burns the exact L2 fee in production value accounting and rejects fee redirection"
+        ]
+      },
+      "L300": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "onchain/aiken/validators/user-events/payout.ak: exact accumulator and target-output guards",
+          "payout_conclude_rejects_surplus_accumulator_value regression"
+        ]
+      },
+      "L301": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "onchain/aiken/validators/user-events/deposit.ak: inclusion_time is fixed at mint",
+          "onchain/aiken/env/default.ak: event_wait_duration"
+        ]
+      },
+      "L302": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "onchain/aiken/validators/fraud-proofs/invalid-range/step-01.ak: normalize_native_validity_range_rejects_empty_interval, invalid_range_step_01_binds_native_v1_block_fixture, invalid_range_step_01_rejects_forged_transactions_root",
+          "onchain/aiken/validators/fraud-proofs/invalid-range/step-02.ak: invalid_range_step_02_accepts_uncovered_and_inverted_intervals, invalid_range_step_02_rejects_valid_block_challenge"
+        ]
+      },
+      "L303": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "onchain/aiken/lib/midgard/user-events/deposit.ak: sole exact record spend redeemer",
+          "onchain/aiken/validators/user-events/deposit.ak: mandatory settlement membership, event-NFT burn, reserve output, and no datum",
+          "demo/midgard-sdk/src/user-events/deposit.ts: exact record schema",
+          "onchain/aiken/plutus.json: exact one-constructor seven-field compiled schema"
+        ]
+      }
+    },
+    "adjacentRegression": {
+      "selector": "resolve_inputs_rejects_an_invalid_validity_interval_exactly",
+      "status": "PASS",
+      "note": "The canonical empty ledger-delta frontier fixture preserves rejection-state immutability; the exact guarded selector passes 1/1."
+    },
+    "note": "F21 records the nine physical semantic rows L295-L303. All nine are executable PASS; Q49-L298 and Q49-L302 closed the two remaining PARTIAL rows (cross-block replay and malformed validity interval) with executable no-input and invalid-range selectors. No row is OPEN."
+  },
+  "acceptance": {
+    "F20": "PASS",
+    "F21": "PASS",
+    "QG1": "OPEN",
+    "QG2": "OPEN",
+    "QG3": "OPEN",
+    "note": "F20 is an inventory reconciliation. No open proof-family, structural, emulator, or preprod requirement is promoted by this result."
+  }
+}

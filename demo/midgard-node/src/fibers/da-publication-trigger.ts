@@ -1,10 +1,10 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Option } from "effect";
 
-import { publishDaPayloadInsertFromEnv } from "@/da/libp2p-producer.js";
-import { DaPayloadsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import type { Database } from "@/services/database.js";
+import { publishDaPayloadInsertFromEnv } from "../da/libp2p-producer.js";
+import { DaPayloadsDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import type { Database } from "../services/database.js";
 
 export const publishFinalizedDaPayloadBestEffort = (
   finalizedHeaderHash: string,

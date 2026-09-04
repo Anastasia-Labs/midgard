@@ -9,9 +9,10 @@ import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric, Option, Schedule } from "effect";
 
-import { seedDaPayloadPublicationOutboxFromEnv } from "@/da/libp2p-producer.js";
+import { seedDaPayloadPublicationOutboxFromEnv } from "../../da/libp2p-producer.js";
 import {
   BlocksDB,
+  CekProgramMaterialDB,
   DaPayloadsDB,
   DepositsDB,
   ForcedTransactionsDB,
@@ -23,26 +24,23 @@ import {
   ProcessedMempoolDB,
   TxUtils as TxTable,
   WithdrawalsDB,
-} from "@/database/index.js";
+} from "../../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Columns as TxColumns } from "@/database/utils/tx.js";
-import { type Database, Lucid } from "@/services/index.js";
-import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import type { TxSubmitError } from "@/transactions/utils.js";
-import { batchProgram } from "@/utils.js";
-import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
-import type {
-  WorkerInput,
-  WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
+} from "../../database/utils/common.js";
+import { Columns as TxColumns } from "../../database/utils/tx.js";
+import type { MidgardMpf, MpfError } from "../../mpf/index.js";
+import { type Database, Lucid } from "../../services/index.js";
+import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
+import type { TxSubmitError } from "../../transactions/utils.js";
+import { batchProgram } from "../../utils.js";
+import { buildDaPayloadInsert } from "../commit-block-header/da-payload.js";
+import type { WorkerInput, WorkerOutput } from "./commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
   type SuccessfulCommitBatch,
-} from "@/workers/utils/commit-block-planner.js";
-import type { MidgardMpf, MpfError } from "@/workers/utils/mpf.js";
+} from "./commit-block-planner.js";
 
 const BATCH_SIZE = 100;
 const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;
@@ -228,6 +226,9 @@ export const finalizeCommittedBlockLocally = (
       processedMempoolTxs,
       Math.floor(BATCH_SIZE / 2),
     );
+    const finalizedTxHashes = uniqueBuffersByHex(
+      batches.flatMap((batch) => batch.blockTxHashes),
+    );
     const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
     const daPayloadBuildStartedAt = Date.now();
     const persistedDaPayload =
@@ -235,13 +236,10 @@ export const finalizeCommittedBlockLocally = (
         ? undefined
         : yield* Effect.gen(function* () {
             const record = options.daPayloadRecord!;
-            const snapshot =
-              record.ledgerDelta === undefined
-                ? undefined
-                : yield* materializeConfirmedLedgerSnapshot(record);
+            const snapshot = yield* materializeConfirmedLedgerSnapshot(record);
             return yield* buildDaPayloadInsert({
               record,
-              utxos: snapshot?.entries.map((entry) => ({
+              utxos: snapshot.entries.map((entry) => ({
                 outref: entry.outref,
                 output: entry.output,
               })),
@@ -296,6 +294,9 @@ export const finalizeCommittedBlockLocally = (
           if (persistedDaPayload !== undefined) {
             yield* DaPayloadsDB.upsertAvailable(persistedDaPayload);
           }
+          yield* CekProgramMaterialDB.releaseAdmissionOwnership(
+            finalizedTxHashes,
+          );
           return deletedOutRefHexes;
         }),
       )
@@ -498,7 +499,7 @@ export const failedSubmissionProgram = (
   err: TxSubmitError,
 ): Effect.Effect<WorkerOutput> =>
   Effect.gen(function* () {
-    yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err}`);
+    yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err.message}`);
     yield* Effect.logError(
       "🔹 ⚠️  Transactions MPF root marker will be preserved for recovery.",
     );

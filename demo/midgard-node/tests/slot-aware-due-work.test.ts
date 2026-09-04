@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   createSlotAwareDueWorkRegistry,
   type SlotAwareDueWork,
-} from "@/fibers/slot-aware-due-work.js";
+} from "../src/fibers/slot-aware-due-work.js";
 import {
   DEFERRABLE_SUBMIT_TIMING_OWNERS,
   slotAwareDueWorkFromSubmitTiming,
   type SubmitTimingNotDuePlanWithDueWorkEvidence,
-} from "@/transactions/submit-timing-due-work.js";
+} from "../src/transactions/submit-timing-due-work.js";
 
 const entry: SlotAwareDueWork = {
   kind: "commit_scheduler_refresh",

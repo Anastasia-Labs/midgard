@@ -8,12 +8,15 @@ import {
 } from "../src/codec/cbor.js";
 import {
   decodeMidgardAddressBytes,
+  decodeMidgardDatum,
   decodeMidgardTxOutput,
   decodeMidgardValue,
   decodeMidgardVersionedScript,
   encodeMidgardAddressText,
   encodeMidgardTxOutput,
+  encodeMidgardValue,
   encodeMidgardVersionedScript,
+  hashMidgardVersionedScript,
   MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
   midgardAddressFromText,
   type MidgardTxOutput,
@@ -79,17 +82,28 @@ describe("Midgard output codec", () => {
     );
   });
 
-  it("rejects reserved network-nibble bits other than the protected bit", () => {
-    for (const reservedNetworkBit of [0x02, 0x04]) {
-      const badAddress = Buffer.from(
-        midgardAddressFromText(unprotectedAddress),
-      );
-      badAddress[0] |= reservedNetworkBit;
+  it("decodes foreign network nibbles so network-id fraud remains provable", () => {
+    const network2 = Buffer.from(midgardAddressFromText(unprotectedAddress));
+    network2[0] = (network2[0] & 0xf0) | 0x02;
+    expect(decodeMidgardAddressBytes(network2)).toMatchObject({
+      protected: false,
+      networkId: 2,
+    });
+    expect(() => encodeMidgardAddressText(network2)).toThrow(
+      /Unsupported Midgard address network id/,
+    );
 
-      expect(() => decodeMidgardAddressBytes(badAddress)).toThrow(
-        /Unsupported Midgard address network id/,
-      );
-    }
+    // Raw nibble 15 carries Midgard's protection bit and decodes to the
+    // underlying foreign network 7. It must remain inspectable as fraud.
+    const network15 = Buffer.from(midgardAddressFromText(unprotectedAddress));
+    network15[0] = (network15[0] & 0xf0) | 0x0f;
+    expect(decodeMidgardAddressBytes(network15)).toMatchObject({
+      protected: true,
+      networkId: 7,
+    });
+    expect(() => encodeMidgardAddressText(network15)).toThrow(
+      /Unsupported Midgard address network id/,
+    );
   });
 
   it("round trips output CBOR byte-exactly", () => {
@@ -97,6 +111,25 @@ describe("Midgard output codec", () => {
     const decoded = decodeMidgardTxOutput(encoded);
 
     expect(encodeMidgardTxOutput(decoded)).toEqual(encoded);
+  });
+
+  it("uses the exact Aiken serialiseData framing for inline datums", () => {
+    expect(decodeMidgardDatum(Buffer.from("d87b9f182aff", "hex")).cbor).toEqual(
+      Buffer.from("d87b9f182aff", "hex"),
+    );
+    expect(decodeMidgardDatum(Buffer.from("a24111014002", "hex")).cbor).toEqual(
+      Buffer.from("a24111014002", "hex"),
+    );
+    expect(decodeMidgardDatum(Buffer.from("a24002411101", "hex")).cbor).toEqual(
+      Buffer.from("a24002411101", "hex"),
+    );
+
+    expect(() => decodeMidgardDatum(Buffer.from("d87b81182a", "hex"))).toThrow(
+      /not canonical/u,
+    );
+    expect(() =>
+      decodeMidgardDatum(Buffer.from("bf4111014002ff", "hex")),
+    ).toThrow(/not canonical/u);
   });
 
   it("recovers MidgardV1 script-ref version from bytes", () => {
@@ -112,13 +145,62 @@ describe("Midgard output codec", () => {
   });
 
   it("uses the Cardano PlutusV3 script-ref tag for PlutusV3 payloads", () => {
+    const scriptBytes = Buffer.from("010203", "hex");
     const encoded = encodeMidgardVersionedScript({
       language: "PlutusV3",
-      scriptBytes: Buffer.from("010203", "hex"),
+      scriptBytes,
     });
 
     expect(encoded.subarray(0, 2).toString("hex")).toBe("8203");
     expect(decodeMidgardVersionedScript(encoded).language).toBe("PlutusV3");
+    expect(
+      hashMidgardVersionedScript({
+        language: "PlutusV3",
+        scriptBytes,
+      }),
+    ).toBe("8b8c11dcad0af38c40d742ed155b4c938acc5507a0ecbcfcea36496a");
+  });
+
+  it("pins the MidgardV1 script tag and hash prefix and rejects unknown tags", () => {
+    const scriptBytes = Buffer.from("010203", "hex");
+    const encoded = encodeMidgardVersionedScript({
+      language: "MidgardV1",
+      scriptBytes,
+    });
+
+    expect(encoded.subarray(0, 3).toString("hex")).toBe("821880");
+    expect(
+      hashMidgardVersionedScript({
+        language: "MidgardV1",
+        scriptBytes,
+      }),
+    ).toBe("760b621a49505853e1f4562d126e185f78483932825e0fb077a1ed80");
+    expect(() =>
+      decodeMidgardVersionedScript(
+        encodeCborArrayRaw([
+          encodeCborUnsigned(129n),
+          encodeCborBytes(scriptBytes),
+        ]),
+      ),
+    ).toThrow(/Unsupported Midgard versioned script tag/u);
+  });
+
+  it("rejects structurally invalid tag-0 native reference-script bytes (#633 probe)", () => {
+    // The #633 probe: language_tag 0 with payload de ad ff, which is not
+    // Midgard native-script CBOR. The staged on-chain machine and this codec
+    // reject it; the one-shot `ledger_output_v1.parse_script_ref` accepts it
+    // until decision 0005 R5 item 9 lands with the #617 regeneration wave.
+    expect(() =>
+      decodeMidgardVersionedScript(Buffer.from("820043deadff", "hex")),
+    ).toThrow(/Reserved CBOR additional-info value/u);
+
+    const probeOutput = Buffer.from(
+      `a300581d60${"aa".repeat(28)}018200a003820043deadff`,
+      "hex",
+    );
+    expect(() => decodeMidgardTxOutput(probeOutput)).toThrow(
+      /Reserved CBOR additional-info value/u,
+    );
   });
 
   it("rejects non-canonical value policy ordering", () => {
@@ -136,6 +218,44 @@ describe("Midgard output codec", () => {
 
     expect(() => decodeMidgardValue(nonCanonical)).toThrow(
       /Value policies must be sorted/,
+    );
+  });
+
+  it("orders asset names by canonical CBOR byte-string order", () => {
+    const policyId = "55".repeat(28);
+    const encoded = encodeMidgardValue({
+      lovelace: 0n,
+      assets: new Map([
+        [
+          policyId,
+          new Map([
+            ["0000", 2n],
+            ["ff", 1n],
+          ]),
+        ],
+      ]),
+    });
+    expect([
+      ...decodeMidgardValue(encoded).assets.get(policyId)!.keys(),
+    ]).toStrictEqual(["ff", "0000"]);
+
+    const nonCanonical = encodeCborArrayRaw([
+      encodeCborUnsigned(0n),
+      encodeCborMapRaw([
+        [
+          encodeCborBytes(Buffer.alloc(28, 0x55)),
+          encodeCborMapRaw([
+            [
+              encodeCborBytes(Buffer.from("0000", "hex")),
+              encodeCborUnsigned(2n),
+            ],
+            [encodeCborBytes(Buffer.from("ff", "hex")), encodeCborUnsigned(1n)],
+          ]),
+        ],
+      ]),
+    ]);
+    expect(() => decodeMidgardValue(nonCanonical)).toThrow(
+      /canonical CBOR byte-string order/,
     );
   });
 

@@ -2,7 +2,7 @@ import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
+} from "../local-ledger-slot.js";
 
 export type InlineWaitPolicy = "allow_inline_wait" | "defer_positive_wait";
 

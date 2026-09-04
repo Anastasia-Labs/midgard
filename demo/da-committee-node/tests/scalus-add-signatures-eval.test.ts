@@ -13,6 +13,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, it } from "vitest";
 
 import { buildAddSignaturesTx } from "../src/coordinator/tx-builders.js";
+import { packSortedSignatureWitnesses } from "../src/coordinator/witnesses.js";
 import {
   daAttestationValidatorsFromDeployment,
   type MidgardNodeDeployment,
@@ -28,25 +29,56 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 describe("Scalus DA add-signatures evaluation", () => {
-  it("completes the one-signature AddSignatures transaction with local UPLC", async () => {
+  // Q63 (F04 §4) floors `da_threshold` at two, so the smallest attestation the
+  // governor can represent needs two genuine committee signatures. This is the
+  // only suite that runs the real Plutus validator over an AddSignatures body,
+  // so it is where a wrong bitmap, witness ordering, or signed message would
+  // actually be caught.
+  it("completes the two-signature AddSignatures transaction with local UPLC", async () => {
     const deployment = await loadDaDeploymentFixture("Preprod");
     const contracts = daAttestationValidatorsFromDeployment(deployment);
-    const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
+    // `valid_datum` measures `committee` with a sorted-unique walker, so the
+    // members are ordered by key and each signer's index follows that order.
+    const committeeSigners = (
+      await Promise.all([
+        loadDaSigner(`hex:${"00".repeat(31)}01`),
+        loadDaSigner(`hex:${"00".repeat(31)}02`),
+      ])
+    ).sort((left, right) => (left.publicKeyHex < right.publicKeyHex ? -1 : 1));
+    const committeeHex = committeeSigners
+      .map((signer) => signer.publicKeyHex)
+      .join("");
     const committeeSignersHash = bytesToHex(
-      blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+      blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
     );
     const headerHash = "ab".repeat(28);
     const daParamsDatum: SDK.DaParamsDatum = {
-      committee: signer.publicKeyHex,
+      committee: committeeHex,
       committee_signers_hash: committeeSignersHash,
-      da_threshold: 1n,
-      owners: ["22".repeat(28)],
-      update_threshold: 1n,
+      da_threshold: 2n,
+      owners: ["22".repeat(28), "33".repeat(28)],
+      update_threshold: 2n,
     };
+    const availabilityCommitment = SDK.buildDaAvailabilityCommitment({
+      deploymentIdentity: deployment.hubOraclePolicyId,
+      headerHash,
+      payload: Buffer.from("public retained DA"),
+      bondOwner: "76".repeat(28),
+      responseGeometry: SDK.availabilityResponseGeometry({
+        chunkByteLength: 14_020,
+        trancheByteLength: 4 * 1_024 * 1_024,
+        maxTrancheCount: 16,
+      }),
+    });
     const attestationDatum: SDK.DaAttestationDatum = {
       header_hash: headerHash,
-      da_threshold: 1n,
+      availability_commitment: availabilityCommitment,
+      da_threshold: 2n,
       committee_signers_hash: committeeSignersHash,
+      rescue_beneficiary: {
+        paymentCredential: { PublicKeyCredential: ["56".repeat(28)] },
+        stakeCredential: null,
+      },
       attested_signers: SDK.EMPTY_ATTESTED_SIGNER_BITMAP,
       attestation_count: 0n,
     };
@@ -89,12 +121,16 @@ describe("Scalus DA add-signatures evaluation", () => {
         daParamsUtxo,
         attestationUtxo,
         attestationDatum,
-        packedWitnessesHex: signDaAttestation({
-          signer,
-          signerIndex: 0,
-          headerHash,
-        }),
-        signerIndexes: [0],
+        packedWitnessesHex: packSortedSignatureWitnesses(
+          committeeSigners.map((signer, signerIndex) =>
+            signDaAttestation({
+              signer,
+              signerIndex,
+              availabilityCommitment,
+            }),
+          ),
+        ),
+        signerIndexes: [0, 1],
         referenceScripts,
       });
     } catch (error) {
@@ -120,6 +156,11 @@ const referenceScriptUtxos = (
   deployment: MidgardNodeDeployment,
   address: string,
 ): DaAttestationReferenceScripts => ({
+  availabilityChallengeMinting: referenceScriptUtxo(
+    "24",
+    address,
+    deployment.availabilityChallenge.mint.script,
+  ),
   daAttestationMinting: referenceScriptUtxo(
     "20",
     address,

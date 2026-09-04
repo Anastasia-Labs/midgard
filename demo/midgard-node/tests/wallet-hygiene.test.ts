@@ -9,7 +9,7 @@ import {
   isPlainAdaOnlyUtxo,
   selectCollateralCandidate,
   selectPlainAdaFundingUtxos,
-} from "@/transactions/wallet-hygiene.js";
+} from "../src/transactions/wallet-hygiene.js";
 
 const ADDRESS = "addr_test1wallet";
 

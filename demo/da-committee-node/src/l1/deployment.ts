@@ -1,4 +1,9 @@
-import type { AuthenticatedValidator } from "@al-ft/midgard-sdk";
+import type {
+  AuthenticatedValidator,
+  StateQueueValidator,
+  StateQueueYieldValidators,
+  WithdrawalValidator,
+} from "@al-ft/midgard-sdk";
 import {
   mintingPolicyToId,
   validatorToAddress,
@@ -21,10 +26,12 @@ export type MidgardDeploymentOutRef = {
 
 export type MidgardDeploymentContract = {
   readonly key: string;
-  readonly purpose: "mint" | "spend";
+  readonly purpose: "mint" | "spend" | "withdraw";
   readonly script: MidgardDeploymentScript;
   readonly scriptHash: string;
-  readonly refScriptOutRef: MidgardDeploymentOutRef;
+  // Null for contracts the deployment manifest gives no reference-script
+  // role; consumers that dereference a UTxO must require a non-null value.
+  readonly refScriptOutRef: MidgardDeploymentOutRef | null;
 };
 
 export type MidgardAuthenticatedDeployment = {
@@ -36,48 +43,114 @@ export type MidgardAuthenticatedDeployment = {
 };
 
 export type MidgardNodeDeployment = {
+  readonly hubOraclePolicyId: string;
+  readonly correctionLockAddress: string;
+  readonly hubOracle: MidgardAuthenticatedDeployment;
+  readonly availabilityChallenge: MidgardAuthenticatedDeployment;
+  readonly fraudProof: MidgardAuthenticatedDeployment;
   readonly daAttestation: MidgardAuthenticatedDeployment;
   readonly daParamsGovernor: MidgardAuthenticatedDeployment;
   readonly stateQueue: MidgardAuthenticatedDeployment;
+  /**
+   * The state-queue spend yields its five state transitions to withdrawal
+   * scripts, so the spend contract alone no longer describes the validator the
+   * SDK builders need. Each name is a first-class deployment-manifest contract
+   * and is parsed like any other.
+   */
+  readonly stateQueueYields: Readonly<
+    Record<keyof StateQueueYieldValidators, MidgardDeploymentContract>
+  >;
 };
 
 export type DaAttestationValidatorSet = {
+  readonly hubOracle: AuthenticatedValidator;
+  readonly availabilityChallenge: AuthenticatedValidator;
   readonly daAttestation: AuthenticatedValidator;
   readonly daParamsGovernor: AuthenticatedValidator;
-  readonly stateQueue: AuthenticatedValidator;
+  readonly stateQueue: StateQueueValidator;
 };
 
 export const daAttestationValidatorsFromDeployment = (
   deployment: MidgardNodeDeployment,
 ): DaAttestationValidatorSet => ({
+  hubOracle: authenticatedValidatorFromDeployment(deployment.hubOracle),
+  availabilityChallenge: authenticatedValidatorFromDeployment(
+    deployment.availabilityChallenge,
+  ),
   daAttestation: authenticatedValidatorFromDeployment(deployment.daAttestation),
   daParamsGovernor: authenticatedValidatorFromDeployment(
     deployment.daParamsGovernor,
   ),
-  stateQueue: authenticatedValidatorFromDeployment(deployment.stateQueue),
+  stateQueue: {
+    ...authenticatedValidatorFromDeployment(deployment.stateQueue),
+    yields: {
+      commit: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.commit,
+      ),
+      unattestedTimeout: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.unattestedTimeout,
+      ),
+      unavailableTimeout: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.unavailableTimeout,
+      ),
+      fraudRemoval: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.fraudRemoval,
+      ),
+      merge: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.merge,
+      ),
+    },
+  },
 });
 
 export const parseMidgardNodeDeploymentInfo = (
   deploymentInfo: Record<string, unknown>,
   network: string,
-): MidgardNodeDeployment | undefined => {
-  const keys = [
-    "daAttestationMint",
-    "daAttestationSpend",
-    "daParamsGovernorMint",
-    "daParamsGovernorSpend",
-    "stateQueueMint",
-    "stateQueueSpend",
-  ] as const;
-  if (
-    !keys.some(
-      (key) => objectAt(deploymentInfo, ["contracts", key]) !== undefined,
-    )
-  ) {
-    return undefined;
-  }
+): MidgardNodeDeployment => {
   const lucidNetwork = normalizeLucidNetwork(network);
+  const hubOracleMint = deploymentContract(
+    deploymentInfo,
+    "hubOracleMint",
+    "hub oracle mint",
+    "mint",
+  );
+  const correctionLockSpend = deploymentContract(
+    deploymentInfo,
+    "correctionLockSpend",
+    "correction lock spend",
+    "spend",
+  );
   return {
+    hubOraclePolicyId: hubOracleMint.scriptHash,
+    correctionLockAddress: validatorToAddress(
+      lucidNetwork,
+      correctionLockSpend.script as never,
+    ),
+    // The hub oracle is a mint-only script: no `hubOracleSpend` entry exists in
+    // any deployment document, and its beacon UTxO sits at the address whose
+    // payment credential is the minting policy hash itself.
+    hubOracle: {
+      mint: hubOracleMint,
+      spend: hubOracleMint,
+      policyId: hubOracleMint.scriptHash,
+      spendingScriptHash: hubOracleMint.scriptHash,
+      spendingScriptAddress: validatorToAddress(
+        lucidNetwork,
+        hubOracleMint.script as never,
+      ),
+    },
+    availabilityChallenge: authenticatedDeployment(
+      deploymentInfo,
+      "availabilityChallenge",
+      "availability challenge",
+      lucidNetwork,
+    ),
+    fraudProof: authenticatedDeployment(
+      deploymentInfo,
+      "fraudProof",
+      "fraud proof",
+      lucidNetwork,
+    ),
     daAttestation: authenticatedDeployment(
       deploymentInfo,
       "daAttestation",
@@ -96,32 +169,59 @@ export const parseMidgardNodeDeploymentInfo = (
       "state queue",
       lucidNetwork,
     ),
+    stateQueueYields: {
+      commit: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueCommitWithdraw",
+        "state queue commit withdraw",
+      ),
+      unattestedTimeout: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueUnattestedTimeoutWithdraw",
+        "state queue unattested timeout withdraw",
+      ),
+      unavailableTimeout: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueUnavailableTimeoutWithdraw",
+        "state queue unavailable timeout withdraw",
+      ),
+      fraudRemoval: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueFraudRemovalWithdraw",
+        "state queue fraud removal withdraw",
+      ),
+      merge: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueMergeWithdraw",
+        "state queue merge withdraw",
+      ),
+    },
   };
 };
 
 export const normalizeLucidNetwork = (value: string): LucidNetwork => {
-  const normalized = value.trim().toLowerCase();
-  switch (normalized) {
-    case "mainnet":
-      return "Mainnet";
-    case "preprod":
-    case "pre-production":
-    case "preproduction":
-      return "Preprod";
-    case "preview":
-      return "Preview";
-    case "custom":
-      return "Custom";
-    default:
-      throw new Error(
-        `unsupported Cardano network ${value}; expected Mainnet, Preprod, Preview, or Custom`,
-      );
+  if (
+    value === "Mainnet" ||
+    value === "Preprod" ||
+    value === "Preview" ||
+    value === "Custom"
+  ) {
+    return value;
   }
+  throw new Error(
+    `unsupported Cardano network ${value}; expected Mainnet, Preprod, Preview, or Custom`,
+  );
 };
 
 const authenticatedDeployment = (
   deploymentInfo: Record<string, unknown>,
-  prefix: "daAttestation" | "daParamsGovernor" | "stateQueue",
+  prefix:
+    | "hubOracle"
+    | "availabilityChallenge"
+    | "daAttestation"
+    | "daParamsGovernor"
+    | "stateQueue"
+    | "fraudProof",
   label: string,
   network: LucidNetwork,
 ): MidgardAuthenticatedDeployment => {
@@ -146,6 +246,21 @@ const authenticatedDeployment = (
   };
 };
 
+const withdrawDeploymentContract = (
+  deploymentInfo: Record<string, unknown>,
+  key: string,
+  label: string,
+): MidgardDeploymentContract =>
+  deploymentContract(deploymentInfo, key, label, "withdraw");
+
+const withdrawalValidatorFromDeployment = (
+  contract: MidgardDeploymentContract,
+): WithdrawalValidator => ({
+  withdrawalScriptCBOR: contract.script.script,
+  withdrawalScript: contract.script as never,
+  withdrawalScriptHash: contract.scriptHash,
+});
+
 const authenticatedValidatorFromDeployment = (
   contract: MidgardAuthenticatedDeployment,
 ): AuthenticatedValidator => ({
@@ -162,35 +277,42 @@ const deploymentContract = (
   deploymentInfo: Record<string, unknown>,
   key: string,
   label: string,
-  purpose: "mint" | "spend",
+  purpose: "mint" | "spend" | "withdraw",
 ): MidgardDeploymentContract => {
   const root = objectAt(deploymentInfo, ["contracts", key]);
   if (root === undefined) {
     throw new Error(`${label} contract deployment entry is required`);
   }
+  requireExactKeys(
+    root,
+    ["refScriptUTxO", "contract", "scriptHash"],
+    `${label} contract deployment entry`,
+  );
   const contract = objectAt(root, ["contract"]);
   if (contract === undefined) {
     throw new Error(`${label} contract object is required`);
   }
+  requireExactKeys(contract, ["type", "cborHex"], `${label} contract`);
   const script = deploymentScript(contract, label);
-  const scriptHash =
+  const derivedScriptHash =
     purpose === "mint"
       ? mintingPolicyToId(script as never)
       : validatorToScriptHash(script as never);
   const configuredScriptHash = stringAt(root, ["scriptHash"]);
   if (
-    configuredScriptHash !== undefined &&
-    configuredScriptHash.trim() !== ""
+    configuredScriptHash === undefined ||
+    configuredScriptHash.trim() === ""
   ) {
-    const normalizedConfigured = normalizeHex(configuredScriptHash, {
-      fieldName: `${label} scriptHash`,
-      byteLength: 28,
-    });
-    if (normalizedConfigured !== scriptHash) {
-      throw new Error(
-        `${label} scriptHash mismatch: configured=${normalizedConfigured}, derived=${scriptHash}`,
-      );
-    }
+    throw new Error(`${label} scriptHash is required`);
+  }
+  const scriptHash = normalizeHex(configuredScriptHash, {
+    fieldName: `${label} scriptHash`,
+    byteLength: 28,
+  });
+  if (scriptHash !== derivedScriptHash) {
+    throw new Error(
+      `${label} scriptHash mismatch: configured=${scriptHash}, derived=${derivedScriptHash}`,
+    );
   }
   return {
     key,
@@ -222,11 +344,20 @@ const deploymentScript = (
 const deploymentOutRef = (
   root: Record<string, unknown>,
   label: string,
-): MidgardDeploymentOutRef => {
+): MidgardDeploymentOutRef | null => {
+  const rawRefScriptUTxO = valueAt(root, ["refScriptUTxO"]);
+  if (rawRefScriptUTxO === null) {
+    return null;
+  }
   const refScriptUTxO = objectAt(root, ["refScriptUTxO"]);
   if (refScriptUTxO === undefined) {
     throw new Error(`${label} refScriptUTxO is required`);
   }
+  requireExactKeys(
+    refScriptUTxO,
+    ["txHash", "outputIndex"],
+    `${label} refScriptUTxO`,
+  );
   const txHash = stringAt(refScriptUTxO, ["txHash"]);
   const outputIndex = valueAt(refScriptUTxO, ["outputIndex"]);
   if (txHash === undefined) {
@@ -285,3 +416,21 @@ const valueAt = (
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const requireExactKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  fieldName: string,
+): void => {
+  const expected = new Set(keys);
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) {
+      throw new Error(`${fieldName}.${key} is unexpected`);
+    }
+  }
+  for (const key of keys) {
+    if (!Object.hasOwn(value, key)) {
+      throw new Error(`${fieldName}.${key} is required`);
+    }
+  }
+};

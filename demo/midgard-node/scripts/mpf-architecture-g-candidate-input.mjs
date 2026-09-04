@@ -1,14 +1,18 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { Level } from "level";
 
 import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
+  validateArchitectureGCommitCandidateInputV1,
+  validateArchitectureGCommitCandidateSeedInputV1,
   validateArchitectureGCrossGateEvidenceIdentity,
+  validateArchitectureGFixtureCreationEvidence,
 } from "./mpf-architecture-g-gate-config.mjs";
+import { readNodeSlotConfigEvidenceV1 } from "./node-slot-config-evidence.mjs";
 
 const option = (name, fallback) =>
   process.argv
@@ -54,6 +58,18 @@ const fixtureCreationPath = resolve(required("fixture-creation-summary"));
 const expectedTransactionCount = positiveInteger("transactions");
 const entryCount = positiveInteger("aggregate-entry-count");
 const encodedTupleBytes = positiveInteger("aggregate-tuple-bytes");
+const slotConfigArtifactPath = resolve(required("slot-config-artifact"));
+const slotConfigArtifactSha256 = required("slot-config-artifact-sha256");
+const slotConfigArtifactDocument = readNodeSlotConfigEvidenceV1({
+  path: slotConfigArtifactPath,
+  expectedSha256: slotConfigArtifactSha256,
+});
+const expectedNetwork = required("network");
+if (slotConfigArtifactDocument.network !== expectedNetwork) {
+  throw new Error(
+    `Slot-config artifact network ${slotConfigArtifactDocument.network} does not match --network=${expectedNetwork}`,
+  );
+}
 for (const path of [
   levelPath,
   binaryPath,
@@ -92,14 +108,16 @@ try {
 if (typeof durableRoot !== "string" || !/^[0-9a-f]{64}$/u.test(durableRoot)) {
   throw new Error("Candidate Level fixture has no canonical root marker");
 }
-if (
-  fixtureCreation.fixtureCreated !== true ||
-  resolve(String(fixtureCreation.fixturePath ?? "")) !== levelPath ||
-  fixtureCreation.marker !== durableRoot ||
-  fixtureCreation.initialUtxoCount !== entryCount ||
-  fixtureCreation.utxoPayloadAggregate?.entryCount !== entryCount ||
-  fixtureCreation.utxoPayloadAggregate?.encodedTupleBytes !== encodedTupleBytes
-) {
+const fixtureAggregate = validateArchitectureGFixtureCreationEvidence({
+  artifact: {
+    ...fixtureCreation,
+    fixturePath: resolve(String(fixtureCreation.fixturePath ?? "")),
+  },
+  expectedFixturePath: levelPath,
+  expectedMarker: durableRoot,
+  expectedUtxos: entryCount,
+});
+if (fixtureAggregate.encodedTupleBytes !== encodedTupleBytes) {
   throw new Error(
     "Candidate fixture creation evidence does not bind the Level path, marker, cardinality, and payload aggregate",
   );
@@ -121,77 +139,75 @@ const output = resolve(
 mkdirSync(output, { recursive: true });
 const seedInputPath = resolve(output, "seed-input.json");
 const candidateInputPath = resolve(output, "candidate-input.json");
-writeFileSync(
-  seedInputPath,
-  `${JSON.stringify(
-    {
-      schemaVersion: "midgard-architecture-g-commit-candidate-seed-v1",
-      phase1FormalBinding,
-      runtimeIdentity,
-      corpusSlicePath,
-      corpusSliceSha256,
-      fundingMapPath,
-      fundingMapSha256,
-      expectedTransactionCount,
-      firstTimestampIso,
-    },
-    null,
-    2,
-  )}\n`,
-);
-writeFileSync(
-  candidateInputPath,
-  `${JSON.stringify(
-    {
-      schemaVersion: "midgard-architecture-g-commit-candidate-input-v1",
-      phase1FormalBinding,
-      runtimeIdentity,
-      levelPath,
-      binaryPath,
-      binarySha256,
-      sidecarPath,
-      expectedTransactionCount,
-      corpusSha256,
-      corpusSliceSha256,
-      fundingMapSha256,
-      fixtureCreationPath,
-      fixtureCreationSha256,
-      fixtureInitialUtxoCount: fixtureCreation.initialUtxoCount,
-      baseUtxoPayloadAggregate: { entryCount, encodedTupleBytes },
-      workerInput: {
-        data: {
-          availableConfirmedBlock: "",
-          availableLocalFinalizationBlock: "",
-          currentBlockStartTimeMs: baseBlockEndTimeMs,
-          localFinalizationPending: false,
-          mempoolTxsCountSoFar: 0,
-          sizeOfProcessedTxsSoFar: 0,
-          baseSnapshotId: `architecture-g-candidate:${identity}`,
-          stateQueueHasUnmergedTail: true,
-          speculativeBuild: {
-            base: {
-              headerHash: identity.slice(0, 56),
-              utxosRoot: durableRoot,
-              blockEndTimeMs: baseBlockEndTimeMs,
-              submittedTxHash: identity,
-            },
-            watermarks: {
-              depositMs: now,
-              withdrawalMs: now,
-              txOrderMs: now,
-              refreshedAtMs: now,
-            },
-            excludedMempoolTxIds: [],
-            excludedDepositEventIds: [],
-            excludedForcedTransactionEventIds: [],
-            excludedWithdrawalEventIds: [],
-          },
+const seedInput = validateArchitectureGCommitCandidateSeedInputV1({
+  schemaVersion: "midgard-architecture-g-commit-candidate-seed-v1",
+  phase1FormalBinding,
+  runtimeIdentity,
+  corpusSlicePath,
+  corpusSliceSha256,
+  fundingMapPath,
+  fundingMapSha256,
+  expectedTransactionCount,
+  firstTimestampIso,
+});
+writeFileSync(seedInputPath, `${JSON.stringify(seedInput, null, 2)}\n`);
+const candidateInput = validateArchitectureGCommitCandidateInputV1({
+  schemaVersion: "midgard-architecture-g-commit-candidate-input-v1",
+  phase1FormalBinding,
+  runtimeIdentity,
+  levelPath,
+  binaryPath,
+  binarySha256,
+  sidecarPath,
+  expectedTransactionCount,
+  corpusSha256,
+  corpusSliceSha256,
+  fundingMapSha256,
+  fixtureCreationPath,
+  fixtureCreationSha256,
+  fixtureInitialUtxoCount: fixtureCreation.initialUtxoCount,
+  baseUtxoPayloadAggregate: { entryCount, encodedTupleBytes },
+  forcedValidationSlotConfigArtifact: {
+    path: slotConfigArtifactPath,
+    sha256: slotConfigArtifactSha256,
+    document: slotConfigArtifactDocument,
+  },
+  workerInput: {
+    data: {
+      availableConfirmedBlock: "",
+      availableLocalFinalizationBlock: "",
+      currentBlockStartTimeMs: baseBlockEndTimeMs,
+      forcedValidationSlotConfig: slotConfigArtifactDocument.slotConfig,
+      localFinalizationPending: false,
+      ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
+      mempoolTxsCountSoFar: 0,
+      sizeOfProcessedTxsSoFar: 0,
+      baseSnapshotId: `architecture-g-candidate:${identity}`,
+      stateQueueHasUnmergedTail: true,
+      speculativeBuild: {
+        base: {
+          headerHash: identity.slice(0, 56),
+          utxosRoot: durableRoot,
+          blockEndTimeMs: baseBlockEndTimeMs,
+          submittedTxHash: identity,
         },
+        watermarks: {
+          depositMs: now,
+          withdrawalMs: now,
+          txOrderMs: now,
+          refreshedAtMs: now,
+        },
+        excludedMempoolTxIds: [],
+        excludedDepositEventIds: [],
+        excludedForcedTransactionEventIds: [],
+        excludedWithdrawalEventIds: [],
       },
     },
-    null,
-    2,
-  )}\n`,
+  },
+});
+writeFileSync(
+  candidateInputPath,
+  `${JSON.stringify(candidateInput, null, 2)}\n`,
 );
 validateArchitectureGCrossGateEvidenceIdentity({
   expected: phase1FormalBinding,

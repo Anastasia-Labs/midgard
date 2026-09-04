@@ -3,13 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { encodeCbor } from "../src/codec/cbor.js";
 import { compressDaPayloadZstd } from "../src/da-compression.js";
 import {
-  DA_PAYLOAD_ENVELOPE_V3_VERSION,
+  DA_PAYLOAD_ENVELOPE_VERSION,
   DaPayloadContentEncoding,
   DaPayloadEnvelopeError,
-  decodeDaPayloadEnvelopeV3,
-  encodeDaPayloadEnvelopeV3,
+  decodeDaPayloadEnvelope,
+  encodeDaPayloadEnvelope,
   unwrapDaPayload,
-  wrapDaPayloadV3,
+  wrapDaPayload,
 } from "../src/da-payload-envelope.js";
 
 const MAX = 1024 * 1024;
@@ -32,18 +32,37 @@ const expectReason = async (
   }
 };
 
-describe("DaPayloadEnvelopeV3", () => {
+describe("DaPayloadEnvelopeV1", () => {
+  it("pins the exact five-field identity envelope vector", async () => {
+    const storedBytes = await wrapDaPayload(Buffer.from([0]), {
+      mode: "identity",
+    });
+
+    expect(storedBytes.toString("hex")).toBe(
+      "8501000158206e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d4100",
+    );
+    expect(decodeDaPayloadEnvelope(storedBytes)).toEqual({
+      version: 1,
+      contentEncoding: 0,
+      innerBytes: 1,
+      innerSha256: Buffer.from(
+        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+        "hex",
+      ),
+      body: Buffer.from([0]),
+    });
+  });
+
   it.each(["identity", "zstd"] as const)(
     "round-trips canonical %s envelopes and preserves stored-byte identity",
     async (mode) => {
-      const storedBytes = await wrapDaPayloadV3(inner, { mode, zstdLevel: 3 });
-      const decoded = decodeDaPayloadEnvelopeV3(storedBytes);
-      expect(encodeDaPayloadEnvelopeV3(decoded)).toEqual(storedBytes);
+      const storedBytes = await wrapDaPayload(inner, { mode, zstdLevel: 3 });
+      const decoded = decodeDaPayloadEnvelope(storedBytes);
+      expect(encodeDaPayloadEnvelope(decoded)).toEqual(storedBytes);
       const unwrapped = await unwrapDaPayload(storedBytes, {
         maxPayloadBytes: MAX,
-        schemaVersion: 3,
       });
-      expect(unwrapped.schemaVersion).toBe(3);
+      expect(unwrapped.schemaVersion).toBe(1);
       expect(unwrapped.innerBytes).toEqual(inner);
       expect(unwrapped.storedBytes).toEqual(storedBytes);
       expect(unwrapped.contentEncoding).toBe(
@@ -54,51 +73,129 @@ describe("DaPayloadEnvelopeV3", () => {
     },
   );
 
-  it("passes legacy schema-v2 bytes through unchanged", async () => {
-    const raw = Buffer.from("legacy-v2-owned-by-sdk-decoder");
-    const result = await unwrapDaPayload(raw, {
-      maxPayloadBytes: MAX,
-      schemaVersion: 2,
-    });
-    expect(result.schemaVersion).toBe(2);
-    expect(result.innerBytes).toEqual(raw);
-    expect(result.storedBytes).toEqual(raw);
+  it("rejects raw payload bytes without the mandatory V1 envelope", async () => {
+    await expectReason(
+      unwrapDaPayload(Buffer.from("raw-payload"), {
+        maxPayloadBytes: MAX,
+      }),
+      "malformed_envelope",
+    );
   });
 
-  it("rejects unknown content encodings before decompression", async () => {
+  it("rejects adjacent envelope versions and unknown encodings before decompression", async () => {
     const decompress = vi.fn(async () => Buffer.alloc(1));
-    const stored = encodeCbor([
-      3n,
-      99n,
-      BigInt(inner.length),
-      Buffer.alloc(32),
-      Buffer.from("body"),
-    ]);
+    for (const version of [0n, 2n]) {
+      await expectReason(
+        unwrapDaPayload(
+          encodeCbor([
+            version,
+            0n,
+            BigInt(inner.length),
+            Buffer.alloc(32),
+            Buffer.from("body"),
+          ]),
+          {
+            maxPayloadBytes: MAX,
+            decompress,
+          },
+        ),
+        "wrong_envelope_version",
+      );
+    }
     await expectReason(
-      unwrapDaPayload(stored, {
-        maxPayloadBytes: MAX,
-        schemaVersion: 3,
-        decompress,
-      }),
+      unwrapDaPayload(
+        encodeCbor([
+          1n,
+          -1n,
+          BigInt(inner.length),
+          Buffer.alloc(32),
+          Buffer.from("body"),
+        ]),
+        {
+          maxPayloadBytes: MAX,
+          decompress,
+        },
+      ),
+      "malformed_envelope",
+    );
+    await expectReason(
+      unwrapDaPayload(
+        encodeCbor([
+          1n,
+          2n,
+          BigInt(inner.length),
+          Buffer.alloc(32),
+          Buffer.from("body"),
+        ]),
+        {
+          maxPayloadBytes: MAX,
+          decompress,
+        },
+      ),
       "unknown_content_encoding",
     );
     expect(decompress).not.toHaveBeenCalled();
   });
 
+  it("rejects inferred or off modes instead of treating them as zstd", async () => {
+    for (const mode of ["off", "auto", "raw"]) {
+      await expectReason(
+        wrapDaPayload(inner, {
+          mode: mode as "identity",
+        }),
+        "unknown_content_encoding",
+      );
+    }
+  });
+
+  it("refuses to encode structurally invalid V1 envelopes", async () => {
+    const canonical = {
+      version: DA_PAYLOAD_ENVELOPE_VERSION,
+      contentEncoding: DaPayloadContentEncoding.identity,
+      innerBytes: inner.length,
+      innerSha256: Buffer.alloc(32),
+      body: inner,
+    } as const;
+
+    await expectReason(
+      () =>
+        encodeDaPayloadEnvelope({
+          ...canonical,
+          version: 2 as never,
+        }),
+      "wrong_envelope_version",
+    );
+    await expectReason(
+      () =>
+        encodeDaPayloadEnvelope({
+          ...canonical,
+          contentEncoding: 2 as never,
+        }),
+      "unknown_content_encoding",
+    );
+    await expectReason(
+      () =>
+        encodeDaPayloadEnvelope({
+          ...canonical,
+          innerSha256: Buffer.alloc(31),
+        }),
+      "malformed_envelope",
+    );
+  });
+
   it("normalizes malformed envelope fields to a structured envelope error", async () => {
-    const stored = encodeCbor([3n, 0n, 1n, "not-bytes", Buffer.from("x")]);
+    const stored = encodeCbor([1n, 0n, 1n, "not-bytes", Buffer.from("x")]);
     await expectReason(
       unwrapDaPayload(stored, {
         maxPayloadBytes: MAX,
-        schemaVersion: 3,
       }),
       "malformed_envelope",
     );
   });
 
   it("rejects non-minimal envelope framing without a whole-envelope re-encode", () => {
-    const canonical = encodeDaPayloadEnvelopeV3({
-      version: DA_PAYLOAD_ENVELOPE_V3_VERSION,
+    const canonical = encodeDaPayloadEnvelope({
+      version: DA_PAYLOAD_ENVELOPE_VERSION,
       contentEncoding: DaPayloadContentEncoding.identity,
       innerBytes: inner.length,
       innerSha256: Buffer.alloc(32),
@@ -109,7 +206,7 @@ describe("DaPayloadEnvelopeV3", () => {
       canonical.subarray(1),
     ]);
 
-    expect(() => decodeDaPayloadEnvelopeV3(nonMinimalArray)).toThrow(
+    expect(() => decodeDaPayloadEnvelope(nonMinimalArray)).toThrow(
       "failed to decode DA payload envelope",
     );
   });
@@ -117,10 +214,9 @@ describe("DaPayloadEnvelopeV3", () => {
   it("reports envelope parse, decompress, and inner-hash stages", async () => {
     const stages: string[] = [];
     let now = 0;
-    const stored = await wrapDaPayloadV3(inner, { mode: "zstd" });
+    const stored = await wrapDaPayload(inner, { mode: "zstd" });
     const result = await unwrapDaPayload(stored, {
       maxPayloadBytes: MAX,
-      schemaVersion: 3,
       timing: {
         monotonicNow: () => {
           now += 2;
@@ -142,11 +238,10 @@ describe("DaPayloadEnvelopeV3", () => {
   });
 
   it("keeps validation semantics when the optional timing clock throws", async () => {
-    const stored = await wrapDaPayloadV3(inner, { mode: "zstd" });
+    const stored = await wrapDaPayload(inner, { mode: "zstd" });
     await expect(
       unwrapDaPayload(stored, {
         maxPayloadBytes: MAX,
-        schemaVersion: 3,
         timing: {
           monotonicNow: () => {
             throw new Error("clock unavailable");
@@ -162,7 +257,7 @@ describe("DaPayloadEnvelopeV3", () => {
   it("rejects an oversized declared inner payload before decompression", async () => {
     const decompress = vi.fn(async () => Buffer.alloc(1));
     const stored = encodeCbor([
-      BigInt(DA_PAYLOAD_ENVELOPE_V3_VERSION),
+      BigInt(DA_PAYLOAD_ENVELOPE_VERSION),
       BigInt(DaPayloadContentEncoding.zstd),
       BigInt(MAX + 1),
       Buffer.alloc(32),
@@ -171,7 +266,6 @@ describe("DaPayloadEnvelopeV3", () => {
     await expectReason(
       unwrapDaPayload(stored, {
         maxPayloadBytes: MAX,
-        schemaVersion: 3,
         decompress,
       }),
       "declared_inner_too_large",
@@ -182,8 +276,8 @@ describe("DaPayloadEnvelopeV3", () => {
   it("enforces maxOutputLength against an over-expanding zstd frame", async () => {
     const expanded = Buffer.alloc(512 * 1024, 0x61);
     const compressed = await compressDaPayloadZstd(expanded, 3);
-    const stored = encodeDaPayloadEnvelopeV3({
-      version: DA_PAYLOAD_ENVELOPE_V3_VERSION,
+    const stored = encodeDaPayloadEnvelope({
+      version: DA_PAYLOAD_ENVELOPE_VERSION,
       contentEncoding: DaPayloadContentEncoding.zstd,
       innerBytes: 64,
       innerSha256: Buffer.alloc(32),
@@ -192,15 +286,14 @@ describe("DaPayloadEnvelopeV3", () => {
     await expectReason(
       unwrapDaPayload(stored, {
         maxPayloadBytes: MAX,
-        schemaVersion: 3,
       }),
       "decompression_failed",
     );
   });
 
   it("rejects inner length and hash mismatches", async () => {
-    const lengthMismatch = encodeDaPayloadEnvelopeV3({
-      version: DA_PAYLOAD_ENVELOPE_V3_VERSION,
+    const lengthMismatch = encodeDaPayloadEnvelope({
+      version: DA_PAYLOAD_ENVELOPE_VERSION,
       contentEncoding: DaPayloadContentEncoding.identity,
       innerBytes: inner.length + 1,
       innerSha256: Buffer.alloc(32),
@@ -209,13 +302,12 @@ describe("DaPayloadEnvelopeV3", () => {
     await expectReason(
       unwrapDaPayload(lengthMismatch, {
         maxPayloadBytes: MAX,
-        schemaVersion: 3,
       }),
       "inner_length_mismatch",
     );
 
-    const hashMismatch = encodeDaPayloadEnvelopeV3({
-      version: DA_PAYLOAD_ENVELOPE_V3_VERSION,
+    const hashMismatch = encodeDaPayloadEnvelope({
+      version: DA_PAYLOAD_ENVELOPE_VERSION,
       contentEncoding: DaPayloadContentEncoding.identity,
       innerBytes: inner.length,
       innerSha256: Buffer.alloc(32),
@@ -224,7 +316,6 @@ describe("DaPayloadEnvelopeV3", () => {
     await expectReason(
       unwrapDaPayload(hashMismatch, {
         maxPayloadBytes: MAX,
-        schemaVersion: 3,
       }),
       "inner_hash_mismatch",
     );

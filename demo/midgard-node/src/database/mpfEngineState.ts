@@ -1,11 +1,8 @@
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import { Database } from "../services/database.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "mpf_engine_state";
 
@@ -179,7 +176,11 @@ export const tryWithLedgerStoreLease = <A, E, R>(
     readonly ttlMs?: number;
     readonly renewIntervalMs?: number;
   } = {},
-): Effect.Effect<LedgerStoreLeaseRunResult<A>, E | DatabaseError, R | Database> =>
+): Effect.Effect<
+  LedgerStoreLeaseRunResult<A>,
+  E | DatabaseError,
+  R | Database
+> =>
   Effect.gen(function* () {
     const normalizedTtlMs = Math.max(1, Math.floor(ttlMs));
     const acquired = yield* acquireLedgerStoreLease({
@@ -300,7 +301,11 @@ export const stampLedgerPayloadAggregate = ({
 
 export const retrieveLedgerPayloadAggregate = (
   rootHex: string,
-): Effect.Effect<UtxoPayloadSizeAggregate | undefined, DatabaseError, Database> =>
+): Effect.Effect<
+  UtxoPayloadSizeAggregate | undefined,
+  DatabaseError,
+  Database
+> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{

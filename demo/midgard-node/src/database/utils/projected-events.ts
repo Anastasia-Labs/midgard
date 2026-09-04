@@ -1,11 +1,8 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import { Database } from "../../services/database.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./common.js";
 
 export type ProjectedEventRow = Record<string, unknown>;
 
@@ -304,6 +301,96 @@ export const clearProjectedHeaderAssignmentByEventIds = (
       WHERE ${sql(config.idColumn)} IN ${sql.in(ids)}
         AND ${sql(config.projectedHeaderHashColumn)} = ${headerHash}`;
   });
+
+/**
+ * Reopens events from an L2 block removed by authenticated state correction.
+ * The exact prior header binding prevents a correction from stealing an event
+ * already re-projected into a different canonical block. Repeated recovery is
+ * idempotent only in the projected+unassigned state produced here.
+ */
+export const reopenAfterStateQueueCorrectionByEventIds = (
+  config: ProjectedEventTable,
+  ids: readonly Buffer[],
+  removedHeaderHash: Buffer,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (ids.length === 0) return;
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* retrieveRowsByIds(config, ids);
+    const rowsById = new Map(
+      rows.map((row) => [idHex(config, row), row] as const),
+    );
+    for (const id of ids) {
+      const row = rowsById.get(id.toString("hex"));
+      if (row === undefined) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: config.tableName,
+            message: `Cannot reopen corrected ${config.entitySingular}: row is missing`,
+            cause: `${config.idLabel}=${id.toString("hex")}`,
+          }),
+        );
+      }
+      const assignedHeader = projectedHeaderHash(config, row);
+      const status = row[config.statusColumn as keyof typeof row];
+      const reopenState = classifyStateQueueCorrectionEventReopen({
+        assignedHeader,
+        removedHeaderHash,
+        status: String(status),
+        projectedStatus: config.projectedStatus,
+        terminalStatus: config.terminalStatus,
+      });
+      if (reopenState === "conflict") {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: config.tableName,
+            message: `Cannot reopen corrected ${config.entitySingular}: header/status changed`,
+            cause: `${config.idLabel}=${id.toString("hex")},status=${String(status)},assigned_header=${assignedHeader?.toString("hex") ?? "none"}`,
+          }),
+        );
+      }
+    }
+    yield* sql`UPDATE ${sql(config.tableName)}
+      SET ${sql(config.statusColumn)} = ${config.projectedStatus},
+          ${sql(config.projectedHeaderHashColumn)} = NULL
+          ${config.touchUpdatedAt ? sql`, updated_at = NOW()` : sql``}
+      WHERE ${sql(config.idColumn)} IN ${sql.in(ids)}
+        AND ${sql(config.projectedHeaderHashColumn)} = ${removedHeaderHash}
+        AND ${sql(config.statusColumn)} IN (
+          ${config.projectedStatus},
+          ${config.terminalStatus}
+        )`;
+  }).pipe(
+    sqlErrorToDatabaseError(
+      config.tableName,
+      `Failed to reopen corrected ${config.entityPlural}`,
+    ),
+  );
+
+export const classifyStateQueueCorrectionEventReopen = ({
+  assignedHeader,
+  removedHeaderHash,
+  status,
+  projectedStatus,
+  terminalStatus,
+}: {
+  readonly assignedHeader: Buffer | null;
+  readonly removedHeaderHash: Buffer;
+  readonly status: string;
+  readonly projectedStatus: string;
+  readonly terminalStatus: string;
+}): "reopen" | "already-reopened" | "conflict" => {
+  if (assignedHeader === null && status === projectedStatus) {
+    return "already-reopened";
+  }
+  if (
+    assignedHeader?.equals(removedHeaderHash) === true &&
+    (status === projectedStatus || status === terminalStatus)
+  ) {
+    return "reopen";
+  }
+  return "conflict";
+};
 
 export type ProjectedEventAdapterMessages = {
   readonly retrieveByProjectedHeaderHash: string;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldSkipScheduledLegacyCommitForSpeculation } from "@/fibers/block-commitment.js";
+import { shouldSkipScheduledLegacyCommitForSpeculation } from "../src/fibers/block-commitment.js";
 import {
   barrierWatermarksAreFresh,
   decideSpeculativeInvalidation,
@@ -14,8 +14,8 @@ import {
   type SpeculativeCommitEvent,
   type SpeculativeCommitState,
   type SpeculativeInvalidationReason,
-} from "@/fibers/speculative-commit-state.js";
-import { mergeBarrierWatermarks } from "@/fibers/user-event-barrier-refresher.js";
+} from "../src/fibers/speculative-commit-state.js";
+import { mergeBarrierWatermarks } from "../src/fibers/user-event-barrier-refresher.js";
 
 const candidate = (
   baseHeaderHash = "aa".repeat(28),

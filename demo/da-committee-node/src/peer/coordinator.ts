@@ -21,6 +21,7 @@ export type PeerSignatureCoordinatorDeps = {
   readonly signer: DaSigner;
   readonly signerIndex: number;
   readonly signerValidation: DaSignerValidation;
+  readonly availabilityCommitmentAuthority: import("./signatures.js").DaAvailabilityCommitmentAuthority;
   readonly store: WatcherStore;
   readonly requestTimeoutMs?: number;
   readonly retryInitialDelayMs: number;
@@ -51,6 +52,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         : { localPeerId: deps.localPeerId }),
       attestationExchange: deps.attestationExchange,
       signerValidation: deps.signerValidation,
+      availabilityCommitmentAuthority: deps.availabilityCommitmentAuthority,
       store: deps.store,
       requestTimeoutMs: deps.requestTimeoutMs,
     });
@@ -59,6 +61,14 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
   async publishSignature(
     record: DaSignatureRecord,
   ): Promise<"posted" | "post_failed"> {
+    const l1State = await this.deps.store.getL1SourceState();
+    if (l1State?.status === "quarantined") {
+      this.lastErrors.set(
+        record.headerHash,
+        `L1 source quarantined: ${l1State.quarantineReason ?? "unknown reason"}`,
+      );
+      return "post_failed";
+    }
     await this.pollPeerSignatures(record.headerHash);
     const peerResults = await Promise.all(
       this.deps.peers.map((peer) => this.broadcastSignature(peer, record)),
@@ -105,6 +115,9 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
   }
 
   async pollPeerSignatures(headerHash: string): Promise<void> {
+    if ((await this.deps.store.getL1SourceState())?.status === "quarantined") {
+      return;
+    }
     await this.poller.pollPeerSignatures(headerHash);
   }
 
@@ -115,6 +128,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
     const existing = await this.deps.store.getPeerBroadcast({
       peerId: peer.peerId,
       headerHash: record.headerHash,
+      availabilityCommitmentDigest: record.availabilityCommitmentDigest,
       signerIndex: record.signerIndex,
     });
     if (existing?.status === "posted") {
@@ -133,6 +147,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "failed",
         attempts: existing?.attempts ?? this.deps.retryMaxAttempts,
@@ -145,6 +160,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
       deploymentFingerprint: record.deploymentFingerprint,
       peerId: peer.peerId,
       headerHash: record.headerHash,
+      availabilityCommitmentDigest: record.availabilityCommitmentDigest,
       signerIndex: record.signerIndex,
       status: "pending",
       attempts,
@@ -166,6 +182,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "posted",
         attempts,
@@ -181,6 +198,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "failed",
         attempts,

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   deserializePhaseACandidate,
   MidgardRedeemerTag,
@@ -18,12 +19,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { FixedValidationWorkerPool } from "@/services/validation-pool.js";
-import {
-  copyToTransferable,
-  packPhaseAJob,
-} from "@/workers/utils/validation-pool.js";
-
 import {
   hashScriptWitness,
   makeNativeTx,
@@ -33,6 +28,11 @@ import {
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
+import {
+  copyToTransferable,
+  packPhaseAJob,
+} from "../../src/workers/utils/validation-pool.js";
 import {
   readPhase2ContainerIdentity,
   readPhase2CpuTopology,
@@ -75,6 +75,7 @@ const phaseAConfig = {
   minFeeB: 0n,
   concurrency: 1,
   strictnessProfile: "phase2_script_heavy",
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 } as const;
 
 const blueprint = JSON.parse(

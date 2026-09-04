@@ -4,12 +4,41 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  decodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  encodeMidgardProofSubmission,
+  hashMidgardCekProgramEnvelope,
+  hashMidgardCekTermNode,
+  MidgardCekProgramMaterialMissingRootError,
+} from "@al-ft/midgard-core/cek-proof";
+import {
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxFullHashFromCanonicalCbor,
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardTxOutput,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardTxOutput,
+  encodeMidgardVersionedScriptListPreimage,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
+import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import {
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_ID,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
@@ -27,6 +56,10 @@ import {
   Schedule,
   TestClock,
 } from "effect";
+// Test-only reach into the tooling package (a dev-only workspace cycle, like
+// validation -> fault-proofs): the crash-boundary case below drives a child
+// process through the same supervisor the e2e harness uses.
+import { superviseHostProcess } from "midgard-node-tools/e2e/service-supervisor";
 import { beforeAll, describe, expect, it as vitestIt } from "vitest";
 
 import {
@@ -34,12 +67,18 @@ import {
   resolveDepositStatusProgram,
 } from "../src/commands/deposit-status.js";
 import { buildSubmitRouter } from "../src/commands/listen-router.js";
-import { reconcileTxCommittedProgram } from "../src/commands/reconcile.js";
+import { normalizeSubmitTxCanonicalCborToNative } from "../src/commands/listen-utils.js";
+import {
+  parseReconciliationResult,
+  reconcileTxCommittedProgram,
+  RECONCILIATION_SCHEMA_VERSION,
+} from "../src/commands/reconcile.js";
 import {
   // Address history
   AddressHistoryDB,
   // Block
   BlocksDB,
+  CekProgramMaterialDB,
   CommitBuildCalibrationDB,
   // Utils
   CommonUtils,
@@ -70,7 +109,6 @@ import {
 } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { DatabaseError } from "../src/database/utils/common.js";
-import { superviseHostProcess } from "../src/e2e/service-supervisor.js";
 import {
   admissionBacklogGaugeFiber,
   commitAdmissionBacklogSlot,
@@ -82,9 +120,17 @@ import {
 } from "../src/fibers/admission-backlog-gauge.js";
 import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
 import {
+  collectAcceptedReferenceProgramEnvelopes,
   requestTxQueueProcessorWakeup,
   withAdmissionLeaseRecovery,
 } from "../src/fibers/tx-queue-processor.js";
+import {
+  computeLedgerMpfRootFromLedgerEntries,
+  ledgerPayloadAggregateFromEntries,
+  persistCommitStageRejectedTransactions,
+  resolveIncludedDepositEntriesForWindow,
+  resolveTxDeltaForCommit,
+} from "../src/mpf/index.js";
 import { AdmissionWriter } from "../src/services/admission-writer.js";
 import { NodeConfig } from "../src/services/config.js";
 import { AdmissionSql, BatchSql } from "../src/services/database.js";
@@ -102,9 +148,11 @@ import {
 import { makeWriteBehind, WriteBehind } from "../src/services/write-behind.js";
 import {
   applyConfirmedLedgerDelta,
+  applyConfirmedLedgerDeltaChainTransaction,
   decodeConfirmedLedgerDelta,
   materializeConfirmedLedgerSnapshot,
 } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
+import { finalizeConfirmedMergeTransaction } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { breakDownTx, ProcessedTx } from "../src/utils.js";
 import { revalidateAndPersistSpeculativeCandidateSources } from "../src/workers/commit-block-header.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
@@ -114,14 +162,12 @@ import {
 } from "../src/workers/commit-block-header/event-roots.js";
 import { resolvePendingJournalLedgerState } from "../src/workers/commit-block-header/pending-journal.js";
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  ledgerPayloadAggregateFromEntries,
-  resolveIncludedDepositEntriesForWindow,
-  resolveTxDeltaForCommit,
-} from "../src/workers/utils/mpf.js";
+import { finalizeCommittedBlockLocally } from "../src/workers/utils/commit-submission.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 import {
   deterministicFixtureBytes,
   deterministicFixtureOutputReferenceId,
@@ -147,6 +193,13 @@ const flushAll = Effect.gen(function* () {
       DaPayloadsDB.clear,
       CommonUtils.clearTable(TxAdmissionsDB.tableName),
       TxRejectionsDB.clear,
+      Effect.gen(function* () {
+        yield* CommonUtils.clearTable(
+          CekProgramMaterialDB.admissionOwnerTableName,
+        );
+        yield* CommonUtils.clearTable(CekProgramMaterialDB.membershipTableName);
+        yield* CommonUtils.clearTable(CekProgramMaterialDB.entryTableName);
+      }),
       CommonUtils.clearTable(MutationJobsDB.tableName),
       CommonUtils.clearTable(StateQueueMutationLeasesDB.tableName),
     ],
@@ -177,22 +230,34 @@ type TxQueueWakeRequirements =
   | MempoolLedgerCache;
 
 const submitThroughRouter = <R>(
-  txCanonicalCbor: Buffer,
+  requestBody: Buffer,
   wakeTxQueueProcessor: Effect.Effect<void, never, R>,
+  options: {
+    readonly contentType?: string;
+    readonly consensusProfile?: MidgardConsensusProfile;
+  } = {},
 ): Effect.Effect<
   SubmitHttpResult,
   unknown,
   R | SqlClient.SqlClient | NodeConfig | Globals | AdmissionWriter
 > =>
   Effect.gen(function* () {
-    const response = yield* buildSubmitRouter(wakeTxQueueProcessor).pipe(
+    const response = yield* buildSubmitRouter(
+      wakeTxQueueProcessor,
+      undefined,
+      options.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
+    ).pipe(
       Effect.provideService(
         HttpServerRequest.HttpServerRequest,
         HttpServerRequest.fromWeb(
           new Request("http://midgard.test/submit", {
             method: "POST",
-            headers: { "content-type": "application/cbor" },
-            body: new Uint8Array(txCanonicalCbor),
+            headers: {
+              "content-type":
+                options.contentType ?? "application/vnd.midgard.v1+cbor",
+              "content-length": requestBody.length.toString(),
+            },
+            body: new Uint8Array(requestBody),
           }),
         ),
       ),
@@ -219,6 +284,139 @@ const makeNativeSubmitTx = (): {
   return { txId, txIdHex: txId.toString("hex"), txCanonicalCbor };
 };
 
+const makeProofSubmitTx = (): {
+  readonly txId: Buffer;
+  readonly txIdHex: string;
+  readonly txCanonicalCbor: Buffer;
+} => {
+  const canonical: MidgardNativeTxCanonical = {
+    version: MIDGARD_NATIVE_TX_VERSION,
+    validity: "TxIsValid",
+    body: {
+      spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimageCbor: EMPTY_CBOR_LIST,
+      fee: 0n,
+      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor: EMPTY_CBOR_LIST,
+      scriptIntegrityHash: EMPTY_NULL_ROOT,
+      auxiliaryDataHash: EMPTY_NULL_ROOT,
+      networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    },
+  };
+  const txCanonicalCbor = encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical(canonical),
+  );
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
+  );
+  return { txId, txIdHex: txId.toString("hex"), txCanonicalCbor };
+};
+
+const makeMaterialProofSubmitTx = (nonce: number) => {
+  const term = { kind: "variable" as const, index: BigInt(nonce) };
+  const preimage = encodeMidgardCekTermNode(term);
+  const material = {
+    kind: "term" as const,
+    root: hashMidgardCekTermNode(term),
+    preimage,
+  };
+  const envelope = decodeMidgardCekProgramEnvelope(
+    encodeMidgardCekProgramEnvelope({
+      uplcVersion: [1n, 1n, 0n],
+      termRoot: material.root,
+      nodeCount: 1n,
+      materialByteLength: BigInt(preimage.length),
+    }),
+  );
+  const base = decodeMidgardNativeTxFullFromCanonicalCbor(
+    makeNativeSubmitTx().txCanonicalCbor,
+  );
+  const canonical: MidgardNativeTxCanonical = {
+    version: base.version,
+    validity: base.validity,
+    body: {
+      ...base.body,
+      fee: base.body.fee + BigInt(nonce),
+    },
+    witnessSet: {
+      ...base.witnessSet,
+      scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
+        {
+          language: "MidgardV1",
+          scriptBytes: encodeMidgardCekProgramEnvelope(envelope),
+        },
+      ]),
+    },
+  };
+  const txCanonicalCbor = encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical(canonical),
+  );
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
+  );
+  const sidecarCbor = encodeMidgardCekProgramMaterialSidecar([material]);
+  return {
+    txId,
+    txIdHex: txId.toString("hex"),
+    txCanonicalCbor,
+    material,
+    envelope,
+    sidecarCbor,
+    proofEnvelope: encodeMidgardProofSubmission({
+      transactionCbor: txCanonicalCbor,
+      programMaterial: [material],
+    }),
+  };
+};
+
+const makeReferenceMaterialProofSubmitTx = (nonce: number) => {
+  const attached = makeMaterialProofSubmitTx(nonce);
+  const referenceOutRef = makeOutRefCbor(
+    databaseTxHash(`accepted-reference-material-${nonce.toString()}`),
+    0,
+  );
+  const attachedCanonical = decodeMidgardNativeTxFullFromCanonicalCbor(
+    attached.txCanonicalCbor,
+  );
+  const canonical: MidgardNativeTxCanonical = {
+    ...attachedCanonical,
+    body: {
+      ...attachedCanonical.body,
+      referenceInputsPreimageCbor: encodeCbor([referenceOutRef]),
+    },
+    witnessSet: {
+      ...attachedCanonical.witnessSet,
+      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    },
+  };
+  const txCanonicalCbor = encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical(canonical),
+  );
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
+  );
+  return {
+    ...attached,
+    txId,
+    txIdHex: txId.toString("hex"),
+    txCanonicalCbor,
+    referenceOutRef,
+    proofEnvelope: encodeMidgardProofSubmission({
+      transactionCbor: txCanonicalCbor,
+      programMaterial: [attached.material],
+    }),
+  };
+};
+
 const expectSubmitBody = (
   result: SubmitHttpResult,
   expected: {
@@ -243,6 +441,60 @@ const retrieveAllMempool = MempoolDB.retrievePage({ limit: 100_000 }).pipe(
 
 const databaseFixtureBytes = (label: string, length: number): Buffer =>
   deterministicFixtureBytes(`database:${label}`, length);
+
+const emptyProgramMaterialSidecar = encodeMidgardCekProgramMaterialSidecar([]);
+const emptyProgramMaterialSidecarSha256 = createHash("sha256")
+  .update(emptyProgramMaterialSidecar)
+  .digest();
+
+const readCekProgramMaterialStoreStats = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    readonly entry_count: string;
+    readonly membership_count: string;
+    readonly owner_count: string;
+    readonly total_bytes: string;
+  }>`SELECT
+      (SELECT COUNT(*)::text
+        FROM ${sql(CekProgramMaterialDB.entryTableName)}) AS entry_count,
+      (SELECT COUNT(*)::text
+        FROM ${sql(CekProgramMaterialDB.membershipTableName)})
+        AS membership_count,
+      (SELECT COUNT(*)::text
+        FROM ${sql(CekProgramMaterialDB.admissionOwnerTableName)})
+        AS owner_count,
+      (
+        COALESCE((
+          SELECT SUM(
+            octet_length(material_root) + octet_length(da_value_cbor)
+          )
+          FROM ${sql(CekProgramMaterialDB.entryTableName)}
+        ), 0)
+        + COALESCE((
+          SELECT SUM(
+            octet_length(program_envelope_hash)
+              + octet_length(material_root)
+              + 1
+          )
+          FROM ${sql(CekProgramMaterialDB.membershipTableName)}
+        ), 0)
+        + COALESCE((
+          SELECT SUM(
+            octet_length(tx_id)
+              + octet_length(program_envelope_hash)
+              + octet_length(material_root)
+          )
+          FROM ${sql(CekProgramMaterialDB.admissionOwnerTableName)}
+        ), 0)
+      )::text AS total_bytes`;
+  return rows[0]!;
+});
+
+const wrapNativeSubmitTx = (txCanonicalCbor: Buffer): Buffer =>
+  encodeMidgardProofSubmission({
+    transactionCbor: txCanonicalCbor,
+    programMaterial: [],
+  });
 
 const databaseTxHash = (label: string): Buffer =>
   deterministicFixtureTxHash(`database:${label}`);
@@ -335,7 +587,8 @@ const daPayloadInsertFixture = (label: string): DaPayloadsDB.InsertInput => {
   const payload = databaseFixtureBytes(`${label}-payload`, 96);
   return {
     [DaPayloadsDB.Columns.HEADER_HASH]: headerHash,
-    [DaPayloadsDB.Columns.VERSION]: Number(SDK.DA_PAYLOAD_V2_VERSION),
+    [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
+    [DaPayloadsDB.Columns.VERSION]: 1,
     [DaPayloadsDB.Columns.PAYLOAD_CBOR]: payload,
     [DaPayloadsDB.Columns.PAYLOAD_SHA256]: createHash("sha256")
       .update(payload)
@@ -347,12 +600,14 @@ const daPayloadInsertFixture = (label: string): DaPayloadsDB.InsertInput => {
     [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+    [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
     [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
     [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
     [DaPayloadsDB.Columns.DEPOSIT_COUNT]: 0n,
     [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: 0n,
     [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]: 0n,
+    [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
     [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(),
     [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(),
   };
@@ -404,6 +659,45 @@ describe("Database: initialization and basic operations", () => {
               AND column_name = 'tx'`;
           expect(columns).toHaveLength(1);
           expect(columns[0]?.is_nullable).toBe("NO");
+        }),
+      ),
+  );
+
+  it.effect(
+    "creates CEK durable pins and admission ownership with composite membership integrity",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const durablePin = yield* sql<{
+            readonly is_nullable: "YES" | "NO";
+            readonly column_default: string | null;
+          }>`SELECT is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name =
+                ${CekProgramMaterialDB.membershipTableName}
+              AND column_name = 'durable_pin'`;
+          expect(durablePin).toEqual([
+            {
+              is_nullable: "NO",
+              column_default: "true",
+            },
+          ]);
+          const ownerForeignKeys = yield* sql<{
+            readonly definition: string;
+          }>`SELECT pg_get_constraintdef(oid) AS definition
+            FROM pg_constraint
+            WHERE conrelid =
+                ${CekProgramMaterialDB.admissionOwnerTableName}::regclass
+              AND contype = 'f'`;
+          expect(ownerForeignKeys).toHaveLength(1);
+          expect(ownerForeignKeys[0]?.definition).toContain(
+            "FOREIGN KEY (program_envelope_hash, material_root)",
+          );
+          expect(ownerForeignKeys[0]?.definition).toContain(
+            "REFERENCES cek_program_material_memberships(program_envelope_hash, material_root) ON DELETE CASCADE",
+          );
         }),
       ),
   );
@@ -509,6 +803,772 @@ describe("Database: initialization and basic operations", () => {
 
 describe("TxAdmissionsDB", () => {
   it.effect(
+    "keeps V1 submission material durable and rejects unsupported media types",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const admissionSql = yield* AdmissionSql;
+          const nodeConfig = yield* NodeConfig;
+          const proofTx = makeProofSubmitTx();
+          const proofEnvelope = encodeMidgardProofSubmission({
+            transactionCbor: proofTx.txCanonicalCbor,
+            programMaterial: [],
+          });
+          const unclaimedNode = { kind: "error" as const };
+          const unclaimedMaterial = {
+            kind: "term" as const,
+            root: hashMidgardCekTermNode(unclaimedNode),
+            preimage: encodeMidgardCekTermNode(unclaimedNode),
+          };
+          const submitProof = (body: Buffer, contentType: string) =>
+            submitThroughRouter(body, Effect.void, {
+              contentType,
+              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            }).pipe(
+              Effect.provideService(SqlClient.SqlClient, admissionSql),
+              Effect.provideService(NodeConfig, nodeConfig),
+            );
+
+          const rawToProof = yield* submitProof(
+            proofTx.txCanonicalCbor,
+            "application/cbor",
+          );
+          expect(rawToProof.status).toBe(415);
+
+          const unclaimed = yield* submitProof(
+            encodeMidgardProofSubmission({
+              transactionCbor: proofTx.txCanonicalCbor,
+              programMaterial: [unclaimedMaterial],
+            }),
+            "application/vnd.midgard.v1+cbor",
+          );
+          expect(unclaimed).toEqual({
+            status: 400,
+            body: {
+              error: "E_CEK_PROGRAM_MATERIAL",
+              detail:
+                "V1 program material does not cover every attached program envelope",
+            },
+          });
+          expect(yield* TxAdmissionsDB.getByTxId(proofTx.txId)).toBeNull();
+
+          const accepted = yield* submitProof(
+            proofEnvelope,
+            "application/vnd.midgard.v1+cbor",
+          );
+          expectSubmitBody(accepted, {
+            status: 202,
+            txIdHex: proofTx.txIdHex,
+            duplicate: false,
+          });
+          const stored = yield* TxAdmissionsDB.getByTxId(proofTx.txId);
+          expect(
+            stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
+          ).toEqual(encodeMidgardCekProgramMaterialSidecar([]));
+          expect(
+            stored?.[
+              TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
+            ],
+          ).toHaveLength(32);
+        }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
+    "keeps missing publication roots typed for durable storage but hard-fails admissions",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const attempt = makeMaterialProofSubmitTx(300);
+          const durable = yield* Effect.either(
+            CekProgramMaterialDB.persistVerifiedBundles([attempt.envelope], []),
+          );
+          expect(durable._tag).toBe("Left");
+          if (durable._tag === "Left") {
+            expect(durable.left).toBeInstanceOf(
+              MidgardCekProgramMaterialMissingRootError,
+            );
+          }
+
+          const admission = yield* Effect.either(
+            CekProgramMaterialDB.persistVerifiedAdmissionBundle({
+              txId: attempt.txId,
+              txCanonicalCbor: attempt.txCanonicalCbor,
+              sidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
+            }),
+          );
+          expect(admission._tag).toBe("Left");
+          if (admission._tag === "Left") {
+            expect(admission.left).toBeInstanceOf(DatabaseError);
+            expect(admission.left.message).toContain(
+              "incomplete CEK program material",
+            );
+          }
+        }),
+      ),
+  );
+
+  it.effect(
+    "persists only material reachable from an authorized envelope",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const reachableNode = { kind: "error" as const };
+          const reachable = {
+            kind: "term" as const,
+            root: hashMidgardCekTermNode(reachableNode),
+            preimage: encodeMidgardCekTermNode(reachableNode),
+          };
+          const extraNode = { kind: "variable" as const, index: 0n };
+          const extra = {
+            kind: "term" as const,
+            root: hashMidgardCekTermNode(extraNode),
+            preimage: encodeMidgardCekTermNode(extraNode),
+          };
+          const envelope = decodeMidgardCekProgramEnvelope(
+            encodeMidgardCekProgramEnvelope({
+              uplcVersion: [1n, 1n, 0n],
+              termRoot: reachable.root,
+              nodeCount: 1n,
+              materialByteLength: BigInt(reachable.preimage.length),
+            }),
+          );
+
+          yield* CekProgramMaterialDB.persistVerifiedBundles(
+            [envelope],
+            [reachable, extra],
+          );
+          const stored = yield* CekProgramMaterialDB.retrieveVerifiedBundles([
+            envelope,
+          ]);
+          expect(stored).toEqual([reachable]);
+          const sql = yield* SqlClient.SqlClient;
+          const extras = yield* sql<{ readonly count: string }>`
+          SELECT COUNT(*)::text AS count
+          FROM cek_program_material_entries
+          WHERE material_root = ${Buffer.from(extra.root)}`;
+          expect(extras[0]?.count).toBe("0");
+        }),
+      ),
+  );
+
+  it.effect(
+    "enforces the advisory-locked aggregate CEK byte cap without charging exact duplicates",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const nodeConfig = yield* NodeConfig;
+          const first = makeMaterialProofSubmitTx(71);
+          const second = makeMaterialProofSubmitTx(72);
+          const firstOwner = databaseTxHash("cek-cap-first-owner");
+          yield* CekProgramMaterialDB.persistVerifiedBundles(
+            [first.envelope],
+            [first.material],
+            { kind: "admission", txId: firstOwner },
+          );
+          const firstStats = yield* readCekProgramMaterialStoreStats;
+          const exactCapConfig = {
+            ...nodeConfig,
+            CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES: Number(
+              firstStats.total_bytes,
+            ),
+          };
+
+          yield* CekProgramMaterialDB.persistVerifiedBundles(
+            [first.envelope],
+            [first.material],
+            { kind: "admission", txId: firstOwner },
+          ).pipe(Effect.provideService(NodeConfig, exactCapConfig));
+          expect(yield* readCekProgramMaterialStoreStats).toEqual(firstStats);
+
+          const overCap = yield* Effect.either(
+            CekProgramMaterialDB.persistVerifiedBundles(
+              [second.envelope],
+              [second.material],
+              {
+                kind: "admission",
+                txId: databaseTxHash("cek-cap-second-owner"),
+              },
+            ).pipe(Effect.provideService(NodeConfig, exactCapConfig)),
+          );
+          expect(overCap._tag).toBe("Left");
+          if (overCap._tag === "Left") {
+            expect(overCap.left.message).toContain(
+              "exceeds its durable aggregate byte cap",
+            );
+          }
+          expect(yield* readCekProgramMaterialStoreStats).toEqual(firstStats);
+        }),
+      ),
+  );
+
+  it.effect(
+    "retains shared admission material until its final owner releases and never collects a durable pin",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const attempt = makeMaterialProofSubmitTx(73);
+          const firstOwner = databaseTxHash("cek-shared-owner-1");
+          const secondOwner = databaseTxHash("cek-shared-owner-2");
+          yield* CekProgramMaterialDB.persistVerifiedBundles(
+            [attempt.envelope],
+            [attempt.material],
+            { kind: "admission", txId: firstOwner },
+          );
+          yield* CekProgramMaterialDB.persistVerifiedBundles(
+            [attempt.envelope],
+            [attempt.material],
+            { kind: "admission", txId: secondOwner },
+          );
+          expect(yield* readCekProgramMaterialStoreStats).toMatchObject({
+            entry_count: "1",
+            membership_count: "1",
+            owner_count: "2",
+          });
+
+          yield* CekProgramMaterialDB.releaseAdmissionOwnership([firstOwner]);
+          expect(yield* readCekProgramMaterialStoreStats).toMatchObject({
+            entry_count: "1",
+            membership_count: "1",
+            owner_count: "1",
+          });
+          yield* CekProgramMaterialDB.releaseAdmissionOwnership([secondOwner]);
+          expect(yield* readCekProgramMaterialStoreStats).toMatchObject({
+            entry_count: "0",
+            membership_count: "0",
+            owner_count: "0",
+            total_bytes: "0",
+          });
+
+          yield* CekProgramMaterialDB.persistVerifiedBundles(
+            [attempt.envelope],
+            [attempt.material],
+            { kind: "admission", txId: firstOwner },
+          );
+          yield* CekProgramMaterialDB.persistVerifiedBundles(
+            [attempt.envelope],
+            [attempt.material],
+            { kind: "durable" },
+          );
+          yield* CekProgramMaterialDB.releaseAdmissionOwnership([firstOwner]);
+          expect(yield* readCekProgramMaterialStoreStats).toMatchObject({
+            entry_count: "1",
+            membership_count: "1",
+            owner_count: "0",
+          });
+          const sql = yield* SqlClient.SqlClient;
+          const pins = yield* sql<{ readonly durable_pin: boolean }>`
+            SELECT durable_pin
+            FROM ${sql(CekProgramMaterialDB.membershipTableName)}`;
+          expect(pins).toEqual([{ durable_pin: true }]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "releases CEK ownership in local finalization and rolls it back on a block conflict",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const successful = makeMaterialProofSubmitTx(74);
+          const conflicting = makeMaterialProofSubmitTx(75);
+          for (const attempt of [successful, conflicting]) {
+            yield* CekProgramMaterialDB.persistVerifiedBundles(
+              [attempt.envelope],
+              [attempt.material],
+              { kind: "admission", txId: attempt.txId },
+            );
+            yield* MempoolDB.insertMultipleCore([
+              {
+                txId: attempt.txId,
+                txCbor: attempt.txCanonicalCbor,
+                spent: [],
+                produced: [],
+              },
+            ]);
+          }
+          const page = yield* MempoolDB.retrievePage({ limit: 10 });
+          const entryById = new Map(
+            page.entries.map((entry) => [
+              entry[TxUtils.Columns.TX_ID].toString("hex"),
+              entry,
+            ]),
+          );
+          const resetCount = yield* Ref.make(0);
+          const transactionsMpf = {
+            resetToEmpty: () => Ref.update(resetCount, (count) => count + 1),
+          } as unknown as Parameters<typeof finalizeCommittedBlockLocally>[0];
+          yield* finalizeCommittedBlockLocally(
+            transactionsMpf,
+            [entryById.get(successful.txIdHex)!],
+            [successful.txId],
+            "31".repeat(28),
+            [],
+            { useAmbientProcessedMempool: false },
+          );
+          expect(yield* Ref.get(resetCount)).toBe(1);
+          expect(
+            yield* CekProgramMaterialDB.retrieveVerifiedBundles([
+              successful.envelope,
+            ]).pipe(Effect.either),
+          ).toMatchObject({ _tag: "Left" });
+
+          yield* BlocksDB.insert(Buffer.from("41".repeat(28), "hex"), [
+            conflicting.txId,
+          ]);
+          const failed = yield* Effect.either(
+            finalizeCommittedBlockLocally(
+              transactionsMpf,
+              [entryById.get(conflicting.txIdHex)!],
+              [conflicting.txId],
+              "42".repeat(28),
+              [],
+              { useAmbientProcessedMempool: false },
+            ),
+          );
+          expect(failed._tag).toBe("Left");
+          expect(
+            yield* MempoolDB.retrieveTxCborByHash(conflicting.txId),
+          ).toEqual(conflicting.txCanonicalCbor);
+          expect(
+            yield* CekProgramMaterialDB.retrieveVerifiedBundles([
+              conflicting.envelope,
+            ]),
+          ).toEqual([conflicting.material]);
+          const ownerRows = yield* readCekProgramMaterialStoreStats;
+          expect(ownerRows.owner_count).toBe("1");
+        }),
+      ),
+  );
+
+  it.effect(
+    "atomically releases commit-stage rejected CEK ownership and preserves it when rejection persistence fails",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const successful = makeMaterialProofSubmitTx(76);
+          const conflicting = makeMaterialProofSubmitTx(77);
+          for (const attempt of [successful, conflicting]) {
+            yield* CekProgramMaterialDB.persistVerifiedBundles(
+              [attempt.envelope],
+              [attempt.material],
+              { kind: "admission", txId: attempt.txId },
+            );
+            yield* MempoolDB.insertMultipleCore([
+              {
+                txId: attempt.txId,
+                txCbor: attempt.txCanonicalCbor,
+                spent: [],
+                produced: [],
+              },
+            ]);
+          }
+          const rejectionFor = (txId: Buffer, detail: string) => ({
+            [TxRejectionsDB.Columns.TX_ID]: txId,
+            [TxRejectionsDB.Columns.REJECT_CODE]:
+              RejectCodes.PlutusEvaluationUnavailable,
+            [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
+          });
+          yield* persistCommitStageRejectedTransactions({
+            rejectedTxHashes: [successful.txId],
+            rejectionEntries: [
+              rejectionFor(successful.txId, "commit-stage rejection"),
+            ],
+          });
+          expect(
+            yield* MempoolDB.retrieveTxCborByHash(successful.txId).pipe(
+              Effect.option,
+            ),
+          ).toEqual(Option.none());
+          expect(
+            yield* CekProgramMaterialDB.retrieveVerifiedBundles([
+              successful.envelope,
+            ]).pipe(Effect.either),
+          ).toMatchObject({ _tag: "Left" });
+
+          yield* TxRejectionsDB.insert(
+            rejectionFor(conflicting.txId, "preexisting conflict"),
+          );
+          const failed = yield* Effect.either(
+            persistCommitStageRejectedTransactions({
+              rejectedTxHashes: [conflicting.txId],
+              rejectionEntries: [
+                rejectionFor(conflicting.txId, "duplicate conflict"),
+              ],
+            }),
+          );
+          expect(failed._tag).toBe("Left");
+          expect(
+            yield* MempoolDB.retrieveTxCborByHash(conflicting.txId),
+          ).toEqual(conflicting.txCanonicalCbor);
+          expect(
+            yield* CekProgramMaterialDB.retrieveVerifiedBundles([
+              conflicting.envelope,
+            ]),
+          ).toEqual([conflicting.material]);
+          expect((yield* readCekProgramMaterialStoreStats).owner_count).toBe(
+            "1",
+          );
+        }),
+      ),
+  );
+
+  it.effect(
+    "does not promote material from unique admissions that validation rejects",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const admissionSql = yield* AdmissionSql;
+          const nodeConfig = yield* NodeConfig;
+          const attempts = Array.from({ length: 8 }, (_, index) =>
+            makeMaterialProofSubmitTx(index + 100),
+          );
+          const submit = (proofEnvelope: Buffer) =>
+            submitThroughRouter(proofEnvelope, Effect.void).pipe(
+              Effect.provideService(SqlClient.SqlClient, admissionSql),
+              Effect.provideService(NodeConfig, nodeConfig),
+            );
+          for (const attempt of attempts) {
+            const admitted = yield* submit(attempt.proofEnvelope);
+            if (admitted.status !== 202) {
+              throw new Error(
+                `material admission failed: ${JSON.stringify(admitted)}`,
+              );
+            }
+          }
+
+          const sql = yield* SqlClient.SqlClient;
+          const materialRoots = attempts.map((attempt) =>
+            Buffer.from(attempt.material.root),
+          );
+          const envelopeHashes = attempts.map((attempt) =>
+            Buffer.from(hashMidgardCekProgramEnvelope(attempt.envelope)),
+          );
+          const retainedBeforeVerdict = yield* sql<{
+            readonly count: string;
+          }>`SELECT COUNT(*)::text AS count
+            FROM ${sql(CekProgramMaterialDB.entryTableName)}
+            WHERE ${sql.in("material_root", materialRoots)}`;
+          expect(retainedBeforeVerdict[0]?.count).toBe("0");
+
+          const leaseOwner = "database-test:rejected-material-retention";
+          const claimed = yield* TxAdmissionsDB.claimBatch({
+            limit: attempts.length,
+            leaseOwner,
+            leaseDurationMs: 30_000,
+          });
+          expect(claimed).toHaveLength(attempts.length);
+          yield* TxAdmissionsDB.markRejected({
+            rows: claimed,
+            leaseOwner,
+            rejectedTxs: claimed.map((row) => ({
+              txId: row.tx_id,
+              code: RejectCodes.PlutusEvaluationUnavailable,
+              detail: "deliberate rejected-material retention regression",
+            })),
+          });
+
+          const retainedAfterVerdict = yield* sql<{
+            readonly count: string;
+          }>`SELECT COUNT(*)::text AS count
+            FROM ${sql(CekProgramMaterialDB.entryTableName)}
+            WHERE ${sql.in("material_root", materialRoots)}`;
+          const membershipsAfterVerdict = yield* sql<{
+            readonly count: string;
+          }>`SELECT COUNT(*)::text AS count
+            FROM ${sql(CekProgramMaterialDB.membershipTableName)}
+            WHERE ${sql.in("program_envelope_hash", envelopeHashes)}`;
+          expect(retainedAfterVerdict[0]?.count).toBe("0");
+          expect(membershipsAfterVerdict[0]?.count).toBe("0");
+        }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
+    "atomically promotes accepted material, scrubs sidecar bytes, and preserves exact duplicates",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const admissionSql = yield* AdmissionSql;
+          const nodeConfig = yield* NodeConfig;
+          const attempt = makeMaterialProofSubmitTx(211);
+          const fixtureNormalization = normalizeSubmitTxCanonicalCborToNative(
+            attempt.txCanonicalCbor,
+          );
+          if (!fixtureNormalization.ok) {
+            throw new Error(fixtureNormalization.detail);
+          }
+          const submit = () =>
+            submitThroughRouter(attempt.proofEnvelope, Effect.void).pipe(
+              Effect.provideService(SqlClient.SqlClient, admissionSql),
+              Effect.provideService(NodeConfig, nodeConfig),
+            );
+          const admitted = yield* submit();
+          if (admitted.status !== 202) {
+            throw new Error(
+              `material admission failed: ${JSON.stringify(admitted)}`,
+            );
+          }
+
+          const leaseOwner = "database-test:accepted-material-promotion";
+          const claimed = yield* TxAdmissionsDB.claimBatch({
+            limit: 1,
+            leaseOwner,
+            leaseDurationMs: 30_000,
+          });
+          expect(claimed).toHaveLength(1);
+          yield* TxAdmissionsDB.markAccepted({
+            rows: claimed,
+            leaseOwner,
+            processedTxs: [
+              {
+                txId: attempt.txId,
+                txCbor: attempt.txCanonicalCbor,
+                spent: [],
+                produced: [],
+              },
+            ],
+          });
+
+          const stored = yield* TxAdmissionsDB.getByTxId(attempt.txId);
+          expect(stored?.status).toBe(TxAdmissionsDB.Status.Accepted);
+          expect(
+            stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
+          ).toEqual(emptyProgramMaterialSidecar);
+          expect(
+            stored?.[
+              TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
+            ],
+          ).toEqual(createHash("sha256").update(attempt.sidecarCbor).digest());
+          expect(
+            yield* CekProgramMaterialDB.retrieveVerifiedBundles([
+              attempt.envelope,
+            ]),
+          ).toEqual([attempt.material]);
+          expect(yield* readCekProgramMaterialStoreStats).toMatchObject({
+            entry_count: "1",
+            membership_count: "1",
+            owner_count: "1",
+          });
+          const sql = yield* SqlClient.SqlClient;
+          const promotedMemberships = yield* sql<{
+            readonly durable_pin: boolean;
+          }>`SELECT durable_pin
+            FROM ${sql(CekProgramMaterialDB.membershipTableName)}
+            WHERE program_envelope_hash =
+              ${Buffer.from(hashMidgardCekProgramEnvelope(attempt.envelope))}`;
+          expect(promotedMemberships).toEqual([{ durable_pin: false }]);
+
+          const duplicate = yield* submit();
+          expect(duplicate.status).toBe(200);
+          expect(duplicate.body).toMatchObject({
+            txId: attempt.txIdHex,
+            status: TxAdmissionsDB.Status.Accepted,
+            duplicate: true,
+          });
+          expect(
+            (yield* TxAdmissionsDB.getByTxId(attempt.txId))?.request_count,
+          ).toBe(2n);
+        }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
+    "rolls back CEK material promotion and sidecar scrubbing when acceptance fails",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const admissionSql = yield* AdmissionSql;
+          const nodeConfig = yield* NodeConfig;
+          const attempt = makeMaterialProofSubmitTx(223);
+          const admitted = yield* submitThroughRouter(
+            attempt.proofEnvelope,
+            Effect.void,
+          ).pipe(
+            Effect.provideService(SqlClient.SqlClient, admissionSql),
+            Effect.provideService(NodeConfig, nodeConfig),
+          );
+          expect(admitted.status).toBe(202);
+
+          const leaseOwner = "database-test:accepted-material-rollback";
+          const claimed = yield* TxAdmissionsDB.claimBatch({
+            limit: 1,
+            leaseOwner,
+            leaseDurationMs: 30_000,
+          });
+          expect(claimed).toHaveLength(1);
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO mempool (tx_id, tx)
+            VALUES (${attempt.txId}, ${attempt.txCanonicalCbor})`;
+
+          const result = yield* Effect.either(
+            TxAdmissionsDB.markAccepted({
+              rows: claimed,
+              leaseOwner,
+              processedTxs: [
+                {
+                  txId: attempt.txId,
+                  txCbor: attempt.txCanonicalCbor,
+                  spent: [],
+                  produced: [],
+                },
+              ],
+            }),
+          );
+          expect(result._tag).toBe("Left");
+
+          const stored = yield* TxAdmissionsDB.getByTxId(attempt.txId);
+          expect(stored?.status).toBe(TxAdmissionsDB.Status.Validating);
+          expect(
+            stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
+          ).toEqual(attempt.sidecarCbor);
+          const retainedEntries = yield* sql<{ readonly count: string }>`
+            SELECT COUNT(*)::text AS count
+            FROM ${sql(CekProgramMaterialDB.entryTableName)}
+            WHERE material_root = ${Buffer.from(attempt.material.root)}`;
+          const retainedMemberships = yield* sql<{ readonly count: string }>`
+            SELECT COUNT(*)::text AS count
+            FROM ${sql(CekProgramMaterialDB.membershipTableName)}
+            WHERE program_envelope_hash =
+              ${Buffer.from(hashMidgardCekProgramEnvelope(attempt.envelope))}`;
+          expect(retainedEntries[0]?.count).toBe("0");
+          expect(retainedMemberships[0]?.count).toBe("0");
+        }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
+    "rejects a hostile accepted row whose attached program has an empty sidecar",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const attempt = makeMaterialProofSubmitTx(225);
+          yield* TxAdmissionsDB.admit({
+            txId: attempt.txId,
+            txCanonicalCbor: attempt.txCanonicalCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
+            submitSource: "native",
+            currentBacklog: 0n,
+            maxBacklog: 10,
+          });
+          const leaseOwner = "database-test:hostile-empty-material";
+          const claimed = yield* TxAdmissionsDB.claimBatch({
+            limit: 1,
+            leaseOwner,
+            leaseDurationMs: 30_000,
+          });
+          const result = yield* Effect.either(
+            TxAdmissionsDB.markAccepted({
+              rows: claimed,
+              leaseOwner,
+              processedTxs: [
+                {
+                  txId: attempt.txId,
+                  txCbor: attempt.txCanonicalCbor,
+                  spent: [],
+                  produced: [],
+                },
+              ],
+            }),
+          );
+          expect(result._tag).toBe("Left");
+          expect((yield* TxAdmissionsDB.getByTxId(attempt.txId))?.status).toBe(
+            TxAdmissionsDB.Status.Validating,
+          );
+          const sql = yield* SqlClient.SqlClient;
+          const retained = yield* sql<{ readonly count: string }>`
+            SELECT COUNT(*)::text AS count
+            FROM ${sql(CekProgramMaterialDB.entryTableName)}
+            WHERE material_root = ${Buffer.from(attempt.material.root)}`;
+          expect(retained[0]?.count).toBe("0");
+        }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
+    "atomically promotes an accepted Phase B reference-input program",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const admissionSql = yield* AdmissionSql;
+          const nodeConfig = yield* NodeConfig;
+          const attempt = makeReferenceMaterialProofSubmitTx(227);
+          const admitted = yield* submitThroughRouter(
+            attempt.proofEnvelope,
+            Effect.void,
+          ).pipe(
+            Effect.provideService(SqlClient.SqlClient, admissionSql),
+            Effect.provideService(NodeConfig, nodeConfig),
+          );
+          if (admitted.status !== 202) {
+            throw new Error(
+              `reference-material admission failed: ${JSON.stringify(admitted)}`,
+            );
+          }
+
+          const baseReferenceOutput = makeMidgardTxOutput(
+            CML.Address.from_bech32(address1),
+            CML.Value.from_coin(1_000_000n),
+          ).to_cbor_bytes();
+          const referenceOutput = encodeMidgardTxOutput({
+            ...decodeMidgardTxOutput(baseReferenceOutput),
+            script_ref: {
+              language: "MidgardV1",
+              scriptBytes: encodeMidgardCekProgramEnvelope(attempt.envelope),
+            },
+          });
+          const referenceProgramEnvelopesByTxId =
+            collectAcceptedReferenceProgramEnvelopes(
+              [
+                {
+                  ledgerTx: { txId: attempt.txId },
+                  submission: { txCbor: attempt.txCanonicalCbor },
+                  graph: { produced: [] },
+                },
+              ],
+              new Map([
+                [attempt.referenceOutRef.toString("hex"), referenceOutput],
+              ]),
+            );
+          expect(referenceProgramEnvelopesByTxId.get(attempt.txIdHex)).toEqual([
+            attempt.envelope,
+          ]);
+
+          const leaseOwner = "database-test:accepted-reference-material";
+          const claimed = yield* TxAdmissionsDB.claimBatch({
+            limit: 1,
+            leaseOwner,
+            leaseDurationMs: 30_000,
+          });
+          yield* TxAdmissionsDB.markAccepted({
+            rows: claimed,
+            leaseOwner,
+            processedTxs: [
+              {
+                txId: attempt.txId,
+                txCbor: attempt.txCanonicalCbor,
+                spent: [],
+                produced: [],
+              },
+            ],
+            referenceProgramEnvelopesByTxId,
+          });
+
+          expect(
+            yield* CekProgramMaterialDB.retrieveVerifiedBundles([
+              attempt.envelope,
+            ]),
+          ).toEqual([attempt.material]);
+          const stored = yield* TxAdmissionsDB.getByTxId(attempt.txId);
+          expect(stored?.status).toBe(TxAdmissionsDB.Status.Accepted);
+          expect(
+            stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
+          ).toEqual(emptyProgramMaterialSidecar);
+        }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
     "preserves exact submit-router HTTP parity for new, duplicate, conflict, and backlog-full requests",
     () =>
       isolatedDb(
@@ -518,9 +1578,13 @@ describe("TxAdmissionsDB", () => {
           let testConfig = {
             ...baseConfig,
             MAX_DURABLE_ADMISSION_BACKLOG: 2,
+            SUBMIT_INGRESS_MAX_CONCURRENCY: 32,
           };
           const submit = (txCanonicalCbor: Buffer) =>
-            submitThroughRouter(txCanonicalCbor, Effect.void).pipe(
+            submitThroughRouter(
+              wrapNativeSubmitTx(txCanonicalCbor),
+              Effect.void,
+            ).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
               Effect.provideService(NodeConfig, testConfig),
             );
@@ -549,6 +1613,7 @@ describe("TxAdmissionsDB", () => {
               conflictTx.txCanonicalCbor,
               Buffer.from([0]),
             ]),
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -623,6 +1688,78 @@ describe("TxAdmissionsDB", () => {
   );
 
   it.effect(
+    "atomically caps aggregate pending sidecar bytes across parallel submissions",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const admissionSql = yield* AdmissionSql;
+          const baseConfig = yield* NodeConfig;
+          const maxBacklogBytes = emptyProgramMaterialSidecar.length * 4;
+          const testConfig = {
+            ...baseConfig,
+            MAX_DURABLE_ADMISSION_BACKLOG: 100,
+            MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxBacklogBytes,
+            SUBMIT_INGRESS_MAX_CONCURRENCY: 64,
+          };
+          const submit = (txCanonicalCbor: Buffer) =>
+            submitThroughRouter(
+              wrapNativeSubmitTx(txCanonicalCbor),
+              Effect.void,
+            ).pipe(
+              Effect.provideService(SqlClient.SqlClient, admissionSql),
+              Effect.provideService(NodeConfig, testConfig),
+            );
+          const attempts = Array.from({ length: 32 }, () =>
+            makeNativeSubmitTx(),
+          );
+          const results = yield* Effect.all(
+            attempts.map((attempt) => submit(attempt.txCanonicalCbor)),
+            { concurrency: "unbounded" },
+          );
+          const accepted = results
+            .map((result, index) => ({ result, index }))
+            .filter(({ result }) => result.status === 202);
+          const denied = results.filter((result) => result.status === 503);
+          expect(accepted).toHaveLength(4);
+          expect(denied).toHaveLength(28);
+          expect(
+            denied.every(
+              ({ body }) =>
+                body.error ===
+                  "Durable submission admission byte backlog is full" &&
+                body.maxBacklogBytes === maxBacklogBytes.toString(),
+            ),
+          ).toBe(true);
+
+          const sql = yield* SqlClient.SqlClient;
+          const pending = yield* sql<{
+            readonly bytes: string;
+            readonly count: string;
+          }>`SELECT
+              COALESCE(
+                SUM(octet_length(payload.cek_program_material_sidecar_cbor)),
+                0
+              )::text AS bytes,
+              COUNT(*)::text AS count
+            FROM tx_admissions admission
+            INNER JOIN tx_admission_payloads payload
+              ON payload.tx_id = admission.tx_id
+            WHERE admission.status IN ('queued', 'validating')`;
+          expect(pending[0]).toEqual({
+            bytes: maxBacklogBytes.toString(),
+            count: "4",
+          });
+
+          const duplicate = yield* submit(
+            attempts[accepted[0]!.index]!.txCanonicalCbor,
+          );
+          expect(duplicate.status).toBe(200);
+          expect(duplicate.body.duplicate).toBe(true);
+        }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
     "holds a stale refresh, bounds parallel distinct HTTP admits, then recovers after one refresh",
     () =>
       isolatedDb(
@@ -633,9 +1770,13 @@ describe("TxAdmissionsDB", () => {
             ...baseConfig,
             MAX_DURABLE_ADMISSION_BACKLOG: 5,
             ADMISSION_BACKLOG_REFRESH_MS: 10,
+            SUBMIT_INGRESS_MAX_CONCURRENCY: 16,
           };
           const submit = (txCanonicalCbor: Buffer) =>
-            submitThroughRouter(txCanonicalCbor, Effect.void).pipe(
+            submitThroughRouter(
+              wrapNativeSubmitTx(txCanonicalCbor),
+              Effect.void,
+            ).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
               Effect.provideService(NodeConfig, testConfig),
             );
@@ -647,6 +1788,7 @@ describe("TxAdmissionsDB", () => {
                 `admission.http-frozen-seed-${index}`,
                 64,
               ),
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: BigInt(index),
               maxBacklog,
@@ -730,6 +1872,10 @@ describe("TxAdmissionsDB", () => {
           const batchSql = yield* BatchSql;
           const admissionSql = yield* AdmissionSql;
           const nodeConfig = yield* NodeConfig;
+          const ingressTestConfig = {
+            ...nodeConfig,
+            SUBMIT_INGRESS_MAX_CONCURRENCY: 64,
+          };
           const globals = yield* Globals;
           let validationRuns = 0;
           const cache = yield* makeMempoolLedgerCacheService(
@@ -739,6 +1885,7 @@ describe("TxAdmissionsDB", () => {
             ),
           );
           const validationPool: ValidationPoolService = {
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             poolSize: 1,
             ready: Effect.void,
             stats: Effect.succeed({
@@ -776,8 +1923,9 @@ describe("TxAdmissionsDB", () => {
             txCanonicalCbor: Buffer,
             wake: Effect.Effect<void, never, TxQueueWakeRequirements>,
           ) =>
-            submitThroughRouter(txCanonicalCbor, wake).pipe(
+            submitThroughRouter(wrapNativeSubmitTx(txCanonicalCbor), wake).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
+              Effect.provideService(NodeConfig, ingressTestConfig),
               Effect.provideService(ValidationPool, validationPool),
               Effect.provideService(MempoolLedgerCache, cache),
               Effect.provideService(Lucid, lucid),
@@ -939,10 +2087,11 @@ describe("TxAdmissionsDB", () => {
         Effect.gen(function* () {
           const rowCount = 2_048;
           const sql = yield* SqlClient.SqlClient;
+          const validTxCanonicalCbor = makeNativeSubmitTx().txCanonicalCbor;
           const txs = Array.from({ length: rowCount }, (_, index) => {
             const label = `admission.bulk-array-${index.toString()}`;
             const txId = databaseTxHash(label);
-            const txCanonicalCbor = databaseFixtureBytes(`${label}.cbor`, 64);
+            const txCanonicalCbor = validTxCanonicalCbor;
             const source = {
               [LedgerUtils.Columns.TX_ID]: databaseTxHash(`${label}.source`),
               [LedgerUtils.Columns.OUTREF]: databaseOutputReferenceId(
@@ -980,9 +2129,13 @@ describe("TxAdmissionsDB", () => {
             txs.map(({ txId, txCanonicalCbor }) => ({
               tx_id: txId,
               tx_canonical_cbor: txCanonicalCbor,
-              tx_canonical_cbor_sha256: createHash("sha256")
-                .update(txCanonicalCbor)
-                .digest(),
+              tx_full_hash_v1:
+                computeMidgardNativeTxFullHashFromCanonicalCbor(
+                  txCanonicalCbor,
+                ),
+              cek_program_material_sidecar_cbor: emptyProgramMaterialSidecar,
+              cek_program_material_sidecar_sha256:
+                emptyProgramMaterialSidecarSha256,
             })),
           )}`;
           yield* MempoolLedgerDB.insert(txs.map(({ source }) => source));
@@ -1065,9 +2218,10 @@ describe("TxAdmissionsDB", () => {
             value[2] = 0x80;
             return value;
           };
+          const validTxCanonicalCbor = makeNativeSubmitTx().txCanonicalCbor;
           const txs = [0, 1].map((index) => {
             const txId = binary(32, 17 + index);
-            const txCanonicalCbor = binary(64, 71 + index);
+            const txCanonicalCbor = validTxCanonicalCbor;
             const source = {
               [LedgerUtils.Columns.TX_ID]: binary(32, 101 + index),
               [LedgerUtils.Columns.OUTREF]: binary(36, 131 + index),
@@ -1081,6 +2235,7 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.admit({
                 txId,
                 txCanonicalCbor,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -1196,6 +2351,7 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.admit({
                 txId,
                 txCanonicalCbor,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -1288,6 +2444,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -1341,6 +2498,7 @@ describe("TxAdmissionsDB", () => {
           const first = yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor: txCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -1351,6 +2509,7 @@ describe("TxAdmissionsDB", () => {
           const duplicate = yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor: txCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 10n,
             maxBacklog: 10,
@@ -1368,6 +2527,7 @@ describe("TxAdmissionsDB", () => {
                 "admission.state-machine-conflict",
                 64,
               ),
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 10,
@@ -1385,6 +2545,7 @@ describe("TxAdmissionsDB", () => {
                 "admission.backlog-full",
                 64,
               ),
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 10n,
               maxBacklog: 10,
@@ -1414,6 +2575,7 @@ describe("TxAdmissionsDB", () => {
             TxAdmissionsDB.admit({
               txId,
               txCanonicalCbor,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 100,
@@ -1448,6 +2610,7 @@ describe("TxAdmissionsDB", () => {
               "admission.reserved-concurrent",
               64,
             ),
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native" as const,
           };
           const firstFiber = yield* Effect.fork(
@@ -1540,6 +2703,7 @@ describe("TxAdmissionsDB", () => {
               "admission.reserved-order-a",
               64,
             ),
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native" as const,
           };
           const requestB = {
@@ -1548,6 +2712,7 @@ describe("TxAdmissionsDB", () => {
               "admission.reserved-order-b",
               64,
             ),
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native" as const,
           };
           const start = yield* Deferred.make<void>();
@@ -1605,6 +2770,7 @@ describe("TxAdmissionsDB", () => {
                   `admission.stale-gauge-${index.toString()}`,
                   64,
                 ),
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: yield* readAdmissionBacklogGauge,
                 maxBacklog,
@@ -1642,6 +2808,7 @@ describe("TxAdmissionsDB", () => {
                     `admission.parallel-cap-${index.toString()}`,
                     64,
                   ),
+                  programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                   submitSource: "native",
                   currentBacklog: reservation.currentBacklog,
                   maxBacklog,
@@ -1695,6 +2862,7 @@ describe("TxAdmissionsDB", () => {
           inputs.map((input) =>
             TxAdmissionsDB.admit({
               ...input,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 10,
@@ -1751,6 +2919,7 @@ describe("TxAdmissionsDB", () => {
           inputs.map((input) =>
             TxAdmissionsDB.admit({
               ...input,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 20,
@@ -1802,6 +2971,7 @@ describe("TxAdmissionsDB", () => {
           for (const input of inputs) {
             yield* TxAdmissionsDB.admit({
               ...input,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 10,
@@ -1868,6 +3038,7 @@ describe("TxAdmissionsDB", () => {
             "admission.local-sync-setting",
             64,
           ),
+          programMaterialSidecarCbor: emptyProgramMaterialSidecar,
           submitSource: "native",
           currentBacklog: 0n,
           maxBacklog: 10,
@@ -1904,6 +3075,7 @@ describe("TxAdmissionsDB", () => {
                   `admission.arrival-tie-${txId.toString("hex")}`,
                   64,
                 ),
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -1948,13 +3120,11 @@ describe("TxAdmissionsDB", () => {
       isolatedDb(
         Effect.gen(function* () {
           const txId = databaseTxHash("admission.worker-crash");
-          const txCanonicalCbor = databaseFixtureBytes(
-            "admission.worker-crash",
-            64,
-          );
+          const txCanonicalCbor = makeNativeSubmitTx().txCanonicalCbor;
           yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -2072,6 +3242,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId: tx.txId,
             txCanonicalCbor: tx.txCanonicalCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -2184,21 +3355,16 @@ describe("TxAdmissionsDB", () => {
           } satisfies LedgerUtils.Entry;
           yield* MempoolLedgerDB.insert([depositSource, normalSource]);
 
+          const validTxCanonicalCbor = makeNativeSubmitTx().txCanonicalCbor;
           const inputs = [
             {
               txId: databaseTxHash("admission.array-deposit.first"),
-              txCanonicalCbor: databaseFixtureBytes(
-                "admission.array-deposit.first",
-                64,
-              ),
+              txCanonicalCbor: validTxCanonicalCbor,
               source: depositSource,
             },
             {
               txId: databaseTxHash("admission.array-deposit.second"),
-              txCanonicalCbor: databaseFixtureBytes(
-                "admission.array-deposit.second",
-                64,
-              ),
+              txCanonicalCbor: validTxCanonicalCbor,
               source: normalSource,
             },
           ];
@@ -2207,6 +3373,7 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.admit({
                 txId,
                 txCanonicalCbor,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -2318,6 +3485,7 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.admit({
                 txId,
                 txCanonicalCbor,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -2411,6 +3579,7 @@ describe("TxAdmissionsDB", () => {
             inputs.map((input) =>
               TxAdmissionsDB.admit({
                 ...input,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -2462,13 +3631,11 @@ describe("TxAdmissionsDB", () => {
       isolatedDb(
         Effect.gen(function* () {
           const txId = databaseTxHash("admission.accept-fallback-inline");
-          const txCanonicalCbor = databaseFixtureBytes(
-            "admission.accept-fallback-inline",
-            64,
-          );
+          const txCanonicalCbor = makeNativeSubmitTx().txCanonicalCbor;
           yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -2521,6 +3688,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -2586,6 +3754,7 @@ describe("TxAdmissionsDB", () => {
             inputs.map((input) =>
               TxAdmissionsDB.admit({
                 ...input,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -2662,7 +3831,9 @@ describe("DaPayloadsDB", () => {
           const payloadHash = createHash("sha256").update(payload).digest();
           const insert = {
             [DaPayloadsDB.Columns.HEADER_HASH]: headerHash,
-            [DaPayloadsDB.Columns.VERSION]: Number(SDK.DA_PAYLOAD_V2_VERSION),
+            [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
+              MIDGARD_CONSENSUS_PROFILE_ID,
+            [DaPayloadsDB.Columns.VERSION]: 1,
             [DaPayloadsDB.Columns.PAYLOAD_CBOR]: payload,
             [DaPayloadsDB.Columns.PAYLOAD_SHA256]: payloadHash,
             [DaPayloadsDB.Columns.UTXOS_ROOT]: "11".repeat(32),
@@ -2675,19 +3846,22 @@ describe("DaPayloadsDB", () => {
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
             [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
             [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
             [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
             [DaPayloadsDB.Columns.DEPOSIT_COUNT]: 0n,
             [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: 0n,
             [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]: 0n,
+            [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
             [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(
               "2026-06-12T00:00:00.000Z",
             ),
             [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(
               "2026-06-12T00:00:10.000Z",
             ),
-          };
+          } satisfies DaPayloadsDB.InsertInput;
 
           yield* DaPayloadsDB.upsertAvailable(insert);
           yield* DaPayloadsDB.upsertAvailable(insert);
@@ -3076,6 +4250,7 @@ describe("DaPayloadsDB", () => {
             28,
           );
           const baseTime = new Date("2026-06-12T00:00:00.000Z");
+          const deploymentMarker = makeDeploymentMarker("de".repeat(32));
           const row = (
             headerHash: Buffer,
             status: PendingBlockFinalizationsDB.Status,
@@ -3085,6 +4260,18 @@ describe("DaPayloadsDB", () => {
               "d87980",
               "hex",
             ),
+            [PendingBlockFinalizationsDB.Columns.FORMAT_VERSION]:
+              PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_VERSION,
+            [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
+              PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind
+                .LedgerDelta,
+            [PendingBlockFinalizationsDB.Columns
+              .DEPLOYMENT_MARKER_SCHEMA_VERSION]:
+              deploymentMarker.schemaVersion,
+            [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]:
+              deploymentMarker.manifestId,
+            [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
+              MIDGARD_CONSENSUS_PROFILE_ID,
             [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]:
               databaseTxHash(`submitted-${headerHash.toString("hex")}`),
             [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]:
@@ -3121,6 +4308,10 @@ describe("DaPayloadsDB", () => {
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [PendingBlockFinalizationsDB.Columns
               .EXPECTED_TRANSITION_TRACE_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns
+              .EXPECTED_VALIDATION_TRACES_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns
+              .EXPECTED_VALIDATION_TRACE_COUNT]: 0n,
             [PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT]: 0n,
@@ -3133,6 +4324,10 @@ describe("DaPayloadsDB", () => {
               0n,
             [PendingBlockFinalizationsDB.Columns
               .EXPECTED_TRANSITION_STEP_COUNT]: 0n,
+            [PendingBlockFinalizationsDB.Columns.LEDGER_DELTA_SPENT]:
+              JSON.stringify([]),
+            [PendingBlockFinalizationsDB.Columns.LEDGER_DELTA_PRODUCED]:
+              JSON.stringify([]),
             [PendingBlockFinalizationsDB.Columns.STATUS]: status,
             [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
           });
@@ -3148,7 +4343,9 @@ describe("DaPayloadsDB", () => {
           ])}`;
           yield* DaPayloadsDB.upsertAvailable({
             [DaPayloadsDB.Columns.HEADER_HASH]: coveredHeader,
-            [DaPayloadsDB.Columns.VERSION]: Number(SDK.DA_PAYLOAD_V2_VERSION),
+            [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
+              MIDGARD_CONSENSUS_PROFILE_ID,
+            [DaPayloadsDB.Columns.VERSION]: 1,
             [DaPayloadsDB.Columns.PAYLOAD_CBOR]: Buffer.from("a100", "hex"),
             [DaPayloadsDB.Columns.PAYLOAD_SHA256]: createHash("sha256")
               .update(Buffer.from("a100", "hex"))
@@ -3164,12 +4361,15 @@ describe("DaPayloadsDB", () => {
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
             [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
             [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
             [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
             [DaPayloadsDB.Columns.DEPOSIT_COUNT]: 0n,
             [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: 0n,
             [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]: 0n,
+            [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
             [DaPayloadsDB.Columns.BLOCK_START_TIME]: baseTime,
             [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(
               baseTime.getTime() + 1_000,
@@ -3203,6 +4403,143 @@ describe("DaPayloadsDB", () => {
   );
 });
 
+describe("ForeignTipReconciliationsDB", () => {
+  it.effect(
+    "round-trips exact V1 deployment/DA identity and rejects substitutions",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const header: SDK.Header = {
+            prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            depositsRoot: "11".repeat(32),
+            transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            withdrawalCount: 0n,
+            forcedTransactionCount: 0n,
+            l2TransactionCount: 0n,
+            depositCount: 1n,
+            totalEventCount: 1n,
+            transitionStepCount: 1n,
+            validationTraceCount: 0n,
+            startTime: 1n,
+            endTime: 2n,
+            blockSlot: 0n,
+            expectedNetworkId: 0n,
+            minFeeA: 0n,
+            minFeeB: 0n,
+            prevHeaderHash: "21".repeat(28),
+            operatorVkey: "22".repeat(28),
+            protocolVersion: 1n,
+          };
+          const foreignHeaderHash = yield* SDK.hashBlockHeader(header);
+          const replacedBaseHeaderHash = "23".repeat(28);
+          const deploymentMarker = makeDeploymentMarker("de".repeat(32));
+          yield* ForeignTipReconciliationsDB.recordMismatch({
+            foreignHeaderHash,
+            replacedBaseHeaderHash,
+            foreignHeader: header,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            deploymentMarker,
+          });
+
+          const awaiting =
+            yield* ForeignTipReconciliationsDB.retrieveByForeignHeaderHash(
+              foreignHeaderHash,
+            );
+          expect(awaiting._tag).toBe("Some");
+          if (Option.isNone(awaiting)) return;
+          expect(
+            awaiting.value[ForeignTipReconciliationsDB.Columns.FORMAT_VERSION],
+          ).toBe(1);
+          expect(
+            awaiting.value[
+              ForeignTipReconciliationsDB.Columns.DEPLOYMENT_MANIFEST_ID
+            ],
+          ).toBe(deploymentMarker.manifestId);
+          expect(
+            awaiting.value[ForeignTipReconciliationsDB.Columns.EVIDENCE_KIND],
+          ).toBe(ForeignTipReconciliationsDB.EvidenceKind.Pending);
+
+          const payload = Buffer.from("d8799f4101ff", "hex");
+          const daIdentity = {
+            headerHash: Buffer.from(foreignHeaderHash, "hex"),
+            schemaVersion: 1 as const,
+            consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
+            payloadCbor: payload,
+            payloadSha256: createHash("sha256").update(payload).digest(),
+          };
+          yield* ForeignTipReconciliationsDB.markResolved({
+            foreignHeaderHash,
+            deploymentMarker,
+            evidence: {
+              kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+              daIdentity,
+            },
+          });
+          yield* ForeignTipReconciliationsDB.markResolved({
+            foreignHeaderHash,
+            deploymentMarker,
+            evidence: {
+              kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+              daIdentity,
+            },
+          });
+
+          const resolved =
+            yield* ForeignTipReconciliationsDB.retrieveByForeignHeaderHash(
+              foreignHeaderHash,
+            );
+          expect(resolved._tag).toBe("Some");
+          if (Option.isNone(resolved)) return;
+          expect(
+            resolved.value[ForeignTipReconciliationsDB.Columns.EVIDENCE_KIND],
+          ).toBe(ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa);
+          expect(
+            resolved.value[
+              ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_SHA256
+            ],
+          ).toEqual(daIdentity.payloadSha256);
+
+          const substitutedPayload = Buffer.from("d8799f4102ff", "hex");
+          const substituted = yield* Effect.either(
+            ForeignTipReconciliationsDB.markResolved({
+              foreignHeaderHash,
+              deploymentMarker,
+              evidence: {
+                kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+                daIdentity: {
+                  ...daIdentity,
+                  payloadCbor: substitutedPayload,
+                  payloadSha256: createHash("sha256")
+                    .update(substitutedPayload)
+                    .digest(),
+                },
+              },
+            }),
+          );
+          expect(substituted._tag).toBe("Left");
+
+          const wrongDeployment = yield* Effect.either(
+            ForeignTipReconciliationsDB.markResolved({
+              foreignHeaderHash,
+              deploymentMarker: makeDeploymentMarker("ff".repeat(32)),
+              evidence: {
+                kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+                daIdentity,
+              },
+            }),
+          );
+          expect(wrongDeployment._tag).toBe("Left");
+        }),
+      ),
+  );
+});
+
 describe("PendingBlockFinalizationsDB", () => {
   const pendingSubmissionFixture = (
     headerHash: Buffer,
@@ -3219,6 +4556,7 @@ describe("PendingBlockFinalizationsDB", () => {
       ...emptyRoots,
       transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     };
     const emptyExpectedCounts = {
       withdrawalCount: 0n,
@@ -3227,6 +4565,7 @@ describe("PendingBlockFinalizationsDB", () => {
       depositCount: 0n,
       totalEventCount: 0n,
       transitionStepCount: 0n,
+      validationTraceCount: 0n,
     };
     const header: SDK.Header = {
       prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -3237,14 +4576,20 @@ describe("PendingBlockFinalizationsDB", () => {
       depositsRoot: emptyExpectedRoots.depositsRoot,
       transitionTraceRoot: emptyExpectedRoots.transitionTraceRoot,
       eventToStepRoot: emptyExpectedRoots.eventToStepRoot,
+      validationTracesRoot: emptyExpectedRoots.validationTracesRoot,
       withdrawalCount: emptyExpectedCounts.withdrawalCount,
       forcedTransactionCount: emptyExpectedCounts.forcedTransactionCount,
       l2TransactionCount: emptyExpectedCounts.l2TransactionCount,
       depositCount: emptyExpectedCounts.depositCount,
       totalEventCount: emptyExpectedCounts.totalEventCount,
       transitionStepCount: emptyExpectedCounts.transitionStepCount,
+      validationTraceCount: emptyExpectedCounts.validationTraceCount,
       startTime: 1n,
       endTime: 2n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: "11".repeat(28),
       operatorVkey: "22".repeat(28),
       protocolVersion: 1n,
@@ -3256,6 +4601,8 @@ describe("PendingBlockFinalizationsDB", () => {
         "hex",
       ),
       metadata: {
+        deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+        consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
         stateQueueLeaseToken: "lease-token",
         baseSnapshotId: "snapshot",
         baseTailOutRef: "base#0",
@@ -3278,7 +4625,12 @@ describe("PendingBlockFinalizationsDB", () => {
       mempoolTxSourceTable: "none",
       transitionTraceMembers: [],
       eventToStepMembers: [],
-      utxoEntries: [],
+      validationTraceMembers: [],
+      validationTraceWitnessMembers: [],
+      ledgerDelta: {
+        spent: [],
+        produced: [],
+      },
     };
   };
   const speculativeCandidateEventSnapshot = {
@@ -3336,6 +4688,50 @@ describe("PendingBlockFinalizationsDB", () => {
               ],
             ).toBeNull();
           }
+        }),
+      ),
+  );
+
+  it.effect(
+    "rejects startup recovery when an active journal omits committed validation traces",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const headerHash = databaseFixtureBytes(
+            "missing-validation-trace-header",
+            28,
+          );
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            pendingSubmissionFixture(headerHash),
+          );
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ${sql(PendingBlockFinalizationsDB.tableName)}
+            SET ${sql(
+              PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_TRANSITION_STEP_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_VALIDATION_TRACES_ROOT,
+            )} = ${"11".repeat(32)},
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_VALIDATION_TRACE_COUNT,
+            )} = 1
+            WHERE ${sql(
+              PendingBlockFinalizationsDB.Columns.HEADER_HASH,
+            )} = ${headerHash}`;
+
+          const exit = yield* Effect.exit(
+            PendingBlockFinalizationsDB.assertActiveJournalPayloadsComplete,
+          );
+          expect(exit._tag).toBe("Failure");
         }),
       ),
   );
@@ -3401,6 +4797,7 @@ describe("PendingBlockFinalizationsDB", () => {
             "architecture-g-replay-header",
             28,
           );
+          const input = pendingSubmissionFixture(headerHash);
           const eventLog = Buffer.alloc(92, 7);
           const replay = {
             schema: 1 as const,
@@ -3408,10 +4805,10 @@ describe("PendingBlockFinalizationsDB", () => {
               "architecture-g-binary-sha",
               32,
             ),
-            baseRoot: databaseFixtureBytes("architecture-g-base-root", 32),
-            candidateRoot: databaseFixtureBytes(
-              "architecture-g-candidate-root",
-              32,
+            baseRoot: Buffer.from(input.metadata.baseRoots.utxosRoot, "hex"),
+            candidateRoot: Buffer.from(
+              input.metadata.expectedRoots.utxosRoot,
+              "hex",
             ),
             eventLog,
             eventLogDigest: databaseFixtureBytes(
@@ -3425,7 +4822,7 @@ describe("PendingBlockFinalizationsDB", () => {
             eventCount: 2,
           };
           yield* PendingBlockFinalizationsDB.preparePendingSubmission({
-            ...pendingSubmissionFixture(headerHash),
+            ...input,
             nativeMpfReplay: replay,
           });
           const active = yield* PendingBlockFinalizationsDB.retrieveActive();
@@ -3885,6 +5282,7 @@ describe("PendingBlockFinalizationsDB", () => {
           yield* TxAdmissionsDB.tryInsert({
             txId,
             txCanonicalCbor: txCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
           });
           yield* sql`INSERT INTO ${sql(MempoolDB.tableName)} (
@@ -4913,6 +6311,7 @@ describe("WriteBehind", () => {
           const admitted = yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -5552,11 +6951,74 @@ describe("Reconciliation commands", () => {
         expect(resolved.schemaVersion).toEqual("midgard-e2e-reconciliation-v1");
         expect(resolved.milestone).toEqual("tx-committed");
         expect(resolved.status).toEqual("ambiguous");
-        expect(resolved.safeToRetryOriginalStep).toEqual(true);
+        expect(resolved.safeToRetryOriginalStep).toEqual(false);
         expect(resolved.target).toEqual({ txHash: txHash.toString("hex") });
         expect(
           resolved.evidence.some((entry) => entry.kind === "tx_status"),
         ).toEqual(true);
+        expect(parseReconciliationResult(resolved)).toEqual(resolved);
+        const missingMilestone = {
+          ...resolved,
+        } as Record<string, unknown>;
+        delete missingMilestone.milestone;
+        expect(() => parseReconciliationResult(missingMilestone)).toThrow(
+          "missing required field",
+        );
+        expect(() =>
+          parseReconciliationResult({ ...resolved, unexpected: true }),
+        ).toThrow("unknown field");
+        expect(() =>
+          parseReconciliationResult({
+            ...resolved,
+            schemaVersion: "midgard-e2e-reconciliation-v0",
+          }),
+        ).toThrow(RECONCILIATION_SCHEMA_VERSION);
+        expect(() =>
+          parseReconciliationResult({
+            ...resolved,
+            evidence: [
+              {
+                ...resolved.evidence[0]!,
+                unexpected: true,
+              },
+            ],
+          }),
+        ).toThrow("unknown field");
+        expect(() =>
+          parseReconciliationResult({
+            ...resolved,
+            target: { ...resolved.target, milestoneSpecific: { ok: true } },
+          }),
+        ).toThrow("unknown field");
+        expect(
+          parseReconciliationResult({
+            ...resolved,
+            evidence: resolved.evidence.map((entry) => ({
+              ...entry,
+              detail: { ...entry.detail, diagnosticSpecific: ["retained"] },
+            })),
+          }).evidence[0]?.detail,
+        ).toHaveProperty("diagnosticSpecific");
+        expect(() =>
+          parseReconciliationResult({
+            ...resolved,
+            safeToRetryOriginalStep: true,
+          }),
+        ).toThrow("status, retry, or repair binding is inconsistent");
+        expect(() =>
+          parseReconciliationResult({
+            ...resolved,
+            evidence: [
+              {
+                ...resolved.evidence[0]!,
+                detail: {
+                  ...resolved.evidence[0]!.detail,
+                  nonJsonObject: new Date("2026-01-01T00:00:00.000Z"),
+                },
+              },
+            ],
+          }),
+        ).toThrow("plain JSON objects");
       }),
     ),
   );
@@ -6221,7 +7683,7 @@ describe("Phase 3 MPF durable state", () => {
   );
 
   it.effect(
-    "replays a depth-three ledger delta chain from confirmed state",
+    "replays a depth-three ledger delta chain from confirmed state in a parent-plus-child confirmed merge transaction",
     () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -6229,14 +7691,7 @@ describe("Phase 3 MPF durable state", () => {
           const address = CML.Address.from_bech32(address1);
           const entry = (byte: number): LedgerUtils.Entry => ({
             [LedgerUtils.Columns.TX_ID]: Buffer.alloc(32, byte),
-            [LedgerUtils.Columns.OUTREF]: Buffer.from(
-              CML.TransactionInput.new(
-                CML.TransactionHash.from_hex(
-                  byte.toString(16).padStart(2, "0").repeat(32),
-                ),
-                0n,
-              ).to_cbor_bytes(),
-            ),
+            [LedgerUtils.Columns.OUTREF]: makeOutRefCbor(byte, 0),
             [LedgerUtils.Columns.OUTPUT]: Buffer.from(
               makeMidgardTxOutput(
                 address,
@@ -6275,14 +7730,20 @@ describe("Phase 3 MPF durable state", () => {
               depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
               transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
               eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+              validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
               withdrawalCount: 0n,
               forcedTransactionCount: 0n,
               l2TransactionCount: 0n,
               depositCount: 0n,
               totalEventCount: 0n,
               transitionStepCount: 0n,
+              validationTraceCount: 0n,
               startTime: BigInt(index * 2_000),
               endTime: BigInt(index * 2_000 + 1_000),
+              blockSlot: BigInt(index),
+              expectedNetworkId: 0n,
+              minFeeA: 0n,
+              minFeeB: 0n,
               prevHeaderHash:
                 index === 0
                   ? "00".repeat(28)
@@ -6311,6 +7772,8 @@ describe("Phase 3 MPF durable state", () => {
                   "hex",
                 ),
                 metadata: {
+                  deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+                  consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
                   stateQueueLeaseToken: `phase3-${index.toString()}`,
                   baseSnapshotId: `phase3-${index.toString()}`,
                   baseTailOutRef: `phase3#${index.toString()}`,
@@ -6333,6 +7796,7 @@ describe("Phase 3 MPF durable state", () => {
                     withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
                     transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
                     eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+                    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
                   },
                   expectedCounts: {
                     withdrawalCount: 0n,
@@ -6341,6 +7805,7 @@ describe("Phase 3 MPF durable state", () => {
                     depositCount: 0n,
                     totalEventCount: 0n,
                     transitionStepCount: 0n,
+                    validationTraceCount: 0n,
                   },
                 },
                 blockEndTime: new Date(index * 2_000 + 1_000),
@@ -6355,7 +7820,8 @@ describe("Phase 3 MPF durable state", () => {
                 mempoolTxSourceTable: "none",
                 transitionTraceMembers: [],
                 eventToStepMembers: [],
-                utxoEntries: [],
+                validationTraceMembers: [],
+                validationTraceWitnessMembers: [],
                 ledgerDelta: {
                   spent,
                   produced: produced.map((item) => ({
@@ -6399,26 +7865,66 @@ describe("Phase 3 MPF durable state", () => {
               item[LedgerUtils.Columns.OUTREF].toString("hex"),
             ),
           );
+          expect(snapshot.deltaChain).toHaveLength(3);
+          const wrongBase = yield* Effect.either(
+            applyConfirmedLedgerDeltaChainTransaction({
+              ...snapshot,
+              baseRoot: roots[1]!,
+            }),
+          );
+          expect(wrongBase._tag).toBe("Left");
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              yield* ConfirmedLedgerDB.retrieve,
+            ),
+          ).toBe(roots[0]);
+          const wrongFinal = yield* Effect.either(
+            applyConfirmedLedgerDeltaChainTransaction({
+              ...snapshot,
+              root: roots[2]!,
+            }),
+          );
+          expect(wrongFinal._tag).toBe("Left");
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              yield* ConfirmedLedgerDB.retrieve,
+            ),
+          ).toBe(roots[0]);
+          const transactionallyRecovered =
+            yield* applyConfirmedLedgerDeltaChainTransaction(snapshot);
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              transactionallyRecovered,
+            ),
+          ).toBe(roots[3]);
+          yield* ConfirmedLedgerDB.clear;
+          yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
 
           const fullUtxos = snapshot.entries.map((item) => ({
             outref: item[LedgerUtils.Columns.OUTREF],
             output: item[LedgerUtils.Columns.OUTPUT],
           }));
-          const v2Insert = yield* buildDaPayloadInsert({
+          const identityInsert = yield* buildDaPayloadInsert({
             record: found.value,
             utxos: fullUtxos,
-            envelope: { mode: "off", zstdLevel: 3 },
+            envelope: { mode: "identity", zstdLevel: 3 },
           });
-          const v3Insert = yield* buildDaPayloadInsert({
+          const zstdInsert = yield* buildDaPayloadInsert({
             record: found.value,
             utxos: fullUtxos,
             envelope: { mode: "zstd", zstdLevel: 3 },
           });
-          const v3Unwrapped = yield* Effect.tryPromise({
+          const identityUnwrapped = yield* Effect.tryPromise({
             try: () =>
-              unwrapDaPayload(v3Insert.payload_cbor, {
-                maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-                schemaVersion: v3Insert.version,
+              unwrapDaPayload(identityInsert.payload_cbor, {
+                maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+              }),
+            catch: (cause) => cause,
+          });
+          const zstdUnwrapped = yield* Effect.tryPromise({
+            try: () =>
+              unwrapDaPayload(zstdInsert.payload_cbor, {
+                maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
               }),
             catch: (cause) => cause,
           });
@@ -6426,10 +7932,10 @@ describe("Phase 3 MPF durable state", () => {
             .map((item) => item[LedgerUtils.Columns.OUTREF].toString("hex"))
             .sort();
           for (const payloadBytes of [
-            v2Insert.payload_cbor,
-            v3Unwrapped.innerBytes,
+            identityUnwrapped.innerBytes,
+            zstdUnwrapped.innerBytes,
           ]) {
-            const payload = SDK.decodeDaPayloadV2(payloadBytes);
+            const payload = SDK.decodeDaPayload(payloadBytes);
             expect(payload.block_body.utxos.map(([outref]) => outref)).toEqual(
               expectedPayloadOutrefs,
             );
@@ -6469,6 +7975,145 @@ describe("Phase 3 MPF durable state", () => {
           expect(
             yield* computeLedgerMpfRootFromLedgerEntries(confirmedAfter),
           ).toBe(roots[3]);
+
+          yield* ConfirmedLedgerDB.clear;
+          yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
+          const parentChildJournal =
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+              headers[1]!,
+            );
+          if (parentChildJournal._tag === "None") {
+            throw new Error("missing parent-child journal");
+          }
+          const parentChildSnapshot = yield* materializeConfirmedLedgerSnapshot(
+            parentChildJournal.value,
+          );
+          expect(parentChildSnapshot.deltaChain).toHaveLength(2);
+
+          const utxoSet = (entries: readonly LedgerUtils.Entry[]) =>
+            entries
+              .map(
+                (item) =>
+                  `${item[LedgerUtils.Columns.OUTREF].toString("hex")}:${item[
+                    LedgerUtils.Columns.OUTPUT
+                  ].toString("hex")}`,
+              )
+              .sort();
+          const mergeHeaderHash = headers[1]!;
+          const successTxHash = Buffer.alloc(32, 0x61);
+          const successDeposit = makeDepositEntry({
+            [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
+            [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
+          });
+          yield* BlocksDB.insert(mergeHeaderHash, [successTxHash]);
+          yield* DepositsDB.insertEntries([successDeposit]);
+          yield* finalizeConfirmedMergeTransaction({
+            headerHash: mergeHeaderHash,
+            snapshot: parentChildSnapshot,
+            projectedDepositEventIds: [successDeposit[DepositsDB.Columns.ID]],
+            projectedWithdrawalEventIds: [],
+            projectedForcedTransactionEventIds: [],
+          });
+          const mergedConfirmed = yield* ConfirmedLedgerDB.retrieve;
+          expect(utxoSet(mergedConfirmed)).toEqual(utxoSet(states[2]!));
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(mergedConfirmed),
+          ).toBe(roots[2]);
+          expect(
+            (yield* BlocksDB.retrieveTxHashesByHeaderHash(mergeHeaderHash)).map(
+              (hash) => hash.toString("hex"),
+            ),
+          ).toEqual([]);
+          const consumedDeposit = yield* DepositsDB.retrieveByEventId(
+            successDeposit[DepositsDB.Columns.ID],
+          );
+          expect(consumedDeposit._tag).toBe("Some");
+          if (consumedDeposit._tag === "Some") {
+            expect(consumedDeposit.value[DepositsDB.Columns.STATUS]).toBe(
+              DepositsDB.Status.Consumed,
+            );
+          }
+
+          yield* ConfirmedLedgerDB.clear;
+          yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
+          const failureTxHash = Buffer.alloc(32, 0x62);
+          const failureDeposit = makeDepositEntry({
+            [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
+            [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
+          });
+          yield* BlocksDB.insert(mergeHeaderHash, [failureTxHash]);
+          yield* DepositsDB.insertEntries([failureDeposit]);
+          const wrongBaseFinalization = yield* Effect.either(
+            finalizeConfirmedMergeTransaction({
+              headerHash: mergeHeaderHash,
+              snapshot: {
+                ...parentChildSnapshot,
+                baseRoot: roots[1]!,
+              },
+              projectedDepositEventIds: [failureDeposit[DepositsDB.Columns.ID]],
+              projectedWithdrawalEventIds: [],
+              projectedForcedTransactionEventIds: [],
+            }),
+          );
+          expect(wrongBaseFinalization._tag).toBe("Left");
+          const confirmedAfterWrongBase = yield* ConfirmedLedgerDB.retrieve;
+          expect(utxoSet(confirmedAfterWrongBase)).toEqual(utxoSet(states[0]!));
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              confirmedAfterWrongBase,
+            ),
+          ).toBe(roots[0]);
+          expect(
+            (yield* BlocksDB.retrieveTxHashesByHeaderHash(mergeHeaderHash)).map(
+              (hash) => hash.toString("hex"),
+            ),
+          ).toEqual([failureTxHash.toString("hex")]);
+          const projectedAfterWrongBase = yield* DepositsDB.retrieveByEventId(
+            failureDeposit[DepositsDB.Columns.ID],
+          );
+          expect(projectedAfterWrongBase._tag).toBe("Some");
+          if (projectedAfterWrongBase._tag === "Some") {
+            expect(
+              projectedAfterWrongBase.value[DepositsDB.Columns.STATUS],
+            ).toBe(DepositsDB.Status.Projected);
+          }
+
+          const wrongFinalRootFinalization = yield* Effect.either(
+            finalizeConfirmedMergeTransaction({
+              headerHash: mergeHeaderHash,
+              snapshot: {
+                ...parentChildSnapshot,
+                root: roots[1]!,
+              },
+              projectedDepositEventIds: [failureDeposit[DepositsDB.Columns.ID]],
+              projectedWithdrawalEventIds: [],
+              projectedForcedTransactionEventIds: [],
+            }),
+          );
+          expect(wrongFinalRootFinalization._tag).toBe("Left");
+          const confirmedAfterWrongFinal = yield* ConfirmedLedgerDB.retrieve;
+          expect(utxoSet(confirmedAfterWrongFinal)).toEqual(
+            utxoSet(states[0]!),
+          );
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              confirmedAfterWrongFinal,
+            ),
+          ).toBe(roots[0]);
+          expect(
+            (yield* BlocksDB.retrieveTxHashesByHeaderHash(mergeHeaderHash)).map(
+              (hash) => hash.toString("hex"),
+            ),
+          ).toEqual([failureTxHash.toString("hex")]);
+          const projectedAfterWrongFinal = yield* DepositsDB.retrieveByEventId(
+            failureDeposit[DepositsDB.Columns.ID],
+          );
+          expect(projectedAfterWrongFinal._tag).toBe("Some");
+          if (projectedAfterWrongFinal._tag === "Some") {
+            expect(
+              projectedAfterWrongFinal.value[DepositsDB.Columns.STATUS],
+            ).toBe(DepositsDB.Status.Projected);
+          }
         }),
       ),
   );
@@ -6481,14 +8126,7 @@ describe("Phase 3 MPF durable state", () => {
           const address = CML.Address.from_bech32(address1);
           const entry = (byte: number): LedgerUtils.Entry => ({
             [LedgerUtils.Columns.TX_ID]: Buffer.alloc(32, byte),
-            [LedgerUtils.Columns.OUTREF]: Buffer.from(
-              CML.TransactionInput.new(
-                CML.TransactionHash.from_hex(
-                  byte.toString(16).padStart(2, "0").repeat(32),
-                ),
-                0n,
-              ).to_cbor_bytes(),
-            ),
+            [LedgerUtils.Columns.OUTREF]: makeOutRefCbor(byte, 0),
             [LedgerUtils.Columns.OUTPUT]: Buffer.from(
               makeMidgardTxOutput(
                 address,
@@ -6520,8 +8158,8 @@ describe("Phase 3 MPF durable state", () => {
               ],
             },
           });
-          expect(journalState.ledgerDelta).toBeUndefined();
-          expect(journalState.utxoEntries).toHaveLength(2);
+          expect(journalState.ledgerDelta.spent).toEqual([]);
+          expect(journalState.ledgerDelta.produced).toHaveLength(2);
 
           const unexplainedDivergence = yield* resolvePendingJournalLedgerState(
             {
@@ -6543,6 +8181,8 @@ describe("Phase 3 MPF durable state", () => {
             headerHash,
             headerCbor: Buffer.from("d87980", "hex"),
             metadata: {
+              deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+              consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
               stateQueueLeaseToken: "implicit-genesis-test",
               baseSnapshotId: "implicit-genesis-test",
               baseTailOutRef: "genesis#0",
@@ -6564,6 +8204,7 @@ describe("Phase 3 MPF durable state", () => {
                 withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
                 transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
                 eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+                validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
               },
               expectedCounts: {
                 withdrawalCount: 0n,
@@ -6572,6 +8213,7 @@ describe("Phase 3 MPF durable state", () => {
                 depositCount: 1n,
                 totalEventCount: 1n,
                 transitionStepCount: 1n,
+                validationTraceCount: 0n,
               },
             },
             blockEndTime: new Date(1_000),
@@ -6586,11 +8228,17 @@ describe("Phase 3 MPF durable state", () => {
             mempoolTxSourceTable: "none",
             transitionTraceMembers: [],
             eventToStepMembers: [],
-            utxoEntries: journalState.utxoEntries.map((produced) => ({
-              [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: produced.outref,
-              [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]: produced.output,
-            })),
-            ledgerDelta: undefined,
+            validationTraceMembers: [],
+            validationTraceWitnessMembers: [],
+            ledgerDelta: {
+              spent: journalState.ledgerDelta.spent,
+              produced: journalState.ledgerDelta.produced.map((produced) => ({
+                [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]:
+                  produced.outref,
+                [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]:
+                  produced.output,
+              })),
+            },
             utxoPayloadAggregate:
               ledgerPayloadAggregateFromEntries(finalEntries),
           });

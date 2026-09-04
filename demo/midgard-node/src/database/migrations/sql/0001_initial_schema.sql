@@ -1,6 +1,6 @@
 -- Midgard fresh-install schema.
 --
--- Pre-launch compatibility policy: this baseline intentionally replaces the
+-- Pre-launch schema reset policy: this baseline intentionally replaces the
 -- historical migration chain. Any existing local database must be discarded;
 -- a network carrying prior Midgard state must also be fully redeployed.
 CREATE TYPE public.tx_admission_status AS ENUM (
@@ -151,6 +151,9 @@ CREATE TABLE public.da_payloads (
     deposit_count bigint NOT NULL,
     total_event_count bigint NOT NULL,
     transition_step_count bigint NOT NULL,
+    consensus_profile_id text NOT NULL,
+    validation_traces_root text DEFAULT '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text NOT NULL,
+    validation_trace_count bigint DEFAULT 0 NOT NULL,
     block_start_time timestamp with time zone NOT NULL,
     block_end_time timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -166,15 +169,70 @@ CREATE TABLE public.da_payloads (
     CONSTRAINT da_payloads_l2_transaction_count_check CHECK ((l2_transaction_count >= 0)),
     CONSTRAINT da_payloads_payload_cbor_check CHECK ((octet_length(payload_cbor) > 0)),
     CONSTRAINT da_payloads_payload_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT da_payloads_consensus_profile_id_check CHECK ((consensus_profile_id = 'midgard-consensus-v1'::text)),
+    CONSTRAINT da_payloads_profile_version_check CHECK (((version = 1) AND (validation_trace_count = (forced_transaction_count + l2_transaction_count)) AND (((validation_trace_count = 0) AND (validation_traces_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text)) OR ((validation_trace_count > 0) AND (validation_traces_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text))))),
     CONSTRAINT da_payloads_total_event_count_check CHECK ((total_event_count >= 0)),
     CONSTRAINT da_payloads_trace_count_check CHECK ((transition_step_count = total_event_count)),
     CONSTRAINT da_payloads_transactions_root_check CHECK ((transactions_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT da_payloads_transition_step_count_check CHECK ((transition_step_count >= 0)),
     CONSTRAINT da_payloads_transition_trace_root_check CHECK ((transition_trace_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT da_payloads_utxos_root_check CHECK ((utxos_root ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT da_payloads_version_v2_check CHECK ((version = 2)),
+    CONSTRAINT da_payloads_validation_trace_count_check CHECK ((validation_trace_count >= 0)),
+    CONSTRAINT da_payloads_validation_traces_root_check CHECK ((validation_traces_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT da_payloads_withdrawal_count_check CHECK ((withdrawal_count >= 0)),
     CONSTRAINT da_payloads_withdrawals_root_check CHECK ((withdrawals_root ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
+-- Name: da_payload_terminal_outcomes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.da_payload_terminal_outcomes (
+    header_hash bytea NOT NULL,
+    terminal_outcome text NOT NULL,
+    transition_kind text NOT NULL,
+    deployment_identity_digest bytea NOT NULL,
+    state_queue_policy_id bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    block_hash bytea NOT NULL,
+    slot numeric(20,0) NOT NULL,
+    block_no numeric(20,0) NOT NULL,
+    transaction_index integer NOT NULL,
+    chain_point_id bytea NOT NULL,
+    finality_depth numeric(20,0) NOT NULL,
+    transition_digest bytea NOT NULL,
+    transition_record jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT da_payload_terminal_outcomes_header_hash_check CHECK ((octet_length(header_hash) = 28)),
+    CONSTRAINT da_payload_terminal_outcomes_outcome_check CHECK ((terminal_outcome = ANY (ARRAY['merged'::text, 'removed'::text]))),
+    CONSTRAINT da_payload_terminal_outcomes_kind_check CHECK ((transition_kind = ANY (ARRAY['merge'::text, 'fraud_removal'::text, 'timeout_correction'::text]))),
+    CONSTRAINT da_payload_terminal_outcomes_deployment_check CHECK ((octet_length(deployment_identity_digest) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_policy_check CHECK ((octet_length(state_queue_policy_id) = 28)),
+    CONSTRAINT da_payload_terminal_outcomes_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_slot_check CHECK ((slot >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_block_no_check CHECK ((block_no >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_transaction_index_check CHECK ((transaction_index >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_chain_point_check CHECK ((octet_length(chain_point_id) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_finality_check CHECK ((finality_depth > 0)),
+    CONSTRAINT da_payload_terminal_outcomes_digest_check CHECK ((octet_length(transition_digest) = 32))
+);
+
+
+--
+-- Name: state_queue_terminal_observer_states; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.state_queue_terminal_observer_states (
+    deployment_identity_digest bytea NOT NULL,
+    state_queue_policy_id bytea NOT NULL,
+    state_digest bytea NOT NULL,
+    state_record jsonb NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT state_queue_terminal_observer_states_deployment_check CHECK ((octet_length(deployment_identity_digest) = 32)),
+    CONSTRAINT state_queue_terminal_observer_states_policy_check CHECK ((octet_length(state_queue_policy_id) = 28)),
+    CONSTRAINT state_queue_terminal_observer_states_digest_check CHECK ((octet_length(state_digest) = 32))
 );
 
 
@@ -235,6 +293,11 @@ CREATE TABLE public.forced_transaction_utxos (
     tx_compact bytea NOT NULL,
     forced_inclusion_value bytea NOT NULL,
     operator_validity text NOT NULL,
+    consensus_profile_id text NOT NULL,
+    native_tx_cbor bytea NOT NULL,
+    transaction_commitment bytea NOT NULL,
+    cek_program_material_sidecar_cbor bytea NOT NULL,
+    cek_program_material_sidecar_sha256 bytea NOT NULL,
     inclusion_time timestamp with time zone NOT NULL,
     projected_header_hash bytea,
     status text NOT NULL,
@@ -242,7 +305,8 @@ CREATE TABLE public.forced_transaction_utxos (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT forced_transaction_utxos_asset_name_check CHECK (((octet_length(asset_name) >= 1) AND (octet_length(asset_name) <= 32))),
     CONSTRAINT forced_transaction_utxos_check CHECK (((status <> 'awaiting'::text) OR (projected_header_hash IS NULL))),
-    CONSTRAINT forced_transaction_utxos_operator_validity_check CHECK ((operator_validity = ANY (ARRAY['TxIsValid'::text, 'NonExistentInputUtxo'::text, 'InvalidSignature'::text, 'FailedScript'::text, 'FeeTooLow'::text, 'UnbalancedTx'::text]))),
+    CONSTRAINT forced_transaction_utxos_exact_proof_material CHECK (((consensus_profile_id = 'midgard-consensus-v1'::text) AND (octet_length(native_tx_cbor) <= 295041) AND (octet_length(transaction_commitment) = 32) AND (octet_length(cek_program_material_sidecar_cbor) > 0) AND (octet_length(cek_program_material_sidecar_sha256) = 32))),
+    CONSTRAINT forced_transaction_utxos_operator_validity_check CHECK ((operator_validity = ANY (ARRAY['TxIsValid'::text, 'TxIsInvalid'::text]))),
     CONSTRAINT forced_transaction_utxos_status_check CHECK ((status = ANY (ARRAY['awaiting'::text, 'projected'::text, 'finalized'::text]))),
     CONSTRAINT forced_transaction_utxos_tx_id_check CHECK ((octet_length(tx_id) = 32)),
     CONSTRAINT forced_transaction_utxos_tx_order_l1_output_index_check CHECK ((tx_order_l1_output_index >= 0)),
@@ -256,6 +320,9 @@ CREATE TABLE public.forced_transaction_utxos (
 
 CREATE TABLE public.foreign_tip_reconciliations (
     foreign_header_hash bytea NOT NULL,
+    format_version smallint NOT NULL,
+    deployment_marker_schema_version text NOT NULL,
+    deployment_manifest_id text NOT NULL,
     replaced_base_header_hash bytea NOT NULL,
     foreign_header_cbor bytea NOT NULL,
     block_start_time timestamp with time zone NOT NULL,
@@ -266,20 +333,31 @@ CREATE TABLE public.foreign_tip_reconciliations (
     deposit_count bigint NOT NULL,
     forced_transaction_count bigint NOT NULL,
     withdrawal_count bigint NOT NULL,
+    consensus_profile_id text NOT NULL,
     verified_da_payload_cbor bytea,
     verified_da_schema_version integer,
-    status text DEFAULT 'awaiting'::text NOT NULL,
+    verified_da_payload_sha256 bytea,
+    evidence_kind text NOT NULL,
+    status text NOT NULL,
     blocking_reason text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     resolved_at timestamp with time zone,
     CONSTRAINT foreign_tip_reconciliations_check CHECK ((block_end_time > block_start_time)),
-    CONSTRAINT foreign_tip_reconciliations_check1 CHECK ((((verified_da_payload_cbor IS NULL) AND (verified_da_schema_version IS NULL)) OR ((verified_da_payload_cbor IS NOT NULL) AND (verified_da_schema_version IS NOT NULL)))),
+    CONSTRAINT foreign_tip_reconciliations_check1 CHECK ((((evidence_kind = ANY (ARRAY['pending_v1'::text, 'verified_empty_v1'::text])) AND (verified_da_payload_cbor IS NULL) AND (verified_da_schema_version IS NULL) AND (verified_da_payload_sha256 IS NULL)) OR ((evidence_kind = 'verified_da_v1'::text) AND (octet_length(verified_da_payload_cbor) > 0) AND (verified_da_schema_version = 1) AND (octet_length(verified_da_payload_sha256) = 32)))),
     CONSTRAINT foreign_tip_reconciliations_check2 CHECK ((((status = 'resolved'::text) AND (resolved_at IS NOT NULL) AND (blocking_reason IS NULL)) OR ((status = 'awaiting'::text) AND (resolved_at IS NULL) AND (blocking_reason IS NOT NULL)))),
+    CONSTRAINT foreign_tip_reconciliations_resolved_evidence_check CHECK (((status <> 'resolved'::text) OR (evidence_kind <> 'pending_v1'::text))),
+    CONSTRAINT foreign_tip_reconciliations_format_version_check CHECK ((format_version = 1)),
+    CONSTRAINT foreign_tip_reconciliations_deployment_marker_schema_check CHECK ((deployment_marker_schema_version = 'midgard-deployment-marker-v1'::text)),
+    CONSTRAINT foreign_tip_reconciliations_deployment_manifest_id_check CHECK ((deployment_manifest_id ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT foreign_tip_reconciliations_evidence_kind_check CHECK ((evidence_kind = ANY (ARRAY['pending_v1'::text, 'verified_empty_v1'::text, 'verified_da_v1'::text]))),
+    CONSTRAINT foreign_tip_reconciliations_verified_empty_check CHECK (((evidence_kind <> 'verified_empty_v1'::text) OR ((deposits_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (forced_transactions_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (withdrawals_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (deposit_count = 0) AND (forced_transaction_count = 0) AND (withdrawal_count = 0)))),
+    CONSTRAINT foreign_tip_reconciliations_verified_da_nonempty_check CHECK (((evidence_kind <> 'verified_da_v1'::text) OR (deposits_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (forced_transactions_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (withdrawals_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (deposit_count <> 0) OR (forced_transaction_count <> 0) OR (withdrawal_count <> 0))),
     CONSTRAINT foreign_tip_reconciliations_deposit_count_check CHECK ((deposit_count >= 0)),
     CONSTRAINT foreign_tip_reconciliations_deposits_root_check CHECK ((deposits_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT foreign_tip_reconciliations_forced_transaction_count_check CHECK ((forced_transaction_count >= 0)),
     CONSTRAINT foreign_tip_reconciliations_forced_transactions_root_check CHECK ((forced_transactions_root ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT foreign_tip_reconciliations_consensus_profile_check CHECK ((consensus_profile_id = 'midgard-consensus-v1'::text)),
     CONSTRAINT foreign_tip_reconciliations_foreign_header_cbor_check CHECK ((octet_length(foreign_header_cbor) > 0)),
     CONSTRAINT foreign_tip_reconciliations_foreign_header_hash_check CHECK ((octet_length(foreign_header_hash) = 28)),
     CONSTRAINT foreign_tip_reconciliations_replaced_base_header_hash_check CHECK ((octet_length(replaced_base_header_hash) = 28)),
@@ -464,26 +542,16 @@ CREATE TABLE public.pending_block_finalization_txs (
     ordinal integer NOT NULL,
     payload_cbor bytea NOT NULL,
     payload_sha256 bytea NOT NULL,
+    cek_program_material_sidecar_cbor bytea NOT NULL,
+    cek_program_material_sidecar_sha256 bytea NOT NULL,
     source_table text NOT NULL,
     source_id bytea NOT NULL,
     source_time_stamp_tz timestamp with time zone NOT NULL,
-    CONSTRAINT pending_block_finalization_txs_payload_sha256_check CHECK ((octet_length(payload_sha256) = 32))
+    CONSTRAINT pending_block_finalization_txs_payload_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT pending_block_finalization_txs_cek_program_material_check CHECK (((octet_length(cek_program_material_sidecar_cbor) > 0) AND (octet_length(cek_program_material_sidecar_sha256) = 32)))
 );
 
 
---
--- Name: pending_block_finalization_utxos; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.pending_block_finalization_utxos (
-    header_hash bytea NOT NULL,
-    outref bytea NOT NULL,
-    ordinal integer NOT NULL,
-    output bytea NOT NULL
-);
-
-
---
 -- Name: pending_block_finalization_withdrawals; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -529,6 +597,10 @@ CREATE TABLE public.pending_block_finalizations (
     base_forced_transactions_root text NOT NULL,
     expected_forced_transactions_root text NOT NULL,
     header_cbor bytea NOT NULL,
+    format_version smallint NOT NULL,
+    replay_kind text NOT NULL,
+    deployment_marker_schema_version text NOT NULL,
+    deployment_manifest_id text NOT NULL,
     expected_transition_trace_root text NOT NULL,
     expected_event_to_step_root text NOT NULL,
     expected_withdrawal_count bigint NOT NULL,
@@ -537,8 +609,11 @@ CREATE TABLE public.pending_block_finalizations (
     expected_deposit_count bigint NOT NULL,
     expected_total_event_count bigint NOT NULL,
     expected_transition_step_count bigint NOT NULL,
-    ledger_delta_spent jsonb,
-    ledger_delta_produced jsonb,
+    consensus_profile_id text NOT NULL,
+    expected_validation_traces_root text NOT NULL,
+    expected_validation_trace_count bigint NOT NULL,
+    ledger_delta_spent jsonb NOT NULL,
+    ledger_delta_produced jsonb NOT NULL,
     utxo_payload_entry_count bigint,
     utxo_payload_encoded_tuple_bytes bigint,
     mpf_owner_schema smallint,
@@ -561,10 +636,56 @@ CREATE TABLE public.pending_block_finalizations (
     CONSTRAINT pending_block_finalizations_expected_transition_trace_roo_check CHECK ((expected_transition_trace_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT pending_block_finalizations_expected_withdrawal_count_check CHECK ((expected_withdrawal_count >= 0)),
     CONSTRAINT pending_block_finalizations_header_cbor_check CHECK ((octet_length(header_cbor) > 0)),
-    CONSTRAINT pending_block_finalizations_ledger_delta_pair_check CHECK ((((ledger_delta_spent IS NULL) AND (ledger_delta_produced IS NULL)) OR ((ledger_delta_spent IS NOT NULL) AND (ledger_delta_produced IS NOT NULL)))),
-    CONSTRAINT pending_block_finalizations_mpf_replay_all_or_none_check CHECK ((((mpf_owner_schema IS NULL) AND (mpf_owner_binary_sha256 IS NULL) AND (mpf_replay_base_root IS NULL) AND (mpf_replay_candidate_root IS NULL) AND (mpf_replay_event_log IS NULL) AND (mpf_replay_event_log_digest IS NULL) AND (mpf_replay_event_roots IS NULL) AND (mpf_replay_event_count IS NULL)) OR ((mpf_owner_schema = 1) AND (octet_length(mpf_owner_binary_sha256) = 32) AND (octet_length(mpf_replay_base_root) = 32) AND (octet_length(mpf_replay_candidate_root) = 32) AND (octet_length(mpf_replay_event_log) >= 92) AND (octet_length(mpf_replay_event_log_digest) = 32) AND (mpf_replay_event_count >= 0) AND (octet_length(mpf_replay_event_roots) = (mpf_replay_event_count * 32))))),
+    CONSTRAINT pending_block_finalizations_format_version_check CHECK ((format_version = 1)),
+    CONSTRAINT pending_block_finalizations_replay_kind_check CHECK ((replay_kind = ANY (ARRAY['ledger_delta_v1'::text, 'ledger_delta_native_mpf_v1'::text]))),
+    CONSTRAINT pending_block_finalizations_deployment_marker_schema_check CHECK ((deployment_marker_schema_version = 'midgard-deployment-marker-v1'::text)),
+    CONSTRAINT pending_block_finalizations_deployment_manifest_id_check CHECK ((deployment_manifest_id ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT pending_block_finalizations_consensus_profile_id_check CHECK ((consensus_profile_id = 'midgard-consensus-v1'::text)),
+    CONSTRAINT pending_block_finalizations_mpf_replay_all_or_none_check CHECK ((((replay_kind = 'ledger_delta_v1'::text) AND (mpf_owner_schema IS NULL) AND (mpf_owner_binary_sha256 IS NULL) AND (mpf_replay_base_root IS NULL) AND (mpf_replay_candidate_root IS NULL) AND (mpf_replay_event_log IS NULL) AND (mpf_replay_event_log_digest IS NULL) AND (mpf_replay_event_roots IS NULL) AND (mpf_replay_event_count IS NULL)) OR ((replay_kind = 'ledger_delta_native_mpf_v1'::text) AND (mpf_owner_schema = 1) AND (octet_length(mpf_owner_binary_sha256) = 32) AND (octet_length(mpf_replay_base_root) = 32) AND (encode(mpf_replay_base_root, 'hex'::text) = base_utxos_root) AND (octet_length(mpf_replay_candidate_root) = 32) AND (encode(mpf_replay_candidate_root, 'hex'::text) = expected_utxos_root) AND (octet_length(mpf_replay_event_log) >= 92) AND (octet_length(mpf_replay_event_log_digest) = 32) AND (mpf_replay_event_count >= 0) AND (octet_length(mpf_replay_event_roots) = (mpf_replay_event_count * 32))))),
+    CONSTRAINT pending_block_finalizations_profile_validation_check CHECK (((expected_validation_trace_count = (expected_forced_transaction_count + expected_l2_transaction_count)) AND (((expected_validation_trace_count = 0) AND (expected_validation_traces_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text)) OR ((expected_validation_trace_count > 0) AND (expected_validation_traces_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text))))),
     CONSTRAINT pending_block_finalizations_status_check CHECK ((status = ANY (ARRAY['pending_submission'::text, 'submitted_local_finalization_pending'::text, 'submitted_unconfirmed'::text, 'observed_waiting_stability'::text, 'finalized'::text, 'abandoned'::text]))),
+    CONSTRAINT pending_block_finalizations_validation_count_check CHECK ((expected_validation_trace_count >= 0)),
+    CONSTRAINT pending_block_finalizations_validation_root_check CHECK ((expected_validation_traces_root ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT pending_block_finalizations_utxo_payload_size_pair_check CHECK ((((utxo_payload_entry_count IS NULL) AND (utxo_payload_encoded_tuple_bytes IS NULL)) OR ((utxo_payload_entry_count >= 0) AND (utxo_payload_encoded_tuple_bytes >= 0) AND ((utxo_payload_entry_count <> 0) OR (utxo_payload_encoded_tuple_bytes = 0)))))
+);
+
+
+--
+-- Name: pending_block_finalization_validation_traces; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pending_block_finalization_validation_traces (
+    header_hash bytea NOT NULL,
+    member_id bytea NOT NULL,
+    ordinal integer NOT NULL,
+    payload_cbor bytea NOT NULL,
+    payload_sha256 bytea NOT NULL,
+    source_table text NOT NULL,
+    source_id bytea NOT NULL,
+    source_time_stamp_tz timestamp with time zone NOT NULL,
+    CONSTRAINT pending_block_finalization_validation_traces_ordinal_check CHECK ((ordinal >= 0)),
+    CONSTRAINT pending_block_finalization_validation_traces_payload_check CHECK ((octet_length(payload_cbor) > 0)),
+    CONSTRAINT pending_block_finalization_validation_traces_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT pending_block_finalization_validation_traces_pkey PRIMARY KEY (header_hash, member_id),
+    CONSTRAINT pending_block_finalization_validation_traces_ordinal_key UNIQUE (header_hash, ordinal)
+);
+
+-- Minimal event/execution-keyed validation witness openings retained for
+-- public deterministic fault-proof reconstruction.
+CREATE TABLE public.pending_block_finalization_validation_trace_witnesses (
+    header_hash bytea NOT NULL,
+    member_id bytea NOT NULL,
+    ordinal integer NOT NULL,
+    payload_cbor bytea NOT NULL,
+    payload_sha256 bytea NOT NULL,
+    source_table text NOT NULL,
+    source_id bytea NOT NULL,
+    source_time_stamp_tz timestamp with time zone NOT NULL,
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_ordinal_check CHECK ((ordinal >= 0)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_payload_check CHECK ((octet_length(payload_cbor) > 0)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_pkey PRIMARY KEY (header_hash, member_id),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_ordinal_key UNIQUE (header_hash, ordinal)
 );
 
 
@@ -599,15 +720,64 @@ CREATE TABLE public.state_queue_mutation_leases (
 
 
 --
+-- Name: cek_program_material_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cek_program_material_entries (
+    material_root bytea PRIMARY KEY,
+    da_value_cbor bytea NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT cek_program_material_entries_root_check CHECK ((octet_length(material_root) = 32)),
+    CONSTRAINT cek_program_material_entries_value_check CHECK ((octet_length(da_value_cbor) > 0))
+);
+
+
+--
+-- Name: cek_program_material_memberships; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cek_program_material_memberships (
+    program_envelope_hash bytea NOT NULL,
+    material_root bytea NOT NULL,
+    durable_pin boolean DEFAULT true NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    PRIMARY KEY (program_envelope_hash, material_root),
+    CONSTRAINT cek_program_material_memberships_envelope_check CHECK ((octet_length(program_envelope_hash) = 32)),
+    CONSTRAINT cek_program_material_memberships_root_check CHECK ((octet_length(material_root) = 32)),
+    CONSTRAINT cek_program_material_memberships_root_fkey FOREIGN KEY (material_root) REFERENCES public.cek_program_material_entries(material_root) ON DELETE RESTRICT
+);
+
+
+--
+-- Name: cek_program_material_admission_owners; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cek_program_material_admission_owners (
+    tx_id bytea NOT NULL,
+    program_envelope_hash bytea NOT NULL,
+    material_root bytea NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    PRIMARY KEY (tx_id, program_envelope_hash, material_root),
+    CONSTRAINT cek_program_material_admission_owners_tx_id_check CHECK ((octet_length(tx_id) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_envelope_check CHECK ((octet_length(program_envelope_hash) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_root_check CHECK ((octet_length(material_root) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_membership_fkey FOREIGN KEY (program_envelope_hash, material_root) REFERENCES public.cek_program_material_memberships(program_envelope_hash, material_root) ON DELETE CASCADE
+);
+
+
+--
 -- Name: tx_admission_payloads; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.tx_admission_payloads (
     tx_id bytea NOT NULL,
     tx_canonical_cbor bytea NOT NULL,
-    tx_canonical_cbor_sha256 bytea NOT NULL,
+    tx_full_hash_v1 bytea NOT NULL,
+    cek_program_material_sidecar_cbor bytea NOT NULL,
+    cek_program_material_sidecar_sha256 bytea NOT NULL,
+    CONSTRAINT tx_admission_payloads_cek_program_material_sidecar_check CHECK (((octet_length(cek_program_material_sidecar_cbor) > 0) AND (octet_length(cek_program_material_sidecar_sha256) = 32))),
     CONSTRAINT tx_admission_payloads_tx_canonical_cbor_check CHECK ((octet_length(tx_canonical_cbor) > 0)),
-    CONSTRAINT tx_admission_payloads_tx_canonical_cbor_sha256_check CHECK ((octet_length(tx_canonical_cbor_sha256) = 32))
+    CONSTRAINT tx_admission_payloads_tx_full_hash_v1_check CHECK ((octet_length(tx_full_hash_v1) = 32))
 );
 
 
@@ -791,6 +961,22 @@ ALTER TABLE ONLY public.da_payloads
 
 
 --
+-- Name: da_payload_terminal_outcomes da_payload_terminal_outcomes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.da_payload_terminal_outcomes
+    ADD CONSTRAINT da_payload_terminal_outcomes_pkey PRIMARY KEY (deployment_identity_digest, header_hash);
+
+
+ALTER TABLE ONLY public.da_payload_terminal_outcomes
+    ADD CONSTRAINT da_payload_terminal_outcomes_transition_digest_key UNIQUE (deployment_identity_digest, transition_digest);
+
+
+ALTER TABLE ONLY public.state_queue_terminal_observer_states
+    ADD CONSTRAINT state_queue_terminal_observer_states_pkey PRIMARY KEY (deployment_identity_digest);
+
+
+--
 -- Name: deposit_submission_attempts deposit_submission_attempts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -958,23 +1144,6 @@ ALTER TABLE ONLY public.pending_block_finalization_txs
     ADD CONSTRAINT pending_block_finalization_txs_pkey PRIMARY KEY (header_hash, member_id);
 
 
---
--- Name: pending_block_finalization_utxos pending_block_finalization_utxos_header_hash_ordinal_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pending_block_finalization_utxos
-    ADD CONSTRAINT pending_block_finalization_utxos_header_hash_ordinal_key UNIQUE (header_hash, ordinal);
-
-
---
--- Name: pending_block_finalization_utxos pending_block_finalization_utxos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pending_block_finalization_utxos
-    ADD CONSTRAINT pending_block_finalization_utxos_pkey PRIMARY KEY (header_hash, outref);
-
-
---
 -- Name: pending_block_finalization_withdrawals pending_block_finalization_withdrawals_header_hash_ordinal_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1101,6 +1270,13 @@ CREATE INDEX idx_da_payload_publications_retry ON public.da_payload_publications
 --
 
 CREATE INDEX idx_da_payloads_created_at ON public.da_payloads USING btree (created_at);
+
+
+--
+-- Name: idx_da_payload_terminal_outcomes_authority; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_da_payload_terminal_outcomes_authority ON public.da_payload_terminal_outcomes USING btree (deployment_identity_digest, state_queue_policy_id, finality_depth, header_hash);
 
 
 --
@@ -1386,14 +1562,16 @@ ALTER TABLE ONLY public.pending_block_finalization_txs
 
 
 --
--- Name: pending_block_finalization_utxos pending_block_finalization_utxos_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: pending_block_finalization_validation_traces pending_block_finalization_validation_traces_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.pending_block_finalization_utxos
-    ADD CONSTRAINT pending_block_finalization_utxos_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
+ALTER TABLE ONLY public.pending_block_finalization_validation_traces
+    ADD CONSTRAINT pending_block_finalization_validation_traces_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.pending_block_finalization_validation_trace_witnesses
+    ADD CONSTRAINT pending_block_finalization_validation_trace_witnesses_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
 
 
---
 -- Name: pending_block_finalization_withdrawals pending_block_finalization_withdrawals_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 

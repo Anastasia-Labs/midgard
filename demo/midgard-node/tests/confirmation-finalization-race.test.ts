@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveAuthoritativeLocalFinalizationPreflight } from "@/fibers/block-commitment.js";
+import { resolveAuthoritativeLocalFinalizationPreflight } from "../src/fibers/block-commitment.js";
 import {
   type ActivePendingFinalizationIdentity,
   confirmationPendingSnapshotChanged,
   staleRecoveryMustPreserveNewActiveJournal,
-} from "@/fibers/block-confirmation.js";
-import type { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+} from "../src/fibers/block-confirmation.js";
+import type { SerializedStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 
 const identity = (headerHash: string): ActivePendingFinalizationIdentity => ({
   headerHash,

@@ -7,6 +7,7 @@ import {
   computeMidgardNativeTxId,
   encodeCbor,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -17,16 +18,15 @@ import {
   EMPTY_SPEND_INPUTS_HASH,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  nativeTrieItem,
   type NodeTransactionPayload,
   prepareZeroInputFromTransactions,
+  transactionSourceTrieItem,
 } from "../src/index.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
@@ -36,12 +36,10 @@ const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItem({
+    txId: Buffer.from(txHash, "hex"),
+    outputIndex: Number(outputIndex),
+  });
 
 const makeNativeTx = ({
   spendInputCbors,
@@ -96,10 +94,10 @@ const transactionRoots = async (
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
-      domain: ROOT_DOMAINS.transactions,
+      domain: ROOT_DOMAINS.transactionsV1,
       phasRoot: trie.root,
       count: BigInt(decoded.length),
     }),
@@ -145,7 +143,7 @@ describe("prepare-zero-input", () => {
     );
     const expectedCommittedRoot = await Effect.runPromise(
       commitCountedRootProgram({
-        domain: ROOT_DOMAINS.transactions,
+        domain: ROOT_DOMAINS.transactionsV1,
         phasRoot: output.transactionsPhasRoot,
         count: BigInt(output.txCount),
       }),

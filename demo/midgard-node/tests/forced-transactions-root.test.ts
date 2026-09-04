@@ -1,19 +1,32 @@
+import { createHash } from "node:crypto";
+
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import {
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+  type MidgardNativeTxCanonical,
+} from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { ForcedTransactionsDB } from "@/database/index.js";
-import type { DatabaseError } from "@/database/utils/common.js";
-import { resolveForcedTransactionsRoot } from "@/workers/commit-block-header/event-roots.js";
+import { ForcedTransactionsDB } from "../src/database/index.js";
+import type { DatabaseError } from "../src/database/utils/common.js";
+import { keyValuePhasProof } from "../src/mpf/index.js";
+import { resolveForcedTransactionsRoot } from "../src/workers/commit-block-header/event-roots.js";
 import {
   buildAuthenticatedRootFromEncodedEntries,
   buildRootMembershipProof,
   verifyRootMembershipProof,
-} from "@/workers/commit-block-header/transition-roots.js";
-import { keyValuePhasProof } from "@/workers/utils/mpf.js";
-
+} from "../src/workers/commit-block-header/transition-roots.js";
 import { deterministicFixtureTxHash } from "./utils.js";
 
 const h32 = (label: string): string =>
@@ -30,49 +43,51 @@ const outputReference = (
 const outputReferenceCbor = (value: SDK.OutputReference): Buffer =>
   Buffer.from(Data.to(value, SDK.OutputReference), "hex");
 
-const compactTx = (validity: SDK.MidgardTxValidity): SDK.MidgardTxCompact => ({
+const canonicalTransaction = (): MidgardNativeTxCanonical => ({
+  version: MIDGARD_NATIVE_TX_VERSION,
+  validity: "TxIsValid",
   body: {
-    spend_inputs: h32("spend-inputs"),
-    reference_inputs: h32("reference-inputs"),
-    outputs: h32("outputs"),
+    spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+    referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+    outputsPreimageCbor: EMPTY_CBOR_LIST,
     fee: 0n,
-    validity_interval: {
-      lower_bound: {
-        bound_type: "NegativeInfinity",
-        is_inclusive: true,
-      },
-      upper_bound: {
-        bound_type: "PositiveInfinity",
-        is_inclusive: false,
-      },
-    },
-    required_observers: h32("required-observers"),
-    required_signer_hashes: h32("required-signers"),
-    mint: h32("mint"),
-    script_integrity_hash: h32("script-integrity"),
-    auxiliary_data_hash: h32("auxiliary-data"),
-    network_id: "Testnet",
+    validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+    mintPreimageCbor: EMPTY_CBOR_LIST,
+    scriptIntegrityHash: EMPTY_NULL_ROOT,
+    auxiliaryDataHash: EMPTY_NULL_ROOT,
+    networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
   },
-  wits: h32("wits"),
-  validity,
+  witnessSet: {
+    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+  },
 });
 
 const forcedEntry = ({
   label,
   txOrderId,
-  txCompact,
+  verdict,
   inclusionTime,
 }: {
   readonly label: string;
   readonly txOrderId: SDK.OutputReference;
-  readonly txCompact: SDK.MidgardTxCompact;
+  readonly verdict: SDK.OperatorVerdict;
   readonly inclusionTime: Date;
 }): Effect.Effect<ForcedTransactionsDB.Entry, DatabaseError> =>
   Effect.gen(function* () {
-    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValue({
-      txCompact,
-      operatorValidity: txCompact.validity,
+    const nativeTxCbor = encodeMidgardNativeTxCanonical(
+      materializeMidgardNativeTxFromCanonical(canonicalTransaction()),
+    );
+    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
+      nativeTxCbor,
+      verdict,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
+    const sidecarCbor = encodeMidgardCekProgramMaterialSidecar([]);
     return {
       [ForcedTransactionsDB.Columns.TX_ORDER_ID]:
         outputReferenceCbor(txOrderId),
@@ -90,12 +105,19 @@ const forcedEntry = ({
         "hex",
       ),
       [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
-      [ForcedTransactionsDB.Columns.TX_COMPACT]: Buffer.from(
-        Data.to(txCompact, SDK.MidgardTxCompact),
-        "hex",
-      ),
+      [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
       [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: txCompact.validity,
+      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
+        ForcedTransactionsDB.midgardTxValidityOfVerdict(verdict),
+      [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
+        MIDGARD_CONSENSUS_PROFILE.profileId,
+      [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
+      [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
+        encoded.transactionCommitment,
+      [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
+        sidecarCbor,
+      [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
+        createHash("sha256").update(sidecarCbor).digest(),
       [ForcedTransactionsDB.Columns.INCLUSION_TIME]: inclusionTime,
       [ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH]: null,
       [ForcedTransactionsDB.Columns.STATUS]:
@@ -108,17 +130,16 @@ describe("forced transaction source roots", () => {
     "keys forced source events by L1 tx-order output reference, not L2 tx id",
     () =>
       Effect.gen(function* () {
-        const txCompact = compactTx("TxIsValid");
         const first = yield* forcedEntry({
           label: "01",
           txOrderId: outputReference("same-l2-first-order", 0n),
-          txCompact,
+          verdict: "ForcedTxValid",
           inclusionTime: new Date("2026-06-12T00:00:01.000Z"),
         });
         const second = yield* forcedEntry({
           label: "02",
           txOrderId: outputReference("same-l2-second-order", 1n),
-          txCompact,
+          verdict: "ForcedTxValid",
           inclusionTime: new Date("2026-06-12T00:00:02.000Z"),
         });
 
@@ -134,7 +155,7 @@ describe("forced transaction source roots", () => {
         if (root._tag === "Some") {
           expect(root.value).not.toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
           const emptyCommit = yield* SDK.commitCountedRootProgram({
-            domain: SDK.ROOT_DOMAINS.forcedTransactions,
+            domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
             phasRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             count: 0n,
           });
@@ -146,23 +167,26 @@ describe("forced transaction source roots", () => {
   it.effect("includes invalid forced transactions as source events", () =>
     Effect.gen(function* () {
       const txOrderId = outputReference("invalid-forced-order", 0n);
-      const invalidTxCompact = compactTx("NonExistentInputUtxo");
       const invalid = yield* forcedEntry({
         label: "03",
         txOrderId,
-        txCompact: invalidTxCompact,
+        verdict: {
+          ForcedTxInvalid: {
+            reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
+          },
+        },
         inclusionTime: new Date("2026-06-12T00:00:03.000Z"),
       });
       const built = yield* buildAuthenticatedRootFromEncodedEntries(
-        SDK.ROOT_DOMAINS.forcedTransactions,
+        SDK.ROOT_DOMAINS.forcedTransactionsV1,
         [ForcedTransactionsDB.toRootKeyValue(invalid)],
       );
       const decodedValue = Data.from(
         invalid[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE].toString(
           "hex",
         ),
-        SDK.ForcedInclusionTx,
-      ) as SDK.ForcedInclusionTx;
+        SDK.ForcedInclusionTxV1,
+      ) as SDK.ForcedInclusionTxV1;
       const membership = yield* buildRootMembershipProof({
         root: {
           ...built,
@@ -176,24 +200,26 @@ describe("forced transaction source roots", () => {
         key: txOrderId,
         value: decodedValue,
         keySchema: SDK.OutputReferenceSchema,
-        valueSchema: SDK.ForcedInclusionTxSchema,
+        valueSchema: SDK.ForcedInclusionTxV1Schema,
       });
 
-      expect(decodedValue.operator_validity).toBe("NonExistentInputUtxo");
-      expect(decodedValue.tx_compact).toEqual({
-        body: invalidTxCompact.body,
-        wits: invalidTxCompact.wits,
+      expect(decodedValue.verdict).toEqual({
+        ForcedTxInvalid: {
+          reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
+        },
       });
-      expect(Object.keys(decodedValue)).toEqual([
-        "tx_compact",
-        "operator_validity",
-      ]);
+      expect(invalid[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]).toBe(
+        "TxIsInvalid",
+      );
+      expect(decodedValue.tx_id).toBe(
+        invalid[ForcedTransactionsDB.Columns.TX_ID].toString("hex"),
+      );
       yield* verifyRootMembershipProof({
         witness: membership,
         keySchema: SDK.OutputReferenceSchema,
-        valueSchema: SDK.ForcedInclusionTxSchema,
+        valueSchema: SDK.ForcedInclusionTxV1Schema,
         options: {
-          expectedDomain: SDK.ROOT_DOMAINS.forcedTransactions,
+          expectedDomain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
           expectedRoot: built.root,
           expectedCount: 1n,
         },
@@ -207,7 +233,7 @@ describe("forced transaction source roots", () => {
       const first = yield* forcedEntry({
         label: "04",
         txOrderId,
-        txCompact: compactTx("TxIsValid"),
+        verdict: "ForcedTxValid",
         inclusionTime: new Date("2026-06-12T00:00:04.000Z"),
       });
       const second = {
@@ -234,17 +260,17 @@ describe("forced transaction source roots", () => {
         const forced = yield* forcedEntry({
           label: "05",
           txOrderId,
-          txCompact: compactTx("TxIsValid"),
+          verdict: "ForcedTxValid",
           inclusionTime: new Date("2026-06-12T00:00:05.000Z"),
         });
         const entry = ForcedTransactionsDB.toRootKeyValue(forced);
         const forcedRoot = yield* buildAuthenticatedRootFromEncodedEntries(
-          SDK.ROOT_DOMAINS.forcedTransactions,
+          SDK.ROOT_DOMAINS.forcedTransactionsV1,
           [entry],
         );
         const transactionsRoot =
           yield* buildAuthenticatedRootFromEncodedEntries(
-            SDK.ROOT_DOMAINS.transactions,
+            SDK.ROOT_DOMAINS.transactionsV1,
             [entry],
           );
         const proof = yield* keyValuePhasProof(
@@ -253,7 +279,7 @@ describe("forced transaction source roots", () => {
           entry.key,
         );
         const txOrderSettlementProof: SDK.RawRootMembershipProof = {
-          domain: SDK.ROOT_DOMAINS.forcedTransactions,
+          domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
           root: forcedRoot.root,
           phas_root: forcedRoot.phasRoot,
           count: forcedRoot.count,
@@ -266,7 +292,7 @@ describe("forced transaction source roots", () => {
         expect(txOrderSettlementProof.root).toBe(forcedRoot.root);
         expect(txOrderSettlementProof.root).not.toBe(transactionsRoot.root);
         expect(txOrderSettlementProof.domain).toBe(
-          SDK.ROOT_DOMAINS.forcedTransactions,
+          SDK.ROOT_DOMAINS.forcedTransactionsV1,
         );
       }),
   );

@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
-import type { WorkerOutput } from "@/workers/utils/commit-block-header.js";
-import { WorkerError } from "@/workers/utils/common.js";
+import type { WorkerOutput } from "../workers/utils/commit-block-header.js";
+import { WorkerError } from "../workers/utils/common.js";
 
 export type CommitWorkerFailureJournalEvidence = {
   readonly headerHash: Buffer;

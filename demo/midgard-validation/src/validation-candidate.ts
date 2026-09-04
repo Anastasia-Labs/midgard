@@ -1,10 +1,10 @@
 import {
   decodeMidgardAddressBytes,
   encodeMidgardAddressText,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import { CML } from "@lucid-evolution/lucid";
 
 import { LedgerColumns, type LedgerEntry, type ProcessedTx } from "./ledger.js";
 import type {
@@ -60,11 +60,17 @@ const projectAddress = (address: Buffer): AddressProjection => {
     return cached;
   }
 
-  // Populate only after both canonical text encoding and protected-bit
-  // decoding succeed, so invalid addresses can never poison the cache.
+  // Foreign-network bytes still have to reach the staged output scan so it can
+  // classify E_NETWORK_ID_MISMATCH at the consensus-defined instruction.
+  // They cannot be rendered under addr/addr_test, so retain a deterministic
+  // non-persisted diagnostic spelling; Phase B rejects them before mutation.
+  const decoded = decodeMidgardAddressBytes(address);
   const projection = {
-    text: encodeMidgardAddressText(address),
-    protected: decodeMidgardAddressBytes(address).protected,
+    text:
+      decoded.networkId === 0 || decoded.networkId === 1
+        ? encodeMidgardAddressText(address)
+        : `foreign-network:${cacheKey}`,
+    protected: decoded.protected,
   } satisfies AddressProjection;
   addressCacheMisses += 1;
   if (addressProjectionCache.size >= addressCacheMaxEntries) {
@@ -80,19 +86,22 @@ const projectAddress = (address: Buffer): AddressProjection => {
   return projection;
 };
 
-export const midgardOutRefToCbor = (outRef: MidgardOutRef): Buffer => {
-  const transactionId = CML.TransactionHash.from_raw_bytes(outRef.txId);
-  try {
-    const input = CML.TransactionInput.new(transactionId, outRef.index);
-    try {
-      return Buffer.from(input.to_cbor_bytes());
-    } finally {
-      input.free();
-    }
-  } finally {
-    transactionId.free();
-  }
-};
+/**
+ * The out-ref's canonical Midgard bytes, and therefore the ledger MPF trie key
+ * and the ledger DB `outref` column: the §5.3 field-0/1 item encoding
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes.
+ *
+ * On-chain `ledger_outref_key` derives the same trie key through
+ * `encode_midgard_tx_input`, so this must stay the §5.3 encoder rather than
+ * CML's minimal-index `TransactionInput` CBOR — that spells indices 0–23 in one
+ * byte and would produce a 36-byte key the on-chain side never computes. See
+ * `docs/spec/midgard-tx.md` §5.3.
+ */
+export const midgardOutRefToCbor = (outRef: MidgardOutRef): Buffer =>
+  encodeMidgardSpendInputItem({
+    txId: outRef.txId,
+    outputIndex: Number(outRef.index),
+  });
 
 export const midgardOutRefToCborHex = (outRef: MidgardOutRef): string =>
   midgardOutRefToCbor(outRef).toString("hex");
@@ -130,7 +139,9 @@ const mintPolicyHashHexes = (tx: MidgardLedgerTx): readonly string[] => {
 
 type BuildPhaseAValidatedTxArgs = {
   readonly ledgerTx: MidgardLedgerTx;
+  readonly expectedNetworkId: bigint;
   readonly txCbor: Buffer;
+  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
   readonly redeemerWitnessHash: Buffer;
@@ -138,7 +149,9 @@ type BuildPhaseAValidatedTxArgs = {
 
 export const buildPhaseAValidatedTx = ({
   ledgerTx,
+  expectedNetworkId,
   txCbor,
+  programMaterialSidecarCbor,
   arrivalSeq,
   createdAt,
   redeemerWitnessHash,
@@ -163,6 +176,10 @@ export const buildPhaseAValidatedTx = ({
     ledgerTx,
     submission: {
       txCbor: Buffer.from(txCbor),
+      programMaterialSidecarCbor:
+        programMaterialSidecarCbor == null
+          ? null
+          : Buffer.from(programMaterialSidecarCbor),
       arrivalSeq,
       createdAt: new Date(createdAt.getTime()),
     },
@@ -174,6 +191,7 @@ export const buildPhaseAValidatedTx = ({
       produced,
     },
     derived: {
+      expectedNetworkId,
       outputSum: sumMidgardValues(
         ledgerTx.outputs.map((output) => output.value),
       ),

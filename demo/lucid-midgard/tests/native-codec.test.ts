@@ -7,10 +7,10 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
-  encodeCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
+  MIDGARD_EMPTY_FIELD_COMMITMENT,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -45,34 +45,6 @@ const makeCanonical = (): MidgardNativeTxCanonical => ({
   },
 });
 
-const compactValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.version,
-  computeMidgardNativeTxId(tx),
-  tx.compact.transactionWitnessSetHash,
-  0n,
-];
-
-const bodyFullValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.transactionBody.spendInputsHash,
-  tx.body.spendInputsPreimageCbor,
-  tx.compact.transactionBody.referenceInputsHash,
-  tx.body.referenceInputsPreimageCbor,
-  tx.compact.transactionBody.outputsHash,
-  tx.body.outputsPreimageCbor,
-  tx.body.fee,
-  tx.body.validityIntervalStart,
-  tx.body.validityIntervalEnd,
-  tx.compact.transactionBody.requiredObserversHash,
-  tx.body.requiredObserversPreimageCbor,
-  tx.compact.transactionBody.requiredSignersHash,
-  tx.body.requiredSignersPreimageCbor,
-  tx.compact.transactionBody.mintHash,
-  tx.body.mintPreimageCbor,
-  tx.body.scriptIntegrityHash,
-  tx.body.auxiliaryDataHash,
-  tx.body.networkId,
-];
-
 describe("Midgard native v1 codec", () => {
   it("exposes shared script language view helpers", () => {
     const redeemerTxWitsHash = Buffer.from(
@@ -99,6 +71,14 @@ describe("Midgard native v1 codec", () => {
     expect(decoded.compact.transactionWitnessSetHash).toEqual(
       tx.compact.transactionWitnessSetHash,
     );
+    // §4/§5.6: an empty mint is exactly `80`, and its commitment is the plain
+    // `blake2b_256` of those bytes — the same value every empty field commits to,
+    // because §4's hash input carries no field index. Under the retired counted
+    // scheme this was a domain-tagged Merkle root and deliberately *not* the hash
+    // of `80`; that inequality is now an equality.
+    expect(decoded.compact.transactionBody.mintHash).toEqual(
+      MIDGARD_EMPTY_FIELD_COMMITMENT,
+    );
     expect(decoded.compact.transactionBody.mintHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
@@ -114,35 +94,17 @@ describe("Midgard native v1 codec", () => {
     expect("compact" in decoded).toBe(false);
   });
 
-  it("uses the compact body hash as the transaction id", () => {
+  it("uses the canonical V1 compact-body domain as the transaction id", () => {
     const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
 
     expect(computeMidgardNativeTxId(tx)).toEqual(
       computeHash32(
-        encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody),
+        Buffer.concat([
+          Buffer.from("MidgardNativeTxBodyV1", "ascii"),
+          Buffer.from([1]),
+          encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody),
+        ]),
       ),
-    );
-  });
-
-  it("rejects the old embedded-compact transaction format", () => {
-    const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
-    const legacyWitnessSet = [
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.addrTxWitsPreimageCbor,
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.scriptTxWitsPreimageCbor,
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.redeemerTxWitsPreimageCbor,
-    ];
-    const encoded = encodeCbor([
-      MIDGARD_NATIVE_TX_VERSION,
-      compactValue(tx),
-      bodyFullValue(tx),
-      legacyWitnessSet,
-    ]);
-
-    expect(() => decodeMidgardNativeTxFullFromCanonicalCbor(encoded)).toThrow(
-      /transaction\[1\] must have exactly 12 elements/,
     );
   });
 

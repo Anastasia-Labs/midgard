@@ -14,20 +14,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { runProviderStepWithRetry } from "@/provider-retry.js";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../deployment-manifest.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
+import { runProviderStepWithRetry } from "../provider-retry.js";
+import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "./utils.js";
 import {
   hasPositiveNonLovelaceAsset,
   isPlainAdaOnlyUtxo,
   lovelaceOf,
-} from "@/transactions/wallet-hygiene.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+} from "./wallet-hygiene.js";
 
 export type ReferenceScriptTarget = SDK.ReferenceScriptTarget;
 
@@ -975,6 +976,18 @@ const publishMissingReferenceScriptTargets = (
   | TxSubmitError
 > =>
   Effect.gen(function* () {
+    yield* Effect.try({
+      try: () =>
+        SDK.assertReferenceScriptRawBodiesFitL1Envelope(missingTargets),
+      catch: (cause) =>
+        cause instanceof SDK.StateQueueError
+          ? cause
+          : new SDK.StateQueueError({
+              message:
+                "Failed to admit raw reference-script bodies for L1 publication",
+              cause,
+            }),
+    });
     const orderedFundingCandidates = orderWalletFundingUtxos(
       fundingCandidateUtxos,
     );
@@ -1121,6 +1134,308 @@ const publishMissingReferenceScriptTargets = (
     );
   });
 
+const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "nativeScriptDecoding",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "withdrawalMistag",
+  "doubleWithdraw",
+  "crossBlockDuplicateEvent",
+  "l2TxMistag",
+  "withdrawnInput",
+  "valueNotPreserved",
+  "inputSetUniqueness",
+  "mintAuthorization",
+  "networkId",
+  "missingNativeScriptUtxo",
+  "nativeScriptInvalid",
+  "minAda",
+  "fieldPreimageLengthMismatch",
+  "fieldItemWidthIllegal",
+  "witnessScriptDecoding",
+  "scriptIntegrityHashMissing",
+  "transactionOutputNonCanonical",
+  "resolvedOutputNonCanonical",
+  "mintDeclaredAssetLimit",
+  "spendInputSignerMissing",
+  "protectedOutputSignerMissing",
+  "observersForbiddenOnUntaggedNetwork",
+  "observerOrderInvalid",
+  "redeemerCanonicity",
+  "outputReferenceScriptDecoding",
+  "executionSourceScriptDecoding",
+  "receivePurposeLanguage",
+  "unusedScriptWitness",
+  "missingScriptSource",
+  "missingRedeemer",
+  "unusedRedeemer",
+  "executionNativeScriptInvalid",
+  "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
+] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
+
+const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
+  "fraudProofTransitionTraceControl",
+  "fraudProofTransitionTraceSource",
+  "fraudProofTransitionTraceWithdrawal",
+  "fraudProofTransitionTraceForced",
+  "fraudProofTransitionTraceAcceptedTransaction",
+  "fraudProofTransitionTraceDeposit",
+  "fraudProofTransitionTraceL1Event",
+  "fraudProofTransitionTraceDuplicate",
+] as const;
+
+const REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME: ReadonlyMap<string, string> =
+  new Map<string, string>(
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([role, contractName]) => [contractName, role] as const,
+    ),
+  );
+
+const upperFirst = (value: string): string =>
+  `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+
+/**
+ * Chains whose canonical contract names are NOT `…Step{index + 1}`.
+ *
+ * The generic rule below assumes a chain's Nth compiled step is the Nth
+ * declared step, which stops being true the moment a family inserts a lettered
+ * step (`step_02a`) or appends a set of named entries after its numbered ones.
+ * Getting that wrong is worse than failing to publish: `abiRegisteredChainSteps`
+ * only asks whether a NAME is declared, so an off-by-one still finds a real
+ * role and publishes one family member's script under another member's role.
+ *
+ * Each array is the family's `steps` order from `midgard-sdk`, so index N here
+ * is the validator at index N there. Adding a step to a chain means adding it
+ * in the same position here.
+ */
+const FAULT_PROOF_STEP_CONTRACT_NAMES: Partial<
+  Record<
+    (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+    readonly string[]
+  >
+> = {
+  nativeScriptDecoding: [
+    "fraudProofNativeScriptDecoding",
+    "fraudProofNativeScriptDecodingStep02",
+    "fraudProofNativeScriptDecodingStep03OpenSubject",
+    "fraudProofNativeScriptDecodingStep03BindDescriptor",
+    "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+    "fraudProofNativeScriptDecodingStep04",
+  ],
+  fieldPreimageLengthMismatch: [
+    "fraudProofFieldPreimageLengthMismatch",
+    "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+    "fraudProofFieldPreimageLengthMismatchStep02Forced",
+    "fraudProofFieldPreimageLengthMismatchStep03",
+  ],
+  scriptIntegrityHashMissing: [
+    "fraudProofScriptIntegrityHashMissing",
+    "fraudProofScriptIntegrityHashMissingStep02",
+    "fraudProofScriptIntegrityHashMissingStep03",
+    "fraudProofScriptIntegrityHashMissingScriptGrammar",
+    "fraudProofScriptIntegrityHashMissingScriptScan",
+    "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+    "fraudProofScriptIntegrityHashMissingStep04",
+  ],
+  missingRedeemer: [
+    "fraudProofMissingRedeemer",
+    "fraudProofMissingRedeemerStep02",
+    "fraudProofMissingRedeemerStep02a",
+    "fraudProofMissingRedeemerStep02b",
+    "fraudProofMissingRedeemerStep03",
+    "fraudProofMissingRedeemerStep04",
+    "fraudProofMissingRedeemerStep05",
+  ],
+  unusedRedeemer: [
+    "fraudProofUnusedRedeemer",
+    "fraudProofUnusedRedeemerStep02",
+    "fraudProofUnusedRedeemerStep02a",
+    "fraudProofUnusedRedeemerStep02b",
+    "fraudProofUnusedRedeemerStep02c",
+    "fraudProofUnusedRedeemerStep03",
+    "fraudProofUnusedRedeemerStep04",
+    "fraudProofUnusedRedeemerStep05",
+    "fraudProofUnusedRedeemerStep06",
+  ],
+  executionNativeScriptInvalid: [
+    "fraudProofExecutionNativeScriptInvalid",
+    "fraudProofExecutionNativeScriptInvalidStep02",
+    "fraudProofExecutionNativeScriptInvalidStep03",
+    "fraudProofExecutionNativeScriptInvalidStep04",
+    "fraudProofExecutionNativeScriptInvalidStep05",
+    "fraudProofExecutionNativeScriptInvalidStep06",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+    "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+  ],
+};
+
+const faultProofStepContractName = (
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  stepIndex: number,
+): string => {
+  const declared = FAULT_PROOF_STEP_CONTRACT_NAMES[category];
+  if (declared !== undefined) {
+    const name = declared[stepIndex];
+    if (name === undefined) {
+      throw new Error(
+        `${category} exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    }
+    return name;
+  }
+  return `fraudProof${upperFirst(category)}${
+    stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
+  }`;
+};
+
+const manifestReferenceScriptTarget = (
+  contractName: string,
+  script: SDK.ReferenceScriptTarget["script"],
+): ReferenceScriptTarget => {
+  const name = REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME.get(contractName);
+  if (name === undefined) {
+    throw new Error(
+      `Contract is missing a canonical reference-script role: ${contractName}`,
+    );
+  }
+  referenceScriptAuthTokenNameText(name);
+  return { name, script };
+};
+
+/**
+ * The prefix of a compiled fault-proof chain that the canonical deployment ABI
+ * actually registers.
+ *
+ * `midgard-core`'s `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` names five
+ * `missingNativeScriptUtxo` steps and three `nativeScriptInvalid` steps, while
+ * `onchain/aiken` compiles seven and five and `midgard-fault-proofs`'s runtime
+ * submits against `fraudProofMissingNativeScriptUtxoStep06`/`Step07` and
+ * `fraudProofNativeScriptInvalidStep04`/`Step05`. `validateContracts` takes an
+ * EXACT key set, so a deployment carrying those four surplus steps is rejected
+ * outright and one omitting the five/three is rejected too — the node can only
+ * deploy what the ABI names. Extending the ABI moves the manifest identity for
+ * `midgard-core`, `midgard-watcher`, `da-committee-node` and this package, so
+ * it is not a change this module can make on its own.
+ *
+ * This is a BOUND, not a filter. It only ever drops a TAIL of unregistered
+ * steps: an unregistered step with a registered step after it, or a chain whose
+ * very first step is unregistered, still fails closed here, and every step it
+ * does return still goes through `manifestReferenceScriptTarget`.
+ */
+const abiRegisteredChainSteps = <T>(
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  steps: readonly T[],
+): readonly T[] => {
+  const registered = steps.map((_, stepIndex) =>
+    REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME.has(
+      faultProofStepContractName(category, stepIndex),
+    ),
+  );
+  const firstUnregistered = registered.indexOf(false);
+  if (firstUnregistered === -1) {
+    return steps;
+  }
+  if (firstUnregistered === 0) {
+    throw new Error(
+      `Fault-proof category ${category} has no canonical reference-script role for its first step`,
+    );
+  }
+  if (registered.lastIndexOf(true) > firstUnregistered) {
+    throw new Error(
+      `Fault-proof category ${category} registers a step after unregistered step ${(firstUnregistered + 1).toString()}`,
+    );
+  }
+  return steps.slice(0, firstUnregistered);
+};
+
+const registeredFraudProofReferenceScriptTargets = (
+  contracts: SDK.MidgardValidators,
+): readonly ReferenceScriptTarget[] => [
+  ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
+    abiRegisteredChainSteps(
+      category,
+      contracts.fraudProofContracts[category].steps,
+    ).map((validator, stepIndex) =>
+      manifestReferenceScriptTarget(
+        faultProofStepContractName(category, stepIndex),
+        validator.spendingScript,
+      ),
+    ),
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTrace",
+    contracts.fraudProofContracts.transitionTrace.route.spendingScript,
+  ),
+  ...contracts.fraudProofContracts.transitionTrace.finals.map(
+    (validator, index) =>
+      manifestReferenceScriptTarget(
+        TRANSITION_TRACE_FINAL_CONTRACT_NAMES[index],
+        validator.spendingScript,
+      ),
+  ),
+];
+
+const legacyFraudProofReferenceScriptTargets = (
+  contracts: SDK.MidgardValidators,
+): readonly ReferenceScriptTarget[] => {
+  const families = [
+    ["fraudProofDoubleSpend", contracts.fraudProofContracts.doubleSpend],
+    [
+      "fraudProofNonExistentInput",
+      contracts.fraudProofContracts.nonExistentInput,
+    ],
+    [
+      "fraudProofNonExistentInputNoIndex",
+      contracts.fraudProofContracts.nonExistentInputNoIndex,
+    ],
+    ["fraudProofInvalidRange", contracts.fraudProofContracts.invalidRange],
+    ["fraudProofZeroInput", contracts.fraudProofContracts.zeroInput],
+    ["fraudProofDaHashPreimage", contracts.fraudProofContracts.daHashPreimage],
+    [
+      "fraudProofNoReferenceInput",
+      contracts.fraudProofContracts.noReferenceInput,
+    ],
+    [
+      "fraudProofReferenceInputNoIdx",
+      contracts.fraudProofContracts.referenceInputNoIdx,
+    ],
+    [
+      "fraudProofInvalidSignature",
+      contracts.fraudProofContracts.invalidSignature,
+    ],
+  ] as const;
+  // Step 01 is included: `chain.steps[0]` IS `chain.firstStep`, and
+  // `contract-deployment-info.ts` gives that script the
+  // `V1 fraud-proof <family> step-01` manifest role. Publishing from step 02
+  // onwards left those nine roles declared by the manifest but never deployed,
+  // and `validateReferenceScripts` requires a confirmed reference script for
+  // every role in `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES`.
+  return families.flatMap(([firstStepContractName, chain]) =>
+    chain.steps.map((validator, stepIndex) =>
+      manifestReferenceScriptTarget(
+        stepIndex === 0
+          ? firstStepContractName
+          : `${firstStepContractName}Step${(stepIndex + 1)
+              .toString()
+              .padStart(2, "0")}`,
+        validator.spendingScript,
+      ),
+    ),
+  );
+};
+
 export const nodeRuntimeReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
 ): readonly ReferenceScriptTarget[] => [
@@ -1165,6 +1480,26 @@ export const nodeRuntimeReferenceScriptTargets = (
     script: contracts.stateQueue.mintingScript,
   },
   {
+    name: "state-queue commit withdrawal",
+    script: contracts.stateQueue.yields.commit.withdrawalScript,
+  },
+  {
+    name: "state-queue unattested-timeout withdrawal",
+    script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+  },
+  {
+    name: "state-queue unavailable-timeout withdrawal",
+    script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+  },
+  {
+    name: "state-queue fraud-removal withdrawal",
+    script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+  },
+  {
+    name: "state-queue merge withdrawal",
+    script: contracts.stateQueue.yields.merge.withdrawalScript,
+  },
+  {
     name: "registered-operators spending",
     script: contracts.registeredOperators.spendingScript,
   },
@@ -1191,6 +1526,22 @@ export const nodeRuntimeReferenceScriptTargets = (
   {
     name: "fraud-proof-catalogue minting",
     script: contracts.fraudProofCatalogue.mintingScript,
+  },
+  {
+    name: "V1 fraud-proof computation-thread minting",
+    script: contracts.computationThread.mintingScript,
+  },
+  {
+    name: "V1 fraud-proof token minting",
+    script: contracts.fraudProof.mintingScript,
+  },
+  {
+    name: "V1 MPF chunked-verify withdrawal",
+    script: contracts.chunkedVerify.withdrawalScript,
+  },
+  {
+    name: "V1 MPF pexcludes withdrawal",
+    script: contracts.pexcludes.withdrawalScript,
   },
   {
     name: "deposit minting",
@@ -1232,6 +1583,91 @@ export const nodeRuntimeReferenceScriptTargets = (
     name: "payout minting",
     script: contracts.payout.mintingScript,
   },
+  // The state-correction wave gave the availability challenge both a
+  // reference-script role and an auth token in the deployment manifest, and
+  // `fetchDaAttestationReferenceScripts` in `src/transactions/da-attestation.ts`
+  // resolves "availability-challenge minting" at runtime, but the publication
+  // command was never extended to match — the node-runtime plan reported 152
+  // targets against the manifest's declared roles and every DA-attestation
+  // settlement path failed with `Missing reference script`. These publish
+  // exactly the two roles the manifest declares, no more.
+  //
+  // Anastasia-Labs/midgard#649: `availability_challenge` compiles to 19,956
+  // bytes, so real-L1 publication of these two targets stays blocked until #649
+  // lands and the validator shrinks; the emulator suites raise their envelope
+  // and so do cover them.
+  {
+    name: "availability-challenge spending",
+    script: contracts.availabilityChallenge.spendingScript,
+  },
+  {
+    name: "availability-challenge minting",
+    script: contracts.availabilityChallenge.mintingScript,
+  },
+  // #579 removed all three "V1 transaction-field" reference scripts with their
+  // contracts; the §8.6 certificate carries its own roles elsewhere in this
+  // list. Only the CEK publication survives inside this guard, so the guard now
+  // reads off `cekProgramMaterial` rather than the retired preimage lock. The
+  // test is unchanged in meaning: under the always-succeeds contract set that
+  // validator IS the tx-order spend script, and this list must not publish a
+  // stand-in as though it were a distinct deployed reference script.
+  ...(contracts.cekProgramMaterial.spendingScriptHash ===
+  contracts.txOrder.spendingScriptHash
+    ? []
+    : [
+        {
+          name: "V1 immutable CEK program-material publication",
+          script: contracts.cekProgramMaterial.spendingScript,
+        },
+      ]),
+  ...(contracts.fraudProofs.validationTraceDispute === undefined
+    ? []
+    : [
+        {
+          name: "V1 validation-trace dispute",
+          script: contracts.fraudProofs.validationTraceDispute.spendingScript,
+        },
+        {
+          name: "V1 validation-trace source",
+          script:
+            contracts.fraudProofs.validationTraceDispute.source.spendingScript,
+        },
+        {
+          name: "V1 validation-trace game",
+          script:
+            contracts.fraudProofs.validationTraceDispute.game.spendingScript,
+        },
+        {
+          name: "V1 validation-trace boundary",
+          script:
+            contracts.fraudProofs.validationTraceDispute.boundary
+              .spendingScript,
+        },
+        {
+          name: "V1 validation-trace timeout",
+          script:
+            contracts.fraudProofs.validationTraceDispute.timeout.spendingScript,
+        },
+        {
+          name: "V1 validation-trace award",
+          script:
+            contracts.fraudProofs.validationTraceDispute.award.spendingScript,
+        },
+      ]),
+  ...legacyFraudProofReferenceScriptTargets(contracts),
+  ...registeredFraudProofReferenceScriptTargets(contracts),
+  manifestReferenceScriptTarget(
+    "fraudProofMinAdaStep02TxWithdraw",
+    contracts.fraudProofContracts.minAda.yields.tx.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMinAdaStep02UtxoWithdraw",
+    contracts.fraudProofContracts.minAda.yields.utxo.withdrawalScript,
+  ),
+  {
+    name: "correction-lock spending",
+    script: contracts.correctionLock.spendingScript,
+  },
 ];
 
 export const referenceScriptTargetsByCommand = (
@@ -1264,6 +1700,26 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "state-queue minting",
       script: contracts.stateQueue.mintingScript,
+    },
+    {
+      name: "state-queue commit withdrawal",
+      script: contracts.stateQueue.yields.commit.withdrawalScript,
+    },
+    {
+      name: "state-queue unattested-timeout withdrawal",
+      script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue unavailable-timeout withdrawal",
+      script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue fraud-removal withdrawal",
+      script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+    },
+    {
+      name: "state-queue merge withdrawal",
+      script: contracts.stateQueue.yields.merge.withdrawalScript,
     },
     {
       name: "registered-operators minting",
@@ -1311,6 +1767,13 @@ export const referenceScriptTargetsByCommand = (
       name: "da-attestation minting",
       script: contracts.daAttestation.mintingScript,
     },
+    // `fetchDaAttestationReferenceScripts` resolves this alongside the
+    // da-attestation pair, so the `da` scope has to publish it too. Same
+    // Anastasia-Labs/midgard#649 caveat as the node-runtime entries above.
+    {
+      name: "availability-challenge minting",
+      script: contracts.availabilityChallenge.mintingScript,
+    },
   ],
   "state-queue": [
     {
@@ -1320,6 +1783,30 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "state-queue minting",
       script: contracts.stateQueue.mintingScript,
+    },
+    {
+      name: "state-queue commit withdrawal",
+      script: contracts.stateQueue.yields.commit.withdrawalScript,
+    },
+    {
+      name: "state-queue unattested-timeout withdrawal",
+      script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue unavailable-timeout withdrawal",
+      script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue fraud-removal withdrawal",
+      script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+    },
+    {
+      name: "state-queue merge withdrawal",
+      script: contracts.stateQueue.yields.merge.withdrawalScript,
+    },
+    {
+      name: "correction-lock spending",
+      script: contracts.correctionLock.spendingScript,
     },
   ],
   scheduler: [

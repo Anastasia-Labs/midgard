@@ -1,4 +1,5 @@
 import { normalizeHex } from "@al-ft/midgard-core/hex";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   compareOutRefs,
   outRefLabel,
@@ -7,24 +8,81 @@ import {
   parseOutRefLabel,
 } from "@al-ft/midgard-core/out-ref";
 import {
+  buildCanonicalDecodabilityFaultProofContracts,
+  buildCommittedFieldShapeFaultProofContracts,
+  buildCrossBlockDuplicateEventFaultProofContracts,
+  buildDaHashPreimageFaultProofContracts,
+  buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
+  buildDoubleWithdrawFaultProofContracts,
+  buildExecutionNativeScriptInvalidFaultProofContracts,
+  buildExecutionSourceScriptDecodingFaultProofContracts,
+  buildFabricatedDepositFaultProofContracts,
+  buildFabricatedWithdrawalFaultProofContracts,
+  buildFieldItemWidthIllegalFaultProofContracts,
+  buildFieldPreimageLengthMismatchFaultProofContracts,
+  buildInputNoIdxFaultProofContracts,
+  buildInputSetUniquenessFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildInvalidSignatureFaultProofContracts,
+  buildL2TxMistagFaultProofContracts,
+  buildMinAdaFaultProofContracts,
+  buildMinFeeFaultProofContracts,
+  buildMintAuthorizationFaultProofContracts,
+  buildMintDeclaredAssetLimitFaultProofContracts,
+  buildMissingNativeScriptTxFaultProofContracts,
+  buildMissingNativeScriptUtxoFaultProofContracts,
+  buildMissingRedeemerFaultProofContracts,
+  buildMissingScriptSourceFaultProofContracts,
+  buildMissingSignatureFaultProofContracts,
+  buildNativeScriptDecodingFaultProofContracts,
+  buildNativeScriptInvalidFaultProofContracts,
+  buildNetworkIdFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
+  buildNoReferenceInputFaultProofContracts,
+  buildObserverOrderInvalidFaultProofContracts,
+  buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
+  buildOutputReferenceScriptDecodingFaultProofContracts,
+  buildProtectedOutputSignerMissingFaultProofContracts,
+  buildReceivePurposeLanguageFaultProofContracts,
+  buildRedeemerCanonicityFaultProofContracts,
+  buildReferenceInputNoIdxFaultProofContracts,
+  buildResolvedOutputNonCanonicalFaultProofContracts,
+  buildScriptIntegrityHashMismatchFaultProofContracts,
+  buildScriptIntegrityHashMissingFaultProofContracts,
+  buildSpendInputSignerMissingFaultProofContracts,
+  buildTransactionOutputNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildUnusedRedeemerFaultProofContracts,
+  buildUnusedScriptWitnessFaultProofContracts,
+  buildValidationTraceDisputeFaultProofContracts,
+  buildValueNotPreservedFaultProofContracts,
+  buildWithdrawalMistagFaultProofContracts,
+  buildWithdrawnInputFaultProofContracts,
+  buildWithdrawnReferenceInputFaultProofContracts,
+  buildWitnessScriptDecodingFaultProofContracts,
   buildZeroInputFaultProofContracts,
+  type DaHashPreimageFaultProofContracts,
   type DoubleSpendFaultProofContracts,
+  type FaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
+  type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
+  type InvalidSignatureFaultProofContracts,
   MerkleRoot,
   type NonExistentInputFaultProofContracts,
+  type NoReferenceInputFaultProofContracts,
   parseFaultProofBlueprint,
   Proof,
+  type ReferenceInputNoIdxFaultProofContracts,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   type TransitionTraceFaultProofContracts,
+  type ValidationTraceDisputeFaultProofContracts,
   type ZeroInputFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
+  applyParamsToScript,
   Blockfrost,
   CML,
   credentialToAddress,
@@ -47,12 +105,11 @@ import {
   assertFraudProofCatalogueCategoryReady,
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
+  parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "./inspect-contracts.js";
 import { aikenSerialisedPlutusDataCbor } from "./plutus-data-cbor.js";
 
 const DEFAULT_WALLET_SEED_ENV = "USER_WALLET";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 export const DEFAULT_CONFIRMATION_POLL_MS = 5_000;
 
@@ -174,12 +231,16 @@ const resolveSeedSigner = (
   source: string,
   network: Network,
 ): ResolvedProverSigner => {
-  const wallet = walletFromSeed(seedPhrase, { network });
+  const wallet = walletFromSeed(seedPhrase, {
+    addressType: "Enterprise",
+    network,
+  });
   return {
     source,
     address: wallet.address,
     paymentKeyHash: paymentKeyHashFromAddress(wallet.address),
-    selectWallet: (lucid) => lucid.selectWallet.fromSeed(seedPhrase),
+    selectWallet: (lucid) =>
+      lucid.selectWallet.fromSeed(seedPhrase, { addressType: "Enterprise" }),
   };
 };
 
@@ -286,6 +347,50 @@ export const requireDeploymentScriptHash = (
   return entry.scriptHash;
 };
 
+export const requireDeploymentReferenceScriptOutRef = (
+  deploymentInfo: ContractDeploymentInfo,
+  name: string,
+): OutRefLike => {
+  const entry = deploymentInfo[name];
+  if (entry === undefined) {
+    throw new Error(`Deployment info is missing "${name}"`);
+  }
+  if (entry.refScriptUTxO == null) {
+    throw new Error(
+      `Deployment info entry "${name}" is missing refScriptUTxO; publish the canonical reference script and regenerate deployment info before using this fraud-proof category.`,
+    );
+  }
+  return entry.refScriptUTxO;
+};
+
+export const requireDeploymentReferenceScript = async ({
+  lucid,
+  deploymentInfo,
+  name,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly name: string;
+}): Promise<UTxO> => {
+  const expectedScriptHash = requireDeploymentScriptHash(deploymentInfo, name);
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: requireDeploymentReferenceScriptOutRef(deploymentInfo, name),
+    label: `${name} reference-script UTxO`,
+  });
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `${name} reference-script UTxO ${outRefLabel(utxo)} does not carry a reference script.`,
+    );
+  }
+  requireMatchingScriptHash({
+    label: `${name} reference script`,
+    deployed: expectedScriptHash,
+    derived: validatorToScriptHash(utxo.scriptRef),
+  });
+  return utxo;
+};
+
 export const requireMatchingScriptHash = ({
   label,
   deployed,
@@ -300,6 +405,39 @@ export const requireMatchingScriptHash = ({
       `${label} mismatch: deployment=${deployed}, derived=${derived}.`,
     );
   }
+};
+
+/**
+ * Validates a published step reference-script UTxO fail-closed and returns it
+ * for use as a transaction reference input.
+ *
+ * A registered fraud-proof family sources its step spending validators from
+ * reference scripts (owner ruling: always reference scripts, never inline
+ * attach), so every step submitter accepts an optional `referenceScriptUtxo`.
+ * The UTxO must carry a reference script, and that script must hash to the
+ * step's own deployed spending-script hash — a divergence would read a witness
+ * that does not authorize the spend.
+ */
+export const requireFaultProofStepReferenceScript = ({
+  utxo,
+  expectedScriptHash,
+  label,
+}: {
+  readonly utxo: UTxO;
+  readonly expectedScriptHash: string;
+  readonly label: string;
+}): UTxO => {
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `${label} reference UTxO ${outRefLabel(utxo)} carries no reference script.`,
+    );
+  }
+  requireMatchingScriptHash({
+    label: `${label} reference script`,
+    deployed: expectedScriptHash,
+    derived: validatorToScriptHash(utxo.scriptRef),
+  });
+  return utxo;
 };
 
 export type ResolvedDoubleSpendDeploymentContracts = {
@@ -338,6 +476,36 @@ export type ResolvedTransitionTraceDeploymentContracts = {
   readonly contracts: TransitionTraceFaultProofContracts;
 };
 
+export type ResolvedValidationTraceDisputeDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly referenceScriptAuthPolicyId: string;
+  readonly cekProgramMaterialScriptHash: string;
+  readonly cekProgramMaterialAddress: string;
+  readonly validationTraceDisputeCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: ValidationTraceDisputeFaultProofContracts;
+};
+
+export type ResolvedDaHashPreimageDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly daHashPreimageCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: DaHashPreimageFaultProofContracts;
+};
+
+export type ResolvedInputNoIdxDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly nonExistentInputNoIndexCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: InputNoIdxFaultProofContracts;
+};
+
 export type ResolvedZeroInputDeploymentContracts = {
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly zeroInputCategory: FraudProofCatalogueCategoryDeploymentInfo;
@@ -347,22 +515,343 @@ export type ResolvedZeroInputDeploymentContracts = {
   readonly contracts: ZeroInputFaultProofContracts;
 };
 
-type SupportedFaultProofCategoryName = Extract<
-  FraudProofCatalogueCategoryName,
-  | "doubleSpend"
-  | "nonExistentInput"
-  | "invalidRange"
-  | "transitionTrace"
-  | "zeroInput"
->;
+export type ResolvedNoReferenceInputDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly noReferenceInputCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: NoReferenceInputFaultProofContracts;
+};
 
-const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
-  doubleSpend: "fraudProofDoubleSpend",
-  nonExistentInput: "fraudProofNonExistentInput",
-  invalidRange: "fraudProofInvalidRange",
-  transitionTrace: "fraudProofTransitionTrace",
-  zeroInput: "fraudProofZeroInput",
-} as const satisfies Record<SupportedFaultProofCategoryName, string>;
+export type ResolvedReferenceInputNoIdxDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly referenceInputNoIdxCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: ReferenceInputNoIdxFaultProofContracts;
+};
+
+export type ResolvedInvalidSignatureDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly invalidSignatureCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: InvalidSignatureFaultProofContracts;
+};
+
+export type SupportedFaultProofCategoryName = FraudProofCatalogueCategoryName;
+
+/**
+ * Canonical manifest entries in the same order as each SDK chain's `steps`.
+ *
+ * The older families still have only their historical first-step deployment
+ * entry. Every category registered by the current append wave names every
+ * step, so production resolution cannot silently fall back to an inline
+ * validator for a later transition.
+ */
+export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
+  doubleSpend: ["fraudProofDoubleSpend"],
+  nonExistentInput: ["fraudProofNonExistentInput"],
+  nonExistentInputNoIndex: ["fraudProofNonExistentInputNoIndex"],
+  invalidRange: ["fraudProofInvalidRange"],
+  transitionTrace: [
+    "fraudProofTransitionTrace",
+    "fraudProofTransitionTraceControl",
+    "fraudProofTransitionTraceSource",
+    "fraudProofTransitionTraceWithdrawal",
+    "fraudProofTransitionTraceForced",
+    "fraudProofTransitionTraceAcceptedTransaction",
+    "fraudProofTransitionTraceDeposit",
+    "fraudProofTransitionTraceL1Event",
+    "fraudProofTransitionTraceDuplicate",
+  ],
+  zeroInput: ["fraudProofZeroInput"],
+  validationTraceDispute: ["validationTraceDispute"],
+  daHashPreimage: ["fraudProofDaHashPreimage"],
+  noReferenceInput: ["fraudProofNoReferenceInput"],
+  referenceInputNoIdx: ["fraudProofReferenceInputNoIdx"],
+  invalidSignature: ["fraudProofInvalidSignature"],
+  fabricatedDeposit: [
+    "fraudProofFabricatedDeposit",
+    "fraudProofFabricatedDepositStep02",
+    "fraudProofFabricatedDepositStep03",
+    "fraudProofFabricatedDepositStep04",
+  ],
+  fabricatedWithdrawal: [
+    "fraudProofFabricatedWithdrawal",
+    "fraudProofFabricatedWithdrawalStep02",
+    "fraudProofFabricatedWithdrawalStep03",
+    "fraudProofFabricatedWithdrawalStep04",
+  ],
+  nativeScriptDecoding: [
+    "fraudProofNativeScriptDecoding",
+    "fraudProofNativeScriptDecodingStep02",
+    "fraudProofNativeScriptDecodingStep03OpenSubject",
+    "fraudProofNativeScriptDecodingStep03BindDescriptor",
+    "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+    "fraudProofNativeScriptDecodingStep04",
+  ],
+  missingSignature: [
+    "fraudProofMissingSignature",
+    "fraudProofMissingSignatureStep02",
+    "fraudProofMissingSignatureStep03",
+    "fraudProofMissingSignatureStep04",
+  ],
+  missingNativeScriptTx: [
+    "fraudProofMissingNativeScriptTx",
+    "fraudProofMissingNativeScriptTxStep02",
+    "fraudProofMissingNativeScriptTxStep03",
+    "fraudProofMissingNativeScriptTxStep04",
+    "fraudProofMissingNativeScriptTxStep05",
+    "fraudProofMissingNativeScriptTxStep06",
+    "fraudProofMissingNativeScriptTxStep07",
+    "fraudProofMissingNativeScriptTxStep08",
+  ],
+  withdrawnReferenceInput: [
+    "fraudProofWithdrawnReferenceInput",
+    "fraudProofWithdrawnReferenceInputStep02",
+    "fraudProofWithdrawnReferenceInputStep03",
+  ],
+  canonicalDecodability: [
+    "fraudProofCanonicalDecodability",
+    "fraudProofCanonicalDecodabilityStep02",
+  ],
+  committedFieldShape: [
+    "fraudProofCommittedFieldShape",
+    "fraudProofCommittedFieldShapeStep02",
+  ],
+  minFee: ["fraudProofMinFee", "fraudProofMinFeeStep02"],
+  withdrawalMistag: [
+    "fraudProofWithdrawalMistag",
+    "fraudProofWithdrawalMistagStep02",
+    "fraudProofWithdrawalMistagStep03",
+    "fraudProofWithdrawalMistagStep04",
+    "fraudProofWithdrawalMistagStep05",
+  ],
+  doubleWithdraw: [
+    "fraudProofDoubleWithdraw",
+    "fraudProofDoubleWithdrawStep02",
+  ],
+  crossBlockDuplicateEvent: [
+    "fraudProofCrossBlockDuplicateEvent",
+    "fraudProofCrossBlockDuplicateEventStep02",
+  ],
+  l2TxMistag: ["fraudProofL2TxMistag", "fraudProofL2TxMistagStep02"],
+  withdrawnInput: [
+    "fraudProofWithdrawnInput",
+    "fraudProofWithdrawnInputStep02",
+    "fraudProofWithdrawnInputStep03",
+  ],
+  valueNotPreserved: [
+    "fraudProofValueNotPreserved",
+    "fraudProofValueNotPreservedStep02",
+    "fraudProofValueNotPreservedStep03",
+    "fraudProofValueNotPreservedStep04",
+  ],
+  inputSetUniqueness: [
+    "fraudProofInputSetUniqueness",
+    "fraudProofInputSetUniquenessStep02",
+    "fraudProofInputSetUniquenessStep03",
+    "fraudProofInputSetUniquenessStep04",
+  ],
+  mintAuthorization: [
+    "fraudProofMintAuthorization",
+    "fraudProofMintAuthorizationStep02",
+    "fraudProofMintAuthorizationStep03",
+    "fraudProofMintAuthorizationStep04",
+    "fraudProofMintAuthorizationStep05",
+  ],
+  networkId: ["fraudProofNetworkId", "fraudProofNetworkIdStep02"],
+  missingNativeScriptUtxo: [
+    "fraudProofMissingNativeScriptUtxo",
+    "fraudProofMissingNativeScriptUtxoStep02",
+    "fraudProofMissingNativeScriptUtxoStep03",
+    "fraudProofMissingNativeScriptUtxoStep04",
+    "fraudProofMissingNativeScriptUtxoStep05",
+    "fraudProofMissingNativeScriptUtxoStep06",
+    "fraudProofMissingNativeScriptUtxoStep07",
+  ],
+  nativeScriptInvalid: [
+    "fraudProofNativeScriptInvalid",
+    "fraudProofNativeScriptInvalidStep02",
+    "fraudProofNativeScriptInvalidStep03",
+    "fraudProofNativeScriptInvalidStep04",
+    "fraudProofNativeScriptInvalidStep05",
+  ],
+  minAda: [
+    "fraudProofMinAda",
+    "fraudProofMinAdaStep02",
+    "fraudProofMinAdaStep03",
+    "fraudProofMinAdaStep04",
+    "fraudProofMinAdaStep05",
+  ],
+  fieldPreimageLengthMismatch: [
+    "fraudProofFieldPreimageLengthMismatch",
+    "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+    "fraudProofFieldPreimageLengthMismatchStep02Forced",
+    "fraudProofFieldPreimageLengthMismatchStep03",
+  ],
+  fieldItemWidthIllegal: [
+    "fraudProofFieldItemWidthIllegal",
+    "fraudProofFieldItemWidthIllegalStep02",
+    "fraudProofFieldItemWidthIllegalStep03",
+  ],
+  witnessScriptDecoding: [
+    "fraudProofWitnessScriptDecoding",
+    "fraudProofWitnessScriptDecodingStep02",
+    "fraudProofWitnessScriptDecodingStep03",
+    "fraudProofWitnessScriptDecodingStep04",
+  ],
+  scriptIntegrityHashMissing: [
+    "fraudProofScriptIntegrityHashMissing",
+    "fraudProofScriptIntegrityHashMissingStep02",
+    "fraudProofScriptIntegrityHashMissingStep03",
+    "fraudProofScriptIntegrityHashMissingScriptGrammar",
+    "fraudProofScriptIntegrityHashMissingScriptScan",
+    "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+    "fraudProofScriptIntegrityHashMissingStep04",
+  ],
+  transactionOutputNonCanonical: [
+    "fraudProofTransactionOutputNonCanonical",
+    "fraudProofTransactionOutputNonCanonicalStep02",
+    "fraudProofTransactionOutputNonCanonicalStep03",
+    "fraudProofTransactionOutputNonCanonicalStep04",
+  ],
+  resolvedOutputNonCanonical: [
+    "fraudProofResolvedOutputNonCanonical",
+    "fraudProofResolvedOutputNonCanonicalStep02",
+    "fraudProofResolvedOutputNonCanonicalStep03",
+    "fraudProofResolvedOutputNonCanonicalStep04",
+    "fraudProofResolvedOutputNonCanonicalStep05",
+  ],
+  mintDeclaredAssetLimit: [
+    "fraudProofMintDeclaredAssetLimit",
+    "fraudProofMintDeclaredAssetLimitStep02",
+    "fraudProofMintDeclaredAssetLimitStep03",
+    "fraudProofMintDeclaredAssetLimitStep04",
+  ],
+  spendInputSignerMissing: [
+    "fraudProofSpendInputSignerMissing",
+    "fraudProofSpendInputSignerMissingStep02",
+    "fraudProofSpendInputSignerMissingStep03",
+    "fraudProofSpendInputSignerMissingStep04",
+    "fraudProofSpendInputSignerMissingStep05",
+  ],
+  protectedOutputSignerMissing: [
+    "fraudProofProtectedOutputSignerMissing",
+    "fraudProofProtectedOutputSignerMissingStep02",
+    "fraudProofProtectedOutputSignerMissingStep03",
+    "fraudProofProtectedOutputSignerMissingStep04",
+    "fraudProofProtectedOutputSignerMissingStep05",
+  ],
+  observersForbiddenOnUntaggedNetwork: [
+    "fraudProofObserversForbiddenOnUntaggedNetwork",
+    "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
+  ],
+  outputReferenceScriptDecoding: [
+    "fraudProofOutputReferenceScriptDecoding",
+    "fraudProofOutputReferenceScriptDecodingStep02",
+    "fraudProofOutputReferenceScriptDecodingStep03",
+    "fraudProofOutputReferenceScriptDecodingStep04",
+    "fraudProofOutputReferenceScriptDecodingStep05",
+    "fraudProofOutputReferenceScriptDecodingStep06",
+  ],
+  executionSourceScriptDecoding: [
+    "fraudProofExecutionSourceScriptDecoding",
+    "fraudProofExecutionSourceScriptDecodingStep02",
+    "fraudProofExecutionSourceScriptDecodingStep03",
+    "fraudProofExecutionSourceScriptDecodingStep04",
+    "fraudProofExecutionSourceScriptDecodingStep05",
+  ],
+  observerOrderInvalid: [
+    "fraudProofObserverOrderInvalid",
+    "fraudProofObserverOrderInvalidStep02",
+    "fraudProofObserverOrderInvalidStep03",
+    "fraudProofObserverOrderInvalidStep04",
+  ],
+  redeemerCanonicity: [
+    "fraudProofRedeemerCanonicity",
+    "fraudProofRedeemerCanonicityStep02",
+    "fraudProofRedeemerCanonicityStep03",
+  ],
+  receivePurposeLanguage: [
+    "fraudProofReceivePurposeLanguage",
+    "fraudProofReceivePurposeLanguageStep02",
+    "fraudProofReceivePurposeLanguageStep03",
+  ],
+  unusedScriptWitness: [
+    "fraudProofUnusedScriptWitness",
+    "fraudProofUnusedScriptWitnessStep02",
+    "fraudProofUnusedScriptWitnessStep03",
+    "fraudProofUnusedScriptWitnessStep04",
+    "fraudProofUnusedScriptWitnessStep05",
+    "fraudProofUnusedScriptWitnessStep06",
+  ],
+  missingScriptSource: [
+    "fraudProofMissingScriptSource",
+    "fraudProofMissingScriptSourceStep02",
+    "fraudProofMissingScriptSourceStep03",
+    "fraudProofMissingScriptSourceStep04",
+    "fraudProofMissingScriptSourceStep05",
+    "fraudProofMissingScriptSourceStep06",
+  ],
+  missingRedeemer: [
+    "fraudProofMissingRedeemer",
+    "fraudProofMissingRedeemerStep02",
+    "fraudProofMissingRedeemerStep02a",
+    "fraudProofMissingRedeemerStep02b",
+    "fraudProofMissingRedeemerStep03",
+    "fraudProofMissingRedeemerStep04",
+    "fraudProofMissingRedeemerStep05",
+  ],
+  unusedRedeemer: [
+    "fraudProofUnusedRedeemer",
+    "fraudProofUnusedRedeemerStep02",
+    "fraudProofUnusedRedeemerStep02a",
+    "fraudProofUnusedRedeemerStep02b",
+    "fraudProofUnusedRedeemerStep02c",
+    "fraudProofUnusedRedeemerStep03",
+    "fraudProofUnusedRedeemerStep04",
+    "fraudProofUnusedRedeemerStep05",
+    "fraudProofUnusedRedeemerStep06",
+  ],
+  executionNativeScriptInvalid: [
+    "fraudProofExecutionNativeScriptInvalid",
+    "fraudProofExecutionNativeScriptInvalidStep02",
+    "fraudProofExecutionNativeScriptInvalidStep03",
+    "fraudProofExecutionNativeScriptInvalidStep04",
+    "fraudProofExecutionNativeScriptInvalidStep05",
+    "fraudProofExecutionNativeScriptInvalidStep06",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+    "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+  ],
+  scriptIntegrityHashMismatch: [
+    "fraudProofScriptIntegrityHashMismatch",
+    "fraudProofScriptIntegrityHashMismatchStep02",
+    "fraudProofScriptIntegrityHashMismatchStep03",
+    "fraudProofScriptIntegrityHashMismatchStep04",
+    "fraudProofScriptIntegrityHashMismatchStep05",
+  ],
+  distinctAssetAccumulationLimit: [
+    "fraudProofDistinctAssetAccumulationLimit",
+    "fraudProofDistinctAssetAccumulationLimitStep02",
+    "fraudProofDistinctAssetAccumulationLimitStep03",
+    "fraudProofDistinctAssetAccumulationLimitStep04",
+    "fraudProofDistinctAssetAccumulationLimitStep05",
+    "fraudProofDistinctAssetAccumulationLimitStep06",
+  ],
+} as const satisfies Record<
+  SupportedFaultProofCategoryName,
+  readonly [string, ...string[]]
+>;
 
 const categoryLabel = (
   categoryName: SupportedFaultProofCategoryName,
@@ -372,16 +861,356 @@ const categoryLabel = (
       return "double-spend";
     case "nonExistentInput":
       return "non-existent-input";
+    case "nonExistentInputNoIndex":
+      return "input-no-idx";
     case "invalidRange":
       return "invalid-range";
     case "transitionTrace":
       return "transition-trace";
     case "zeroInput":
       return "zero-input";
+    case "validationTraceDispute":
+      return "validation-trace-dispute";
+    case "daHashPreimage":
+      return "da-hash-preimage";
+    case "noReferenceInput":
+      return "no-reference-input";
+    case "referenceInputNoIdx":
+      return "reference-input-no-idx";
+    case "invalidSignature":
+      return "invalid-signature";
+    case "fabricatedDeposit":
+      return "fabricated-deposit";
+    case "fabricatedWithdrawal":
+      return "fabricated-withdrawal";
+    case "nativeScriptDecoding":
+      return "native-script-decoding";
+    case "missingSignature":
+      return "missing-signature";
+    case "missingNativeScriptTx":
+      return "missing-native-script-tx";
+    case "withdrawnReferenceInput":
+      return "withdrawn-reference-input";
+    case "canonicalDecodability":
+      return "canonical-decodability";
+    case "committedFieldShape":
+      return "committed-field-shape";
+    case "minFee":
+      return "min-fee";
+    case "withdrawalMistag":
+      return "withdrawal-mistag";
+    case "doubleWithdraw":
+      return "double-withdraw";
+    case "crossBlockDuplicateEvent":
+      return "cross-block-duplicate-event";
+    case "l2TxMistag":
+      return "l2-tx-mistag";
+    case "withdrawnInput":
+      return "withdrawn-input";
+    case "valueNotPreserved":
+      return "value-not-preserved";
+    case "inputSetUniqueness":
+      return "input-set-uniqueness";
+    case "mintAuthorization":
+      return "mint-authorization";
+    case "networkId":
+      return "network-id";
+    case "missingNativeScriptUtxo":
+      return "missing-native-script-utxo";
+    case "nativeScriptInvalid":
+      return "native-script-invalid";
+    case "minAda":
+      return "min-ada";
+    case "fieldPreimageLengthMismatch":
+      return "field-preimage-length-mismatch";
+    case "fieldItemWidthIllegal":
+      return "field-item-width-illegal";
+    case "witnessScriptDecoding":
+      return "witness-script-decoding";
+    case "scriptIntegrityHashMissing":
+      return "script-integrity-hash-missing";
+    case "transactionOutputNonCanonical":
+      return "transaction-output-non-canonical";
+    case "resolvedOutputNonCanonical":
+      return "resolved-output-non-canonical";
+    case "mintDeclaredAssetLimit":
+      return "mint-declared-asset-limit";
+    case "spendInputSignerMissing":
+      return "spend-input-signer-missing";
+    case "protectedOutputSignerMissing":
+      return "protected-output-signer-missing";
+    case "observersForbiddenOnUntaggedNetwork":
+      return "observers-forbidden-on-untagged-network";
+    case "outputReferenceScriptDecoding":
+      return "output-reference-script-decoding";
+    case "executionSourceScriptDecoding":
+      return "execution-source-script-decoding";
+    case "observerOrderInvalid":
+      return "observer-order-invalid";
+    case "redeemerCanonicity":
+      return "redeemer-canonicity";
+    case "receivePurposeLanguage":
+      return "receive-purpose-language";
+    case "unusedScriptWitness":
+      return "unused-script-witness";
+    case "missingScriptSource":
+      return "missing-script-source";
+    case "missingRedeemer":
+      return "missing-redeemer";
+    case "unusedRedeemer":
+      return "unused-redeemer";
+    case "executionNativeScriptInvalid":
+      return "execution-native-script-invalid";
+    case "scriptIntegrityHashMismatch":
+      return "script-integrity-hash-mismatch";
+    case "distinctAssetAccumulationLimit":
+      return "distinct-asset-accumulation-limit";
   }
 };
 
-const resolveFaultProofDeploymentContracts = async ({
+type OneCategoryFaultProofContracts = Pick<
+  FaultProofContracts,
+  "computationThread" | "fraudProof"
+> &
+  Partial<{
+    readonly [CategoryName in SupportedFaultProofCategoryName]: FaultProofContracts[CategoryName];
+  }>;
+
+const buildOneCategoryFaultProofContracts = async ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  fraudProofCataloguePolicyId,
+  referenceScriptAuthPolicyId,
+  categoryName,
+}: {
+  readonly blueprint: ReturnType<typeof parseFaultProofBlueprint>;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly referenceScriptAuthPolicyId: string;
+  readonly categoryName: SupportedFaultProofCategoryName;
+}): Promise<OneCategoryFaultProofContracts> => {
+  const params = {
+    blueprint,
+    network,
+    hubOraclePolicyId,
+    fraudProofCataloguePolicyId,
+    referenceScriptAuthPolicyId,
+  };
+  switch (categoryName) {
+    case "doubleSpend":
+      return await Effect.runPromise(
+        buildDoubleSpendFaultProofContracts(params),
+      );
+    case "nonExistentInput":
+      return await Effect.runPromise(
+        buildNonExistentInputFaultProofContracts(params),
+      );
+    case "nonExistentInputNoIndex":
+      return await Effect.runPromise(
+        buildInputNoIdxFaultProofContracts(params),
+      );
+    case "invalidRange":
+      return await Effect.runPromise(
+        buildInvalidRangeFaultProofContracts(params),
+      );
+    case "transitionTrace":
+      return await Effect.runPromise(
+        buildTransitionTraceFaultProofContracts(params),
+      );
+    case "zeroInput":
+      return await Effect.runPromise(buildZeroInputFaultProofContracts(params));
+    case "validationTraceDispute":
+      return await Effect.runPromise(
+        buildValidationTraceDisputeFaultProofContracts(params),
+      );
+    case "daHashPreimage":
+      return await Effect.runPromise(
+        buildDaHashPreimageFaultProofContracts(params),
+      );
+    case "noReferenceInput":
+      return await Effect.runPromise(
+        buildNoReferenceInputFaultProofContracts(params),
+      );
+    case "referenceInputNoIdx":
+      return await Effect.runPromise(
+        buildReferenceInputNoIdxFaultProofContracts(params),
+      );
+    case "invalidSignature":
+      return await Effect.runPromise(
+        buildInvalidSignatureFaultProofContracts(params),
+      );
+    case "fabricatedDeposit":
+      return await Effect.runPromise(
+        buildFabricatedDepositFaultProofContracts(params),
+      );
+    case "fabricatedWithdrawal":
+      return await Effect.runPromise(
+        buildFabricatedWithdrawalFaultProofContracts(params),
+      );
+    case "nativeScriptDecoding":
+      return await Effect.runPromise(
+        buildNativeScriptDecodingFaultProofContracts(params),
+      );
+    case "missingSignature":
+      return await Effect.runPromise(
+        buildMissingSignatureFaultProofContracts(params),
+      );
+    case "missingNativeScriptTx":
+      return await Effect.runPromise(
+        buildMissingNativeScriptTxFaultProofContracts(params),
+      );
+    case "withdrawnReferenceInput":
+      return await Effect.runPromise(
+        buildWithdrawnReferenceInputFaultProofContracts(params),
+      );
+    case "canonicalDecodability":
+      return await Effect.runPromise(
+        buildCanonicalDecodabilityFaultProofContracts(params),
+      );
+    case "committedFieldShape":
+      return await Effect.runPromise(
+        buildCommittedFieldShapeFaultProofContracts(params),
+      );
+    case "minFee":
+      return await Effect.runPromise(buildMinFeeFaultProofContracts(params));
+    case "withdrawalMistag":
+      return await Effect.runPromise(
+        buildWithdrawalMistagFaultProofContracts(params),
+      );
+    case "doubleWithdraw":
+      return await Effect.runPromise(
+        buildDoubleWithdrawFaultProofContracts(params),
+      );
+    case "crossBlockDuplicateEvent":
+      return await Effect.runPromise(
+        buildCrossBlockDuplicateEventFaultProofContracts(params),
+      );
+    case "l2TxMistag":
+      return await Effect.runPromise(
+        buildL2TxMistagFaultProofContracts(params),
+      );
+    case "withdrawnInput":
+      return await Effect.runPromise(
+        buildWithdrawnInputFaultProofContracts(params),
+      );
+    case "valueNotPreserved":
+      return await Effect.runPromise(
+        buildValueNotPreservedFaultProofContracts(params),
+      );
+    case "inputSetUniqueness":
+      return await Effect.runPromise(
+        buildInputSetUniquenessFaultProofContracts(params),
+      );
+    case "mintAuthorization":
+      return await Effect.runPromise(
+        buildMintAuthorizationFaultProofContracts(params),
+      );
+    case "networkId":
+      return await Effect.runPromise(buildNetworkIdFaultProofContracts(params));
+    case "missingNativeScriptUtxo":
+      return await Effect.runPromise(
+        buildMissingNativeScriptUtxoFaultProofContracts(params),
+      );
+    case "nativeScriptInvalid":
+      return await Effect.runPromise(
+        buildNativeScriptInvalidFaultProofContracts(params),
+      );
+    case "minAda":
+      return await Effect.runPromise(buildMinAdaFaultProofContracts(params));
+    case "fieldPreimageLengthMismatch":
+      return await Effect.runPromise(
+        buildFieldPreimageLengthMismatchFaultProofContracts(params),
+      );
+    case "fieldItemWidthIllegal":
+      return await Effect.runPromise(
+        buildFieldItemWidthIllegalFaultProofContracts(params),
+      );
+    case "witnessScriptDecoding":
+      return await Effect.runPromise(
+        buildWitnessScriptDecodingFaultProofContracts(params),
+      );
+    case "scriptIntegrityHashMissing":
+      return await Effect.runPromise(
+        buildScriptIntegrityHashMissingFaultProofContracts(params),
+      );
+    case "transactionOutputNonCanonical":
+      return await Effect.runPromise(
+        buildTransactionOutputNonCanonicalFaultProofContracts(params),
+      );
+    case "resolvedOutputNonCanonical":
+      return await Effect.runPromise(
+        buildResolvedOutputNonCanonicalFaultProofContracts(params),
+      );
+    case "mintDeclaredAssetLimit":
+      return await Effect.runPromise(
+        buildMintDeclaredAssetLimitFaultProofContracts(params),
+      );
+    case "spendInputSignerMissing":
+      return await Effect.runPromise(
+        buildSpendInputSignerMissingFaultProofContracts(params),
+      );
+    case "protectedOutputSignerMissing":
+      return await Effect.runPromise(
+        buildProtectedOutputSignerMissingFaultProofContracts(params),
+      );
+    case "observersForbiddenOnUntaggedNetwork":
+      return await Effect.runPromise(
+        buildObserversForbiddenOnUntaggedNetworkFaultProofContracts(params),
+      );
+    case "outputReferenceScriptDecoding":
+      return await Effect.runPromise(
+        buildOutputReferenceScriptDecodingFaultProofContracts(params),
+      );
+    case "executionSourceScriptDecoding":
+      return await Effect.runPromise(
+        buildExecutionSourceScriptDecodingFaultProofContracts(params),
+      );
+    case "observerOrderInvalid":
+      return await Effect.runPromise(
+        buildObserverOrderInvalidFaultProofContracts(params),
+      );
+    case "redeemerCanonicity":
+      return await Effect.runPromise(
+        buildRedeemerCanonicityFaultProofContracts(params),
+      );
+    case "receivePurposeLanguage":
+      return await Effect.runPromise(
+        buildReceivePurposeLanguageFaultProofContracts(params),
+      );
+    case "unusedScriptWitness":
+      return await Effect.runPromise(
+        buildUnusedScriptWitnessFaultProofContracts(params),
+      );
+    case "missingScriptSource":
+      return await Effect.runPromise(
+        buildMissingScriptSourceFaultProofContracts(params),
+      );
+    case "missingRedeemer":
+      return await Effect.runPromise(
+        buildMissingRedeemerFaultProofContracts(params),
+      );
+    case "unusedRedeemer":
+      return await Effect.runPromise(
+        buildUnusedRedeemerFaultProofContracts(params),
+      );
+    case "executionNativeScriptInvalid":
+      return await Effect.runPromise(
+        buildExecutionNativeScriptInvalidFaultProofContracts(params),
+      );
+    case "scriptIntegrityHashMismatch":
+      return await Effect.runPromise(
+        buildScriptIntegrityHashMismatchFaultProofContracts(params),
+      );
+    case "distinctAssetAccumulationLimit":
+      return await Effect.runPromise(
+        buildDistinctAssetAccumulationLimitFaultProofContracts(params),
+      );
+  }
+};
+
+export const resolveFaultProofDeploymentContracts = async ({
   blueprint,
   deploymentInfo,
   network,
@@ -401,12 +1230,7 @@ const resolveFaultProofDeploymentContracts = async ({
   readonly stateQueuePolicyId: string | undefined;
   readonly fraudProofCataloguePolicyId: string;
   readonly hubOraclePolicyId: string;
-  readonly contracts:
-    | DoubleSpendFaultProofContracts
-    | NonExistentInputFaultProofContracts
-    | InvalidRangeFaultProofContracts
-    | TransitionTraceFaultProofContracts
-    | ZeroInputFaultProofContracts;
+  readonly contracts: OneCategoryFaultProofContracts;
 }> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue =
@@ -416,7 +1240,16 @@ const resolveFaultProofDeploymentContracts = async ({
       "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.",
     );
   }
-  const category = catalogue.categories[categoryName];
+  const category = (
+    catalogue.categories as Readonly<
+      Partial<
+        Record<
+          SupportedFaultProofCategoryName,
+          FraudProofCatalogueCategoryDeploymentInfo
+        >
+      >
+    >
+  )[categoryName];
   if (category === undefined) {
     throw new Error(
       `Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}.`,
@@ -441,80 +1274,27 @@ const resolveFaultProofDeploymentContracts = async ({
   const deployedFraudProofSpendHash = requireFraudProofSpend
     ? requireDeploymentScriptHash(parsedDeploymentInfo, "fraudProofSpend")
     : undefined;
-  const deployedFirstStepHash = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY[categoryName],
-  );
-
   const parsedBlueprint = parseFaultProofBlueprint(blueprint);
-  let contracts:
-    | DoubleSpendFaultProofContracts
-    | NonExistentInputFaultProofContracts
-    | InvalidRangeFaultProofContracts
-    | TransitionTraceFaultProofContracts
-    | ZeroInputFaultProofContracts;
-  let derivedFirstStepHash: string;
-  if (categoryName === "doubleSpend") {
-    const doubleSpendContracts = await Effect.runPromise(
-      buildDoubleSpendFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
+  const referenceScriptAuthPolicyId =
+    parseContractDeploymentReferenceScriptAuthPolicyId(
+      deploymentInfo,
+      "reference-script-auth minting",
     );
-    contracts = doubleSpendContracts;
-    derivedFirstStepHash =
-      doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash;
-  } else if (categoryName === "nonExistentInput") {
-    const nonExistentInputContracts = await Effect.runPromise(
-      buildNonExistentInputFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
+  const contracts = await buildOneCategoryFaultProofContracts({
+    blueprint: parsedBlueprint,
+    network,
+    hubOraclePolicyId,
+    fraudProofCataloguePolicyId,
+    referenceScriptAuthPolicyId,
+    categoryName,
+  });
+  const categoryContracts = contracts[categoryName];
+  if (categoryContracts === undefined) {
+    throw new Error(
+      `${categoryLabel(categoryName)} builder did not return its category chain.`,
     );
-    contracts = nonExistentInputContracts;
-    derivedFirstStepHash =
-      nonExistentInputContracts.nonExistentInput.firstStep.spendingScriptHash;
-  } else if (categoryName === "invalidRange") {
-    const invalidRangeContracts = await Effect.runPromise(
-      buildInvalidRangeFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    contracts = invalidRangeContracts;
-    derivedFirstStepHash =
-      invalidRangeContracts.invalidRange.firstStep.spendingScriptHash;
-  } else if (categoryName === "transitionTrace") {
-    const transitionTraceContracts = await Effect.runPromise(
-      buildTransitionTraceFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    contracts = transitionTraceContracts;
-    derivedFirstStepHash =
-      transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
-  } else {
-    const zeroInputContracts = await Effect.runPromise(
-      buildZeroInputFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    contracts = zeroInputContracts;
-    derivedFirstStepHash =
-      zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
   }
+  const derivedFirstStepHash = categoryContracts.firstStep.spendingScriptHash;
   requireMatchingScriptHash({
     label: "fraudProofMint policy",
     deployed: deployedFraudProofPolicyId,
@@ -527,11 +1307,33 @@ const resolveFaultProofDeploymentContracts = async ({
       derived: contracts.fraudProof.spendingScriptHash,
     });
   }
-  requireMatchingScriptHash({
-    label: `${FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY[categoryName]} step-01 script`,
-    deployed: deployedFirstStepHash,
-    derived: derivedFirstStepHash,
-  });
+  const deploymentEntries =
+    FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY[categoryName];
+  if (deploymentEntries.length > categoryContracts.steps.length) {
+    throw new Error(
+      `${categoryLabel(categoryName)} manifest declares ${deploymentEntries.length.toString()} step entries, but the compiled chain has only ${categoryContracts.steps.length.toString()} steps.`,
+    );
+  }
+  for (const [stepIndex, deploymentEntry] of deploymentEntries.entries()) {
+    const derivedStep = categoryContracts.steps[stepIndex];
+    if (derivedStep === undefined) {
+      throw new Error(
+        `${categoryLabel(categoryName)} is missing compiled step ${(stepIndex + 1).toString()}.`,
+      );
+    }
+    const deployedStepHash =
+      stepIndex === 0
+        ? requireDeploymentScriptHash(parsedDeploymentInfo, deploymentEntry)
+        : parsedDeploymentInfo[deploymentEntry]?.scriptHash;
+    if (deployedStepHash === undefined) {
+      continue;
+    }
+    requireMatchingScriptHash({
+      label: `${deploymentEntry} step-${(stepIndex + 1).toString().padStart(2, "0")} script`,
+      deployed: deployedStepHash,
+      derived: derivedStep.spendingScriptHash,
+    });
+  }
   const readyCategory = await assertFraudProofCatalogueCategoryReady({
     catalogue,
     categoryName,
@@ -591,6 +1393,27 @@ export const resolveNonExistentInputDeploymentContracts = async (params: {
   };
 };
 
+export const resolveInputNoIdxDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedInputNoIdxDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "nonExistentInputNoIndex",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    nonExistentInputNoIndexCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as InputNoIdxFaultProofContracts,
+  };
+};
+
 export const resolveInvalidRangeDeploymentContracts = async (params: {
   readonly blueprint: unknown;
   readonly deploymentInfo: unknown;
@@ -633,6 +1456,60 @@ export const resolveTransitionTraceDeploymentContracts = async (params: {
   };
 };
 
+export const resolveValidationTraceDisputeDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedValidationTraceDisputeDeploymentContracts> => {
+  const referenceScriptAuthPolicyId =
+    parseContractDeploymentReferenceScriptAuthPolicyId(
+      params.deploymentInfo,
+      "V1 validation-trace dispute",
+    );
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "validationTraceDispute",
+  });
+  const contracts =
+    resolved.contracts as ValidationTraceDisputeFaultProofContracts;
+  const deployedCekProgramMaterialScriptHash = requireDeploymentScriptHash(
+    resolved.deploymentInfo,
+    "cekProgramMaterialSpend",
+  );
+  requireMatchingScriptHash({
+    label: "cekProgramMaterialSpend script",
+    deployed: deployedCekProgramMaterialScriptHash,
+    derived:
+      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptHash,
+  });
+  const cekProgramMaterialAddress =
+    contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress;
+  const addressCredential = getAddressDetails(
+    cekProgramMaterialAddress,
+  ).paymentCredential;
+  if (
+    addressCredential?.type !== "Script" ||
+    addressCredential.hash !== deployedCekProgramMaterialScriptHash
+  ) {
+    throw new Error(
+      `Derived CEK program-material address ${cekProgramMaterialAddress} is not locked by deployed script ${deployedCekProgramMaterialScriptHash}.`,
+    );
+  }
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    referenceScriptAuthPolicyId,
+    cekProgramMaterialScriptHash: deployedCekProgramMaterialScriptHash,
+    cekProgramMaterialAddress,
+    validationTraceDisputeCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts,
+  };
+};
+
 export const resolveZeroInputDeploymentContracts = async (params: {
   readonly blueprint: unknown;
   readonly deploymentInfo: unknown;
@@ -651,6 +1528,90 @@ export const resolveZeroInputDeploymentContracts = async (params: {
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     contracts: resolved.contracts as ZeroInputFaultProofContracts,
+  };
+};
+
+export const resolveDaHashPreimageDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedDaHashPreimageDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "daHashPreimage",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    daHashPreimageCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as DaHashPreimageFaultProofContracts,
+  };
+};
+
+export const resolveNoReferenceInputDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedNoReferenceInputDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "noReferenceInput",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    noReferenceInputCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as NoReferenceInputFaultProofContracts,
+  };
+};
+
+export const resolveReferenceInputNoIdxDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedReferenceInputNoIdxDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "referenceInputNoIdx",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    referenceInputNoIdxCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as ReferenceInputNoIdxFaultProofContracts,
+  };
+};
+
+export const resolveInvalidSignatureDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedInvalidSignatureDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "invalidSignature",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    invalidSignatureCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as InvalidSignatureFaultProofContracts,
   };
 };
 
@@ -748,18 +1709,115 @@ export const phasMembershipRewardAddress = (
   return CML.RewardAddress.new(networkId, credential).to_address().to_bech32();
 };
 
+/**
+ * The bare-load door (#610). Every caller of this function deploys the returned
+ * `compiledCode` as-is, applying nothing — so it is only sound while the
+ * validator declares no parameters.
+ *
+ * A declared parameter deployed unapplied is the #605 under-application shape:
+ * the remaining `validator main(...)` parameters stay as lambdas, the ledger's
+ * single Plutus V3 script-context application reduces to a lambda VALUE instead
+ * of running the validator body, evaluation terminates without error, and the
+ * ledger reads "no error" as SUCCESS. The deployment is an unconditional
+ * always-succeeds script standing where an authenticated one should be, and
+ * nothing downstream can tell the difference. Before this check an arity
+ * mismatch surfaced only as an opaque `→ undefined` evaluation failure several
+ * hundred milliseconds into a submission, if at all.
+ *
+ * `parseFaultProofBlueprint` normalises an absent `parameters` key to the empty
+ * list, so ABSENT MEANS ZERO here — never "unknown, skip the check".
+ */
+type ParsedFaultProofBlueprintValidator = ReturnType<
+  typeof parseFaultProofBlueprint
+>["validators"][number];
+
+const requireUniqueBlueprintValidator = (
+  blueprint: unknown,
+  title: string,
+): ParsedFaultProofBlueprintValidator => {
+  const parsed = parseFaultProofBlueprint(blueprint);
+  const matches = parsed.validators.filter(
+    (validator) => validator.title === title,
+  );
+  if (matches.length === 0) {
+    throw new Error(`Validator with title "${title}" not found in blueprint.`);
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `Blueprint must contain exactly one validator with title "${title}"; found ${matches.length.toString()}.`,
+    );
+  }
+  const found = matches[0];
+  if (found === undefined) {
+    throw new Error(
+      `Blueprint uniqueness check for validator "${title}" succeeded without a matching validator.`,
+    );
+  }
+  return found;
+};
+
 export const getCompiledScript = (
   blueprint: unknown,
   title: string,
 ): string => {
-  const parsed = parseFaultProofBlueprint(blueprint);
-  const found = parsed.validators.find(
-    (validator) => validator.title === title,
-  );
-  if (found === undefined) {
-    throw new Error(`Validator with title "${title}" not found in blueprint.`);
+  const found = requireUniqueBlueprintValidator(blueprint, title);
+  const declaredParameters = found.parameters;
+  if (declaredParameters.length !== 0) {
+    throw new Error(
+      `${title} declares ${declaredParameters.length} parameter(s) but this loader deploys compiledCode bare — declared: ${declaredParameters
+        .map((parameter) => parameter.title)
+        .join(
+          ", ",
+        )}. An unapplied declared parameter deploys an always-succeeds script; route this title through an arity-checking parameter-applying helper instead of widening this zero-arity door (#610).`,
+    );
   }
   return found.compiledCode;
+};
+
+/**
+ * Apply one blueprint validator only after proving the supplied parameter list
+ * has exactly the declared arity. This is the parameterized counterpart to
+ * {@link getCompiledScript}; neither under- nor over-application is permitted.
+ */
+export const applyBlueprintParamsExact = ({
+  blueprint,
+  title,
+  params,
+}: {
+  readonly blueprint: unknown;
+  readonly title: string;
+  readonly params: readonly Data[];
+}): string => {
+  const found = requireUniqueBlueprintValidator(blueprint, title);
+  if (found.parameters.length !== params.length) {
+    throw new Error(
+      `${title} declares ${found.parameters.length.toString()} parameter(s), but ${params.length.toString()} were supplied. Apply exactly the declared parameters; under-application deploys an always-succeeds script (#609).`,
+    );
+  }
+  return applyParamsToScript<Data[]>(found.compiledCode, [...params]);
+};
+
+/**
+ * Measure an unapplied blueprint body without deploying it. The caller must
+ * pin the expected declared arity so an accidental parameter-shape change
+ * fails alongside the byte-size measurement.
+ */
+export const measureBlueprintValidatorBytes = ({
+  blueprint,
+  title,
+  expectedDeclaredParameterCount,
+}: {
+  readonly blueprint: unknown;
+  readonly title: string;
+  readonly expectedDeclaredParameterCount: number;
+}): number => {
+  const found = requireUniqueBlueprintValidator(blueprint, title);
+  if (found.parameters.length !== expectedDeclaredParameterCount) {
+    throw new Error(
+      `${title} declares ${found.parameters.length.toString()} parameter(s), not the measured invariant ${expectedDeclaredParameterCount.toString()}.`,
+    );
+  }
+  return found.compiledCode.length / 2;
 };
 
 export const encodePhasMembershipProofRedeemer = ({
@@ -778,21 +1836,19 @@ export const encodePhasMembershipProofRedeemer = ({
   const keyData = Data.from(
     Data.to(
       aikenSerialisedPlutusDataCbor(keyCbor),
-      Data.Bytes() as unknown as LucidDataSchema,
+      asLucidSchema(Data.Bytes()),
     ),
   );
   const valueData = Data.from(
     Data.to(
       aikenSerialisedPlutusDataCbor(valueCbor),
-      Data.Bytes() as unknown as LucidDataSchema,
+      asLucidSchema(Data.Bytes()),
     ),
   );
-  const proofData = Data.from(
-    Data.to(proof, Proof as unknown as LucidDataSchema),
-  );
+  const proofData = Data.from(Data.to(proof, asLucidSchema(Proof)));
   return Data.to(
     [rootData, keyData, valueData, proofData],
-    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+    asLucidSchema(Data.Array(Data.Any())),
   );
 };
 
@@ -814,15 +1870,11 @@ export const encodeRawPexcludesProofRedeemer = ({
 }): string => {
   const proof = Data.from(nonMembershipProofCbor, Proof);
   const rootData = Data.from(Data.to(root, MerkleRoot));
-  const keyData = Data.from(
-    Data.to(keyBytes, Data.Bytes() as unknown as LucidDataSchema),
-  );
-  const proofData = Data.from(
-    Data.to(proof, Proof as unknown as LucidDataSchema),
-  );
+  const keyData = Data.from(Data.to(keyBytes, asLucidSchema(Data.Bytes())));
+  const proofData = Data.from(Data.to(proof, asLucidSchema(Proof)));
   return Data.to(
     [rootData, keyData, proofData],
-    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+    asLucidSchema(Data.Array(Data.Any())),
   );
 };
 
@@ -839,17 +1891,11 @@ export const encodeRawPhasMembershipProofRedeemer = ({
 }): string => {
   const proof = Data.from(membershipProofCbor, Proof);
   const rootData = Data.from(Data.to(root, MerkleRoot));
-  const keyData = Data.from(
-    Data.to(keyBytes, Data.Bytes() as unknown as LucidDataSchema),
-  );
-  const valueData = Data.from(
-    Data.to(valueBytes, Data.Bytes() as unknown as LucidDataSchema),
-  );
-  const proofData = Data.from(
-    Data.to(proof, Proof as unknown as LucidDataSchema),
-  );
+  const keyData = Data.from(Data.to(keyBytes, asLucidSchema(Data.Bytes())));
+  const valueData = Data.from(Data.to(valueBytes, asLucidSchema(Data.Bytes())));
+  const proofData = Data.from(Data.to(proof, asLucidSchema(Proof)));
   return Data.to(
     [rootData, keyData, valueData, proofData],
-    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+    asLucidSchema(Data.Array(Data.Any())),
   );
 };

@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Data,
   fromText,
@@ -11,12 +12,13 @@ import {
   LucidError,
   OutputReferenceSchema,
   POSIXTimeSchema,
-} from "@/common.js";
-import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
-
+} from "./common.js";
+import { authenticateUTxOs, AuthenticUTxO } from "./internals.js";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   incompleteInitLinkedListTxProgram,
+  LinkedListDatum,
+  linkedListDatumToNodeView,
 } from "./linked-list.js";
 
 export const ACTIVE_OPERATORS_ROOT_ASSET_NAME = fromText(
@@ -37,7 +39,7 @@ export const SlashingReasonSchema = Data.Enum([
   }),
 ]);
 export type SlashingReason = Data.Static<typeof SlashingReasonSchema>;
-export const SlashingReason = SlashingReasonSchema as unknown as SlashingReason;
+export const SlashingReason = asDataType<SlashingReason>(SlashingReasonSchema);
 
 export const SlashingArgumentsSchema = Data.Object({
   slashed_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -47,8 +49,9 @@ export const SlashingArgumentsSchema = Data.Object({
   slashing_reason: SlashingReasonSchema,
 });
 export type SlashingArguments = Data.Static<typeof SlashingArgumentsSchema>;
-export const SlashingArguments =
-  SlashingArgumentsSchema as unknown as SlashingArguments;
+export const SlashingArguments = asDataType<SlashingArguments>(
+  SlashingArgumentsSchema,
+);
 
 export const OperatorRemovalSchedulerSyncSchema = Data.Enum([
   Data.Object({
@@ -69,7 +72,7 @@ export type OperatorRemovalSchedulerSync = Data.Static<
   typeof OperatorRemovalSchedulerSyncSchema
 >;
 export const OperatorRemovalSchedulerSync =
-  OperatorRemovalSchedulerSyncSchema as unknown as OperatorRemovalSchedulerSync;
+  asDataType<OperatorRemovalSchedulerSync>(OperatorRemovalSchedulerSyncSchema);
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
@@ -98,7 +101,7 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
       active_node_input_index: Data.Integer(),
       active_node_output_index: Data.Integer(),
       operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      active_node_link: Data.Any(),
+      active_node_link: Data.Nullable(Data.Bytes()),
       scheduler_input_index: Data.Integer(),
       scheduler_redeemer_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
@@ -109,7 +112,7 @@ export type ActiveOperatorSpendRedeemer = Data.Static<
   typeof ActiveOperatorSpendRedeemerSchema
 >;
 export const ActiveOperatorSpendRedeemer =
-  ActiveOperatorSpendRedeemerSchema as unknown as ActiveOperatorSpendRedeemer;
+  asDataType<ActiveOperatorSpendRedeemer>(ActiveOperatorSpendRedeemerSchema);
 
 export const ActiveOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -149,15 +152,16 @@ export type ActiveOperatorMintRedeemer = Data.Static<
   typeof ActiveOperatorMintRedeemerSchema
 >;
 export const ActiveOperatorMintRedeemer =
-  ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
+  asDataType<ActiveOperatorMintRedeemer>(ActiveOperatorMintRedeemerSchema);
 
 export const ActiveOperatorDatumSchema = Data.Object({
   bond_unlock_time: Data.Nullable(POSIXTimeSchema),
   inactivity_strikes: Data.Integer(),
 });
 export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
-export const ActiveOperatorDatum =
-  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
+export const ActiveOperatorDatum = asDataType<ActiveOperatorDatum>(
+  ActiveOperatorDatumSchema,
+);
 export const castActiveOperatorDatumToData = (
   datum: ActiveOperatorDatum,
 ): unknown => Data.castTo(datum, ActiveOperatorDatum);
@@ -194,10 +198,22 @@ export const fetchActiveOperatorUTxOs = (
         cause: "No UTxOs found in Active Operators Contract address",
       });
     }
-    return yield* authenticateUTxOs<ActiveOperatorDatum>(
+    const linkedListUTxOs = yield* authenticateUTxOs<LinkedListDatum>(
       allUtxos,
       params.activeOperatorPolicyId,
-      ActiveOperatorDatum,
+      LinkedListDatum,
+    );
+    return yield* Effect.allSuccesses(
+      linkedListUTxOs.map(({ assetName, utxo, datum }) =>
+        Effect.try(() => ({
+          assetName,
+          utxo,
+          datum: Data.castFrom(
+            linkedListDatumToNodeView(datum, assetName).data as never,
+            ActiveOperatorDatum as never,
+          ) as ActiveOperatorDatum,
+        })),
+      ),
     );
   });
 

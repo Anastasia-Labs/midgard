@@ -2,8 +2,10 @@ import type { Assets, LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  assertReferenceScriptRawBodiesFitL1Envelope,
   createReferenceScriptAuthPolicy,
   hasReferenceScriptAuthRole,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthPolicyDeploymentInfo,
   referenceScriptAuthPolicyFromDeploymentInfo,
   referenceScriptAuthTokenName,
@@ -39,6 +41,70 @@ const utxo = ({
 });
 
 describe("reference-script SDK boundary", () => {
+  it("rejects a reference script whose raw body alone cannot fit the L1 transaction envelope", () => {
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1Envelope([
+        {
+          name: "availability-challenge minting",
+          script: {
+            type: "PlutusV3",
+            script: "00".repeat(20_017),
+          },
+        },
+      ]),
+    ).toThrow(
+      /availability-challenge minting raw script is 20017 bytes, exceeding the 16384-byte L1 transaction envelope by at least 3633 bytes/u,
+    );
+  });
+
+  it("admits only the raw-body lower bound and leaves complete signed fit to the publisher", () => {
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1Envelope([
+        {
+          name: "boundary",
+          script: { type: "PlutusV3", script: "00".repeat(16_383) },
+        },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1Envelope([
+        {
+          name: "exact-envelope",
+          script: { type: "PlutusV3", script: "00".repeat(16_384) },
+        },
+      ]),
+    ).toThrow(/exact-envelope raw script is 16384 bytes/u);
+  });
+
+  it("assigns unique <=32-byte auth tokens to every registered fraud-proof role", () => {
+    const fraudProofEntries = Object.entries(
+      REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    ).filter(([role]) => role.startsWith("V1 fraud-proof "));
+    const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
+
+    expect(fraudProofEntries).toHaveLength(234);
+    expect(new Set(tokenNames).size).toBe(tokenNames.length);
+    expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
+      true,
+    );
+    expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES).toMatchObject({
+      "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
+      "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
+      "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
+      "V1 fraud-proof missing-native-script-tx step-06":
+        "V1FpMissingNativeScriptTxS06",
+      "V1 fraud-proof missing-native-script-tx step-07":
+        "V1FpMissingNativeScriptTxS07",
+      "V1 fraud-proof missing-native-script-tx step-08":
+        "V1FpMissingNativeScriptTxS08",
+      "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
+      "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
+      "V1 fraud-proof input-set-uniqueness step-02":
+        "V1FpInputSetUniquenessS02",
+      "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
+    });
+  });
+
   it("creates restorable native auth-policy deployment info", () => {
     const lucid = {
       unixTimeToSlot: (time: number) => Math.floor(time / 1000),

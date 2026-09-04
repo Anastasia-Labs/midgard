@@ -11,6 +11,7 @@ use env
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
+use midgard/ledger_state
 use midgard/operator_directory.{
   deinit, init, slash_fraudulent_operator_and_get_info,
   validate_transferred_operator_insertion,
@@ -51,63 +52,64 @@ validator spend(
         hub_oracle_ref_input_index,
         state_queue_redeemer_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          redeemers,
-          mint,
-          validity_range,
-          ..
-        } = self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              reference_inputs,
+              redeemers,
+              mint,
+              validity_range,
+              ..
+            }
+          = self
 
         // 1. Common validations for spending and reproducing an active operator
         //    node must pass.
         let
-          new_bond_unlock_time,
-          old_bond_unlock_time,
-          active_node_output_data,
-          inactivity_strikes,
-          hub_datum,
-        <-
-          spend_for_updating_bond_unlock_time(
-            active_operator,
-            active_operators_mint_script_hash,
-            hub_oracle_script_hash,
-            active_node_input_index,
-            active_node_output_index,
-            hub_oracle_ref_input_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            reference_inputs,
-            mint,
-            validity_range,
-          )
+            new_bond_unlock_time,
+            old_bond_unlock_time,
+            active_node_output_data,
+            inactivity_strikes,
+            hub_datum
+          <- spend_for_updating_bond_unlock_time(
+          active_operator,
+          active_operators_mint_script_hash,
+          hub_oracle_script_hash,
+          active_node_input_index,
+          active_node_output_index,
+          hub_oracle_ref_input_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          validity_range,
+        )
 
         // 2. The reproduced node must preserve inactivity strike count and
         //    properly store the monotonic bond unlock time.
-        let expected_active_node_output_data: Data =
-          NodeData {
-            bond_unlock_time: Some(
-              max_bond_unlock_time(new_bond_unlock_time, old_bond_unlock_time),
-            ),
-            inactivity_strikes,
-          }
+        let expected_active_node_output_data: Data = NodeData {
+          bond_unlock_time: Some(
+            max_bond_unlock_time(new_bond_unlock_time, old_bond_unlock_time),
+          ),
+          inactivity_strikes,
+        }
         expect active_node_output_data == expected_active_node_output_data
 
         // 3. Transaction must mint block node at state queue with the Commit
-        //    Block Header redeemer. The operator's signature should be
+        //    Block HeaderV1 redeemer. The operator's signature should be
         //    validated there.
-        expect state_queue.CommitBlockHeader {
-          operator: state_queue_redeemer_operator,
-          ..
-        } =
-          redeemers
-            |> utils.get_redeemer_at(
-                expected_purpose: Mint(hub_datum.state_queue),
-                redeemer_index: state_queue_redeemer_index,
-              )
+        expect
+            state_queue.CommitBlockHeader {
+              operator: state_queue_redeemer_operator,
+              ..
+            }
+          = redeemers
+          |> utils.get_redeemer_at(
+              expected_purpose: Mint(hub_datum.state_queue),
+              redeemer_index: state_queue_redeemer_index,
+            )
 
         // 4. The operator specified in state queue's redeemer must match the
         //    key of the spending active operator node.
@@ -125,39 +127,40 @@ validator spend(
         settlement_redeemer_index,
         resolution_time,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          redeemers,
-          mint,
-          validity_range,
-          ..
-        } = self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              reference_inputs,
+              redeemers,
+              mint,
+              validity_range,
+              ..
+            }
+          = self
 
         // 1. Common validations for spending and reproducing an active operator
         //    node must pass.
         let
-          computed_resolution_time,
-          old_bond_unlock_time,
-          active_node_output_data,
-          inactivity_strikes,
-          hub_datum,
-        <-
-          spend_for_updating_bond_unlock_time(
-            active_operator,
-            active_operators_mint_script_hash,
-            hub_oracle_script_hash,
-            active_node_input_index,
-            active_node_output_index,
-            hub_oracle_ref_input_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            reference_inputs,
-            mint,
-            validity_range,
-          )
+            computed_resolution_time,
+            old_bond_unlock_time,
+            active_node_output_data,
+            inactivity_strikes,
+            hub_datum
+          <- spend_for_updating_bond_unlock_time(
+          active_operator,
+          active_operators_mint_script_hash,
+          hub_oracle_script_hash,
+          active_node_input_index,
+          active_node_output_index,
+          hub_oracle_ref_input_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          validity_range,
+        )
 
         // 2. The resolution time in the redeemer must be valid for other
         //    contracts to rely on.
@@ -165,29 +168,29 @@ validator spend(
 
         // 3. The reproduced node must preserve inactivity strike count and
         //    properly store the monotonic bond unlock time.
-        let expected_active_node_output_data: Data =
-          NodeData {
-            bond_unlock_time: Some(
-              max_bond_unlock_time(resolution_time, old_bond_unlock_time),
-            ),
-            inactivity_strikes,
-          }
+        let expected_active_node_output_data: Data = NodeData {
+          bond_unlock_time: Some(
+            max_bond_unlock_time(resolution_time, old_bond_unlock_time),
+          ),
+          inactivity_strikes,
+        }
         expect active_node_output_data == expected_active_node_output_data
 
         // 4. Transaction must spend a UTxO from settlement with the Attach
         //    Resolution Claim redeemer. The operator's signature should be
         //    validated there.
-        expect settlement.AttachResolutionClaim {
-          operator: settlement_redeemer_operator,
-          ..
-        } =
-          utils.get_spending_redeemer_data_at(
-            hub_datum.settlement_addr,
-            settlement_input_index,
-            settlement_redeemer_index,
-            inputs,
-            redeemers,
-          )
+        expect
+            settlement.AttachResolutionClaim {
+              operator: settlement_redeemer_operator,
+              ..
+            }
+          = utils.get_spending_redeemer_data_at(
+          hub_datum.settlement_addr,
+          settlement_input_index,
+          settlement_redeemer_index,
+          inputs,
+          redeemers,
+        )
 
         // 5. The operator specified in settlement's redeemer must match the
         //    key of the spending active operator node.
@@ -205,39 +208,41 @@ validator spend(
         scheduler_redeemer_index,
         hub_oracle_ref_input_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          mint,
-          reference_inputs,
-          redeemers,
-          ..
-        } = self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              mint,
+              reference_inputs,
+              redeemers,
+              ..
+            }
+          = self
 
         // Validate the scheduler UTxO is updated accordingly.
         // 1. The authentic hub oracle UTxO must be provided as a reference
         //    input.
-        let hub_datum =
-          hub.get_datum(
-            reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
+        let hub_datum = hub.get_datum(
+          reference_inputs,
+          hub_oracle_script_hash,
+          hub_oracle_ref_input_index,
+        )
 
         // 2. The indices specified in the spending redeemer of the scheduler
         //    script must match with the indices in the redeemer here.
-        expect scheduler.SpendRedeemer {
-          scheduler_input_index: scheduler_input_index_from_scheduler_redeemer,
-          advancing_approach: scheduler_advancing_approach,
-          ..
-        } =
-          utils.get_spending_redeemer_data_at(
-            hub_datum.scheduler_addr,
-            scheduler_input_index,
-            scheduler_redeemer_index,
-            inputs,
-            redeemers,
-          )
+        expect
+            scheduler.SpendRedeemer {
+              scheduler_input_index: scheduler_input_index_from_scheduler_redeemer,
+              advancing_approach: scheduler_advancing_approach,
+              ..
+            }
+          = utils.get_spending_redeemer_data_at(
+          hub_datum.scheduler_addr,
+          scheduler_input_index,
+          scheduler_redeemer_index,
+          inputs,
+          redeemers,
+        )
         expect
           when scheduler_advancing_approach is {
             scheduler.RewindDueToSkippedOperator {
@@ -260,21 +265,20 @@ validator spend(
         // 3. Spending and reproducing the linked list node must be proper.
         {
           let
-            _active_node_address,
-            lovelace_change,
-            m_operator,
-            active_node_input_data,
-            active_node_output_data,
-            correct_active_node_link,
-          <-
-            linked_list.spend_for_updating_elements_data(
-              element_input_index: active_node_input_index,
-              continued_element_output_index: active_node_output_index,
-              element_input_outref: own_out_ref,
-              inputs: inputs,
-              outputs: outputs,
-              tx_mint: mint,
-            )
+              _active_node_address,
+              lovelace_change,
+              m_operator,
+              active_node_input_data,
+              active_node_output_data,
+              correct_active_node_link
+            <- linked_list.spend_for_updating_elements_data(
+            element_input_index: active_node_input_index,
+            continued_element_output_index: active_node_output_index,
+            element_input_outref: own_out_ref,
+            inputs: inputs,
+            outputs: outputs,
+            tx_mint: mint,
+          )
 
           // 4. ADA of the node must be preserved.
           expect lovelace_change >= 0
@@ -289,16 +293,17 @@ validator spend(
 
           // 7. The underlying data must only have its strike counts
           //    incremented.
-          expect NodeData {
-            inactivity_strikes: input_strikes,
-            bond_unlock_time: input_bond_unlock_time,
-          } = active_node_input_data
+          expect
+              NodeData {
+                inactivity_strikes: input_strikes,
+                bond_unlock_time: input_bond_unlock_time,
+              }
+            = active_node_input_data
           let new_inactivity_strikes = input_strikes + 1
-          let expected_output_node_data: Data =
-            NodeData {
-              inactivity_strikes: new_inactivity_strikes,
-              bond_unlock_time: input_bond_unlock_time,
-            }
+          let expected_output_node_data: Data = NodeData {
+            inactivity_strikes: new_inactivity_strikes,
+            bond_unlock_time: input_bond_unlock_time,
+          }
           expect active_node_output_data == expected_output_node_data
 
           // 8. The new strikes count must not exceed the maximum allowed. This
@@ -356,35 +361,38 @@ validator mint(
         // 1. Generic validations for operator transfer must pass.
         {
           let
-            inserted_node_data,
-            m_active_operator_anchor_key,
-            inserted_active_operator_link,
-          <-
-            validate_transferred_operator_insertion(
-              new_active_operator_key,
-              registered_operators_policy_id,
-              registered_operators_redeemer_index,
-              fn(registered_operators_redeemer_data) -> (
-                VerificationKeyHash,
-                Bool,
-              ) {
-                expect registered_operators.ActivateOperator {
-                  activating_operator,
-                  ..
-                } = registered_operators_redeemer_data
-                (activating_operator, False)
-              },
-              active_operator_anchor_element_output_index,
-              active_operator_inserted_node_output_index,
-              inputs,
-              outputs,
-              mint,
-              redeemers,
-            )
+              inserted_node_data,
+              m_active_operator_anchor_key,
+              inserted_active_operator_link
+            <- validate_transferred_operator_insertion(
+            new_active_operator_key,
+            registered_operators_policy_id,
+            registered_operators_redeemer_index,
+            fn(registered_operators_redeemer_data) -> (
+              VerificationKeyHash,
+              Bool,
+            ) {
+              expect
+                  registered_operators.ActivateOperator {
+                    activating_operator,
+                    ..
+                  }
+                = registered_operators_redeemer_data
+              (activating_operator, False)
+            },
+            active_operator_anchor_element_output_index,
+            active_operator_inserted_node_output_index,
+            inputs,
+            outputs,
+            mint,
+            redeemers,
+          )
 
           // 2. Newly activated operator must not have any outstanding bond hold.
-          let expected_inserted_node_data: Data =
-            NodeData { bond_unlock_time: None, inactivity_strikes: 0 }
+          let expected_inserted_node_data: Data = NodeData {
+            bond_unlock_time: None,
+            inactivity_strikes: 0,
+          }
           expect inserted_node_data == expected_inserted_node_data
 
           // 3. Signal whether the active operators set was empty before the
@@ -409,63 +417,64 @@ validator mint(
         penalize_for_inactivity,
         operator_removal_scheduler_sync,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          mint,
-          reference_inputs,
-          redeemers,
-          extra_signatories,
-          ..
-        } = self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              mint,
+              reference_inputs,
+              redeemers,
+              extra_signatories,
+              ..
+            }
+          = self
 
         // 1. Retired operators directory must insert a new node via the
         //    `RetireOperator` redeemer, with a matching operator key.
-        expect retired_operators.RetireOperator {
-          new_retired_operator_key,
-          bond_unlock_time: retired_operators_redeemer_bond_unlock_time,
-          ..
-        } =
-          redeemers
-            |> utils.get_redeemer_at(
-                expected_purpose: Mint(retired_operators_policy_id),
-                redeemer_index: retired_operators_redeemer_index,
-              )
+        expect
+            retired_operators.RetireOperator {
+              new_retired_operator_key,
+              bond_unlock_time: retired_operators_redeemer_bond_unlock_time,
+              ..
+            }
+          = redeemers
+          |> utils.get_redeemer_at(
+              expected_purpose: Mint(retired_operators_policy_id),
+              redeemer_index: retired_operators_redeemer_index,
+            )
         expect active_operator_key == new_retired_operator_key
 
         // 2. Transaction must refer to the authentic hub oracle UTxO.
-        let hub_datum =
-          hub.get_datum(
-            reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
+        let hub_datum = hub.get_datum(
+          reference_inputs,
+          hub_oracle_script_hash,
+          hub_oracle_ref_input_index,
+        )
 
         // 3. Specified output for removal of the active operator's node from
         //    the linked list must exist at its index.
-        expect Some(active_operator_anchor_element_output) =
-          outputs |> list.at(active_operator_anchor_element_output_index)
+        expect Some(active_operator_anchor_element_output) = outputs
+          |> list.at(active_operator_anchor_element_output_index)
 
         // 4. Linked list's removal logic must be valid for the specified
         //    anchor outref and output.
         {
           let
-            _anchor_input,
-            anchor_lovelace_change,
-            m_anchor_key,
-            _anchor_data,
-            _active_operator_removed_node_input,
-            _active_operator_lovelace,
-            active_operator_node_key,
-            active_operator_node_data,
-            active_operator_node_link,
-          <-
-            linked_list.remove(
-              anchor_input_outref: active_operator_anchor_element_input_outref,
-              continued_anchor_element_output: active_operator_anchor_element_output,
-              inputs: inputs,
-              tx_mint: mint,
-            )
+              _anchor_input,
+              anchor_lovelace_change,
+              m_anchor_key,
+              _anchor_data,
+              _active_operator_removed_node_input,
+              _active_operator_lovelace,
+              active_operator_node_key,
+              active_operator_node_data,
+              active_operator_node_link
+            <- linked_list.remove(
+            anchor_input_outref: active_operator_anchor_element_input_outref,
+            continued_anchor_element_output: active_operator_anchor_element_output,
+            inputs: inputs,
+            tx_mint: mint,
+          )
 
           // 5. Anchor element's ADA must be preserved.
           expect anchor_lovelace_change >= 0
@@ -488,10 +497,12 @@ validator mint(
                   redeemers,
                 )
 
-          expect NodeData {
-            inactivity_strikes,
-            bond_unlock_time: removing_nodes_bond_unlock_time,
-          } = active_operator_node_data
+          expect
+              NodeData {
+                inactivity_strikes,
+                bond_unlock_time: removing_nodes_bond_unlock_time,
+              }
+            = active_operator_node_data
 
           // 8. The `bond_unlock_time` redeemer argument from the retired
           //    operators directory must match the removing node's datum. This
@@ -507,7 +518,7 @@ validator mint(
 
             // 10a. With enough strikes, anyone can partially slash the
             //      operator,
-            expect self.fee >= env.inactivity_slashing_penalty
+            expect self.fee == env.inactivity_slashing_penalty
 
             // Done.
             True
@@ -527,19 +538,18 @@ validator mint(
       SlashOperator { slashing_arguments, operator_removal_scheduler_sync } ->
         {
           let
-            slashed_operator_from_redeemer,
-            m_anchor_key,
-            slashed_operator_node_link,
-            hub_datum,
-            inputs,
-            reference_inputs,
-            redeemers,
-          <-
-            slash_fraudulent_operator_and_get_info(
-              hub_oracle_script_hash,
-              slashing_arguments,
-              self,
-            )
+              slashed_operator_from_redeemer,
+              m_anchor_key,
+              slashed_operator_node_link,
+              hub_datum,
+              inputs,
+              reference_inputs,
+              redeemers
+            <- slash_fraudulent_operator_and_get_info(
+            hub_oracle_script_hash,
+            slashing_arguments,
+            self,
+          )
 
           // 1. If operator is currently active, validate scheduler datum is
           //    getting updated. Otherwise, show the currently appointed
@@ -587,21 +597,20 @@ fn spend_for_updating_bond_unlock_time(
   //    reproduced without affecting the linked list structure.
   {
     let
-      _active_node_address,
-      lovelace_change,
-      m_operator,
-      active_node_input_data,
-      active_node_output_data,
-      _active_node_link,
-    <-
-      linked_list.spend_for_updating_elements_data(
-        element_input_index: active_node_input_index,
-        continued_element_output_index: active_node_output_index,
-        element_input_outref: own_out_ref,
-        inputs: inputs,
-        outputs: outputs,
-        tx_mint: mint,
-      )
+        _active_node_address,
+        lovelace_change,
+        m_operator,
+        active_node_input_data,
+        active_node_output_data,
+        _active_node_link
+      <- linked_list.spend_for_updating_elements_data(
+      element_input_index: active_node_input_index,
+      continued_element_output_index: active_node_output_index,
+      element_input_outref: own_out_ref,
+      inputs: inputs,
+      outputs: outputs,
+      tx_mint: mint,
+    )
 
     // 2. Node's ADA bond must be preserved.
     expect lovelace_change >= 0
@@ -613,24 +622,22 @@ fn spend_for_updating_bond_unlock_time(
 
     // 4. The input node data is exposed to callers so they can decide whether
     //    the output hold should be the fresh maturity time or a monotonic value.
-    expect NodeData {
-      inactivity_strikes,
-      bond_unlock_time: old_bond_unlock_time,
-    } = active_node_input_data
+    expect
+        NodeData { inactivity_strikes, bond_unlock_time: old_bond_unlock_time }
+      = active_node_input_data
 
     // 5. The fresh bond unlock time must be equal to the transaction's
     //    validity range upper bound plus the maturity duration.
     //    TODO: Does inclusivity of the upper bound matter here?
     let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
-    let new_bond_unlock_time = valid_to + env.maturity_duration
+    let new_bond_unlock_time = valid_to + ledger_state.block_maturity_duration_v1
 
     // 6. Transaction must have the hub oracle's UTxO referenced.
-    let hub_datum =
-      hub.get_datum(
-        reference_inputs,
-        hub_oracle_script_hash,
-        hub_oracle_ref_input_index,
-      )
+    let hub_datum = hub.get_datum(
+      reference_inputs,
+      hub_oracle_script_hash,
+      hub_oracle_ref_input_index,
+    )
 
     return(
       new_bond_unlock_time,
@@ -669,9 +676,8 @@ fn validate_scheduler_syncs_with_operator_removal(
 ) -> Bool {
   when operator_removal_scheduler_sync is {
     ShowOperatorIsInactive { scheduler_ref_input_index } -> {
-      let scheduler_datum =
-        reference_inputs
-          |> scheduler.get_datum(hub_datum.scheduler, scheduler_ref_input_index)
+      let scheduler_datum = reference_inputs
+        |> scheduler.get_datum(hub_datum.scheduler, scheduler_ref_input_index)
       when scheduler_datum is {
         scheduler.NoActiveOperators -> True
         scheduler.ActiveOperator { operator, .. } ->
@@ -688,20 +694,21 @@ fn validate_scheduler_syncs_with_operator_removal(
       expect
         removing_operators_anchor_element_key == subject_operators_anchor_key
 
-      let (scheduler_datum_data, scheduler_redeemer_data) =
-        utils.get_inline_datum_and_spending_redeemer_data_at(
-          hub_datum.scheduler_addr,
-          scheduler_input_index,
-          scheduler_redeemer_index,
-          inputs,
-          redeemers,
-        )
+      let (scheduler_datum_data, scheduler_redeemer_data) = utils.get_inline_datum_and_spending_redeemer_data_at(
+        hub_datum.scheduler_addr,
+        scheduler_input_index,
+        scheduler_redeemer_index,
+        inputs,
+        redeemers,
+      )
       expect scheduler.ActiveOperator { operator, .. } = scheduler_datum_data
-      expect scheduler.SpendRedeemer {
-        scheduler_input_index: input_index_from_scheduler_redeemer,
-        advancing_approach,
-        ..
-      } = scheduler_redeemer_data
+      expect
+          scheduler.SpendRedeemer {
+            scheduler_input_index: input_index_from_scheduler_redeemer,
+            advancing_approach,
+            ..
+          }
+        = scheduler_redeemer_data
       expect operator == subject_operator
       expect scheduler_input_index == input_index_from_scheduler_redeemer
       expect

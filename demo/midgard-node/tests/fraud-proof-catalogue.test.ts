@@ -1,14 +1,17 @@
+import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+} from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
-  uint32ToFraudProofID,
-} from "@/transactions/initialization.js";
+} from "../src/transactions/initialization.js";
 
 describe("Fraud Proof Catalogue Root", () => {
   it.effect(
@@ -20,6 +23,28 @@ describe("Fraud Proof Catalogue Root", () => {
         const fraudProofs = contracts.fraudProofs;
 
         const indexedFraudProofs = fraudProofsToIndexedValidators(fraudProofs);
+        // Every declared family appears exactly once, while its wire identity
+        // comes from the explicit map rather than presentation position.
+        // Comparing against the declared validator record (rather than a
+        // hardcoded count) catches a family that is added to `FraudProofs` but
+        // never registered in the catalogue order.
+        expect(indexedFraudProofs.map(([, , name]) => name).sort()).toEqual(
+          Object.keys(fraudProofs).sort(),
+        );
+        expect(
+          indexedFraudProofs.map(([categoryId]) => categoryId.toString("hex")),
+        ).toEqual(
+          FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+            (name) => FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
+          ),
+        );
+        // The tail IDs are a wire contract with the on-chain catalogue.
+        // `zeroInput` was appended at index 5, which shifted
+        // `validationTraceDispute` from 00000005 to 00000006.
+        expect(indexedFraudProofs[5][0].toString("hex")).toBe("00000005");
+        expect(indexedFraudProofs[5][2]).toBe("zeroInput");
+        expect(indexedFraudProofs[6][0].toString("hex")).toBe("00000006");
+        expect(indexedFraudProofs[6][2]).toBe("validationTraceDispute");
 
         const fraudProofsMPF =
           yield* createFraudProofCatalogueMpf(indexedFraudProofs);
@@ -42,7 +67,7 @@ describe("Fraud Proof Catalogue Root", () => {
           const category = deploymentInfo.categories[categoryName];
           expect(category.categoryId).toBe(categoryId.toString("hex"));
           expect(category.categoryId).toBe(
-            uint32ToFraudProofID(i).toString("hex"),
+            FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName],
           );
           expect(category.scriptHash).toBe(fraudProof.spendingScriptHash);
           expect(category.membershipProofCbor.length).toBeGreaterThan(0);

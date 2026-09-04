@@ -10,7 +10,7 @@ A block consists of a header hash, a header, and a block body:
     \T{Block} \coloneq \left\{
     \begin{array}{ll}
         \T{header\_hash} : & \T{HeaderHash} \\
-        \T{header} : & \T{Header} \\
+        \T{header} : & \T{HeaderV1} \\
         \T{block\_body} : & \T{BlockBody}
     \end{array} \right\}
 \end{equation*}
@@ -22,15 +22,18 @@ Transaction requests submitted to operators' mempools and forced transaction ord
     \begin{array}{ll}
         \T{utxos} : & \T{UtxoSet} \\
         \T{withdrawals} : & \T{WithdrawalSet} \\
-        \T{forced\_transactions} : & \T{ForcedTransactionSet} \\
-        \T{transactions} : & \T{TxSet} \\
+        \T{forced\_transactions} : & \T{ForcedTransactionSetV1} \\
+        \T{transactions} : & \T{TxSetV1} \\
         \T{deposits} : & \T{DepositSet} \\
         \T{transition\_trace} : & \T{TransitionTrace} \\
         \T{event\_to\_step} : & \T{EventToStep} \\
     \end{array} \right\}
 \end{equation*}
 
-The data-availability payload for this body is \code{DaPayloadBodyV2}. It includes the embedded header, the header hash, all body member arrays above, and the count fields repeated from the header.
+The data-availability payload for this body is \code{DaPayloadBodyV1}. It
+includes the embedded header and hash, all authenticated body member arrays,
+canonical full transaction preimages, CEK program material,
+validation-trace descriptors, and count fields repeated from the header.
 The payload is accepted by DA committee validators only when the embedded header hashes to \code{header\_hash}, the member arrays are canonical and duplicate-free, all counted roots recompute to the header roots, and the repeated counts match both the member arrays and the header.
 
 \Cref{fig:block-transition} shows how the block's \code{utxos} are derived from the previous block's \code{utxos} by applying the block's events.
@@ -67,15 +70,17 @@ During serialization, each of the block body's sets is serialized as a sequence 
 However, only the header hash and header are stored on Cardano L1.
 This is sufficient because the header specifies Merkle Patricia Trie (MPT) root hashes for each of the sets in the block body.
 Each of these root hashes can be verified onchain by streaming over the corresponding set's elements, hashing them, and iteratively calculating the root hash.
-The source roots, \code{transition\_trace\_root}, and \code{event\_to\_step\_root} are counted, domain-separated commitments: fraud proofs can open membership, non-membership, and the committed member count for the relevant root.
+The source roots, \code{transition\_trace\_root}, \code{event\_to\_step\_root}, and \code{validation\_traces\_root} are counted, domain-separated commitments: fraud proofs can open membership, non-membership, and the committed member count for the relevant root.
 
 \Cref{fig:block-tx-mpt} shows an example MPT representation of a block's transactions.
-Each leaf stores a pair $(\T{TxId_i}, v_i)$ where $v_i : \T{MidgardTxCompact}$.
+Each normal-transaction leaf stores a pair $(\T{TxId_i}, v_i)$ where
+$v_i : \T{L2TransactionSourceV1}$; forced-transaction leaves use their
+\T{TxOrderId} key and \T{ForcedInclusionTxV1} value.
 These pairs are individually hashed to form the leaves $L_i$ of the tree.
 The hashes of sibling leaves are concatenated and hashed to form their parent nodes.
 The nodes $N_{ij}$ are formed by concatenating and hashing their children's hashes.
 The \code{transactions\_root} is formed by concatenating and hashing its children's hashes.
-The \code{forced\_transactions\_root}, \code{transition\_trace\_root}, and \code{event\_to\_step\_root} use the same authenticated-map commitment pattern with their own key and value types.
+The \code{forced\_transactions\_root}, \code{transition\_trace\_root}, \code{event\_to\_step\_root}, and \code{validation\_traces\_root} use the same authenticated-map commitment pattern with their own key and value types.
 
 \begin{figure}[htb]
 \centering
@@ -131,8 +136,8 @@ A block header is a record with fixed-size fields: integers, hashes, and fixed-s
 A block header hash is 28 bytes in size and calculated via the Blake2b-224.
 \begin{equation*}
 \begin{split}
-  \T{HeaderHash} &\coloneq \mathcal{H}_\T{Blake2b-224}(\T{Header}) \\
-  \T{Header} &\coloneq \left\{
+  \T{HeaderHash} &\coloneq \mathcal{H}_\T{Blake2b-224}(\T{HeaderV1}) \\
+  \T{HeaderV1} &\coloneq \left\{
     \begin{array}{ll}
         \T{prev\_utxos\_root} : & \T{RootHash} \\
         \T{utxos\_root} : & \T{RootHash} \\
@@ -142,16 +147,22 @@ A block header hash is 28 bytes in size and calculated via the Blake2b-224.
         \T{deposits\_root} : & \T{RootHash} \\
         \T{transition\_trace\_root} : & \T{RootHash} \\
         \T{event\_to\_step\_root} : & \T{RootHash} \\
+        \T{validation\_traces\_root} : & \T{RootHash} \\
         \T{withdrawal\_count} : & \T{Int} \\
         \T{forced\_transaction\_count} : & \T{Int} \\
         \T{l2\_transaction\_count} : & \T{Int} \\
         \T{deposit\_count} : & \T{Int} \\
         \T{total\_event\_count} : & \T{Int} \\
         \T{transition\_step\_count} : & \T{Int} \\
+        \T{validation\_trace\_count} : & \T{Int} \\
         \T{start\_time} : & \T{PosixTime} \\
         \T{end\_time} : & \T{PosixTime} \\
+        \T{block\_slot} : & \T{Int} \\
+        \T{expected\_network\_id} : & \T{Int} \\
+        \T{min\_fee\_a} : & \T{Int} \\
+        \T{min\_fee\_b} : & \T{Int} \\
         \T{prev\_header\_hash} : & \T{HeaderHash} \\
-        \T{operator\_vkey} : & \T{VerificationKey} \\
+        \T{operator\_vkey} : & \T{VerificationKeyHash} \\
         \T{protocol\_version} : & \T{Int} \\
     \end{array} \right\}
 \end{split}
@@ -159,12 +170,13 @@ A block header hash is 28 bytes in size and calculated via the Blake2b-224.
 
 These header fields are interpreted as follows:
 \begin{itemize}
-    \item The \code{*\_root} fields are the MPT root hashes of the corresponding sets in the block body.
+    \item The \code{*\_root} fields are the MPT root hashes of the corresponding sets in the block body. For \code{utxos\_root}, each full output is first projected to its exact canonical \code{LedgerOutputCommitmentV1} descriptor as specified in \cref{h:utxo-set}; the DA payload retains the full output bytes.
     \item The \code{prev\_utxos\_root} is a copy of the \code{utxos\_root} from the previous block, included for convenience in the fraud proof verification procedures.
-    \item The source roots are \code{withdrawals\_root}, \code{forced\_transactions\_root}, \code{transactions\_root}, and \code{deposits\_root}.
+    \item The source roots are \code{withdrawals\_root}, \code{forced\_transactions\_root}, \code{transactions\_root}, and \code{deposits\_root}; \code{validation\_traces\_root} is the corresponding validation-descriptor root.
     \item The \code{transition\_trace\_root} commits to the ordered one-step transition trace keyed by step index.
     \item The \code{event\_to\_step\_root} commits to an authenticated map from source-specific event keys to the step index and phase where the event is applied.
-    \item The count fields commit to the cardinality of each source phase and the total trace length. The corresponding source-root counts must equal their header count fields, \code{event\_to\_step\_root.count} must equal \code{total\_event\_count}, and \code{transition\_trace\_root.count} must equal \code{transition\_step\_count}. They must satisfy:
+    \item The \code{validation\_traces\_root} commits to the validation-trace descriptors required by the normal and forced transaction witnesses.
+    \item The count fields commit to the cardinality of each source phase, the total trace length, and the validation-trace descriptor set. The corresponding source-root counts must equal their header count fields, \code{event\_to\_step\_root.count} must equal \code{total\_event\_count}, \code{transition\_trace\_root.count} must equal \code{transition\_step\_count}, and \code{validation\_traces\_root.count} must equal \code{validation\_trace\_count}. They must satisfy:
     \begin{align*}
         \T{total\_event\_count} &=
             \T{withdrawal\_count}
@@ -173,12 +185,31 @@ These header fields are interpreted as follows:
             + \T{l2\_transaction\_count}
             + \T{deposit\_count} \\
         \T{transition\_step\_count} &= \T{total\_event\_count}
+        \\
+        \T{validation\_trace\_count} &=
+            \T{forced\_transaction\_count}
+            + \T{l2\_transaction\_count}
     \end{align*}
     \item The \code{start\_time} and \code{end\_time} fields are the block's event interval bounds (see \cref{h:time-model}).
+    \item The \code{block\_slot} field is the L1 slot at which the block was committed, and \code{expected\_network\_id}, \code{min\_fee\_a}, and \code{min\_fee\_b} bind the validation context used for the block.
     \item The \code{prev\_header\_hash} field is a hash of the previous block header. For the genesis block, this field is set to 28 \code{0x00} bytes.
-    \item The \code{operator\_vkey} field is the cryptographic verification key for signatures of the operator who committed the block header to the L1 state queue.
+    \item The \code{operator\_vkey} field is the 28-byte \code{VerificationKeyHash} of the cryptographic verification key used for signatures of the operator who committed the block header to the L1 state queue.
     \item The \code{protocol\_version} is the Midgard protocol version that applies to this block.
 \end{itemize}
+
+For canonical V1, \code{protocol\_version} must equal (1), and every
+\code{TransitionStep.schema\_version} must equal (1). Version comparison is
+exact: an unknown higher or lower version is invalid rather than being treated
+as backward compatible.
+
+The canonical V1 count bounds are (10{,}000) members for each of withdrawals,
+forced transactions, normal L2 transactions, and deposits, with at most
+(40{,}000) total events and transition steps. The corresponding DA payload
+is additionally bounded to (16\,MiB) of canonical normal-transaction
+bytes, (40{,}000) ledger operations, and (64\,MiB) total canonical
+payload bytes. HeaderV1 count bounds are checked by the L1 state-queue validator;
+payload and transaction bounds are checked before the DA committee may attest,
+and merge requires that attestation.
 
 \subsection{Transition trace commitments}
 \label{h:transition-trace-commitments}

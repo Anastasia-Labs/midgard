@@ -9,7 +9,7 @@ For every possible violation of Midgard's ledger rules (see \cref{h:ledger-rules
 
 Midgard's fraud proof catalogue defines the universe of fraud proof verification procedures.
 It maps a unique 4-byte integer ($\mathcal{B}_4$) index to the first step of each procedure.%
-\footnote{Using 4-byte integer indices means that the catalogue can store up to 4096 procedures, which is more than sufficient for Midgard's ledger rules.}
+\footnote{Using 4-byte integer indices means that the catalogue can identify up to $2^{32}$ procedures, which is more than sufficient for Midgard's ledger rules.}
 On Cardano L1, the Merkle Patricia Trie (MPT) root hash ($\mathcal{RH}$) of this map is stored in a single designated utxo created at Midgard's initialization.
 \begin{align*}
   \T{FraudProofCatalogueDatum}

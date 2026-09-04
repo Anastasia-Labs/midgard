@@ -1,12 +1,8 @@
-pub const native_tx_version: Int = 1
+pub const native_tx_version_v1: Int = 1
 
 pub type MidgardTxValidity {
   TxIsValid
-  NonExistentInputUtxo
-  InvalidSignature
-  FailedScript
-  FeeTooLow
-  UnbalancedTx
+  TxIsInvalid
 }
 
 pub type MidgardTxInput {
@@ -175,6 +171,24 @@ pub type NativeTxWitnessSetCompact {
   addr_tx_wits_hash: ByteArray,
   script_tx_wits_hash: ByteArray,
   redeemer_tx_wits_hash: ByteArray,
+}
+
+pub type NativeTxFieldPreimageLengthsV1 {
+  spend_inputs: Int,
+  reference_inputs: Int,
+  outputs: Int,
+  required_observers: Int,
+  required_signers: Int,
+  mint: Int,
+  address_witnesses: Int,
+  script_witnesses: Int,
+  redeemers: Int,
+}
+
+pub type NativeTxProofSourceCborV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
 }
 
 pub type VerifiedMidgardNativeTxCompact {

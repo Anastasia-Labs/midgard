@@ -1,3 +1,4 @@
+import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -269,6 +270,8 @@ describe("coordinator witness and candidate planning", () => {
           deploymentFingerprint: signature.deploymentFingerprint,
           headerHash: signature.headerHash,
           payloadHash: signature.payloadHash,
+          availabilityCommitmentCbor: signature.availabilityCommitmentCbor,
+          availabilityCommitmentDigest: signature.availabilityCommitmentDigest,
           committeeSignersHash: signature.committeeSignersHash,
           l1ChainPoint: signature.l1ChainPoint,
           validation: signature.validation,
@@ -581,7 +584,91 @@ describe("coordinator witness and candidate planning", () => {
   });
 });
 
-const submitted = (txHash: string) => ({ status: "submitted" as const, txHash });
+// Rider 3 of the 2026-08-11 owner ruling 4: the single-key attest loop is
+// accepted "with a rate-limited explanatory log". A threshold of one is exactly
+// the single-key configuration — the governor floors `da_threshold` at
+// `ceil(2*committee_len/3)`, which is >= 2 for every committee of two or more —
+// so it is the trigger rather than a proxy for one.
+describe("single-key attest-loop notice", () => {
+  /** A coordinator that reaches apply immediately, so reconcile always runs. */
+  const singleKeyCoordinator = (options: {
+    readonly threshold: number;
+    readonly log: (message: string) => void;
+    readonly singleKeyNoticeIntervalMs?: number;
+  }) =>
+    new OnChainLifecycleCoordinator({
+      threshold: options.threshold,
+      visibilityRetryCount: 0,
+      log: options.log,
+      singleKeyNoticeIntervalMs: options.singleKeyNoticeIntervalMs,
+      chainReader: {
+        fetchDaAttestationCandidates: async () => [
+          {
+            ...candidateRecord({
+              attestationCount: options.threshold,
+              status: "threshold",
+            }),
+            threshold: options.threshold,
+          },
+        ],
+      },
+      submitter: {
+        initAttestation: async () => submitted("initTx"),
+        addSignatures: async () => submitted("addTx"),
+        applyAttestation: async () => submitted("applyTx"),
+      },
+    });
+
+  it("explains the single-key configuration once, not once per reconcile", async () => {
+    const logs: string[] = [];
+    const coordinator = singleKeyCoordinator({
+      threshold: 1,
+      log: (message) => logs.push(message),
+    });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await coordinator.publishSignature(signatureRecord());
+    }
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatch(/Single-key DA attest loop/);
+    expect(logs[0]).toMatch(/rate-limited/);
+  });
+
+  it("re-explains once the rate-limit interval has elapsed", async () => {
+    const logs: string[] = [];
+    const coordinator = singleKeyCoordinator({
+      threshold: 1,
+      log: (message) => logs.push(message),
+      // A zero interval is "the gap has always elapsed", which measures that
+      // the limiter is a time comparison rather than a fire-once latch.
+      singleKeyNoticeIntervalMs: 0,
+    });
+
+    await coordinator.publishSignature(signatureRecord());
+    await coordinator.publishSignature(signatureRecord());
+
+    expect(logs).toHaveLength(2);
+  });
+
+  it("says nothing for a two-key committee", async () => {
+    const logs: string[] = [];
+    const coordinator = singleKeyCoordinator({
+      threshold: 2,
+      log: (message) => logs.push(message),
+      singleKeyNoticeIntervalMs: 0,
+    });
+
+    await coordinator.publishSignature(signatureRecord());
+
+    expect(logs).toStrictEqual([]);
+  });
+});
+
+const submitted = (txHash: string) => ({
+  status: "submitted" as const,
+  txHash,
+});
 
 const candidateRecord = ({
   attestationCount,
@@ -606,18 +693,37 @@ const candidateRecord = ({
   status,
 });
 
+const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitment(
+  SDK.buildDaAvailabilityCommitment({
+    deploymentIdentity: "99".repeat(28),
+    headerHash: "01".repeat(28),
+    payload: Buffer.from("public retained DA"),
+    bondOwner: "76".repeat(28),
+    responseGeometry: SDK.availabilityResponseGeometry({
+      chunkByteLength: 14_020,
+      trancheByteLength: 4 * 1_024 * 1_024,
+      maxTrancheCount: 16,
+    }),
+  }),
+);
+const availabilityCommitmentDigest = computeDaSha256Hash(
+  Buffer.from(availabilityCommitmentCbor, "hex"),
+).toString("hex");
+
 const signatureRecord = (): DaSignatureRecord => ({
   deploymentFingerprint: "dep",
   headerHash: "01".repeat(28),
   signerIndex: 0,
   signatureWitness: "00" + "11".repeat(64),
+  availabilityCommitmentCbor,
+  availabilityCommitmentDigest,
   payloadHash: "03".repeat(32),
   committeeSignersHash: "02".repeat(32),
   signedAt: "2026-01-01T00:00:00.000Z",
   broadcastStatus: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+    payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "state#0",
     headerHash: "01".repeat(28),

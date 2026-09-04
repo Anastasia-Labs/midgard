@@ -18,9 +18,27 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (path) => readFileSync(resolve(repoRoot, path), "utf8");
 
 const NUMBER_WORDS = [
-  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
-  "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
-  "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+  "twenty",
 ];
 
 /** Pulls every double-quoted string out of a source fragment. */
@@ -42,14 +60,20 @@ const FACTS = [
     countPhrase: "The {n} long-running fibers",
   },
   {
-    // bin.ts rejects an unknown command by listing every valid one. That error
-    // string is the command allow-list.
+    // bin.ts defines every valid command once in the canonical help template.
+    // Extract the first token after the binary name from each usage line.
     label: "command",
     source: "demo/midgard-fault-proofs/src/bin.ts",
     doc: "docs-site/content/docs/fault-proofs/overview.mdx",
     extract: (src) => {
-      const usage = src.match(/Expected command ([^\n]+?)\.\\n\$\{usage\}/);
-      return usage ? quoted(usage[1]) : [];
+      const usage = src.match(/const usage = `Usage:\n([\s\S]*?)\n`;/);
+      return usage
+        ? [
+            ...usage[1].matchAll(
+              /^\s*midgard-fault-proofs ([a-z0-9-]+)(?:\s|$)/gm,
+            ),
+          ].map((match) => match[1])
+        : [];
     },
     countPhrase: "The {n} commands",
   },
@@ -91,6 +115,18 @@ const FACTS = [
     },
     countPhrase: "`TxStatus` has {n} kinds",
   },
+  {
+    label: "deployed catalogue category",
+    source: "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
+    doc: "docs-site/content/docs/onchain/fraud-proof-machines.mdx",
+    extract: (src) => {
+      const order = src.match(
+        /FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = \[([\s\S]*?)\] as const/,
+      );
+      return order ? quoted(order[1]) : [];
+    },
+    countPhrase: "The {n} deployed catalogue categories",
+  },
 ];
 
 const failures = [];
@@ -99,20 +135,29 @@ const fail = (message) => failures.push(message);
 for (const { label, source, doc, extract, countPhrase } of FACTS) {
   const symbols = extract(read(source));
   if (symbols.length === 0) {
-    fail(`${source}: found no ${label}s to check. Has the source shape changed?`);
+    fail(
+      `${source}: found no ${label}s to check. Has the source shape changed?`,
+    );
     continue;
   }
 
   const page = read(doc);
   for (const symbol of symbols) {
     if (!page.includes(symbol)) {
-      fail(`${doc}: ${label} \`${symbol}\` exists in ${source} but is not documented.`);
+      fail(
+        `${doc}: ${label} \`${symbol}\` exists in ${source} but is not documented.`,
+      );
     }
   }
 
-  const expected = countPhrase.replace("{n}", NUMBER_WORDS[symbols.length] ?? String(symbols.length));
+  const expected = countPhrase.replace(
+    "{n}",
+    NUMBER_WORDS[symbols.length] ?? String(symbols.length),
+  );
   if (!page.includes(expected)) {
-    fail(`${doc}: expected the phrase "${expected}" (${source} yields ${symbols.length}).`);
+    fail(
+      `${doc}: expected the phrase "${expected}" (${source} yields ${symbols.length}).`,
+    );
   }
 }
 
@@ -134,29 +179,46 @@ for (const [entrypoint, source] of [
     fail(`${source}: missing documented ${entrypoint} entrypoint.`);
   }
   if (!daDocs.includes(`\`${entrypoint}\``)) {
-    fail(`docs-site/content/docs/onchain/da-validators.mdx: missing \`${entrypoint}\`.`);
+    fail(
+      `docs-site/content/docs/onchain/da-validators.mdx: missing \`${entrypoint}\`.`,
+    );
   }
 }
 
-const phaseOrder = ["Withdrawal", "ForcedTransaction", "L2Transaction", "Deposit"];
-const mpf = read("demo/midgard-node/src/workers/utils/mpf.ts");
+const phaseOrder = [
+  "Withdrawal",
+  "ForcedTransaction",
+  "L2Transaction",
+  "Deposit",
+];
+const mpf = read("demo/midgard-node/src/mpf/transition-cbor.ts");
 let previous = -1;
 for (const phase of phaseOrder) {
   const position = mpf.indexOf(`case \"${phase}\":`, previous + 1);
   if (position <= previous) {
-    fail(`demo/midgard-node/src/workers/utils/mpf.ts: canonical phase ${phase} is missing or out of order.`);
+    fail(
+      `demo/midgard-node/src/mpf/transition-cbor.ts: canonical phase ${phase} is missing or out of order.`,
+    );
   }
   previous = position;
 }
 const blockSpec = read("technical-spec/1-ledger-state/1-block.tex");
-if (!blockSpec.includes("withdrawals, forced transactions, L2 transaction requests, and deposits")) {
-  fail("technical-spec/1-ledger-state/1-block.tex: canonical transition phase order changed.");
+if (
+  !blockSpec.includes(
+    "withdrawals, forced transactions, L2 transaction requests, and deposits",
+  )
+) {
+  fail(
+    "technical-spec/1-ledger-state/1-block.tex: canonical transition phase order changed.",
+  );
 }
 
 if (failures.length > 0) {
   console.error("Documentation has drifted from source:\n");
   for (const failure of failures) console.error(`  - ${failure}`);
-  console.error("\nUpdate the page, or the source, so the two agree. See docs-site/README.md.");
+  console.error(
+    "\nUpdate the page, or the source, so the two agree. See docs-site/README.md.",
+  );
   process.exit(1);
 }
 

@@ -3,7 +3,13 @@ import { existsSync } from "node:fs";
 import { type FileHandle, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
-import { writeJsonFileAtomic } from "@/files/atomic-write.js";
+import {
+  type DeploymentMarker,
+  parseDeploymentMarker,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+
+import { exactRecord } from "../artifact-schema.js";
+import { writeJsonFileAtomic } from "../files/atomic-write.js";
 
 export const DEPLOYMENT_RUN_STATE_SCHEMA_VERSION =
   "midgard-deployment-run-state-v1";
@@ -29,6 +35,7 @@ export type DeploymentRunIdentity = {
   };
   readonly manifestPath?: string;
   readonly manifestSha256?: string;
+  readonly deploymentMarker?: DeploymentMarker;
 };
 
 export type DeploymentStepStatus =
@@ -74,6 +81,22 @@ export class RunStateError extends Error {
   }
 }
 
+const exactRunStateRecord = (
+  value: unknown,
+  label: string,
+  requiredKeys: readonly string[],
+  optionalKeys: readonly string[] = [],
+): Record<string, unknown> => {
+  try {
+    return exactRecord(value, label, requiredKeys, optionalKeys);
+  } catch (cause) {
+    throw new RunStateError(
+      cause instanceof Error ? cause.message : String(cause),
+      { cause },
+    );
+  }
+};
+
 const assertRecord = (
   value: unknown,
   label: string,
@@ -85,16 +108,36 @@ const assertRecord = (
 };
 
 const assertString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new RunStateError(`${label} must be a non-empty string.`);
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value !== value.trim()
+  ) {
+    throw new RunStateError(
+      `${label} must be a canonical non-empty string without surrounding whitespace.`,
+    );
   }
   return value;
 };
 
+const assertLowerHex = (
+  value: unknown,
+  label: string,
+  byteLength: number,
+): string => {
+  const parsed = assertString(value, label);
+  if (parsed.length !== byteLength * 2 || !/^[0-9a-f]+$/u.test(parsed)) {
+    throw new RunStateError(
+      `${label} must be ${byteLength.toString()} bytes of lowercase hexadecimal.`,
+    );
+  }
+  return parsed;
+};
+
 const assertIsoString = (value: unknown, label: string): string => {
   const text = assertString(value, label);
-  if (Number.isNaN(Date.parse(text))) {
-    throw new RunStateError(`${label} must be an ISO timestamp.`);
+  if (Number.isNaN(Date.parse(text)) || new Date(text).toISOString() !== text) {
+    throw new RunStateError(`${label} must be a canonical ISO timestamp.`);
   }
   return text;
 };
@@ -112,7 +155,13 @@ const assertStringArray = (
   ) {
     throw new RunStateError(`${label} must be an array of strings.`);
   }
-  return value as readonly string[];
+  const parsed = value.map((entry, index) =>
+    assertString(entry, `${label}[${index.toString()}]`),
+  );
+  if (new Set(parsed).size !== parsed.length) {
+    throw new RunStateError(`${label} must not contain duplicates.`);
+  }
+  return parsed;
 };
 
 const assertStringRecord = (
@@ -152,27 +201,54 @@ const parseStepStatus = (value: unknown): DeploymentStepStatus => {
   throw new RunStateError("step.status is invalid.");
 };
 
-const parseIdentity = (value: unknown): DeploymentRunIdentity => {
-  const input = assertRecord(value, "identity");
+export const parseDeploymentRunIdentity = (
+  value: unknown,
+): DeploymentRunIdentity => {
+  const input = exactRunStateRecord(
+    value,
+    "identity",
+    [],
+    [
+      "network",
+      "hubOracleOneShot",
+      "referenceScriptAuthPolicyId",
+      "referenceScriptAuthPolicy",
+      "manifestPath",
+      "manifestSha256",
+      "deploymentMarker",
+    ],
+  );
   const hubOracleOneShot =
     input.hubOracleOneShot === undefined
       ? undefined
-      : assertRecord(input.hubOracleOneShot, "identity.hubOracleOneShot");
+      : exactRunStateRecord(
+          input.hubOracleOneShot,
+          "identity.hubOracleOneShot",
+          ["txHash", "outputIndex"],
+        );
   const referenceScriptAuthPolicy =
     input.referenceScriptAuthPolicy === undefined
       ? undefined
-      : assertRecord(
+      : exactRunStateRecord(
           input.referenceScriptAuthPolicy,
           "identity.referenceScriptAuthPolicy",
+          ["policyId", "nativeScript"],
         );
   const referenceScriptAuthPolicyNativeScript =
-    referenceScriptAuthPolicy?.nativeScript === undefined
+    referenceScriptAuthPolicy === undefined
       ? undefined
-      : assertRecord(
+      : exactRunStateRecord(
           referenceScriptAuthPolicy.nativeScript,
           "identity.referenceScriptAuthPolicy.nativeScript",
+          [
+            "type",
+            "cborHex",
+            "expiresAtSlot",
+            "expiresAtUnixTime",
+            "timelockDurationMs",
+          ],
         );
-  return {
+  const parsed: DeploymentRunIdentity = {
     ...(input.network === undefined
       ? {}
       : { network: assertString(input.network, "identity.network") }),
@@ -180,13 +256,14 @@ const parseIdentity = (value: unknown): DeploymentRunIdentity => {
       ? {}
       : {
           hubOracleOneShot: {
-            txHash: assertString(
+            txHash: assertLowerHex(
               hubOracleOneShot.txHash,
               "identity.hubOracleOneShot.txHash",
+              32,
             ),
             outputIndex:
               typeof hubOracleOneShot.outputIndex === "number" &&
-              Number.isInteger(hubOracleOneShot.outputIndex) &&
+              Number.isSafeInteger(hubOracleOneShot.outputIndex) &&
               hubOracleOneShot.outputIndex >= 0
                 ? hubOracleOneShot.outputIndex
                 : (() => {
@@ -199,18 +276,20 @@ const parseIdentity = (value: unknown): DeploymentRunIdentity => {
     ...(input.referenceScriptAuthPolicyId === undefined
       ? {}
       : {
-          referenceScriptAuthPolicyId: assertString(
+          referenceScriptAuthPolicyId: assertLowerHex(
             input.referenceScriptAuthPolicyId,
             "identity.referenceScriptAuthPolicyId",
+            28,
           ),
         }),
     ...(referenceScriptAuthPolicy === undefined
       ? {}
       : {
           referenceScriptAuthPolicy: {
-            policyId: assertString(
+            policyId: assertLowerHex(
               referenceScriptAuthPolicy.policyId,
               "identity.referenceScriptAuthPolicy.policyId",
+              28,
             ),
             nativeScript: {
               type:
@@ -221,10 +300,18 @@ const parseIdentity = (value: unknown): DeploymentRunIdentity => {
                         "identity.referenceScriptAuthPolicy.nativeScript.type must be Native.",
                       );
                     })(),
-              cborHex: assertString(
-                referenceScriptAuthPolicyNativeScript.cborHex,
-                "identity.referenceScriptAuthPolicy.nativeScript.cborHex",
-              ),
+              cborHex: (() => {
+                const cborHex = assertString(
+                  referenceScriptAuthPolicyNativeScript.cborHex,
+                  "identity.referenceScriptAuthPolicy.nativeScript.cborHex",
+                );
+                if (cborHex.length % 2 !== 0 || !/^[0-9a-f]+$/u.test(cborHex)) {
+                  throw new RunStateError(
+                    "identity.referenceScriptAuthPolicy.nativeScript.cborHex must be non-empty even-length lowercase hexadecimal.",
+                  );
+                }
+                return cborHex;
+              })(),
               expiresAtSlot:
                 typeof referenceScriptAuthPolicyNativeScript.expiresAtSlot ===
                   "number" &&
@@ -278,34 +365,190 @@ const parseIdentity = (value: unknown): DeploymentRunIdentity => {
     ...(input.manifestSha256 === undefined
       ? {}
       : {
-          manifestSha256: assertString(
+          manifestSha256: assertLowerHex(
             input.manifestSha256,
             "identity.manifestSha256",
+            32,
           ),
         }),
+    ...(input.deploymentMarker === undefined
+      ? {}
+      : {
+          deploymentMarker: (() => {
+            try {
+              return parseDeploymentMarker(input.deploymentMarker);
+            } catch (cause) {
+              throw new RunStateError(
+                `identity.deploymentMarker is invalid: ${
+                  cause instanceof Error ? cause.message : String(cause)
+                }`,
+                { cause },
+              );
+            }
+          })(),
+        }),
   };
+  if (
+    parsed.referenceScriptAuthPolicyId !== undefined &&
+    parsed.referenceScriptAuthPolicy !== undefined &&
+    parsed.referenceScriptAuthPolicyId !==
+      parsed.referenceScriptAuthPolicy.policyId
+  ) {
+    throw new RunStateError(
+      "identity reference-script policy identifiers are inconsistent.",
+    );
+  }
+  return parsed;
 };
 
-const parseStep = (value: unknown): DeploymentStepState => {
-  const input = assertRecord(value, "step");
-  return {
+export const bindDeploymentRunStateToMarker = (
+  state: DeploymentRunState,
+  {
+    marker,
+    manifestPath,
+    manifestSha256,
+    now = new Date(),
+  }: {
+    readonly marker: DeploymentMarker;
+    readonly manifestPath: string;
+    readonly manifestSha256: string;
+    readonly now?: Date;
+  },
+): DeploymentRunState => {
+  const canonicalMarker = (() => {
+    try {
+      return parseDeploymentMarker(marker);
+    } catch (cause) {
+      throw new RunStateError(
+        `Cannot bind invalid deployment marker: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+        { cause },
+      );
+    }
+  })();
+  const canonicalManifestPath = assertString(
+    manifestPath,
+    "identity.manifestPath",
+  );
+  const canonicalManifestSha256 = assertLowerHex(
+    manifestSha256,
+    "identity.manifestSha256",
+    32,
+  );
+  if (
+    state.identity.deploymentMarker !== undefined &&
+    state.identity.deploymentMarker.manifestId !== canonicalMarker.manifestId
+  ) {
+    throw new RunStateError(
+      `Deployment run state marker mismatch: existing=${state.identity.deploymentMarker.manifestId}, current=${canonicalMarker.manifestId}. A different final deployment requires an explicit fresh run state.`,
+    );
+  }
+  const timestamp = now.toISOString();
+  return parseDeploymentRunState({
+    ...state,
+    updatedAt: timestamp,
+    identity: {
+      ...state.identity,
+      manifestPath: canonicalManifestPath,
+      manifestSha256: canonicalManifestSha256,
+      deploymentMarker: canonicalMarker,
+    },
+    steps: {
+      ...state.steps,
+      deploymentMarker: {
+        status: "complete",
+        updatedAt: timestamp,
+        evidence: [
+          `manifestId=${canonicalMarker.manifestId}`,
+          `manifestSha256=${canonicalManifestSha256}`,
+        ],
+      },
+    },
+    events: [
+      ...state.events,
+      {
+        at: timestamp,
+        kind: "step_transition",
+        stepId: "deploymentMarker",
+        message: "deploymentMarker -> complete",
+      },
+    ],
+  });
+};
+
+export const parseDeploymentStepState = (
+  value: unknown,
+  label = "step",
+): DeploymentStepState => {
+  const input = exactRunStateRecord(
+    value,
+    label,
+    ["status", "updatedAt"],
+    ["txHashes", "outRefs", "message", "evidence", "details"],
+  );
+  const parsed: DeploymentStepState = {
     status: parseStepStatus(input.status),
-    updatedAt: assertIsoString(input.updatedAt, "step.updatedAt"),
+    updatedAt: assertIsoString(input.updatedAt, `${label}.updatedAt`),
     ...(input.txHashes === undefined
       ? {}
-      : { txHashes: assertStringArray(input.txHashes, "step.txHashes") }),
+      : {
+          txHashes: assertStringArray(input.txHashes, `${label}.txHashes`),
+        }),
     ...(input.outRefs === undefined
       ? {}
-      : { outRefs: assertStringArray(input.outRefs, "step.outRefs") }),
+      : { outRefs: assertStringArray(input.outRefs, `${label}.outRefs`) }),
     ...(input.message === undefined
       ? {}
-      : { message: assertString(input.message, "step.message") }),
+      : { message: assertString(input.message, `${label}.message`) }),
     ...(input.evidence === undefined
       ? {}
-      : { evidence: assertStringArray(input.evidence, "step.evidence") }),
+      : {
+          evidence: assertStringArray(input.evidence, `${label}.evidence`),
+        }),
     ...(input.details === undefined
       ? {}
-      : { details: assertStringRecord(input.details, "step.details") }),
+      : { details: assertStringRecord(input.details, `${label}.details`) }),
+  };
+  for (const [index, txHash] of (parsed.txHashes ?? []).entries()) {
+    assertLowerHex(txHash, `${label}.txHashes[${index.toString()}]`, 32);
+  }
+  for (const [index, outRef] of (parsed.outRefs ?? []).entries()) {
+    if (!/^[0-9a-f]{64}#(0|[1-9]\d*)$/u.test(outRef)) {
+      throw new RunStateError(
+        `${label}.outRefs[${index.toString()}] must be a canonical transaction output reference.`,
+      );
+    }
+  }
+  return parsed;
+};
+
+export const parseDeploymentRunEvent = (
+  value: unknown,
+  label = "event",
+): DeploymentRunEvent => {
+  const input = exactRunStateRecord(
+    value,
+    label,
+    ["at", "kind", "message"],
+    ["stepId"],
+  );
+  return {
+    at: assertIsoString(input.at, `${label}.at`),
+    kind:
+      input.kind === "created" || input.kind === "step_transition"
+        ? input.kind
+        : (() => {
+            throw new RunStateError(
+              `${label}.kind must be created or step_transition.`,
+            );
+          })(),
+    message: assertString(input.message, `${label}.message`),
+    ...(input.stepId === undefined
+      ? {}
+      : {
+          stepId: assertString(input.stepId, `${label}.stepId`),
+        }),
   };
 };
 
@@ -313,29 +556,22 @@ const parseEvents = (value: unknown): readonly DeploymentRunEvent[] => {
   if (!Array.isArray(value)) {
     throw new RunStateError("events must be an array.");
   }
-  return value.map((entry, index) => {
-    const input = assertRecord(entry, `events[${index.toString()}]`);
-    return {
-      at: assertIsoString(input.at, `events[${index.toString()}].at`),
-      kind: assertString(input.kind, `events[${index.toString()}].kind`),
-      message: assertString(
-        input.message,
-        `events[${index.toString()}].message`,
-      ),
-      ...(input.stepId === undefined
-        ? {}
-        : {
-            stepId: assertString(
-              input.stepId,
-              `events[${index.toString()}].stepId`,
-            ),
-          }),
-    };
-  });
+  return value.map((entry, index) =>
+    parseDeploymentRunEvent(entry, `events[${index.toString()}]`),
+  );
 };
 
 export const parseDeploymentRunState = (value: unknown): DeploymentRunState => {
-  const input = assertRecord(value, "run state");
+  const input = exactRunStateRecord(value, "run state", [
+    "schemaVersion",
+    "runId",
+    "createdAt",
+    "updatedAt",
+    "mode",
+    "identity",
+    "steps",
+    "events",
+  ]);
   if (input.schemaVersion !== DEPLOYMENT_RUN_STATE_SCHEMA_VERSION) {
     throw new RunStateError(
       `Unsupported run-state schemaVersion: ${String(input.schemaVersion)}`,
@@ -345,19 +581,75 @@ export const parseDeploymentRunState = (value: unknown): DeploymentRunState => {
   const steps = Object.fromEntries(
     Object.entries(stepsInput).map(([stepId, step]) => [
       stepId,
-      parseStep(step),
+      parseDeploymentStepState(step, `steps.${stepId}`),
     ]),
   );
-  return {
+  const parsed: DeploymentRunState = {
     schemaVersion: DEPLOYMENT_RUN_STATE_SCHEMA_VERSION,
     runId: assertString(input.runId, "runId"),
     createdAt: assertIsoString(input.createdAt, "createdAt"),
     updatedAt: assertIsoString(input.updatedAt, "updatedAt"),
     mode: parseMode(input.mode),
-    identity: parseIdentity(input.identity),
+    identity: parseDeploymentRunIdentity(input.identity),
     steps,
     events: parseEvents(input.events),
   };
+  const createdAtMs = Date.parse(parsed.createdAt);
+  const updatedAtMs = Date.parse(parsed.updatedAt);
+  const identityPolicyId = parsed.identity.referenceScriptAuthPolicy?.policyId;
+  if (
+    createdAtMs > updatedAtMs ||
+    (parsed.identity.referenceScriptAuthPolicyId !== undefined &&
+      identityPolicyId !== undefined &&
+      parsed.identity.referenceScriptAuthPolicyId !== identityPolicyId) ||
+    parsed.events.length === 0 ||
+    parsed.events[0]?.kind !== "created" ||
+    parsed.events[0]?.at !== parsed.createdAt ||
+    parsed.events[0]?.stepId !== undefined ||
+    parsed.events[0]?.message !==
+      `Created ${parsed.mode} deployment run state.` ||
+    parsed.events.at(-1)?.at !== parsed.updatedAt
+  ) {
+    throw new RunStateError(
+      "run state identity, timestamps, or creation event are inconsistent.",
+    );
+  }
+  let previousEventAtMs = createdAtMs;
+  for (const [index, event] of parsed.events.entries()) {
+    const eventAtMs = Date.parse(event.at);
+    if (
+      eventAtMs < previousEventAtMs ||
+      eventAtMs > updatedAtMs ||
+      (index > 0 && event.kind !== "step_transition") ||
+      (event.kind === "step_transition" &&
+        (event.stepId === undefined ||
+          parsed.steps[event.stepId] === undefined))
+    ) {
+      throw new RunStateError(
+        "run state event chronology or step identity is inconsistent.",
+      );
+    }
+    previousEventAtMs = eventAtMs;
+  }
+  for (const [stepId, step] of Object.entries(parsed.steps)) {
+    assertString(stepId, `steps key ${JSON.stringify(stepId)}`);
+    const lastTransition = [...parsed.events]
+      .reverse()
+      .find(
+        (event) => event.kind === "step_transition" && event.stepId === stepId,
+      );
+    if (
+      Date.parse(step.updatedAt) < createdAtMs ||
+      Date.parse(step.updatedAt) > updatedAtMs ||
+      lastTransition?.at !== step.updatedAt ||
+      lastTransition.message !== `${stepId} -> ${step.status}`
+    ) {
+      throw new RunStateError(
+        `run state step ${stepId} is not bound to its latest transition event.`,
+      );
+    }
+  }
+  return parsed;
 };
 
 export const createDeploymentRunState = ({
@@ -372,7 +664,7 @@ export const createDeploymentRunState = ({
   readonly identity?: DeploymentRunIdentity;
 }): DeploymentRunState => {
   const timestamp = now.toISOString();
-  return {
+  return parseDeploymentRunState({
     schemaVersion: DEPLOYMENT_RUN_STATE_SCHEMA_VERSION,
     runId,
     createdAt: timestamp,
@@ -387,7 +679,7 @@ export const createDeploymentRunState = ({
         message: `Created ${mode} deployment run state.`,
       },
     ],
-  };
+  });
 };
 
 export const transitionDeploymentStep = (
@@ -401,7 +693,7 @@ export const transitionDeploymentStep = (
     throw new RunStateError("stepId must be non-empty.");
   }
   const timestamp = now.toISOString();
-  return {
+  return parseDeploymentRunState({
     ...state,
     updatedAt: timestamp,
     steps: {
@@ -422,7 +714,7 @@ export const transitionDeploymentStep = (
         message: `${stepId} -> ${status}`,
       },
     ],
-  };
+  });
 };
 
 export const defaultDeploymentRunStatePath = (

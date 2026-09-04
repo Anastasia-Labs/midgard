@@ -17,12 +17,12 @@ import {
   MempoolLedgerDB,
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   reviveEarliestCanonicalPayloadJournal,
   withCanonicalHeaderJournals,
-} from "@/services/canonical-journal-recovery.js";
+} from "../services/canonical-journal-recovery.js";
 import {
   Database,
   Globals,
@@ -30,19 +30,18 @@ import {
   NodeConfig,
   publishMempoolLedgerDelta,
   withL1ControlPlane,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   resolveTransactionConfirmationMetadata,
   type TransactionConfirmationMetadata,
-} from "@/transaction-confirmation-metadata.js";
-import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
-import { WorkerError } from "@/workers/utils/common.js";
+} from "../transaction-confirmation-metadata.js";
+import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import { WorkerError } from "../workers/utils/common.js";
 import {
   SerializedCanonicalCommittedHeader,
   WorkerInput as BlockConfirmationWorkerInput,
   WorkerOutput as BlockConfirmationWorkerOutput,
-} from "@/workers/utils/confirm-block-commitments.js";
-
+} from "../workers/utils/confirm-block-commitments.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 import { invalidateSpeculativeCommitCandidate } from "./speculative-commit-builder.js";

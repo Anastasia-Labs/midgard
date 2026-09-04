@@ -17,24 +17,24 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
-import type { SubmitSlotSnapshot } from "@/local-ledger-slot.js";
-import { slotToUnixTimeForLucid } from "@/lucid-time.js";
+import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
+import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
+import { slotToUnixTimeForLucid } from "../../lucid-time.js";
 import {
   applySubmittedTxToOperatorWalletView,
   availableOperatorWalletUtxos,
   fetchOperatorWalletView,
   type OperatorWalletView,
-} from "@/operator-wallet-view.js";
+} from "../../operator-wallet-view.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
-} from "@/transactions/reference-scripts.js";
-import { planSubmitTiming } from "@/transactions/submit-timing.js";
+} from "../../transactions/reference-scripts.js";
+import { planSubmitTiming } from "../../transactions/submit-timing.js";
 import {
   slotAwareDueWorkFromSubmitTiming,
   type SubmitTimingNotDuePlanWithDueWorkEvidence,
-} from "@/transactions/submit-timing-due-work.js";
+} from "../../transactions/submit-timing-due-work.js";
 import {
   awaitExactTransactionConfirmation,
   handleSignSubmitNoConfirmation,
@@ -42,8 +42,8 @@ import {
   type NoInlineSubmitRecoveryOptions,
   type TxSignError,
   type TxSubmitError,
-} from "@/transactions/utils.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+} from "../../transactions/utils.js";
+import { compareOutRefs, outRefLabel } from "../../tx-context.js";
 import {
   type CommitSchedulerDiscoveryStage,
   type CommitSchedulerState,
@@ -51,8 +51,8 @@ import {
   type CurrentOperatorSchedulerWindow,
   type EarliestCommitSchedulerPlan,
   planEarliestCommitSchedulerDueWork,
-} from "@/workers/utils/commit-block-planner.js";
-import { alignUnixTimeToSlotBoundary } from "@/workers/utils/commit-end-time.js";
+} from "./commit-block-planner.js";
+import { alignUnixTimeToSlotBoundary } from "./commit-end-time.js";
 
 export type NodeUtxoWithDatum = {
   readonly utxo: UTxO;
@@ -63,11 +63,13 @@ export type RealStateQueueWitnessContext = {
   readonly operatorKeyHash: string;
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
+  readonly correctionLockRefInput: SDK.CorrectionLockUTxO;
   readonly activeOperatorInput: UTxO & { datum: string };
   readonly activeOperatorsSpendingScript: Script;
   readonly activeOperatorsSpendingScriptRef?: UTxO;
   readonly stateQueueSpendingScriptRef?: UTxO;
   readonly stateQueueMintingScriptRef?: UTxO;
+  readonly stateQueueCommitYieldScriptRef: UTxO;
   readonly operatorWalletView: OperatorWalletView;
 };
 
@@ -1141,10 +1143,10 @@ const ensureSchedulerAlignedForCommit = (
               currentStartTime,
               schedulerSlotSnapshot,
             );
-      const legacyOneShiftCatchUp =
+      const previousShiftCatchUp =
         startTimeMode === "previous-shift-end" &&
         currentStartTime <= targetStartTime;
-      if (targetStartTime < validFrom && !legacyOneShiftCatchUp) {
+      if (targetStartTime < validFrom && !previousShiftCatchUp) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
             message:
@@ -1441,6 +1443,10 @@ export const fetchRealStateQueueWitnessContext = (
                 name: "state-queue minting",
                 script: contracts.stateQueue.mintingScript,
               },
+              {
+                name: "state-queue commit withdrawal",
+                script: contracts.stateQueue.yields.commit.withdrawalScript,
+              },
             ],
             contracts.referenceScriptAuth,
           );
@@ -1458,6 +1464,10 @@ export const fetchRealStateQueueWitnessContext = (
     );
     const stateQueueMintingScriptRef = optionalReferenceScript(
       "state-queue minting",
+    );
+    const stateQueueCommitYieldScriptRef = referenceScriptByName(
+      resolvedReferenceScripts,
+      "state-queue commit withdrawal",
     );
     const schedulerWitnessUnit = toUnit(
       contracts.scheduler.policyId,
@@ -1554,6 +1564,22 @@ export const fetchRealStateQueueWitnessContext = (
       );
     }
     const hubOracleRefInput = hubOracleWitnessUtxos[0];
+    const correctionLockRefInput = yield* SDK.fetchCorrectionLockUTxOProgram(
+      lucid,
+      {
+        correctionLockAddress: contracts.correctionLock.spendingScriptAddress,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+      },
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch authenticated correction-lock witness for state_queue commit",
+            cause,
+          }),
+      ),
+    );
 
     const activeOperatorInput = yield* fetchFreshActiveOperatorInputForCommit(
       lucid,
@@ -1566,11 +1592,13 @@ export const fetchRealStateQueueWitnessContext = (
       operatorKeyHash,
       schedulerRefInput: schedulerRefInput.schedulerRefInput,
       hubOracleRefInput,
+      correctionLockRefInput,
       activeOperatorInput,
       activeOperatorsSpendingScript: contracts.activeOperators.spendingScript,
       activeOperatorsSpendingScriptRef,
       stateQueueSpendingScriptRef,
       stateQueueMintingScriptRef,
+      stateQueueCommitYieldScriptRef,
       operatorWalletView: schedulerRefInput.operatorWalletView,
     };
   });

@@ -1,41 +1,39 @@
-import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
-import { encodeProtocolInfo } from "@/commands/protocol-info.js";
+import { encodeProtocolInfo } from "../src/commands/protocol-info.js";
 
 const nodeConfig = {
   NETWORK: "Preview",
   MIN_FEE_A: 44n,
   MIN_FEE_B: 155381n,
-  MAX_SUBMIT_TX_CBOR_BYTES: 32768,
+  MAX_SUBMIT_TX_CBOR_BYTES:
+    MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
 } as const;
+const deploymentMarker = makeDeploymentMarker("ab".repeat(32));
 
 describe("encodeProtocolInfo", () => {
-  it("serializes stable builder facts without JSON bigint fields", () => {
-    expect(
+  it("fails closed while the compiled V1 release-evidence gate is incomplete", () => {
+    expect(() =>
       encodeProtocolInfo({
         nodeConfig,
         currentSlot: 123456,
+        deploymentMarker,
       }),
-    ).toEqual({
-      apiVersion: 1,
-      network: "Preview",
-      midgardNativeTxVersion: 1,
-      currentSlot: "123456",
-      supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-      protocolFeeParameters: {
-        minFeeA: "44",
-        minFeeB: "155381",
-      },
-      submissionLimits: {
-        maxSubmitTxCborBytes: 32768,
-      },
-      validation: {
-        strictnessProfile: "phase1_midgard",
-        localValidationIsAuthoritative: false,
-      },
-    });
+    ).toThrow(/not activated/u);
+  });
+
+  it("does not advertise V1 before its compiled L1 evidence gate is complete", () => {
+    expect(() =>
+      encodeProtocolInfo({
+        nodeConfig,
+        currentSlot: 123456,
+        deploymentMarker,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      }),
+    ).toThrow(/not activated/u);
   });
 
   it("rejects unsafe numeric current slots", () => {
@@ -43,6 +41,7 @@ describe("encodeProtocolInfo", () => {
       encodeProtocolInfo({
         nodeConfig,
         currentSlot: Number.MAX_SAFE_INTEGER + 1,
+        deploymentMarker,
       }),
     ).toThrow("currentSlot must be a non-negative safe integer");
   });
@@ -55,6 +54,7 @@ describe("encodeProtocolInfo", () => {
           MIN_FEE_A: -1n,
         },
         currentSlot: 1,
+        deploymentMarker,
       }),
     ).toThrow("MIN_FEE_A must be non-negative");
   });
@@ -67,7 +67,51 @@ describe("encodeProtocolInfo", () => {
           MAX_SUBMIT_TX_CBOR_BYTES: 0,
         },
         currentSlot: 1,
+        deploymentMarker,
       }),
     ).toThrow("MAX_SUBMIT_TX_CBOR_BYTES must be a positive safe integer");
+  });
+
+  it("accepts a lower submit cap before the compiled release gate", () => {
+    expect(() =>
+      encodeProtocolInfo({
+        nodeConfig: {
+          ...nodeConfig,
+          MAX_SUBMIT_TX_CBOR_BYTES:
+            MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes - 1,
+        },
+        currentSlot: 1,
+        deploymentMarker,
+      }),
+    ).toThrow(/not activated/u);
+  });
+
+  it("rejects a submit cap above the compiled V1 maximum", () => {
+    expect(() =>
+      encodeProtocolInfo({
+        nodeConfig: {
+          ...nodeConfig,
+          MAX_SUBMIT_TX_CBOR_BYTES:
+            MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes + 1,
+        },
+        currentSlot: 1,
+        deploymentMarker,
+      }),
+    ).toThrow(
+      "MAX_SUBMIT_TX_CBOR_BYTES must not exceed the canonical V1 transaction bound",
+    );
+  });
+
+  it("rejects a non-exact SDK deployment marker before advertising V1", () => {
+    expect(() =>
+      encodeProtocolInfo({
+        nodeConfig,
+        currentSlot: 1,
+        deploymentMarker: {
+          ...deploymentMarker,
+          legacyFingerprint: deploymentMarker.manifestId,
+        },
+      }),
+    ).toThrow(/exactly schemaVersion and manifestId/u);
   });
 });

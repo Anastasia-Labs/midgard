@@ -7,9 +7,16 @@
   "bin": {
     "midgard-node": "./dist/index.js"
   },
+  "exports": {
+    "./*": {
+      "midgard-source": "./src/*.ts"
+    },
+    "./tests/*": {
+      "midgard-source": "./tests/*.ts"
+    }
+  },
   "scripts": {
     "clean": "rimraf dist node_modules",
-    "prebuild": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build",
     "build": "tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm",
     "typecheck": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build && tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
@@ -28,6 +35,9 @@
     "db:checksum": "pnpm run build && node dist/index.js db:checksum",
     "init": "pnpm run build && node dist/index.js init",
     "bench:fixtures:generate": "node tests/benchmarks/scripts/generate-validation-fixtures.mjs",
+    "fixtures:transition-trace:generate": "UPDATE_TRANSITION_TRACE_ABI_FIXTURE=1 vitest run tests/sdk-abi-fixtures.test.ts -t \"matches transition trace golden ABI fixture files\"",
+    "fixtures:transaction-root-v1": "pnpm --dir ../midgard-core run build && pnpm run build && node scripts/generate-transaction-root-v1-fixture.mjs",
+    "fixtures:transaction-root-v1:check": "pnpm --dir ../midgard-core run build && pnpm run build && node scripts/generate-transaction-root-v1-fixture.mjs --check",
     "bench:codec": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",
     "bench:codec:quick": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",
     "bench:codec:full": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",
@@ -48,10 +58,9 @@
     "bench:l2:commit": "STRESS_MODE=find-max STRESS_WAIT_FOR_COMMIT=true STRESS_CLIENT_SELF_CHECK_REQUIRED=true node scripts/throughput-valid-stress.mjs",
     "bench:l2:e2e": "STRESS_MODE=find-max STRESS_WAIT_FOR_COMMIT=true STRESS_WAIT_FOR_MERGE=true STRESS_CLIENT_SELF_CHECK_REQUIRED=true node scripts/throughput-valid-stress.mjs",
     "capture:phase4:environment": "node scripts/capture-phase4-environment-fingerprint.mjs",
+    "capture:slot-config": "node scripts/capture-node-slot-config.mjs",
     "gate:phase4:pipelined-one-hour": "node scripts/phase4-one-hour-scenario.mjs",
     "verify:phase4:pipelined-report": "node scripts/verify-phase4-pipelined-report.mjs",
-    "verify:phase4:pipelined-process-summary": "node scripts/verify-phase4-pipelined-process-summary.mjs",
-    "test:phase4:pipelined-process-summary-verifier": "node --test tests/phase4-pipelined-process-summary-verifier.test.mjs",
     "gate:phase3:architecture-g-soak": "node scripts/phase3-architecture-g-soak.mjs",
     "verify:phase3:architecture-g-soak": "node scripts/verify-phase3-architecture-g-soak-report.mjs",
     "gate:phase3:architecture-g:final-tree": "node scripts/phase3-architecture-g-final-tree.mjs",
@@ -93,17 +102,13 @@
     "test:operator-lifecycle:emulator": "export NODE_ENV='emulator' && vitest run tests/operator-lifecycle-emulator.test.ts --reporter=basic --disable-console-intercept",
     "test:operator-lifecycle:preprod": "export MIDGARD_RUN_PREPROD_OPERATOR_LIFECYCLE_TESTS=1 && vitest run tests/operator-lifecycle-preprod.test.ts --reporter=basic --disable-console-intercept",
     "test:operator-lifecycle": "pnpm run test:operator-lifecycle:emulator && pnpm run test:operator-lifecycle:preprod",
-    "test:tx-prep:node": "export NODE_ENV='emulator' && vitest run tests/transactions-utils.test.ts tests/prepare-hub-oracle-nonce.test.ts tests/reference-scripts.test.ts tests/scheduler-refresh.test.ts tests/commit-end-time.test.ts tests/commit-block-planner.test.ts tests/da-payload.test.ts tests/e2e-da-gates.test.ts tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --reporter=basic --disable-console-intercept",
-    "test:tx-prep:emulator": "export NODE_ENV='emulator' && vitest run tests/initialization-emulator.test.ts tests/operator-lifecycle-emulator.test.ts tests/deposit-flow-emulator.test.ts tests/reserve-payout-builders.test.ts --reporter=basic --disable-console-intercept",
-    "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/transactions-utils.test.ts tests/commit-end-time.test.ts tests/scheduler-refresh.test.ts tests/da-payload.test.ts tests/e2e-da-gates.test.ts tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --reporter=basic --disable-console-intercept",
-    "accept:phase4:pipelined-process": "node dist/index.js e2e-pipelined-commit-process-acceptance",
-    "test:da-phase5-e2e": "export NODE_ENV='emulator' && export MIDGARD_RUN_DA_PHASE5_JOINED_E2E='1' && vitest run tests/da-hardening.test.ts tests/da-payload-libp2p-producer.test.ts tests/da-multi-peer-integration.test.ts tests/da-multi-process-50k-integration.test.ts tests/da-publication-reconciler-e2e.test.ts --reporter=default",
-    "test:da-phase5-50k-smoke": "export NODE_ENV='emulator' && vitest run tests/da-multi-process-50k-integration.test.ts --reporter=basic --disable-console-intercept",
-    "build:phase5:da-50k-fixture-suite": "node scripts/build-phase5-da-50k-fixture-suite.mjs",
-    "test:phase5:distribution-verifier": "node --test scripts/build-phase5-da-50k-fixture-suite.test.mjs scripts/verify-phase5-da-50k-distribution-report.test.mjs scripts/verify-phase5-da-historical-evidence.test.mjs",
-    "gate:phase5:da-50k-distribution": "node scripts/run-phase5-da-50k-distribution.mjs",
-    "verify:phase5:da-50k-distribution-report": "node scripts/verify-phase5-da-50k-distribution-report.mjs",
-    "test": "pnpm run test:phase4:pipelined-process-summary-verifier && export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
+    "fixtures:transition-trace-abi:update": "UPDATE_TRANSITION_TRACE_ABI_FIXTURE=1 vitest run tests/sdk-abi-fixtures.test.ts -t \"matches transition trace golden ABI fixture files\"",
+    "test:tx-prep:node": "export NODE_ENV='emulator' && vitest run tests/transactions-utils.test.ts tests/prepare-hub-oracle-nonce.test.ts tests/reference-scripts.test.ts tests/scheduler-refresh.test.ts tests/commit-end-time.test.ts tests/commit-block-planner.test.ts tests/da-payload.test.ts --reporter=basic --disable-console-intercept",
+    "test:tx-prep:emulator": "export NODE_ENV='emulator' && vitest run tests/initialization-emulator.test.ts tests/operator-lifecycle-emulator.test.ts tests/deposit-flow-emulator-submission.test.ts tests/deposit-flow-emulator-commit-selection.test.ts tests/deposit-flow-emulator-confirmation-journal.test.ts tests/deposit-flow-emulator-recovery-invalidation.test.ts tests/deposit-flow-emulator-merge-payout.test.ts tests/reserve-payout-builders.test.ts --reporter=basic --disable-console-intercept",
+    "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/transactions-utils.test.ts tests/commit-end-time.test.ts tests/scheduler-refresh.test.ts tests/da-payload.test.ts --reporter=basic --disable-console-intercept",
+    "test:da-canonical-v1-e2e": "export NODE_ENV='emulator' && export MIDGARD_RUN_DA_PHASE5_JOINED_E2E='1' && vitest run tests/da-hardening.test.ts tests/da-payload-libp2p-producer.test.ts tests/da-multi-peer-integration.test.ts tests/da-multi-process-10k-integration.test.ts tests/da-publication-reconciler-e2e.test.ts --reporter=default",
+    "test:da-phase5-10k-smoke": "export NODE_ENV='emulator' && vitest run tests/da-multi-process-10k-integration.test.ts --reporter=default",
+    "test": "export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
   },
   "keywords": [
     "cardano",
@@ -117,6 +122,7 @@
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/lucid-midgard": "workspace:*",
     "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-fault-proofs": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
     "@chainsafe/libp2p-noise": "17.0.0",
@@ -140,8 +146,8 @@
     "@libp2p/interface": "3.2.4",
     "@libp2p/peer-id": "6.0.11",
     "@libp2p/tcp": "11.0.22",
-    "@lucid-evolution/lucid": "0.6.0",
-    "@lucid-evolution/uplc": "0.2.22",
+    "@lucid-evolution/lucid": "0.6.4",
+    "@lucid-evolution/uplc": "0.2.23",
     "@multiformats/multiaddr": "13.0.3",
     "@noble/hashes": "^2.0.1",
     "@opentelemetry/api": "^1.9.0",
@@ -165,10 +171,13 @@
     "vitest": "^3.0.7"
   },
   "devDependencies": {
+    "@al-ft/midgard-test-support": "workspace:*",
     "@effect/vitest": "^0.22.0",
     "@types/node": "^22.17.0",
+    "da-committee-node": "workspace:*",
     "esbuild": "0.25.0",
     "fast-check": "^4.5.3",
+    "midgard-node-tools": "workspace:*",
     "prettier": "^3.5.2",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",

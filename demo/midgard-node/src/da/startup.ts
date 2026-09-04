@@ -1,33 +1,23 @@
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
+import {
+  assertDeploymentMarkerMatches,
+  makeDeploymentMarker,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
-  assertDaEnvelopeCapabilityQuorum,
-  loadDaProducerPublicationManifestFromEnv,
-} from "@/da/libp2p-producer.js";
-import {
-  DatabaseInitializationError,
   ContractDeploymentIdentity,
   type ContractDeploymentIdentityValue,
+  DatabaseInitializationError,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
-import { fetchDaParamsUtxo } from "@/transactions/da-attestation.js";
-
-export const assertDaEnvelopeManifestConfigured = (
-  envelopeMode: "off" | "identity" | "zstd",
-  manifest: Awaited<
-    ReturnType<typeof loadDaProducerPublicationManifestFromEnv>
-  >,
-): void => {
-  if (envelopeMode !== "off" && manifest === null) {
-    throw new DatabaseInitializationError({
-      message: `DA ${envelopeMode} envelope mode requires a configured publication manifest`,
-      cause: "no libp2p DA manifest configured",
-    });
-  }
-};
+} from "../services/index.js";
+import { fetchDaParamsUtxo } from "../transactions/da-attestation.js";
+import {
+  assertDaEnvelopeCapabilityQuorum,
+  loadDaProducerPublicationManifestFromEnv,
+} from "./libp2p-producer.js";
 
 export const assertDaThresholdCompatible = (
   transportThreshold: number,
@@ -48,7 +38,8 @@ export const assertDaDeploymentIdentityCompatible = (
 ): void => {
   if (
     contractIdentity.kind !== "manifest" ||
-    contractIdentity.manifestId === undefined
+    contractIdentity.manifestId === undefined ||
+    contractIdentity.deploymentMarker === undefined
   ) {
     throw new DatabaseInitializationError({
       message:
@@ -56,7 +47,13 @@ export const assertDaDeploymentIdentityCompatible = (
       cause: "selected contract source has no deployment manifest identity",
     });
   }
-  if (daManifestId !== contractIdentity.manifestId) {
+  try {
+    assertDeploymentMarkerMatches(
+      contractIdentity.deploymentMarker,
+      makeDeploymentMarker(daManifestId),
+      "DA runtime manifest",
+    );
+  } catch {
     throw new DatabaseInitializationError({
       message: "DA and contract deployment manifest identities do not match",
       cause: `da_manifest_id=${daManifestId},contract_manifest_id=${contractIdentity.manifestId}`,
@@ -65,7 +62,7 @@ export const assertDaDeploymentIdentityCompatible = (
 };
 
 export type DaHardeningStartupPreflight = {
-  readonly envelopeMode: "off" | "identity" | "zstd";
+  readonly envelopeMode: "identity" | "zstd";
   readonly manifest: Awaited<
     ReturnType<typeof loadDaProducerPublicationManifestFromEnv>
   >;
@@ -94,13 +91,6 @@ export const prepareDaHardeningStartup = Effect.gen(function* () {
         cause,
       }),
   });
-  yield* Effect.try({
-    try: () => assertDaEnvelopeManifestConfigured(envelopeMode, manifest),
-    catch: (cause) => cause as DatabaseInitializationError,
-  });
-  if (manifest === null) {
-    return { envelopeMode, manifest } satisfies DaHardeningStartupPreflight;
-  }
   const contractIdentity = yield* ContractDeploymentIdentity;
   yield* Effect.try({
     try: () =>
@@ -119,9 +109,6 @@ export const assertDaHardeningProviderStartup = ({
   manifest,
 }: DaHardeningStartupPreflight) =>
   Effect.gen(function* () {
-    if (manifest === null) {
-      return;
-    }
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const daParams = yield* fetchDaParamsUtxo(lucid.api, contracts).pipe(
@@ -141,20 +128,18 @@ export const assertDaHardeningProviderStartup = ({
         ),
       catch: (cause) => cause as DatabaseInitializationError,
     });
-    if (envelopeMode !== "off") {
-      yield* Effect.tryPromise({
-        try: () =>
-          assertDaEnvelopeCapabilityQuorum({
-            manifest,
-            mode: envelopeMode,
-          }),
-        catch: (cause) =>
-          new DatabaseInitializationError({
-            message: `DA ${envelopeMode} envelope capability quorum failed at startup`,
-            cause,
-          }),
-      });
-    }
+    yield* Effect.tryPromise({
+      try: () =>
+        assertDaEnvelopeCapabilityQuorum({
+          manifest,
+          mode: envelopeMode,
+        }),
+      catch: (cause) =>
+        new DatabaseInitializationError({
+          message: `DA ${envelopeMode} envelope capability quorum failed at startup`,
+          cause,
+        }),
+    });
   });
 
 /**

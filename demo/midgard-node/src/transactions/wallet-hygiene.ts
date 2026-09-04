@@ -1,6 +1,6 @@
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
 
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+import { compareOutRefs, outRefLabel } from "../tx-context.js";
 
 export type WalletHygieneRole =
   | "reference"

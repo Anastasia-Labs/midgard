@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
-import { deleteMpfStore, MidgardMpf } from "./utils/mpf.js";
+import { deleteMpfStore, MidgardMpf } from "../mpf/index.js";
 
 const mode = process.env.MPF_CRASH_PROBE_MODE ?? "orchestrate";
 const dbPath =

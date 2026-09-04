@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { NodeEd25519Verifier } from "@/workers/utils/ed25519-verifier.js";
+import { NodeEd25519Verifier } from "../src/workers/utils/ed25519-verifier.js";
 
 const enabled = process.env.WYCHEPROOF_ED25519_OPERATOR === "1";
 const upstreamCommit = "fc24cd5b787d8e496bff31b0468af693a652b0f2";

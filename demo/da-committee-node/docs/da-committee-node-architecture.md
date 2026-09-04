@@ -9,7 +9,7 @@ The committee is a deployment trust assumption until independent retrieval,
 retention through the full challenge/recovery horizon, committee governance and
 accountability, and an on-chain remedy for unavailable data are accepted end to
 end. See `../../../docs/fault-proofs/` and
-`../../../public_testnet_readiness.md` for current blockers.
+`../../../docs/public_testnet_readiness.md` for current blockers.
 
 This document defines Midgard's current committee data-availability mechanism for deployments that cannot use Cardano Leios blobs.
 The mechanism is a threshold committee of DA nodes that independently store, verify, sign, broadcast, and publicly serve Midgard block payloads.
@@ -45,11 +45,10 @@ The public committee architecture below is the generalized profile that should r
 ## Current Implementation Boundary
 
 `demo/midgard-node` remains the block producer, not a committee signer. It
-persists either historical raw canonical `DaPayloadV2` bytes (schema 2) or a
-canonical `DaPayloadEnvelopeV3` containing those exact bytes (schema 3), and
-serves the stored artifact over the same manifest-bound libp2p transport.
-The stored/wire SHA-256 always binds the stored artifact; schema 3 additionally
-binds the decoded content with an inner length and SHA-256.
+persists only canonical `DaPayloadEnvelope` bytes and serves that exact
+stored artifact over the manifest-bound libp2p transport. The stored/wire
+SHA-256 binds the envelope; the envelope also binds the decoded V1 content
+with an exact inner length and SHA-256.
 
 `demo/da-committee-node` currently:
 
@@ -57,9 +56,10 @@ binds the decoded content with an inner length and SHA-256.
 - scans finalized state-queue headers through the configured Cardano provider;
 - fetches payload, metadata, chunks, proof artifacts, and attestations over
   allowlisted libp2p V1 protocols;
-- unwraps schema 2/3 with a dual compressed/decoded size cap, canonical-decodes
-  the inner `DaPayloadV2`, recomputes all seven roots and the committed
-  counts, and compares the embedded header and header hash with L1;
+- unwraps V1 with a dual compressed/decoded size cap, canonical-decodes
+  the inner `DaPayload`, recomputes the eight payload roots (all HeaderV1
+  roots except `prev_utxos_root`) and the seven committed counts, and compares
+  the embedded header and header hash with L1;
 - stores deployment, header, payload, signature, peer, and L1 submission state
   in a JSON-file or PostgreSQL store;
 - signs `MidgardDAAttestationV1 || header_hash` only after the payload is
@@ -105,7 +105,7 @@ On chain, the signature preimage is exactly the UTF-8 bytes of `MidgardDAAttesta
 
 `MidgardDAAttestationV1` is the attestation profile and signing domain, not a separately served payload format.
 In the current implementation, it means the signer fetched and durably stored a
-canonical `DaPayloadV2`, matched its embedded header to L1, and recomputed the
+canonical `DaPayload`, matched its embedded header to L1, and recomputed the
 UTxO, withdrawal, forced-transaction, transaction, deposit, transition-trace,
 and event-to-step roots and counts. Proof bundles are served through separate
 protocols and are not yet a prerequisite enforced by the signer, so the
@@ -148,14 +148,53 @@ transport, including as fallback, debug, gateway, or local development transport
 
 Transport responsibilities:
 
-- Accept canonical Midgard producer payload bytes from operators.
-- Accept canonical `DaPayloadV2` bytes from producer or committee peers.
+- Accept canonical `DaPayloadEnvelope` bytes from manifested producers or
+  committee peers.
 - Authenticate peers by deployment-manifest peer id and configured signing key.
 - Reject oversized payloads before expensive validation.
 - Store an immutable staging record before any signature is produced.
 - Return deterministic status for duplicate submissions.
 - Reject conflicting bytes for a `header_hash` that this node has already signed.
 - Apply peer scoring, rate limits, and backpressure before expensive validation.
+
+### Public Retained-DA Listener
+
+The public read plane is the separate `midgard-public-retained-da` executable,
+not a flag on `da-committee-node`. The committee executable rejects public
+reader environment variables. The public executable requires
+`DA_PUBLIC_RETAINED_DA_ENABLED=true`, a public private-key source, the runtime
+and contract-deployment manifests, and its own database URL/role. Its derived
+peer ID must equal the deployment-manifest `public_retained_da.peer_id`; the
+manifest parser rejects using a producer or committee peer ID for this profile.
+
+The public executable refuses `WATCHER_DB_PATH` and `WATCHER_DATABASE_URL`:
+the file store cannot be safely shared with the committee process, and mutable
+committee database credentials are not public-reader credentials. It accepts
+only `DA_PUBLIC_RETAINED_DA_DATABASE_URL` with a separately configured role
+that is verified at startup to have `SELECT` and no DML privilege on
+`watcher_da_payloads` and `watcher_state_queue_headers`. Each lookup is in an
+explicit PostgreSQL `READ ONLY` transaction; the public process never creates
+or migrates schema.
+
+The profile is deliberately not the committee node's connection gater or
+service stack. It has its own non-signer identity, TCP transport, Noise
+encryption, Yamux, listener addresses, and lifecycle. It has no peer discovery,
+gossip, identify service, outbound dialing, relays, signing, attestation, or
+payload-submission handler. An inbound client is admitted only after Noise
+authentication; it need not be a committee member.
+
+Its exact manifest-bound request surface is:
+
+- `capabilities`
+- `payload-by-header`, `payload-chunk`, and `metadata-by-header`
+- `proof-bundle-by-header`, `trace-step-by-index`, and
+  `event-to-step-by-event`
+
+Every handler has the profile deadline and strict four-byte framed bounded I/O.
+Global, per-authenticated-peer, and proof-request permits reject overload
+instead of retaining an unbounded public queue. In particular, the profile
+does not expose `payload-submit`, attestation exchange, signature exchange,
+gossip publication, or any state-mutating endpoint.
 
 ### Payload Validator
 
@@ -167,7 +206,8 @@ Validation responsibilities:
 - Verify deployment fingerprint and peer identity through the runtime manifest
   and transport envelope; verify payload version and the protocol version in
   the embedded header.
-- Recompute the seven committed roots and all header counts from the payload.
+- Recompute the eight payload roots (all HeaderV1 roots except
+  `prev_utxos_root`) and all seven header counts from the payload.
 - Validate transition-trace and event-to-step coverage carried by the payload.
 - Decode the exact Midgard `Header` value embedded in the payload.
 - Compute `header_hash = blake2b_224(serialise_data(reconstructed_header))`.
@@ -209,7 +249,7 @@ Store requirements:
 - Chunked reads for large payloads over libp2p streams.
 - Retention sweeper that refuses deletion before the 14-day promise plus configured safety margin.
 
-### L1 Header Resolver
+### L1 HeaderV1 Resolver
 
 Follows Cardano L1 enough to confirm that the target header exists in the Midgard state queue.
 
@@ -370,11 +410,23 @@ The manifest is not currently authenticated by the DA contracts; deployments mus
 
 ## Payload Schema
 
-The inner shared payload codec is `DaPayloadV2` in
+The inner shared payload codec is `DaPayload` in
 `demo/midgard-sdk/src/da-payload.ts`. Its canonical Plutus-data CBOR shape is:
 
+The embedded `Header` is constructor tag 0 with arity 25. Its exact field
+order is the single registry contract:
+
 ```text
-DaPayloadV2 {
+prev_utxos_root, utxos_root, withdrawals_root, forced_transactions_root,
+transactions_root, deposits_root, transition_trace_root, event_to_step_root,
+validation_traces_root, withdrawal_count, forced_transaction_count,
+l2_transaction_count, deposit_count, total_event_count, transition_step_count,
+validation_trace_count, start_time, end_time, block_slot, expected_network_id,
+min_fee_a, min_fee_b, prev_header_hash, operator_vkey, protocol_version
+```
+
+```text
+DaPayloadV1 {
   version,
   block_body: {
     header_hash,
@@ -383,16 +435,21 @@ DaPayloadV2 {
     withdrawals,
     forced_transactions,
     transactions,
+    transaction_preimages,
+    forced_transaction_preimages,
+    cek_program_material,
     deposits,
     transition_trace,
     event_to_step,
+    validation_traces,
     counts: {
       withdrawalCount,
       forcedTransactionCount,
       l2TransactionCount,
       depositCount,
       totalEventCount,
-      transitionStepCount
+      transitionStepCount,
+      validationTraceCount
     }
   }
 }
@@ -401,8 +458,8 @@ DaPayloadV2 {
 Each member list contains `(key_bytes, value_bytes)` tuples. The committee
 validator requires a byte-for-byte canonical re-encoding, validates the
 embedded header hash and header against L1, recomputes the UTxO, withdrawal,
-forced-transaction, transaction, deposit, transition-trace, and event-to-step
-roots, and checks all committed counts before signing.
+forced-transaction, transaction, deposit, transition-trace, event-to-step, and
+validation-trace roots, and checks all committed counts before signing.
 
 Inbound payload submission is admitted through one process-wide FIFO slot
 before any frame read or decompression. One absolute request deadline starts
@@ -412,7 +469,7 @@ expiry. A timed-out waiter is removed from the queue, so a stalled manifested
 peer cannot monopolize the only decode slot.
 
 Deployment identity is bound by the libp2p runtime manifest and protocol
-envelopes rather than duplicated inside `DaPayloadV2`. Proof bundles, trace
+envelopes rather than duplicated inside `DaPayload`. Proof bundles, trace
 steps, and event-to-step records have separate request-response protocols; the
 payload alone is not a claim that every launch-scope proof witness is available.
 
@@ -580,7 +637,7 @@ Required alerts:
 ## Implementation Status
 
 The repository implements the original transport and coordinator milestones:
-canonical `DaPayloadV2`, manifest-bound libp2p V1 transport, header/root/count
+canonical `DaPayload`, manifest-bound libp2p V1 transport, header/root/count
 validation, JSON/PostgreSQL stores, signer membership checks, peer signature
 exchange, and optional on-chain `Init`/`AddSignatures`/`ApplyToStateQueue`
 reconciliation. The focused package checks are `pnpm build`, `pnpm typecheck`,

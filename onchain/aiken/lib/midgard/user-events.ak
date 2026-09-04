@@ -63,19 +63,24 @@ pub fn validate_mint(
       hub_ref_input_index,
       witness_registration_redeemer_index,
     } -> {
-      let Transaction {
-        inputs,
-        outputs,
-        reference_inputs,
-        validity_range,
-        mint,
-        redeemers,
-        ..
-      } = tx
+      let
+          Transaction {
+            inputs,
+            outputs,
+            reference_inputs,
+            validity_range,
+            mint,
+            redeemers,
+            ..
+          }
+        = tx
 
       // Grab hub oracle datum.
-      let hub_datum =
-        hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+      let hub_datum = hub.get_datum(
+        reference_inputs,
+        hub_oracle,
+        hub_ref_input_index,
+      )
 
       let event_address = event_address_getter(hub_datum)
 
@@ -124,8 +129,8 @@ fn authenticate_new_event(
   let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
 
   // Grab output reference of the specified nonce input.
-  expect Some(Input { output_reference: nonce_input_out_ref, .. }) =
-    inputs |> list.at(nonce_input_index)
+  expect Some(Input { output_reference: nonce_input_out_ref, .. }) = inputs
+    |> list.at(nonce_input_index)
 
   // In order to apply the parameterized witness script, we hash the
   // serialized nonce output reference to get the 32 bytes long nonce.
@@ -136,12 +141,11 @@ fn authenticate_new_event(
 
   // Script hash of the witness script, required to be registered in this
   // transaction.
-  let expected_witness_script_hash =
-    parameter_validation.apply_prehashed_param(
-      version: env.plutus_version,
-      prefix: env.user_events_witness_script_prefix,
-      param: nonce,
-    )
+  let expected_witness_script_hash = parameter_validation.apply_prehashed_param(
+    version: env.plutus_version,
+    prefix: env.user_events_witness_script_prefix,
+    param: nonce,
+  )
 
   // 2. Validate this script hash is being registered.
   // 3. Validate the policy ID passed in its redeemer is correct.
@@ -156,25 +160,29 @@ fn authenticate_new_event(
 
   // Event's produced UTxO, with an inline datum and no reference script
   // attached.
-  expect Some(Output {
-    address: output_event_address,
-    value: output_event_value,
-    datum: InlineDatum(output_event_datum_data),
-    reference_script: None,
-  }) = outputs |> list.at(event_output_index)
+  expect
+      Some(Output {
+        address: output_event_address,
+        value: output_event_value,
+        datum: InlineDatum(output_event_datum_data),
+        reference_script: None,
+      })
+    = outputs |> list.at(event_output_index)
 
   // Extracting common data shared between all event datums.
   expect [event_data,
-    inclusion_time_data,
-    witness_data, ..] = builtin.unconstr_fields(output_event_datum_data)
+        inclusion_time_data,
+        witness_data, ..] = builtin.unconstr_fields(output_event_datum_data)
 
-  let output_event_inclusion_time: PosixTime =
-    builtin.un_i_data(inclusion_time_data)
+  let output_event_inclusion_time: PosixTime = builtin.un_i_data(
+    inclusion_time_data,
+  )
 
   let output_event_witness: ScriptHash = builtin.un_b_data(witness_data)
 
-  let Pair(event_id, event_info) =
-    ledger_state.unsafe_event_to_key_value_pair(event_data)
+  let Pair(event_id, event_info) = ledger_state.unsafe_event_to_key_value_pair(
+    event_data,
+  )
 
   let nonce_input_out_ref_data: Data = nonce_input_out_ref
 
@@ -205,19 +213,17 @@ fn validate_event_nft_burn(
   mint: Value,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Bool {
-  let expected_witness_script_hash =
-    parameter_validation.apply_prehashed_param(
-      version: env.plutus_version,
-      prefix: env.user_events_witness_script_prefix,
-      param: nonce_asset_name,
-    )
+  let expected_witness_script_hash = parameter_validation.apply_prehashed_param(
+    version: env.plutus_version,
+    prefix: env.user_events_witness_script_prefix,
+    param: nonce_asset_name,
+  )
 
   // 1. The specified NFT must be burnt, and it must be the only mint/burn
   //    under this event policy.
-  expect [Pair(burned_asset_name, -1)] =
-    mint
-      |> assets.tokens(own_policy)
-      |> dict.to_pairs
+  expect [Pair(burned_asset_name, -1)] = mint
+    |> assets.tokens(own_policy)
+    |> dict.to_pairs
   expect burned_asset_name == nonce_asset_name
 
   // 2. Witness staking script corresponding to the NFT must be getting

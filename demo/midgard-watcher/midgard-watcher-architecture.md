@@ -1,13 +1,42 @@
 # Midgard Watcher Node Architecture
 
-Status: Proposed target architecture; no independent production watcher is
-implemented in this directory.
+Status: Implemented fail-closed foundation; production verification,
+submission, and acceptance gates remain incomplete.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-29
 
-The working DA/watcher service is `demo/da-committee-node`. Proof coverage and
+The independent watcher foundation is implemented in this package. The
+DA-committee service remains in `demo/da-committee-node`. Proof coverage and
 binding gaps are tracked in `../../docs/fault-proofs/`; this design must not be
 used as evidence that independent challenges are production-ready.
+
+## Cardano L1 Source Modes
+
+The watcher has one explicit, mutually exclusive L1-source discriminator:
+`local_node` or `external_providers`; only `external_providers` is currently
+accepted by the wire configuration parser.
+
+- `local_node` remains a pure state-machine vocabulary for a deferred native
+  adapter. The retired pathname authority route cannot be instantiated; any
+  future local adapter must authenticate the peer on the connected socket.
+- In `external_providers`, the watcher has no local chain authority and
+  requires at least two operationally independent configured providers.
+  Same-network and compatible-chain-point agreement is mandatory; disagreement
+  quarantines protocol decisions.
+
+Under the prelaunch no-compatibility rule, the retired local pathname
+constructor/type/export has no alias. The unwired `start` and `replay`
+scaffolds still exit `78` without opening a configured transport.
+
+W14 must consume canonical node-derived transaction, output, datum, and
+rollback observations. Cardano consensus and the deployed validators
+establish L1 transaction validity; the watcher indexes accepted state and
+does not reimplement the state-queue validator. The current foundation proves
+live configured transport capabilities and deterministic normalization, but
+does not yet contain the watcher-owned Cardano/provider wire adapter that
+proves each supplied observation was read from that transport. Operational
+`start` and `replay` remain disabled until that provenance boundary and the
+other production gates are complete.
 
 This note summarizes what a Midgard watcher is, why it exists, and how a production watcher node should work.
 It is based on a review of the Midgard protocol specification, Aiken
@@ -80,7 +109,10 @@ The operator bond deters fraud only if a watcher can reliably convert an invalid
 
 A production watcher needs these inputs:
 
-- Cardano L1 provider access, preferably multiple providers with explicit finality and rollback policy.
+- Exactly one Cardano L1 source mode: the current wire path accepts at least
+  two operationally independent `external_providers`, with explicit finality
+  and rollback policy. `local_node` remains deferred until a peer-authenticated
+  native adapter exists.
 - The Midgard deployment manifest or enough data to derive and verify it: network id, hub oracle, script hashes, reference-script UTxOs, protocol parameters, fraud-proof catalogue root, compiler/artifact hashes, and genesis/one-shot identity.
 - The hub oracle UTxO and all protocol addresses/policy IDs it authenticates.
 - State queue, scheduler, operator-directory, settlement, deposit, withdrawal, transaction-order, reserve, payout, fraud-proof catalogue, computation-thread, and fraud-proof UTxOs.
@@ -97,6 +129,13 @@ The watcher should maintain durable local state for:
 
 - Deployment fingerprint and verified protocol parameters.
 - L1 chain cursor, observed chain points, rollback depth, and provider source.
+- The W03/W13 rollback bundle, authenticated with a stable external 32-byte
+  HMAC key that is separate from the prover wallet, plus its atomic
+  compare-and-swap revision and an independently protected monotonic trusted
+  head. Missing or invalid authentication, an absent head after
+  initialization, or a head/snapshot mismatch must fail closed before
+  recovery state is trusted. A row in the same rollbackable database cannot
+  establish freshness.
 - Authenticated views of the hub oracle, state queue, scheduler, operator directory, settlement UTxOs, and user-event UTxOs.
 - Full DA block material by header hash and DA commitment.
 - Canonical roots and proof material: UTxO root, transactions root, deposits root, withdrawals root, PHAS/MPF membership proofs, non-membership proofs, and field-list preimages.
@@ -118,7 +157,37 @@ The L1 follower tracks all protocol UTxOs and relevant transactions.
 It should record chain point, slot, block hash, provider source, observed depth, and finality status for each observation.
 Before an observation is final enough to drive irreversible local state, it should pass the configured finality threshold.
 Rollbacks before threshold should rewind pending local state.
-Rollbacks after local finalization should be treated as an incident.
+A mode-valid, agreed canonical replacement after local finalization should
+create a durable incident. W13 must then automatically verify persisted W10
+bytes and W11 agreement for both branches to their exact common ancestor,
+atomically rewind orphan-dependent state, and resume replay when the rollback
+is within Cardano's fixed `k = 2160` bound. Transient source non-agreement,
+same-point content mismatch, and same-point depth regression quarantine only
+the current decision while
+preserving the finalized binding; neither creates a terminal incident or a
+manual state-repair requirement.
+
+The durable W03/W13 bundle is one authenticated authority: the store,
+rollback state, bootstrap, and checkpoint anchor are covered by an HMAC from
+an external stable key and updated by compare-and-swap. A self-hashed or
+caller-supplied checkpoint digest is not authority. The operational SQLite
+backend must commit both the bundle and revision in one transaction. Each
+successful revision must then publish its HMAC-bound trusted head through an
+expected-prior CAS to an independently protected, monotonic, non-rollbackable
+authority before its protocol result is actionable. If a crash separates the
+database commit from head publication, reconciliation exposes no protocol
+decision and permits only epoch zero or one authenticated direct successor;
+external CAS and read-back are required before load. Startup rejects older,
+skipped, divergent, or tampered snapshot/head pairs. These persistence and
+publication steps are required before `start` or `replay` is enabled.
+
+The RF-051 prelaunch durable-store, finality, multi-provider, rollback, and
+user-event V1 JSON integrity commitments use one strict canonical serialization:
+object keys are sorted recursively, arrays retain their exact order, and only
+safe JSON-shaped values are accepted. Non-plain objects, accessors, symbols,
+unsupported values, and cycles fail closed. Digest, equality, HMAC, and
+authority-byte paths use this canonical UTF-8 form in place, with no raw-order
+fallback or compatibility alias.
 
 ### 2. State Queue Tracking
 
@@ -142,8 +211,12 @@ For every block header it verifies:
 - The operator's bond hold is extended through the maturity period.
 - Any DA attestation required by the deployed protocol is present and authentic.
 
-Most of these checks are enforced by L1 scripts on valid transactions.
-The watcher still performs them locally because it needs a coherent state model for proof selection, diagnostics, and rollback recovery.
+Cardano consensus and the deployed L1 scripts establish whether these
+transactions are valid. W14 deterministically decodes and indexes the accepted
+transaction/output/datum bytes and maintains the coherent rollback-safe state
+model; it does not reimplement the state-queue validator as a second validity
+authority. Independent reconstruction and verification of the committed L2
+claims belongs to W22–W29, with fault proofs adjudicating dishonest operators.
 
 ### 3. Data Availability Fetch And Root Checking
 
@@ -296,7 +369,7 @@ The watcher should treat proof submission as a state machine with durable recove
 3. Submit computation-thread `Init`, referencing the fraud-proof catalogue entry and the target state-queue node.
 4. Submit each proof step transaction, advancing the computation-thread token through the category validators.
 5. On the final step, mint the permanent fraud-proof token and burn the computation-thread token through `Success`.
-6. Submit `RemoveFraudulentBlockHeader` against the state queue, referencing the fraud-proof token and slashing the operator through the active or retired operator path.
+6. Submit `RemoveFraudulentBlockHeader` against the state queue, referencing the fraud-proof token and slashing the operator through the active or retired operator path. The bond-consuming slash is also the transaction that pays the prover: it routes exactly `env.fraud_prover_reward` to the enterprise address of the `fraud_prover` recorded in the fraud-proof token's datum, with the residual bond going to the Cardano treasury as the transaction fee, and it must carry that prover's signature (2026-08-11 owner ruling 7, D3). No other transaction shape may pay the reward — a repeat removal against an already-slashed operator carries no payout at all (D4).
 7. Track descendant removal if the bad block is not the tail.
 8. Verify the state queue no longer contains the fraudulent block or its invalid descendants.
 
@@ -395,7 +468,11 @@ Only `verified` should be considered healthy.
 A production watcher should:
 
 - Run continuously and start before blocks are close to maturity.
-- Use at least two independent L1 data sources for public deployments.
+- Select exactly one L1 source mode. The current selectable mode is
+  `external_providers`, requiring at least two
+  operationally independent providers to agree on network and compatible
+  chain point. `local_node` is deferred until a native adapter authenticates
+  the connected peer; pathname checks are not an authority.
 - Persist every proof-critical input before submitting proof transactions.
 - Alert on DA fetch failure, root mismatch, proof submission failure, maturity deadline risk, provider disagreement, chain rollback, deployment fingerprint mismatch, and proof-family coverage gaps.
 - Keep enough ADA and collateral inputs available for proof steps.
@@ -425,7 +502,7 @@ A production watcher should:
 - Phase-two validation concept: `technical-spec/7-phase-two-validation`
 - Current L2 validation implementation: `demo/midgard-validation/src`
 - Current node transaction evaluation notes: `demo/midgard-node/docs/L2_TX_EVALUATION_CURRENT.md`
-- Current commit/root construction: `demo/midgard-node/src/workers/utils/mpf.ts`
+- Current commit/root construction: `demo/midgard-node/src/mpf/`
 - Aiken ledger/proof types: `onchain/aiken/lib/midgard`
 - Fault-proof tooling: `demo/midgard-fault-proofs/src`
-- Public readiness and proof gaps: `public_testnet_readiness.md` and `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md`
+- Public readiness and proof gaps: `docs/public_testnet_readiness.md` and `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md`

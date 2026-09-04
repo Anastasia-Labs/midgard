@@ -1,6 +1,11 @@
 import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
+import { OutputReferenceSchema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { RejectionReasonSchema } from "../rejection-reason.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -10,6 +15,7 @@ import {
   type NativeTxBodyCompact as NativeTxBodyCompactData,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
 export const InvalidRangeStep01DatumSchema = faultProofStepDatumSchema(
@@ -18,16 +24,54 @@ export const InvalidRangeStep01DatumSchema = faultProofStepDatumSchema(
 export type InvalidRangeStep01Datum = Data.Static<
   typeof InvalidRangeStep01DatumSchema
 >;
-export const InvalidRangeStep01Datum =
-  InvalidRangeStep01DatumSchema as unknown as InvalidRangeStep01Datum;
+export const InvalidRangeStep01Datum = asDataType<InvalidRangeStep01Datum>(
+  InvalidRangeStep01DatumSchema,
+);
 
+export const InvalidRangeVerdictSubjectSchema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: Data.Bytes(),
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
+});
+export const InvalidRangeStep01SourceSchema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+      direction: Data.Integer(),
+    }),
+  }),
+]);
+export const InvalidRangeForcedSourcePayloadSchema = Data.Object({
+  header: HeaderSchema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
 export const InvalidRangeStep01SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(NativeTxInclusionArgsSchema);
+  faultProofStepRedeemerSchema(
+    Data.Object({ source: InvalidRangeStep01SourceSchema }),
+  );
 export type InvalidRangeStep01SpendRedeemer = Data.Static<
   typeof InvalidRangeStep01SpendRedeemerSchema
 >;
 export const InvalidRangeStep01SpendRedeemer =
-  InvalidRangeStep01SpendRedeemerSchema as unknown as InvalidRangeStep01SpendRedeemer;
+  asDataType<InvalidRangeStep01SpendRedeemer>(
+    InvalidRangeStep01SpendRedeemerSchema,
+  );
 
 export const NormalizedTimeRangeSchema = Data.Enum([
   Data.Object({
@@ -42,19 +86,21 @@ export const NormalizedTimeRangeSchema = Data.Enum([
   Data.Literal("InvalidRange"),
 ]);
 export type NormalizedTimeRange = Data.Static<typeof NormalizedTimeRangeSchema>;
-export const NormalizedTimeRange =
-  NormalizedTimeRangeSchema as unknown as NormalizedTimeRange;
+export const NormalizedTimeRange = asDataType<NormalizedTimeRange>(
+  NormalizedTimeRangeSchema,
+);
 
 export const InvalidRangeStep02StateSchema = Data.Object({
-  block_valid_from: Data.Integer(),
-  block_valid_to: Data.Integer(),
+  subject: InvalidRangeVerdictSubjectSchema,
+  block_slot: Data.Integer(),
   bad_tx_normalized_validity_range: NormalizedTimeRangeSchema,
 });
 export type InvalidRangeStep02State = Data.Static<
   typeof InvalidRangeStep02StateSchema
 >;
-export const InvalidRangeStep02State =
-  InvalidRangeStep02StateSchema as unknown as InvalidRangeStep02State;
+export const InvalidRangeStep02State = asDataType<InvalidRangeStep02State>(
+  InvalidRangeStep02StateSchema,
+);
 
 export const InvalidRangeStep02DatumSchema = faultProofStepDatumSchema(
   InvalidRangeStep02StateSchema,
@@ -62,8 +108,9 @@ export const InvalidRangeStep02DatumSchema = faultProofStepDatumSchema(
 export type InvalidRangeStep02Datum = Data.Static<
   typeof InvalidRangeStep02DatumSchema
 >;
-export const InvalidRangeStep02Datum =
-  InvalidRangeStep02DatumSchema as unknown as InvalidRangeStep02Datum;
+export const InvalidRangeStep02Datum = asDataType<InvalidRangeStep02Datum>(
+  InvalidRangeStep02DatumSchema,
+);
 
 export const InvalidRangeStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -73,8 +120,9 @@ export const InvalidRangeStep02ArgsSchema = Data.Object({
 export type InvalidRangeStep02Args = Data.Static<
   typeof InvalidRangeStep02ArgsSchema
 >;
-export const InvalidRangeStep02Args =
-  InvalidRangeStep02ArgsSchema as unknown as InvalidRangeStep02Args;
+export const InvalidRangeStep02Args = asDataType<InvalidRangeStep02Args>(
+  InvalidRangeStep02ArgsSchema,
+);
 
 export const InvalidRangeStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(InvalidRangeStep02ArgsSchema);
@@ -82,7 +130,9 @@ export type InvalidRangeStep02SpendRedeemer = Data.Static<
   typeof InvalidRangeStep02SpendRedeemerSchema
 >;
 export const InvalidRangeStep02SpendRedeemer =
-  InvalidRangeStep02SpendRedeemerSchema as unknown as InvalidRangeStep02SpendRedeemer;
+  asDataType<InvalidRangeStep02SpendRedeemer>(
+    InvalidRangeStep02SpendRedeemerSchema,
+  );
 
 export {
   FaultProofStepCancel as InvalidRangeStepCancel,
@@ -121,51 +171,46 @@ export const normalizeNativeTxValidityRange = (
 };
 
 export const invalidRangeViolationReason = ({
-  blockValidFrom,
-  blockValidTo,
+  blockSlot,
   normalizedRange,
 }: {
-  readonly blockValidFrom: bigint;
-  readonly blockValidTo: bigint;
+  readonly blockSlot: bigint;
   readonly normalizedRange: NormalizedTimeRange;
 }):
-  | "lower-before-block"
-  | "upper-at-or-after-block"
+  | "starts-after-block-slot"
+  | "ends-before-block-slot"
   | "invalid-range"
   | null => {
   if (typeof normalizedRange === "string") {
     return normalizedRange === "InvalidRange" ? "invalid-range" : null;
   }
   if ("ClosedRange" in normalizedRange) {
-    if (normalizedRange.ClosedRange.lower < blockValidFrom) {
-      return "lower-before-block";
+    if (normalizedRange.ClosedRange.lower > blockSlot) {
+      return "starts-after-block-slot";
     }
-    if (normalizedRange.ClosedRange.upper >= blockValidTo) {
-      return "upper-at-or-after-block";
+    if (normalizedRange.ClosedRange.upper < blockSlot) {
+      return "ends-before-block-slot";
     }
     return null;
   }
   if ("FromNegInf" in normalizedRange) {
-    return normalizedRange.FromNegInf.upper >= blockValidTo
-      ? "upper-at-or-after-block"
+    return normalizedRange.FromNegInf.upper < blockSlot
+      ? "ends-before-block-slot"
       : null;
   }
-  return normalizedRange.ToPosInf.lower < blockValidFrom
-    ? "lower-before-block"
+  return normalizedRange.ToPosInf.lower > blockSlot
+    ? "starts-after-block-slot"
     : null;
 };
 
 export const nativeTxBodyHasInvalidRangeViolation = ({
-  blockValidFrom,
-  blockValidTo,
+  blockSlot,
   txBody,
 }: {
-  readonly blockValidFrom: bigint;
-  readonly blockValidTo: bigint;
+  readonly blockSlot: bigint;
   readonly txBody: NativeTxBodyCompactData;
 }): boolean =>
   invalidRangeViolationReason({
-    blockValidFrom,
-    blockValidTo,
+    blockSlot,
     normalizedRange: normalizeNativeTxValidityRange(txBody),
   }) !== null;

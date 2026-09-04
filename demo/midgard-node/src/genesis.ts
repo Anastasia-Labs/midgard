@@ -1,10 +1,11 @@
+import { outRefToCbor } from "@al-ft/lucid-midgard";
 import * as SDK from "@al-ft/midgard-sdk";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
+import * as MempoolLedgerDB from "./database/mempoolLedger.js";
+import { DatabaseError } from "./database/utils/common.js";
+import { Columns as LedgerColumns } from "./database/utils/ledger.js";
 import {
   Database,
   Globals,
@@ -12,16 +13,16 @@ import {
   MidgardContracts,
   NodeConfig,
   publishMempoolLedgerDelta,
-} from "@/services/index.js";
+} from "./services/index.js";
 import {
   buildUnsignedDepositTxProgram,
   type SubmitDepositError,
-} from "@/transactions/submit-deposit.js";
+} from "./transactions/submit-deposit.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
-} from "@/transactions/utils.js";
+} from "./transactions/utils.js";
 
 /**
  * Seeds the local mempool ledger with configured genesis UTxOs on non-mainnet
@@ -44,7 +45,9 @@ const insertGenesisUtxos: Effect.Effect<
     const core = utxoToCore(utxo);
     return {
       [LedgerColumns.TX_ID]: Buffer.from(utxo.txHash, "hex"),
-      [LedgerColumns.OUTREF]: Buffer.from(core.input().to_cbor_bytes()),
+      // §5.3 field-0/1 item encoding — the ledger key on-chain
+      // `ledger_outref_key` derives, not CML's minimal-index form.
+      [LedgerColumns.OUTREF]: outRefToCbor(utxo),
       [LedgerColumns.OUTPUT]: Buffer.from(core.output().to_cbor_bytes()),
       [LedgerColumns.ADDRESS]: utxo.address,
     };

@@ -1,17 +1,30 @@
+// Some constants in this module are GENERATED; the tests around them are written
+// by hand.
+//
+//   seed:     demo/lucid-midgard/tests/fixtures/native-ordinary.ts
+//   writer:   pnpm --dir demo/lucid-midgard run fixtures:native-ordinary:sync
+//   rebinder: pnpm --dir demo/lucid-midgard run fixtures:native-compact
+//
+// The `golden_core_*` constants are the generated set — the ordinary golden's
+// canonical bytes, its compact forms, its transaction id, its three non-empty
+// preimages and their commitments. Before #588 the full-CBOR seed was
+// hand-maintained while everything derived from it was generated, which made a
+// format change a transcription exercise.
+
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/fuzz
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_compact, encode_native_tx_body_compact,
-  encode_native_tx_compact, verify_native_tx_compact,
-  verify_native_tx_compact_cbor,
+  decode_native_tx_compact_v1, encode_native_tx_body_compact,
+  encode_native_tx_compact_v1, native_tx_id_for_version,
+  verify_native_tx_compact_cbor_v1, verify_native_tx_compact_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
-  decode_midgard_tx_output_cbor, encode_midgard_tx_output,
+  decode_midgard_tx_output_cbor, encode_midgard_address_witness,
+  encode_midgard_tx_output, encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_address_witnesses_preimage_cbor,
@@ -20,17 +33,17 @@ use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_outputs_preimage_cbor,
   decode_midgard_tx_redeemer_witnesses_preimage_cbor,
   decode_midgard_tx_script_witnesses_preimage_cbor,
-  encode_address_witness_preimage, encode_input_preimage, encode_mint_preimage,
-  encode_output_preimage, encode_redeemer_witness_preimage,
-  encode_script_witness_preimage, spend_input_cbor_at,
-  verify_spend_inputs_preimage,
+  encode_address_witness_preimage, encode_hash28_list_preimage,
+  encode_input_preimage, encode_mint_preimage, encode_output_preimage,
+  encode_redeemer_witness_preimage, encode_script_witness_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
-  decode_midgard_transaction, encode_midgard_transaction,
-  encode_midgard_transaction_body_full,
-  encode_midgard_transaction_witness_set_full, midgard_transaction_to_compact,
-  midgard_transaction_witness_set_to_compact,
-  partial_view_from_compact_and_preimages, verify_midgard_transaction,
+  decode_midgard_transaction_v1, encode_midgard_transaction_body_full,
+  encode_midgard_transaction_v1, encode_midgard_transaction_witness_set_full,
+  midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
+  midgard_transaction_to_compact, midgard_transaction_witness_set_to_compact,
+  partial_view_from_compact_and_preimages,
+  verify_midgard_transaction_field_preimage_v1, verify_midgard_transaction_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardAddressWitness, MidgardExecutionUnits,
@@ -38,28 +51,54 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransactionBodyPartialPreimages, MidgardTransactionWitnessSet,
   MidgardTransactionWitnessSetPartialPreimages, MidgardTxInput, MidgardTxOutput,
   MidgardValue, MidgardVersionedScript, NativeTxBodyCompact, NativeTxCompact,
-  PlutusV3Script, PubKeyCredential, SpendRedeemer, TxIsValid, native_tx_version,
+  NativeTxProofSourceCborV1, PlutusV3Script, PubKeyCredential, RewardRedeemer,
+  SpendRedeemer, TxIsValid, native_tx_version_v1,
 }
+use midgard/native_tx_field_access_v1
 
 const golden_core_native_full_tx_cbor =
-  #"84018c58278158248258201111111111111111111111111111111111111111111111111111111111111111005827815824825820222222222222222222222222222222222222222222222222222222222222222201585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
+  #"84018c5829815826825820111111111111111111111111111111111111111111111111111111111111111119000058298158268258202222222222222222222222222222222222222222222222222222222222222222190001585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
 
 const golden_core_native_compact_tx_cbor =
-  #"84018c582044bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb65820e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
+  #"84018c5820214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df97955820c7d58dc93d2a5850ba53d9c3b54199c68bb009fc43d808d98860416d2e3bc6e0582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
 
 const golden_core_native_tx_id =
-  #"ea7685b2e05809b8aa190df6cc9699f327a2e61db73ea6cd7c54309d0a8a7cd8"
+  #"f0edf52dff58dd7fac556b76007da81ed62655351622f4ce9c8ec492d66a22ec"
+
+const zero_hash =
+  #"0000000000000000000000000000000000000000000000000000000000000000"
 
 const golden_core_spend_inputs_preimage_cbor =
-  #"815824825820111111111111111111111111111111111111111111111111111111111111111100"
+  #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
 
 const golden_core_reference_inputs_preimage_cbor =
-  #"815824825820222222222222222222222222222222222222222222222222222222222222222201"
+  #"8158268258202222222222222222222222222222222222222222222222222222222222222222190001"
 
 const golden_core_outputs_preimage_cbor =
   #"81584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405"
 
 const golden_core_empty_preimage_cbor = #"80"
+
+const golden_core_spend_inputs_hash =
+  #"214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795"
+
+const golden_core_reference_inputs_hash =
+  #"c7d58dc93d2a5850ba53d9c3b54199c68bb009fc43d808d98860416d2e3bc6e0"
+
+const golden_core_outputs_hash =
+  #"90c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb"
+
+const golden_core_witness_set_hash =
+  #"52408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c"
+
+const golden_core_spend_inputs_preimage_hash =
+  #"214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795"
+
+const golden_core_reference_inputs_preimage_hash =
+  #"c7d58dc93d2a5850ba53d9c3b54199c68bb009fc43d808d98860416d2e3bc6e0"
+
+const golden_core_empty_preimage_hash =
+  #"45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
 
 fn sample_golden_core_native_full_tx_cbor(_size: Int) -> Fuzzer<ByteArray> {
   fuzz.constant(golden_core_native_full_tx_cbor)
@@ -74,7 +113,7 @@ fn sample_golden_core_native_compact_fixture(
 ) -> Fuzzer<Pair<NativeTxCompact, ByteArray>> {
   fuzz.constant(
     Pair(
-      decode_native_tx_compact(golden_core_native_compact_tx_cbor),
+      decode_native_tx_compact_v1(golden_core_native_compact_tx_cbor),
       golden_core_native_compact_tx_cbor,
     ),
   )
@@ -100,12 +139,62 @@ fn sample_golden_core_empty_preimage_cbor(_size: Int) -> Fuzzer<ByteArray> {
   fuzz.constant(golden_core_empty_preimage_cbor)
 }
 
+fn witness_field_order_transaction() -> MidgardTransaction {
+  let empty_mint: Data = []
+  MidgardTransaction {
+    version: native_tx_version_v1,
+    validity: TxIsValid,
+    body: MidgardTransactionBody {
+      inputs: [],
+      reference_inputs: [],
+      outputs: [],
+      fee: 0,
+      validity_interval_start: -1,
+      validity_interval_end: -1,
+      required_observers: [],
+      required_signers: [],
+      mint: empty_mint,
+      script_integrity_hash: zero_hash,
+      auxiliary_data_hash: zero_hash,
+      network_id: 255,
+    },
+    witness_set: MidgardTransactionWitnessSet {
+      addr_tx_wits: [
+        MidgardAddressWitness {
+          verification_key: zero_hash,
+          signature: zero_hash |> bytearray.concat(zero_hash),
+        },
+      ],
+      script_tx_wits: [
+        MidgardVersionedScript {
+          language: PlutusV3Script,
+          script_bytes: #"010203",
+        },
+      ],
+      redeemer_tx_wits: [],
+    },
+  }
+}
+
+fn witness_field_order_source(
+  tx: MidgardTransaction,
+) -> Pair<ByteArray, NativeTxProofSourceCborV1> {
+  let compact = midgard_transaction_to_compact(tx)
+  Pair(
+    native_tx_id_for_version(
+      native_tx_version_v1,
+      encode_native_tx_body_compact(compact.body),
+    ),
+    midgard_transaction_proof_source_v1(tx),
+  )
+}
+
 bench golden_core_decode_midgard_transaction_bench(
   tx_cbor: ByteArray via sample_golden_core_native_full_tx_cbor,
 ) {
-  let decoded = decode_midgard_transaction(tx_cbor)
+  let decoded = decode_midgard_transaction_v1(tx_cbor)
   and {
-    decoded.version == native_tx_version,
+    decoded.version == native_tx_version_v1,
     list.length(decoded.body.inputs) == 1,
     list.length(decoded.body.reference_inputs) == 1,
     list.length(decoded.body.outputs) == 1,
@@ -115,7 +204,7 @@ bench golden_core_decode_midgard_transaction_bench(
 bench golden_core_decode_native_tx_compact_bench(
   compact_cbor: ByteArray via sample_golden_core_native_compact_tx_cbor,
 ) {
-  let compact = decode_native_tx_compact(compact_cbor)
+  let compact = decode_native_tx_compact_v1(compact_cbor)
   compact.validity_code == 0
 }
 
@@ -123,25 +212,33 @@ bench golden_core_verify_native_tx_compact_reencode_bench(
   fixture: Pair<NativeTxCompact, ByteArray> via sample_golden_core_native_compact_fixture,
 ) {
   let Pair(compact, compact_cbor) = fixture
-  let verified =
-    verify_native_tx_compact(golden_core_native_tx_id, compact, compact_cbor)
+  let verified = verify_native_tx_compact_v1(
+    golden_core_native_tx_id,
+    compact,
+    compact_cbor,
+  )
   verified.tx_compact.validity_code == 0
 }
 
 bench golden_core_verify_native_tx_compact_cbor_bench(
   compact_cbor: ByteArray via sample_golden_core_native_compact_tx_cbor,
 ) {
-  let verified =
-    verify_native_tx_compact_cbor(golden_core_native_tx_id, compact_cbor)
+  let verified = verify_native_tx_compact_cbor_v1(
+    golden_core_native_tx_id,
+    compact_cbor,
+  )
   verified.tx_compact.validity_code == 0
 }
 
 bench golden_core_decode_then_verify_native_tx_compact_reencode_bench(
   compact_cbor: ByteArray via sample_golden_core_native_compact_tx_cbor,
 ) {
-  let compact = decode_native_tx_compact(compact_cbor)
-  let verified =
-    verify_native_tx_compact(golden_core_native_tx_id, compact, compact_cbor)
+  let compact = decode_native_tx_compact_v1(compact_cbor)
+  let verified = verify_native_tx_compact_v1(
+    golden_core_native_tx_id,
+    compact,
+    compact_cbor,
+  )
   verified.tx_compact.validity_code == 0
 }
 
@@ -189,168 +286,203 @@ bench golden_core_decode_empty_redeemer_witnesses_preimage_bench(
 }
 
 test encode_native_tx_compact_matches_node_cbor_shape() {
-  let body =
-    NativeTxBodyCompact {
-      spend_inputs_hash: #"0101010101010101010101010101010101010101010101010101010101010101",
-      reference_inputs_hash: #"0202020202020202020202020202020202020202020202020202020202020202",
-      outputs_hash: #"0303030303030303030303030303030303030303030303030303030303030303",
-      fee: 0,
-      validity_interval_start: -1,
-      validity_interval_end: -1,
-      required_observers_hash: #"0404040404040404040404040404040404040404040404040404040404040404",
-      required_signers_hash: #"0505050505050505050505050505050505050505050505050505050505050505",
-      mint_hash: #"0606060606060606060606060606060606060606060606060606060606060606",
-      script_integrity_hash: #"0707070707070707070707070707070707070707070707070707070707070707",
-      auxiliary_data_hash: #"0808080808080808080808080808080808080808080808080808080808080808",
-      network_id: 0,
-    }
-  let body_cbor =
-    #"8c582001010101010101010101010101010101010101010101010101010101010101015820020202020202020202020202020202020202020202020202020202020202020258200303030303030303030303030303030303030303030303030303030303030303002020582004040404040404040404040404040404040404040404040404040404040404045820050505050505050505050505050505050505050505050505050505050505050558200606060606060606060606060606060606060606060606060606060606060606582007070707070707070707070707070707070707070707070707070707070707075820080808080808080808080808080808080808080808080808080808080808080800"
-  let compact =
-    NativeTxCompact {
-      body,
-      witness_set_hash: #"0909090909090909090909090909090909090909090909090909090909090909",
-      validity_code: 0,
-    }
-  let compact_cbor =
-    #"8401"
-      |> bytearray.concat(body_cbor)
-      |> bytearray.concat(
-          #"5820090909090909090909090909090909090909090909090909090909090909090900",
-        )
-  let view =
-    verify_native_tx_compact(blake2b_256(body_cbor), compact, compact_cbor)
+  let body = NativeTxBodyCompact {
+    spend_inputs_hash: #"0101010101010101010101010101010101010101010101010101010101010101",
+    reference_inputs_hash: #"0202020202020202020202020202020202020202020202020202020202020202",
+    outputs_hash: #"0303030303030303030303030303030303030303030303030303030303030303",
+    fee: 0,
+    validity_interval_start: -1,
+    validity_interval_end: -1,
+    required_observers_hash: #"0404040404040404040404040404040404040404040404040404040404040404",
+    required_signers_hash: #"0505050505050505050505050505050505050505050505050505050505050505",
+    mint_hash: #"0606060606060606060606060606060606060606060606060606060606060606",
+    script_integrity_hash: #"0707070707070707070707070707070707070707070707070707070707070707",
+    auxiliary_data_hash: #"0808080808080808080808080808080808080808080808080808080808080808",
+    network_id: 0,
+  }
+  let body_cbor = #"8c582001010101010101010101010101010101010101010101010101010101010101015820020202020202020202020202020202020202020202020202020202020202020258200303030303030303030303030303030303030303030303030303030303030303002020582004040404040404040404040404040404040404040404040404040404040404045820050505050505050505050505050505050505050505050505050505050505050558200606060606060606060606060606060606060606060606060606060606060606582007070707070707070707070707070707070707070707070707070707070707075820080808080808080808080808080808080808080808080808080808080808080800"
+  let compact = NativeTxCompact {
+    body,
+    witness_set_hash: #"0909090909090909090909090909090909090909090909090909090909090909",
+    validity_code: 0,
+  }
+  let compact_cbor = #"8401"
+    |> bytearray.concat(body_cbor)
+    |> bytearray.concat(
+        #"5820090909090909090909090909090909090909090909090909090909090909090900",
+      )
+  let tx_id = native_tx_id_for_version(native_tx_version_v1, body_cbor)
+  let view = verify_native_tx_compact_v1(tx_id, compact, compact_cbor)
   and {
     encode_native_tx_body_compact(body) == body_cbor,
-    encode_native_tx_compact(compact) == compact_cbor,
-    view.tx_id == blake2b_256(body_cbor),
+    encode_native_tx_compact_v1(compact) == compact_cbor,
+    view.tx_id == tx_id,
     view.tx_compact.body.spend_inputs_hash == #"0101010101010101010101010101010101010101010101010101010101010101",
-    encode_native_tx_compact(view.tx_compact) == compact_cbor,
+    encode_native_tx_compact_v1(view.tx_compact) == compact_cbor,
+  }
+}
+
+/// The field-8 bridge vector under the §5.1 envelope. Its retired spelling
+/// concatenated raw item CBOR (`82 ‖ 84… ‖ 84…`); §5.1 now wraps every item in
+/// its own `definite_bytes_header`, so the same two witnesses are
+/// `82 ‖ 4a 84… ‖ 49 84…`. The bytes below are produced by the TypeScript twin
+/// (`encodeMidgardFieldPreimageForFieldV1`, field 8) and are pinned
+/// field-by-field by `native-tx-field-items-v1-golden.test.ak`; this vector
+/// keeps its own copy because what it exercises is the *bridge* — decode to
+/// typed witnesses and re-encode — not the item encoding alone.
+test canonical_redeemer_bridge_golden_vector_is_stable() {
+  let golden_redeemers_cbor = #"824a84000043d879808205074984030142182a820b0d"
+  let decoded = decode_midgard_tx_redeemer_witnesses_preimage_cbor(
+    golden_redeemers_cbor,
+  )
+  and {
+    decoded == [
+      MidgardRedeemerWitness {
+        purpose: SpendRedeemer,
+        index: 0,
+        redeemer_cbor: #"d87980",
+        execution_units: MidgardExecutionUnits { memory: 5, steps: 7 },
+      },
+      MidgardRedeemerWitness {
+        purpose: RewardRedeemer,
+        index: 1,
+        redeemer_cbor: #"182a",
+        execution_units: MidgardExecutionUnits { memory: 11, steps: 13 },
+      },
+    ],
+    encode_redeemer_witness_preimage(decoded) == golden_redeemers_cbor,
   }
 }
 
 test midgard_transaction_full_decode_round_trip() {
   let empty_mint: Data = []
   let pub_key_hash = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  let tx_1_id =
-    #"1111111111111111111111111111111111111111111111111111111111111111"
-  let tx_2_id =
-    #"2222222222222222222222222222222222222222222222222222222222222222"
-  let output =
-    MidgardTxOutput {
-      address: MidgardAddress {
-        protected: False,
-        network_id: 0,
-        payment_credential: PubKeyCredential(pub_key_hash),
-        stake_credential: None,
-      },
-      value: MidgardValue { lovelace: 2_000_000, assets: [] },
-      datum_cbor: None,
-      script_ref: None,
-    }
-  let tx =
-    MidgardTransaction {
-      version: native_tx_version,
-      validity: TxIsValid,
-      body: MidgardTransactionBody {
-        inputs: [MidgardTxInput { tx_id: tx_1_id, output_index: 0 }],
-        reference_inputs: [MidgardTxInput { tx_id: tx_2_id, output_index: 1 }],
-        outputs: [output],
-        fee: 42,
-        validity_interval_start: -1,
-        validity_interval_end: 100,
-        required_observers: [
-          #"01010101010101010101010101010101010101010101010101010101",
-        ],
-        required_signers: [
-          #"02020202020202020202020202020202020202020202020202020202",
-        ],
-        mint: empty_mint,
-        script_integrity_hash: #"0303030303030303030303030303030303030303030303030303030303030303",
-        auxiliary_data_hash: #"0404040404040404040404040404040404040404040404040404040404040404",
-        network_id: 0,
-      },
-      witness_set: MidgardTransactionWitnessSet {
-        addr_tx_wits: [
-          MidgardAddressWitness {
-            verification_key: #"1010101010101010101010101010101010101010101010101010101010101010",
-            signature: #"20202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020",
-          },
-        ],
-        script_tx_wits: [
-          MidgardVersionedScript {
-            language: PlutusV3Script,
-            script_bytes: #"010203",
-          },
-        ],
-        redeemer_tx_wits: [
-          MidgardRedeemerWitness {
-            purpose: SpendRedeemer,
-            index: 0,
-            redeemer_cbor: cbor.serialise(builtin.i_data(42)),
-            execution_units: MidgardExecutionUnits { memory: 1, steps: 2 },
-          },
-        ],
-      },
-    }
-  let tx_cbor = encode_midgard_transaction(tx)
-  let decoded = decode_midgard_transaction(tx_cbor)
+  let tx_1_id = #"1111111111111111111111111111111111111111111111111111111111111111"
+  let tx_2_id = #"2222222222222222222222222222222222222222222222222222222222222222"
+  let output = MidgardTxOutput {
+    address: MidgardAddress {
+      protected: False,
+      network_id: 0,
+      payment_credential: PubKeyCredential(pub_key_hash),
+      stake_credential: None,
+    },
+    value: MidgardValue { lovelace: 2_000_000, assets: [] },
+    datum_cbor: None,
+    script_ref: None,
+  }
+  let tx = MidgardTransaction {
+    version: native_tx_version_v1,
+    validity: TxIsValid,
+    body: MidgardTransactionBody {
+      inputs: [MidgardTxInput { tx_id: tx_1_id, output_index: 0 }],
+      reference_inputs: [MidgardTxInput { tx_id: tx_2_id, output_index: 1 }],
+      outputs: [output],
+      fee: 42,
+      validity_interval_start: -1,
+      validity_interval_end: 100,
+      required_observers: [
+        #"01010101010101010101010101010101010101010101010101010101",
+      ],
+      required_signers: [
+        #"02020202020202020202020202020202020202020202020202020202",
+      ],
+      mint: empty_mint,
+      script_integrity_hash: #"0303030303030303030303030303030303030303030303030303030303030303",
+      auxiliary_data_hash: #"0404040404040404040404040404040404040404040404040404040404040404",
+      network_id: 0,
+    },
+    witness_set: MidgardTransactionWitnessSet {
+      addr_tx_wits: [
+        MidgardAddressWitness {
+          verification_key: #"1010101010101010101010101010101010101010101010101010101010101010",
+          signature: #"20202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020",
+        },
+      ],
+      script_tx_wits: [
+        MidgardVersionedScript {
+          language: PlutusV3Script,
+          script_bytes: #"010203",
+        },
+      ],
+      redeemer_tx_wits: [
+        MidgardRedeemerWitness {
+          purpose: SpendRedeemer,
+          index: 0,
+          redeemer_cbor: cbor.serialise(builtin.i_data(42)),
+          execution_units: MidgardExecutionUnits { memory: 1, steps: 2 },
+        },
+      ],
+    },
+  }
+  let tx_cbor = encode_midgard_transaction_v1(tx)
+  let decoded = decode_midgard_transaction_v1(tx_cbor)
   let compact = midgard_transaction_to_compact(tx)
-  let tx_id = compact.body |> encode_native_tx_body_compact |> blake2b_256
-  let expected_tx_cbor =
-    #"84"
-      |> bytearray.concat(cbor.serialise(native_tx_version))
-      |> bytearray.concat(encode_midgard_transaction_body_full(tx.body))
-      |> bytearray.concat(
-          encode_midgard_transaction_witness_set_full(tx.witness_set),
-        )
-      |> bytearray.concat(cbor.serialise(0))
-  let verified_tx = verify_midgard_transaction(tx_id, tx_cbor)
-  let body_preimages =
-    MidgardTransactionBodyPartialPreimages {
-      inputs: Some(encode_input_preimage(tx.body.inputs)),
-      reference_inputs: Some(encode_input_preimage(tx.body.reference_inputs)),
-      outputs: Some(encode_output_preimage(tx.body.outputs)),
-      required_observers: Some(
-        encode_native_byte_list(tx.body.required_observers),
-      ),
-      required_signers: Some(encode_native_byte_list(tx.body.required_signers)),
-      mint: Some(encode_mint_preimage(tx.body.mint)),
-    }
-  let witness_set_compact =
-    midgard_transaction_witness_set_to_compact(tx.witness_set)
-  let witness_set_preimages =
-    MidgardTransactionWitnessSetPartialPreimages {
-      addr_tx_wits: Some(
-        encode_address_witness_preimage(tx.witness_set.addr_tx_wits),
-      ),
-      script_tx_wits: Some(
-        encode_script_witness_preimage(tx.witness_set.script_tx_wits),
-      ),
-      redeemer_tx_wits: Some(
-        encode_redeemer_witness_preimage(tx.witness_set.redeemer_tx_wits),
-      ),
-    }
-  let verified =
-    verify_native_tx_compact(tx_id, compact, encode_native_tx_compact(compact))
-  let partial =
-    partial_view_from_compact_and_preimages(
-      verified,
-      body_preimages,
-      Some(witness_set_compact),
-      witness_set_preimages,
-    )
+  let tx_id = native_tx_id_for_version(
+    tx.version,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let expected_tx_cbor = #"84"
+    |> bytearray.concat(cbor.serialise(native_tx_version_v1))
+    |> bytearray.concat(encode_midgard_transaction_body_full(tx.body))
+    |> bytearray.concat(
+        encode_midgard_transaction_witness_set_full(tx.witness_set),
+      )
+    |> bytearray.concat(cbor.serialise(0))
+  let verified_tx = verify_midgard_transaction_v1(tx_id, tx_cbor)
+  let body_preimages = MidgardTransactionBodyPartialPreimages {
+    inputs: Some(encode_input_preimage(tx.body.inputs)),
+    reference_inputs: Some(encode_input_preimage(tx.body.reference_inputs)),
+    outputs: Some(encode_output_preimage(tx.body.outputs)),
+    required_observers: Some(
+      encode_hash28_list_preimage(tx.body.required_observers),
+    ),
+    required_signers: Some(
+      encode_hash28_list_preimage(tx.body.required_signers),
+    ),
+    mint: Some(encode_mint_preimage(tx.body.mint)),
+  }
+  let witness_set_compact = midgard_transaction_witness_set_to_compact(
+    tx.witness_set,
+  )
+  let witness_set_preimages = MidgardTransactionWitnessSetPartialPreimages {
+    addr_tx_wits: Some(
+      encode_address_witness_preimage(tx.witness_set.addr_tx_wits),
+    ),
+    script_tx_wits: Some(
+      encode_script_witness_preimage(tx.witness_set.script_tx_wits),
+    ),
+    redeemer_tx_wits: Some(
+      encode_redeemer_witness_preimage(tx.witness_set.redeemer_tx_wits),
+    ),
+  }
+  let verified = verify_native_tx_compact_v1(
+    tx_id,
+    compact,
+    encode_native_tx_compact_v1(compact),
+  )
+  let partial = partial_view_from_compact_and_preimages(
+    verified,
+    body_preimages,
+    Some(witness_set_compact),
+    witness_set_preimages,
+  )
   expect Some(partial_body) = partial.body
   expect Some(partial_witness_set) = partial.witness_set
 
   and {
     tx_cbor == expected_tx_cbor,
     decoded == tx,
-    encode_midgard_transaction(decoded) == tx_cbor,
+    encode_midgard_transaction_v1(decoded) == tx_cbor,
     verified_tx.transaction == tx,
     verified_tx.compact == compact,
-    verified_tx.compact_cbor == encode_native_tx_compact(compact),
-    partial.version == Some(native_tx_version),
+    verified_tx.compact_cbor == encode_native_tx_compact_v1(compact),
+    witness_set_compact.addr_tx_wits_hash == native_tx_field_access_v1.field_commitment_from_items(
+      list.map(tx.witness_set.addr_tx_wits, encode_midgard_address_witness),
+    ),
+    witness_set_compact.script_tx_wits_hash == native_tx_field_access_v1.field_commitment_from_items(
+      list.map(tx.witness_set.script_tx_wits, encode_midgard_versioned_script),
+    ),
+    partial.version == Some(native_tx_version_v1),
     partial.validity == Some(TxIsValid),
     partial_body.inputs == Some(tx.body.inputs),
     partial_body.reference_inputs == Some(tx.body.reference_inputs),
@@ -366,12 +498,65 @@ test midgard_transaction_full_decode_round_trip() {
   }
 }
 
+test witness_fields_bind_scripts_to_six_and_addresses_to_seven() {
+  let tx = witness_field_order_transaction()
+  let Pair(tx_id, source) = witness_field_order_source(tx)
+  let transaction_commitment = midgard_transaction_proof_commitment_v1(tx)
+  and {
+    verify_midgard_transaction_field_preimage_v1(
+      tx_id,
+      transaction_commitment,
+      source.compact_cbor,
+      source.witness_set_compact_cbor,
+      source.field_preimage_lengths_cbor,
+      6,
+      encode_script_witness_preimage(tx.witness_set.script_tx_wits),
+    ),
+    verify_midgard_transaction_field_preimage_v1(
+      tx_id,
+      transaction_commitment,
+      source.compact_cbor,
+      source.witness_set_compact_cbor,
+      source.field_preimage_lengths_cbor,
+      7,
+      encode_address_witness_preimage(tx.witness_set.addr_tx_wits),
+    ),
+  }
+}
+
+test script_witnesses_cannot_authenticate_as_legacy_field_seven() fail {
+  let tx = witness_field_order_transaction()
+  let Pair(tx_id, source) = witness_field_order_source(tx)
+  verify_midgard_transaction_field_preimage_v1(
+    tx_id,
+    midgard_transaction_proof_commitment_v1(tx),
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+    7,
+    encode_script_witness_preimage(tx.witness_set.script_tx_wits),
+  )
+}
+
+test address_witnesses_cannot_authenticate_as_legacy_field_six() fail {
+  let tx = witness_field_order_transaction()
+  let Pair(tx_id, source) = witness_field_order_source(tx)
+  verify_midgard_transaction_field_preimage_v1(
+    tx_id,
+    midgard_transaction_proof_commitment_v1(tx),
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+    6,
+    encode_address_witness_preimage(tx.witness_set.addr_tx_wits),
+  )
+}
+
 test decode_midgard_value_preserves_unsorted_asset_order() {
   let policy_id = #"01010101010101010101010101010101010101010101010101010101"
-  let output_cbor =
-    #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a1581c"
-      |> bytearray.concat(policy_id)
-      |> bytearray.concat(#"a2410201410102")
+  let output_cbor = #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a1581c"
+    |> bytearray.concat(policy_id)
+    |> bytearray.concat(#"a2410201410102")
   let output = decode_midgard_tx_output_cbor(output_cbor)
 
   and {
@@ -385,21 +570,25 @@ test decode_midgard_value_preserves_unsorted_asset_order() {
 }
 
 test golden_midgard_core_native_full_tx_decodes() {
-  let tx_cbor =
-    #"84018c58278158248258201111111111111111111111111111111111111111111111111111111111111111005827815824825820222222222222222222222222222222222222222222222222222222222222222201585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
-  let compact_cbor =
-    #"84018c582044bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb65820e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
-  let tx_id =
-    #"ea7685b2e05809b8aa190df6cc9699f327a2e61db73ea6cd7c54309d0a8a7cd8"
-  let decoded = decode_midgard_transaction(tx_cbor)
+  let tx_cbor = golden_core_native_full_tx_cbor
+  let compact_cbor = golden_core_native_compact_tx_cbor
+  let tx_id = golden_core_native_tx_id
+  let decoded = decode_midgard_transaction_v1(tx_cbor)
   expect [input] = decoded.body.inputs
   expect [reference_input] = decoded.body.reference_inputs
   expect [output] = decoded.body.outputs
   expect [Pair(asset_unit, quantity)] = output.value.assets
   let compact = midgard_transaction_to_compact(decoded)
+  expect encode_native_tx_compact_v1(compact) == compact_cbor
+  expect blake2b_256(encode_native_tx_body_compact(compact.body)) != tx_id
+  expect
+    native_tx_id_for_version(
+      native_tx_version_v1,
+      encode_native_tx_body_compact(compact.body),
+    ) == tx_id
 
   and {
-    decoded.version == native_tx_version,
+    decoded.version == native_tx_version_v1,
     decoded.validity == TxIsValid,
     input.tx_id == #"1111111111111111111111111111111111111111111111111111111111111111",
     input.output_index == 0,
@@ -411,40 +600,49 @@ test golden_midgard_core_native_full_tx_decodes() {
     output.value.lovelace == 2_000_000,
     asset_unit == #"7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a4d4944",
     quantity == 5,
-    compact.body.spend_inputs_hash == #"44bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb6",
-    compact.body.reference_inputs_hash == #"e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513",
-    compact.body.outputs_hash == #"90c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb",
-    compact.witness_set_hash == #"52408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c",
-    encode_native_tx_compact(compact) == compact_cbor,
-    blake2b_256(encode_native_tx_body_compact(compact.body)) == tx_id,
+    compact.body.spend_inputs_hash == golden_core_spend_inputs_hash,
+    compact.body.reference_inputs_hash == golden_core_reference_inputs_hash,
+    compact.body.outputs_hash == golden_core_outputs_hash,
+    compact.witness_set_hash == golden_core_witness_set_hash,
+    encode_native_tx_compact_v1(compact) == compact_cbor,
+    native_tx_id_for_version(
+      decoded.version,
+      encode_native_tx_body_compact(compact.body),
+    ) == tx_id,
   }
 }
 
+/// Fields 0/1 under §5.3's fixed 3-byte output index. The retired spelling put
+/// the index in minimal CBOR (`… 00`, a 36-byte item at wrapper `58 24`); §5.3
+/// always spells it `19 XXXX`, which makes the item exactly 38 bytes at wrapper
+/// `58 26` and is what fixes stride 40. The preimages and their flat §4 hashes
+/// below are produced by the TypeScript twin
+/// (`encodeMidgardFieldPreimageForFieldV1`, fields 0 and 1); the same encoding
+/// is pinned per-field by `native-tx-field-items-v1-golden.test.ak`.
 test golden_midgard_core_native_preimage_cbor_decoders() {
-  let spend_preimage_cbor =
-    #"815824825820111111111111111111111111111111111111111111111111111111111111111100"
-  let reference_preimage_cbor =
-    #"815824825820222222222222222222222222222222222222222222222222222222222222222201"
-  let outputs_preimage_cbor =
-    #"81584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405"
-  let empty_preimage_cbor = #"80"
-  let empty_preimage_hash =
-    #"45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+  let spend_preimage_cbor = golden_core_spend_inputs_preimage_cbor
+  let reference_preimage_cbor = golden_core_reference_inputs_preimage_cbor
+  let outputs_preimage_cbor = golden_core_outputs_preimage_cbor
+  let empty_preimage_cbor = golden_core_empty_preimage_cbor
+  let empty_preimage_hash = golden_core_empty_preimage_hash
   let empty_mint: Data = []
 
-  expect [spend_input] =
-    decode_midgard_tx_inputs_preimage_cbor(spend_preimage_cbor)
-  expect [reference_input] =
-    decode_midgard_tx_inputs_preimage_cbor(reference_preimage_cbor)
-  expect [output] =
-    decode_midgard_tx_outputs_preimage_cbor(outputs_preimage_cbor)
+  expect [spend_input] = decode_midgard_tx_inputs_preimage_cbor(
+    spend_preimage_cbor,
+  )
+  expect [reference_input] = decode_midgard_tx_inputs_preimage_cbor(
+    reference_preimage_cbor,
+  )
+  expect [output] = decode_midgard_tx_outputs_preimage_cbor(
+    outputs_preimage_cbor,
+  )
   expect [Pair(asset_unit, quantity)] = output.value.assets
 
   and {
-    blake2b_256(spend_preimage_cbor) == #"44bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb6",
+    blake2b_256(spend_preimage_cbor) == golden_core_spend_inputs_preimage_hash,
     spend_input.tx_id == #"1111111111111111111111111111111111111111111111111111111111111111",
     spend_input.output_index == 0,
-    blake2b_256(reference_preimage_cbor) == #"e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513",
+    blake2b_256(reference_preimage_cbor) == golden_core_reference_inputs_preimage_hash,
     reference_input.tx_id == #"2222222222222222222222222222222222222222222222222222222222222222",
     reference_input.output_index == 1,
     output.value.lovelace == 2_000_000,
@@ -460,36 +658,59 @@ test golden_midgard_core_native_preimage_cbor_decoders() {
 }
 
 test golden_midgard_core_native_compact_tx_decodes() {
-  let compact_cbor =
-    #"84018c582044bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb65820e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
+  let compact_cbor = golden_core_native_compact_tx_cbor
   let tx_id = golden_core_native_tx_id
-  let compact = decode_native_tx_compact(compact_cbor)
-  let verified = verify_native_tx_compact(tx_id, compact, compact_cbor)
-  let verified_from_cbor = verify_native_tx_compact_cbor(tx_id, compact_cbor)
+  let compact = decode_native_tx_compact_v1(compact_cbor)
+  let verified = verify_native_tx_compact_v1(tx_id, compact, compact_cbor)
+  let verified_from_cbor = verify_native_tx_compact_cbor_v1(tx_id, compact_cbor)
 
   and {
     verified_from_cbor == verified,
     verified.tx_compact.validity_code == 0,
-    verified.tx_compact.body.spend_inputs_hash == #"44bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb6",
-    verified.tx_compact.body.reference_inputs_hash == #"e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513",
-    verified.tx_compact.body.outputs_hash == #"90c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb",
-    verified.tx_compact.witness_set_hash == #"52408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c",
+    verified.tx_compact.body.spend_inputs_hash == golden_core_spend_inputs_hash,
+    verified.tx_compact.body.reference_inputs_hash == golden_core_reference_inputs_hash,
+    verified.tx_compact.body.outputs_hash == golden_core_outputs_hash,
+    verified.tx_compact.witness_set_hash == golden_core_witness_set_hash,
   }
 }
 
-test encode_native_byte_list_matches_node_preimage_shape() {
+test encode_field_preimage_matches_node_preimage_shape() {
   let input_0 = #"1111"
   let input_1 = #"222222"
   let spend_input_cbors = [input_0, input_1]
-  let preimage_cbor =
-    #"8242"
-      |> bytearray.concat(input_0)
-      |> bytearray.concat(#"43")
-      |> bytearray.concat(input_1)
+  let preimage_cbor = #"8242"
+    |> bytearray.concat(input_0)
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(input_1)
 
   and {
-    encode_native_byte_list(spend_input_cbors) == preimage_cbor,
-    verify_spend_inputs_preimage(spend_input_cbors, blake2b_256(preimage_cbor)),
-    spend_input_cbor_at(spend_input_cbors, 1) == input_1,
+    native_tx_field_access_v1.encode_field_preimage(spend_input_cbors) == preimage_cbor,
+    native_tx_field_access_v1.field_commitment(preimage_cbor) == native_tx_field_access_v1.field_commitment_from_items(
+      spend_input_cbors,
+    ),
   }
+}
+
+/// §5.1's count header has one admissible spelling per count, and every field
+/// decoder reads it through the same decoder as the door. `83` is canonical for
+/// three items; `98 03` decodes to three and is still refused.
+test byte_list_preimage_rejects_a_non_minimal_count_header() fail {
+  let items = [#"aa", #"bb", #"cc"]
+  let honest = native_tx_field_access_v1.encode_field_preimage(items)
+  let non_minimal = bytearray.concat(#"9803", bytearray.drop(honest, 1))
+  list.length(decode_midgard_tx_byte_list_preimage_cbor(non_minimal)) >= 0
+}
+
+/// The mint field is the one that never re-encodes to pin its bytes, so the
+/// shared §5.1 head decoder is the only thing standing between it and a second
+/// admissible spelling. `9a` is well-formed CBOR and outside the grammar.
+test mint_preimage_rejects_a_four_byte_count_header() fail {
+  let empty_mint: Data = []
+  let honest = encode_mint_preimage(empty_mint)
+  let four_byte = bytearray.concat(#"9a00000000", bytearray.drop(honest, 1))
+  decode_midgard_tx_mint_preimage_cbor(four_byte) == empty_mint
+}
+
+test empty_mint_map_data_rejects_canonical_preimage_encoding() fail {
+  encode_mint_preimage(builtin.map_data([])) == #"a0"
 }

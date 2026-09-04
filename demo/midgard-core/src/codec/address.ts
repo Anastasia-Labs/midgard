@@ -189,10 +189,6 @@ export const decodeMidgardAddressBytes = (
   const addressType = unprotectedHeader >> 4;
   const networkId = unprotectedHeader & 0x0f;
 
-  if (networkId !== 0 && networkId !== 1) {
-    fail("Unsupported Midgard address network id", networkId.toString());
-  }
-
   const isBase = addressType <= 3;
   const isEnterprise = addressType === 6 || addressType === 7;
   if (!isBase && !isEnterprise) {

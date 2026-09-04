@@ -2,6 +2,13 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import {
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
+import type { DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { Network } from "@lucid-evolution/lucid";
 
 import {
@@ -66,7 +73,10 @@ export type LucidMidgardConfigSnapshot = {
   readonly apiVersion: number;
   readonly midgardNativeTxVersion: number;
   readonly currentSlot: bigint;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly deploymentMarker?: DeploymentMarker;
   readonly supportedScriptLanguages: readonly ProtocolScriptLanguage[];
+  readonly codecSupportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly protocolFeeParameters: {
     readonly minFeeA: bigint;
     readonly minFeeB: bigint;
@@ -79,7 +89,6 @@ export type LucidMidgardConfigSnapshot = {
     readonly localValidationIsAuthoritative: false;
   };
   readonly protocolInfoSource: ProviderDiagnostics["protocolInfoSource"];
-  readonly protocolInfoFallbackReason?: string;
   readonly providerDiagnostics: ProviderDiagnostics;
   readonly utxoOverrideGeneration: number;
   readonly hasUtxoOverrides: boolean;
@@ -99,6 +108,7 @@ const knownNetworkId = (network: string | undefined): number | undefined => {
     case "Preprod":
     case "Preview":
       return 0;
+    case undefined:
     default:
       return undefined;
   }
@@ -158,27 +168,39 @@ const cloneSupportedScriptLanguages = (
 
 export const cloneProtocolInfo = (
   info: MidgardProtocolInfo,
-): MidgardProtocolInfo => ({
-  apiVersion: info.apiVersion,
-  network: info.network,
-  midgardNativeTxVersion: info.midgardNativeTxVersion,
-  currentSlot: info.currentSlot,
-  supportedScriptLanguages: cloneSupportedScriptLanguages(
-    info.supportedScriptLanguages,
-  ),
-  protocolFeeParameters: {
-    minFeeA: info.protocolFeeParameters.minFeeA,
-    minFeeB: info.protocolFeeParameters.minFeeB,
-  },
-  submissionLimits: {
-    maxSubmitTxCborBytes: info.submissionLimits.maxSubmitTxCborBytes,
-  },
-  validation: {
-    strictnessProfile: info.validation.strictnessProfile,
-    localValidationIsAuthoritative:
-      info.validation.localValidationIsAuthoritative,
-  },
-});
+): MidgardProtocolInfo => {
+  const common = {
+    network: info.network,
+    midgardNativeTxVersion: info.midgardNativeTxVersion,
+    currentSlot: info.currentSlot,
+    supportedScriptLanguages: cloneSupportedScriptLanguages(
+      info.supportedScriptLanguages,
+    ),
+    codecSupportedScriptLanguages: cloneSupportedScriptLanguages(
+      info.codecSupportedScriptLanguages,
+    ),
+    protocolFeeParameters: {
+      minFeeA: info.protocolFeeParameters.minFeeA,
+      minFeeB: info.protocolFeeParameters.minFeeB,
+    },
+    submissionLimits: {
+      maxSubmitTxCborBytes: info.submissionLimits.maxSubmitTxCborBytes,
+    },
+    validation: {
+      strictnessProfile: info.validation.strictnessProfile,
+      localValidationIsAuthoritative:
+        info.validation.localValidationIsAuthoritative,
+    },
+  };
+  return {
+    ...common,
+    apiVersion: 1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    ...(info.deploymentMarker === undefined
+      ? {}
+      : { deploymentMarker: { ...info.deploymentMarker } }),
+  };
+};
 
 export const cloneProviderDiagnostics = (
   diagnostics: ProviderDiagnostics,
@@ -200,28 +222,17 @@ export const cloneProviderDiagnostics = (
   }
   if (
     diagnostics.protocolInfoSource !== "node" &&
-    diagnostics.protocolInfoSource !== "fallback" &&
+    diagnostics.protocolInfoSource !== "offline" &&
     diagnostics.protocolInfoSource !== "unknown"
   ) {
     throw new ProviderPayloadError(
       "/provider/diagnostics",
-      "Provider diagnostics protocolInfoSource must be node, fallback, or unknown",
-    );
-  }
-  if (
-    diagnostics.protocolInfoSource === "fallback" &&
-    (typeof diagnostics.protocolInfoFallbackReason !== "string" ||
-      diagnostics.protocolInfoFallbackReason.trim().length === 0)
-  ) {
-    throw new ProviderPayloadError(
-      "/provider/diagnostics",
-      "Fallback protocol-info diagnostics require a non-empty reason",
+      "Provider diagnostics protocolInfoSource must be node, offline, or unknown",
     );
   }
   return {
     endpoint: diagnostics.endpoint,
     protocolInfoSource: diagnostics.protocolInfoSource,
-    protocolInfoFallbackReason: diagnostics.protocolInfoFallbackReason,
   };
 };
 
@@ -282,10 +293,10 @@ export const validateProtocolInfo = (
       "Protocol info must be an object",
     );
   }
-  if (!Number.isSafeInteger(info.apiVersion) || info.apiVersion <= 0) {
+  if (info.apiVersion !== 1) {
     throw new ProviderPayloadError(
       "/protocol-info",
-      "apiVersion must be a positive safe integer",
+      "apiVersion must equal the compiled V1 protocol API version",
     );
   }
   if (typeof info.network !== "string" || info.network.trim().length === 0) {
@@ -309,37 +320,58 @@ export const validateProtocolInfo = (
       "currentSlot must be a non-negative bigint",
     );
   }
-  const expectedLanguages = MIDGARD_SUPPORTED_SCRIPT_LANGUAGES.map(
-    (language) => `${language.name}:${language.tag.toString(10)}`,
-  ).sort();
-  const actualLanguages = Array.isArray(info.supportedScriptLanguages)
-    ? info.supportedScriptLanguages
-        .map((language) => {
-          if (
-            typeof language !== "object" ||
-            language === null ||
-            typeof language.name !== "string" ||
-            typeof language.tag !== "number" ||
-            !Number.isSafeInteger(language.tag)
-          ) {
-            throw new ProviderPayloadError(
-              "/protocol-info",
-              "supportedScriptLanguages entries must contain name and tag",
-            );
-          }
-          return `${language.name}:${language.tag.toString(10)}`;
-        })
-        .sort()
-    : undefined;
-  if (
-    actualLanguages === undefined ||
-    expectedLanguages.length !== actualLanguages.length ||
-    expectedLanguages.some((label, index) => actualLanguages[index] !== label)
-  ) {
-    throw new ProviderPayloadError(
+  if (!isMidgardConsensusProfile(info.consensusProfile)) {
+    throw new ProviderCapabilityError(
       "/protocol-info",
-      "supportedScriptLanguages must exactly match PlutusV3 and MidgardV1 protocol tags",
+      "Provider consensus profile does not match the compiled V1 profile",
     );
+  }
+  const languageLabels = (
+    value: unknown,
+    field: "supportedScriptLanguages" | "codecSupportedScriptLanguages",
+  ): string[] => {
+    if (!Array.isArray(value)) {
+      throw new ProviderPayloadError(
+        "/protocol-info",
+        `${field} must be an array`,
+      );
+    }
+    return value
+      .map((language) => {
+        if (
+          typeof language !== "object" ||
+          language === null ||
+          typeof language.name !== "string" ||
+          typeof language.tag !== "number" ||
+          !Number.isSafeInteger(language.tag)
+        ) {
+          throw new ProviderPayloadError(
+            "/protocol-info",
+            `${field} entries must contain canonical name and tag values`,
+          );
+        }
+        return `${language.name}:${language.tag.toString(10)}`;
+      })
+      .sort();
+  };
+  const compiledLanguages = languageLabels(
+    MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    "codecSupportedScriptLanguages",
+  );
+  for (const [field, value] of [
+    ["supportedScriptLanguages", info.supportedScriptLanguages],
+    ["codecSupportedScriptLanguages", info.codecSupportedScriptLanguages],
+  ] as const) {
+    const labels = languageLabels(value, field);
+    if (
+      labels.length !== compiledLanguages.length ||
+      compiledLanguages.some((label, index) => labels[index] !== label)
+    ) {
+      throw new ProviderPayloadError(
+        "/protocol-info",
+        `${field} must exactly match the compiled canonical script-language set`,
+      );
+    }
   }
   if (
     typeof info.protocolFeeParameters !== "object" ||
@@ -358,11 +390,13 @@ export const validateProtocolInfo = (
     typeof info.submissionLimits !== "object" ||
     info.submissionLimits === null ||
     !Number.isSafeInteger(info.submissionLimits.maxSubmitTxCborBytes) ||
-    info.submissionLimits.maxSubmitTxCborBytes <= 0
+    info.submissionLimits.maxSubmitTxCborBytes <= 0 ||
+    info.submissionLimits.maxSubmitTxCborBytes >
+      MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes
   ) {
     throw new ProviderPayloadError(
       "/protocol-info",
-      "submissionLimits.maxSubmitTxCborBytes must be a positive safe integer",
+      `submissionLimits.maxSubmitTxCborBytes must be between 1 and ${MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes.toString()}`,
     );
   }
   if (
@@ -427,8 +461,15 @@ export const buildConfigSnapshot = ({
     apiVersion: protocolInfo.apiVersion,
     midgardNativeTxVersion: protocolInfo.midgardNativeTxVersion,
     currentSlot: protocolInfo.currentSlot,
+    consensusProfile: protocolInfo.consensusProfile,
+    ...(protocolInfo.deploymentMarker === undefined
+      ? {}
+      : { deploymentMarker: { ...protocolInfo.deploymentMarker } }),
     supportedScriptLanguages: cloneSupportedScriptLanguages(
       protocolInfo.supportedScriptLanguages,
+    ),
+    codecSupportedScriptLanguages: cloneSupportedScriptLanguages(
+      protocolInfo.codecSupportedScriptLanguages,
     ),
     protocolFeeParameters: {
       minFeeA: protocolInfo.protocolFeeParameters.minFeeA,
@@ -443,7 +484,6 @@ export const buildConfigSnapshot = ({
         protocolInfo.validation.localValidationIsAuthoritative,
     },
     protocolInfoSource: diagnostics.protocolInfoSource,
-    protocolInfoFallbackReason: diagnostics.protocolInfoFallbackReason,
     providerDiagnostics: cloneProviderDiagnostics(diagnostics),
     utxoOverrideGeneration,
     hasUtxoOverrides,
@@ -523,7 +563,7 @@ export const readProviderSnapshot = async ({
   }
   const expectedNativeVersion =
     options?.expectedMidgardNativeTxVersion ??
-    Number(MIDGARD_NATIVE_TX_VERSION);
+    protocolInfo.consensusProfile.nativeTransactionVersion;
   if (protocolInfo.midgardNativeTxVersion !== expectedNativeVersion) {
     throw new ProviderCapabilityError(
       "/protocol-info",
@@ -586,12 +626,20 @@ export const assertBuilderContextsComposable = (
     );
   }
   if (
+    left.config.apiVersion !== right.config.apiVersion ||
+    left.config.consensusProfile.profileId !==
+      right.config.consensusProfile.profileId
+  ) {
+    throw new BuilderInvariantError(
+      "Cannot compose builders with different consensus profiles",
+      `left=${left.config.consensusProfile.profileId} right=${right.config.consensusProfile.profileId}`,
+    );
+  }
+  if (
     left.provider.diagnostics.endpoint !==
       right.provider.diagnostics.endpoint ||
     left.provider.diagnostics.protocolInfoSource !==
-      right.provider.diagnostics.protocolInfoSource ||
-    left.provider.diagnostics.protocolInfoFallbackReason !==
-      right.provider.diagnostics.protocolInfoFallbackReason
+      right.provider.diagnostics.protocolInfoSource
   ) {
     throw new BuilderInvariantError(
       "Cannot compose builders with different provider diagnostics",

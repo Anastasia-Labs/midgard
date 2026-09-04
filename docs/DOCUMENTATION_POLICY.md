@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-08-08
 
 Midgard documentation is part of the protocol safety surface. A stale claim
 about finality, proof coverage, data availability, recovery, or transaction
@@ -30,12 +30,19 @@ There is no single artifact that is authoritative for every kind of claim:
 
 1. The technical specification is the normative **design target** for protocol
    semantics.
-2. Checked-in code, configuration, generated blueprints, and tests describe the
+2. A `docs/spec/` component specification is **implementation-normative** for
+   the concrete detail it covers — exact types, byte-level encodings,
+   constants, and the security properties stated with them. On that detail it
+   wins over the technical specification, which remains the protocol-level
+   design target; a divergence is a technical-specification erratum, not
+   grounds to reopen the component specification. See `docs/spec/README.md`
+   for the authority rule, its scope, and the amendment process.
+3. Checked-in code, configuration, generated blueprints, and tests describe the
    **implemented behavior** at a particular revision.
-3. Passing acceptance tests and retained, reproducible artifacts describe the
+4. Passing acceptance tests and retained, reproducible artifacts describe the
    **verified behavior**.
-4. `public_testnet_readiness.md` owns launch/readiness claims.
-5. `docs/fault-proofs/` owns the current proof-coverage and proof-binding audit.
+5. `docs/public_testnet_readiness.md` owns launch/readiness claims.
+6. `docs/fault-proofs/` owns the current proof-coverage and proof-binding audit.
 
 When these disagree, document the divergence. Do not make the implementation
 sound conformant by silently rewriting an unapproved protocol rule, and do not

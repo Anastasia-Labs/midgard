@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveTxStatus, resolveTxStatusBatch } from "@/commands/tx-status.js";
+import {
+  resolveTxStatus,
+  resolveTxStatusBatch,
+} from "../src/commands/tx-status.js";
 
 describe("resolveTxStatus", () => {
   it("returns rejected when rejection entry exists", () => {

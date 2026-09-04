@@ -1,4 +1,18 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
+
+const PUBLISHED = {
+  Published: { terminal_commitment: "22".repeat(32) },
+} satisfies SDK.DaAvailabilityStateQueueStatus;
+const ATTESTED = {
+  Attested: { da_bond_asset_name: "33".repeat(32) },
+} satisfies SDK.DaAvailabilityStateQueueStatus;
+const CHALLENGED = {
+  Challenged: {
+    da_bond_asset_name: "33".repeat(32),
+    challenge_asset_name: "44".repeat(32),
+  },
+} satisfies SDK.DaAvailabilityStateQueueStatus;
 
 import {
   classifyOldestQueuedBlockCandidateReadiness,
@@ -7,7 +21,7 @@ import {
   mergeSubmitValidityEvidence,
   planMergeLocalLedgerReadiness,
   planMergePreflight,
-} from "@/transactions/state-queue/merge-readiness.js";
+} from "../src/transactions/state-queue/merge-readiness.js";
 
 const baseInput = {
   force: false,
@@ -89,8 +103,7 @@ describe("merge readiness planner", () => {
     expect(
       classifyOldestQueuedBlockReadiness({
         headerHash: "11".repeat(28),
-        currentDaAttestation: "00".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: SDK.NO_DA_ATTESTATION,
         readyAfterUnixTime: 200,
         nowUnixTime: 250,
       }),
@@ -100,8 +113,27 @@ describe("merge readiness planner", () => {
     expect(
       classifyOldestQueuedBlockReadiness({
         headerHash: "11".repeat(28),
-        currentDaAttestation: "22".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: CHALLENGED,
+        readyAfterUnixTime: 200,
+        nowUnixTime: 250,
+      }),
+    ).toMatchObject({
+      status: "skipped_oldest_block_unattested",
+    });
+    expect(
+      classifyOldestQueuedBlockReadiness({
+        headerHash: "11".repeat(28),
+        currentDaAvailability: ATTESTED,
+        readyAfterUnixTime: 300,
+        nowUnixTime: 300,
+      }),
+    ).toMatchObject({
+      status: "ready",
+    });
+    expect(
+      classifyOldestQueuedBlockReadiness({
+        headerHash: "11".repeat(28),
+        currentDaAvailability: PUBLISHED,
         readyAfterUnixTime: 300,
         nowUnixTime: 250,
       }),
@@ -111,8 +143,7 @@ describe("merge readiness planner", () => {
     expect(
       classifyOldestQueuedBlockReadiness({
         headerHash: "11".repeat(28),
-        currentDaAttestation: "22".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: PUBLISHED,
         readyAfterUnixTime: 300,
         nowUnixTime: 300,
       }),
@@ -125,8 +156,7 @@ describe("merge readiness planner", () => {
     const baseIdentityInput = {
       firstBlockOutRef: `${"aa".repeat(32)}#0`,
       headerHash: "11".repeat(28),
-      currentDaAttestation: "22".repeat(28),
-      requiredDaAttestation: "33".repeat(28),
+      currentDaAvailability: PUBLISHED,
       readyAfterUnixTime: 300,
     };
 
@@ -134,8 +164,9 @@ describe("merge readiness planner", () => {
       [
         baseIdentityInput.firstBlockOutRef,
         baseIdentityInput.headerHash,
-        baseIdentityInput.currentDaAttestation,
-        baseIdentityInput.requiredDaAttestation,
+        SDK.daAvailabilityStateQueueStatusIdentity(
+          baseIdentityInput.currentDaAvailability,
+        ),
         baseIdentityInput.readyAfterUnixTime.toString(),
       ].join("|"),
     );
@@ -143,8 +174,12 @@ describe("merge readiness planner", () => {
     const variants = [
       { firstBlockOutRef: `${"bb".repeat(32)}#0` },
       { headerHash: "44".repeat(28) },
-      { currentDaAttestation: "55".repeat(28) },
-      { requiredDaAttestation: "66".repeat(28) },
+      { currentDaAvailability: SDK.NO_DA_ATTESTATION },
+      {
+        currentDaAvailability: {
+          Published: { terminal_commitment: "66".repeat(32) },
+        },
+      },
       { readyAfterUnixTime: 301 },
     ];
     for (const variant of variants) {
@@ -162,8 +197,7 @@ describe("merge readiness planner", () => {
       classifyOldestQueuedBlockCandidateReadiness({
         firstBlockOutRef: `${"aa".repeat(32)}#0`,
         headerHash: "11".repeat(28),
-        currentDaAttestation: "22".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: PUBLISHED,
         validFromUnixTime: 280,
         readyAfterUnixTime: 300,
         nowUnixTime: 250,
@@ -174,8 +208,7 @@ describe("merge readiness planner", () => {
       candidateIdentity: [
         `${"aa".repeat(32)}#0`,
         "11".repeat(28),
-        "22".repeat(28),
-        "22".repeat(28),
+        SDK.daAvailabilityStateQueueStatusIdentity(PUBLISHED),
         "300",
       ].join("|"),
       validFromUnixTime: 280,
@@ -198,8 +231,7 @@ describe("merge readiness planner", () => {
       classifyOldestQueuedBlockCandidateReadiness({
         firstBlockOutRef: `${"aa".repeat(32)}#0`,
         headerHash: "11".repeat(28),
-        currentDaAttestation: "22".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: PUBLISHED,
         validFromUnixTime: 280,
         readyAfterUnixTime: 300,
         nowUnixTime: 250,

@@ -1,6 +1,20 @@
+/**
+ * `zero-input` step-01 submitter.
+ *
+ * **Re-derived onto the flat field commitments by #604.** Thread state now
+ * carries the §2.5 anchor — the disputed transaction's **id** — where it used to
+ * carry that transaction's `spend_inputs_hash`. Step-02 re-opens field 0 through
+ * the §8.8 door rather than comparing a forwarded commitment against the pinned
+ * empty-field constant, and under §4's plain hashing that constant is the same
+ * 32 bytes in all nine slots, so the forwarded hash could not say *which* field
+ * was empty. The rebind is recorded once in
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ */
+
 import {
   HUB_ORACLE_ASSET_NAME,
   nativeTxBodyHasZeroInputViolation,
+  type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -18,8 +32,18 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
+import {
+  chunkedMembershipClaimRedeemer,
+  chunkedVerifyWithdrawalScript,
+  derivedChunkReferenceIndices,
+  type PublishedProofChunk,
+  requireBuiltChunkReferenceIndices,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -47,6 +71,16 @@ import {
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
+} from "./witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitZeroInputStep01CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -76,11 +110,20 @@ export type SubmitZeroInputStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly nativeTxId: string;
-  readonly badTxSpendInputsHash: string;
+  /**
+   * The §2.5 anchor this step wrote into thread state. Equal to `nativeTxId` by
+   * construction — reported under its own name because it is what step-02 will
+   * read back and open field 0 against, where `nativeTxId` merely says which
+   * transaction was challenged.
+   */
+  readonly badTxId: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
+  /** Which route the membership opening took to L1 (issue #545). */
+  readonly proofCarriage: "redeemer" | "published-chunks";
+  readonly publishedChunkOutRefs: readonly string[];
   readonly awaitedConfirmation: boolean;
 };
 
@@ -100,6 +143,10 @@ export const submitZeroInputStep01 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  publishedProofChunks,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -110,6 +157,17 @@ export const submitZeroInputStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  /**
+   * Chunks published by `publishProofChunksV1`, in proof order. When present
+   * the membership proof reaches L1 through them and never enters this
+   * transaction (issue #545).
+   */
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
+  /** The mandatory published step-01 reference script. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Required published witness reference scripts for this transaction. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitZeroInputStep01Result> => {
   const resolvedDeployment = await resolveZeroInputDeploymentContracts({
@@ -173,16 +231,28 @@ export const submitZeroInputStep01 = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  if (!nativeTxBodyHasZeroInputViolation({ txBody: txInclusion.nativeTx.body })) {
+  if (
+    !nativeTxBodyHasZeroInputViolation({ txBody: txInclusion.nativeTx.body })
+  ) {
     throw new Error(
       "--tx-inclusion.nativeTx spends at least one input, so it does not violate the zero-input ledger rule.",
     );
   }
-  const badTxSpendInputsHash = txInclusion.nativeTx.body.spend_inputs_hash;
+  // §2.5's anchor, read off the compact structure the block's
+  // `transactions_root` committed — the only provenance `BodyAnchor` accepts.
+  // `requireNativeTxMatchesCompactCbor` above is what makes this id the
+  // committed transaction's rather than the prover's.
+  const badTxId = txInclusion.nativeTxId;
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
+  const chunks = publishedProofChunks ?? [];
+  const carriedByChunks = chunks.length > 0;
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
+  );
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -191,10 +261,45 @@ export const submitZeroInputStep01 = async ({
     network,
     phasMembershipScript,
   );
+  // On the chunked route the merkelized published-chunk verifier stands in for
+  // the `phas` membership withdrawal; the proof stays in the referenced chunks.
+  const chunkedVerifyScript = chunkedVerifyWithdrawalScript(blueprint);
+  const chunkedVerifyRewardAddress = phasMembershipRewardAddress(
+    network,
+    chunkedVerifyScript,
+  );
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
+    script: contracts.zeroInput.steps[0].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "zero-input step 01 validator",
+  });
+  const inclusionCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriage({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: "zero-input step 01 chunked verify",
+      })
+    : witnessWithdrawalValidatorCarriage({
+        script: phasMembershipScript,
+        referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        label: "zero-input step 01 PHAS membership",
+      });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    ...stepScriptCarriage.referenceInputs,
+    ...inclusionCarriage.referenceInputs,
+  ];
+  const resolvedChunkIndices = derivedChunkReferenceIndices({
+    referenceInputs,
+    chunks,
+    label: "zero-input step 01",
+  });
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: { bad_tx_spend_inputs_hash: badTxSpendInputsHash },
+      data: { bad_tx_id: badTxId },
     },
     ZeroInputStep02Datum,
   );
@@ -225,52 +330,84 @@ export const submitZeroInputStep01 = async ({
       ),
     };
     resolvedLayout = layout;
-    return Data.to(
-      {
-        Continue: [
-          {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              layout.stateQueueNodeRefInputIndex,
-            native_tx_id: txInclusion.nativeTxId,
-            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-            transactions_phas_root: txInclusion.transactionsPhasRoot,
-            tx_membership_proof: txInclusion.txMembershipProof,
-            inclusion_proof_script_withdraw_redeemer_index:
-              requireWithdrawalRedeemerIndex(
-                ctx,
-                phasRewardAddress,
-                "zero-input step 01 PHAS membership",
-              ),
-          },
-        ],
-      },
-      ZeroInputStep01SpendRedeemer,
-    );
+    const common = {
+      input_index: layout.inputIndex,
+      output_index: layout.outputIndex,
+      hub_ref_input_index: layout.hubOracleRefInputIndex,
+      state_queue_node_ref_input_index: layout.stateQueueNodeRefInputIndex,
+      native_tx_id: txInclusion.nativeTxId,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
+      transactions_phas_root: txInclusion.transactionsPhasRoot,
+    };
+    // The prover chooses the carriage. Published chunks are the route for a
+    // proof the 16,384-byte envelope cannot carry (issue #545); the redeemer
+    // route stays the cheaper one for every proof that fits.
+    // The canonical order derived above is the order the ledger will present;
+    // re-deriving it from the builder context here proves the two agree.
+    requireBuiltChunkReferenceIndices({
+      ctx,
+      chunks,
+      derived: resolvedChunkIndices,
+      label: "zero-input step 01",
+    });
+    const carriage: NativeTxInclusionCarriage = carriedByChunks
+      ? {
+          PublishedChunkInclusion: [
+            {
+              ...common,
+              ordered_chunk_reference_input_indices: resolvedChunkIndices,
+            },
+          ],
+        }
+      : {
+          RedeemerCarriedInclusion: [
+            {
+              ...common,
+              tx_membership_proof: txInclusion.txMembershipProof,
+              inclusion_proof_script_withdraw_redeemer_index:
+                requireWithdrawalRedeemerIndex(
+                  ctx,
+                  phasRewardAddress,
+                  "zero-input step 01 PHAS membership",
+                ),
+            },
+          ],
+        };
+    return Data.to({ Continue: [carriage] }, ZeroInputStep01SpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasRewardAddress,
-      0n,
-      encodeRawPhasMembershipProofRedeemer({
-        root: txInclusion.transactionsPhasRoot,
-        keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
-        membershipProofCbor: txInclusion.txMembershipProofCbor,
-      }),
-    )
-    .pay.ToContract(
+    .readFrom(referenceInputs);
+  // On the published-chunk route the delegated `phas` invocation disappears
+  // along with the proof: the step verifies the reassembled proof itself.
+  const tx = (
+    carriedByChunks
+      ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+          chunkedMembershipClaimRedeemer({
+            merkleRoot: txInclusion.transactionsPhasRoot,
+            keyBytes: txInclusion.nativeTxId,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
+            orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          })) satisfies BuildTxWithRedeemer)
+      : base.withdraw(
+          phasRewardAddress,
+          0n,
+          encodeRawPhasMembershipProofRedeemer({
+            root: txInclusion.transactionsPhasRoot,
+            keyBytes: txInclusion.nativeTxId,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
+            membershipProofCbor: txInclusion.txMembershipProofCbor,
+          }),
+        )
+  ).pay
+    .ToContract(
       contracts.zeroInput.steps[1].spendingScriptAddress,
       {
         kind: "inline",
@@ -278,18 +415,46 @@ export const submitZeroInputStep01 = async ({
       },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.zeroInput.steps[0].spendingScript)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = inclusionCarriage.attach(stepScriptCarriage.attach(tx));
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve zero-input step 01 layout.",
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof zero-input step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.zeroInput.steps[0].spendingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+        {
+          role: "V1 MPF chunked-verify withdrawal",
+          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+          expectedScript: chunkedVerifyScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `zero-input step 01 provider returned ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -309,13 +474,15 @@ export const submitZeroInputStep01 = async ({
     firstStepAddress: contracts.zeroInput.steps[0].spendingScriptAddress,
     secondStepAddress: contracts.zeroInput.steps[1].spendingScriptAddress,
     nativeTxId: txInclusion.nativeTxId,
-    badTxSpendInputsHash,
+    badTxId,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
+    proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
+    publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
     awaitedConfirmation: awaitConfirmation,
   };
 };
@@ -323,6 +490,9 @@ export const submitZeroInputStep01 = async ({
 export const submitZeroInputStep01FromFiles = async (
   config: SubmitZeroInputStep01CliConfig,
 ): Promise<SubmitZeroInputStep01Result> => {
+  rejectRetiredUnauthenticatedSubmissionRoute({
+    command: "submit-zero-input-step-01",
+  });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
     [
       readJsonFile(config.blueprintPath),

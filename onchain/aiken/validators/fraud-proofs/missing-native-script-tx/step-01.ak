@@ -2,11 +2,13 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{
-  TxBodyAndWitsProvided, cancel, pass_tx_to_next_step,
-}
+use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/missing_native_script_tx/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/missing_native_script_tx/step_02
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardTransaction, MidgardTransactionWitnessSet,
+}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -33,38 +35,38 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          _m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          _header,
-          _bad_tx_id,
-          _bad_tx,
-          bad_tx_field_preimage,
-        <-
-          pass_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            _m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            _header,
+            bad_tx_id,
+            bad_tx_view
+          <- pass_native_tx_to_next_step(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
-        // 2. Both body and witness set of the bad tx must have been provided.
-        expect TxBodyAndWitsProvided(bad_tx_body, bad_tx_wits) =
-          bad_tx_field_preimage
+        expect bad_tx_view.tx_compact.validity_code == 0
 
-        // 3. The UTxO must be produced at next step's script hash with a proper
-        //    state.
+        // 2. The UTxO must be produced at next step's script hash with the bad
+        //    transaction's §2.5 anchor. Steps 02 and 06 open fields 0 and 6 of
+        //    that transaction through the §8.8 door from it. Field 0 needs only
+        //    the id; field 6 needs the `witness_set_hash` too, and this is the
+        //    only step that can supply it — §3's id preimage is the body alone,
+        //    so downstream the value would be a prover's assertion rather than
+        //    a reading of the block-committed structure.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State {
-            bad_tx_inputs_hash: bad_tx_body.spend_inputs,
-            bad_tx_script_wits_hash: bad_tx_wits.script_tx_wits,
-          }
+        let expected_output_state: Data = step_02.State {
+          bad_tx_id,
+          bad_tx_witness_set_hash: bad_tx_view.tx_compact.witness_set_hash,
+        }
         expect output_state_data == expected_output_state
 
         // Done.
@@ -76,4 +78,44 @@ validator main(
   else(_) {
     fail
   }
+}
+
+/// A transaction spending a script-locked output without carrying any script
+/// witness.
+fn missing_native_script_bad_tx() -> MidgardTransaction {
+  let base = fixture.valid_native_tx_v1()
+  MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [],
+    },
+  }
+}
+
+/// Positive binding selector: the bad native-V1 transaction committed under
+/// the block's counted `transactions_root` passes the first step and forwards
+/// its verified id.
+test missing_native_script_tx_step_01_binds_native_v1_block_fixture() {
+  let block = fixture.native_block_fixture_v1(missing_native_script_bad_tx())
+  let expected_output_state: Data = step_02.State {
+    bad_tx_id: block.tx_id,
+    bad_tx_witness_set_hash: block.compact.witness_set_hash,
+  }
+  let l1_tx = fixture.continue_step_l1_tx_v1(
+    block,
+    expected_output_state,
+    block.transactions_phas_root,
+    block.tx_id,
+    block.source_cbor,
+  )
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(fixture.step_datum_without_state()),
+    ct.Continue(fixture.native_inclusion_args_v1(block)),
+    fixture.own_out_ref(),
+    l1_tx,
+  )
 }

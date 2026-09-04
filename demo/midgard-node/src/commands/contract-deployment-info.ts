@@ -13,8 +13,32 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_RELEASE_EVIDENCE_DIGEST,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
+import {
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
+} from "@al-ft/midgard-core/da-transport";
+import {
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  type DeploymentManifestAvailabilityChallenge,
+  type DeploymentManifestCanonicalRational,
+  type DeploymentManifestCardanoProtocolParameters,
+  type DeploymentManifestEconomics,
+  type DeploymentManifestEconomicsProfile,
+  deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
+  makeDeploymentMarker,
+  parseDeploymentManifestAvailabilityChallenge,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  GENESIS_HEADER_HASH,
   type ReferenceScriptAuthPolicyDeploymentInfo,
   type ReferenceScriptAuthPolicyRef,
   type ReferenceScriptAuthTokenTarget,
@@ -28,20 +52,44 @@ import {
 import { Effect } from "effect";
 
 import {
+  computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  parseDeploymentManifestV2Value,
-} from "@/deployment-manifest-v2.js";
-import { writeJsonFileAtomic } from "@/files/atomic-write.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
+  type DeploymentManifestValue,
+  normalizeDeploymentManifestJsonValue,
+  parseDeploymentManifestValue,
+} from "../deployment-manifest.js";
+import {
+  bindDeploymentRunStateToMarker,
+  defaultDeploymentRunStatePath,
+  loadDeploymentRunState,
+  mutateDeploymentRunState,
+  sha256File,
+} from "../e2e/run-state.js";
+import {
+  contractDeploymentInfoPathOverride,
+  daAvailabilityChallengeEnvironmentInput,
+  deploymentEconomicsProfileFromEnvironment,
+} from "../environment.js";
+import { writeJsonFileAtomic } from "../files/atomic-write.js";
+import { normalizeOgmiosHttpUrl } from "../local-ledger-slot.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
+import {
+  loadRealBlueprintSha256,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "../services/index.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
+  deriveOperatorDaParams,
   fetchProtocolDeploymentStatus,
   fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
-import { fetchReferenceScriptUtxosAt } from "@/transactions/reference-scripts.js";
-import { compareOutRefs } from "@/tx-context.js";
+} from "../transactions/initialization.js";
+import { fetchReferenceScriptUtxosAt } from "../transactions/reference-scripts.js";
+import { compareOutRefs } from "../tx-context.js";
 
 export type ContractDeploymentInfoRefScriptUTxO = {
   readonly txHash: string;
@@ -74,10 +122,14 @@ export type DeploymentManifestStepStatus =
   | "failed"
   | "blocked_requires_fresh_redeploy";
 
-export type DeploymentManifestV2 = ContractDeploymentInfo & {
+export type DeploymentManifest = ContractDeploymentInfo & {
   readonly schemaVersion: typeof DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
   readonly manifestId: string;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly consensusProfileDigest: string;
   readonly network: string;
+  readonly cardanoProtocolParameters: DeploymentManifestValue["cardanoProtocolParameters"];
+  readonly genesis: DeploymentManifestValue["genesis"];
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly referenceScriptDeployAddress: string;
@@ -85,19 +137,21 @@ export type DeploymentManifestV2 = ContractDeploymentInfo & {
     readonly txHash: string;
     readonly outputIndex: number;
     readonly outRef: string;
-    readonly status: "prepared" | "consumed_by_init" | "unknown";
+    readonly status: "consumed_by_init";
   };
   readonly referenceScripts: Readonly<
     Record<
       string,
       {
-        readonly status: "confirmed" | "missing";
+        readonly status: "confirmed";
         readonly roleUnit: string;
         readonly scriptHash: string;
-        readonly outRef: string | null;
+        readonly outRef: string;
       }
     >
   >;
+  readonly da: DeploymentManifestValue["da"];
+  readonly proofEvidence: DeploymentManifestValue["proofEvidence"];
   readonly steps: Readonly<
     Record<
       | "prepareHubOracleNonce"
@@ -112,6 +166,15 @@ export type DeploymentManifestV2 = ContractDeploymentInfo & {
       }
     >
   >;
+  readonly validationDispute: {
+    readonly version: number;
+    readonly responseWindowMs: number;
+    readonly maxBisectionRounds: number;
+    readonly maturityMs: number;
+  };
+  readonly l1Finality: DeploymentManifestValue["l1Finality"];
+  readonly economics: DeploymentManifestValue["economics"];
+  readonly availabilityChallenge: DeploymentManifestValue["availabilityChallenge"];
 };
 
 export type DeploymentManifestVerificationReport = {
@@ -129,7 +192,7 @@ export type FinalizedDeploymentIdentity = {
   readonly path: string;
   readonly manifestId: string;
   readonly contractDeploymentInfoSha256: string;
-  readonly manifest: DeploymentManifestV2;
+  readonly manifest: DeploymentManifest;
 };
 
 const DEFAULT_CONTRACT_DEPLOYMENT_INFO_FILENAME =
@@ -158,36 +221,196 @@ type ScriptDescriptor = {
   readonly referenceScriptTargetName?: ReferenceScriptAuthTokenTarget;
 };
 
-const REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME: Readonly<
-  Record<string, ReferenceScriptAuthTokenTarget>
-> = {
-  referenceScriptAuthMint: "reference-script-auth minting",
-  hubOracleMint: "hub-oracle minting",
-  daParamsGovernorSpend: "da-params-governor spending",
-  daParamsGovernorMint: "da-params-governor minting",
-  daAttestationSpend: "da-attestation spending",
-  daAttestationMint: "da-attestation minting",
-  stateQueueSpend: "state-queue spending",
-  stateQueueMint: "state-queue minting",
-  schedulerSpend: "scheduler spending",
-  schedulerMint: "scheduler minting",
-  registeredOperatorsSpend: "registered-operators spending",
-  registeredOperatorsMint: "registered-operators minting",
-  activeOperatorsSpend: "active-operators spending",
-  activeOperatorsMint: "active-operators minting",
-  retiredOperatorsSpend: "retired-operators spending",
-  retiredOperatorsMint: "retired-operators minting",
-  fraudProofCatalogueMint: "fraud-proof-catalogue minting",
-  depositSpend: "deposit spending",
-  depositMint: "deposit minting",
-  withdrawalSpend: "withdrawal spending",
-  withdrawalMint: "withdrawal minting",
-  settlementMint: "settlement minting",
-  payoutSpend: "payout spending",
-  payoutMint: "payout minting",
-  reserveSpend: "reserve spending",
-  reserveWithdraw: "reserve observer",
-  phasMembershipWithdraw: "membership proof withdrawal",
+const REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME = Object.freeze(
+  Object.fromEntries(
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([targetName, contractName]) => {
+        if (!(targetName in SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)) {
+          throw new Error(
+            `Deployment manifest reference-script role is not registered by the SDK: ${targetName}`,
+          );
+        }
+        return [contractName, targetName as ReferenceScriptAuthTokenTarget];
+      },
+    ),
+  ) as Readonly<Record<string, ReferenceScriptAuthTokenTarget>>,
+);
+
+const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "nativeScriptDecoding",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "withdrawalMistag",
+  "doubleWithdraw",
+  "crossBlockDuplicateEvent",
+  "l2TxMistag",
+  "withdrawnInput",
+  "valueNotPreserved",
+  "inputSetUniqueness",
+  "mintAuthorization",
+  "networkId",
+  "missingNativeScriptUtxo",
+  "nativeScriptInvalid",
+  "minAda",
+  "fieldPreimageLengthMismatch",
+  "fieldItemWidthIllegal",
+  "witnessScriptDecoding",
+  "scriptIntegrityHashMissing",
+  "transactionOutputNonCanonical",
+  "resolvedOutputNonCanonical",
+  "mintDeclaredAssetLimit",
+  "spendInputSignerMissing",
+  "protectedOutputSignerMissing",
+  "observersForbiddenOnUntaggedNetwork",
+  "observerOrderInvalid",
+  "redeemerCanonicity",
+  "outputReferenceScriptDecoding",
+  "executionSourceScriptDecoding",
+  "receivePurposeLanguage",
+  "unusedScriptWitness",
+  "unusedRedeemer",
+  "executionNativeScriptInvalid",
+  "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
+  "missingScriptSource",
+  "missingRedeemer",
+] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
+
+const upperFirst = (value: string): string =>
+  `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+
+const faultProofStepContractName = (
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  stepIndex: number,
+): string => {
+  if (category === "nativeScriptDecoding") {
+    const names = [
+      "fraudProofNativeScriptDecoding",
+      "fraudProofNativeScriptDecodingStep02",
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+      "fraudProofNativeScriptDecodingStep04",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined) {
+      throw new Error(
+        `native-script-decoding exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    }
+    return name;
+  }
+  if (category === "fieldPreimageLengthMismatch") {
+    const names = [
+      "fraudProofFieldPreimageLengthMismatch",
+      "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+      "fraudProofFieldPreimageLengthMismatchStep02Forced",
+      "fraudProofFieldPreimageLengthMismatchStep03",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `field-preimage-length-mismatch exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "scriptIntegrityHashMissing") {
+    const names = [
+      "fraudProofScriptIntegrityHashMissing",
+      "fraudProofScriptIntegrityHashMissingStep02",
+      "fraudProofScriptIntegrityHashMissingStep03",
+      "fraudProofScriptIntegrityHashMissingScriptGrammar",
+      "fraudProofScriptIntegrityHashMissingScriptScan",
+      "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+      "fraudProofScriptIntegrityHashMissingStep04",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `script-integrity-hash-missing exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "missingRedeemer") {
+    const names = [
+      "fraudProofMissingRedeemer",
+      "fraudProofMissingRedeemerStep02",
+      "fraudProofMissingRedeemerStep02a",
+      "fraudProofMissingRedeemerStep02b",
+      "fraudProofMissingRedeemerStep03",
+      "fraudProofMissingRedeemerStep04",
+      "fraudProofMissingRedeemerStep05",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `missing-redeemer exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "unusedRedeemer") {
+    const names = [
+      "fraudProofUnusedRedeemer",
+      "fraudProofUnusedRedeemerStep02",
+      "fraudProofUnusedRedeemerStep02a",
+      "fraudProofUnusedRedeemerStep02b",
+      "fraudProofUnusedRedeemerStep02c",
+      "fraudProofUnusedRedeemerStep03",
+      "fraudProofUnusedRedeemerStep04",
+      "fraudProofUnusedRedeemerStep05",
+      "fraudProofUnusedRedeemerStep06",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `unused-redeemer exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "executionNativeScriptInvalid") {
+    const names = [
+      "fraudProofExecutionNativeScriptInvalid",
+      "fraudProofExecutionNativeScriptInvalidStep02",
+      "fraudProofExecutionNativeScriptInvalidStep03",
+      "fraudProofExecutionNativeScriptInvalidStep04",
+      "fraudProofExecutionNativeScriptInvalidStep05",
+      "fraudProofExecutionNativeScriptInvalidStep06",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+      "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `execution-native-script-invalid exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  return `fraudProof${upperFirst(category)}${
+    stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
+  }`;
+};
+
+const referenceScriptTargetForContract = (
+  contractName: string,
+): ReferenceScriptAuthTokenTarget => {
+  const targetName = REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME[contractName];
+  if (targetName === undefined) {
+    throw new Error(
+      `Contract is missing a canonical reference-script role: ${contractName}`,
+    );
+  }
+  return targetName;
 };
 
 const mintDescriptor = (
@@ -200,7 +423,7 @@ const mintDescriptor = (
   scriptHash: validator.policyId,
   contract: {
     type: validator.mintingScript.type,
-    cborHex: validator.mintingScriptCBOR,
+    cborHex: validator.mintingScript.script,
   },
   ...(referenceScriptTargetName === undefined
     ? {}
@@ -217,7 +440,7 @@ const spendDescriptor = (
   scriptHash: validator.spendingScriptHash,
   contract: {
     type: validator.spendingScript.type,
-    cborHex: validator.spendingScriptCBOR,
+    cborHex: validator.spendingScript.script,
   },
   ...(referenceScriptTargetName === undefined
     ? {}
@@ -234,7 +457,7 @@ const withdrawalDescriptor = (
   scriptHash: validator.withdrawalScriptHash,
   contract: {
     type: validator.withdrawalScript.type,
-    cborHex: validator.withdrawalScriptCBOR,
+    cborHex: validator.withdrawalScript.script,
   },
   ...(referenceScriptTargetName === undefined
     ? {}
@@ -257,6 +480,139 @@ const phasMembershipDescriptor = (
       ? {}
       : { referenceScriptTargetName }),
   };
+};
+
+const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
+  "fraudProofTransitionTraceControl",
+  "fraudProofTransitionTraceSource",
+  "fraudProofTransitionTraceWithdrawal",
+  "fraudProofTransitionTraceForced",
+  "fraudProofTransitionTraceAcceptedTransaction",
+  "fraudProofTransitionTraceDeposit",
+  "fraudProofTransitionTraceL1Event",
+  "fraudProofTransitionTraceDuplicate",
+] as const;
+
+/**
+ * The prefix of a compiled fault-proof chain that the canonical deployment ABI
+ * actually registers.
+ *
+ * `midgard-core`'s `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` names five
+ * `missingNativeScriptUtxo` steps and three `nativeScriptInvalid` steps, while
+ * `onchain/aiken` compiles seven and five and `midgard-fault-proofs`'s runtime
+ * submits against `fraudProofMissingNativeScriptUtxoStep06`/`Step07` and
+ * `fraudProofNativeScriptInvalidStep04`/`Step05`. `validateContracts` takes an
+ * EXACT key set, so a manifest carrying those four surplus steps is rejected
+ * outright and one omitting the five/three is rejected too — this builder can
+ * only emit what the ABI names. Extending the ABI moves the manifest identity
+ * for `midgard-core`, `midgard-watcher`, `da-committee-node` and this package,
+ * so it is not a change this module can make on its own.
+ *
+ * This is a BOUND, not a filter. It only ever drops a TAIL of unregistered
+ * steps: an unregistered step with a registered step after it, or a chain whose
+ * very first step is unregistered, still fails closed here.
+ */
+const abiRegisteredChainSteps = <T>(
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  steps: readonly T[],
+): readonly T[] => {
+  const registered = steps.map(
+    (_, stepIndex) =>
+      REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME[
+        faultProofStepContractName(category, stepIndex)
+      ] !== undefined,
+  );
+  const firstUnregistered = registered.indexOf(false);
+  if (firstUnregistered === -1) {
+    return steps;
+  }
+  if (firstUnregistered === 0) {
+    throw new Error(
+      `Fault-proof category ${category} has no canonical reference-script role for its first step`,
+    );
+  }
+  if (registered.lastIndexOf(true) > firstUnregistered) {
+    throw new Error(
+      `Fault-proof category ${category} registers a step after unregistered step ${(firstUnregistered + 1).toString()}`,
+    );
+  }
+  return steps.slice(0, firstUnregistered);
+};
+
+const registeredFaultProofScriptDescriptors = (
+  contracts: SDK.MidgardValidators,
+): readonly ScriptDescriptor[] => [
+  ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
+    abiRegisteredChainSteps(
+      category,
+      contracts.fraudProofContracts[category].steps,
+    ).map((validator, stepIndex) => {
+      const contractName = faultProofStepContractName(category, stepIndex);
+      return spendDescriptor(
+        contractName,
+        validator,
+        referenceScriptTargetForContract(contractName),
+      );
+    }),
+  ),
+  spendDescriptor(
+    "fraudProofTransitionTrace",
+    contracts.fraudProofContracts.transitionTrace.route,
+    referenceScriptTargetForContract("fraudProofTransitionTrace"),
+  ),
+  ...contracts.fraudProofContracts.transitionTrace.finals.map(
+    (validator, index) => {
+      const contractName = TRANSITION_TRACE_FINAL_CONTRACT_NAMES[index];
+      return spendDescriptor(
+        contractName,
+        validator,
+        referenceScriptTargetForContract(contractName),
+      );
+    },
+  ),
+];
+
+const legacyFaultProofMissingStepDescriptors = (
+  contracts: SDK.MidgardValidators,
+): readonly ScriptDescriptor[] => {
+  const families = [
+    ["fraudProofDoubleSpend", contracts.fraudProofContracts.doubleSpend],
+    [
+      "fraudProofNonExistentInput",
+      contracts.fraudProofContracts.nonExistentInput,
+    ],
+    [
+      "fraudProofNonExistentInputNoIndex",
+      contracts.fraudProofContracts.nonExistentInputNoIndex,
+    ],
+    ["fraudProofInvalidRange", contracts.fraudProofContracts.invalidRange],
+    ["fraudProofZeroInput", contracts.fraudProofContracts.zeroInput],
+    ["fraudProofDaHashPreimage", contracts.fraudProofContracts.daHashPreimage],
+    [
+      "fraudProofNoReferenceInput",
+      contracts.fraudProofContracts.noReferenceInput,
+    ],
+    [
+      "fraudProofReferenceInputNoIdx",
+      contracts.fraudProofContracts.referenceInputNoIdx,
+    ],
+    [
+      "fraudProofInvalidSignature",
+      contracts.fraudProofContracts.invalidSignature,
+    ],
+  ] as const;
+  return families.flatMap(([firstStepContractName, chain]) =>
+    chain.steps.slice(1).map((validator, index) => {
+      const contractName = `${firstStepContractName}Step${(index + 2)
+        .toString()
+        .padStart(2, "0")}`;
+      return spendDescriptor(
+        contractName,
+        validator,
+        referenceScriptTargetForContract(contractName),
+      );
+    }),
+  );
 };
 
 const fetchLiveReferenceScriptUtxos = (): Effect.Effect<
@@ -288,7 +644,6 @@ export const buildReferenceScriptOutRefMap = (
   descriptors: readonly ScriptDescriptor[],
   authPolicy: ReferenceScriptAuthPolicyRef,
 ): ReadonlyMap<string, ContractDeploymentInfoRefScriptUTxO> => {
-  const sorted = [...utxos].sort(compareOutRefs).reverse();
   const byDescriptorName = new Map<
     string,
     ContractDeploymentInfoRefScriptUTxO
@@ -301,32 +656,67 @@ export const buildReferenceScriptOutRefMap = (
       authPolicy.policyId,
       descriptor.referenceScriptTargetName,
     );
-    for (const utxo of sorted) {
-      if (utxo.scriptRef == null) {
-        continue;
-      }
-      if (utxo.assets[roleUnit] !== 1n) {
-        continue;
-      }
-      if (validatorToScriptHash(utxo.scriptRef) !== descriptor.scriptHash) {
-        continue;
-      }
-      byDescriptorName.set(descriptor.name, {
-        txHash: utxo.txHash,
-        outputIndex: utxo.outputIndex,
-      });
-      break;
+    const candidates = utxos.filter(
+      (utxo) => (utxo.assets[roleUnit] ?? 0n) !== 0n,
+    );
+    if (candidates.length === 0) {
+      continue;
     }
+    if (candidates.length !== 1) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} is ambiguous: expected exactly one live ${roleUnit} UTxO, found ${candidates.length.toString()}`,
+      );
+    }
+    const candidate = candidates[0]!;
+    if (candidate.assets[roleUnit] !== 1n) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} must carry exactly one ${roleUnit} token`,
+      );
+    }
+    const authPolicyUnits = Object.entries(candidate.assets).filter(
+      ([unit, quantity]) =>
+        unit.startsWith(authPolicy.policyId) && quantity !== 0n,
+    );
+    if (authPolicyUnits.length !== 1 || authPolicyUnits[0]?.[0] !== roleUnit) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} UTxO must carry no other ${authPolicy.policyId} role token`,
+      );
+    }
+    if (candidate.scriptRef == null) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} token is not attached to a reference script`,
+      );
+    }
+    const observedScriptHash = validatorToScriptHash(candidate.scriptRef);
+    if (observedScriptHash !== descriptor.scriptHash) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} script hash mismatch: expected ${descriptor.scriptHash}, found ${observedScriptHash}`,
+      );
+    }
+    byDescriptorName.set(descriptor.name, {
+      txHash: candidate.txHash,
+      outputIndex: candidate.outputIndex,
+    });
   }
   return byDescriptorName;
 };
 
 const collectScriptDescriptors = (
   contracts: SDK.MidgardValidators,
+  referenceScriptAuthPolicy?: ReferenceScriptAuthPolicyDeploymentInfo,
 ): readonly ScriptDescriptor[] => [
   mintDescriptor(
     "referenceScriptAuthMint",
-    contracts.referenceScriptAuth,
+    referenceScriptAuthPolicy === undefined
+      ? contracts.referenceScriptAuth
+      : {
+          mintingScriptCBOR: referenceScriptAuthPolicy.nativeScript.cborHex,
+          mintingScript: {
+            type: "Native",
+            script: referenceScriptAuthPolicy.nativeScript.cborHex,
+          },
+          policyId: referenceScriptAuthPolicy.policyId,
+        },
     "reference-script-auth minting",
   ),
   mintDescriptor("hubOracleMint", contracts.hubOracle, "hub-oracle minting"),
@@ -356,6 +746,31 @@ const collectScriptDescriptors = (
     "state-queue spending",
   ),
   mintDescriptor("stateQueueMint", contracts.stateQueue, "state-queue minting"),
+  withdrawalDescriptor(
+    "stateQueueCommitWithdraw",
+    contracts.stateQueue.yields.commit,
+    "state-queue commit withdrawal",
+  ),
+  withdrawalDescriptor(
+    "stateQueueUnattestedTimeoutWithdraw",
+    contracts.stateQueue.yields.unattestedTimeout,
+    "state-queue unattested-timeout withdrawal",
+  ),
+  withdrawalDescriptor(
+    "stateQueueUnavailableTimeoutWithdraw",
+    contracts.stateQueue.yields.unavailableTimeout,
+    "state-queue unavailable-timeout withdrawal",
+  ),
+  withdrawalDescriptor(
+    "stateQueueFraudRemovalWithdraw",
+    contracts.stateQueue.yields.fraudRemoval,
+    "state-queue fraud-removal withdrawal",
+  ),
+  withdrawalDescriptor(
+    "stateQueueMergeWithdraw",
+    contracts.stateQueue.yields.merge,
+    "state-queue merge withdrawal",
+  ),
   spendDescriptor("schedulerSpend", contracts.scheduler, "scheduler spending"),
   mintDescriptor("schedulerMint", contracts.scheduler, "scheduler minting"),
   spendDescriptor(
@@ -397,7 +812,11 @@ const collectScriptDescriptors = (
     "fraud-proof-catalogue minting",
   ),
   spendDescriptor("fraudProofSpend", contracts.fraudProof),
-  mintDescriptor("fraudProofMint", contracts.fraudProof),
+  mintDescriptor(
+    "fraudProofMint",
+    contracts.fraudProof,
+    "V1 fraud-proof token minting",
+  ),
   spendDescriptor("depositSpend", contracts.deposit, "deposit spending"),
   mintDescriptor("depositMint", contracts.deposit, "deposit minting"),
   spendDescriptor(
@@ -408,6 +827,21 @@ const collectScriptDescriptors = (
   mintDescriptor("withdrawalMint", contracts.withdrawal, "withdrawal minting"),
   spendDescriptor("txOrderSpend", contracts.txOrder),
   mintDescriptor("txOrderMint", contracts.txOrder),
+  spendDescriptor(
+    "fieldPreimageCertificateSpend",
+    contracts.fieldPreimageCertificate,
+    "V1 field-preimage certificate",
+  ),
+  mintDescriptor(
+    "fieldPreimageCertificateMint",
+    contracts.fieldPreimageCertificate,
+    "V1 field-preimage certificate minting",
+  ),
+  spendDescriptor(
+    "cekProgramMaterialSpend",
+    contracts.cekProgramMaterial,
+    "V1 immutable CEK program-material publication",
+  ),
   spendDescriptor("settlementSpend", contracts.settlement),
   mintDescriptor("settlementMint", contracts.settlement, "settlement minting"),
   spendDescriptor("payoutSpend", contracts.payout, "payout spending"),
@@ -419,24 +853,126 @@ const collectScriptDescriptors = (
     "reserve observer",
   ),
   phasMembershipDescriptor("membership proof withdrawal"),
-  spendDescriptor("fraudProofDoubleSpend", contracts.fraudProofs.doubleSpend),
+  spendDescriptor(
+    "fraudProofDoubleSpend",
+    contracts.fraudProofs.doubleSpend,
+    "V1 fraud-proof double-spend step-01",
+  ),
   spendDescriptor(
     "fraudProofNonExistentInput",
     contracts.fraudProofs.nonExistentInput,
+    "V1 fraud-proof non-existent-input step-01",
   ),
   spendDescriptor(
     "fraudProofNonExistentInputNoIndex",
     contracts.fraudProofs.nonExistentInputNoIndex,
+    "V1 fraud-proof non-existent-input-no-index step-01",
   ),
-  spendDescriptor("fraudProofInvalidRange", contracts.fraudProofs.invalidRange),
   spendDescriptor(
-    "fraudProofTransitionTrace",
-    contracts.fraudProofs.transitionTrace,
+    "fraudProofInvalidRange",
+    contracts.fraudProofs.invalidRange,
+    "V1 fraud-proof invalid-range step-01",
   ),
-  spendDescriptor("fraudProofZeroInput", contracts.fraudProofs.zeroInput),
+  spendDescriptor(
+    "fraudProofZeroInput",
+    contracts.fraudProofs.zeroInput,
+    "V1 fraud-proof zero-input step-01",
+  ),
+  spendDescriptor(
+    "fraudProofDaHashPreimage",
+    contracts.fraudProofs.daHashPreimage,
+    "V1 fraud-proof da-hash-preimage step-01",
+  ),
+  spendDescriptor(
+    "fraudProofNoReferenceInput",
+    contracts.fraudProofs.noReferenceInput,
+    "V1 fraud-proof no-reference-input step-01",
+  ),
+  spendDescriptor(
+    "fraudProofReferenceInputNoIdx",
+    contracts.fraudProofs.referenceInputNoIdx,
+    "V1 fraud-proof reference-input-no-idx step-01",
+  ),
+  spendDescriptor(
+    "fraudProofInvalidSignature",
+    contracts.fraudProofs.invalidSignature,
+    "V1 fraud-proof invalid-signature step-01",
+  ),
+  spendDescriptor(
+    "validationTraceDispute",
+    contracts.fraudProofs.validationTraceDispute,
+    "V1 validation-trace dispute",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeSource",
+    contracts.fraudProofs.validationTraceDispute.source,
+    "V1 validation-trace source",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeGame",
+    contracts.fraudProofs.validationTraceDispute.game,
+    "V1 validation-trace game",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeBoundary",
+    contracts.fraudProofs.validationTraceDispute.boundary,
+    "V1 validation-trace boundary",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeTimeout",
+    contracts.fraudProofs.validationTraceDispute.timeout,
+    "V1 validation-trace timeout",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeAward",
+    contracts.fraudProofs.validationTraceDispute.award,
+    "V1 validation-trace award",
+  ),
+  ...registeredFaultProofScriptDescriptors(contracts),
+  mintDescriptor(
+    "computationThreadMint",
+    contracts.computationThread,
+    "V1 fraud-proof computation-thread minting",
+  ),
+  withdrawalDescriptor(
+    "chunkedVerifyWithdraw",
+    contracts.chunkedVerify,
+    "V1 MPF chunked-verify withdrawal",
+  ),
+  withdrawalDescriptor(
+    "pexcludesWithdraw",
+    contracts.pexcludes,
+    "V1 MPF pexcludes withdrawal",
+  ),
+  ...legacyFaultProofMissingStepDescriptors(contracts),
+  withdrawalDescriptor(
+    "fraudProofMinAdaStep02TxWithdraw",
+    contracts.fraudProofContracts.minAda.yields.tx,
+    "V1 fraud-proof min-ada step-02 tx yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofMinAdaStep02UtxoWithdraw",
+    contracts.fraudProofContracts.minAda.yields.utxo,
+    "V1 fraud-proof min-ada step-02 UTxO yield",
+  ),
+  spendDescriptor(
+    "correctionLockSpend",
+    contracts.correctionLock,
+    "correction-lock spending",
+  ),
+  spendDescriptor(
+    "availabilityChallengeSpend",
+    contracts.availabilityChallenge,
+    "availability-challenge spending",
+  ),
+  mintDescriptor(
+    "availabilityChallengeMint",
+    contracts.availabilityChallenge,
+    "availability-challenge minting",
+  ),
 ];
 
-const defaultSteps = (): DeploymentManifestV2["steps"] => ({
+const defaultSteps = (): DeploymentManifest["steps"] => ({
   prepareHubOracleNonce: { status: "pending" },
   deployNodeRuntimeReferenceScripts: { status: "pending" },
   initProtocol: { status: "pending" },
@@ -447,8 +983,8 @@ const defaultSteps = (): DeploymentManifestV2["steps"] => ({
 
 const buildReferenceScriptRecords = (
   deploymentInfo: ContractDeploymentInfo,
-): DeploymentManifestV2["referenceScripts"] => {
-  const entries: [string, DeploymentManifestV2["referenceScripts"][string]][] =
+): DeploymentManifest["referenceScripts"] => {
+  const entries: [string, DeploymentManifest["referenceScripts"][string]][] =
     [];
   for (const [contractName, entry] of Object.entries(
     deploymentInfo.contracts,
@@ -458,19 +994,21 @@ const buildReferenceScriptRecords = (
       continue;
     }
     const refScript = entry.refScriptUTxO;
+    if (refScript === null) {
+      throw new Error(
+        `Cannot finalize DeploymentManifestV1 without reference script ${targetName}`,
+      );
+    }
     entries.push([
       targetName,
       {
-        status: refScript === null ? "missing" : "confirmed",
+        status: "confirmed",
         roleUnit: referenceScriptAuthUnit(
           deploymentInfo.referenceScriptAuthPolicy.policyId,
           targetName,
         ),
         scriptHash: entry.scriptHash,
-        outRef:
-          refScript === null
-            ? null
-            : `${refScript.txHash}#${refScript.outputIndex.toString()}`,
+        outRef: `${refScript.txHash}#${refScript.outputIndex.toString()}`,
       },
     ]);
   }
@@ -481,14 +1019,350 @@ const buildReferenceScriptRecords = (
 
 export type DeploymentManifestBuildContext = {
   readonly network: string;
+  readonly cardanoProtocolParameters: DeploymentManifestValue["cardanoProtocolParameters"];
+  readonly genesis: DeploymentManifestValue["genesis"];
+  readonly da: DeploymentManifestValue["da"];
+  readonly proofEvidence: DeploymentManifestValue["proofEvidence"];
+  readonly economics: DeploymentManifestEconomics;
+  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
   readonly referenceScriptDeployAddress: string;
   readonly hubOracleOneShotTxHash: string;
   readonly hubOracleOneShotOutputIndex: number;
-  readonly hubOracleOneShotStatus?: DeploymentManifestV2["hubOracleOneShot"]["status"];
+  readonly hubOracleOneShotStatus?: DeploymentManifest["hubOracleOneShot"]["status"];
   readonly now?: Date;
-  readonly existingManifest?: DeploymentManifestV2;
-  readonly steps?: Partial<DeploymentManifestV2["steps"]>;
+  readonly existingManifest?: DeploymentManifest;
+  readonly steps?: Partial<DeploymentManifest["steps"]>;
 };
+
+export type DeploymentManifestIdentityContext = Pick<
+  DeploymentManifestBuildContext,
+  | "cardanoProtocolParameters"
+  | "genesis"
+  | "da"
+  | "proofEvidence"
+  | "economics"
+  | "availabilityChallenge"
+>;
+
+const configuredDeploymentEconomics = (): DeploymentManifestEconomics =>
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
+    deploymentEconomicsProfileFromEnvironment()
+  ];
+
+const configuredAvailabilityChallenge =
+  (): DeploymentManifestAvailabilityChallenge =>
+    parseDeploymentManifestAvailabilityChallenge(
+      daAvailabilityChallengeEnvironmentInput(
+        (name) => `${name} must be an explicit positive decimal integer`,
+      ),
+    );
+
+const protocolRecord = (
+  value: unknown,
+  field: string,
+): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${field} must be an object`);
+  }
+  return value as Record<string, unknown>;
+};
+
+const protocolNatural = (value: unknown, field: string): string => {
+  if (typeof value === "bigint" && value >= 0n) return value.toString(10);
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return value.toString(10);
+  }
+  if (typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value)) {
+    return value;
+  }
+  throw new Error(`${field} must be a canonical natural`);
+};
+
+const protocolGcd = (left: bigint, right: bigint): bigint => {
+  let a = left < 0n ? -left : left;
+  let b = right < 0n ? -right : right;
+  while (b !== 0n) {
+    const remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return a;
+};
+
+const protocolRational = (
+  value: unknown,
+  field: string,
+): DeploymentManifestCanonicalRational => {
+  let numerator: bigint;
+  let denominator: bigint;
+  if (typeof value === "string" && /^[0-9]+\/[1-9][0-9]*$/u.test(value)) {
+    const [rawNumerator, rawDenominator] = value.split("/") as [string, string];
+    numerator = BigInt(rawNumerator);
+    denominator = BigInt(rawDenominator);
+  } else if (
+    (typeof value === "number" && Number.isFinite(value) && value >= 0) ||
+    (typeof value === "string" &&
+      /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(value))
+  ) {
+    const decimal = typeof value === "number" ? value.toString() : value;
+    if (/e/i.test(decimal)) {
+      throw new Error(`${field} must not use exponent notation`);
+    }
+    const [whole, fractional = ""] = decimal.split(".") as [string, string?];
+    denominator = 10n ** BigInt(fractional.length);
+    numerator = BigInt(`${whole}${fractional}`);
+  } else {
+    throw new Error(`${field} must be a nonnegative exact rational`);
+  }
+  if (denominator <= 0n)
+    throw new Error(`${field} denominator must be positive`);
+  const divisor = protocolGcd(numerator, denominator);
+  return Object.freeze({
+    numerator: (numerator / divisor).toString(10),
+    denominator: (denominator / divisor).toString(10),
+  });
+};
+
+const sameRational = (
+  left: DeploymentManifestCanonicalRational,
+  right: DeploymentManifestCanonicalRational,
+): boolean =>
+  left.numerator === right.numerator && left.denominator === right.denominator;
+
+const exactProtocolParameterSnapshot = (
+  providerValue: unknown,
+  rawOgmiosValue: unknown,
+): DeploymentManifestCardanoProtocolParameters => {
+  const provider = protocolRecord(providerValue, "Lucid protocol parameters");
+  const snapshot =
+    deriveDeploymentManifestCardanoProtocolParametersFromOgmios(rawOgmiosValue);
+  const providerChecks: readonly [string, string][] = Object.freeze([
+    [protocolNatural(provider.minFeeA, "provider.minFeeA"), snapshot.minFeeA],
+    [protocolNatural(provider.minFeeB, "provider.minFeeB"), snapshot.minFeeB],
+    [
+      protocolNatural(provider.maxTxSize, "provider.maxTxSize"),
+      snapshot.maxTxSize,
+    ],
+    [
+      protocolNatural(provider.maxValSize, "provider.maxValSize"),
+      snapshot.maxValueSize,
+    ],
+    [
+      protocolNatural(provider.maxTxExMem, "provider.maxTxExMem"),
+      snapshot.maxTxExUnits.memory,
+    ],
+    [
+      protocolNatural(provider.maxTxExSteps, "provider.maxTxExSteps"),
+      snapshot.maxTxExUnits.steps,
+    ],
+    [
+      protocolNatural(provider.coinsPerUtxoByte, "provider.coinsPerUtxoByte"),
+      snapshot.coinsPerUtxoByte,
+    ],
+    [
+      protocolNatural(
+        provider.collateralPercentage,
+        "provider.collateralPercentage",
+      ),
+      snapshot.collateralPercentage,
+    ],
+    [
+      protocolNatural(
+        provider.maxCollateralInputs,
+        "provider.maxCollateralInputs",
+      ),
+      snapshot.maxCollateralInputs,
+    ],
+  ]);
+  if (providerChecks.some(([observed, expected]) => observed !== expected)) {
+    throw new Error("Lucid and raw Ogmios protocol parameters disagree");
+  }
+  if (
+    !sameRational(
+      protocolRational(provider.priceMem, "provider.priceMem"),
+      snapshot.priceMemory,
+    ) ||
+    !sameRational(
+      protocolRational(provider.priceStep, "provider.priceStep"),
+      snapshot.priceSteps,
+    ) ||
+    !sameRational(
+      protocolRational(
+        provider.minFeeRefScriptCostPerByte,
+        "provider.minFeeRefScriptCostPerByte",
+      ),
+      snapshot.referenceScriptFee.base,
+    )
+  ) {
+    throw new Error(
+      "Lucid and raw Ogmios rational protocol parameters disagree",
+    );
+  }
+  return snapshot;
+};
+
+export const cardanoProtocolParametersIdentityFromProvider = async (
+  provider: {
+    readonly getProtocolParameters: () => Promise<unknown>;
+  },
+  rawOgmiosProtocolParameters: unknown,
+): Promise<DeploymentManifestValue["cardanoProtocolParameters"]> => {
+  const snapshot = exactProtocolParameterSnapshot(
+    await provider.getProtocolParameters(),
+    rawOgmiosProtocolParameters,
+  );
+  return {
+    snapshot,
+    digest: computeDeploymentManifestJsonDigest(snapshot),
+  };
+};
+
+export const queryLocalOgmiosProtocolParameters = async (
+  ogmiosUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<unknown> => {
+  const response = await fetchImpl(normalizeOgmiosHttpUrl(ogmiosUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "queryLedgerState/protocolParameters",
+      id: "midgard-deployment-protocol-parameters-v1",
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Ogmios protocol-parameter query failed with HTTP ${response.status.toString()}`,
+    );
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body) as unknown;
+  } catch (cause) {
+    throw new Error("Ogmios protocol-parameter response is not JSON", {
+      cause,
+    });
+  }
+  const envelope = protocolRecord(
+    payload,
+    "Ogmios protocol parameters response",
+  );
+  if (
+    envelope.jsonrpc !== "2.0" ||
+    envelope.id !== "midgard-deployment-protocol-parameters-v1" ||
+    Object.prototype.hasOwnProperty.call(envelope, "error") ||
+    !Object.prototype.hasOwnProperty.call(envelope, "result")
+  ) {
+    throw new Error("Ogmios protocol-parameter response identity is invalid");
+  }
+  return payload;
+};
+
+const genesisUtxoIdentitySnapshot = (
+  utxos: readonly UTxO[],
+): ReturnType<typeof normalizeDeploymentManifestJsonValue> =>
+  normalizeDeploymentManifestJsonValue(
+    [...utxos].sort(compareOutRefs).map((utxo) => ({
+      txHash: utxo.txHash,
+      outputIndex: utxo.outputIndex,
+      address: utxo.address,
+      assets: Object.fromEntries(
+        Object.entries(utxo.assets)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([unit, amount]) => [unit, amount.toString(10)]),
+      ),
+      datumHash: utxo.datumHash ?? null,
+      datum: utxo.datum ?? null,
+      scriptRef:
+        utxo.scriptRef == null
+          ? null
+          : {
+              type: utxo.scriptRef.type,
+              script: utxo.scriptRef.script,
+            },
+    })),
+    "genesisUtxos",
+  );
+
+export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
+  DeploymentManifestIdentityContext,
+  Error,
+  Lucid | NodeConfig
+> = Effect.gen(function* () {
+  const nodeConfig = yield* NodeConfig;
+  const lucidService = yield* Lucid;
+  const cardanoProtocolParameters = yield* Effect.tryPromise({
+    try: async () => {
+      const provider = lucidService.api.config().provider;
+      if (provider === undefined) {
+        throw new Error("Lucid has no configured Cardano provider");
+      }
+      const rawOgmiosProtocolParameters =
+        await queryLocalOgmiosProtocolParameters(nodeConfig.L1_OGMIOS_KEY);
+      return cardanoProtocolParametersIdentityFromProvider(
+        provider,
+        rawOgmiosProtocolParameters,
+      );
+    },
+    catch: (cause) =>
+      new Error(
+        `Failed to obtain the trusted Cardano protocol-parameter snapshot: ${String(cause)}`,
+      ),
+  });
+  const daParams = yield* deriveOperatorDaParams(nodeConfig).pipe(
+    Effect.mapError(
+      (cause) =>
+        new Error(
+          `Failed to derive deployment-manifest DA identity: ${String(cause)}`,
+        ),
+    ),
+  );
+  const committeeVkeys = daParams.committee.match(/[0-9a-f]{64}/gu) ?? [];
+  if (committeeVkeys.join("") !== daParams.committee) {
+    return yield* Effect.fail(
+      new Error(
+        "Failed to split the packed DA committee into exact 32-byte verification keys",
+      ),
+    );
+  }
+  const threshold = Number(daParams.da_threshold);
+  if (!Number.isSafeInteger(threshold) || threshold <= 0) {
+    return yield* Effect.fail(
+      new Error("DA threshold does not fit the V1 manifest integer envelope"),
+    );
+  }
+  const blueprintHash = yield* loadRealBlueprintSha256();
+  const genesisSnapshot = genesisUtxoIdentitySnapshot(nodeConfig.GENESIS_UTXOS);
+  return {
+    economics: configuredDeploymentEconomics(),
+    availabilityChallenge: configuredAvailabilityChallenge(),
+    cardanoProtocolParameters,
+    genesis: {
+      headerHash: GENESIS_HEADER_HASH,
+      utxoSetDigest: computeDeploymentManifestJsonDigest(genesisSnapshot),
+    },
+    da: {
+      committeeVkeys,
+      committeeSignersHash:
+        computeDeploymentManifestDaCommitteeSignersHash(committeeVkeys),
+      threshold,
+      transportProfile: {
+        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+        envelopeEncoding: nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE,
+        zstdLevel: nodeConfig.MIDGARD_DA_ZSTD_LEVEL,
+        limits: DA_TRANSPORT_LIMITS,
+        retentionDays: nodeConfig.RETENTION_DAYS,
+      },
+    },
+    proofEvidence: {
+      digest: MIDGARD_RELEASE_EVIDENCE_DIGEST,
+      blueprintHash,
+    },
+  };
+});
 
 const assertOutRefFields = (txHash: string, outputIndex: number): void => {
   if (!/^[0-9a-fA-F]{64}$/.test(txHash)) {
@@ -502,101 +1376,89 @@ const assertOutRefFields = (txHash: string, outputIndex: number): void => {
 };
 
 const withManifestId = (
-  manifest: Omit<DeploymentManifestV2, "manifestId">,
-): DeploymentManifestV2 => ({
+  manifest: Omit<DeploymentManifest, "manifestId">,
+): DeploymentManifest => ({
   ...manifest,
   manifestId: computeDeploymentManifestId(manifest),
 });
 
-export const buildDeploymentManifestV2 = (
+/**
+ * Builds the sole canonical V1 manifest and re-parses it before return so
+ * missing contracts, tuple drift, and dispute-schedule drift fail closed.
+ */
+export const buildDeploymentManifest = (
   deploymentInfo: ContractDeploymentInfo,
   context: DeploymentManifestBuildContext,
-): DeploymentManifestV2 => {
+): DeploymentManifest => {
   assertOutRefFields(
     context.hubOracleOneShotTxHash,
     context.hubOracleOneShotOutputIndex,
   );
   const nowIso = (context.now ?? new Date()).toISOString();
   const referenceScripts = buildReferenceScriptRecords(deploymentInfo);
-  const allReferenceScriptsConfirmed = Object.values(referenceScripts).every(
-    (record) => record.status === "confirmed",
-  );
+  const hubOracleOneShotStatus =
+    context.hubOracleOneShotStatus ??
+    context.existingManifest?.hubOracleOneShot.status;
+  if (hubOracleOneShotStatus !== "consumed_by_init") {
+    throw new Error(
+      "Cannot finalize DeploymentManifestV1 before the hub-oracle one-shot is consumed by initialization",
+    );
+  }
   const baseSteps = {
     ...defaultSteps(),
     prepareHubOracleNonce: { status: "complete" as const },
     deployNodeRuntimeReferenceScripts: {
-      status: allReferenceScriptsConfirmed
-        ? ("complete" as const)
-        : ("pending" as const),
+      status: "complete" as const,
     },
     ...(context.existingManifest?.steps ?? {}),
     ...(context.steps ?? {}),
   };
-  return withManifestId({
+  const manifest = withManifestId({
     schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: context.network,
+    cardanoProtocolParameters: context.cardanoProtocolParameters,
+    genesis: context.genesis,
     createdAt: context.existingManifest?.createdAt ?? nowIso,
-    updatedAt: nowIso,
+    updatedAt: context.existingManifest?.updatedAt ?? nowIso,
     referenceScriptDeployAddress: context.referenceScriptDeployAddress,
     hubOracleOneShot: {
       txHash: context.hubOracleOneShotTxHash.toLowerCase(),
       outputIndex: context.hubOracleOneShotOutputIndex,
       outRef: `${context.hubOracleOneShotTxHash.toLowerCase()}#${context.hubOracleOneShotOutputIndex.toString()}`,
-      status:
-        context.hubOracleOneShotStatus ??
-        context.existingManifest?.hubOracleOneShot.status ??
-        ("prepared" as const),
+      status: hubOracleOneShotStatus,
     },
     referenceScriptAuthPolicy: deploymentInfo.referenceScriptAuthPolicy,
     contracts: deploymentInfo.contracts,
     referenceScripts,
+    da: context.da,
+    proofEvidence: context.proofEvidence,
     steps: baseSteps,
-  });
+    validationDispute: {
+      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
+      responseWindowMs:
+        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
+      maxBisectionRounds:
+        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
+    },
+    l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
+    economics: context.economics,
+    availabilityChallenge: context.availabilityChallenge,
+  }) as DeploymentManifest;
+  return parseDeploymentManifestValue(manifest) as DeploymentManifest;
 };
 
-export const parseDeploymentManifestV2 = (
-  value: unknown,
-): DeploymentManifestV2 =>
-  parseDeploymentManifestV2Value(value) as DeploymentManifestV2;
+export const parseDeploymentManifest = (value: unknown): DeploymentManifest =>
+  parseDeploymentManifestValue(value) as DeploymentManifest;
 
-export const readDeploymentManifestV2File = (
+export const readDeploymentManifestFile = (
   outputPath: string,
-): DeploymentManifestV2 => {
+): DeploymentManifest => {
   const resolvedOutputPath = normalizeOutputPath(outputPath);
   const parsed = JSON.parse(readFileSync(resolvedOutputPath, "utf8"));
-  return parseDeploymentManifestV2(parsed);
-};
-
-const requiredFinalizedDeploymentSteps = [
-  "prepareHubOracleNonce",
-  "deployNodeRuntimeReferenceScripts",
-  "initProtocol",
-] as const satisfies readonly (keyof DeploymentManifestV2["steps"])[];
-
-export const finalizedDeploymentReadinessMismatches = (
-  manifest: DeploymentManifestV2,
-): readonly string[] => {
-  const mismatches: string[] = [];
-  const missingReferenceScripts = Object.entries(manifest.referenceScripts)
-    .filter(([, record]) => record.status !== "confirmed")
-    .map(([name]) => name);
-  if (missingReferenceScripts.length > 0) {
-    mismatches.push(
-      `missing reference scripts: ${missingReferenceScripts.join(",")}`,
-    );
-  }
-  for (const stepName of requiredFinalizedDeploymentSteps) {
-    const step = manifest.steps[stepName];
-    if (step?.status !== "complete") {
-      mismatches.push(`steps.${stepName}.status=${step?.status ?? "missing"}`);
-    }
-  }
-  if (manifest.hubOracleOneShot.status !== "consumed_by_init") {
-    mismatches.push(
-      `hubOracleOneShot.status=${manifest.hubOracleOneShot.status}`,
-    );
-  }
-  return mismatches;
+  return parseDeploymentManifest(parsed);
 };
 
 export const readFinalizedDeploymentIdentity = (
@@ -605,15 +1467,7 @@ export const readFinalizedDeploymentIdentity = (
   const resolvedOutputPath = normalizeOutputPath(outputPath);
   const raw = readFileSync(resolvedOutputPath);
   const parsed = JSON.parse(raw.toString("utf8"));
-  const manifest = parseDeploymentManifestV2(parsed);
-  const readinessMismatches = finalizedDeploymentReadinessMismatches(manifest);
-  if (readinessMismatches.length > 0) {
-    throw new Error(
-      `Contract deployment manifest is not finalized for DA runtime generation: ${readinessMismatches.join(
-        "; ",
-      )}`,
-    );
-  }
+  const manifest = parseDeploymentManifest(parsed);
   return {
     path: resolvedOutputPath,
     manifestId: manifest.manifestId,
@@ -625,12 +1479,13 @@ export const readFinalizedDeploymentIdentity = (
 };
 
 export const verifyDeploymentManifestAgainstConfig = (
-  manifest: DeploymentManifestV2,
+  manifest: DeploymentManifest,
   context: {
     readonly network: string;
     readonly referenceScriptDeployAddress: string;
     readonly hubOracleOneShotTxHash: string;
     readonly hubOracleOneShotOutputIndex: number;
+    readonly economicsProfile: DeploymentManifestEconomicsProfile;
     readonly path?: string;
   },
 ): DeploymentManifestVerificationReport => {
@@ -664,12 +1519,9 @@ export const verifyDeploymentManifestAgainstConfig = (
       `hubOracleOneShot.outputIndex manifest=${manifest.hubOracleOneShot.outputIndex.toString()} config=${context.hubOracleOneShotOutputIndex.toString()}`,
     );
   }
-  const missingReferenceScripts = Object.entries(manifest.referenceScripts)
-    .filter(([, record]) => record.status !== "confirmed")
-    .map(([name]) => name);
-  if (missingReferenceScripts.length > 0) {
+  if (manifest.economics.profile !== context.economicsProfile) {
     mismatches.push(
-      `missing reference scripts: ${missingReferenceScripts.join(",")}`,
+      `economics.profile manifest=${manifest.economics.profile} config=${context.economicsProfile}`,
     );
   }
   return {
@@ -678,18 +1530,13 @@ export const verifyDeploymentManifestAgainstConfig = (
     path: context.path,
     mismatches,
     recommendation:
-      mismatches.length === 0
-        ? "attach"
-        : missingReferenceScripts.length > 0
-          ? "fresh_redeploy_required"
-          : "correct_attach_config",
+      mismatches.length === 0 ? "attach" : "correct_attach_config",
   };
 };
 
-const configuredContractDeploymentInfoPath = (): string => {
-  const configuredPath =
-    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
-  return configuredPath === undefined || configuredPath.length === 0
+export const configuredContractDeploymentInfoPath = (): string => {
+  const configuredPath = contractDeploymentInfoPathOverride();
+  return configuredPath === undefined
     ? defaultContractDeploymentInfoOutputPath()
     : normalizeOutputPath(configuredPath);
 };
@@ -702,10 +1549,10 @@ export const verifyConfiguredDeploymentManifestProgram: Effect.Effect<
   const nodeConfig = yield* NodeConfig;
   const path = configuredContractDeploymentInfoPath();
   const manifest = yield* Effect.try({
-    try: () => readDeploymentManifestV2File(path),
+    try: () => readDeploymentManifestFile(path),
     catch: (cause) =>
       new Error(
-        `Failed to read v2 deployment manifest at ${path}: ${String(cause)}`,
+        `Failed to read V1 deployment manifest at ${path}: ${String(cause)}`,
       ),
   });
   return verifyDeploymentManifestAgainstConfig(manifest, {
@@ -713,6 +1560,7 @@ export const verifyConfiguredDeploymentManifestProgram: Effect.Effect<
     referenceScriptDeployAddress: nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
     hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
     hubOracleOneShotOutputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+    economicsProfile: nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE,
     path,
   });
 });
@@ -741,18 +1589,20 @@ export const buildContractDeploymentInfoFromContracts = (
   Object.freeze({
     referenceScriptAuthPolicy,
     contracts: Object.fromEntries(
-      collectScriptDescriptors(contracts).map((descriptor) => [
-        descriptor.name,
-        {
-          refScriptUTxO: referenceScriptOutRefs.get(descriptor.name) ?? null,
-          contract: descriptor.contract,
-          scriptHash: descriptor.scriptHash,
-          ...(descriptor.name === "fraudProofCatalogueMint" &&
-          fraudProofCatalogue !== undefined
-            ? { fraudProofCatalogue }
-            : {}),
-        } satisfies ContractDeploymentInfoEntry,
-      ]),
+      collectScriptDescriptors(contracts, referenceScriptAuthPolicy).map(
+        (descriptor) => [
+          descriptor.name,
+          {
+            refScriptUTxO: referenceScriptOutRefs.get(descriptor.name) ?? null,
+            contract: descriptor.contract,
+            scriptHash: descriptor.scriptHash,
+            ...(descriptor.name === "fraudProofCatalogueMint" &&
+            fraudProofCatalogue !== undefined
+              ? { fraudProofCatalogue }
+              : {}),
+          } satisfies ContractDeploymentInfoEntry,
+        ],
+      ),
     ),
   });
 
@@ -761,7 +1611,10 @@ const resolveLiveContractDeploymentInfoProgram = (
 ): Effect.Effect<ContractDeploymentInfo, Error, Lucid | MidgardContracts> =>
   Effect.gen(function* () {
     const contracts = yield* MidgardContracts;
-    const descriptors = collectScriptDescriptors(contracts);
+    const descriptors = collectScriptDescriptors(
+      contracts,
+      referenceScriptAuthPolicy,
+    );
     const referenceScriptWalletUtxos = yield* fetchLiveReferenceScriptUtxos();
     const referenceScriptOutRefs = buildReferenceScriptOutRefMap(
       referenceScriptWalletUtxos,
@@ -785,7 +1638,10 @@ export const buildContractDeploymentInfoProgram = (
   referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo,
 ): Effect.Effect<ContractDeploymentInfo, Error> =>
   Effect.gen(function* () {
-    const descriptors = collectScriptDescriptors(contracts);
+    const descriptors = collectScriptDescriptors(
+      contracts,
+      referenceScriptAuthPolicy,
+    );
     const referenceScriptOutRefs = buildReferenceScriptOutRefMap(
       referenceScriptUtxos,
       descriptors,
@@ -817,58 +1673,31 @@ const normalizeOutputPath = (outputPath: string): string => {
   return resolvePath(normalized);
 };
 
-const readExistingReferenceScriptAuthPolicy = (
+const readReferenceScriptAuthPolicyForLiveWrite = async (
   outputPath: string,
-): ReferenceScriptAuthPolicyDeploymentInfo => {
+): Promise<ReferenceScriptAuthPolicyDeploymentInfo> => {
   const resolvedOutputPath = normalizeOutputPath(outputPath);
-  if (!existsSync(resolvedOutputPath)) {
+  if (existsSync(resolvedOutputPath)) {
+    return readDeploymentManifestFile(resolvedOutputPath)
+      .referenceScriptAuthPolicy;
+  }
+  const runStatePath = defaultDeploymentRunStatePath();
+  const runState = await loadDeploymentRunState(runStatePath);
+  const policy = runState?.identity.referenceScriptAuthPolicy;
+  if (policy === undefined) {
     throw new Error(
-      `Contract deployment info at "${resolvedOutputPath}" does not exist; deploy reference scripts first so the reference-script auth policy is recorded.`,
+      `Deployment run state at "${runStatePath}" is missing identity.referenceScriptAuthPolicy`,
     );
   }
-  const parsed = JSON.parse(readFileSync(resolvedOutputPath, "utf8")) as {
-    referenceScriptAuthPolicy?: ReferenceScriptAuthPolicyDeploymentInfo;
+  return {
+    policyId: policy.policyId,
+    nativeScript: policy.nativeScript,
+    tokenNames: SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    postTimelockAudit: {
+      required: true,
+      rule: "After the timelock expires, verify there is exactly one role token under this policy for every listed token name before treating the deployment as production-ready.",
+    },
   };
-  if (parsed.referenceScriptAuthPolicy === undefined) {
-    throw new Error(
-      `Contract deployment info at "${resolvedOutputPath}" is missing referenceScriptAuthPolicy; redeploy reference scripts to create a complete manifest.`,
-    );
-  }
-  return parsed.referenceScriptAuthPolicy;
-};
-
-const referenceScriptAuthPolicyInputPaths = (outputPath: string): string[] => {
-  const configuredPath =
-    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
-  return Array.from(
-    new Set(
-      [
-        outputPath,
-        ...(configuredPath === undefined || configuredPath.length === 0
-          ? []
-          : [configuredPath]),
-        defaultContractDeploymentInfoOutputPath(),
-      ].map((candidate) => normalizeOutputPath(candidate)),
-    ),
-  );
-};
-
-const readReferenceScriptAuthPolicyForLiveWrite = (
-  outputPath: string,
-): ReferenceScriptAuthPolicyDeploymentInfo => {
-  const errors: string[] = [];
-  for (const candidate of referenceScriptAuthPolicyInputPaths(outputPath)) {
-    try {
-      return readExistingReferenceScriptAuthPolicy(candidate);
-    } catch (cause) {
-      errors.push(`${candidate}: ${String(cause)}`);
-    }
-  }
-  throw new Error(
-    `Failed to find required referenceScriptAuthPolicy metadata. Tried: ${errors.join(
-      "; ",
-    )}`,
-  );
 };
 
 export const writeContractDeploymentInfoFileProgram = (
@@ -888,9 +1717,8 @@ export const writeContractDeploymentInfoFileProgram = (
   });
 
 export type LiveContractDeploymentInfoWriteOptions = {
-  readonly steps?: Partial<DeploymentManifestV2["steps"]>;
-  readonly hubOracleOneShotStatus?: DeploymentManifestV2["hubOracleOneShot"]["status"];
-  readonly requireReadyManifest?: boolean;
+  readonly steps?: Partial<DeploymentManifest["steps"]>;
+  readonly hubOracleOneShotStatus?: DeploymentManifest["hubOracleOneShot"]["status"];
 };
 
 const formatDeploymentManifestVerificationReport = (
@@ -904,13 +1732,15 @@ const buildLiveDeploymentManifestProgram = (
   outputPath: string,
   options: LiveContractDeploymentInfoWriteOptions = {},
 ): Effect.Effect<
-  DeploymentManifestV2,
+  DeploymentManifest,
   Error,
   Lucid | MidgardContracts | NodeConfig
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
-    const referenceScriptAuthPolicy = yield* Effect.try({
+    const identityContext =
+      yield* buildDeploymentManifestIdentityContextProgram;
+    const referenceScriptAuthPolicy = yield* Effect.tryPromise({
       try: () => readReferenceScriptAuthPolicyForLiveWrite(outputPath),
       catch: (cause) =>
         new Error(
@@ -922,19 +1752,42 @@ const buildLiveDeploymentManifestProgram = (
     );
     const existingManifest = yield* Effect.sync(() => {
       try {
-        return readDeploymentManifestV2File(outputPath);
+        return readDeploymentManifestFile(outputPath);
       } catch {
         return undefined;
       }
     });
-    const deploymentManifest = buildDeploymentManifestV2(deploymentInfo, {
+    const finalizationRequested =
+      options.hubOracleOneShotStatus === "consumed_by_init" &&
+      options.steps?.initProtocol?.status === "complete";
+    if (existingManifest === undefined && !finalizationRequested) {
+      return yield* Effect.fail(
+        new Error(
+          "A first DeploymentManifestV1 may be created only after initialization and reference-script publication are complete",
+        ),
+      );
+    }
+    const requestedSteps = finalizationRequested
+      ? {
+          prepareHubOracleNonce: {
+            status: "complete" as const,
+            txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH.toLowerCase(),
+          },
+          deployNodeRuntimeReferenceScripts: {
+            status: "complete" as const,
+          },
+          ...options.steps,
+        }
+      : options.steps;
+    const deploymentManifest = buildDeploymentManifest(deploymentInfo, {
       network: nodeConfig.NETWORK,
+      ...identityContext,
       referenceScriptDeployAddress:
         nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
       hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
       hubOracleOneShotOutputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
       existingManifest,
-      steps: options.steps,
+      steps: requestedSteps,
       hubOracleOneShotStatus: options.hubOracleOneShotStatus,
     });
     const verification = verifyDeploymentManifestAgainstConfig(
@@ -946,13 +1799,14 @@ const buildLiveDeploymentManifestProgram = (
         hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
         hubOracleOneShotOutputIndex:
           nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+        economicsProfile: nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE,
         path: outputPath,
       },
     );
-    if (options.requireReadyManifest === true && !verification.ok) {
+    if (!verification.ok) {
       return yield* Effect.fail(
         new Error(
-          `Refusing to write incomplete deployment manifest: ${formatDeploymentManifestVerificationReport(
+          `Refusing to write deployment manifest with configuration drift: ${formatDeploymentManifestVerificationReport(
             verification,
           )}`,
         ),
@@ -970,10 +1824,58 @@ export const writeLiveContractDeploymentInfoProgram = (
       outputPath,
       options,
     );
-    return yield* writeContractDeploymentInfoFileProgram(
+    const marker = makeDeploymentMarker(deploymentManifest.manifestId);
+    const runStatePath = defaultDeploymentRunStatePath();
+    const runState = yield* Effect.tryPromise({
+      try: () => loadDeploymentRunState(runStatePath),
+      catch: (cause) =>
+        new Error(`Failed to inspect deployment run-state identity`, {
+          cause,
+        }),
+    });
+    if (
+      runState?.identity.deploymentMarker !== undefined &&
+      runState.identity.deploymentMarker.manifestId !== marker.manifestId
+    ) {
+      return yield* Effect.fail(
+        new Error(
+          `Refusing to replace final deployment manifest ${runState.identity.deploymentMarker.manifestId} with ${marker.manifestId}; start an explicit fresh deployment run instead`,
+        ),
+      );
+    }
+    const manifestPath = yield* writeContractDeploymentInfoFileProgram(
       outputPath,
       deploymentManifest,
     );
+    if (runState !== null) {
+      const manifestSha256 = yield* Effect.tryPromise({
+        try: () => sha256File(manifestPath),
+        catch: (cause) =>
+          new Error(`Failed to hash final deployment manifest`, { cause }),
+      });
+      yield* Effect.tryPromise({
+        try: () =>
+          mutateDeploymentRunState(
+            runStatePath,
+            () => {
+              throw new Error(
+                "Deployment run state disappeared before final marker binding",
+              );
+            },
+            (current) =>
+              bindDeploymentRunStateToMarker(current, {
+                marker,
+                manifestPath,
+                manifestSha256,
+              }),
+          ),
+        catch: (cause) =>
+          new Error(`Failed to bind deployment run state to final manifest`, {
+            cause,
+          }),
+      });
+    }
+    return manifestPath;
   });
 
 export type ReconcileInitializedDeploymentManifestOptions = {
@@ -1047,10 +1949,9 @@ export const reconcileInitializedDeploymentManifestProgram = ({
           txHash: normalizedInitTxHash,
         },
       },
-      requireReadyManifest: true,
     });
     const manifest = yield* Effect.try({
-      try: () => readDeploymentManifestV2File(path),
+      try: () => readDeploymentManifestFile(path),
       catch: (cause) =>
         new Error(
           `Failed to read reconciled deployment manifest: ${String(cause)}`,

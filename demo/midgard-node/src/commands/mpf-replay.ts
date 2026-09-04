@@ -10,19 +10,16 @@ import blake2b from "blake2b";
 import { Effect } from "effect";
 import { Level } from "level";
 
-import * as Ledger from "@/database/utils/ledger.js";
-import { ProductionNativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
+import { trimmedEnvironmentValue } from "../environment.js";
 import {
-  buildNativeProductionRootProbe,
+  buildNativeRootProbe,
   buildTransactionsSourceRoot,
   buildTransitionTraceResult,
-  computeUtxoPayloadRoot,
   configureMpfPathHydration,
   getMpfPathHydrationConfig,
-  hydrateLedgerMpfFromLedgerEntries,
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
+  keyValuePhasRoot,
   MidgardMpf,
   type MpfBatchOp,
   type MpfReplayCorpusBlock,
@@ -31,7 +28,9 @@ import {
   type TransitionTraceSourceEvent,
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
-} from "@/workers/utils/mpf.js";
+} from "../mpf/index.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../workers/commit-block-header/transition-roots.js";
 
 type ReplayRoots = MpfReplayCorpusBlock["expected"];
 
@@ -176,11 +175,11 @@ const replayOne = (
       `${block.label}-${engine}-${scratchBuild}-ledger`,
       { engine },
     );
-    yield* hydrateLedgerMpfFromLedgerEntries(
-      ledger,
+    yield* ledger.applyBatch(
       initial.map((entry) => ({
-        [Ledger.Columns.OUTREF]: entry.key,
-        [Ledger.Columns.OUTPUT]: entry.value,
+        type: "insert" as const,
+        key: entry.key,
+        value: entry.value,
       })),
     );
     if (engine !== "legacy") yield* ledger.beginBlockOverlay();
@@ -226,18 +225,16 @@ const replayOne = (
           counted(SDK.ROOT_DOMAINS.deposits, block.deposits),
           counted(SDK.ROOT_DOMAINS.withdrawals, block.withdrawals),
           counted(
-            SDK.ROOT_DOMAINS.forcedTransactions,
+            SDK.ROOT_DOMAINS.forcedTransactionsV1,
             block.forcedTransactions,
           ),
         ],
         { concurrency: "unbounded" },
       );
     const finalEntries = block.finalUtxoEntries.map(decodeEntry);
-    const payloadRoot = yield* computeUtxoPayloadRoot(
-      finalEntries.map((entry) => ({
-        outref: entry.key,
-        output: entry.value,
-      })),
+    const payloadRoot = yield* keyValuePhasRoot(
+      finalEntries.map((entry) => entry.key),
+      finalEntries.map((entry) => entry.value),
     );
     const utxoRoot = yield* ledger.rootHex();
     if (payloadRoot !== utxoRoot) {
@@ -343,11 +340,11 @@ const seedNativeOwnerFixture = async ({
           );
           try {
             await Effect.runPromise(
-              hydrateLedgerMpfFromLedgerEntries(
-                created,
+              created.applyBatch(
                 initial.map((entry) => ({
-                  [Ledger.Columns.OUTREF]: entry.key,
-                  [Ledger.Columns.OUTPUT]: entry.value,
+                  type: "insert" as const,
+                  key: entry.key,
+                  value: entry.value,
                 })),
               ),
             );
@@ -404,7 +401,7 @@ const replayArchitectureGOne = (
         };
         const sourceEvents = decodeSourceEvents(block);
         const productionRoots = await Effect.runPromise(
-          buildNativeProductionRootProbe({
+          buildNativeRootProbe({
             nativeMpf,
             sourceEvents,
             transactionOps: block.transactionOps
@@ -818,7 +815,7 @@ export const mpfReplayProgram = (
   Effect.gen(function* () {
     const binaryPath = resolve(
       options.nativeOwnerBinaryPath ??
-        process.env.MPF_NATIVE_OWNER_BINARY_PATH ??
+        trimmedEnvironmentValue("MPF_NATIVE_OWNER_BINARY_PATH") ??
         DEFAULT_NATIVE_OWNER_BINARY_PATH,
     );
     const binarySha256 = yield* Effect.tryPromise({

@@ -4,5 +4,8 @@ packages:
   - midgard-fault-proofs
   - midgard-validation
   - midgard-node
+  - midgard-node-tools
   - midgard-sdk
+  - midgard-watcher
   - da-committee-node
+  - midgard-test-support

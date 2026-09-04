@@ -25,32 +25,37 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
+import {
+  configuredContractDeploymentInfoPath,
+  readFinalizedDeploymentIdentity,
+  verifyConfiguredDeploymentManifestProgram,
+} from "../commands/contract-deployment-info.js";
+import { Lucid, MidgardContracts } from "../services/index.js";
+import { compareOutRefs } from "../tx-context.js";
+import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import {
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
   resolveSpendableWalletUtxos,
   selectWalletFundingUtxos,
   utxoOutRefKey,
-} from "@/transactions/reference-scripts.js";
+} from "./reference-scripts.js";
 import {
   alignUnixTimeMsToSlotBoundary,
   currentTimeMsForLucidOrEmulatorFallback,
   resolveCurrentTimeMs,
-} from "@/transactions/register-active-operator/clock.js";
+} from "./register-active-operator/clock.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
-import { compareOutRefs } from "@/tx-context.js";
-import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
-export type { ReferenceScriptCommandName } from "@/transactions/reference-scripts.js";
+} from "./utils.js";
+export type { ReferenceScriptCommandName } from "./reference-scripts.js";
 export {
   deployReferenceScriptCommandProgram,
   REFERENCE_SCRIPT_COMMAND_NAMES,
-} from "@/transactions/reference-scripts.js";
+} from "./reference-scripts.js";
 
 const REGISTERED_ACTIVATION_DELAY_MS = 30n;
 const ACTIVATION_VALIDITY_WINDOW_MS = 120_000n;
@@ -93,8 +98,8 @@ type OperatorLifecycleMode =
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   const message = String(cause);
   const scriptHashMatch = message.match(/ScriptHash[^0-9a-f]*([0-9a-f]{56})/i);
-  const scriptInfoMatch = message.match(/ScriptInfo:\\s*([^\\\\n\"]+)/i);
-  const reasonMatch = message.match(/Caused by:\\s*([^\\\\n\"]+)/i);
+  const scriptInfoMatch = message.match(/ScriptInfo:\\s*([^\\\\n"]+)/i);
+  const reasonMatch = message.match(/Caused by:\\s*([^\\\\n"]+)/i);
   const txIdMatch = message.match(/TxId:\\s*([0-9a-f]{64})/i);
   if (
     scriptHashMatch === null &&
@@ -1351,15 +1356,35 @@ export const deregisterOperatorProgram = (
     })),
   );
 
+const configuredReleaseRequiredBondProgram = Effect.gen(function* () {
+  const verification = yield* verifyConfiguredDeploymentManifestProgram;
+  if (!verification.ok) {
+    return yield* Effect.fail(
+      new Error(
+        `Operator lifecycle refused deployment manifest drift: ${verification.mismatches.join("; ")}`,
+      ),
+    );
+  }
+  const identity = yield* Effect.try({
+    try: () =>
+      readFinalizedDeploymentIdentity(configuredContractDeploymentInfoPath()),
+    catch: (cause) =>
+      new Error(
+        `Failed to load finalized deployment economics: ${String(cause)}`,
+      ),
+  });
+  return BigInt(identity.manifest.economics.requiredBondLovelace);
+});
+
 export const program = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const nodeConfig = yield* NodeConfig;
+  const requiredBondLovelace = yield* configuredReleaseRequiredBondProgram;
   yield* lucidService.switchToOperatorsMainWallet;
   return yield* registerAndActivateOperatorProgram(
     lucidService.api,
     contracts,
-    nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
+    requiredBondLovelace,
     lucidService.referenceScriptsApi,
     lucidService.referenceScriptsAddress,
   );
@@ -1368,12 +1393,12 @@ export const program = Effect.gen(function* () {
 export const activateProgram = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const nodeConfig = yield* NodeConfig;
+  const requiredBondLovelace = yield* configuredReleaseRequiredBondProgram;
   yield* lucidService.switchToOperatorsMainWallet;
   return yield* activateOperatorProgram(
     lucidService.api,
     contracts,
-    nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
+    requiredBondLovelace,
     lucidService.referenceScriptsApi,
     lucidService.referenceScriptsAddress,
   );

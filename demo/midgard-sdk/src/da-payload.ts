@@ -1,57 +1,157 @@
 import { encodeCborInteger } from "@al-ft/midgard-core/codec/cbor";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, toHex } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 
-import { HeaderHashSchema, HeaderSchema } from "./ledger-state.js";
+import { ValidationAuxiliaryWitnessSchema } from "./fraud-proof/validation-auxiliary-witness.js";
+import {
+  ValidationMachineStateSchema,
+  ValidationTraceProofSchema,
+} from "./fraud-proof/validation-dispute.js";
+import {
+  EventKeySchema,
+  HeaderHashSchema,
+  HeaderSchema,
+} from "./ledger-state.js";
 
-export const DA_PAYLOAD_V2_VERSION = 2n;
+export const DA_PAYLOAD_VERSION = 1n;
 
 export const DaPayloadEntrySchema = Data.Tuple([Data.Bytes(), Data.Bytes()]);
 export type DaPayloadEntry = Data.Static<typeof DaPayloadEntrySchema>;
-export const DaPayloadEntry = DaPayloadEntrySchema as unknown as DaPayloadEntry;
+export const DaPayloadEntry = asDataType<DaPayloadEntry>(DaPayloadEntrySchema);
 
-export const DaPayloadCountsV2Schema = Data.Object({
+/**
+ * Event-local retained validation coordinate. Non-negative values are exact
+ * NativeScripts execution indexes; the negative domain is reserved for
+ * chronological ScriptSources frontier/control/redeemer-item witnesses and
+ * the exact ScriptIntegrity stage-3 terminal control and ValueAndMint asset
+ * mutations.
+ */
+export const RetainedValidationWitnessKeySchema = Data.Object({
+  event_key: EventKeySchema,
+  execution_index: Data.Integer(),
+});
+export type RetainedValidationWitnessKey = Data.Static<
+  typeof RetainedValidationWitnessKeySchema
+>;
+
+/**
+ * Minimal public reconstruction material for a ScriptSources frontier/control
+ * or redeemer-item state, the ScriptIntegrity stage-3 terminal control, a
+ * ValueAndMint asset mutation, or a NativeScripts
+ * `nativeExecutionDescriptor` transition. The state
+ * remains committed by `validation_traces_root`; this record only opens that
+ * state and its exact work witness against the descriptor. Family consumers
+ * must additionally verify any auxiliary membership against the authenticated
+ * terminal frontier they use.
+ */
+export const RetainedValidationWitnessSchema = Data.Object({
+  machine_state: ValidationMachineStateSchema,
+  trace_proof: ValidationTraceProofSchema,
+  phase: Data.Integer(),
+  program_counter: Data.Integer(),
+  witness_cbor: Data.Bytes(),
+  auxiliary: ValidationAuxiliaryWitnessSchema,
+});
+export type RetainedValidationWitness = Data.Static<
+  typeof RetainedValidationWitnessSchema
+>;
+
+const canonicalDataBytes = <T>(value: T, schema: unknown): Buffer =>
+  Buffer.from(Data.to(value as never, schema as never), "hex");
+
+export const encodeRetainedValidationWitnessKey = (
+  key: RetainedValidationWitnessKey,
+): Buffer => canonicalDataBytes(key, RetainedValidationWitnessKeySchema);
+
+export const encodeRetainedValidationWitness = (
+  witness: RetainedValidationWitness,
+): Buffer => canonicalDataBytes(witness, RetainedValidationWitnessSchema);
+
+const decodeCanonicalData = <T>(
+  bytes: Uint8Array,
+  schema: unknown,
+  fieldName: string,
+): T => {
+  const exact = Buffer.from(bytes);
+  const decoded = Data.from(exact.toString("hex"), schema as never) as T;
+  if (!canonicalDataBytes(decoded, schema).equals(exact)) {
+    throw new DaPayloadNonCanonicalError(`${fieldName} is not canonical`);
+  }
+  return decoded;
+};
+
+export const decodeRetainedValidationWitnessKey = (
+  bytes: Uint8Array,
+): RetainedValidationWitnessKey =>
+  decodeCanonicalData(
+    bytes,
+    RetainedValidationWitnessKeySchema,
+    "retained validation witness key",
+  );
+
+export const decodeRetainedValidationWitness = (
+  bytes: Uint8Array,
+): RetainedValidationWitness =>
+  decodeCanonicalData(
+    bytes,
+    RetainedValidationWitnessSchema,
+    "retained validation witness",
+  );
+
+export const DaPayloadCountsSchema = Data.Object({
   withdrawalCount: Data.Integer(),
   forcedTransactionCount: Data.Integer(),
   l2TransactionCount: Data.Integer(),
   depositCount: Data.Integer(),
   totalEventCount: Data.Integer(),
   transitionStepCount: Data.Integer(),
+  validationTraceCount: Data.Integer(),
 });
-export type DaPayloadCountsV2 = Data.Static<typeof DaPayloadCountsV2Schema>;
-export const DaPayloadCountsV2 =
-  DaPayloadCountsV2Schema as unknown as DaPayloadCountsV2;
+export type DaPayloadCounts = Data.Static<typeof DaPayloadCountsSchema>;
+export const DaPayloadCounts = asDataType<DaPayloadCounts>(
+  DaPayloadCountsSchema,
+);
 
-export const DaPayloadBodyV2Schema = Data.Object({
+/**
+ * V1 DA separates the compact, root-committed transaction sources from
+ * their canonical full preimages. This keeps every L1 membership value inside
+ * the proof envelope while retaining all data needed to replay validation.
+ */
+export const DaPayloadBodySchema = Data.Object({
   header_hash: HeaderHashSchema,
   header: HeaderSchema,
   utxos: Data.Array(DaPayloadEntrySchema),
   withdrawals: Data.Array(DaPayloadEntrySchema),
   forced_transactions: Data.Array(DaPayloadEntrySchema),
   transactions: Data.Array(DaPayloadEntrySchema),
+  transaction_preimages: Data.Array(DaPayloadEntrySchema),
+  forced_transaction_preimages: Data.Array(DaPayloadEntrySchema),
+  cek_program_material: Data.Array(DaPayloadEntrySchema),
   deposits: Data.Array(DaPayloadEntrySchema),
   transition_trace: Data.Array(DaPayloadEntrySchema),
   event_to_step: Data.Array(DaPayloadEntrySchema),
-  counts: DaPayloadCountsV2Schema,
+  validation_traces: Data.Array(DaPayloadEntrySchema),
+  validation_trace_witnesses: Data.Array(DaPayloadEntrySchema),
+  counts: DaPayloadCountsSchema,
 });
-export type DaPayloadBodyV2 = Data.Static<typeof DaPayloadBodyV2Schema>;
-export const DaPayloadBodyV2 =
-  DaPayloadBodyV2Schema as unknown as DaPayloadBodyV2;
+export type DaPayloadBody = Data.Static<typeof DaPayloadBodySchema>;
+export const DaPayloadBody = asDataType<DaPayloadBody>(DaPayloadBodySchema);
 
-export const DaPayloadV2Schema = Data.Object({
+export const DaPayloadSchema = Data.Object({
   version: Data.Integer(),
-  block_body: DaPayloadBodyV2Schema,
+  block_body: DaPayloadBodySchema,
 });
-export type DaPayloadV2 = Data.Static<typeof DaPayloadV2Schema>;
-export const DaPayloadV2 = DaPayloadV2Schema as unknown as DaPayloadV2;
+export type DaPayload = Data.Static<typeof DaPayloadSchema>;
+export const DaPayload = asDataType<DaPayload>(DaPayloadSchema);
 
 const MAX_CBOR_UINT64 = 0xffff_ffff_ffff_ffffn;
 const PLUTUS_BYTES_CHUNK = 64;
 
-export class DaPayloadV2NonCanonicalError extends Error {
+export class DaPayloadNonCanonicalError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "DaPayloadV2NonCanonicalError";
+    this.name = "DaPayloadV1NonCanonicalError";
   }
 }
 
@@ -76,7 +176,7 @@ class ExactBufferWriter {
   finish(): Buffer {
     if (this.#offset !== this.#output.length) {
       throw new Error(
-        `DaPayloadV2 encoded-size mismatch: wrote ${this.#offset.toString()} of ${this.#output.length.toString()} bytes`,
+        `DaPayloadV1 encoded-size mismatch: wrote ${this.#offset.toString()} of ${this.#output.length.toString()} bytes`,
       );
     }
     return this.#output;
@@ -124,7 +224,7 @@ const writeInteger = (writer: ExactBufferWriter, value: bigint): void => {
 
 const assertBytesHex = (value: string): void => {
   if (value.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(value)) {
-    throw new Error("DaPayloadV2 byte fields must be even-length hexadecimal");
+    throw new Error("DaPayloadV1 byte fields must be even-length hexadecimal");
   }
 };
 
@@ -169,7 +269,7 @@ const writeList = (
   writer.writeByte(0xff);
 };
 
-const payloadIntegers = (payload: DaPayloadV2): readonly bigint[] => {
+const payloadIntegers = (payload: DaPayload): readonly bigint[] => {
   const { header, counts } = payload.block_body;
   return [
     payload.version,
@@ -179,8 +279,13 @@ const payloadIntegers = (payload: DaPayloadV2): readonly bigint[] => {
     header.depositCount,
     header.totalEventCount,
     header.transitionStepCount,
+    header.validationTraceCount,
     header.startTime,
     header.endTime,
+    header.blockSlot,
+    header.expectedNetworkId,
+    header.minFeeA,
+    header.minFeeB,
     header.protocolVersion,
     counts.withdrawalCount,
     counts.forcedTransactionCount,
@@ -188,6 +293,7 @@ const payloadIntegers = (payload: DaPayloadV2): readonly bigint[] => {
     counts.depositCount,
     counts.totalEventCount,
     counts.transitionStepCount,
+    counts.validationTraceCount,
   ];
 };
 
@@ -277,7 +383,7 @@ const constructorSize = (fieldSizes: readonly number[]): number =>
   4 + fieldSizes.reduce((total, size) => total + size, 0);
 
 const encodedPayloadSize = (
-  payload: DaPayloadV2,
+  payload: DaPayload,
   utxoEncodedListSize = listSize(payload.block_body.utxos),
 ): number => {
   const body = payload.block_body;
@@ -291,14 +397,20 @@ const encodedPayloadSize = (
     bytesSize(header.depositsRoot),
     bytesSize(header.transitionTraceRoot),
     bytesSize(header.eventToStepRoot),
+    bytesSize(header.validationTracesRoot),
     integerSize(header.withdrawalCount),
     integerSize(header.forcedTransactionCount),
     integerSize(header.l2TransactionCount),
     integerSize(header.depositCount),
     integerSize(header.totalEventCount),
     integerSize(header.transitionStepCount),
+    integerSize(header.validationTraceCount),
     integerSize(header.startTime),
     integerSize(header.endTime),
+    integerSize(header.blockSlot),
+    integerSize(header.expectedNetworkId),
+    integerSize(header.minFeeA),
+    integerSize(header.minFeeB),
     bytesSize(header.prevHeaderHash),
     bytesSize(header.operatorVkey),
     integerSize(header.protocolVersion),
@@ -311,6 +423,7 @@ const encodedPayloadSize = (
     integerSize(counts.depositCount),
     integerSize(counts.totalEventCount),
     integerSize(counts.transitionStepCount),
+    integerSize(counts.validationTraceCount),
   ]);
   const bodySize = constructorSize([
     bytesSize(body.header_hash),
@@ -319,16 +432,21 @@ const encodedPayloadSize = (
     listSize(body.withdrawals),
     listSize(body.forced_transactions),
     listSize(body.transactions),
+    listSize(body.transaction_preimages),
+    listSize(body.forced_transaction_preimages),
+    listSize(body.cek_program_material),
     listSize(body.deposits),
     listSize(body.transition_trace),
     listSize(body.event_to_step),
+    listSize(body.validation_traces),
+    listSize(body.validation_trace_witnesses),
     countsSize,
   ]);
   return constructorSize([integerSize(payload.version), bodySize]);
 };
 
-/** Exact encoded inner DaPayloadV2 size without allocating its CBOR bytes. */
-export const daPayloadV2EncodedSize = (payload: DaPayloadV2): number =>
+/** Exact encoded inner DaPayload size without allocating its CBOR bytes. */
+export const daPayloadEncodedSize = (payload: DaPayload): number =>
   encodedPayloadSize(payload);
 
 /**
@@ -336,22 +454,28 @@ export const daPayloadV2EncodedSize = (payload: DaPayloadV2): number =>
  * durable entry-count/tuple-byte aggregate rather than materialized in RAM.
  * The `payload.block_body.utxos` value is ignored.
  */
-export const daPayloadV2EncodedSizeFromUtxoAggregate = (
-  payload: DaPayloadV2,
+export const daPayloadEncodedSizeFromUtxoAggregate = (
+  payload: DaPayload,
   utxos: DaPayloadEntrySizeAggregate,
 ): number =>
   encodedPayloadSize(payload, daPayloadEntriesEncodedSizeFromAggregate(utxos));
 
 /**
- * Encodes the existing Plutus-Data wire format directly into byte chunks.
+ * Encodes the canonical V1 Plutus-Data wire format directly into byte chunks.
  * Lucid's schema encoder first builds a full hexadecimal string; at DA scale
  * that doubles the largest allocation and creates severe GC pressure. The
  * direct encoder is byte-identical for the protocol's uint64 integer domain.
- * Rare out-of-domain integers retain Lucid's bignum behavior through fallback.
  */
-export const encodeDaPayloadV2 = (payload: DaPayloadV2): Buffer => {
+export const encodeDaPayload = (payload: DaPayload): Buffer => {
+  if (payload.version !== DA_PAYLOAD_VERSION) {
+    throw new Error(
+      `DaPayloadV1 version must equal ${DA_PAYLOAD_VERSION.toString()}`,
+    );
+  }
   if (!payloadIntegers(payload).every(isNativeCborInteger)) {
-    return Buffer.from(Data.to(payload, DaPayloadV2), "hex");
+    throw new Error(
+      "DaPayloadV1 protocol integers must fit the native CBOR integer range",
+    );
   }
 
   const writer = new ExactBufferWriter(encodedPayloadSize(payload));
@@ -371,14 +495,20 @@ export const encodeDaPayloadV2 = (payload: DaPayloadV2): Buffer => {
   writeBytes(writer, header.depositsRoot);
   writeBytes(writer, header.transitionTraceRoot);
   writeBytes(writer, header.eventToStepRoot);
+  writeBytes(writer, header.validationTracesRoot);
   writeInteger(writer, header.withdrawalCount);
   writeInteger(writer, header.forcedTransactionCount);
   writeInteger(writer, header.l2TransactionCount);
   writeInteger(writer, header.depositCount);
   writeInteger(writer, header.totalEventCount);
   writeInteger(writer, header.transitionStepCount);
+  writeInteger(writer, header.validationTraceCount);
   writeInteger(writer, header.startTime);
   writeInteger(writer, header.endTime);
+  writeInteger(writer, header.blockSlot);
+  writeInteger(writer, header.expectedNetworkId);
+  writeInteger(writer, header.minFeeA);
+  writeInteger(writer, header.minFeeB);
   writeBytes(writer, header.prevHeaderHash);
   writeBytes(writer, header.operatorVkey);
   writeInteger(writer, header.protocolVersion);
@@ -388,9 +518,14 @@ export const encodeDaPayloadV2 = (payload: DaPayloadV2): Buffer => {
   writeList(writer, body.withdrawals);
   writeList(writer, body.forced_transactions);
   writeList(writer, body.transactions);
+  writeList(writer, body.transaction_preimages);
+  writeList(writer, body.forced_transaction_preimages);
+  writeList(writer, body.cek_program_material);
   writeList(writer, body.deposits);
   writeList(writer, body.transition_trace);
   writeList(writer, body.event_to_step);
+  writeList(writer, body.validation_traces);
+  writeList(writer, body.validation_trace_witnesses);
 
   const counts = body.counts;
   writeConstructorStart(writer);
@@ -400,6 +535,7 @@ export const encodeDaPayloadV2 = (payload: DaPayloadV2): Buffer => {
   writeInteger(writer, counts.depositCount);
   writeInteger(writer, counts.totalEventCount);
   writeInteger(writer, counts.transitionStepCount);
+  writeInteger(writer, counts.validationTraceCount);
   writer.writeByte(0xff);
 
   writer.writeByte(0xff);
@@ -407,21 +543,7 @@ export const encodeDaPayloadV2 = (payload: DaPayloadV2): Buffer => {
   return writer.finish();
 };
 
-/**
- * Production DA encoder. The strict transport reader intentionally accepts
- * only native CBOR integers, so publication must reject payloads that would
- * require compatibility-only bignum tags.
- */
-export const encodeDaPayloadV2Protocol = (payload: DaPayloadV2): Buffer => {
-  if (!payloadIntegers(payload).every(isNativeCborInteger)) {
-    throw new Error(
-      "DaPayloadV2 protocol integers must fit the native CBOR integer range",
-    );
-  }
-  return encodeDaPayloadV2(payload);
-};
-
-class DaPayloadV2Reader {
+class DaPayloadReader {
   readonly #bytes: Buffer;
   #offset = 0;
 
@@ -429,9 +551,12 @@ class DaPayloadV2Reader {
     this.#bytes = bytes;
   }
 
-  read(): DaPayloadV2 {
+  read(): DaPayload {
     this.#constructorStart("payload");
     const version = this.#integer("payload.version");
+    if (version !== DA_PAYLOAD_VERSION) {
+      this.#fail(`payload.version must equal ${DA_PAYLOAD_VERSION.toString()}`);
+    }
     this.#constructorStart("payload.block_body");
     const header_hash = this.#bytesHex("payload.block_body.header_hash");
     this.#constructorStart("payload.block_body.header");
@@ -444,14 +569,20 @@ class DaPayloadV2Reader {
       depositsRoot: this.#bytesHex("header.depositsRoot"),
       transitionTraceRoot: this.#bytesHex("header.transitionTraceRoot"),
       eventToStepRoot: this.#bytesHex("header.eventToStepRoot"),
+      validationTracesRoot: this.#bytesHex("header.validationTracesRoot"),
       withdrawalCount: this.#integer("header.withdrawalCount"),
       forcedTransactionCount: this.#integer("header.forcedTransactionCount"),
       l2TransactionCount: this.#integer("header.l2TransactionCount"),
       depositCount: this.#integer("header.depositCount"),
       totalEventCount: this.#integer("header.totalEventCount"),
       transitionStepCount: this.#integer("header.transitionStepCount"),
+      validationTraceCount: this.#integer("header.validationTraceCount"),
       startTime: this.#integer("header.startTime"),
       endTime: this.#integer("header.endTime"),
+      blockSlot: this.#integer("header.blockSlot"),
+      expectedNetworkId: this.#integer("header.expectedNetworkId"),
+      minFeeA: this.#integer("header.minFeeA"),
+      minFeeB: this.#integer("header.minFeeB"),
       prevHeaderHash: this.#bytesHex("header.prevHeaderHash"),
       operatorVkey: this.#bytesHex("header.operatorVkey"),
       protocolVersion: this.#integer("header.protocolVersion"),
@@ -463,11 +594,26 @@ class DaPayloadV2Reader {
       "payload.block_body.forced_transactions",
     );
     const transactions = this.#entryList("payload.block_body.transactions");
+    const transaction_preimages = this.#entryList(
+      "payload.block_body.transaction_preimages",
+    );
+    const forced_transaction_preimages = this.#entryList(
+      "payload.block_body.forced_transaction_preimages",
+    );
+    const cek_program_material = this.#entryList(
+      "payload.block_body.cek_program_material",
+    );
     const deposits = this.#entryList("payload.block_body.deposits");
     const transition_trace = this.#entryList(
       "payload.block_body.transition_trace",
     );
     const event_to_step = this.#entryList("payload.block_body.event_to_step");
+    const validation_traces = this.#entryList(
+      "payload.block_body.validation_traces",
+    );
+    const validation_trace_witnesses = this.#entryList(
+      "payload.block_body.validation_trace_witnesses",
+    );
     this.#constructorStart("payload.block_body.counts");
     const counts = {
       withdrawalCount: this.#integer("counts.withdrawalCount"),
@@ -476,6 +622,7 @@ class DaPayloadV2Reader {
       depositCount: this.#integer("counts.depositCount"),
       totalEventCount: this.#integer("counts.totalEventCount"),
       transitionStepCount: this.#integer("counts.transitionStepCount"),
+      validationTraceCount: this.#integer("counts.validationTraceCount"),
     };
     this.#break("payload.block_body.counts");
     this.#break("payload.block_body");
@@ -492,9 +639,14 @@ class DaPayloadV2Reader {
         withdrawals,
         forced_transactions,
         transactions,
+        transaction_preimages,
+        forced_transaction_preimages,
+        cek_program_material,
         deposits,
         transition_trace,
         event_to_step,
+        validation_traces,
+        validation_trace_witnesses,
         counts,
       },
     };
@@ -665,7 +817,7 @@ class DaPayloadV2Reader {
 
   #peek(): number {
     if (this.#offset >= this.#bytes.length) {
-      this.#fail("unexpected end of DaPayloadV2 CBOR");
+      this.#fail("unexpected end of DaPayloadV1 CBOR");
     }
     return this.#bytes[this.#offset]!;
   }
@@ -675,32 +827,18 @@ class DaPayloadV2Reader {
   }
 
   #nonCanonical(message: string): never {
-    throw new DaPayloadV2NonCanonicalError(
+    throw new DaPayloadNonCanonicalError(
       `${message} at offset ${this.#offset.toString()}`,
     );
   }
 }
 
-const decodeDaPayloadV2ByteOriented = (payloadCbor: Buffer): DaPayloadV2 =>
-  new DaPayloadV2Reader(payloadCbor).read();
-
 /**
  * Fail-closed canonical wire decoder used at untrusted transport boundaries.
  * It never falls back to Lucid's whole-payload hex/object conversion.
  */
-export const decodeDaPayloadV2Canonical = (payloadCbor: Buffer): DaPayloadV2 =>
-  decodeDaPayloadV2ByteOriented(payloadCbor);
-
-export const decodeDaPayloadV2 = (payloadCbor: Buffer): DaPayloadV2 => {
-  try {
-    return decodeDaPayloadV2Canonical(payloadCbor);
-  } catch {
-    // Preserve the historical SDK surface for uncommon Plutus bignum or
-    // non-canonical-but-decodable input. Strict committee callers re-encode
-    // and compare bytes after this compatibility fallback.
-    return Data.from(toHex(payloadCbor), DaPayloadV2 as never) as DaPayloadV2;
-  }
-};
+export const decodeDaPayload = (payloadCbor: Buffer): DaPayload =>
+  new DaPayloadReader(payloadCbor).read();
 
 export const daPayloadHashHex = (payloadCbor: Buffer): string =>
   toHex(sha256(payloadCbor));

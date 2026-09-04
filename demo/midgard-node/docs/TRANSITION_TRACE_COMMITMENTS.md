@@ -2,18 +2,16 @@
 
 Last reconciled: 2026-06-20
 
-Status: Task09 launch-gate architecture for production transition-trace
-commitments.
+Status: canonical V1 architecture for production transition-trace commitments.
 
 Scope: this document specifies the implemented commitments needed to prove that
 a queued Midgard state commitment's `utxos_root` is the deterministic result of
 applying the committed withdrawals, forced-inclusion transactions, normal L2
 transactions, and deposits to `prev_utxos_root`.
 
-This is now the current launch-gate protocol shape. The TypeScript and Aiken
-type name remains `Header`, but the serialized fields are the clean `HeaderV2`
-commitment surface described here. Production paths must not construct or accept
-the old header shape.
+This is the canonical V1 protocol shape. The serialized fields are the
+`Header` commitment surface described here. Any other header shape fails
+closed.
 
 ## Executive Summary
 
@@ -22,7 +20,7 @@ directly to the protocol's source objects:
 
 ```text
 utxos_root:
-  outref -> output
+  outref -> LedgerOutputCommitmentV1 descriptor
 
 withdrawals_root:
   withdrawal_id -> WithdrawalInfo CBOR
@@ -41,7 +39,18 @@ transition_trace_root:
 
 event_to_step_root:
   EventKey -> EventToStepValue
+
+validation_traces_root:
+  validation_trace_index -> ValidationTraceDescriptorV1
 ```
+
+The final `utxos` members retained in DA and durable ledger records contain the
+exact full output CBOR. Each independent root verifier folds those bytes into
+the canonical V1 descriptor before recomputing `utxos_root`. The descriptor
+binds the complete output through its bounded-item commitment and records the
+independently proven address, Value/asset frontier, datum/CEK summaries, and
+reference-script facts needed by L1 proofs. A malformed output or a full output
+that cannot produce that exact descriptor fails closed.
 
 The production model is:
 
@@ -90,7 +99,7 @@ node data is `StateQueueNode`:
 
 ```text
 StateQueueNode {
-  header: Header
+  header: HeaderV1
   da_attestation: ByteArray
 }
 ```
@@ -108,7 +117,7 @@ metadata and they are not stored only in the node database.
 Current compact header shape:
 
 ```text
-Header {
+HeaderV1 {
   prev_utxos_root: MidgardLedgerRoot
   utxos_root: MidgardLedgerRoot
 
@@ -119,6 +128,7 @@ Header {
 
   transition_trace_root: TransitionTraceRoot
   event_to_step_root: EventToStepRoot
+  validation_traces_root: ValidationTracesRoot
 
   withdrawal_count: UInt64
   forced_transaction_count: UInt64
@@ -126,19 +136,24 @@ Header {
   deposit_count: UInt64
   total_event_count: UInt64
   transition_step_count: UInt64
+  validation_trace_count: UInt64
 
   start_time: PosixTime
   end_time: PosixTime
+  block_slot: UInt64
+  expected_network_id: UInt64
+  min_fee_a: UInt64
+  min_fee_b: UInt64
   prev_header_hash: HeaderHash
   operator_vkey: VerificationKeyHash
   protocol_version: Int
 }
 ```
 
-The header hash is computed over the full `Header`, including all transition
-roots and counts. Deploying this shape requires a clean redeploy because all
-state-queue header hashes, node asset names, DA attestations, proof inputs,
-settlement proofs, and downstream SDK codecs change.
+The header hash is computed over the full `Header`, including all roots,
+counts, and validation-context metadata. Deploying this shape requires a clean
+redeploy because all state-queue header hashes, node asset names, DA attestations,
+proof inputs, settlement proofs, and downstream SDK codecs change.
 
 Placement visualization:
 
@@ -148,22 +163,23 @@ flowchart TD
   Datum["state-queue Datum"]
   Elem["linked_list.Element"]
   Node["StateQueueNode"]
-  Header["Header"]
+  HeaderV1["HeaderV1"]
 
   L1 --> Datum
   Datum --> Elem
   Elem --> Node
-  Node --> Header
+  Node --> HeaderV1
 
-  Header --> Prev["prev_utxos_root"]
-  Header --> Utxos["utxos_root"]
-  Header --> Withdrawals["withdrawals_root"]
-  Header --> Forced["forced_transactions_root"]
-  Header --> Txs["transactions_root"]
-  Header --> Deposits["deposits_root"]
-  Header --> Trace["transition_trace_root"]
-  Header --> EventStep["event_to_step_root"]
-  Header --> Counts["event counts"]
+  HeaderV1 --> Prev["prev_utxos_root"]
+  HeaderV1 --> Utxos["utxos_root"]
+  HeaderV1 --> Withdrawals["withdrawals_root"]
+  HeaderV1 --> Forced["forced_transactions_root"]
+  HeaderV1 --> Txs["transactions_root"]
+  HeaderV1 --> Deposits["deposits_root"]
+  HeaderV1 --> Trace["transition_trace_root"]
+  HeaderV1 --> EventStep["event_to_step_root"]
+  HeaderV1 --> Validation["validation_traces_root"]
+  HeaderV1 --> Counts["seven counts"]
 ```
 
 ## Data Availability Placement
@@ -172,7 +188,7 @@ The header carries compact roots. Public challengers still need the data those
 roots authenticate.
 
 The launch-gate implementation uses DA committee retention as the production
-source for challenger payloads. A challenger fetches retained `DaPayloadV2` by
+source for challenger payloads. A challenger fetches retained `DaPayload` by
 `header_hash` from DA committee endpoints such as:
 
 ```text
@@ -200,13 +216,13 @@ The DA/proof-data network must publish, retain, replicate, and attest:
   versions.
 
 This does not mean the Midgard producer must submit a separate witness bundle
-for every possible proof. The retained `DaPayloadV2` contains the header, final
+for every possible proof. The retained `DaPayload` contains the header, final
 UTxO members, source entries, transition trace entries, event-to-step entries,
 and counts. Challengers derive membership, non-membership, boundary, link, count,
 and one-step witnesses from that retained data.
 
 ```text
-DaPayloadV2 {
+DaPayloadV1 {
   version
   block_body {
     header_hash
@@ -311,44 +327,56 @@ L2 UTxO.
 ForcedTransactionKey =
   tx_order_id
 
-ForcedInclusionTx {
-  tx_compact: MidgardTxCompactWithoutValidity
-  operator_validity: MidgardTxValidity
+ForcedInclusionTxV1 {
+  tx_id
+  source: NativeTxProofSourceV1
+    (compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor)
+  verdict: OperatorVerdictV1
 }
 
 forced_transactions_root =
-  MerkleRoot<tx_order_id -> ForcedInclusionTx CBOR>
+  MerkleRoot<tx_order_id -> ForcedInclusionTxV1 CBOR>
 ```
 
 `tx_order_id` is the L1 order identity and is the map key. It must not be
-replaced by `tx_id`, and it must not be repeated inside the source-root value.
-The L2 transaction ID is derived from `tx_compact.body` when needed.
+replaced by `tx_id`: two orders may carry the same transaction, and only the
+order identity is unique. `tx_id` rides in the value, recomputed from the
+canonical bytes at encode time, never copied from the datum.
 
 Forced transactions are obligatory L1 events. Every authenticated transaction
 order whose transaction validity range requires processing by the block interval
 must appear in `forced_transactions_root`.
 
 The forced transaction root keeps the user-authored transaction payload separate
-from the operator's execution classification. `tx_compact` is validity-free;
-`operator_validity` is the operator's claim about how that ordered transaction
-processed against the block state, and is challengeable by one-step fraud proofs.
+from the operator's execution classification. The user authors the body and
+witness preimages only — admission refuses a submitted preimage that does not
+claim `TxIsValid` — while the committed compact's validity scalar is stamped
+from the verdict by the leaf encoder (`ForcedTxValid` ⇔ code 0,
+`ForcedTxInvalid { _ }` ⇔ code 1), which is exactly the bit equality the #640
+forced-arm claim predicate re-checks on-chain. `verdict`
+is the operator's claim about how that ordered transaction processed
+against the block state, and is challengeable by one-step fraud proofs. Since
+the #640 format wave it is an `OperatorVerdict` — `ForcedTxValid`, or
+`ForcedTxInvalid` naming one of the 47 `RejectionReason` arms together with
+that reason's subject coordinates — so a wrong rejection is refutable against
+the named subject rather than against a coarse bucket.
 
-The launch-gate implementation supports invalid forced transactions as no-op
-trace steps and deliberately fails closed for effectful valid forced
-transactions. Production block construction refuses `TxIsValid` forced
-transaction traces until forced transaction ledger deltas and preimages are
-available, and the Aiken proof validator rejects the unsupported
-valid-forced-transaction redeemer path. This is a safety restriction, not a
-compatibility mode.
+Canonical V1 supports both forced outcomes. Production block construction
+applies the exact validated ledger delta for a `TxIsValid` forced transaction,
+using the same deterministic transaction-validation machine as a normal L2
+transaction. A rejected forced transaction consumes its ordered event as an
+exact no-op. The validation descriptor, terminal witness, source membership,
+and accepted-transition proof make a wrong verdict or post-root challengeable
+on L1.
 
 Production forced-transaction no-op classifications include at least:
 
-- transaction validity interval mismatch;
-- missing input;
-- invalid signature;
-- failed script;
-- fee too low;
-- unbalanced transaction;
+- transaction validity interval mismatch (`ValidityIntervalExcludesBlockSlot`);
+- missing input (`InputNotFound`);
+- invalid signature (`AddressWitnessSignatureInvalid`);
+- failed script (`PlutusExecutionFailed`);
+- fee too low (`FeeBelowMinimum`);
+- unbalanced transaction (`ValueNotPreserved`);
 - duplicate or already-applied `tx_id` where the order cannot apply effects
   because an earlier event already consumed the necessary inputs.
 
@@ -609,11 +637,12 @@ Together:
 
 ## Required Invariants
 
-### Header Count Invariants
+### HeaderV1 Count Invariants
 
 - Each count equals the member count of its corresponding source root.
 - `total_event_count` equals the sum of per-kind counts.
 - `transition_step_count == total_event_count`.
+- `validation_trace_count == forced_transaction_count + l2_transaction_count`.
 - `event_to_step_root.count == total_event_count`.
 - If `total_event_count == 0`, then `prev_utxos_root == utxos_root` and all
   source/event/trace roots are empty.
@@ -1082,12 +1111,12 @@ MidgardTransitionStepV1
 
 ## Launch-Gate State
 
-- The current `Header` ABI includes `forced_transactions_root`,
-  `transition_trace_root`, `event_to_step_root`, all per-source counts,
-  `total_event_count`, and `transition_step_count`.
+- The current `Header` ABI includes its nine ordered roots, seven ordered
+  counts (including `validation_trace_count`), and nine metadata fields; the
+  exact constructor-0 order is the registry contract above.
 - Block production builds deterministic source roots, event-to-step members, and
   dense transition trace members in phase order.
-- DA payload v2 retains the header, final UTxO members, all source-root members,
+- DA payload V1 retains the header, final UTxO members, all source-root members,
   transition trace members, event-to-step members, and counts. DA committee
   validation recomputes roots/counts and fails closed on malformed coverage.
 - Aiken transition-trace proof validators cover trace boundary, trace link,
@@ -1105,12 +1134,12 @@ MidgardTransitionStepV1
 
 ### Forced Transaction Value Shape
 
-`ForcedInclusionTx CBOR` is:
+`ForcedInclusionTxV1 CBOR` is:
 
 ```text
 ForcedInclusionTx {
   tx_compact: MidgardTxCompactWithoutValidity
-  operator_validity: MidgardTxValidity
+  verdict: OperatorVerdictV1
 }
 ```
 

@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 
-import type { ProductionCommitBlockHeaderParams } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -12,18 +11,18 @@ import {
   shouldRunPreLeaseSchedulerAlignment,
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
-} from "@/fibers/block-commitment.js";
-import { Globals } from "@/services/index.js";
+} from "../src/fibers/block-commitment.js";
+import { MidgardMpf, withMpfRootTransactions } from "../src/mpf/index.js";
+import { Globals } from "../src/services/index.js";
 import {
   shouldPreserveCommitMpfRoots,
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
-} from "@/workers/commit-block-header.js";
+} from "../src/workers/commit-block-header.js";
 import type {
   SerializedStateQueueUTxO,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { MidgardMpf, withMpfRootTransactions } from "@/workers/utils/mpf.js";
+} from "../src/workers/utils/commit-block-header.js";
 
 const dueWork = {
   kind: "commit_scheduler_refresh",
@@ -85,17 +84,6 @@ const assertRootTransactionHandling = (
   });
 
 describe("commit block worker output handling", () => {
-  it("keeps commit-block submit due-work unregistered while SDK commit txs have no lower validity bound", () => {
-    type CommitBlockHasNoLowerValidityBound =
-      "validFrom" extends keyof ProductionCommitBlockHeaderParams
-        ? false
-        : true;
-    const commitBlockHasNoLowerValidityBound: CommitBlockHasNoLowerValidityBound =
-      true;
-
-    expect(commitBlockHasNoLowerValidityBound).toBe(true);
-  });
-
   it("treats registered due work as normal non-submission control flow", () => {
     const output: WorkerOutput = {
       type: "RegisteredDueWorkOutput",

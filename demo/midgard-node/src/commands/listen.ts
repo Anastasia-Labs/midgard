@@ -24,22 +24,15 @@ import {
   Schedule,
 } from "effect";
 
-import { buildListenRouter } from "@/commands/listen-router.js";
-import {
-  ensureProtocolInitializedOnStartup,
-  hydratePendingBlockFinalizationOnStartup,
-  seedLatestLocalBlockBoundaryOnStartup,
-} from "@/commands/listen-startup.js";
-import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import {
   closeDaLibp2pPublicationTransport,
   startDaLibp2pRetainedPayloadServerFromEnv,
-} from "@/da/libp2p-producer.js";
+} from "../da/libp2p-producer.js";
 import {
   assertDaHardeningProviderStartup,
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
-} from "@/da/startup.js";
+} from "../da/startup.js";
 import {
   DaPayloadsDB,
   InitDB,
@@ -47,11 +40,12 @@ import {
   MpfEngineStateDB,
   MutationJobsDB,
   PendingBlockFinalizationsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { assertPhase1AcceptCrashCheckpointConfiguration } from "@/e2e/phase1-accept-crash-checkpoint.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
   admissionBacklogGaugeFiber,
+  attestationTimeoutCorrectionFiber,
   blockCommitmentFiber,
   blockConfirmationFiber,
   daPublicationReconcilerFiber,
@@ -72,8 +66,9 @@ import {
   speculativeCommitSubmitterFiber,
   txQueueProcessorFiber,
   userEventBarrierRefresherFiber,
-} from "@/fibers/index.js";
-import * as Genesis from "@/genesis.js";
+} from "../fibers/index.js";
+import * as Genesis from "../genesis.js";
+import { MidgardMpf, utxoToLedgerInsertMaterial } from "../mpf/index.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
@@ -92,9 +87,15 @@ import {
   validationPoolLayer,
   WriteBehind,
   writeBehindFiber,
-} from "@/services/index.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
-import { MidgardMpf, utxoToInsertBatchOp } from "@/workers/utils/mpf.js";
+} from "../services/index.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
+import { buildListenRouter } from "./listen-router.js";
+import {
+  ensureProtocolInitializedOnStartup,
+  hydratePendingBlockFinalizationOnStartup,
+  seedLatestLocalBlockBoundaryOnStartup,
+} from "./listen-startup.js";
+import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 const logStartupFailure = (message: string) => (error: unknown) =>
   Effect.logError(`${message}: ${formatUnknownError(error)}`);
@@ -228,16 +229,16 @@ const initializeArchitectureGOwner = (
           const genesisEntries = yield* Effect.forEach(
             nodeConfig.GENESIS_UTXOS,
             (utxo) =>
-              utxoToInsertBatchOp(utxo).pipe(
-                Effect.map((op) => ({
-                  op,
+              utxoToLedgerInsertMaterial(utxo).pipe(
+                Effect.map(({ ledgerOp, outputCbor }) => ({
+                  op: ledgerOp,
                   ledgerEntry: {
                     [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(
                       utxo.txHash,
                       "hex",
                     ),
-                    [MempoolLedgerDB.Columns.OUTREF]: op.key,
-                    [MempoolLedgerDB.Columns.OUTPUT]: op.value,
+                    [MempoolLedgerDB.Columns.OUTREF]: ledgerOp.key,
+                    [MempoolLedgerDB.Columns.OUTPUT]: outputCbor,
                     [MempoolLedgerDB.Columns.ADDRESS]: utxo.address,
                     [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
                   } satisfies MempoolLedgerDB.EntryNoTimeStamp,
@@ -337,13 +338,13 @@ export const runNode = (
   | ConfigError
   | DatabaseError
   | DatabaseInitializationError
-  | import("@/services/validation-pool.js").ValidationWorkerError,
+  | import("../services/validation-pool.js").ValidationWorkerError,
   | NodeConfig
   | Database
   | AdmissionSql
   | AdmissionWriter
   | BatchSql
-  | import("@/services/midgard-contracts.js").ContractDeploymentIdentity
+  | import("../services/midgard-contracts.js").ContractDeploymentIdentity
   | MidgardContracts
   | Lucid
   | WriteBehind
@@ -588,6 +589,9 @@ export const runNode = (
           mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),
         ),
         mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
+        attestationTimeoutCorrectionFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS),
+        ),
         mpfPayloadAuditFiber,
         withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
         txQueueProcessorFiber(mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS)),

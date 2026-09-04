@@ -1,4 +1,8 @@
 import {
+  isMidgardConsensusProfile,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
+import {
   credentialToAddress,
   Data,
   LucidEvolution,
@@ -13,52 +17,55 @@ import { Effect } from "effect";
 import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
-} from "@/active-operators.js";
+} from "./active-operators.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   Bech32DeserializationError,
   MidgardValidators,
   UnspecifiedNetworkError,
-} from "@/common.js";
+} from "./common.js";
+import {
+  CORRECTION_LOCK_ASSET_NAME,
+  CorrectionLockDatum,
+} from "./correction-lock.js";
 import {
   DaParamsDatum,
   type DaParamsDatum as DaParamsDatumType,
   daParamsUnit,
-} from "@/da-attestation.js";
+} from "./da-attestation.js";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofCatalogueDatum,
   FraudProofCatalogueMintRedeemer,
-} from "@/fraud-proof/catalogue.js";
+} from "./fraud-proof/catalogue.js";
 import {
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   makeHubOracleDatum,
-} from "@/hub-oracle.js";
+} from "./hub-oracle.js";
 import {
-  EMPTY_MERKLE_TREE_ROOT,
-  GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
-} from "@/ledger-constants.js";
-import { castConfirmedStateToData, ConfirmedState } from "@/ledger-state.js";
-import { encodeLinkedListNodeView, LinkedListNodeView } from "@/linked-list.js";
+  castConfirmedStateToData,
+  makeGenesisConfirmedState,
+} from "./ledger-state.js";
+import { encodeLinkedListNodeView, LinkedListNodeView } from "./linked-list.js";
 import {
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
-} from "@/registered-operators.js";
+} from "./registered-operators.js";
 import {
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   RetiredOperatorMintRedeemer,
-} from "@/retired-operators.js";
+} from "./retired-operators.js";
 import {
   INITIAL_SCHEDULER_DATUM,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerMintRedeemer,
-} from "@/scheduler.js";
+} from "./scheduler.js";
 import {
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
-} from "@/state-queue.js";
+} from "./state-queue.js";
 
 export type AtomicProtocolInitReferenceScripts = {
   readonly hubOracleMinting: UTxO;
@@ -73,6 +80,7 @@ export type AtomicProtocolInitReferenceScripts = {
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
+  consensusProfile: MidgardConsensusProfile;
   fraudProofCatalogueMerkleRoot: string;
   daParams: DaParamsDatumType;
   oneShotNonceUTxO: UTxO;
@@ -123,21 +131,25 @@ export const incompleteInitializationTxProgram = (
     }
 
     const { midgardValidators } = params;
+    if (!isMidgardConsensusProfile(params.consensusProfile)) {
+      throw new Error(
+        "Protocol initialization requires an exact compiled consensus profile",
+      );
+    }
     const hubOracleDatum = yield* makeHubOracleDatum(midgardValidators);
     const encodedHubOracleDatum = Data.to(hubOracleDatum, HubOracleDatum);
     const stateQueueGenesisTime = params.validityRange.validTo - 1n;
-    const genesisConfirmedState: ConfirmedState = {
-      headerHash: GENESIS_HEADER_HASH,
-      prevHeaderHash: GENESIS_HEADER_HASH,
-      utxoRoot: EMPTY_MERKLE_TREE_ROOT,
-      startTime: stateQueueGenesisTime,
-      endTime: stateQueueGenesisTime,
-      protocolVersion: GENESIS_PROTOCOL_VERSION,
-    };
+    const genesisConfirmedState = makeGenesisConfirmedState(
+      stateQueueGenesisTime,
+    );
 
     const hubOracleUnit = toUnit(
       midgardValidators.hubOracle.policyId,
       HUB_ORACLE_ASSET_NAME,
+    );
+    const correctionLockUnit = toUnit(
+      midgardValidators.hubOracle.policyId,
+      CORRECTION_LOCK_ASSET_NAME,
     );
     const schedulerUnit = toUnit(
       midgardValidators.scheduler.policyId,
@@ -168,6 +180,11 @@ export const incompleteInitializationTxProgram = (
     );
 
     const hubOracleAssets = { [hubOracleUnit]: 1n };
+    const correctionLockAssets = { [correctionLockUnit]: 1n };
+    const hubPolicyMintAssets = {
+      ...hubOracleAssets,
+      ...correctionLockAssets,
+    };
     const schedulerAssets = { [schedulerUnit]: 1n };
     const stateQueueAssets = { [stateQueueUnit]: 1n };
     const registeredOperatorsAssets = { [registeredOperatorsUnit]: 1n };
@@ -190,7 +207,7 @@ export const incompleteInitializationTxProgram = (
         },
         daParamsGovernorAssets,
       )
-      .mintAssets(hubOracleAssets, Data.void())
+      .mintAssets(hubPolicyMintAssets, Data.void())
       .pay.ToAddressWithData(
         credentialToAddress(
           network,
@@ -210,7 +227,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         stateQueueAssets,
-        encodeInitOutputRedeemer(3n, StateQueueRedeemer),
+        Data.to({ InitV1: { output_index: 3n } }, StateQueueRedeemer),
       )
       .pay.ToContract(
         midgardValidators.stateQueue.spendingScriptAddress,
@@ -265,6 +282,60 @@ export const incompleteInitializationTxProgram = (
           ),
         },
         fraudProofCatalogueAssets,
+      )
+      .pay.ToContract(
+        midgardValidators.correctionLock.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: Data.to("Idle", CorrectionLockDatum),
+        },
+        correctionLockAssets,
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.commit.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.unattestedTimeout
+            .withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.unavailableTimeout
+            .withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.fraudRemoval.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.merge.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.fraudProofContracts.minAda.yields.tx
+            .withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.fraudProofContracts.minAda.yields.utxo
+            .withdrawalScript,
+        ),
       );
 
     if (params.referenceScripts !== undefined) {

@@ -1,8 +1,8 @@
 import { Deferred, Effect, Fiber, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { evaluateReadiness } from "@/commands/readiness.js";
-import { runAfterL1ControlPlaneRelease } from "@/fibers/da-publication-trigger.js";
+import { evaluateReadiness } from "../src/commands/readiness.js";
+import { runAfterL1ControlPlaneRelease } from "../src/fibers/da-publication-trigger.js";
 
 const healthyReadiness = () =>
   evaluateReadiness({

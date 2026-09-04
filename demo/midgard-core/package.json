@@ -7,128 +7,269 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "scripts/golden-channel.mjs"
   ],
   "exports": {
     ".": {
+      "midgard-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
     "./assets": {
+      "midgard-source": "./src/assets.ts",
       "types": "./dist/assets.d.ts",
       "import": "./dist/assets.js",
       "require": "./dist/assets.cjs"
     },
     "./error-format": {
+      "midgard-source": "./src/error-format.ts",
       "types": "./dist/error-format.d.ts",
       "import": "./dist/error-format.js",
       "require": "./dist/error-format.cjs"
     },
+    "./canonical-json": {
+      "midgard-source": "./src/canonical-json.ts",
+      "types": "./dist/canonical-json.d.ts",
+      "import": "./dist/canonical-json.js",
+      "require": "./dist/canonical-json.cjs"
+    },
     "./hex": {
+      "midgard-source": "./src/hex.ts",
       "types": "./dist/hex.d.ts",
       "import": "./dist/hex.js",
       "require": "./dist/hex.cjs"
     },
+    "./lucid-data": {
+      "midgard-source": "./src/lucid-data.ts",
+      "types": "./dist/lucid-data.d.ts",
+      "import": "./dist/lucid-data.js",
+      "require": "./dist/lucid-data.cjs"
+    },
+    "./narrowing": {
+      "midgard-source": "./src/narrowing.ts",
+      "types": "./dist/narrowing.d.ts",
+      "import": "./dist/narrowing.js",
+      "require": "./dist/narrowing.cjs"
+    },
     "./out-ref": {
+      "midgard-source": "./src/out-ref.ts",
       "types": "./dist/out-ref.d.ts",
       "import": "./dist/out-ref.js",
       "require": "./dist/out-ref.cjs"
     },
     "./plutus-data-cbor": {
+      "midgard-source": "./src/plutus-data-cbor.ts",
       "types": "./dist/plutus-data-cbor.d.ts",
       "import": "./dist/plutus-data-cbor.js",
       "require": "./dist/plutus-data-cbor.cjs"
     },
     "./codec": {
+      "midgard-source": "./src/codec/index.ts",
       "types": "./dist/codec/index.d.ts",
       "import": "./dist/codec/index.js",
       "require": "./dist/codec/index.cjs"
     },
+    "./validation-trace": {
+      "midgard-source": "./src/validation-trace.ts",
+      "types": "./dist/validation-trace.d.ts",
+      "import": "./dist/validation-trace.js",
+      "require": "./dist/validation-trace.cjs"
+    },
+    "./validation-dispute": {
+      "midgard-source": "./src/validation-dispute.ts",
+      "types": "./dist/validation-dispute.d.ts",
+      "import": "./dist/validation-dispute.js",
+      "require": "./dist/validation-dispute.cjs"
+    },
+    "./script-proof": {
+      "midgard-source": "./src/script-proof.ts",
+      "types": "./dist/script-proof.d.ts",
+      "import": "./dist/script-proof.js",
+      "require": "./dist/script-proof.cjs"
+    },
+    "./cek-proof": {
+      "midgard-source": "./src/cek-proof.ts",
+      "types": "./dist/cek-proof.d.ts",
+      "import": "./dist/cek-proof.js",
+      "require": "./dist/cek-proof.cjs"
+    },
+    "./cek-semantic": {
+      "midgard-source": "./src/cek-semantic.ts",
+      "types": "./dist/cek-semantic.d.ts",
+      "import": "./dist/cek-semantic.js",
+      "require": "./dist/cek-semantic.cjs"
+    },
     "./codec/cbor": {
+      "midgard-source": "./src/codec/cbor.ts",
       "types": "./dist/codec/cbor.d.ts",
       "import": "./dist/codec/cbor.js",
       "require": "./dist/codec/cbor.cjs"
     },
     "./da-transport": {
+      "midgard-source": "./src/da-transport.ts",
       "types": "./dist/da-transport.d.ts",
       "import": "./dist/da-transport.js",
       "require": "./dist/da-transport.cjs"
     },
     "./da-compression": {
+      "midgard-source": "./src/da-compression.ts",
       "types": "./dist/da-compression.d.ts",
       "import": "./dist/da-compression.js",
       "require": "./dist/da-compression.cjs"
     },
     "./da-payload-envelope": {
+      "midgard-source": "./src/da-payload-envelope.ts",
       "types": "./dist/da-payload-envelope.d.ts",
       "import": "./dist/da-payload-envelope.js",
       "require": "./dist/da-payload-envelope.cjs"
     },
     "./da-payload-sizing": {
+      "midgard-source": "./src/da-payload-sizing.ts",
       "types": "./dist/da-payload-sizing.d.ts",
       "import": "./dist/da-payload-sizing.js",
       "require": "./dist/da-payload-sizing.cjs"
     },
     "./da-request-deadline": {
+      "midgard-source": "./src/da-request-deadline.ts",
       "types": "./dist/da-request-deadline.d.ts",
       "import": "./dist/da-request-deadline.js",
       "require": "./dist/da-request-deadline.cjs"
     },
     "./codec/address": {
+      "midgard-source": "./src/codec/address.ts",
       "types": "./dist/codec/address.d.ts",
       "import": "./dist/codec/address.js",
       "require": "./dist/codec/address.cjs"
     },
     "./codec/datum": {
+      "midgard-source": "./src/codec/datum.ts",
       "types": "./dist/codec/datum.d.ts",
       "import": "./dist/codec/datum.js",
       "require": "./dist/codec/datum.cjs"
     },
     "./codec/errors": {
+      "midgard-source": "./src/codec/errors.ts",
       "types": "./dist/codec/errors.d.ts",
       "import": "./dist/codec/errors.js",
       "require": "./dist/codec/errors.cjs"
     },
     "./codec/hash": {
+      "midgard-source": "./src/codec/hash.ts",
       "types": "./dist/codec/hash.d.ts",
       "import": "./dist/codec/hash.js",
       "require": "./dist/codec/hash.cjs"
     },
     "./codec/native": {
+      "midgard-source": "./src/codec/native.ts",
       "types": "./dist/codec/native.d.ts",
       "import": "./dist/codec/native.js",
       "require": "./dist/codec/native.cjs"
     },
+    "./codec/native-constants": {
+      "midgard-source": "./src/codec/native-constants.ts",
+      "types": "./dist/codec/native-constants.d.ts",
+      "import": "./dist/codec/native-constants.js",
+      "require": "./dist/codec/native-constants.cjs"
+    },
     "./codec/native-script": {
+      "midgard-source": "./src/codec/native-script.ts",
       "types": "./dist/codec/native-script.d.ts",
       "import": "./dist/codec/native-script.js",
       "require": "./dist/codec/native-script.cjs"
     },
     "./codec/output": {
+      "midgard-source": "./src/codec/output.ts",
       "types": "./dist/codec/output.d.ts",
       "import": "./dist/codec/output.js",
       "require": "./dist/codec/output.cjs"
     },
     "./codec/script-language-views": {
+      "midgard-source": "./src/codec/script-language-views.ts",
       "types": "./dist/codec/script-language-views.d.ts",
       "import": "./dist/codec/script-language-views.js",
       "require": "./dist/codec/script-language-views.cjs"
     },
     "./codec/value": {
+      "midgard-source": "./src/codec/value.ts",
       "types": "./dist/codec/value.d.ts",
       "import": "./dist/codec/value.js",
       "require": "./dist/codec/value.cjs"
     },
     "./codec/versioned-script": {
+      "midgard-source": "./src/codec/versioned-script.ts",
       "types": "./dist/codec/versioned-script.d.ts",
       "import": "./dist/codec/versioned-script.js",
       "require": "./dist/codec/versioned-script.cjs"
+    },
+    "./scripts/golden-channel.mjs": "./scripts/golden-channel.mjs",
+    "./consensus-profile": {
+      "midgard-source": "./src/consensus-profile.ts",
+      "types": "./dist/consensus-profile.d.ts",
+      "import": "./dist/consensus-profile.js",
+      "require": "./dist/consensus-profile.cjs"
+    },
+    "./capability-parity": {
+      "midgard-source": "./src/capability-parity.ts",
+      "types": "./dist/capability-parity.d.ts",
+      "import": "./dist/capability-parity.js",
+      "require": "./dist/capability-parity.cjs"
+    },
+    "./consensus-validation": {
+      "midgard-source": "./src/consensus-validation.ts",
+      "types": "./dist/consensus-validation.d.ts",
+      "import": "./dist/consensus-validation.js",
+      "require": "./dist/consensus-validation.cjs"
+    },
+    "./da-libp2p-identity": {
+      "midgard-source": "./src/da-libp2p-identity.ts",
+      "types": "./dist/da-libp2p-identity.d.ts",
+      "import": "./dist/da-libp2p-identity.js",
+      "require": "./dist/da-libp2p-identity.cjs"
+    },
+    "./mpf-proof-fold": {
+      "midgard-source": "./src/mpf-proof-fold.ts",
+      "types": "./dist/mpf-proof-fold.d.ts",
+      "import": "./dist/mpf-proof-fold.js",
+      "require": "./dist/mpf-proof-fold.cjs"
+    },
+    "./retention-window": {
+      "midgard-source": "./src/retention-window.ts",
+      "types": "./dist/retention-window.d.ts",
+      "import": "./dist/retention-window.js",
+      "require": "./dist/retention-window.cjs"
+    },
+    "./deployment-manifest-identity": {
+      "midgard-source": "./src/deployment-manifest-identity.ts",
+      "types": "./dist/deployment-manifest-identity.d.ts",
+      "import": "./dist/deployment-manifest-identity.js",
+      "require": "./dist/deployment-manifest-identity.cjs"
+    },
+    "./codec/native-tx-carriage": {
+      "midgard-source": "./src/codec/native-tx-carriage.ts",
+      "types": "./dist/codec/native-tx-carriage.d.ts",
+      "import": "./dist/codec/native-tx-carriage.js",
+      "require": "./dist/codec/native-tx-carriage.cjs"
+    },
+    "./codec/native-tx-field-access": {
+      "midgard-source": "./src/codec/native-tx-field-access.ts",
+      "types": "./dist/codec/native-tx-field-access.d.ts",
+      "import": "./dist/codec/native-tx-field-access.js",
+      "require": "./dist/codec/native-tx-field-access.cjs"
     }
   },
   "scripts": {
     "clean": "rimraf dist",
-    "build": "tsup src/index.ts src/assets.ts src/error-format.ts src/hex.ts src/out-ref.ts src/plutus-data-cbor.ts src/da-compression.ts src/da-payload-envelope.ts src/da-payload-sizing.ts src/da-request-deadline.ts src/da-transport.ts src/codec/index.ts src/codec/address.ts src/codec/cbor.ts src/codec/datum.ts src/codec/errors.ts src/codec/hash.ts src/codec/native.ts src/codec/native-constants.ts src/codec/native-script.ts src/codec/output.ts src/codec/script-language-views.ts src/codec/value.ts src/codec/versioned-script.ts --format esm,cjs --dts --clean",
+    "build": "tsup src/index.ts src/assets.ts src/blake2b-224-trace.ts src/blake2b-256-trace.ts src/bounded-blob.ts src/bounded-collection.ts src/bounded-item.ts src/capability-parity.ts src/cek-proof.ts src/cek-semantic.ts src/cek-source-blob.ts src/consensus-profile.ts src/consensus-validation.ts src/da-libp2p-identity.ts src/deployment-manifest-identity.ts src/ledger-output-commitment.ts src/ledger-output-proof.ts src/ledger-output-scan.ts src/mpf-proof-fold.ts src/native-script-decoding-engine.ts src/native-script-scan.ts src/script-proof.ts src/validation-dispute.ts src/validation-trace.ts src/validation-merkle.ts src/error-format.ts src/canonical-json.ts src/hex.ts src/lucid-data.ts src/narrowing.ts src/out-ref.ts src/plutus-data-cbor.ts src/retention-window.ts src/da-compression.ts src/da-payload-envelope.ts src/da-payload-sizing.ts src/da-request-deadline.ts src/da-transport.ts src/codec/index.ts src/codec/address.ts src/codec/cbor.ts src/codec/datum.ts src/codec/errors.ts src/codec/hash.ts src/codec/native.ts src/codec/native-constants.ts src/codec/native-tx-carriage.ts src/codec/native-tx-field-access.ts src/codec/native-tx-field-items.ts src/codec/native-script.ts src/codec/output.ts src/codec/script-language-views.ts src/codec/value.ts src/codec/versioned-script.ts --format esm,cjs --dts --clean && node scripts/write-dist-source-digest.mjs",
+    "docs:consensus-profile-v1:check": "pnpm run build && node scripts/sync-consensus-profile-doc-v1.mjs --check",
+    "docs:consensus-profile-v1:sync": "pnpm run build && node scripts/sync-consensus-profile-doc-v1.mjs",
+    "fixtures:native-tx-field-access-v1:check": "pnpm run build && node scripts/generate-native-tx-field-access-v1-goldens.mjs --check",
+    "fixtures:native-tx-field-access-v1:sync": "pnpm run build && node scripts/generate-native-tx-field-access-v1-goldens.mjs",
+    "fixtures:native-tx-field-items-v1:check": "pnpm run build && node scripts/generate-native-tx-field-items-v1-goldens.mjs --check",
+    "fixtures:native-tx-field-items-v1:sync": "pnpm run build && node scripts/generate-native-tx-field-items-v1-goldens.mjs",
+    "fixtures:native-tx-vector-v1:check": "pnpm run build && node scripts/generate-native-tx-vector-v1-goldens.mjs --check",
+    "fixtures:native-tx-vector-v1:sync": "pnpm run build && node scripts/generate-native-tx-vector-v1-goldens.mjs",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
@@ -143,11 +284,16 @@
   "author": "Anastasia Labs",
   "license": "ISC",
   "dependencies": {
-    "@lucid-evolution/lucid": "0.6.0",
+    "@libp2p/crypto": "5.1.20",
+    "@libp2p/interface": "3.2.4",
+    "@libp2p/peer-id": "6.0.11",
+    "@lucid-evolution/lucid": "0.6.4",
     "@noble/hashes": "^2.0.1",
     "cborg": "^4.5.8"
   },
   "devDependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
+    "@al-ft/midgard-test-support": "workspace:*",
     "@harmoniclabs/cardano-costmodels-ts": "1.4.0",
     "@types/node": "^22.17.0",
     "rimraf": "^6.0.1",

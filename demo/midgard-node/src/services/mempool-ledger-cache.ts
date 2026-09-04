@@ -14,13 +14,13 @@ import {
   Ref,
 } from "effect";
 
-import { MempoolLedgerDB } from "@/database/index.js";
-import type { DatabaseError } from "@/database/utils/common.js";
+import { MempoolLedgerDB } from "../database/index.js";
+import type { DatabaseError } from "../database/utils/common.js";
 import {
   Globals,
   type MempoolLedgerDelta,
   type MempoolLedgerDeltaLog,
-} from "@/services/globals.js";
+} from "./globals.js";
 
 export type MempoolLedgerState = Map<string, Buffer>;
 

@@ -1,0 +1,571 @@
+import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  type FraudProofCatalogueDeploymentInfo,
+  type MidgardValidators,
+  type ReferenceScriptAuthPolicy,
+  referenceScriptAuthPolicyDeploymentInfo,
+} from "@al-ft/midgard-sdk";
+import { type Script, type UTxO } from "@lucid-evolution/lucid";
+
+import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/index.js";
+import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/index.js";
+import { type CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
+import type { DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
+import {
+  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
+  VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  validationValueAndMintSemanticReferenceScriptDeploymentEntry,
+} from "../../../src/index.js";
+import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/index.js";
+import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/index.js";
+import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
+import { type MintAuthorizationContracts } from "../../../src/mint-authorization/index.js";
+import { type MissingNativeScriptTxContracts } from "../../../src/missing-native-script-tx/index.js";
+import { type MissingSignatureContracts } from "../../../src/missing-signature/index.js";
+import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/index.js";
+import { type ValueNotPreservedContracts } from "../../../src/value-not-preserved/index.js";
+import { type WithdrawalMistagContracts } from "../../../src/withdrawal-mistag/index.js";
+import { type WithdrawnInputContracts } from "../../../src/withdrawn-input/index.js";
+import { type WithdrawnReferenceInputContracts } from "../../../src/withdrawn-reference-input/index.js";
+import { deploymentManifest } from "./header-fixtures.js";
+import {
+  publishValidationDisputeReferenceScript,
+  type RemovalReferenceScriptName,
+  type RemovalReferenceScriptPublications,
+} from "./reference-scripts.js";
+
+export type RemovalDeploymentReference = {
+  readonly scriptHash: string;
+  readonly utxo: UTxO;
+};
+
+/**
+ * Manifest entry pinning the `native-script-decoding` step-01 script hash for
+ * removal (#635). The name is caller-chosen because the family predates its
+ * catalogue registration: `submitRemoveFraudulentBlock` checks the explicit
+ * category record's step-01 hash against whatever entry the record names, and
+ * this is the name the emulator manifests use.
+ */
+export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofNativeScriptDecoding";
+export const MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofMissingSignature";
+
+export const MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofMissingNativeScriptTx";
+
+export const WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofWithdrawnReferenceInput";
+
+export const CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofCanonicalDecodability";
+
+export const COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofCommittedFieldShape";
+export const MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY = "fraudProofMinFee";
+export const DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofDoubleWithdraw";
+export const CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofCrossBlockDuplicateEvent";
+export const L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY = "fraudProofL2TxMistag";
+export const WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofWithdrawnInput";
+export const WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofWithdrawalMistag";
+
+/**
+ * Manifest entry pinning the `input-set-uniqueness` step-01 script hash for
+ * removal.
+ */
+export const INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofInputSetUniqueness";
+
+/**
+ * Manifest entry pinning the `value-not-preserved` step-01 script hash for
+ * removal.
+ */
+export const VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofValueNotPreserved";
+
+/**
+ * Manifest entry pinning the `mint-authorization` step-01 script hash for
+ * removal.
+ */
+export const MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY =
+  "fraudProofMintAuthorization";
+
+const requireReferenceScriptAuthPolicy = (
+  policy: MidgardValidators["referenceScriptAuth"],
+): ReferenceScriptAuthPolicy => {
+  const candidate = policy as Partial<ReferenceScriptAuthPolicy>;
+  if (
+    policy.mintingScript.type !== "Native" ||
+    candidate.expiresAtSlot === undefined ||
+    candidate.expiresAtUnixTime === undefined ||
+    candidate.timelockDurationMs === undefined
+  ) {
+    throw new Error(
+      "Removal deployment fixture requires the harness native reference-script auth policy",
+    );
+  }
+  return candidate as ReferenceScriptAuthPolicy;
+};
+
+export const buildRemovalDeploymentInfo = (
+  contracts: MidgardValidators & {
+    readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
+    readonly missingSignature?: MissingSignatureContracts;
+    readonly missingNativeScriptTx?: MissingNativeScriptTxContracts;
+    readonly withdrawnReferenceInput?: WithdrawnReferenceInputContracts;
+    readonly canonicalDecodability?: CanonicalDecodabilityContracts;
+    readonly committedFieldShape?: CommittedFieldShapeContracts;
+    readonly minFee?: MinFeeContracts;
+    readonly doubleWithdraw?: DoubleWithdrawContracts;
+    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContracts;
+    readonly l2TxMistag?: L2TxMistagContracts;
+    readonly withdrawnInput?: WithdrawnInputContracts;
+    readonly withdrawalMistag?: WithdrawalMistagContracts;
+    readonly inputSetUniqueness?: InputSetUniquenessContracts;
+    readonly valueNotPreserved?: ValueNotPreservedContracts;
+    readonly mintAuthorization?: MintAuthorizationContracts;
+  },
+  catalogue: FraudProofCatalogueDeploymentInfo,
+  {
+    validationDisputePublication,
+    validationItemSemanticReference,
+    validationItemObserveReference,
+    validationCanonicalDecodePrepareReference,
+    removalReferenceScripts,
+    fraudProofReferenceScripts,
+    validationValueAndMintSemanticReferences,
+  }: {
+    readonly validationDisputePublication?: Awaited<
+      ReturnType<typeof publishValidationDisputeReferenceScript>
+    >;
+    readonly validationItemSemanticReference?: RemovalDeploymentReference;
+    readonly validationItemObserveReference?: RemovalDeploymentReference;
+    readonly validationCanonicalDecodePrepareReference?: RemovalDeploymentReference;
+    readonly removalReferenceScripts?: RemovalReferenceScriptPublications;
+    /**
+     * Live canonical fraud-proof step publications keyed by their production
+     * deployment-entry names. Hash-only catalogue records remain sufficient
+     * for steps a focused journey never consumes; every consumed reference
+     * step must be supplied here.
+     */
+    readonly fraudProofReferenceScripts?: Readonly<
+      Record<string, RemovalDeploymentReference>
+    >;
+    /**
+     * #634. Published ValueAndMint semantic-resolver reference scripts, keyed
+     * by the ValueAndMint-local semantic index (0..10). Splices in the same
+     * shape as the item-semantic / canonical-decode-prepare entries, so a
+     * journey that publishes one resolver adds exactly one entry.
+     */
+    readonly validationValueAndMintSemanticReferences?: readonly (RemovalDeploymentReference & {
+      readonly semanticResolverIndex: number;
+    })[];
+  } = {},
+) => {
+  const fraudProofChainEntries = Object.fromEntries(
+    Object.entries(FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY).flatMap(
+      ([category, entryNames]) => {
+        const categoryName =
+          category as keyof MidgardValidators["fraudProofContracts"];
+        const configuredSteps =
+          contracts.fraudProofContracts[categoryName].steps;
+        // The generic always-succeeds emulator blueprint still exposes the
+        // pre-Wave-8 two-step input-set-uniqueness scaffold. Removal only
+        // needs the immutable deployed hashes, so repeat its terminal stand-in
+        // for the newly registered scan steps. Focused family tests replace
+        // all four positions with their real validators.
+        const steps =
+          categoryName === "inputSetUniqueness" &&
+          configuredSteps.length === 2 &&
+          entryNames.length === 4
+            ? [
+                configuredSteps[0]!,
+                configuredSteps[1]!,
+                configuredSteps[1]!,
+                configuredSteps[1]!,
+              ]
+            : configuredSteps;
+        const requiresFullChain =
+          categoryName === "transitionTrace" ||
+          FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(categoryName) >= 11;
+        if (
+          steps.length < entryNames.length ||
+          (requiresFullChain && steps.length !== entryNames.length)
+        ) {
+          throw new Error(
+            `${category} removal deployment fixture has the wrong chain length: expected ${entryNames.length.toString()}, received ${steps.length.toString()}`,
+          );
+        }
+        return entryNames.map((entryName, index) => {
+          const published = fraudProofReferenceScripts?.[entryName];
+          return [
+            entryName,
+            {
+              scriptHash: steps[index]!.spendingScriptHash,
+              ...(published === undefined
+                ? {}
+                : {
+                    refScriptUTxO: {
+                      txHash: published.utxo.txHash,
+                      outputIndex: published.utxo.outputIndex,
+                    },
+                  }),
+            },
+          ];
+        });
+      },
+    ),
+  );
+  const valueAndMintSemanticEntries = Object.fromEntries(
+    (validationValueAndMintSemanticReferences ?? []).map(
+      ({ semanticResolverIndex, scriptHash, utxo }) => {
+        const entryName =
+          validationValueAndMintSemanticReferenceScriptDeploymentEntry(
+            semanticResolverIndex,
+          );
+        if (entryName === undefined) {
+          throw new Error(
+            `ValueAndMint semantic resolver ${semanticResolverIndex.toString()} has no reference-script deployment entry`,
+          );
+        }
+        return [
+          entryName,
+          {
+            scriptHash,
+            refScriptUTxO: {
+              txHash: utxo.txHash,
+              outputIndex: utxo.outputIndex,
+            },
+          },
+        ] as const;
+      },
+    ),
+  );
+  const deploymentEntry = (
+    scriptHash: string,
+    script: Script,
+    referenceName?: RemovalReferenceScriptName,
+  ) => {
+    const published =
+      referenceName === undefined
+        ? undefined
+        : removalReferenceScripts?.[referenceName];
+    return {
+      scriptHash,
+      refScriptUTxO:
+        published === undefined
+          ? null
+          : {
+              txHash: published.txHash,
+              outputIndex: published.outputIndex,
+            },
+      contract: {
+        type: script.type,
+        cborHex: script.script,
+      },
+    };
+  };
+  return deploymentManifest(
+    {
+      // Seed every canonical catalogue entry from the production chain, then
+      // let the richer family/publication records below replace individual
+      // entries with contract bytes and live reference-script out-refs.  The
+      // reverse order silently discarded those fields for registered
+      // categories.
+      ...fraudProofChainEntries,
+      ...valueAndMintSemanticEntries,
+      ...(validationItemSemanticReference === undefined
+        ? {}
+        : {
+            [VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+              scriptHash: validationItemSemanticReference.scriptHash,
+              refScriptUTxO: {
+                txHash: validationItemSemanticReference.utxo.txHash,
+                outputIndex: validationItemSemanticReference.utxo.outputIndex,
+              },
+            },
+          }),
+      ...(validationItemObserveReference === undefined
+        ? {}
+        : {
+            [VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+              scriptHash: validationItemObserveReference.scriptHash,
+              refScriptUTxO: {
+                txHash: validationItemObserveReference.utxo.txHash,
+                outputIndex: validationItemObserveReference.utxo.outputIndex,
+              },
+            },
+          }),
+      ...(validationCanonicalDecodePrepareReference === undefined
+        ? {}
+        : {
+            [VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]:
+              {
+                scriptHash:
+                  validationCanonicalDecodePrepareReference.scriptHash,
+                refScriptUTxO: {
+                  txHash: validationCanonicalDecodePrepareReference.utxo.txHash,
+                  outputIndex:
+                    validationCanonicalDecodePrepareReference.utxo.outputIndex,
+                },
+              },
+          }),
+      hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
+      fraudProofCatalogueMint: {
+        scriptHash: contracts.fraudProofCatalogue.policyId,
+        fraudProofCatalogue: catalogue,
+      },
+      fraudProofCatalogueSpend: {
+        scriptHash: contracts.fraudProofCatalogue.spendingScriptHash,
+      },
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      fraudProofSpend: {
+        scriptHash: contracts.fraudProof.spendingScriptHash,
+      },
+      fraudProofDoubleSpend: {
+        scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
+      },
+      fraudProofNonExistentInput: {
+        scriptHash: contracts.fraudProofs.nonExistentInput.spendingScriptHash,
+      },
+      fraudProofInvalidRange: {
+        scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
+      },
+      fraudProofZeroInput: {
+        scriptHash: contracts.fraudProofs.zeroInput.spendingScriptHash,
+      },
+      fraudProofDaHashPreimage: {
+        scriptHash: contracts.fraudProofs.daHashPreimage.spendingScriptHash,
+      },
+      fraudProofNoReferenceInput: {
+        scriptHash: contracts.fraudProofs.noReferenceInput.spendingScriptHash,
+      },
+      fraudProofReferenceInputNoIdx: {
+        scriptHash:
+          contracts.fraudProofs.referenceInputNoIdx.spendingScriptHash,
+      },
+      fraudProofInvalidSignature: {
+        scriptHash: contracts.fraudProofs.invalidSignature.spendingScriptHash,
+      },
+      ...(contracts.nativeScriptDecoding === undefined
+        ? {}
+        : {
+            [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.missingSignature === undefined
+        ? {}
+        : {
+            [MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.missingSignature.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.missingNativeScriptTx === undefined
+        ? {}
+        : {
+            [MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.missingNativeScriptTx.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.withdrawnReferenceInput === undefined
+        ? {}
+        : {
+            [WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.withdrawnReferenceInput.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.canonicalDecodability === undefined
+        ? {}
+        : {
+            [CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.canonicalDecodability.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.committedFieldShape === undefined
+        ? {}
+        : {
+            [COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.committedFieldShape.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.minFee === undefined
+        ? {}
+        : {
+            [MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash: contracts.minFee.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.doubleWithdraw === undefined
+        ? {}
+        : {
+            [DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.crossBlockDuplicateEvent === undefined
+        ? {}
+        : {
+            [CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.crossBlockDuplicateEvent.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.l2TxMistag === undefined
+        ? {}
+        : {
+            [L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash: contracts.l2TxMistag.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.withdrawnInput === undefined
+        ? {}
+        : {
+            [WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY]: deploymentEntry(
+              contracts.withdrawnInput.steps[0].spendingScriptHash,
+              contracts.withdrawnInput.steps[0].spendingScript,
+            ),
+          }),
+      ...(contracts.withdrawalMistag === undefined
+        ? {}
+        : {
+            [WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.withdrawalMistag.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.inputSetUniqueness === undefined
+        ? {}
+        : {
+            [INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.inputSetUniqueness.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.valueNotPreserved === undefined
+        ? {}
+        : {
+            [VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.valueNotPreserved.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.mintAuthorization === undefined
+        ? {}
+        : {
+            [MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY]: {
+              scriptHash:
+                contracts.mintAuthorization.steps[0].spendingScriptHash,
+            },
+          }),
+      fraudProofNonExistentInputNoIndex: {
+        scriptHash:
+          contracts.fraudProofs.nonExistentInputNoIndex.spendingScriptHash,
+        contract: {
+          type: contracts.fraudProofs.nonExistentInputNoIndex.spendingScript
+            .type,
+          cborHex:
+            contracts.fraudProofs.nonExistentInputNoIndex.spendingScript.script,
+        },
+      },
+      validationTraceDispute: {
+        scriptHash:
+          contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
+        refScriptUTxO:
+          validationDisputePublication === undefined
+            ? null
+            : {
+                txHash: validationDisputePublication.utxo.txHash,
+                outputIndex: validationDisputePublication.utxo.outputIndex,
+              },
+        contract: {
+          type: contracts.fraudProofs.validationTraceDispute.spendingScript
+            .type,
+          cborHex:
+            contracts.fraudProofs.validationTraceDispute.spendingScript.script,
+        },
+      },
+      cekProgramMaterialSpend: {
+        scriptHash: contracts.cekProgramMaterial.spendingScriptHash,
+        contract: {
+          type: contracts.cekProgramMaterial.spendingScript.type,
+          cborHex: contracts.cekProgramMaterial.spendingScript.script,
+        },
+      },
+      stateQueueMint: deploymentEntry(
+        contracts.stateQueue.policyId,
+        contracts.stateQueue.mintingScript,
+        "stateQueueMint",
+      ),
+      stateQueueFraudRemovalWithdraw: deploymentEntry(
+        contracts.stateQueue.yields.fraudRemoval.withdrawalScriptHash,
+        contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+        "stateQueueFraudRemovalWithdraw",
+      ),
+      stateQueueUnattestedTimeoutWithdraw: deploymentEntry(
+        contracts.stateQueue.yields.unattestedTimeout.withdrawalScriptHash,
+        contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+      ),
+      correctionLockSpend: deploymentEntry(
+        contracts.correctionLock.spendingScriptHash,
+        contracts.correctionLock.spendingScript,
+        "correctionLockSpend",
+      ),
+      stateQueueSpend: deploymentEntry(
+        contracts.stateQueue.spendingScriptHash,
+        contracts.stateQueue.spendingScript,
+        "stateQueueSpend",
+      ),
+      retiredOperatorsMint: deploymentEntry(
+        contracts.retiredOperators.policyId,
+        contracts.retiredOperators.mintingScript,
+        "retiredOperatorsMint",
+      ),
+      retiredOperatorsSpend: deploymentEntry(
+        contracts.retiredOperators.spendingScriptHash,
+        contracts.retiredOperators.spendingScript,
+        "retiredOperatorsSpend",
+      ),
+      registeredOperatorsMint: {
+        scriptHash: contracts.registeredOperators.policyId,
+      },
+      registeredOperatorsSpend: deploymentEntry(
+        contracts.registeredOperators.spendingScriptHash,
+        contracts.registeredOperators.spendingScript,
+      ),
+      activeOperatorsMint: deploymentEntry(
+        contracts.activeOperators.policyId,
+        contracts.activeOperators.mintingScript,
+        "activeOperatorsMint",
+      ),
+      activeOperatorsSpend: deploymentEntry(
+        contracts.activeOperators.spendingScriptHash,
+        contracts.activeOperators.spendingScript,
+        "activeOperatorsSpend",
+      ),
+      schedulerMint: { scriptHash: contracts.scheduler.policyId },
+      schedulerSpend: deploymentEntry(
+        contracts.scheduler.spendingScriptHash,
+        contracts.scheduler.spendingScript,
+        "schedulerSpend",
+      ),
+      settlementMint: { scriptHash: contracts.settlement.policyId },
+    },
+    validationDisputePublication?.authPolicyDeploymentInfo ??
+      referenceScriptAuthPolicyDeploymentInfo(
+        requireReferenceScriptAuthPolicy(contracts.referenceScriptAuth),
+      ),
+  );
+};

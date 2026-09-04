@@ -3,31 +3,33 @@
 //// Concludes the proof that the transaction carried through step-01 spends no
 //// inputs.
 
-use aiken/crypto.{blake2b_256}
+use aiken/collection/list
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
-use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
-use midgard/fraud_proofs/native_tx/preimages.{verify_spend_inputs_preimage}
-use midgard/fraud_proofs/zero_input/step_02.{Args, Datum, SpendRedeemer, State}
-use midgard/ledger_state.{MidgardInputsHash}
-
-/// The `spend_inputs_hash` a native transaction body carries when it spends
-/// nothing. Derived from the same encoder the native codec hashes real input
-/// lists with, so it cannot drift from `verify_spend_inputs_preimage`.
-///
-/// > [!NOTE]
-/// > This is *not* `env.empty_list_hash`, which hashes the PlutusData encoding
-/// > of an empty list. Native bodies are committed under the native codec.
-const empty_spend_inputs_hash: MidgardInputsHash =
-  [] |> encode_native_byte_list |> blake2b_256
+use midgard/fraud_proofs/field_opening_v1.{
+  BodyAnchor, opened_field_view, spend_inputs_field_index,
+}
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardTransaction, MidgardTransactionBody,
+}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/fraud_proofs/zero_input/rule.{
+  StateV1, bind_state_v1, terminal_contradiction_v1,
+}
+use midgard/fraud_proofs/zero_input/step_02.{Args, Datum, SpendRedeemer}
+use midgard/native_tx_field_access_v1.{field_item_count}
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
   computation_thread_token_policy_id: PolicyId,
+  field_preimage_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -49,40 +51,54 @@ validator main(
         input_index,
         output_index,
         fraud_proof_mint_redeemer_index,
+        spend_inputs_opening,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
+        let Transaction { inputs, outputs, redeemers, reference_inputs, .. } = tx
 
         expect Some(step_datum) = datum
 
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-        <-
-          finalize(
-            computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
-            step_datum,
-            input_index,
-            output_index,
-            fraud_proof_mint_redeemer_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            redeemers,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data
+          <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          redeemers,
+        )
 
-        expect Some(State { bad_tx_spend_inputs_hash }) = m_input_state_data
+        expect Some(state) = m_input_state_data
 
-        // 2. The spend inputs list must be empty.
-        expect bad_tx_spend_inputs_hash == empty_spend_inputs_hash
-
-        // Done.
-        True
+        // 2. Field 0 of the disputed transaction must hold no items.
+        //
+        //    The count comes from the door, which for tiers 1–2 walks the whole
+        //    preimage at view construction and so answers with an authenticated
+        //    number (§5.2/§7.4). Reading it here rather than comparing a
+        //    forwarded commitment against the pinned empty-field constant is
+        //    what ties the verdict to *this* slot: §4 removed field-index domain
+        //    separation, so all nine empty fields share one commitment and a
+        //    hash equality proves only that some field is empty. Positional
+        //    identity lives inside the door, and this is how the family gets it.
+        let spend_inputs_view = opened_field_view(
+          spend_inputs_opening,
+          BodyAnchor { tx_id: state.subject.transaction_id },
+          spend_inputs_field_index,
+          reference_inputs,
+          field_preimage_certificate_policy_id,
+        )
+        // Done: the terminal rule applies the authenticated verdict polarity.
+        terminal_contradiction_v1(state, field_item_count(spend_inputs_view))
       }
     }
   }
@@ -92,148 +108,100 @@ validator main(
   }
 }
 
-test empty_spend_inputs_hash_matches_the_native_preimage_encoding() {
-  verify_spend_inputs_preimage([], empty_spend_inputs_hash)
+// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+
+/// A transaction that spends nothing — the `zero-input` violation.
+fn zero_input_bad_tx() -> MidgardTransaction {
+  let base = fixture.valid_native_tx_v1()
+  MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, inputs: [] },
+  }
 }
 
-/// Pins the constant to the exact value the offchain codec derives, so the two
-/// encoders cannot drift apart silently. The SDK asserts the same literal in
-/// `EMPTY_SPEND_INPUTS_HASH`.
-test empty_spend_inputs_hash_matches_the_offchain_constant() {
-  empty_spend_inputs_hash == #"45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
-}
-
-test empty_spend_inputs_hash_rejects_a_non_empty_input_list() {
-  !verify_spend_inputs_preimage(
-    [#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"],
-    empty_spend_inputs_hash,
+fn run_finalize(block: fixture.NativeBlockFixtureV1) -> Bool {
+  let asset_name = fixture.ct_token_asset_name(block)
+  let subject = substrate.bind_accepted_subject_v1(
+    verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
   )
-}
-
-type TestFraudProofDatum {
-  fraud_prover: ByteArray,
-}
-
-type TestFraudProofMintRedeemer {
-  computation_thread_token_asset_name: ByteArray,
-  computation_thread_mint_redeemer_index: Int,
-}
-
-const test_fraud_proof_policy: PolicyId =
-  #"11111111111111111111111111111111111111111111111111111111"
-
-const test_computation_thread_policy: PolicyId =
-  #"22222222222222222222222222222222222222222222222222222222"
-
-const test_step_script_hash =
-  #"33333333333333333333333333333333333333333333333333333333"
-
-const test_fraud_prover =
-  #"44444444444444444444444444444444444444444444444444444444"
-
-const test_computation_thread_asset_name =
-  #"00000005aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-
-const test_non_empty_spend_inputs_hash: MidgardInputsHash =
-  [#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"]
-    |> encode_native_byte_list
-    |> blake2b_256
-
-const test_own_out_ref =
-  OutputReference {
-    transaction_id: #"5555555555555555555555555555555555555555555555555555555555555555",
-    output_index: 0,
-  }
-
-fn test_script_address(script_hash) -> Address {
-  Address {
-    payment_credential: address.Script(script_hash),
-    stake_credential: None,
-  }
-}
-
-fn test_step_datum(spend_inputs_hash: MidgardInputsHash) -> Datum {
-  ct.StepDatum {
-    fraud_prover: test_fraud_prover,
-    data: Some(State { bad_tx_spend_inputs_hash: spend_inputs_hash }),
-  }
-}
-
-fn test_continue_redeemer() -> SpendRedeemer {
-  ct.Continue(
-    Args { input_index: 0, output_index: 0, fraud_proof_mint_redeemer_index: 0 },
-  )
-}
-
-fn test_finalize_tx(spend_inputs_hash: MidgardInputsHash) -> Transaction {
-  let input_datum_data: Data = test_step_datum(spend_inputs_hash)
-  let fraud_proof_datum_data: Data =
-    TestFraudProofDatum { fraud_prover: test_fraud_prover }
-  let fraud_proof_mint_redeemer_data: Data =
-    TestFraudProofMintRedeemer {
-      computation_thread_token_asset_name: test_computation_thread_asset_name,
-      computation_thread_mint_redeemer_index: 1,
-    }
-  Transaction {
-    ..transaction.placeholder,
-    inputs: [
-      transaction.Input {
-        output_reference: test_own_out_ref,
-        output: transaction.Output {
-          address: test_script_address(test_step_script_hash),
-          value: assets.from_lovelace(2)
-            |> assets.add(
-                test_computation_thread_policy,
-                test_computation_thread_asset_name,
-                1,
-              ),
-          datum: transaction.InlineDatum(input_datum_data),
-          reference_script: None,
-        },
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bind_state_v1(subject)),
       },
-    ],
-    outputs: [
-      transaction.Output {
-        address: test_script_address(test_fraud_proof_policy),
-        value: assets.from_lovelace(2)
-          |> assets.add(
-              test_fraud_proof_policy,
-              test_computation_thread_asset_name,
-              1,
+    ),
+    ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        spend_inputs_opening: fixture.inline_body_opening(
+          block.compact_cbor,
+          block.tx.body.inputs |> list.map(encode_midgard_tx_input),
+        ),
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(asset_name),
+  )
+}
+
+/// Positive selector: the challenged transaction's authenticated field 0 holds
+/// no items, so the proof finalizes.
+test zero_input_step_02_accepts_an_empty_spend_inputs_field() {
+  run_finalize(fixture.native_block_fixture_v1(zero_input_bad_tx()))
+}
+
+/// Valid-block negative selector: a transaction from a valid block spends at
+/// least one input, so its authenticated field-0 count is non-zero and the
+/// challenge cannot finalize.
+test zero_input_step_02_rejects_valid_block_challenge() fail {
+  run_finalize(fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()))
+}
+
+/// The empty preimage must be the one the *disputed* transaction commits: a
+/// prover who carries `80` for a transaction that really spends inputs fails
+/// the door's authenticate-once hash check, not merely the count assertion.
+/// This is the substitution the pinned-constant comparison could not see, since
+/// under §4 the empty commitment is the same 32 bytes for every field of every
+/// transaction.
+test zero_input_step_02_rejects_an_empty_preimage_for_a_spending_transaction() fail {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  let asset_name = fixture.ct_token_asset_name(block)
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(
+          bind_state_v1(
+            substrate.bind_accepted_subject_v1(
+              verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
             ),
-        datum: transaction.InlineDatum(fraud_proof_datum_data),
-        reference_script: None,
+          ),
+        ),
       },
-    ],
-    redeemers: [
-      Pair(
-        transaction.Mint(test_fraud_proof_policy),
-        fraud_proof_mint_redeemer_data,
-      ),
-    ],
-  }
-}
-
-test validator_accepts_the_empty_native_input_hash() {
-  main.spend(
-    test_fraud_proof_policy,
-    test_script_address(test_fraud_proof_policy),
-    test_computation_thread_policy,
-    Some(test_step_datum(empty_spend_inputs_hash)),
-    test_continue_redeemer(),
-    test_own_out_ref,
-    test_finalize_tx(empty_spend_inputs_hash),
-  )
-}
-
-test validator_rejects_a_non_empty_native_input_hash() fail {
-  main.spend(
-    test_fraud_proof_policy,
-    test_script_address(test_fraud_proof_policy),
-    test_computation_thread_policy,
-    Some(test_step_datum(test_non_empty_spend_inputs_hash)),
-    test_continue_redeemer(),
-    test_own_out_ref,
-    test_finalize_tx(test_non_empty_spend_inputs_hash),
+    ),
+    ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        spend_inputs_opening: fixture.inline_body_opening(
+          block.compact_cbor,
+          [] |> list.map(encode_midgard_tx_input),
+        ),
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(asset_name),
   )
 }

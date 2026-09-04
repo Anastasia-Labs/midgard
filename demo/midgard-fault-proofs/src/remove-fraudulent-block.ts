@@ -1,31 +1,26 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
+import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
   type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
-  buildDoubleSpendFaultProofContracts,
-  buildInvalidRangeFaultProofContracts,
-  buildNonExistentInputFaultProofContracts,
-  buildTransitionTraceFaultProofContracts,
-  buildZeroInputFaultProofContracts,
-  type DoubleSpendFaultProofContracts,
+  type EmulatorStateQueueRemoveSlashingParams,
   encodeLinkedListNodeView,
+  fetchCorrectionLockUTxOProgram,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-  type FraudProofCatalogueCategoryName,
   FraudProofTokenDatum,
+  type FraudProverRewardPlan,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   hashBlockHeader,
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
-  type InvalidRangeFaultProofContracts,
   type LinkedListNodeView,
-  type NonExistentInputFaultProofContracts,
   type OutputReference,
   outputReferenceFromUTxO,
-  parseFaultProofBlueprint,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -34,6 +29,7 @@ import {
   requireReferenceInputIndex,
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
+  resolveFraudProverRewardOutputIndex,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   RetiredOperatorMintRedeemer,
@@ -43,16 +39,13 @@ import {
   SchedulerSpendRedeemer,
   type SchedulerSpendRedeemer as SchedulerSpendRedeemerData,
   type SlashingApproach as SlashingApproachData,
-  SlashingArguments,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerData,
   type StateQueueRemoveReferenceScriptUTxOs,
   type StateQueueUTxO,
-  type TransitionTraceFaultProofContracts,
   utxoToStateQueueUTxO,
-  type ZeroInputFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -86,18 +79,184 @@ import {
   requireMatchingScriptHash,
   requireSingletonUtxo,
   type ResolvedProverSigner,
+  resolveFaultProofDeploymentContracts,
   resolveProverSigner,
   type SubmitProviderConfig,
+  type SupportedFaultProofCategoryName,
 } from "./runtime.js";
 import { selectFeeInput } from "./submit-step-01.js";
+import {
+  CapturedLocallyEvaluatedTransaction,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "./workflow/transaction-boundary.js";
 
-const DEFAULT_REMOVE_VALIDITY_WINDOW_MS = 300_000n;
-const DEFAULT_REMOVE_VALIDITY_BACKDATE_MS = 120_000n;
+export const STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS = 300_000n;
+export const STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS = 120_000n;
 const DEFAULT_NODE_ADMIN_KEY_ENV = "MIDGARD_NODE_ADMIN_KEY";
 const STATE_QUEUE_MUTATION_LEASE_ENDPOINT = "stateQueueMutationLease";
 const FAULT_PROOF_LEASE_HOLDER = "fault_proof_removal";
 
+export type FraudSlashEconomicsPolicy = Readonly<{
+  profile: "public-preprod-launch-v1" | "bounded-acceptance-v1";
+  requiredBondLovelace: bigint;
+  slashingPenaltyLovelace: bigint;
+  inactivitySlashingPenaltyLovelace: bigint;
+  fraudProverRewardLovelace: bigint;
+  proverCollateralFloorLovelace: bigint;
+}>;
+
+export const fraudSlashEconomicsFromDeploymentManifest = (
+  deploymentInfo: unknown,
+): FraudSlashEconomicsPolicy => {
+  if (
+    typeof deploymentInfo !== "object" ||
+    deploymentInfo === null ||
+    Array.isArray(deploymentInfo) ||
+    (Object.getPrototypeOf(deploymentInfo) !== Object.prototype &&
+      Object.getPrototypeOf(deploymentInfo) !== null)
+  ) {
+    throw new Error("Deployment manifest must be an object.");
+  }
+  const manifest = deploymentInfo as { readonly economics?: unknown };
+  const economics = parseDeploymentManifestEconomics(manifest.economics);
+  return {
+    profile: economics.profile,
+    requiredBondLovelace: BigInt(economics.requiredBondLovelace),
+    slashingPenaltyLovelace: BigInt(economics.slashingPenaltyLovelace),
+    inactivitySlashingPenaltyLovelace: BigInt(
+      economics.inactivitySlashingPenaltyLovelace,
+    ),
+    fraudProverRewardLovelace: BigInt(economics.fraudProverRewardLovelace),
+    proverCollateralFloorLovelace: BigInt(
+      economics.proverCollateralFloorLovelace,
+    ),
+  };
+};
+
+export const resolveFraudSlashEconomics = (
+  economics: FraudSlashEconomicsPolicy,
+  operatorNodeLovelace: bigint,
+): Readonly<{
+  requiredBondLovelace: bigint;
+  fraudProverRewardLovelace: bigint;
+  exactFeeLovelace: bigint;
+  tranche: "full" | "partially-inactivity-slashed";
+}> => {
+  const partialBond =
+    economics.requiredBondLovelace -
+    economics.inactivitySlashingPenaltyLovelace;
+  if (
+    economics.requiredBondLovelace !==
+      economics.slashingPenaltyLovelace + economics.fraudProverRewardLovelace ||
+    economics.inactivitySlashingPenaltyLovelace <= 0n ||
+    economics.inactivitySlashingPenaltyLovelace >=
+      economics.slashingPenaltyLovelace
+  ) {
+    throw new Error("Deployment economics violate F04 slash relations.");
+  }
+  if (operatorNodeLovelace === economics.requiredBondLovelace) {
+    return {
+      requiredBondLovelace: economics.requiredBondLovelace,
+      fraudProverRewardLovelace: economics.fraudProverRewardLovelace,
+      exactFeeLovelace: economics.slashingPenaltyLovelace,
+      tranche: "full",
+    };
+  }
+  if (operatorNodeLovelace === partialBond) {
+    return {
+      requiredBondLovelace: economics.requiredBondLovelace,
+      fraudProverRewardLovelace: economics.fraudProverRewardLovelace,
+      exactFeeLovelace:
+        economics.slashingPenaltyLovelace -
+        economics.inactivitySlashingPenaltyLovelace,
+      tranche: "partially-inactivity-slashed",
+    };
+  }
+  throw new Error(
+    `Operator bond must be exactly ${economics.requiredBondLovelace.toString()} or ${partialBond.toString()} lovelace; found ${operatorNodeLovelace.toString()}.`,
+  );
+};
+
+export const fraudRemovalUsesWalletCoinSelection = (
+  approach:
+    | "SlashActiveOperator"
+    | "SlashRetiredOperator"
+    | "OperatorAlreadySlashed",
+): boolean => approach === "OperatorAlreadySlashed";
+
+const utxoLovelace = (utxo: UTxO): bigint => utxo.assets.lovelace ?? 0n;
+
+const sumUtxoLovelace = (utxos: readonly UTxO[]): bigint =>
+  utxos.reduce((total, utxo) => total + utxoLovelace(utxo), 0n);
+
+const assertExactFraudSlashLovelaceConservation = ({
+  stateQueueAnchor,
+  removedStateQueueNode,
+  slashing,
+  economics,
+}: {
+  readonly stateQueueAnchor: StateQueueUTxO;
+  readonly removedStateQueueNode: StateQueueUTxO;
+  readonly slashing: Exclude<
+    EmulatorStateQueueRemoveSlashingParams,
+    { readonly kind: "operatorAlreadySlashed" }
+  >;
+  readonly economics: ReturnType<typeof resolveFraudSlashEconomics>;
+}): void => {
+  const stateQueueInputLovelace =
+    utxoLovelace(stateQueueAnchor.utxo) +
+    utxoLovelace(removedStateQueueNode.utxo);
+  const stateQueueOutputLovelace = stateQueueInputLovelace;
+  const rewardLovelace = slashing.fraudProverReward?.lovelace;
+  if (rewardLovelace !== economics.fraudProverRewardLovelace) {
+    throw new Error(
+      `Fraud slash reward must conserve exactly ${economics.fraudProverRewardLovelace.toString()} lovelace; found ${rewardLovelace?.toString() ?? "none"}.`,
+    );
+  }
+
+  const operatorInputLovelace =
+    slashing.kind === "slashActiveOperator"
+      ? sumUtxoLovelace([
+          ...slashing.activeOperatorInputs,
+          ...(slashing.schedulerSpend === undefined
+            ? []
+            : [slashing.schedulerSpend.input]),
+        ])
+      : sumUtxoLovelace(slashing.retiredOperatorInputs);
+  const operatorOutputLovelace =
+    slashing.kind === "slashActiveOperator"
+      ? (slashing.continuedActiveOperatorAnchorOutput?.assets.lovelace ?? 0n) +
+        (slashing.schedulerSpend?.continuedOutput.assets.lovelace ?? 0n)
+      : (slashing.continuedRetiredOperatorAnchorOutput?.assets.lovelace ?? 0n);
+  const totalInputs = stateQueueInputLovelace + operatorInputLovelace;
+  const totalOutputsAndFee =
+    stateQueueOutputLovelace +
+    operatorOutputLovelace +
+    rewardLovelace +
+    economics.exactFeeLovelace;
+  if (totalInputs !== totalOutputsAndFee) {
+    throw new Error(
+      `Fraud slash lovelace is not exactly conserved: inputs=${totalInputs.toString()}, outputs_and_fee=${totalOutputsAndFee.toString()}, residual=${(totalInputs - totalOutputsAndFee).toString()}.`,
+    );
+  }
+};
+
 const REFERENCE_SCRIPT_NAMES = [
+  "correctionLockSpend",
+  "stateQueueSpend",
+  "stateQueueMint",
+  "stateQueueFraudRemovalWithdraw",
+  "activeOperatorsSpend",
+  "activeOperatorsMint",
+  "retiredOperatorsSpend",
+  "retiredOperatorsMint",
+  "schedulerSpend",
+] as const;
+
+const STATE_QUEUE_REMOVE_REFERENCE_SCRIPT_NAMES = [
+  "correctionLockSpend",
   "stateQueueSpend",
   "stateQueueMint",
   "activeOperatorsSpend",
@@ -112,10 +271,13 @@ type ReferenceScriptName = (typeof REFERENCE_SCRIPT_NAMES)[number];
 type DeploymentScriptName = ReferenceScriptName | "registeredOperatorsSpend";
 
 type RemoveFraudulentBlockContracts = {
+  readonly correctionLockAddress: string;
+  readonly correctionLockSpendingScript: Script;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
   readonly stateQueueSpendingScript: Script;
   readonly stateQueueMintingScript: Script;
+  readonly stateQueueFraudRemovalWithdrawalScript: Script;
   readonly activeOperatorsPolicyId: string;
   readonly activeOperatorsAddress: string;
   readonly activeOperatorsSpendingScript: Script;
@@ -133,7 +295,7 @@ type RemoveFraudulentBlockContracts = {
   readonly fraudProofPolicyId: string;
   readonly fraudProofAddress: string;
   readonly fraudCategoryId: string;
-  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
+  readonly fraudCategory: RemoveFraudulentBlockCategoryLabel;
 };
 
 type RemoveFraudulentBlockLayout = {
@@ -267,14 +429,56 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
   readonly stateQueueLeaseTtlMs?: number;
 };
 
-export type RemoveFraudulentBlockFraudCategory = Extract<
-  FraudProofCatalogueCategoryName,
-  | "doubleSpend"
-  | "nonExistentInput"
-  | "invalidRange"
-  | "transitionTrace"
-  | "zeroInput"
->;
+export type RemoveFraudulentBlockFraudCategory =
+  SupportedFaultProofCategoryName;
+
+/**
+ * Explicit already-resolved category record for fault-proof families that
+ * predate their catalogue registration (none at present; the mechanism stays
+ * for the next pre-registration family).
+ * These families have no SDK contract-chain builder and no category id in any
+ * deployment manifest yet, so removal cannot resolve them the canonical way;
+ * per the families' submitter convention the caller supplies the
+ * already-resolved facts instead, and every fail-closed check the canonical
+ * path runs still runs: the shared fraud-proof pair is checked against the
+ * `fraudProofMint`/`fraudProofSpend` deployment entries, the step-01 hash
+ * against the named deployment entry, and the category id against collisions
+ * with every canonical registered id. The on-chain removal handler is
+ * category-agnostic — it authenticates the fraud-proof reference input by
+ * policy id and reads the header hash off the asset-name suffix — so no
+ * category-specific script participates in the removal transaction itself.
+ */
+export type RemoveFraudulentBlockExplicitCategory = {
+  /** Category label used in failure messages and the result payload. */
+  readonly name: string;
+  /**
+   * The 4-byte hex category id the family's computation thread and
+   * fraud-proof token were minted under.
+   */
+  readonly categoryId: string;
+  /**
+   * Deployment-manifest entry whose `scriptHash` pins the family's step-01
+   * spending script.
+   */
+  readonly firstStepDeploymentEntry: string;
+  /** The step-01 spending-script hash of the already-resolved family chain. */
+  readonly firstStepScriptHash: string;
+  /** The shared fraud-proof pair the family chain was parameterized with. */
+  readonly fraudProof: {
+    readonly policyId: string;
+    readonly spendingScriptHash: string;
+    readonly spendingScriptAddress: string;
+  };
+};
+
+/**
+ * A canonical removable category name, or the label of an explicit
+ * pre-registration category. The `string & {}` half keeps the canonical
+ * literals in editor completion without narrowing away explicit labels.
+ */
+export type RemoveFraudulentBlockCategoryLabel =
+  | RemoveFraudulentBlockFraudCategory
+  | (string & {});
 
 export type StateQueueMutationLease = {
   readonly token: string;
@@ -284,8 +488,17 @@ export type StateQueueMutationLease = {
   readonly fail: (error: string) => Promise<void>;
 };
 
+export type StateQueueMutationLeaseIdentity = Pick<
+  StateQueueMutationLease,
+  "token" | "source"
+>;
+
 export type StateQueueMutationLeaseCoordinator = {
   readonly acquire: () => Promise<StateQueueMutationLease>;
+  /** Reconstructs the exact journaled fencing lease; never acquires a new one. */
+  readonly resume?: (
+    identity: StateQueueMutationLeaseIdentity,
+  ) => Promise<StateQueueMutationLease>;
 };
 
 export type SubmitRemoveFraudulentBlockResult = {
@@ -293,7 +506,7 @@ export type SubmitRemoveFraudulentBlockResult = {
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
-  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
+  readonly fraudCategory: RemoveFraudulentBlockCategoryLabel;
   readonly fraudCategoryId: string;
   readonly fraudulentHeaderHash: string;
   readonly stateQueueBlockOutRef: string;
@@ -387,10 +600,12 @@ export const createHttpStateQueueMutationLeaseCoordinator = ({
   midgardNodeUrl,
   adminKey,
   ttlMs,
+  holder = FAULT_PROOF_LEASE_HOLDER,
 }: {
   readonly midgardNodeUrl: string;
   readonly adminKey: string;
   readonly ttlMs?: number;
+  readonly holder?: string;
 }): StateQueueMutationLeaseCoordinator => {
   const nodeUrl = normalizeNodeUrl(midgardNodeUrl);
   const normalizedTtlMs = parsePositiveSafeInteger(
@@ -417,12 +632,40 @@ export const createHttpStateQueueMutationLeaseCoordinator = ({
     }
     return json;
   };
+  const leaseForToken = (token: string): StateQueueMutationLease => {
+    if (token.trim().length === 0 || token.trim() !== token) {
+      throw new Error("State-queue mutation lease token must be canonical");
+    }
+    const leaseBody = (
+      action: "renew" | "release" | "fail",
+      extra: Record<string, unknown> = {},
+    ) =>
+      post({
+        action,
+        token,
+        ...(normalizedTtlMs === undefined ? {} : { ttlMs: normalizedTtlMs }),
+        ...extra,
+      });
+    return {
+      token,
+      source: nodeUrl,
+      renew: async () => {
+        await leaseBody("renew");
+      },
+      release: async () => {
+        await leaseBody("release");
+      },
+      fail: async (error: string) => {
+        await leaseBody("fail", { error });
+      },
+    };
+  };
 
   return {
     acquire: async () => {
       const json = await post({
         action: "acquire",
-        holder: FAULT_PROOF_LEASE_HOLDER,
+        holder,
         ...(normalizedTtlMs === undefined ? {} : { ttlMs: normalizedTtlMs }),
       });
       if (
@@ -436,26 +679,15 @@ export const createHttpStateQueueMutationLeaseCoordinator = ({
         );
       }
       const token = (json as { readonly token: string }).token;
-      const leaseBody = (action: "renew" | "release" | "fail", extra = {}) =>
-        post({
-          action,
-          token,
-          ...(normalizedTtlMs === undefined ? {} : { ttlMs: normalizedTtlMs }),
-          ...extra,
-        });
-      return {
-        token,
-        source: nodeUrl,
-        renew: async () => {
-          await leaseBody("renew");
-        },
-        release: async () => {
-          await leaseBody("release");
-        },
-        fail: async (error: string) => {
-          await leaseBody("fail", { error });
-        },
-      };
+      return leaseForToken(token);
+    },
+    resume: async ({ token, source }) => {
+      if (source !== nodeUrl) {
+        throw new Error(
+          `Refusing state-queue mutation lease from a different coordinator: expected=${nodeUrl} actual=${source}`,
+        );
+      }
+      return leaseForToken(token);
     },
   };
 };
@@ -533,126 +765,132 @@ const buildRemovalContracts = async ({
   fraudCategory,
 }: {
   readonly blueprint: unknown;
-  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly deploymentInfo: unknown;
   readonly network: Network;
   readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
 }): Promise<RemoveFraudulentBlockContracts> => {
-  const hubOraclePolicyId = requireDeploymentScriptHash(
+  const resolved = await resolveFaultProofDeploymentContracts({
+    blueprint,
     deploymentInfo,
+    network,
+    categoryName: fraudCategory,
+    requireFraudProofSpend: true,
+  });
+
+  return assembleRemovalContracts({
+    deploymentInfo: resolved.deploymentInfo,
+    network,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    fraudProofPolicyId: resolved.contracts.fraudProof.policyId,
+    fraudProofAddress: resolved.contracts.fraudProof.spendingScriptAddress,
+    fraudCategoryId: resolved.category.categoryId,
+    fraudCategory,
+  });
+};
+
+/**
+ * Explicit-category counterpart of `buildRemovalContracts`: a
+ * pre-registration family has no SDK builder and no catalogue entry, so the
+ * caller's already-resolved facts stand in for the canonical resolution —
+ * while every fail-closed cross-check the canonical path performs still runs
+ * against the deployment manifest: the shared fraud-proof pair against the
+ * `fraudProofMint`/`fraudProofSpend` entries, the step-01 hash against the
+ * entry the record names, and the category id against every canonical
+ * registered id (a collision would mean the "pre-registration" id actually
+ * belongs to a registered family, which must resolve canonically).
+ */
+const buildExplicitRemovalContracts = ({
+  deploymentInfo,
+  network,
+  category,
+}: {
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly category: RemoveFraudulentBlockExplicitCategory;
+}): RemoveFraudulentBlockContracts => {
+  const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
+  const hubOraclePolicyId = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
     "hubOracleMint",
   );
-  const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
-    deploymentInfo,
-    "fraudProofCatalogueMint",
+  const deployedFraudProofPolicyId = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
+    "fraudProofMint",
   );
-  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
-  let categoryContracts:
-    | DoubleSpendFaultProofContracts
-    | NonExistentInputFaultProofContracts
-    | InvalidRangeFaultProofContracts
-    | TransitionTraceFaultProofContracts
-    | ZeroInputFaultProofContracts;
-  let expectedCategoryDeploymentEntry:
-    | "fraudProofDoubleSpend"
-    | "fraudProofNonExistentInput"
-    | "fraudProofInvalidRange"
-    | "fraudProofTransitionTrace"
-    | "fraudProofZeroInput";
-  let derivedCategoryFirstStepHash: string;
-  if (fraudCategory === "doubleSpend") {
-    const doubleSpendContracts = await Effect.runPromise(
-      buildDoubleSpendFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = doubleSpendContracts;
-    expectedCategoryDeploymentEntry = "fraudProofDoubleSpend";
-    derivedCategoryFirstStepHash =
-      doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "nonExistentInput") {
-    const nonExistentInputContracts = await Effect.runPromise(
-      buildNonExistentInputFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = nonExistentInputContracts;
-    expectedCategoryDeploymentEntry = "fraudProofNonExistentInput";
-    derivedCategoryFirstStepHash =
-      nonExistentInputContracts.nonExistentInput.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "invalidRange") {
-    const invalidRangeContracts = await Effect.runPromise(
-      buildInvalidRangeFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = invalidRangeContracts;
-    expectedCategoryDeploymentEntry = "fraudProofInvalidRange";
-    derivedCategoryFirstStepHash =
-      invalidRangeContracts.invalidRange.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "transitionTrace") {
-    const transitionTraceContracts = await Effect.runPromise(
-      buildTransitionTraceFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = transitionTraceContracts;
-    expectedCategoryDeploymentEntry = "fraudProofTransitionTrace";
-    derivedCategoryFirstStepHash =
-      transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
-  } else {
-    const zeroInputContracts = await Effect.runPromise(
-      buildZeroInputFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = zeroInputContracts;
-    expectedCategoryDeploymentEntry = "fraudProofZeroInput";
-    derivedCategoryFirstStepHash =
-      zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
-  }
-  requireMatchingScriptHash({
-    label: "fraudProofMint policy",
-    deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofMint"),
-    derived: categoryContracts.fraudProof.policyId,
-  });
-  requireMatchingScriptHash({
-    label: "fraudProofSpend script",
-    deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofSpend"),
-    derived: categoryContracts.fraudProof.spendingScriptHash,
-  });
-  requireMatchingScriptHash({
-    label: `${expectedCategoryDeploymentEntry} step-01 script`,
-    deployed: requireDeploymentScriptHash(
-      deploymentInfo,
-      expectedCategoryDeploymentEntry,
-    ),
-    derived: derivedCategoryFirstStepHash,
-  });
-  const categoryId =
-    deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories[
-      fraudCategory
-    ].categoryId;
-  if (categoryId === undefined) {
+  if (category.fraudProof.policyId !== deployedFraudProofPolicyId) {
     throw new Error(
-      `Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.${fraudCategory}.`,
+      `${category.name} explicit category names fraud-proof policy ` +
+        `${category.fraudProof.policyId}, but the deployment's fraudProofMint ` +
+        `entry pins ${deployedFraudProofPolicyId}.`,
     );
   }
+  const deployedFraudProofSpendHash = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
+    "fraudProofSpend",
+  );
+  if (category.fraudProof.spendingScriptHash !== deployedFraudProofSpendHash) {
+    throw new Error(
+      `${category.name} explicit category names fraud-proof spending script ` +
+        `${category.fraudProof.spendingScriptHash}, but the deployment's ` +
+        `fraudProofSpend entry pins ${deployedFraudProofSpendHash}.`,
+    );
+  }
+  const deployedFirstStepHash = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
+    category.firstStepDeploymentEntry,
+  );
+  if (category.firstStepScriptHash !== deployedFirstStepHash) {
+    throw new Error(
+      `${category.name} explicit category names step-01 script ` +
+        `${category.firstStepScriptHash}, but the deployment's ` +
+        `${category.firstStepDeploymentEntry} entry pins ` +
+        `${deployedFirstStepHash}.`,
+    );
+  }
+  for (const [registeredName, registeredId] of Object.entries(
+    FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+  )) {
+    if (registeredId === category.categoryId) {
+      throw new Error(
+        `${category.name} explicit category id ${category.categoryId} ` +
+          `collides with the registered ${registeredName} category; a ` +
+          `registered family must resolve through the canonical catalogue.`,
+      );
+    }
+  }
+  return assembleRemovalContracts({
+    deploymentInfo: parsedDeploymentInfo,
+    network,
+    hubOraclePolicyId,
+    fraudProofPolicyId: category.fraudProof.policyId,
+    fraudProofAddress: category.fraudProof.spendingScriptAddress,
+    fraudCategoryId: category.categoryId,
+    fraudCategory: category.name,
+  });
+};
 
+/**
+ * The category-independent half of removal-contract resolution: every
+ * script, address and policy id here comes straight out of the deployment
+ * manifest, with the already-verified category facts passed through.
+ */
+const assembleRemovalContracts = ({
+  deploymentInfo,
+  network,
+  hubOraclePolicyId,
+  fraudProofPolicyId,
+  fraudProofAddress,
+  fraudCategoryId,
+  fraudCategory,
+}: {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofAddress: string;
+  readonly fraudCategoryId: string;
+  readonly fraudCategory: RemoveFraudulentBlockCategoryLabel;
+}): RemoveFraudulentBlockContracts => {
   const stateQueueSpendingScript = requireDeploymentScript(
     deploymentInfo,
     "stateQueueSpend",
@@ -660,6 +898,14 @@ const buildRemovalContracts = async ({
   const stateQueueMintingScript = requireDeploymentScript(
     deploymentInfo,
     "stateQueueMint",
+  );
+  const stateQueueFraudRemovalWithdrawalScript = requireDeploymentScript(
+    deploymentInfo,
+    "stateQueueFraudRemovalWithdraw",
+  );
+  const correctionLockSpendingScript = requireDeploymentScript(
+    deploymentInfo,
+    "correctionLockSpend",
   );
   const activeOperatorsSpendingScript = requireDeploymentScript(
     deploymentInfo,
@@ -699,6 +945,11 @@ const buildRemovalContracts = async ({
   );
 
   return {
+    correctionLockAddress: validatorToAddress(
+      network,
+      correctionLockSpendingScript as SpendingValidator,
+    ),
+    correctionLockSpendingScript,
     stateQueuePolicyId: requireDeploymentScriptHash(
       deploymentInfo,
       "stateQueueMint",
@@ -709,6 +960,7 @@ const buildRemovalContracts = async ({
     ),
     stateQueueSpendingScript,
     stateQueueMintingScript,
+    stateQueueFraudRemovalWithdrawalScript,
     activeOperatorsPolicyId,
     activeOperatorsAddress: validatorToAddress(
       network,
@@ -738,9 +990,9 @@ const buildRemovalContracts = async ({
         "registeredOperatorsSpend",
       ) as SpendingValidator,
     ),
-    fraudProofPolicyId: categoryContracts.fraudProof.policyId,
-    fraudProofAddress: categoryContracts.fraudProof.spendingScriptAddress,
-    fraudCategoryId: categoryId,
+    fraudProofPolicyId,
+    fraudProofAddress,
+    fraudCategoryId,
     fraudCategory,
   };
 };
@@ -790,11 +1042,23 @@ const resolveReferenceScripts = async ({
   readonly lucid: LucidEvolution;
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly requireReferenceScripts: boolean;
-}): Promise<StateQueueRemoveReferenceScriptUTxOs | undefined> => {
+}): Promise<
+  StateQueueRemoveReferenceScriptUTxOs & {
+    readonly stateQueueFraudRemovalWithdraw: UTxO;
+  }
+> => {
+  const stateQueueFraudRemovalWithdraw = await requireDeploymentReferenceScript(
+    {
+      lucid,
+      deploymentInfo,
+      name: "stateQueueFraudRemovalWithdraw",
+    },
+  );
   if (!requireReferenceScripts) {
-    return undefined;
+    return { stateQueueFraudRemovalWithdraw };
   }
   const [
+    correctionLockSpend,
     stateQueueSpend,
     stateQueueMint,
     activeOperatorsSpend,
@@ -803,11 +1067,13 @@ const resolveReferenceScripts = async ({
     retiredOperatorsMint,
     schedulerSpend,
   ] = await Promise.all(
-    REFERENCE_SCRIPT_NAMES.map((name) =>
+    STATE_QUEUE_REMOVE_REFERENCE_SCRIPT_NAMES.map((name) =>
       requireDeploymentReferenceScript({ lucid, deploymentInfo, name }),
     ),
   );
   return {
+    stateQueueFraudRemovalWithdraw,
+    correctionLockSpend,
     stateQueueSpend,
     stateQueueMint,
     activeOperatorsSpend,
@@ -819,7 +1085,11 @@ const resolveReferenceScripts = async ({
 };
 
 const referenceScriptOutRefs = (
-  referenceScripts: StateQueueRemoveReferenceScriptUTxOs | undefined,
+  referenceScripts:
+    | (StateQueueRemoveReferenceScriptUTxOs & {
+        readonly stateQueueFraudRemovalWithdraw: UTxO;
+      })
+    | undefined,
 ): Readonly<Record<ReferenceScriptName, string | null>> =>
   Object.fromEntries(
     REFERENCE_SCRIPT_NAMES.map((name) => {
@@ -1328,22 +1598,19 @@ const makeRetiredOperatorsMintRedeemerFromPlan =
   ({ operator }: { readonly operator: string }) =>
   (layout: OperatorSlashingLayout): RetiredOperatorMintRedeemerData => ({
     SlashOperator: {
-      slashing_arguments: Data.castTo(
-        {
-          slashed_operator: operator,
-          hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-          slashed_operator_anchor_element_input_outref:
-            layout.operatorDirectoryAnchorInputOutRef,
-          slashed_operator_anchor_element_output_index:
-            layout.operatorDirectoryAnchorOutputIndex,
-          slashing_reason: {
-            SlashOperatorForBadState: {
-              state_queue_redeemer_index: layout.stateQueueRedeemerTxInfoIndex,
-            },
+      slashing_arguments: {
+        slashed_operator: operator,
+        hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
+        slashed_operator_anchor_element_input_outref:
+          layout.operatorDirectoryAnchorInputOutRef,
+        slashed_operator_anchor_element_output_index:
+          layout.operatorDirectoryAnchorOutputIndex,
+        slashing_reason: {
+          SlashOperatorForBadState: {
+            state_queue_redeemer_index: layout.stateQueueRedeemerTxInfoIndex,
           },
         },
-        SlashingArguments,
-      ),
+      },
     },
   });
 
@@ -1520,6 +1787,7 @@ const buildActiveSlashingInputs = ({
   contracts,
   hubOracleUtxo,
   registeredOperatorsRootUtxo,
+  fraudProverReward,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -1529,6 +1797,7 @@ const buildActiveSlashingInputs = ({
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
   readonly registeredOperatorsRootUtxo?: UTxO;
+  readonly fraudProverReward?: FraudProverRewardPlan;
 }): SlashingTxPlan => {
   const schedulerUnit = toUnit(
     contracts.schedulerPolicyId,
@@ -1602,6 +1871,7 @@ const buildActiveSlashingInputs = ({
             };
       return {
         kind: "slashActiveOperator",
+        ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
         activeOperatorsAssetsToBurn: {
           [activeOperatorUnit(contracts.activeOperatorsPolicyId, operator)]:
             -1n,
@@ -1657,6 +1927,7 @@ const buildRetiredSlashingInputs = ({
   operator,
   contracts,
   hubOracleUtxo,
+  fraudProverReward,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -1665,6 +1936,7 @@ const buildRetiredSlashingInputs = ({
   readonly operator: string;
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
+  readonly fraudProverReward?: FraudProverRewardPlan;
 }): SlashingTxPlan => ({
   approach: "SlashRetiredOperator",
   removedOperatorNodeOutRef: outRefLabel(plan.removalPlan.node.utxo),
@@ -1680,6 +1952,7 @@ const buildRetiredSlashingInputs = ({
     };
     return {
       kind: "slashRetiredOperator",
+      ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
       retiredOperatorsAssetsToBurn: {
         [toUnit(
           contracts.retiredOperatorsPolicyId,
@@ -1741,12 +2014,19 @@ const buildSlashingInputs = ({
   contracts,
   hubOracleUtxo,
   registeredOperatorsRootUtxo,
+  fraudProverReward,
 }: {
   readonly plan: OperatorSlashingPlan;
   readonly operator: string;
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
   readonly registeredOperatorsRootUtxo?: UTxO;
+  /**
+   * D3 reward routing. Only the bond-consuming approaches can carry it;
+   * `OperatorAlreadySlashed` consumes no bond and pays no reward, which is the
+   * D4 exclusivity ruling expressed in the redeemer's own shape.
+   */
+  readonly fraudProverReward?: FraudProverRewardPlan;
 }): SlashingTxPlan => {
   switch (plan.approach) {
     case "SlashActiveOperator":
@@ -1756,6 +2036,7 @@ const buildSlashingInputs = ({
         contracts,
         hubOracleUtxo,
         registeredOperatorsRootUtxo,
+        ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
       });
     case "SlashRetiredOperator":
       return buildRetiredSlashingInputs({
@@ -1763,6 +2044,7 @@ const buildSlashingInputs = ({
         operator,
         contracts,
         hubOracleUtxo,
+        ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
       });
     case "OperatorAlreadySlashed":
       return buildAlreadySlashedInputs({ plan });
@@ -1909,6 +2191,12 @@ const resolveStateQueueSlashingApproach = ({
         slashingApproach: {
           SlashActiveOperator: {
             active_operators_redeemer_index: activeOperatorsRedeemerTxInfoIndex,
+            m_fraud_prover_reward_output_index:
+              resolveFraudProverRewardOutputIndex(
+                ctx,
+                slashing.fraudProverReward,
+                "remove-fraudulent-block active-operator fraud-prover reward",
+              ),
           },
         },
         layout: { activeOperatorsRedeemerTxInfoIndex },
@@ -1925,6 +2213,12 @@ const resolveStateQueueSlashingApproach = ({
           SlashRetiredOperator: {
             retired_operators_redeemer_index:
               retiredOperatorsRedeemerTxInfoIndex,
+            m_fraud_prover_reward_output_index:
+              resolveFraudProverRewardOutputIndex(
+                ctx,
+                slashing.fraudProverReward,
+                "remove-fraudulent-block retired-operator fraud-prover reward",
+              ),
           },
         },
         layout: { retiredOperatorsRedeemerTxInfoIndex },
@@ -1966,6 +2260,7 @@ const makeStateQueueRemoveMintRedeemer = ({
   fraudulentOperator,
   fraudulentBlocksHeaderHash,
   fraudProofRefInput,
+  yieldRefInput,
   slashing,
   contracts,
   onLayout,
@@ -1976,6 +2271,7 @@ const makeStateQueueRemoveMintRedeemer = ({
   readonly fraudulentOperator: string;
   readonly fraudulentBlocksHeaderHash: string;
   readonly fraudProofRefInput: UTxO;
+  readonly yieldRefInput: UTxO;
   readonly slashing: RemoveFraudulentBlockSlashing;
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly onLayout: (layout: RemoveFraudulentBlockLayout) => void;
@@ -2009,6 +2305,11 @@ const makeStateQueueRemoveMintRedeemer = ({
       ...slashingLayout,
     };
     const commonRedeemer = {
+      yield_to_ref_input_index: requireReferenceInputIndex(
+        ctx,
+        yieldRefInput,
+        "remove-fraudulent-block yield",
+      ),
       fraudulent_operator: fraudulentOperator,
       fraudulent_blocks_header_hash: fraudulentBlocksHeaderHash,
       slashing_approach: slashingApproach,
@@ -2083,19 +2384,36 @@ export const submitRemoveFraudulentBlock = async ({
   validFrom,
   validTo,
   stateQueueMutationLeaseCoordinator,
+  fraudProverRewardLovelace,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly deploymentInfo: unknown;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  readonly fraudCategory?: RemoveFraudulentBlockFraudCategory;
+  /**
+   * Canonical catalogue category resolved from the production manifest, or —
+   * for a family that predates its catalogue registration — the explicit
+   * already-resolved category record
+   * (see {@link RemoveFraudulentBlockExplicitCategory}).
+   */
+  readonly fraudCategory?:
+    | RemoveFraudulentBlockFraudCategory
+    | RemoveFraudulentBlockExplicitCategory;
   readonly fraudulentHeaderHash: string;
   readonly awaitConfirmation?: boolean;
   readonly requireReferenceScripts?: boolean;
   readonly validFrom?: bigint;
   readonly validTo?: bigint;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /**
+   * Optional assertion of the deployment-manifest `fraudProverRewardLovelace`;
+   * omission still routes the release profile's mandatory nonzero reward.
+   */
+  readonly fraudProverRewardLovelace?: bigint;
+  /** Production workflow seam for each descendant/target removal tx. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitRemoveFraudulentBlockResult> => {
   const headerHash = parseHex(
     fraudulentHeaderHash,
@@ -2103,12 +2421,21 @@ export const submitRemoveFraudulentBlock = async ({
     28,
   );
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
-  const contracts = await buildRemovalContracts({
-    blueprint,
-    deploymentInfo: parsedDeploymentInfo,
-    network,
-    fraudCategory,
-  });
+  const deploymentEconomics =
+    fraudSlashEconomicsFromDeploymentManifest(deploymentInfo);
+  const contracts =
+    typeof fraudCategory === "string"
+      ? await buildRemovalContracts({
+          blueprint,
+          deploymentInfo,
+          network,
+          fraudCategory,
+        })
+      : buildExplicitRemovalContracts({
+          deploymentInfo,
+          network,
+          category: fraudCategory,
+        });
   if (
     contracts.fraudCategoryId.length !==
     FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT * 2
@@ -2192,11 +2519,22 @@ export const submitRemoveFraudulentBlock = async ({
     );
   }
   const fraudProofDatum = Data.from(fraudProofUtxo.datum, FraudProofTokenDatum);
-  if (fraudProofDatum.fraud_prover !== signer.paymentKeyHash) {
+
+  if (
+    fraudProverRewardLovelace !== undefined &&
+    fraudProverRewardLovelace !== deploymentEconomics.fraudProverRewardLovelace
+  ) {
     throw new Error(
-      `Fraud-proof token prover ${fraudProofDatum.fraud_prover} does not match signer ${signer.paymentKeyHash}.`,
+      `Fraud-prover reward must equal deployment profile ${deploymentEconomics.profile} amount ${deploymentEconomics.fraudProverRewardLovelace.toString()} lovelace; found ${fraudProverRewardLovelace.toString()}.`,
     );
   }
+  const fraudProverRewardPlan = {
+    proverEnterpriseAddress: credentialToAddress(network, {
+      type: "Key" as const,
+      hash: fraudProofDatum.fraud_prover,
+    }),
+    lovelace: deploymentEconomics.fraudProverRewardLovelace,
+  };
 
   let topology = await loadStateQueueTopology({
     lucid,
@@ -2207,6 +2545,10 @@ export const submitRemoveFraudulentBlock = async ({
   if (initialTarget === undefined) {
     throw new Error(`State queue does not contain block ${headerHash}.`);
   }
+  const fraudulentHeader = await Effect.runPromise(
+    getHeaderFromStateQueueDatum(initialTarget.datum),
+  );
+  const fraudulentOperator = fraudulentHeader.operatorVkey;
   const initialStateQueueRootOutRef = outRefLabel(topology.root.utxo);
   const initialTargetOutRef = outRefLabel(initialTarget.utxo);
   const initialTargetHasSuccessor =
@@ -2246,8 +2588,8 @@ export const submitRemoveFraudulentBlock = async ({
   const txValidityWindow = () => {
     const now = BigInt(Date.now());
     return {
-      txValidFrom: validFrom ?? now - DEFAULT_REMOVE_VALIDITY_BACKDATE_MS,
-      txValidTo: validTo ?? now + DEFAULT_REMOVE_VALIDITY_WINDOW_MS,
+      txValidFrom: validFrom ?? now - STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
+      txValidTo: validTo ?? now + STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
     };
   };
   const loadRegisteredOperatorsRootUtxo = () =>
@@ -2271,11 +2613,13 @@ export const submitRemoveFraudulentBlock = async ({
     readonly removed: StateQueueUTxO;
   }): Promise<RemoveTransactionResult> => {
     await stateQueueMutationLease?.renew();
-    const removedHeaderHash = await requireStateQueueHeaderHash(removed);
-    const removedHeader = await Effect.runPromise(
-      getHeaderFromStateQueueDatum(removed.datum),
+    const correctionLockInput = await Effect.runPromise(
+      fetchCorrectionLockUTxOProgram(lucid, {
+        correctionLockAddress: contracts.correctionLockAddress,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+      }),
     );
-    const fraudulentOperator = removedHeader.operatorVkey;
+    const removedHeaderHash = await requireStateQueueHeaderHash(removed);
     const currentSchedulerUtxo = await requireSingletonUtxo({
       lucid,
       address: contracts.schedulerAddress,
@@ -2291,6 +2635,13 @@ export const submitRemoveFraudulentBlock = async ({
       activeOperatorsRootUnit,
       retiredOperatorsRootUnit,
     });
+    const slashEconomics =
+      operatorSlashingPlan.approach === "OperatorAlreadySlashed"
+        ? null
+        : resolveFraudSlashEconomics(
+            deploymentEconomics,
+            operatorSlashingPlan.removalPlan.node.utxo.assets.lovelace ?? 0n,
+          );
     const registeredOperatorsRootForSlashing =
       operatorSlashingPlan.approach === "SlashActiveOperator" &&
       operatorSlashingPlan.schedulerPlan.kind === "rewind"
@@ -2304,10 +2655,34 @@ export const submitRemoveFraudulentBlock = async ({
       ...(registeredOperatorsRootForSlashing === undefined
         ? {}
         : { registeredOperatorsRootUtxo: registeredOperatorsRootForSlashing }),
+      ...(fraudProverRewardPlan === undefined
+        ? {}
+        : { fraudProverReward: fraudProverRewardPlan }),
     });
     const { txValidFrom, txValidTo } = txValidityWindow();
-    const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+    // A legal operator bond tranche is exactly reward + slash fee.  Do not
+    // add a wallet fee input to that branch: its change would be an unrelated
+    // second payment to the prover whenever the submitter uses the prover's
+    // enterprise wallet.  OperatorAlreadySlashed has no bond and still needs
+    // an ordinary fee input for descendant cleanup transactions.
+    const additionalInputs =
+      slashEconomics === null
+        ? [selectFeeInput(await lucid.wallet().getUtxos())]
+        : [];
     const slashing = slashingPlan.buildSlashing(txValidTo);
+    if (slashEconomics !== null) {
+      if (slashing.kind === "operatorAlreadySlashed") {
+        throw new Error(
+          "Bond-backed fraud slash unexpectedly resolved to OperatorAlreadySlashed.",
+        );
+      }
+      assertExactFraudSlashLovelaceConservation({
+        stateQueueAnchor: anchor,
+        removedStateQueueNode: removed,
+        slashing,
+        economics: slashEconomics,
+      });
+    }
     const stateQueueMintRedeemer = makeStateQueueRemoveMintRedeemer({
       kind,
       anchor,
@@ -2315,6 +2690,7 @@ export const submitRemoveFraudulentBlock = async ({
       fraudulentOperator,
       fraudulentBlocksHeaderHash: headerHash,
       fraudProofRefInput: fraudProofUtxo,
+      yieldRefInput: referenceScripts.stateQueueFraudRemovalWithdraw,
       slashing,
       contracts,
       onLayout: (layout) => {
@@ -2329,17 +2705,26 @@ export const submitRemoveFraudulentBlock = async ({
             {
               fraudulentBlockUTxO: anchor,
               removedBlockUTxO: removed,
-              additionalInputs: [feeInput],
+              additionalInputs,
               validFrom: txValidFrom,
               validTo: txValidTo,
               fraudulentOperator,
               fraudulentBlocksHeaderHash: headerHash,
               fraudProofRefInput: fraudProofUtxo,
+              fraudProofPolicyId: contracts.fraudProofPolicyId,
+              hubOracleRefInput: hubOracleUtxo,
+              correctionLockInput,
+              correctionLockSpendingScript:
+                contracts.correctionLockSpendingScript,
               additionalRefInputs: slashingPlan.additionalRefInputs,
               slashing,
               stateQueueSpendingScript: contracts.stateQueueSpendingScript,
               stateQueueMintingScript: contracts.stateQueueMintingScript,
               referenceScripts,
+              yieldWitness: {
+                referenceInput: referenceScripts.stateQueueFraudRemovalWithdraw,
+                script: contracts.stateQueueFraudRemovalWithdrawalScript,
+              },
               stateQueueMintRedeemer,
             },
           )
@@ -2349,21 +2734,41 @@ export const submitRemoveFraudulentBlock = async ({
             {
               anchorUTxO: anchor,
               fraudulentBlockUTxO: removed,
-              additionalInputs: [feeInput],
+              additionalInputs,
               validFrom: txValidFrom,
               validTo: txValidTo,
               fraudulentOperator,
               fraudulentBlocksHeaderHash: headerHash,
               fraudProofRefInput: fraudProofUtxo,
+              fraudProofPolicyId: contracts.fraudProofPolicyId,
+              hubOracleRefInput: hubOracleUtxo,
+              correctionLockInput,
+              correctionLockSpendingScript:
+                contracts.correctionLockSpendingScript,
               additionalRefInputs: slashingPlan.additionalRefInputs,
               slashing,
               stateQueueSpendingScript: contracts.stateQueueSpendingScript,
               stateQueueMintingScript: contracts.stateQueueMintingScript,
               referenceScripts,
+              yieldWitness: {
+                referenceInput: referenceScripts.stateQueueFraudRemovalWithdraw,
+                script: contracts.stateQueueFraudRemovalWithdrawalScript,
+              },
               stateQueueMintRedeemer,
             },
           );
-    const unsigned = await tx.addSignerKey(signer.paymentKeyHash).complete({
+    const feeBoundTx =
+      slashEconomics === null
+        ? tx
+        : tx.setMinFee(slashEconomics.exactFeeLovelace);
+    const unsigned = await feeBoundTx.complete({
+      // The bond-backed branch is already proven exactly balanced above.
+      // Ordinary coin selection would add an unrelated wallet UTxO and let
+      // CML absorb a sub-minimum change residual into the fee, violating the
+      // exact F04 fee. Collateral selection remains independent and enabled.
+      coinSelection: fraudRemovalUsesWalletCoinSelection(
+        operatorSlashingPlan.approach,
+      ),
       localUPLCEval: true,
     });
     if (txLayout === undefined) {
@@ -2373,7 +2778,61 @@ export const submitRemoveFraudulentBlock = async ({
     }
 
     const signed = await unsigned.sign.withWallet().complete();
+    const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+      signed,
+      referenceScripts: workflowReferenceScriptsUsedByTransaction({
+        signed,
+        candidates: [
+          {
+            role: "correction-lock-spend",
+            utxo: referenceScripts?.correctionLockSpend,
+            expectedScript: contracts.correctionLockSpendingScript,
+          },
+          {
+            role: "state-queue-spend",
+            utxo: referenceScripts?.stateQueueSpend,
+            expectedScript: contracts.stateQueueSpendingScript,
+          },
+          {
+            role: "state-queue-mint",
+            utxo: referenceScripts?.stateQueueMint,
+            expectedScript: contracts.stateQueueMintingScript,
+          },
+          {
+            role: "active-operators-spend",
+            utxo: referenceScripts?.activeOperatorsSpend,
+            expectedScript: contracts.activeOperatorsSpendingScript,
+          },
+          {
+            role: "active-operators-mint",
+            utxo: referenceScripts?.activeOperatorsMint,
+            expectedScript: contracts.activeOperatorsMintingScript,
+          },
+          {
+            role: "retired-operators-spend",
+            utxo: referenceScripts?.retiredOperatorsSpend,
+            expectedScript: contracts.retiredOperatorsSpendingScript,
+          },
+          {
+            role: "retired-operators-mint",
+            utxo: referenceScripts?.retiredOperatorsMint,
+            expectedScript: contracts.retiredOperatorsMintingScript,
+          },
+          {
+            role: "scheduler-spend",
+            utxo: referenceScripts?.schedulerSpend,
+            expectedScript: contracts.schedulerSpendingScript,
+          },
+        ],
+      }),
+      boundary: preSubmitBoundary,
+    });
     const txHash = await signed.submit();
+    if (txHash !== expectedTxHash) {
+      throw new Error(
+        `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+      );
+    }
     if (awaitConfirmation) {
       await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
     }
@@ -2446,8 +2905,8 @@ export const submitRemoveFraudulentBlock = async ({
     return {
       txHash: finalTransaction.txHash,
       walletSource: signer.source,
-      proverAddress: signer.address,
-      fraudProver: signer.paymentKeyHash,
+      proverAddress: fraudProverRewardPlan.proverEnterpriseAddress,
+      fraudProver: fraudProofDatum.fraud_prover,
       fraudCategory: contracts.fraudCategory,
       fraudCategoryId: contracts.fraudCategoryId,
       fraudulentHeaderHash: headerHash,
@@ -2478,6 +2937,13 @@ export const submitRemoveFraudulentBlock = async ({
             },
     };
   } catch (error) {
+    // A production workflow capture deliberately stops after the exact signed
+    // body has passed local evaluation. Its adapter retains and renews the
+    // acquired lease across durable intent and submission, so failing it here
+    // would reopen the append/removal race in that crash boundary.
+    if (error instanceof CapturedLocallyEvaluatedTransaction) {
+      throw error;
+    }
     if (
       stateQueueMutationLease !== undefined &&
       !stateQueueMutationLeaseReleased

@@ -1,15 +1,32 @@
+import {
+  availabilityResponseGeometry,
+  buildDaAvailabilityCommitment,
+  daAvailabilityAttestationMessage,
+} from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import {
-  daAttestationMessage,
   loadDaSigner,
   signDaAttestation,
   validateDaSignerMembership,
   verifyDaSignatureWitness,
 } from "../src/signer.js";
 import { bytesToHex } from "../src/utils/hex.js";
+
+const availabilityCommitment = (headerHash: string) =>
+  buildDaAvailabilityCommitment({
+    deploymentIdentity: "11".repeat(28),
+    headerHash,
+    payload: Uint8Array.from([1, 2, 3, 4]),
+    bondOwner: "22".repeat(28),
+    responseGeometry: availabilityResponseGeometry({
+      chunkByteLength: 4095,
+      trancheByteLength: 4 * 1024 * 1024,
+      maxTrancheCount: 16,
+    }),
+  });
 
 describe("DA signer", () => {
   it("validates committee membership and produces a stable witness vector", async () => {
@@ -28,18 +45,19 @@ describe("DA signer", () => {
       signerIndex: 0,
     });
     const headerHash = "ab".repeat(28);
+    const commitment = availabilityCommitment(headerHash);
     const witness = signDaAttestation({
       signer,
       signerIndex: validation.signerIndex,
-      headerHash,
+      availabilityCommitment: commitment,
     });
     expect(witness).toBe(
-      "00bc603b32eaff4cf125a120de253d11ff77f8d1c3c4166956afe8be3a1231b496a42a653d7c8b90f2585a809a9dfaff3aba0c03ae5a3f78ca72f8cb63c3623908",
+      "00c6d7424f81c0efa71e9b0cfa501c1f7e712b56d8bc264c6f1222a6376dc7d7b3d5a74f2cb20fbd2b47dcfb65c6bc61bcd908bd9db6ca055b1c5a4c021bc16500",
     );
     expect(
       verifyDaSignatureWitness({
         publicKeyHex: signer.publicKeyHex,
-        headerHash,
+        availabilityCommitment: commitment,
         witnessHex: witness,
       }),
     ).toBe(true);
@@ -69,17 +87,20 @@ describe("DA signer", () => {
     const cardanoPrivateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
     const signer = await loadDaSigner(`cardano-seed:${seedPhrase}`);
     const headerHash = "cd".repeat(28);
+    const commitment = availabilityCommitment(headerHash);
     const witness = signDaAttestation({
       signer,
       signerIndex: 0,
-      headerHash,
+      availabilityCommitment: commitment,
     });
 
     expect(signer.publicKeyHex).toBe(
       Buffer.from(cardanoPrivateKey.to_public().to_raw_bytes()).toString("hex"),
     );
     expect(witness.slice(2)).toBe(
-      cardanoPrivateKey.sign(daAttestationMessage(headerHash)).to_hex(),
+      cardanoPrivateKey
+        .sign(Buffer.from(daAvailabilityAttestationMessage(commitment)))
+        .to_hex(),
     );
   });
 });

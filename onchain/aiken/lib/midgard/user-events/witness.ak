@@ -19,36 +19,40 @@ pub fn validate_witness_redeemer(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Bool {
   // Grab redeemer pair of witness script registration.
-  expect Some(witness_redeemer_pair) =
-    redeemers |> list.at(witness_redeemer_index)
+  expect Some(witness_redeemer_pair) = redeemers
+    |> list.at(witness_redeemer_index)
 
   // Grab the included `Publish` script hash (no validation on `certificate`
   // index, i.e. `at` field under `Publish`, TODO?).
-  let present_witness_script_hash =
-    if for_registration {
-      expect Publish {
-        certificate: RegisterCredential {
-          credential: Script(witness_script_hash),
+  let present_witness_script_hash = if for_registration {
+    expect
+        Publish {
+          certificate: RegisterCredential {
+            credential: Script(witness_script_hash),
+            ..
+          },
           ..
-        },
-        ..
-      } = witness_redeemer_pair.1st
-      witness_script_hash
-    } else {
-      expect Publish {
-        certificate: UnregisterCredential {
-          credential: Script(witness_unregistration_script_hash),
+        }
+      = witness_redeemer_pair.1st
+    witness_script_hash
+  } else {
+    expect
+        Publish {
+          certificate: UnregisterCredential {
+            credential: Script(witness_unregistration_script_hash),
+            ..
+          },
           ..
-        },
-        ..
-      } = witness_redeemer_pair.1st
-      witness_unregistration_script_hash
-    }
+        }
+      = witness_redeemer_pair.1st
+    witness_unregistration_script_hash
+  }
 
   // The only endpoint allowed for this validation is the `MintOrBurn` redeemer,
   // provided with a correct policy ID.
-  let expected_witness_redeemer: Data =
-    MintOrBurn { target_policy: event_policy_id }
+  let expected_witness_redeemer: Data = MintOrBurn {
+    target_policy: event_policy_id,
+  }
 
   and {
     // 1. Registered script must match the expected witness.

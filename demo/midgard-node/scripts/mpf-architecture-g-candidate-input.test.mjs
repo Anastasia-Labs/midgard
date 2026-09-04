@@ -58,7 +58,7 @@ test("candidate input binds fixture creation identity and payload aggregate", as
       engineId: sha256File(resolve("scripts/throughput-valid-stress.mjs")),
     };
     const binding = {
-      schemaVersion: "midgard-phase1-live-corpus-binding-v2",
+      schemaVersion: "midgard-phase1-live-corpus-binding-v1",
       deploymentManifestId: "deployment-id",
       nodeImageId: "sha256:node-image",
       nodeContainerId: "node-container-id",
@@ -104,17 +104,87 @@ test("candidate input binds fixture creation identity and payload aggregate", as
     const bindingSha256 = sha256File(bindingPath);
     const runtimeExecutableSha256 = sha256File(process.execPath);
     const fixtureCreationPath = resolve(directory, "fixture-create.json");
+    const diagnostics = Object.fromEntries(
+      [
+        "entries",
+        "storePuts",
+        "storeDels",
+        "serialiseCalls",
+        "serialiseMs",
+        "deferredMaterializedEstimatedBytes",
+        "deferredMaterializedActualBytes",
+        "deferredLazyReads",
+        "deferredLazySerialiseMs",
+        "deferredLazySerialisedBytes",
+        "arenaCheckpointCalls",
+        "arenaCheckpointMs",
+        "arenaCheckpointNodes",
+        "arenaCheckpointBytes",
+        "pathCacheEntries",
+        "pathCacheBytes",
+        "pathCacheHits",
+        "liveArenaPrunedNodes",
+        "liveArenaPromotedNodes",
+        "liveArenaPromotedBytes",
+        "retainedSnapshotAuthentications",
+        "retainedSnapshotAuthenticationMs",
+        "transientLiveNodes",
+        "transientLiveBytes",
+        "transientDirtyNodes",
+        "transientSnapshotsCaptured",
+        "eventAtomicFinalizations",
+        "eventAtomicDirtyNodes",
+        "eventAtomicMaxDirtyNodes",
+        "levelGets",
+        "levelGetManyCalls",
+        "levelGetManyMaxKeys",
+        "levelGetMs",
+        "jsonCodecMs",
+        "overlayHits",
+        "readCacheHits",
+        "levelBatchWrites",
+        "bytesFlushed",
+        "overlayEntries",
+        "overlayBytes",
+        "overlaySpills",
+        "overlaySpillMs",
+        "flushMs",
+      ].map((field) => [field, 0]),
+    );
     const fixtureCreation = {
       fixtureCreated: true,
       fixturePath: levelPath,
       marker: root,
       initialUtxoCount: 100,
+      durationMs: 1,
+      diagnostics,
       utxoPayloadAggregate: {
         entryCount: 100,
         encodedTupleBytes: 8_000,
       },
+      canonicalFunding: {
+        path: files.funding,
+        sha256: sha256File(files.funding),
+        entryCount: 1,
+      },
     };
     writeFileSync(fixtureCreationPath, JSON.stringify(fixtureCreation));
+    const slotConfigArtifactPath = resolve(directory, "slot-config.json");
+    writeFileSync(
+      slotConfigArtifactPath,
+      `${JSON.stringify({
+        schemaVersion: "midgard-node-slot-config-evidence-v1",
+        capturedAtIso: "2026-07-28T00:00:00.000Z",
+        network: "Preprod",
+        source: { kind: "lucid_network_table", lucidVersion: "0.6.0" },
+        slotConfig: {
+          zeroTime: 1_655_769_600_000,
+          zeroSlot: 86_400,
+          slotLength: 1_000,
+        },
+      })}\n`,
+    );
+    const slotConfigArtifactSha256 = sha256File(slotConfigArtifactPath);
 
     const run = (output) =>
       spawnSync(
@@ -134,6 +204,9 @@ test("candidate input binds fixture creation identity and payload aggregate", as
           "--transactions=10",
           "--aggregate-entry-count=100",
           "--aggregate-tuple-bytes=8000",
+          "--network=Preprod",
+          `--slot-config-artifact=${slotConfigArtifactPath}`,
+          `--slot-config-artifact-sha256=${slotConfigArtifactSha256}`,
           `--out=${output}`,
         ],
         { cwd: process.cwd(), encoding: "utf8" },
@@ -145,6 +218,36 @@ test("candidate input binds fixture creation identity and payload aggregate", as
     const result = JSON.parse(valid.stdout.trim());
     const candidate = JSON.parse(
       readFileSync(result.candidateInputPath, "utf8"),
+    );
+    const seed = JSON.parse(readFileSync(result.seedInputPath, "utf8"));
+    assert.deepEqual(Object.keys(seed).sort(), [
+      "corpusSlicePath",
+      "corpusSliceSha256",
+      "expectedTransactionCount",
+      "firstTimestampIso",
+      "fundingMapPath",
+      "fundingMapSha256",
+      "phase1FormalBinding",
+      "runtimeIdentity",
+      "schemaVersion",
+    ]);
+    assert.equal(
+      seed.schemaVersion,
+      "midgard-architecture-g-commit-candidate-seed-v1",
+    );
+    assert.equal(seed.phase1FormalBinding.sha256, bindingSha256);
+    assert.equal(
+      seed.runtimeIdentity.executableSha256,
+      runtimeExecutableSha256,
+    );
+    assert.equal(seed.corpusSlicePath, files.slice);
+    assert.equal(seed.corpusSliceSha256, sha256File(files.slice));
+    assert.equal(seed.fundingMapPath, files.funding);
+    assert.equal(seed.fundingMapSha256, sha256File(files.funding));
+    assert.equal(seed.expectedTransactionCount, 10);
+    assert.match(
+      seed.firstTimestampIso,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u,
     );
     assert.equal(candidate.fixtureInitialUtxoCount, 100);
     assert.equal(candidate.phase1FormalBinding.sha256, bindingSha256);

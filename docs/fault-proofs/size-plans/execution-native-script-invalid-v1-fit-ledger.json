@@ -1,0 +1,136 @@
+{
+  "schemaVersion": "midgard-execution-native-script-invalid-fit-ledger-v1",
+  "category": "executionNativeScriptInvalid",
+  "categoryId": "00000032",
+  "compiler": "aiken v1.1.23+5adf783",
+  "blueprintSha256": "78f5186cdf43ae171a92199a079063d933d5b44bdbe383d86d390c20aef68e57",
+  "limits": {
+    "publicationReserveBytes": 15872,
+    "transactionBytes": 16384,
+    "memory": 16500000,
+    "cpu": 10000000000
+  },
+  "maximum": {
+    "addressWitnesses": 318,
+    "signerBatch": 16,
+    "nativeScriptNodes": 32,
+    "nodeBatch": 16
+  },
+  "rawAppliedScriptBytes": [
+    15299, 15529, 5041, 14068, 10099, 10104, 2806, 14329, 10113, 9256, 11772,
+    11237, 13905
+  ],
+  "focusedAikenMaximum": {
+    "test": "q34_staged_step_05_exact_318_witness_penultimate_fit",
+    "memory": 8067171,
+    "cpu": 3101326256,
+    "memoryMargin": 8432829,
+    "cpuMargin": 6898673744
+  },
+  "signedReferencePublications": [
+    { "step": 1, "signedBytes": 15575, "reserveMarginBytes": 297 },
+    { "step": 2, "signedBytes": 15805, "reserveMarginBytes": 67 },
+    { "step": 3, "signedBytes": 5317, "reserveMarginBytes": 10555 },
+    { "step": 4, "signedBytes": 14344, "reserveMarginBytes": 1528 },
+    { "step": 5, "signedBytes": 10375, "reserveMarginBytes": 5497 },
+    { "step": 6, "signedBytes": 10380, "reserveMarginBytes": 5492 },
+    {
+      "step": 7,
+      "role": "accepted-reconstruction-init",
+      "signedBytes": 3082,
+      "reserveMarginBytes": 12790
+    },
+    {
+      "step": 8,
+      "role": "accepted-spend-prefix",
+      "signedBytes": 14605,
+      "reserveMarginBytes": 1267
+    },
+    {
+      "step": 9,
+      "role": "accepted-mint-prefix",
+      "signedBytes": 10389,
+      "reserveMarginBytes": 5483
+    },
+    {
+      "step": 10,
+      "role": "accepted-observer-prefix",
+      "signedBytes": 9532,
+      "reserveMarginBytes": 6340
+    },
+    {
+      "step": 11,
+      "role": "accepted-receive-prefix",
+      "signedBytes": 12048,
+      "reserveMarginBytes": 3824
+    },
+    {
+      "step": 12,
+      "role": "accepted-inline-source",
+      "signedBytes": 11513,
+      "reserveMarginBytes": 4359
+    },
+    {
+      "step": 13,
+      "role": "accepted-reference-source",
+      "signedBytes": 14181,
+      "reserveMarginBytes": 1691
+    }
+  ],
+  "acceptedLifecycle": {
+    "status": "fit",
+    "direction": "accepted-invalid-false",
+    "sourceOrigins": ["inline-witness", "resolved-reference-prior-ledger"],
+    "selectedPurposes": ["spend", "mint", "observer", "receive"],
+    "signedTransactionMaximumBytes": 6106,
+    "transactionByteMargin": 10278,
+    "executionMemoryMaximum": 7874351,
+    "executionMemoryMargin": 8625649,
+    "executionCpuMaximum": 2857543900,
+    "executionCpuMargin": 7142456100,
+    "transactions": [
+      "init",
+      "step01-accepted",
+      "accepted-reconstruction-init",
+      "accepted-spend-finish",
+      "accepted-mint-prefix",
+      "accepted-inline-source-or-inline-finish-plus-reference-source",
+      "step03",
+      "step04",
+      "step05-resume",
+      "step05-finalize",
+      "step06-bounded-evaluation",
+      "permanent-mint",
+      "leased-remove"
+    ],
+    "permanentFraudProofMint": true,
+    "leasedCanonicalStateQueueRemoval": true,
+    "cancelRestartPhysicalStates": [7, 8, 9, 10, 11, 12, 13]
+  },
+  "forcedLifecycle": {
+    "status": "fit",
+    "direction": "wrongful-rejection-true",
+    "signedTransactionMaximumBytes": 4866,
+    "transactionByteMargin": 11518,
+    "executionMemoryMaximum": 5118774,
+    "executionMemoryMargin": 11381226,
+    "executionCpuMaximum": 1764846073,
+    "executionCpuMargin": 8235153927,
+    "transactions": [
+      "init",
+      "step01",
+      "step02",
+      "step03",
+      "step04",
+      "step05-resume",
+      "step05-finalize",
+      "step06",
+      "remove"
+    ],
+    "cancelRestartStates": [1, 2, 3, 4, 5, 6],
+    "sourceOrigins": ["inline-witness", "resolved-reference-prior-ledger"],
+    "permanentFraudProofMint": true,
+    "leasedCanonicalStateQueueRemoval": true
+  },
+  "fitStatus": "both-directions-all-native-purposes-and-source-origins-fit"
+}

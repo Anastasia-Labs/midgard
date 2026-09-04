@@ -1,0 +1,2143 @@
+import { execFile } from "node:child_process";
+import { createHash, X509Certificate } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { type Server } from "node:net";
+import { join } from "node:path";
+import { createServer as createTlsServer } from "node:tls";
+import { promisify } from "node:util";
+
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import {
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  materializeMidgardNativeTxFromCanonical,
+  type MidgardNativeTxCanonical,
+} from "@al-ft/midgard-core/codec/native";
+import {
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec/native-constants";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { deriveMidgardTxFieldPreimages } from "@al-ft/midgard-core/consensus-validation";
+import {
+  type AddressData,
+  DepositDatum,
+  ForcedInclusionTxV1,
+  HubOracleDatum,
+  MerkleRoot,
+  type OperatorVerdict,
+  outputReferenceToPlutusDataCbor,
+  PayoutDatum,
+  PayoutMintRedeemer,
+  Proof,
+  type RejectionReason,
+  resolveEventInclusionTime,
+  RootDomain,
+  SettlementDatum,
+  TxOrderDatum,
+  TxOrderMintRedeemer,
+  TxOrderSpendRedeemer,
+  UserEventMintRedeemer,
+  UserEventWitnessPublishRedeemer,
+  userEventWitnessScriptHash,
+  WithdrawalOrderDatum,
+  WithdrawalSpendRedeemer,
+} from "@al-ft/midgard-sdk";
+import { CML, Data } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
+import { expect } from "vitest";
+
+import {
+  deriveWatcherUserEventObservation as deriveWatcherUserEventObservationRaw,
+  evaluateWatcherUserEventIndexer as evaluateWatcherUserEventIndexerRaw,
+  makeWatcherUserEventIndexerPolicy,
+  parseWatcherUserEventIndexerResult as parseWatcherUserEventIndexerResultRaw,
+  WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
+  type WatcherIndexedUserEvent,
+  type WatcherTerminalUserEvent,
+  type WatcherUserEventIndexerPolicy,
+  type WatcherUserEventIndexerState,
+  type WatcherUserEventKind,
+  type WatcherUserEventPublicContext,
+} from "../../src/indexers/user-event-indexer.js";
+import {
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
+} from "../../src/l1/finality-engine.js";
+import {
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block as normalizeWatcherL1BlockRaw,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherAuthenticatedL1Provider,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
+} from "../../src/l1/l1-adapter.js";
+import { evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw } from "../../src/l1/multi-provider-consistency.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import {
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
+  watcherDurableStoreBytesSha256,
+  type WatcherProtocolUtxo,
+} from "../../src/storage/durable-store.js";
+import { asWireValue, h28, h32 } from "./deployment-authority-fixture.js";
+import { makeWatcherAuthorityDeploymentFixture } from "./watcher-opaque-authority-harness.js";
+
+const encodeData = Data.to as unknown as (
+  value: unknown,
+  schema: unknown,
+) => string;
+
+/**
+ * A user-event mint redeemer at the spelling the policy in question takes.
+ *
+ * Three of the four user-event policies take `user_events.MintRedeemer`
+ * unchanged. The tx-order policy takes it inside its own `MintRedeemer` beside the
+ * §8 carriage vector (#594's owner ruling), so a forced-order fixture that emitted
+ * the bare enum would be pinning a wire form the deployed policy cannot parse and
+ * the indexer must refuse.
+ *
+ * Every forced-order payload these fixtures carry is the canonically-empty
+ * transaction, whose nine slots are all empty, so the vector is empty: §8.11's
+ * walk consumes one entry per *non-empty* slot and there are none.
+ */
+const encodeUserEventMintRedeemerFor = (
+  kind: WatcherUserEventKind,
+  event: unknown,
+  materialCarriage: readonly unknown[] = [],
+): string =>
+  kind === "forced_order"
+    ? encodeData(
+        { event, material_carriage: materialCarriage },
+        TxOrderMintRedeemer,
+      )
+    : encodeData(event, UserEventMintRedeemer);
+
+const scriptAddress = (scriptHash: string): string => `70${scriptHash}`;
+
+type MutableRecord = Record<string, unknown>;
+const transportEndpointByProviderId = new Map<string, string>();
+const RELEASE_DIGEST = h32("22");
+
+const deploymentAuthorityFixture = makeWatcherAuthorityDeploymentFixture();
+const applied = deploymentAuthorityFixture.policy.appliedScriptHashes;
+
+const eventFields = {
+  deposit: {
+    policyId: applied.depositMint!,
+    spendScriptHash: applied.depositSpend!,
+    addressHex: scriptAddress(applied.depositSpend!),
+  },
+  withdrawal: {
+    policyId: applied.withdrawalMint!,
+    spendScriptHash: applied.withdrawalSpend!,
+    addressHex: scriptAddress(applied.withdrawalSpend!),
+  },
+  forcedOrder: {
+    policyId: applied.txOrderMint!,
+    spendScriptHash: applied.txOrderSpend!,
+    addressHex: scriptAddress(applied.txOrderSpend!),
+  },
+} as const;
+const asAddressData = (addressHex: string) => ({
+  paymentCredential: {
+    ScriptCredential: [addressHex.slice(2)],
+  } as { ScriptCredential: [string] },
+  stakeCredential: null,
+});
+const hubDatum = {
+  registered_operators: applied.registeredOperatorsMint!,
+  active_operators: applied.activeOperatorsMint!,
+  retired_operators: applied.retiredOperatorsMint!,
+  scheduler: applied.schedulerMint!,
+  state_queue: applied.stateQueueMint!,
+  fraud_proof_catalogue: applied.fraudProofCatalogueMint!,
+  fraud_proof: applied.fraudProofMint!,
+  deposit: eventFields.deposit.policyId,
+  withdrawal: eventFields.withdrawal.policyId,
+  tx_order: eventFields.forcedOrder.policyId,
+  settlement: applied.settlementMint!,
+  payout: applied.payoutMint!,
+  registered_operators_addr: asAddressData(
+    scriptAddress(applied.registeredOperatorsSpend!),
+  ),
+  active_operators_addr: asAddressData(
+    scriptAddress(applied.activeOperatorsSpend!),
+  ),
+  retired_operators_addr: asAddressData(
+    scriptAddress(applied.retiredOperatorsSpend!),
+  ),
+  scheduler_addr: asAddressData(scriptAddress(applied.schedulerSpend!)),
+  state_queue_addr: asAddressData(scriptAddress(applied.stateQueueSpend!)),
+  fraud_proof_catalogue_addr: asAddressData(
+    scriptAddress(applied.fraudProofCatalogueSpend!),
+  ),
+  fraud_proof_addr: asAddressData(scriptAddress(applied.fraudProofSpend!)),
+  deposit_addr: asAddressData(eventFields.deposit.addressHex),
+  withdrawal_addr: asAddressData(eventFields.withdrawal.addressHex),
+  tx_order_addr: asAddressData(eventFields.forcedOrder.addressHex),
+  settlement_addr: asAddressData(scriptAddress(applied.settlementSpend!)),
+  reserve_addr: asAddressData(scriptAddress(applied.reserveSpend!)),
+  payout_addr: asAddressData(scriptAddress(applied.payoutSpend!)),
+  reserve_observer: applied.reserveWithdraw!,
+};
+const hubDatumHex = Data.to(hubDatum, HubOracleDatum);
+const hubAssets = CML.MultiAsset.new();
+hubAssets.set(
+  CML.ScriptHash.from_hex(applied.hubOracleMint!),
+  CML.AssetName.from_hex(""),
+  1n,
+);
+const hubOutput = CML.TransactionOutput.new(
+  CML.Address.from_hex(scriptAddress(applied.hubOracleMint!)),
+  CML.Value.new(5_000_000n, hubAssets),
+  CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(hubDatumHex)),
+);
+const HUB_OUT_REF = `${h32("a0")}#0`;
+const SETTLEMENT_OUT_REF = `${h32("a3")}#0`;
+const MEMBERSHIP_PHAS_ROOT = h32("a4");
+const countedRoot = (
+  domain:
+    | "DepositsRootDomain"
+    | "WithdrawalsRootDomain"
+    | "ForcedTransactionsV1RootDomain",
+): string =>
+  Buffer.from(
+    blake2b(
+      Buffer.concat([
+        Buffer.from("MidgardRootCountV1", "utf8"),
+        Buffer.from(Data.to(domain as never, RootDomain as never), "hex"),
+        Buffer.from(MEMBERSHIP_PHAS_ROOT, "hex"),
+        Buffer.from(Data.to(1n as never, Data.Integer() as never), "hex"),
+      ]),
+      { dkLen: 32 },
+    ),
+  ).toString("hex");
+const settlementDatum = {
+  deposits_root: countedRoot("DepositsRootDomain"),
+  withdrawals_root: countedRoot("WithdrawalsRootDomain"),
+  forced_transactions_root: countedRoot("ForcedTransactionsV1RootDomain"),
+  transactions_root: h32("a5"),
+  resolution_claim: null,
+};
+const settlementAssets = CML.MultiAsset.new();
+settlementAssets.set(
+  CML.ScriptHash.from_hex(applied.settlementMint!),
+  CML.AssetName.from_hex(""),
+  1n,
+);
+const settlementOutput = CML.TransactionOutput.new(
+  CML.Address.from_hex(scriptAddress(applied.settlementSpend!)),
+  CML.Value.new(5_000_000n, settlementAssets),
+  CML.DatumOption.new_datum(
+    CML.PlutusData.from_cbor_hex(Data.to(settlementDatum, SettlementDatum)),
+  ),
+);
+const BOOTSTRAP_CHAIN_POINT_ID = h32("a1");
+const bootstrapStore = makeWatcherDurableStore({
+  deploymentMarker: deploymentAuthorityFixture.marker,
+  revision: "0",
+  records: {
+    l1Observations: [],
+    chainPoints: [
+      {
+        chainPointId: BOOTSTRAP_CHAIN_POINT_ID,
+        providerId: "provider-a",
+        blockHash: h32("a2"),
+        slot: "1",
+        blockNo: "1",
+        depth: "10",
+      },
+    ],
+    protocolUtxos: [
+      {
+        outRef: HUB_OUT_REF,
+        role: "hub_oracle",
+        chainPointId: BOOTSTRAP_CHAIN_POINT_ID,
+        output: makeWatcherDurablePayload(hubOutput.to_cbor_hex()),
+      },
+      {
+        outRef: SETTLEMENT_OUT_REF,
+        role: "settlement",
+        chainPointId: BOOTSTRAP_CHAIN_POINT_ID,
+        output: makeWatcherDurablePayload(settlementOutput.to_cbor_hex()),
+      },
+    ],
+    daProofInputs: [],
+    reconstructedStates: [],
+    decisions: [],
+    faults: [],
+    submissions: [],
+    confirmations: [],
+    retries: [],
+    deadlines: [],
+    correctionResults: [],
+  },
+});
+let deploymentAuthority = {
+  signedIdentity: deploymentAuthorityFixture.signedIdentity,
+  policy: deploymentAuthorityFixture.policy,
+  trustRoots: deploymentAuthorityFixture.trustRoots,
+  result: deploymentAuthorityFixture.result,
+};
+
+const emptyNativeTxCanonical: MidgardNativeTxCanonical = {
+  version: MIDGARD_NATIVE_TX_VERSION,
+  validity: "TxIsValid",
+  body: {
+    spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+    referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+    outputsPreimageCbor: EMPTY_CBOR_LIST,
+    fee: 0n,
+    validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+    mintPreimageCbor: EMPTY_CBOR_LIST,
+    scriptIntegrityHash: Buffer.alloc(32),
+    auxiliaryDataHash: EMPTY_NULL_ROOT,
+    networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+  },
+  witnessSet: {
+    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+  },
+};
+const emptyNativeTx = materializeMidgardNativeTxFromCanonical(
+  emptyNativeTxCanonical,
+);
+const emptyNativeSource = deriveMidgardNativeTxProofSource(emptyNativeTx);
+const emptyNativePayload = {
+  tx_id: computeMidgardNativeTxId(emptyNativeTx).toString("hex"),
+  transaction_commitment:
+    computeMidgardNativeTxProofCommitment(emptyNativeSource).toString("hex"),
+  source: {
+    compact_cbor: emptyNativeSource.compactCbor.toString("hex"),
+    witness_set_compact_cbor:
+      emptyNativeSource.witnessSetCompactCbor.toString("hex"),
+    field_preimage_lengths_cbor:
+      emptyNativeSource.fieldPreimageLengthsCbor.toString("hex"),
+  },
+  // Nine empty slots consume no carriage entry, so §8.11's vector is empty.
+  carriage: [],
+};
+const policy = makeWatcherUserEventIndexerPolicy({
+  network: "Preprod",
+  releaseEvidenceDigest: RELEASE_DIGEST,
+  deploymentMarker: deploymentAuthorityFixture.marker,
+  deposit: eventFields.deposit,
+  withdrawal: eventFields.withdrawal,
+  forcedOrder: eventFields.forcedOrder,
+  bootstrapStoreDigest: watcherDurableStoreBytesSha256(
+    encodeWatcherDurableStore(bootstrapStore),
+  ),
+  deploymentTrustRootId: deploymentAuthorityFixture.result.trustRootId,
+  requiredFinalityDepth: "2",
+  maximumActiveHistoryEntries: "32",
+  maximumAuditHistoryEntries: "128",
+}) as WatcherUserEventIndexerPolicy;
+
+const makeExternalFinalityPolicy = () =>
+  makeWatcherFinalityPolicy(
+    {
+      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
+      mode: "development",
+      targetNetwork: "Preprod",
+      l1: {
+        source: {
+          sourceMode: "external_providers",
+          providers: [
+            {
+              identity: "provider-a",
+              operatorIdentitySha256: h32("97"),
+              endpoint:
+                transportEndpointByProviderId.get("provider-a") ??
+                "https://cardano-a.example",
+            },
+            {
+              identity: "provider-b",
+              operatorIdentitySha256: h32("98"),
+              endpoint:
+                transportEndpointByProviderId.get("provider-b") ??
+                "https://cardano-b.example",
+            },
+          ],
+        },
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
+        finality: {
+          depth: 2,
+          rollback: {
+            beforeFinality: "rewind",
+            afterFinality: "quarantine",
+            maxDepth: 2,
+          },
+        },
+      },
+      da: {
+        peers: [
+          {
+            identity: "da-peer-a",
+            multiaddr:
+              "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
+          },
+        ],
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
+      },
+      storage: {
+        driver: "sqlite",
+        path: "/var/lib/midgard-watcher/watcher.sqlite",
+        rollbackAuthorityKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+        },
+      },
+      proverWallet: {
+        keySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_PROVER_KEY",
+        },
+      },
+      deadlines: {
+        daFetchMs: 60_000,
+        daPublishMs: 60_000,
+        proofConstructMs: 300_000,
+        proofSubmitMs: 120_000,
+      },
+    },
+    {
+      manifestId: policy.deploymentMarker.manifestId,
+      network: "Preprod",
+      trustRootId: h32("33"),
+      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      ruleBundleCommitment: h32("44"),
+      programCommitments: { validation: h32("55") },
+      durableMarker: policy.deploymentMarker,
+    },
+  )!;
+let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicy>>;
+
+let provider: WatcherAuthenticatedL1Provider;
+let providerB: WatcherAuthenticatedL1Provider;
+const externalSource: {
+  sourceMode: "external_providers";
+  network: "Preprod";
+  providers: {
+    providerId: string;
+    operatorIdentitySha256: string;
+    endpoint: string;
+  }[];
+} = {
+  sourceMode: "external_providers",
+  network: "Preprod",
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: h32("97"),
+      endpoint: "https://cardano-a.example",
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: h32("98"),
+      endpoint: "https://cardano-b.example",
+    },
+  ],
+};
+const execFileAsync = promisify(execFile);
+const watcherTransportContexts: WatcherL1TransportAttestationContext[] = [];
+let normalizedTransportContexts = new WeakMap<
+  object,
+  WatcherL1TransportAttestationContext
+>();
+const watcherTransportServers: Server[] = [];
+let watcherTransportFixtureDirectory = "";
+let opaqueAuthorityTransportLease:
+  | "idle"
+  | "initializing"
+  | "active"
+  | "disposing" = "idle";
+let opaqueAuthorityTransportLeaseOwner: symbol | null = null;
+let opaqueAuthorityTransportCleanupToken: symbol | null = null;
+let opaqueAuthorityTransportCleanupPromise: Promise<void> | null = null;
+
+const listen = async (server: Server, target: string | number): Promise<void> =>
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    const onListen = () => {
+      server.off("error", reject);
+      resolve();
+    };
+    if (typeof target === "string") {
+      server.listen(target, onListen);
+    } else {
+      server.listen(target, "127.0.0.1", onListen);
+    }
+  });
+
+const makeTlsTransportFixture = async (name: string) => {
+  const keyPath = join(watcherTransportFixtureDirectory, `${name}.key`);
+  const certificatePath = join(watcherTransportFixtureDirectory, `${name}.crt`);
+  await execFileAsync("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-keyout",
+    keyPath,
+    "-out",
+    certificatePath,
+    "-days",
+    "1",
+    "-subj",
+    "/CN=localhost",
+    "-addext",
+    "subjectAltName=DNS:localhost",
+  ]);
+  const [key, certificate] = await Promise.all([
+    readFile(keyPath, "utf8"),
+    readFile(certificatePath, "utf8"),
+  ]);
+  const server = createTlsServer({ key, cert: certificate });
+  await listen(server, 0);
+  watcherTransportServers.push(server);
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("watcher TLS fixture did not bind a port");
+  }
+  return {
+    certificate,
+    identitySha256: createHash("sha256")
+      .update(new X509Certificate(certificate).raw)
+      .digest("hex"),
+    port: address.port,
+  };
+};
+
+const initializeOpaqueAuthorityTransports = async (
+  fixtureRoot = "/dev/shm",
+): Promise<symbol> => {
+  if (opaqueAuthorityTransportLease !== "idle") {
+    throw new Error("W15 opaque authority fixture lease is not idle");
+  }
+  const leaseOwner = Symbol("W15 opaque authority fixture lease");
+  opaqueAuthorityTransportLeaseOwner = leaseOwner;
+  opaqueAuthorityTransportLease = "initializing";
+  try {
+    if (
+      watcherTransportContexts.length !== 0 ||
+      watcherTransportServers.length !== 0 ||
+      watcherTransportFixtureDirectory !== ""
+    ) {
+      throw new Error("W15 opaque authority fixture state is not clean");
+    }
+    const freshDeployment = makeWatcherAuthorityDeploymentFixture();
+    deploymentAuthority = {
+      signedIdentity: freshDeployment.signedIdentity,
+      policy: freshDeployment.policy,
+      trustRoots: freshDeployment.trustRoots,
+      result: freshDeployment.result,
+    };
+    watcherTransportFixtureDirectory = await mkdtemp(
+      join(fixtureRoot, "midgard-w17-transports-"),
+    );
+    const externalTransports: WatcherL1TransportAttestationContext[] = [];
+    for (const [providerId, operatorIdentitySha256] of [
+      ["provider-a", h32("97")],
+      ["provider-b", h32("98")],
+    ] as const) {
+      const fixture = await makeTlsTransportFixture(providerId);
+      const endpoint = `https://localhost:${fixture.port}`;
+      transportEndpointByProviderId.set(providerId, endpoint);
+      const configuredProvider = externalSource.providers.find(
+        ({ providerId: configuredProviderId }) =>
+          configuredProviderId === providerId,
+      );
+      if (configuredProvider === undefined) {
+        throw new Error("missing external-provider fixture policy");
+      }
+      configuredProvider.endpoint = endpoint;
+      const transport = await establishWatcherExternalProviderTransport({
+        network: "Preprod",
+        providerId,
+        operatorIdentitySha256,
+        endpoint,
+        caPem: fixture.certificate,
+        expectedTlsPublicIdentitySha256: fixture.identitySha256,
+        connectTimeoutMs: 2_000,
+      });
+      externalTransports.push(transport);
+      watcherTransportContexts.push(transport);
+    }
+    finalityPolicy = makeExternalFinalityPolicy();
+    provider = watcherL1TransportAttestationDetails(
+      externalTransports[0],
+    )!.provider;
+    providerB = watcherL1TransportAttestationDetails(
+      externalTransports[1],
+    )!.provider;
+    opaqueAuthorityTransportLease = "active";
+    return leaseOwner;
+  } catch (error) {
+    await disposeOpaqueAuthorityTransports(leaseOwner);
+    throw error;
+  }
+};
+
+const disposeOpaqueAuthorityTransports = (
+  leaseOwner: symbol,
+): Promise<void> => {
+  if (opaqueAuthorityTransportLeaseOwner !== leaseOwner) {
+    return Promise.resolve();
+  }
+  if (opaqueAuthorityTransportLease === "disposing") {
+    return opaqueAuthorityTransportCleanupPromise ?? Promise.resolve();
+  }
+  opaqueAuthorityTransportLease = "disposing";
+  const cleanupToken = Symbol("W15 opaque authority fixture cleanup");
+  opaqueAuthorityTransportCleanupToken = cleanupToken;
+  const cleanupPromise = Promise.resolve().then(async () => {
+    try {
+      for (const context of watcherTransportContexts) {
+        closeWatcherL1TransportAttestationContext(context);
+      }
+      await Promise.all(
+        watcherTransportServers.map(
+          (server) =>
+            new Promise<void>((resolve) => server.close(() => resolve())),
+        ),
+      );
+      if (watcherTransportFixtureDirectory !== "") {
+        await rm(watcherTransportFixtureDirectory, {
+          recursive: true,
+          force: true,
+        });
+      }
+    } finally {
+      if (
+        opaqueAuthorityTransportLeaseOwner === leaseOwner &&
+        opaqueAuthorityTransportCleanupToken === cleanupToken
+      ) {
+        watcherTransportContexts.length = 0;
+        watcherTransportServers.length = 0;
+        transportEndpointByProviderId.clear();
+        normalizedTransportContexts = new WeakMap();
+        userEventFinalityLineageByStateDigest.clear();
+        serial = 0;
+        watcherTransportFixtureDirectory = "";
+        externalSource.providers[0]!.endpoint = "https://cardano-a.example";
+        externalSource.providers[1]!.endpoint = "https://cardano-b.example";
+        opaqueAuthorityTransportCleanupPromise = null;
+        opaqueAuthorityTransportCleanupToken = null;
+        opaqueAuthorityTransportLeaseOwner = null;
+        opaqueAuthorityTransportLease = "idle";
+      }
+    }
+  });
+  opaqueAuthorityTransportCleanupPromise = cleanupPromise;
+  return cleanupPromise;
+};
+
+const transportForProvider = (
+  authenticatedProvider: unknown,
+): WatcherL1TransportAttestationContext => {
+  const matches = watcherTransportContexts.filter((context) => {
+    const details = watcherL1TransportAttestationDetails(context);
+    return (
+      details !== null &&
+      JSON.stringify(details.provider) === JSON.stringify(authenticatedProvider)
+    );
+  });
+  if (matches.length !== 1) {
+    throw new Error("test provider lacks one live transport attestation");
+  }
+  return matches[0]!;
+};
+
+const normalizeWatcherL1Block = (
+  authenticatedProvider: unknown,
+  observation: unknown,
+) => {
+  const transport = transportForProvider(authenticatedProvider);
+  const normalized = normalizeWatcherL1BlockRaw(transport, observation);
+  normalizedTransportContexts.set(normalized, transport);
+  return normalized;
+};
+
+const evaluateWatcherMultiProviderConsistency = (
+  configuredSource: unknown,
+  observations: readonly unknown[],
+) =>
+  evaluateWatcherMultiProviderConsistencyRaw(
+    configuredSource,
+    observations,
+    observations.map((observation) => {
+      const transport =
+        typeof observation === "object" && observation !== null
+          ? normalizedTransportContexts.get(observation)
+          : undefined;
+      if (transport === undefined) {
+        throw new Error("test observation lacks live transport provenance");
+      }
+      return transport;
+    }),
+  );
+
+const deriveWatcherUserEventObservation = (
+  policyInput: unknown,
+  previousStateInput: unknown,
+  publicContextInput: unknown,
+  rollbackTargetEntryDigest: string | null = null,
+) =>
+  deriveWatcherUserEventObservationRaw(
+    policyInput,
+    previousStateInput,
+    publicContextInput,
+    watcherTransportContexts,
+    rollbackTargetEntryDigest,
+  );
+
+const evaluateWatcherUserEventIndexer = (
+  policyInput: unknown,
+  previousStateInput: unknown,
+  observationInput: unknown,
+  publicContextInput: unknown,
+) =>
+  evaluateWatcherUserEventIndexerRaw(
+    policyInput,
+    previousStateInput,
+    observationInput,
+    publicContextInput,
+    watcherTransportContexts,
+  );
+
+const parseWatcherUserEventIndexerResult = (
+  value: unknown,
+  context: Omit<
+    Parameters<typeof parseWatcherUserEventIndexerResultRaw>[1],
+    "transportAttestations"
+  >,
+) =>
+  parseWatcherUserEventIndexerResultRaw(value, {
+    ...context,
+    transportAttestations: watcherTransportContexts,
+  });
+
+const addressData = {
+  paymentCredential: {
+    PublicKeyCredential: [h28("88")],
+  },
+  stakeCredential: null,
+} as const;
+
+const nonceAssetName = (txHash: string, outputIndex: number): string => {
+  const eventId = outputReferenceToPlutusDataCbor({ txHash, outputIndex });
+  return Buffer.from(
+    blake2b(Buffer.from(eventId, "hex"), { dkLen: 32 }),
+  ).toString("hex");
+};
+
+type EventFixture = Readonly<{
+  kind: WatcherUserEventKind;
+  output: CML.TransactionOutput;
+  outputCborHex: string;
+  datumCborHex: string;
+  assetNameHex: string;
+  nonceInput: CML.TransactionInput;
+  mintRedeemerHex: string;
+  certificateRedeemerHex: string;
+  certificate: CML.Certificate;
+  fields: WatcherUserEventIndexerPolicy[
+    | "deposit"
+    | "withdrawal"
+    | "forcedOrder"];
+  extraReferenceOutRefs: readonly string[];
+  /** The tx-order policy's §8 carriage vector; empty at the other policies. */
+  materialCarriage: readonly unknown[];
+}>;
+
+/**
+ * A forced order's datum payload **and** the §8 carriage vector its mint redeemer
+ * supplies, which §8.11 makes one claim: the vector is positional over the
+ * payload's non-empty slots and MUST be exhausted exactly, so a payload handed to
+ * a fixture without its vector is a payload no tx-order mint would authenticate.
+ *
+ * `carriage` is deliberately *not* a datum field — §8.7's content addressing is
+ * why `TxOrderPayloadV1` carries no carriage identity — so `forcedDatumPayload`
+ * projects the three fields that are, and this type is the pair the builders pass
+ * around.
+ */
+export type GenuineUserEventForcedPayload = Readonly<{
+  tx_id: string;
+  transaction_commitment: string;
+  source: Readonly<{
+    compact_cbor: string;
+    witness_set_compact_cbor: string;
+    field_preimage_lengths_cbor: string;
+  }>;
+  carriage: readonly unknown[];
+}>;
+
+/** The three fields `TxOrderPayloadV1` actually has, with `carriage` dropped. */
+const forcedDatumPayload = (payload: GenuineUserEventForcedPayload) => ({
+  tx_id: payload.tx_id,
+  transaction_commitment: payload.transaction_commitment,
+  source: payload.source,
+});
+
+/**
+ * The payload and §8 carriage for a forced order over `canonicalTxCbor`.
+ *
+ * The carriage is one `Inline` entry per non-empty slot, in ascending field index,
+ * carrying that field's own §5.1 preimage — which is what a real order under
+ * §8.11 supplies when its fields fit the transaction's byte budget, and what the
+ * indexer's exhaustion re-derivation counts. Shared rather than hand-rolled per
+ * test file so the two cannot drift apart from each other or from the rule.
+ */
+export const genuineUserEventForcedPayloadForCanonicalTx = (
+  canonicalTxCbor: Uint8Array,
+): GenuineUserEventForcedPayload => {
+  const source =
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalTxCbor);
+  return Object.freeze({
+    tx_id: computeMidgardNativeTxId(
+      decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTxCbor),
+    ).toString("hex"),
+    transaction_commitment:
+      computeMidgardNativeTxProofCommitment(source).toString("hex"),
+    source: Object.freeze({
+      compact_cbor: source.compactCbor.toString("hex"),
+      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        source.fieldPreimageLengthsCbor.toString("hex"),
+    }),
+    carriage: Object.freeze(
+      deriveMidgardTxFieldPreimages(canonicalTxCbor)
+        .filter(
+          (field) => !field.expectedHash.equals(MIDGARD_EMPTY_FIELD_COMMITMENT),
+        )
+        .map((field) =>
+          Object.freeze({
+            Inline: Object.freeze({
+              preimage: field.preimageCbor.toString("hex"),
+            }),
+          }),
+        ),
+    ),
+  });
+};
+
+const makeEventFixture = (
+  kind: WatcherUserEventKind,
+  nonceByte: string,
+  nonceIndex: number,
+  ttl: bigint,
+  inclusionTimeDelta = 0n,
+  addressOverride?: string,
+  witnessOverride?: string,
+  forcedPayloadOverride?: GenuineUserEventForcedPayload,
+  extraReferenceOutRefs: readonly string[] = [],
+  eventOverrides?: Readonly<{
+    depositL2Address?: AddressData;
+    withdrawalL2OutRef?: Readonly<{
+      transactionId: string;
+      outputIndex: bigint;
+    }>;
+  }>,
+): EventFixture => {
+  const fields =
+    kind === "deposit"
+      ? policy.deposit
+      : kind === "withdrawal"
+        ? policy.withdrawal
+        : policy.forcedOrder;
+  const nonceHash = h32(nonceByte);
+  const nonceInput = CML.TransactionInput.new(
+    CML.TransactionHash.from_hex(nonceHash),
+    BigInt(nonceIndex),
+  );
+  const assetNameHex = nonceAssetName(nonceHash, nonceIndex);
+  const witness = witnessOverride ?? userEventWitnessScriptHash(assetNameHex);
+  const eventId = {
+    transactionId: nonceHash,
+    outputIndex: BigInt(nonceIndex),
+  };
+  const inclusion_time =
+    BigInt(resolveEventInclusionTime(Number(ttl), "Preprod")) +
+    inclusionTimeDelta;
+  const datum =
+    kind === "deposit"
+      ? {
+          event: {
+            id: eventId,
+            info: {
+              l2_address: eventOverrides?.depositL2Address ?? addressData,
+              l2_network_id: 0n,
+              l2_datum: null,
+            },
+          },
+          inclusion_time,
+          witness,
+        }
+      : kind === "withdrawal"
+        ? {
+            event: {
+              id: eventId,
+              info: {
+                body: {
+                  l2_outref: eventOverrides?.withdrawalL2OutRef ?? eventId,
+                  l2_owner: h28("89"),
+                  l2_value: new Map<string, Map<string, bigint>>(),
+                  l1_address: addressData,
+                  l1_datum: "NoDatum" as const,
+                },
+                signature: ["aa", "bb"] as [string, string],
+                validity: "WithdrawalIsValid" as const,
+              },
+            },
+            inclusion_time,
+            witness,
+            refund_address: addressData,
+            refund_datum: "NoDatum" as const,
+          }
+        : {
+            event: {
+              id: eventId,
+              tx: forcedDatumPayload(
+                forcedPayloadOverride ?? emptyNativePayload,
+              ),
+            },
+            inclusion_time,
+            witness,
+            refund_address: addressData,
+            refund_datum: "NoDatum" as const,
+          };
+  // Only the tx-order policy's redeemer has a carriage vector, and its contents
+  // are fixed by the payload: one entry per non-empty slot, which §8.11 requires
+  // exhausted exactly. Reading it off the payload rather than taking it as a
+  // separate argument is what keeps the two from being set inconsistently.
+  const materialCarriage: readonly unknown[] =
+    kind === "forced_order"
+      ? (forcedPayloadOverride ?? emptyNativePayload).carriage
+      : [];
+  const schema =
+    kind === "deposit"
+      ? DepositDatum
+      : kind === "withdrawal"
+        ? WithdrawalOrderDatum
+        : TxOrderDatum;
+  const datumCborHex = CML.PlutusData.from_cbor_hex(
+    Data.to(datum as never, schema as never),
+  ).to_canonical_cbor_hex();
+  const multiasset = CML.MultiAsset.new();
+  multiasset.set(
+    CML.ScriptHash.from_hex(fields.policyId),
+    CML.AssetName.from_hex(assetNameHex),
+    1n,
+  );
+  const output = CML.TransactionOutput.new(
+    CML.Address.from_hex(addressOverride ?? fields.addressHex),
+    CML.Value.new(3_000_000n, multiasset),
+    CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datumCborHex)),
+  );
+  const certificate = CML.Certificate.new_reg_cert(
+    CML.Credential.new_script(CML.ScriptHash.from_hex(witness)),
+    0n,
+  );
+  return {
+    kind,
+    output,
+    outputCborHex: output.to_canonical_cbor_hex(),
+    datumCborHex,
+    assetNameHex,
+    nonceInput,
+    materialCarriage,
+    mintRedeemerHex: encodeUserEventMintRedeemerFor(
+      kind,
+      {
+        AuthenticateEvent: {
+          nonce_input_index: 0n,
+          event_output_index: 0n,
+          hub_ref_input_index: 0n,
+          witness_registration_redeemer_index: 0n,
+        },
+      },
+      materialCarriage,
+    ),
+    certificateRedeemerHex: encodeData(
+      { MintOrBurn: { targetPolicy: fields.policyId } },
+      UserEventWitnessPublishRedeemer,
+    ),
+    certificate,
+    fields,
+    extraReferenceOutRefs,
+  };
+};
+
+type BlockBundle = Readonly<{
+  context: WatcherUserEventPublicContext;
+  store: ReturnType<typeof makeWatcherDurableStore>;
+  transactionHash: string | null;
+  finalityState: unknown;
+}>;
+
+type UserEventFinalityLineage = NonNullable<
+  WatcherUserEventPublicContext["finalityAuthority"]
+>["lineage"];
+
+const userEventFinalityLineageByStateDigest = new Map<
+  string,
+  UserEventFinalityLineage
+>();
+
+const USER_EVENT_SCRIPT_DATA_HASH = CML.ScriptDataHash.from_raw_bytes(
+  Buffer.alloc(32, 0x6a),
+);
+
+const userEventRedeemerTag = (purpose: string): CML.RedeemerTag => {
+  switch (purpose) {
+    case "spend":
+      return CML.RedeemerTag.Spend;
+    case "mint":
+      return CML.RedeemerTag.Mint;
+    case "certificate":
+      return CML.RedeemerTag.Cert;
+    case "withdrawal":
+      return CML.RedeemerTag.Reward;
+    default:
+      throw new Error(`unsupported test redeemer purpose: ${purpose}`);
+  }
+};
+
+const contextFromTransaction = (
+  transaction: {
+    readonly txHash: string;
+    readonly body: ReturnType<typeof makeWatcherL1PublicBytes>;
+    readonly utxos: readonly unknown[];
+    readonly scripts: readonly never[];
+    readonly datums: readonly never[];
+    readonly redeemers: readonly unknown[];
+  } | null,
+  priorStore: ReturnType<typeof makeWatcherDurableStore> | null,
+  nextProtocolUtxos: readonly WatcherProtocolUtxo[],
+  blockNo: number,
+  depth: number,
+  previousFinalityState: unknown = null,
+  pointOverride?: Readonly<{
+    blockHash: string;
+    parentBlockHash: string | null;
+    slot: string;
+    blockNo: string;
+    depth: string;
+  }>,
+  transactionIsValid = true,
+): BlockBundle => {
+  serial += 1;
+  const sourceStore = priorStore ?? bootstrapStore;
+  const authenticatedProvider = provider;
+  const selectedFinalityPolicy = finalityPolicy;
+  const currentBlockNo = BigInt(pointOverride?.blockNo ?? blockNo.toString());
+  const parentHash =
+    [...sourceStore.chainPoints]
+      .filter(
+        ({ blockNo: priorBlockNo }) => BigInt(priorBlockNo) < currentBlockNo,
+      )
+      .sort((left, right) =>
+        BigInt(left.blockNo) < BigInt(right.blockNo) ? 1 : -1,
+      )
+      .at(0)?.blockHash ?? null;
+  const canonicalTransaction =
+    transaction === null
+      ? null
+      : (() => {
+          const body = CML.TransactionBody.from_cbor_hex(
+            transaction.body.bytesHex,
+          );
+          const canonicalRedeemers = transaction.redeemers.map((candidate) => {
+            const redeemer = candidate as MutableRecord;
+            const bytes = redeemer.bytes as ReturnType<
+              typeof makeWatcherL1PublicBytes
+            >;
+            return {
+              ...redeemer,
+              bytes: makeWatcherL1PublicBytes(
+                CML.PlutusData.from_cbor_hex(
+                  bytes.bytesHex,
+                ).to_canonical_cbor_hex(),
+              ),
+            };
+          });
+          const witnessSet = CML.TransactionWitnessSet.new();
+          if (canonicalRedeemers.length > 0) {
+            const redeemers = CML.LegacyRedeemerList.new();
+            for (const candidate of canonicalRedeemers) {
+              const redeemer = candidate as MutableRecord;
+              const bytes = redeemer.bytes as ReturnType<
+                typeof makeWatcherL1PublicBytes
+              >;
+              redeemers.add(
+                CML.LegacyRedeemer.new(
+                  userEventRedeemerTag(String(redeemer.purpose)),
+                  BigInt(String(redeemer.index)),
+                  CML.PlutusData.from_cbor_hex(bytes.bytesHex),
+                  CML.ExUnits.new(0n, 0n),
+                ),
+              );
+            }
+            witnessSet.set_redeemers(
+              CML.Redeemers.new_arr_legacy_redeemer(redeemers),
+            );
+          }
+          const fullTransaction = CML.Transaction.new(
+            body,
+            witnessSet,
+            transactionIsValid,
+            undefined,
+          );
+          const appliedUtxos = Array.from(
+            { length: body.outputs().len() },
+            (_, index) => {
+              const output = body.outputs().get(index);
+              const datum = output.datum()?.as_datum();
+              return {
+                outRef: `${transaction.txHash}#${index.toString()}`,
+                outputIndex: index.toString(),
+                output: makeWatcherL1PublicBytes(
+                  output.to_canonical_cbor_hex(),
+                ),
+                datum:
+                  datum === undefined
+                    ? null
+                    : {
+                        datumHash: CML.hash_plutus_data(datum).to_hex(),
+                        bytes: makeWatcherL1PublicBytes(
+                          datum.to_canonical_cbor_hex(),
+                        ),
+                      },
+                referenceScript:
+                  (
+                    transaction.utxos.find(
+                      (candidate) =>
+                        (candidate as MutableRecord).outputIndex ===
+                        index.toString(),
+                    ) as MutableRecord | undefined
+                  )?.referenceScript ?? null,
+              };
+            },
+          );
+          return {
+            ...transaction,
+            transactionIndex: "0",
+            fullTransaction: makeWatcherL1PublicBytes(
+              fullTransaction.to_canonical_cbor_hex(),
+            ),
+            witnessSet: makeWatcherL1PublicBytes(
+              witnessSet.to_canonical_cbor_hex(),
+            ),
+            utxos: transactionIsValid ? appliedUtxos : [],
+            redeemers: canonicalRedeemers,
+          };
+        })();
+  const l1Observation = {
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+    network: "Preprod",
+    providerId: authenticatedProvider.providerId,
+    chainPoint:
+      pointOverride ??
+      ({
+        blockHash: h32((40 + serial).toString(16).padStart(2, "0")),
+        parentBlockHash: parentHash,
+        slot: (1_000 + serial).toString(),
+        blockNo: blockNo.toString(),
+        depth: depth.toString(),
+      } as const),
+    transactions: canonicalTransaction === null ? [] : [canonicalTransaction],
+  };
+  const normalized = normalizeWatcherL1Block(
+    authenticatedProvider,
+    l1Observation,
+  );
+  const finalityObservations = [
+    { authenticatedProvider, l1Observation },
+    {
+      authenticatedProvider: providerB,
+      l1Observation: {
+        ...structuredClone(l1Observation),
+        providerId: providerB.providerId,
+      },
+    },
+  ];
+  const normalizedEvidence = finalityObservations.map(
+    ({
+      authenticatedProvider: authorityProvider,
+      l1Observation: observation,
+    }) => normalizeWatcherL1Block(authorityProvider, observation),
+  );
+  const consistency = evaluateWatcherMultiProviderConsistency(
+    externalSource,
+    normalizedEvidence,
+  );
+  const previousStateDigest =
+    previousFinalityState !== null &&
+    typeof previousFinalityState === "object" &&
+    "stateDigest" in previousFinalityState &&
+    typeof previousFinalityState.stateDigest === "string"
+      ? previousFinalityState.stateDigest
+      : null;
+  const lineage =
+    previousStateDigest === null
+      ? []
+      : (userEventFinalityLineageByStateDigest.get(previousStateDigest) ?? []);
+  const finalityResult = evaluateWatcherFinality(
+    selectedFinalityPolicy,
+    previousFinalityState,
+    consistency,
+  );
+  expect([
+    "observe_pending",
+    "advance_pending",
+    "finalize",
+    "duplicate",
+    "rewind_pending",
+  ]).toContain(finalityResult.action);
+  if (finalityResult.state !== null) {
+    userEventFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
+  const chainPoints = [
+    ...sourceStore.chainPoints.filter(
+      ({ chainPointId }) => chainPointId !== normalized.chainPoint.chainPointId,
+    ),
+    {
+      chainPointId: normalized.chainPoint.chainPointId,
+      providerId: normalized.provider.providerId,
+      blockHash: normalized.chainPoint.blockHash,
+      slot: normalized.chainPoint.slot,
+      blockNo: normalized.chainPoint.blockNo,
+      depth: normalized.chainPoint.depth,
+    },
+  ];
+  const protocolUtxos = [
+    ...new Map(
+      [
+        ...sourceStore.protocolUtxos.filter(
+          ({ role }) =>
+            !["deposit", "withdrawal", "forced_transaction"].includes(role),
+        ),
+        ...nextProtocolUtxos.map((utxo) => ({
+          ...utxo,
+          chainPointId:
+            utxo.chainPointId === ""
+              ? normalized.chainPoint.chainPointId
+              : utxo.chainPointId,
+        })),
+      ].map((utxo) => [utxo.outRef, utxo]),
+    ).values(),
+  ];
+  const protocolJournal = journalWatcherProtocolUtxoTransition({
+    sourceStore,
+    nextChainPoints: chainPoints,
+    nextProtocolUtxos: protocolUtxos,
+    spentAtChainPointId: normalized.chainPoint.chainPointId,
+  });
+  const store = makeWatcherDurableStore({
+    deploymentMarker: policy.deploymentMarker,
+    revision: (BigInt(sourceStore.revision) + 1n).toString(),
+    records: {
+      l1Observations: [
+        ...sourceStore.l1Observations.filter(
+          ({ observationId }) => observationId !== normalized.observationDigest,
+        ),
+        {
+          observationId: normalized.observationDigest,
+          providerId: normalized.provider.providerId,
+          chainPointId: normalized.chainPoint.chainPointId,
+          payload: makeWatcherDurablePayload(
+            encodeWatcherNormalizedL1Block(normalized).toString("hex"),
+          ),
+        },
+      ],
+      chainPoints,
+      ...protocolJournal,
+      daProofInputs: sourceStore.daProofInputs,
+      reconstructedStates: sourceStore.reconstructedStates,
+      decisions: sourceStore.decisions,
+      faults: sourceStore.faults,
+      submissions: sourceStore.submissions,
+      confirmations: sourceStore.confirmations,
+      retries: sourceStore.retries,
+      deadlines: sourceStore.deadlines,
+      correctionResults: sourceStore.correctionResults,
+    },
+  });
+  return {
+    context: asWireValue({
+      schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
+      authenticatedProvider,
+      l1Observation,
+      sourceDurableStore: sourceStore,
+      durableStore: store,
+      deploymentAuthority,
+      rollbackRestoredEventUtxos: [],
+      finalityAuthority: {
+        policy: selectedFinalityPolicy,
+        lineage,
+        previousState: previousFinalityState,
+        observations: finalityObservations,
+        consistency,
+        result: finalityResult,
+      },
+      rollbackAuthority: null,
+    }),
+    store,
+    transactionHash: transaction?.txHash ?? null,
+    finalityState: finalityResult.state,
+  };
+};
+
+let serial = 0;
+const blockBundle = (
+  eventFixtures: readonly EventFixture[],
+  priorStore: ReturnType<typeof makeWatcherDurableStore> | null = null,
+  blockNo = 100,
+  depth = 1,
+  mintPurpose: "mint" | "spend" = "mint",
+  mutateRedeemers?: (redeemers: MutableRecord[]) => void,
+  transactionIsValid = true,
+): BlockBundle => {
+  let transaction:
+    | {
+        txHash: string;
+        body: ReturnType<typeof makeWatcherL1PublicBytes>;
+        utxos: readonly unknown[];
+        scripts: readonly never[];
+        datums: readonly never[];
+        redeemers: readonly unknown[];
+      }
+    | undefined;
+  if (eventFixtures.length > 0) {
+    const inputs = CML.TransactionInputList.new();
+    const outputs = CML.TransactionOutputList.new();
+    const mint = CML.Mint.new();
+    const certificates = CML.CertificateList.new();
+    const utxos: unknown[] = [];
+    const mintRedeemers: MutableRecord[] = [];
+    const certificateRedeemers: MutableRecord[] = [];
+    eventFixtures.forEach((fixture, index) => {
+      inputs.add(fixture.nonceInput);
+      outputs.add(fixture.output);
+      mint.set(
+        CML.ScriptHash.from_hex(fixture.fields.policyId),
+        CML.AssetName.from_hex(fixture.assetNameHex),
+        1n,
+      );
+      certificates.add(fixture.certificate);
+      mintRedeemers.push({
+        purpose: mintPurpose,
+        index: index.toString(),
+        bytes: makeWatcherL1PublicBytes(
+          encodeUserEventMintRedeemerFor(
+            fixture.kind,
+            {
+              AuthenticateEvent: {
+                nonce_input_index: BigInt(index),
+                event_output_index: BigInt(index),
+                hub_ref_input_index: 0n,
+                witness_registration_redeemer_index: BigInt(
+                  eventFixtures.length + index,
+                ),
+              },
+            },
+            fixture.materialCarriage,
+          ),
+        ),
+      });
+      certificateRedeemers.push({
+        purpose: "certificate",
+        index: index.toString(),
+        bytes: makeWatcherL1PublicBytes(fixture.certificateRedeemerHex),
+      });
+    });
+    const redeemers = [...mintRedeemers, ...certificateRedeemers];
+    mutateRedeemers?.(redeemers);
+    const body = CML.TransactionBody.new(
+      inputs,
+      outputs,
+      200_000n + BigInt(blockNo),
+    );
+    body.set_mint(mint);
+    body.set_certs(certificates);
+    const referenceInputs = CML.TransactionInputList.new();
+    referenceInputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(HUB_OUT_REF.split("#")[0]!),
+        0n,
+      ),
+    );
+    for (const outRef of new Set(
+      eventFixtures.flatMap(
+        ({ extraReferenceOutRefs }) => extraReferenceOutRefs,
+      ),
+    )) {
+      const [transactionId, outputIndex] = outRef.split("#");
+      referenceInputs.add(
+        CML.TransactionInput.new(
+          CML.TransactionHash.from_hex(transactionId!),
+          BigInt(outputIndex!),
+        ),
+      );
+    }
+    body.set_reference_inputs(referenceInputs);
+    body.set_ttl(1_000n);
+    body.set_script_data_hash(USER_EVENT_SCRIPT_DATA_HASH);
+    const bodyHex = body.to_canonical_cbor_hex();
+    const mintPolicies = CML.TransactionBody.from_cbor_hex(bodyHex)
+      .mint()!
+      .keys();
+    eventFixtures.forEach((fixture, eventIndex) => {
+      let index = -1;
+      for (
+        let policyIndex = 0;
+        policyIndex < mintPolicies.len();
+        policyIndex += 1
+      ) {
+        if (
+          mintPolicies.get(policyIndex).to_hex() === fixture.fields.policyId
+        ) {
+          index = policyIndex;
+          break;
+        }
+      }
+      if (index < 0) {
+        throw new Error("missing event mint policy");
+      }
+      mintRedeemers[eventIndex]!.index = index.toString();
+    });
+    const txHash = computeHash32(Buffer.from(bodyHex, "hex")).toString("hex");
+    eventFixtures.forEach((fixture, index) => {
+      const datum = CML.PlutusData.from_cbor_hex(fixture.datumCborHex);
+      utxos.push({
+        outRef: `${txHash}#${index.toString()}`,
+        outputIndex: index.toString(),
+        output: makeWatcherL1PublicBytes(fixture.outputCborHex),
+        datum: {
+          datumHash: CML.hash_plutus_data(datum).to_hex(),
+          bytes: makeWatcherL1PublicBytes(fixture.datumCborHex),
+        },
+        referenceScript: null,
+      });
+    });
+    transaction = {
+      txHash,
+      body: makeWatcherL1PublicBytes(bodyHex),
+      utxos,
+      scripts: [],
+      datums: [],
+      redeemers,
+    };
+  }
+  if (transaction === undefined) {
+    return contextFromTransaction(
+      null,
+      priorStore,
+      priorStore?.protocolUtxos ?? [],
+      blockNo,
+      depth,
+      null,
+      undefined,
+    );
+  }
+  const createdProtocolUtxos: WatcherProtocolUtxo[] = eventFixtures.map(
+    (fixture, index) => ({
+      outRef: `${transaction.txHash}#${index.toString()}`,
+      role:
+        fixture.kind === "forced_order" ? "forced_transaction" : fixture.kind,
+      chainPointId: "",
+      output: makeWatcherDurablePayload(fixture.outputCborHex),
+    }),
+  );
+  return contextFromTransaction(
+    transaction,
+    priorStore,
+    transactionIsValid
+      ? [...(priorStore?.protocolUtxos ?? []), ...createdProtocolUtxos]
+      : (priorStore?.protocolUtxos ?? []),
+    blockNo,
+    depth,
+    null,
+    undefined,
+    transactionIsValid,
+  );
+};
+
+/**
+ * Test-side inverse of the watcher's verdict projection
+ * (`watcherForcedOperatorVerdictV1`): rebuilds the on-chain `OperatorVerdict`
+ * a forced leaf carries from the classification tag the indexer projected it
+ * onto. Every reason a fixture uses carries the zero subject coordinate, which
+ * is what the #640 forced-leaf mapping prescribes, so the round trip through
+ * the indexer is exact.
+ */
+export const userEventForcedOperatorVerdictForClassification = (
+  classification: string,
+): OperatorVerdict => {
+  if (classification === "ForcedTxValid") {
+    return "ForcedTxValid";
+  }
+  const reason: RejectionReason | null =
+    classification === "InputNotFound"
+      ? { InputNotFound: { source_kind: 0n, input_index: 0n } }
+      : classification === "AddressWitnessSignatureInvalid"
+        ? { AddressWitnessSignatureInvalid: { witness_index: 0n } }
+        : classification === "WitnessNativeScriptFalse"
+          ? { WitnessNativeScriptFalse: { script_index: 0n } }
+          : classification === "ExecutionNativeScriptFalse"
+            ? { ExecutionNativeScriptFalse: { execution_index: 0n } }
+            : classification === "PlutusExecutionFailed"
+              ? { PlutusExecutionFailed: { execution_index: 0n } }
+              : classification === "FeeBelowMinimum"
+                ? "FeeBelowMinimum"
+                : classification === "ValueNotPreserved"
+                  ? "ValueNotPreserved"
+                  : null;
+  if (reason === null) {
+    throw new Error(
+      `w15 fixtures carry no forced verdict for classification ${classification}`,
+    );
+  }
+  return { ForcedTxInvalid: { reason } };
+};
+
+export type GenuineUserEventAuthorityFixtureSet = Readonly<{
+  deposit: UserEventAcceptedAuthorityScenario;
+  withdrawal: UserEventAcceptedAuthorityScenario;
+  forced: UserEventAcceptedAuthorityScenario;
+  forcedVariants: Readonly<Record<string, UserEventAcceptedAuthorityScenario>>;
+  dispose: () => Promise<void>;
+}>;
+
+export type GenuineUserEventAuthorityFixtureInput = Readonly<{
+  /** Test-only root override used to prove setup-failure lease cleanup. */
+  transportFixtureRoot?: string;
+  forcedPayloadOverride?: GenuineUserEventForcedPayload;
+  forcedOperatorValidity?: OperatorVerdict;
+  forcedVariants?: readonly Readonly<{
+    key: string;
+    payload: GenuineUserEventForcedPayload;
+    operatorValidity: OperatorVerdict;
+    nonceByte?: string;
+  }>[];
+  depositL2Address?: AddressData;
+  withdrawalL2OutRef?: Readonly<{
+    transactionId: string;
+    outputIndex: bigint;
+  }>;
+}>;
+
+const acceptedAuthority = (
+  previousState: WatcherUserEventIndexerState | null,
+  bundle: BlockBundle,
+  expectedKind: WatcherUserEventKind,
+  authorityPolicy: WatcherUserEventIndexerPolicy = policy,
+) => {
+  const observation = deriveWatcherUserEventObservation(
+    authorityPolicy,
+    previousState,
+    bundle.context,
+  );
+  if (observation === null)
+    throw new Error("genuine W15 authority did not derive an observation");
+  const result = evaluateWatcherUserEventIndexer(
+    authorityPolicy,
+    previousState,
+    observation,
+    bundle.context,
+  );
+  const context = Object.freeze({
+    policy: authorityPolicy,
+    previousState,
+    observation,
+    publicContext: bundle.context,
+    transportAttestations: Object.freeze([...watcherTransportContexts]),
+  });
+  const parsed = parseWatcherUserEventIndexerResult(result, context);
+  if (
+    parsed === null ||
+    parsed.action !== "accept" ||
+    parsed.protocolDecision !== "indexed" ||
+    parsed.state === null
+  )
+    throw new Error("genuine W15 authority was not accepted");
+  const event = parsed.state.snapshot.activeEvents.find(
+    (candidate) => candidate.kind === expectedKind,
+  );
+  if (event === undefined)
+    throw new Error("genuine W15 authority has no expected event");
+  const historyEntryDigests = parsed.state.history
+    .filter(({ observation: entry }) =>
+      [...entry.snapshot.activeEvents, ...entry.snapshot.terminalEvents].some(
+        (candidate) =>
+          candidate.eventId === event.eventId &&
+          candidate.eventContentDigest === event.eventContentDigest &&
+          candidate.datumDigest === event.datumDigest &&
+          candidate.outputDigest === event.outputDigest,
+      ),
+    )
+    .map(({ entryDigest }) => entryDigest);
+  if (historyEntryDigests.length === 0)
+    throw new Error("genuine W15 authority has no event history");
+  return Object.freeze({
+    result,
+    context,
+    parsed,
+    observation,
+    event,
+    historyEntryDigests: Object.freeze(historyEntryDigests),
+  });
+};
+
+/** Creates accepted W15 authorities from real L1 blocks and live opaque contexts. */
+export const createGenuineUserEventDepositWithdrawalAuthorities = async (
+  input: GenuineUserEventAuthorityFixtureInput = {},
+): Promise<GenuineUserEventAuthorityFixtureSet> => {
+  const leaseOwner = await initializeOpaqueAuthorityTransports(
+    input.transportFixtureRoot,
+  );
+  try {
+    const deposit = acceptedAuthority(
+      null,
+      blockBundle(
+        [
+          makeEventFixture(
+            "deposit",
+            "9a",
+            0,
+            1_000n,
+            0n,
+            undefined,
+            undefined,
+            undefined,
+            [],
+            { depositL2Address: input.depositL2Address },
+          ),
+        ],
+        null,
+        100,
+        1,
+      ),
+      "deposit",
+    );
+    const withdrawal = acceptedAuthority(
+      null,
+      blockBundle(
+        [
+          makeEventFixture(
+            "withdrawal",
+            "9b",
+            0,
+            1_000n,
+            0n,
+            undefined,
+            undefined,
+            undefined,
+            [],
+            { withdrawalL2OutRef: input.withdrawalL2OutRef },
+          ),
+        ],
+        null,
+        101,
+        1,
+      ),
+      "withdrawal",
+    );
+    const buildForcedAuthority = (forcedInput: {
+      readonly payload?: GenuineUserEventForcedPayload;
+      readonly operatorValidity?: OperatorVerdict;
+      readonly nonceByte?: string;
+    }): UserEventAcceptedAuthorityScenario => {
+      // The forced order needs no seeded store of its own since #587 retired the
+      // publication receipt chain: its payload is self-binding under §4, so the
+      // shared bootstrap `policy` authenticates it.
+      const forcedCreation = blockBundle(
+        [
+          makeEventFixture(
+            "forced_order",
+            forcedInput.nonceByte ?? "9c",
+            0,
+            1_000n,
+            0n,
+            undefined,
+            undefined,
+            forcedInput.payload,
+            [],
+          ),
+        ],
+        null,
+        100,
+        1,
+      );
+      const forcedActive = acceptedAuthority(
+        null,
+        forcedCreation,
+        "forced_order",
+        policy,
+      );
+      const forcedTerminalBundle = nonDepositSpendBundle(
+        forcedActive.parsed.state!,
+        forcedCreation.store,
+        undefined,
+        forcedInput.operatorValidity,
+      );
+      return replayGenuineForcedTerminalAuthorityScenario({
+        policy,
+        previousState: forcedActive.parsed.state!,
+        publicContext: forcedTerminalBundle.context,
+        transportAttestations: Object.freeze([...watcherTransportContexts]),
+      });
+    };
+    const forced = buildForcedAuthority({
+      payload: input.forcedPayloadOverride,
+      operatorValidity: input.forcedOperatorValidity,
+    });
+    const forcedVariants = Object.freeze(
+      Object.fromEntries(
+        (input.forcedVariants ?? []).map((variant) => [
+          variant.key,
+          buildForcedAuthority({
+            payload: variant.payload,
+            operatorValidity: variant.operatorValidity,
+            nonceByte: variant.nonceByte,
+          }),
+        ]),
+      ),
+    );
+    return Object.freeze({
+      deposit,
+      withdrawal,
+      forced,
+      forcedVariants,
+      dispose: () => disposeOpaqueAuthorityTransports(leaseOwner),
+    });
+  } catch (error) {
+    await disposeOpaqueAuthorityTransports(leaseOwner);
+    throw error;
+  }
+};
+
+export type UserEventAuthorityScenarioInput = Readonly<{
+  policy: WatcherUserEventIndexerPolicy;
+  previousState: WatcherUserEventIndexerState | null;
+  publicContext: WatcherUserEventPublicContext;
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
+}>;
+
+export type UserEventAcceptedAuthorityScenario = Readonly<{
+  result: ReturnType<typeof evaluateWatcherUserEventIndexerRaw>;
+  context: Readonly<{
+    policy: WatcherUserEventIndexerPolicy;
+    previousState: WatcherUserEventIndexerState | null;
+    observation: NonNullable<
+      ReturnType<typeof deriveWatcherUserEventObservationRaw>
+    >;
+    publicContext: WatcherUserEventPublicContext;
+    transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  }>;
+  parsed: ReturnType<typeof evaluateWatcherUserEventIndexerRaw>;
+  observation: NonNullable<
+    ReturnType<typeof deriveWatcherUserEventObservationRaw>
+  >;
+  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
+  historyEntryDigests: readonly string[];
+}>;
+
+export const replayAcceptedUserEventAuthorityScenario = (
+  input: UserEventAuthorityScenarioInput,
+  expectedKind: WatcherUserEventKind,
+  expectedLocation: "active" | "processed",
+): UserEventAcceptedAuthorityScenario => {
+  const observation = deriveWatcherUserEventObservationRaw(
+    input.policy,
+    input.previousState,
+    input.publicContext,
+    input.transportAttestations,
+  );
+  if (observation === null)
+    throw new Error("W15 authority scenario did not derive an observation");
+  const result = evaluateWatcherUserEventIndexerRaw(
+    input.policy,
+    input.previousState,
+    observation,
+    input.publicContext,
+    input.transportAttestations,
+  );
+  const context = Object.freeze({ ...input, observation });
+  const parsed = parseWatcherUserEventIndexerResultRaw(result, context);
+  if (
+    parsed === null ||
+    parsed.action !== "accept" ||
+    parsed.protocolDecision !== "indexed" ||
+    parsed.state === null
+  )
+    throw new Error("W15 authority scenario was not parser-accepted");
+  const candidates =
+    expectedLocation === "active"
+      ? parsed.state.snapshot.activeEvents
+      : parsed.state.snapshot.terminalEvents.filter(
+          (event) => event.terminalStatus === "processed",
+        );
+  const event = candidates.find((candidate) => candidate.kind === expectedKind);
+  if (event === undefined)
+    throw new Error("W15 authority scenario has no expected event");
+  const historyEntryDigests = parsed.state.history
+    .filter(({ observation: entry }) =>
+      [...entry.snapshot.activeEvents, ...entry.snapshot.terminalEvents].some(
+        (candidate) =>
+          candidate.eventId === event.eventId &&
+          candidate.eventContentDigest === event.eventContentDigest &&
+          candidate.datumDigest === event.datumDigest &&
+          candidate.outputDigest === event.outputDigest,
+      ),
+    )
+    .map(({ entryDigest }) => entryDigest);
+  if (historyEntryDigests.length === 0)
+    throw new Error("W15 authority scenario has no digest-bound event history");
+  return Object.freeze({
+    result,
+    context,
+    parsed,
+    observation,
+    event,
+    historyEntryDigests: Object.freeze(historyEntryDigests),
+  });
+};
+
+export const replayGenuineDepositAuthorityScenario = (
+  input: UserEventAuthorityScenarioInput,
+): UserEventAcceptedAuthorityScenario =>
+  replayAcceptedUserEventAuthorityScenario(input, "deposit", "active");
+export const replayGenuineWithdrawalAuthorityScenario = (
+  input: UserEventAuthorityScenarioInput,
+): UserEventAcceptedAuthorityScenario =>
+  replayAcceptedUserEventAuthorityScenario(input, "withdrawal", "active");
+export const replayGenuineForcedTerminalAuthorityScenario = (
+  input: UserEventAuthorityScenarioInput,
+): UserEventAcceptedAuthorityScenario =>
+  replayAcceptedUserEventAuthorityScenario(input, "forced_order", "processed");
+
+const nonDepositSpendBundle = (
+  state: WatcherUserEventIndexerState,
+  priorStore: ReturnType<typeof makeWatcherDurableStore>,
+  mutateRedeemers?: (redeemers: MutableRecord[]) => void,
+  forcedOperatorValidity: OperatorVerdict = "ForcedTxValid",
+): BlockBundle => {
+  const event = state.snapshot.activeEvents[0]!;
+  if (event.kind === "deposit") {
+    throw new Error(
+      "non-deposit terminal fixture requires a non-deposit event",
+    );
+  }
+  const inputs = CML.TransactionInputList.new();
+  inputs.add(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(event.transactionHash),
+      BigInt(event.outputIndex),
+    ),
+  );
+  const outputs = CML.TransactionOutputList.new();
+  const mint = CML.Mint.new();
+  mint.set(
+    CML.ScriptHash.from_hex(event.policyId),
+    CML.AssetName.from_hex(event.assetNameHex),
+    -1n,
+  );
+  if (event.kind === "withdrawal") {
+    const payoutAssets = CML.MultiAsset.new();
+    payoutAssets.set(
+      CML.ScriptHash.from_hex(applied.payoutMint!),
+      CML.AssetName.from_hex(event.assetNameHex),
+      1n,
+    );
+    mint.set(
+      CML.ScriptHash.from_hex(applied.payoutMint!),
+      CML.AssetName.from_hex(event.assetNameHex),
+      1n,
+    );
+    const withdrawalDatum = Data.from(
+      event.datumCborHex,
+      WithdrawalOrderDatum,
+    ) as {
+      event: {
+        info: {
+          body: {
+            l2_value: unknown;
+            l1_address: unknown;
+            l1_datum: unknown;
+          };
+        };
+      };
+    };
+    outputs.add(
+      CML.TransactionOutput.new(
+        CML.Address.from_hex(scriptAddress(applied.payoutSpend!)),
+        CML.Value.new(3_000_000n, payoutAssets),
+        CML.DatumOption.new_datum(
+          CML.PlutusData.from_cbor_hex(
+            Data.to(
+              {
+                l2_value: withdrawalDatum.event.info.body.l2_value,
+                l1_address: withdrawalDatum.event.info.body.l1_address,
+                l1_datum: withdrawalDatum.event.info.body.l1_datum,
+              } as never,
+              PayoutDatum,
+            ),
+          ),
+        ),
+      ),
+    );
+  } else {
+    outputs.add(
+      CML.TransactionOutput.new(
+        CML.Address.from_hex(`60${h28("88")}`),
+        CML.Value.from_coin(3_000_000n),
+      ),
+    );
+  }
+  const certificates = CML.CertificateList.new();
+  certificates.add(
+    CML.Certificate.new_unreg_cert(
+      CML.Credential.new_script(
+        CML.ScriptHash.from_hex(event.witnessScriptHash),
+      ),
+      0n,
+    ),
+  );
+  const body = CML.TransactionBody.new(inputs, outputs, 200_000n);
+  body.set_mint(mint);
+  body.set_certs(certificates);
+  const referenceInputs = CML.TransactionInputList.new();
+  referenceInputs.add(
+    CML.TransactionInput.new(CML.TransactionHash.from_hex(h32("a0")), 0n),
+  );
+  referenceInputs.add(
+    CML.TransactionInput.new(CML.TransactionHash.from_hex(h32("a3")), 0n),
+  );
+  // A forced order used to add its `terminal_receipt_reference` here as a third
+  // reference input, because the watcher required exactly one reference to the
+  // receipt it named. Both the field and the requirement retired in #587 with the
+  // counted publication receipt chain.
+  body.set_reference_inputs(referenceInputs);
+  body.set_script_data_hash(USER_EVENT_SCRIPT_DATA_HASH);
+  const bodyHex = body.to_canonical_cbor_hex();
+  const txHash = computeHash32(Buffer.from(bodyHex, "hex")).toString("hex");
+  const eventFieldsData = CML.PlutusData.from_cbor_hex(event.eventCborHex)
+    .as_constr_plutus_data()!
+    .fields();
+  const datum = Data.from(
+    event.datumCborHex,
+    event.kind === "withdrawal" ? WithdrawalOrderDatum : TxOrderDatum,
+  ) as {
+    event: {
+      tx?: {
+        tx_id: string;
+        transaction_commitment: string;
+        source: typeof emptyNativePayload.source;
+      };
+    };
+  };
+  const validity = forcedOperatorValidity;
+  const value =
+    event.kind === "withdrawal"
+      ? eventFieldsData.get(1).to_cbor_hex()
+      : Data.to(
+          {
+            tx_id: datum.event.tx!.tx_id,
+            source: datum.event.tx!.source,
+            verdict: validity,
+          },
+          ForcedInclusionTxV1,
+        );
+  const domain =
+    event.kind === "withdrawal"
+      ? "WithdrawalsRootDomain"
+      : "ForcedTransactionsV1RootDomain";
+  const rawProof = {
+    domain,
+    root:
+      event.kind === "withdrawal"
+        ? settlementDatum.withdrawals_root
+        : settlementDatum.forced_transactions_root,
+    phas_root: MEMBERSHIP_PHAS_ROOT,
+    count: 1n,
+    key: eventFieldsData.get(0).to_cbor_hex(),
+    value,
+    proof: [],
+  };
+  const canonicalMint = CML.TransactionBody.from_cbor_hex(bodyHex).mint()!;
+  const eventMintPolicyIndex = [
+    ...Array(canonicalMint.keys().len()).keys(),
+  ].find(
+    (index) => canonicalMint.keys().get(index).to_hex() === event.policyId,
+  )!;
+  const payoutMintPolicyIndex =
+    event.kind === "withdrawal"
+      ? [...Array(canonicalMint.keys().len()).keys()].find(
+          (index) =>
+            canonicalMint.keys().get(index).to_hex() === applied.payoutMint,
+        )!
+      : -1;
+  const mintIndices = [eventMintPolicyIndex, payoutMintPolicyIndex]
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right);
+  const eventBurnGlobalIndex = 1 + mintIndices.indexOf(eventMintPolicyIndex);
+  const payoutMintGlobalIndex =
+    event.kind === "withdrawal"
+      ? 1 + mintIndices.indexOf(payoutMintPolicyIndex)
+      : -1;
+  const certificateGlobalIndex = 1 + mintIndices.length;
+  const membershipGlobalIndex = certificateGlobalIndex + 1;
+  const spendRedeemer =
+    event.kind === "withdrawal"
+      ? encodeData(
+          {
+            input_index: 0n,
+            output_index: 0n,
+            hub_ref_input_index: 0n,
+            settlement_ref_input_index: 1n,
+            burn_redeemer_index: BigInt(eventBurnGlobalIndex),
+            payout_mint_redeemer_index: BigInt(payoutMintGlobalIndex),
+            membership_proof: rawProof,
+            inclusion_proof_script_withdraw_redeemer_index: BigInt(
+              membershipGlobalIndex,
+            ),
+            purpose: "InitializePayout",
+          },
+          WithdrawalSpendRedeemer,
+        )
+      : encodeData(
+          {
+            input_index: 0n,
+            output_index: 0n,
+            hub_ref_input_index: 0n,
+            settlement_ref_input_index: 1n,
+            burn_redeemer_index: BigInt(eventBurnGlobalIndex),
+            membership_proof: rawProof,
+            inclusion_proof_script_withdraw_redeemer_index: BigInt(
+              membershipGlobalIndex,
+            ),
+            validity_override: validity,
+          },
+          TxOrderSpendRedeemer,
+        );
+  // A burn reads no material, so §8.11 requires the tx-order policy's vector to
+  // be empty — which `encodeUserEventMintRedeemerFor`'s default supplies.
+  const burnRedeemer = encodeUserEventMintRedeemerFor(event.kind, {
+    BurnEventNFT: {
+      nonce_asset_name: event.assetNameHex,
+      witness_unregistration_redeemer_index: BigInt(certificateGlobalIndex),
+    },
+  });
+  const certificateRedeemer = encodeData(
+    { MintOrBurn: { targetPolicy: event.policyId } },
+    UserEventWitnessPublishRedeemer,
+  );
+  const membershipItems = CML.PlutusDataList.new();
+  membershipItems.add(
+    CML.PlutusData.from_cbor_hex(
+      Data.to(MEMBERSHIP_PHAS_ROOT as never, MerkleRoot as never),
+    ),
+  );
+  membershipItems.add(
+    CML.PlutusData.new_bytes(Buffer.from(rawProof.key, "hex")),
+  );
+  membershipItems.add(
+    CML.PlutusData.new_bytes(Buffer.from(rawProof.value, "hex")),
+  );
+  membershipItems.add(
+    CML.PlutusData.from_cbor_hex(Data.to([] as never, Proof as never)),
+  );
+  const redeemers: MutableRecord[] = [
+    {
+      purpose: "spend",
+      index: "0",
+      bytes: makeWatcherL1PublicBytes(spendRedeemer),
+    },
+    {
+      purpose: "mint",
+      index: eventMintPolicyIndex.toString(),
+      bytes: makeWatcherL1PublicBytes(burnRedeemer),
+    },
+  ];
+  if (event.kind === "withdrawal") {
+    redeemers.push({
+      purpose: "mint",
+      index: payoutMintPolicyIndex.toString(),
+      bytes: makeWatcherL1PublicBytes(
+        encodeData(
+          {
+            MintPayout: {
+              withdrawal_utxo_out_ref: {
+                transactionId: event.transactionHash,
+                outputIndex: BigInt(event.outputIndex),
+              },
+              withdrawal_input_index: 0n,
+              withdrawal_spend_redeemer_index: 0n,
+              hub_ref_input_index: 0n,
+            },
+          },
+          PayoutMintRedeemer,
+        ),
+      ),
+    });
+  }
+  redeemers.push(
+    {
+      purpose: "certificate",
+      index: "0",
+      bytes: makeWatcherL1PublicBytes(certificateRedeemer),
+    },
+    {
+      purpose: "withdrawal",
+      index: "0",
+      bytes: makeWatcherL1PublicBytes(
+        CML.PlutusData.new_list(membershipItems).to_cbor_hex(),
+      ),
+    },
+  );
+  mutateRedeemers?.(redeemers);
+  return contextFromTransaction(
+    {
+      txHash,
+      body: makeWatcherL1PublicBytes(bodyHex),
+      utxos: [],
+      scripts: [],
+      datums: [],
+      redeemers,
+    },
+    priorStore,
+    [],
+    101,
+    1,
+  );
+};

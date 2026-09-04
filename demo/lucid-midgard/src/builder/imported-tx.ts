@@ -1,11 +1,12 @@
+import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
   encodeMidgardNativeTxCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
-import { CML } from "@lucid-evolution/lucid";
 
 import { BuilderInvariantError, SigningError } from "../core/errors.js";
 import { compareOutRefs, type OutRef, outRefLabel } from "../core/out-ref.js";
@@ -15,6 +16,7 @@ import {
   outputAddressPaymentKeyHash,
   outputAddressProtected,
   utxoAddress,
+  utxoOutputCbor,
   utxoOutRefCbor,
 } from "../core/output.js";
 import type { MidgardUtxo } from "../core/types.js";
@@ -41,6 +43,9 @@ export type ImportedTxInput =
 
 export type FromTxOptions = {
   readonly resolvedSpendInputs?: readonly MidgardUtxo[];
+  readonly resolvedReferenceInputs?: readonly MidgardUtxo[];
+  /** Exact canonical V1 sidecar material when importing raw transaction bytes. */
+  readonly programMaterial?: readonly MidgardCekProgramMaterialEntry[];
   readonly allowUnexpectedResolvedInputs?: boolean;
   readonly allowUnknownExpectedWitnesses?: boolean;
   readonly partial?: boolean;
@@ -76,19 +81,19 @@ const assertImportedAddressNetwork = (
   }
 };
 
+/**
+ * Field-0/1 items are §5.3's fixed-index form, so canonicality is decided by
+ * that decoder — it asserts the 38-byte width and the `0x19` index head, which
+ * is exactly the "one valid byte form" rule (§6.1). A CML round-trip cannot
+ * decide it: CML preserves whatever index width it was handed, so a minimal
+ * 36-byte item would round-trip equal and pass a check that must reject it.
+ */
 const outRefFromCbor = (inputCbor: Uint8Array, fieldName: string): OutRef => {
   try {
-    const input = CML.TransactionInput.from_cbor_bytes(inputCbor);
-    if (!Buffer.from(input.to_cbor_bytes()).equals(Buffer.from(inputCbor))) {
-      throw new Error("input CBOR is not canonical");
-    }
-    const outputIndex = Number(input.index());
-    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) {
-      throw new Error("input output index exceeds safe integer range");
-    }
+    const decoded = decodeMidgardSpendInputItem(inputCbor);
     return {
-      txHash: input.transaction_id().to_hex(),
-      outputIndex,
+      txHash: Buffer.from(decoded.txId).toString("hex"),
+      outputIndex: decoded.outputIndex,
     };
   } catch (cause) {
     throw new BuilderInvariantError(
@@ -501,4 +506,86 @@ export const localUtxoAt = (
     );
   }
   return cloneUtxo(output);
+};
+
+export type ResolvedReferenceInputContext = {
+  readonly inputs: readonly MidgardUtxo[];
+  readonly outputsByOutRef: ReadonlyMap<string, Uint8Array>;
+};
+
+export const referenceOutputsByOutRef = (
+  inputs: readonly MidgardUtxo[],
+): ReadonlyMap<string, Uint8Array> => {
+  const outputs = new Map<string, Uint8Array>();
+  for (const input of inputs) {
+    const key = Buffer.from(utxoOutRefCbor(input)).toString("hex");
+    if (outputs.has(key)) {
+      throw new BuilderInvariantError(
+        "Duplicate resolved reference input",
+        key,
+      );
+    }
+    outputs.set(key, Buffer.from(utxoOutputCbor(input)));
+  }
+  return outputs;
+};
+
+export const resolveImportedReferenceInputs = (
+  tx: MidgardNativeTxFull,
+  options: FromTxOptions,
+  normalizeUtxo: UtxoNormalizer,
+  expectedNetworkId: number | undefined,
+): ResolvedReferenceInputContext => {
+  const referenceRefs = validatedNativeInputs(tx).referenceInputRefs;
+  if (options.resolvedReferenceInputs === undefined) {
+    if (referenceRefs.length > 0) {
+      throw new BuilderInvariantError(
+        "Missing resolved reference input",
+        "every body reference input requires an exact resolved UTxO",
+      );
+    }
+    return { inputs: [], outputsByOutRef: new Map() };
+  }
+
+  const required = new Set(referenceRefs.map(outRefLabel));
+  const byLabel = new Map<string, MidgardUtxo>();
+  for (const [index, input] of options.resolvedReferenceInputs.entries()) {
+    const normalized = normalizeUtxo(input);
+    assertImportedAddressNetwork(
+      utxoAddress(normalized),
+      expectedNetworkId,
+      `resolvedReferenceInputs[${index.toString()}]`,
+    );
+    const label = outRefLabel(normalized);
+    if (byLabel.has(label)) {
+      throw new BuilderInvariantError(
+        "Duplicate resolved reference input",
+        label,
+      );
+    }
+    if (!required.has(label)) {
+      throw new BuilderInvariantError(
+        "Unexpected resolved reference input",
+        label,
+      );
+    }
+    byLabel.set(label, normalized);
+  }
+
+  const ordered: MidgardUtxo[] = [];
+  for (const ref of referenceRefs) {
+    const label = outRefLabel(ref);
+    const input = byLabel.get(label);
+    if (input === undefined) {
+      throw new BuilderInvariantError(
+        "Missing resolved reference input",
+        label,
+      );
+    }
+    ordered.push(input);
+  }
+  return {
+    inputs: ordered,
+    outputsByOutRef: referenceOutputsByOutRef(ordered),
+  };
 };

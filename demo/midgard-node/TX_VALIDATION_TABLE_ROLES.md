@@ -338,10 +338,10 @@ consumed deposits, and writes address history
 
 `processMpfs` reads deltas for the mempool tx ids it is about to include in an
 MPF build
-([mpf.ts](src/workers/utils/mpf.ts)). If a delta is missing or invalid,
+([process.ts](src/mpf/process.ts)). If a delta is missing or invalid,
 the commit path has to fall back to resolving the tx effect, or reject the tx
 depending on the decoding outcome
-([mpf.ts](src/workers/utils/mpf.ts)).
+([commit-rejection.ts](src/mpf/commit-rejection.ts)).
 
 ### Lifecycle
 
@@ -414,7 +414,7 @@ Writers include:
   `tx_admissions` in one transaction
   ([txAdmissions.ts](src/database/txAdmissions.ts));
 - commitment preprocessing for malformed mempool txs
-  ([mpf.ts](src/workers/utils/mpf.ts));
+  ([commit-rejection.ts](src/mpf/commit-rejection.ts));
 - local submit tooling that records immediate local rejection evidence
   ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts)).
 

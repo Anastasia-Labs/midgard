@@ -37,6 +37,11 @@ export type ReadinessInput = {
     readonly remainingMs: number | null;
     readonly holder: string | null;
   };
+  /**
+   * Retention deadline signal (GOAL_SPEC 9.4 / Q54): number of retained DA
+   * records that are still challengeable and inside their alert threshold.
+   */
+  readonly retentionDeadlineAlerts?: number;
 };
 
 /**
@@ -121,6 +126,15 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
       `state_queue_lease_stale:${
         input.stateQueueMutationLease.holder ?? "unknown"
       }:${input.stateQueueMutationLease.remainingMs ?? "unknown"}`,
+    );
+  }
+
+  if (
+    input.retentionDeadlineAlerts !== undefined &&
+    input.retentionDeadlineAlerts > 0
+  ) {
+    reasons.push(
+      `retention_deadline_alert:${input.retentionDeadlineAlerts.toString()}`,
     );
   }
 

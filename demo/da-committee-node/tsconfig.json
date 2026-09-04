@@ -8,6 +8,7 @@
     "lib": ["es2022"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "customConditions": ["midgard-source"],
     "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,

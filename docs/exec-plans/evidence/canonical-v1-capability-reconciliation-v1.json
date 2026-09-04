@@ -1,0 +1,347 @@
+{
+  "schema": "midgard.canonical-v1-capability-reconciliation.v1",
+  "generatedAt": "2026-08-04",
+  "previousGeneratedAt": "2026-07-29",
+  "updateContract": {
+    "verifier": "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs",
+    "generator": "none - this artifact is hand-maintained; the verifier is the only contract",
+    "note": "Issue #529: p2Summary.pass is not established by counting PASS strings. Every task published as PASS must have an executable witness, and this check derives the pass count from the actual Vitest and Aiken runner reports. A witness that collects nothing, fails, or is skipped fails the check. The progress notes are not read or interpreted."
+  },
+  "sources": {
+    "goalSpec": {
+      "path": "docs/exec-plans/GOAL_SPEC.md"
+    },
+    "p2Matrix": {
+      "path": "docs/exec-plans/cardano-capability-p2-closure-matrix-2026-07-26.md"
+    },
+    "canonicalTransaction": {
+      "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak"
+    },
+    "validationMachineTypeScript": {
+      "path": "demo/midgard-validation/src/validation-machine"
+    },
+    "validationMachineDataTypeScript": {
+      "path": "demo/midgard-validation/src/validation-machine-data.ts"
+    },
+    "validationAuxiliaryTypeScript": {
+      "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts"
+    },
+    "validationMachineAiken": {
+      "path": "onchain/aiken/lib/midgard/validation-machine"
+    }
+  },
+  "controlPlane": {
+    "C10": "PASS",
+    "C11": "PASS",
+    "C12": "PASS",
+    "C13": "PASS",
+    "CG1": "PASS (re-measured 2026-08-18 for issue #479 plus the CG1 control-publication-fit gate build): C10-C13 all measure PASS, and the gate's roster of 34 parameterized hub/control validators all fit the real 16,384-byte L1 publication envelope, with exactly 1 justified exclusion and 0 waivers on the current PRE_FREEZE onchain/aiken/plutus.json hash basis (sha256 f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00). The prior generatedAt 2026-08-04 PASS predates both the issue #479 C10-C13 re-measurement and the gate's own construction, so it is refreshed by measurement, not corrected as a defect"
+  },
+  "p2Tasks": {
+    "C20-0": "PASS",
+    "C20-1": "PASS",
+    "C20-2": "PASS",
+    "C20-3": "PASS",
+    "C20-4": "PASS",
+    "C20-5": "PASS",
+    "C20-6": "PASS",
+    "C20-7": "PASS",
+    "C20-8": "PASS",
+    "C21": "PASS",
+    "C22": "PASS",
+    "C23": "PASS",
+    "C24": "PASS",
+    "C25": "PASS",
+    "C26": "PASS",
+    "C27": "PASS",
+    "C28": "PASS",
+    "C29": "PASS",
+    "C30": "PASS",
+    "C31": "PASS",
+    "C32": "PASS",
+    "C33": "PASS",
+    "CG2": "OPEN"
+  },
+  "p2TaskWitnesses": {
+    "C20-0": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary.test.ts"
+      }
+    ],
+    "C20-1": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary.test.ts"
+      }
+    ],
+    "C20-2": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-boundary.test.ts"
+      }
+    ],
+    "C20-3": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary.test.ts"
+      }
+    ],
+    "C20-4": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-signer-witness-boundary.test.ts"
+      }
+    ],
+    "C20-5": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-mint-boundary.test.ts"
+      }
+    ],
+    "C20-6": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-mint-boundary.test.ts"
+      },
+      {
+        "kind": "aiken",
+        "module": "onchain/aiken/lib/midgard/user-events/tx-order-v1.test.ak",
+        "selectors": ["inline_carriage_authenticates_a_witness_set_field"]
+      }
+    ],
+    "C20-7": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-signer-witness-boundary.test.ts"
+      },
+      {
+        "kind": "aiken",
+        "module": "onchain/aiken/lib/midgard/user-events/tx-order-v1.test.ak",
+        "selectors": ["inline_carriage_authenticates_a_witness_set_field"]
+      }
+    ],
+    "C20-8": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-redeemer-boundary.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/redeemer-item-proof.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts"
+      }
+    ],
+    "C21": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-sdk/tests/validation-proof-item.test.ts"
+      }
+    ],
+    "C22": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/nested-value-boundary.test.ts"
+      }
+    ],
+    "C23": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts"
+      }
+    ],
+    "C24": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts"
+      }
+    ],
+    "C25": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts"
+      }
+    ],
+    "C26": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts"
+      }
+    ],
+    "C27": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-core/tests/script-proof.test.ts"
+      }
+    ],
+    "C28": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/cek-program.test.ts"
+      }
+    ],
+    "C29": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/validation-machine.test.ts"
+      }
+    ],
+    "C30": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/retained-da-boundary.test.ts"
+      }
+    ],
+    "C31": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/retained-da-boundary.test.ts"
+      }
+    ],
+    "C32": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/nested-value-boundary.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/cek-program.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/retained-da-boundary.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-core/tests/script-proof.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts"
+      }
+    ],
+    "C33": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/redeemer-collateral-schema-feasibility.test.ts"
+      }
+    ]
+  },
+  "p2WitnessNote": "Executable witnesses for every P2 task published as PASS. The check runs these and derives p2Summary.pass from runner reports; a task with no passing witness cannot be counted.",
+  "p2WitnessCommands": [
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-spend-inputs-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-reference-inputs-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-observer-native-script-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-signer-witness-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-mint-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-redeemer-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-item-proof.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/nested-redeemer-data-boundary.test.ts",
+    "pnpm --dir demo/midgard-sdk exec vitest run tests/validation-proof-item.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/data-breadth-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/plutus-data-unary-depth-boundary.test.ts",
+    "pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/cek-program.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/validation-machine.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cardano-capability-retained-da.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/retained-da-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-collateral-schema-feasibility.test.ts",
+    "cd onchain/aiken && aiken check -e -m inline_carriage_authenticates_a_witness_set_field"
+  ],
+  "p2Summary": {
+    "tasks": 22,
+    "pass": 22,
+    "partial": 0,
+    "open": 0,
+    "authoritativeConflict": 0,
+    "gate": "OPEN"
+  },
+  "authorityConflict": {
+    "tasks": ["C20-6", "C20-7"],
+    "goalSpecOrder": {
+      "6": "native/non-native script witnesses",
+      "7": "vkey witnesses and exact signer identities"
+    },
+    "currentCanonicalSourceOrder": {
+      "6": "script witnesses",
+      "7": "address witnesses"
+    },
+    "disposition": "RESOLVED",
+    "note": "Resolved 2026-07-29 and reverified 2026-08-04: current source implements the authoritative order (script witnesses at field 6, vkey/address witnesses at field 7), proven by the 56/56 native-tx module replay including cross-substitution, adjacency, and genuine accepted-maximum boundary selectors. C20-6/C20-7 are PASS; complete-item policy is tracked separately by C21 and the downstream maximum-family rows.",
+    "reverification2026-08-03": "Field-order implementation re-verified as source-complete in onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak: all nine consensus indices 0..8 are dispatched in both transaction_field_commitment_v1 (distinct hash field per index, out-of-range -> fail) and verify_midgard_transaction_field_preimage_against_source_v1 (decode-and-re-encode per index, so a hash match alone cannot authenticate a non-canonical shape), with field 6 = script witnesses, 7 = address witnesses, 8 = redeemers and no todo/unimplemented branch in the module. This confirms the RESOLVED disposition on source grounds.",
+    "crossLaneDivergence2026-08-03": "Resolved in the synchronized current-tree record: C20-6/C20-7 are PASS in both ledger and capability evidence, and the verifier literals move with every disposition change. The 2026-08-04 C20-2/C20-4/C20-5/C27 promotions produce 16 PASS and 6 PARTIAL tasks without an authority conflict."
+  },
+  "wholePreimageFinding": {
+    "status": "RESOLVED_ABI",
+    "constructor": "TransactionFieldPreimageWitness",
+    "removedFrom": [
+      "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
+      "demo/midgard-validation/src/validation-machine",
+      "demo/midgard-validation/src/validation-machine-data.ts",
+      "onchain/aiken/lib/midgard/validation-machine"
+    ],
+    "affectedAcceptance": ["AC-C21", "C29", "C32", "CG2"],
+    "note": "The whole-field constructor is absent from every active TypeScript/Aiken auxiliary ABI and its former tags 2..41 are canonically shifted to 1..40. AC-C21 remains independently open until the broader active helper/bridge/selector call-graph audit and final-tree ABI selectors pass."
+  },
+  "freshChecks": {
+    "p1Control": "1/1",
+    "aikenRouting": "3/3",
+    "sdkControl": "3/3",
+    "faultProofControl": "5/5",
+    "manifestAndReference": "37/37",
+    "acceptedTraceReplay": "22/22",
+    "maximumBoundaryFiles": "18/18",
+    "retainedDa": "3/3",
+    "aikenReceipt": "11/11",
+    "dataBreadth": "12/12",
+    "inlineDatumAndRedeemer": "3/3",
+    "value": "2/2",
+    "balancedData": "4/4",
+    "validationMachineMaximum": "7/7",
+    "c26UnaryDepth": "PARTIAL narrowed 2026-07-29: maximum retained reconstruction now passes at depth 4,043 on stock CML through the iterative well-formedness gate (13 new midgard-core tests; 6,054-case differential vs Data.from, zero divergence; ~0.5 s default-run); re-narrowed 2026-08-04 for issue #484: maximum emulator admission no longer requires the owner-approval-gated CML wasm stack patch — `admits the exact maximum-depth candidate through the real emulator` passes today via the `--stack-size=2000` child-process runner, and retained canonical maximum signed-byte/blake2b-256 digest identity across both normal and forced classifications plus the depth-4,043 malformed/noncanonical controls pass (2 guarded Aiken, 5 TypeScript). C26 remains PARTIAL solely for the genuine field-8 unary redeemer maximum, which needs a raw redeemer/script-data-hash builder plus the out-of-process patched-stack CML runner because `buildSignedCardanoSpendRedeemersCandidateV1` routes through `CML.PlutusData.from_cbor_hex` and `CML.calc_script_data_hash`, both of which trap on deep Data",
+    "retainedDaExactVerifier": "PASS (re-measured 2026-08-04 for issue #484): `pnpm --dir demo/midgard-fault-proofs run test:cardano-capability-p2-retained-da` exits 0 end to end — producer 13/13 files, regenerated corpus `cmp`-identical to the checked-in fixture, da-committee consumer 20/20, fault-proof consumer 3/3. The prior `FAIL: producer 13/14` shape could not be reproduced at any tree state, so it is recorded as a stale recorded string refreshed by measurement, not as a defect that was fixed",
+    "validityIntervalRegression": "1/1",
+    "wholePreimageAbi": "IN_PROGRESS: TypeScript ABI/control tests 14/14 pass; Aiken selectors and active-helper audit pending",
+    "typechecks": "4/4",
+    "nativeTxFieldOrderModuleReplay": "56/56 (23 pre-existing + 33 Wave-1 cross-substitution/boundary tests; parent independent replay exit 0)",
+    "nativeTxFieldOrderSourceCompleteness": "9/9 fields (2026-08-03): indices 0..8 dispatched with a distinct commitment and a decode-and-re-encode check each in onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak; out-of-range index fails; no todo/unimplemented branch",
+    "validationMachineModuleTestCount": "160 tests declared in onchain/aiken/lib/midgard/validation-machine-v1.test.ak (2026-08-04 count; includes the independently replayed C20-2/C20-4/C20-5 terminal selectors and the three C20-0/C20-1/C20-3 terminal selectors added for issue #480)",
+    "vmModuleFailuresFiveNamed": "5/5 PASS (2026-08-03): module midgard/validation_machine_v1.test reports total 5, passed 5, failed 0, seed 4023423627 for signatures_accepts_an_empty_required_signer_and_witness_set, canonical_v1_decode_is_independently_verified_on_l1, static_rules_prove_a_network_mismatch_is_an_exact_no_op, phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op, script_sources_rejects_an_unsigned_protected_pubkey_output. Reproduce with: cd onchain/aiken && aiken check -m <each of the five names> (aiken v1.1.22+39d6b04, ~12 min). This closes the five named failures the VM-MODULE-FAILURES investigation bisected to 0cecf536 as older latent defects; it does NOT constitute a full-module sweep, so the sixteen VM-SCRIPT-SOURCES-CEK failures and CG2/AC-C20 are unaffected by this check.",
+    "orderedFieldTerminalAgreement": "7 of the 9 ordered fields now have a byte-identical cross-language terminal fold vector: fields 2/4/5 (inherited) and field 8 (maximum_cardano_spend_redeemer_terminal_fold_matches_typescript, inherited) plus fields 0/1/3 added for issue #480 as maximum_spend_input_field_terminal_matches_typescript, maximum_reference_input_field_terminal_matches_typescript, and maximum_observer_field_terminal_matches_typescript, each pinning the same vector in both onchain/aiken/lib/midgard/validation-machine-v1.test.ak and the corresponding demo/midgard-validation/tests/ordered-collection-*-boundary-v1.test.ts file. Fields 6 and 7 (C20-6/C20-7) remain closed by field-order and field-commitment evidence rather than a terminal fold vector, which is not claimed here. Before issue #480 the C20-0/C20-1/C20-3 PASS dispositions recorded in this artifact were one-sided: Aiken pinned the exact 224-observer and 434-spend/433-reference terminals while the TypeScript boundary searches asserted only relative properties, and the C20-8 focused selector midgard/fraud_proofs/native_tx/max_redeemers collected 0 tests and could never pass."
+  },
+  "acceptance": {
+    "F10": "PASS",
+    "CG1": "PASS (re-measured 2026-08-18 for issue #479 plus the CG1 control-publication-fit gate build): every parameterized hub/control validator (roster 34/34) fits a real 16,384-byte publication transaction, and evidence is bound to the current PRE_FREEZE onchain/aiken/plutus.json validator hashes (sha256 f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00, 398 validators). Final-hash completion of this acceptance clause against a frozen blueprint rides issue #510's freeze-event regeneration and re-measurement",
+    "CG2": "OPEN",
+    "note": "F10 passes as a current-tree reconciliation deliverable. No PARTIAL, OPEN, or AUTHORITATIVE_CONFLICT P2 task is promoted."
+  }
+}

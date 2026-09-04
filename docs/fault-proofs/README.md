@@ -1,138 +1,96 @@
-# Midgard Fault-Proof System — Live Documentation
+# Midgard Fault-Proof System
 
-> **Status:** Midgard is pre-launch (in development). This directory is the single
-> source of truth for the state of the fault-proof (historically "fraud-proof") subsystem:
-> what is delivered, what is functional, what is missing-but-documented, and what is
-> missing-and-undocumented. It is intended to be kept **live** — updated as code lands.
+Current-state documentation reviewed against the working tree on 2026-09-01.
 
-Last full audit: **2026-07-10**, against branch `tx-validation` (HEAD `269bf6b3`)
-plus its contemporaneous working tree. Reconstructed on `tx-validation` HEAD
-`55afdc54`; paths were reconciled to that clean base, but line anchors must be
-rechecked when implementing an item.
+## Current identity
 
-Documentation and top-level conclusions revalidated **2026-07-22** against
-the PR #461 production-readiness tree. The zero-input family is now
-catalogue-registered, bound to native-v1 counted roots, CLI-complete, and
-emulator-proven through faulty-block removal. Its preparer requires the authoritative
-header `transactions_root` and fails closed on a mismatch. The remaining catalogue,
-binding, fee, economics, DA-remedy, and system-wide preprod-acceptance gaps remain.
-This was not a replacement for the full line-by-line audit, so historical line
-anchors remain advisory.
+- The canonical catalogue contains **32 positional categories**, IDs
+  `00000000` through `0000001f`.
+- `networkId`, `missingNativeScriptUtxo`, `nativeScriptInvalid`, and `minAda`
+  occupy IDs `0000001c` through `0000001f`.
+- The applied catalogue root is
+  `85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90`.
+- The checked-in testnet blueprint contains **563 validators** and has SHA-256
+  `b885c3abb0eeaace296011a108fbe4a06d0e5303bfb9d73bbec48fc30f32f9de`.
+- `transitionTrace` remains category `00000004`; its deployed graph is one
+  route validator plus eight terminal validators.
+- `mpf-chunked-proof` is shared verifier machinery, not a catalogue category.
 
-Terminology note: these were historically called **fraud proofs**. Public-facing
-documentation now generally says **fault proofs**, while the clean source tree still
-contains historical `fraud-proof` path names. They are the same mechanism. This
-directory uses "fault proof" throughout and preserves literal identifiers as they
-appear in code/spec (for example the `fault_proof` token and
-`RemoveFaultyBlockHeader`).
+The catalogue is immutable after genesis. Any change to positional category
+order, applied first-step hashes, or catalogue root requires a fresh
+development deployment. Canonical V1 has no migration path for an identity
+that was never publicly deployed.
 
----
+## What is implemented
 
-## What this directory contains
+All 32 planned catalogue families have Aiken validators in the generated
+blueprint and catalogue/deployment wiring in the SDK, node, core, and watcher
+identity surfaces. The final three formerly open standalone families are now
+implemented:
 
-| Document                                         | Purpose                                                                                                                                                                               |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`architecture.md`](architecture.md)             | How the system works: catalogue, computation threads, tokens, the state-queue removal + slashing payoff path, trust assumptions.                                                      |
-| [`catalogue-status.md`](catalogue-status.md)     | Per-proof-type delivery/functionality tracker (the 12 implemented types + generic machinery). The "what is delivered / what is functional" ledger.                                    |
-| [`coverage-matrix.md`](coverage-matrix.md)       | First-principles enumeration of every way a state commitment can be faulty, mapped to a proof (or a gap). The "what is missing" analysis, including adversarial fund-theft scenarios. |
-| [`onchain-reference.md`](onchain-reference.md)   | Code map of the Aiken implementation (`onchain/aiken`), with `file:line` anchors.                                                                                                     |
-| [`offchain-reference.md`](offchain-reference.md) | Code map of the TypeScript SDK / CLI / watcher (`demo/*`), with `file:line` anchors.                                                                                                  |
-| [`testing-status.md`](testing-status.md)         | Test coverage and end-to-end status (emulator vs preprod vs mainnet).                                                                                                                 |
-| [`execution-plan.md`](execution-plan.md)         | The plan to reach **comprehensive** coverage: for any faulty tx in a state commitment, a successful fault proof can be submitted and the commitment invalidated.                      |
+- `missingNativeScriptUtxo`: seven-step proof over authenticated predecessor
+  UTxO membership and native-script material;
+- `nativeScriptInvalid`: five-step proof with bounded signer scanning and a
+  resumable native-script evaluator;
+- `minAda`: five-step transaction/UTxO proof using the shared canonical V1
+  minimum-Ada formula.
 
----
+The off-chain fault-proof package contains preparation, evidence, submit,
+resume, cancellation, production-artifact, and production-workflow modules for
+these families. It exposes 25 manifest-bound production runner factories. The
+watcher application currently installs 25 of the 32 catalogue categories.
 
-## Executive summary
+Dedicated init → steps → permanent token → faulty-block removal tests now exist
+for `missingNativeScriptUtxo`, `nativeScriptInvalid`, and both `minAda`
+polarities. The shared state-queue publication blocker is resolved by five
+authenticated withdraw-zero rewarding scripts: all six applied scripts and
+their signed publication transactions fit Van Rossem's 16,384-byte limit. The
+direct native-script-invalid lifecycle passes. Missing-native-script-UTxO now
+reaches proof submission but fails validation, while both min-ADA polarities
+stop at the family-specific 28,658-byte `fraudProofMinAdaStep02` script.
 
-**The generic machinery is real and wired end-to-end.** A concluded proof genuinely
-mints a permanent `fault_proof` token, and the state-queue `RemoveFaultyBlockHeader`
-path genuinely consumes that token to remove the faulty header and slash the operator.
-The catalogue → computation-thread state-machine → fault-proof-token → removal pipeline is
-coherent and deployable. See [`architecture.md`](architecture.md).
+## Readiness judgement
 
-**But the core security invariant does _not_ yet hold.** The spec (`C-considerations/1-protocol-invariants.tex`,
-"Invalid blocks") requires that _for every violation type, a proof can be constructed that
-always succeeds against a block genuinely containing that violation_. Today that is false:
-whole rule families that the spec itself defines as fault have **no working verifier**, and
-several are directly exploitable for **fund theft** in an adversarial setting. See
-[`coverage-matrix.md`](coverage-matrix.md).
+The fault-proof system is **implemented but not release-complete**. The
+remaining launch blockers are:
 
-### Status at a glance (the four buckets the audit was asked to produce)
+1. make the shared genesis/setup path and all dedicated Lucid Evolution
+   lifecycles pass under Van Rossem's transaction-size and ExUnit limits;
+2. a watcher-installed production runner for every enabled catalogue family;
+3. complete per-family soundness, cancellation/resume, removal, and maximum-
+   shape emulator coverage under those same limits;
+4. public retained-DA/proof-bundle retrieval sufficient for an independent
+   challenger throughout the challenge window;
+5. live balance-conservation and concurrent-claim acceptance for the compiled
+   non-zero economics;
+6. a reproducible watcher-driven detect → prove → remove run against a real
+   local node and on preprod.
 
-**1. Delivered _and_ functional** (real logic, compiles, emulator-proven where noted):
+Do not describe Midgard as fault-proof ready for a public testnet until these
+gates pass.
 
-- Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
-- 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
-- The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
-- Offchain tooling for 5 families (double-spend, invalid-range, non-existent-input,
-  transition-trace, zero-input); all five are **emulator-proven end-to-end** through
-  faulty-block removal, although transition-trace remains library-only rather than
-  CLI-wired.
-- ⚠️ Reachability caveat: only **6 of the 12** proof types are registered in the
-  deployment catalogue — the other 6 compile but cannot `Init` a computation thread
-  against a deployed instance. See [`catalogue-status.md`](catalogue-status.md).
+## Document map
 
-**2. Delivered but _not_ functional** (present but stubbed/inert/disabled):
+| Document                                                   | Authority                                                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [`catalogue-status.md`](catalogue-status.md)               | Exact 32-category inventory and per-layer status                            |
+| [`coverage-matrix.md`](coverage-matrix.md)                 | Ledger-rule coverage and remaining proof/release gaps                       |
+| [`architecture.md`](architecture.md)                       | Catalogue, computation-thread, token, removal, DA, and watcher architecture |
+| [`onchain-reference.md`](onchain-reference.md)             | Aiken module map and compiled identity                                      |
+| [`offchain-reference.md`](offchain-reference.md)           | SDK, fault-proof package, workflow runtime, watcher, and node map           |
+| [`testing-status.md`](testing-status.md)                   | Test fidelity, current gaps, and exact commands                             |
+| [`execution-plan.md`](execution-plan.md)                   | Remaining work only                                                         |
+| [`challenger-runbook.md`](challenger-runbook.md)           | Supported autonomous challenger procedure and fail-closed boundaries        |
+| [`manual-recovery-runbook.md`](manual-recovery-runbook.md) | Recovery, rollback, and escalation procedure                                |
 
-- `min-fee` proof — its `get_min_transaction_fee` is a `0`-returning stub, making its decisive check unsatisfiable. Cannot conclude. (`onchain/aiken/validators/fraud-proofs/min-fee/step-02.ak:64,78-80`)
-- Slashing **economics** — `slashing_penalty`, historical source identifier
-  `fraud_prover_reward`, `required_bond`, and `inactivity_slashing_penalty` are all
-  `0` in `env/default.ak` and `env/testnet.ak`. A successful proof slashes and
-  rewards nothing. `maturity_duration` is likewise a dev value (`30` — i.e.
-  ~30 ms — in both envs), so the on-chain challenge window is effectively zero.
-- `transition-trace` `ValidForcedTransactionUnsupported` branch is hard-wired to `False` — valid-forced-transaction omission faults are unprovable via that path. (`.../transition-trace/proof.ak:1201`)
-- `transition-trace` value/authorization semantics — the L2 one-step verifier authenticates the _shape_ of the UTxO delta but never checks value conservation or spend authorization (see bucket 4).
+Family-specific `*-plan-v1.md` files have been reduced to implementation
+references where their designs landed. Decision records under `decisions/`
+remain normative records rather than status ledgers.
 
-**3. Missing but documented** (spec/gap-reports define it as fault; no working verifier):
+## Maintenance rule
 
-- Value conservation (`VALUE-NOT-PRESERVED`), ADA minting (`ADA-MINTED`), negative output value (`NEGATIVE-OUTPUT-VALUE`), required-signer-set correctness (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw, reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada, network-id.
-- Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
-- Mis-tagged (valid→invalid) withdrawal proof.
-- Offchain tooling for 7 of the 12 already-implemented onchain types; CLI wiring for
-  `transition-trace`.
-- Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
-  mismatch, but it is intentionally untracked and predates the counted-root work of PR
-  #458 and the MPF rewrite of the proof builders; readiness remains unconfirmed until a
-  new, publishable preprod run; see [`testing-status.md`](testing-status.md)).
-- Autonomous watcher/challenger (design docs exist; zero code).
-
-**4. Missing and undocumented** (no working proof _and_ no clear spec construction):
-
-- Generic phase-2 (Plutus/`MidgardV1`) script-failure and minting-policy-unsatisfied proofs — the spec explicitly declines to claim these are possible today (`7-phase-two-validation/3-fault-proofs-involved.tex`).
-- Maximum transaction/value/reference-script size rules (spec sections are commented out) — and, more fundamentally, **provability under adversarial sizing**: no family except double-spend has a worst-case argument that its evidence fits L1 tx-size/ex-unit limits (coverage-matrix §11b).
-- Non-ADA **mint authorization** (no rule for disputing an unauthorized token mint) and **output well-formedness** (malformed outputs committed into `utxos_root`).
-- Event **content fidelity** for deposits/withdrawals (an event whose value/address misstates the real L1 UTxO — distinct from the fabricated-event existence case).
-- On-chain remedy for **data unavailability** after a DA attestation (no fault proof, no rollback), and nothing binding retention windows to the on-chain challenge deadline.
-- Cross-operator descendant rollback — `RemoveFaultyBlocksLink` requires the descendant's own `operator_vkey` to equal the faulty block's operator (`onchain/aiken/validators/state-queue.ak:661`), so with scheduler rotation the cascade deadlocks; the adjacent comment (`:633-636`) documents the opposite intent.
-
-See [`coverage-matrix.md`](coverage-matrix.md) for the class-by-class table and severity ranking, and [`execution-plan.md`](execution-plan.md) for how to close all of it.
-
----
-
-## Keeping this documentation live
-
-This directory is meant to track reality, not to become another stale plan. Maintenance protocol:
-
-1. **When a proof type changes status** (stub → functional, new type added, branch enabled,
-   category registered), update the row in [`catalogue-status.md`](catalogue-status.md) and
-   the corresponding status cell (✅/🔶/🟠/📄/❌) in
-   [`coverage-matrix.md`](coverage-matrix.md) in the _same PR_.
-2. **When a gap is closed**, move it from the relevant bucket above and tick the matching
-   work item (`W-*`/`D-*` ID) in [`execution-plan.md`](execution-plan.md), appending a dated
-   line to that plan's §13 implementation record with the landing commit and evidence.
-3. **When the audit is re-run**, bump the "Last full audit" date/commit at the top of this
-   README and of each reference doc, and re-check the `file:line` anchors (they drift).
-4. **Do not** let public/marketing messaging claim "full fault-proof readiness" until
-   [`coverage-matrix.md`](coverage-matrix.md) shows no remaining 📄/❌ row in the
-   fund-theft severity tier (§12) and [`testing-status.md`](testing-status.md) shows at
-   least one family closed end-to-end on preprod. This mirrors the standing guidance in
-   `../../public_testnet_readiness.md`.
-
-## Related documents (outside this directory)
-
-- `technical-spec/4-proof-protocol/` — the normative spec of catalogue, tokens, computation threads.
-- `technical-spec/5-ledger-rules/1-cardano-ledger-rules.tex` — the formal violation taxonomy and per-violation proof constructions.
-- `technical-spec/7-phase-two-validation/3-fraud-proofs-involved.tex` — the spec's own admission that generic phase-2 proofs are unbuilt.
-- `demo/midgard-node/docs/TRANSITION_TRACE_COMMITMENTS.md` — the transition-trace architecture.
-- `demo/midgard-watcher/midgard-watcher-architecture.md` — the (unbuilt) autonomous challenger design.
-- `../../public_testnet_readiness.md` — the launch-gate readiness tracker.
+Update the catalogue status, coverage matrix, testing status, execution plan,
+and public-testnet readiness checklist in the same change whenever a category,
+runner installation, emulator lifecycle, or release gate changes. Derive
+counts, IDs, blueprint identity, and catalogue root from code and generated
+artifacts; never carry them forward from older documentation.

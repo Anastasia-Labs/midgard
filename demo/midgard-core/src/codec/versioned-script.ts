@@ -8,7 +8,6 @@ import {
   readCborArrayHeader,
   readCborBytes,
   readCborUnsigned,
-  skipCborItem,
 } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
@@ -16,6 +15,10 @@ import {
   encodeMidgardNativeScript,
   type MidgardNativeScript,
 } from "./native-script.js";
+import {
+  decodeMidgardFieldPreimage,
+  encodeMidgardFieldPreimage,
+} from "./native-tx-field-access.js";
 
 export const MidgardVersionedScriptTags = {
   NativeCardano: 0n,
@@ -131,32 +134,38 @@ export const hashMidgardVersionedScript = (
     ),
   ).toString("hex");
 
+/**
+ * The §5.1 preimage of field 6 (`script_tx_wits`).
+ *
+ * Each item carries the per-item byte-string envelope, like all nine fields —
+ * under the retired counted scheme this field concatenated raw item CBOR, and
+ * `docs/spec/midgard-tx.md` §5.1 prohibits that form. The envelope is what buys
+ * O(1) top-level skips: one head decode plus a byte jump per item, instead of a
+ * structural CBOR walk into each script.
+ */
 export const encodeMidgardVersionedScriptListPreimage = (
   scripts: readonly MidgardVersionedScript[],
-): Buffer => encodeCborArrayRaw(scripts.map(encodeMidgardVersionedScript));
+): Buffer =>
+  encodeMidgardFieldPreimage(scripts.map(encodeMidgardVersionedScript));
 
 export const decodeMidgardVersionedScriptListPreimage = (
   bytes: Uint8Array,
   fieldName = "script_tx_wits",
 ): readonly MidgardVersionedScript[] => {
-  const header = readCborArrayHeader(bytes, 0, fieldName);
-  let cursor = header.nextOffset;
-  const scripts: MidgardVersionedScript[] = [];
-  for (let i = 0; i < header.length; i += 1) {
-    const span = skipCborItem(bytes, cursor);
-    const script = decodeMidgardVersionedScript(
-      bytes.subarray(span.start, span.end),
-    );
-    scripts.push(script);
-    cursor = span.end;
-  }
-  if (cursor !== bytes.length) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      `${fieldName} has trailing bytes`,
-      `offset=${cursor}`,
-    );
-  }
+  // §5.1's one uniform byte-list decode; it already fails closed on a
+  // non-minimal header, a count that disagrees with the walked content, and
+  // trailing bytes, so this function only has to read each item back.
+  const scripts = decodeMidgardFieldPreimage(bytes).map((item, index) => {
+    try {
+      return decodeMidgardVersionedScript(item);
+    } catch (error) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.CborDecode,
+        `${fieldName}[${index}] is not a canonical versioned script`,
+        String(error),
+      );
+    }
+  });
   assertCanonicalCborRoundTrip(
     bytes,
     scripts,

@@ -1,9 +1,10 @@
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  type DaEventToStepByEventRequestV1,
-  type DaProofBundleByHeaderRequestV1,
-  type DaTraceStepByIndexRequestV1,
+  type DaEventToStepByEventRequest,
+  type DaProofBundleByHeaderRequest,
+  type DaTraceStepByIndexRequest,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -14,8 +15,13 @@ import {
   DaProofArtifactDeriver,
   type DaProofArtifactStore,
 } from "../src/da/proof-artifacts.js";
-import type { DaPayloadRecord, StateQueueHeaderRecord } from "../src/domain.js";
-import { IDENTITY_TX_PROJECTOR, makePayloadFixture } from "./helpers.js";
+import type {
+  DaPayloadRecord,
+  DaStoredPayloadRootSet,
+  StateQueueHeaderRecord,
+} from "../src/domain.js";
+import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
+import { makePayloadFixture } from "./helpers.js";
 
 const deploymentFingerprint = "01".repeat(32);
 const deploymentFingerprintBytes = Buffer.from(deploymentFingerprint, "hex");
@@ -40,7 +46,7 @@ describe("DA proof artifact derivation", () => {
       SDK.TransitionTraceMembershipProofSchema as never,
     ) as SDK.IndexedTraceProof;
     expect(proof.root).toBe(context.header.transitionTraceRoot);
-    expect(proof.count).toBe(5n);
+    expect(proof.count).toBe(3n);
     expect(proof.key).toBe(2n);
     expect(proof.value.step_index).toBe(2n);
   });
@@ -70,7 +76,7 @@ describe("DA proof artifact derivation", () => {
       expect(proof.EventToStepMembership.membership.root).toBe(
         context.header.eventToStepRoot,
       );
-      expect(proof.EventToStepMembership.membership.count).toBe(5n);
+      expect(proof.EventToStepMembership.membership.count).toBe(3n);
     }
   });
 
@@ -152,6 +158,61 @@ describe("DA proof artifact derivation", () => {
     expect(result.response.status).toBe("rejected");
   });
 
+  it("fails closed when the stored validation-trace root no longer matches payload bytes", async () => {
+    const context = await makeVerifiedContext();
+    const rootSummary: DaStoredPayloadRootSet = {
+      ...context.payloadRecord.rootSummary!,
+      validationTracesRoot: "00".repeat(32),
+    };
+    const store = makeStore({
+      payload: {
+        ...context.payloadRecord,
+        rootSummary,
+      },
+      header: context.headerRecord,
+    });
+    const deriver = makeDeriver(store);
+
+    const result = await deriver.traceStepByIndex(
+      traceStepRequest(context.headerHash, 0),
+    );
+
+    expect(result.reasonCode).toBe("stored_root_summary_mismatch");
+    expect(result.response.status).toBe("rejected");
+  });
+
+  it("fails closed when the committed validation-trace root mismatches payload bytes", async () => {
+    const context = await makeVerifiedContext();
+    const rebound = await rebindContextWithHeader(context, {
+      ...context.header,
+      validationTracesRoot: "00".repeat(32),
+    });
+    const deriver = makeDeriver(rebound.store);
+
+    const result = await deriver.traceStepByIndex(
+      traceStepRequest(rebound.headerHash, 0),
+    );
+
+    expect(result.reasonCode).toBe("committed_header_root_mismatch");
+    expect(result.response.status).toBe("rejected");
+  });
+
+  it("fails closed when the committed validation-trace count mismatches payload counts", async () => {
+    const context = await makeVerifiedContext();
+    const rebound = await rebindContextWithHeader(context, {
+      ...context.header,
+      validationTraceCount: context.header.validationTraceCount + 1n,
+    });
+    const deriver = makeDeriver(rebound.store);
+
+    const result = await deriver.traceStepByIndex(
+      traceStepRequest(rebound.headerHash, 0),
+    );
+
+    expect(result.reasonCode).toBe("committed_header_count_mismatch");
+    expect(result.response.status).toBe("rejected");
+  });
+
   it("fails closed when the committed L1 header identity diverges", async () => {
     const context = await makeVerifiedContext();
     const store = makeStore({
@@ -210,6 +271,8 @@ describe("DA proof artifact derivation", () => {
     const bundle = decodeSingleCbor(
       result.response.proofBundleBytes!,
     ) as unknown[];
+    const rootValues = bundle[4] as unknown[];
+    const countValues = bundle[5] as unknown[];
     expect(bundle).toHaveLength(6);
     expect(BigInt(bundle[0] as number | bigint)).toBe(1n);
     expect(Buffer.from(bundle[1] as Uint8Array).toString("hex")).toBe(
@@ -219,20 +282,31 @@ describe("DA proof artifact derivation", () => {
       context.payloadRecord.payloadSha256,
     );
     expect(Buffer.from(bundle[3] as Uint8Array)).toHaveLength(32);
-    expect(bundle[4]).toHaveLength(7);
-    expect(bundle[5]).toHaveLength(6);
+    expect(rootValues).toHaveLength(8);
+    expect(countValues).toHaveLength(7);
+    expect(Buffer.from(rootValues[7] as Uint8Array).toString("hex")).toBe(
+      context.header.validationTracesRoot,
+    );
+    expect(BigInt(countValues[6] as number | bigint)).toBe(
+      context.header.validationTraceCount,
+    );
+    expect(Buffer.from(bundle[3] as Uint8Array)).toEqual(
+      computeDaSha256Hash(
+        Buffer.concat(
+          rootValues.map((value) => Buffer.from(value as Uint8Array)),
+        ),
+      ),
+    );
   });
 });
 
 const makeVerifiedContext = async () => {
   const fixture = await makePayloadFixture();
-  const rootSummary = await computeDaPayloadRoots(
-    fixture.payload,
-    IDENTITY_TX_PROJECTOR,
-  );
+  const rootSummary = await computeDaPayloadRoots(fixture.payload);
   const payloadRecord: DaPayloadRecord = {
     deploymentFingerprint,
     headerHash: fixture.headerHash,
+    payloadSchemaVersion: 1,
     payloadCborHex: fixture.payloadCbor.toString("hex"),
     payloadSha256: daPayloadSha256(fixture.payloadCbor),
     sourcePeerId: "fixture-peer",
@@ -269,11 +343,56 @@ const makeVerifiedContext = async () => {
   };
 };
 
+type VerifiedContext = Awaited<ReturnType<typeof makeVerifiedContext>>;
+
+const rebindContextWithHeader = async (
+  context: VerifiedContext,
+  header: SDK.Header,
+): Promise<VerifiedContext> => {
+  const headerHash = hashBlockHeader(header);
+  const payload: SDK.DaPayload = {
+    ...context.payload,
+    block_body: {
+      ...context.payload.block_body,
+      header_hash: headerHash,
+      header,
+    },
+  };
+  const innerPayloadCbor = SDK.encodeDaPayload(payload);
+  const payloadCbor = await wrapDaPayload(innerPayloadCbor, {
+    mode: "identity",
+  });
+  const payloadRecord: DaPayloadRecord = {
+    ...context.payloadRecord,
+    headerHash,
+    payloadCborHex: payloadCbor.toString("hex"),
+    payloadSha256: daPayloadSha256(payloadCbor),
+    rootSummary: await computeDaPayloadRoots(payload),
+  };
+  const headerRecord: StateQueueHeaderRecord = {
+    ...context.headerRecord,
+    headerHash,
+    blockAssetName: `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`,
+    header,
+    computedHeaderHash: headerHash,
+  };
+  return {
+    ...context,
+    payload,
+    innerPayloadCbor,
+    payloadCbor,
+    header,
+    headerHash,
+    payloadRecord,
+    headerRecord,
+    store: makeStore({ payload: payloadRecord, header: headerRecord }),
+  };
+};
+
 const makeDeriver = (store: DaProofArtifactStore): DaProofArtifactDeriver =>
   new DaProofArtifactDeriver({
     deploymentFingerprint,
     store,
-    transactionProjector: IDENTITY_TX_PROJECTOR,
   });
 
 const makeStore = ({
@@ -292,7 +411,7 @@ const makeStore = ({
 const traceStepRequest = (
   headerHash: string,
   stepIndex: number,
-): DaTraceStepByIndexRequestV1 => ({
+): DaTraceStepByIndexRequest => ({
   deploymentFingerprint: deploymentFingerprintBytes,
   headerHash: Buffer.from(headerHash, "hex"),
   stepIndex,
@@ -301,7 +420,7 @@ const traceStepRequest = (
 const eventToStepRequest = (
   headerHash: string,
   eventKey: Buffer,
-): DaEventToStepByEventRequestV1 => ({
+): DaEventToStepByEventRequest => ({
   deploymentFingerprint: deploymentFingerprintBytes,
   headerHash: Buffer.from(headerHash, "hex"),
   eventKey,
@@ -309,7 +428,7 @@ const eventToStepRequest = (
 
 const proofBundleRequest = (
   headerHash: string,
-): DaProofBundleByHeaderRequestV1 => ({
+): DaProofBundleByHeaderRequest => ({
   deploymentFingerprint: deploymentFingerprintBytes,
   headerHash: Buffer.from(headerHash, "hex"),
   maxInlineBytes: 1024,

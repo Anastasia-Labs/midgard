@@ -17,12 +17,12 @@ describe("DA attestation reference script resolver", () => {
       fetchDaAttestationReferenceScripts(lucid, deployment),
     ).resolves.toMatchObject({
       daAttestationMinting: {
-        txHash: deployment.daAttestation.mint.refScriptOutRef.txHash,
-        outputIndex: deployment.daAttestation.mint.refScriptOutRef.outputIndex,
+        txHash: deployment.daAttestation.mint.refScriptOutRef!.txHash,
+        outputIndex: deployment.daAttestation.mint.refScriptOutRef!.outputIndex,
       },
       stateQueueSpending: {
-        txHash: deployment.stateQueue.spend.refScriptOutRef.txHash,
-        outputIndex: deployment.stateQueue.spend.refScriptOutRef.outputIndex,
+        txHash: deployment.stateQueue.spend.refScriptOutRef!.txHash,
+        outputIndex: deployment.stateQueue.spend.refScriptOutRef!.outputIndex,
       },
     });
   });
@@ -44,13 +44,14 @@ describe("DA attestation reference script resolver", () => {
     const deployment = await loadDaDeploymentFixture("Preview");
     const utxos = referenceScriptUtxos(deployment);
     const badStateQueueSpend = {
-      ...utxos[3]!,
+      ...utxos[4]!,
       scriptRef: deployment.daAttestation.spend.script,
     };
     const lucid = lucidWithReferenceScripts([
       utxos[0]!,
       utxos[1]!,
       utxos[2]!,
+      utxos[3]!,
       badStateQueueSpend,
     ]);
 
@@ -63,6 +64,10 @@ describe("DA attestation reference script resolver", () => {
 type ParsedDeployment = MidgardNodeDeployment;
 
 const referenceScriptUtxos = (deployment: ParsedDeployment): UTxO[] => [
+  referenceScriptUtxo(
+    deployment.availabilityChallenge.mint.refScriptOutRef,
+    deployment.availabilityChallenge.mint.script,
+  ),
   referenceScriptUtxo(
     deployment.daAttestation.mint.refScriptOutRef,
     deployment.daAttestation.mint.script,
@@ -82,16 +87,20 @@ const referenceScriptUtxos = (deployment: ParsedDeployment): UTxO[] => [
 ];
 
 const referenceScriptUtxo = (
-  outRef: { readonly txHash: string; readonly outputIndex: number },
+  outRef: { readonly txHash: string; readonly outputIndex: number } | null,
   scriptRef: UTxO["scriptRef"],
-): UTxO =>
-  ({
+): UTxO => {
+  if (outRef === null) {
+    throw new Error("fixture contract is expected to carry a refScriptUTxO");
+  }
+  return {
     txHash: outRef.txHash,
     outputIndex: outRef.outputIndex,
     address: "addr_test1vrm9x2c9s7ccg8vlt8l2f33frf84m9e8u9d7jwsu4kkwkgg7d4u73",
     assets: { lovelace: 4_000_000n },
     scriptRef,
-  }) as UTxO;
+  } as UTxO;
+};
 
 const lucidWithReferenceScripts = (
   utxos: readonly UTxO[],

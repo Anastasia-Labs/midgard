@@ -14,6 +14,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { type LucidDataSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   applyDoubleCborEncoding,
   applyParamsToScript,
@@ -21,7 +22,9 @@ import {
   CML,
   credentialToAddress,
   Data,
+  type Data as LucidData,
   Emulator,
+  fromText,
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
@@ -45,10 +48,15 @@ import {
   AddressData,
   addressDataFromBech32,
   type AuthenticatedValidator,
+  castConfirmedStateToData,
   ConfirmedState,
+  CORRECTION_LOCK_ASSET_NAME,
+  CorrectionLockDatum,
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
   encodeLinkedListNodeView,
+  encodeStateQueueYieldRedeemer,
+  fetchSortedStateQueueUTxOsProgram,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
@@ -58,29 +66,38 @@ import {
   type Header as HeaderType,
   headerHashFromStateQueueUTxO,
   HUB_ORACLE_ASSET_NAME,
+  HubOracleDatum,
   incompleteEmulatorCommitBlockHeaderTxProgram,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
+  type LinkedListNodeView,
+  makeGenesisConfirmedState,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   requireInputIndex,
   requireMintRedeemerIndex,
+  requireOperatorWalletInputs,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
+  resolveFraudProverRewardOutputIndex,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
-  requireOperatorWalletInputs,
+  scriptRewardAddress,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
   StateQueueSpendRedeemer,
   type StateQueueUTxO,
+  updateLatestBlocksDatumAndGetTheNewHeaderProgram,
   utxoToStateQueueUTxO,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
-const realBlueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
+const realBlueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  resolve(repoRoot, "onchain/aiken/plutus.json");
 const alwaysSucceedsBlueprintPath = resolve(
   repoRoot,
   "demo/midgard-node/blueprints/always-succeeds/plutus.json",
@@ -90,6 +107,67 @@ const outputReference = {
   transactionId: "44".repeat(32),
   outputIndex: 0n,
 };
+
+describe("fraud-prover reward builder exactness", () => {
+  const proverAddress = "addr_test1vq53_prover";
+  const reward = {
+    proverEnterpriseAddress: proverAddress,
+    lovelace: 400_000_000n,
+  } as const;
+  const output = (overrides: Record<string, unknown> = {}) => ({
+    address: proverAddress,
+    assets: { lovelace: reward.lovelace },
+    datum: undefined,
+    datumHash: undefined,
+    scriptRef: undefined,
+    ...overrides,
+  });
+  const context = (outputs: readonly unknown[]) =>
+    ({ outputs }) as unknown as Parameters<BuildTxWithRedeemer>[0];
+
+  it("accepts exactly one ADA-only NoDatum/no-reference-script prover output", () => {
+    expect(
+      resolveFraudProverRewardOutputIndex(
+        context([output({ address: "addr_test1vother" }), output()]),
+        reward,
+        "Q53 reward",
+      ),
+    ).toBe(1n);
+  });
+
+  it.each([
+    ["underpayment", output({ assets: { lovelace: reward.lovelace - 1n } })],
+    ["overpayment", output({ assets: { lovelace: reward.lovelace + 1n } })],
+    [
+      "token",
+      output({ assets: { lovelace: reward.lovelace, ["ab".repeat(28)]: 1n } }),
+    ],
+    ["inline datum", output({ datum: "d87980" })],
+    ["datum hash", output({ datumHash: "ab".repeat(32) })],
+    [
+      "reference script",
+      output({ scriptRef: { type: "PlutusV3", script: "00" } }),
+    ],
+  ])("rejects %s mutation", (_label, mutated) => {
+    expect(() =>
+      resolveFraudProverRewardOutputIndex(
+        context([mutated]),
+        reward,
+        "Q53 reward",
+      ),
+    ).toThrow();
+  });
+
+  it("rejects any second output to the prover credential", () => {
+    expect(() =>
+      resolveFraudProverRewardOutputIndex(
+        context([output(), output({ assets: { lovelace: 2_000_000n } })]),
+        reward,
+        "Q53 reward",
+      ),
+    ).toThrow(/exactly one output/);
+  });
+});
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   maxTxSize: 65_536,
@@ -190,6 +268,7 @@ describe("state-queue operator funding inputs", () => {
 type BlueprintValidator = {
   readonly title: string;
   readonly compiledCode: string;
+  readonly parameters?: readonly unknown[];
 };
 
 type Blueprint = {
@@ -198,7 +277,12 @@ type Blueprint = {
 
 type StateQueueTestContracts = {
   readonly hubOracle: AuthenticatedValidator;
+  readonly correctionLock: SdkSpendingValidator;
+  readonly computationThread: AuthenticatedValidator;
+  readonly daAttestation: AuthenticatedValidator;
   readonly stateQueue: AuthenticatedValidator;
+  readonly commitYield: SdkSpendingValidator;
+  readonly fraudRemovalYield: SdkSpendingValidator;
   readonly scheduler: AuthenticatedValidator;
   readonly activeOperators: AuthenticatedValidator;
   readonly retiredOperators: AuthenticatedValidator;
@@ -219,6 +303,28 @@ const getCompiledScript = (blueprint: Blueprint, title: string): string => {
     throw new Error(`Validator with title "${title}" not found`);
   }
   return found.compiledCode;
+};
+
+const applyAllBlueprintParamsToScript = (
+  blueprint: Blueprint,
+  title: string,
+  params: LucidData[],
+): string => {
+  const validator = blueprint.validators.find(
+    (candidate) => candidate.title === title,
+  );
+  if (validator === undefined) {
+    throw new Error(`Validator with title "${title}" not found`);
+  }
+  if (validator.parameters === undefined) {
+    throw new Error(`Validator "${title}" does not declare parameters`);
+  }
+  if (params.length !== validator.parameters.length) {
+    throw new Error(
+      `Validator "${title}" requires exactly ${validator.parameters.length.toString()} parameters, received ${params.length.toString()}`,
+    );
+  }
+  return applyParamsToScript(validator.compiledCode, params);
 };
 
 const makeMintingValidator = (mintingScriptCBOR: string) => {
@@ -284,6 +390,7 @@ const buildTestContracts = async (
   const hubOracleScript = alwaysScript(alwaysBlueprint, "hub_oracle", "mint");
   const base = {
     hubOracle: makeAuthenticatedValidator(hubOracleScript, hubOracleScript),
+    daAttestation: alwaysAuthenticated(alwaysBlueprint, "state_queue"),
     scheduler: alwaysAuthenticated(alwaysBlueprint, "scheduler"),
     activeOperators: alwaysAuthenticated(alwaysBlueprint, "active_operators"),
     retiredOperators: alwaysAuthenticated(alwaysBlueprint, "retired_operators"),
@@ -295,34 +402,87 @@ const buildTestContracts = async (
       Effect.map((addressData) => Data.from(Data.to(addressData, AddressData))),
     ),
   );
-  const stateQueueMintingScriptCBOR = applyParamsToScript(
-    getCompiledScript(realBlueprint, "state_queue.mint.mint"),
+  const computationThread = alwaysAuthenticated(alwaysBlueprint, "payout");
+  const availabilityChallenge = alwaysAuthenticated(
+    alwaysBlueprint,
+    "escape_hatch",
+  );
+  const correctionLock = makeSpendingValidator(
+    applyAllBlueprintParamsToScript(
+      realBlueprint,
+      "correction_lock.spend.spend",
+      [base.hubOracle.policyId, availabilityChallenge.policyId],
+    ),
+  );
+  const stateQueueMintingScriptCBOR = applyAllBlueprintParamsToScript(
+    realBlueprint,
+    "state_queue.mint.mint",
     [
       base.hubOracle.policyId,
+      correctionLock.spendingScriptHash,
       base.activeOperators.policyId,
       activeOperatorsAddressData,
       base.retiredOperators.policyId,
       base.scheduler.policyId,
       base.fraudProof.policyId,
       base.settlement.policyId,
+      base.daAttestation.policyId,
+      availabilityChallenge.policyId,
+      base.scheduler.policyId,
     ],
   );
   const stateQueueMinting = makeMintingValidator(stateQueueMintingScriptCBOR);
-  const stateQueueSpendingScriptCBOR = applyParamsToScript(
-    getCompiledScript(realBlueprint, "state_queue.spend.spend"),
-    [stateQueueMinting.policyId],
+  const stateQueueSpendingScriptCBOR = applyAllBlueprintParamsToScript(
+    realBlueprint,
+    "state_queue.spend.spend",
+    [
+      stateQueueMinting.policyId,
+      base.daAttestation.policyId,
+      availabilityChallenge.policyId,
+    ],
+  );
+  const commitYield = makeSpendingValidator(
+    applyAllBlueprintParamsToScript(
+      realBlueprint,
+      "state_queue_yields.commit.withdraw",
+      [
+        stateQueueMinting.policyId,
+        base.hubOracle.policyId,
+        correctionLock.spendingScriptHash,
+        base.activeOperators.policyId,
+        activeOperatorsAddressData,
+        base.scheduler.policyId,
+        base.daAttestation.policyId,
+      ],
+    ),
+  );
+  const fraudRemovalYield = makeSpendingValidator(
+    applyAllBlueprintParamsToScript(
+      realBlueprint,
+      "state_queue_yields.remove_fraudulent.withdraw",
+      [
+        stateQueueMinting.policyId,
+        base.hubOracle.policyId,
+        correctionLock.spendingScriptHash,
+        base.activeOperators.policyId,
+        base.retiredOperators.policyId,
+        base.fraudProof.policyId,
+      ],
+    ),
   );
 
   return {
     ...base,
+    correctionLock,
+    commitYield,
+    fraudRemovalYield,
+    computationThread,
     stateQueue: {
       ...stateQueueMinting,
       ...makeSpendingValidator(stateQueueSpendingScriptCBOR),
     },
   };
 };
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const roundTrip = <A>(value: A, schema: LucidDataSchema): A =>
   Data.from(Data.to(value, schema), schema) as A;
@@ -391,6 +551,99 @@ const buildTransactionsRoot = async (): Promise<string> => {
   return trieRootHex(trie);
 };
 
+const TWO_TRANSACTION_HEADER_COMMITMENTS = {
+  transitionTraceRoot: h32("55"),
+  eventToStepRoot: h32("66"),
+  validationTracesRoot: h32("77"),
+  l2TransactionCount: 2n,
+  totalEventCount: 2n,
+  transitionStepCount: 2n,
+  validationTraceCount: 2n,
+} as const;
+
+describe("state-queue header validation boundary", () => {
+  it("validates every source root/count pair before building a header", async () => {
+    const lucid = {
+      wallet: () => ({
+        address: async () =>
+          "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58",
+      }),
+    } as unknown as Parameters<
+      typeof updateLatestBlocksDatumAndGetTheNewHeaderProgram
+    >[0];
+    const latestBlocksDatum: LinkedListNodeView = {
+      key: "Empty",
+      next: "Empty",
+      data: castConfirmedStateToData(
+        makeGenesisConfirmedState(10n),
+      ) as LinkedListNodeView["data"],
+    };
+    const sourceRoots = {
+      withdrawalsRoot: h32("11"),
+      transactionsRoot: h32("22"),
+      depositsRoot: h32("33"),
+    };
+    const commitments = {
+      ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+      transitionTraceRoot: h32("44"),
+      eventToStepRoot: h32("55"),
+      validationTracesRoot: h32("66"),
+      withdrawalCount: 1n,
+      l2TransactionCount: 1n,
+      depositCount: 1n,
+      totalEventCount: 3n,
+      transitionStepCount: 3n,
+      validationTraceCount: 1n,
+    };
+    const updateProgram = (roots: typeof sourceRoots = sourceRoots) =>
+      updateLatestBlocksDatumAndGetTheNewHeaderProgram(
+        lucid,
+        latestBlocksDatum,
+        h32("77"),
+        roots.transactionsRoot,
+        roots.depositsRoot,
+        roots.withdrawalsRoot,
+        commitments,
+        11n,
+        {
+          blockSlot: 0n,
+          expectedNetworkId: 0n,
+          minFeeA: 0n,
+          minFeeB: 0n,
+        },
+      );
+    const update = (roots: typeof sourceRoots = sourceRoots) =>
+      Effect.runPromise(updateProgram(roots));
+
+    await expect(update()).resolves.toMatchObject({
+      header: {
+        withdrawalsRoot: sourceRoots.withdrawalsRoot,
+        transactionsRoot: sourceRoots.transactionsRoot,
+        depositsRoot: sourceRoots.depositsRoot,
+      },
+    });
+
+    for (const [label, rootField] of [
+      ["withdrawals", "withdrawalsRoot"],
+      ["transactions", "transactionsRoot"],
+      ["deposits", "depositsRoot"],
+    ] as const) {
+      const invalid = await Effect.runPromise(
+        Effect.either(
+          updateProgram({
+            ...sourceRoots,
+            [rootField]: EMPTY_MERKLE_TREE_ROOT,
+          }),
+        ),
+      );
+      expect(invalid._tag).toBe("Left");
+      if (invalid._tag === "Left") {
+        expect(String(invalid.left.cause)).toContain(`${label}_root`);
+      }
+    }
+  });
+});
+
 const isOnlyLovelace = (utxo: UTxO): boolean =>
   Object.keys(utxo.assets).every((unit) => unit === "lovelace");
 
@@ -422,12 +675,36 @@ const submitSetupTx = async ({
   readonly retiredOperatorsRoot: UTxO;
   readonly activeOperatorInput: UTxO;
   readonly fraudProof: UTxO;
+  readonly correctionLock: UTxO;
+  readonly commitYield: UTxO;
+  readonly fraudRemovalYield: UTxO;
 }> => {
   const hubOracleAssets = {
     [toUnit(contracts.hubOracle.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
   };
+  const correctionLockAssets = {
+    [toUnit(contracts.hubOracle.policyId, CORRECTION_LOCK_ASSET_NAME)]: 1n,
+  };
   const schedulerAssets = {
     [toUnit(contracts.scheduler.policyId, SCHEDULER_ASSET_NAME)]: 1n,
+  };
+  const commitYieldAssets = {
+    [toUnit(
+      contracts.scheduler.policyId,
+      fromText(
+        REFERENCE_SCRIPT_AUTH_TOKEN_NAMES["state-queue commit withdrawal"],
+      ),
+    )]: 1n,
+  };
+  const fraudRemovalYieldAssets = {
+    [toUnit(
+      contracts.scheduler.policyId,
+      fromText(
+        REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[
+          "state-queue fraud-removal withdrawal"
+        ],
+      ),
+    )]: 1n,
   };
   const stateQueueAssets = {
     [toUnit(contracts.stateQueue.policyId, STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
@@ -463,22 +740,75 @@ const submitSetupTx = async ({
       next: "Empty",
       data: data as never,
     });
+  const sharedAddressData = await Effect.runPromise(
+    addressDataFromBech32(contracts.activeOperators.spendingScriptAddress),
+  );
+  const stateQueueAddressData = await Effect.runPromise(
+    addressDataFromBech32(contracts.stateQueue.spendingScriptAddress),
+  );
+  const fraudProofAddressData = await Effect.runPromise(
+    addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+  );
+  const hubOracleDatum = Data.to(
+    {
+      registered_operators: contracts.activeOperators.policyId,
+      active_operators: contracts.activeOperators.policyId,
+      retired_operators: contracts.retiredOperators.policyId,
+      scheduler: contracts.scheduler.policyId,
+      state_queue: contracts.stateQueue.policyId,
+      fraud_proof_catalogue: contracts.fraudProof.policyId,
+      fraud_proof: contracts.fraudProof.policyId,
+      deposit: contracts.fraudProof.policyId,
+      withdrawal: contracts.fraudProof.policyId,
+      tx_order: contracts.fraudProof.policyId,
+      settlement: contracts.settlement.policyId,
+      payout: contracts.fraudProof.policyId,
+      registered_operators_addr: sharedAddressData,
+      active_operators_addr: sharedAddressData,
+      retired_operators_addr: sharedAddressData,
+      scheduler_addr: sharedAddressData,
+      state_queue_addr: stateQueueAddressData,
+      fraud_proof_catalogue_addr: fraudProofAddressData,
+      fraud_proof_addr: fraudProofAddressData,
+      deposit_addr: fraudProofAddressData,
+      withdrawal_addr: fraudProofAddressData,
+      tx_order_addr: fraudProofAddressData,
+      settlement_addr: sharedAddressData,
+      reserve_addr: sharedAddressData,
+      payout_addr: fraudProofAddressData,
+      reserve_observer: contracts.activeOperators.policyId,
+    },
+    HubOracleDatum,
+  );
 
+  const walletAddress = await lucid.wallet().address();
   const unsigned = await lucid
     .newTx()
     .validFrom(Number(initValidFrom))
     .validTo(Number(initValidTo))
     .collectFrom([nonceUtxo])
-    .mintAssets(hubOracleAssets, Data.void())
+    .mintAssets({ ...hubOracleAssets, ...correctionLockAssets }, Data.void())
     .pay.ToAddressWithData(
       credentialToAddress(
         network,
         scriptHashToCredential(contracts.hubOracle.policyId),
       ),
-      { kind: "inline", value: Data.void() },
+      { kind: "inline", value: hubOracleDatum },
       hubOracleAssets,
     )
-    .mintAssets(schedulerAssets, Data.void())
+    .pay.ToContract(
+      contracts.correctionLock.spendingScriptAddress,
+      { kind: "inline", value: Data.to("Idle", CorrectionLockDatum) },
+      // The correction-lock validator conserves the singleton's value exactly
+      // across Idle -> Locked, whose larger inline datum raises the min-ada
+      // floor. Fund the lock above that floor so Lucid never bumps the
+      // continuation output's lovelace.
+      { ...correctionLockAssets, lovelace: 5_000_000n },
+    )
+    .mintAssets(
+      { ...schedulerAssets, ...commitYieldAssets, ...fraudRemovalYieldAssets },
+      Data.void(),
+    )
     .pay.ToContract(
       contracts.scheduler.spendingScriptAddress,
       {
@@ -495,9 +825,27 @@ const submitSetupTx = async ({
       },
       schedulerAssets,
     )
+    .pay.ToAddressWithData(
+      walletAddress,
+      undefined,
+      { ...commitYieldAssets, lovelace: 20_000_000n },
+      contracts.commitYield.spendingScript,
+    )
+    .pay.ToAddressWithData(
+      walletAddress,
+      undefined,
+      { ...fraudRemovalYieldAssets, lovelace: 20_000_000n },
+      contracts.fraudRemovalYield.spendingScript,
+    )
+    .register.Stake(
+      scriptRewardAddress(network, contracts.commitYield.spendingScript),
+    )
+    .register.Stake(
+      scriptRewardAddress(network, contracts.fraudRemovalYield.spendingScript),
+    )
     .mintAssets(
       stateQueueAssets,
-      Data.to({ Init: { output_index: 2n } }, StateQueueRedeemer),
+      Data.to({ InitV1: { output_index: 5n } }, StateQueueRedeemer),
     )
     .pay.ToContract(
       contracts.stateQueue.spendingScriptAddress,
@@ -559,6 +907,10 @@ const submitSetupTx = async ({
     contracts.scheduler.spendingScriptAddress,
     Object.keys(schedulerAssets)[0]!,
   );
+  const [correctionLock] = await lucid.utxosAtWithUnit(
+    contracts.correctionLock.spendingScriptAddress,
+    Object.keys(correctionLockAssets)[0]!,
+  );
   const [activeOperatorsRoot] = await lucid.utxosAtWithUnit(
     contracts.activeOperators.spendingScriptAddress,
     Object.keys(activeOperatorsAssets)[0]!,
@@ -571,6 +923,14 @@ const submitSetupTx = async ({
     contracts.fraudProof.spendingScriptAddress,
     Object.keys(fraudProofAssets)[0]!,
   );
+  const [commitYield] = await lucid.utxosAtWithUnit(
+    walletAddress,
+    Object.keys(commitYieldAssets)[0]!,
+  );
+  const [fraudRemovalYield] = await lucid.utxosAtWithUnit(
+    walletAddress,
+    Object.keys(fraudRemovalYieldAssets)[0]!,
+  );
   const activeOperatorInput = (
     await lucid.utxosAt(contracts.activeOperators.spendingScriptAddress)
   ).find(isOnlyLovelace);
@@ -582,7 +942,10 @@ const submitSetupTx = async ({
     activeOperatorsRoot === undefined ||
     retiredOperatorsRoot === undefined ||
     activeOperatorInput === undefined ||
-    fraudProof === undefined
+    fraudProof === undefined ||
+    correctionLock === undefined ||
+    commitYield === undefined ||
+    fraudRemovalYield === undefined
   ) {
     throw new Error("Setup transaction did not produce all expected UTxOs");
   }
@@ -595,6 +958,9 @@ const submitSetupTx = async ({
     retiredOperatorsRoot,
     activeOperatorInput,
     fraudProof,
+    correctionLock,
+    commitYield,
+    fraudRemovalYield,
   };
 };
 
@@ -645,6 +1011,7 @@ const makeCommitActiveOperatorRedeemer = ({
     )) satisfies BuildTxWithRedeemer;
 
 const submitCommitHeaderTx = async ({
+  emulator,
   lucid,
   contracts,
   anchor,
@@ -652,8 +1019,11 @@ const submitCommitHeaderTx = async ({
   operator,
   scheduler,
   hubOracle,
+  correctionLock,
+  commitYield,
   activeOperatorInput,
 }: {
+  readonly emulator: Emulator;
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly contracts: StateQueueTestContracts;
   readonly anchor: StateQueueUTxO;
@@ -661,12 +1031,33 @@ const submitCommitHeaderTx = async ({
   readonly operator: string;
   readonly scheduler: UTxO;
   readonly hubOracle: UTxO;
+  readonly correctionLock: UTxO;
+  readonly commitYield: UTxO;
   readonly activeOperatorInput: UTxO;
 }): Promise<{
   readonly block: StateQueueUTxO;
   readonly activeOperatorInput: UTxO;
 }> => {
+  const orderedStateQueue = await Effect.runPromise(
+    fetchSortedStateQueueUTxOsProgram(lucid, {
+      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+      stateQueuePolicyId: contracts.stateQueue.policyId,
+    }),
+  );
+  const canonicalTail = orderedStateQueue.at(-1);
+  if (
+    canonicalTail === undefined ||
+    canonicalTail.utxo.txHash !== anchor.utxo.txHash ||
+    canonicalTail.utxo.outputIndex !== anchor.utxo.outputIndex
+  ) {
+    throw new Error("Commit helper received a stale state-queue tail");
+  }
+  const confirmedStateRefInput =
+    orderedStateQueue.length === 1 ? undefined : orderedStateQueue[0]!.utxo;
+  const headStateQueueNodeRefInput =
+    orderedStateQueue.length <= 2 ? undefined : orderedStateQueue[1]!.utxo;
   const continuedActiveOperatorDatum = Data.void();
+  const validityStartSlot = lucid.currentSlot() + 1;
   const commitTx = await Effect.runPromise(
     incompleteEmulatorCommitBlockHeaderTxProgram(
       lucid,
@@ -678,8 +1069,17 @@ const submitCommitHeaderTx = async ({
         anchorUTxO: anchor,
         newHeader: header,
         schedulerRefInput: scheduler,
+        correctionLockRefInput: {
+          utxo: correctionLock,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
+        confirmedStateRefInput,
+        headStateQueueNodeRefInput,
         additionalRefInputs: [hubOracle],
         activeOperatorInput,
+        validFrom: BigInt(lucid.slotToUnixTime(validityStartSlot)),
+        validTo: header.endTime + 1n,
         activeOperatorSpendRedeemer: makeCommitActiveOperatorRedeemer({
           contracts,
           operator,
@@ -695,10 +1095,15 @@ const submitCommitHeaderTx = async ({
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: commitYield,
+          script: contracts.commitYield.spendingScript,
+        },
       },
     ),
   );
   const commitUnsigned = await commitTx.complete({ localUPLCEval: true });
+  emulator.awaitSlot(1);
   const commitSigned = await commitUnsigned.sign.withWallet().complete();
   await lucid.awaitTx(await commitSigned.submit());
 
@@ -726,17 +1131,74 @@ const submitCommitHeaderTx = async ({
 };
 
 describe("state-queue ABI", () => {
+  it("encodes YieldStateQueueV1 as the canonical fieldless constructor", () => {
+    expect(encodeStateQueueYieldRedeemer()).toBe("d87980");
+  });
+
+  it("uses the exact sole L04 InitV1 and MergeToConfirmedStateV1 language", () => {
+    const init = { InitV1: { output_index: 2n } } as const;
+    const initCbor = Data.to(init, StateQueueRedeemer);
+    expect(initCbor).toBe("d8799f02ff");
+    expect(roundTrip(init, StateQueueRedeemer)).toEqual(init);
+
+    const proofMerge = {
+      MergeToConfirmedStateV1: {
+        yield_to_ref_input_index: 0n,
+        header_node_key: "11".repeat(28),
+        confirmed_state_input_outref: outputReference,
+        confirmed_state_output_index: 0n,
+        m_settlement_redeemer_index: 1n,
+        merged_block_withdrawals_root: "21".repeat(32),
+        merged_block_forced_transactions_root: "22".repeat(32),
+        merged_block_transactions_root: "23".repeat(32),
+        merged_block_deposits_root: "24".repeat(32),
+        merged_block_transition_trace_root: "25".repeat(32),
+        merged_block_event_to_step_root: "26".repeat(32),
+        merged_block_validation_traces_root: "27".repeat(32),
+        merged_block_withdrawal_count: 1n,
+        merged_block_forced_transaction_count: 2n,
+        merged_block_l2_transaction_count: 3n,
+        merged_block_deposit_count: 4n,
+        merged_block_total_event_count: 10n,
+        merged_block_transition_step_count: 10n,
+        merged_block_validation_trace_count: 5n,
+      },
+    } as const;
+    const mergeCbor = Data.to(proofMerge, StateQueueRedeemer);
+    expect(mergeCbor).toBe(
+      "d87f9f00581c11111111111111111111111111111111111111111111111111111111d8799f5820444444444444444444444444444444444444444444444444444444444444444400ff00d8799f01ff58202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222225820232323232323232323232323232323232323232323232323232323232323232358202424242424242424242424242424242424242424242424242424242424242424582025252525252525252525252525252525252525252525252525252525252525255820262626262626262626262626262626262626262626262626262626262626262658202727272727272727272727272727272727272727272727272727272727272727010203040a0a05ff",
+    );
+    expect(roundTrip(proofMerge, StateQueueRedeemer)).toEqual(proofMerge);
+    expect(initCbor.startsWith("d8799f")).toBe(true);
+    expect(mergeCbor.startsWith("d87f9f")).toBe(true);
+    expect(() =>
+      Data.to({ InitV2: { output_index: 2n } } as never, StateQueueRedeemer),
+    ).toThrow();
+    expect(() =>
+      Data.to(
+        {
+          MergeToConfirmedStateV2: proofMerge.MergeToConfirmedStateV1,
+        } as never,
+        StateQueueRedeemer,
+      ),
+    ).toThrow();
+    expect(() => Data.from("d87f80", StateQueueRedeemer)).toThrow();
+  });
+
   it("round-trips CommitBlockHeader and RemoveFraudulentBlockHeader", () => {
     expect(
       roundTrip(
         {
           CommitBlockHeader: {
+            yield_to_ref_input_index: 0n,
             new_block_output_index: 1n,
             continued_latest_block_output_index: 2n,
             operator: "11".repeat(28),
             scheduler_ref_input_index: 3n,
             active_operators_input_index: 4n,
             active_operators_redeemer_index: 5n,
+            m_confirmed_state_ref_input_index: null,
+            m_head_state_queue_node_ref_input_index: null,
           },
         },
         StateQueueRedeemer,
@@ -750,6 +1212,7 @@ describe("state-queue ABI", () => {
 
     const removeRedeemer = {
       RemoveFraudulentBlockHeader: {
+        yield_to_ref_input_index: 0n,
         fraudulent_operator: "22".repeat(28),
         fraudulent_blocks_header_hash: "33".repeat(28),
         slashing_approach: {
@@ -779,6 +1242,7 @@ describe("state-queue ABI", () => {
             slashing_approach: {
               SlashActiveOperator: {
                 active_operators_redeemer_index: 6n,
+                m_fraud_prover_reward_output_index: 8n,
               },
             },
             block_removal_approach: {
@@ -796,10 +1260,29 @@ describe("state-queue ABI", () => {
         slashing_approach: {
           SlashActiveOperator: {
             active_operators_redeemer_index: 6n,
+            m_fraud_prover_reward_output_index: 8n,
           },
         },
       },
     });
+
+    // D3: a bond-consuming slash that routes no reward encodes the index as
+    // `null`, which the on-chain guard accepts only while the compiled
+    // `env.fraud_prover_reward` is zero.
+    const rewardlessRetiredSlash = {
+      RemoveFraudulentBlockHeader: {
+        ...removeRedeemer.RemoveFraudulentBlockHeader,
+        slashing_approach: {
+          SlashRetiredOperator: {
+            retired_operators_redeemer_index: 9n,
+            m_fraud_prover_reward_output_index: null,
+          },
+        },
+      },
+    };
+    expect(roundTrip(rewardlessRetiredSlash, StateQueueRedeemer)).toEqual(
+      rewardlessRetiredSlash,
+    );
   });
 });
 
@@ -823,8 +1306,11 @@ describe("state-queue emulator builders", () => {
       throw new Error("Expected emulator wallet to expose a payment key hash");
     }
     const operator = paymentCredential.hash;
+    // Lucid omits validity_start when it maps to slot zero. Advance one
+    // emulator slot so the real initializer receives a closed range.
+    emulator.awaitSlot(1);
     const initValidFrom = BigInt(emulator.now());
-    const initValidTo = initValidFrom + 10_000n;
+    const initValidTo = initValidFrom + 120_000n;
     const genesisTime = initValidTo - 1n;
     const transactionsRoot = await buildTransactionsRoot();
     const header: HeaderType = {
@@ -832,13 +1318,18 @@ describe("state-queue emulator builders", () => {
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
       withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
       ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+      ...TWO_TRANSACTION_HEADER_COMMITMENTS,
       transactionsRoot,
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
       endTime: genesisTime + 1_000n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: GENESIS_HEADER_HASH,
       operatorVkey: operator,
-      protocolVersion: GENESIS_PROTOCOL_VERSION,
+      protocolVersion: 1n,
     };
     const headerHash = await Effect.runPromise(hashBlockHeader(header));
     const nonceUtxo = (await lucid.wallet().getUtxos())[0];
@@ -861,6 +1352,7 @@ describe("state-queue emulator builders", () => {
       utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
     );
     const commit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: stateQueueRoot,
@@ -868,6 +1360,8 @@ describe("state-queue emulator builders", () => {
       operator,
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
+      correctionLock: setup.correctionLock,
+      commitYield: setup.commitYield,
       activeOperatorInput: setup.activeOperatorInput,
     });
 
@@ -913,6 +1407,14 @@ describe("state-queue emulator builders", () => {
         fraudulentOperator: operator,
         fraudulentBlocksHeaderHash: headerHash,
         fraudProofRefInput: setup.fraudProof,
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        hubOracleRefInput: setup.hubOracle,
+        correctionLockInput: {
+          utxo: setup.correctionLock,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
+        correctionLockSpendingScript: contracts.correctionLock.spendingScript,
         slashing: {
           kind: "operatorAlreadySlashed",
           activeOperatorsElementRefInput: setup.activeOperatorsRoot,
@@ -920,6 +1422,10 @@ describe("state-queue emulator builders", () => {
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: setup.fraudRemovalYield,
+          script: contracts.fraudRemovalYield.spendingScript,
+        },
       },
     );
     const removeUnsigned = await removeTx.complete({ localUPLCEval: true });
@@ -963,21 +1469,29 @@ describe("state-queue emulator builders", () => {
       throw new Error("Expected emulator wallet to expose a payment key hash");
     }
     const operator = paymentCredential.hash;
+    // Lucid omits validity_start when it maps to slot zero. Advance one
+    // emulator slot so the real initializer receives a closed range.
+    emulator.awaitSlot(1);
     const initValidFrom = BigInt(emulator.now());
-    const initValidTo = initValidFrom + 10_000n;
+    const initValidTo = initValidFrom + 120_000n;
     const genesisTime = initValidTo - 1n;
     const firstHeader: HeaderType = {
       prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
       withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
       ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+      ...TWO_TRANSACTION_HEADER_COMMITMENTS,
       transactionsRoot: await buildTransactionsRoot(),
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
       endTime: genesisTime + 1_000n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: GENESIS_HEADER_HASH,
       operatorVkey: operator,
-      protocolVersion: GENESIS_PROTOCOL_VERSION,
+      protocolVersion: 1n,
     };
     const firstHeaderHash = await Effect.runPromise(
       hashBlockHeader(firstHeader),
@@ -1001,6 +1515,7 @@ describe("state-queue emulator builders", () => {
       utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
     );
     const firstCommit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: stateQueueRoot,
@@ -1008,6 +1523,8 @@ describe("state-queue emulator builders", () => {
       operator,
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
+      correctionLock: setup.correctionLock,
+      commitYield: setup.commitYield,
       activeOperatorInput: setup.activeOperatorInput,
     });
     const secondHeader: HeaderType = {
@@ -1021,6 +1538,7 @@ describe("state-queue emulator builders", () => {
       hashBlockHeader(secondHeader),
     );
     const secondCommit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: firstCommit.block,
@@ -1028,6 +1546,8 @@ describe("state-queue emulator builders", () => {
       operator,
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
+      correctionLock: setup.correctionLock,
+      commitYield: setup.commitYield,
       activeOperatorInput: firstCommit.activeOperatorInput,
     });
 
@@ -1068,6 +1588,14 @@ describe("state-queue emulator builders", () => {
         fraudulentOperator: operator,
         fraudulentBlocksHeaderHash: firstHeaderHash,
         fraudProofRefInput: setup.fraudProof,
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        hubOracleRefInput: setup.hubOracle,
+        correctionLockInput: {
+          utxo: setup.correctionLock,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
+        correctionLockSpendingScript: contracts.correctionLock.spendingScript,
         slashing: {
           kind: "operatorAlreadySlashed",
           activeOperatorsElementRefInput: setup.activeOperatorsRoot,
@@ -1075,6 +1603,10 @@ describe("state-queue emulator builders", () => {
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: setup.fraudRemovalYield,
+          script: contracts.fraudRemovalYield.spendingScript,
+        },
       },
     );
     const removeUnsigned = await removeSuccessorTx.complete({

@@ -1,0 +1,8 @@
+.env
+node_modules
+dist
+.probe-dist/
+logs/
+.stress-wallets/
+corpus/
+tmp-*

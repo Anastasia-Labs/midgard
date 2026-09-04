@@ -1,15 +1,16 @@
 import { createHash } from "node:crypto";
 
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { it } from "@effect/vitest";
 import { Cause, Deferred, Effect, Exit, Fiber, Ref, Scope } from "effect";
 import { describe, expect } from "vitest";
 
-import * as TxAdmissionsDB from "@/database/txAdmissions.js";
+import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import {
   admissionWriterShardForTxId,
   AdmissionWriterShutdownError,
   makeAdmissionWriterWithOptions,
-} from "@/services/admission-writer.js";
+} from "../src/services/admission-writer.js";
 
 const request = (
   label: string,
@@ -17,6 +18,7 @@ const request = (
 ): TxAdmissionsDB.ReservedAdmissionRequest => ({
   txId,
   txCanonicalCbor: Buffer.from(label),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   submitSource: "native",
 });
 

@@ -2,6 +2,15 @@ import { decodeMidgardAddressText } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
+import {
+  fetchReferenceScriptUtxosProgram,
+  referenceScriptByName,
+  referenceScriptTargetsByCommand,
+} from "../transactions/reference-scripts.js";
+import { assetsToValue } from "../transactions/reserve-payout.js";
+import * as SubmitWithdrawalTx from "../transactions/submit-withdrawal.js";
+import { signWithdrawalBody } from "../withdrawal-signature.js";
 import {
   defaultMidgardNodeEndpoint,
   deriveWalletInfo,
@@ -9,20 +18,11 @@ import {
   lucidUtxoFromNodeUtxo,
   parseNodeEndpoint,
   resolveWalletSeedPhrase,
-} from "@/commands/command-utils.js";
+} from "./command-utils.js";
 import {
   parseCardanoDatum,
   parseWithdrawalTxOutRefLabel,
-} from "@/commands/withdrawal-utils.js";
-import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
-import {
-  fetchReferenceScriptUtxosProgram,
-  referenceScriptByName,
-  referenceScriptTargetsByCommand,
-} from "@/transactions/reference-scripts.js";
-import { assetsToValue } from "@/transactions/reserve-payout.js";
-import * as SubmitWithdrawalTx from "@/transactions/submit-withdrawal.js";
-import { signWithdrawalBody } from "@/withdrawal-signature.js";
+} from "./withdrawal-utils.js";
 
 export type SubmitWithdrawalCliConfig = {
   readonly walletSeedPhrase?: string;

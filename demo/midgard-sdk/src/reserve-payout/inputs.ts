@@ -6,9 +6,9 @@ import {
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { isPureAdaUtxo } from "@/reserve-payout/assets.js";
-import { fail, ReservePayoutTxError } from "@/reserve-payout/errors.js";
-import * as SDK from "@/reserve-payout/primitives.js";
+import { isPureAdaUtxo } from "./assets.js";
+import { fail, ReservePayoutTxError } from "./errors.js";
+import * as SDK from "./primitives.js";
 
 type FeeInputRejection = {
   readonly message: string;

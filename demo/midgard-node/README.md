@@ -248,17 +248,14 @@ pnpm listen
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
 - `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
   project newly visible deposits into the local Midgard ledger view.
-- `node dist/index.js create-l2-wallet`: create persisted local stress-wallet
-  seed records plus env/argument helper files for parallel fanout benchmarks.
-- `node dist/index.js stress-wallets:prepare`: fund, project, and verify
-  persisted stress wallets before parallel fanout benchmarks.
-- `node dist/index.js stress-wallets:fanout`: create resumable funding edges
-  for a large prepared wallet set.
-- `node dist/index.js stress-corpus-generate` and `stress-corpus-verify`:
-  create and stream-verify the signed NDJSON transaction corpus used by
-  repeatable benchmarks.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
+- The e2e step runner, service supervisor, run finalizer, stress-wallet
+  tooling, corpus generator/verifier, bounded L2 stress harness, and the Phase
+  4 local-devnet acceptance gate are `midgard-node-tools` commands
+  (`../midgard-node-tools/dist/index.js`); see
+  [`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). None
+  of them ship in this operator binary.
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
 
 ### Confirmation polling default
@@ -465,8 +462,12 @@ Each entry has the shape:
 
 ```json
 {
-  "schemaVersion": "midgard-deployment-manifest-v2",
+  "schemaVersion": "midgard-deployment-manifest-v1",
   "manifestId": "...",
+  "consensusProfile": {
+    "profileId": "midgard-consensus-v1",
+    "protocolVersion": 1
+  },
   "network": "Preprod",
   "referenceScriptDeployAddress": "addr_test...",
   "hubOracleOneShot": {
@@ -523,7 +524,7 @@ deployment must be audited before production use: for every token name listed in
 `referenceScriptAuthPolicy.tokenNames`, exactly one token under
 `referenceScriptAuthPolicy.policyId` must exist.
 
-`deployment-status` reports both the v2 manifest verification result and live
+`deployment-status` reports both the V1 manifest verification result and live
 protocol deployment status. If a present manifest disagrees with configured
 network, one-shot outref, or reference-script deploy address, startup refuses to
 attach until config is corrected or a fresh redeploy is explicit.
@@ -539,58 +540,10 @@ node dist/index.js init \
 
 ## Parallel Fanout Stress Wallets
 
-Parallel fanout stress uses independent L2 wallets so concurrent workers do not
-race on the same wallet UTxO. Generate a larger pool once, source the generated
-env file, then prepare the subset needed for a run:
-
-```sh
-cd midgard-node
-pnpm build
-
-node dist/index.js create-l2-wallet \
-  --count 128 \
-  --out-dir .stress-wallets
-
-. .stress-wallets/stress-wallets.env
-
-node dist/index.js stress-wallets:prepare \
-  --count 64 \
-  --lovelace-per-wallet 12000000 \
-  --out-dir .stress-wallets
-```
-
-`stress-wallets:prepare` reads existing wallet JSON files, creates missing files
-only when `--create-missing` is passed, submits one deposit for each wallet that
-does not already have sufficient spendable L2 funding, runs deposit projection,
-and verifies each wallet through the node's `/utxos?address=...` endpoint. The
-wallet directory contains private seed phrases and is gitignored.
-
-After preparation, pass the generated argument file to the stress runner. Use 16
-as the first serious concurrency target, then 32 and 64:
-
-```sh
-STRESS_WALLET_ARGS="$(tr '\n' ' ' < .stress-wallets/stress-wallets.args)"
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 256 \
-  --concurrency 16 \
-  $STRESS_WALLET_ARGS
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 512 \
-  --concurrency 32 \
-  --unsafe-allow-large-stress \
-  $STRESS_WALLET_ARGS
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 1024 \
-  --concurrency 64 \
-  --unsafe-allow-large-stress \
-  $STRESS_WALLET_ARGS
-```
+Stress-wallet creation, funding, fan-out, and the bounded
+`e2e-stress-l2-throughput` harness moved to `midgard-node-tools`; see
+[`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). They
+drive this node from the outside and are not part of its binary.
 
 ## Valid Throughput Stress Test
 
@@ -601,20 +554,22 @@ accepted, committed, and merge rates from client and Prometheus evidence. The
 `e2e-stress-l2-throughput` CLI separately collects SQL-grounded stage metrics
 for functional/e2e stress runs.
 
-Generate the corpus from already prepared stress-wallet snapshots, then verify
+Generate the corpus from already prepared stress-wallet snapshots with the
+tooling CLI (built with `pnpm --dir ../midgard-node-tools build`), then verify
 it before use:
 
 ```sh
 cd demo/midgard-node
+TOOLS_CLI=../midgard-node-tools/dist/index.js
 
-node dist/index.js stress-corpus-generate \
+node "$TOOLS_CLI" stress-corpus-generate \
   --target-rate-tps 2500 \
   --duration-ms 300000 \
   --wallets-dir .stress-wallets \
   --out-dir corpus/accept-2500 \
   --yes
 
-node dist/index.js stress-corpus-verify \
+node "$TOOLS_CLI" stress-corpus-verify \
   --corpus-path corpus/accept-2500/corpus.ndjson \
   --rebuild-wallets-dir .stress-wallets
 ```
@@ -729,10 +684,10 @@ ACTIVITY_METRICS_ENDPOINT=http://127.0.0.1:9464/metrics
 
 ## DA Payload Hardening and Rollout
 
-DA payload storage and transport accept two durable formats: schema 2 is the
-historical raw canonical `DaPayloadV2` CBOR; schema 3 is a canonical envelope
-containing the exact inner schema-2 bytes, their decoded length and SHA-256,
-and either identity or zstd content.
+DA payload storage and transport accept one durable format:
+`DaPayloadEnvelope`. It contains exact `DaPayload` bytes, their decoded
+length and SHA-256, and an explicit `identity` or `zstd` content encoding.
+Raw payload storage, an `off` mode, and format inference are rejected.
 
 Both the stored/transmitted envelope and its declared and actual decoded
 content are capped by the pinned DA protocol limit. Zstd decoding uses
@@ -740,19 +695,12 @@ content are capped by the pinned DA protocol limit. Zstd decoding uses
 existing strict payload validator runs. Midgard node and committee runtimes
 therefore require Node.js 22.15 or newer.
 
-Roll out decoder-first: deploy the schema-3 decoder to every producer,
-committee member, watcher, and proof reader; leave
-`MIDGARD_DA_PAYLOAD_ENVELOPE=off`; canary `identity`; then enable `zstd` only
-after committee capability is confirmed. The immediate producer rollback is
-`MIDGARD_DA_PAYLOAD_ENVELOPE=off`. Decoders remain schema-2/schema-3 capable so
-already stored envelopes stay readable.
-
 Retained-payload and fault-proof consumers preserve the stored artifact as the
 hash identity. They carry `payloadSchemaVersion` from retained metadata, verify
 the stored-byte SHA-256, and then use the pinned-bound envelope unwrap before
-strictly decoding the inner `DaPayloadV2`. Fault-proof callers should use
-`reconstructRetainedDaPayloadV2` when starting from a retained libp2p result;
-the package's decoder-first guard rejects new direct stored-byte V2 decoders.
+strictly decoding the inner `DaPayload`. Fault-proof callers should use
+`fetchRetainedDaPayloadByHeaderHash` followed by `reconstructDaPayload`;
+unsupported or malformed envelope and payload versions fail closed.
 
 Publication returns once the manifest threshold accepts. Slow peers continue
 as detached, bounded stragglers. The `da_payload_publications` durable outbox

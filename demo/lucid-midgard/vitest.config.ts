@@ -1,3 +1,4 @@
+import { midgardSourceSsr } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -5,4 +6,5 @@ export default defineConfig({
     reporters: "verbose",
     include: ["./tests/**/*.test.{ts,tsx}"],
   },
+  ssr: midgardSourceSsr(),
 });

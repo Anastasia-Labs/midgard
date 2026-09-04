@@ -1,18 +1,15 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 
 import {
   createReferenceScriptAuthPolicy,
   type ReferenceScriptAuthPolicy,
-  type ReferenceScriptAuthPolicyDeploymentInfo,
   referenceScriptAuthPolicyDeploymentInfo,
   referenceScriptAuthPolicyFromDeploymentInfo,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import {
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
@@ -22,7 +19,8 @@ import {
   mutateDeploymentRunState,
   RunStateError,
   transitionDeploymentStep,
-} from "@/e2e/run-state.js";
+} from "../e2e/run-state.js";
+import * as ContractDeploymentInfo from "./contract-deployment-info.js";
 
 export type DeploymentRunCliOptions = {
   readonly runStatePath: string;
@@ -74,46 +72,22 @@ export const assertFreshRedeployReason = (
 const manifestPath = (override?: string): string =>
   override ?? ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
 
-type ManifestDeploymentIdentity = {
-  readonly network?: string;
-  readonly hubOracleOneShot?: {
-    readonly txHash: string;
-    readonly outputIndex: number;
-  };
-  readonly referenceScriptAuthPolicy?: ReferenceScriptAuthPolicyDeploymentInfo;
-};
-
-const readManifestDeploymentIdentity = async (
+const readExistingDeploymentManifest = (
   path: string,
-): Promise<ManifestDeploymentIdentity | null> => {
+): ContractDeploymentInfo.DeploymentManifest | null => {
   if (!existsSync(path)) {
     return null;
   }
-  const parsed = JSON.parse(await readFile(path, "utf8")) as {
-    readonly network?: unknown;
-    readonly hubOracleOneShot?: {
-      readonly txHash?: unknown;
-      readonly outputIndex?: unknown;
-    };
-    readonly referenceScriptAuthPolicy?: ReferenceScriptAuthPolicyDeploymentInfo;
-  };
-  const hubOracleOneShot =
-    typeof parsed.hubOracleOneShot?.txHash === "string" &&
-    typeof parsed.hubOracleOneShot.outputIndex === "number" &&
-    Number.isInteger(parsed.hubOracleOneShot.outputIndex) &&
-    parsed.hubOracleOneShot.outputIndex >= 0
-      ? {
-          txHash: parsed.hubOracleOneShot.txHash,
-          outputIndex: parsed.hubOracleOneShot.outputIndex,
-        }
-      : undefined;
-  return {
-    ...(typeof parsed.network === "string" ? { network: parsed.network } : {}),
-    ...(hubOracleOneShot === undefined ? {} : { hubOracleOneShot }),
-    ...(parsed.referenceScriptAuthPolicy === undefined
-      ? {}
-      : { referenceScriptAuthPolicy: parsed.referenceScriptAuthPolicy }),
-  };
+  try {
+    return ContractDeploymentInfo.readDeploymentManifestFile(path);
+  } catch (cause) {
+    throw new RunStateError(
+      `Deployment manifest at "${path}" cannot be reused because it is invalid: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }. Pass --fresh-redeploy --fresh-redeploy-reason <reason> only when replacing the existing identity is intentional.`,
+      { cause },
+    );
+  }
 };
 
 const identityFromContext = ({
@@ -463,20 +437,16 @@ const assertPolicyIdsMatch = ({
 };
 
 const manifestIdentityToRunIdentity = (
-  manifest: ManifestDeploymentIdentity,
+  manifest: ContractDeploymentInfo.DeploymentManifest,
   manifestPathValue: string,
 ): DeploymentRunIdentity => ({
-  ...(manifest.network === undefined ? {} : { network: manifest.network }),
-  ...(manifest.hubOracleOneShot === undefined
-    ? {}
-    : { hubOracleOneShot: manifest.hubOracleOneShot }),
-  ...(manifest.referenceScriptAuthPolicy === undefined
-    ? {}
-    : {
-        referenceScriptAuthPolicyId:
-          manifest.referenceScriptAuthPolicy.policyId,
-      }),
+  network: manifest.network,
+  hubOracleOneShot: {
+    txHash: manifest.hubOracleOneShot.txHash,
+    outputIndex: manifest.hubOracleOneShot.outputIndex,
+  },
   manifestPath: manifestPathValue,
+  referenceScriptAuthPolicyId: manifest.referenceScriptAuthPolicy.policyId,
 });
 
 export const resolveReferenceScriptAuthPolicyProgram = ({
@@ -509,16 +479,14 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
         hubOracleOneShotOutputIndex,
         manifestOutputPath: outputPath,
       });
-      const manifestIdentity = await readManifestDeploymentIdentity(outputPath);
+      const existingManifest = options.freshRedeploy
+        ? null
+        : readExistingDeploymentManifest(outputPath);
       const manifestPolicy =
-        manifestIdentity?.referenceScriptAuthPolicy ?? null;
-      if (
-        manifestIdentity !== null &&
-        manifestPolicy !== null &&
-        !options.freshRedeploy
-      ) {
+        existingManifest?.referenceScriptAuthPolicy ?? null;
+      if (existingManifest !== null) {
         assertDeploymentIdentityMatches(
-          manifestIdentityToRunIdentity(manifestIdentity, outputPath),
+          manifestIdentityToRunIdentity(existingManifest, outputPath),
           currentIdentity,
           "deployment manifest",
         );

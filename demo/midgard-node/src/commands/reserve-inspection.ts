@@ -13,16 +13,16 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { parseEventId } from "@/commands/command-utils.js";
-import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
+import * as WithdrawalsDB from "../database/withdrawals.js";
 import {
   Database,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
-import { outRefLabel } from "@/tx-context.js";
+} from "../services/index.js";
+import { outRefLabel } from "../tx-context.js";
+import { parseEventId } from "./command-utils.js";
+import { addressDataToBech32 } from "./withdrawal-utils.js";
 
 type ReserveUtxoSummary = {
   readonly outRef: string;

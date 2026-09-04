@@ -3,11 +3,11 @@ import {
   computeDaSha256Hash,
   daDeploymentFingerprintFromHex,
   DaRequestResponseProtocol,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
-  decodeDaPayloadChunkResponseV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadChunkRequestV1Cbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadByHeaderResponseCbor,
+  decodeDaPayloadChunkResponseCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadChunkRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 
 import type { Libp2pDaTransportLimits } from "../../config.js";
@@ -28,7 +28,10 @@ import {
   readSingleDaStreamFrame,
   writeDaStreamFrame,
 } from "./DaStreamCodec.js";
-import { DaLibp2pPayloadProtocolHandlers } from "./payload-protocols.js";
+import {
+  DaLibp2pPayloadProtocolHandlers,
+  type DaLibp2pPublicRetainedDaPayloadStore,
+} from "./payload-protocols.js";
 
 export type DaLibp2pPayloadSourceOptions = {
   readonly deploymentFingerprint: string;
@@ -96,12 +99,12 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
     peer: DaPeerRegistryEntry,
     headerHash: Buffer,
   ): Promise<DaPayloadCandidate | undefined> {
-    const byHeaderResponse = decodeDaPayloadByHeaderResponseV1Cbor(
+    const byHeaderResponse = decodeDaPayloadByHeaderResponseCbor(
       await this.node.request({
         peer,
         protocolId: this.protocolId(DaRequestResponseProtocol.payloadByHeader),
         timeoutMs: this.limits.requestTimeoutMs,
-        payload: encodeDaPayloadByHeaderRequestV1Cbor({
+        payload: encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: this.deploymentFingerprint,
           headerHash,
           acceptedPayloadHashes: null,
@@ -122,10 +125,11 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
         const payloadCbor = Buffer.from(byHeaderResponse.payloadBytes);
         assertPayloadHash(payloadCbor, byHeaderResponse.payloadHash);
         const metadata = await this.fetchMetadata(peer, headerHash);
+        assertCanonicalPayloadMetadata(metadata);
         return {
           sourcePeerId: peer.peerId,
           payloadCbor,
-          payloadSchemaVersion: metadata?.payloadSchemaVersion ?? undefined,
+          payloadSchemaVersion: 1,
           metadata,
         };
       }
@@ -151,10 +155,11 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
         }
         assertPayloadHash(payloadCbor, byHeaderResponse.payloadHash);
         const metadata = await this.fetchMetadata(peer, headerHash);
+        assertCanonicalPayloadMetadata(metadata);
         return {
           sourcePeerId: peer.peerId,
           payloadCbor,
-          payloadSchemaVersion: metadata?.payloadSchemaVersion ?? undefined,
+          payloadSchemaVersion: 1,
           metadata,
         };
       }
@@ -181,12 +186,12 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
   ): Promise<Buffer> {
     const chunks: Buffer[] = [];
     for (let index = 0; index < chunkHashes.length; index += 1) {
-      const response = decodeDaPayloadChunkResponseV1Cbor(
+      const response = decodeDaPayloadChunkResponseCbor(
         await this.node.request({
           peer,
           protocolId: this.protocolId(DaRequestResponseProtocol.payloadChunk),
           timeoutMs: this.limits.requestTimeoutMs,
-          payload: encodeDaPayloadChunkRequestV1Cbor({
+          payload: encodeDaPayloadChunkRequestCbor({
             deploymentFingerprint: this.deploymentFingerprint,
             headerHash,
             payloadHash,
@@ -223,14 +228,14 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
     peer: DaPeerRegistryEntry,
     headerHash: Buffer,
   ): Promise<
-    ReturnType<typeof decodeDaMetadataByHeaderResponseV1Cbor> | undefined
+    ReturnType<typeof decodeDaMetadataByHeaderResponseCbor> | undefined
   > {
-    const response = decodeDaMetadataByHeaderResponseV1Cbor(
+    const response = decodeDaMetadataByHeaderResponseCbor(
       await this.node.request({
         peer,
         protocolId: this.protocolId(DaRequestResponseProtocol.metadataByHeader),
         timeoutMs: this.limits.requestTimeoutMs,
-        payload: encodeDaPayloadByHeaderRequestV1Cbor({
+        payload: encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: this.deploymentFingerprint,
           headerHash,
           acceptedPayloadHashes: null,
@@ -245,6 +250,16 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
     return this.protocolIds.protocolIdByName.get(protocol)!;
   }
 }
+
+const assertCanonicalPayloadMetadata = (
+  metadata: ReturnType<typeof decodeDaMetadataByHeaderResponseCbor> | undefined,
+): void => {
+  if (metadata?.payloadSchemaVersion !== 1) {
+    throw new InvalidDaPayloadSourceResponseError(
+      "payload metadata is missing canonical V1 schema binding",
+    );
+  }
+};
 
 export const createDaLibp2pPayloadRequestHandlers = ({
   deploymentFingerprint,
@@ -325,6 +340,58 @@ export const createDaLibp2pPayloadRequestHandlers = ({
   return handlerMap;
 };
 
+/**
+ * Constructs only public read handlers. The public profile cannot submit a
+ * payload because this factory accepts no `saveDaPayload` capability and never
+ * binds the submit protocol.
+ */
+export const createDaLibp2pPublicRetainedDaPayloadRequestHandlers = ({
+  deploymentFingerprint,
+  store,
+  limits,
+}: {
+  readonly deploymentFingerprint: string;
+  readonly store: DaLibp2pPublicRetainedDaPayloadStore;
+  readonly limits: Libp2pDaTransportLimits;
+}): ReadonlyMap<string, DaLibp2pStreamHandler> => {
+  const protocolIds = createDaProtocolAllowlist(deploymentFingerprint);
+  const handlers = new DaLibp2pPayloadProtocolHandlers({
+    deploymentFingerprint,
+    store,
+    limits,
+  });
+  const handlerMap = new Map<string, DaLibp2pStreamHandler>();
+  const add = (
+    protocol: DaRequestResponseProtocol,
+    handle: (request: Uint8Array) => Promise<Buffer>,
+  ): void => {
+    const protocolId = protocolIds.protocolIdByName.get(protocol)!;
+    handlerMap.set(protocolId, async ({ stream }) => {
+      const request = await readSingleDaStreamFrame(stream, {
+        maxFrameBytes: limits.maxPayloadBytes,
+      });
+      const response = await handle(request);
+      await writeDaStreamFrame(stream, response, {
+        maxFrameBytes: limits.maxPayloadBytes,
+        close: true,
+      });
+    });
+  };
+  add(DaRequestResponseProtocol.capabilities, (request) =>
+    handlers.handleCapabilities(request),
+  );
+  add(DaRequestResponseProtocol.payloadByHeader, (request) =>
+    handlers.handlePayloadByHeader(request),
+  );
+  add(DaRequestResponseProtocol.payloadChunk, (request) =>
+    handlers.handlePayloadChunk(request),
+  );
+  add(DaRequestResponseProtocol.metadataByHeader, (request) =>
+    handlers.handleMetadataByHeader(request),
+  );
+  return handlerMap;
+};
+
 export class DaPayloadSubmitAdmission {
   readonly limit: number;
   #active = 0;
@@ -377,7 +444,12 @@ export class DaPayloadSubmitAdmission {
         if (index >= 0) {
           this.#waiters.splice(index, 1);
         }
-        reject(signal?.reason ?? new Error("DA payload admission cancelled"));
+        const reason = signal?.reason;
+        reject(
+          reason instanceof Error
+            ? reason
+            : new Error("DA payload admission cancelled", { cause: reason }),
+        );
       };
       const waiter = {
         signal,

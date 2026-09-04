@@ -1,10 +1,12 @@
 import {
+  acceptedVerdictSubject,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   InvalidRangeStep01SpendRedeemer,
   InvalidRangeStep02Datum,
   invalidRangeViolationReason,
+  type NativeTxInclusionCarriage,
   type NormalizedTimeRange,
   normalizeNativeTxValidityRange,
   requireInputIndex,
@@ -22,9 +24,19 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
+import {
+  chunkedMembershipClaimRedeemer,
+  chunkedVerifyWithdrawalScript,
+  derivedChunkReferenceIndices,
+  type PublishedProofChunk,
+  requireBuiltChunkReferenceIndices,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -52,6 +64,16 @@ import {
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
+} from "./witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitInvalidRangeStep01CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -81,8 +103,7 @@ export type SubmitInvalidRangeStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly nativeTxId: string;
-  readonly blockValidFrom: bigint;
-  readonly blockValidTo: bigint;
+  readonly blockSlot: bigint;
   readonly normalizedValidityRange: NormalizedTimeRange;
   readonly violationReason: NonNullable<
     ReturnType<typeof invalidRangeViolationReason>
@@ -91,6 +112,9 @@ export type SubmitInvalidRangeStep01Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
+  /** Which route the membership opening took to L1 (issue #545). */
+  readonly proofCarriage: "redeemer" | "published-chunks";
+  readonly publishedChunkOutRefs: readonly string[];
   readonly awaitedConfirmation: boolean;
 };
 
@@ -110,6 +134,10 @@ export const submitInvalidRangeStep01 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  publishedProofChunks,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -120,6 +148,17 @@ export const submitInvalidRangeStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  /**
+   * Chunks published by `publishProofChunksV1`, in proof order. When present
+   * the membership proof reaches L1 through them and never enters this
+   * transaction (issue #545).
+   */
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
+  /** The mandatory published step-01 reference script. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Required published witness reference scripts for this transaction. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidRangeStep01Result> => {
   const resolvedDeployment = await resolveInvalidRangeDeploymentContracts({
@@ -193,19 +232,24 @@ export const submitInvalidRangeStep01 = async ({
     txInclusion.nativeTx.body,
   );
   const violationReason = invalidRangeViolationReason({
-    blockValidFrom: header.startTime,
-    blockValidTo: header.endTime,
+    blockSlot: header.blockSlot,
     normalizedRange: normalizedValidityRange,
   });
   if (violationReason === null) {
     throw new Error(
-      "--tx-inclusion.nativeTx validity range does not violate the fraudulent block validity range.",
+      "--tx-inclusion.nativeTx validity range includes the fraudulent header block slot.",
     );
   }
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
+  const chunks = publishedProofChunks ?? [];
+  const carriedByChunks = chunks.length > 0;
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
+  );
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -214,12 +258,47 @@ export const submitInvalidRangeStep01 = async ({
     network,
     phasMembershipScript,
   );
+  // On the chunked route the merkelized published-chunk verifier stands in for
+  // the `phas` membership withdrawal; the proof stays in the referenced chunks.
+  const chunkedVerifyScript = chunkedVerifyWithdrawalScript(blueprint);
+  const chunkedVerifyRewardAddress = phasMembershipRewardAddress(
+    network,
+    chunkedVerifyScript,
+  );
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
+    script: contracts.invalidRange.steps[0].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "invalid-range step 01 validator",
+  });
+  const inclusionCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriage({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: "invalid-range step 01 chunked verify",
+      })
+    : witnessWithdrawalValidatorCarriage({
+        script: phasMembershipScript,
+        referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        label: "invalid-range step 01 PHAS membership",
+      });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    ...stepScriptCarriage.referenceInputs,
+    ...inclusionCarriage.referenceInputs,
+  ];
+  const resolvedChunkIndices = derivedChunkReferenceIndices({
+    referenceInputs,
+    chunks,
+    label: "invalid-range step 01",
+  });
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        block_valid_from: header.startTime,
-        block_valid_to: header.endTime,
+        subject: acceptedVerdictSubject(txInclusion.nativeTxId),
+        block_slot: header.blockSlot,
         bad_tx_normalized_validity_range: normalizedValidityRange,
       },
     },
@@ -252,28 +331,51 @@ export const submitInvalidRangeStep01 = async ({
       ),
     };
     resolvedLayout = layout;
+    const common = {
+      input_index: layout.inputIndex,
+      output_index: layout.outputIndex,
+      hub_ref_input_index: layout.hubOracleRefInputIndex,
+      state_queue_node_ref_input_index: layout.stateQueueNodeRefInputIndex,
+      native_tx_id: txInclusion.nativeTxId,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
+      transactions_phas_root: txInclusion.transactionsPhasRoot,
+    };
+    // The prover chooses the carriage. Published chunks are the route for a
+    // proof the 16,384-byte envelope cannot carry (issue #545); the redeemer
+    // route stays the cheaper one for every proof that fits.
+    // The canonical order derived above is the order the ledger will present;
+    // re-deriving it from the builder context here proves the two agree.
+    requireBuiltChunkReferenceIndices({
+      ctx,
+      chunks,
+      derived: resolvedChunkIndices,
+      label: "invalid-range step 01",
+    });
+    const carriage: NativeTxInclusionCarriage = carriedByChunks
+      ? {
+          PublishedChunkInclusion: [
+            {
+              ...common,
+              ordered_chunk_reference_input_indices: resolvedChunkIndices,
+            },
+          ],
+        }
+      : {
+          RedeemerCarriedInclusion: [
+            {
+              ...common,
+              tx_membership_proof: txInclusion.txMembershipProof,
+              inclusion_proof_script_withdraw_redeemer_index:
+                requireWithdrawalRedeemerIndex(
+                  ctx,
+                  phasRewardAddress,
+                  "invalid-range step 01 PHAS membership",
+                ),
+            },
+          ],
+        };
     return Data.to(
-      {
-        Continue: [
-          {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              layout.stateQueueNodeRefInputIndex,
-            native_tx_id: txInclusion.nativeTxId,
-            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-            transactions_phas_root: txInclusion.transactionsPhasRoot,
-            tx_membership_proof: txInclusion.txMembershipProof,
-            inclusion_proof_script_withdraw_redeemer_index:
-              requireWithdrawalRedeemerIndex(
-                ctx,
-                phasRewardAddress,
-                "invalid-range step 01 PHAS membership",
-              ),
-          },
-        ],
-      },
+      { Continue: [{ source: { AcceptedSource: { inclusion: carriage } } }] },
       InvalidRangeStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -282,22 +384,34 @@ export const submitInvalidRangeStep01 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasRewardAddress,
-      0n,
-      encodeRawPhasMembershipProofRedeemer({
-        root: txInclusion.transactionsPhasRoot,
-        keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
-        membershipProofCbor: txInclusion.txMembershipProofCbor,
-      }),
-    )
-    .pay.ToContract(
+    .readFrom(referenceInputs);
+  // On the published-chunk route the delegated `phas` invocation disappears
+  // along with the proof: the step verifies the reassembled proof itself.
+  const tx = (
+    carriedByChunks
+      ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+          chunkedMembershipClaimRedeemer({
+            merkleRoot: txInclusion.transactionsPhasRoot,
+            keyBytes: txInclusion.nativeTxId,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
+            orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          })) satisfies BuildTxWithRedeemer)
+      : base.withdraw(
+          phasRewardAddress,
+          0n,
+          encodeRawPhasMembershipProofRedeemer({
+            root: txInclusion.transactionsPhasRoot,
+            keyBytes: txInclusion.nativeTxId,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
+            membershipProofCbor: txInclusion.txMembershipProofCbor,
+          }),
+        )
+  ).pay
+    .ToContract(
       contracts.invalidRange.steps[1].spendingScriptAddress,
       {
         kind: "inline",
@@ -305,18 +419,46 @@ export const submitInvalidRangeStep01 = async ({
       },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.invalidRange.steps[0].spendingScript)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = inclusionCarriage.attach(stepScriptCarriage.attach(tx));
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve invalid-range step 01 layout.",
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof invalid-range step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.invalidRange.steps[0].spendingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+        {
+          role: "V1 MPF chunked-verify withdrawal",
+          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+          expectedScript: chunkedVerifyScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `invalid-range step 01 provider returned ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -336,8 +478,7 @@ export const submitInvalidRangeStep01 = async ({
     firstStepAddress: contracts.invalidRange.steps[0].spendingScriptAddress,
     secondStepAddress: contracts.invalidRange.steps[1].spendingScriptAddress,
     nativeTxId: txInclusion.nativeTxId,
-    blockValidFrom: header.startTime,
-    blockValidTo: header.endTime,
+    blockSlot: header.blockSlot,
     normalizedValidityRange,
     violationReason,
     inputIndex: Number(resolvedLayout.inputIndex),
@@ -346,6 +487,8 @@ export const submitInvalidRangeStep01 = async ({
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
+    proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
+    publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
     awaitedConfirmation: awaitConfirmation,
   };
 };
@@ -353,6 +496,9 @@ export const submitInvalidRangeStep01 = async ({
 export const submitInvalidRangeStep01FromFiles = async (
   config: SubmitInvalidRangeStep01CliConfig,
 ): Promise<SubmitInvalidRangeStep01Result> => {
+  rejectRetiredUnauthenticatedSubmissionRoute({
+    command: "submit-invalid-range-step-01",
+  });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
     [
       readJsonFile(config.blueprintPath),

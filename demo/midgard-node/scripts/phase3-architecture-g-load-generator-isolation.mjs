@@ -12,7 +12,7 @@ import {
 } from "./phase3-architecture-g-closure-lib.mjs";
 
 export const PHASE3_LOAD_GENERATOR_ISOLATION_SCHEMA =
-  "midgard-phase3-load-generator-isolation-v3";
+  "midgard-phase3-load-generator-isolation-v1";
 export const PHASE3_NODE_PRE_LIFECYCLE_REVALIDATION_SCHEMA =
   "midgard-phase3-node-pre-lifecycle-revalidation-v1";
 
@@ -20,6 +20,9 @@ const execFileAsync = promisify(execFile);
 const CONTAINER_ID = /^[0-9a-f]{64}$/u;
 const IMAGE_ID = /^(?:sha256:)?[0-9a-f]{64}$/u;
 const SHA256 = /^[0-9a-f]{64}$/u;
+const CANONICAL_UNSIGNED_DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
+const CANONICAL_ISO_TIMESTAMP =
+  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/u;
 const DOCKER_INSPECT_TIMEOUT_MS = 15_000;
 const TRUSTED_DOCKER_CLIENT_PATH = "/usr/bin/docker";
 const TRUSTED_DOCKER_SOCKET_PATH = "/var/run/docker.sock";
@@ -30,6 +33,34 @@ const SANITIZED_DOCKER_ENV = Object.freeze({
   XDG_CONFIG_HOME: "/nonexistent",
   DOCKER_HOST: TRUSTED_DOCKER_ENDPOINT,
 });
+
+const requireExactV1Object = (value, expectedKeys, label) => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be a V1 JSON object`);
+  }
+  const actual = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error(`${label} must use the exact V1 keys`);
+  }
+  return value;
+};
+
+const canonicalNonEmptyString = (value) =>
+  typeof value === "string" && value.length > 0 && value === value.trim();
+
+const canonicalAbsolutePath = (value) =>
+  typeof value === "string" &&
+  path.isAbsolute(value) &&
+  path.resolve(value) === value;
+
+const canonicalIsoTimestamp = (value) => {
+  const timestamp = Date.parse(value ?? "");
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : value;
+};
 
 const normalizedImageId = (value) =>
   typeof value === "string" ? value.replace(/^sha256:/u, "") : value;
@@ -161,42 +192,74 @@ export const captureTrustedPhase3DockerRuntime = async ({
 
 const validFileIdentity = (value) =>
   value?.path === TRUSTED_DOCKER_CLIENT_PATH &&
-  typeof value?.realPath === "string" &&
-  path.isAbsolute(value.realPath) &&
+  canonicalAbsolutePath(value?.realPath) &&
   SHA256.test(value?.sha256 ?? "") &&
   Number.isSafeInteger(value?.bytes) &&
   value.bytes > 0 &&
   Number.isSafeInteger(value?.mode) &&
   Number.isSafeInteger(value?.uid) &&
   Number.isSafeInteger(value?.gid) &&
-  /^\d+$/u.test(value?.dev ?? "") &&
-  /^\d+$/u.test(value?.ino ?? "");
+  CANONICAL_UNSIGNED_DECIMAL.test(value?.dev ?? "") &&
+  CANONICAL_UNSIGNED_DECIMAL.test(value?.ino ?? "");
 
 const validSocketIdentity = (value) =>
   value?.path === TRUSTED_DOCKER_SOCKET_PATH &&
-  typeof value?.realPath === "string" &&
-  path.isAbsolute(value.realPath) &&
+  canonicalAbsolutePath(value?.realPath) &&
   value?.endpoint === TRUSTED_DOCKER_ENDPOINT &&
   Number.isSafeInteger(value?.mode) &&
   Number.isSafeInteger(value?.uid) &&
   Number.isSafeInteger(value?.gid) &&
-  /^\d+$/u.test(value?.dev ?? "") &&
-  /^\d+$/u.test(value?.ino ?? "");
+  CANONICAL_UNSIGNED_DECIMAL.test(value?.dev ?? "") &&
+  CANONICAL_UNSIGNED_DECIMAL.test(value?.ino ?? "");
 
 export const validateTrustedPhase3DockerRuntime = (runtime) => {
+  requireExactV1Object(
+    runtime,
+    ["schemaVersion", "client", "socket", "daemon", "environment"],
+    "trusted Docker runtime",
+  );
+  requireExactV1Object(
+    runtime.client,
+    ["path", "realPath", "sha256", "bytes", "mode", "uid", "gid", "dev", "ino"],
+    "trusted Docker client identity",
+  );
+  requireExactV1Object(
+    runtime.socket,
+    ["path", "realPath", "endpoint", "mode", "uid", "gid", "dev", "ino"],
+    "trusted Docker socket identity",
+  );
+  requireExactV1Object(
+    runtime.daemon,
+    [
+      "id",
+      "name",
+      "serverVersion",
+      "operatingSystem",
+      "osType",
+      "architecture",
+    ],
+    "trusted Docker daemon identity",
+  );
+  requireExactV1Object(
+    runtime.environment,
+    [
+      "inheritedDockerVariables",
+      "pathResolutionRealPath",
+      "daemonEndpoint",
+      "home",
+    ],
+    "trusted Docker environment identity",
+  );
   if (
     runtime?.schemaVersion !== "midgard-phase3-trusted-docker-runtime-v1" ||
     !validFileIdentity(runtime?.client) ||
     !validSocketIdentity(runtime?.socket) ||
-    typeof runtime?.daemon?.id !== "string" ||
-    runtime.daemon.id.length === 0 ||
-    typeof runtime?.daemon?.name !== "string" ||
-    runtime.daemon.name.length === 0 ||
-    typeof runtime?.daemon?.serverVersion !== "string" ||
-    runtime.daemon.serverVersion.length === 0 ||
+    !canonicalNonEmptyString(runtime?.daemon?.id) ||
+    !canonicalNonEmptyString(runtime?.daemon?.name) ||
+    !canonicalNonEmptyString(runtime?.daemon?.serverVersion) ||
+    !canonicalNonEmptyString(runtime?.daemon?.operatingSystem) ||
     runtime?.daemon?.osType !== "linux" ||
-    typeof runtime?.daemon?.architecture !== "string" ||
-    runtime.daemon.architecture.length === 0 ||
+    !canonicalNonEmptyString(runtime?.daemon?.architecture) ||
     JSON.stringify(runtime?.environment?.inheritedDockerVariables) !== "[]" ||
     runtime?.environment?.pathResolutionRealPath !== runtime.client.realPath ||
     runtime?.environment?.daemonEndpoint !== TRUSTED_DOCKER_ENDPOINT ||
@@ -223,15 +286,25 @@ export const validateTrustedPhase3DockerRuntimeArtifacts = (runtime) => {
 const cpuSet = (value) => {
   if (
     typeof value !== "string" ||
-    !/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/u.test(value)
+    !/^(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*))?(?:,(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*))?)*$/u.test(
+      value,
+    )
   ) {
     throw new Error(`invalid Linux CPU-list ${String(value)}`);
   }
   const result = new Set();
+  let previous = -1;
   for (const range of value.split(",")) {
     const [first, last = first] = range.split("-").map(Number);
-    if (last < first) throw new Error(`invalid Linux CPU range ${range}`);
+    if (
+      last < first ||
+      first <= previous ||
+      (range.includes("-") && first === last)
+    ) {
+      throw new Error(`noncanonical Linux CPU range ${range}`);
+    }
     for (let cpu = first; cpu <= last; cpu += 1) result.add(cpu);
+    previous = last;
   }
   return result;
 };
@@ -438,7 +511,7 @@ const inspectNodeContainer = async ({
     running: inspection?.State?.Running,
     status: inspection?.State?.Status,
     healthStatus: inspection?.State?.Health?.Status,
-    startedAt: inspection?.State?.StartedAt,
+    startedAt: canonicalIsoTimestamp(inspection?.State?.StartedAt),
     restartCount: inspection?.RestartCount,
     engine,
     healthcheckCommand,
@@ -519,9 +592,10 @@ const boundedCgroupIdentity = (value) =>
   typeof value?.path === "string" &&
   value.path.startsWith("/") &&
   value.path !== "/" &&
-  /^\d+$/u.test(value?.memoryMax ?? "") &&
+  path.posix.normalize(value.path) === value.path &&
+  CANONICAL_UNSIGNED_DECIMAL.test(value?.memoryMax ?? "") &&
   Number(value.memoryMax) > 0 &&
-  /^(?:max|\d+) \d+$/u.test(value?.cpuMax ?? "") &&
+  /^(?:max|(?:0|[1-9][0-9]*)) (?:0|[1-9][0-9]*)$/u.test(value?.cpuMax ?? "") &&
   typeof value?.cpusetEffective === "string";
 
 const validUidIdentity = (value) =>
@@ -532,18 +606,15 @@ const validUidIdentity = (value) =>
 const validProcIdentity = (value) =>
   Number.isSafeInteger(value?.pid) &&
   value.pid > 0 &&
-  /^\d+$/u.test(value?.startTicks ?? "") &&
+  CANONICAL_UNSIGNED_DECIMAL.test(value?.startTicks ?? "") &&
   validUidIdentity(value?.uid) &&
-  typeof value?.executable === "string" &&
-  path.isAbsolute(value.executable) &&
+  canonicalAbsolutePath(value?.executable) &&
   SHA256.test(value?.commandLineSha256 ?? "") &&
   typeof value?.cgroup === "string" &&
   value.cgroup.length > 0 &&
   typeof value?.cpusAllowedList === "string" &&
-  typeof value?.pidNamespace === "string" &&
-  value.pidNamespace.length > 0 &&
-  typeof value?.bootId === "string" &&
-  value.bootId.length > 0 &&
+  canonicalNonEmptyString(value?.pidNamespace) &&
+  canonicalNonEmptyString(value?.bootId) &&
   boundedCgroupIdentity(value?.cgroupV2) &&
   value.cgroupV2.cpusetEffective === value.cpusAllowedList;
 
@@ -569,6 +640,115 @@ export const validatePhase3LoadGeneratorIsolationDocument = (
   document,
   { expectedNodeContainerId, expectedNodeImageId } = {},
 ) => {
+  requireExactV1Object(
+    document,
+    [
+      "schemaVersion",
+      "capturedAtMs",
+      "docker",
+      "placement",
+      "cohosted",
+      "clock",
+      "loadGenerator",
+      "nodeContainer",
+      "node",
+      "checks",
+    ],
+    "load-generator isolation artifact",
+  );
+  requireExactV1Object(
+    document.clock,
+    ["source", "offsetMs", "bootId"],
+    "load-generator isolation clock",
+  );
+  for (const [label, processIdentity] of [
+    ["load generator", document.loadGenerator],
+    ["node", document.node],
+  ]) {
+    requireExactV1Object(
+      processIdentity,
+      [
+        "pid",
+        "startTicks",
+        "uid",
+        "executable",
+        "commandLineSha256",
+        "cgroup",
+        "cgroupV2",
+        "cpusAllowedList",
+        "pidNamespace",
+        "bootId",
+      ],
+      `${label} process identity`,
+    );
+    requireExactV1Object(
+      processIdentity.uid,
+      ["real", "effective", "savedSet", "fileSystem"],
+      `${label} UID identity`,
+    );
+    requireExactV1Object(
+      processIdentity.cgroupV2,
+      ["path", "memoryMax", "cpuMax", "cpusetEffective"],
+      `${label} cgroup-v2 identity`,
+    );
+  }
+  requireExactV1Object(
+    document.nodeContainer,
+    [
+      "phase1ContainerId",
+      "phase1ImageId",
+      "inspectedContainerId",
+      "inspectedImageId",
+      "configuredImageReference",
+      "hostPid",
+      "hostProcessStartTicks",
+      "running",
+      "status",
+      "healthStatus",
+      "startedAt",
+      "restartCount",
+      "engine",
+      "healthcheckCommand",
+      "readyEndpoint",
+      "metricsEndpoint",
+    ],
+    "load-generator isolation node-container identity",
+  );
+  for (const [label, endpoint] of [
+    ["readiness", document.nodeContainer.readyEndpoint],
+    ["metrics", document.nodeContainer.metricsEndpoint],
+  ]) {
+    requireExactV1Object(
+      endpoint,
+      [
+        "url",
+        "protocol",
+        "hostname",
+        "hostPort",
+        "pathname",
+        "containerPort",
+        "publishedHostIp",
+      ],
+      `${label} endpoint binding`,
+    );
+  }
+  requireExactV1Object(
+    document.checks,
+    [
+      "distinctCgroup",
+      "distinctPidNamespace",
+      "disjointCpuAffinity",
+      "sharedBootClock",
+      "nonRootLoadGenerator",
+      "exactPhase1Container",
+      "exactPhase1Image",
+      "hostPidFromDockerInspect",
+      "readinessPublishedByNodeContainer",
+      "metricsPublishedByNodeContainer",
+      "stableAfterProcCapture",
+    ],
+    "load-generator isolation checks",
+  );
   const loadGenerator = document?.loadGenerator;
   const node = document?.node;
   const container = document?.nodeContainer;
@@ -611,9 +791,9 @@ export const validatePhase3LoadGeneratorIsolationDocument = (
     container.engine !== "architecture_g" ||
     !Number.isSafeInteger(container.restartCount) ||
     container.restartCount < 0 ||
-    !Number.isFinite(Date.parse(container.startedAt ?? "")) ||
-    typeof container.configuredImageReference !== "string" ||
-    container.configuredImageReference.length === 0 ||
+    !CANONICAL_ISO_TIMESTAMP.test(container.startedAt ?? "") ||
+    new Date(container.startedAt).toISOString() !== container.startedAt ||
+    !canonicalNonEmptyString(container.configuredImageReference) ||
     !Array.isArray(container.healthcheckCommand) ||
     !container.healthcheckCommand.some(
       (entry) =>
@@ -763,6 +943,35 @@ export const validatePhase3NodePreLifecycleRevalidationDocument = (
   document,
   isolationDocument,
 ) => {
+  requireExactV1Object(
+    document,
+    [
+      "schemaVersion",
+      "observedAtMs",
+      "isolation",
+      "docker",
+      "loadGenerator",
+      "nodeContainer",
+      "node",
+      "checks",
+    ],
+    "pre-lifecycle node revalidation artifact",
+  );
+  requireExactV1Object(
+    document.isolation,
+    ["path", "sha256"],
+    "pre-lifecycle isolation identity",
+  );
+  requireExactV1Object(
+    document.checks,
+    [
+      "trustedDockerRuntimeUnchanged",
+      "stableContainerBeforeAndAfterProcCapture",
+      "loadGeneratorIdentityUnchanged",
+      "nodeIdentityUnchanged",
+    ],
+    "pre-lifecycle node revalidation checks",
+  );
   if (
     document?.schemaVersion !== PHASE3_NODE_PRE_LIFECYCLE_REVALIDATION_SCHEMA ||
     !Number.isSafeInteger(document?.observedAtMs) ||

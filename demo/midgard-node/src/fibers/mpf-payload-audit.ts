@@ -1,13 +1,13 @@
 import { Effect, Schedule } from "effect";
 
-import { runMpfAudit } from "@/commands/mpf-audit.js";
-import { MpfEngineStateDB } from "@/database/index.js";
+import { runMpfAudit } from "../commands/mpf-audit.js";
+import { MpfEngineStateDB } from "../database/index.js";
 import {
   Database,
   Globals,
   NodeConfig,
   type NodeConfigDep,
-} from "@/services/index.js";
+} from "../services/index.js";
 
 export const shouldRunMpfPayloadAudit = (
   payloadRootCheck: NodeConfigDep["MPF_PAYLOAD_ROOT_CHECK"],

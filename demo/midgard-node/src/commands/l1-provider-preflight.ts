@@ -4,7 +4,7 @@ import {
   localOgmiosSubmitSlotEvidence,
   readLocalOgmiosSubmitSlot,
   type SubmitSlotSnapshot,
-} from "@/local-ogmios-slot.js";
+} from "../local-ogmios-slot.js";
 import {
   classifyProviderHttpResponse,
   getProviderCooldown,
@@ -13,7 +13,7 @@ import {
   providerRouteSummary,
   redactEndpoint,
   summarizeProviderBody,
-} from "@/provider-diagnostics.js";
+} from "../provider-diagnostics.js";
 
 export type L1ProviderPreflightConfig = {
   readonly L1_PROVIDER: "Kupmios";
@@ -53,12 +53,32 @@ export type L1ProviderPreflightReport = {
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/**
+ * One line for an arbitrary thrown value.
+ *
+ * An `Error` is rendered as `name: message` rather than serialized: the
+ * diagnostic content of a `fetch failed` is entirely in its nested cause's
+ * message (`getaddrinfo EAI_AGAIN kupo`, `ECONNREFUSED 127.0.0.1:1442`), and
+ * `JSON.stringify` of an Error is `{}` — Error's own properties are not
+ * enumerable — which erases exactly the text an operator needs.
+ */
+const describeThrown = (value: unknown): string => {
+  if (value instanceof Error) {
+    return `${value.name}: ${value.message}`;
+  }
+  if (typeof value === "object" && value !== null) {
+    return JSON.stringify(value) ?? "undefined";
+  }
+  return typeof value === "symbol" ? value.toString() : String(value);
+};
+
 const summarizeFetchFailure = (cause: unknown): string => {
-  const primary =
-    cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+  const primary = describeThrown(cause);
   const nested = cause instanceof Error ? cause.cause : undefined;
   return summarizeProviderBody(
-    nested === undefined ? primary : `${primary}; cause=${String(nested)}`,
+    nested === undefined
+      ? primary
+      : `${primary}; cause=${describeThrown(nested)}`,
   );
 };
 

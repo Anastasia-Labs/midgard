@@ -1,3 +1,7 @@
+import {
+  asLucidDataValue,
+  asLucidSchema,
+} from "@al-ft/midgard-core/lucid-data";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
@@ -18,7 +22,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { scriptRewardAddress } from "@/cardano-addresses.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   addAssets,
   assertAssetsNonNegative,
@@ -30,32 +34,32 @@ import {
   removeAssetUnit,
   subtractAssets,
   valueToAssets,
-} from "@/reserve-payout/assets.js";
+} from "./reserve-payout/assets.js";
 import {
   type BuiltReservePayoutTx,
   completeWithFinalLayoutProgram,
-} from "@/reserve-payout/completion.js";
-import { formatLayout } from "@/reserve-payout/diagnostics.js";
-import { fail, ReservePayoutTxError } from "@/reserve-payout/errors.js";
+} from "./reserve-payout/completion.js";
+import { formatLayout } from "./reserve-payout/diagnostics.js";
+import { fail, ReservePayoutTxError } from "./reserve-payout/errors.js";
 import {
   disposableFeeInputCandidates,
   selectFeeInputProgram,
-} from "@/reserve-payout/inputs.js";
+} from "./reserve-payout/inputs.js";
 import {
   type AbsorbDepositLayout,
   type AddReserveFundsLayout,
   type ConcludePayoutLayout,
   type InitializePayoutLayout,
   type RefundWithdrawalLayout,
-} from "@/reserve-payout/layout.js";
-import * as SDK from "@/reserve-payout/primitives.js";
+} from "./reserve-payout/layout.js";
+import * as SDK from "./reserve-payout/primitives.js";
 import {
   attachIfMissing,
   mergeReferenceScripts,
   referenceInputs,
   type ReservePayoutReferenceScripts,
   resolveReferenceScriptsProgram,
-} from "@/reserve-payout/references.js";
+} from "./reserve-payout/references.js";
 import {
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -67,8 +71,8 @@ import {
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@/tx-context-redeemer.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
+} from "./tx-context-redeemer.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 
 export {
   addAssets,
@@ -77,11 +81,11 @@ export {
   removeAssetUnit,
   subtractAssets,
   valueToAssets,
-} from "@/reserve-payout/assets.js";
-export type { BuiltReservePayoutTx } from "@/reserve-payout/completion.js";
-export { ReservePayoutTxError } from "@/reserve-payout/errors.js";
-export type { ReservePayoutReferenceScripts } from "@/reserve-payout/references.js";
-export { mergeReferenceScripts } from "@/reserve-payout/references.js";
+} from "./reserve-payout/assets.js";
+export type { BuiltReservePayoutTx } from "./reserve-payout/completion.js";
+export { ReservePayoutTxError } from "./reserve-payout/errors.js";
+export type { ReservePayoutReferenceScripts } from "./reserve-payout/references.js";
+export { mergeReferenceScripts } from "./reserve-payout/references.js";
 
 export type MembershipProofWithdrawalWitness = {
   readonly script: Script;
@@ -130,7 +134,7 @@ export type RefundInvalidWithdrawalConfig = CommonBuilderConfig & {
 };
 
 const encodeHexBytesData = (hex: string): unknown =>
-  Data.from(Data.to(hex as any, Data.Bytes()));
+  Data.from(Data.to(hex, asLucidSchema(Data.Bytes())));
 
 const requireNetwork = (
   lucid: LucidEvolution,
@@ -189,7 +193,7 @@ const cardanoDatumToOutputDatum = (
   }
   return {
     kind: "inline",
-    value: Data.to(datum.InlineDatum.data as any, Data.Any() as any),
+    value: Data.to(datum.InlineDatum.data, asLucidSchema(Data.Any())),
   };
 };
 
@@ -300,10 +304,10 @@ const encodeMembershipProofWithdrawalRedeemer = (
   const rootData = Data.from(Data.to(proof.phas_root, SDK.MerkleRoot));
   const keyData = encodeHexBytesData(keyCbor);
   const valueData = encodeHexBytesData(valueCbor);
-  const proofData = Data.from(Data.to(proof.proof, SDK.Proof));
+  const proofData = Data.from(Data.to(proof.proof, asLucidSchema(SDK.Proof)));
   return Data.to(
-    [rootData, keyData, valueData, proofData] as any,
-    Data.Array(Data.Any()) as any,
+    asLucidDataValue([rootData, keyData, valueData, proofData]),
+    asLucidSchema(Data.Array(Data.Any())),
   );
 };
 
@@ -351,7 +355,7 @@ const outputDatumMatches = (
   }
   return outputDatumCborMatches(
     output,
-    Data.to(datum.InlineDatum.data as any, Data.Any() as any),
+    Data.to(datum.InlineDatum.data, asLucidSchema(Data.Any())),
   );
 };
 

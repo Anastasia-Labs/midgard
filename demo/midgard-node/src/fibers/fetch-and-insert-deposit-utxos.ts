@@ -1,19 +1,26 @@
-import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
+import {
+  decodeMidgardTxOutput,
+  encodeMidgardAddressText,
+} from "@al-ft/midgard-core/codec";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import * as SDK from "@al-ft/midgard-sdk";
+import { deriveCanonicalDepositTransitionEffect } from "@al-ft/midgard-validation";
 import {
-  type Assets,
-  type Credential,
-  credentialToAddress,
   Data as LucidData,
   LucidEvolution,
   type Network,
-  toUnit,
 } from "@lucid-evolution/lucid";
 import { Effect, Ref, Schedule } from "effect";
 
-import { DepositsDB, UserEventsUtils } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import { DepositsDB, UserEventsUtils } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import {
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "../services/index.js";
 import {
   logReconciledVisibleUserEvents,
   persistVisibleUserEventUTxOs,
@@ -21,14 +28,7 @@ import {
   runCommitTimeUserEventIngestionBarrier,
   type UserEventFetchBounds,
   type UserEventReconcileResult,
-} from "@/fibers/user-event-ingestion.js";
-import {
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "@/services/index.js";
+} from "./user-event-ingestion.js";
 
 /**
  * Background ingestion for deposit UTxOs into the authoritative off-chain
@@ -38,78 +38,6 @@ import {
  * step so ingestion remains idempotent and projection can enforce its own
  * timing and exactly-once rules.
  */
-
-/**
- * Converts the SDK's credential representation into Lucid's credential shape.
- */
-const credentialFromAddressData = (credential: SDK.CredentialD): Credential =>
-  "PublicKeyCredential" in credential
-    ? {
-        type: "Key",
-        hash: credential.PublicKeyCredential[0],
-      }
-    : {
-        type: "Script",
-        hash: credential.ScriptCredential[0],
-      };
-
-const networkFromDepositInfo = (
-  configuredNetwork: Network,
-  l2NetworkId: bigint,
-): Network => {
-  if (l2NetworkId === 1n) {
-    return "Mainnet";
-  }
-  if (l2NetworkId === 0n) {
-    return configuredNetwork === "Mainnet" ? "Preprod" : configuredNetwork;
-  }
-  throw new Error(
-    `Unsupported committed deposit L2 network id ${l2NetworkId.toString()}`,
-  );
-};
-
-/**
- * Reconstructs a bech32 L2 address from deposit-event address data.
- */
-const addressFromDepositInfo = (
-  configuredNetwork: Network,
-  l2NetworkId: bigint,
-  addressData: SDK.AddressData,
-): string => {
-  const network = networkFromDepositInfo(configuredNetwork, l2NetworkId);
-  const stakeCredential =
-    addressData.stakeCredential === null
-      ? undefined
-      : "Inline" in addressData.stakeCredential
-        ? credentialFromAddressData(addressData.stakeCredential.Inline[0])
-        : undefined;
-
-  return credentialToAddress(
-    network,
-    credentialFromAddressData(addressData.paymentCredential),
-    stakeCredential,
-  );
-};
-
-/**
- * Removes the L1-only deposit auth NFT while preserving user-deposited value.
- */
-const projectedDepositAssets = (
-  depositUTxO: SDK.DepositUTxO,
-  depositPolicyId: string,
-): Assets => {
-  const depositAuthUnit = toUnit(depositPolicyId, depositUTxO.assetName);
-  const depositAuthQuantity = depositUTxO.utxo.assets[depositAuthUnit] ?? 0n;
-  if (depositAuthQuantity !== 1n) {
-    throw new Error(
-      `Deposit auth NFT invariant violated for ${depositUTxO.utxo.txHash}#${depositUTxO.utxo.outputIndex.toString()}: expected exactly 1 ${depositAuthUnit}, found ${depositAuthQuantity.toString()}`,
-    );
-  }
-
-  const assets: Assets = { ...depositUTxO.utxo.assets };
-  delete assets[depositAuthUnit];
-  return assets;
-};
 
 /**
  * Projects one deposit UTxO into the database row shape used by the off-chain
@@ -122,22 +50,27 @@ const depositUTxOToEntry = (
 ): Effect.Effect<DepositsDB.Entry, SDK.LucidError> =>
   Effect.try({
     try: () => {
-      const l2Address = addressFromDepositInfo(
-        network,
-        depositUTxO.datum.event.info.l2_network_id,
-        depositUTxO.datum.event.info.l2_address,
-      );
       const l2Datum = depositUTxO.datum.event.info.l2_datum;
-      const output = encodeMidgardTxOutput(
-        l2Address,
-        projectedDepositAssets(depositUTxO, depositPolicyId),
-        {
-          ...(l2Datum === null
-            ? {}
-            : {
-                datum: { kind: "inline" as const, data: LucidData.to(l2Datum) },
-              }),
-        },
+      const effect = deriveCanonicalDepositTransitionEffect({
+        configuredNetwork: network,
+        eventId: depositUTxO.datum.event.id,
+        l2NetworkId: depositUTxO.datum.event.info.l2_network_id,
+        l2Address: depositUTxO.datum.event.info.l2_address,
+        l2DatumCbor:
+          l2Datum === null ? null : Buffer.from(LucidData.to(l2Datum), "hex"),
+        l1Assets: depositUTxO.utxo.assets,
+        depositPolicyId,
+        depositAssetNameHex: depositUTxO.assetName,
+      });
+      const operation = effect.operations[0];
+      if (operation === undefined || operation.type !== "insert") {
+        throw new Error(
+          "canonical deposit projection did not produce an insert",
+        );
+      }
+      const output = Buffer.from(operation.outputCbor);
+      const l2Address = encodeMidgardAddressText(
+        decodeMidgardTxOutput(output).address,
       );
 
       return {

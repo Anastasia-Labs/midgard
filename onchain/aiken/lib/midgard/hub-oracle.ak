@@ -43,25 +43,28 @@ pub fn get_datum(
   hub_oracle_script_hash: ScriptHash,
   hub_ref_input_index: Int,
 ) -> Datum {
-  expect Input { output: Output { datum: InlineDatum(hub_datum_data), .. }, .. } =
-    utils.get_authentic_input_of(
-      reference_inputs,
-      hub_oracle_script_hash,
-      asset_name,
-      hub_ref_input_index,
-    )
+  expect Input { output: Output { datum: InlineDatum(hub_datum_data), .. }, .. }
+    = utils.get_authentic_input_of(
+    reference_inputs,
+    hub_oracle_script_hash,
+    asset_name,
+    hub_ref_input_index,
+  )
   expect Pair(0, hub_fields) = builtin.un_constr_data(hub_datum_data)
-  expect [
-    registered_operators_data, active_operators_data, retired_operators_data,
-    scheduler_data, state_queue_data, fraud_proof_catalogue_data,
-    fraud_proof_data, deposit_data, withdrawal_data, tx_order_data,
-    settlement_data, payout_data, registered_operators_addr_data,
-    active_operators_addr_data, retired_operators_addr_data, scheduler_addr_data,
-    state_queue_addr_data, fraud_proof_catalogue_addr_data,
-    fraud_proof_addr_data, deposit_addr_data, withdrawal_addr_data,
-    tx_order_addr_data, settlement_addr_data, reserve_addr_data,
-    payout_addr_data, reserve_observer_data,
-  ] = hub_fields
+  expect
+      [
+        registered_operators_data, active_operators_data, retired_operators_data,
+        scheduler_data, state_queue_data, fraud_proof_catalogue_data,
+        fraud_proof_data, deposit_data, withdrawal_data, tx_order_data,
+        settlement_data, payout_data, registered_operators_addr_data,
+        active_operators_addr_data, retired_operators_addr_data,
+        scheduler_addr_data, state_queue_addr_data,
+        fraud_proof_catalogue_addr_data, fraud_proof_addr_data,
+        deposit_addr_data, withdrawal_addr_data, tx_order_addr_data,
+        settlement_addr_data, reserve_addr_data, payout_addr_data,
+        reserve_observer_data,
+      ]
+    = hub_fields
   expect registered_operators_addr: Address = registered_operators_addr_data
   expect active_operators_addr: Address = active_operators_addr_data
   expect retired_operators_addr: Address = retired_operators_addr_data

@@ -1,28 +1,29 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { open, readFile, rename, rm } from "node:fs/promises";
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { getHeapStatistics } from "node:v8";
 import { MessageChannel, type MessagePort } from "node:worker_threads";
 
 import { Level } from "level";
 
+import { positiveSafeInteger } from "../../artifact-schema.js";
 import {
   createEventFlatDigest,
   prepareEventFlatDigest,
 } from "../../workers/utils/mpf-event-flat-digest.js";
-import { NativeMpfRpcFrameDecoder, encodeNativeMpfRpcFrame } from "./codec.js";
+import { encodeNativeMpfRpcFrame, NativeMpfRpcFrameDecoder } from "./codec.js";
 import {
-  NATIVE_MPF_OWNER_DEFAULT_CAPS,
-  NATIVE_MPF_RPC_SCHEMA,
-  NativeMpfRpcKind,
   assertNativeMpfGenerationHandle,
   assertNativeMpfHashHex,
+  NATIVE_MPF_OWNER_DEFAULT_CAPS,
+  NATIVE_MPF_RPC_SCHEMA,
   type NativeMpfApplyResult,
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerDiagnostics,
   type NativeMpfOwnerService,
   type NativeMpfRpcFrame,
+  NativeMpfRpcKind,
   type PersistedNativeMpfReplay,
 } from "./protocol.js";
 
@@ -137,11 +138,6 @@ const normalizeOwnerOptions = (
   const requestTimeoutMs =
     options.requestTimeoutMs ?? NATIVE_MPF_OWNER_DEFAULT_CAPS.loadTimeoutMs;
   const restartLimit = options.restartLimit ?? 3;
-  const positiveSafeInteger = (value: number, field: string): void => {
-    if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(`${field} must be a positive safe integer`);
-    }
-  };
   positiveSafeInteger(maxFrameBytes, "maxFrameBytes");
   positiveSafeInteger(maxChunkBytes, "maxChunkBytes");
   positiveSafeInteger(requestTimeoutMs, "requestTimeoutMs");
@@ -527,7 +523,7 @@ const walkReachableRecords = async (
   visit: (hash: string, node: StoredNode) => Promise<void> | void,
 ): Promise<number> => {
   const seen = new Set<string>();
-  let pending = [marker];
+  const pending = [marker];
   let count = 0;
   while (pending.length > 0) {
     const batch = pending.splice(0, 4_096).filter((hash) => {
@@ -1303,14 +1299,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           .subarray(84 + index * HASH_BYTES, 84 + (index + 1) * HASH_BYTES)
           .toString("hex"),
       ),
-      proofArenaDurationNs: readDurationNs(
-        rootsEnd,
-        "proofArenaDurationNs",
-      ),
-      mutationDurationNs: readDurationNs(
-        rootsEnd + 8,
-        "mutationDurationNs",
-      ),
+      proofArenaDurationNs: readDurationNs(rootsEnd, "proofArenaDurationNs"),
+      mutationDurationNs: readDurationNs(rootsEnd + 8, "mutationDurationNs"),
     };
   }
 

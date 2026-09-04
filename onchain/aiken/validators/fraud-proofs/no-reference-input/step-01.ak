@@ -8,7 +8,10 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{
+  cancel, carriage_transactions_phas_root, pass_native_tx_to_next_step_carried,
+}
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/no_reference_input/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/no_reference_input/step_02
 use midgard/ledger_state
@@ -38,41 +41,42 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          _m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          header,
-          _bad_tx_id,
-          _bad_tx,
-          bad_tx_field_preimage,
-        <-
-          pass_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            _m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            header,
+            bad_tx_id,
+            bad_tx_view
+          <- pass_native_tx_to_next_step_carried(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
-        // 2. Bad transaction's body must be provided.
-        expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
+        expect bad_tx_view.tx_compact.validity_code == 0
 
-        let ledger_state.Header { prev_utxos_root, transactions_root, .. } =
-          header
+        let ledger_state.HeaderV1 { prev_utxos_root, .. } = header
 
-        // 3. The UTxO must be produced at next step's script hash with reference
-        //    inputs hash of the bad transaction, and relevant block roots.
+        // 2. The UTxO must be produced at next step's script hash with the
+        //    native reference-inputs hash of the bad transaction, and relevant
+        //    block roots. The authenticated raw transactions phas root
+        //    (verified against the header's counted `transactions_root` inside
+        //    `pass_native_tx_to_next_step`) is threaded forward so step-04's
+        //    non-membership check runs against a real MPF root.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State {
-            bad_tx_reference_inputs_hash: bad_tx_body.reference_inputs,
-            blocks_prev_utxos_root: prev_utxos_root,
-            blocks_transactions_root: transactions_root,
-          }
+        let expected_output_state: Data = step_02.State {
+          bad_tx_id,
+          blocks_prev_utxos_root: prev_utxos_root,
+          blocks_transactions_root: carriage_transactions_phas_root(
+            tx_inclusion_args,
+          ),
+        }
         expect output_state_data == expected_output_state
 
         // Done.
@@ -84,4 +88,73 @@ validator main(
   else(_) {
     fail
   }
+}
+
+/// Positive binding selector: a native-V1 transaction referencing an input,
+/// genuinely committed under the block's counted `transactions_root`, passes
+/// the first step and forwards its canonical reference-inputs hash together
+/// with the authenticated raw transactions root.
+test no_reference_input_step_01_binds_native_v1_block_fixture() {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  let expected_output_state: Data = step_02.State {
+    bad_tx_id: block.tx_id,
+    blocks_prev_utxos_root: block.header.prev_utxos_root,
+    blocks_transactions_root: block.transactions_phas_root,
+  }
+  let l1_tx = fixture.continue_step_l1_tx_v1(
+    block,
+    expected_output_state,
+    block.transactions_phas_root,
+    block.tx_id,
+    block.source_cbor,
+  )
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(fixture.step_datum_without_state()),
+    ct.Continue(fixture.native_inclusion_carriage_v1(block)),
+    fixture.own_out_ref(),
+    l1_tx,
+  )
+}
+
+/// Valid-block negative selector: a raw transactions root that does not
+/// re-commit to the valid header's counted `transactions_root` cannot bind
+/// fabricated evidence, so a valid block cannot be challenged.
+test no_reference_input_step_01_rejects_forged_transactions_root() fail {
+  let valid_block = fixture.native_block_fixture_v1(
+    fixture.valid_native_tx_v1(),
+  )
+  let forged_tx = fixture.valid_native_tx_v1()
+  let forged_block = {
+    let base = fixture.native_block_fixture_v1(forged_tx)
+    fixture.NativeBlockFixtureV1 {
+      ..base,
+      transactions_phas_root: #"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      header: valid_block.header,
+      header_hash: valid_block.header_hash,
+    }
+  }
+  let expected_output_state: Data = step_02.State {
+    bad_tx_id: forged_block.tx_id,
+    blocks_prev_utxos_root: forged_block.header.prev_utxos_root,
+    blocks_transactions_root: forged_block.transactions_phas_root,
+  }
+  let l1_tx = fixture.continue_step_l1_tx_v1(
+    forged_block,
+    expected_output_state,
+    forged_block.transactions_phas_root,
+    forged_block.tx_id,
+    forged_block.source_cbor,
+  )
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(fixture.step_datum_without_state()),
+    ct.Continue(fixture.native_inclusion_carriage_v1(forged_block)),
+    fixture.own_out_ref(),
+    l1_tx,
+  )
 }

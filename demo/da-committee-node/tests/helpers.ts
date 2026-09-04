@@ -2,6 +2,26 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec";
+import {
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_PROTOCOL_VERSION,
+  MIDGARD_VALIDATION_MACHINE_VERSION,
+  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+} from "@al-ft/midgard-core/consensus-profile";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { encodeMidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
@@ -14,9 +34,11 @@ import {
 import { computeDaPayloadRoots } from "../src/da/payload.js";
 import type { DaPayloadSource } from "../src/da/source.js";
 import type { Header, ObservedStateQueueNode } from "../src/domain.js";
+import type {
+  MidgardAuthenticatedDeployment,
+  MidgardNodeDeployment,
+} from "../src/l1/deployment.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
-
-export const IDENTITY_TX_PROJECTOR = (bytes: Buffer): Buffer => bytes;
 
 export const tempDir = (): Promise<string> =>
   mkdtemp(join(tmpdir(), "midgard-watcher-test-"));
@@ -34,46 +56,117 @@ export const fixtureHeaderBase = (): Omit<
   ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
   startTime: 1n,
   endTime: 2n,
+  blockSlot: 0n,
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
   prevHeaderHash: "11".repeat(28),
   operatorVkey: "22".repeat(28),
-  protocolVersion: 1n,
+  protocolVersion: BigInt(MIDGARD_PROTOCOL_VERSION),
 });
 
-export const makePayloadFixture = async (): Promise<{
-  readonly payload: SDK.DaPayloadV2;
+const canonicalTransaction = (fee: bigint) => {
+  const tx = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    validity: "TxIsValid",
+    body: {
+      spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimageCbor: EMPTY_CBOR_LIST,
+      fee,
+      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor: EMPTY_CBOR_LIST,
+      scriptIntegrityHash: EMPTY_NULL_ROOT,
+      auxiliaryDataHash: EMPTY_NULL_ROOT,
+      networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    },
+  });
+  return {
+    tx,
+    txId: Buffer.from(computeMidgardNativeTxId(tx)).toString("hex"),
+    txCbor: Buffer.from(encodeMidgardNativeTxCanonical(tx)).toString("hex"),
+  };
+};
+
+const transactionSource = (
+  transaction: ReturnType<typeof canonicalTransaction>,
+): SDK.L2TransactionSource => {
+  const source = deriveMidgardNativeTxProofSource(transaction.tx);
+  return {
+    tx_id: transaction.txId,
+    source: {
+      compact_cbor: source.compactCbor.toString("hex"),
+      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        source.fieldPreimageLengthsCbor.toString("hex"),
+    },
+  };
+};
+
+const acceptedTraceDescriptor = (seed: number): string =>
+  encodeMidgardValidationTraceDescriptor({
+    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+    machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
+    traceRoot: Buffer.alloc(32, seed),
+    stepCount: 0,
+    initialStateHash: Buffer.alloc(32, seed + 1),
+    terminalStateHash: Buffer.alloc(32, seed + 1),
+    verdict: "accepted",
+    rejectionCodeHash: Buffer.alloc(32),
+  }).toString("hex");
+
+export const makePayloadFixture = async (
+  transactionCount = 3,
+): Promise<{
+  readonly payload: SDK.DaPayload;
+  readonly innerPayloadCbor: Buffer;
   readonly payloadCbor: Buffer;
   readonly header: Header;
   readonly headerHash: string;
 }> => {
-  const txIdA = "10".repeat(32);
-  const txIdB = "20".repeat(32);
-  const withdrawalId = outputReferenceCbor("30", 0n);
-  const forcedTransactionId = outputReferenceCbor("31", 0n);
-  const depositId = outputReferenceCbor("40", 0n);
-  const sourceEvents: readonly SDK.EventKey[] = [
-    {
-      WithdrawalEventKey: {
-        withdrawal_id: outputReference("30", 0n),
-      },
-    },
-    {
-      ForcedTransactionEventKey: {
-        tx_order_id: outputReference("31", 0n),
-      },
-    },
-    { L2TransactionEventKey: { tx_id: txIdA } },
-    { L2TransactionEventKey: { tx_id: txIdB } },
-    { DepositEventKey: { deposit_id: outputReference("40", 0n) } },
-  ];
+  if (
+    !Number.isSafeInteger(transactionCount) ||
+    transactionCount < 1 ||
+    transactionCount > MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount
+  ) {
+    throw new Error(
+      `fixture transaction count must be in [1, ${MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount.toString()}]; got ${transactionCount.toString()}`,
+    );
+  }
+  const transactions = Array.from({ length: transactionCount }, (_, index) =>
+    canonicalTransaction(BigInt(index)),
+  ).sort((left, right) => left.txId.localeCompare(right.txId));
+  if (new Set(transactions.map(({ txId }) => txId)).size !== transactionCount) {
+    throw new Error("fixture transaction identities must be distinct");
+  }
+  const sources = transactions.map(transactionSource);
+  const sourceEvents: readonly SDK.EventKey[] = transactions.map(
+    ({ txId }) => ({ L2TransactionEventKey: { tx_id: txId } }),
+  );
   const transitionEntries = transitionTraceEntries(sourceEvents);
   const eventToStepEntries = eventToStepEntriesFor(sourceEvents);
-  const counts: SDK.DaPayloadCountsV2 = {
-    withdrawalCount: 1n,
-    forcedTransactionCount: 1n,
-    l2TransactionCount: 2n,
-    depositCount: 1n,
-    totalEventCount: 5n,
-    transitionStepCount: 5n,
+  const validationTraceEntries = sortedEntries(
+    sourceEvents.map((eventKey, index) => [
+      LucidData.to(eventKey as never, SDK.EventKeySchema as never),
+      acceptedTraceDescriptor(index + 1),
+    ]),
+  );
+  const counts: SDK.DaPayloadCounts = {
+    withdrawalCount: 0n,
+    forcedTransactionCount: 0n,
+    l2TransactionCount: BigInt(transactionCount),
+    depositCount: 0n,
+    totalEventCount: BigInt(transactionCount),
+    transitionStepCount: BigInt(transactionCount),
+    validationTraceCount: BigInt(transactionCount),
   };
   const placeholderHeader: Header = {
     ...fixtureHeaderBase(),
@@ -83,31 +176,33 @@ export const makePayloadFixture = async (): Promise<{
     depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   };
-  const payloadWithoutHash: SDK.DaPayloadV2 = {
-    version: SDK.DA_PAYLOAD_V2_VERSION,
+  const payloadWithoutHash: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: "00".repeat(28),
       header: placeholderHeader,
-      utxos: [
-        ["01", "aa"],
-        ["02", "bb"],
-      ],
-      transactions: [
-        [txIdA, "ca"],
-        [txIdB, "fe"],
-      ],
-      deposits: [[depositId, "dd"]],
-      withdrawals: [[withdrawalId, "ee"]],
-      forced_transactions: [[forcedTransactionId, "fa"]],
+      utxos: [],
+      transactions: sources.map((source) => [
+        source.tx_id,
+        LucidData.to(source as never, SDK.L2TransactionSourceSchema as never),
+      ]),
+      transaction_preimages: transactions.map(({ txId, txCbor }) => [
+        txId,
+        txCbor,
+      ]),
+      deposits: [],
+      withdrawals: [],
+      forced_transactions: [],
+      forced_transaction_preimages: [],
+      cek_program_material: [],
       transition_trace: transitionEntries,
       event_to_step: eventToStepEntries,
+      validation_traces: validationTraceEntries,
+      validation_trace_witnesses: [],
       counts,
     },
   };
-  const roots = await computeDaPayloadRoots(
-    payloadWithoutHash,
-    IDENTITY_TX_PROJECTOR,
-  );
+  const roots = await computeDaPayloadRoots(payloadWithoutHash);
   const header: Header = {
     ...fixtureHeaderBase(),
     utxosRoot: roots.utxosRoot,
@@ -117,15 +212,17 @@ export const makePayloadFixture = async (): Promise<{
     withdrawalsRoot: roots.withdrawalsRoot,
     transitionTraceRoot: roots.transitionTraceRoot,
     eventToStepRoot: roots.eventToStepRoot,
+    validationTracesRoot: roots.validationTracesRoot,
     withdrawalCount: counts.withdrawalCount,
     forcedTransactionCount: counts.forcedTransactionCount,
     l2TransactionCount: counts.l2TransactionCount,
     depositCount: counts.depositCount,
     totalEventCount: counts.totalEventCount,
     transitionStepCount: counts.transitionStepCount,
+    validationTraceCount: counts.validationTraceCount,
   };
   const headerHash = hashBlockHeader(header);
-  const payload: SDK.DaPayloadV2 = {
+  const payload: SDK.DaPayload = {
     ...payloadWithoutHash,
     block_body: {
       ...payloadWithoutHash.block_body,
@@ -133,9 +230,11 @@ export const makePayloadFixture = async (): Promise<{
       header,
     },
   };
+  const innerPayloadCbor = SDK.encodeDaPayload(payload);
   return {
     payload,
-    payloadCbor: SDK.encodeDaPayloadV2(payload),
+    innerPayloadCbor,
+    payloadCbor: await wrapDaPayload(innerPayloadCbor, { mode: "identity" }),
     header,
     headerHash,
   };
@@ -146,20 +245,6 @@ const sortedEntries = (
 ): SDK.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
-  );
-
-const outputReference = (
-  txByte: string,
-  outputIndex: bigint,
-): SDK.OutputReference => ({
-  transactionId: txByte.repeat(32),
-  outputIndex,
-});
-
-const outputReferenceCbor = (txByte: string, outputIndex: bigint): string =>
-  LucidData.to(
-    outputReference(txByte, outputIndex) as never,
-    SDK.OutputReference as never,
   );
 
 const eventPhase = (eventKey: SDK.EventKey): SDK.TransitionPhase => {
@@ -214,24 +299,30 @@ export const makeObservedNode = ({
   headerHash,
   daAttestation = SDK.NO_DA_ATTESTATION,
   depth = 10,
+  outRef = "ab".repeat(32) + "#0",
+  slot = 1,
+  blockHash = "cd".repeat(32),
   assetName = `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`,
   linkedListKey = headerHash,
 }: {
   readonly header: Header;
   readonly headerHash: string;
-  readonly daAttestation?: string;
+  readonly daAttestation?: SDK.DaAvailabilityStateQueueStatus;
   readonly depth?: number;
+  readonly outRef?: string;
+  readonly slot?: number;
+  readonly blockHash?: string;
   readonly assetName?: string;
   readonly linkedListKey?: string | "Empty";
 }): ObservedStateQueueNode => ({
-  outRef: "ab".repeat(32) + "#0",
+  outRef,
   assetName,
   linkedListKey,
   header,
   daAttestation,
   chainPoint: {
-    slot: 1,
-    blockHash: "cd".repeat(32),
+    slot,
+    blockHash,
     depth,
     providerSource: "fixture",
   },
@@ -246,6 +337,59 @@ export const writeJson = async (
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
   return path;
 };
+
+const minimalAuthenticatedDeployment = ({
+  prefix,
+  policyId,
+  spendingScriptHash,
+  spendingScriptAddress,
+}: {
+  readonly prefix: string;
+  readonly policyId: string;
+  readonly spendingScriptHash: string;
+  readonly spendingScriptAddress: string;
+}): MidgardAuthenticatedDeployment => ({
+  mint: {
+    key: `${prefix}Mint`,
+    purpose: "mint",
+    script: { type: "Native", script: "00" },
+    scriptHash: policyId,
+    refScriptOutRef: { txHash: "11".repeat(32), outputIndex: 0 },
+  },
+  spend: {
+    key: `${prefix}Spend`,
+    purpose: "spend",
+    script: { type: "Native", script: "00" },
+    scriptHash: spendingScriptHash,
+    refScriptOutRef: { txHash: "22".repeat(32), outputIndex: 0 },
+  },
+  policyId,
+  spendingScriptHash,
+  spendingScriptAddress,
+});
+
+export const minimalStateQueueYields =
+  (): MidgardNodeDeployment["stateQueueYields"] =>
+    Object.fromEntries(
+      (
+        [
+          ["commit", "stateQueueCommitWithdraw", "c1"],
+          ["unattestedTimeout", "stateQueueUnattestedTimeoutWithdraw", "c2"],
+          ["unavailableTimeout", "stateQueueUnavailableTimeoutWithdraw", "c3"],
+          ["fraudRemoval", "stateQueueFraudRemovalWithdraw", "c4"],
+          ["merge", "stateQueueMergeWithdraw", "c5"],
+        ] as const
+      ).map(([role, key, byte]) => [
+        role,
+        {
+          key,
+          purpose: "withdraw",
+          script: { type: "Native", script: "00" },
+          scriptHash: byte.repeat(28),
+          refScriptOutRef: { txHash: byte.repeat(32), outputIndex: 0 },
+        },
+      ]),
+    ) as MidgardNodeDeployment["stateQueueYields"];
 
 export const minimalConfig = ({
   dir,
@@ -269,6 +413,76 @@ export const minimalConfig = ({
   deploymentManifestRaw: "{}",
   deploymentManifest: {},
   contractDeploymentInfo: {},
+  availabilityChallenge: {
+    responseClasses: {
+      smallPayloadMaxBytes: 65_536,
+      smallResponseWindowMs: 3_600_000,
+      fullPayloadMaxBytes: 67_108_864,
+      fullResponseWindowMs: 172_800_000,
+    },
+    responseGeometry: {
+      chunkByteLength: 14_020,
+      trancheByteLength: 4 * 1024 * 1024,
+      maxTrancheCount: 16,
+    },
+    daBondLovelace: 10_000_000_000,
+    challengerBondLovelace: 10_000_000_000,
+    maxOpenFeeLovelace: 500_000,
+    maxPublicationFeeLovelace: 500_000,
+    maxSettlementFeeLovelace: 500_000,
+    maxCloseFeeLovelace: 1_000_000,
+    maxTimeoutFeeLovelace: 1_200_000,
+    bondOwnerCredential: "76".repeat(28),
+  },
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+  midgardNodeDeployment: {
+    hubOraclePolicyId: "99".repeat(28),
+    correctionLockAddress: "addr_test1correctionlock",
+    hubOracle: minimalAuthenticatedDeployment({
+      prefix: "hubOracle",
+      policyId: "99".repeat(28),
+      spendingScriptHash: "97".repeat(28),
+      spendingScriptAddress: "addr_test1huboracle",
+    }),
+    availabilityChallenge: minimalAuthenticatedDeployment({
+      prefix: "availabilityChallenge",
+      policyId: "96".repeat(28),
+      spendingScriptHash: "95".repeat(28),
+      spendingScriptAddress: "addr_test1availability",
+    }),
+    fraudProof: minimalAuthenticatedDeployment({
+      prefix: "fraudProof",
+      policyId: "98".repeat(28),
+      spendingScriptHash: "97".repeat(28),
+      spendingScriptAddress: "addr_test1fraudproof",
+    }),
+    daAttestation: minimalAuthenticatedDeployment({
+      prefix: "daAttestation",
+      policyId: "33".repeat(28),
+      spendingScriptHash: "66".repeat(28),
+      spendingScriptAddress: "addr_test1daattestation",
+    }),
+    daParamsGovernor: minimalAuthenticatedDeployment({
+      prefix: "daParamsGovernor",
+      policyId: "55".repeat(28),
+      spendingScriptHash: "77".repeat(28),
+      spendingScriptAddress: "addr_test1daparams",
+    }),
+    stateQueue: minimalAuthenticatedDeployment({
+      prefix: "stateQueue",
+      policyId: "44".repeat(28),
+      spendingScriptHash: "88".repeat(28),
+      spendingScriptAddress: "addr_test1statequeue",
+    }),
+    stateQueueYields: minimalStateQueueYields(),
+  },
+  l1Source: {
+    sourceMode: "local_node",
+    authorityNodeId: "fixture-node",
+    chainSyncProviderUrl: "chain-sync:fixture:/tmp/state-queue.json",
+    chainSyncCursorPath: "/tmp/state-queue.chain-sync-cursor.json",
+    queryProviderUrls: ["fixture:/tmp/state-queue.json"],
+  },
   cardanoProviderUrls: ["fixture:/tmp/state-queue.json"],
   finalityDepth: 2,
   daTransport: {
@@ -331,6 +545,10 @@ export const minimalConfig = ({
   daParamsGovernorAddress: "addr_test1daparams",
   stateQueuePolicyId: "44".repeat(28),
   stateQueueAddress: "addr_test1statequeue",
+  hubOraclePolicyId: "99".repeat(28),
+  correctionLockAddress: "addr_test1correctionlock",
+  fraudProofPolicyId: "98".repeat(28),
+  fraudProofAddress: "addr_test1fraudproof",
   peerRequestTimeoutMs: 1000,
   peerReplayWindowMs: 300_000,
   peerMaxBodyBytes: 1_048_576,
@@ -353,7 +571,7 @@ export const payloadSourceFromBytes = (
 ): DaPayloadSource => ({
   fetchPayloadCandidates: async () => ({
     ok: true,
-    candidates: [{ sourcePeerId, payloadCbor }],
+    candidates: [{ sourcePeerId, payloadCbor, payloadSchemaVersion: 1 }],
     attempts: [],
   }),
 });

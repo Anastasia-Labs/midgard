@@ -1,12 +1,30 @@
-import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
+/**
+ * `double-spend` step-03 submitter — opens tx1's spend-input field and selects
+ * the doubly-spent input.
+ *
+ * **Re-derived onto the §8.8 door by #604, and this step lost a whole mechanism
+ * to it.** The redeemer used to carry `tx1_spend_inputs_ref_input_index`, an
+ * index into a *bespoke* published witness UTxO this builder created and
+ * referenced (`ensureSpendInputsReferenceWitness`). §8's carriage ladder
+ * subsumes that: tier 2 is the door's own `RawUtxo` arm, carried inside the
+ * opening and content-addressed by §8.7 rather than named by out-ref, and tier 1
+ * needs no publication at all. So the family-specific publication is gone and
+ * `tx1_spend_inputs_opening` replaces its index.
+ *
+ * The thread now carries `verified_tx1_id`/`verified_tx2_id` — the §2.5 anchors
+ * — rather than the two field-0 commitments, which is why this builder takes
+ * tx1's compact structure.
+ */
+
 import {
   DoubleSpendStep03Datum,
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireOwnSpendPurpose,
-  requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
@@ -18,7 +36,14 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
+import {
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "./field-opening.js";
 import { parseHex } from "./json-file.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -32,7 +57,6 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import {
-  ensureSpendInputsReferenceWitness,
   excludeUtxo,
   spendInputsWitnessFromCbors,
 } from "./spend-input-witness.js";
@@ -41,6 +65,12 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -51,6 +81,11 @@ export type SubmitStep03CliConfig = SubmitProviderConfig & {
   readonly walletPrivateKeyEnv?: string;
   readonly threadOutRef: string;
   readonly tx1InputsPath: string;
+  /**
+   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — **tx1's** compact structure. New
+   * in #604: the door authenticates its field 0 against `verified_tx1_id`.
+   */
+  readonly nativeTxCompactPath: string;
   readonly doubleSpentInputIndex: string;
   readonly awaitConfirmation?: boolean;
 };
@@ -68,14 +103,16 @@ export type SubmitStep03Result = {
   readonly computationThreadUnit: string;
   readonly thirdStepAddress: string;
   readonly fourthStepAddress: string;
+  /** The two §2.5 anchors the thread carried. */
+  readonly verifiedTx1Id: string;
+  readonly verifiedTx2Id: string;
+  /** §4's flat commitment for tx1's field 0 — re-derived here and by the door. */
   readonly verifiedTx1SpendInputsHash: string;
-  readonly verifiedTx2SpendInputsHash: string;
   readonly doubleSpentInputIndex: number;
   readonly doubleSpentInput: MidgardTxInput;
   readonly doubleSpentInputCbor: string;
-  readonly tx1SpendInputsWitnessOutRef: string;
-  readonly tx1SpendInputsWitnessCreated: boolean;
-  readonly tx1SpendInputsRefInputIndex: number;
+  /** Which §8 tier tx1's field-0 preimage travelled under. */
+  readonly tx1SpendInputsCarriageTier: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -84,7 +121,6 @@ export type SubmitStep03Result = {
 type Step03Layout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
-  readonly tx1SpendInputsRefInputIndex: bigint;
 };
 
 export const parseSpendInputCbors = (
@@ -100,11 +136,6 @@ export const parseSpendInputCbors = (
     parseHex(entry, `${label}[${index.toString()}]`),
   );
 };
-
-export const hashSpendInputCbors = (inputCbors: readonly string[]): string =>
-  computeHash32(
-    encodeCbor(inputCbors.map((inputCbor) => Buffer.from(inputCbor, "hex"))),
-  ).toString("hex");
 
 type Step03DatumWithState = DoubleSpendStep03Datum & {
   readonly data: NonNullable<DoubleSpendStep03Datum["data"]>;
@@ -127,7 +158,9 @@ const requireStep03Datum = ({
     );
   }
   if (datum.data === null) {
-    throw new Error("Step 03 input datum must carry verified tx input hashes.");
+    throw new Error(
+      "Step 03 input datum must carry both disputed transactions' §2.5 anchors.",
+    );
   }
   return datum as Step03DatumWithState;
 };
@@ -140,7 +173,14 @@ export const submitStep03 = async ({
   signer,
   threadOutRef,
   tx1SpendInputCbors,
+  nativeTxCompactCbor,
   doubleSpentInputIndex,
+  publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  certificatePolicyId,
+  referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -150,7 +190,28 @@ export const submitStep03 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly tx1SpendInputCbors: readonly string[];
+  /** tx1's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
   readonly doubleSpentInputIndex: bigint;
+  /**
+   * Force §8 tier 2 for tx1's field-0 preimage: publish the bytes as raw
+   * carriage and reference them, instead of carrying them in this step's own
+   * redeemer. Programmatic only, mirroring `submitInputNoIdxStep02` — it is
+   * the one demotion §8 leaves open, and it changes which transaction pays,
+   * never what the door authenticates. Below the tier-1 bound the ladder
+   * picks `Inline` on its own, which is what capped this family's admissible
+   * spend-input cardinality at the L1 byte frontier (#612).
+   */
+  readonly publishCarriage?: boolean;
+  /** Pre-observed tier-2/3 publications for journaled workflow use. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Pre-minted §8.6 certificate, required when the plan selects tier 3. */
+  readonly certificateUtxo?: UTxO;
+  readonly certificatePolicyId?: string;
+  /** The mandatory published step-03 reference script. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Production workflow seam for carriage and proof-step submissions. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep03Result> => {
   const { doubleSpendCategory, contracts } =
@@ -180,12 +241,21 @@ export const submitStep03 = async ({
     categoryLabel: "double-spend",
   });
   const inputDatum = requireStep03Datum({ threadUtxo, signer });
-  const tx1SpendInputsHash = hashSpendInputCbors(tx1SpendInputCbors);
-  if (tx1SpendInputsHash !== inputDatum.data.verified_tx1_spend_inputs_hash) {
-    throw new Error(
-      `--tx1-inputs hash mismatch: provided preimage hashes to ${tx1SpendInputsHash}, expected ${inputDatum.data.verified_tx1_spend_inputs_hash}.`,
-    );
-  }
+  // The door's own checks, run before a transaction is built: tx1's compact
+  // bytes re-derive to the anchor the thread carries, and these items are the
+  // §5.1 preimage that transaction commits at field 0.
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
+    anchorTxId: inputDatum.data.verified_tx1_id,
+    nativeTxCompactCbor,
+    itemCbors: tx1SpendInputCbors.map((inputCbor) =>
+      Buffer.from(inputCbor, "hex"),
+    ),
+    owner: signer.paymentKeyHash,
+    publish: publishCarriage,
+    label: "Double-spend step 03 tx1 spend-inputs",
+  });
+  const tx1SpendInputsHash = planned.commitment;
   if (doubleSpentInputIndex >= BigInt(tx1SpendInputCbors.length)) {
     throw new Error(
       `doubleSpentInputIndex ${doubleSpentInputIndex.toString()} is out of bounds for ${tx1SpendInputCbors.length.toString()} tx1 inputs.`,
@@ -204,33 +274,46 @@ export const submitStep03 = async ({
     tx1SpendInputsWitness.inputs[Number(doubleSpentInputIndex)]!;
 
   signer.selectWallet(lucid);
-  const tx1SpendInputsReferenceWitness =
-    await ensureSpendInputsReferenceWitness({
+  // §8's ladder decides whether anything has to exist on-chain before this
+  // transaction can reference it. Tier 1 publishes nothing and the list is empty.
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
       lucid,
-      address: signer.address,
-      paymentKeyHash: signer.paymentKeyHash,
-      witness: tx1SpendInputsWitness,
-      awaitConfirmation,
-    });
-  const referenceInputs = [tx1SpendInputsReferenceWitness.utxo];
-  const walletUtxosWithoutWitness = excludeUtxo(
-    await lucid.wallet().getUtxos(),
-    tx1SpendInputsReferenceWitness.utxo,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Double-spend step 03 tx1 spend-inputs",
+      preSubmitBoundary,
+    }));
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
+    script: contracts.doubleSpend.steps[2].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "double-spend step 03 validator",
+  });
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...stepScriptCarriage.referenceInputs,
+  ];
+  const walletUtxos = await lucid.wallet().getUtxos();
+  const feeInput = selectFeeInput(
+    carriageUtxos.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      walletUtxos,
+    ),
   );
-  const feeCandidates =
-    tx1SpendInputsReferenceWitness.spentFeeInput === undefined
-      ? walletUtxosWithoutWitness
-      : excludeUtxo(
-          walletUtxosWithoutWitness,
-          tx1SpendInputsReferenceWitness.spentFeeInput,
-        );
-  const feeInput = selectFeeInput(feeCandidates);
+  const tx1SpendInputsOpening: FieldOpening = faultProofFieldOpening({
+    planned,
+    referenceInputs,
+    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
+    label: "Double-spend step 03 tx1 spend-inputs",
+  });
   const step04Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        verified_tx2_spend_inputs_hash:
-          inputDatum.data.verified_tx2_spend_inputs_hash,
+        verified_tx2_id: inputDatum.data.verified_tx2_id,
         double_spent_input: doubleSpentInput,
       },
     },
@@ -251,11 +334,6 @@ export const submitStep03 = async ({
         step04OutputMatches,
         "double-spend step 03 output",
       ),
-      tx1SpendInputsRefInputIndex: requireReferenceInputIndex(
-        ctx,
-        tx1SpendInputsReferenceWitness.utxo,
-        "double-spend step 03 tx1 spend-input witness",
-      ),
     };
     resolvedLayout = layout;
     return Data.to(
@@ -264,8 +342,7 @@ export const submitStep03 = async ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            tx1_spend_inputs_ref_input_index:
-              layout.tx1SpendInputsRefInputIndex,
+            tx1_spend_inputs_opening: tx1SpendInputsOpening,
             double_spent_input_index: doubleSpentInputIndex,
           },
         ],
@@ -278,12 +355,18 @@ export const submitStep03 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const txWithInputs = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .pay.ToContract(
+    .collectFrom([threadUtxo], redeemer);
+  // Tier 1 references nothing, and `readFrom([])` is an error rather than a
+  // no-op, so the branch is on whether §8 produced carriage at all.
+  const tx = (
+    referenceInputs.length === 0
+      ? txWithInputs
+      : txWithInputs.readFrom([...referenceInputs])
+  ).pay
+    .ToContract(
       contracts.doubleSpend.steps[3].spendingScriptAddress,
       {
         kind: "inline",
@@ -291,15 +374,44 @@ export const submitStep03 = async ({
       },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.doubleSpend.steps[2].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = stepScriptCarriage.attach(tx);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({
+    localUPLCEval: true,
+    // With carriage published at the prover's own address, balancing must not
+    // pick those UTxOs back up as wallet inputs while the redeemer references
+    // them — same guard as `submitInputNoIdxStep02`.
+    ...(referenceInputs.length === 0
+      ? {}
+      : {
+          presetWalletInputs: referenceInputs.reduce<readonly UTxO[]>(
+            (candidates, utxo) => excludeUtxo(candidates, utxo),
+            walletUtxos,
+          ) as UTxO[],
+        }),
+  });
   if (resolvedLayout === undefined) {
     throw new Error("BuildTxWithRedeemer did not resolve step 03 layout.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: [
+      workflowReferenceScript({
+        role: "V1 fraud-proof double-spend step-03",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.doubleSpend.steps[2].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -317,16 +429,13 @@ export const submitStep03 = async ({
     computationThreadUnit: threadToken.unit,
     thirdStepAddress: contracts.doubleSpend.steps[2].spendingScriptAddress,
     fourthStepAddress: contracts.doubleSpend.steps[3].spendingScriptAddress,
-    verifiedTx1SpendInputsHash: inputDatum.data.verified_tx1_spend_inputs_hash,
-    verifiedTx2SpendInputsHash: inputDatum.data.verified_tx2_spend_inputs_hash,
+    verifiedTx1Id: inputDatum.data.verified_tx1_id,
+    verifiedTx2Id: inputDatum.data.verified_tx2_id,
+    verifiedTx1SpendInputsHash: tx1SpendInputsHash,
     doubleSpentInputIndex: Number(doubleSpentInputIndex),
     doubleSpentInput,
     doubleSpentInputCbor,
-    tx1SpendInputsWitnessOutRef: tx1SpendInputsReferenceWitness.outRef,
-    tx1SpendInputsWitnessCreated: tx1SpendInputsReferenceWitness.created,
-    tx1SpendInputsRefInputIndex: Number(
-      resolvedLayout.tx1SpendInputsRefInputIndex,
-    ),
+    tx1SpendInputsCarriageTier: planned.plan.tier,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     awaitedConfirmation: awaitConfirmation,
@@ -336,12 +445,17 @@ export const submitStep03 = async ({
 export const submitStep03FromFiles = async (
   config: SubmitStep03CliConfig,
 ): Promise<SubmitStep03Result> => {
-  const [blueprint, deploymentInfo, tx1InputsJson, lucid] = await Promise.all([
-    readJsonFile(config.blueprintPath),
-    readJsonFile(config.deploymentInfoPath),
-    readJsonFile(config.tx1InputsPath),
-    makeLucidForSubmit(config),
-  ]);
+  rejectRetiredUnauthenticatedSubmissionRoute({
+    command: "submit-step-03",
+  });
+  const [blueprint, deploymentInfo, tx1InputsJson, nativeTxCompactJson, lucid] =
+    await Promise.all([
+      readJsonFile(config.blueprintPath),
+      readJsonFile(config.deploymentInfoPath),
+      readJsonFile(config.tx1InputsPath),
+      readJsonFile(config.nativeTxCompactPath),
+      makeLucidForSubmit(config),
+    ]);
   const tx1SpendInputCbors = parseSpendInputCbors(
     tx1InputsJson,
     "--tx1-inputs",
@@ -355,6 +469,10 @@ export const submitStep03FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     tx1SpendInputCbors,
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
+      nativeTxCompactJson,
+      "--native-tx-compact",
+    ),
     doubleSpentInputIndex: parseDoubleSpentInputIndex({
       value: config.doubleSpentInputIndex,
       inputCount: tx1SpendInputCbors.length,

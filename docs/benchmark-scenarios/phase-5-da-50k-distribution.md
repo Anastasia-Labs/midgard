@@ -1,12 +1,19 @@
 # Phase 5 exact-50k DA publication distribution gate
 
-**Status:** Active V1 acceptance procedure. Passing it does not authorize a
-larger payload version or establish permissionless DA.
+> **Historical, not runnable under canonical V1:** The checked envelope,
+> measurement, runner, and package commands described below were invalidated
+> during canonical V1 consolidation. Regenerating the newest V1 payload shape
+> from the same 50,000 canonical transactions produced a 71,049,618-byte inner
+> payload, above the retained 67,108,864-byte DA bound. The obsolete V3/V2
+> artifact was removed rather than relabeled, incompletely regenerated, or
+> accepted through a compatibility path. A replacement distribution gate is
+> deferred to the mandatory capability-floor/proof-completion follow-up, which
+> may use bounded chunking or proof continuations without weakening admission.
 
 **Last reviewed:** 2026-07-22
 
 This is the formal closeout command for the Phase 5 `<=2 s` threshold-ACK p99
-criterion. It measures 100 semantically independent 50,000-transaction V3
+criterion. It measures 100 semantically independent 50,000-transaction V1
 envelopes over one long-lived producer transport and three long-lived,
 separate committee processes. The report verifier recomputes nearest-rank
 p50/p95/p99/max from the raw samples. A p99 above 2,000 ms is retained as a
@@ -131,7 +138,7 @@ the aggregate hashes around a false transaction ID therefore cannot make
 forged evidence pass. The raw corpus is also bound through a matching source
 binding, corpus manifest, and verified generation result; a suite manifest
 cannot self-attest a synthetic corpus. A Phase 1 source uses
-`midgard-phase1-live-corpus-binding-v2`. The retained 5M suite instead uses the
+`midgard-phase1-live-corpus-binding-v1`. The retained 5M suite instead uses the
 strict `midgard-phase5-historical-corpus-binding-v1`, which cryptographically
 anchors the exact Phase 1 corpus/index/manifest/verification/binding/fanout
 artifacts, proves the byte-identical retained prefix, and marks itself

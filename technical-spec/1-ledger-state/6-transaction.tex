@@ -5,20 +5,55 @@
 \section{Transaction}
 \label{h:transaction}
 
-A transaction set in Midgard is a finite map from transaction ID to accepted L2 transaction request.
-The ID is the Blake2b-256 hash of the transaction body; equivalently, the map key must match the transaction's \code{body} field.
-The witness-set hash and validity tag are authenticated by the block's \code{transactions\_root} through the map value, but they are not part of the transaction ID:
+A canonical V1 transaction source set is a finite map from transaction ID to the
+authenticated L2 transaction proof source.  The ID is the Blake2b-256 hash of
+the compact transaction body; equivalently, the map key must match the
+\code{tx\_id} field in the source value.  The witness-set hash and field lengths
+are authenticated by the block's \code{transactions\_root} through that value,
+but they are not part of the transaction ID:
 \begin{align*}
-    \T{TxSet} &\coloneq \T{Map(TxId, MidgardTxCompact)} \\
+    \T{TxSetV1} &\coloneq \T{Map(TxId, L2TransactionSourceV1)} \\
       &\coloneq \Bigl\{
-        (k_i: \T{TxId}, v_i: \T{MidgardTxCompact}) \mid
-        k_i \equiv v_i.\T{body} ,\;
+        (k_i: \T{TxId}, v_i: \T{L2TransactionSourceV1}) \mid
+        k_i \equiv v_i.\T{tx\_id} ,\;
         \forall i \neq j.\; k_i \neq k_j
     \Bigr\}
 \end{align*}
 
+The exact source value is:
+\begin{align*}
+    \T{L2TransactionSourceV1} \coloneq \left\{
+      \begin{array}{ll}
+        \T{tx\_id} : & \T{TxId} \\
+        \T{source} : & \T{NativeTxProofSourceV1}
+      \end{array} \right\} \\
+    \T{NativeTxProofSourceV1} \coloneq \left\{
+      \begin{array}{ll}
+        \T{compact\_cbor} : & \T{ByteArray} \\
+        \T{witness\_set\_compact\_cbor} : & \T{ByteArray} \\
+        \T{field\_preimage\_lengths\_cbor} : & \T{ByteArray}
+      \end{array} \right\}
+\end{align*}
+
+\T{MidgardTxProofCommitmentV1} is the domain-separated hash
+\(\mathcal{H}_{\T{Blake2b-256}}(\T{"MidgardNativeTxProofSourceV1"}
+\mathbin{\Vert} \T{Cbor(1)} \mathbin{\Vert}
+\T{Cbor(source)})\), matching the production V1 encoder.  The committed source
+value does not carry a copy of it.  Its only consumer, the validation claim, binds
+the initial machine state's commitment to the value it derives from
+\T{NativeTxProofSourceV1} at the point of use, so the committed leaf holds no copy
+to keep in agreement with its own derivation.  This is a statement about the
+committed leaf alone: the L1 transaction-order payload and its field receipts still
+carry the commitment explicitly, because there it names the material a receipt is
+filed under while that material is still being published piecewise, and the order
+event checks the carried value against the same derivation once the source is
+complete.
+
 The \code{transactions\_root} is the source root for normal L2 transaction requests.
 Forced L1 transaction orders are committed separately in \code{forced\_transactions\_root}, keyed by their L1 order identity.
+The normal root uses the \code{TransactionsV1RootDomain} counted-root domain,
+while the forced root uses the distinct
+\code{ForcedTransactionsV1RootDomain} domain.
 Only accepted normal L2 transaction requests may appear in \code{transactions\_root}.
 Invalid normal L2 transaction requests are excluded before commitment; they do not become no-op source events in the transition trace.
 If two accepted normal L2 transactions share the same \code{TxId}, the block body is not canonical because \code{transactions\_root} is keyed by \code{TxId}; production block construction fails closed rather than choosing one silently.
@@ -27,8 +62,31 @@ An L2 transaction request in a Midgard block is an endogenous event.
 Its corresponding utxo set transition is validated purely based on the information contained in the utxo set.
 This contrasts with deposit and withdrawal events, which create and spend utxos (respectively) based on information observed outside the L2 ledger.
 
-A transaction can only spend a utxo if it satisfies the conditions of the spending validator corresponding to the utxo's payment address, and it can only mint and burn tokens by satisfying the conditions of the corresponding minting policies.
-Of course, users can inject information into the utxo set via redeemer arguments and output datums set in transactions, but those are still subject to the transaction scripts' conditions.
+\paragraph{Canonical V1 consensus profile.}
+The transaction structures below describe the canonical protocol-version (1),
+native-transaction-version (1) surface. Canonical V1 enables public-key,
+native-script, PlutusV3, and MidgardV1 authorization together with mint and
+burn, reference inputs, script witnesses, redeemers, observers, reference
+scripts, script payment credentials, and protected outputs. These features are
+part of the normative V1 profile rather than dormant codec fields. Unknown
+versions, languages, purposes, or encodings fail closed.
+
+Canonical V1 has no independent (8{,}192)-byte whole-transaction ceiling.
+Each canonical transaction aggregate preimage is bounded independently at
+(32{,}768) bytes and is authenticated and revealed in chunks of at most
+(4{,}095) bytes. A ledger-output preimage is at most (16{,}384) bytes, and
+the canonical CBOR encoding of an output value is at most (5{,}000) bytes.
+Reference scripts are supported: a consensus program envelope is at most
+(50) bytes and commits to at most (1{,}597{,}819) canonical CEK material
+nodes and (67{,}108{,}418) structural material bytes, with blob chunks of at
+most (4{,}095) bytes. Wrapping all independently bounded transaction
+preimages in the canonical encoding gives the exact derived full-transaction
+maximum of (295{,}041) bytes. None of these limits is operator-tunable policy.
+
+Script-controlled spends and mint or burn are admitted only when the
+corresponding scripts and policies authorize them. Their effects participate
+in the mint-aware value-preservation equation in
+\cref{h:custom-midgard-ledger-rules}.
 
 \subsection{Cardano transaction types}
 \label{h:cardano-transaction-types}
@@ -96,9 +154,14 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       For this reason, staking and governance actions are prohibited in Midgard L2 transactions.
     \item[No pre-Conway features.] Midgard does not need to maintain backwards compatibility with pre-Conway eras.
       Midgard deposits and transactions will be prohibited from using bootstrap addresses, and Shelley addresses with Plutus versions older than Plutus V3.
-      Public key hash credentials, native scripts, and Plutus scripts at or above V3 are allowed.
-    \item[No transaction metadata.] Midgard prohibits using metadata in L2 transactions but allows users to set the \code{auxiliary\_data\_hash} to any arbitrary hash, which Midgard's ledger's rules do not require to match the empty transaction metadata field.
-      This preserves users' ability to pin metadata content via a hash in Midgard's ledger, but they are expected to store the actual metadata offchain.
+      Canonical V1 admits public-key and native-script credentials together
+      with PlutusV3 and MidgardV1 programs and script payment credentials;
+      unknown or pre-Conway language versions fail closed.
+    \item[No transaction metadata.] Midgard prohibits metadata in L2
+      transactions. Canonical V1 therefore requires
+      \code{auxiliary\_data\_hash} to equal the empty-null root; a non-empty
+      hash fails closed because no authenticated auxiliary-data preimage is
+      carried by the transaction.
     \item[No datum hashes in outputs.] Midgard output datums are either absent or inline.
       Datum-hash outputs are invalid in Midgard L2 transactions and deposits, and transactions do not carry a datum-witness bucket.
       This avoids maintaining a datum-hash to datum witness map and makes each UTxO's script-visible datum fully determined by the UTxO itself.

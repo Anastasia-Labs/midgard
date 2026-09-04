@@ -1,15 +1,27 @@
+/**
+ * `double-spend` step-04 submitter — opens tx2's spend-input field and concludes
+ * the proof.
+ *
+ * **Re-derived onto the §8.8 door by #604.** Like step-03, this step lost its
+ * bespoke published witness UTxO: `tx2_spend_inputs_ref_input_index` is replaced
+ * by `tx2_spend_inputs_opening`, and §8's carriage ladder decides whether
+ * anything is published at all. Thread state carries `verified_tx2_id`, the §2.5
+ * anchor, rather than tx2's field-0 commitment.
+ */
+
 import {
   DoubleSpendStep04Datum,
   DoubleSpendStep04SpendRedeemer,
+  type FieldOpening,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
-  requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
@@ -25,6 +37,13 @@ import {
 
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "./field-opening.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
@@ -37,7 +56,6 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import {
-  ensureSpendInputsReferenceWitness,
   excludeUtxo,
   spendInputsWitnessFromCbors,
 } from "./spend-input-witness.js";
@@ -45,8 +63,18 @@ import {
   requireComputationThreadToken,
   selectFeeInput,
 } from "./submit-step-01.js";
-import { hashSpendInputCbors, parseSpendInputCbors } from "./submit-step-03.js";
+import { parseSpendInputCbors } from "./submit-step-03.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
+} from "./witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitStep04CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -57,6 +85,11 @@ export type SubmitStep04CliConfig = SubmitProviderConfig & {
   readonly walletPrivateKeyEnv?: string;
   readonly threadOutRef: string;
   readonly tx2InputsPath: string;
+  /**
+   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — **tx2's** compact structure. New
+   * in #604: the door authenticates its field 0 against `verified_tx2_id`.
+   */
+  readonly nativeTxCompactPath: string;
   readonly doubleSpentInputIndex: string;
   readonly awaitConfirmation?: boolean;
 };
@@ -77,13 +110,15 @@ export type SubmitStep04Result = {
   readonly fraudProofUnit: string;
   readonly fraudProofAddress: string;
   readonly fourthStepAddress: string;
+  /** The §2.5 anchor the thread carried for tx2. */
+  readonly verifiedTx2Id: string;
+  /** §4's flat commitment for tx2's field 0 — re-derived here and by the door. */
   readonly verifiedTx2SpendInputsHash: string;
   readonly doubleSpentInputIndex: number;
   readonly doubleSpentInput: MidgardTxInput;
   readonly doubleSpentInputCbor: string;
-  readonly tx2SpendInputsWitnessOutRef: string;
-  readonly tx2SpendInputsWitnessCreated: boolean;
-  readonly tx2SpendInputsRefInputIndex: number;
+  /** Which §8 tier tx2's field-0 preimage travelled under. */
+  readonly tx2SpendInputsCarriageTier: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
@@ -98,7 +133,6 @@ type Step04DatumWithState = DoubleSpendStep04Datum & {
 type Step04ResolvedLayout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
-  readonly tx2SpendInputsRefInputIndex: bigint;
   readonly computationThreadMintRedeemerIndex: bigint;
   readonly fraudProofMintRedeemerIndex: bigint;
 };
@@ -157,7 +191,7 @@ const makeStep04SpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
-  tx2SpendInputsReferenceInput,
+  tx2SpendInputsOpening,
   doubleSpentInputIndex,
   onLayout,
 }: {
@@ -166,7 +200,7 @@ const makeStep04SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly tx2SpendInputsReferenceInput: UTxO;
+  readonly tx2SpendInputsOpening: FieldOpening;
   readonly doubleSpentInputIndex: bigint;
   readonly onLayout: (layout: Step04SpendLayout) => void;
 }): BuildTxWithRedeemer =>
@@ -192,11 +226,6 @@ const makeStep04SpendRedeemer = ({
         fraudProofPolicyId,
         "step 04 fraud-proof",
       ),
-      tx2SpendInputsRefInputIndex: requireReferenceInputIndex(
-        ctx,
-        tx2SpendInputsReferenceInput,
-        "step 04 tx2 spend-input witness",
-      ),
     };
     onLayout(layout);
     return Data.to(
@@ -206,8 +235,7 @@ const makeStep04SpendRedeemer = ({
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
-            tx2_spend_inputs_ref_input_index:
-              layout.tx2SpendInputsRefInputIndex,
+            tx2_spend_inputs_opening: tx2SpendInputsOpening,
             double_spent_input_index: doubleSpentInputIndex,
           },
         ],
@@ -274,7 +302,15 @@ export const submitStep04 = async ({
   signer,
   threadOutRef,
   tx2SpendInputCbors,
+  nativeTxCompactCbor,
   doubleSpentInputIndex,
+  publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  certificatePolicyId,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -284,7 +320,27 @@ export const submitStep04 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly tx2SpendInputCbors: readonly string[];
+  /** tx2's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
   readonly doubleSpentInputIndex: bigint;
+  /**
+   * Force §8 tier 2 for tx2's field-0 preimage; see `submitStep03`'s
+   * same-named option. Programmatic only — the retired CLI route never
+   * sets it, and below the tier-1 bound the ladder would otherwise carry
+   * the preimage inline in this step's redeemer (#612).
+   */
+  readonly publishCarriage?: boolean;
+  /** Pre-observed tier-2/3 publications for journaled workflow use. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Pre-minted §8.6 certificate, required when the plan selects tier 3. */
+  readonly certificateUtxo?: UTxO;
+  readonly certificatePolicyId?: string;
+  /** The mandatory published step-04 reference script. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Required published witness reference scripts for this transaction. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  /** Production workflow seam for carriage and proof-step submissions. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep04Result> => {
   const { doubleSpendCategory, contracts } =
@@ -315,12 +371,19 @@ export const submitStep04 = async ({
     categoryLabel: "double-spend",
   });
   const inputDatum = requireStep04Datum({ threadUtxo, signer });
-  const tx2SpendInputsHash = hashSpendInputCbors(tx2SpendInputCbors);
-  if (tx2SpendInputsHash !== inputDatum.data.verified_tx2_spend_inputs_hash) {
-    throw new Error(
-      `--tx2-inputs hash mismatch: provided preimage hashes to ${tx2SpendInputsHash}, expected ${inputDatum.data.verified_tx2_spend_inputs_hash}.`,
-    );
-  }
+  // The door's own checks, run before a transaction is built.
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
+    anchorTxId: inputDatum.data.verified_tx2_id,
+    nativeTxCompactCbor,
+    itemCbors: tx2SpendInputCbors.map((inputCbor) =>
+      Buffer.from(inputCbor, "hex"),
+    ),
+    owner: signer.paymentKeyHash,
+    publish: publishCarriage,
+    label: "Double-spend step 04 tx2 spend-inputs",
+  });
+  const tx2SpendInputsHash = planned.commitment;
   if (doubleSpentInputIndex >= BigInt(tx2SpendInputCbors.length)) {
     throw new Error(
       `doubleSpentInputIndex ${doubleSpentInputIndex.toString()} is out of bounds for ${tx2SpendInputCbors.length.toString()} tx2 inputs.`,
@@ -346,27 +409,51 @@ export const submitStep04 = async ({
   }
 
   signer.selectWallet(lucid);
-  const tx2SpendInputsReferenceWitness =
-    await ensureSpendInputsReferenceWitness({
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
       lucid,
-      address: signer.address,
-      paymentKeyHash: signer.paymentKeyHash,
-      witness: tx2SpendInputsWitness,
-      awaitConfirmation,
-    });
-  const referenceInputs = [tx2SpendInputsReferenceWitness.utxo];
-  const walletUtxosWithoutWitness = excludeUtxo(
-    await lucid.wallet().getUtxos(),
-    tx2SpendInputsReferenceWitness.utxo,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Double-spend step 04 tx2 spend-inputs",
+      preSubmitBoundary,
+    }));
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
+    script: contracts.doubleSpend.steps[3].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "double-spend step 04 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "double-spend step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "double-spend step 04 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+  const walletUtxos = await lucid.wallet().getUtxos();
+  const feeInput = selectFeeInput(
+    carriageUtxos.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      walletUtxos,
+    ),
   );
-  const feeCandidates =
-    tx2SpendInputsReferenceWitness.spentFeeInput === undefined
-      ? walletUtxosWithoutWitness
-      : excludeUtxo(
-          walletUtxosWithoutWitness,
-          tx2SpendInputsReferenceWitness.spentFeeInput,
-        );
-  const feeInput = selectFeeInput(feeCandidates);
+  const tx2SpendInputsOpening: FieldOpening = faultProofFieldOpening({
+    planned,
+    referenceInputs,
+    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
+    label: "Double-spend step 04 tx2 spend-inputs",
+  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -388,8 +475,8 @@ export const submitStep04 = async ({
     },
   );
 
-  const makeStep04Tx = (): TxBuilder =>
-    lucid
+  const makeStep04Tx = (): TxBuilder => {
+    const withInputs = lucid
       .newTx()
       .collectFrom([feeInput])
       .collectFrom(
@@ -400,14 +487,20 @@ export const submitStep04 = async ({
           fraudProofPolicyId: contracts.fraudProof.policyId,
           fraudProofUnit,
           fraudProofDatum,
-          tx2SpendInputsReferenceInput: tx2SpendInputsReferenceWitness.utxo,
+          tx2SpendInputsOpening,
           doubleSpentInputIndex,
           onLayout: (layout) => {
             spendLayout = layout;
           },
         }),
-      )
-      .readFrom(referenceInputs)
+      );
+    // Tier 1 references nothing, and `readFrom([])` is an error rather than a
+    // no-op, so the branch is on whether §8 produced carriage at all.
+    const chained = (
+      referenceInputs.length === 0
+        ? withInputs
+        : withInputs.readFrom([...referenceInputs])
+    )
       .mintAssets({ [threadToken.unit]: -1n }, computationThreadSuccessRedeemer)
       .mintAssets(
         { [fraudProofUnit]: 1n },
@@ -425,12 +518,26 @@ export const submitStep04 = async ({
         { kind: "inline", value: fraudProofDatum },
         fraudProofAssets,
       )
-      .addSignerKey(signer.paymentKeyHash)
-      .attach.SpendingValidator(contracts.doubleSpend.steps[3].spendingScript)
-      .attach.MintingPolicy(contracts.computationThread.mintingScript)
-      .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+      .addSignerKey(signer.paymentKeyHash);
+    return fraudProofMintCarriage.attach(
+      computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+    );
+  };
 
-  const unsigned = await makeStep04Tx().complete({ localUPLCEval: true });
+  const unsigned = await makeStep04Tx().complete({
+    localUPLCEval: true,
+    // With carriage published at the prover's own address, balancing must not
+    // pick those UTxOs back up as wallet inputs while the redeemer references
+    // them — same guard as `submitInputNoIdxStep02`.
+    ...(referenceInputs.length === 0
+      ? {}
+      : {
+          presetWalletInputs: referenceInputs.reduce<readonly UTxO[]>(
+            (candidates, utxo) => excludeUtxo(candidates, utxo),
+            walletUtxos,
+          ) as UTxO[],
+        }),
+  });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -442,7 +549,33 @@ export const submitStep04 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: [
+      workflowReferenceScript({
+        role: "V1 fraud-proof double-spend step-04",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.doubleSpend.steps[3].spendingScript,
+      }),
+      workflowReferenceScript({
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      }),
+      workflowReferenceScript({
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -463,15 +596,12 @@ export const submitStep04 = async ({
     fraudProofUnit,
     fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
     fourthStepAddress: contracts.doubleSpend.steps[3].spendingScriptAddress,
-    verifiedTx2SpendInputsHash: inputDatum.data.verified_tx2_spend_inputs_hash,
+    verifiedTx2Id: inputDatum.data.verified_tx2_id,
+    verifiedTx2SpendInputsHash: tx2SpendInputsHash,
     doubleSpentInputIndex: Number(doubleSpentInputIndex),
     doubleSpentInput,
     doubleSpentInputCbor,
-    tx2SpendInputsWitnessOutRef: tx2SpendInputsReferenceWitness.outRef,
-    tx2SpendInputsWitnessCreated: tx2SpendInputsReferenceWitness.created,
-    tx2SpendInputsRefInputIndex: Number(
-      resolvedLayout.tx2SpendInputsRefInputIndex,
-    ),
+    tx2SpendInputsCarriageTier: planned.plan.tier,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     computationThreadMintRedeemerIndex: Number(
@@ -487,12 +617,17 @@ export const submitStep04 = async ({
 export const submitStep04FromFiles = async (
   config: SubmitStep04CliConfig,
 ): Promise<SubmitStep04Result> => {
-  const [blueprint, deploymentInfo, tx2InputsJson, lucid] = await Promise.all([
-    readJsonFile(config.blueprintPath),
-    readJsonFile(config.deploymentInfoPath),
-    readJsonFile(config.tx2InputsPath),
-    makeLucidForSubmit(config),
-  ]);
+  rejectRetiredUnauthenticatedSubmissionRoute({
+    command: "submit-step-04",
+  });
+  const [blueprint, deploymentInfo, tx2InputsJson, nativeTxCompactJson, lucid] =
+    await Promise.all([
+      readJsonFile(config.blueprintPath),
+      readJsonFile(config.deploymentInfoPath),
+      readJsonFile(config.tx2InputsPath),
+      readJsonFile(config.nativeTxCompactPath),
+      makeLucidForSubmit(config),
+    ]);
   const tx2SpendInputCbors = parseSpendInputCbors(
     tx2InputsJson,
     "--tx2-inputs",
@@ -506,6 +641,10 @@ export const submitStep04FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     tx2SpendInputCbors,
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
+      nativeTxCompactJson,
+      "--native-tx-compact",
+    ),
     doubleSpentInputIndex: parseDoubleSpentInputIndex({
       value: config.doubleSpentInputIndex,
       inputCount: tx2SpendInputCbors.length,

@@ -2,15 +2,15 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect, Option } from "effect";
 
-import { parseEventId } from "@/commands/command-utils.js";
-import * as DepositsDB from "@/database/deposits.js";
-import * as ForcedTransactionsDB from "@/database/forcedTransactions.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { Database, Lucid, MidgardContracts } from "@/services/index.js";
-import { outRefLabel } from "@/tx-context.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
-import { keyValuePhasProof, MpfError } from "@/workers/utils/mpf.js";
+import * as DepositsDB from "../database/deposits.js";
+import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
+import { DatabaseError } from "../database/utils/common.js";
+import * as WithdrawalsDB from "../database/withdrawals.js";
+import { keyValuePhasProof, MpfError } from "../mpf/index.js";
+import { Database, Lucid, MidgardContracts } from "../services/index.js";
+import { outRefLabel } from "../tx-context.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../workers/commit-block-header/transition-roots.js";
+import { parseEventId } from "./command-utils.js";
 
 export type EventKind = "deposit" | "withdrawal" | "tx-order";
 
@@ -357,7 +357,7 @@ export const resolveEventSettlementProofProgram = (
       yield* ForcedTransactionsDB.retrieveByProjectedHeaderHash(headerHash);
     const settlement = yield* fetchSettlementRefInput(headerHash);
     const proof = yield* buildSourceMembershipProof({
-      domain: SDK.ROOT_DOMAINS.forcedTransactions,
+      domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
       expectedRoot: settlement.datum.forced_transactions_root,
       entries: entries.map(ForcedTransactionsDB.toRootKeyValue),
       targetKey: lookup.eventId,

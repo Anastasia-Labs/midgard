@@ -304,3 +304,11 @@ run build` passed.
   `alreadyFundedTransferCount=4096` on the final bounded resume/verification
   pass. Earlier partial passes submitted and finalized the tree funding; the
   final pass proved every leaf via `/utxos` without resubmitting funded edges.
+- 2026-09-02: The corpus generator/verifier, stress-wallet tooling, and the
+  bounded stress harness moved out of the operator binary into
+  `demo/midgard-node-tools` (`node ../midgard-node-tools/dist/index.js
+  stress-corpus-generate ...` from `demo/midgard-node`). The NDJSON row wire
+  format stayed on the node side as
+  `demo/midgard-node/src/open-loop-corpus-format.ts` because the
+  mpf-engine-probe worker and the stage-B benchmark read corpora. Source
+  paths quoted above are historical.

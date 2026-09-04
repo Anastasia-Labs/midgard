@@ -1,22 +1,22 @@
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
-import {
-  type InlineWaitPolicy,
-  planSubmitTiming,
-} from "@/transactions/submit-timing.js";
-import type { SubmitTimingNotDuePlanWithDueWorkEvidence } from "@/transactions/submit-timing-due-work.js";
-import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
+} from "../../local-ledger-slot.js";
+import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
+import { type InlineWaitPolicy, planSubmitTiming } from "../submit-timing.js";
+import type { SubmitTimingNotDuePlanWithDueWorkEvidence } from "../submit-timing-due-work.js";
 
 export const DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING = 8;
 
 // Keep these values in one place so diagnostics and transaction construction
 // agree on the exact maturity boundary.
-export const STATE_QUEUE_MATURITY_DURATION_MS = 30;
+export const STATE_QUEUE_MATURITY_DURATION_MS =
+  MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs;
 export const MERGE_MATURITY_DELAY_BUFFER_MS = 20_000;
 
 export type MergeReadinessStatus =
@@ -334,8 +334,7 @@ export const mergeSubmitValidityEvidence = ({
 
 export type OldestQueuedBlockReadinessInput = {
   readonly headerHash: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
   readonly readyAfterUnixTime: number;
   readonly nowUnixTime: number;
 };
@@ -361,8 +360,7 @@ export type OldestQueuedBlockReadiness =
 export type MergeCandidateIdentityInput = {
   readonly firstBlockOutRef: string;
   readonly headerHash: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
   readonly readyAfterUnixTime: number;
 };
 
@@ -372,8 +370,7 @@ export const mergeCandidateIdentity = (
   [
     input.firstBlockOutRef,
     input.headerHash,
-    input.currentDaAttestation,
-    input.requiredDaAttestation,
+    SDK.daAvailabilityStateQueueStatusIdentity(input.currentDaAvailability),
     input.readyAfterUnixTime.toString(),
   ].join("|");
 
@@ -386,19 +383,20 @@ export type OldestQueuedBlockCandidateReadinessInput =
 export type OldestQueuedBlockCandidateReadiness = OldestQueuedBlockReadiness & {
   readonly firstBlockOutRef: string;
   readonly candidateIdentity: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
   readonly validFromUnixTime: number;
 };
 
 export const classifyOldestQueuedBlockReadiness = (
   input: OldestQueuedBlockReadinessInput,
 ): OldestQueuedBlockReadiness => {
-  if (input.currentDaAttestation !== input.requiredDaAttestation) {
+  if (
+    !SDK.daAvailabilityStateQueueStatusPermitsMerge(input.currentDaAvailability)
+  ) {
     return {
       status: "skipped_oldest_block_unattested",
       headerHash: input.headerHash,
-      reason: `header=${input.headerHash},current_da_attestation=${input.currentDaAttestation},required_da_attestation=${input.requiredDaAttestation}`,
+      reason: `header=${input.headerHash},current_da_availability=${SDK.daAvailabilityStateQueueStatusIdentity(input.currentDaAvailability)},required_da_availability=Attested|Published`,
       readyAfterUnixTime: input.readyAfterUnixTime,
       nowUnixTime: input.nowUnixTime,
     };
@@ -429,8 +427,7 @@ export const classifyOldestQueuedBlockCandidateReadiness = (
     ...readiness,
     firstBlockOutRef: input.firstBlockOutRef,
     candidateIdentity: mergeCandidateIdentity(input),
-    currentDaAttestation: input.currentDaAttestation,
-    requiredDaAttestation: input.requiredDaAttestation,
+    currentDaAvailability: input.currentDaAvailability,
     validFromUnixTime: input.validFromUnixTime,
   };
 };

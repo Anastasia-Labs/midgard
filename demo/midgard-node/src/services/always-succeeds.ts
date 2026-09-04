@@ -181,6 +181,15 @@ const makeMintOnlyAuthenticatedValidator = (
     };
   });
 
+const repeatedFaultProofChain = <Chain extends SDK.FraudProofChain>(
+  validator: SDK.SpendingValidator,
+  stepCount: number,
+): Chain =>
+  ({
+    firstStep: validator,
+    steps: Array.from({ length: stepCount }, () => validator),
+  }) as unknown as Chain;
+
 /**
  * Resolves the full always-succeeds validator set used by test environments.
  */
@@ -208,9 +217,30 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       "state_queue",
     );
     const scheduler = yield* mkAuthVal("scheduler");
-    const stateQueue = yield* mkAuthVal("state_queue");
+    const stateQueueAuthenticated = yield* mkAuthVal("state_queue");
+    // The compact always-succeeds blueprint intentionally publishes only the
+    // state-queue spend/mint pair. Reuse that same untyped Plutus script for
+    // the dev/test withdrawal roles instead of looking up a validator title
+    // that the fixture does not contain.
+    const stateQueueYield: SDK.WithdrawalValidator = {
+      withdrawalScriptCBOR: stateQueueAuthenticated.spendingScriptCBOR,
+      withdrawalScript: stateQueueAuthenticated.spendingScript,
+      withdrawalScriptHash: stateQueueAuthenticated.spendingScriptHash,
+    };
+    const stateQueue: SDK.StateQueueValidator = {
+      ...stateQueueAuthenticated,
+      yields: {
+        commit: stateQueueYield,
+        unattestedTimeout: stateQueueYield,
+        unavailableTimeout: stateQueueYield,
+        fraudRemoval: stateQueueYield,
+        merge: stateQueueYield,
+      },
+    };
+    const correctionLock = stateQueue;
     const daParamsGovernor = stateQueue;
     const daAttestation = stateQueue;
+    const availabilityChallenge = stateQueue;
     const registeredOperators = yield* mkAuthVal("registered_operators");
     const activeOperators = yield* mkAuthVal("active_operators");
     const retiredOperators = yield* mkAuthVal("retired_operators");
@@ -221,6 +251,25 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const payout = yield* mkAuthVal("payout");
     const withdrawal = yield* mkAuthVal("withdrawal");
     const txOrder = yield* mkAuthVal("tx_order");
+    // #579 retired the `txOrderFieldPreimage` and `txOrderFieldReceipt`
+    // stand-ins with the tx-field family itself. This one always-succeeds spend
+    // validator is all that survives of them, and it now serves only the two
+    // roles that are still deployed. This service exists to give the node a
+    // contract set that always succeeds, so the §8.6 certificate below is a
+    // spend+mint pair like every other authenticated role, not a real
+    // certificate policy.
+    const alwaysSucceedsSpend = yield* makeSpendingValidator(
+      "midgard",
+      "tx_order",
+      NETWORK,
+    );
+    const fieldPreimageCertificate = {
+      ...alwaysSucceedsSpend,
+      mintingScriptCBOR: txOrder.mintingScriptCBOR,
+      mintingScript: txOrder.mintingScript,
+      policyId: txOrder.policyId,
+    };
+    const cekProgramMaterial = alwaysSucceedsSpend;
     const settlement = yield* mkAuthVal("settlement");
 
     // Reserve
@@ -246,21 +295,189 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const invalidRange = yield* mkFP("invalid_range");
     const transitionTrace = yield* mkFP("transition_trace");
     const zeroInput = yield* mkFP("zero_input");
-
-    const fraudProofs: SDK.FraudProofs = {
-      doubleSpend,
-      nonExistentInput,
-      nonExistentInputNoIndex,
-      invalidRange,
-      transitionTrace,
-      zeroInput,
+    const validationTraceDispute: SDK.ValidationTraceDisputeValidators = {
+      ...transitionTrace,
+      source: transitionTrace,
+      game: transitionTrace,
+      boundary: transitionTrace,
+      timeout: transitionTrace,
+      award: transitionTrace,
     };
+
+    // The always-succeeds devnet blueprint has no dedicated
+    // `da_hash_preimage` stub validator, so the Q44 category reuses the
+    // `zero_input` stub here, exactly as `validationTraceDispute` reuses the
+    // `transition_trace` stub above. Devnet only: the production contracts
+    // service builds the real Q44 chain from the Aiken blueprint.
+    const daHashPreimage = zeroInput;
+
+    // Same devnet aliasing for the three families registered by #547: the
+    // always-succeeds blueprint carries no `no_reference_input`,
+    // `reference_input_no_idx`, or `invalid_signature` stub, so each reuses
+    // the stub of the family it mirrors on-chain. Devnet only: the production
+    // contracts service builds the real chains from the Aiken blueprint.
+    const noReferenceInput = nonExistentInput;
+    const referenceInputNoIdx = nonExistentInputNoIndex;
+    const invalidSignature = invalidRange;
+
+    const validationTraceSemanticResolvers = Array.from(
+      { length: 90 },
+      () => transitionTrace,
+    );
+    const validationTracePrepareResolvers = Array.from(
+      { length: 14 },
+      () => transitionTrace,
+    );
+    const validationTraceCanonicalDecodeItemStages = {
+      source: transitionTrace,
+      observe: transitionTrace,
+      proof: transitionTrace,
+      settlement: transitionTrace,
+    };
+    const validationTraceScriptSourcesStageOneRedeemerStages = {
+      envelope: transitionTrace,
+      traversalNormalizer: transitionTrace,
+      outerNormalizer: transitionTrace,
+      foldMapExecutor: transitionTrace,
+      finalizeFrameExecutor: transitionTrace,
+      settlement: transitionTrace,
+    };
+    const validationTraceDisputeChain = {
+      firstStep: transitionTrace,
+      steps: [
+        transitionTrace,
+        validationTraceDispute.source,
+        validationTraceDispute.game,
+        validationTraceDispute.boundary,
+        validationTraceDispute.timeout,
+        validationTraceDispute.award,
+        transitionTrace,
+        ...validationTraceSemanticResolvers,
+        transitionTrace,
+        transitionTrace,
+        transitionTrace,
+        transitionTrace,
+        transitionTrace,
+        ...Object.values(validationTraceCanonicalDecodeItemStages),
+        ...validationTracePrepareResolvers,
+      ],
+      cekProgramMaterial,
+      opener: validationTraceDispute,
+      source: validationTraceDispute.source,
+      game: validationTraceDispute.game,
+      boundary: validationTraceDispute.boundary,
+      timeout: validationTraceDispute.timeout,
+      award: validationTraceDispute.award,
+      proofItem: transitionTrace,
+      canonicalDecodeItemStages: validationTraceCanonicalDecodeItemStages,
+      scriptSourcesStageOneRedeemerStages:
+        validationTraceScriptSourcesStageOneRedeemerStages,
+      prepareResolvers: validationTracePrepareResolvers,
+      semanticResolvers: validationTraceSemanticResolvers,
+      resolvers: validationTracePrepareResolvers,
+    } as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
+    const transitionTraceFinals = [
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+    ] as const;
+    const fraudProofContracts: SDK.FaultProofContractChains = {
+      doubleSpend: repeatedFaultProofChain(doubleSpend, 4),
+      nonExistentInput: repeatedFaultProofChain(nonExistentInput, 4),
+      nonExistentInputNoIndex: repeatedFaultProofChain(
+        nonExistentInputNoIndex,
+        4,
+      ),
+      invalidRange: repeatedFaultProofChain(invalidRange, 2),
+      transitionTrace: {
+        firstStep: transitionTrace,
+        route: transitionTrace,
+        finals: transitionTraceFinals,
+        steps: [transitionTrace, ...transitionTraceFinals],
+      },
+      zeroInput: repeatedFaultProofChain(zeroInput, 2),
+      validationTraceDispute: validationTraceDisputeChain,
+      daHashPreimage: repeatedFaultProofChain(daHashPreimage, 2),
+      noReferenceInput: repeatedFaultProofChain(noReferenceInput, 4),
+      referenceInputNoIdx: repeatedFaultProofChain(referenceInputNoIdx, 4),
+      invalidSignature: repeatedFaultProofChain(invalidSignature, 2),
+      fabricatedDeposit: repeatedFaultProofChain(zeroInput, 4),
+      fabricatedWithdrawal: repeatedFaultProofChain(zeroInput, 4),
+      nativeScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
+      missingSignature: repeatedFaultProofChain(invalidSignature, 4),
+      missingNativeScriptTx: repeatedFaultProofChain(zeroInput, 8),
+      withdrawnReferenceInput: repeatedFaultProofChain(referenceInputNoIdx, 3),
+      canonicalDecodability: repeatedFaultProofChain(zeroInput, 2),
+      committedFieldShape: repeatedFaultProofChain(zeroInput, 2),
+      minFee: repeatedFaultProofChain(invalidRange, 2),
+      withdrawalMistag: repeatedFaultProofChain(invalidRange, 5),
+      doubleWithdraw: repeatedFaultProofChain(doubleSpend, 2),
+      crossBlockDuplicateEvent: repeatedFaultProofChain(doubleSpend, 2),
+      l2TxMistag: repeatedFaultProofChain(invalidRange, 2),
+      withdrawnInput: repeatedFaultProofChain(nonExistentInput, 3),
+      valueNotPreserved: repeatedFaultProofChain(zeroInput, 4),
+      inputSetUniqueness: repeatedFaultProofChain(doubleSpend, 4),
+      mintAuthorization: repeatedFaultProofChain(zeroInput, 5),
+      networkId: repeatedFaultProofChain(invalidRange, 2),
+      missingNativeScriptUtxo: repeatedFaultProofChain(zeroInput, 5),
+      nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 3),
+      minAda: {
+        ...repeatedFaultProofChain(invalidRange, 5),
+        yields: {
+          tx: stateQueueYield,
+          utxo: stateQueueYield,
+        },
+      },
+      fieldPreimageLengthMismatch: {
+        ...repeatedFaultProofChain(zeroInput, 4),
+        acceptedStep02: zeroInput,
+        forcedStep02: zeroInput,
+      },
+      fieldItemWidthIllegal: repeatedFaultProofChain(zeroInput, 3),
+      witnessScriptDecoding: repeatedFaultProofChain(zeroInput, 4),
+      scriptIntegrityHashMissing: {
+        ...repeatedFaultProofChain(zeroInput, 7),
+        scriptGrammar: zeroInput,
+        scriptScan: zeroInput,
+        redeemerGrammar: zeroInput,
+      },
+      transactionOutputNonCanonical: repeatedFaultProofChain(zeroInput, 4),
+      resolvedOutputNonCanonical: repeatedFaultProofChain(zeroInput, 5),
+      mintDeclaredAssetLimit: repeatedFaultProofChain(zeroInput, 4),
+      spendInputSignerMissing: repeatedFaultProofChain(zeroInput, 5),
+      protectedOutputSignerMissing: repeatedFaultProofChain(zeroInput, 5),
+      observersForbiddenOnUntaggedNetwork: repeatedFaultProofChain(
+        zeroInput,
+        2,
+      ),
+      outputReferenceScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
+      executionSourceScriptDecoding: repeatedFaultProofChain(zeroInput, 5),
+      observerOrderInvalid: repeatedFaultProofChain(zeroInput, 4),
+      redeemerCanonicity: repeatedFaultProofChain(zeroInput, 3),
+      receivePurposeLanguage: repeatedFaultProofChain(zeroInput, 3),
+      unusedScriptWitness: repeatedFaultProofChain(zeroInput, 6),
+      missingScriptSource: repeatedFaultProofChain(zeroInput, 6),
+      missingRedeemer: repeatedFaultProofChain(zeroInput, 7),
+      unusedRedeemer: repeatedFaultProofChain(zeroInput, 9),
+      executionNativeScriptInvalid: repeatedFaultProofChain(zeroInput, 13),
+      scriptIntegrityHashMismatch: repeatedFaultProofChain(zeroInput, 5),
+      distinctAssetAccumulationLimit: repeatedFaultProofChain(zeroInput, 6),
+    };
+    const fraudProofs =
+      SDK.fraudProofContractsToFirstSteps(fraudProofContracts);
 
     return {
       referenceScriptAuth,
       hubOracle,
       daParamsGovernor,
       daAttestation,
+      availabilityChallenge,
+      correctionLock,
       stateQueue,
       scheduler,
       registeredOperators,
@@ -268,13 +485,19 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       retiredOperators,
       escapeHatch,
       fraudProofCatalogue,
+      computationThread: fraudProof,
       fraudProof,
+      chunkedVerify: reserveWithdawalValidator,
+      pexcludes: reserveWithdawalValidator,
       deposit,
       withdrawal,
       txOrder,
+      fieldPreimageCertificate,
+      cekProgramMaterial,
       settlement,
       reserve,
       payout,
+      fraudProofContracts,
       fraudProofs,
     };
   }).pipe(Effect.orDie);

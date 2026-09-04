@@ -248,6 +248,37 @@ export const buildSourceMembershipProof = async ({
   }
 };
 
+/**
+ * The raw forced-transaction leaf membership — the
+ * `RootMembershipProof<OutputReference, ForcedInclusionTxV1>` shape itself,
+ * outside the `TransitionSourceMembershipProof` enum wrapper
+ * `buildSourceMembershipProof` returns. The decoding-fault family's step-02
+ * (`forced_membership`) consumes the leaf directly.
+ */
+export const buildForcedTransactionLeafMembershipProof = async ({
+  reconstruction,
+  eventKey,
+}: {
+  readonly reconstruction: TransitionTraceReconstruction;
+  readonly eventKey: SDK.EventKey;
+}): Promise<
+  SDK.RootMembershipProof<SDK.OutputReference, SDK.ForcedInclusionTxV1>
+> => {
+  const event = sourceEventOrThrow(reconstruction, eventKey);
+  if (event.phase !== "ForcedTransaction") {
+    throw transitionTraceError(
+      "missingWitnessData",
+      `Cannot build forced-transaction leaf membership proof: event key ${eventKeyFingerprint(
+        eventKey,
+      )} is not a forced-transaction event.`,
+    );
+  }
+  return await membershipProof({
+    root: reconstruction.rootData.forcedTransactions,
+    entry: event.entry,
+  });
+};
+
 export const buildRawL2TransactionSourceMembershipProof = async ({
   reconstruction,
   txId,
@@ -271,11 +302,11 @@ export const buildRawL2TransactionSourceMembershipProof = async ({
     phas_root: reconstruction.rootData.transactions.phasRoot,
     count: reconstruction.rootData.transactions.count,
     key: entry.txId,
-    value: entry.compactTransactionCbor.toString("hex"),
+    value: entry.valueBytes.toString("hex"),
     proof: await keyValuePhasProof(
       countedPhasView(reconstruction.rootData.transactions),
       entry.keyBytes,
-      entry.compactTransactionCbor,
+      entry.valueBytes,
     ),
   };
 };
@@ -457,11 +488,19 @@ export type ValidDepositTransitionEvidence = {
   readonly projectedUtxo: SDK.LedgerInsertWitness;
 };
 
+/**
+ * Mutation proofs for replaying an authenticated L2 transaction against its
+ * committed pre-state root. The transaction input/output preimages themselves
+ * are taken from the authenticated retained-DA transaction, not caller input.
+ */
 export type L2TransactionTransitionEvidence = {
-  readonly spendInputsPreimage: string;
-  readonly outputsPreimage: string;
   readonly spentUtxos: readonly SDK.LedgerDeleteWitness[];
   readonly producedUtxos: readonly SDK.LedgerInsertWitness[];
+};
+
+export type AcceptedTransactionTransitionMismatchEvidence = {
+  readonly claim: SDK.ValidationClaimWitness;
+  readonly terminalAcceptanceWitnessCbor: string;
 };
 
 export const buildInvalidWithdrawalNoOpWitness = async ({
@@ -555,50 +594,14 @@ export const buildInvalidForcedTransactionNoOpWitness = async ({
       `Trace step ${stepIndex.toString()} is not a forced-transaction step.`,
     );
   }
-  if (source.entry.value.operator_validity === "TxIsValid") {
+  if (source.entry.value.verdict === "ForcedTxValid") {
     throw transitionTraceError(
-      "unsupportedWitness",
-      "Valid forced transaction transition proofs remain fail-closed until forced transaction ledger deltas/preimages exist.",
+      "missingWitnessData",
+      "InvalidForcedTransactionNoOpTransition requires a forced source classified as invalid; ForcedTxValid sources use the accepted-transition or validation-verdict proof path.",
     );
   }
   return {
     InvalidForcedTransactionNoOpTransition: {
-      trace_proof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
-      event_to_step: await buildEventToStepMembershipProof({
-        reconstruction,
-        eventKey: trace.value.event_key,
-      }),
-      source_membership: await membershipProof({
-        root: reconstruction.rootData.forcedTransactions,
-        entry: source.entry,
-      }),
-    },
-  };
-};
-
-export const buildValidForcedTransactionUnsupportedWitness = async ({
-  reconstruction,
-  stepIndex,
-}: {
-  readonly reconstruction: TransitionTraceReconstruction;
-  readonly stepIndex: bigint;
-}): Promise<SDK.InvalidOneStepTransitionWitness> => {
-  const trace = requireTraceEntry(reconstruction, stepIndex);
-  const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
-  if (source.phase !== "ForcedTransaction") {
-    throw transitionTraceError(
-      "missingWitnessData",
-      `Trace step ${stepIndex.toString()} is not a forced-transaction step.`,
-    );
-  }
-  if (source.entry.value.operator_validity !== "TxIsValid") {
-    throw transitionTraceError(
-      "missingWitnessData",
-      "ValidForcedTransactionUnsupported requires a forced transaction source classified as TxIsValid.",
-    );
-  }
-  return {
-    ValidForcedTransactionUnsupported: {
       trace_proof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
       event_to_step: await buildEventToStepMembershipProof({
         reconstruction,
@@ -657,10 +660,17 @@ export const buildL2TransactionTransitionWitness = async ({
   readonly evidence: L2TransactionTransitionEvidence;
 }): Promise<SDK.InvalidOneStepTransitionWitness> => {
   const trace = requireTraceEntry(reconstruction, stepIndex);
-  if (!("L2TransactionEventKey" in trace.value.event_key)) {
+  const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
+  if (source.phase !== "L2Transaction") {
     throw transitionTraceError(
       "missingWitnessData",
-      `Trace step ${stepIndex.toString()} is not an L2 transaction step.`,
+      `Trace step ${stepIndex.toString()} is not an L2-transaction step.`,
+    );
+  }
+  if (source.entry.validity !== "TxIsValid") {
+    throw transitionTraceError(
+      "missingWitnessData",
+      "L2TransactionTransition requires a transaction source classified as TxIsValid.",
     );
   }
   return {
@@ -672,15 +682,24 @@ export const buildL2TransactionTransitionWitness = async ({
       }),
       source_membership: await buildRawL2TransactionSourceMembershipProof({
         reconstruction,
-        txId: trace.value.event_key.L2TransactionEventKey.tx_id,
+        txId: source.entry.txId,
       }),
-      spend_inputs_preimage: evidence.spendInputsPreimage,
-      outputs_preimage: evidence.outputsPreimage,
+      spend_inputs_preimage: source.entry.spendInputsPreimage.toString("hex"),
+      outputs_preimage: source.entry.outputsPreimage.toString("hex"),
       spent_utxos: evidence.spentUtxos,
       produced_utxos: evidence.producedUtxos,
     },
   };
 };
+
+export const buildAcceptedTransactionTransitionMismatchFault = ({
+  claim,
+  terminalAcceptanceWitnessCbor,
+}: AcceptedTransactionTransitionMismatchEvidence): SDK.TransitionFault =>
+  SDK.acceptedTransactionTransitionMismatchFault({
+    claim,
+    terminalAcceptanceWitnessCbor,
+  });
 
 export type OmittedDueL1EventEvidence =
   | {
@@ -700,7 +719,7 @@ export type OmittedDueL1EventEvidence =
       readonly txOrderId: SDK.OutputReference;
       readonly eventRefInputIndex: bigint;
       readonly eventAssetName: string;
-      readonly validityOverride: SDK.MidgardTxValidity;
+      readonly validityOverride: SDK.OperatorVerdict;
     };
 
 export const eventKeyFromOmittedEvidence = (
@@ -800,7 +819,7 @@ export type OutOfWindowSourceEventEvidence =
       readonly txOrderId: SDK.OutputReference;
       readonly eventRefInputIndex: bigint;
       readonly eventAssetName: string;
-      readonly validityOverride: SDK.MidgardTxValidity;
+      readonly validityOverride: SDK.OperatorVerdict;
     };
 
 const eventKeyFromOutOfWindowEvidence = (

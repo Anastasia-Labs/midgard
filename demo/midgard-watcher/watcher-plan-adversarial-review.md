@@ -3,7 +3,7 @@
 Status: Historical review input. Its findings were incorporated into
 `midgard-watcher-architecture.md`; it is not a current implementation plan.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-29
 
 Reviewer: historical adversarial production-readiness review
 
@@ -15,13 +15,39 @@ Reviewed files:
 
 Additional context consulted by reviewer:
 
-- `public_testnet_readiness.md`
+- `docs/public_testnet_readiness.md`
 - `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md`
 - `demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md`
 - `technical-spec`
 - `demo/midgard-validation/src`
-- `demo/midgard-node/src/workers/utils/mpf.ts`
+- `demo/midgard-node/src/mpf/`
 - `onchain/aiken/lib/midgard`
+
+## Authoritative L1-Source Clarification
+
+The original finding below is superseded where it treated two providers as an
+unconditional acceptance requirement. The watcher retains two explicit,
+mutually exclusive vocabulary modes, but the current wire configuration
+selects only `external_providers`:
+
+- `local_node`: deferred until a peer-authenticated native adapter exists.
+  The retired pathname-based authority constructor and route are not
+  selectable; pure local-mode state vocabulary remains for that future adapter.
+- `external_providers`: at least two operationally independent providers must
+  agree on network and a compatible chain point.
+
+The prelaunch retirement has no compatibility alias. `start` and `replay`
+remain unwired, transport-free scaffolds that exit `78`; W10 operational wire
+binding and W14 live provenance remain open.
+
+Both modes fail closed on mismatched or stale evidence and propagate
+rollbacks. Transient non-agreement and same-point content mismatch preserve
+finalized state while quarantining the current decision. An agreed canonical replacement opens a
+durable incident, and W13 automatically proves and rewinds the exact branch
+within Cardano's fixed `k = 2160` bound before replay resumes; it never
+requires manual database surgery. W14 consumes canonical node-derived bytes
+and indexes accepted state, including W13-authorized recovery; it does not
+duplicate Cardano state-queue validator semantics.
 
 ## Verdict
 
@@ -72,15 +98,25 @@ Disposition:
 
 ### 4. Critical: L1 finality and provider consistency were not strong enough
 
-The first plan accepted "at least one provider, with a path to multiple", conflicting with the architecture's production requirement for at least two independent L1 sources and Midgard readiness requirements around first-visibility finalization.
+The first plan accepted an ambiguous "at least one provider, with a path to
+multiple" policy and did not distinguish a watcher-operated full node from
+externally operated providers.
 
 Recommendation:
 
-- Make multi-provider same-chain-point validation, explicit finality depth, rollback quarantine, and provider disagreement tests mandatory for production.
+- Require an explicit `local_node | external_providers` source discriminator.
+  The prelaunch wire parser currently accepts only `external_providers`, which
+  requires at least two
+  operationally independent providers to agree on network and compatible chain
+  point. `local_node` remains deferred: a native adapter must authenticate the
+  connected peer before that route can be selected. Both modes retain explicit
+  finality, non-terminal quarantine for transient evidence, and automated W13
+  recovery from an agreed finalized rollback within Cardano `k = 2160`.
 
 Disposition:
 
-- Incorporated into Tasks 2.1 and 2.2.
+- Incorporated into W01 and W10–W14 with the authoritative source-mode
+  discriminator.
 
 ### 5. High: Spec, implementation, and proof roots required one conformance rule
 

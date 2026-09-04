@@ -1,8 +1,24 @@
+import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import {
+  decodeMidgardCekProgramMaterialSidecar,
+  verifyMidgardCekProgramMaterial,
+  verifyMidgardCekProgramMaterialBundle,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   EMPTY_NULL_ROOT,
   MidgardTxCodecError,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
+import {
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_PROFILE,
+} from "@al-ft/midgard-core/consensus-profile";
+import {
+  type MidgardConsensusViolationCode,
+  validateMidgardConsensusTxCbor,
+} from "@al-ft/midgard-core/consensus-validation";
+import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -34,10 +50,12 @@ const reject = (
   txId: Buffer,
   code: RejectCode,
   detail: string | null = null,
+  consensusPhase: MidgardValidationPhaseName = "canonicalDecode",
 ): RejectedTx => ({
   txId,
   code,
   detail,
+  consensusPhase,
 });
 
 const codecErrorDetail = (error: unknown): string => {
@@ -50,6 +68,51 @@ const codecErrorDetail = (error: unknown): string => {
       : `${error.code}: ${error.message} (${error.detail})`;
   }
   return String(error);
+};
+
+const consensusProfileRejectCode = (
+  code: MidgardConsensusViolationCode,
+): RejectCode => {
+  switch (code) {
+    case "E_TX_VERSION":
+      return RejectCodes.TxVersion;
+    case "E_TX_SIZE":
+      return RejectCodes.TxSize;
+    case "E_IS_VALID_FALSE_FORBIDDEN":
+      return RejectCodes.IsValidFalseForbidden;
+    case "E_AUX_DATA_FORBIDDEN":
+      return RejectCodes.AuxDataForbidden;
+    case "E_INPUT_COUNT":
+      return RejectCodes.InputCount;
+    case "E_REFERENCE_INPUT_COUNT":
+      return RejectCodes.ReferenceInputCount;
+    case "E_OUTPUT_COUNT":
+      return RejectCodes.OutputCount;
+    case "E_ADDRESS_WITNESS_COUNT":
+      return RejectCodes.AddressWitnessCount;
+    case "E_REQUIRED_SIGNER_COUNT":
+      return RejectCodes.RequiredSignerCount;
+    case "E_SCRIPT_EXECUTION_COUNT":
+      return RejectCodes.ScriptExecutionCount;
+    case "E_OBSERVER_COUNT":
+      return RejectCodes.ObserverCount;
+    case "E_FIELD_PREIMAGE_SIZE":
+      return RejectCodes.FieldPreimageSize;
+    case "E_LEDGER_OUTPUT_SIZE":
+      return RejectCodes.LedgerOutputSize;
+    case "E_VALUE_SIZE":
+      return RejectCodes.ValueSize;
+    case "E_SCRIPT_PROGRAM_SIZE":
+      return RejectCodes.ScriptProgramSize;
+    case "E_SCRIPT_PROGRAM_ENCODING":
+      return RejectCodes.ScriptProgramEncoding;
+    case "E_NATIVE_SCRIPT_DEPTH":
+      return RejectCodes.NativeScriptDepth;
+    case "E_NATIVE_SCRIPT_NODE_COUNT":
+      return RejectCodes.NativeScriptNodeCount;
+    case "E_ASSET_COUNT":
+      return RejectCodes.AssetCount;
+  }
 };
 
 const EMPTY_HASH_HEXES: readonly string[] = [];
@@ -135,7 +198,7 @@ const outRefIdentity = (
 
 const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
   if (tx.spendInputs.length === 0) {
-    return reject(tx.txId, RejectCodes.EmptyInputs);
+    return reject(tx.txId, RejectCodes.EmptyInputs, null, "inputSets");
   }
 
   if (tx.spendInputs.length === 1 && tx.referenceInputs.length === 0) {
@@ -153,6 +216,7 @@ const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
         tx.txId,
         RejectCodes.DuplicateInputInTx,
         midgardOutRefToCborHex(duplicate),
+        "inputSets",
       );
     }
   }
@@ -173,6 +237,7 @@ const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
         tx.txId,
         RejectCodes.DuplicateInputInTx,
         `duplicate reference input ${midgardOutRefToCborHex(duplicate)}`,
+        "inputSets",
       );
     }
   }
@@ -185,6 +250,7 @@ const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
         `outref appears in both spend and reference inputs ${midgardOutRefToCborHex(
           tx.referenceInputs[index]!,
         )}`,
+        "inputSets",
       );
     }
   }
@@ -201,6 +267,7 @@ const validateValidityInterval = (tx: MidgardLedgerTx): RejectedTx | null => {
       tx.txId,
       RejectCodes.InvalidValidityIntervalFormat,
       "validity bounds must be non-negative unless unbounded sentinel",
+      "inputSets",
     );
   }
 
@@ -213,6 +280,7 @@ const validateValidityInterval = (tx: MidgardLedgerTx): RejectedTx | null => {
       tx.txId,
       RejectCodes.InvalidValidityIntervalFormat,
       `${tx.validityIntervalStart} > ${tx.validityIntervalEnd}`,
+      "inputSets",
     );
   }
 
@@ -244,6 +312,7 @@ const verifyVKeyWitnessSignatures = (
         tx.txId,
         RejectCodes.InvalidSignature,
         `invalid native vkey witness #${witness.index}`,
+        "signatures",
       );
     }
   }
@@ -261,6 +330,7 @@ const validateRequiredSigners = (tx: MidgardLedgerTx): RejectedTx | null => {
         tx.txId,
         RejectCodes.MissingRequiredWitness,
         `missing witness for signer ${requiredSigner}`,
+        "signatures",
       );
     }
   }
@@ -287,6 +357,7 @@ const validateNativeScriptWitnesses = (
         tx.txId,
         RejectCodes.NativeScriptInvalid,
         `native script verification failed for script index ${witness.index}`,
+        "phaseANativeScripts",
       );
     }
   }
@@ -305,6 +376,7 @@ const validateRequiredObservers = (tx: MidgardLedgerTx): RejectedTx | null => {
       tx.txId,
       RejectCodes.InvalidFieldType,
       `duplicate required observer ${duplicateObserver}`,
+      "phaseAScriptPreconditions",
     );
   }
   return null;
@@ -321,6 +393,7 @@ const validateScriptEvaluationPreconditions = (
       tx.txId,
       RejectCodes.InvalidFieldType,
       "missing script_integrity_hash for plutus witness bundle",
+      "phaseAScriptPreconditions",
     );
   }
 
@@ -329,6 +402,7 @@ const validateScriptEvaluationPreconditions = (
       tx.txId,
       RejectCodes.InvalidFieldType,
       "network_id is required when plutus witness bundles use required observers",
+      "phaseAScriptPreconditions",
     );
   }
 
@@ -360,18 +434,61 @@ export const validatePhaseASingle = (
       queuedTx.txId,
       RejectCodes.TxHashMismatch,
       `queued tx_id ${queuedTx.txId.toString("hex")} != native ${ledgerTx.txId.toString("hex")}`,
+      "compactBinding",
     );
   }
 
-  if (ledgerTx.validity !== "TxIsValid") {
-    return reject(queuedTx.txId, RejectCodes.IsValidFalseForbidden);
-  }
-
-  if (!ledgerTx.auxiliaryDataHash.equals(EMPTY_NULL_ROOT)) {
+  // Consensus admission is intentionally independent of the configurable
+  // validation strictness profile. Only the exact compiled V1 tuple may reach
+  // Phase B, even if an operator relaxes local configuration.
+  const consensusProfile = config.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE;
+  if (!isMidgardConsensusProfile(consensusProfile)) {
     return reject(
       ledgerTx.txId,
-      RejectCodes.AuxDataForbidden,
-      "auxiliary_data_hash must match canonical empty hash",
+      RejectCodes.TxVersion,
+      "unsupported consensus profile",
+    );
+  }
+  if (queuedTx.programMaterialSidecarCbor == null) {
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.CekProgramMaterial,
+      "V1 admission is missing its canonical program-material sidecar",
+    );
+  }
+  const consensusViolation = validateMidgardConsensusTxCbor(queuedTx.txCbor);
+  if (consensusViolation !== null) {
+    return reject(
+      ledgerTx.txId,
+      consensusProfileRejectCode(consensusViolation.code),
+      `${consensusViolation.featureId}: ${consensusViolation.detail}`,
+    );
+  }
+  try {
+    const material = decodeMidgardCekProgramMaterialSidecar(
+      queuedTx.programMaterialSidecarCbor,
+    );
+    const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+      queuedTx.txCbor,
+    );
+    const envelopes = collectMidgardAttachedProgramEnvelopes(canonicalTx);
+    if (ledgerTx.referenceInputs.length > 0) {
+      // Phase A has not resolved reference-input outputs yet. Require complete
+      // attached programs now; Phase B checks the exact combined bundle once
+      // the referenced program envelopes are authoritative.
+      for (const envelope of envelopes) {
+        verifyMidgardCekProgramMaterial(envelope, material, {
+          allowUnreachable: true,
+        });
+      }
+    } else {
+      verifyMidgardCekProgramMaterialBundle(envelopes, material);
+    }
+  } catch (cause) {
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.CekProgramMaterial,
+      `invalid V1 program material: ${String(cause)}`,
     );
   }
 
@@ -383,6 +500,7 @@ export const validatePhaseASingle = (
       ledgerTx.txId,
       RejectCodes.NetworkIdMismatch,
       `${ledgerTx.networkId} != ${config.expectedNetworkId}`,
+      "staticLedgerRules",
     );
   }
 
@@ -393,6 +511,7 @@ export const validatePhaseASingle = (
       ledgerTx.txId,
       RejectCodes.MinFee,
       `${ledgerTx.fee} < ${minFee}`,
+      "staticLedgerRules",
     );
   }
 
@@ -417,7 +536,9 @@ export const validatePhaseASingle = (
   try {
     return buildPhaseAValidatedTx({
       ledgerTx,
+      expectedNetworkId: config.expectedNetworkId,
       txCbor: submittedTx.txCbor,
+      programMaterialSidecarCbor: queuedTx.programMaterialSidecarCbor ?? null,
       arrivalSeq: queuedTx.arrivalSeq,
       createdAt: queuedTx.createdAt,
       redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,
@@ -427,6 +548,7 @@ export const validatePhaseASingle = (
       ledgerTx.txId,
       RejectCodes.InvalidOutput,
       `failed to materialize Phase B candidate: ${String(e)}`,
+      "phaseAScriptPreconditions",
     );
   }
 };

@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 import {
   evaluateClosureIdentity,
   evaluateClosureIdentityArtifacts,
+  evaluateExactClosureIdentityShape,
+  evaluateExactSourceIdentityShape,
+  hasExactV1JsonKeys,
+  isCanonicalAbsolutePath,
   sameSourceIdentity,
   scanSubmitRecords,
   SHA256,
@@ -33,7 +37,7 @@ import {
 } from "./phase3-architecture-g-load-generator-isolation.mjs";
 
 export const PHASE3_ARCHITECTURE_G_SOAK_SCHEMA =
-  "midgard-phase3-architecture-g-live-soak-v4";
+  "midgard-phase3-architecture-g-live-soak-v1";
 export const PHASE3_ARCHITECTURE_G_SOAK_SCENARIO =
   "phase3-architecture-g-live-soak-24h-v1";
 export const PHASE3_ARCHITECTURE_G_SOAK_DURATION_SEC = 86_400;
@@ -61,6 +65,528 @@ const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 const normalizedImageId = (value) =>
   typeof value === "string" ? value.replace(/^sha256:/u, "") : value;
+
+const exactShape = (value, keys, label, reasons) => {
+  if (!hasExactV1JsonKeys(value, keys)) {
+    reasons.push(`${label} must use the exact V1 keys`);
+    return false;
+  }
+  return true;
+};
+
+const validateSampleShape = (sample, label, reasons) => {
+  exactShape(
+    sample,
+    ["observedAtMs", "elapsedMs", "readiness", "metrics", "owner", "process"],
+    label,
+    reasons,
+  );
+  exactShape(
+    sample?.readiness,
+    ["httpStatus", "ready", "reasons"],
+    `${label} readiness`,
+    reasons,
+  );
+  exactShape(
+    sample?.metrics,
+    [
+      "auditDivergence",
+      "auditAgeMs",
+      "auditCompletedAtMs",
+      "confirmedLedgerFullScanTotal",
+      "validationWorkerTimeoutTotal",
+      "l1ControlPlaneTimeoutTotal",
+      "timeoutInsteadOfBackpressureTotal",
+      "daPublicationBacklog",
+      "mergeQueueDepth",
+    ],
+    `${label} metrics`,
+    reasons,
+  );
+  exactShape(
+    sample?.owner,
+    [
+      "durableRoot",
+      "residentNodes",
+      "residentBytes",
+      "activeGenerations",
+      "generatedNodes",
+      "generatedBytes",
+      "rssBytes",
+      "peakRssBytes",
+      "childRestarts",
+    ],
+    `${label} owner`,
+    reasons,
+  );
+  exactShape(
+    sample?.process,
+    ["pid", "startTicks", "rssBytes"],
+    `${label} process`,
+    reasons,
+  );
+  if (
+    !Number.isSafeInteger(sample?.observedAtMs) ||
+    !(
+      sample?.elapsedMs === null ||
+      (Number.isSafeInteger(sample.elapsedMs) && sample.elapsedMs >= 0)
+    )
+  ) {
+    reasons.push(`${label} timestamps are not canonical epoch milliseconds`);
+  }
+};
+
+const validateCorpusPreflightSummaryShape = (summary, reasons) => {
+  exactShape(
+    summary,
+    [
+      "path",
+      "sha256",
+      "bytes",
+      "schemaVersion",
+      "sourceTreeSha256",
+      "sourceIdentitySha256",
+      "phase1BindingSha256",
+      "files",
+      "selection",
+      "validation",
+    ],
+    "corpus-preflight summary",
+    reasons,
+  );
+  exactShape(
+    summary?.files,
+    ["corpus", "index", "manifest"],
+    "corpus-preflight files",
+    reasons,
+  );
+  for (const [label, file] of Object.entries(summary?.files ?? {})) {
+    exactShape(
+      file,
+      ["path", "bytes", "mtimeMs", "dev", "ino", "sha256"],
+      `corpus-preflight ${label} file`,
+      reasons,
+    );
+    if (
+      !isCanonicalAbsolutePath(file?.path) ||
+      !SHA256.test(file?.sha256 ?? "")
+    ) {
+      reasons.push(`corpus-preflight ${label} identity is noncanonical`);
+    }
+  }
+  exactShape(
+    summary?.selection,
+    [
+      "corpusSliceId",
+      "corpusShape",
+      "indexEntryCount",
+      "rowCount",
+      "indexEntriesSha256",
+    ],
+    "corpus-preflight selection",
+    reasons,
+  );
+  exactShape(
+    summary?.validation,
+    ["rowCount", "uniqueTxHashes", "uniqueSelectedInputs"],
+    "corpus-preflight validation",
+    reasons,
+  );
+};
+
+const validateIsolationSummaryShape = (summary, reasons) => {
+  exactShape(
+    summary,
+    [
+      "path",
+      "sha256",
+      "bytes",
+      "schemaVersion",
+      "placement",
+      "cohosted",
+      "clockOffsetMs",
+      "loadGeneratorCpusAllowedList",
+      "loadGeneratorEffectiveUid",
+      "nodeCpusAllowedList",
+      "nodeContainerId",
+      "nodeImageId",
+      "nodeHostPid",
+      "nodeStartTicks",
+      "readyUrl",
+      "metricsUrl",
+      "dockerClientRealPath",
+      "dockerClientSha256",
+      "dockerSocketRealPath",
+      "dockerSocketDev",
+      "dockerSocketIno",
+      "dockerDaemonId",
+    ],
+    "load-generator isolation summary",
+    reasons,
+  );
+};
+
+const validateNodeRevalidationSummaryShape = (summary, reasons) => {
+  exactShape(
+    summary,
+    [
+      "path",
+      "sha256",
+      "bytes",
+      "schemaVersion",
+      "observedAtMs",
+      "isolationPath",
+      "isolationSha256",
+      "nodeContainerId",
+      "nodeImageId",
+      "nodeHostPid",
+      "nodeStartTicks",
+      "nodeRestartCount",
+      "nodeHealthStatus",
+      "readyUrl",
+      "metricsUrl",
+      "dockerClientSha256",
+      "dockerSocketDev",
+      "dockerSocketIno",
+      "dockerDaemonId",
+    ],
+    "node revalidation summary",
+    reasons,
+  );
+};
+
+const validateWorkloadSummaryShape = (summary, reasons) => {
+  exactShape(
+    summary,
+    [
+      "scenario",
+      "scenarioClass",
+      "benchmarkMode",
+      "formalBenchmark",
+      "targetAcceptedTps",
+      "openLoopRateTps",
+      "measuredDurationSec",
+      "warmupTxs",
+      "warmupSec",
+      "cooldownSec",
+      "drainTimeoutSec",
+      "offeredRateMinRatio",
+      "acceptedRateMinRatio",
+      "nodeSaturationMinRatio",
+      "loadGenerator",
+      "calibration",
+      "corpus",
+      "measuredElapsedSec",
+      "offeredRatePerSec",
+      "acceptedRatePerSec",
+      "submitted",
+      "logicalSubmitAttempts",
+      "physicalSubmitAttempts",
+      "submitErrors",
+      "rejectedDelta",
+      "missingRequiredMetrics",
+      "allPrimaryStagesPassed",
+      "allPrimaryDrainsCompleted",
+      "primaryStageMeasurements",
+    ],
+    "workload summary",
+    reasons,
+  );
+  exactShape(
+    summary?.loadGenerator,
+    ["placement", "cohosted", "clockOffsetMs", "isolation"],
+    "workload load-generator summary",
+    reasons,
+  );
+  exactShape(
+    summary?.corpus,
+    [
+      "path",
+      "indexPath",
+      "manifestPath",
+      "sliceId",
+      "shape",
+      "validation",
+      "artifactIdentity",
+      "preflight",
+      "consumption",
+    ],
+    "workload corpus summary",
+    reasons,
+  );
+  exactShape(
+    summary?.corpus?.validation,
+    ["rowCount", "uniqueTxHashes", "uniqueSelectedInputs"],
+    "workload corpus validation",
+    reasons,
+  );
+  exactShape(
+    summary?.corpus?.artifactIdentity,
+    [
+      "corpusSha256",
+      "indexSha256",
+      "manifestSha256",
+      "manifestExpectedCorpusSha256",
+      "manifestExpectedIndexSha256",
+      "manifestMatchesArtifacts",
+    ],
+    "workload corpus artifact identity",
+    reasons,
+  );
+  exactShape(
+    summary?.corpus?.preflight,
+    [
+      "path",
+      "sha256",
+      "bytes",
+      "schemaVersion",
+      "sourceTreeSha256",
+      "sourceIdentitySha256",
+      "phase1BindingSha256",
+    ],
+    "workload corpus-preflight identity",
+    reasons,
+  );
+  exactShape(
+    summary?.corpus?.consumption,
+    ["schemaVersion", "rowCount", "chains"],
+    "workload corpus consumption",
+    reasons,
+  );
+  for (const [index, chain] of (Array.isArray(
+    summary?.corpus?.consumption?.chains,
+  )
+    ? summary.corpus.consumption.chains
+    : []
+  ).entries()) {
+    exactShape(
+      chain,
+      ["chainIndex", "chainId", "rowCount", "prefixSha256"],
+      `workload corpus consumption chain ${index.toString()}`,
+      reasons,
+    );
+  }
+  for (const [index, stage] of (Array.isArray(summary?.primaryStageMeasurements)
+    ? summary.primaryStageMeasurements
+    : []
+  ).entries()) {
+    exactShape(
+      stage,
+      [
+        "name",
+        "targetRateTps",
+        "startedAtMs",
+        "endedAtMs",
+        "measuredElapsedSec",
+        "logicalSubmitAttempts",
+        "physicalSubmitAttempts",
+        "submitted",
+        "submitErrors",
+        "offeredRatePerSec",
+        "acceptedRatePerSec",
+        "nodeSaturationRatio",
+        "nodeSaturationMinRatio",
+        "nodeSaturationPassed",
+        "drainCompleted",
+        "drainElapsedMs",
+      ],
+      `primary workload stage ${index.toString()}`,
+      reasons,
+    );
+    if (
+      !Number.isSafeInteger(stage?.startedAtMs) ||
+      !Number.isSafeInteger(stage?.endedAtMs)
+    ) {
+      reasons.push(
+        `primary workload stage ${index.toString()} timestamps are not canonical`,
+      );
+    }
+  }
+};
+
+const validateSoakReportShape = (report, reasons) => {
+  exactShape(
+    report,
+    [
+      "schemaVersion",
+      "scenario",
+      "testOnly",
+      "configuredDurationSec",
+      "sampleIntervalMs",
+      "startedAtMs",
+      "completedAtMs",
+      "preflight",
+      "identity",
+      "sourceAtCompletion",
+      "observation",
+      "workload",
+      "termination",
+      "samples",
+    ],
+    "Phase 3 soak report",
+    reasons,
+  );
+  if (typeof report?.testOnly !== "boolean") {
+    reasons.push("testOnly must be an explicit V1 boolean");
+  }
+  for (const [label, value] of [
+    ["configuredDurationSec", report?.configuredDurationSec],
+    ["sampleIntervalMs", report?.sampleIntervalMs],
+    ["completedAtMs", report?.completedAtMs],
+  ]) {
+    if (!Number.isSafeInteger(value)) {
+      reasons.push(`${label} must be a canonical safe integer`);
+    }
+  }
+  if (
+    !(report?.startedAtMs === null || Number.isSafeInteger(report?.startedAtMs))
+  ) {
+    reasons.push("startedAtMs must be canonical epoch milliseconds or null");
+  }
+  if (report?.preflight !== null) {
+    exactShape(
+      report?.preflight,
+      [
+        "startedAtMs",
+        "completedAtMs",
+        "durationMs",
+        "lifecycleStartedAtMs",
+        "initialReadiness",
+        "nodePreLifecycleRevalidation",
+      ],
+      "soak preflight timing",
+      reasons,
+    );
+    for (const [label, value] of [
+      ["startedAtMs", report?.preflight?.startedAtMs],
+      ["completedAtMs", report?.preflight?.completedAtMs],
+      ["durationMs", report?.preflight?.durationMs],
+      ["lifecycleStartedAtMs", report?.preflight?.lifecycleStartedAtMs],
+    ]) {
+      if (!Number.isSafeInteger(value)) {
+        reasons.push(`preflight ${label} must be a canonical safe integer`);
+      }
+    }
+    validateSampleShape(
+      report?.preflight?.initialReadiness,
+      "preflight initial readiness",
+      reasons,
+    );
+    validateNodeRevalidationSummaryShape(
+      report?.preflight?.nodePreLifecycleRevalidation,
+      reasons,
+    );
+  }
+  if (report?.identity !== null) {
+    reasons.push(
+      ...evaluateExactClosureIdentityShape(report?.identity, [
+        "corpusPreflight",
+        "loadGeneratorIsolation",
+        "nodePreLifecycleRevalidation",
+      ]),
+    );
+    validateCorpusPreflightSummaryShape(
+      report?.identity?.corpusPreflight,
+      reasons,
+    );
+    validateIsolationSummaryShape(
+      report?.identity?.loadGeneratorIsolation,
+      reasons,
+    );
+    validateNodeRevalidationSummaryShape(
+      report?.identity?.nodePreLifecycleRevalidation,
+      reasons,
+    );
+  }
+  if (report?.sourceAtCompletion !== null) {
+    reasons.push(
+      ...evaluateExactSourceIdentityShape(
+        report?.sourceAtCompletion,
+        "completion source identity",
+      ),
+    );
+  }
+  exactShape(
+    report?.observation,
+    [
+      "workloadSpawnedAtMs",
+      "workloadExitedAtMs",
+      "firstSampleAtMs",
+      "lastSampleAtMs",
+    ],
+    "soak observation",
+    reasons,
+  );
+  for (const [label, value] of Object.entries(report?.observation ?? {})) {
+    if (!(value === null || Number.isSafeInteger(value))) {
+      reasons.push(`observation ${label} must be canonical epoch milliseconds`);
+    }
+  }
+  if (report?.workload !== null) {
+    exactShape(
+      report?.workload,
+      [
+        "scriptPath",
+        "scriptSha256",
+        "reportPath",
+        "reportSha256",
+        "reportBytes",
+        "reportSummary",
+        "submitRecords",
+      ],
+      "soak workload",
+      reasons,
+    );
+    if (
+      !isCanonicalAbsolutePath(report?.workload?.scriptPath) ||
+      !isCanonicalAbsolutePath(report?.workload?.reportPath)
+    ) {
+      reasons.push("soak workload paths must be canonical absolute paths");
+    }
+    validateWorkloadSummaryShape(report?.workload?.reportSummary, reasons);
+    exactShape(
+      report?.workload?.submitRecords,
+      [
+        "path",
+        "sha256",
+        "bytes",
+        "recordCount",
+        "successCount",
+        "errorCount",
+        "timeoutCount",
+        "attemptSequenceSha256",
+      ],
+      "submit-record summary",
+      reasons,
+    );
+  }
+  const terminationKeys =
+    report?.termination?.reason === "setup_failure"
+      ? [
+          "completed",
+          "reason",
+          "phase",
+          "workloadExitCode",
+          "workloadSignal",
+          "earlyExit",
+          "error",
+        ]
+      : [
+          "completed",
+          "reason",
+          "workloadExitCode",
+          "workloadSignal",
+          "earlyExit",
+          "error",
+        ];
+  exactShape(report?.termination, terminationKeys, "soak termination", reasons);
+  for (const [index, sample] of (Array.isArray(report?.samples)
+    ? report.samples
+    : []
+  ).entries()) {
+    validateSampleShape(sample, `sample ${index.toString()}`, reasons);
+  }
+};
 
 const slopePerSecond = (samples, select) => {
   if (samples.length < 2) return null;
@@ -123,6 +649,7 @@ export const evaluatePhase3ArchitectureGSoakReport = (
   { allowTestOnlyDuration = false } = {},
 ) => {
   const reasons = [];
+  validateSoakReportShape(report, reasons);
   if (report?.schemaVersion !== PHASE3_ARCHITECTURE_G_SOAK_SCHEMA) {
     reasons.push("unexpected Phase 3 soak report schema");
   }
@@ -182,8 +709,7 @@ export const evaluatePhase3ArchitectureGSoakReport = (
   reasons.push(...identityReasons(report?.identity));
   if (
     isolation?.schemaVersion !== PHASE3_LOAD_GENERATOR_ISOLATION_SCHEMA ||
-    typeof isolation?.path !== "string" ||
-    !path.isAbsolute(isolation.path) ||
+    !isCanonicalAbsolutePath(isolation?.path) ||
     !SHA256.test(isolation?.sha256 ?? "") ||
     !Number.isSafeInteger(isolation?.bytes) ||
     isolation.bytes <= 0 ||
@@ -202,10 +728,8 @@ export const evaluatePhase3ArchitectureGSoakReport = (
     typeof isolation?.readyUrl !== "string" ||
     typeof isolation?.metricsUrl !== "string" ||
     !SHA256.test(isolation?.dockerClientSha256 ?? "") ||
-    typeof isolation?.dockerClientRealPath !== "string" ||
-    !path.isAbsolute(isolation.dockerClientRealPath) ||
-    typeof isolation?.dockerSocketRealPath !== "string" ||
-    !path.isAbsolute(isolation.dockerSocketRealPath) ||
+    !isCanonicalAbsolutePath(isolation?.dockerClientRealPath) ||
+    !isCanonicalAbsolutePath(isolation?.dockerSocketRealPath) ||
     !/^\d+$/u.test(isolation?.dockerSocketDev ?? "") ||
     !/^\d+$/u.test(isolation?.dockerSocketIno ?? "") ||
     typeof isolation?.dockerDaemonId !== "string" ||
@@ -217,8 +741,7 @@ export const evaluatePhase3ArchitectureGSoakReport = (
   if (
     nodePreLifecycleRevalidation?.schemaVersion !==
       PHASE3_NODE_PRE_LIFECYCLE_REVALIDATION_SCHEMA ||
-    typeof nodePreLifecycleRevalidation?.path !== "string" ||
-    !path.isAbsolute(nodePreLifecycleRevalidation.path) ||
+    !isCanonicalAbsolutePath(nodePreLifecycleRevalidation?.path) ||
     !SHA256.test(nodePreLifecycleRevalidation?.sha256 ?? "") ||
     !Number.isSafeInteger(nodePreLifecycleRevalidation?.bytes) ||
     nodePreLifecycleRevalidation.bytes <= 0 ||
@@ -308,8 +831,9 @@ export const evaluatePhase3ArchitectureGSoakReport = (
     workloadSummary?.allPrimaryDrainsCompleted !== true ||
     primaryStages.length !== 1 ||
     primaryStage?.targetRateTps !== PHASE3_ARCHITECTURE_G_TARGET_TPS ||
-    typeof report?.workload?.submitRecords?.path !== "string" ||
-    !path.isAbsolute(report.workload.submitRecords.path) ||
+    !isCanonicalAbsolutePath(report?.workload?.scriptPath) ||
+    !isCanonicalAbsolutePath(report?.workload?.reportPath) ||
+    !isCanonicalAbsolutePath(report?.workload?.submitRecords?.path) ||
     !SHA256.test(report?.workload?.submitRecords?.sha256 ?? "") ||
     !Number.isSafeInteger(report?.workload?.submitRecords?.bytes) ||
     report.workload.submitRecords.bytes <= 0 ||
@@ -333,8 +857,7 @@ export const evaluatePhase3ArchitectureGSoakReport = (
     preflightTiming?.nodePreLifecycleRevalidation;
   if (
     corpusPreflight?.schemaVersion !== PHASE3_SOAK_CORPUS_PREFLIGHT_SCHEMA ||
-    typeof corpusPreflight?.path !== "string" ||
-    !path.isAbsolute(corpusPreflight.path) ||
+    !isCanonicalAbsolutePath(corpusPreflight?.path) ||
     !SHA256.test(corpusPreflight?.sha256 ?? "") ||
     !Number.isSafeInteger(corpusPreflight?.bytes) ||
     corpusPreflight.bytes <= 0 ||

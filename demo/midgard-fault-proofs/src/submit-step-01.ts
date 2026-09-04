@@ -1,3 +1,16 @@
+/**
+ * `double-spend` step-01 submitter, plus the shared helpers every family's
+ * submitter reuses.
+ *
+ * **Re-derived onto the flat field commitments by #604.** Thread state carries
+ * the §2.5 anchor — `verified_tx1_id` — and nothing else: the retired
+ * `verified_tx1_spend_inputs_hash` is not replaced but *removed*, because the
+ * §8.8 door extracts field 0's commitment positionally from the compact
+ * structures the anchor authenticates. Carrying it forward would be carrying a
+ * value no validator reads. See
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ */
+
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxCompact,
@@ -6,14 +19,18 @@ import {
   type MidgardNativeTxCompact as CoreNativeTxCompact,
   MidgardTxValidityCodes,
   normalizeHex,
+  verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import {
   DoubleSpendStep01SpendRedeemer,
   DoubleSpendStep02Datum,
   FraudProofComputationThreadStepDatum,
   HUB_ORACLE_ASSET_NAME,
+  type L2TransactionSource,
+  L2TransactionSourceSchema,
   NativeTxCompact,
   type NativeTxCompact as NativeTxCompactData,
+  type NativeTxInclusionCarriage,
   Proof,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -39,6 +56,15 @@ import {
   parseSignedInteger,
   requireRecord,
 } from "./json-file.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
+import {
+  chunkedMembershipClaimRedeemer,
+  chunkedVerifyWithdrawalScript,
+  derivedChunkReferenceIndices,
+  type PublishedProofChunk,
+  requireBuiltChunkReferenceIndices,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   compareUtxoOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -58,6 +84,16 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
+} from "./witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
+} from "./workflow/transaction-boundary.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
 export const MIN_FEE_INPUT_LOVELACE = 10_000_000n;
@@ -79,6 +115,8 @@ export type SubmitStep01TxInclusion = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  /** Exact canonical `Data(L2TransactionSource)` committed by transactions_root. */
+  readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens. Authenticated on-chain
   // against the block header's counted `transactions_root`.
   readonly transactionsPhasRoot: string;
@@ -105,6 +143,9 @@ export type SubmitStep01Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
+  /** Which route the membership opening took to L1 (issue #545). */
+  readonly proofCarriage: "redeemer" | "published-chunks";
+  readonly publishedChunkOutRefs: readonly string[];
   readonly awaitedConfirmation: boolean;
 };
 
@@ -224,6 +265,64 @@ export const parseSubmitStep01TxInclusion = (
     record.nativeTxCompactCbor,
     "--tx-inclusion.nativeTxCompactCbor",
   );
+  const l2TransactionSourceCbor = parseHex(
+    record.l2TransactionSourceCbor,
+    "--tx-inclusion.l2TransactionSourceCbor",
+  );
+  let l2TransactionSource: L2TransactionSource;
+  try {
+    l2TransactionSource = Data.from(
+      l2TransactionSourceCbor,
+      L2TransactionSourceSchema as never,
+    ) as L2TransactionSource;
+  } catch (cause) {
+    throw new Error(
+      `--tx-inclusion.l2TransactionSourceCbor is not Data(L2TransactionSourceV1): ${formatUnknownError(cause)}`,
+    );
+  }
+  if (
+    Data.to(
+      l2TransactionSource as never,
+      L2TransactionSourceSchema as never,
+    ) !== l2TransactionSourceCbor
+  ) {
+    throw new Error(
+      "--tx-inclusion.l2TransactionSourceCbor is not canonical Data(L2TransactionSourceV1).",
+    );
+  }
+  if (l2TransactionSource.tx_id !== nativeTxId) {
+    throw new Error(
+      "--tx-inclusion.l2TransactionSourceCbor tx_id does not match nativeTxId.",
+    );
+  }
+  if (l2TransactionSource.source.compact_cbor !== nativeTxCompactCbor) {
+    throw new Error(
+      "--tx-inclusion.l2TransactionSourceCbor compact_cbor does not match nativeTxCompactCbor.",
+    );
+  }
+  try {
+    verifyMidgardNativeTxProofSource({
+      transactionId: Buffer.from(nativeTxId, "hex"),
+      source: {
+        compactCbor: Buffer.from(
+          l2TransactionSource.source.compact_cbor,
+          "hex",
+        ),
+        witnessSetCompactCbor: Buffer.from(
+          l2TransactionSource.source.witness_set_compact_cbor,
+          "hex",
+        ),
+        fieldPreimageLengthsCbor: Buffer.from(
+          l2TransactionSource.source.field_preimage_lengths_cbor,
+          "hex",
+        ),
+      },
+    });
+  } catch (cause) {
+    throw new Error(
+      `--tx-inclusion.l2TransactionSourceCbor does not authenticate an exact native proof source: ${formatUnknownError(cause)}`,
+    );
+  }
   const transactionsPhasRoot = parseHex(
     record.transactionsPhasRoot,
     "--tx-inclusion.transactionsPhasRoot",
@@ -237,6 +336,7 @@ export const parseSubmitStep01TxInclusion = (
     nativeTxId,
     nativeTx,
     nativeTxCompactCbor,
+    l2TransactionSourceCbor,
     transactionsPhasRoot,
     txMembershipProof: Data.from(txMembershipProofCbor, Proof),
     txMembershipProofCbor,
@@ -362,6 +462,9 @@ export const selectFeeInput = (walletUtxos: readonly UTxO[]): UTxO => {
         ([unit, amount]) => unit !== "lovelace" && amount > 0n,
       );
       return (
+        utxo.datum == null &&
+        utxo.datumHash == null &&
+        utxo.scriptRef == null &&
         nonAdaAssets.length === 0 &&
         (utxo.assets.lovelace ?? 0n) >= MIN_FEE_INPUT_LOVELACE
       );
@@ -395,6 +498,10 @@ export const submitStep01 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  publishedProofChunks,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -405,6 +512,18 @@ export const submitStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  /**
+   * Chunks published by `publishProofChunksV1`, in proof order. When present
+   * the membership proof reaches L1 through them and never enters this
+   * transaction (issue #545).
+   */
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
+  /** The mandatory published step-01 reference script. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Required published witness reference scripts for this transaction. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep01Result> => {
   const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
@@ -470,8 +589,14 @@ export const submitStep01 = async ({
   requireNativeTxMatchesCompactCbor(txInclusion);
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
+  const chunks = publishedProofChunks ?? [];
+  const carriedByChunks = chunks.length > 0;
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
+  );
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -480,13 +605,46 @@ export const submitStep01 = async ({
     network,
     phasMembershipScript,
   );
+  // On the chunked route the merkelized published-chunk verifier stands in for
+  // the `phas` membership withdrawal; the proof stays in the referenced chunks.
+  const chunkedVerifyScript = chunkedVerifyWithdrawalScript(blueprint);
+  const chunkedVerifyRewardAddress = phasMembershipRewardAddress(
+    network,
+    chunkedVerifyScript,
+  );
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
+    script: contracts.doubleSpend.steps[0].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "double-spend step 01 validator",
+  });
+  const inclusionCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriage({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: "double-spend step 01 chunked verify",
+      })
+    : witnessWithdrawalValidatorCarriage({
+        script: phasMembershipScript,
+        referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        label: "double-spend step 01 PHAS membership",
+      });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    ...stepScriptCarriage.referenceInputs,
+    ...inclusionCarriage.referenceInputs,
+  ];
+  const resolvedChunkIndices = derivedChunkReferenceIndices({
+    referenceInputs,
+    chunks,
+    label: "double-spend step 01",
+  });
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
         verified_tx1_id: txInclusion.nativeTxId,
-        verified_tx1_spend_inputs_hash:
-          txInclusion.nativeTx.body.spend_inputs_hash,
       },
     },
     DoubleSpendStep02Datum,
@@ -518,52 +676,84 @@ export const submitStep01 = async ({
       ),
     };
     resolvedLayout = layout;
-    return Data.to(
-      {
-        Continue: [
-          {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              layout.stateQueueNodeRefInputIndex,
-            native_tx_id: txInclusion.nativeTxId,
-            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-            transactions_phas_root: txInclusion.transactionsPhasRoot,
-            tx_membership_proof: txInclusion.txMembershipProof,
-            inclusion_proof_script_withdraw_redeemer_index:
-              requireWithdrawalRedeemerIndex(
-                ctx,
-                phasRewardAddress,
-                "double-spend step 01 PHAS membership",
-              ),
-          },
-        ],
-      },
-      DoubleSpendStep01SpendRedeemer,
-    );
+    const common = {
+      input_index: layout.inputIndex,
+      output_index: layout.outputIndex,
+      hub_ref_input_index: layout.hubOracleRefInputIndex,
+      state_queue_node_ref_input_index: layout.stateQueueNodeRefInputIndex,
+      native_tx_id: txInclusion.nativeTxId,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
+      transactions_phas_root: txInclusion.transactionsPhasRoot,
+    };
+    // The prover chooses the carriage. Published chunks are the route for a
+    // proof the 16,384-byte envelope cannot carry (issue #545); the redeemer
+    // route stays the cheaper one for every proof that fits.
+    // The canonical order derived above is the order the ledger will present;
+    // re-deriving it from the builder context here proves the two agree.
+    requireBuiltChunkReferenceIndices({
+      ctx,
+      chunks,
+      derived: resolvedChunkIndices,
+      label: "double-spend step 01",
+    });
+    const carriage: NativeTxInclusionCarriage = carriedByChunks
+      ? {
+          PublishedChunkInclusion: [
+            {
+              ...common,
+              ordered_chunk_reference_input_indices: resolvedChunkIndices,
+            },
+          ],
+        }
+      : {
+          RedeemerCarriedInclusion: [
+            {
+              ...common,
+              tx_membership_proof: txInclusion.txMembershipProof,
+              inclusion_proof_script_withdraw_redeemer_index:
+                requireWithdrawalRedeemerIndex(
+                  ctx,
+                  phasRewardAddress,
+                  "double-spend step 01 PHAS membership",
+                ),
+            },
+          ],
+        };
+    return Data.to({ Continue: [carriage] }, DoubleSpendStep01SpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasRewardAddress,
-      0n,
-      encodeRawPhasMembershipProofRedeemer({
-        root: txInclusion.transactionsPhasRoot,
-        keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
-        membershipProofCbor: txInclusion.txMembershipProofCbor,
-      }),
-    )
-    .pay.ToContract(
+    .readFrom(referenceInputs);
+  // On the published-chunk route the delegated `phas` invocation disappears
+  // along with the proof: the step verifies the reassembled proof itself.
+  const tx = (
+    carriedByChunks
+      ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+          chunkedMembershipClaimRedeemer({
+            merkleRoot: txInclusion.transactionsPhasRoot,
+            keyBytes: txInclusion.nativeTxId,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
+            orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          })) satisfies BuildTxWithRedeemer)
+      : base.withdraw(
+          phasRewardAddress,
+          0n,
+          encodeRawPhasMembershipProofRedeemer({
+            root: txInclusion.transactionsPhasRoot,
+            keyBytes: txInclusion.nativeTxId,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
+            membershipProofCbor: txInclusion.txMembershipProofCbor,
+          }),
+        )
+  ).pay
+    .ToContract(
       contracts.doubleSpend.steps[1].spendingScriptAddress,
       {
         kind: "inline",
@@ -571,16 +761,42 @@ export const submitStep01 = async ({
       },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.doubleSpend.steps[0].spendingScript)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = inclusionCarriage.attach(stepScriptCarriage.attach(tx));
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error("BuildTxWithRedeemer did not resolve step 01 layout.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: [
+      workflowReferenceScript({
+        role: "V1 fraud-proof double-spend step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.doubleSpend.steps[0].spendingScript,
+      }),
+      carriedByChunks
+        ? workflowReferenceScript({
+            role: "V1 MPF chunked-verify withdrawal",
+            utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+            expectedScript: chunkedVerifyScript,
+          })
+        : workflowReferenceScript({
+            role: "membership proof withdrawal",
+            utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+            expectedScript: phasMembershipScript,
+          }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -606,6 +822,8 @@ export const submitStep01 = async ({
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
+    proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
+    publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
     awaitedConfirmation: awaitConfirmation,
   };
 };
@@ -613,6 +831,9 @@ export const submitStep01 = async ({
 export const submitStep01FromFiles = async (
   config: SubmitStep01CliConfig,
 ): Promise<SubmitStep01Result> => {
+  rejectRetiredUnauthenticatedSubmissionRoute({
+    command: "submit-step-01",
+  });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
     [
       readJsonFile(config.blueprintPath),

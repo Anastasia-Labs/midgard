@@ -3,32 +3,32 @@ import "./utils.js";
 import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Globals, NodeConfig } from "@/services/index.js";
-import { Lucid as LucidService } from "@/services/lucid.js";
-import { MidgardContracts } from "@/services/midgard-contracts.js";
-import type { StateQueueSnapshot } from "@/services/state-queue-topology.js";
+import { Globals, NodeConfig } from "../src/services/index.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import type { StateQueueSnapshot } from "../src/services/state-queue-topology.js";
 
 const fetchStateQueueSnapshotProgramMock = vi.hoisted(() => vi.fn());
 const resolveEarliestCommitSchedulerDueWorkPlanMock = vi.hoisted(() => vi.fn());
 const fetchRealStateQueueWitnessContextMock = vi.hoisted(() => vi.fn());
 const tryWithLeaseMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/state-queue-topology.js", () => ({
+vi.mock("../src/services/state-queue-topology.js", () => ({
   fetchStateQueueSnapshotProgram: fetchStateQueueSnapshotProgramMock,
   refreshStateQueueGlobalsFromSnapshot: () => Effect.void,
 }));
 
-vi.mock("@/workers/utils/scheduler-refresh.js", () => ({
+vi.mock("../src/workers/utils/scheduler-refresh.js", () => ({
   fetchRealStateQueueWitnessContext: fetchRealStateQueueWitnessContextMock,
   resolveEarliestCommitSchedulerDueWorkPlan:
     resolveEarliestCommitSchedulerDueWorkPlanMock,
 }));
 
-vi.mock("@/workers/utils/commit-end-time.js", () => ({
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS: 1_000,
+vi.mock("../src/workers/utils/commit-end-time.js", () => ({
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS: 1_000,
 }));
 
-vi.mock("@/database/index.js", async () => {
+vi.mock("../src/database/index.js", async () => {
   const { Effect: EffectModule } = await import("effect");
   return {
     DaPayloadsDB: {
@@ -71,8 +71,8 @@ vi.mock("@/database/index.js", async () => {
   };
 });
 
-import { blockCommitmentAction } from "@/fibers/block-commitment.js";
-import { slotAwareDueWorkRegistry } from "@/fibers/slot-aware-due-work.js";
+import { blockCommitmentAction } from "../src/fibers/block-commitment.js";
+import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 
 const snapshot = {
   snapshotId: "commit-preflight:root#0:tail#0",

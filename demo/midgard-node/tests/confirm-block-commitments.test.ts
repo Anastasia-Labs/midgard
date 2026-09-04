@@ -5,16 +5,16 @@ import { describe, expect, it } from "vitest";
 import {
   resolveConfirmationDetectionLagMs,
   shouldObserveConfirmationDetectionLag,
-} from "@/fibers/block-confirmation.js";
-import { resolveTransactionConfirmationMetadata } from "@/transaction-confirmation-metadata.js";
-import { probeSubmittedTx } from "@/workers/confirm-block-commitments.js";
+} from "../src/fibers/block-confirmation.js";
+import { resolveTransactionConfirmationMetadata } from "../src/transaction-confirmation-metadata.js";
+import { probeSubmittedTx } from "../src/workers/confirm-block-commitments.js";
 import {
   decideUnsubmittedPendingBlockRecovery,
   type PendingBlockConfirmation,
   pendingBlockHasSubmittedTx,
   shouldDeferUnsubmittedPendingBlockRecovery,
   shouldRunFullStateQueueConfirmationScan,
-} from "@/workers/utils/confirm-block-commitments.js";
+} from "../src/workers/utils/confirm-block-commitments.js";
 
 const pendingBlock = (
   submittedTxHash: PendingBlockConfirmation["submittedTxHash"],

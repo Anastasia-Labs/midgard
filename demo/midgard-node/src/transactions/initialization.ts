@@ -1,6 +1,7 @@
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CML,
   credentialToAddress,
   Data as LucidData,
   LucidEvolution,
@@ -10,29 +11,39 @@ import {
   type TxBuilder,
   type TxSignBuilder,
   UTxO,
-  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
-import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { NodeConfig } from "@/services/config.js";
-import { Lucid } from "@/services/lucid.js";
-import { MidgardContracts } from "@/services/midgard-contracts.js";
+import {
+  type DaLocalSigner,
+  daLocalSigners,
+  isStrictlyAscending,
+  splitPackedHex,
+  VERIFICATION_KEY_HASH_HEX_LENGTH,
+  VERIFICATION_KEY_HEX_LENGTH,
+} from "../da/local-signers.js";
+import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
+import { MidgardMpf, MpfBatchOp, MpfError } from "../mpf/index.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
+import { NodeConfig } from "../services/config.js";
+import { Lucid } from "../services/lucid.js";
+import {
+  type ContractDeploymentIdentityValue,
+  MidgardContracts,
+} from "../services/midgard-contracts.js";
 import {
   fetchStateQueueTopologyProgram,
   type StateQueueTopology,
-} from "@/services/state-queue-topology.js";
-import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
-import { ensureNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
+} from "../services/state-queue-topology.js";
+import { outRefLabel } from "../tx-context.js";
+import { ensurePhasMembershipRewardAccountRegisteredProgram } from "./phas-membership-registration.js";
+import { ensureNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
-import { outRefLabel } from "@/tx-context.js";
-import { MidgardMpf, MpfBatchOp, MpfError } from "@/workers/utils/mpf.js";
+} from "./utils.js";
 
 /**
  * Deployment helpers for the protocol's initial on-chain contract state.
@@ -55,32 +66,41 @@ const FraudProofCatalogueIdSchema = LucidData.Bytes({
   minLength: SDK.FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: SDK.FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
 });
-type LucidDataSchema = Parameters<typeof LucidData.to>[1];
 
-type IndexedFraudProof = readonly [
+type IndexedFraudProof<
+  CategoryName extends
+    SDK.FraudProofCatalogueCategoryName = SDK.FraudProofCatalogueCategoryName,
+> = readonly [
   categoryId: Buffer,
   validator: SDK.SpendingValidator,
-  categoryName: SDK.FraudProofCatalogueCategoryName,
+  categoryName: CategoryName,
 ];
 
-/**
- * Assigns deterministic integer keys to the fraud-proof validator set.
- */
+/** Uses the frozen wire ID map; category presentation order is not identity. */
 export const fraudProofsToIndexedValidators = (
   fraudProofs: SDK.FraudProofs,
-): IndexedFraudProof[] => {
-  return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((fraudProofTitle, i) => [
-    uint32ToFraudProofID(i),
-    fraudProofs[fraudProofTitle],
-    fraudProofTitle,
-  ]);
+): IndexedFraudProof<SDK.FraudProofCatalogueCategoryName>[] => {
+  return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((fraudProofTitle) => {
+    const categoryIdHex =
+      SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[fraudProofTitle];
+    const categoryId = Buffer.from(categoryIdHex, "hex");
+    if (
+      categoryId.length !== SDK.FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT ||
+      categoryId.toString("hex") !== categoryIdHex
+    ) {
+      throw new Error(
+        `Invalid fraud-proof category ID for ${fraudProofTitle}: ${categoryIdHex}`,
+      );
+    }
+    return [categoryId, fraudProofs[fraudProofTitle], fraudProofTitle];
+  });
 };
 
 const encodeFraudProofCatalogueKey = (categoryId: Buffer): Buffer =>
   Buffer.from(
     LucidData.to(
       categoryId.toString("hex"),
-      FraudProofCatalogueIdSchema as unknown as LucidDataSchema,
+      asLucidSchema(FraudProofCatalogueIdSchema),
     ),
     "hex",
   );
@@ -91,7 +111,7 @@ const encodeFraudProofCatalogueValue = (
   Buffer.from(
     LucidData.to(
       fraudProofValidator.spendingScriptHash,
-      SDK.ScriptHashSchema as unknown as LucidDataSchema,
+      asLucidSchema(SDK.ScriptHashSchema),
     ),
     "hex",
   );
@@ -99,8 +119,10 @@ const encodeFraudProofCatalogueValue = (
 /**
  * Builds the Merkle Patricia Forestry root used as the fraud-proof catalogue.
  */
-export const createFraudProofCatalogueMpf = (
-  indexedFraudProofs: readonly IndexedFraudProof[],
+export const createFraudProofCatalogueMpf = <
+  CategoryName extends SDK.FraudProofCatalogueCategoryName,
+>(
+  indexedFraudProofs: readonly IndexedFraudProof<CategoryName>[],
 ): Effect.Effect<MidgardMpf, MpfError> =>
   Effect.gen(function* () {
     const batchOps = indexedFraudProofs.map(
@@ -115,17 +137,19 @@ export const createFraudProofCatalogueMpf = (
     return mpf;
   });
 
-export const buildFraudProofCatalogueDeploymentInfo = (
-  indexedFraudProofs: readonly IndexedFraudProof[],
-): Effect.Effect<SDK.FraudProofCatalogueDeploymentInfo, MpfError> =>
+export const buildFraudProofCatalogueDeploymentInfo = <
+  CategoryName extends SDK.FraudProofCatalogueCategoryName,
+>(
+  indexedFraudProofs: readonly IndexedFraudProof<CategoryName>[],
+): Effect.Effect<
+  SDK.FraudProofCatalogueDeploymentInfo<CategoryName>,
+  MpfError
+> =>
   Effect.gen(function* () {
     const mpf = yield* createFraudProofCatalogueMpf(indexedFraudProofs);
     const root = yield* mpf.rootHex();
     const categories: Partial<
-      Record<
-        SDK.FraudProofCatalogueCategoryName,
-        SDK.FraudProofCatalogueCategoryDeploymentInfo
-      >
+      Record<CategoryName, SDK.FraudProofCatalogueCategoryDeploymentInfo>
     > = {};
 
     for (const [categoryId, validator, categoryName] of indexedFraudProofs) {
@@ -141,7 +165,7 @@ export const buildFraudProofCatalogueDeploymentInfo = (
     return {
       root,
       categories:
-        categories as SDK.FraudProofCatalogueDeploymentInfo["categories"],
+        categories as SDK.FraudProofCatalogueDeploymentInfo<CategoryName>["categories"],
     };
   });
 
@@ -205,57 +229,169 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
   ),
 });
 
+/**
+ * Committee size at or above which the single-key attestation warning is not
+ * emitted.
+ *
+ * Advice, not a bound. The governor represents a committee of one — the
+ * 2026-08-11 owner ruling accepted the single-key attest loop *with a
+ * rate-limited explanatory log* and named two-key committees the standing
+ * configuration — so nothing here refuses a committee below this size.
+ */
+const MIN_RECOMMENDED_DA_COMMITTEE_SIZE = 2;
+
+/**
+ * Owner-set size at or above which the single-key governance warning is not
+ * emitted.
+ *
+ * Advice, not a bound, and deliberately a separate constant from
+ * {@link MIN_RECOMMENDED_DA_COMMITTEE_SIZE}: one covers who can attest, the
+ * other who can rotate the parameters, and a future change to either must not
+ * silently move the other. The 2026-08-13 owner ruling made a lone owner
+ * representable, so this drives a warning and nothing else.
+ */
+const MIN_RECOMMENDED_DA_OWNER_COUNT = 2;
+
+/**
+ * Builds the `DaParamsDatum` this node writes at protocol initialization.
+ *
+ * Q63 (F04 §4) gave the governor threshold floors — `da_threshold >=
+ * ceil(2*committee_len/3)` and `update_threshold >= ceil(2*owner_len/3)`. Every
+ * bound below is evaluated by the SDK twins (`SDK.governedThresholdFloor`,
+ * `SDK.daParamsFloorViolations`) so the arithmetic lives in exactly one place
+ * and cannot drift from the validator.
+ *
+ * Both sets are also emitted sorted-unique, because `valid_datum` measures
+ * `committee` and `owners` with its `sorted_unique_*` walkers, which fail the
+ * script outright on an out-of-order or duplicate element.
+ *
+ * ## A fully single-key deployment warns; it is no longer refused
+ *
+ * F04 §4 carried a `max(2, …)` clamp and the governor carried an owner-set
+ * minimum of two, so both a 1-of-1 committee and a lone owner were unmintable
+ * and this function refused each. Two owner rulings retired both: 2026-08-11
+ * (ruling 4) for the committee floor, and 2026-08-13 (in-session, recorded on
+ * #602) for the owner-set minimum.
+ *
+ * A node holding nothing but its own key therefore bootstraps end to end. It
+ * emits a one-member committee and a one-member owner set, both of which the
+ * governor admits, and this function emits one explanatory warning for each —
+ * single-key attestation, and single-key governance. Neither is an error.
+ *
+ * The warnings are per-bootstrap rather than time-limited, because this is a
+ * one-shot path: it runs once per deployment initialisation, so it cannot flood
+ * a log the way a loop can. The rate limiter that the ruling asks for lives
+ * where the repetition is — the attest loop in
+ * `demo/da-committee-node/src/coordinator/on-chain.ts`.
+ *
+ * What still fails closed is genuinely malformed configuration: a set that is
+ * not hex, not the right element width, empty, or not sorted-unique. Those
+ * would be rejected by `valid_datum` on-chain, and saying so here is far
+ * cheaper than a cryptic script failure.
+ */
 export const deriveOperatorDaParams = (nodeConfig: {
   readonly L1_OPERATOR_SEED_PHRASE: string;
   readonly NETWORK: Network;
   readonly DA_COMMITTEE_HEX?: string;
   readonly DA_THRESHOLD?: bigint | null;
+  readonly DA_COSIGNER_SEED_PHRASE?: string;
+  readonly DA_OWNERS_HEX?: string;
 }): Effect.Effect<SDK.DaParamsDatum, SDK.HashingError> =>
   Effect.gen(function* () {
-    const wallet = walletFromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE, {
-      network: nodeConfig.NETWORK,
+    // Seed decoding is the one step here that can throw on caller-supplied
+    // input, so it is surfaced as this function's declared error rather than as
+    // an unhandled defect.
+    const signers = yield* Effect.try({
+      try: () => daLocalSigners(nodeConfig),
+      catch: (cause) =>
+        new SDK.HashingError({
+          message: "Invalid DA signer configuration",
+          cause,
+        }),
     });
-    const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
-    const publicKey = privateKey.to_public();
-    const configuredCommittee = (nodeConfig.DA_COMMITTEE_HEX ?? "").trim();
-    const committee =
-      configuredCommittee.length > 0
-        ? yield* validateConfiguredDaCommittee(configuredCommittee)
-        : Buffer.from(publicKey.to_raw_bytes()).toString("hex");
-    const committeeLength = BigInt(committee.length / 64);
-    const daThreshold = nodeConfig.DA_THRESHOLD ?? 1n;
-    if (daThreshold <= 0n || daThreshold > committeeLength) {
+    const committee = yield* resolveDaCommittee(nodeConfig, signers);
+    const committeeLength = committee.length / VERIFICATION_KEY_HEX_LENGTH;
+    if (committeeLength < MIN_RECOMMENDED_DA_COMMITTEE_SIZE) {
+      // The 2026-08-11 owner ruling 4's explanatory warning, at the one place a
+      // deployment's committee size is decided. Warn, do not refuse: the
+      // governor admits this datum, and refusing it here would reinstate the
+      // prohibition the ruling lifted.
+      yield* Effect.logWarning(
+        `Single-key DA configuration: this deployment initialises a ${committeeLength.toString()}-member DA committee, ` +
+          `so every block's data availability is attested by one key with no independent corroboration and no liveness redundancy. ` +
+          `F04 §4 (amended 2026-08-11) permits it — the governed floor is ceil(2*${committeeLength.toString()}/3) = ` +
+          `${SDK.governedThresholdFloor(committeeLength).toString()} — but two-key committees are the standing configuration. ` +
+          `Set DA_COMMITTEE_HEX to the packed peer committee, or DA_COSIGNER_SEED_PHRASE to a second locally held key.`,
+      );
+    }
+    const owners = yield* resolveDaOwners(nodeConfig, signers);
+    if (owners.length < MIN_RECOMMENDED_DA_OWNER_COUNT) {
+      // The 2026-08-13 owner ruling's explanatory warning, symmetric with the
+      // committee one above and emitted at the one place a deployment's owner
+      // set is decided. Warn, do not refuse: the governor admits this datum.
+      yield* Effect.logWarning(
+        `Single-key DA governance: this deployment initialises a ${owners.length.toString()}-member DA owner set, ` +
+          `so one key can rotate the DA committee and both governed thresholds with no second approval. ` +
+          `F04 §4 (amended 2026-08-13) permits it — the governed floor is ceil(2*${owners.length.toString()}/3) = ` +
+          `${SDK.governedThresholdFloor(owners.length).toString()} — but multi-owner governance is the standing configuration. ` +
+          `Set DA_OWNERS_HEX to the packed owner key hashes, or DA_COSIGNER_SEED_PHRASE to a second locally held key.`,
+      );
+    }
+    const daThreshold =
+      nodeConfig.DA_THRESHOLD ??
+      BigInt(SDK.governedThresholdFloor(committeeLength));
+    const updateThreshold = BigInt(SDK.governedThresholdFloor(owners.length));
+
+    const violations = SDK.daParamsFloorViolations({
+      committeeLength,
+      daThreshold: Number(daThreshold),
+      ownerCount: owners.length,
+      updateThreshold: Number(updateThreshold),
+    });
+    if (violations.length > 0) {
       return yield* Effect.fail(
         new SDK.HashingError({
           message: "Invalid DA threshold configuration",
-          cause: `threshold=${daThreshold.toString()},committee_members=${committeeLength.toString()}`,
+          cause:
+            `${violations.join(",")}; ` +
+            `threshold=${daThreshold.toString()},committee_members=${committeeLength.toString()},` +
+            `update_threshold=${updateThreshold.toString()},owners=${owners.length.toString()}`,
         }),
       );
     }
+
     return {
       committee,
       committee_signers_hash: yield* SDK.hashHexWithBlake2b(committee, 32),
       da_threshold: daThreshold,
-      owners: [publicKey.hash().to_hex()],
-      update_threshold: 1n,
+      owners,
+      update_threshold: updateThreshold,
     };
   });
 
-const validateConfiguredDaCommittee = (
-  committee: string,
+const resolveDaCommittee = (
+  nodeConfig: {
+    readonly DA_COMMITTEE_HEX?: string;
+  },
+  signers: readonly DaLocalSigner[],
 ): Effect.Effect<string, SDK.HashingError> =>
   Effect.try({
     try: () => {
-      const normalized = committee.trim().toLowerCase();
-      if (!/^[0-9a-f]*$/.test(normalized) || normalized.length % 64 !== 0) {
-        throw new Error(
-          "DA_COMMITTEE_HEX must be packed 32-byte verification keys as hex",
-        );
+      const configured = (nodeConfig.DA_COMMITTEE_HEX ?? "").trim();
+      if (configured.length > 0) {
+        return validatedPackedSet(
+          configured,
+          VERIFICATION_KEY_HEX_LENGTH,
+          "DA_COMMITTEE_HEX",
+          "packed 32-byte verification keys",
+        ).join("");
       }
-      if (normalized.length === 0) {
-        throw new Error("DA_COMMITTEE_HEX cannot be empty when configured");
-      }
-      return normalized;
+      // No arity refusal. A locally derived committee of one is the single-key
+      // attest loop the 2026-08-11 owner ruling accepted; `deriveOperatorDaParams`
+      // warns about it rather than failing closed here.
+      return [...new Set(signers.map((signer) => signer.verificationKeyHex))]
+        .sort()
+        .join("");
     },
     catch: (cause) =>
       new SDK.HashingError({
@@ -263,6 +399,74 @@ const validateConfiguredDaCommittee = (
         cause,
       }),
   });
+
+const resolveDaOwners = (
+  nodeConfig: {
+    readonly DA_OWNERS_HEX?: string;
+  },
+  signers: readonly DaLocalSigner[],
+): Effect.Effect<string[], SDK.HashingError> =>
+  Effect.try({
+    try: () => {
+      const configured = (nodeConfig.DA_OWNERS_HEX ?? "").trim();
+      if (configured.length > 0) {
+        return validatedPackedSet(
+          configured,
+          VERIFICATION_KEY_HASH_HEX_LENGTH,
+          "DA_OWNERS_HEX",
+          "packed 28-byte payment key hashes",
+        );
+      }
+      // No arity refusal, symmetric with the committee path. The 2026-08-13
+      // owner ruling dropped the governor's owner-set minimum to one, so a
+      // locally derived owner set of one produces a datum the governor admits;
+      // `deriveOperatorDaParams` warns about it rather than failing closed.
+      return [...new Set(signers.map((signer) => signer.keyHashHex))].sort();
+    },
+    catch: (cause) =>
+      new SDK.HashingError({
+        message: "Invalid DA owner configuration",
+        cause,
+      }),
+  });
+
+/**
+ * Parses a packed hex set and enforces what `valid_datum` needs of it: correct
+ * element width and strictly ascending order (its sorted-unique encoding).
+ *
+ * There is no longer an arity check. This function carried one — first against
+ * a shared `MIN_DA_OWNER_COUNT` of two, then against a per-call minimum once
+ * the 2026-08-11 ruling let a committee have one member. The 2026-08-13 ruling
+ * dropped the owner-set minimum to one as well, so both call sites bottom out
+ * at a single element, and at one the check could not fail: `splitPackedHex`
+ * already rejects an empty field. Deleting it rather than passing a vacuous
+ * minimum keeps the guard structure honest — the non-emptiness refusal lives in
+ * exactly one place, and it is one that actually fires.
+ *
+ * Order is rejected rather than repaired. Committee position *is* the signer
+ * index every attestation witness and attested-signer bit is keyed on, so
+ * silently reordering a configured committee would desynchronise this node from
+ * its peers.
+ */
+const validatedPackedSet = (
+  packed: string,
+  chunkHexLength: number,
+  fieldName: string,
+  shape: string,
+): string[] => {
+  let elements: readonly string[];
+  try {
+    elements = splitPackedHex(packed, chunkHexLength, fieldName);
+  } catch {
+    throw new Error(`${fieldName} must be ${shape} as hex`);
+  }
+  if (!isStrictlyAscending(elements)) {
+    throw new Error(
+      `${fieldName} must be sorted ascending with no duplicates, matching the governor's sorted-unique encoding`,
+    );
+  }
+  return [...elements];
+};
 
 export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   referenceScriptsLucid: LucidEvolution,
@@ -327,6 +531,39 @@ export const fetchHubOracleWitness = (
       );
     }
     return utxos[0] ?? null;
+  });
+
+/** Fetches and authenticates the deployment correction-lock singleton. */
+export const fetchCorrectionLockWitness = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.CorrectionLockUTxO | null, SDK.LucidError> =>
+  Effect.gen(function* () {
+    const utxos = yield* Effect.tryPromise({
+      try: () =>
+        lucid.utxosAtWithUnit(
+          contracts.correctionLock.spendingScriptAddress,
+          SDK.correctionLockUnit(contracts.hubOracle.policyId),
+        ),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to fetch correction-lock witness UTxO(s)",
+          cause,
+        }),
+    });
+    const authentic = yield* SDK.utxosToCorrectionLockUTxOs(
+      utxos,
+      contracts.hubOracle.policyId,
+    );
+    if (authentic.length > 1) {
+      return yield* Effect.fail(
+        new SDK.LucidError({
+          message: "Expected at most one authentic correction-lock UTxO",
+          cause: authentic.map(({ utxo }) => outRefLabel(utxo)).join(","),
+        }),
+      );
+    }
+    return authentic[0] ?? null;
   });
 
 /**
@@ -449,7 +686,7 @@ export const fetchConfiguredNonceUtxo = (
  */
 export const completeAndSubmit = (
   lucid: LucidEvolution,
-  txBuilder: any,
+  txBuilder: TxBuilder,
   failureMessage: string,
 ): Effect.Effect<
   string,
@@ -460,7 +697,7 @@ export const completeAndSubmit = (
       try: () => txBuilder.complete({ localUPLCEval: true }),
       catch: (cause) =>
         new SDK.LucidError({
-          message: `${failureMessage}: ${cause}`,
+          message: `${failureMessage}: ${String(cause)}`,
           cause,
         }),
     });
@@ -528,6 +765,7 @@ const makePartialProtocolDeploymentError = (
 
 export type ProtocolDeploymentStatus = {
   readonly hubOracleWitness: UTxO | null;
+  readonly correctionLockWitness: SDK.CorrectionLockUTxO | null;
   readonly stateQueueTopology: StateQueueTopology;
   readonly daParamsInitialized: boolean;
   readonly schedulerInitialized: boolean;
@@ -551,6 +789,10 @@ export const fetchProtocolDeploymentStatus = (
 ): Effect.Effect<ProtocolDeploymentStatus, SDK.LucidError> =>
   Effect.gen(function* () {
     const hubOracleWitness = yield* fetchHubOracleWitness(lucid, contracts);
+    const correctionLockWitness = yield* fetchCorrectionLockWitness(
+      lucid,
+      contracts,
+    );
     const stateQueueTopology = yield* fetchStateQueueTopologyProgram(
       lucid,
       contracts.stateQueue,
@@ -596,6 +838,7 @@ export const fetchProtocolDeploymentStatus = (
     );
     const missingComponents = [
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
+      ...(correctionLockWitness === null ? ["correction-lock"] : []),
       ...(!daParamsInitialized ? ["da-params"] : []),
       ...(!stateQueueTopology.initialized ? ["state-queue"] : []),
       ...(!schedulerInitialized ? ["scheduler"] : []),
@@ -606,6 +849,7 @@ export const fetchProtocolDeploymentStatus = (
     ] as const;
     const complete =
       hubOracleWitness !== null &&
+      correctionLockWitness !== null &&
       daParamsInitialized &&
       stateQueueTopology.initialized &&
       stateQueueTopology.healthy &&
@@ -616,6 +860,7 @@ export const fetchProtocolDeploymentStatus = (
       fraudProofCatalogueInitialized;
     const empty =
       hubOracleWitness === null &&
+      correctionLockWitness === null &&
       !daParamsInitialized &&
       !stateQueueTopology.initialized &&
       !schedulerInitialized &&
@@ -626,6 +871,7 @@ export const fetchProtocolDeploymentStatus = (
 
     return {
       hubOracleWitness,
+      correctionLockWitness,
       stateQueueTopology,
       daParamsInitialized,
       schedulerInitialized,
@@ -674,10 +920,15 @@ export const buildAtomicProtocolInitTxProgram = (
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
     L1_OPERATOR_SEED_PHRASE: string;
     NETWORK: Network;
+    DA_COMMITTEE_HEX?: string;
+    DA_THRESHOLD?: bigint | null;
+    DA_COSIGNER_SEED_PHRASE?: string;
+    DA_OWNERS_HEX?: string;
   },
   fraudProofCatalogueMerkleRoot: string,
   validTo?: bigint,
   referenceScripts?: AtomicProtocolInitReferenceScripts,
+  consensusProfile: ContractDeploymentIdentityValue["consensusProfile"] = MIDGARD_CONSENSUS_PROFILE,
 ): Effect.Effect<
   TxBuilder,
   | SDK.LucidError
@@ -691,6 +942,7 @@ export const buildAtomicProtocolInitTxProgram = (
     const daParams = yield* deriveOperatorDaParams(nodeConfig);
     return yield* SDK.incompleteInitializationTxProgram(lucid, {
       midgardValidators: contracts,
+      consensusProfile,
       fraudProofCatalogueMerkleRoot,
       daParams,
       oneShotNonceUTxO: nonceUtxo,
@@ -758,6 +1010,7 @@ export const program: Effect.Effect<
       fraudProofCatalogueDeploymentInfo.root,
       initDeadline,
       referenceScripts,
+      contracts.consensusProfile,
     ),
     "Failed to build atomic real protocol initialization transaction",
   );

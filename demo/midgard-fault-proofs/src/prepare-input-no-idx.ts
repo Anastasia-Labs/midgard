@@ -1,0 +1,1054 @@
+/**
+ * **Re-derived onto the flat field commitments by #604.** The two forwarded step
+ * states it emits carry §2.5 anchors — `verified_tx_id` and `producing_tx_id` —
+ * where they used to carry field-0 and field-2 collection commitments, and the
+ * proof-fit measurement reports §8.4's carriage tier where it used to report a
+ * retired direct/fold split. See
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ *
+ * `input-no-idx` (`nonExistentInputNoIndex`) evidence builder (Goal task `Q13`,
+ * §9.1 outputs 6-8).
+ *
+ * **Canonical evidence.** One committed block, authenticated end to end:
+ *
+ * 1. an authenticated L1 observation of the state-queue header
+ *    (`authenticated_cardano_l1`), and
+ * 2. the exact `DaPayloadEnvelopeV1` bytes retrieved over the public retained-DA
+ *    protocol (`public_or_permissionless_da`),
+ *
+ * reduced by the Q03 evidence-source API to a `CanonicalBlockEvidence` whose
+ * transaction leaves re-commit to the header's counted `transactions_root`
+ * under `TransactionsV1RootDomain`. Two committed transactions of that single
+ * block are the whole evidence: the **bad** transaction, which spends
+ * `(producing_tx_id, output_index)`, and its **producing** transaction, which
+ * is committed in the same block and whose canonical outputs list is shorter
+ * than or equal to `output_index`.
+ *
+ * No operator REST/DB/file input can reach the security-grade entry point:
+ * {@link prepareInputNoIdxFromCanonicalEvidence} routes provenance through
+ * `assertSecurityGradeEvidenceV1` and the native inclusion root through
+ * `assertNativeInclusionRootAuthenticatedV1`
+ * (`src/evidence/prepare-from-evidence.ts`). The `--midgard-node-url` and
+ * `--transactions` entry points below are the operator-diagnostic rehearsal
+ * routes and are labelled as such; they can never mint a security-grade claim.
+ *
+ * **Valid-block negative.** A transaction input that really exists cannot be
+ * prepared: {@link InputNoIdxRejection} `input_exists_in_producing_tx` is
+ * raised whenever the challenged `output_index` is inside the producer's
+ * canonical outputs list, and `no_violating_input` whenever the block contains
+ * no such input at all.
+ */
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import {
+  decodeMidgardNativeByteListPreimage,
+  encodeMidgardFieldPreimage,
+  formatUnknownError,
+  selectMidgardFieldCarriageTier,
+} from "@al-ft/midgard-core";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalBlockEvidence,
+} from "./evidence/index.js";
+import { parseHex, stringifyJson } from "./json-file.js";
+import {
+  buildTrieView,
+  type DecodedTransactionMaterial,
+  decodeTransactionMaterial,
+  type FetchLike,
+  fetchNodeBlockTransactions,
+  type NodeTransactionPayload,
+  type PreparedTxInclusionJson,
+  readNodeTransactionPayloadsFile,
+  requireProof,
+  transactionSourceTrieItem,
+} from "./prepare-double-spend.js";
+
+export const INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION =
+  "midgard-input-no-idx-evidence-v1" as const;
+
+export type InputNoIdxRejectionCode =
+  | "block_has_no_transactions"
+  | "transactions_root_mismatch"
+  | "bad_tx_not_committed"
+  | "bad_input_index_out_of_range"
+  | "producing_tx_not_committed"
+  | "no_violating_input"
+  | "input_exists_in_producing_tx"
+  | "malformed_native_output"
+  | "preimage_commitment_mismatch";
+
+/** Deterministic, value-free rejection; `detail` carries only public data. */
+export class InputNoIdxRejection extends Error {
+  readonly code: InputNoIdxRejectionCode;
+  readonly detail: string;
+
+  constructor(code: InputNoIdxRejectionCode, detail: string) {
+    super(`${code}: ${detail}`);
+    this.name = "InputNoIdxRejectionV1";
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
+const reject = (code: InputNoIdxRejectionCode, detail: string): never => {
+  throw new InputNoIdxRejection(code, detail);
+};
+
+// ## Canonical native output projection
+//
+// Step 04 carries the producing transaction's complete outputs preimage as
+// structured `MidgardTxOutput` PlutusData and re-encodes it on-chain with
+// `encode_midgard_tx_output`. These readers invert exactly that encoder
+// (`onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak:73-181,
+// 341-377, 538-585`); anything they cannot invert is refused rather than
+// guessed.
+
+type Cursor = { readonly value: number };
+
+const byteAt = (bytes: Buffer, offset: number, label: string): number => {
+  const value = bytes[offset];
+  if (value === undefined) {
+    return reject("malformed_native_output", `${label} exceeds the output`);
+  }
+  return value;
+};
+
+const readUint = (
+  bytes: Buffer,
+  offset: number,
+  label: string,
+): readonly [bigint, number] => {
+  const tag = byteAt(bytes, offset, label);
+  if (tag <= 23) {
+    return [BigInt(tag), offset + 1];
+  }
+  const width =
+    tag === 24 ? 1 : tag === 25 ? 2 : tag === 26 ? 4 : tag === 27 ? 8 : 0;
+  if (width === 0 || offset + 1 + width > bytes.length) {
+    return reject(
+      "malformed_native_output",
+      `${label} is not a canonical uint`,
+    );
+  }
+  let value = 0n;
+  for (let index = 0; index < width; index += 1) {
+    value = value * 256n + BigInt(byteAt(bytes, offset + 1 + index, label));
+  }
+  return [value, offset + 1 + width];
+};
+
+const readDefiniteLength = (
+  bytes: Buffer,
+  offset: number,
+  major: 2 | 5,
+  label: string,
+): readonly [number, number] => {
+  const tag = byteAt(bytes, offset, label);
+  const base = major << 5;
+  if (tag >= base && tag <= base + 23) {
+    return [tag - base, offset + 1];
+  }
+  const width =
+    tag === base + 24 ? 1 : tag === base + 25 ? 2 : tag === base + 26 ? 4 : 0;
+  if (width === 0 || offset + 1 + width > bytes.length) {
+    return reject(
+      "malformed_native_output",
+      `${label} is not a canonical definite-length header`,
+    );
+  }
+  let length = 0;
+  for (let index = 0; index < width; index += 1) {
+    length = length * 256 + byteAt(bytes, offset + 1 + index, label);
+  }
+  return [length, offset + 1 + width];
+};
+
+const readBytes = (
+  bytes: Buffer,
+  offset: number,
+  label: string,
+): readonly [Buffer, number] => {
+  const [length, next] = readDefiniteLength(bytes, offset, 2, label);
+  const end = next + length;
+  if (end > bytes.length) {
+    return reject("malformed_native_output", `${label} exceeds the output`);
+  }
+  return [Buffer.from(bytes.subarray(next, end)), end];
+};
+
+const credentialFrom = (
+  isScript: boolean,
+  hash: Buffer,
+): SDK.MidgardCredential =>
+  isScript
+    ? { ScriptCredential: [hash.toString("hex")] }
+    : { PubKeyCredential: [hash.toString("hex")] };
+
+/** Inverts `encode_midgard_address`. */
+const readAddress = (
+  bytes: Buffer,
+  offset: number,
+): readonly [SDK.MidgardAddress, number] => {
+  const [payload, next] = readBytes(bytes, offset, "output.address");
+  if (payload.length !== 29 && payload.length !== 57) {
+    return reject(
+      "malformed_native_output",
+      `output.address must contain 29 or 57 bytes, got ${payload.length.toString()}`,
+    );
+  }
+  const header = payload[0]!;
+  const addressType = Math.floor(header / 16);
+  const networkNibble = header - addressType * 16;
+  const isProtected = networkNibble >= 8;
+  const networkId = isProtected ? networkNibble - 8 : networkNibble;
+  if (networkId !== 0 && networkId !== 1) {
+    return reject("malformed_native_output", "output.address network id");
+  }
+  const paymentIsScript =
+    addressType === 1 || addressType === 3 || addressType === 7;
+  const paymentCredential = credentialFrom(
+    paymentIsScript,
+    Buffer.from(payload.subarray(1, 29)),
+  );
+  let stakeCredential: SDK.MidgardCredential | null = null;
+  if (payload.length === 57) {
+    if (addressType > 3) {
+      return reject(
+        "malformed_native_output",
+        "output.address credential layout",
+      );
+    }
+    stakeCredential = credentialFrom(
+      addressType === 2 || addressType === 3,
+      Buffer.from(payload.subarray(29, 57)),
+    );
+  } else if (addressType !== 6 && addressType !== 7) {
+    return reject(
+      "malformed_native_output",
+      "output.address credential layout",
+    );
+  }
+  return [
+    {
+      protected: isProtected,
+      network_id: BigInt(networkId),
+      payment_credential: paymentCredential,
+      stake_credential: stakeCredential,
+    },
+    next,
+  ];
+};
+
+/** Inverts `encode_midgard_value`; units stay `policy_id ++ asset_name`. */
+const readValue = (
+  bytes: Buffer,
+  offset: number,
+): readonly [SDK.MidgardValue, number] => {
+  if (byteAt(bytes, offset, "output.value") !== 0x82) {
+    return reject("malformed_native_output", "output.value must be a pair");
+  }
+  const [lovelace, afterLovelace] = readUint(
+    bytes,
+    offset + 1,
+    "output.value.lovelace",
+  );
+  const [policyCount, afterHeader] = readDefiniteLength(
+    bytes,
+    afterLovelace,
+    5,
+    "output.value.assets",
+  );
+  const assets = new Map<string, bigint>();
+  let cursor = afterHeader;
+  for (let policy = 0; policy < policyCount; policy += 1) {
+    const [policyId, afterPolicy] = readBytes(
+      bytes,
+      cursor,
+      "output.value.policy",
+    );
+    if (policyId.length !== 28) {
+      return reject(
+        "malformed_native_output",
+        "output.value.policy byte length",
+      );
+    }
+    const [assetCount, afterAssetHeader] = readDefiniteLength(
+      bytes,
+      afterPolicy,
+      5,
+      "output.value.policy_assets",
+    );
+    if (assetCount === 0) {
+      return reject(
+        "malformed_native_output",
+        "output.value.policy_assets empty",
+      );
+    }
+    cursor = afterAssetHeader;
+    for (let asset = 0; asset < assetCount; asset += 1) {
+      const [assetName, afterName] = readBytes(
+        bytes,
+        cursor,
+        "output.value.asset_name",
+      );
+      const [quantity, afterQuantity] = readUint(
+        bytes,
+        afterName,
+        "output.value.quantity",
+      );
+      if (quantity <= 0n) {
+        return reject("malformed_native_output", "output.value.quantity");
+      }
+      assets.set(
+        Buffer.concat([policyId, assetName]).toString("hex"),
+        quantity,
+      );
+      cursor = afterQuantity;
+    }
+  }
+  return [{ lovelace, assets }, cursor];
+};
+
+const SCRIPT_LANGUAGE_BY_TAG: Readonly<
+  Record<number, SDK.MidgardScriptLanguage>
+> = {
+  0: "NativeCardanoScript",
+  3: "PlutusV3Script",
+  128: "MidgardV1Script",
+};
+
+/** Inverts `encode_midgard_versioned_script`. */
+const readVersionedScript = (
+  bytes: Buffer,
+  offset: number,
+): readonly [SDK.MidgardVersionedScript, number] => {
+  if (byteAt(bytes, offset, "output.script_ref") !== 0x82) {
+    return reject(
+      "malformed_native_output",
+      "output.script_ref must be a pair",
+    );
+  }
+  const first = byteAt(bytes, offset + 1, "output.script_ref.language");
+  let tag: number;
+  let cursor: number;
+  if (first === 0 || first === 3) {
+    tag = first;
+    cursor = offset + 2;
+  } else if (first === 24) {
+    tag = byteAt(bytes, offset + 2, "output.script_ref.language");
+    cursor = offset + 3;
+  } else {
+    return reject(
+      "malformed_native_output",
+      "output.script_ref.language encoding",
+    );
+  }
+  const language = SCRIPT_LANGUAGE_BY_TAG[tag];
+  if (language === undefined) {
+    return reject("malformed_native_output", "output.script_ref.language tag");
+  }
+  const [scriptBytes, next] = readBytes(
+    bytes,
+    cursor,
+    "output.script_ref.script_bytes",
+  );
+  return [{ language, script_bytes: scriptBytes.toString("hex") }, next];
+};
+
+/**
+ * Projects one canonical native output CBOR item to the exact
+ * `MidgardTxOutput` PlutusData the step-04 redeemer carries.
+ */
+export const midgardTxOutputFromCanonicalCbor = (
+  bytes: Buffer,
+): SDK.MidgardTxOutput => {
+  const entryTag = byteAt(bytes, 0, "output");
+  if (entryTag < 0xa2 || entryTag > 0xa4) {
+    return reject("malformed_native_output", "output map entry count");
+  }
+  const entryCount = entryTag - 0xa0;
+  if (byteAt(bytes, 1, "output.address_key") !== 0) {
+    return reject("malformed_native_output", "output.address key must be 0");
+  }
+  const [address, afterAddress] = readAddress(bytes, 2);
+  if (byteAt(bytes, afterAddress, "output.value_key") !== 1) {
+    return reject("malformed_native_output", "output.value key must be 1");
+  }
+  const [value, afterValue] = readValue(bytes, afterAddress + 1);
+  const end: Cursor = { value: afterValue };
+  let datumCbor: string | null = null;
+  let scriptRef: SDK.MidgardVersionedScript | null = null;
+  let cursor = end.value;
+  if (entryCount > 2) {
+    const extraKey = byteAt(bytes, cursor, "output.extra_key");
+    cursor += 1;
+    if (extraKey === 2) {
+      const [datum, afterDatum] = readBytes(bytes, cursor, "output.datum");
+      datumCbor = datum.toString("hex");
+      cursor = afterDatum;
+      if (entryCount === 4) {
+        if (byteAt(bytes, cursor, "output.script_key") !== 3) {
+          return reject(
+            "malformed_native_output",
+            "output.script_ref key must be 3",
+          );
+        }
+        const [script, afterScript] = readVersionedScript(bytes, cursor + 1);
+        scriptRef = script;
+        cursor = afterScript;
+      }
+    } else if (extraKey === 3 && entryCount === 3) {
+      const [script, afterScript] = readVersionedScript(bytes, cursor);
+      scriptRef = script;
+      cursor = afterScript;
+    } else {
+      return reject("malformed_native_output", "output optional field layout");
+    }
+  }
+  if (cursor !== bytes.length) {
+    return reject("malformed_native_output", "output has trailing bytes");
+  }
+  return {
+    address,
+    value,
+    datum_cbor: datumCbor,
+    script_ref: scriptRef,
+  };
+};
+
+// ## Builder
+
+/** step-02 material: the complete spend-inputs preimage of the bad tx. */
+export type PreparedInputNoIdxInputsPreimageJson = {
+  readonly badTxId: string;
+  readonly verifiedTxInputsHash: string;
+  readonly inputsPreimage: readonly SDK.MidgardTxInput[];
+  readonly badInputsIndex: number;
+};
+
+/**
+ * step-04 material: the complete outputs preimage of the producing tx, carried
+ * as the canonical `encode_midgard_tx_output` bytes. The structured
+ * `MidgardTxOutput` PlutusData the redeemer needs contains a native-asset map,
+ * which JSON cannot represent losslessly, so the artifact stores the canonical
+ * items the on-chain step re-encodes and the submitter re-projects them.
+ */
+export type PreparedInputNoIdxOutputsPreimageJson = {
+  readonly producingTxId: string;
+  readonly producingTxOutputsHash: string;
+  readonly outputsPreimageCbor: readonly string[];
+  readonly badInputOutputIndex: string;
+};
+
+/**
+ * Complete-item proof-fit measurement (§3.2/§3.3). Byte counts are of the
+ * serialized PlutusData each step redeemer carries directly; no chunked or
+ * multi-output representation is produced.
+ */
+export type PreparedInputNoIdxProofFit = {
+  readonly step02InputsPreimageItemCount: number;
+  readonly step02InputsPreimageDatumBytes: number;
+  readonly step04OutputsPreimageItemCount: number;
+  readonly step04OutputsPreimageDatumBytes: number;
+  readonly badTxCompactCborBytes: number;
+  readonly producingTxCompactCborBytes: number;
+  /**
+   * §5.1's envelope over field 0's items — the bytes §8.4 partitions on.
+   *
+   * #604: this replaced the retired `completeItemCarriage`/`step02Execution`
+   * pair, which reported a direct/fold split that no longer exists. Step-02 has
+   * one route; what varies is which §8 tier the preimage travels under, and
+   * §8.4 decides that from this length alone.
+   */
+  readonly step02SpendInputsPreimageBytes: number;
+  /** The tier §8.4 selects for that preimage: `Inline`, `RawUtxo` or `Certified`. */
+  readonly step02CarriageTier: string;
+};
+
+export type PreparedInputNoIdxOutput = {
+  readonly schemaVersion: typeof INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION;
+  readonly violationId: typeof SDK.INPUT_NO_IDX_VIOLATION_ID;
+  readonly headerHash: string;
+  readonly txCount: number;
+  /** Raw MPF root opened by both membership proofs. */
+  readonly transactionsPhasRoot: string;
+  /** Counted, domain-separated root committed by the block header. */
+  readonly committedTransactionsRoot: string;
+  readonly expectedTransactionsRoot: {
+    readonly value: string;
+    readonly matches: boolean;
+  };
+  readonly evidence: SDK.InputNoIdxEvidence;
+  /** step-01 argument: the bad transaction's inclusion in the block. */
+  readonly badTxInclusion: PreparedTxInclusionJson;
+  /** step-03 argument: the producing transaction's inclusion in the block. */
+  readonly producingTxInclusion: PreparedTxInclusionJson;
+  readonly step02: PreparedInputNoIdxInputsPreimageJson;
+  readonly step02State: SDK.InputNoIdxStep02State;
+  readonly step03State: SDK.InputNoIdxStep03State;
+  readonly step04: PreparedInputNoIdxOutputsPreimageJson;
+  /** In-memory projection of `step04.outputsPreimageCbor`. */
+  readonly outputsPreimage: readonly SDK.MidgardTxOutput[];
+  readonly step04State: SDK.InputNoIdxStep04State;
+  readonly proofFit: PreparedInputNoIdxProofFit;
+  readonly files?: {
+    readonly badTxInclusionPath: string;
+    readonly producingTxInclusionPath: string;
+    readonly inputsPreimagePath: string;
+    readonly outputsPreimagePath: string;
+    readonly planPath: string;
+  };
+};
+
+const spendInputsOf = (
+  tx: DecodedTransactionMaterial,
+): readonly SDK.MidgardTxInput[] =>
+  tx.inputs.map((input) => ({
+    tx_id: input.transactionId.toLowerCase(),
+    output_index: input.outputIndex,
+  }));
+
+const nativeOutputItems = (
+  tx: DecodedTransactionMaterial,
+): readonly Buffer[] => {
+  try {
+    return decodeMidgardNativeByteListPreimage(
+      tx.nativeTx.body.outputsPreimageCbor,
+      `tx ${tx.nodeTxId} outputs`,
+    ).map((bytes) => Buffer.from(bytes));
+  } catch (cause) {
+    return reject(
+      "malformed_native_output",
+      `tx ${tx.nodeTxId} outputs preimage is not a canonical native byte list: ${formatUnknownError(cause)}`,
+    );
+  }
+};
+
+type Candidate = {
+  readonly badTx: DecodedTransactionMaterial;
+  readonly badInputsIndex: number;
+  readonly badInput: SDK.MidgardTxInput;
+  readonly producingTx: DecodedTransactionMaterial;
+  readonly producingOutputs: readonly Buffer[];
+};
+
+export type InputNoIdxDetectedViolation = Readonly<{
+  badTxIndex: number;
+  badTxId: string;
+  badInputsIndex: number;
+  producingTxId: string;
+  badInputOutputIndex: bigint;
+  producingTxOutputCount: number;
+}>;
+
+/**
+ * Complete same-block scan used by the sealed production replay bundle. An
+ * input whose producer is absent belongs to `nonExistentInput`; only an
+ * out-of-range index into a producer committed by this same block is emitted.
+ */
+export const detectInputNoIdxViolationsFromTransactions = async (
+  transactions: readonly NodeTransactionPayload[],
+): Promise<readonly InputNoIdxDetectedViolation[]> => {
+  const decoded = await Promise.all(
+    transactions.map(decodeTransactionMaterial),
+  );
+  const byTxId = new Map(decoded.map((tx) => [tx.nodeTxId, tx] as const));
+  const detections: InputNoIdxDetectedViolation[] = [];
+  for (const [badTxIndex, badTx] of decoded.entries()) {
+    for (const [badInputsIndex, badInput] of spendInputsOf(badTx).entries()) {
+      const producingTx = byTxId.get(badInput.tx_id);
+      if (producingTx === undefined) continue;
+      const producingTxOutputCount = nativeOutputItems(producingTx).length;
+      if (
+        SDK.isInputNoIdxViolation({
+          badInputOutputIndex: badInput.output_index,
+          producingTxOutputCount,
+        })
+      ) {
+        detections.push(
+          Object.freeze({
+            badTxIndex,
+            badTxId: badTx.nodeTxId,
+            badInputsIndex,
+            producingTxId: producingTx.nodeTxId,
+            badInputOutputIndex: badInput.output_index,
+            producingTxOutputCount,
+          }),
+        );
+      }
+    }
+  }
+  return Object.freeze(detections);
+};
+
+const findCandidate = ({
+  decoded,
+  byTxId,
+  badTxId,
+  badInputsIndex,
+  headerHash,
+}: {
+  readonly decoded: readonly DecodedTransactionMaterial[];
+  readonly byTxId: ReadonlyMap<string, DecodedTransactionMaterial>;
+  readonly badTxId?: string;
+  readonly badInputsIndex?: number;
+  readonly headerHash: string;
+}): Candidate => {
+  const searched =
+    badTxId === undefined
+      ? decoded
+      : (() => {
+          const selected = byTxId.get(badTxId);
+          if (selected === undefined) {
+            return reject(
+              "bad_tx_not_committed",
+              `bad_tx_id=${badTxId} header_hash=${headerHash}`,
+            );
+          }
+          return [selected];
+        })();
+
+  // The block is scanned input by input, so several inputs can fail for
+  // different reasons. Report the most informative one: a real input that
+  // exists in its producer (the valid-block negative) outranks a pinned index
+  // that is out of range, which outranks an input whose producer simply is not
+  // in this block (a `non-existent-input` claim, not this family's).
+  const failureRank: Readonly<Record<string, number>> = {
+    input_exists_in_producing_tx: 3,
+    bad_input_index_out_of_range: 2,
+    producing_tx_not_committed: 1,
+  };
+  let pinnedFailure: InputNoIdxRejection | undefined;
+  const pinFailure = (failure: InputNoIdxRejection): void => {
+    if (
+      pinnedFailure === undefined ||
+      (failureRank[failure.code] ?? 0) > (failureRank[pinnedFailure.code] ?? 0)
+    ) {
+      pinnedFailure = failure;
+    }
+  };
+  for (const badTx of searched) {
+    const inputs = spendInputsOf(badTx);
+    const indices =
+      badInputsIndex === undefined
+        ? inputs.map((_, index) => index)
+        : [badInputsIndex];
+    for (const index of indices) {
+      const badInput = inputs[index];
+      if (badInput === undefined) {
+        pinFailure(
+          new InputNoIdxRejection(
+            "bad_input_index_out_of_range",
+            `bad_tx_id=${badTx.nodeTxId} bad_inputs_index=${index.toString()} input_count=${inputs.length.toString()}`,
+          ),
+        );
+        continue;
+      }
+      const producingTx = byTxId.get(badInput.tx_id);
+      if (producingTx === undefined) {
+        pinFailure(
+          new InputNoIdxRejection(
+            "producing_tx_not_committed",
+            `bad_tx_id=${badTx.nodeTxId} producing_tx_id=${badInput.tx_id}; the preimage of the input's transaction id is not in this block, so this is a non-existent-input claim, not input-no-idx`,
+          ),
+        );
+        continue;
+      }
+      const producingOutputs = nativeOutputItems(producingTx);
+      if (
+        !SDK.isInputNoIdxViolation({
+          badInputOutputIndex: badInput.output_index,
+          producingTxOutputCount: producingOutputs.length,
+        })
+      ) {
+        pinFailure(
+          new InputNoIdxRejection(
+            "input_exists_in_producing_tx",
+            `bad_tx_id=${badTx.nodeTxId} producing_tx_id=${badInput.tx_id} output_index=${badInput.output_index.toString()} producing_output_count=${producingOutputs.length.toString()}; an existing transaction input cannot be proven non-existent`,
+          ),
+        );
+        continue;
+      }
+      return {
+        badTx,
+        badInputsIndex: index,
+        badInput,
+        producingTx,
+        producingOutputs,
+      };
+    }
+  }
+  if (pinnedFailure !== undefined) {
+    throw pinnedFailure;
+  }
+  return reject(
+    "no_violating_input",
+    `header_hash=${headerHash} tx_count=${decoded.length.toString()}`,
+  );
+};
+
+const txInclusionOf = (
+  tx: DecodedTransactionMaterial,
+  transactionsPhasRoot: string,
+  txMembershipProofCbor: string,
+): PreparedTxInclusionJson => ({
+  nativeTxId: tx.nodeTxId,
+  nativeTx: tx.nativeTxCompact,
+  nativeTxCompactCbor: tx.nativeCompactCbor,
+  l2TransactionSourceCbor: tx.l2TransactionSourceCbor,
+  transactionsPhasRoot,
+  txMembershipProofCbor,
+});
+
+export type PrepareInputNoIdxFromTransactionsOptions = {
+  readonly headerHash: string;
+  readonly transactions: readonly NodeTransactionPayload[];
+  readonly expectedTransactionsRoot: string;
+  /** Pin the challenged transaction; otherwise the first violation is used. */
+  readonly badTxId?: string;
+  /** Pin the challenged spend-input position inside that transaction. */
+  readonly badInputsIndex?: string | number;
+  readonly outputDir?: string;
+};
+
+const parseIndex = (value: string | number | undefined): number | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return reject(
+      "bad_input_index_out_of_range",
+      `--bad-inputs-index must be a non-negative integer, got "${String(value)}"`,
+    );
+  }
+  return parsed;
+};
+
+/**
+ * Core builder over the already-authenticated transaction material of one
+ * committed block. Pure with respect to the network: it never fetches.
+ */
+export const prepareInputNoIdxFromTransactions = async ({
+  headerHash,
+  transactions,
+  expectedTransactionsRoot,
+  badTxId,
+  badInputsIndex,
+  outputDir,
+}: PrepareInputNoIdxFromTransactionsOptions): Promise<PreparedInputNoIdxOutput> => {
+  const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
+  const normalizedExpectedRoot = parseHex(
+    expectedTransactionsRoot,
+    "--expected-transactions-root",
+    32,
+  );
+  const normalizedBadTxId =
+    badTxId === undefined ? undefined : parseHex(badTxId, "--bad-tx-id", 32);
+  const normalizedBadInputsIndex = parseIndex(badInputsIndex);
+
+  const decoded = await Promise.all(
+    transactions.map(decodeTransactionMaterial),
+  );
+  if (decoded.length === 0) {
+    reject("block_has_no_transactions", `header_hash=${normalizedHeaderHash}`);
+  }
+  const byTxId = new Map(decoded.map((tx) => [tx.nodeTxId, tx] as const));
+
+  const candidate = findCandidate({
+    decoded,
+    byTxId,
+    ...(normalizedBadTxId === undefined ? {} : { badTxId: normalizedBadTxId }),
+    ...(normalizedBadInputsIndex === undefined
+      ? {}
+      : { badInputsIndex: normalizedBadInputsIndex }),
+    headerHash: normalizedHeaderHash,
+  });
+
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
+  const committedTransactionsRoot = await Effect.runPromise(
+    SDK.commitCountedRootProgram({
+      domain: SDK.ROOT_DOMAINS.transactionsV1,
+      phasRoot: trie.root,
+      count: BigInt(decoded.length),
+    }),
+  );
+  if (committedTransactionsRoot !== normalizedExpectedRoot) {
+    reject(
+      "transactions_root_mismatch",
+      `header_transactions_root=${normalizedExpectedRoot} derived=${committedTransactionsRoot} derived_count=${decoded.length.toString()}; the prepared proof would not verify against this block`,
+    );
+  }
+
+  const evidence = SDK.inputNoIdxEvidenceFromCommittedTransactions({
+    badTxId: candidate.badTx.nodeTxId,
+    badInputsIndex: candidate.badInputsIndex,
+    badInput: candidate.badInput,
+    producingTxOutputCount: candidate.producingOutputs.length,
+  });
+
+  const inputsPreimage = spendInputsOf(candidate.badTx);
+  const outputsPreimage = candidate.producingOutputs.map(
+    midgardTxOutputFromCanonicalCbor,
+  );
+  // Self-check: the preimages this builder emits must re-derive the exact
+  // bounded-collection commitments the two opening steps compare against, so a
+  // projection bug can never reach a prover.
+  const derivedInputsCommitment =
+    SDK.inputNoIdxSpendInputsCommitment(inputsPreimage);
+  if (
+    derivedInputsCommitment !==
+    candidate.badTx.nativeTxCompact.body.spend_inputs_hash
+  ) {
+    reject(
+      "preimage_commitment_mismatch",
+      `bad_tx_id=${candidate.badTx.nodeTxId} committed_spend_inputs_hash=${candidate.badTx.nativeTxCompact.body.spend_inputs_hash} derived=${derivedInputsCommitment}`,
+    );
+  }
+  const derivedOutputsCommitment =
+    SDK.inputNoIdxOutputsCommitment(outputsPreimage);
+  if (
+    derivedOutputsCommitment !==
+    candidate.producingTx.nativeTxCompact.body.outputs_hash
+  ) {
+    reject(
+      "preimage_commitment_mismatch",
+      `producing_tx_id=${candidate.producingTx.nodeTxId} committed_outputs_hash=${candidate.producingTx.nativeTxCompact.body.outputs_hash} derived=${derivedOutputsCommitment}`,
+    );
+  }
+
+  // #604: thread state carries the §2.5 anchor — the transaction id — not the
+  // field-0 commitment. Step-02 re-opens field 0 through the §8.8 door from it.
+  const step02State = SDK.inputNoIdxStep02StateFromBadTx(
+    candidate.badTx.nodeTxId,
+  );
+  const step03State = SDK.inputNoIdxStep03StateFromEvidence(evidence);
+  const step04State = SDK.inputNoIdxStep04StateFromEvidence({
+    evidence,
+    producingTxId: candidate.producingTx.nodeTxId,
+  });
+
+  // §5.1's envelope over field 0's canonical items — the bytes the door hashes
+  // and the length §8.4 partitions the carriage tier on.
+  const step02SpendInputsPreimage = encodeMidgardFieldPreimage(
+    inputsPreimage.map(SDK.encodeMidgardTxInputCanonical),
+  );
+  const inputsPreimageDatum = Data.to(
+    inputsPreimage,
+    asLucidSchema(SDK.MidgardTxInputList),
+  );
+  const outputsPreimageDatum = Data.to(
+    outputsPreimage,
+    asLucidSchema(SDK.MidgardTxOutputList),
+  );
+
+  const output: PreparedInputNoIdxOutput = {
+    schemaVersion: INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION,
+    violationId: SDK.INPUT_NO_IDX_VIOLATION_ID,
+    headerHash: normalizedHeaderHash,
+    txCount: decoded.length,
+    transactionsPhasRoot: trie.root,
+    committedTransactionsRoot,
+    expectedTransactionsRoot: {
+      value: normalizedExpectedRoot,
+      matches: true,
+    },
+    evidence,
+    badTxInclusion: txInclusionOf(
+      candidate.badTx,
+      trie.root,
+      requireProof(
+        trie,
+        transactionSourceTrieItem(candidate.badTx).key,
+        "bad tx",
+      ),
+    ),
+    producingTxInclusion: txInclusionOf(
+      candidate.producingTx,
+      trie.root,
+      requireProof(
+        trie,
+        transactionSourceTrieItem(candidate.producingTx).key,
+        "producing tx",
+      ),
+    ),
+    step02: {
+      badTxId: candidate.badTx.nodeTxId,
+      verifiedTxInputsHash:
+        candidate.badTx.nativeTxCompact.body.spend_inputs_hash,
+      inputsPreimage,
+      badInputsIndex: candidate.badInputsIndex,
+    },
+    step02State,
+    step03State,
+    step04: {
+      producingTxId: candidate.producingTx.nodeTxId,
+      producingTxOutputsHash:
+        candidate.producingTx.nativeTxCompact.body.outputs_hash,
+      outputsPreimageCbor: candidate.producingOutputs.map((item) =>
+        item.toString("hex"),
+      ),
+      badInputOutputIndex: candidate.badInput.output_index.toString(),
+    },
+    outputsPreimage,
+    step04State,
+    proofFit: {
+      step02InputsPreimageItemCount: inputsPreimage.length,
+      step02InputsPreimageDatumBytes: inputsPreimageDatum.length / 2,
+      step04OutputsPreimageItemCount: outputsPreimage.length,
+      step04OutputsPreimageDatumBytes: outputsPreimageDatum.length / 2,
+      badTxCompactCborBytes: candidate.badTx.nativeCompactCbor.length / 2,
+      producingTxCompactCborBytes:
+        candidate.producingTx.nativeCompactCbor.length / 2,
+      step02SpendInputsPreimageBytes: step02SpendInputsPreimage.length,
+      step02CarriageTier: selectMidgardFieldCarriageTier(
+        step02SpendInputsPreimage.length,
+      ),
+    },
+  };
+
+  if (outputDir === undefined) {
+    return output;
+  }
+  await mkdir(outputDir, { recursive: true });
+  const paths = {
+    badTxInclusionPath: join(outputDir, "bad-tx-inclusion.json"),
+    producingTxInclusionPath: join(outputDir, "producing-tx-inclusion.json"),
+    inputsPreimagePath: join(outputDir, "inputs-preimage.json"),
+    outputsPreimagePath: join(outputDir, "outputs-preimage.json"),
+    planPath: join(outputDir, "plan.json"),
+  };
+  await Promise.all([
+    writeFile(paths.badTxInclusionPath, stringifyJson(output.badTxInclusion)),
+    writeFile(
+      paths.producingTxInclusionPath,
+      stringifyJson(output.producingTxInclusion),
+    ),
+    writeFile(paths.inputsPreimagePath, stringifyJson(output.step02)),
+    writeFile(paths.outputsPreimagePath, stringifyJson(output.step04)),
+    writeFile(
+      paths.planPath,
+      stringifyJson({
+        schemaVersion: output.schemaVersion,
+        violationId: output.violationId,
+        headerHash: output.headerHash,
+        txCount: output.txCount,
+        transactionsPhasRoot: output.transactionsPhasRoot,
+        committedTransactionsRoot: output.committedTransactionsRoot,
+        expectedTransactionsRoot: output.expectedTransactionsRoot,
+        evidence: output.evidence,
+        step02State: output.step02State,
+        step03State: output.step03State,
+        step04State: output.step04State,
+        proofFit: output.proofFit,
+      }),
+    ),
+  ]);
+  return { ...output, files: paths };
+};
+
+// ## Layered entry points
+
+export type PrepareInputNoIdxCliConfig = {
+  readonly midgardNodeUrl: string;
+  readonly headerHash: string;
+  readonly expectedTransactionsRoot: string;
+  readonly badTxId?: string;
+  readonly badInputsIndex?: string | number;
+  readonly outputDir?: string;
+  readonly fetchImpl?: FetchLike;
+};
+
+export type PrepareInputNoIdxFromFileConfig = {
+  readonly transactionsPath: string;
+  readonly headerHash: string;
+  readonly expectedTransactionsRoot: string;
+  readonly badTxId?: string;
+  readonly badInputsIndex?: string | number;
+  readonly outputDir?: string;
+};
+
+/**
+ * Operator-diagnostic rehearsal route: block material is read from the node's
+ * REST surface, an `operator_only_diagnostic_endpoint` under
+ * `PROHIBITED_EVIDENCE_TRUST_CLASSES_V1`. Never security grade.
+ */
+export const prepareInputNoIdxFromNode = async (
+  config: PrepareInputNoIdxCliConfig,
+): Promise<PreparedInputNoIdxOutput> => {
+  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
+  const transactions = await fetchNodeBlockTransactions({
+    midgardNodeUrl: config.midgardNodeUrl,
+    headerHash,
+    ...(config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }),
+  });
+  return await prepareInputNoIdxFromTransactions({
+    headerHash,
+    transactions,
+    expectedTransactionsRoot: config.expectedTransactionsRoot,
+    ...(config.badTxId === undefined ? {} : { badTxId: config.badTxId }),
+    ...(config.badInputsIndex === undefined
+      ? {}
+      : { badInputsIndex: config.badInputsIndex }),
+    ...(config.outputDir === undefined ? {} : { outputDir: config.outputDir }),
+  });
+};
+
+/** Operator-diagnostic rehearsal route over an `operator_private_file`. */
+export const prepareInputNoIdxFromFile = async (
+  config: PrepareInputNoIdxFromFileConfig,
+): Promise<PreparedInputNoIdxOutput> => {
+  const transactions = await readNodeTransactionPayloadsFile(
+    config.transactionsPath,
+  );
+  return await prepareInputNoIdxFromTransactions({
+    headerHash: config.headerHash,
+    transactions,
+    expectedTransactionsRoot: config.expectedTransactionsRoot,
+    ...(config.badTxId === undefined ? {} : { badTxId: config.badTxId }),
+    ...(config.badInputsIndex === undefined
+      ? {}
+      : { badInputsIndex: config.badInputsIndex }),
+    ...(config.outputDir === undefined ? {} : { outputDir: config.outputDir }),
+  });
+};
+
+/**
+ * The security-grade entry point (§9.2/§9.1 output 7): an authenticated L1
+ * header observation plus public retained-DA block evidence, and nothing else.
+ *
+ * `admitCanonicalEvidenceForProofBuild` re-runs both Q03 gates —
+ * `assertSecurityGradeEvidenceV1` over every contributing provenance record
+ * and `assertNativeInclusionRootAuthenticatedV1` over the raw transactions MPF
+ * root the family's two `NativeTxInclusionArgs` will carry — so a diagnostic,
+ * operator-private, or unauthenticated-root record can never reach a
+ * submittable `input-no-idx` proof.
+ */
+export const prepareInputNoIdxFromCanonicalEvidence = async ({
+  evidence,
+  badTxId,
+  badInputsIndex,
+  outputDir,
+}: {
+  readonly evidence: CanonicalBlockEvidence;
+  readonly badTxId?: string;
+  readonly badInputsIndex?: string | number;
+  readonly outputDir?: string;
+}): Promise<PreparedInputNoIdxOutput> => {
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
+  return await prepareInputNoIdxFromTransactions({
+    headerHash: admitted.headerHash,
+    transactions: admitted.transactions,
+    expectedTransactionsRoot: admitted.expectedTransactionsRoot,
+    ...(badTxId === undefined ? {} : { badTxId }),
+    ...(badInputsIndex === undefined ? {} : { badInputsIndex }),
+    ...(outputDir === undefined ? {} : { outputDir }),
+  });
+};

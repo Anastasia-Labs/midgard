@@ -4,6 +4,14 @@
   "description": "Midgard TypeScript library for building operator and watcher transactions",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "midgard-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
   "type": "module",
   "files": [
     "dist"
@@ -12,6 +20,12 @@
     "clean": "rimraf dist",
     "reset": "rimraf dist node_modules *.tgz",
     "build": "tsup src/index.ts --minify --format esm,cjs --dts --clean",
+    "fixtures:native-tx-carriage-wire-v1:sync": "pnpm run build && node scripts/generate-native-tx-carriage-wire-v1-goldens.mjs",
+    "fixtures:native-tx-carriage-wire-v1:check": "pnpm run build && node scripts/generate-native-tx-carriage-wire-v1-goldens.mjs --check",
+    "fixtures:canonical-decodability-v1:sync": "pnpm run build && node scripts/generate-canonical-decodability-v1-goldens.mjs",
+    "fixtures:canonical-decodability-v1:check": "pnpm run build && node scripts/generate-canonical-decodability-v1-goldens.mjs --check",
+    "fixtures:committed-field-shape-v1:sync": "pnpm run build && node scripts/generate-committed-field-shape-v1-goldens.mjs",
+    "fixtures:committed-field-shape-v1:check": "pnpm run build && node scripts/generate-committed-field-shape-v1-goldens.mjs --check",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
@@ -19,7 +33,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "ts-node": "ts-node",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -27,10 +41,11 @@
   "devDependencies": {
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-test-support": "workspace:*",
     "@effect/vitest": "^0.17.8",
-    "@lucid-evolution/lucid": "0.6.0",
+    "@lucid-evolution/lucid": "0.6.4",
     "@sinclair/typebox": "^0.34.28",
-    "@types/node": "^22.13.5",
+    "@types/node": "^22.17.0",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
     "effect": "^3.14.22",
@@ -47,12 +62,13 @@
     "test": "test"
   },
   "dependencies": {
+    "@al-ft/midgard-core": "workspace:*",
     "@harmoniclabs/cbor": "1.6.6",
     "@harmoniclabs/crypto": "^0.3.0",
     "@noble/hashes": "^2.0.1"
   },
   "peerDependencies": {
-    "@lucid-evolution/lucid": "0.6.0",
+    "@lucid-evolution/lucid": "0.6.4",
     "effect": "^3.14.22"
   }
 }
