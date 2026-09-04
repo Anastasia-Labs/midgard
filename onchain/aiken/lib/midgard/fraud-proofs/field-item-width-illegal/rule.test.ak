@@ -125,6 +125,35 @@ test field_item_width_rule_rejects_negative_width_state() fail {
   rule.terminal_contradiction_v1(width_state(accepted(), 2, 0, -1))
 }
 
+/// The authenticated width is the payload's own length, never a value the
+/// prover names: substituting the selected bytes moves the verdict with them.
+test field_item_width_rule_substituted_bytes_flip_the_verdict() {
+  let bound = rule.bind_coordinate_v1(accepted(), 5, 1)
+  let empty = rule.authenticate_item_width_v1(bound, #"")
+  let nonempty = rule.authenticate_item_width_v1(bound, #"00")
+  and {
+    rule.terminal_contradiction_v1(empty),
+    !rule.terminal_contradiction_v1(nonempty),
+    rule.terminal_contradiction_v1(
+      rule.AuthenticatedWidthV1 { ..nonempty, subject: rejected(5, 1) },
+    ),
+    !rule.terminal_contradiction_v1(
+      rule.AuthenticatedWidthV1 { ..empty, subject: rejected(5, 1) },
+    ),
+  }
+}
+
+test field_item_width_rule_substituted_bytes_refuse_honest_acceptance() fail {
+  let bound = rule.bind_coordinate_v1(accepted(), 5, 1)
+  rule.terminal_contradiction_v1(rule.authenticate_item_width_v1(bound, #"00"))
+}
+
+/// The terminal step re-checks the coordinate it was handed: an authenticated
+/// state naming a field outside the family never reaches the predicate.
+test field_item_width_rule_terminal_refuses_unrelated_field_state() fail {
+  rule.terminal_contradiction_v1(width_state(accepted(), 4, 0, 0))
+}
+
 test field_item_width_rule_abi_vectors_are_stable() {
   let bound = rule.bind_coordinate_v1(accepted(), 5, 0)
   let authenticated = rule.authenticate_item_width_v1(bound, #"000102")

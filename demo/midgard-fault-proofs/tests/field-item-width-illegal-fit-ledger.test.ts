@@ -2,203 +2,131 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger.js";
+import {
+  VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION,
+  VAN_ROSSEM_MAX_CPU_UNITS,
+  VAN_ROSSEM_MAX_MEMORY_UNITS,
+  VAN_ROSSEM_MAX_SIGNED_TX_BYTES,
+  VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
+  type VanRossemFitLedger,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
 
-const measurements = [
-  [
-    "accepted-cancel-step01",
-    "lifecycle",
-    "maximum certified output field",
-    611,
-    124408n,
-    42388566n,
-  ],
-  [
-    "accepted-cancel-step02",
-    "lifecycle",
-    "maximum certified output field",
-    611,
-    112408n,
-    40468566n,
-  ],
-  [
-    "accepted-cancel-step03",
-    "lifecycle",
-    "maximum certified output field",
-    611,
-    112076n,
-    40400424n,
-  ],
-  [
-    "accepted-init",
-    "lifecycle",
-    "maximum certified output field",
-    1497,
-    685406n,
-    234892766n,
-  ],
-  [
-    "accepted-carriage-chunk01",
-    "lifecycle",
-    "maximum certified output field",
-    15872,
-    0n,
-    0n,
-  ],
-  [
-    "accepted-carriage-chunk02",
-    "lifecycle",
-    "maximum certified output field",
-    2106,
-    0n,
-    0n,
-  ],
-  [
-    "accepted-carriage-certificate",
-    "lifecycle",
-    "maximum certified output field",
-    1246,
-    456130n,
-    177483230n,
-  ],
-  [
-    "accepted-step01",
-    "lifecycle",
-    "maximum certified output field",
-    1983,
-    1316200n,
-    446873510n,
-  ],
-  [
-    "accepted-step02",
-    "lifecycle",
-    "maximum certified output field",
-    1107,
-    792158n,
-    310918682n,
-  ],
-  [
-    "accepted-step03-proof-mint",
-    "lifecycle",
-    "maximum certified output field",
-    916,
-    274224n,
-    99008550n,
-  ],
-  [
-    "accepted-remove-fraudulent-block",
-    "lifecycle",
-    "maximum certified output field",
-    2060,
-    3041521n,
-    1034725900n,
-  ],
-  [
-    "forced-step01",
-    "lifecycle",
-    "forced output field adjacent legal item",
-    1722,
-    703009n,
-    322578516n,
-  ],
-  [
-    "forced-step02",
-    "lifecycle",
-    "forced output field adjacent legal item",
-    1076,
-    505918n,
-    158524713n,
-  ],
-  [
-    "forced-step03-proof-mint",
-    "lifecycle",
-    "forced output field adjacent legal item",
-    916,
-    300935n,
-    108009473n,
-  ],
-  [
-    "forced-remove-fraudulent-block",
-    "lifecycle",
-    "forced output field adjacent legal item",
-    2060,
-    2998981n,
-    1020164720n,
-  ],
-  [
-    "step01-reference-publication",
-    "publication",
-    "fully applied testnet validator",
-    14810,
-    0n,
-    0n,
-  ],
-  [
-    "step02-reference-publication",
-    "publication",
-    "fully applied testnet validator",
-    7221,
-    0n,
-    0n,
-  ],
-  [
-    "step03-reference-publication",
-    "publication",
-    "fully applied testnet validator",
-    2321,
-    0n,
-    0n,
-  ],
+const path = new URL(
+  "../../../docs/fault-proofs/size-plans/field-item-width-illegal-v1-fit-ledger.json",
+  import.meta.url,
+);
+
+/**
+ * The locked testnet blueprint the ledger was measured against
+ * (`aiken build --env testnet` with the pinned fork). A regeneration that
+ * moves this digest re-measures the ledger through
+ * `field-item-width-illegal-lifecycle.test.ts` with
+ * `MIDGARD_WRITE_FIT_LEDGER=1`.
+ */
+const PINNED_BLUEPRINT_SHA256 =
+  "172c72d392706de52b5665dc0c1b208354a490298fba5ac0f411597f8454d10b";
+const PINNED_COMPILER = "aiken v1.1.23+5adf783";
+
+/**
+ * Both field rules, both directions, at the maximum carriage the family can be
+ * asked to open: the field-2 shapes are 32,768/32,767-byte fields under three
+ * certified chunks, the field-5 shapes ride inline carriage.
+ */
+const EXPECTED_ENTRIES = [
+  "accepted-cancel-step01",
+  "accepted-cancel-step02",
+  "accepted-cancel-step03",
+  "accepted-carriage-certificate",
+  "accepted-carriage-chunk01",
+  "accepted-carriage-chunk02",
+  "accepted-carriage-chunk03",
+  "accepted-init",
+  "accepted-mint-init",
+  "accepted-mint-remove",
+  "accepted-mint-step01",
+  "accepted-mint-step02",
+  "accepted-mint-step03-proof-mint",
+  "accepted-remove",
+  "accepted-step01",
+  "accepted-step02",
+  "accepted-step03-proof-mint",
+  "forced-carriage-certificate",
+  "forced-carriage-chunk01",
+  "forced-carriage-chunk02",
+  "forced-carriage-chunk03",
+  "forced-init",
+  "forced-mint-init",
+  "forced-mint-remove",
+  "forced-mint-step01",
+  "forced-mint-step02",
+  "forced-mint-step03-proof-mint",
+  "forced-remove",
+  "forced-step01",
+  "forced-step02",
+  "forced-step03-proof-mint",
+  "publish-step01",
+  "publish-step02",
+  "publish-step03",
 ] as const;
 
-describe("field-item-width-illegal signed Van Rossem fit ledger", () => {
-  it("retains positive signed-byte, memory, and CPU margins", async () => {
-    const ledger = buildVanRossemFitLedger({
-      category: "fieldItemWidthIllegal:00000021:testnet",
-      blueprintSha256:
-        "99c8108c2fb404035c10aec076ab37493804b967fa347f6b31428c102feb5a7d",
-      compilerVersion: "aiken v1.1.23+5adf783",
-      measurements: measurements.map(
-        ([name, kind, maximumShape, signedBytes, memoryUnits, cpuUnits]) => ({
-          name,
-          kind,
-          maximumShape,
-          signedBytes,
-          memoryUnits,
-          cpuUnits,
-        }),
-      ),
-    });
-    expect(ledger.entries).toHaveLength(measurements.length);
-    expect(ledger.entries.every((entry) => entry.signedByteMargin > 0)).toBe(
-      true,
-    );
-    expect(
-      ledger.entries.every(
-        (entry) =>
-          BigInt(entry.memoryUnitMargin) > 0n &&
-          BigInt(entry.cpuUnitMargin) > 0n,
-      ),
-    ).toBe(true);
+describe("fieldItemWidthIllegal Van Rossem fit ledger", () => {
+  it("pins the locked testnet blueprint and a positive margin for every publication and maximum-shape lifecycle transaction", async () => {
+    const ledger = JSON.parse(
+      await readFile(path, "utf8"),
+    ) as VanRossemFitLedger;
+    expect(ledger.schemaVersion).toBe(VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION);
+    expect(ledger.category).toBe("fieldItemWidthIllegal:00000021:testnet");
+    expect(ledger.blueprintSha256).toBe(PINNED_BLUEPRINT_SHA256);
+    expect(ledger.compilerVersion).toBe(PINNED_COMPILER);
+    expect(ledger.entries.map((entry) => entry.name)).toEqual([
+      ...EXPECTED_ENTRIES,
+    ]);
+    for (const entry of ledger.entries) {
+      expect(entry.signedByteMargin, entry.name).toBe(
+        VAN_ROSSEM_MAX_SIGNED_TX_BYTES - entry.signedBytes,
+      );
+      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
+      expect(BigInt(entry.memoryUnitMargin), entry.name).toBe(
+        VAN_ROSSEM_MAX_MEMORY_UNITS - BigInt(entry.memoryUnits),
+      );
+      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
+      expect(BigInt(entry.cpuUnitMargin), entry.name).toBe(
+        VAN_ROSSEM_MAX_CPU_UNITS - BigInt(entry.cpuUnits),
+      );
+      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
+      if (entry.kind === "publication") {
+        expect(entry.publicationReserveMargin, entry.name).toBe(
+          VAN_ROSSEM_PUBLICATION_TARGET_BYTES - entry.signedBytes,
+        );
+        expect(
+          entry.publicationReserveMargin,
+          entry.name,
+        ).toBeGreaterThanOrEqual(0);
+      } else {
+        expect(entry.publicationReserveMargin, entry.name).toBeNull();
+      }
+    }
+    // Every scripted lifecycle transaction was evaluated locally; only the
+    // chunk publications carry no redeemer.
+    for (const entry of ledger.entries) {
+      if (entry.kind === "lifecycle" && !/carriage-chunk/u.test(entry.name)) {
+        expect(BigInt(entry.memoryUnits), entry.name).toBeGreaterThan(0n);
+        expect(BigInt(entry.cpuUnits), entry.name).toBeGreaterThan(0n);
+      }
+    }
+    // The maximum field-2 shape is the three-chunk certified carriage: two
+    // full chunks at exactly the reliable publication target and a tail.
     expect(
       ledger.entries
-        .filter((entry) => entry.kind === "publication")
-        .every((entry) => (entry.publicationReserveMargin ?? -1) >= 0),
-    ).toBe(true);
-    expect(ledger.ledgerSha256).toBe(
-      "d70d8b0abc0c19961645fb257a20e15b41acb6dda49e25196e16117166b24431",
-    );
-    const stored: unknown = JSON.parse(
-      await readFile(
-        new URL(
-          "../../../docs/fault-proofs/size-plans/field-item-width-illegal-v1-fit-ledger.json",
-          import.meta.url,
-        ),
-        "utf8",
-      ),
-    );
-    expect(stored).toStrictEqual(ledger);
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info(JSON.stringify(ledger, null, 2));
+        .filter((entry) =>
+          /^(accepted|forced)-carriage-chunk0[12]$/u.test(entry.name),
+        )
+        .map((entry) => entry.signedBytes),
+    ).toEqual([
+      VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
+      VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
+      VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
+      VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
+    ]);
   });
 });

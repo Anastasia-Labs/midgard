@@ -82,16 +82,38 @@ accumulation adapters. Body/witness field selection is handled by the one
 canonical field-door claim shape, not by importing the unrelated family rules
 that later interpret those fields.
 
-## Planned fit gate
+## Fit gate and lifecycle evidence
 
 Build with pinned Aiken in the `testnet` environment, publish every applied
 step as a complete signed reference-script transaction, and run the full Lucid
 Evolution lifecycle with `MIDGARD_REAL_BLUEPRINT_PATH` pointing to that fresh
 blueprint under shared Van Rossem parameters. The machine-readable family
-ledger records signed bytes, memory, CPU, and margin for all three script
-publications; direct, raw-publication, certified/chunk publication, every proof
-step, cancel at steps 1-3, final proof mint, and state-queue target/descendant
-removal. The maximum branch uses the three-chunk 32,768-byte field and the
-field-2 over-bound semantic path. Acceptance requires signed bytes `<= 15,872`
-for publication reliability and every transaction below the hard 16,384-byte,
-16,500,000-memory, and 10,000,000,000-CPU limits with local UPLC evaluation.
+ledger (`field-item-width-illegal-v1-fit-ledger.json`, written by
+`field-item-width-illegal-lifecycle.test.ts` under `MIDGARD_WRITE_FIT_LEDGER=1`
+and pinned by `field-item-width-illegal-fit-ledger.test.ts`) records signed
+bytes, memory, CPU, and margin for all three script publications and for every
+lifecycle transaction of four shapes:
+
+- accepted field 2 at the maximum: a 32,768-byte outputs field holding one
+  32,764-byte item, opened through three certified chunks (two at exactly the
+  15,872-byte publication target) plus the certificate;
+- forced field 2 at the maximum: a 32,767-byte outputs field whose selected
+  second item is exactly 16,384 bytes, so the door walks the whole field under
+  certified carriage to reach the legal item;
+- accepted and forced field 5 through inline carriage, selecting the empty
+  item and the 29-byte item of the same two-item mint field.
+
+The lifecycle suite drives the registered SDK chain
+(`harness.contracts.fraudProofContracts.fieldItemWidthIllegal`), pins the
+family-side application against it step for step, and ends with
+`assertCompleteLifecycleCoverage`. On chain it refuses: the honest accepted
+block at exactly 16,384 bytes and the honest non-empty mint item; the honest
+forced rejections of a 16,385-byte output and of an empty mint item; the
+adjacent-over-bound item coordinate (index equal to the item count); the
+forced-leaf reason coordinate, header, membership, and direction; a
+substituted native transaction source, inline preimage bytes, certificate
+reference, and chunk order at the field door; a wrong successor script; and
+cancels from every physical step. Acceptance requires signed bytes
+`<= 15,872` for publication reliability and every transaction below the hard
+16,384-byte, 16,500,000-memory, and 10,000,000,000-CPU limits with local UPLC
+evaluation; the ledger carries a positive margin for every entry.
