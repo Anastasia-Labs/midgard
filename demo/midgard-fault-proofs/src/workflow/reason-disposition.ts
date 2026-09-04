@@ -150,10 +150,27 @@ export const NON_INTERACTIVE_DIRECT_CATEGORIES = Object.freeze(
 );
 
 /**
+ * Every `arm -> category` pair whose non-interactive direct category is not
+ * installed in the given surface (a runner registry, a watcher installation
+ * list, or a deployment manifest's category set), in disposition order.
+ */
+export const missingNonInteractiveInstallations = (
+  installedCategories: Iterable<string>,
+): readonly string[] => {
+  const installed = new Set(installedCategories);
+  return TYPED_REASON_ARMS.flatMap((arm) => {
+    const disposition = TYPED_REASON_DISPOSITIONS[arm];
+    if (disposition.proving !== "non_interactive") return [];
+    return disposition.categories
+      .filter((category) => !installed.has(category))
+      .map((category) => `${arm} -> ${category}`);
+  });
+};
+
+/**
  * Production-readiness check (§3.3): throws with one actionable list naming
  * every non-interactive typed reason whose direct category is not installed
- * in the given surface (a runner registry, a watcher installation list, or a
- * deployment manifest's category set).
+ * in the given surface.
  */
 export const assertNonInteractiveReasonsInstalled = ({
   surface,
@@ -162,14 +179,7 @@ export const assertNonInteractiveReasonsInstalled = ({
   readonly surface: string;
   readonly installedCategories: Iterable<string>;
 }): void => {
-  const installed = new Set(installedCategories);
-  const missing = TYPED_REASON_ARMS.flatMap((arm) => {
-    const disposition = TYPED_REASON_DISPOSITIONS[arm];
-    if (disposition.proving !== "non_interactive") return [];
-    return disposition.categories
-      .filter((category) => !installed.has(category))
-      .map((category) => `${arm} -> ${category}`);
-  });
+  const missing = missingNonInteractiveInstallations(installedCategories);
   if (missing.length > 0) {
     throw new Error(
       `${surface} would route non-interactive typed reasons to validationTraceDispute: ${missing.join(", ")}`,

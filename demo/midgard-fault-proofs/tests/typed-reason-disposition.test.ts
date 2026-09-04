@@ -8,6 +8,7 @@ import {
   assertNonInteractiveReasonsInstalled,
   directCategoryOfTypedReason,
   INTERACTIVE_TYPED_REASON_ARMS,
+  missingNonInteractiveInstallations,
   NON_INTERACTIVE_DIRECT_CATEGORIES,
   TYPED_REASON_ARMS,
   TYPED_REASON_DISPOSITIONS,
@@ -79,13 +80,20 @@ describe("typed rejection-reason disposition", () => {
     );
   });
 
-  it("holds for the production runner registry", () => {
-    expect(() =>
-      assertNonInteractiveReasonsInstalled({
-        surface: "WORKFLOW_RUNNER_FACTORIES",
-        installedCategories: Object.keys(WORKFLOW_RUNNER_FACTORIES),
-      }),
-    ).not.toThrow();
+  it("pins the runner-registry residue the program closure must empty", () => {
+    // Program closure (§8 step 5) requires this list to be empty: every
+    // remaining entry is a typed reason that production classification would
+    // still route to validationTraceDispute. Shrink it, never grow it.
+    expect(
+      missingNonInteractiveInstallations(
+        Object.keys(WORKFLOW_RUNNER_FACTORIES),
+      ),
+    ).toEqual([
+      "ResolvedReferenceScriptMalformed -> nativeScriptDecoding",
+      "ResolvedReferenceScriptNodeLimit -> nativeScriptDecoding",
+      "ResolvedReferenceScriptDepthLimit -> nativeScriptDecoding",
+      "ValueNotPreserved -> valueNotPreserved",
+    ]);
   });
 
   it("lists every omission when a surface lacks a direct category", () => {
