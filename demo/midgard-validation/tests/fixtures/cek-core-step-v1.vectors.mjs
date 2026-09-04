@@ -26,6 +26,7 @@ import {
   DataB,
   DataConstr,
   DataI,
+  DataList,
   DataMap,
   DataPair,
 } from "@harmoniclabs/plutus-data";
@@ -55,12 +56,10 @@ export const compileMidgardCekGoldenProgram = (term) =>
 export const EMPTY_CONTEXT = () => new DataConstr(0n, []);
 
 /**
- * A payload wide enough to route `unMapData`/`mapData` through the semantic
- * map-conversion micro-machine. Below roughly this width the trace builder
- * refuses its own `startBuiltinMapConversion` transition ("does not pass the
- * consensus verifier"), so the four map-conversion arms are only reachable
- * from a context of this size; `tests/cek-executor.test.ts` uses the same
- * width for the same reason.
+ * A payload wide enough that the map-conversion result exceeds the inline
+ * constant bound, so the `startBuiltinMapConversion` result rides as a
+ * semantic constant. The narrow programs below pin the inline-result form;
+ * `tests/cek-executor.test.ts` covers the same widths.
  */
 const WIDE_MAP_PAYLOAD_BYTES = 9_000;
 
@@ -72,6 +71,20 @@ const wideMap = () =>
     ),
     new DataPair(new DataI(2n), new DataI(3n)),
   ]);
+
+const narrowMap = () =>
+  new DataMap([
+    new DataPair(new DataI(1n), new DataB(Buffer.alloc(10, 0x2a))),
+    new DataPair(new DataI(2n), new DataI(3n)),
+  ]);
+
+const mapRoundTrip = (source) =>
+  new Lambda(
+    new Application(
+      Builtin.mapData,
+      new Application(Builtin.unMapData, source),
+    ),
+  );
 
 const g1Compressed = () =>
   UPLCConst.byteString(
@@ -297,15 +310,43 @@ export const CEK_CORE_STEP_PROGRAMS = [
   },
   {
     label: "map_round_trip",
-    note: "startBuiltinMapConversion, stepBuiltinMapToList, stepBuiltinListToMap, finishBuiltinMapConversion",
+    note: "startBuiltinMapConversion, stepBuiltinMapToList, stepBuiltinListToMap, finishBuiltinMapConversion with semantic-constant results",
+    term: () => mapRoundTrip(new UPLCVar(0)),
+    context: wideMap,
+    maxSteps: 64,
+  },
+  {
+    label: "map_round_trip_narrow",
+    note: "the same four map-conversion arms with inline-constant results",
+    term: () => mapRoundTrip(new UPLCVar(0)),
+    context: narrowMap,
+    maxSteps: 64,
+  },
+  {
+    label: "map_round_trip_empty",
+    note: "startBuiltinMapConversion straight into finishBuiltinMapConversion on the empty map, both directions",
+    term: () => mapRoundTrip(new UPLCVar(0)),
+    context: () => new DataMap([]),
+    maxSteps: 64,
+  },
+  {
+    label: "map_round_trip_constant",
+    note: "map conversion from an inline program constant rather than the script context",
+    term: () => mapRoundTrip(UPLCConst.data(narrowMap())),
+    context: EMPTY_CONTEXT,
+    maxSteps: 64,
+  },
+  {
+    label: "un_map_wrong_variant_constant",
+    note: "executeBuiltinSemanticFailure on an inline list constant where a map is required",
     term: () =>
       new Lambda(
         new Application(
-          Builtin.mapData,
-          new Application(Builtin.unMapData, new UPLCVar(0)),
+          Builtin.unMapData,
+          UPLCConst.data(new DataList([new DataI(1n)])),
         ),
       ),
-    context: wideMap,
+    context: EMPTY_CONTEXT,
     maxSteps: 64,
   },
   {

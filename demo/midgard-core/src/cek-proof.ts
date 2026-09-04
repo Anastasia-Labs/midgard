@@ -17,6 +17,7 @@ import {
   midgardCekDataConstrCborLength,
   midgardCekDataListCborLength,
   type MidgardCekDataListNode,
+  midgardCekDataMapCborLength,
   type MidgardCekDataNode,
   type MidgardCekDataPairNode,
 } from "./cek-semantic.js";
@@ -2439,7 +2440,7 @@ const commitSemanticData = (value: SemanticDataValue): SemanticDataSummary => {
       kind: "map",
       entriesCount: entries.length,
       entriesRoot: entries.root,
-      cborLength: midgardCekDataListCborLength(
+      cborLength: midgardCekDataMapCborLength(
         entries.length,
         entries.payloadCborLength,
       ),
@@ -3302,7 +3303,7 @@ const verifyOneProgramMaterial = (
       }
       if (
         dataNode.cborLength !==
-          midgardCekDataListCborLength(
+          midgardCekDataMapCborLength(
             dataNode.entriesCount,
             entries?.payloadCborLength ?? 0n,
           ) ||

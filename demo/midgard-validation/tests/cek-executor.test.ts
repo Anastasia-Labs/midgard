@@ -510,6 +510,191 @@ describe("V1 CEK trace generator", () => {
     ).toBe(true);
   });
 
+  it("proves map conversions on narrow, empty and inline-constant maps", () => {
+    const narrowMap = (): DataMap<Data, Data> =>
+      new DataMap<Data, Data>([
+        new DataPair(new DataI(1n), new DataB(Buffer.alloc(10, 0x2a))),
+        new DataPair(new DataI(2n), new DataI(3n)),
+      ]);
+    const roundTrip = (source: UPLCTerm): UPLCTerm =>
+      new Lambda(
+        new Application(
+          Builtin.mapData,
+          new Application(Builtin.unMapData, source),
+        ),
+      );
+    const cases: readonly {
+      readonly label: string;
+      readonly term: UPLCTerm;
+      readonly context: Data;
+      readonly expected: readonly string[];
+    }[] = [
+      {
+        label: "narrow context map",
+        term: roundTrip(new UPLCVar(0)),
+        context: narrowMap(),
+        expected: [
+          "startBuiltinMapConversion",
+          "stepBuiltinMapToList",
+          "stepBuiltinMapToList",
+          "finishBuiltinMapConversion",
+          "startBuiltinMapConversion",
+          "stepBuiltinListToMap",
+          "stepBuiltinListToMap",
+          "finishBuiltinMapConversion",
+        ],
+      },
+      {
+        label: "empty context map",
+        term: roundTrip(new UPLCVar(0)),
+        context: new DataMap<Data, Data>([]),
+        expected: [
+          "startBuiltinMapConversion",
+          "finishBuiltinMapConversion",
+          "startBuiltinMapConversion",
+          "finishBuiltinMapConversion",
+        ],
+      },
+      {
+        label: "inline constant map",
+        term: roundTrip(UPLCConst.data(narrowMap())),
+        context: new DataConstr(0n, []),
+        expected: [
+          "startBuiltinMapConversion",
+          "stepBuiltinMapToList",
+          "stepBuiltinMapToList",
+          "finishBuiltinMapConversion",
+          "startBuiltinMapConversion",
+          "stepBuiltinListToMap",
+          "stepBuiltinListToMap",
+          "finishBuiltinMapConversion",
+        ],
+      },
+    ];
+    for (const candidate of cases) {
+      const program = buildMidgardCanonicalCekProgram(compile(candidate.term));
+      const graph = buildMidgardCekExecutionGraph(
+        program.envelope,
+        program.material.values(),
+        encodeMidgardCekPlutusData(candidate.context),
+      );
+      const execution = executeMidgardCekStructuralProgram({
+        root: graph.root,
+        material: graph.material.values(),
+        constantWitnesses: graph.constantWitnesses,
+        maxSteps: 64,
+      });
+      expect(
+        execution.steps
+          .map((step) => step.witness.kind)
+          .filter(
+            (kind) =>
+              kind.includes("MapConversion") ||
+              kind.includes("MapToList") ||
+              kind.includes("ListToMap"),
+          ),
+        candidate.label,
+      ).toEqual(candidate.expected);
+      expect(execution.terminalState.mode, candidate.label).toBe("haltSuccess");
+      const start = execution.steps.find(
+        (step) => step.witness.kind === "startBuiltinMapConversion",
+      );
+      expect(start?.witness.kind).toBe("startBuiltinMapConversion");
+      if (start?.witness.kind === "startBuiltinMapConversion") {
+        // Narrow results ride inline, exactly as every other builtin result.
+        expect(start.witness.result.kind, candidate.label).toBe("constant");
+      }
+      expect(
+        execution.steps.every((step) =>
+          verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
+        ),
+        candidate.label,
+      ).toBe(true);
+    }
+  });
+
+  it("rejects a map-conversion start whose inline result is swapped", () => {
+    const program = buildMidgardCanonicalCekProgram(
+      compile(new Lambda(new Application(Builtin.unMapData, new UPLCVar(0)))),
+    );
+    const startOf = (context: Data) => {
+      const graph = buildMidgardCekExecutionGraph(
+        program.envelope,
+        program.material.values(),
+        encodeMidgardCekPlutusData(context),
+      );
+      const execution = executeMidgardCekStructuralProgram({
+        root: graph.root,
+        material: graph.material.values(),
+        constantWitnesses: graph.constantWitnesses,
+        maxSteps: 64,
+      });
+      const start = execution.steps.find(
+        (step) => step.witness.kind === "startBuiltinMapConversion",
+      );
+      if (start?.witness.kind !== "startBuiltinMapConversion") {
+        throw new Error("expected a map-conversion start step");
+      }
+      return { ...start, witness: start.witness };
+    };
+    const narrow = startOf(
+      new DataMap<Data, Data>([new DataPair(new DataI(1n), new DataI(2n))]),
+    );
+    const empty = startOf(new DataMap<Data, Data>([]));
+    expect(narrow.witness.result.kind).toBe("constant");
+    expect(empty.witness.result.kind).toBe("constant");
+    expect(
+      verifyMidgardCekCoreStep(narrow.pre, narrow.post, narrow.witness),
+    ).toBe(true);
+    expect(
+      verifyMidgardCekCoreStep(narrow.pre, narrow.post, {
+        ...narrow.witness,
+        result: empty.witness.result,
+      }),
+    ).toBe(false);
+    expect(
+      verifyMidgardCekCoreStep(narrow.pre, narrow.post, {
+        ...narrow.witness,
+        arguments: empty.witness.arguments,
+      }),
+    ).toBe(false);
+  });
+
+  it("fails unMapData on a non-map inline constant at the semantic failure arm", () => {
+    const program = buildMidgardCanonicalCekProgram(
+      compile(
+        new Lambda(
+          new Application(
+            Builtin.unMapData,
+            UPLCConst.data(new DataList([new DataI(1n)])),
+          ),
+        ),
+      ),
+    );
+    const graph = buildMidgardCekExecutionGraph(
+      program.envelope,
+      program.material.values(),
+      Buffer.from("d87980", "hex"),
+    );
+    const execution = executeMidgardCekStructuralProgram({
+      root: graph.root,
+      material: graph.material.values(),
+      constantWitnesses: graph.constantWitnesses,
+      maxSteps: 64,
+    });
+    expect(execution.terminalState.mode).toBe("haltError");
+    expect(
+      execution.steps
+        .map((step) => step.witness.kind)
+        .filter((kind) => kind.startsWith("executeBuiltin")),
+    ).toEqual(["executeBuiltinSemanticFailure"]);
+    expect(
+      execution.steps.every((step) =>
+        verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
+      ),
+    ).toBe(true);
+  });
+
   it("proves large structured Data traversal without revealing the whole constant", () => {
     const program = buildMidgardCanonicalCekProgram(
       compile(

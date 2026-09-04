@@ -1699,29 +1699,28 @@ const dataPairSummaryMatches = (
       node.payloadCborLength === sequence.payloadCborLength &&
       node.memory === sequence.memory;
 
-const semanticPayloadMatches = (
-  value: MidgardCekDirectValueWitness,
+/**
+ * The payload summary a map-conversion endpoint commits to must be the exact
+ * summary of the top Data node the witness reveals. Inline and semantic
+ * constants both reach here through `constantParts`, mirroring the Aiken
+ * `semantic_constant_parts_v1` acceptance of `ConstantValue`.
+ */
+const payloadSummaryMatchesNode = (
+  summary: DataSummary,
   node: MidgardCekDataNode,
 ): boolean =>
-  value.kind === "semanticConstant" &&
-  sameBytes(value.witness.payload.root, hashMidgardCekDataNode(node)) &&
-  value.witness.payload.cborLength === node.cborLength &&
-  value.witness.payload.memory === node.memory;
+  sameBytes(summary.root, hashMidgardCekDataNode(node)) &&
+  summary.cborLength === node.cborLength &&
+  summary.memory === node.memory;
 
-const isDataType = (value: MidgardCekDirectValueWitness): boolean =>
-  value.kind === "semanticConstant" &&
-  decodeMidgardCekConstantTypeCbor(value.witness.typeCbor).kind === "data";
+const isDataType = (type: MidgardCekConstantType): boolean =>
+  type.kind === "data";
 
-const isListDataPairType = (value: MidgardCekDirectValueWitness): boolean => {
-  if (value.kind !== "semanticConstant") return false;
-  const type = decodeMidgardCekConstantTypeCbor(value.witness.typeCbor);
-  return (
-    type.kind === "list" &&
-    type.element.kind === "pair" &&
-    type.element.first.kind === "data" &&
-    type.element.second.kind === "data"
-  );
-};
+const isListDataPairType = (type: MidgardCekConstantType): boolean =>
+  type.kind === "list" &&
+  type.element.kind === "pair" &&
+  type.element.first.kind === "data" &&
+  type.element.second.kind === "data";
 
 const builtinRootMatches = (
   pre: MidgardCekMachineState,
@@ -1756,10 +1755,13 @@ const verifyMapConversionStart = (
   ) {
     return false;
   }
-  const source = witness.arguments[0]!;
+  const source = constantParts(witness.arguments[0]!);
+  const result = constantParts(witness.result);
   if (
-    !semanticPayloadMatches(source, witness.material.sourceNode) ||
-    !semanticPayloadMatches(witness.result, witness.material.resultNode)
+    source === null ||
+    result === null ||
+    !payloadSummaryMatchesNode(source.payload, witness.material.sourceNode) ||
+    !payloadSummaryMatchesNode(result.payload, witness.material.resultNode)
   ) {
     return false;
   }
@@ -1797,19 +1799,14 @@ const verifyMapConversionStart = (
   if (!topologyMatches) return false;
   if (
     witness.tag === 38n
-      ? !isListDataPairType(source) ||
-        !isDataType(witness.result) ||
-        source.kind !== "semanticConstant" ||
-        witness.result.kind !== "semanticConstant" ||
-        source.witness.memory !==
-          sourceSequence.memory - sourceSequence.length * 4n ||
-        witness.result.witness.memory !== destinationSequence.memory + 4n
-      : !isDataType(source) ||
-        !isListDataPairType(witness.result) ||
-        source.kind !== "semanticConstant" ||
-        witness.result.kind !== "semanticConstant" ||
-        source.witness.memory !== sourceSequence.memory + 4n ||
-        witness.result.witness.memory !==
+      ? !isListDataPairType(source.type) ||
+        !isDataType(result.type) ||
+        source.memory !== sourceSequence.memory - sourceSequence.length * 4n ||
+        result.memory !== destinationSequence.memory + 4n
+      : !isDataType(source.type) ||
+        !isListDataPairType(result.type) ||
+        source.memory !== sourceSequence.memory + 4n ||
+        result.memory !==
           destinationSequence.memory - destinationSequence.length * 4n
   ) {
     return false;

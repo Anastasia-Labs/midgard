@@ -1361,10 +1361,11 @@ class StructuralExecutor {
     arguments_: readonly MidgardCekDirectValueWitness[],
   ): void {
     const source = arguments_[0];
-    if (source?.kind !== "semanticConstant") {
-      throw new Error("CEK semantic map conversion requires semantic source");
+    if (source?.kind !== "constant" && source?.kind !== "semanticConstant") {
+      throw new Error("CEK map conversion requires a constant source");
     }
-    const sourcePayload = this.dataValue(source.witness.payload.root);
+    const resolvedSource = this.resolvedConstant(source);
+    const sourcePayload = resolvedSource.payload;
     let resultPayload: Data;
     let resultType: MidgardCekConstantType;
     if (tag === 38n) {
@@ -1403,7 +1404,7 @@ class StructuralExecutor {
       };
     }
     const added = this.addSemanticResult(resultType, resultPayload);
-    const sourceNode = this.dataNodes.get(rootHex(source.witness.payload.root));
+    const sourceNode = this.dataNodes.get(rootHex(resolvedSource.tree.root));
     const resultNode = this.dataNodes.get(rootHex(added.tree.root));
     if (sourceNode === undefined || resultNode === undefined) {
       throw new Error("CEK map conversion is missing its top Data nodes");
@@ -2215,19 +2216,22 @@ class StructuralExecutor {
       },
     );
     if (
-      builtin.tag === 43n &&
-      directArguments[0]?.kind === "semanticConstant"
-    ) {
-      const source = this.resolvedConstant(directArguments[0]);
-      if (!(source.payload instanceof DataMap)) {
-        this.recordSemanticFailure(pre, builtin.tag, directArguments, source);
-        return;
-      }
-    }
-    if (
       (builtin.tag === 38n || builtin.tag === 43n) &&
-      directArguments[0]?.kind === "semanticConstant"
+      (directArguments[0]?.kind === "constant" ||
+        directArguments[0]?.kind === "semanticConstant")
     ) {
+      // `mapData`/`unMapData` always run through the pair-by-pair
+      // map-conversion micro-machine, whatever the source constant's witness
+      // kind: the L1 rule is constant-cost and total for every map or
+      // pair-list width including empty, and only `unMapData` on a non-map
+      // fails (the "Expected the Map constructor" failure).
+      if (builtin.tag === 43n) {
+        const source = this.resolvedConstant(directArguments[0]);
+        if (!isPlutusDataMap(source.payload)) {
+          this.recordSemanticFailure(pre, builtin.tag, directArguments, source);
+          return;
+        }
+      }
       this.startMapConversion(pre, builtin.tag, directArguments);
       return;
     }
