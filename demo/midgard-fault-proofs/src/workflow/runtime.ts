@@ -1293,6 +1293,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   missingScriptSource: createMissingScriptSourceWorkflowRunner,
   missingRedeemer: createMissingRedeemerWorkflowRunner,
   unusedRedeemer: createUnusedRedeemerWorkflowRunner,
+  executionNativeScriptInvalid: createExecutionNativeScriptInvalidWorkflowRunner,
   scriptIntegrityHashMismatch: createScriptIntegrityHashMismatchWorkflowRunner,
   distinctAssetAccumulationLimit: createDistinctAssetAccumulationWorkflowRunner,
 });

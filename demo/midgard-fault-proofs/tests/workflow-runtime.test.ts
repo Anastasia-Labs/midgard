@@ -619,6 +619,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       "missingScriptSource",
       "missingRedeemer",
       "unusedRedeemer",
+      "executionNativeScriptInvalid",
       "scriptIntegrityHashMismatch",
       "distinctAssetAccumulationLimit",
     ]);
