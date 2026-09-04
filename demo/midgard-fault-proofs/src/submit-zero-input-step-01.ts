@@ -12,6 +12,7 @@
  */
 
 import {
+  acceptedVerdictSubject,
   HUB_ORACLE_ASSET_NAME,
   nativeTxBodyHasZeroInputViolation,
   type NativeTxInclusionCarriage,
@@ -299,7 +300,7 @@ export const submitZeroInputStep01 = async ({
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: { bad_tx_id: badTxId },
+      data: { subject: acceptedVerdictSubject(badTxId) },
     },
     ZeroInputStep02Datum,
   );
@@ -373,7 +374,10 @@ export const submitZeroInputStep01 = async ({
             },
           ],
         };
-    return Data.to({ Continue: [carriage] }, ZeroInputStep01SpendRedeemer);
+    return Data.to(
+      { Continue: [{ source: { AcceptedSource: { inclusion: carriage } } }] },
+      ZeroInputStep01SpendRedeemer,
+    );
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,

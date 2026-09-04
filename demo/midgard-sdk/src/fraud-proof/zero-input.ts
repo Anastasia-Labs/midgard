@@ -10,7 +10,10 @@ import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "../common.js";
+import { OutputReferenceSchema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { RejectionReasonSchema } from "../rejection-reason.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
@@ -32,8 +35,35 @@ export const ZeroInputStep01Datum = asDataType<ZeroInputStep01Datum>(
   ZeroInputStep01DatumSchema,
 );
 
+/**
+ * Mirrors `midgard/fraud_proofs/zero_input/step_01.SourceV1`: the accepted
+ * direction carries the native inclusion; the forced direction carries the
+ * forced-inclusion leaf and its polarity.
+ */
+export const ZeroInputStep01SourceSchema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+      direction: Data.Integer(),
+    }),
+  }),
+]);
+export type ZeroInputStep01Source = Data.Static<
+  typeof ZeroInputStep01SourceSchema
+>;
+
+/** Mirrors `midgard/fraud_proofs/zero_input/step_01.Args`. */
 export const ZeroInputStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  NativeTxInclusionCarriageSchema,
+  Data.Object({ source: ZeroInputStep01SourceSchema }),
 );
 export type ZeroInputStep01SpendRedeemer = Data.Static<
   typeof ZeroInputStep01SpendRedeemerSchema
@@ -41,15 +71,24 @@ export type ZeroInputStep01SpendRedeemer = Data.Static<
 export const ZeroInputStep01SpendRedeemer =
   asDataType<ZeroInputStep01SpendRedeemer>(ZeroInputStep01SpendRedeemerSchema);
 
+export const ZeroInputVerdictSubjectSchema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: Data.Bytes(),
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
+});
+
 /**
- * Mirrors `midgard/fraud_proofs/zero_input/step_02.State`. #604: the thread
- * carries the §2.5 anchor. The retired `bad_tx_spend_inputs_hash` was compared
- * against `empty_field_commitment` directly; the step now opens field 0 through
- * the door and reads its authenticated item count instead, so what has to reach
- * step-02 is the transaction id.
+ * Mirrors `midgard/fraud_proofs/zero_input/rule.StateV1`. The thread carries
+ * the proof-thread substrate's verdict subject, whose `transaction_id` is the
+ * §2.5 anchor step-02 opens field 0 against; the retired
+ * `bad_tx_spend_inputs_hash` was compared against `empty_field_commitment`
+ * directly, and the step now reads the door's authenticated item count instead.
  */
 export const ZeroInputStep02StateSchema = Data.Object({
-  bad_tx_id: H32Schema,
+  subject: ZeroInputVerdictSubjectSchema,
 });
 export type ZeroInputStep02State = Data.Static<
   typeof ZeroInputStep02StateSchema

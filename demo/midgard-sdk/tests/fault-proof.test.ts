@@ -634,16 +634,34 @@ describe("fault-proof ABI", () => {
     ).toEqual({ fraud_prover: h28, data: null });
     expect(
       roundTrip(
-        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
+        {
+          Continue: [
+            {
+              source: {
+                AcceptedSource: {
+                  inclusion: { RedeemerCarriedInclusion: [txInclusionArgs] },
+                },
+              },
+            },
+          ],
+        },
         ZeroInputStep01SpendRedeemer,
       ),
     ).toMatchObject({
-      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+      Continue: [
+        {
+          source: {
+            AcceptedSource: {
+              inclusion: { RedeemerCarriedInclusion: [{ native_tx_id: h32 }] },
+            },
+          },
+        },
+      ],
     });
 
     const step02Datum = {
       fraud_prover: h28,
-      data: { bad_tx_id: h32 },
+      data: { subject: acceptedVerdictSubject(h32) },
     };
     expect(roundTrip(step02Datum, ZeroInputStep02Datum)).toEqual(step02Datum);
     expect(

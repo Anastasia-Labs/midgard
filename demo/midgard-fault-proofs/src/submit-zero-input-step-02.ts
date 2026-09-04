@@ -335,7 +335,7 @@ export const submitZeroInputStep02V1 = async ({
     categoryLabel: "zero-input",
   });
   const inputDatum = requireStep02Datum({ threadUtxo, signer });
-  const badTxId = inputDatum.data.bad_tx_id;
+  const badTxId = inputDatum.data.subject.transaction_id;
   // The family's whole claim is that field 0 holds nothing, so the §5.1
   // preimage is the empty envelope and the prover supplies no items. Planning
   // it against the anchored transaction is what proves the claim off-chain:

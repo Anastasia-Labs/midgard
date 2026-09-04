@@ -507,7 +507,9 @@ describe("fault-proof emulator integration", () => {
     );
     expect(Data.from(secondStepUtxo.datum!, ZeroInputStep02Datum)).toEqual({
       fraud_prover: proverPaymentKeyHash,
-      data: { bad_tx_id: zeroInputInclusion.badTx.nativeTxId },
+      data: {
+        subject: acceptedVerdictSubject(zeroInputInclusion.badTx.nativeTxId),
+      },
     });
 
     // #604 mutation negative: the step-02 opening is bound to the transaction
