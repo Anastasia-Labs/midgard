@@ -25,13 +25,26 @@ export const alignUnixTimeToEmulatorSlotBoundary = (
   unixTime: number,
 ): number => lucid.slotToUnixTime(lucid.unixTimeToSlot(unixTime));
 
+/**
+ * The wallet's first plain-Ada UTxO: no datum, no reference script, no
+ * non-Ada assets. The emulator ledger lists UTxOs in insertion order, so once
+ * the wallet holds a published reference script the first entry can be that
+ * publication; handing it out as a fee input would spend the reference script
+ * and strand its authentication token in a script-less change output.
+ */
 export const firstWalletUtxo = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   label: string,
 ): Promise<UTxO> => {
-  const [utxo] = await lucid.wallet().getUtxos();
+  const utxo = (await lucid.wallet().getUtxos()).find(
+    (candidate) =>
+      candidate.datum == null &&
+      candidate.datumHash == null &&
+      candidate.scriptRef == null &&
+      Object.keys(candidate.assets).every((unit) => unit === "lovelace"),
+  );
   if (utxo === undefined) {
-    throw new Error(`Expected wallet UTxO for ${label}`);
+    throw new Error(`Expected plain-Ada wallet UTxO for ${label}`);
   }
   return utxo;
 };

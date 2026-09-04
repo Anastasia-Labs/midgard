@@ -1,3 +1,4 @@
+import { outRefLabel } from "@al-ft/midgard-core";
 import {
   completeReferenceScriptPublicationTxProgram,
   createReferenceScriptAuthPolicy,
@@ -235,9 +236,14 @@ export const findStateQueueYieldReferenceScript = async ({
     await lucid.wallet().address(),
     unit,
   );
-  if (matches.length !== 1 || matches[0]?.scriptRef == null) {
+  if (matches.length !== 1) {
     throw new Error(
       `Expected exactly one authenticated ${roleByArm[arm]} reference script, found ${matches.length.toString()}`,
+    );
+  }
+  if (matches[0]?.scriptRef == null) {
+    throw new Error(
+      `Authenticated ${roleByArm[arm]} reference script token sits at ${outRefLabel(matches[0]!)} without a reference script`,
     );
   }
   return matches[0];

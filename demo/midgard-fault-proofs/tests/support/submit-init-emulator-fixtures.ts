@@ -1516,6 +1516,17 @@ export const submitSuccessorBlockTx = async ({
   );
   const commitValidFrom = header.startTime - 60_000n;
   const commitValidTo = header.endTime + 1n;
+  // Each successor starts where its predecessor ends, so its commit window
+  // opens one header length after the previous commit's. The first successor
+  // finds the emulator already inside that window; a second one does not, and
+  // the emulator rejects a lower bound ahead of its clock. Advance to the
+  // window's first slot, which is still inside the predecessor's own window
+  // and so keeps the next successor's contiguity check honest.
+  const firstCommitSlot = lucid.unixTimeToSlot(Number(commitValidFrom));
+  const slotsUntilCommitWindow = firstCommitSlot - lucid.currentSlot();
+  if (slotsUntilCommitWindow > 0) {
+    emulator.awaitSlot(slotsUntilCommitWindow);
+  }
   expect(
     commitValidTo,
     "successor commit validTo must be later than the emulator clock before submission",
