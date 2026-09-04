@@ -189,8 +189,15 @@ const Q13_APPLIED_STEP_HASHES = [
 // by this suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1` under the
 // working-tree testnet blueprint (sha256 1a301746…, aiken v1.1.23+5adf783).
 // `e2919c17…` -> `690aee59…`.
+// Re-pinned 2026-09-04 (non-interactive proof-thread program, Wave 6): two
+// on-chain fixes re-parameterize their chains — `missingScriptSource` step 05
+// now finalizes at the scan limit and `missingRedeemer` step 03 takes the
+// certified walk count from the grammar — so both families' applied step-01
+// hashes move and the fold moves with them. Derived by this suite's own
+// producer under the working-tree testnet blueprint (sha256 faf55254…,
+// aiken v1.1.23+5adf783). `690aee59…` -> `53211786…`.
 const Q13_CATALOGUE_ROOT =
-  "690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4";
+  "5321178663c6170e8fe322b14e94b47109c5191220649ab6d54e55f502681b2c";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
