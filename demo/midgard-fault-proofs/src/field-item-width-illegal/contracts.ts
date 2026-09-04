@@ -1,4 +1,6 @@
 import {
+  applyParamsToScript,
+  type Data,
   type Network,
   type Script,
   validatorToAddress,
@@ -40,6 +42,87 @@ export type FieldItemWidthIllegalContracts = {
   readonly stateQueuePolicyId: string;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly fieldPreimageCertificateMintingScript: Script;
+};
+
+export type FieldItemWidthIllegalBlueprint = Readonly<{
+  validators: readonly Readonly<{
+    title: string;
+    compiledCode: string;
+    parameters?: readonly unknown[];
+  }>[];
+}>;
+
+const applyExact = (
+  blueprint: FieldItemWidthIllegalBlueprint,
+  title: string,
+  parameters: readonly Data[],
+): Script => {
+  const validator = blueprint.validators.find((entry) => entry.title === title);
+  if (validator === undefined)
+    throw new Error(`fieldItemWidthIllegal: blueprint omitted ${title}`);
+  if ((validator.parameters?.length ?? 0) !== parameters.length)
+    throw new Error(`fieldItemWidthIllegal: ${title} parameter arity changed`);
+  return {
+    type: "PlutusV3",
+    script: applyParamsToScript(validator.compiledCode, [...parameters]),
+  };
+};
+
+/**
+ * Applies the three scripts backwards, in their blueprint-declared parameter
+ * order. The registered SDK chain
+ * (`@al-ft/midgard-sdk` `buildFieldItemWidthIllegalChain`) applies the same
+ * parameters; the family's tests pin the two applications against each other
+ * so a drift in either is a red test, not a silently different deployed hash.
+ */
+export const applyFieldItemWidthIllegalScripts = ({
+  blueprint,
+  network,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOracleScriptHash,
+}: {
+  readonly blueprint: FieldItemWidthIllegalBlueprint;
+  readonly network: Network;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOracleScriptHash: string;
+}): FieldItemWidthIllegalContracts["steps"] => {
+  const titles = Object.values(FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES);
+  const applied = (
+    index: number,
+    parameters: readonly Data[],
+  ): FieldItemWidthIllegalStepContract => {
+    const blueprintTitle = titles[index]!;
+    const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
+    return Object.freeze({
+      blueprintTitle,
+      spendingScript,
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
+    });
+  };
+  const step03 = applied(2, [
+    fraudProofPolicyId,
+    fraudProofTokenAddressData,
+    computationThreadPolicyId,
+  ]);
+  const step02 = applied(1, [
+    step03.spendingScriptHash,
+    computationThreadPolicyId,
+    fieldPreimageCertificatePolicyId,
+  ]);
+  const step01 = applied(0, [
+    step02.spendingScriptHash,
+    computationThreadPolicyId,
+    hubOracleScriptHash,
+  ]);
+  return [step01, step02, step03];
 };
 
 export type FieldItemWidthIllegalManifest = {

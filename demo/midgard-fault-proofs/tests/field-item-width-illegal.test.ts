@@ -4,10 +4,15 @@ import {
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
+  buildFieldItemWidthIllegalFaultProofContracts,
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import {
+  applyFieldItemWidthIllegalScripts,
+  FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES,
+} from "../src/field-item-width-illegal/contracts.js";
 import {
   classifyFieldItemWidthFinding,
   encodeFieldItemWidthAuthenticatedWidth,
@@ -24,6 +29,7 @@ import {
   reconcileFieldItemWidthJournal,
   runFieldItemWidthProof,
 } from "../src/field-item-width-illegal/field-item-width-illegal.js";
+import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 
 const txId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const forcedSource = {
@@ -308,5 +314,24 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
         "step01",
       ),
     ).toThrow(/behind/u);
+  });
+});
+
+describe("fieldItemWidthIllegal registered-chain parity", () => {
+  it("applies the same chain the SDK registers for the same shared policies", async () => {
+    const fixture = await buildRegisteredChainFixture(
+      buildFieldItemWidthIllegalFaultProofContracts,
+    );
+    const registered = fixture.contracts.fieldItemWidthIllegal;
+    const applied = applyFieldItemWidthIllegalScripts(fixture.applyParams);
+    expect(applied.map((step) => step.spendingScriptHash)).toStrictEqual(
+      registered.steps.map((step) => step.spendingScriptHash),
+    );
+    expect(registered.firstStep.spendingScriptHash).toBe(
+      applied[0].spendingScriptHash,
+    );
+    expect(applied.map((step) => step.blueprintTitle)).toStrictEqual(
+      Object.values(FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES),
+    );
   });
 });
