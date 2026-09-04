@@ -20,7 +20,7 @@ use midgard/native_tx_field_access_v1.{
 }
 use midgard/native_tx_machine_walk_v1.{
   certify_field_grammar, field_grammar_checkpoint_hash,
-  field_grammar_is_complete, field_walk_checkpoint_hash,
+  field_grammar_is_complete, field_walk_checkpoint_hash, walk_remaining,
 }
 
 validator main(
@@ -164,7 +164,10 @@ fn execute(
     }
     FinishGrammar { opening, checkpoint_bytes, .. } -> {
       expect Grammar { authenticated, checkpoint_hash } = state
-      let Pair(view, start) = opened_certified_field_walk_from_grammar(
+      // A certified view keeps its provisional stride, so the item count is
+      // the certified count the item-zero walk position carries, not the
+      // view's header count.
+      let Pair(_view, start) = opened_certified_field_walk_from_grammar(
         opening,
         WitnessAnchor {
           tx_id: authenticated.bound.subject.transaction_id,
@@ -179,7 +182,7 @@ fn execute(
       let expected: Data = initial_scan_v1(
         authenticated,
         field_walk_checkpoint_hash(start),
-        field_item_count(view),
+        walk_remaining(start),
       )
       and {
         output_hash == step_04_hash,
