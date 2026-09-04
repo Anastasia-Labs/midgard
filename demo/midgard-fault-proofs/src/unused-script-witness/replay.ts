@@ -31,7 +31,10 @@ import {
   type UnusedScriptPurposeOpening,
   type UnusedScriptSourceOpening,
 } from "./family.js";
-import { buildUnusedScriptWitnessDirectionControlFromRetainedDa } from "./retained-stage-twelve.js";
+import {
+  buildUnusedScriptWitnessDirectionControlFromRetainedDa,
+  decodeUnusedScriptWitnessDirectionControl,
+} from "./retained-stage-twelve.js";
 import type { UnusedScriptWitnessAuthentication } from "./submit-step-02.js";
 
 const exactIndex = (value: bigint, label: string): number => {
@@ -41,47 +44,80 @@ const exactIndex = (value: bigint, label: string): number => {
   return result;
 };
 
-type SelectedInlineSource = Readonly<{
+/**
+ * One retained stage-11/12 ScriptSources audit state: the machine's own
+ * discovery bitmap says which inline field-6 coordinates a purpose selected.
+ * Stage 11 states carry the audited coordinate; the stage-12 terminal exists
+ * only when every inline source was used.
+ */
+type RetainedScriptSourceAudit = Readonly<{
   transactionId: string;
-  sourceIndex: number;
+  usedInlineBitmap: bigint;
+  auditedSourceIndex: number | null;
+  terminal: boolean;
 }>;
 
-const selectedInlineSources = (
+const retainedScriptSourceAudits = (
   block: CanonicalBlockEvidence,
-): readonly SelectedInlineSource[] =>
+): readonly RetainedScriptSourceAudit[] =>
   block.reconstruction.payload.block_body.validation_trace_witnesses.flatMap(
     ([, encoded]) => {
       const retained = decodeRetainedValidationWitness(
         Buffer.from(encoded, "hex"),
       );
       if (
-        !(
-          typeof retained.auxiliary === "object" &&
-          "NativeExecutionDescriptorWitness" in retained.auxiliary
-        )
+        retained.phase !== 8n ||
+        retained.machine_state.phase !== "ScriptSources"
       )
         return [];
-      const descriptor = retained.auxiliary.NativeExecutionDescriptorWitness;
-      if (descriptor.origin_kind !== 0n) return [];
+      let control;
+      try {
+        control = decodeUnusedScriptWitnessDirectionControl(
+          Buffer.from(retained.witness_cbor, "hex"),
+        );
+      } catch {
+        return [];
+      }
+      const auxiliary = retained.auxiliary;
+      const audited =
+        control.stage === 11n &&
+        typeof auxiliary === "object" &&
+        "ScriptSourceScanWitness" in auxiliary &&
+        auxiliary.ScriptSourceScanWitness.origin_kind === 0n
+          ? exactIndex(
+              auxiliary.ScriptSourceScanWitness.source_index,
+              "audited source index",
+            )
+          : null;
       return [
         {
           transactionId: retained.machine_state.transaction_id,
-          sourceIndex: exactIndex(descriptor.source_index, "source index"),
+          usedInlineBitmap: control.discovery.used_inline_bitmap,
+          auditedSourceIndex: audited,
+          terminal: control.stage === 12n && auxiliary === "NoAuxiliaryWitness",
         },
       ];
     },
   );
 
+const inlineSourceUsed = (bitmap: bigint, sourceIndex: number): boolean =>
+  (bitmap & (1n << BigInt(sourceIndex))) !== 0n;
+
 /**
- * Complete canonical ID2f selection. Native execution descriptors identify
- * the first-precedence source actually selected for every purpose; therefore
- * every other inline field-6 coordinate is unused. A self-consistent forged
- * descriptor remains accountable through the validation-trace-invalid arm.
+ * Complete canonical ID2f selection from the machine's own retained source
+ * audit. An accepted transaction is accused at the first inline coordinate
+ * whose stage-11 audit state the producer retained with its discovery bit
+ * clear (the machine stops there, so no later coordinate has such a state);
+ * a forced `UnusedScriptWitness` rejection is contradicted when the retained
+ * stage-12 terminal exists and the named bit is set. Selection is read from
+ * the discovery bitmap rather than from native execution descriptors, which
+ * PlutusV3 executions never emit. A self-consistent forged frontier remains
+ * accountable through the validation-trace-invalid arm.
  */
 export const detectUnusedScriptWitnessCanonicalViolations = async (
   block: CanonicalBlockEvidence,
 ): Promise<readonly CanonicalViolationDetection[]> => {
-  const selected = selectedInlineSources(block);
+  const audits = retainedScriptSourceAudits(block);
   const detections: CanonicalViolationDetection[] = [];
   block.transactions.forEach((transaction, position) => {
     let projection;
@@ -92,20 +128,24 @@ export const detectUnusedScriptWitnessCanonicalViolations = async (
     } catch {
       return;
     }
-    const used = new Set(
-      selected
-        .filter(({ transactionId }) => transactionId === transaction.nodeTxId)
-        .map(({ sourceIndex }) => sourceIndex),
-    );
-    projection.scriptWitnesses.forEach((_, scriptIndex) => {
-      if (used.has(scriptIndex)) return;
-      detections.push({
-        detectionId: `${UNUSED_SCRIPT_WITNESS_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${scriptIndex.toString()}`,
-        headerHash: block.headerHash,
-        violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID,
-        position: BigInt(position),
-        diagnostic: `accepted transaction retained unused script witness ${scriptIndex.toString()}`,
-      });
+    const inlineCount = projection.scriptWitnesses.length;
+    const unused = audits
+      .filter(
+        (audit) =>
+          audit.transactionId === transaction.nodeTxId &&
+          audit.auditedSourceIndex !== null &&
+          audit.auditedSourceIndex < inlineCount &&
+          !inlineSourceUsed(audit.usedInlineBitmap, audit.auditedSourceIndex),
+      )
+      .map((audit) => audit.auditedSourceIndex!)
+      .sort((left, right) => left - right)[0];
+    if (unused === undefined) return;
+    detections.push({
+      detectionId: `${UNUSED_SCRIPT_WITNESS_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${unused.toString()}`,
+      headerHash: block.headerHash,
+      violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID,
+      position: BigInt(position),
+      diagnostic: `accepted transaction retained unused script witness ${unused.toString()}`,
     });
   });
   block.reconstruction.forcedTransactions.forEach((transaction, position) => {
@@ -121,10 +161,11 @@ export const detectUnusedScriptWitnessCanonicalViolations = async (
       "forced reason coordinate",
     );
     if (
-      !selected.some(
-        ({ transactionId, sourceIndex }) =>
-          transactionId === transaction.value.tx_id &&
-          sourceIndex === scriptIndex,
+      !audits.some(
+        (audit) =>
+          audit.transactionId === transaction.value.tx_id &&
+          audit.terminal &&
+          inlineSourceUsed(audit.usedInlineBitmap, scriptIndex),
       )
     )
       return;
@@ -161,7 +202,12 @@ const retainedEntries = (block: CanonicalBlockEvidence) => ({
     ),
 });
 
-const buildMaterial = async ({
+/**
+ * Exact retained-DA evidence and step-02 authentication for one accused
+ * coordinate; the artifact builder below selects the coordinate canonically,
+ * honest-refusal tests hand one in.
+ */
+export const buildUnusedScriptWitnessMaterialFromRetainedDa = async ({
   block,
   eventKey,
   subject,
@@ -296,7 +342,7 @@ export const prepareUnusedScriptWitnessArtifact = async (
     const eventKey = {
       L2TransactionEventKey: { tx_id: transactionId! },
     } as const;
-    const material = await buildMaterial({
+    const material = await buildUnusedScriptWitnessMaterialFromRetainedDa({
       block,
       eventKey,
       subject: acceptedVerdictSubject(transactionId!),
@@ -332,8 +378,9 @@ export const prepareUnusedScriptWitnessArtifact = async (
   }
   if (sourceKind !== "forced")
     throw new Error("unusedScriptWitness detection source changed");
-  const forcedPosition = position - block.transactions.length;
-  const transaction = block.reconstruction.forcedTransactions[forcedPosition];
+  // The detection id carries the index within the forced list; only the
+  // detection's block-wide `position` is offset by the normal transactions.
+  const transaction = block.reconstruction.forcedTransactions[position];
   if (transaction === undefined || transaction.value.tx_id !== transactionId)
     throw new Error("unusedScriptWitness forced transaction disappeared");
   const verdict = transaction.value.verdict;
@@ -342,7 +389,7 @@ export const prepareUnusedScriptWitnessArtifact = async (
   const eventKey = {
     ForcedTransactionEventKey: { tx_order_id: transaction.key },
   } as const;
-  const material = await buildMaterial({
+  const material = await buildUnusedScriptWitnessMaterialFromRetainedDa({
     block,
     eventKey,
     subject: forcedVerdictSubject({

@@ -17,6 +17,7 @@ import {
   type VerdictSubject,
   verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 
 export const UNUSED_SCRIPT_WITNESS_CATEGORY = "unusedScriptWitness" as const;
 export const UNUSED_SCRIPT_WITNESS_CATEGORY_ID = "0000002f" as const;
@@ -35,6 +36,14 @@ const hex = (value: string, bytes: number, label: string): string =>
   new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value)
     ? value
     : fail(`${label} is not canonical ${bytes.toString()}-byte hex`);
+
+/**
+ * The machine keys an inline field-6 source by the CBOR of its own index
+ * (`trace-builder.ts` script-source discovery); the reference-source key is
+ * the 38-byte resolved out-ref item.
+ */
+export const inlineSourceKeyHex = (sourceIndex: number): string =>
+  Data.to(BigInt(sourceIndex) as never, Data.Integer());
 
 export type UnusedScriptWitnessFinding = Readonly<{
   subject: VerdictSubject;
@@ -215,7 +224,7 @@ export const prepareUnusedScriptWitnessEvidence = ({
                 "inline sources are not the complete canonical prefix",
               );
             inlineCount += 1;
-            if (source.sourceKeyHex !== "")
+            if (source.sourceKeyHex !== inlineSourceKeyHex(source.sourceIndex))
               return fail("inline source carries a reference key");
             return hashMidgardInlineScriptSourceLeaf({
               sourceIndex: BigInt(source.sourceIndex),

@@ -244,21 +244,10 @@ export const createUnusedScriptWitnessActuator = (
             awaitConfirmation: false,
           });
         });
+      // A registered family resolves its removal contracts through the
+      // canonical catalogue; an explicit category object is refused there.
       return await captureCursorRemoval({
-        category: {
-          name: "unusedScriptWitness",
-          categoryId,
-          firstStepDeploymentEntry: "fraudProofUnusedScriptWitness",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash:
-              config.binding.resolvedContracts.contracts.fraudProof
-                .spendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: "unusedScriptWitness",
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,

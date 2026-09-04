@@ -96,7 +96,10 @@ export const submitUnusedScriptWitnessStep02 = async ({
     script_hash: authentication.script_hash,
     script_total_length: authentication.total_length,
     item_commitment: authentication.item_commitment,
-    source_count: BigInt(evidence.sources.length),
+    // The committed frontier count, not the retained prefix length: on the
+    // accepted side the prefix stops at the accused coordinate while the
+    // validator carries the complete frontier forward.
+    source_count: BigInt(evidence.sources[0]?.membership.frontier.count ?? 0),
     source_peaks:
       evidence.sources[0]?.membership.frontier.peaks.map(
         ({ height, hash }) => ({

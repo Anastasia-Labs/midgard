@@ -121,6 +121,27 @@ const decodeDiscovery = (value: unknown): Control["discovery"] => {
   };
 };
 
+/**
+ * The stage a retained 31-field ScriptSources control carries, or `null`
+ * when the witness is not that control (the receive scan and the CEK
+ * witnesses of the same phase have other shapes).
+ */
+export const retainedScriptSourcesStage = (
+  witnessCbor: Uint8Array,
+): bigint | null => {
+  let fields: unknown;
+  try {
+    fields = decodeSingleCbor(witnessCbor);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(fields) || fields.length !== 31) return null;
+  const stage = fields[9];
+  return typeof stage === "bigint" || typeof stage === "number"
+    ? BigInt(stage)
+    : null;
+};
+
 /** Decodes the exact consensus 31-field stage-11/12 direction seam. */
 export const decodeUnusedScriptWitnessDirectionControl = (
   witnessCbor: Uint8Array,
@@ -312,8 +333,13 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDa = async ({
         "hex",
       ).equals(eventKeyCbor),
     )
+    // Trace order comes from the authenticated trace position, not from the
+    // retained key's coordinate label.
     .sort((left, right) =>
-      left.key.execution_index < right.key.execution_index ? -1 : 1,
+      left.retained.trace_proof.state_index <
+      right.retained.trace_proof.state_index
+        ? -1
+        : 1,
     );
   const validated = eventEntries
     .filter(
@@ -407,8 +433,15 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDa = async ({
       const matches = sourceCandidates.filter(
         (source) => source.source_index === BigInt(sourceIndex),
       );
+      // The purpose discovery and the stage-11 audit both retain a scan
+      // witness for every source; they must agree field for field.
       const unique = new Map(
-        matches.map((value) => [Data.to(value as never, Data.Any()), value]),
+        matches.map((value) => [
+          JSON.stringify(value, (_, field: unknown) =>
+            typeof field === "bigint" ? field.toString() : field,
+          ),
+          value,
+        ]),
       );
       if (unique.size !== 1)
         throw new Error(
@@ -476,10 +509,14 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDa = async ({
     },
   );
 
+  // Only the stage-8 purpose discovery opens the complete purpose frontier;
+  // the earlier receive-purpose scan retains same-kind witnesses over the
+  // receive-source frontier and must not be mistaken for purpose leaves.
   const purposeCandidates = validated.flatMap(({ retained: item }) => {
     const auxiliary = item.auxiliary;
     return typeof auxiliary === "object" &&
-      "ScriptPurposeScanWitness" in auxiliary
+      "ScriptPurposeScanWitness" in auxiliary &&
+      retainedScriptSourcesStage(Buffer.from(item.witness_cbor, "hex")) === 8n
       ? [auxiliary.ScriptPurposeScanWitness]
       : [];
   });

@@ -203,6 +203,9 @@ export const createManifestBoundUnusedScriptWitnessWorkflow = async (
   const hubOraclePolicyId = binding.deploymentInfo.hubOracleMint?.scriptHash;
   if (hubOraclePolicyId === undefined)
     throw new Error("unusedScriptWitness manifest omitted hub oracle");
+  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
+  if (stateQueuePolicyId === undefined)
+    throw new Error("unusedScriptWitness manifest omitted state queue policy");
   const familyContracts: UnusedScriptWitnessContracts = {
     steps: chain.steps.map((step, index) => ({
       ...step,
@@ -212,6 +215,7 @@ export const createManifestBoundUnusedScriptWitnessWorkflow = async (
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: binding.resolvedContracts.contracts.fraudProof,
     hubOraclePolicyId,
+    stateQueuePolicyId,
   };
   const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,

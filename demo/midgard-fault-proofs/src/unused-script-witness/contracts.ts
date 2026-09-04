@@ -41,6 +41,8 @@ export type UnusedScriptWitnessContracts = Readonly<{
     readonly spendingScriptAddress: string;
   };
   hubOraclePolicyId: string;
+  /** Authenticates the accused state-queue block on the accepted step-01 path. */
+  stateQueuePolicyId: string;
 }>;
 type Blueprint = Readonly<{
   validators: readonly Readonly<{
