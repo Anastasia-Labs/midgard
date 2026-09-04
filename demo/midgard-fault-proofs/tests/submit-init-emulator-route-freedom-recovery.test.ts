@@ -15,9 +15,11 @@
  * out-ref and let the builder re-publish — runs to award. (Recovery (b),
  * inline delivery, is the flips file's second journey.)
  *
- * Split from `submit-init-emulator-route-freedom-flips.test.ts` to keep each
- * file's leaked wasm heap far below the ~4 GiB wasm32 ceiling; see
- * tests/support/uplc-heap-guard.ts.
+ * Split from `submit-init-emulator-route-freedom-flips.test.ts`. The split was
+ * made while `@lucid-evolution/uplc` (through 0.2.22) leaked wasm linear
+ * memory on every script evaluation and vitest isolates per FILE; that leak is
+ * fixed upstream, and the split is kept so each file runs in its own fresh
+ * process.
  */
 
 import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";

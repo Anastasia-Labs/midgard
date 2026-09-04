@@ -29,8 +29,10 @@
  * itself is NOT regenerated here: that regeneration rides #617's batched
  * ABI wave.
  *
- * Two journeys per file for the wasm32-heap reason; see
- * tests/support/uplc-heap-guard.ts.
+ * Two journeys per file. The split was made while `@lucid-evolution/uplc`
+ * (through 0.2.22) leaked wasm linear memory on every script evaluation and
+ * vitest isolates per FILE; that leak is fixed upstream, and the split is kept
+ * so each file runs in its own fresh process.
  */
 
 import {

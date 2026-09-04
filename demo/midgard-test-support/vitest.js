@@ -35,28 +35,16 @@ export const midgardSourceSsr = () => ({
 });
 
 /**
- * One fresh process per test FILE, which is a correctness requirement rather
- * than a performance knob.
+ * One fresh process per test FILE.
  *
- * `@lucid-evolution/uplc` through 0.2.22 grows wasm linear memory on every
- * evaluation and never reclaims it (fixed upstream in lucid-evolution PR #728
- * by dropping its `wee_alloc` allocator), so a long-lived worker eventually
- * exhausts the ~4 GiB wasm32 ceiling and the next evaluation surfaces as
- * `EvaluatorError: unreachable` — a WebAssembly abort wearing a validator
- * rejection's clothes. That is why `isolate` must stay `true` while that pin
- * stands: turning it off re-shares one heap across every emulator journey in
- * the run.
- *
- * `--expose-gc` is here because of a second, still-live allocator behaviour:
- * lucid-evolution leaves every cardano-multiplatform-lib object to
- * wasm-bindgen's `FinalizationRegistry`, which only fires after a MAJOR
- * collection. The JavaScript heap of an emulator suite stays small, so V8
- * rarely schedules one, and the CML wasm arena — external memory that can
- * never shrink — grows by ~150 MB per emulator journey until it passes half of
- * `heapMb`, after which V8 runs a full compacting collection on nearly every
- * external allocation (measured as a 4 s test taking 120-180 s). A suite that
- * runs many journeys per file calls `globalThis.gc()` after each test; see
- * midgard-fault-proofs/tests/support/uplc-heap-guard.ts for the numbers.
+ * The wasm evaluators (`@lucid-evolution/uplc`, cardano-multiplatform-lib)
+ * allocate linear memory outside the V8 heap, and linear memory never shrinks:
+ * whatever a file's heaviest journey needed stays resident for the life of the
+ * worker. A fresh process per file hands that memory back when the file ends,
+ * so one file's peak never becomes the next file's floor. (Through
+ * `@lucid-evolution/uplc` 0.2.22 the same isolation was also what kept the
+ * per-evaluation leak, fixed in lucid-evolution PR #728, from reaching the
+ * ~4 GiB wasm32 ceiling and surfacing as `EvaluatorError: unreachable`.)
  *
  * `maxForks` is the separate, purely-scheduling bound, and is the caller's to
  * justify — the packages that use this differ in why they pick their ceiling.
@@ -76,7 +64,7 @@ export const isolatedForksPool = ({ maxForks, heapMb = 4096 }) => ({
       singleFork: false,
       minForks: 1,
       maxForks,
-      execArgv: [`--max-old-space-size=${String(heapMb)}`, "--expose-gc"],
+      execArgv: [`--max-old-space-size=${String(heapMb)}`],
     },
   },
 });

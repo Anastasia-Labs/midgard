@@ -34,8 +34,11 @@
  * claim-registry witness subsequently moved that exact frontier to 14,058;
  * this suite remains the measured table behind the reliability pin.
  *
- * Lives in its own file (two journeys) for the same wasm32-heap reason as
- * the #621 route-freedom split; see tests/support/uplc-heap-guard.ts.
+ * Lives in its own file (two journeys), split alongside the #621 route-freedom
+ * files. The split was made while `@lucid-evolution/uplc` (through 0.2.22)
+ * leaked wasm linear memory on every script evaluation and vitest isolates per
+ * FILE; that leak is fixed upstream, and the split is kept so each file runs
+ * in its own fresh process.
  */
 
 import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";

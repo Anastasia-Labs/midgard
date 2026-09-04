@@ -3,12 +3,12 @@
  * family.
  *
  * These builders were local to `submit-init-emulator.test.ts` until that file
- * had to be broken up: `@lucid-evolution/uplc` never reclaims the wasm linear
- * memory it allocates per script evaluation, vitest isolates per FILE, and a
+ * was broken up: `@lucid-evolution/uplc` through 0.2.22 leaked the wasm linear
+ * memory it allocated per script evaluation, vitest isolates per FILE, and a
  * single file holding every heavy journey walked into the ~4 GiB wasm32
- * ceiling on CI. Lifting the fixtures here lets each journey theme run in its
- * own worker with a fresh wasm heap while still sharing one definition of
- * every fixture. See tests/support/uplc-heap-guard.ts.
+ * ceiling on CI. That leak is fixed upstream; lifting the fixtures here still
+ * lets each journey theme run in its own worker while sharing one definition
+ * of every fixture.
  */
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";

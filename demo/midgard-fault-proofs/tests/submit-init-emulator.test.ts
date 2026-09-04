@@ -6,11 +6,11 @@
  * `submit-init-emulator-transition-trace.test.ts`,
  * `submit-init-emulator-validation-dispute.test.ts` and
  * `submit-init-emulator-soundness.test.ts` carry the remaining journeys of the
- * same `fault-proof emulator integration` suite. The division is not
- * cosmetic: `@lucid-evolution/uplc` leaks wasm linear memory on every script
- * evaluation and vitest isolates per FILE, so each file is a budget against
- * the ~4 GiB wasm32 ceiling. See tests/support/uplc-heap-guard.ts before
- * moving a journey between these files.
+ * same `fault-proof emulator integration` suite. The division dates from when
+ * `@lucid-evolution/uplc` (through 0.2.22) leaked wasm linear memory on every
+ * script evaluation and each file was a budget against the ~4 GiB wasm32
+ * ceiling; that leak is fixed upstream, and the split is kept so each file
+ * runs in its own fresh process.
  */
 
 import { outRefLabel } from "@al-ft/midgard-core";

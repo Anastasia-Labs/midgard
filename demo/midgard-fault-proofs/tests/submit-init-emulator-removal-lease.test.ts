@@ -3,9 +3,10 @@
  * refetch / renew / release ordering, and the two failure paths that must mark
  * the lease failed rather than silently release it.
  *
- * Split out of `submit-init-emulator.test.ts` to keep each file's leaked wasm
- * heap far below the ~4 GiB wasm32 ceiling; see
- * tests/support/uplc-heap-guard.ts.
+ * Split out of `submit-init-emulator.test.ts`. The split was made while
+ * `@lucid-evolution/uplc` (through 0.2.22) leaked wasm linear memory on every
+ * script evaluation and vitest isolates per FILE; that leak is fixed upstream,
+ * and the split is kept so each file runs in its own fresh process.
  */
 
 import { describe, expect, it } from "vitest";

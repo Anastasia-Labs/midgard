@@ -9,10 +9,9 @@ import { defineConfig } from "vitest/config";
  * `MIDGARD_FAULT_PROOF_FORKS`; anything that is not a positive integer falls
  * back to the default.
  *
- * 8 was measured on a 32-core box once the per-test wasm reclaim in
- * tests/support/uplc-heap-guard.ts brought a fork's resident size down from
- * ~2.6 GB to ~1 GB: 292 s at 6 forks, 253 s at 8, and 16 forks only added CPU
- * contention (tests' summed CPU time rose 1.7× for a 6% wall-clock gain).
+ * 8 was measured on a 32-core box at ~1 GB resident per fork: 292 s at 6
+ * forks, 253 s at 8, and 16 forks only added CPU contention (tests' summed CPU
+ * time rose 1.7× for a 6% wall-clock gain).
  */
 const DEFAULT_MAX_FORKS = 8;
 
@@ -33,14 +32,9 @@ export default defineConfig({
   test: {
     reporters: "verbose",
     include: ["./tests/**/*.test.{ts,tsx}"],
-    // Fails a file that is approaching the wasm32 ceiling with a message that
-    // names the cause, so a leaked-heap trap is never re-diagnosed as an
-    // on-chain rejection. See tests/support/uplc-heap-guard.ts.
-    setupFiles: ["./tests/support/uplc-heap-guard.ts"],
     // The one-process-per-file requirement, and why `isolate` must stay
     // `true`, are stated once in `isolatedForksPool`; 7c7162cb reverting
-    // `singleFork` here is the same story. See tests/support/uplc-heap-guard.ts
-    // for the guard that fails a file approaching the wasm32 ceiling.
+    // `singleFork` here is the same story.
     //
     // This suite's own choice is only the scheduling cap. 5b9982a8 serialized
     // it outright for a 2-core CI runner; that is now expressed as a cap

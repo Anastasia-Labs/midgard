@@ -18,8 +18,10 @@
  * against a populated prev-ledger trie, which is the Q18/Q31 rows' own
  * remaining work.
  *
- * Kept in its own file so the leaked wasm heap stays far below the ~4 GiB
- * wasm32 ceiling; see tests/support/uplc-heap-guard.ts.
+ * Lives in its own file for the reason its siblings do. The split was made
+ * while `@lucid-evolution/uplc` (through 0.2.22) leaked wasm linear memory on
+ * every script evaluation and vitest isolates per FILE; that leak is fixed
+ * upstream, and the split is kept so each file runs in its own fresh process.
  */
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";

@@ -17,9 +17,10 @@
  *    locally, and a raw bind that skips the guard dies on the validator's
  *    own `validity_code == 0` expect.
  *
- * Lives in its own file for the reason its siblings do: `@lucid-evolution/uplc`
- * never reclaims wasm linear memory and vitest isolates per FILE. See
- * tests/support/uplc-heap-guard.ts.
+ * Lives in its own file for the reason its siblings do. The split was made
+ * while `@lucid-evolution/uplc` (through 0.2.22) leaked wasm linear memory on
+ * every script evaluation and vitest isolates per FILE; that leak is fixed
+ * upstream, and the split is kept so each file runs in its own fresh process.
  */
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";

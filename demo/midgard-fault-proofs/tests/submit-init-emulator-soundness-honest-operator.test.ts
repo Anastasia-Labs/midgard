@@ -6,11 +6,11 @@ import {
   runForcedValidationDisputeScenario,
 } from "./support/submit-init-emulator-shared.js";
 
-// Split out of submit-init-emulator-soundness.test.ts: one emulator journey
-// per file, on purpose. Each journey leaks wasm linear memory that
-// `@lucid-evolution/uplc` never reclaims, and vitest isolates per FILE, so
-// co-locating journeys walks the worker into the wasm32 ceiling and surfaces
-// it as `EvaluatorError: unreachable`. See tests/support/uplc-heap-guard.ts.
+// Split out of submit-init-emulator-soundness.test.ts: one emulator journey per
+// file, on purpose. The split was made while `@lucid-evolution/uplc` (through
+// 0.2.22) leaked wasm linear memory on every script evaluation and vitest
+// isolates per FILE; that leak is fixed upstream, and the split is kept so each
+// file runs in its own fresh process.
 describe("validation-dispute soundness with a non-empty claimed ledger delta", () => {
   // RED, and it is the direction that matters. This is the symmetric-soundness
   // case: a FORGED dispute against an HONEST operator must be refused at

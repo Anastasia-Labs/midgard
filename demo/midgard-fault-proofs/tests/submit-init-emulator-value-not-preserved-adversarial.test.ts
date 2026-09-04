@@ -22,9 +22,10 @@
  *    re-hash inside `native_tx_field_access_v1`. The SAME thread then
  *    convicts honestly, proving the refusal was the tamper and nothing else.
  *
- * Lives in its own file for the reason its siblings do: `@lucid-evolution/uplc`
- * never reclaims wasm linear memory and vitest isolates per FILE. See
- * tests/support/uplc-heap-guard.ts.
+ * Lives in its own file for the reason its siblings do. The split was made
+ * while `@lucid-evolution/uplc` (through 0.2.22) leaked wasm linear memory on
+ * every script evaluation and vitest isolates per FILE; that leak is fixed
+ * upstream, and the split is kept so each file runs in its own fresh process.
  */
 import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
