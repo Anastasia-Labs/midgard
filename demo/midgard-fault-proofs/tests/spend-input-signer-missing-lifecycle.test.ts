@@ -33,6 +33,7 @@ import { describe, expect, it } from "vitest";
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
+  applySpendInputSignerMissingScripts,
   prepareSpendInputSignerMissingEvidence,
   SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
   SPEND_INPUT_SIGNER_MISSING_ID,
@@ -46,15 +47,18 @@ import {
   submitSpendInputSignerMissingStep05,
 } from "../src/spend-input-signer-missing/index.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
-import { applyCompiledScript } from "./support/emulator/blueprints.js";
-import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import {
+  expectRegisteredChainParity,
+  familyStepsFromRegisteredChain,
+} from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { makeSpendingValidator } from "./support/emulator/validators.js";
+import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   countedTransactionsRoot,
@@ -71,81 +75,67 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
-const firstStepDeploymentEntry = "fraudProofSpendInputSignerMissing";
+const coverage = createLifecycleCoverageRecorder();
 
-describe("spendInputSignerMissing local-catalogue lifecycle", () => {
-  it("runs the accepted 318-witness maximum from Init through proof mint", async () => {
-    const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: { alwaysFraudProofCatalogue: true },
-      lucidOptions: { evaluator: createScalusEvaluator() },
-    });
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const titles = SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES;
-    const step05 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[4], [
-        harness.contracts.fraudProof.policyId,
-        addressData,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step04 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[3], [
-        step05.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step03 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[2], [
-        step04.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step02 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[1], [
-        step03.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step01 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[0], [
-        step02.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.hubOracle.policyId,
-      ]),
-    );
-    const steps = [step01, step02, step03, step04, step05] as const;
-    const contracts: SpendInputSignerMissingContracts = {
-      steps: steps.map((step, index) => ({
-        ...step,
-        blueprintTitle: titles[index]!,
-        referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as SpendInputSignerMissingContracts["steps"],
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+/**
+ * The registered chain is the deployed identity: the harness folds its first
+ * step into the catalogue root. The family-side application must reproduce it
+ * step for step before the suite drives it.
+ */
+const registeredContracts = async (
+  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
+) => {
+  const addressData = await Effect.runPromise(
+    addressDataFromBech32(
+      harness.contracts.fraudProof.spendingScriptAddress,
+    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
+  );
+  const registered =
+    harness.contracts.fraudProofContracts.spendInputSignerMissing;
+  const category = harness.catalogue.categories.spendInputSignerMissing;
+  expectRegisteredChainParity({
+    registered,
+    applied: applySpendInputSignerMissingScripts({
+      blueprint: harness.realBlueprint,
+      network,
+      computationThreadPolicyId: harness.contracts.computationThread.policyId,
+      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
+      fraudProofTokenAddressData: addressData,
       fieldPreimageCertificatePolicyId:
         harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        spendInputSignerMissing: {
-          categoryId: SPEND_INPUT_SIGNER_MISSING_ID,
-          scriptHash: step01.spendingScriptHash,
-        },
+      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+    }),
+    category,
+  });
+  const steps = familyStepsFromRegisteredChain(
+    registered.steps,
+    SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
+  );
+  const contracts: SpendInputSignerMissingContracts = {
+    steps,
+    computationThread: harness.contracts.computationThread,
+    fraudProof: harness.contracts.fraudProof,
+    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+    fieldPreimageCertificatePolicyId:
+      harness.contracts.fieldPreimageCertificate.policyId,
+    fieldPreimageCertificateMintingScript:
+      harness.contracts.fieldPreimageCertificate.mintingScript,
+  };
+  return { steps, contracts, catalogue: harness.catalogue, category };
+};
+
+describe("spendInputSignerMissing registered-chain lifecycle", () => {
+  it("runs the accepted 318-witness maximum from Init through proof mint", async () => {
+    const harness = await makeFaultProofEmulatorHarness({
+      contractOptions: {
+        realSpendInputSignerMissing: true,
+        alwaysFraudProofCatalogue: true,
       },
-    );
-    const category = catalogue.extraCategories.spendInputSignerMissing!;
+      lucidOptions: { evaluator: createScalusEvaluator() },
+    });
+    const { steps, contracts, catalogue, category } =
+      await registeredContracts(harness);
 
     const paymentCredential = Buffer.alloc(28, 0x51);
     const priorOutput = encodeMidgardTxOutput({
@@ -257,6 +247,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       },
     });
     expect(evidence.witnessCarriage).toBe("Certified");
+    coverage.scenario("maximum_supported_evidence");
 
     const references: UTxO[] = [];
     for (const [index, step] of steps.entries()) {
@@ -416,6 +407,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       );
       expect(cancellation.measurement.l1ByteMargin).toBeGreaterThan(0);
       expect(cancellation.measurement.executionMemory).toBeGreaterThan(0n);
+      coverage.cancelled(`step-0${(referenceIndex + 1).toString()}`);
       cancellationMeasurements.push([
         `cancel-${cancelTarget}`,
         cancellation.measurement,
@@ -519,6 +511,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       if (scan.result.stage === "step05") break;
     }
     expect(scans).toHaveLength(20);
+    coverage.resumed();
     const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
       submitSpendInputSignerMissingStep05({
         lucid: harness.proverLucid,
@@ -532,28 +525,20 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }),
     );
     expect(step05Result.result.fraudProofUnit).toBeTruthy();
+    coverage.reason("SpendInputSignerMissing", "accepted_invalid");
+    coverage.scenario("wrongful_acceptance_success");
     const removalReferences = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.contracts,
     });
-    const baseDeployment = buildRemovalDeploymentInfo(
+    // A registered family resolves removal through the canonical catalogue:
+    // the manifest's fraudProofSpendInputSignerMissing entries carry the
+    // registered chain the harness built.
+    const deploymentInfo = buildRemovalDeploymentInfo(
       harness.contracts,
       catalogue,
       { removalReferenceScripts: removalReferences.published },
     );
-    const deploymentInfo = {
-      ...baseDeployment,
-      contracts: {
-        ...baseDeployment.contracts,
-        [firstStepDeploymentEntry]: {
-          scriptHash: step01.spendingScriptHash,
-          contract: {
-            type: step01.spendingScript.type,
-            cborHex: step01.spendingScript.script,
-          },
-        },
-      },
-    };
     const removalNow = BigInt(harness.emulator.now());
     const removal = await captureEmulatorSubmission(harness.emulator, () =>
       submitRemoveFraudulentBlock({
@@ -562,18 +547,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         deploymentInfo,
         network,
         signer: harness.proverSigner,
-        fraudCategory: {
-          name: "spendInputSignerMissing",
-          categoryId: category.categoryId,
-          firstStepDeploymentEntry,
-          firstStepScriptHash: step01.spendingScriptHash,
-          fraudProof: {
-            policyId: harness.contracts.fraudProof.policyId,
-            spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-            spendingScriptAddress:
-              harness.contracts.fraudProof.spendingScriptAddress,
-          },
-        },
+        fraudCategory: "spendInputSignerMissing",
         fraudulentHeaderHash: target.successorHeaderHash,
         requireReferenceScripts: true,
         awaitConfirmation: true,
@@ -582,6 +556,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }),
     );
     expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
+    coverage.scenario("permanent_proof_token_and_descendant_removal");
     for (const capture of [
       init,
       step01Result,
@@ -626,76 +601,14 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
 
   it("runs a forced wrongful rejection with a valid matching signature through removal", async () => {
     const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: { alwaysFraudProofCatalogue: true },
+      contractOptions: {
+        realSpendInputSignerMissing: true,
+        alwaysFraudProofCatalogue: true,
+      },
       lucidOptions: { evaluator: createScalusEvaluator() },
     });
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const titles = SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES;
-    const step05 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[4], [
-        harness.contracts.fraudProof.policyId,
-        addressData,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step04 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[3], [
-        step05.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step03 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[2], [
-        step04.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step02 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[1], [
-        step03.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step01 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[0], [
-        step02.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.hubOracle.policyId,
-      ]),
-    );
-    const steps = [step01, step02, step03, step04, step05] as const;
-    const contracts: SpendInputSignerMissingContracts = {
-      steps: steps.map((step, index) => ({
-        ...step,
-        blueprintTitle: titles[index]!,
-        referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as SpendInputSignerMissingContracts["steps"],
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        spendInputSignerMissing: {
-          categoryId: SPEND_INPUT_SIGNER_MISSING_ID,
-          scriptHash: step01.spendingScriptHash,
-        },
-      },
-    );
-    const category = catalogue.extraCategories.spendInputSignerMissing!;
+    const { steps, contracts, catalogue, category } =
+      await registeredContracts(harness);
 
     const seed = Buffer.alloc(32, 7);
     const privateKey = createPrivateKey({
@@ -942,28 +855,17 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }),
     );
     expect(forced05.result.fraudProofUnit).toBeTruthy();
+    coverage.reason("SpendInputSignerMissing", "forced_rejection_wrong");
+    coverage.scenario("wrongful_forced_rejection_success");
     const removalReferences = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.contracts,
     });
-    const baseDeployment = buildRemovalDeploymentInfo(
+    const deploymentInfo = buildRemovalDeploymentInfo(
       harness.contracts,
       catalogue,
       { removalReferenceScripts: removalReferences.published },
     );
-    const deploymentInfo = {
-      ...baseDeployment,
-      contracts: {
-        ...baseDeployment.contracts,
-        [firstStepDeploymentEntry]: {
-          scriptHash: step01.spendingScriptHash,
-          contract: {
-            type: step01.spendingScript.type,
-            cborHex: step01.spendingScript.script,
-          },
-        },
-      },
-    };
     const removalNow = BigInt(harness.emulator.now());
     const forcedRemoval = await captureEmulatorSubmission(
       harness.emulator,
@@ -974,19 +876,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
           deploymentInfo,
           network,
           signer: harness.proverSigner,
-          fraudCategory: {
-            name: "spendInputSignerMissing",
-            categoryId: category.categoryId,
-            firstStepDeploymentEntry,
-            firstStepScriptHash: step01.spendingScriptHash,
-            fraudProof: {
-              policyId: harness.contracts.fraudProof.policyId,
-              spendingScriptHash:
-                harness.contracts.fraudProof.spendingScriptHash,
-              spendingScriptAddress:
-                harness.contracts.fraudProof.spendingScriptAddress,
-            },
-          },
+          fraudCategory: "spendInputSignerMissing",
           fraudulentHeaderHash: forcedSetup.successorHeaderHash,
           requireReferenceScripts: true,
           awaitConfirmation: true,
@@ -1034,4 +924,33 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       )}`,
     );
   }, 600_000);
+
+  it("declares the lifecycle coverage it exercised and the gaps it leaves open", () => {
+    // Recorded while the suites above ran, never pre-filled. The gate lists
+    // every omission; the suite pins that list so a silent regression of what
+    // it does cover, or an unannounced closure of a gap, both fail here.
+    expect(() =>
+      assertCompleteLifecycleCoverage({
+        coverage: coverage.snapshot(),
+        expectedReasonArms: ["SpendInputSignerMissing"],
+        authenticationSeams: [
+          "tx_membership",
+          "prior_output_membership",
+          "field_certificate",
+          "forced_leaf",
+        ],
+        cancellablePhysicalSteps: [
+          "step-01",
+          "step-02",
+          "step-03",
+          "step-04",
+          "step-05",
+        ],
+        resumable: true,
+        hasAdjacentConsensusBound: false,
+      }),
+    ).toThrow(
+      "incomplete fault-proof lifecycle coverage: scenarios: honest_accepted_block_refusal, honest_forced_rejection_refusal, reason_or_subject_coordinate_mutation; authentication seams: tx_membership, prior_output_membership, field_certificate, forced_leaf",
+    );
+  });
 });
