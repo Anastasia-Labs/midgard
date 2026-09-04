@@ -38,6 +38,7 @@ import {
   encodeMidgardNativeTxWitnessSetCompact,
   midgardFieldCommitmentFromItems,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -268,7 +269,7 @@ export type InvalidSignatureStep01Datum = Data.Static<
   typeof InvalidSignatureStep01DatumSchema
 >;
 export const InvalidSignatureStep01Datum =
-  InvalidSignatureStep01DatumSchema as unknown as InvalidSignatureStep01Datum;
+  asDataType<InvalidSignatureStep01Datum>(InvalidSignatureStep01DatumSchema);
 
 /**
  * Mirrors `midgard/fraud_proofs/invalid_signature/step_01.Args`.
@@ -286,7 +287,7 @@ export type InvalidSignatureStep01Args = Data.Static<
   typeof InvalidSignatureStep01ArgsSchema
 >;
 export const InvalidSignatureStep01Args =
-  InvalidSignatureStep01ArgsSchema as unknown as InvalidSignatureStep01Args;
+  asDataType<InvalidSignatureStep01Args>(InvalidSignatureStep01ArgsSchema);
 
 export const InvalidSignatureStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(InvalidSignatureStep01ArgsSchema);
@@ -294,7 +295,9 @@ export type InvalidSignatureStep01SpendRedeemer = Data.Static<
   typeof InvalidSignatureStep01SpendRedeemerSchema
 >;
 export const InvalidSignatureStep01SpendRedeemer =
-  InvalidSignatureStep01SpendRedeemerSchema as unknown as InvalidSignatureStep01SpendRedeemer;
+  asDataType<InvalidSignatureStep01SpendRedeemer>(
+    InvalidSignatureStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — open the address-witness collection and convict the signature
 
@@ -319,7 +322,7 @@ export type InvalidSignatureStep02State = Data.Static<
   typeof InvalidSignatureStep02StateSchema
 >;
 export const InvalidSignatureStep02State =
-  InvalidSignatureStep02StateSchema as unknown as InvalidSignatureStep02State;
+  asDataType<InvalidSignatureStep02State>(InvalidSignatureStep02StateSchema);
 
 export const InvalidSignatureStep02DatumSchema = faultProofStepDatumSchema(
   InvalidSignatureStep02StateSchema,
@@ -328,7 +331,7 @@ export type InvalidSignatureStep02Datum = Data.Static<
   typeof InvalidSignatureStep02DatumSchema
 >;
 export const InvalidSignatureStep02Datum =
-  InvalidSignatureStep02DatumSchema as unknown as InvalidSignatureStep02Datum;
+  asDataType<InvalidSignatureStep02Datum>(InvalidSignatureStep02DatumSchema);
 
 /**
  * Mirrors `midgard/fraud_proofs/invalid_signature/step_02.Args`.
@@ -352,7 +355,7 @@ export type InvalidSignatureStep02Args = Data.Static<
   typeof InvalidSignatureStep02ArgsSchema
 >;
 export const InvalidSignatureStep02Args =
-  InvalidSignatureStep02ArgsSchema as unknown as InvalidSignatureStep02Args;
+  asDataType<InvalidSignatureStep02Args>(InvalidSignatureStep02ArgsSchema);
 
 export const InvalidSignatureStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(InvalidSignatureStep02ArgsSchema);
@@ -360,7 +363,9 @@ export type InvalidSignatureStep02SpendRedeemer = Data.Static<
   typeof InvalidSignatureStep02SpendRedeemerSchema
 >;
 export const InvalidSignatureStep02SpendRedeemer =
-  InvalidSignatureStep02SpendRedeemerSchema as unknown as InvalidSignatureStep02SpendRedeemer;
+  asDataType<InvalidSignatureStep02SpendRedeemer>(
+    InvalidSignatureStep02SpendRedeemerSchema,
+  );
 
 // ## Step-state builder (twin of the on-chain forwarding rule)
 

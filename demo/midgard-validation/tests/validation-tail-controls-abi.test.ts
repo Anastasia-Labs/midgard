@@ -10,6 +10,7 @@ import {
   hashMidgardValidationWorkWitness,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
+import { isUnknownArray } from "@al-ft/midgard-core/narrowing";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
@@ -336,7 +337,7 @@ const decodeExactTerminalWitness = (
 } => {
   const encoded = Buffer.from(input);
   const decoded = decodeSingleCbor(encoded);
-  if (!Array.isArray(decoded) || decoded.length !== 4) {
+  if (!isUnknownArray(decoded) || decoded.length !== 4) {
     throw new Error("terminal witness must contain exactly four fields");
   }
   const [outcome, code, ledgerRoot, deltaEvidence] = decoded;

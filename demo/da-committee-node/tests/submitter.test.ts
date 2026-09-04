@@ -564,8 +564,31 @@ const contracts: DaAttestationValidatorSet = {
   availabilityChallenge: validator("ee".repeat(28), "addr_test1availability"),
   daAttestation: validator("aa".repeat(28), "addr_test1daattestation"),
   daParamsGovernor: validator("bb".repeat(28), "addr_test1daparams"),
-  stateQueue: validator("cc".repeat(28), "addr_test1statequeue"),
+  stateQueue: stateQueueValidator("cc".repeat(28), "addr_test1statequeue"),
 };
+
+function stateQueueValidator(
+  policyId: string,
+  spendingScriptAddress: string,
+): DaAttestationValidatorSet["stateQueue"] {
+  const yieldValidator = (
+    role: string,
+  ): DaAttestationValidatorSet["stateQueue"]["yields"]["commit"] => ({
+    withdrawalScriptCBOR: "",
+    withdrawalScript: { type: "PlutusV3", script: "00" } as never,
+    withdrawalScriptHash: role,
+  });
+  return {
+    ...validator(policyId, spendingScriptAddress),
+    yields: {
+      commit: yieldValidator("c1".repeat(28)),
+      unattestedTimeout: yieldValidator("c2".repeat(28)),
+      unavailableTimeout: yieldValidator("c3".repeat(28)),
+      fraudRemoval: yieldValidator("c4".repeat(28)),
+      merge: yieldValidator("c5".repeat(28)),
+    },
+  };
+}
 
 function validator(
   policyId: string,

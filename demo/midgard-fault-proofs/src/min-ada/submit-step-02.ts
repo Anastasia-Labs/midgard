@@ -1,5 +1,6 @@
 /** Q27 step 02: adjudicate a produced output or authenticate post membership. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type FieldOpening,
   MIDGARD_FIELD_INDEX,
@@ -67,13 +68,13 @@ import type { PreparedMinAdaTx, PreparedMinAdaUtxo } from "./prepare.js";
 
 type State = NonNullable<Data.Static<typeof MinAdaStep02DatumSchema>["data"]>;
 type Step02Datum = Data.Static<typeof MinAdaStep02DatumSchema>;
-const Step02Datum = MinAdaStep02DatumSchema as unknown as Step02Datum;
+const Step02Datum = asDataType<Step02Datum>(MinAdaStep02DatumSchema);
 type Step03Datum = Data.Static<typeof MinAdaStep03DatumSchema>;
-const Step03Datum = MinAdaStep03DatumSchema as unknown as Step03Datum;
+const Step03Datum = asDataType<Step03Datum>(MinAdaStep03DatumSchema);
 type Step05Datum = Data.Static<typeof MinAdaStep05DatumSchema>;
-const Step05Datum = MinAdaStep05DatumSchema as unknown as Step05Datum;
+const Step05Datum = asDataType<Step05Datum>(MinAdaStep05DatumSchema);
 type Redeemer = Data.Static<typeof MinAdaStep02SpendRedeemerSchema>;
-const Redeemer = MinAdaStep02SpendRedeemerSchema as unknown as Redeemer;
+const Redeemer = asDataType<Redeemer>(MinAdaStep02SpendRedeemerSchema);
 
 const walletInputsExcludingReferences = ({
   walletUtxos,

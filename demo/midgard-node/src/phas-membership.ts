@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type Network, type Script } from "@lucid-evolution/lucid";
 
+import { realBlueprintPathOverride } from "./environment.js";
+
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const blueprintCandidates = [
   path.resolve(moduleDir, "../../../onchain/aiken/plutus.json"),
@@ -14,10 +16,9 @@ const blueprintCandidates = [
 ] as const;
 
 export const loadPhasMembershipWithdrawalScript = (): Script => {
-  const configured = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
-  const blueprintPath = configured
-    ? configured
-    : blueprintCandidates.find((candidate) => existsSync(candidate));
+  const blueprintPath =
+    realBlueprintPathOverride() ??
+    blueprintCandidates.find((candidate) => existsSync(candidate));
   if (blueprintPath === undefined) {
     throw new Error(
       `Failed to locate Aiken blueprint for PHAS membership validator. Looked in: ${blueprintCandidates.join(", ")}`,

@@ -58,6 +58,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   encodeMidgardTxInputCanonical,
@@ -999,8 +1000,9 @@ export const decodingProverDeps = ({
  */
 const RawCancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type RawCancelSpendRedeemer = Data.Static<typeof RawCancelSpendRedeemerSchema>;
-const RawCancelSpendRedeemer =
-  RawCancelSpendRedeemerSchema as unknown as RawCancelSpendRedeemer;
+const RawCancelSpendRedeemer = asDataType<RawCancelSpendRedeemer>(
+  RawCancelSpendRedeemerSchema,
+);
 
 /** The thread layout a raw redeemer builder is handed. */
 export type RawDecodingStepLayout = {

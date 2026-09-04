@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { createTrackedTempDirFactory } from "@al-ft/midgard-test-support/temp-files";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -32,7 +33,6 @@ import {
   writeSummaryJsonAtomic,
   writeSummaryMarkdownAtomic,
 } from "../src/e2e/summary.js";
-import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
 const makeTempDir = createTrackedTempDirFactory("midgard-e2e-summary-");
 

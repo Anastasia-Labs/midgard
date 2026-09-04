@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Assets,
@@ -91,7 +92,7 @@ export const HubOracleDatumSchema = Data.Object({
   reserve_observer: ScriptHashSchema,
 });
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
-export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
+export const HubOracleDatum = asDataType<HubOracleDatum>(HubOracleDatumSchema);
 
 export type HubOracleUTxO = AuthenticUTxO<HubOracleDatum>;
 

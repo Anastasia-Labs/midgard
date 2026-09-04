@@ -87,6 +87,7 @@ import {
   encodeDaTraceStepByIndexRequestCbor,
   encodeDaTraceStepByIndexResponseCbor,
 } from "../src/da-transport.js";
+import { isUnknownArray } from "../src/narrowing.js";
 
 const h = (byte: string, count: number): string => byte.repeat(count);
 const b = (byte: number, count: number): Buffer => Buffer.alloc(count, byte);
@@ -1360,7 +1361,7 @@ const conflictingSignatureHeaderEvidence =
 
 const withoutLastTupleItem = (encoded: Uint8Array): Buffer => {
   const decoded = decodeSingleCbor(encoded);
-  if (!Array.isArray(decoded)) {
+  if (!isUnknownArray(decoded)) {
     throw new Error("expected a CBOR tuple");
   }
   return encodeCbor(decoded.slice(0, -1));
@@ -1372,7 +1373,7 @@ const replaceTupleItem = (
   value: unknown,
 ): Buffer => {
   const decoded = decodeSingleCbor(encoded);
-  if (!Array.isArray(decoded)) {
+  if (!isUnknownArray(decoded)) {
     throw new Error("expected a CBOR tuple");
   }
   const replaced = [...decoded];

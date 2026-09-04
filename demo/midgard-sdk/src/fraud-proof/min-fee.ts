@@ -13,6 +13,7 @@ import {
   computeMidgardNativeTxCanonicalSizeFromProofSource,
   type MidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -51,8 +52,9 @@ export const minFeeThreadTokenAssetName = (
 
 export const MinFeeStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export type MinFeeStep01Datum = Data.Static<typeof MinFeeStep01DatumSchema>;
-export const MinFeeStep01Datum =
-  MinFeeStep01DatumSchema as unknown as MinFeeStep01Datum;
+export const MinFeeStep01Datum = asDataType<MinFeeStep01Datum>(
+  MinFeeStep01DatumSchema,
+);
 
 export const MinFeeStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
   NativeTxInclusionCarriageSchema,
@@ -60,8 +62,9 @@ export const MinFeeStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
 export type MinFeeStep01SpendRedeemer = Data.Static<
   typeof MinFeeStep01SpendRedeemerSchema
 >;
-export const MinFeeStep01SpendRedeemer =
-  MinFeeStep01SpendRedeemerSchema as unknown as MinFeeStep01SpendRedeemer;
+export const MinFeeStep01SpendRedeemer = asDataType<MinFeeStep01SpendRedeemer>(
+  MinFeeStep01SpendRedeemerSchema,
+);
 
 // ## Step 02 — authenticate all nine lengths and compare the exact boundary
 
@@ -73,15 +76,17 @@ export const MinFeeStep02StateSchema = Data.Object({
   min_fee_b: Data.Integer(),
 });
 export type MinFeeStep02State = Data.Static<typeof MinFeeStep02StateSchema>;
-export const MinFeeStep02State =
-  MinFeeStep02StateSchema as unknown as MinFeeStep02State;
+export const MinFeeStep02State = asDataType<MinFeeStep02State>(
+  MinFeeStep02StateSchema,
+);
 
 export const MinFeeStep02DatumSchema = faultProofStepDatumSchema(
   MinFeeStep02StateSchema,
 );
 export type MinFeeStep02Datum = Data.Static<typeof MinFeeStep02DatumSchema>;
-export const MinFeeStep02Datum =
-  MinFeeStep02DatumSchema as unknown as MinFeeStep02Datum;
+export const MinFeeStep02Datum = asDataType<MinFeeStep02Datum>(
+  MinFeeStep02DatumSchema,
+);
 
 export const MinFeeStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -103,8 +108,9 @@ export const MinFeeStep02ArgsSchema = Data.Object({
   ]),
 });
 export type MinFeeStep02Args = Data.Static<typeof MinFeeStep02ArgsSchema>;
-export const MinFeeStep02Args =
-  MinFeeStep02ArgsSchema as unknown as MinFeeStep02Args;
+export const MinFeeStep02Args = asDataType<MinFeeStep02Args>(
+  MinFeeStep02ArgsSchema,
+);
 
 export const MinFeeStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
   MinFeeStep02ArgsSchema,
@@ -112,8 +118,9 @@ export const MinFeeStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
 export type MinFeeStep02SpendRedeemer = Data.Static<
   typeof MinFeeStep02SpendRedeemerSchema
 >;
-export const MinFeeStep02SpendRedeemer =
-  MinFeeStep02SpendRedeemerSchema as unknown as MinFeeStep02SpendRedeemer;
+export const MinFeeStep02SpendRedeemer = asDataType<MinFeeStep02SpendRedeemer>(
+  MinFeeStep02SpendRedeemerSchema,
+);
 
 export {
   FaultProofStepCancel as MinFeeStepCancel,

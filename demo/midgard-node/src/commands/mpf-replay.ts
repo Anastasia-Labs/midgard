@@ -10,6 +10,7 @@ import blake2b from "blake2b";
 import { Effect } from "effect";
 import { Level } from "level";
 
+import { trimmedEnvironmentValue } from "../environment.js";
 import {
   buildNativeRootProbe,
   buildTransactionsSourceRoot,
@@ -814,7 +815,7 @@ export const mpfReplayProgram = (
   Effect.gen(function* () {
     const binaryPath = resolve(
       options.nativeOwnerBinaryPath ??
-        process.env.MPF_NATIVE_OWNER_BINARY_PATH ??
+        trimmedEnvironmentValue("MPF_NATIVE_OWNER_BINARY_PATH") ??
         DEFAULT_NATIVE_OWNER_BINARY_PATH,
     );
     const binarySha256 = yield* Effect.tryPromise({

@@ -1,4 +1,5 @@
 import { decodeMidgardLedgerOutputCommitment } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   MinAdaStep03DatumSchema,
   MinAdaStep03SpendRedeemerSchema,
@@ -33,13 +34,13 @@ import {
 
 type State = NonNullable<Data.Static<typeof MinAdaStep03DatumSchema>["data"]>;
 type Step03Datum = Data.Static<typeof MinAdaStep03DatumSchema>;
-const Step03Datum = MinAdaStep03DatumSchema as unknown as Step03Datum;
+const Step03Datum = asDataType<Step03Datum>(MinAdaStep03DatumSchema);
 type Step04Datum = Data.Static<typeof MinAdaStep04DatumSchema>;
-const Step04Datum = MinAdaStep04DatumSchema as unknown as Step04Datum;
+const Step04Datum = asDataType<Step04Datum>(MinAdaStep04DatumSchema);
 type Step05Datum = Data.Static<typeof MinAdaStep05DatumSchema>;
-const Step05Datum = MinAdaStep05DatumSchema as unknown as Step05Datum;
+const Step05Datum = asDataType<Step05Datum>(MinAdaStep05DatumSchema);
 type Redeemer = Data.Static<typeof MinAdaStep03SpendRedeemerSchema>;
-const Redeemer = MinAdaStep03SpendRedeemerSchema as unknown as Redeemer;
+const Redeemer = asDataType<Redeemer>(MinAdaStep03SpendRedeemerSchema);
 
 /** Applies the exact release-bound min-Ada predicate to the authenticated descriptor. */
 export const submitMinAdaUtxoStep03 = async ({

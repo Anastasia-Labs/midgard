@@ -8,3 +8,4 @@ packages:
   - midgard-sdk
   - midgard-watcher
   - da-committee-node
+  - midgard-test-support

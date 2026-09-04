@@ -333,7 +333,7 @@ describe("V1 CEK trace generator", () => {
         const decoded = decodeMidgardCekConstantWitness(
           emptyDirectStep.witness.result.witness,
         );
-        expect(decoded.payload).toMatchObject({ bytes: expect.anything() });
+        expect(decoded.payload).toBeInstanceOf(DataB);
         if (decoded.payload instanceof DataB) {
           expect(decoded.payload.bytes.toBuffer()).toEqual(Buffer.from([0x80]));
         }
@@ -422,7 +422,7 @@ describe("V1 CEK trace generator", () => {
         const decoded = decodeMidgardCekConstantWitness(
           semantic.witness.result.witness,
         );
-        expect(decoded.payload).toMatchObject({ bytes: expect.anything() });
+        expect(decoded.payload).toBeInstanceOf(DataB);
         if (decoded.payload instanceof DataB) {
           expect(decoded.payload.bytes.toBuffer()).toEqual(Buffer.from([0x80]));
         }

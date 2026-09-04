@@ -1,4 +1,5 @@
 /** Explicit prover cancellation from either min-fee step. */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   faultProofStepRedeemerSchema,
   FraudProofComputationThreadRedeemer,
@@ -42,7 +43,7 @@ import {
 
 const CancelRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelRedeemer = Data.Static<typeof CancelRedeemerSchema>;
-const CancelRedeemer = CancelRedeemerSchema as unknown as CancelRedeemer;
+const CancelRedeemer = asDataType<CancelRedeemer>(CancelRedeemerSchema);
 
 const locateStepIndex = ({
   threadUtxo,

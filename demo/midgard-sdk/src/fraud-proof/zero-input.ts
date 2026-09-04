@@ -7,6 +7,7 @@
  */
 
 import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -27,8 +28,9 @@ export const ZeroInputStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export type ZeroInputStep01Datum = Data.Static<
   typeof ZeroInputStep01DatumSchema
 >;
-export const ZeroInputStep01Datum =
-  ZeroInputStep01DatumSchema as unknown as ZeroInputStep01Datum;
+export const ZeroInputStep01Datum = asDataType<ZeroInputStep01Datum>(
+  ZeroInputStep01DatumSchema,
+);
 
 export const ZeroInputStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
   NativeTxInclusionCarriageSchema,
@@ -37,7 +39,7 @@ export type ZeroInputStep01SpendRedeemer = Data.Static<
   typeof ZeroInputStep01SpendRedeemerSchema
 >;
 export const ZeroInputStep01SpendRedeemer =
-  ZeroInputStep01SpendRedeemerSchema as unknown as ZeroInputStep01SpendRedeemer;
+  asDataType<ZeroInputStep01SpendRedeemer>(ZeroInputStep01SpendRedeemerSchema);
 
 /**
  * Mirrors `midgard/fraud_proofs/zero_input/step_02.State`. #604: the thread
@@ -52,8 +54,9 @@ export const ZeroInputStep02StateSchema = Data.Object({
 export type ZeroInputStep02State = Data.Static<
   typeof ZeroInputStep02StateSchema
 >;
-export const ZeroInputStep02State =
-  ZeroInputStep02StateSchema as unknown as ZeroInputStep02State;
+export const ZeroInputStep02State = asDataType<ZeroInputStep02State>(
+  ZeroInputStep02StateSchema,
+);
 
 export const ZeroInputStep02DatumSchema = faultProofStepDatumSchema(
   ZeroInputStep02StateSchema,
@@ -61,8 +64,9 @@ export const ZeroInputStep02DatumSchema = faultProofStepDatumSchema(
 export type ZeroInputStep02Datum = Data.Static<
   typeof ZeroInputStep02DatumSchema
 >;
-export const ZeroInputStep02Datum =
-  ZeroInputStep02DatumSchema as unknown as ZeroInputStep02Datum;
+export const ZeroInputStep02Datum = asDataType<ZeroInputStep02Datum>(
+  ZeroInputStep02DatumSchema,
+);
 
 /**
  * Mirrors `midgard/fraud_proofs/zero_input/step_02.Args`. The opening is new:
@@ -77,8 +81,9 @@ export const ZeroInputStep02ArgsSchema = Data.Object({
   spend_inputs_opening: FieldOpeningSchema,
 });
 export type ZeroInputStep02Args = Data.Static<typeof ZeroInputStep02ArgsSchema>;
-export const ZeroInputStep02Args =
-  ZeroInputStep02ArgsSchema as unknown as ZeroInputStep02Args;
+export const ZeroInputStep02Args = asDataType<ZeroInputStep02Args>(
+  ZeroInputStep02ArgsSchema,
+);
 
 export const ZeroInputStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
   ZeroInputStep02ArgsSchema,
@@ -87,7 +92,7 @@ export type ZeroInputStep02SpendRedeemer = Data.Static<
   typeof ZeroInputStep02SpendRedeemerSchema
 >;
 export const ZeroInputStep02SpendRedeemer =
-  ZeroInputStep02SpendRedeemerSchema as unknown as ZeroInputStep02SpendRedeemer;
+  asDataType<ZeroInputStep02SpendRedeemer>(ZeroInputStep02SpendRedeemerSchema);
 
 export {
   FaultProofStepCancel as ZeroInputStepCancel,

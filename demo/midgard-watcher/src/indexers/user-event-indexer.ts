@@ -12,6 +12,7 @@ import {
   type DeploymentMarker,
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   DepositDatumSchema,
   DepositEventSchema,
@@ -1144,7 +1145,7 @@ const decodeHubAt = (
     ? null
     : dataRoundTrip<Record<string, unknown>>(
         datumHex,
-        HubOracleDatumSchema as unknown as EventSchema,
+        asDataType<EventSchema>(HubOracleDatumSchema),
       );
 };
 
@@ -2033,7 +2034,7 @@ const verifyTerminalSemantics = (
         spend.settlementRefInputIndex,
         "settlement",
         settlementPolicy,
-        SettlementDatumSchema as unknown as EventSchema,
+        asDataType<EventSchema>(SettlementDatumSchema),
       )
     : null;
   const eventPair = eventKeyValueCbor(event);
@@ -2180,7 +2181,7 @@ const verifyTerminalSemantics = (
           };
         }>(
           payoutMint.bytes.bytesHex,
-          PayoutMintRedeemerSchema as unknown as EventSchema,
+          asDataType<EventSchema>(PayoutMintRedeemerSchema),
         );
   const payoutDatumHex = inlineDatumCbor(produced);
   const payoutDatum =
@@ -2188,7 +2189,7 @@ const verifyTerminalSemantics = (
       ? null
       : dataRoundTrip<Record<string, unknown>>(
           payoutDatumHex,
-          PayoutDatumSchema as unknown as EventSchema,
+          asDataType<EventSchema>(PayoutDatumSchema),
         );
   const payoutPolicyIndex =
     isHex28(payoutPolicy) && body.mint() !== undefined

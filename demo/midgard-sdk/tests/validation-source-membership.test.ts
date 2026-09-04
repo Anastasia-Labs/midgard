@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
@@ -11,8 +12,6 @@ type ValidationSourceMembership = Data.Static<
   typeof ValidationSourceMembershipSchema
 >;
 
-const h32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
 const digest = (hex: string): string =>
   Buffer.from(blake2b(Buffer.from(hex, "hex"), { dkLen: 32 })).toString("hex");
 

@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import { aikenSerialisedPlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
@@ -116,8 +117,9 @@ export const UserEventMintRedeemerSchema = Data.Enum([
 export type UserEventMintRedeemer = Data.Static<
   typeof UserEventMintRedeemerSchema
 >;
-export const UserEventMintRedeemer =
-  UserEventMintRedeemerSchema as unknown as UserEventMintRedeemer;
+export const UserEventMintRedeemer = asDataType<UserEventMintRedeemer>(
+  UserEventMintRedeemerSchema,
+);
 
 export const UserEventWitnessPublishRedeemerSchema = Data.Enum([
   Data.Object({
@@ -140,7 +142,9 @@ export type UserEventWitnessPublishRedeemer = Data.Static<
   typeof UserEventWitnessPublishRedeemerSchema
 >;
 export const UserEventWitnessPublishRedeemer =
-  UserEventWitnessPublishRedeemerSchema as unknown as UserEventWitnessPublishRedeemer;
+  asDataType<UserEventWitnessPublishRedeemer>(
+    UserEventWitnessPublishRedeemerSchema,
+  );
 
 export type UserEventAuthenticateMintRedeemerParams = {
   readonly nonceInputIndex: bigint;

@@ -40,6 +40,7 @@ import {
   reconstructDaPayload,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -59,11 +60,6 @@ import {
 // Fixture construction (mirrors demo/midgard-fault-proofs/tests/helpers/
 // canonical-block-evidence-fixture.ts, using only package exports)
 // ---------------------------------------------------------------------------
-
-const h32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
-const h28 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(28);
 
 /** The canonical header hash: blake2b-224 over the header's CBOR, exactly as
  * `hashBlockHeader` (demo/midgard-sdk/src/ledger-state.ts:467) and the W14

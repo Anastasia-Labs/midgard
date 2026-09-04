@@ -16,10 +16,12 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "./da-transport.js";
+import { asLucidSchema } from "./lucid-data.js";
 import {
   buildMidgardMpfProofFoldTrace,
   type MidgardMpfProofStep,
 } from "./mpf-proof-fold.js";
+import { prototypeOf } from "./narrowing.js";
 import {
   MIDGARD_RETENTION_WINDOW,
   retentionDaysCoverWindow,
@@ -1546,7 +1548,7 @@ const requireRecord = (
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${field} must be an object`);
   }
-  const prototype = Object.getPrototypeOf(value);
+  const prototype = prototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new Error(`${field} must be a plain object`);
   }
@@ -1913,7 +1915,7 @@ const normalizeDeploymentManifestJsonValueInternal = (
   if (typeof value !== "object" || value === null) {
     throw new Error(`${field} must contain only JSON-safe values`);
   }
-  const prototype = Object.getPrototypeOf(value);
+  const prototype = prototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new Error(`${field} must contain only plain records`);
   }
@@ -2479,8 +2481,6 @@ const requireIsoTimestamp = (value: unknown, field: string): string => {
   return text;
 };
 
-type LucidDataSchema = Parameters<typeof Data.to>[1];
-
 const FraudProofCatalogueProofNeighborSchema = Data.Object({
   nibble: Data.Integer(),
   prefix: Data.Bytes(),
@@ -2779,7 +2779,7 @@ export const verifyDeploymentManifestFraudProofCatalogueIdentity = (
     }
     const canonicalProofCbor = Data.to(
       proof,
-      FraudProofCatalogueProofSchema as unknown as LucidDataSchema,
+      asLucidSchema(FraudProofCatalogueProofSchema),
     );
     if (canonicalProofCbor !== category.membershipProofCbor) {
       throw new Error(

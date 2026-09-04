@@ -4,6 +4,7 @@
  * non-payable duplicate / same-leaf adversaries refused in the terminal script.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -390,7 +391,7 @@ const submitRawCancel = async ({
 }): Promise<string> => {
   const rawCancelSchema = SDK.faultProofStepRedeemerSchema(Data.Any());
   type RawCancelRedeemer = Data.Static<typeof rawCancelSchema>;
-  const RawCancelRedeemer = rawCancelSchema as unknown as RawCancelRedeemer;
+  const RawCancelRedeemer = asDataType<RawCancelRedeemer>(rawCancelSchema);
   const token = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,

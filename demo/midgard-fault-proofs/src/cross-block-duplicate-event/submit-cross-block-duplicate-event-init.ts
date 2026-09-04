@@ -7,6 +7,7 @@
  * takes the family's explicit contracts record and reserved test category.
  * Production registration remains deliberately absent.
  */
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
@@ -61,8 +62,6 @@ import {
   type CrossBlockDuplicateEventCatalogueCategory,
   crossBlockDuplicateEventSubmitError,
 } from "./submit-common.js";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 export type SubmitCrossBlockDuplicateEventInitResult = {
   readonly txHash: string;
@@ -258,17 +257,21 @@ export const submitCrossBlockDuplicateEventInit = async ({
         root: catalogue.root,
         keyCbor: Data.to(
           category.categoryId,
-          Data.Bytes({
-            minLength: 4,
-            maxLength: 4,
-          }) as unknown as LucidDataSchema,
+          asLucidSchema(
+            Data.Bytes({
+              minLength: 4,
+              maxLength: 4,
+            }),
+          ),
         ),
         valueCbor: Data.to(
           category.scriptHash,
-          Data.Bytes({
-            minLength: 28,
-            maxLength: 28,
-          }) as unknown as LucidDataSchema,
+          asLucidSchema(
+            Data.Bytes({
+              minLength: 28,
+              maxLength: 28,
+            }),
+          ),
         ),
         membershipProofCbor: category.membershipProofCbor,
       }),

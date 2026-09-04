@@ -1,3 +1,7 @@
+import {
+  asLucidDataValue,
+  asLucidSchema,
+} from "@al-ft/midgard-core/lucid-data";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
@@ -129,11 +133,8 @@ export type RefundInvalidWithdrawalConfig = CommonBuilderConfig & {
   >;
 };
 
-type LucidDataSchema = Parameters<typeof Data.to>[1];
-type LucidDataValue = Parameters<typeof Data.to>[0];
-
 const encodeHexBytesData = (hex: string): unknown =>
-  Data.from(Data.to(hex, Data.Bytes() as unknown as LucidDataSchema));
+  Data.from(Data.to(hex, asLucidSchema(Data.Bytes())));
 
 const requireNetwork = (
   lucid: LucidEvolution,
@@ -192,10 +193,7 @@ const cardanoDatumToOutputDatum = (
   }
   return {
     kind: "inline",
-    value: Data.to(
-      datum.InlineDatum.data,
-      Data.Any() as unknown as LucidDataSchema,
-    ),
+    value: Data.to(datum.InlineDatum.data, asLucidSchema(Data.Any())),
   };
 };
 
@@ -306,12 +304,10 @@ const encodeMembershipProofWithdrawalRedeemer = (
   const rootData = Data.from(Data.to(proof.phas_root, SDK.MerkleRoot));
   const keyData = encodeHexBytesData(keyCbor);
   const valueData = encodeHexBytesData(valueCbor);
-  const proofData = Data.from(
-    Data.to(proof.proof, SDK.Proof as unknown as LucidDataSchema),
-  );
+  const proofData = Data.from(Data.to(proof.proof, asLucidSchema(SDK.Proof)));
   return Data.to(
-    [rootData, keyData, valueData, proofData] as unknown as LucidDataValue,
-    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+    asLucidDataValue([rootData, keyData, valueData, proofData]),
+    asLucidSchema(Data.Array(Data.Any())),
   );
 };
 
@@ -359,7 +355,7 @@ const outputDatumMatches = (
   }
   return outputDatumCborMatches(
     output,
-    Data.to(datum.InlineDatum.data, Data.Any() as unknown as LucidDataSchema),
+    Data.to(datum.InlineDatum.data, asLucidSchema(Data.Any())),
   );
 };
 

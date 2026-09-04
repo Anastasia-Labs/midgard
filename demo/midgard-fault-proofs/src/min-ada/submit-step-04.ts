@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   MinAdaStep04DatumSchema,
   MinAdaStep04SpendRedeemerSchema,
@@ -58,11 +59,11 @@ import {
 
 type State = NonNullable<Data.Static<typeof MinAdaStep04DatumSchema>["data"]>;
 type Step04Datum = Data.Static<typeof MinAdaStep04DatumSchema>;
-const Step04Datum = MinAdaStep04DatumSchema as unknown as Step04Datum;
+const Step04Datum = asDataType<Step04Datum>(MinAdaStep04DatumSchema);
 type Step05Datum = Data.Static<typeof MinAdaStep05DatumSchema>;
-const Step05Datum = MinAdaStep05DatumSchema as unknown as Step05Datum;
+const Step05Datum = asDataType<Step05Datum>(MinAdaStep05DatumSchema);
 type Redeemer = Data.Static<typeof MinAdaStep04SpendRedeemerSchema>;
-const Redeemer = MinAdaStep04SpendRedeemerSchema as unknown as Redeemer;
+const Redeemer = asDataType<Redeemer>(MinAdaStep04SpendRedeemerSchema);
 
 /** Proves that the underfunded post-root member was introduced by this block. */
 export const submitMinAdaUtxoStep04 = async ({

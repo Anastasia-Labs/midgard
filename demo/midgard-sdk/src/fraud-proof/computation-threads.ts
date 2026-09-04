@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { ProofSchema, ScriptHashSchema } from "../common.js";
@@ -10,7 +11,9 @@ export type FraudProofComputationThreadStepDatum = Data.Static<
   typeof FraudProofComputationThreadStepDatumSchema
 >;
 export const FraudProofComputationThreadStepDatum =
-  FraudProofComputationThreadStepDatumSchema as unknown as FraudProofComputationThreadStepDatum;
+  asDataType<FraudProofComputationThreadStepDatum>(
+    FraudProofComputationThreadStepDatumSchema,
+  );
 
 export const FraudProofComputationThreadRedeemerSchema = Data.Enum([
   Data.Object({
@@ -38,4 +41,6 @@ export type FraudProofComputationThreadRedeemer = Data.Static<
   typeof FraudProofComputationThreadRedeemerSchema
 >;
 export const FraudProofComputationThreadRedeemer =
-  FraudProofComputationThreadRedeemerSchema as unknown as FraudProofComputationThreadRedeemer;
+  asDataType<FraudProofComputationThreadRedeemer>(
+    FraudProofComputationThreadRedeemerSchema,
+  );

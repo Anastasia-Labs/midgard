@@ -16,6 +16,7 @@
  * shared inclusion and field-opening shapes) is taken from the SDK, not
  * restated.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -42,7 +43,7 @@ export const ClaimedAssetSchema = Data.Enum([
   }),
 ]);
 export type ClaimedAsset = Data.Static<typeof ClaimedAssetSchema>;
-export const ClaimedAsset = ClaimedAssetSchema as unknown as ClaimedAsset;
+export const ClaimedAsset = asDataType<ClaimedAsset>(ClaimedAssetSchema);
 
 /**
  * `ClaimedImbalanceDirection`: `ClaimedAssetInflated` (Constr 0) convicts
@@ -56,8 +57,9 @@ export const ClaimedImbalanceDirectionSchema = Data.Enum([
 export type ClaimedImbalanceDirection = Data.Static<
   typeof ClaimedImbalanceDirectionSchema
 >;
-export const ClaimedImbalanceDirection =
-  ClaimedImbalanceDirectionSchema as unknown as ClaimedImbalanceDirection;
+export const ClaimedImbalanceDirection = asDataType<ClaimedImbalanceDirection>(
+  ClaimedImbalanceDirectionSchema,
+);
 
 // ---------------------------------------------------------------------------
 // Step 01 — bind and freeze the claim
@@ -72,7 +74,7 @@ export type ValueNotPreservedStep01Args = Data.Static<
   typeof ValueNotPreservedStep01ArgsSchema
 >;
 export const ValueNotPreservedStep01Args =
-  ValueNotPreservedStep01ArgsSchema as unknown as ValueNotPreservedStep01Args;
+  asDataType<ValueNotPreservedStep01Args>(ValueNotPreservedStep01ArgsSchema);
 
 export const ValueNotPreservedStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(ValueNotPreservedStep01ArgsSchema);
@@ -80,7 +82,9 @@ export type ValueNotPreservedStep01SpendRedeemer = Data.Static<
   typeof ValueNotPreservedStep01SpendRedeemerSchema
 >;
 export const ValueNotPreservedStep01SpendRedeemer =
-  ValueNotPreservedStep01SpendRedeemerSchema as unknown as ValueNotPreservedStep01SpendRedeemer;
+  asDataType<ValueNotPreservedStep01SpendRedeemer>(
+    ValueNotPreservedStep01SpendRedeemerSchema,
+  );
 
 // ---------------------------------------------------------------------------
 // Step 02 — the spent-input fold
@@ -99,7 +103,7 @@ export type ValueNotPreservedStep02State = Data.Static<
   typeof ValueNotPreservedStep02StateSchema
 >;
 export const ValueNotPreservedStep02State =
-  ValueNotPreservedStep02StateSchema as unknown as ValueNotPreservedStep02State;
+  asDataType<ValueNotPreservedStep02State>(ValueNotPreservedStep02StateSchema);
 
 export const ValueNotPreservedStep02DatumSchema = faultProofStepDatumSchema(
   ValueNotPreservedStep02StateSchema,
@@ -108,7 +112,7 @@ export type ValueNotPreservedStep02Datum = Data.Static<
   typeof ValueNotPreservedStep02DatumSchema
 >;
 export const ValueNotPreservedStep02Datum =
-  ValueNotPreservedStep02DatumSchema as unknown as ValueNotPreservedStep02Datum;
+  asDataType<ValueNotPreservedStep02Datum>(ValueNotPreservedStep02DatumSchema);
 
 /** One authenticated asset leaf of a spent input's descriptor, in index order. */
 export const AssetLeafOpeningSchema = Data.Object({
@@ -118,8 +122,9 @@ export const AssetLeafOpeningSchema = Data.Object({
   siblings: Data.Array(H32Schema),
 });
 export type AssetLeafOpening = Data.Static<typeof AssetLeafOpeningSchema>;
-export const AssetLeafOpening =
-  AssetLeafOpeningSchema as unknown as AssetLeafOpening;
+export const AssetLeafOpening = asDataType<AssetLeafOpening>(
+  AssetLeafOpeningSchema,
+);
 
 /** Wire twin of the aiken `validation_merkle_v1.FrontierPeak`. */
 export const FrontierPeakSchema = Data.Object({
@@ -127,7 +132,7 @@ export const FrontierPeakSchema = Data.Object({
   hash: H32Schema,
 });
 export type FrontierPeak = Data.Static<typeof FrontierPeakSchema>;
-export const FrontierPeak = FrontierPeakSchema as unknown as FrontierPeak;
+export const FrontierPeak = asDataType<FrontierPeak>(FrontierPeakSchema);
 
 /** The pre-state value witness for one spend input. */
 export const SpentInputValueWitnessSchema = Data.Object({
@@ -139,8 +144,9 @@ export const SpentInputValueWitnessSchema = Data.Object({
 export type SpentInputValueWitness = Data.Static<
   typeof SpentInputValueWitnessSchema
 >;
-export const SpentInputValueWitness =
-  SpentInputValueWitnessSchema as unknown as SpentInputValueWitness;
+export const SpentInputValueWitness = asDataType<SpentInputValueWitness>(
+  SpentInputValueWitnessSchema,
+);
 
 export const ValueNotPreservedStep02FoldArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -152,7 +158,9 @@ export type ValueNotPreservedStep02FoldArgs = Data.Static<
   typeof ValueNotPreservedStep02FoldArgsSchema
 >;
 export const ValueNotPreservedStep02FoldArgs =
-  ValueNotPreservedStep02FoldArgsSchema as unknown as ValueNotPreservedStep02FoldArgs;
+  asDataType<ValueNotPreservedStep02FoldArgs>(
+    ValueNotPreservedStep02FoldArgsSchema,
+  );
 
 /** Step-02 redeemer arms: `FoldInput` is Constr 0, `FinishInputs` Constr 1. */
 export const ValueNotPreservedStep02ArgsSchema = Data.Enum([
@@ -171,7 +179,7 @@ export type ValueNotPreservedStep02Args = Data.Static<
   typeof ValueNotPreservedStep02ArgsSchema
 >;
 export const ValueNotPreservedStep02Args =
-  ValueNotPreservedStep02ArgsSchema as unknown as ValueNotPreservedStep02Args;
+  asDataType<ValueNotPreservedStep02Args>(ValueNotPreservedStep02ArgsSchema);
 
 export const ValueNotPreservedStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(ValueNotPreservedStep02ArgsSchema);
@@ -179,7 +187,9 @@ export type ValueNotPreservedStep02SpendRedeemer = Data.Static<
   typeof ValueNotPreservedStep02SpendRedeemerSchema
 >;
 export const ValueNotPreservedStep02SpendRedeemer =
-  ValueNotPreservedStep02SpendRedeemerSchema as unknown as ValueNotPreservedStep02SpendRedeemer;
+  asDataType<ValueNotPreservedStep02SpendRedeemer>(
+    ValueNotPreservedStep02SpendRedeemerSchema,
+  );
 
 // ---------------------------------------------------------------------------
 // Step 03 — outputs, mint and fee
@@ -196,7 +206,7 @@ export type ValueNotPreservedStep03State = Data.Static<
   typeof ValueNotPreservedStep03StateSchema
 >;
 export const ValueNotPreservedStep03State =
-  ValueNotPreservedStep03StateSchema as unknown as ValueNotPreservedStep03State;
+  asDataType<ValueNotPreservedStep03State>(ValueNotPreservedStep03StateSchema);
 
 export const ValueNotPreservedStep03DatumSchema = faultProofStepDatumSchema(
   ValueNotPreservedStep03StateSchema,
@@ -205,7 +215,7 @@ export type ValueNotPreservedStep03Datum = Data.Static<
   typeof ValueNotPreservedStep03DatumSchema
 >;
 export const ValueNotPreservedStep03Datum =
-  ValueNotPreservedStep03DatumSchema as unknown as ValueNotPreservedStep03Datum;
+  asDataType<ValueNotPreservedStep03Datum>(ValueNotPreservedStep03DatumSchema);
 
 export const ValueNotPreservedStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -219,7 +229,7 @@ export type ValueNotPreservedStep03Args = Data.Static<
   typeof ValueNotPreservedStep03ArgsSchema
 >;
 export const ValueNotPreservedStep03Args =
-  ValueNotPreservedStep03ArgsSchema as unknown as ValueNotPreservedStep03Args;
+  asDataType<ValueNotPreservedStep03Args>(ValueNotPreservedStep03ArgsSchema);
 
 export const ValueNotPreservedStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(ValueNotPreservedStep03ArgsSchema);
@@ -227,7 +237,9 @@ export type ValueNotPreservedStep03SpendRedeemer = Data.Static<
   typeof ValueNotPreservedStep03SpendRedeemerSchema
 >;
 export const ValueNotPreservedStep03SpendRedeemer =
-  ValueNotPreservedStep03SpendRedeemerSchema as unknown as ValueNotPreservedStep03SpendRedeemer;
+  asDataType<ValueNotPreservedStep03SpendRedeemer>(
+    ValueNotPreservedStep03SpendRedeemerSchema,
+  );
 
 // ---------------------------------------------------------------------------
 // Step 04 — finalize
@@ -243,7 +255,7 @@ export type ValueNotPreservedStep04State = Data.Static<
   typeof ValueNotPreservedStep04StateSchema
 >;
 export const ValueNotPreservedStep04State =
-  ValueNotPreservedStep04StateSchema as unknown as ValueNotPreservedStep04State;
+  asDataType<ValueNotPreservedStep04State>(ValueNotPreservedStep04StateSchema);
 
 export const ValueNotPreservedStep04DatumSchema = faultProofStepDatumSchema(
   ValueNotPreservedStep04StateSchema,
@@ -252,7 +264,7 @@ export type ValueNotPreservedStep04Datum = Data.Static<
   typeof ValueNotPreservedStep04DatumSchema
 >;
 export const ValueNotPreservedStep04Datum =
-  ValueNotPreservedStep04DatumSchema as unknown as ValueNotPreservedStep04Datum;
+  asDataType<ValueNotPreservedStep04Datum>(ValueNotPreservedStep04DatumSchema);
 
 export const ValueNotPreservedStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -263,7 +275,7 @@ export type ValueNotPreservedStep04Args = Data.Static<
   typeof ValueNotPreservedStep04ArgsSchema
 >;
 export const ValueNotPreservedStep04Args =
-  ValueNotPreservedStep04ArgsSchema as unknown as ValueNotPreservedStep04Args;
+  asDataType<ValueNotPreservedStep04Args>(ValueNotPreservedStep04ArgsSchema);
 
 export const ValueNotPreservedStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(ValueNotPreservedStep04ArgsSchema);
@@ -271,7 +283,9 @@ export type ValueNotPreservedStep04SpendRedeemer = Data.Static<
   typeof ValueNotPreservedStep04SpendRedeemerSchema
 >;
 export const ValueNotPreservedStep04SpendRedeemer =
-  ValueNotPreservedStep04SpendRedeemerSchema as unknown as ValueNotPreservedStep04SpendRedeemer;
+  asDataType<ValueNotPreservedStep04SpendRedeemer>(
+    ValueNotPreservedStep04SpendRedeemerSchema,
+  );
 
 // ---------------------------------------------------------------------------
 // Local mirrors of the on-chain predicates

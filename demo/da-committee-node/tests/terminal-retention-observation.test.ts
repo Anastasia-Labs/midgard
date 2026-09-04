@@ -145,6 +145,7 @@ const merge = (
     [{ headerHash: null, outRef: `${txHash}#0` }, ...previousQueue.slice(2)],
     {
       MergeToConfirmedStateV1: {
+        yield_to_ref_input_index: 0n,
         header_node_key: header.headerHash!,
         confirmed_state_input_outref: {
           transactionId: previousQueue[0]!.outRef.slice(0, 64),
@@ -190,6 +191,7 @@ const timeout = (
         ],
     {
       RemoveUnattestedBlockAfterTimeout: {
+        yield_to_ref_input_index: 0n,
         timed_out_header_hash: timedOut.headerHash!,
         removal_approach:
           descendant === undefined

@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
 import {
   type Assets,
@@ -118,15 +119,18 @@ describe("node-runtime reference-script registry", () => {
     const registeredFraudProofNames = names.filter((name) =>
       name.startsWith("V1 fraud-proof "),
     );
-    // Every `V1 fraud-proof ` role in
-    // `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE` — 114 of the
-    // canonical 155 roles. This is a coverage count, not a free constant: a
-    // manifest is only valid when `validateReferenceScripts` finds a confirmed
-    // reference script for every declared role, so node-runtime has to publish
-    // the whole set. The previous 111 predated the `min-ada` step-03/04/05
-    // roles, which the state-correction wave appended after
-    // `correctionLockSpend` in the same vector.
-    expect(registeredFraudProofNames).toHaveLength(114);
+    // Node-runtime publishes EVERY `V1 fraud-proof ` role the canonical
+    // manifest declares. This is stated as the set rather than as a count
+    // because it is a coverage requirement, not a pin to maintain: a manifest
+    // is only valid when `validateReferenceScripts` finds a confirmed
+    // reference script for every declared role, so a family the registry does
+    // not enumerate is a deployment that cannot pass startup verification. A
+    // count let that gap sit as a stale number; the set names it.
+    expect([...registeredFraudProofNames].sort()).toEqual(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE)
+        .filter((role) => role.startsWith("V1 fraud-proof "))
+        .sort(),
+    );
     expect(registeredFraudProofNames).toContain(
       "V1 fraud-proof missing-signature step-04",
     );

@@ -4,6 +4,7 @@ import {
   MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
   MIDGARD_FIELD_VIEW_CONSTRUCTORS,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, VerificationKeyHashSchema } from "./common.js";
@@ -40,8 +41,9 @@ export const InlineFieldCarriageSchema = Data.Object({
   preimage: Data.Bytes(),
 });
 export type InlineFieldCarriage = Data.Static<typeof InlineFieldCarriageSchema>;
-export const InlineFieldCarriage =
-  InlineFieldCarriageSchema as unknown as InlineFieldCarriage;
+export const InlineFieldCarriage = asDataType<InlineFieldCarriage>(
+  InlineFieldCarriageSchema,
+);
 
 /**
  * §8.2. Tier 2 — one nothing-but-bytes inline datum at the prover's key
@@ -53,8 +55,9 @@ export const RawUtxoFieldCarriageSchema = Data.Object({
 export type RawUtxoFieldCarriage = Data.Static<
   typeof RawUtxoFieldCarriageSchema
 >;
-export const RawUtxoFieldCarriage =
-  RawUtxoFieldCarriageSchema as unknown as RawUtxoFieldCarriage;
+export const RawUtxoFieldCarriage = asDataType<RawUtxoFieldCarriage>(
+  RawUtxoFieldCarriageSchema,
+);
 
 /**
  * §8.4. Tier 3 — deterministic fixed-K chunks plus one certified
@@ -69,8 +72,9 @@ export const CertifiedFieldCarriageSchema = Data.Object({
 export type CertifiedFieldCarriage = Data.Static<
   typeof CertifiedFieldCarriageSchema
 >;
-export const CertifiedFieldCarriage =
-  CertifiedFieldCarriageSchema as unknown as CertifiedFieldCarriage;
+export const CertifiedFieldCarriage = asDataType<CertifiedFieldCarriage>(
+  CertifiedFieldCarriageSchema,
+);
 
 /**
  * §8.8 `FieldCarriage` — how a field's preimage bytes reach the consuming
@@ -82,7 +86,7 @@ export const FieldCarriageSchema = Data.Enum([
   Data.Object({ Certified: CertifiedFieldCarriageSchema }),
 ]);
 export type FieldCarriage = Data.Static<typeof FieldCarriageSchema>;
-export const FieldCarriage = FieldCarriageSchema as unknown as FieldCarriage;
+export const FieldCarriage = asDataType<FieldCarriage>(FieldCarriageSchema);
 
 /** Tiers 1–2: the whole preimage is present and hash-checked. */
 export const WholeFieldViewSchema = Data.Object({
@@ -91,7 +95,7 @@ export const WholeFieldViewSchema = Data.Object({
   stride: Data.Integer(),
 });
 export type WholeFieldView = Data.Static<typeof WholeFieldViewSchema>;
-export const WholeFieldView = WholeFieldViewSchema as unknown as WholeFieldView;
+export const WholeFieldView = asDataType<WholeFieldView>(WholeFieldViewSchema);
 
 /**
  * Tier 3: chunks are present but unhashed until touched; the digest vector and
@@ -104,8 +108,9 @@ export const ChunkedFieldViewSchema = Data.Object({
   stride: Data.Integer(),
 });
 export type ChunkedFieldView = Data.Static<typeof ChunkedFieldViewSchema>;
-export const ChunkedFieldView =
-  ChunkedFieldViewSchema as unknown as ChunkedFieldView;
+export const ChunkedFieldView = asDataType<ChunkedFieldView>(
+  ChunkedFieldViewSchema,
+);
 
 /**
  * §8.8 `FieldView` — an authenticated field, ready to slice. Carriage tier is
@@ -118,7 +123,7 @@ export const FieldViewSchema = Data.Enum([
   Data.Object({ Chunked: ChunkedFieldViewSchema }),
 ]);
 export type FieldView = Data.Static<typeof FieldViewSchema>;
-export const FieldView = FieldViewSchema as unknown as FieldView;
+export const FieldView = asDataType<FieldView>(FieldViewSchema);
 
 /**
  * §8.6 `FieldPreimageCertificate` — the tier-3 digest manifest, minted by the
@@ -141,8 +146,9 @@ export const FieldPreimageCertificateSchema = Data.Object({
 export type FieldPreimageCertificate = Data.Static<
   typeof FieldPreimageCertificateSchema
 >;
-export const FieldPreimageCertificate =
-  FieldPreimageCertificateSchema as unknown as FieldPreimageCertificate;
+export const FieldPreimageCertificate = asDataType<FieldPreimageCertificate>(
+  FieldPreimageCertificateSchema,
+);
 
 /**
  * §8.6. The `Certify` arm of the certification redeemer — the committed
@@ -172,7 +178,9 @@ export type CertifyFieldPreimageCertificateMintRedeemer = Data.Static<
   typeof CertifyFieldPreimageCertificateMintRedeemerSchema
 >;
 export const CertifyFieldPreimageCertificateMintRedeemer =
-  CertifyFieldPreimageCertificateMintRedeemerSchema as unknown as CertifyFieldPreimageCertificateMintRedeemer;
+  asDataType<CertifyFieldPreimageCertificateMintRedeemer>(
+    CertifyFieldPreimageCertificateMintRedeemerSchema,
+  );
 
 /**
  * §8.6 `FieldPreimageCertificateMintRedeemer` — the frozen mint-redeemer wire
@@ -200,7 +208,9 @@ export type FieldPreimageCertificateMintRedeemer = Data.Static<
   typeof FieldPreimageCertificateMintRedeemerSchema
 >;
 export const FieldPreimageCertificateMintRedeemer =
-  FieldPreimageCertificateMintRedeemerSchema as unknown as FieldPreimageCertificateMintRedeemer;
+  asDataType<FieldPreimageCertificateMintRedeemer>(
+    FieldPreimageCertificateMintRedeemerSchema,
+  );
 
 /**
  * The frozen §8.8 Constr indexes, exported so a test can pin them rather than

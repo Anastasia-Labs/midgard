@@ -55,6 +55,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import type {
   PhaseAConfig,
@@ -112,11 +113,6 @@ import {
 // ---------------------------------------------------------------------------
 // Shared fixture material
 // ---------------------------------------------------------------------------
-
-const h32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
-const h28 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(28);
 
 /**
  * The size/preimage-bound fixtures are hundreds of kilobytes of canonical CBOR

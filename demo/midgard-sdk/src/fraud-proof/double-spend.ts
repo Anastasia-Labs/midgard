@@ -6,6 +6,7 @@
  * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -61,8 +62,9 @@ export const DoubleSpendStep01StateSchema = Data.Object({
 export type DoubleSpendStep01State = Data.Static<
   typeof DoubleSpendStep01StateSchema
 >;
-export const DoubleSpendStep01State =
-  DoubleSpendStep01StateSchema as unknown as DoubleSpendStep01State;
+export const DoubleSpendStep01State = asDataType<DoubleSpendStep01State>(
+  DoubleSpendStep01StateSchema,
+);
 
 export const DoubleSpendStep01DatumSchema = faultProofStepDatumSchema(
   DoubleSpendStep01StateSchema,
@@ -70,8 +72,9 @@ export const DoubleSpendStep01DatumSchema = faultProofStepDatumSchema(
 export type DoubleSpendStep01Datum = Data.Static<
   typeof DoubleSpendStep01DatumSchema
 >;
-export const DoubleSpendStep01Datum =
-  DoubleSpendStep01DatumSchema as unknown as DoubleSpendStep01Datum;
+export const DoubleSpendStep01Datum = asDataType<DoubleSpendStep01Datum>(
+  DoubleSpendStep01DatumSchema,
+);
 
 export const DoubleSpendStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
@@ -79,7 +82,9 @@ export type DoubleSpendStep01SpendRedeemer = Data.Static<
   typeof DoubleSpendStep01SpendRedeemerSchema
 >;
 export const DoubleSpendStep01SpendRedeemer =
-  DoubleSpendStep01SpendRedeemerSchema as unknown as DoubleSpendStep01SpendRedeemer;
+  asDataType<DoubleSpendStep01SpendRedeemer>(
+    DoubleSpendStep01SpendRedeemerSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/double_spend/step_02.State`. */
 export const DoubleSpendStep02StateSchema = Data.Object({
@@ -88,8 +93,9 @@ export const DoubleSpendStep02StateSchema = Data.Object({
 export type DoubleSpendStep02State = Data.Static<
   typeof DoubleSpendStep02StateSchema
 >;
-export const DoubleSpendStep02State =
-  DoubleSpendStep02StateSchema as unknown as DoubleSpendStep02State;
+export const DoubleSpendStep02State = asDataType<DoubleSpendStep02State>(
+  DoubleSpendStep02StateSchema,
+);
 
 export const DoubleSpendStep02DatumSchema = faultProofStepDatumSchema(
   DoubleSpendStep02StateSchema,
@@ -97,8 +103,9 @@ export const DoubleSpendStep02DatumSchema = faultProofStepDatumSchema(
 export type DoubleSpendStep02Datum = Data.Static<
   typeof DoubleSpendStep02DatumSchema
 >;
-export const DoubleSpendStep02Datum =
-  DoubleSpendStep02DatumSchema as unknown as DoubleSpendStep02Datum;
+export const DoubleSpendStep02Datum = asDataType<DoubleSpendStep02Datum>(
+  DoubleSpendStep02DatumSchema,
+);
 
 export const DoubleSpendStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
@@ -106,7 +113,9 @@ export type DoubleSpendStep02SpendRedeemer = Data.Static<
   typeof DoubleSpendStep02SpendRedeemerSchema
 >;
 export const DoubleSpendStep02SpendRedeemer =
-  DoubleSpendStep02SpendRedeemerSchema as unknown as DoubleSpendStep02SpendRedeemer;
+  asDataType<DoubleSpendStep02SpendRedeemer>(
+    DoubleSpendStep02SpendRedeemerSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/double_spend/step_03.State`: the §2.5 anchors of
@@ -119,8 +128,9 @@ export const DoubleSpendStep03StateSchema = Data.Object({
 export type DoubleSpendStep03State = Data.Static<
   typeof DoubleSpendStep03StateSchema
 >;
-export const DoubleSpendStep03State =
-  DoubleSpendStep03StateSchema as unknown as DoubleSpendStep03State;
+export const DoubleSpendStep03State = asDataType<DoubleSpendStep03State>(
+  DoubleSpendStep03StateSchema,
+);
 
 export const DoubleSpendStep03DatumSchema = faultProofStepDatumSchema(
   DoubleSpendStep03StateSchema,
@@ -128,8 +138,9 @@ export const DoubleSpendStep03DatumSchema = faultProofStepDatumSchema(
 export type DoubleSpendStep03Datum = Data.Static<
   typeof DoubleSpendStep03DatumSchema
 >;
-export const DoubleSpendStep03Datum =
-  DoubleSpendStep03DatumSchema as unknown as DoubleSpendStep03Datum;
+export const DoubleSpendStep03Datum = asDataType<DoubleSpendStep03Datum>(
+  DoubleSpendStep03DatumSchema,
+);
 
 /**
  * Mirrors `midgard/fraud_proofs/double_spend/step_03.Args`. The retired
@@ -146,8 +157,9 @@ export const DoubleSpendStep03ArgsSchema = Data.Object({
 export type DoubleSpendStep03Args = Data.Static<
   typeof DoubleSpendStep03ArgsSchema
 >;
-export const DoubleSpendStep03Args =
-  DoubleSpendStep03ArgsSchema as unknown as DoubleSpendStep03Args;
+export const DoubleSpendStep03Args = asDataType<DoubleSpendStep03Args>(
+  DoubleSpendStep03ArgsSchema,
+);
 
 export const DoubleSpendStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(DoubleSpendStep03ArgsSchema);
@@ -155,7 +167,9 @@ export type DoubleSpendStep03SpendRedeemer = Data.Static<
   typeof DoubleSpendStep03SpendRedeemerSchema
 >;
 export const DoubleSpendStep03SpendRedeemer =
-  DoubleSpendStep03SpendRedeemerSchema as unknown as DoubleSpendStep03SpendRedeemer;
+  asDataType<DoubleSpendStep03SpendRedeemer>(
+    DoubleSpendStep03SpendRedeemerSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/double_spend/step_04.State`. */
 export const DoubleSpendStep04StateSchema = Data.Object({
@@ -165,8 +179,9 @@ export const DoubleSpendStep04StateSchema = Data.Object({
 export type DoubleSpendStep04State = Data.Static<
   typeof DoubleSpendStep04StateSchema
 >;
-export const DoubleSpendStep04State =
-  DoubleSpendStep04StateSchema as unknown as DoubleSpendStep04State;
+export const DoubleSpendStep04State = asDataType<DoubleSpendStep04State>(
+  DoubleSpendStep04StateSchema,
+);
 
 export const DoubleSpendStep04DatumSchema = faultProofStepDatumSchema(
   DoubleSpendStep04StateSchema,
@@ -174,8 +189,9 @@ export const DoubleSpendStep04DatumSchema = faultProofStepDatumSchema(
 export type DoubleSpendStep04Datum = Data.Static<
   typeof DoubleSpendStep04DatumSchema
 >;
-export const DoubleSpendStep04Datum =
-  DoubleSpendStep04DatumSchema as unknown as DoubleSpendStep04Datum;
+export const DoubleSpendStep04Datum = asDataType<DoubleSpendStep04Datum>(
+  DoubleSpendStep04DatumSchema,
+);
 
 /** Mirrors `midgard/fraud_proofs/double_spend/step_04.Args`. */
 export const DoubleSpendStep04ArgsSchema = Data.Object({
@@ -188,8 +204,9 @@ export const DoubleSpendStep04ArgsSchema = Data.Object({
 export type DoubleSpendStep04Args = Data.Static<
   typeof DoubleSpendStep04ArgsSchema
 >;
-export const DoubleSpendStep04Args =
-  DoubleSpendStep04ArgsSchema as unknown as DoubleSpendStep04Args;
+export const DoubleSpendStep04Args = asDataType<DoubleSpendStep04Args>(
+  DoubleSpendStep04ArgsSchema,
+);
 
 export const DoubleSpendStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(DoubleSpendStep04ArgsSchema);
@@ -197,4 +214,6 @@ export type DoubleSpendStep04SpendRedeemer = Data.Static<
   typeof DoubleSpendStep04SpendRedeemerSchema
 >;
 export const DoubleSpendStep04SpendRedeemer =
-  DoubleSpendStep04SpendRedeemerSchema as unknown as DoubleSpendStep04SpendRedeemer;
+  asDataType<DoubleSpendStep04SpendRedeemer>(
+    DoubleSpendStep04SpendRedeemerSchema,
+  );

@@ -19,6 +19,7 @@
  * step-0{1,2,3,4,5}.ak` field for field and constructor index for
  * constructor index.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { MerkleRootSchema, ProofSchema } from "../common.js";
@@ -86,7 +87,7 @@ export type MintAuthorizationStep02State = Data.Static<
   typeof MintAuthorizationStep02StateSchema
 >;
 export const MintAuthorizationStep02State =
-  MintAuthorizationStep02StateSchema as unknown as MintAuthorizationStep02State;
+  asDataType<MintAuthorizationStep02State>(MintAuthorizationStep02StateSchema);
 
 /** Step-03's input state (step-02's output). Twin of `step_03.State`. */
 export const MintAuthorizationStep03StateSchema = Data.Object({
@@ -104,7 +105,7 @@ export type MintAuthorizationStep03State = Data.Static<
   typeof MintAuthorizationStep03StateSchema
 >;
 export const MintAuthorizationStep03State =
-  MintAuthorizationStep03StateSchema as unknown as MintAuthorizationStep03State;
+  asDataType<MintAuthorizationStep03State>(MintAuthorizationStep03StateSchema);
 
 /**
  * Step-04's input state (also its self-loop output). Twin of
@@ -121,7 +122,7 @@ export type MintAuthorizationStep04State = Data.Static<
   typeof MintAuthorizationStep04StateSchema
 >;
 export const MintAuthorizationStep04State =
-  MintAuthorizationStep04StateSchema as unknown as MintAuthorizationStep04State;
+  asDataType<MintAuthorizationStep04State>(MintAuthorizationStep04StateSchema);
 
 /** Step-05's input state — the closed verdict. Twin of `step_05.State`. */
 export const MintAuthorizationStep05StateSchema = Data.Object({
@@ -132,7 +133,7 @@ export type MintAuthorizationStep05State = Data.Static<
   typeof MintAuthorizationStep05StateSchema
 >;
 export const MintAuthorizationStep05State =
-  MintAuthorizationStep05StateSchema as unknown as MintAuthorizationStep05State;
+  asDataType<MintAuthorizationStep05State>(MintAuthorizationStep05StateSchema);
 
 // ## Step 01 — bind the accepted committed transaction
 
@@ -143,7 +144,7 @@ export type MintAuthorizationStep01Datum = Data.Static<
   typeof MintAuthorizationStep01DatumSchema
 >;
 export const MintAuthorizationStep01Datum =
-  MintAuthorizationStep01DatumSchema as unknown as MintAuthorizationStep01Datum;
+  asDataType<MintAuthorizationStep01Datum>(MintAuthorizationStep01DatumSchema);
 
 /** Twin of `step_01.Args`. */
 export const MintAuthorizationStep01ArgsSchema = Data.Object({
@@ -153,7 +154,7 @@ export type MintAuthorizationStep01Args = Data.Static<
   typeof MintAuthorizationStep01ArgsSchema
 >;
 export const MintAuthorizationStep01Args =
-  MintAuthorizationStep01ArgsSchema as unknown as MintAuthorizationStep01Args;
+  asDataType<MintAuthorizationStep01Args>(MintAuthorizationStep01ArgsSchema);
 
 export const MintAuthorizationStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MintAuthorizationStep01ArgsSchema);
@@ -161,7 +162,9 @@ export type MintAuthorizationStep01SpendRedeemer = Data.Static<
   typeof MintAuthorizationStep01SpendRedeemerSchema
 >;
 export const MintAuthorizationStep01SpendRedeemer =
-  MintAuthorizationStep01SpendRedeemerSchema as unknown as MintAuthorizationStep01SpendRedeemer;
+  asDataType<MintAuthorizationStep01SpendRedeemer>(
+    MintAuthorizationStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — committed-claim openings
 
@@ -172,7 +175,7 @@ export type MintAuthorizationStep02Datum = Data.Static<
   typeof MintAuthorizationStep02DatumSchema
 >;
 export const MintAuthorizationStep02Datum =
-  MintAuthorizationStep02DatumSchema as unknown as MintAuthorizationStep02Datum;
+  asDataType<MintAuthorizationStep02Datum>(MintAuthorizationStep02DatumSchema);
 
 export const MintAuthorizationEventToStepMembershipSchema =
   rootMembershipProofSchema(EventKeySchema, EventToStepValueSchema);
@@ -199,7 +202,7 @@ export type MintAuthorizationStep02Args = Data.Static<
   typeof MintAuthorizationStep02ArgsSchema
 >;
 export const MintAuthorizationStep02Args =
-  MintAuthorizationStep02ArgsSchema as unknown as MintAuthorizationStep02Args;
+  asDataType<MintAuthorizationStep02Args>(MintAuthorizationStep02ArgsSchema);
 
 export const MintAuthorizationStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MintAuthorizationStep02ArgsSchema);
@@ -207,7 +210,9 @@ export type MintAuthorizationStep02SpendRedeemer = Data.Static<
   typeof MintAuthorizationStep02SpendRedeemerSchema
 >;
 export const MintAuthorizationStep02SpendRedeemer =
-  MintAuthorizationStep02SpendRedeemerSchema as unknown as MintAuthorizationStep02SpendRedeemer;
+  asDataType<MintAuthorizationStep02SpendRedeemer>(
+    MintAuthorizationStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — direction dispatch
 
@@ -218,7 +223,7 @@ export type MintAuthorizationStep03Datum = Data.Static<
   typeof MintAuthorizationStep03DatumSchema
 >;
 export const MintAuthorizationStep03Datum =
-  MintAuthorizationStep03DatumSchema as unknown as MintAuthorizationStep03Datum;
+  asDataType<MintAuthorizationStep03Datum>(MintAuthorizationStep03DatumSchema);
 
 /**
  * Twin of `step_03.Args`: `WitnessAbsence` (direction A's inline half,
@@ -247,7 +252,7 @@ export type MintAuthorizationStep03Args = Data.Static<
   typeof MintAuthorizationStep03ArgsSchema
 >;
 export const MintAuthorizationStep03Args =
-  MintAuthorizationStep03ArgsSchema as unknown as MintAuthorizationStep03Args;
+  asDataType<MintAuthorizationStep03Args>(MintAuthorizationStep03ArgsSchema);
 
 export const MintAuthorizationStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MintAuthorizationStep03ArgsSchema);
@@ -255,7 +260,9 @@ export type MintAuthorizationStep03SpendRedeemer = Data.Static<
   typeof MintAuthorizationStep03SpendRedeemerSchema
 >;
 export const MintAuthorizationStep03SpendRedeemer =
-  MintAuthorizationStep03SpendRedeemerSchema as unknown as MintAuthorizationStep03SpendRedeemer;
+  asDataType<MintAuthorizationStep03SpendRedeemer>(
+    MintAuthorizationStep03SpendRedeemerSchema,
+  );
 
 // ## Step 04 — direction-A reference-input scan (self-loop)
 
@@ -266,7 +273,7 @@ export type MintAuthorizationStep04Datum = Data.Static<
   typeof MintAuthorizationStep04DatumSchema
 >;
 export const MintAuthorizationStep04Datum =
-  MintAuthorizationStep04DatumSchema as unknown as MintAuthorizationStep04Datum;
+  asDataType<MintAuthorizationStep04Datum>(MintAuthorizationStep04DatumSchema);
 
 /**
  * Twin of `step_04.Args`: `ResolveNext` (self-loop over the cursor) is
@@ -295,7 +302,7 @@ export type MintAuthorizationStep04Args = Data.Static<
   typeof MintAuthorizationStep04ArgsSchema
 >;
 export const MintAuthorizationStep04Args =
-  MintAuthorizationStep04ArgsSchema as unknown as MintAuthorizationStep04Args;
+  asDataType<MintAuthorizationStep04Args>(MintAuthorizationStep04ArgsSchema);
 
 export const MintAuthorizationStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MintAuthorizationStep04ArgsSchema);
@@ -303,7 +310,9 @@ export type MintAuthorizationStep04SpendRedeemer = Data.Static<
   typeof MintAuthorizationStep04SpendRedeemerSchema
 >;
 export const MintAuthorizationStep04SpendRedeemer =
-  MintAuthorizationStep04SpendRedeemerSchema as unknown as MintAuthorizationStep04SpendRedeemer;
+  asDataType<MintAuthorizationStep04SpendRedeemer>(
+    MintAuthorizationStep04SpendRedeemerSchema,
+  );
 
 // ## Step 05 — finalize
 
@@ -314,7 +323,7 @@ export type MintAuthorizationStep05Datum = Data.Static<
   typeof MintAuthorizationStep05DatumSchema
 >;
 export const MintAuthorizationStep05Datum =
-  MintAuthorizationStep05DatumSchema as unknown as MintAuthorizationStep05Datum;
+  asDataType<MintAuthorizationStep05Datum>(MintAuthorizationStep05DatumSchema);
 
 /** Twin of `step_05.Args`. */
 export const MintAuthorizationStep05ArgsSchema = Data.Object({
@@ -326,7 +335,7 @@ export type MintAuthorizationStep05Args = Data.Static<
   typeof MintAuthorizationStep05ArgsSchema
 >;
 export const MintAuthorizationStep05Args =
-  MintAuthorizationStep05ArgsSchema as unknown as MintAuthorizationStep05Args;
+  asDataType<MintAuthorizationStep05Args>(MintAuthorizationStep05ArgsSchema);
 
 export const MintAuthorizationStep05SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MintAuthorizationStep05ArgsSchema);
@@ -334,7 +343,9 @@ export type MintAuthorizationStep05SpendRedeemer = Data.Static<
   typeof MintAuthorizationStep05SpendRedeemerSchema
 >;
 export const MintAuthorizationStep05SpendRedeemer =
-  MintAuthorizationStep05SpendRedeemerSchema as unknown as MintAuthorizationStep05SpendRedeemer;
+  asDataType<MintAuthorizationStep05SpendRedeemer>(
+    MintAuthorizationStep05SpendRedeemerSchema,
+  );
 
 // ## Step resolver
 

@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -65,7 +66,6 @@ const FraudProofCatalogueIdSchema = LucidData.Bytes({
   minLength: SDK.FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: SDK.FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
 });
-type LucidDataSchema = Parameters<typeof LucidData.to>[1];
 
 type IndexedFraudProof<
   CategoryName extends
@@ -100,7 +100,7 @@ const encodeFraudProofCatalogueKey = (categoryId: Buffer): Buffer =>
   Buffer.from(
     LucidData.to(
       categoryId.toString("hex"),
-      FraudProofCatalogueIdSchema as unknown as LucidDataSchema,
+      asLucidSchema(FraudProofCatalogueIdSchema),
     ),
     "hex",
   );
@@ -111,7 +111,7 @@ const encodeFraudProofCatalogueValue = (
   Buffer.from(
     LucidData.to(
       fraudProofValidator.spendingScriptHash,
-      SDK.ScriptHashSchema as unknown as LucidDataSchema,
+      asLucidSchema(SDK.ScriptHashSchema),
     ),
     "hex",
   );

@@ -47,6 +47,7 @@ import {
   formatUnknownError,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -68,8 +69,6 @@ import {
   requireProof,
   transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 export const INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION =
   "midgard-input-no-idx-evidence-v1" as const;
@@ -843,11 +842,11 @@ export const prepareInputNoIdxFromTransactions = async ({
   );
   const inputsPreimageDatum = Data.to(
     inputsPreimage,
-    SDK.MidgardTxInputList as unknown as LucidDataSchema,
+    asLucidSchema(SDK.MidgardTxInputList),
   );
   const outputsPreimageDatum = Data.to(
     outputsPreimage,
-    SDK.MidgardTxOutputList as unknown as LucidDataSchema,
+    asLucidSchema(SDK.MidgardTxOutputList),
   );
 
   const output: PreparedInputNoIdxOutput = {

@@ -1,3 +1,13 @@
+/**
+ * Temporary directories and files for suites that exercise real filesystem
+ * behaviour — process supervisors, runners, and the deployment run-state
+ * writers — rather than mocking `node:fs`.
+ *
+ * {@link createTrackedTempDirFactory} registers its own `afterEach`, so a suite
+ * that uses it cannot leak a directory by forgetting to clean up. That is why
+ * this is a factory rather than a bare `mkdtemp` wrapper.
+ */
+
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

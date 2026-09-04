@@ -3,6 +3,7 @@ import {
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -360,8 +361,9 @@ const RawWithdrawnCancelRedeemerSchema = SDK.faultProofStepRedeemerSchema(
 type RawWithdrawnCancelRedeemer = Data.Static<
   typeof RawWithdrawnCancelRedeemerSchema
 >;
-const RawWithdrawnCancelRedeemer =
-  RawWithdrawnCancelRedeemerSchema as unknown as RawWithdrawnCancelRedeemer;
+const RawWithdrawnCancelRedeemer = asDataType<RawWithdrawnCancelRedeemer>(
+  RawWithdrawnCancelRedeemerSchema,
+);
 
 /** Test-only advancement that bypasses the honest step-02 guards. */
 export const submitRawWithdrawnReferenceInputStep02 = async ({

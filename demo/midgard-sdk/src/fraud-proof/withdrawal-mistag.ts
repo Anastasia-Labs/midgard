@@ -4,6 +4,7 @@
  * Production catalogue category `withdrawalMistag` (`00000014`). The schemas
  * mirror `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-0*.ak`.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -63,7 +64,7 @@ export type WithdrawalMistagStep01Datum = Data.Static<
   typeof WithdrawalMistagStep01DatumSchema
 >;
 export const WithdrawalMistagStep01Datum =
-  WithdrawalMistagStep01DatumSchema as unknown as WithdrawalMistagStep01Datum;
+  asDataType<WithdrawalMistagStep01Datum>(WithdrawalMistagStep01DatumSchema);
 export const WithdrawalMistagStep01ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -75,14 +76,16 @@ export type WithdrawalMistagStep01Args = Data.Static<
   typeof WithdrawalMistagStep01ArgsSchema
 >;
 export const WithdrawalMistagStep01Args =
-  WithdrawalMistagStep01ArgsSchema as unknown as WithdrawalMistagStep01Args;
+  asDataType<WithdrawalMistagStep01Args>(WithdrawalMistagStep01ArgsSchema);
 export const WithdrawalMistagStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(WithdrawalMistagStep01ArgsSchema);
 export type WithdrawalMistagStep01SpendRedeemer = Data.Static<
   typeof WithdrawalMistagStep01SpendRedeemerSchema
 >;
 export const WithdrawalMistagStep01SpendRedeemer =
-  WithdrawalMistagStep01SpendRedeemerSchema as unknown as WithdrawalMistagStep01SpendRedeemer;
+  asDataType<WithdrawalMistagStep01SpendRedeemer>(
+    WithdrawalMistagStep01SpendRedeemerSchema,
+  );
 
 export const WithdrawalMistagStep02StateSchema = Data.Object({
   challenged_header_hash: HeaderHashSchema,
@@ -98,7 +101,7 @@ export type WithdrawalMistagStep02State = Data.Static<
   typeof WithdrawalMistagStep02StateSchema
 >;
 export const WithdrawalMistagStep02State =
-  WithdrawalMistagStep02StateSchema as unknown as WithdrawalMistagStep02State;
+  asDataType<WithdrawalMistagStep02State>(WithdrawalMistagStep02StateSchema);
 export const WithdrawalMistagStep02DatumSchema = faultProofStepDatumSchema(
   WithdrawalMistagStep02StateSchema,
 );
@@ -106,7 +109,7 @@ export type WithdrawalMistagStep02Datum = Data.Static<
   typeof WithdrawalMistagStep02DatumSchema
 >;
 export const WithdrawalMistagStep02Datum =
-  WithdrawalMistagStep02DatumSchema as unknown as WithdrawalMistagStep02Datum;
+  asDataType<WithdrawalMistagStep02Datum>(WithdrawalMistagStep02DatumSchema);
 export const WithdrawalMistagStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -118,14 +121,16 @@ export type WithdrawalMistagStep02Args = Data.Static<
   typeof WithdrawalMistagStep02ArgsSchema
 >;
 export const WithdrawalMistagStep02Args =
-  WithdrawalMistagStep02ArgsSchema as unknown as WithdrawalMistagStep02Args;
+  asDataType<WithdrawalMistagStep02Args>(WithdrawalMistagStep02ArgsSchema);
 export const WithdrawalMistagStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(WithdrawalMistagStep02ArgsSchema);
 export type WithdrawalMistagStep02SpendRedeemer = Data.Static<
   typeof WithdrawalMistagStep02SpendRedeemerSchema
 >;
 export const WithdrawalMistagStep02SpendRedeemer =
-  WithdrawalMistagStep02SpendRedeemerSchema as unknown as WithdrawalMistagStep02SpendRedeemer;
+  asDataType<WithdrawalMistagStep02SpendRedeemer>(
+    WithdrawalMistagStep02SpendRedeemerSchema,
+  );
 
 export const WithdrawalMistagStep03StateSchema = Data.Object({
   challenged_header_hash: HeaderHashSchema,
@@ -138,7 +143,7 @@ export type WithdrawalMistagStep03State = Data.Static<
   typeof WithdrawalMistagStep03StateSchema
 >;
 export const WithdrawalMistagStep03State =
-  WithdrawalMistagStep03StateSchema as unknown as WithdrawalMistagStep03State;
+  asDataType<WithdrawalMistagStep03State>(WithdrawalMistagStep03StateSchema);
 export const WithdrawalMistagStep03DatumSchema = faultProofStepDatumSchema(
   WithdrawalMistagStep03StateSchema,
 );
@@ -146,7 +151,7 @@ export type WithdrawalMistagStep03Datum = Data.Static<
   typeof WithdrawalMistagStep03DatumSchema
 >;
 export const WithdrawalMistagStep03Datum =
-  WithdrawalMistagStep03DatumSchema as unknown as WithdrawalMistagStep03Datum;
+  asDataType<WithdrawalMistagStep03Datum>(WithdrawalMistagStep03DatumSchema);
 export const WithdrawalMistagLedgerEvidenceSchema = Data.Enum([
   Data.Object({
     PresentLedgerOutput: Data.Object({
@@ -165,7 +170,9 @@ export type WithdrawalMistagLedgerEvidence = Data.Static<
   typeof WithdrawalMistagLedgerEvidenceSchema
 >;
 export const WithdrawalMistagLedgerEvidence =
-  WithdrawalMistagLedgerEvidenceSchema as unknown as WithdrawalMistagLedgerEvidence;
+  asDataType<WithdrawalMistagLedgerEvidence>(
+    WithdrawalMistagLedgerEvidenceSchema,
+  );
 export const WithdrawalMistagStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -176,14 +183,16 @@ export type WithdrawalMistagStep03Args = Data.Static<
   typeof WithdrawalMistagStep03ArgsSchema
 >;
 export const WithdrawalMistagStep03Args =
-  WithdrawalMistagStep03ArgsSchema as unknown as WithdrawalMistagStep03Args;
+  asDataType<WithdrawalMistagStep03Args>(WithdrawalMistagStep03ArgsSchema);
 export const WithdrawalMistagStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(WithdrawalMistagStep03ArgsSchema);
 export type WithdrawalMistagStep03SpendRedeemer = Data.Static<
   typeof WithdrawalMistagStep03SpendRedeemerSchema
 >;
 export const WithdrawalMistagStep03SpendRedeemer =
-  WithdrawalMistagStep03SpendRedeemerSchema as unknown as WithdrawalMistagStep03SpendRedeemer;
+  asDataType<WithdrawalMistagStep03SpendRedeemer>(
+    WithdrawalMistagStep03SpendRedeemerSchema,
+  );
 
 export const WithdrawalMistagStep04StateSchema = Data.Object({
   challenged_header_hash: HeaderHashSchema,
@@ -198,7 +207,7 @@ export type WithdrawalMistagStep04State = Data.Static<
   typeof WithdrawalMistagStep04StateSchema
 >;
 export const WithdrawalMistagStep04State =
-  WithdrawalMistagStep04StateSchema as unknown as WithdrawalMistagStep04State;
+  asDataType<WithdrawalMistagStep04State>(WithdrawalMistagStep04StateSchema);
 export const WithdrawalMistagStep04DatumSchema = faultProofStepDatumSchema(
   WithdrawalMistagStep04StateSchema,
 );
@@ -206,7 +215,7 @@ export type WithdrawalMistagStep04Datum = Data.Static<
   typeof WithdrawalMistagStep04DatumSchema
 >;
 export const WithdrawalMistagStep04Datum =
-  WithdrawalMistagStep04DatumSchema as unknown as WithdrawalMistagStep04Datum;
+  asDataType<WithdrawalMistagStep04Datum>(WithdrawalMistagStep04DatumSchema);
 export const WithdrawalMistagStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -216,14 +225,16 @@ export type WithdrawalMistagStep04Args = Data.Static<
   typeof WithdrawalMistagStep04ArgsSchema
 >;
 export const WithdrawalMistagStep04Args =
-  WithdrawalMistagStep04ArgsSchema as unknown as WithdrawalMistagStep04Args;
+  asDataType<WithdrawalMistagStep04Args>(WithdrawalMistagStep04ArgsSchema);
 export const WithdrawalMistagStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(WithdrawalMistagStep04ArgsSchema);
 export type WithdrawalMistagStep04SpendRedeemer = Data.Static<
   typeof WithdrawalMistagStep04SpendRedeemerSchema
 >;
 export const WithdrawalMistagStep04SpendRedeemer =
-  WithdrawalMistagStep04SpendRedeemerSchema as unknown as WithdrawalMistagStep04SpendRedeemer;
+  asDataType<WithdrawalMistagStep04SpendRedeemer>(
+    WithdrawalMistagStep04SpendRedeemerSchema,
+  );
 
 export const WithdrawalMistagStep05StateSchema = Data.Object({
   challenged_header_hash: HeaderHashSchema,
@@ -237,7 +248,7 @@ export type WithdrawalMistagStep05State = Data.Static<
   typeof WithdrawalMistagStep05StateSchema
 >;
 export const WithdrawalMistagStep05State =
-  WithdrawalMistagStep05StateSchema as unknown as WithdrawalMistagStep05State;
+  asDataType<WithdrawalMistagStep05State>(WithdrawalMistagStep05StateSchema);
 export const WithdrawalMistagStep05DatumSchema = faultProofStepDatumSchema(
   WithdrawalMistagStep05StateSchema,
 );
@@ -245,7 +256,7 @@ export type WithdrawalMistagStep05Datum = Data.Static<
   typeof WithdrawalMistagStep05DatumSchema
 >;
 export const WithdrawalMistagStep05Datum =
-  WithdrawalMistagStep05DatumSchema as unknown as WithdrawalMistagStep05Datum;
+  asDataType<WithdrawalMistagStep05Datum>(WithdrawalMistagStep05DatumSchema);
 export const WithdrawalMistagStep05ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -255,14 +266,16 @@ export type WithdrawalMistagStep05Args = Data.Static<
   typeof WithdrawalMistagStep05ArgsSchema
 >;
 export const WithdrawalMistagStep05Args =
-  WithdrawalMistagStep05ArgsSchema as unknown as WithdrawalMistagStep05Args;
+  asDataType<WithdrawalMistagStep05Args>(WithdrawalMistagStep05ArgsSchema);
 export const WithdrawalMistagStep05SpendRedeemerSchema =
   faultProofStepRedeemerSchema(WithdrawalMistagStep05ArgsSchema);
 export type WithdrawalMistagStep05SpendRedeemer = Data.Static<
   typeof WithdrawalMistagStep05SpendRedeemerSchema
 >;
 export const WithdrawalMistagStep05SpendRedeemer =
-  WithdrawalMistagStep05SpendRedeemerSchema as unknown as WithdrawalMistagStep05SpendRedeemer;
+  asDataType<WithdrawalMistagStep05SpendRedeemer>(
+    WithdrawalMistagStep05SpendRedeemerSchema,
+  );
 
 export type WithdrawalMistagDirection =
   | "valid-marked-invalid"

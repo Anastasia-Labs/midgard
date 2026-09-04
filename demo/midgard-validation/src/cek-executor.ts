@@ -81,6 +81,7 @@ import {
   type MidgardCekMapConversionControl,
   verifyMidgardCekCoreStep,
 } from "./cek-machine.js";
+import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 type Bytes = Uint8Array;
 
@@ -1384,7 +1385,7 @@ class StructuralExecutor {
       );
       resultType = { kind: "data" };
     } else {
-      if (!(sourcePayload instanceof DataMap)) {
+      if (!isPlutusDataMap(sourcePayload)) {
         throw new Error("unMapData requires a map Data payload");
       }
       resultPayload = new DataList(

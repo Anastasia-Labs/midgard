@@ -1,4 +1,5 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -70,7 +71,7 @@ export const DaParamsDatumSchema = Data.Object({
   update_threshold: Data.Integer(),
 });
 export type DaParamsDatum = Data.Static<typeof DaParamsDatumSchema>;
-export const DaParamsDatum = DaParamsDatumSchema as unknown as DaParamsDatum;
+export const DaParamsDatum = asDataType<DaParamsDatum>(DaParamsDatumSchema);
 
 /**
  * Smallest owner set the DA params governor will represent: **one**.
@@ -204,8 +205,9 @@ export const DaAttestationDatumSchema = Data.Object({
   attestation_count: Data.Integer(),
 });
 export type DaAttestationDatum = Data.Static<typeof DaAttestationDatumSchema>;
-export const DaAttestationDatum =
-  DaAttestationDatumSchema as unknown as DaAttestationDatum;
+export const DaAttestationDatum = asDataType<DaAttestationDatum>(
+  DaAttestationDatumSchema,
+);
 
 export const DaAttestationMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -237,8 +239,9 @@ export const DaAttestationMintRedeemerSchema = Data.Enum([
 export type DaAttestationMintRedeemer = Data.Static<
   typeof DaAttestationMintRedeemerSchema
 >;
-export const DaAttestationMintRedeemer =
-  DaAttestationMintRedeemerSchema as unknown as DaAttestationMintRedeemer;
+export const DaAttestationMintRedeemer = asDataType<DaAttestationMintRedeemer>(
+  DaAttestationMintRedeemerSchema,
+);
 
 export const DaAttestationSpendRedeemerSchema = Data.Enum([
   Data.Object({
@@ -263,7 +266,7 @@ export type DaAttestationSpendRedeemer = Data.Static<
   typeof DaAttestationSpendRedeemerSchema
 >;
 export const DaAttestationSpendRedeemer =
-  DaAttestationSpendRedeemerSchema as unknown as DaAttestationSpendRedeemer;
+  asDataType<DaAttestationSpendRedeemer>(DaAttestationSpendRedeemerSchema);
 
 /**
  * The rescue path's entire authorization condition, mirrored off-chain

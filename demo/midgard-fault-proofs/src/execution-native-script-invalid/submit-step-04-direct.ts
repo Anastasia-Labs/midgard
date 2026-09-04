@@ -2,6 +2,7 @@ import {
   decodeMidgardVersionedScript,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type FieldOpening,
   MIDGARD_FIELD_INDEX,
@@ -37,12 +38,13 @@ type State = NonNullable<
   Data.Static<typeof ExecutionNativeScriptInvalidStep04DatumSchema>["data"]
 >;
 type Datum = Data.Static<typeof ExecutionNativeScriptInvalidStep04DatumSchema>;
-const Datum = ExecutionNativeScriptInvalidStep04DatumSchema as unknown as Datum;
+const Datum = asDataType<Datum>(ExecutionNativeScriptInvalidStep04DatumSchema);
 type Redeemer = Data.Static<
   typeof ExecutionNativeScriptInvalidStep04RedeemerSchema
 >;
-const Redeemer =
-  ExecutionNativeScriptInvalidStep04RedeemerSchema as unknown as Redeemer;
+const Redeemer = asDataType<Redeemer>(
+  ExecutionNativeScriptInvalidStep04RedeemerSchema,
+);
 
 export const submitExecutionNativeScriptInvalidStep04Direct = async ({
   lucid,

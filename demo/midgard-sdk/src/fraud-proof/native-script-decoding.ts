@@ -20,6 +20,7 @@
  * `tests/native-script-decoding.test.ts` against values measured out of
  * those Aiken modules over their own `thread_fixture_v1` fixtures.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -102,7 +103,9 @@ export type NativeScriptDecodingBindState = Data.Static<
   typeof NativeScriptDecodingBindStateSchema
 >;
 export const NativeScriptDecodingBindState =
-  NativeScriptDecodingBindStateSchema as unknown as NativeScriptDecodingBindState;
+  asDataType<NativeScriptDecodingBindState>(
+    NativeScriptDecodingBindStateSchema,
+  );
 
 /**
  * The constant-size thread state from step-02's output onward — 15 fields in
@@ -134,7 +137,9 @@ export type NativeScriptDecodingScanThreadState = Data.Static<
   typeof NativeScriptDecodingScanThreadStateSchema
 >;
 export const NativeScriptDecodingScanThreadState =
-  NativeScriptDecodingScanThreadStateSchema as unknown as NativeScriptDecodingScanThreadState;
+  asDataType<NativeScriptDecodingScanThreadState>(
+    NativeScriptDecodingScanThreadStateSchema,
+  );
 
 // ## Step 01 — bind the verdict subject
 
@@ -145,7 +150,9 @@ export type NativeScriptDecodingStep01Datum = Data.Static<
   typeof NativeScriptDecodingStep01DatumSchema
 >;
 export const NativeScriptDecodingStep01Datum =
-  NativeScriptDecodingStep01DatumSchema as unknown as NativeScriptDecodingStep01Datum;
+  asDataType<NativeScriptDecodingStep01Datum>(
+    NativeScriptDecodingStep01DatumSchema,
+  );
 
 /**
  * Twin of `step_01.Args`: `BindNormalTransaction` (direction A over a normal
@@ -171,7 +178,9 @@ export type NativeScriptDecodingStep01Args = Data.Static<
   typeof NativeScriptDecodingStep01ArgsSchema
 >;
 export const NativeScriptDecodingStep01Args =
-  NativeScriptDecodingStep01ArgsSchema as unknown as NativeScriptDecodingStep01Args;
+  asDataType<NativeScriptDecodingStep01Args>(
+    NativeScriptDecodingStep01ArgsSchema,
+  );
 
 export const NativeScriptDecodingStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptDecodingStep01ArgsSchema);
@@ -179,7 +188,9 @@ export type NativeScriptDecodingStep01SpendRedeemer = Data.Static<
   typeof NativeScriptDecodingStep01SpendRedeemerSchema
 >;
 export const NativeScriptDecodingStep01SpendRedeemer =
-  NativeScriptDecodingStep01SpendRedeemerSchema as unknown as NativeScriptDecodingStep01SpendRedeemer;
+  asDataType<NativeScriptDecodingStep01SpendRedeemer>(
+    NativeScriptDecodingStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — committed-claim openings
 
@@ -190,7 +201,9 @@ export type NativeScriptDecodingStep02Datum = Data.Static<
   typeof NativeScriptDecodingStep02DatumSchema
 >;
 export const NativeScriptDecodingStep02Datum =
-  NativeScriptDecodingStep02DatumSchema as unknown as NativeScriptDecodingStep02Datum;
+  asDataType<NativeScriptDecodingStep02Datum>(
+    NativeScriptDecodingStep02DatumSchema,
+  );
 
 export const NativeScriptDecodingEventToStepMembershipSchema =
   rootMembershipProofSchema(EventKeySchema, EventToStepValueSchema);
@@ -218,7 +231,9 @@ export type NativeScriptDecodingStep02Args = Data.Static<
   typeof NativeScriptDecodingStep02ArgsSchema
 >;
 export const NativeScriptDecodingStep02Args =
-  NativeScriptDecodingStep02ArgsSchema as unknown as NativeScriptDecodingStep02Args;
+  asDataType<NativeScriptDecodingStep02Args>(
+    NativeScriptDecodingStep02ArgsSchema,
+  );
 
 export const NativeScriptDecodingStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptDecodingStep02ArgsSchema);
@@ -226,7 +241,9 @@ export type NativeScriptDecodingStep02SpendRedeemer = Data.Static<
   typeof NativeScriptDecodingStep02SpendRedeemerSchema
 >;
 export const NativeScriptDecodingStep02SpendRedeemer =
-  NativeScriptDecodingStep02SpendRedeemerSchema as unknown as NativeScriptDecodingStep02SpendRedeemer;
+  asDataType<NativeScriptDecodingStep02SpendRedeemer>(
+    NativeScriptDecodingStep02SpendRedeemerSchema,
+  );
 
 // ## Split step 03 — OpenSubject, BindDescriptor, AdvanceOrClose
 
@@ -240,7 +257,9 @@ export type NativeScriptDecodingStep03OpenSubjectDatum = Data.Static<
   typeof NativeScriptDecodingStep03OpenSubjectDatumSchema
 >;
 export const NativeScriptDecodingStep03OpenSubjectDatum =
-  NativeScriptDecodingStep03OpenSubjectDatumSchema as unknown as NativeScriptDecodingStep03OpenSubjectDatum;
+  asDataType<NativeScriptDecodingStep03OpenSubjectDatum>(
+    NativeScriptDecodingStep03OpenSubjectDatumSchema,
+  );
 export const NativeScriptDecodingStep03OpenSubjectArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -250,14 +269,18 @@ export type NativeScriptDecodingStep03OpenSubjectArgs = Data.Static<
   typeof NativeScriptDecodingStep03OpenSubjectArgsSchema
 >;
 export const NativeScriptDecodingStep03OpenSubjectArgs =
-  NativeScriptDecodingStep03OpenSubjectArgsSchema as unknown as NativeScriptDecodingStep03OpenSubjectArgs;
+  asDataType<NativeScriptDecodingStep03OpenSubjectArgs>(
+    NativeScriptDecodingStep03OpenSubjectArgsSchema,
+  );
 export const NativeScriptDecodingStep03OpenSubjectSpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptDecodingStep03OpenSubjectArgsSchema);
 export type NativeScriptDecodingStep03OpenSubjectSpendRedeemer = Data.Static<
   typeof NativeScriptDecodingStep03OpenSubjectSpendRedeemerSchema
 >;
 export const NativeScriptDecodingStep03OpenSubjectSpendRedeemer =
-  NativeScriptDecodingStep03OpenSubjectSpendRedeemerSchema as unknown as NativeScriptDecodingStep03OpenSubjectSpendRedeemer;
+  asDataType<NativeScriptDecodingStep03OpenSubjectSpendRedeemer>(
+    NativeScriptDecodingStep03OpenSubjectSpendRedeemerSchema,
+  );
 
 export const NativeScriptDecodingStep03BindDescriptorDatumSchema =
   NativeScriptDecodingStep03DatumSchema;
@@ -265,7 +288,9 @@ export type NativeScriptDecodingStep03BindDescriptorDatum = Data.Static<
   typeof NativeScriptDecodingStep03BindDescriptorDatumSchema
 >;
 export const NativeScriptDecodingStep03BindDescriptorDatum =
-  NativeScriptDecodingStep03BindDescriptorDatumSchema as unknown as NativeScriptDecodingStep03BindDescriptorDatum;
+  asDataType<NativeScriptDecodingStep03BindDescriptorDatum>(
+    NativeScriptDecodingStep03BindDescriptorDatumSchema,
+  );
 export const NativeScriptDecodingStep03BindDescriptorArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -278,7 +303,9 @@ export type NativeScriptDecodingStep03BindDescriptorArgs = Data.Static<
   typeof NativeScriptDecodingStep03BindDescriptorArgsSchema
 >;
 export const NativeScriptDecodingStep03BindDescriptorArgs =
-  NativeScriptDecodingStep03BindDescriptorArgsSchema as unknown as NativeScriptDecodingStep03BindDescriptorArgs;
+  asDataType<NativeScriptDecodingStep03BindDescriptorArgs>(
+    NativeScriptDecodingStep03BindDescriptorArgsSchema,
+  );
 export const NativeScriptDecodingStep03BindDescriptorSpendRedeemerSchema =
   faultProofStepRedeemerSchema(
     NativeScriptDecodingStep03BindDescriptorArgsSchema,
@@ -287,7 +314,9 @@ export type NativeScriptDecodingStep03BindDescriptorSpendRedeemer = Data.Static<
   typeof NativeScriptDecodingStep03BindDescriptorSpendRedeemerSchema
 >;
 export const NativeScriptDecodingStep03BindDescriptorSpendRedeemer =
-  NativeScriptDecodingStep03BindDescriptorSpendRedeemerSchema as unknown as NativeScriptDecodingStep03BindDescriptorSpendRedeemer;
+  asDataType<NativeScriptDecodingStep03BindDescriptorSpendRedeemer>(
+    NativeScriptDecodingStep03BindDescriptorSpendRedeemerSchema,
+  );
 
 export const NativeScriptDecodingStep03AdvanceOrCloseDatumSchema =
   NativeScriptDecodingStep03DatumSchema;
@@ -295,7 +324,9 @@ export type NativeScriptDecodingStep03AdvanceOrCloseDatum = Data.Static<
   typeof NativeScriptDecodingStep03AdvanceOrCloseDatumSchema
 >;
 export const NativeScriptDecodingStep03AdvanceOrCloseDatum =
-  NativeScriptDecodingStep03AdvanceOrCloseDatumSchema as unknown as NativeScriptDecodingStep03AdvanceOrCloseDatum;
+  asDataType<NativeScriptDecodingStep03AdvanceOrCloseDatum>(
+    NativeScriptDecodingStep03AdvanceOrCloseDatumSchema,
+  );
 export const NativeScriptDecodingStep03AdvanceOrCloseArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -309,7 +340,9 @@ export type NativeScriptDecodingStep03AdvanceOrCloseArgs = Data.Static<
   typeof NativeScriptDecodingStep03AdvanceOrCloseArgsSchema
 >;
 export const NativeScriptDecodingStep03AdvanceOrCloseArgs =
-  NativeScriptDecodingStep03AdvanceOrCloseArgsSchema as unknown as NativeScriptDecodingStep03AdvanceOrCloseArgs;
+  asDataType<NativeScriptDecodingStep03AdvanceOrCloseArgs>(
+    NativeScriptDecodingStep03AdvanceOrCloseArgsSchema,
+  );
 export const NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemerSchema =
   faultProofStepRedeemerSchema(
     NativeScriptDecodingStep03AdvanceOrCloseArgsSchema,
@@ -318,7 +351,9 @@ export type NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer = Data.Static<
   typeof NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemerSchema
 >;
 export const NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer =
-  NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemerSchema as unknown as NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer;
+  asDataType<NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer>(
+    NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemerSchema,
+  );
 
 // ## Step 04 — finalize
 
@@ -328,7 +363,9 @@ export type NativeScriptDecodingStep04Datum = Data.Static<
   typeof NativeScriptDecodingStep04DatumSchema
 >;
 export const NativeScriptDecodingStep04Datum =
-  NativeScriptDecodingStep04DatumSchema as unknown as NativeScriptDecodingStep04Datum;
+  asDataType<NativeScriptDecodingStep04Datum>(
+    NativeScriptDecodingStep04DatumSchema,
+  );
 
 /** Twin of `step_04.Args`. */
 export const NativeScriptDecodingStep04ArgsSchema = Data.Object({
@@ -340,7 +377,9 @@ export type NativeScriptDecodingStep04Args = Data.Static<
   typeof NativeScriptDecodingStep04ArgsSchema
 >;
 export const NativeScriptDecodingStep04Args =
-  NativeScriptDecodingStep04ArgsSchema as unknown as NativeScriptDecodingStep04Args;
+  asDataType<NativeScriptDecodingStep04Args>(
+    NativeScriptDecodingStep04ArgsSchema,
+  );
 
 export const NativeScriptDecodingStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptDecodingStep04ArgsSchema);
@@ -348,7 +387,9 @@ export type NativeScriptDecodingStep04SpendRedeemer = Data.Static<
   typeof NativeScriptDecodingStep04SpendRedeemerSchema
 >;
 export const NativeScriptDecodingStep04SpendRedeemer =
-  NativeScriptDecodingStep04SpendRedeemerSchema as unknown as NativeScriptDecodingStep04SpendRedeemer;
+  asDataType<NativeScriptDecodingStep04SpendRedeemer>(
+    NativeScriptDecodingStep04SpendRedeemerSchema,
+  );
 
 // ## Step resolver
 

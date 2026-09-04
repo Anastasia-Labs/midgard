@@ -23,20 +23,28 @@
  * types are not, and rely instead on every value here being driven through the
  * real encoders and compared byte-for-byte against the checked-in fixture,
  * where a wrong shape fails loudly.
+ *
+ * **Hazard.** The package sets `skipLibCheck: true`, which silences type errors
+ * *inside* this file as well as inside third-party declarations. A name here
+ * that no longer exists in `src/` therefore does not fail the build: it
+ * degrades silently to `any`, and the suite that consumes these declarations
+ * quietly stops being typed at all. Both fixture declaration files had drifted
+ * that way. `npx tsc --noEmit --skipLibCheck false` from the package root
+ * surfaces it — the only first-party errors it reports are in these files.
  */
 
 import type {
-  MidgardAddressWitnessV1,
-  MidgardFieldItemsV1,
-  MidgardMintAssetV1,
-  MidgardMintPolicyItemV1,
-  MidgardRedeemerPurposeV1,
-  MidgardRedeemerWitnessV1,
-  MidgardTxInputV1,
+  MidgardAddressWitness,
+  MidgardFieldItems,
+  MidgardMintAsset,
+  MidgardMintPolicyItem,
+  MidgardRedeemerPurpose,
+  MidgardRedeemerWitness,
+  MidgardTxInput,
 } from "../../src/codec/native-tx-field-items.js";
 import type {
-  MidgardNativeTxBodyCanonicalV1,
-  MidgardNativeTxWitnessSetCanonicalV1,
+  MidgardNativeTxBodyCanonical,
+  MidgardNativeTxWitnessSetCanonical,
 } from "../../src/codec/native.js";
 import type { MidgardTxOutput } from "../../src/codec/output.js";
 import type { MidgardDatum } from "../../src/codec/datum.js";
@@ -48,9 +56,9 @@ export declare const filler: (length: number, seed?: number) => Buffer;
 export declare const input: (
   seed: number,
   outputIndex: number,
-) => MidgardTxInputV1;
+) => MidgardTxInput;
 
-export declare const addressWitness: (seed: number) => MidgardAddressWitnessV1;
+export declare const addressWitness: (seed: number) => MidgardAddressWitness;
 
 export declare const keyAddress: (seed: number) => Buffer;
 
@@ -74,22 +82,22 @@ export declare const midgardV1: (
 export declare const nativeCardano: (seed: number) => MidgardVersionedScript;
 
 export declare const redeemer: (
-  purpose: MidgardRedeemerPurposeV1,
+  purpose: MidgardRedeemerPurpose,
   index: number,
   redeemerCborHex: string,
   memory: number,
   steps: number,
-) => MidgardRedeemerWitnessV1;
+) => MidgardRedeemerWitness;
 
 export declare const mintPolicy: (
   seed: number,
-  assets: readonly MidgardMintAssetV1[],
-) => MidgardMintPolicyItemV1;
+  assets: readonly MidgardMintAsset[],
+) => MidgardMintPolicyItem;
 
 export declare const asset: (
   nameHex: string,
   quantity: number,
-) => MidgardMintAssetV1;
+) => MidgardMintAsset;
 
 export declare const FIXED_INDEX_BOUNDARIES: readonly number[];
 
@@ -103,8 +111,8 @@ export declare const CARRIAGE_BOUNDARY_LENGTHS: readonly number[];
 export declare const FIELD_PREIMAGE_LENGTHS: readonly number[];
 
 export declare const FIELD_PREIMAGE_LENGTH_SOURCE: {
-  readonly body: MidgardNativeTxBodyCanonicalV1;
-  readonly witnessSet: MidgardNativeTxWitnessSetCanonicalV1;
+  readonly body: MidgardNativeTxBodyCanonical;
+  readonly witnessSet: MidgardNativeTxWitnessSetCanonical;
 };
 
 export declare const STRADDLE_FIELD_INDEX: 1;
@@ -115,7 +123,7 @@ export declare const STRADDLE_ITEM_INDEX: number;
 export declare const STRADDLE_OWNER: Buffer;
 export declare const STRADDLE_TX_ID: Buffer;
 
-export declare const straddleInputs: () => readonly MidgardTxInputV1[];
+export declare const straddleInputs: () => readonly MidgardTxInput[];
 
 /** One labelled vector: a set of structured items for its group's field. */
 export type FieldVectorV1 = {
@@ -125,7 +133,7 @@ export type FieldVectorV1 = {
 
 /** One field's vectors, with the Aiken producer/decoder pair they pin. */
 export type FieldVectorGroupV1 = {
-  readonly fieldIndex: MidgardFieldItemsV1["fieldIndex"];
+  readonly fieldIndex: MidgardFieldItems["fieldIndex"];
   readonly aikenProducer: string;
   readonly aikenDecoder: string;
   readonly vectors: readonly FieldVectorV1[];
@@ -136,6 +144,6 @@ export declare const FIELD_VECTORS: readonly FieldVectorGroupV1[];
 export declare const selectorFor: (
   group: FieldVectorGroupV1,
   vector: FieldVectorV1,
-) => MidgardFieldItemsV1;
+) => MidgardFieldItems;
 
 export type { MidgardTxOutput };

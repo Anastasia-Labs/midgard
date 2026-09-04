@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   MinAdaStep05DatumSchema,
   MinAdaStep05SpendRedeemerSchema,
@@ -19,9 +20,9 @@ import {
 
 type State = NonNullable<Data.Static<typeof MinAdaStep05DatumSchema>["data"]>;
 type Datum = Data.Static<typeof MinAdaStep05DatumSchema>;
-const Datum = MinAdaStep05DatumSchema as unknown as Datum;
+const Datum = asDataType<Datum>(MinAdaStep05DatumSchema);
 type Redeemer = Data.Static<typeof MinAdaStep05SpendRedeemerSchema>;
-const Redeemer = MinAdaStep05SpendRedeemerSchema as unknown as Redeemer;
+const Redeemer = asDataType<Redeemer>(MinAdaStep05SpendRedeemerSchema);
 
 export const submitMinAdaStep05 = async ({
   lucid,

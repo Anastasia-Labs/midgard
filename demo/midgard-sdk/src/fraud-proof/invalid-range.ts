@@ -1,4 +1,5 @@
 import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { OutputReferenceSchema } from "../common.js";
@@ -23,8 +24,9 @@ export const InvalidRangeStep01DatumSchema = faultProofStepDatumSchema(
 export type InvalidRangeStep01Datum = Data.Static<
   typeof InvalidRangeStep01DatumSchema
 >;
-export const InvalidRangeStep01Datum =
-  InvalidRangeStep01DatumSchema as unknown as InvalidRangeStep01Datum;
+export const InvalidRangeStep01Datum = asDataType<InvalidRangeStep01Datum>(
+  InvalidRangeStep01DatumSchema,
+);
 
 export const InvalidRangeVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
@@ -67,7 +69,9 @@ export type InvalidRangeStep01SpendRedeemer = Data.Static<
   typeof InvalidRangeStep01SpendRedeemerSchema
 >;
 export const InvalidRangeStep01SpendRedeemer =
-  InvalidRangeStep01SpendRedeemerSchema as unknown as InvalidRangeStep01SpendRedeemer;
+  asDataType<InvalidRangeStep01SpendRedeemer>(
+    InvalidRangeStep01SpendRedeemerSchema,
+  );
 
 export const NormalizedTimeRangeSchema = Data.Enum([
   Data.Object({
@@ -82,8 +86,9 @@ export const NormalizedTimeRangeSchema = Data.Enum([
   Data.Literal("InvalidRange"),
 ]);
 export type NormalizedTimeRange = Data.Static<typeof NormalizedTimeRangeSchema>;
-export const NormalizedTimeRange =
-  NormalizedTimeRangeSchema as unknown as NormalizedTimeRange;
+export const NormalizedTimeRange = asDataType<NormalizedTimeRange>(
+  NormalizedTimeRangeSchema,
+);
 
 export const InvalidRangeStep02StateSchema = Data.Object({
   subject: InvalidRangeVerdictSubjectSchema,
@@ -93,8 +98,9 @@ export const InvalidRangeStep02StateSchema = Data.Object({
 export type InvalidRangeStep02State = Data.Static<
   typeof InvalidRangeStep02StateSchema
 >;
-export const InvalidRangeStep02State =
-  InvalidRangeStep02StateSchema as unknown as InvalidRangeStep02State;
+export const InvalidRangeStep02State = asDataType<InvalidRangeStep02State>(
+  InvalidRangeStep02StateSchema,
+);
 
 export const InvalidRangeStep02DatumSchema = faultProofStepDatumSchema(
   InvalidRangeStep02StateSchema,
@@ -102,8 +108,9 @@ export const InvalidRangeStep02DatumSchema = faultProofStepDatumSchema(
 export type InvalidRangeStep02Datum = Data.Static<
   typeof InvalidRangeStep02DatumSchema
 >;
-export const InvalidRangeStep02Datum =
-  InvalidRangeStep02DatumSchema as unknown as InvalidRangeStep02Datum;
+export const InvalidRangeStep02Datum = asDataType<InvalidRangeStep02Datum>(
+  InvalidRangeStep02DatumSchema,
+);
 
 export const InvalidRangeStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -113,8 +120,9 @@ export const InvalidRangeStep02ArgsSchema = Data.Object({
 export type InvalidRangeStep02Args = Data.Static<
   typeof InvalidRangeStep02ArgsSchema
 >;
-export const InvalidRangeStep02Args =
-  InvalidRangeStep02ArgsSchema as unknown as InvalidRangeStep02Args;
+export const InvalidRangeStep02Args = asDataType<InvalidRangeStep02Args>(
+  InvalidRangeStep02ArgsSchema,
+);
 
 export const InvalidRangeStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(InvalidRangeStep02ArgsSchema);
@@ -122,7 +130,9 @@ export type InvalidRangeStep02SpendRedeemer = Data.Static<
   typeof InvalidRangeStep02SpendRedeemerSchema
 >;
 export const InvalidRangeStep02SpendRedeemer =
-  InvalidRangeStep02SpendRedeemerSchema as unknown as InvalidRangeStep02SpendRedeemer;
+  asDataType<InvalidRangeStep02SpendRedeemer>(
+    InvalidRangeStep02SpendRedeemerSchema,
+  );
 
 export {
   FaultProofStepCancel as InvalidRangeStepCancel,

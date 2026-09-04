@@ -12,6 +12,7 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
+import { createTrackedTempDirFactory } from "@al-ft/midgard-test-support/temp-files";
 import { walletFromSeed } from "@lucid-evolution/lucid";
 import type { NodeUtxo } from "midgard-node/commands/command-utils";
 import { sha256Hex } from "midgard-node/sha256";
@@ -35,7 +36,6 @@ import {
   buildStressMetrics,
   computeMetricWindow,
 } from "../src/commands/stress-stage-metrics.js";
-import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
 const TEST_SEED =
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart";

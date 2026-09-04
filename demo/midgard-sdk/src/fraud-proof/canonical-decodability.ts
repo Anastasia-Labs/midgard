@@ -27,6 +27,7 @@
  * `onchain/aiken/lib/midgard/fraud-proofs/canonical-decodability/rule-golden.test.ak`,
  * and are recomputed on both sides.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -384,7 +385,7 @@ export const BodyFieldClaimSchema = Data.Object({
 });
 export type BodyFieldClaimV1 = Data.Static<typeof BodyFieldClaimSchema>;
 export const BodyFieldClaimV1 =
-  BodyFieldClaimSchema as unknown as BodyFieldClaimV1;
+  asDataType<BodyFieldClaimV1>(BodyFieldClaimSchema);
 
 /**
  * §2.5 fields 6–8. `witness_set` is unauthenticated on arrival and is checked
@@ -396,8 +397,9 @@ export const WitnessFieldClaimSchema = Data.Object({
   carriage: FieldCarriageSchema,
 });
 export type WitnessFieldClaimV1 = Data.Static<typeof WitnessFieldClaimSchema>;
-export const WitnessFieldClaimV1 =
-  WitnessFieldClaimSchema as unknown as WitnessFieldClaimV1;
+export const WitnessFieldClaimV1 = asDataType<WitnessFieldClaimV1>(
+  WitnessFieldClaimSchema,
+);
 
 /**
  * `midgard/fraud_proofs/canonical_decodability/rule.CommittedFieldClaim`.
@@ -411,8 +413,9 @@ export const CommittedFieldClaimSchema = Data.Enum([
   Data.Object({ WitnessFieldClaim: WitnessFieldClaimSchema }),
 ]);
 export type CommittedFieldClaim = Data.Static<typeof CommittedFieldClaimSchema>;
-export const CommittedFieldClaim =
-  CommittedFieldClaimSchema as unknown as CommittedFieldClaim;
+export const CommittedFieldClaim = asDataType<CommittedFieldClaim>(
+  CommittedFieldClaimSchema,
+);
 
 export const CanonicalDecodabilityStep01DatumSchema = faultProofStepDatumSchema(
   Data.Any(),
@@ -421,7 +424,9 @@ export type CanonicalDecodabilityStep01Datum = Data.Static<
   typeof CanonicalDecodabilityStep01DatumSchema
 >;
 export const CanonicalDecodabilityStep01Datum =
-  CanonicalDecodabilityStep01DatumSchema as unknown as CanonicalDecodabilityStep01Datum;
+  asDataType<CanonicalDecodabilityStep01Datum>(
+    CanonicalDecodabilityStep01DatumSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/canonical_decodability/step_01.Args`. */
 export const CanonicalDecodabilityStep01ArgsSchema = Data.Object({
@@ -432,7 +437,9 @@ export type CanonicalDecodabilityStep01Args = Data.Static<
   typeof CanonicalDecodabilityStep01ArgsSchema
 >;
 export const CanonicalDecodabilityStep01Args =
-  CanonicalDecodabilityStep01ArgsSchema as unknown as CanonicalDecodabilityStep01Args;
+  asDataType<CanonicalDecodabilityStep01Args>(
+    CanonicalDecodabilityStep01ArgsSchema,
+  );
 
 export const CanonicalDecodabilityStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(CanonicalDecodabilityStep01ArgsSchema);
@@ -440,7 +447,9 @@ export type CanonicalDecodabilityStep01SpendRedeemer = Data.Static<
   typeof CanonicalDecodabilityStep01SpendRedeemerSchema
 >;
 export const CanonicalDecodabilityStep01SpendRedeemer =
-  CanonicalDecodabilityStep01SpendRedeemerSchema as unknown as CanonicalDecodabilityStep01SpendRedeemer;
+  asDataType<CanonicalDecodabilityStep01SpendRedeemer>(
+    CanonicalDecodabilityStep01SpendRedeemerSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/canonical_decodability/step_02.State`.
@@ -458,7 +467,9 @@ export type CanonicalDecodabilityStep02State = Data.Static<
   typeof CanonicalDecodabilityStep02StateSchema
 >;
 export const CanonicalDecodabilityStep02State =
-  CanonicalDecodabilityStep02StateSchema as unknown as CanonicalDecodabilityStep02State;
+  asDataType<CanonicalDecodabilityStep02State>(
+    CanonicalDecodabilityStep02StateSchema,
+  );
 
 export const CanonicalDecodabilityStep02DatumSchema = faultProofStepDatumSchema(
   CanonicalDecodabilityStep02StateSchema,
@@ -467,7 +478,9 @@ export type CanonicalDecodabilityStep02Datum = Data.Static<
   typeof CanonicalDecodabilityStep02DatumSchema
 >;
 export const CanonicalDecodabilityStep02Datum =
-  CanonicalDecodabilityStep02DatumSchema as unknown as CanonicalDecodabilityStep02Datum;
+  asDataType<CanonicalDecodabilityStep02Datum>(
+    CanonicalDecodabilityStep02DatumSchema,
+  );
 
 export const CanonicalDecodabilityStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -478,7 +491,9 @@ export type CanonicalDecodabilityStep02Args = Data.Static<
   typeof CanonicalDecodabilityStep02ArgsSchema
 >;
 export const CanonicalDecodabilityStep02Args =
-  CanonicalDecodabilityStep02ArgsSchema as unknown as CanonicalDecodabilityStep02Args;
+  asDataType<CanonicalDecodabilityStep02Args>(
+    CanonicalDecodabilityStep02ArgsSchema,
+  );
 
 export const CanonicalDecodabilityStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(CanonicalDecodabilityStep02ArgsSchema);
@@ -486,7 +501,9 @@ export type CanonicalDecodabilityStep02SpendRedeemer = Data.Static<
   typeof CanonicalDecodabilityStep02SpendRedeemerSchema
 >;
 export const CanonicalDecodabilityStep02SpendRedeemer =
-  CanonicalDecodabilityStep02SpendRedeemerSchema as unknown as CanonicalDecodabilityStep02SpendRedeemer;
+  asDataType<CanonicalDecodabilityStep02SpendRedeemer>(
+    CanonicalDecodabilityStep02SpendRedeemerSchema,
+  );
 
 export const CanonicalDecodabilityTxInclusionArgsSchema =
   NativeTxInclusionArgsSchema;

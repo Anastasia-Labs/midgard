@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -41,7 +42,7 @@ export const RootDomainSchema = Data.Enum([
   Data.Literal("ValidationTracesRootDomain"),
 ]);
 export type RootDomain = Data.Static<typeof RootDomainSchema>;
-export const RootDomain = RootDomainSchema as unknown as RootDomain;
+export const RootDomain = asDataType<RootDomain>(RootDomainSchema);
 
 export const ROOT_DOMAINS = {
   withdrawals: "WithdrawalsRootDomain",
@@ -66,7 +67,7 @@ export const RootCountProofSchema = Data.Object({
   phas_root: MerkleRootSchema,
   count: Data.Integer(),
 });
-export const RootCountProof = RootCountProofSchema as unknown as RootCountProof;
+export const RootCountProof = asDataType<RootCountProof>(RootCountProofSchema);
 
 const COUNTED_ROOT_TAG_HEX = Buffer.from("MidgardRootCountV1", "utf8").toString(
   "hex",
@@ -179,8 +180,9 @@ export const RawRootMembershipProofSchema = rootMembershipProofSchema(
   Data.Bytes(),
 );
 export type RawRootMembershipProof = RootMembershipProof<string, string>;
-export const RawRootMembershipProof =
-  RawRootMembershipProofSchema as unknown as RawRootMembershipProof;
+export const RawRootMembershipProof = asDataType<RawRootMembershipProof>(
+  RawRootMembershipProofSchema,
+);
 
 export const DepositSourceMembershipProofSchema = rootMembershipProofSchema(
   OutputReferenceSchema,
@@ -191,7 +193,7 @@ export type DepositSourceMembershipProof = RootMembershipProof<
   DepositInfo
 >;
 export const DepositSourceMembershipProof =
-  DepositSourceMembershipProofSchema as unknown as DepositSourceMembershipProof;
+  asDataType<DepositSourceMembershipProof>(DepositSourceMembershipProofSchema);
 
 export const WithdrawalSourceMembershipProofSchema = rootMembershipProofSchema(
   OutputReferenceSchema,
@@ -202,7 +204,9 @@ export type WithdrawalSourceMembershipProof = RootMembershipProof<
   WithdrawalInfo
 >;
 export const WithdrawalSourceMembershipProof =
-  WithdrawalSourceMembershipProofSchema as unknown as WithdrawalSourceMembershipProof;
+  asDataType<WithdrawalSourceMembershipProof>(
+    WithdrawalSourceMembershipProofSchema,
+  );
 
 export const ForcedTransactionSourceMembershipProofSchema =
   rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxV1Schema);
@@ -211,7 +215,9 @@ export type ForcedTransactionSourceMembershipProof = RootMembershipProof<
   ForcedInclusionTxV1
 >;
 export const ForcedTransactionSourceMembershipProof =
-  ForcedTransactionSourceMembershipProofSchema as unknown as ForcedTransactionSourceMembershipProof;
+  asDataType<ForcedTransactionSourceMembershipProof>(
+    ForcedTransactionSourceMembershipProofSchema,
+  );
 
 export const EventSettlementMembershipProofSchema = Data.Enum([
   Data.Object({
@@ -234,22 +240,26 @@ export type EventSettlementMembershipProof = Data.Static<
   typeof EventSettlementMembershipProofSchema
 >;
 export const EventSettlementMembershipProof =
-  EventSettlementMembershipProofSchema as unknown as EventSettlementMembershipProof;
+  asDataType<EventSettlementMembershipProof>(
+    EventSettlementMembershipProofSchema,
+  );
 
 export const RawRootNonMembershipProofSchema = rootNonMembershipProofSchema(
   Data.Bytes(),
 );
 export type RawRootNonMembershipProof = RootNonMembershipProof<string>;
-export const RawRootNonMembershipProof =
-  RawRootNonMembershipProofSchema as unknown as RawRootNonMembershipProof;
+export const RawRootNonMembershipProof = asDataType<RawRootNonMembershipProof>(
+  RawRootNonMembershipProofSchema,
+);
 
 export const TransitionTraceMembershipProofSchema = rootMembershipProofSchema(
   Data.Integer(),
   TransitionStepSchema,
 );
 export type IndexedTraceProof = RootMembershipProof<bigint, TransitionStep>;
-export const IndexedTraceProof =
-  TransitionTraceMembershipProofSchema as unknown as IndexedTraceProof;
+export const IndexedTraceProof = asDataType<IndexedTraceProof>(
+  TransitionTraceMembershipProofSchema,
+);
 
 export const AdjacentTraceProofSchema = Data.Object({
   lower: TransitionTraceMembershipProofSchema,
@@ -259,8 +269,9 @@ export type AdjacentTraceProof = {
   readonly lower: IndexedTraceProof;
   readonly upper: IndexedTraceProof;
 };
-export const AdjacentTraceProof =
-  AdjacentTraceProofSchema as unknown as AdjacentTraceProof;
+export const AdjacentTraceProof = asDataType<AdjacentTraceProof>(
+  AdjacentTraceProofSchema,
+);
 
 export const EventToStepMembershipProofSchema = rootMembershipProofSchema(
   EventKeySchema,
@@ -271,13 +282,15 @@ export type EventToStepMembershipProof = RootMembershipProof<
   EventToStepValue
 >;
 export const EventToStepMembershipProof =
-  EventToStepMembershipProofSchema as unknown as EventToStepMembershipProof;
+  asDataType<EventToStepMembershipProof>(EventToStepMembershipProofSchema);
 
 export const EventToStepNonMembershipProofSchema =
   rootNonMembershipProofSchema(EventKeySchema);
 export type EventToStepNonMembershipProof = RootNonMembershipProof<EventKey>;
 export const EventToStepNonMembershipProof =
-  EventToStepNonMembershipProofSchema as unknown as EventToStepNonMembershipProof;
+  asDataType<EventToStepNonMembershipProof>(
+    EventToStepNonMembershipProofSchema,
+  );
 
 export const EventToStepProofSchema = Data.Enum([
   Data.Object({
@@ -302,5 +315,6 @@ export type EventToStepProof =
         readonly non_membership: EventToStepNonMembershipProof;
       };
     };
-export const EventToStepProof =
-  EventToStepProofSchema as unknown as EventToStepProof;
+export const EventToStepProof = asDataType<EventToStepProof>(
+  EventToStepProofSchema,
+);

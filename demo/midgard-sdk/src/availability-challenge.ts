@@ -6,6 +6,7 @@ import {
   MIDGARD_MAX_DA_PAYLOAD_BYTES,
   verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, fromHex, toHex } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -229,7 +230,9 @@ export type DaAvailabilityTrancheDescriptor = Data.Static<
   typeof DaAvailabilityTrancheDescriptorSchema
 >;
 export const DaAvailabilityTrancheDescriptor =
-  DaAvailabilityTrancheDescriptorSchema as unknown as DaAvailabilityTrancheDescriptor;
+  asDataType<DaAvailabilityTrancheDescriptor>(
+    DaAvailabilityTrancheDescriptorSchema,
+  );
 
 /**
  * Release-bound response geometry. The applied response-transaction
@@ -246,7 +249,9 @@ export type DaAvailabilityResponseGeometry = Data.Static<
   typeof DaAvailabilityResponseGeometrySchema
 >;
 export const DaAvailabilityResponseGeometry =
-  DaAvailabilityResponseGeometrySchema as unknown as DaAvailabilityResponseGeometry;
+  asDataType<DaAvailabilityResponseGeometry>(
+    DaAvailabilityResponseGeometrySchema,
+  );
 
 /**
  * Authenticated release/DA parameters selected after applied response-cost
@@ -266,8 +271,9 @@ export const DaAvailabilityParametersSchema = Data.Object({
 export type DaAvailabilityParameters = Data.Static<
   typeof DaAvailabilityParametersSchema
 >;
-export const DaAvailabilityParameters =
-  DaAvailabilityParametersSchema as unknown as DaAvailabilityParameters;
+export const DaAvailabilityParameters = asDataType<DaAvailabilityParameters>(
+  DaAvailabilityParametersSchema,
+);
 
 export const DaAvailabilityCommitmentSchema = Data.Object({
   version: Data.Integer(),
@@ -281,8 +287,9 @@ export const DaAvailabilityCommitmentSchema = Data.Object({
 export type DaAvailabilityCommitment = Data.Static<
   typeof DaAvailabilityCommitmentSchema
 >;
-export const DaAvailabilityCommitment =
-  DaAvailabilityCommitmentSchema as unknown as DaAvailabilityCommitment;
+export const DaAvailabilityCommitment = asDataType<DaAvailabilityCommitment>(
+  DaAvailabilityCommitmentSchema,
+);
 
 const DaAvailabilityTrancheStartSchema = Data.Object({
   version: Data.Integer(),
@@ -345,8 +352,9 @@ export const DaAvailabilityBondDatumSchema = Data.Enum([
 export type DaAvailabilityBondDatum = Data.Static<
   typeof DaAvailabilityBondDatumSchema
 >;
-export const DaAvailabilityBondDatum =
-  DaAvailabilityBondDatumSchema as unknown as DaAvailabilityBondDatum;
+export const DaAvailabilityBondDatum = asDataType<DaAvailabilityBondDatum>(
+  DaAvailabilityBondDatumSchema,
+);
 
 export const DaAvailabilityTrancheDatumSchema = Data.Enum([
   Data.Object({
@@ -378,7 +386,7 @@ export type DaAvailabilityTrancheDatum = Data.Static<
   typeof DaAvailabilityTrancheDatumSchema
 >;
 export const DaAvailabilityTrancheDatum =
-  DaAvailabilityTrancheDatumSchema as unknown as DaAvailabilityTrancheDatum;
+  asDataType<DaAvailabilityTrancheDatum>(DaAvailabilityTrancheDatumSchema);
 
 export const DaAvailabilityTrancheTerminalStatusSchema = Data.Enum([
   Data.Object({
@@ -397,7 +405,9 @@ export type DaAvailabilityTrancheTerminalStatus = Data.Static<
   typeof DaAvailabilityTrancheTerminalStatusSchema
 >;
 export const DaAvailabilityTrancheTerminalStatus =
-  DaAvailabilityTrancheTerminalStatusSchema as unknown as DaAvailabilityTrancheTerminalStatus;
+  asDataType<DaAvailabilityTrancheTerminalStatus>(
+    DaAvailabilityTrancheTerminalStatusSchema,
+  );
 
 const DaAvailabilityTerminalAccumulatorStepSchema = Data.Object({
   version: Data.Integer(),
@@ -421,7 +431,9 @@ export type DaAvailabilityTerminalAccumulatorDatum = Data.Static<
   typeof DaAvailabilityTerminalAccumulatorDatumSchema
 >;
 export const DaAvailabilityTerminalAccumulatorDatum =
-  DaAvailabilityTerminalAccumulatorDatumSchema as unknown as DaAvailabilityTerminalAccumulatorDatum;
+  asDataType<DaAvailabilityTerminalAccumulatorDatum>(
+    DaAvailabilityTerminalAccumulatorDatumSchema,
+  );
 
 export const DaAvailabilityPublicationDatumSchema = Data.Object({
   deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -442,7 +454,9 @@ export type DaAvailabilityPublicationDatum = Data.Static<
   typeof DaAvailabilityPublicationDatumSchema
 >;
 export const DaAvailabilityPublicationDatum =
-  DaAvailabilityPublicationDatumSchema as unknown as DaAvailabilityPublicationDatum;
+  asDataType<DaAvailabilityPublicationDatum>(
+    DaAvailabilityPublicationDatumSchema,
+  );
 
 /** Exact minting-policy ABI for the retained DA bond/challenge lifecycle. */
 export const DaAvailabilityMintRedeemerSchema = Data.Enum([
@@ -504,7 +518,7 @@ export type DaAvailabilityMintRedeemer = Data.Static<
   typeof DaAvailabilityMintRedeemerSchema
 >;
 export const DaAvailabilityMintRedeemer =
-  DaAvailabilityMintRedeemerSchema as unknown as DaAvailabilityMintRedeemer;
+  asDataType<DaAvailabilityMintRedeemer>(DaAvailabilityMintRedeemerSchema);
 
 /** Exact spending-validator ABI for bond, tranche and carrier UTxOs. */
 export const DaAvailabilitySpendRedeemerSchema = Data.Enum([
@@ -529,7 +543,7 @@ export type DaAvailabilitySpendRedeemer = Data.Static<
   typeof DaAvailabilitySpendRedeemerSchema
 >;
 export const DaAvailabilitySpendRedeemer =
-  DaAvailabilitySpendRedeemerSchema as unknown as DaAvailabilitySpendRedeemer;
+  asDataType<DaAvailabilitySpendRedeemer>(DaAvailabilitySpendRedeemerSchema);
 
 export class DaAvailabilityCommitmentError extends Error {
   constructor(message: string) {

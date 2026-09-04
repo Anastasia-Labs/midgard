@@ -10,6 +10,7 @@ import {
   midgardFieldCommitment,
   midgardFieldCommitmentFromItems,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   applyParamsToScript,
   CML,
@@ -1783,7 +1784,7 @@ describe("fault-proof contract builder", () => {
     ).toEqual(expectedFinalCbors);
     const finalHashesSchema = Data.Array(Data.Bytes());
     type FinalHashes = Data.Static<typeof finalHashesSchema>;
-    const FinalHashes = finalHashesSchema as unknown as FinalHashes;
+    const FinalHashes = asDataType<FinalHashes>(finalHashesSchema);
     const finalHashesData = Data.from(
       Data.to(
         expectedFinalCbors.map((cbor) => spendingScriptHash(cbor)),
@@ -2062,7 +2063,7 @@ describe("fault-proof contract builder", () => {
     ] as const;
     const resolverHashesSchema = Data.Array(Data.Bytes());
     type ResolverHashes = Data.Static<typeof resolverHashesSchema>;
-    const ResolverHashes = resolverHashesSchema as unknown as ResolverHashes;
+    const ResolverHashes = asDataType<ResolverHashes>(resolverHashesSchema);
     const expectedSemanticResolverHashParams =
       expectedSemanticResolverGroups.map(
         (group) =>

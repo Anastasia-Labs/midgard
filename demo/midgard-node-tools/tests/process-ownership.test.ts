@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  createTrackedTempDirFactory,
+  writeScript,
+} from "@al-ft/midgard-test-support/temp-files";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -15,10 +19,6 @@ import {
   validateOwnedProcessGroupRecord,
   writeOwnedProcessGroupRecord,
 } from "../src/e2e/process-ownership.js";
-import {
-  createTrackedTempDirFactory,
-  writeScript,
-} from "./helpers/temp-files.js";
 
 const makeTempDir = createTrackedTempDirFactory("midgard-process-owner-");
 const cleanupPids = new Set<number>();

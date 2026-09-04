@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Assets,
   Data,
@@ -247,8 +248,9 @@ export const FraudProofCatalogueDatumSchema = Data.Bytes();
 export type FraudProofCatalogueDatum = Data.Static<
   typeof FraudProofCatalogueDatumSchema
 >;
-export const FraudProofCatalogueDatum =
-  FraudProofCatalogueDatumSchema as unknown as FraudProofCatalogueDatum;
+export const FraudProofCatalogueDatum = asDataType<FraudProofCatalogueDatum>(
+  FraudProofCatalogueDatumSchema,
+);
 
 export const FraudProofCatalogueMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
@@ -260,7 +262,9 @@ export type FraudProofCatalogueMintRedeemer = Data.Static<
   typeof FraudProofCatalogueMintRedeemerSchema
 >;
 export const FraudProofCatalogueMintRedeemer =
-  FraudProofCatalogueMintRedeemerSchema as unknown as FraudProofCatalogueMintRedeemer;
+  asDataType<FraudProofCatalogueMintRedeemer>(
+    FraudProofCatalogueMintRedeemerSchema,
+  );
 
 export const FraudProofCatalogueSpendRedeemerSchema = Data.Object({
   fraudProofCatalogueAssetName: Data.Bytes(),
@@ -269,7 +273,9 @@ export type FraudProofCatalogueSpendRedeemer = Data.Static<
   typeof FraudProofCatalogueSpendRedeemerSchema
 >;
 export const FraudProofCatalogueSpendRedeemer =
-  FraudProofCatalogueSpendRedeemerSchema as unknown as FraudProofCatalogueSpendRedeemer;
+  asDataType<FraudProofCatalogueSpendRedeemer>(
+    FraudProofCatalogueSpendRedeemerSchema,
+  );
 
 export type FraudProofCatalogueInitParams = {
   validator: AuthenticatedValidator;

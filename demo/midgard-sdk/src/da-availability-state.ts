@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 /** Exact on-chain DA lifecycle carried by a state-queue node. */
@@ -24,7 +25,9 @@ export type DaAvailabilityStateQueueStatus = Data.Static<
   typeof DaAvailabilityStateQueueStatusSchema
 >;
 export const DaAvailabilityStateQueueStatus =
-  DaAvailabilityStateQueueStatusSchema as unknown as DaAvailabilityStateQueueStatus;
+  asDataType<DaAvailabilityStateQueueStatus>(
+    DaAvailabilityStateQueueStatusSchema,
+  );
 
 export const NO_DA_ATTESTATION: DaAvailabilityStateQueueStatus = "Unattested";
 

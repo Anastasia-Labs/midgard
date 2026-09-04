@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type Assets,
   Data,
@@ -50,8 +51,9 @@ export const WithdrawalOrderDatumSchema = Data.Object({
 export type WithdrawalOrderDatum = Data.Static<
   typeof WithdrawalOrderDatumSchema
 >;
-export const WithdrawalOrderDatum =
-  WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
+export const WithdrawalOrderDatum = asDataType<WithdrawalOrderDatum>(
+  WithdrawalOrderDatumSchema,
+);
 export const WithdrawalSpendPurposeSchema = Data.Enum([
   Data.Literal("InitializePayout"),
   Data.Object({
@@ -63,8 +65,9 @@ export const WithdrawalSpendPurposeSchema = Data.Enum([
 export type WithdrawalSpendPurpose = Data.Static<
   typeof WithdrawalSpendPurposeSchema
 >;
-export const WithdrawalSpendPurpose =
-  WithdrawalSpendPurposeSchema as unknown as WithdrawalSpendPurpose;
+export const WithdrawalSpendPurpose = asDataType<WithdrawalSpendPurpose>(
+  WithdrawalSpendPurposeSchema,
+);
 export const WithdrawalSpendRedeemerSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -79,8 +82,9 @@ export const WithdrawalSpendRedeemerSchema = Data.Object({
 export type WithdrawalSpendRedeemer = Data.Static<
   typeof WithdrawalSpendRedeemerSchema
 >;
-export const WithdrawalSpendRedeemer =
-  WithdrawalSpendRedeemerSchema as unknown as WithdrawalSpendRedeemer;
+export const WithdrawalSpendRedeemer = asDataType<WithdrawalSpendRedeemer>(
+  WithdrawalSpendRedeemerSchema,
+);
 
 export type WithdrawalUTxO = AuthenticUTxO<
   WithdrawalOrderDatum,

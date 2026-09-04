@@ -1,3 +1,4 @@
+import { canonicalJson } from "./canonical-json.js";
 import { computeHash32 } from "./codec/hash.js";
 import {
   MIDGARD_CONSENSUS_FEATURES,
@@ -116,45 +117,8 @@ const isSafeNonNegativeInteger = (value: unknown): value is number =>
 const parseDecimal = (value: string): bigint | null =>
   DECIMAL_PATTERN.test(value) ? BigInt(value) : null;
 
-const stableJsonValue = (value: unknown): unknown => {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new TypeError("Parity report numbers must be safe integers");
-    }
-    return value;
-  }
-  if (Array.isArray(value)) {
-    if (Object.keys(value).length !== value.length) {
-      throw new TypeError("Parity report arrays must be dense");
-    }
-    return value.map(stableJsonValue);
-  }
-  if (typeof value !== "object") {
-    throw new TypeError("Parity report contains an unsupported value");
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    throw new TypeError("Parity report objects must be plain records");
-  }
-  if (Reflect.ownKeys(value).length !== Object.keys(value).length) {
-    throw new TypeError("Parity report contains a non-string key");
-  }
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, child]) => [key, stableJsonValue(child)]),
-  );
-};
-
 const stableJson = (value: unknown): string =>
-  JSON.stringify(stableJsonValue(value));
+  canonicalJson(value, "Parity report");
 
 const dimensionFeature = (
   dimension: MidgardCapabilityDimension,

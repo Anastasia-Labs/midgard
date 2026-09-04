@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Credential,
@@ -188,7 +189,7 @@ export const bufferToHex = (buf: Buffer): string => buf.toString("hex");
 
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
-export const H32 = H32Schema as unknown as H32;
+export const H32 = asDataType<H32>(H32Schema);
 
 export type MintingValidator = {
   mintingScriptCBOR: string;
@@ -403,8 +404,9 @@ export const OutputReferenceSchema = Data.Object({
   outputIndex: Data.Integer(),
 });
 export type OutputReference = Data.Static<typeof OutputReferenceSchema>;
-export const OutputReference =
-  OutputReferenceSchema as unknown as OutputReference;
+export const OutputReference = asDataType<OutputReference>(
+  OutputReferenceSchema,
+);
 
 export const outputReferenceFromUTxO = (
   utxo: Pick<UTxO, "txHash" | "outputIndex">,
@@ -418,23 +420,24 @@ export const AssetsSchema = Data.Object({
   assetName: Data.Bytes(),
 });
 export type Assets = Data.Static<typeof AssetsSchema>;
-export const Assets = AssetsSchema as unknown as Assets;
+export const Assets = asDataType<Assets>(AssetsSchema);
 
 export const ValueSchema = Data.Map(
   Data.Bytes(),
   Data.Map(Data.Bytes(), Data.Integer()),
 );
 export type Value = Data.Static<typeof ValueSchema>;
-export const Value = ValueSchema as unknown as Value;
+export const Value = asDataType<Value>(ValueSchema);
 
 export const POSIXTimeSchema = Data.Integer();
 export type POSIXTime = Data.Static<typeof POSIXTimeSchema>;
-export const POSIXTime = POSIXTimeSchema as unknown as POSIXTime;
+export const POSIXTime = asDataType<POSIXTime>(POSIXTimeSchema);
 
 export const PosixTimeDurationSchema = Data.Integer();
 export type PosixTimeDuration = Data.Static<typeof PosixTimeDurationSchema>;
-export const PosixTimeDuration =
-  PosixTimeDurationSchema as unknown as PosixTimeDuration;
+export const PosixTimeDuration = asDataType<PosixTimeDuration>(
+  PosixTimeDurationSchema,
+);
 
 export const VerificationKeyHashSchema = Data.Bytes({
   minLength: 28,
@@ -447,7 +450,7 @@ export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
 export const MerkleRootSchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type MerkleRoot = Data.Static<typeof MerkleRootSchema>;
-export const MerkleRoot = MerkleRootSchema as unknown as MerkleRoot;
+export const MerkleRoot = asDataType<MerkleRoot>(MerkleRootSchema);
 
 export const CredentialSchema = Data.Enum([
   Data.Object({
@@ -458,7 +461,7 @@ export const CredentialSchema = Data.Enum([
   }),
 ]);
 export type CredentialD = Data.Static<typeof CredentialSchema>;
-export const CredentialD = CredentialSchema as unknown as CredentialD;
+export const CredentialD = asDataType<CredentialD>(CredentialSchema);
 
 export const AddressSchema = Data.Object({
   paymentCredential: CredentialSchema,
@@ -478,7 +481,7 @@ export const AddressSchema = Data.Object({
   ),
 });
 export type AddressData = Data.Static<typeof AddressSchema>;
-export const AddressData = AddressSchema as unknown as AddressData;
+export const AddressData = asDataType<AddressData>(AddressSchema);
 
 export const NeighborSchema = Data.Object({
   nibble: Data.Integer(),
@@ -486,7 +489,7 @@ export const NeighborSchema = Data.Object({
   root: Data.Bytes(),
 });
 export type Neighbor = Data.Static<typeof NeighborSchema>;
-export const Neighbor = NeighborSchema as unknown as Neighbor;
+export const Neighbor = asDataType<Neighbor>(NeighborSchema);
 
 export const ProofStepSchema = Data.Enum([
   Data.Object({
@@ -510,11 +513,11 @@ export const ProofStepSchema = Data.Enum([
   }),
 ]);
 export type ProofStep = Data.Static<typeof ProofStepSchema>;
-export const ProofStep = ProofStepSchema as unknown as ProofStep;
+export const ProofStep = asDataType<ProofStep>(ProofStepSchema);
 
 export const ProofSchema = Data.Array(ProofStepSchema);
 export type Proof = Data.Static<typeof ProofSchema>;
-export const Proof = ProofSchema as unknown as Proof;
+export const Proof = asDataType<Proof>(ProofSchema);
 
 /**
  * TODO: Note that this function does not support pointer addresses.

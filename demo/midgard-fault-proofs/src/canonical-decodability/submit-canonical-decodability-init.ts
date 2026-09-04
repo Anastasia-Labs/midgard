@@ -1,4 +1,5 @@
 /** Pre-registration canonical-decodability thread initialization. */
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofComputationThreadRedeemer,
@@ -52,8 +53,6 @@ import {
   type CanonicalDecodabilityCatalogueCategory,
   canonicalDecodabilitySubmitError,
 } from "./submit-common.js";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 export type SubmitCanonicalDecodabilityInitResult = {
   readonly txHash: string;
@@ -247,17 +246,21 @@ export const submitCanonicalDecodabilityInit = async ({
         root: catalogue.root,
         keyCbor: Data.to(
           category.categoryId,
-          Data.Bytes({
-            minLength: 4,
-            maxLength: 4,
-          }) as unknown as LucidDataSchema,
+          asLucidSchema(
+            Data.Bytes({
+              minLength: 4,
+              maxLength: 4,
+            }),
+          ),
         ),
         valueCbor: Data.to(
           category.scriptHash,
-          Data.Bytes({
-            minLength: 28,
-            maxLength: 28,
-          }) as unknown as LucidDataSchema,
+          asLucidSchema(
+            Data.Bytes({
+              minLength: 28,
+              maxLength: 28,
+            }),
+          ),
         ),
         membershipProofCbor: category.membershipProofCbor,
       }),

@@ -238,7 +238,10 @@ export const makeAlwaysSucceedsContracts = (
     valueNotPreserved: scaffoldChain(appendedFamilyFallback, 4),
     inputSetUniqueness: scaffoldChain(appendedFamilyFallback, 4),
     mintAuthorization: scaffoldChain(appendedFamilyFallback, 5),
-    networkId: scaffoldChain(appendedFamilyFallback, 2),
+    networkId: {
+      ...scaffoldChain(appendedFamilyFallback, 2),
+      forcedStep: appendedFamilyFallback,
+    },
     missingNativeScriptUtxo: scaffoldChain(appendedFamilyFallback, 7),
     nativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 5),
     minAda: {

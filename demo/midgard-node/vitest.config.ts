@@ -1,5 +1,8 @@
-import fs from "node:fs";
-
+import {
+  isolatedForksPool,
+  midgardSourceSsr,
+  rawSqlLoaderPlugin,
+} from "@al-ft/midgard-test-support/vitest";
 import { configDefaults, defineConfig } from "vitest/config";
 
 import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
@@ -40,47 +43,15 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
 const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
 
 export default defineConfig({
-  plugins: [
-    {
-      name: "raw-sql-loader",
-      load(id) {
-        if (!id.endsWith(".sql")) {
-          return null;
-        }
-        return `export default ${JSON.stringify(fs.readFileSync(id, "utf8"))};`;
-      },
-    },
-  ],
+  plugins: [rawSqlLoaderPlugin()],
   test: {
-    // One fresh process per test FILE is a correctness requirement, not a
-    // performance knob. `@lucid-evolution/uplc` grows wasm linear memory on
-    // every evaluation and never reclaims it, so a long-lived worker
-    // eventually exhausts the wasm32 ceiling and the next evaluation surfaces
-    // as `EvaluatorError: unreachable` — a WebAssembly abort wearing a
-    // validator rejection's clothes. `isolate` must stay `true`.
-    //
-    // `maxForks` is the separate, purely-scheduling bound: only ~15 of the
-    // ~155 files touch Postgres and each of those is pinned to its worker's
-    // own database shard, so file parallelism is safe. A 2-core runner sets
-    // `MIDGARD_NODE_TEST_FORKS=1` rather than forcing every machine down to
-    // one file at a time. If a run dies on memory, LOWER the fork count — each
-    // fork carries its own multi-GB emulator heap.
-    pool: "forks",
-    poolOptions: {
-      forks: {
-        isolate: true,
-        singleFork: false,
-        minForks: 1,
-        maxForks: testMaxForks(),
-        // Bound each worker's V8 heap here rather than exporting a blanket
-        // NODE_OPTIONS from the lane runner, which would also hit pnpm, vitest's
-        // own main process and every unrelated tool in the lane. This bounds the
-        // JS heap only: the emulator's wasm evaluator allocates outside it,
-        // which is why the fork count — not this number — is the knob that
-        // actually caps a run's footprint.
-        execArgv: ["--max-old-space-size=4096"],
-      },
-    },
+    // The one-process-per-file requirement is stated once in
+    // `isolatedForksPool`. This suite's own choice is the scheduling cap: only
+    // ~15 of the ~155 files touch Postgres and each of those is pinned to its
+    // worker's own database shard, so file parallelism is safe. A 2-core
+    // runner sets `MIDGARD_NODE_TEST_FORKS=1` rather than forcing every
+    // machine down to one file at a time.
+    ...isolatedForksPool({ maxForks: testMaxForks() }),
     // Creates and migrates one database per worker shard before any file runs.
     globalSetup: ["./tests/global-setup.ts"],
     reporters: [["default", { summary: false }]],
@@ -100,16 +71,7 @@ export default defineConfig({
     ...(bail === undefined ? {} : { bail }),
     environment: "node",
   },
-  ssr: {
-    resolve: {
-      // Resolve workspace packages from source via the `midgard-source` exports
-      // condition so a stale or missing dist can never shape a test result.
-      // Vitest resolves test modules through Vite's SSR pipeline and sets
-      // `ssr.resolve.conditions` itself, so the root `resolve.conditions` is
-      // not consulted; the other entries restate Vitest's server defaults.
-      conditions: ["midgard-source", "node", "development|production"],
-    },
-  },
+  ssr: midgardSourceSsr(),
   esbuild: {
     target: "es2020",
   },

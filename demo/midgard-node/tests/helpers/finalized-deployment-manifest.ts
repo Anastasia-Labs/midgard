@@ -8,6 +8,7 @@ import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
+import { h32ForOrdinal } from "@al-ft/midgard-test-support/hex";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -92,7 +93,7 @@ export const makeFinalizedDeploymentManifestFixture =
         (contractName, index) => [
           contractName,
           {
-            txHash: (index + 1).toString(16).padStart(2, "0").repeat(32),
+            txHash: h32ForOrdinal(index + 1),
             outputIndex: 0,
           },
         ],

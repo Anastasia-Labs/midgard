@@ -1,4 +1,5 @@
 import { type Assets, assetsEqual } from "@al-ft/midgard-core/assets";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -69,8 +70,9 @@ export const ResolutionClaimSchema = Data.Object({
   operator: VerificationKeyHashSchema,
 });
 export type ResolutionClaim = Data.Static<typeof ResolutionClaimSchema>;
-export const ResolutionClaim =
-  ResolutionClaimSchema as unknown as ResolutionClaim;
+export const ResolutionClaim = asDataType<ResolutionClaim>(
+  ResolutionClaimSchema,
+);
 
 export const SettlementDatumSchema = Data.Object({
   deposits_root: MerkleRootSchema,
@@ -80,8 +82,9 @@ export const SettlementDatumSchema = Data.Object({
   resolution_claim: Data.Nullable(ResolutionClaimSchema),
 });
 export type SettlementDatum = Data.Static<typeof SettlementDatumSchema>;
-export const SettlementDatum =
-  SettlementDatumSchema as unknown as SettlementDatum;
+export const SettlementDatum = asDataType<SettlementDatum>(
+  SettlementDatumSchema,
+);
 
 export const EventTypeSchema = Data.Enum([
   Data.Literal("Deposit"),
@@ -97,7 +100,7 @@ export const EventTypeSchema = Data.Enum([
   }),
 ]);
 export type EventType = Data.Static<typeof EventTypeSchema>;
-export const EventType = EventTypeSchema as unknown as EventType;
+export const EventType = asDataType<EventType>(EventTypeSchema);
 
 export const SettlementSpendRedeemerSchema = Data.Enum([
   Data.Object({
@@ -135,8 +138,9 @@ export const SettlementSpendRedeemerSchema = Data.Enum([
 export type SettlementSpendRedeemer = Data.Static<
   typeof SettlementSpendRedeemerSchema
 >;
-export const SettlementSpendRedeemer =
-  SettlementSpendRedeemerSchema as unknown as SettlementSpendRedeemer;
+export const SettlementSpendRedeemer = asDataType<SettlementSpendRedeemer>(
+  SettlementSpendRedeemerSchema,
+);
 
 export const SettlementMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -158,8 +162,9 @@ export const SettlementMintRedeemerSchema = Data.Enum([
 export type SettlementMintRedeemer = Data.Static<
   typeof SettlementMintRedeemerSchema
 >;
-export const SettlementMintRedeemer =
-  SettlementMintRedeemerSchema as unknown as SettlementMintRedeemer;
+export const SettlementMintRedeemer = asDataType<SettlementMintRedeemer>(
+  SettlementMintRedeemerSchema,
+);
 
 export type AttachResolutionClaimParams = {
   settlementValidator: AuthenticatedValidator;

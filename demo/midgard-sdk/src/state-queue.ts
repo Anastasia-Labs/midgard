@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Assets,
@@ -115,8 +116,9 @@ export const SlashingApproachSchema = Data.Enum([
   }),
 ]);
 export type SlashingApproach = Data.Static<typeof SlashingApproachSchema>;
-export const SlashingApproach =
-  SlashingApproachSchema as unknown as SlashingApproach;
+export const SlashingApproach = asDataType<SlashingApproach>(
+  SlashingApproachSchema,
+);
 
 export const BlockRemovalApproachSchema = Data.Enum([
   Data.Object({
@@ -135,8 +137,9 @@ export const BlockRemovalApproachSchema = Data.Enum([
 export type BlockRemovalApproach = Data.Static<
   typeof BlockRemovalApproachSchema
 >;
-export const BlockRemovalApproach =
-  BlockRemovalApproachSchema as unknown as BlockRemovalApproach;
+export const BlockRemovalApproach = asDataType<BlockRemovalApproach>(
+  BlockRemovalApproachSchema,
+);
 
 export const AttestationTimeoutRemovalApproachSchema = Data.Enum([
   Data.Object({
@@ -157,7 +160,9 @@ export type AttestationTimeoutRemovalApproach = Data.Static<
   typeof AttestationTimeoutRemovalApproachSchema
 >;
 export const AttestationTimeoutRemovalApproach =
-  AttestationTimeoutRemovalApproachSchema as unknown as AttestationTimeoutRemovalApproach;
+  asDataType<AttestationTimeoutRemovalApproach>(
+    AttestationTimeoutRemovalApproachSchema,
+  );
 
 export const StateQueueRedeemerSchema = Data.Enum([
   Data.Object({
@@ -229,8 +234,9 @@ export const StateQueueRedeemerSchema = Data.Enum([
   }),
 ]);
 export type StateQueueRedeemer = Data.Static<typeof StateQueueRedeemerSchema>;
-export const StateQueueRedeemer =
-  StateQueueRedeemerSchema as unknown as StateQueueRedeemer;
+export const StateQueueRedeemer = asDataType<StateQueueRedeemer>(
+  StateQueueRedeemerSchema,
+);
 
 export const StateQueueYieldRedeemerSchema = Data.Enum([
   Data.Literal("YieldStateQueueV1"),
@@ -238,8 +244,9 @@ export const StateQueueYieldRedeemerSchema = Data.Enum([
 export type StateQueueYieldRedeemer = Data.Static<
   typeof StateQueueYieldRedeemerSchema
 >;
-export const StateQueueYieldRedeemer =
-  StateQueueYieldRedeemerSchema as unknown as StateQueueYieldRedeemer;
+export const StateQueueYieldRedeemer = asDataType<StateQueueYieldRedeemer>(
+  StateQueueYieldRedeemerSchema,
+);
 
 /** Encode Aiken's sole fieldless `YieldStateQueueV1` constructor. */
 export const encodeStateQueueYieldRedeemer = (): string => Data.void();
@@ -285,8 +292,9 @@ export const StateQueueSpendRedeemerSchema = Data.Enum([
 export type StateQueueSpendRedeemer = Data.Static<
   typeof StateQueueSpendRedeemerSchema
 >;
-export const StateQueueSpendRedeemer =
-  StateQueueSpendRedeemerSchema as unknown as StateQueueSpendRedeemer;
+export const StateQueueSpendRedeemer = asDataType<StateQueueSpendRedeemer>(
+  StateQueueSpendRedeemerSchema,
+);
 
 const STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER = Data.to(
   "LinkedListMutation" as never,

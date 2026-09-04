@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Data,
   fromText,
@@ -38,7 +39,7 @@ export const SlashingReasonSchema = Data.Enum([
   }),
 ]);
 export type SlashingReason = Data.Static<typeof SlashingReasonSchema>;
-export const SlashingReason = SlashingReasonSchema as unknown as SlashingReason;
+export const SlashingReason = asDataType<SlashingReason>(SlashingReasonSchema);
 
 export const SlashingArgumentsSchema = Data.Object({
   slashed_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -48,8 +49,9 @@ export const SlashingArgumentsSchema = Data.Object({
   slashing_reason: SlashingReasonSchema,
 });
 export type SlashingArguments = Data.Static<typeof SlashingArgumentsSchema>;
-export const SlashingArguments =
-  SlashingArgumentsSchema as unknown as SlashingArguments;
+export const SlashingArguments = asDataType<SlashingArguments>(
+  SlashingArgumentsSchema,
+);
 
 export const OperatorRemovalSchedulerSyncSchema = Data.Enum([
   Data.Object({
@@ -70,7 +72,7 @@ export type OperatorRemovalSchedulerSync = Data.Static<
   typeof OperatorRemovalSchedulerSyncSchema
 >;
 export const OperatorRemovalSchedulerSync =
-  OperatorRemovalSchedulerSyncSchema as unknown as OperatorRemovalSchedulerSync;
+  asDataType<OperatorRemovalSchedulerSync>(OperatorRemovalSchedulerSyncSchema);
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
@@ -110,7 +112,7 @@ export type ActiveOperatorSpendRedeemer = Data.Static<
   typeof ActiveOperatorSpendRedeemerSchema
 >;
 export const ActiveOperatorSpendRedeemer =
-  ActiveOperatorSpendRedeemerSchema as unknown as ActiveOperatorSpendRedeemer;
+  asDataType<ActiveOperatorSpendRedeemer>(ActiveOperatorSpendRedeemerSchema);
 
 export const ActiveOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -150,15 +152,16 @@ export type ActiveOperatorMintRedeemer = Data.Static<
   typeof ActiveOperatorMintRedeemerSchema
 >;
 export const ActiveOperatorMintRedeemer =
-  ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
+  asDataType<ActiveOperatorMintRedeemer>(ActiveOperatorMintRedeemerSchema);
 
 export const ActiveOperatorDatumSchema = Data.Object({
   bond_unlock_time: Data.Nullable(POSIXTimeSchema),
   inactivity_strikes: Data.Integer(),
 });
 export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
-export const ActiveOperatorDatum =
-  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
+export const ActiveOperatorDatum = asDataType<ActiveOperatorDatum>(
+  ActiveOperatorDatumSchema,
+);
 export const castActiveOperatorDatumToData = (
   datum: ActiveOperatorDatum,
 ): unknown => Data.castTo(datum, ActiveOperatorDatum);

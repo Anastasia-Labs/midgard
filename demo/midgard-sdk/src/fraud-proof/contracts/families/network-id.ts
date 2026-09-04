@@ -17,6 +17,7 @@ import {
 
 export const NETWORK_ID_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/network_id/step_01.main.spend",
+  forcedStep: "fraud_proofs/network_id/forced_step.main.spend",
   step02: "fraud_proofs/network_id/step_02.main.spend",
 } as const;
 
@@ -25,6 +26,7 @@ export type NetworkIdFaultProofContracts = {
   readonly fraudProof: AuthenticatedValidator;
   readonly fieldPreimageCertificate: MintingValidator;
   readonly networkId: FraudProofChain & {
+    readonly forcedStep: SpendingValidator;
     readonly steps: readonly [SpendingValidator, SpendingValidator];
   };
 };
@@ -57,18 +59,42 @@ export const buildNetworkIdChain = ({
       ],
       "Failed to build network-id step 02",
     );
+    const expectedNetworkId = network === "Mainnet" ? 1n : 0n;
+    const forcedStep = yield* buildFaultProofSpendingStep(
+      context,
+      NETWORK_ID_FAULT_PROOF_TITLES.forcedStep,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        expectedNetworkId,
+      ],
+      "Failed to build network-id forced step",
+    );
     const step01 = yield* buildFaultProofSpendingStep(
       context,
       NETWORK_ID_FAULT_PROOF_TITLES.step01,
       [
         step02.spendingScriptHash,
+        forcedStep.spendingScriptHash,
         computationThread.policyId,
         hubOraclePolicyId,
-        network === "Mainnet" ? 1n : 0n,
+        expectedNetworkId,
       ],
       "Failed to build network-id step 01",
     );
-    return { firstStep: step01, steps: [step01, step02] };
+    // `forcedStep` is compiled and parameterized like any other step, but it
+    // is deliberately NOT a member of `steps`. `steps` is the linear chain the
+    // deployer walks, and the canonical deployment ABI names
+    // `fraudProofNetworkId` and `fraudProofNetworkIdStep02` only; the forced
+    // door is a side entrance into step 02 rather than a third link, and the
+    // family's own deployment shape in `midgard-fault-proofs` already carries
+    // it as a separate optional contract. It is returned by name so callers
+    // that need it can reach it without widening the chain.
+    return {
+      firstStep: step01,
+      forcedStep,
+      steps: [step01, step02],
+    };
   });
 
 export const buildNetworkIdFaultProofContracts = (

@@ -7,6 +7,7 @@ import {
   type DeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { ordinalHex } from "@al-ft/midgard-test-support/hex";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 type ContractIdentity = Readonly<{ scriptHash: string }>;
@@ -21,15 +22,33 @@ export const positionalContractScriptCbor = (contractName: string): string => {
     contractName as (typeof DEPLOYMENT_MANIFEST_CONTRACT_NAMES)[number],
   );
   if (index < 0) throw new Error(`Unknown positional contract ${contractName}`);
-  const ordinal = (index + 1).toString(16);
-  return ordinal.length % 2 === 0 ? ordinal : `0${ordinal}`;
+  return ordinalHex(index + 1);
 };
 
-export const positionalContractScriptHash = (contractName: string): string =>
-  validatorToScriptHash({
+/**
+ * Memoized because it is not cheap: `validatorToScriptHash` runs the script
+ * through Lucid's double-CBOR normalization and the CML hasher, which costs
+ * roughly 40ms per contract. The canonical registry now holds 287 of them, so
+ * rebuilding a whole synthetic deployment cost about twelve seconds a call,
+ * and the watcher authority fixtures build several per suite — enough to blow
+ * a two-minute `beforeAll` budget on the fixture rather than the test. The
+ * mapping is a pure function of the contract name, so one cache entry per name
+ * is exact.
+ */
+const positionalContractScriptHashes = new Map<string, string>();
+
+export const positionalContractScriptHash = (contractName: string): string => {
+  const memoized = positionalContractScriptHashes.get(contractName);
+  if (memoized !== undefined) {
+    return memoized;
+  }
+  const scriptHash = validatorToScriptHash({
     type: "PlutusV3",
     script: positionalContractScriptCbor(contractName),
   });
+  positionalContractScriptHashes.set(contractName, scriptHash);
+  return scriptHash;
+};
 
 const catalogueKey = (categoryId: string): Buffer =>
   Buffer.concat([Buffer.from([0x44]), Buffer.from(categoryId, "hex")]);

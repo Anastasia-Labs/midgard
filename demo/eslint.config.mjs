@@ -94,6 +94,8 @@ export default tseslint.config(
       // Legacy Lucid, Effect, Commander, and decoded-JSON boundaries infer
       // `any` despite runtime validation. Keep explicit `any` prohibited while
       // those library boundaries are migrated to `unknown` incrementally.
+      // The ratchet block below re-enables all five for the packages that have
+      // finished that migration.
       "@typescript-eslint/no-unsafe-argument": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-call": "off",
@@ -122,6 +124,25 @@ export default tseslint.config(
       "@typescript-eslint/switch-exhaustiveness-check": "error",
       "simple-import-sort/exports": "error",
       "simple-import-sort/imports": "error",
+    },
+  },
+  {
+    // The `no-unsafe-*` ratchet. A package joins this list once it has no `any`
+    // reaching its own code — which in practice means routing the few
+    // library-declaration leaks (`Array.isArray`, `Object.getPrototypeOf`,
+    // `JSON.parse`, `new Array(n)`, `instanceof` on a class the library
+    // declares with `any` type arguments) through a named guard that states the
+    // honest type once. `@al-ft/midgard-core/narrowing` holds the general ones
+    // and `midgard-validation/src/plutus-data-narrowing.ts` the Plutus-Data
+    // ones; grep either for the pattern to copy when ratcheting the next
+    // package. This list only ever grows.
+    files: ["midgard-core/**/*.ts", "midgard-validation/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-unsafe-argument": "error",
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-unsafe-return": "error",
     },
   },
   {

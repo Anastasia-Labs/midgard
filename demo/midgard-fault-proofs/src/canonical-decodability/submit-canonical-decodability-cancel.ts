@@ -1,4 +1,5 @@
 /** Explicit prover cancellation from either family step. */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   faultProofStepRedeemerSchema,
   FraudProofComputationThreadRedeemer,
@@ -47,8 +48,9 @@ import {
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelSpendRedeemer = Data.Static<typeof CancelSpendRedeemerSchema>;
-const CancelSpendRedeemer =
-  CancelSpendRedeemerSchema as unknown as CancelSpendRedeemer;
+const CancelSpendRedeemer = asDataType<CancelSpendRedeemer>(
+  CancelSpendRedeemerSchema,
+);
 
 export type SubmitCanonicalDecodabilityCancelResult = {
   readonly txHash: string;

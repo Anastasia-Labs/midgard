@@ -1,4 +1,5 @@
 import { encodeCborInteger } from "@al-ft/midgard-core/codec/cbor";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, toHex } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 
@@ -17,7 +18,7 @@ export const DA_PAYLOAD_VERSION = 1n;
 
 export const DaPayloadEntrySchema = Data.Tuple([Data.Bytes(), Data.Bytes()]);
 export type DaPayloadEntry = Data.Static<typeof DaPayloadEntrySchema>;
-export const DaPayloadEntry = DaPayloadEntrySchema as unknown as DaPayloadEntry;
+export const DaPayloadEntry = asDataType<DaPayloadEntry>(DaPayloadEntrySchema);
 
 /**
  * Event-local retained validation coordinate. Non-negative values are exact
@@ -108,8 +109,9 @@ export const DaPayloadCountsSchema = Data.Object({
   validationTraceCount: Data.Integer(),
 });
 export type DaPayloadCounts = Data.Static<typeof DaPayloadCountsSchema>;
-export const DaPayloadCounts =
-  DaPayloadCountsSchema as unknown as DaPayloadCounts;
+export const DaPayloadCounts = asDataType<DaPayloadCounts>(
+  DaPayloadCountsSchema,
+);
 
 /**
  * V1 DA separates the compact, root-committed transaction sources from
@@ -134,14 +136,14 @@ export const DaPayloadBodySchema = Data.Object({
   counts: DaPayloadCountsSchema,
 });
 export type DaPayloadBody = Data.Static<typeof DaPayloadBodySchema>;
-export const DaPayloadBody = DaPayloadBodySchema as unknown as DaPayloadBody;
+export const DaPayloadBody = asDataType<DaPayloadBody>(DaPayloadBodySchema);
 
 export const DaPayloadSchema = Data.Object({
   version: Data.Integer(),
   block_body: DaPayloadBodySchema,
 });
 export type DaPayload = Data.Static<typeof DaPayloadSchema>;
-export const DaPayload = DaPayloadSchema as unknown as DaPayload;
+export const DaPayload = asDataType<DaPayload>(DaPayloadSchema);
 
 const MAX_CBOR_UINT64 = 0xffff_ffff_ffff_ffffn;
 const PLUTUS_BYTES_CHUNK = 64;

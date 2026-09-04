@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Data,
   fromText,
@@ -30,8 +31,9 @@ export const RetiredOperatorDatumSchema = Data.Object({
 export type RetiredOperatorDatum = Data.Static<
   typeof RetiredOperatorDatumSchema
 >;
-export const RetiredOperatorDatum =
-  RetiredOperatorDatumSchema as unknown as RetiredOperatorDatum;
+export const RetiredOperatorDatum = asDataType<RetiredOperatorDatum>(
+  RetiredOperatorDatumSchema,
+);
 export const castRetiredOperatorDatumToData = (
   datum: RetiredOperatorDatum,
 ): unknown => Data.castTo(datum, RetiredOperatorDatum);
@@ -70,7 +72,7 @@ export type RetiredOperatorMintRedeemer = Data.Static<
   typeof RetiredOperatorMintRedeemerSchema
 >;
 export const RetiredOperatorMintRedeemer =
-  RetiredOperatorMintRedeemerSchema as unknown as RetiredOperatorMintRedeemer;
+  asDataType<RetiredOperatorMintRedeemer>(RetiredOperatorMintRedeemerSchema);
 
 export type RetiredOperatorInitParams = {
   validator: AuthenticatedValidator;

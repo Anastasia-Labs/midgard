@@ -12,6 +12,14 @@
  * the suite passes `src/` — which is exactly what makes one definition able to
  * check two builds against each other. Typing it as the `src/` namespace states
  * the contract the `dist/` build must also satisfy.
+ *
+ * **Hazard.** The package sets `skipLibCheck: true`, which silences type errors
+ * *inside* this file as well as inside third-party declarations. A name here
+ * that no longer exists in `src/` therefore does not fail the build: it
+ * degrades silently to `any`, and the suite that consumes these declarations
+ * quietly stops being typed at all. Both fixture declaration files had drifted
+ * that way. `npx tsc --noEmit --skipLibCheck false` from the package root
+ * surfaces it — the only first-party errors it reports are in these files.
  */
 
 import type * as codecModule from "../../src/index.js";
@@ -21,12 +29,12 @@ type CodecModule = typeof codecModule;
 /** The nine-field golden canonical transaction. */
 export declare const nativeTxVectorCanonicalV1: (
   codec: CodecModule,
-) => Parameters<CodecModule["materializeMidgardNativeTxFromCanonicalV1"]>[0];
+) => Parameters<CodecModule["materializeMidgardNativeTxFromCanonical"]>[0];
 
 /** The same transaction with nine distinct, ascending field lengths. */
 export declare const nativeTxVectorOrderedLengthCanonicalV1: (
   codec: CodecModule,
-) => Parameters<CodecModule["materializeMidgardNativeTxFromCanonicalV1"]>[0];
+) => Parameters<CodecModule["materializeMidgardNativeTxFromCanonical"]>[0];
 
 export declare const NATIVE_TX_VECTOR_ORDERED_LENGTH_TUPLE_V1: readonly number[];
 

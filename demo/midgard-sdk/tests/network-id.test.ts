@@ -51,6 +51,7 @@ describe("Q35 network-id wire codec", () => {
             },
             predecessor: "Introduced",
           },
+          forced_source: null,
           fault: { OutputNetworkUtxo: { observed_network_id: 7n } },
         },
       ],
@@ -73,6 +74,7 @@ describe("Q35 network-id wire codec", () => {
         expected_network_id: 0n,
         fault: { OutputNetwork: { output_index: 11n } },
         post_utxo: null,
+        forced_source_key: null,
       },
     } as const;
     const encoded = Data.to(datum as never, NetworkIdStep02DatumSchema);

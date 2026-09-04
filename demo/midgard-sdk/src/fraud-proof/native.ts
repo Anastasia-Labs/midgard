@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, ProofSchema } from "../common.js";
@@ -17,8 +18,9 @@ export const NativeTxBodyCompactSchema = Data.Object({
   network_id: Data.Integer(),
 });
 export type NativeTxBodyCompact = Data.Static<typeof NativeTxBodyCompactSchema>;
-export const NativeTxBodyCompact =
-  NativeTxBodyCompactSchema as unknown as NativeTxBodyCompact;
+export const NativeTxBodyCompact = asDataType<NativeTxBodyCompact>(
+  NativeTxBodyCompactSchema,
+);
 
 export const NativeTxCompactSchema = Data.Object({
   body: NativeTxBodyCompactSchema,
@@ -26,8 +28,9 @@ export const NativeTxCompactSchema = Data.Object({
   validity_code: Data.Integer(),
 });
 export type NativeTxCompact = Data.Static<typeof NativeTxCompactSchema>;
-export const NativeTxCompact =
-  NativeTxCompactSchema as unknown as NativeTxCompact;
+export const NativeTxCompact = asDataType<NativeTxCompact>(
+  NativeTxCompactSchema,
+);
 
 export const NativeTxInclusionArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -48,8 +51,9 @@ export const NativeTxInclusionArgsSchema = Data.Object({
 export type NativeTxInclusionArgs = Data.Static<
   typeof NativeTxInclusionArgsSchema
 >;
-export const NativeTxInclusionArgs =
-  NativeTxInclusionArgsSchema as unknown as NativeTxInclusionArgs;
+export const NativeTxInclusionArgs = asDataType<NativeTxInclusionArgs>(
+  NativeTxInclusionArgsSchema,
+);
 
 /**
  * Published-chunk carriage of a step's transactions-root membership opening
@@ -72,7 +76,7 @@ export type PublishedChunkInclusionArgs = Data.Static<
   typeof PublishedChunkInclusionArgsSchema
 >;
 export const PublishedChunkInclusionArgs =
-  PublishedChunkInclusionArgsSchema as unknown as PublishedChunkInclusionArgs;
+  asDataType<PublishedChunkInclusionArgs>(PublishedChunkInclusionArgsSchema);
 
 /**
  * How a step's membership opening reaches L1. Constructor order mirrors the
@@ -91,8 +95,9 @@ export const NativeTxInclusionCarriageSchema = Data.Enum([
 export type NativeTxInclusionCarriage = Data.Static<
   typeof NativeTxInclusionCarriageSchema
 >;
-export const NativeTxInclusionCarriage =
-  NativeTxInclusionCarriageSchema as unknown as NativeTxInclusionCarriage;
+export const NativeTxInclusionCarriage = asDataType<NativeTxInclusionCarriage>(
+  NativeTxInclusionCarriageSchema,
+);
 
 /** Published-chunk carriage of a non-membership opening (issue #545). */
 export const PublishedProofCarriageSchema = Data.Object({
@@ -101,8 +106,9 @@ export const PublishedProofCarriageSchema = Data.Object({
 export type PublishedProofCarriage = Data.Static<
   typeof PublishedProofCarriageSchema
 >;
-export const PublishedProofCarriage =
-  PublishedProofCarriageSchema as unknown as PublishedProofCarriage;
+export const PublishedProofCarriage = asDataType<PublishedProofCarriage>(
+  PublishedProofCarriageSchema,
+);
 
 /**
  * How a step's non-membership opening reaches L1. Constructor order mirrors
@@ -122,8 +128,9 @@ export const NonMembershipCarriageSchema = Data.Enum([
 export type NonMembershipCarriage = Data.Static<
   typeof NonMembershipCarriageSchema
 >;
-export const NonMembershipCarriage =
-  NonMembershipCarriageSchema as unknown as NonMembershipCarriage;
+export const NonMembershipCarriage = asDataType<NonMembershipCarriage>(
+  NonMembershipCarriageSchema,
+);
 
 /** Membership twin of `NonMembershipCarriageSchema`. */
 export const MembershipCarriageSchema = Data.Enum([
@@ -138,8 +145,9 @@ export const MembershipCarriageSchema = Data.Enum([
   }),
 ]);
 export type MembershipCarriage = Data.Static<typeof MembershipCarriageSchema>;
-export const MembershipCarriage =
-  MembershipCarriageSchema as unknown as MembershipCarriage;
+export const MembershipCarriage = asDataType<MembershipCarriage>(
+  MembershipCarriageSchema,
+);
 
 /**
  * One published proof chunk's inline datum: nothing but MPF proof steps.
@@ -149,8 +157,9 @@ export const ProofChunkDatumSchema = Data.Object({
   proof_steps: ProofSchema,
 });
 export type ProofChunkDatum = Data.Static<typeof ProofChunkDatumSchema>;
-export const ProofChunkDatum =
-  ProofChunkDatumSchema as unknown as ProofChunkDatum;
+export const ProofChunkDatum = asDataType<ProofChunkDatum>(
+  ProofChunkDatumSchema,
+);
 
 /**
  * Which terminal a published-chunk claim demands. Constructor order mirrors the
@@ -161,7 +170,7 @@ export const ProofTerminalSchema = Data.Enum([
   Data.Literal("NonMembership"),
 ]);
 export type ProofTerminal = Data.Static<typeof ProofTerminalSchema>;
-export const ProofTerminal = ProofTerminalSchema as unknown as ProofTerminal;
+export const ProofTerminal = asDataType<ProofTerminal>(ProofTerminalSchema);
 
 /**
  * Redeemer of the merkelized `mpf_chunked_verify` withdraw validator, and the
@@ -179,8 +188,9 @@ export const ChunkedProofClaimSchema = Data.Object({
   ordered_chunk_reference_input_indices: Data.Array(Data.Integer()),
 });
 export type ChunkedProofClaim = Data.Static<typeof ChunkedProofClaimSchema>;
-export const ChunkedProofClaim =
-  ChunkedProofClaimSchema as unknown as ChunkedProofClaim;
+export const ChunkedProofClaim = asDataType<ChunkedProofClaim>(
+  ChunkedProofClaimSchema,
+);
 
 /** Blueprint title of the merkelized published-chunk verifier. */
 export const MPF_CHUNKED_VERIFY_WITHDRAW_TITLE =
@@ -212,8 +222,9 @@ export const NativeTxWitnessSetCompactSchema = Data.Object({
 export type NativeTxWitnessSetCompact = Data.Static<
   typeof NativeTxWitnessSetCompactSchema
 >;
-export const NativeTxWitnessSetCompact =
-  NativeTxWitnessSetCompactSchema as unknown as NativeTxWitnessSetCompact;
+export const NativeTxWitnessSetCompact = asDataType<NativeTxWitnessSetCompact>(
+  NativeTxWitnessSetCompactSchema,
+);
 
 /** One Ed25519 address witness: a verification key and its signature. */
 export const MidgardAddressWitnessSchema = Data.Object({
@@ -223,8 +234,9 @@ export const MidgardAddressWitnessSchema = Data.Object({
 export type MidgardAddressWitness = Data.Static<
   typeof MidgardAddressWitnessSchema
 >;
-export const MidgardAddressWitness =
-  MidgardAddressWitnessSchema as unknown as MidgardAddressWitness;
+export const MidgardAddressWitness = asDataType<MidgardAddressWitness>(
+  MidgardAddressWitnessSchema,
+);
 
 export const MidgardAddressWitnessListSchema = Data.Array(
   MidgardAddressWitnessSchema,
@@ -232,20 +244,22 @@ export const MidgardAddressWitnessListSchema = Data.Array(
 export type MidgardAddressWitnessList = Data.Static<
   typeof MidgardAddressWitnessListSchema
 >;
-export const MidgardAddressWitnessList =
-  MidgardAddressWitnessListSchema as unknown as MidgardAddressWitnessList;
+export const MidgardAddressWitnessList = asDataType<MidgardAddressWitnessList>(
+  MidgardAddressWitnessListSchema,
+);
 
 export const MidgardTxInputSchema = Data.Object({
   tx_id: H32Schema,
   output_index: Data.Integer(),
 });
 export type MidgardTxInput = Data.Static<typeof MidgardTxInputSchema>;
-export const MidgardTxInput = MidgardTxInputSchema as unknown as MidgardTxInput;
+export const MidgardTxInput = asDataType<MidgardTxInput>(MidgardTxInputSchema);
 
 export const MidgardTxInputListSchema = Data.Array(MidgardTxInputSchema);
 export type MidgardTxInputList = Data.Static<typeof MidgardTxInputListSchema>;
-export const MidgardTxInputList =
-  MidgardTxInputListSchema as unknown as MidgardTxInputList;
+export const MidgardTxInputList = asDataType<MidgardTxInputList>(
+  MidgardTxInputListSchema,
+);
 
 export const FaultProofStepCancelSchema = Data.Object({
   input_index: Data.Integer(),
@@ -254,8 +268,9 @@ export const FaultProofStepCancelSchema = Data.Object({
 export type FaultProofStepCancel = Data.Static<
   typeof FaultProofStepCancelSchema
 >;
-export const FaultProofStepCancel =
-  FaultProofStepCancelSchema as unknown as FaultProofStepCancel;
+export const FaultProofStepCancel = asDataType<FaultProofStepCancel>(
+  FaultProofStepCancelSchema,
+);
 
 type DataSchema = Parameters<typeof Data.Nullable>[0];
 

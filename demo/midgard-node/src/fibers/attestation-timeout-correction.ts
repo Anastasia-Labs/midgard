@@ -16,6 +16,10 @@ import {
   StateQueueMutationLeasesDB,
 } from "../database/index.js";
 import {
+  attestationTimeoutJournalPathOverride,
+  contractDeploymentInfoPathOverride,
+} from "../environment.js";
+import {
   ContractDeploymentIdentity,
   createDatabaseStateQueueCorrectionObserverStore,
   Database,
@@ -221,9 +225,8 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       return;
     }
 
-    const deploymentInfoPath =
-      process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
-    if (deploymentInfoPath === undefined || deploymentInfoPath.length === 0) {
+    const deploymentInfoPath = contractDeploymentInfoPathOverride();
+    if (deploymentInfoPath === undefined) {
       return yield* Effect.fail(
         new Error(
           "Timed-out unattested state-queue head requires MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH for authenticated reference-script identities.",
@@ -231,7 +234,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       );
     }
     const journalPath =
-      process.env.MIDGARD_ATTESTATION_TIMEOUT_JOURNAL_PATH?.trim() ||
+      attestationTimeoutJournalPathOverride() ??
       resolve(
         dirname(nodeConfig.LEDGER_MPF_DB_PATH),
         "attestation-timeout-correction-v1.json",

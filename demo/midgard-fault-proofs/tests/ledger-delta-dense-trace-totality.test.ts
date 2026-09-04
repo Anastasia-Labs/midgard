@@ -22,6 +22,10 @@ import {
 } from "@al-ft/midgard-core/codec/cbor";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
+import {
+  h28 as byteHex28,
+  h32 as byteHex32,
+} from "@al-ft/midgard-test-support/hex";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -47,10 +51,18 @@ import {
 // imported so this file has no coupling to the other test file's internals.
 // ---------------------------------------------------------------------------
 
-const h32 = (byte: number): string =>
-  (byte & 0xff).toString(16).padStart(2, "0").repeat(32);
-const h28 = (byte: number): string =>
-  (byte & 0xff).toString(16).padStart(2, "0").repeat(28);
+/**
+ * Fixture labels here are grouped by scheme — 6xx for the block fixtures, 7xx
+ * and 9xx for the per-test traces — so they run past the 0..255 that a byte
+ * holds. The shared helpers take a byte value and reject anything else, so fold
+ * the label into a byte explicitly at this one place instead of letting the
+ * helper do it silently. The fold is not injective: labels 256 apart name the
+ * same bytes (730/986 and 731/987 do, in unrelated fields), which is exactly
+ * what a silent mask used to hide.
+ */
+const label = (n: number): number => n & 0xff;
+const h32 = (n: number): string => byteHex32(label(n));
+const h28 = (n: number): string => byteHex28(label(n));
 
 const outRef = (byte: number): SDK.OutputReference => ({
   transactionId: h32(byte),

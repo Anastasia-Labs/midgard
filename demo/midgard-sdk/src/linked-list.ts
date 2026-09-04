@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Assets,
   type BuildTxWithRedeemer,
@@ -41,7 +42,7 @@ export const NodeKeySchema = Data.Enum([
   Data.Literal("Empty"),
 ]);
 export type NodeKey = Data.Static<typeof NodeKeySchema>;
-export const NodeKey = NodeKeySchema as unknown as NodeKey;
+export const NodeKey = asDataType<NodeKey>(NodeKeySchema);
 
 export const LinkedListElementDataSchema = Data.Enum([
   Data.Object({
@@ -58,16 +59,18 @@ export const LinkedListElementDataSchema = Data.Enum([
 export type LinkedListElementData = Data.Static<
   typeof LinkedListElementDataSchema
 >;
-export const LinkedListElementData =
-  LinkedListElementDataSchema as unknown as LinkedListElementData;
+export const LinkedListElementData = asDataType<LinkedListElementData>(
+  LinkedListElementDataSchema,
+);
 
 export const LinkedListDatumSchema = Data.Object({
   data: LinkedListElementDataSchema,
   link: Data.Nullable(Data.Bytes()),
 });
 export type LinkedListDatum = Data.Static<typeof LinkedListDatumSchema>;
-export const LinkedListDatum =
-  LinkedListDatumSchema as unknown as LinkedListDatum;
+export const LinkedListDatum = asDataType<LinkedListDatum>(
+  LinkedListDatumSchema,
+);
 
 export const LinkedListNodeViewSchema = Data.Object({
   key: NodeKeySchema,
@@ -75,8 +78,9 @@ export const LinkedListNodeViewSchema = Data.Object({
   data: Data.Any(),
 });
 export type LinkedListNodeView = Data.Static<typeof LinkedListNodeViewSchema>;
-export const LinkedListNodeView =
-  LinkedListNodeViewSchema as unknown as LinkedListNodeView;
+export const LinkedListNodeView = asDataType<LinkedListNodeView>(
+  LinkedListNodeViewSchema,
+);
 
 const extractSingletonAssetName = (assets: Assets): string => {
   const nonAdaUnits = Object.keys(assets).filter((unit) => unit !== "lovelace");

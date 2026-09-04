@@ -68,6 +68,10 @@ import { collectEnvironmentFingerprint } from "./commands/stress-environment-fin
 import { collectStressStageMetricSourcesFromSql } from "./commands/stress-stage-metrics.js";
 import * as StressWalletsCommand from "./commands/stress-wallets.js";
 import { runCommandStep } from "./e2e/runner.js";
+import {
+  l1KupmiosEnvironment,
+  stressNetworkFromEnvironment,
+} from "./environment.js";
 
 loadRuntimeDotenv();
 const VERSION = packageJson.version;
@@ -1443,12 +1447,7 @@ program
                   stateCorrectionRecoveryObservationPaths,
                 finalSnapshotPath: opts.stateCorrectionFinalSnapshot as string,
               },
-              stateCorrectionLocalAuthorityConfig: {
-                provider: process.env.L1_PROVIDER,
-                providerFailover: process.env.L1_PROVIDER_FAILOVER,
-                kupoUrl: process.env.L1_KUPO_KEY ?? "",
-                ogmiosUrl: process.env.L1_OGMIOS_KEY ?? "",
-              },
+              stateCorrectionLocalAuthorityConfig: l1KupmiosEnvironment(),
             }
           : {}),
       }).pipe(tapJson()),
@@ -1668,7 +1667,7 @@ program
         finalityObserverMaxConcurrentRequests:
           options.finalityObserverMaxConcurrentRequests,
         maxSubmissionFailures: options.maxSubmissionFailures,
-        network: process.env.NETWORK === "Mainnet" ? "Mainnet" : "Preprod",
+        network: stressNetworkFromEnvironment(),
         allowUnsafeBounds: options.unsafeAllowLargeStress === true,
       });
       const stressProgram = Effect.gen(function* () {

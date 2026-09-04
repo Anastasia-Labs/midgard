@@ -11,7 +11,6 @@ import {
   dataFromCbor,
   DataI,
   DataList,
-  DataMap,
   isData,
 } from "@harmoniclabs/plutus-data";
 import {
@@ -22,6 +21,7 @@ import {
 } from "@harmoniclabs/uplc";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import { isByteStringLike, isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 export type MidgardCekConstantType =
   | { readonly kind: "integer" }
@@ -110,12 +110,7 @@ export const parseMidgardCekConstantType = (
 };
 
 const asByteArray = (value: unknown): Uint8Array => {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("toBuffer" in value) ||
-    typeof value.toBuffer !== "function"
-  ) {
+  if (!isByteStringLike(value)) {
     throw new Error("V1 bytes constant has an invalid value");
   }
   const bytes = value.toBuffer();
@@ -341,7 +336,7 @@ export const encodeMidgardCekPlutusData = (data: Data): Buffer => {
       data.list.map((item) => encodeMidgardCekPlutusData(item)),
     );
   }
-  if (data instanceof DataMap) {
+  if (isPlutusDataMap(data)) {
     return Buffer.concat([
       encodeSmallCborArgument(5, BigInt(data.map.length)),
       ...data.map.flatMap((entry) => [
@@ -704,7 +699,7 @@ export const midgardCekDataMemorySize = (value: Data): bigint => {
       )
     );
   }
-  if (value instanceof DataMap) {
+  if (isPlutusDataMap(value)) {
     return (
       4n +
       value.map.reduce(

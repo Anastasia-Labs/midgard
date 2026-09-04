@@ -1,4 +1,5 @@
 import { decodeMidgardVersionedScript } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   nativeScriptItemCommitment,
   type NativeScriptPushdownFrame,
@@ -44,12 +45,13 @@ type State = NonNullable<
   Data.Static<typeof ExecutionNativeScriptInvalidStep06DatumSchema>["data"]
 >;
 type Datum = Data.Static<typeof ExecutionNativeScriptInvalidStep06DatumSchema>;
-const Datum = ExecutionNativeScriptInvalidStep06DatumSchema as unknown as Datum;
+const Datum = asDataType<Datum>(ExecutionNativeScriptInvalidStep06DatumSchema);
 type Redeemer = Data.Static<
   typeof ExecutionNativeScriptInvalidStep06RedeemerSchema
 >;
-const Redeemer =
-  ExecutionNativeScriptInvalidStep06RedeemerSchema as unknown as Redeemer;
+const Redeemer = asDataType<Redeemer>(
+  ExecutionNativeScriptInvalidStep06RedeemerSchema,
+);
 
 const samePeaks = (
   left: State["signer_peaks"],

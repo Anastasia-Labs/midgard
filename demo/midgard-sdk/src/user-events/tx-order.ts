@@ -31,6 +31,7 @@ import {
   deriveMidgardTxFieldPreimages,
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type Assets,
   CML,
@@ -108,8 +109,9 @@ export const TxOrderRefundAddressSchema = Data.Object({
 export type TxOrderRefundAddress = Data.Static<
   typeof TxOrderRefundAddressSchema
 >;
-export const TxOrderRefundAddress =
-  TxOrderRefundAddressSchema as unknown as TxOrderRefundAddress;
+export const TxOrderRefundAddress = asDataType<TxOrderRefundAddress>(
+  TxOrderRefundAddressSchema,
+);
 
 export const TxOrderDatumSchema = Data.Object({
   event: TxOrderEventSchema,
@@ -119,7 +121,7 @@ export const TxOrderDatumSchema = Data.Object({
   refund_datum: CardanoDatumSchema,
 });
 export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
-export const TxOrderDatum = TxOrderDatumSchema as unknown as TxOrderDatum;
+export const TxOrderDatum = asDataType<TxOrderDatum>(TxOrderDatumSchema);
 
 type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
 
@@ -167,8 +169,9 @@ export const CekSinglePublicationDatumSchema = Data.Object({
 export type CekSinglePublicationDatum = Data.Static<
   typeof CekSinglePublicationDatumSchema
 >;
-export const CekSinglePublicationDatum =
-  CekSinglePublicationDatumSchema as unknown as CekSinglePublicationDatum;
+export const CekSinglePublicationDatum = asDataType<CekSinglePublicationDatum>(
+  CekSinglePublicationDatumSchema,
+);
 
 const assertCekSinglePublicationDatum = (
   datum: CekSinglePublicationDatum,
@@ -225,8 +228,9 @@ export const TxOrderSpendRedeemerSchema = Data.Object({
 export type TxOrderSpendRedeemer = Data.Static<
   typeof TxOrderSpendRedeemerSchema
 >;
-export const TxOrderSpendRedeemer =
-  TxOrderSpendRedeemerSchema as unknown as TxOrderSpendRedeemer;
+export const TxOrderSpendRedeemer = asDataType<TxOrderSpendRedeemer>(
+  TxOrderSpendRedeemerSchema,
+);
 
 /**
  * The tx-order minting policy's redeemer — `midgard/user_events/tx_order_v1`'s
@@ -248,8 +252,9 @@ export const TxOrderMintRedeemerSchema = Data.Object({
   material_carriage: Data.Array(FieldCarriageSchema),
 });
 export type TxOrderMintRedeemer = Data.Static<typeof TxOrderMintRedeemerSchema>;
-export const TxOrderMintRedeemer =
-  TxOrderMintRedeemerSchema as unknown as TxOrderMintRedeemer;
+export const TxOrderMintRedeemer = asDataType<TxOrderMintRedeemer>(
+  TxOrderMintRedeemerSchema,
+);
 
 export const encodeTxOrderMintRedeemerCbor = (
   redeemer: TxOrderMintRedeemer,

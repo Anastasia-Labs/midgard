@@ -26,6 +26,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -36,10 +37,7 @@ import {
 } from "../../src/transition-trace/phas.js";
 import { encodeData } from "../../src/transition-trace/reconstruct.js";
 
-export const h32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
-export const h28 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(28);
+export { h28, h32 };
 
 export const outRefCbor = (txIdByte: number, index: bigint): Buffer =>
   encodeMidgardSpendInputItem({

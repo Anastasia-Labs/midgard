@@ -41,6 +41,7 @@
   "devDependencies": {
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-test-support": "workspace:*",
     "@effect/vitest": "^0.17.8",
     "@lucid-evolution/lucid": "0.6.2",
     "@sinclair/typebox": "^0.34.28",

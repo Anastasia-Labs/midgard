@@ -35,6 +35,7 @@ import {
   MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile";
 import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   AuthenticatedCanonicalDecodeItemDatum,
   buildUnsignedValidationProofItemPublicationProgram,
@@ -1059,12 +1060,15 @@ type RuntimeSchemaEncoder = (
  * declaration mismatch at this runtime-schema boundary.
  */
 const encodeWithRuntimeSchema = Data.to as unknown as RuntimeSchemaEncoder;
-const validationCekMaterialRouteRuntimeSchema =
-  ValidationCekMaterialRouteSchema as unknown as PlutusDataSchema;
+const validationCekMaterialRouteRuntimeSchema = asDataType<PlutusDataSchema>(
+  ValidationCekMaterialRouteSchema,
+);
 const validationPrepareSelectedSpendRedeemerRuntimeSchema =
-  ValidationPrepareSelectedSpendRedeemerSchema as unknown as PlutusDataSchema;
+  asDataType<PlutusDataSchema>(ValidationPrepareSelectedSpendRedeemerSchema);
 const validationCanonicalDecodePrepareSelectedSpendRedeemerRuntimeSchema =
-  ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema as unknown as PlutusDataSchema;
+  asDataType<PlutusDataSchema>(
+    ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
+  );
 
 /**
  * The `material_route` field of the CEK execution-selection semantic action

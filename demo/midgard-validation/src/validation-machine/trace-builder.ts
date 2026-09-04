@@ -677,13 +677,16 @@ export const buildDeterministicValidationMachineTrace = (
       sourceKind,
       key: item.bytes,
     }));
-    const resolutionScheduleNodes: {
+    type ResolutionScheduleNode = {
       sourceKind: "spend" | "reference";
       key: Buffer;
       nextScheduleHash: Buffer;
       scheduleHash: Buffer;
       proofCbor: Buffer;
-    }[] = new Array(resolutionItems.length);
+    };
+    const resolutionScheduleNodes = new Array<ResolutionScheduleNode>(
+      resolutionItems.length,
+    );
     let resolutionScheduleHash = emptyMidgardInputResolutionSchedule();
     for (let index = resolutionItems.length - 1; index >= 0; index -= 1) {
       const item = resolutionItems[index]!;

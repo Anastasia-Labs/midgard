@@ -4,6 +4,7 @@ import {
   decodeMidgardNativeScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   MissingNativeScriptUtxoStep04DatumSchema,
   MissingNativeScriptUtxoStep04SpendRedeemerSchema,
@@ -38,16 +39,19 @@ type State = NonNullable<
   Data.Static<typeof MissingNativeScriptUtxoStep04DatumSchema>["data"]
 >;
 type Step04Datum = Data.Static<typeof MissingNativeScriptUtxoStep04DatumSchema>;
-const Step04Datum =
-  MissingNativeScriptUtxoStep04DatumSchema as unknown as Step04Datum;
+const Step04Datum = asDataType<Step04Datum>(
+  MissingNativeScriptUtxoStep04DatumSchema,
+);
 type Step05Datum = Data.Static<typeof MissingNativeScriptUtxoStep05DatumSchema>;
-const Step05Datum =
-  MissingNativeScriptUtxoStep05DatumSchema as unknown as Step05Datum;
+const Step05Datum = asDataType<Step05Datum>(
+  MissingNativeScriptUtxoStep05DatumSchema,
+);
 type Redeemer = Data.Static<
   typeof MissingNativeScriptUtxoStep04SpendRedeemerSchema
 >;
-const Redeemer =
-  MissingNativeScriptUtxoStep04SpendRedeemerSchema as unknown as Redeemer;
+const Redeemer = asDataType<Redeemer>(
+  MissingNativeScriptUtxoStep04SpendRedeemerSchema,
+);
 
 export const submitMissingNativeScriptUtxoStep04 = async ({
   lucid,

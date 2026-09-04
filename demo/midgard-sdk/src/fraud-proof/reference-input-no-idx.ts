@@ -42,6 +42,7 @@
  * produce redeemers the validators reject.
  */
 import { midgardFieldCommitmentFromItems } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -142,7 +143,9 @@ export type ReferenceInputNoIdxStep01Datum = Data.Static<
   typeof ReferenceInputNoIdxStep01DatumSchema
 >;
 export const ReferenceInputNoIdxStep01Datum =
-  ReferenceInputNoIdxStep01DatumSchema as unknown as ReferenceInputNoIdxStep01Datum;
+  asDataType<ReferenceInputNoIdxStep01Datum>(
+    ReferenceInputNoIdxStep01DatumSchema,
+  );
 
 export const ReferenceInputNoIdxStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(ReferenceInputNoIdxTxInclusionArgsSchema);
@@ -150,7 +153,9 @@ export type ReferenceInputNoIdxStep01SpendRedeemer = Data.Static<
   typeof ReferenceInputNoIdxStep01SpendRedeemerSchema
 >;
 export const ReferenceInputNoIdxStep01SpendRedeemer =
-  ReferenceInputNoIdxStep01SpendRedeemerSchema as unknown as ReferenceInputNoIdxStep01SpendRedeemer;
+  asDataType<ReferenceInputNoIdxStep01SpendRedeemer>(
+    ReferenceInputNoIdxStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — open the reference-inputs preimage and select the bad input
 
@@ -168,7 +173,9 @@ export type ReferenceInputNoIdxStep02State = Data.Static<
   typeof ReferenceInputNoIdxStep02StateSchema
 >;
 export const ReferenceInputNoIdxStep02State =
-  ReferenceInputNoIdxStep02StateSchema as unknown as ReferenceInputNoIdxStep02State;
+  asDataType<ReferenceInputNoIdxStep02State>(
+    ReferenceInputNoIdxStep02StateSchema,
+  );
 
 export const ReferenceInputNoIdxStep02DatumSchema = faultProofStepDatumSchema(
   ReferenceInputNoIdxStep02StateSchema,
@@ -177,7 +184,9 @@ export type ReferenceInputNoIdxStep02Datum = Data.Static<
   typeof ReferenceInputNoIdxStep02DatumSchema
 >;
 export const ReferenceInputNoIdxStep02Datum =
-  ReferenceInputNoIdxStep02DatumSchema as unknown as ReferenceInputNoIdxStep02Datum;
+  asDataType<ReferenceInputNoIdxStep02Datum>(
+    ReferenceInputNoIdxStep02DatumSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/reference_input_no_idx/step_02.Args`. */
 export const ReferenceInputNoIdxStep02ArgsSchema = Data.Object({
@@ -190,7 +199,9 @@ export type ReferenceInputNoIdxStep02Args = Data.Static<
   typeof ReferenceInputNoIdxStep02ArgsSchema
 >;
 export const ReferenceInputNoIdxStep02Args =
-  ReferenceInputNoIdxStep02ArgsSchema as unknown as ReferenceInputNoIdxStep02Args;
+  asDataType<ReferenceInputNoIdxStep02Args>(
+    ReferenceInputNoIdxStep02ArgsSchema,
+  );
 
 export const ReferenceInputNoIdxStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(ReferenceInputNoIdxStep02ArgsSchema);
@@ -198,7 +209,9 @@ export type ReferenceInputNoIdxStep02SpendRedeemer = Data.Static<
   typeof ReferenceInputNoIdxStep02SpendRedeemerSchema
 >;
 export const ReferenceInputNoIdxStep02SpendRedeemer =
-  ReferenceInputNoIdxStep02SpendRedeemerSchema as unknown as ReferenceInputNoIdxStep02SpendRedeemer;
+  asDataType<ReferenceInputNoIdxStep02SpendRedeemer>(
+    ReferenceInputNoIdxStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — verify inclusion of the producing transaction
 //
@@ -214,7 +227,9 @@ export type ReferenceInputNoIdxStep03State = Data.Static<
   typeof ReferenceInputNoIdxStep03StateSchema
 >;
 export const ReferenceInputNoIdxStep03State =
-  ReferenceInputNoIdxStep03StateSchema as unknown as ReferenceInputNoIdxStep03State;
+  asDataType<ReferenceInputNoIdxStep03State>(
+    ReferenceInputNoIdxStep03StateSchema,
+  );
 
 export const ReferenceInputNoIdxStep03DatumSchema = faultProofStepDatumSchema(
   ReferenceInputNoIdxStep03StateSchema,
@@ -223,7 +238,9 @@ export type ReferenceInputNoIdxStep03Datum = Data.Static<
   typeof ReferenceInputNoIdxStep03DatumSchema
 >;
 export const ReferenceInputNoIdxStep03Datum =
-  ReferenceInputNoIdxStep03DatumSchema as unknown as ReferenceInputNoIdxStep03Datum;
+  asDataType<ReferenceInputNoIdxStep03Datum>(
+    ReferenceInputNoIdxStep03DatumSchema,
+  );
 
 export const ReferenceInputNoIdxStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(ReferenceInputNoIdxTxInclusionArgsSchema);
@@ -231,7 +248,9 @@ export type ReferenceInputNoIdxStep03SpendRedeemer = Data.Static<
   typeof ReferenceInputNoIdxStep03SpendRedeemerSchema
 >;
 export const ReferenceInputNoIdxStep03SpendRedeemer =
-  ReferenceInputNoIdxStep03SpendRedeemerSchema as unknown as ReferenceInputNoIdxStep03SpendRedeemer;
+  asDataType<ReferenceInputNoIdxStep03SpendRedeemer>(
+    ReferenceInputNoIdxStep03SpendRedeemerSchema,
+  );
 
 // ## Step 04 — verify the producing tx outputs and the out-of-range index
 //
@@ -251,7 +270,9 @@ export type ReferenceInputNoIdxStep04State = Data.Static<
   typeof ReferenceInputNoIdxStep04StateSchema
 >;
 export const ReferenceInputNoIdxStep04State =
-  ReferenceInputNoIdxStep04StateSchema as unknown as ReferenceInputNoIdxStep04State;
+  asDataType<ReferenceInputNoIdxStep04State>(
+    ReferenceInputNoIdxStep04StateSchema,
+  );
 
 export const ReferenceInputNoIdxStep04DatumSchema = faultProofStepDatumSchema(
   ReferenceInputNoIdxStep04StateSchema,
@@ -260,7 +281,9 @@ export type ReferenceInputNoIdxStep04Datum = Data.Static<
   typeof ReferenceInputNoIdxStep04DatumSchema
 >;
 export const ReferenceInputNoIdxStep04Datum =
-  ReferenceInputNoIdxStep04DatumSchema as unknown as ReferenceInputNoIdxStep04Datum;
+  asDataType<ReferenceInputNoIdxStep04Datum>(
+    ReferenceInputNoIdxStep04DatumSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/reference_input_no_idx/step_04.Args`. */
 export const ReferenceInputNoIdxStep04ArgsSchema = Data.Object({
@@ -273,7 +296,9 @@ export type ReferenceInputNoIdxStep04Args = Data.Static<
   typeof ReferenceInputNoIdxStep04ArgsSchema
 >;
 export const ReferenceInputNoIdxStep04Args =
-  ReferenceInputNoIdxStep04ArgsSchema as unknown as ReferenceInputNoIdxStep04Args;
+  asDataType<ReferenceInputNoIdxStep04Args>(
+    ReferenceInputNoIdxStep04ArgsSchema,
+  );
 
 export const ReferenceInputNoIdxStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(ReferenceInputNoIdxStep04ArgsSchema);
@@ -281,7 +306,9 @@ export type ReferenceInputNoIdxStep04SpendRedeemer = Data.Static<
   typeof ReferenceInputNoIdxStep04SpendRedeemerSchema
 >;
 export const ReferenceInputNoIdxStep04SpendRedeemer =
-  ReferenceInputNoIdxStep04SpendRedeemerSchema as unknown as ReferenceInputNoIdxStep04SpendRedeemer;
+  asDataType<ReferenceInputNoIdxStep04SpendRedeemer>(
+    ReferenceInputNoIdxStep04SpendRedeemerSchema,
+  );
 
 // ## Step-state builders (twins of the on-chain forwarding rules)
 

@@ -28,7 +28,6 @@ import {
   DEPLOYMENT_MANIFEST_STEP_NAMES,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { makeWatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
 import {
@@ -48,7 +47,11 @@ import {
   WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
   type WatcherDeploymentIdentityPolicy,
 } from "../../src/runtime/deployment-identity.js";
-import { canonicalFraudProofCatalogueFixture } from "../canonical-fraud-proof-catalogue.js";
+import {
+  canonicalFraudProofCatalogueFixture,
+  positionalContractScriptCbor,
+  positionalContractScriptHash,
+} from "../canonical-fraud-proof-catalogue.js";
 
 type AuthorityContractFixture = Readonly<{
   refScriptUTxO: Readonly<{ txHash: string; outputIndex: number }> | null;
@@ -171,11 +174,11 @@ const createWatcherAuthorityDeploymentFixture = () => {
     ),
   );
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName, index) => {
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => {
       const native = contractName === "referenceScriptAuthMint";
       const script = native
         ? NATIVE_SCRIPT_CBOR
-        : (index + 1).toString(16).padStart(2, "0");
+        : positionalContractScriptCbor(contractName);
       return [
         contractName,
         {
@@ -183,7 +186,7 @@ const createWatcherAuthorityDeploymentFixture = () => {
           contract: { type: native ? "Native" : "PlutusV3", cborHex: script },
           scriptHash: native
             ? NATIVE_SCRIPT_HASH
-            : validatorToScriptHash({ type: "PlutusV3", script }),
+            : positionalContractScriptHash(contractName),
         },
       ];
     }),

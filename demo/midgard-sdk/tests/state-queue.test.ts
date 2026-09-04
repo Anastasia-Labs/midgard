@@ -14,6 +14,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { type LucidDataSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   applyDoubleCborEncoding,
   applyParamsToScript,
@@ -482,8 +483,6 @@ const buildTestContracts = async (
     },
   };
 };
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const roundTrip = <A>(value: A, schema: LucidDataSchema): A =>
   Data.from(Data.to(value, schema), schema) as A;

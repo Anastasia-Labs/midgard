@@ -16,6 +16,7 @@
  * bytes are pinned in `tests/fabricated-deposit.test.ts` against values
  * measured out of those Aiken modules.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -89,7 +90,7 @@ export type FabricatedDepositStep01Datum = Data.Static<
   typeof FabricatedDepositStep01DatumSchema
 >;
 export const FabricatedDepositStep01Datum =
-  FabricatedDepositStep01DatumSchema as unknown as FabricatedDepositStep01Datum;
+  asDataType<FabricatedDepositStep01Datum>(FabricatedDepositStep01DatumSchema);
 
 export const FabricatedDepositStep01ArgsSchema = Data.Object({
   /** Own input index. */
@@ -107,7 +108,7 @@ export type FabricatedDepositStep01Args = Data.Static<
   typeof FabricatedDepositStep01ArgsSchema
 >;
 export const FabricatedDepositStep01Args =
-  FabricatedDepositStep01ArgsSchema as unknown as FabricatedDepositStep01Args;
+  asDataType<FabricatedDepositStep01Args>(FabricatedDepositStep01ArgsSchema);
 
 export const FabricatedDepositStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(FabricatedDepositStep01ArgsSchema);
@@ -115,7 +116,9 @@ export type FabricatedDepositStep01SpendRedeemer = Data.Static<
   typeof FabricatedDepositStep01SpendRedeemerSchema
 >;
 export const FabricatedDepositStep01SpendRedeemer =
-  FabricatedDepositStep01SpendRedeemerSchema as unknown as FabricatedDepositStep01SpendRedeemer;
+  asDataType<FabricatedDepositStep01SpendRedeemer>(
+    FabricatedDepositStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — authenticated L1 deposit evidence
 
@@ -135,7 +138,7 @@ export type FabricatedDepositStep02State = Data.Static<
   typeof FabricatedDepositStep02StateSchema
 >;
 export const FabricatedDepositStep02State =
-  FabricatedDepositStep02StateSchema as unknown as FabricatedDepositStep02State;
+  asDataType<FabricatedDepositStep02State>(FabricatedDepositStep02StateSchema);
 
 export const FabricatedDepositStep02DatumSchema = faultProofStepDatumSchema(
   FabricatedDepositStep02StateSchema,
@@ -144,7 +147,7 @@ export type FabricatedDepositStep02Datum = Data.Static<
   typeof FabricatedDepositStep02DatumSchema
 >;
 export const FabricatedDepositStep02Datum =
-  FabricatedDepositStep02DatumSchema as unknown as FabricatedDepositStep02Datum;
+  asDataType<FabricatedDepositStep02Datum>(FabricatedDepositStep02DatumSchema);
 
 /** The prover's chosen L1 witness about the committed deposit identity. */
 export const FabricatedDepositEvidenceSchema = Data.Enum([
@@ -163,8 +166,9 @@ export const FabricatedDepositEvidenceSchema = Data.Enum([
 export type FabricatedDepositEvidence = Data.Static<
   typeof FabricatedDepositEvidenceSchema
 >;
-export const FabricatedDepositEvidence =
-  FabricatedDepositEvidenceSchema as unknown as FabricatedDepositEvidence;
+export const FabricatedDepositEvidence = asDataType<FabricatedDepositEvidence>(
+  FabricatedDepositEvidenceSchema,
+);
 
 /** What L1 says about the committed identity, once authenticated. */
 export const FabricatedDepositEvidenceVerdictSchema = Data.Enum([
@@ -180,7 +184,9 @@ export type FabricatedDepositEvidenceVerdict = Data.Static<
   typeof FabricatedDepositEvidenceVerdictSchema
 >;
 export const FabricatedDepositEvidenceVerdict =
-  FabricatedDepositEvidenceVerdictSchema as unknown as FabricatedDepositEvidenceVerdict;
+  asDataType<FabricatedDepositEvidenceVerdict>(
+    FabricatedDepositEvidenceVerdictSchema,
+  );
 
 export const FabricatedDepositStep02ArgsSchema = Data.Object({
   /** Own input index. */
@@ -194,7 +200,7 @@ export type FabricatedDepositStep02Args = Data.Static<
   typeof FabricatedDepositStep02ArgsSchema
 >;
 export const FabricatedDepositStep02Args =
-  FabricatedDepositStep02ArgsSchema as unknown as FabricatedDepositStep02Args;
+  asDataType<FabricatedDepositStep02Args>(FabricatedDepositStep02ArgsSchema);
 
 export const FabricatedDepositStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(FabricatedDepositStep02ArgsSchema);
@@ -202,7 +208,9 @@ export type FabricatedDepositStep02SpendRedeemer = Data.Static<
   typeof FabricatedDepositStep02SpendRedeemerSchema
 >;
 export const FabricatedDepositStep02SpendRedeemer =
-  FabricatedDepositStep02SpendRedeemerSchema as unknown as FabricatedDepositStep02SpendRedeemer;
+  asDataType<FabricatedDepositStep02SpendRedeemer>(
+    FabricatedDepositStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — fault classification
 
@@ -224,7 +232,7 @@ export type FabricatedDepositStep03State = Data.Static<
   typeof FabricatedDepositStep03StateSchema
 >;
 export const FabricatedDepositStep03State =
-  FabricatedDepositStep03StateSchema as unknown as FabricatedDepositStep03State;
+  asDataType<FabricatedDepositStep03State>(FabricatedDepositStep03StateSchema);
 
 export const FabricatedDepositStep03DatumSchema = faultProofStepDatumSchema(
   FabricatedDepositStep03StateSchema,
@@ -233,7 +241,7 @@ export type FabricatedDepositStep03Datum = Data.Static<
   typeof FabricatedDepositStep03DatumSchema
 >;
 export const FabricatedDepositStep03Datum =
-  FabricatedDepositStep03DatumSchema as unknown as FabricatedDepositStep03Datum;
+  asDataType<FabricatedDepositStep03Datum>(FabricatedDepositStep03DatumSchema);
 
 /**
  * The prover's opening of step-02's retained event-datum commitment.
@@ -253,7 +261,9 @@ export type FabricatedDepositAuthenticContentOpening = Data.Static<
   typeof FabricatedDepositAuthenticContentOpeningSchema
 >;
 export const FabricatedDepositAuthenticContentOpening =
-  FabricatedDepositAuthenticContentOpeningSchema as unknown as FabricatedDepositAuthenticContentOpening;
+  asDataType<FabricatedDepositAuthenticContentOpening>(
+    FabricatedDepositAuthenticContentOpeningSchema,
+  );
 
 export const FabricatedDepositStep03ArgsSchema = Data.Object({
   /** Own input index. */
@@ -267,7 +277,7 @@ export type FabricatedDepositStep03Args = Data.Static<
   typeof FabricatedDepositStep03ArgsSchema
 >;
 export const FabricatedDepositStep03Args =
-  FabricatedDepositStep03ArgsSchema as unknown as FabricatedDepositStep03Args;
+  asDataType<FabricatedDepositStep03Args>(FabricatedDepositStep03ArgsSchema);
 
 export const FabricatedDepositStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(FabricatedDepositStep03ArgsSchema);
@@ -275,7 +285,9 @@ export type FabricatedDepositStep03SpendRedeemer = Data.Static<
   typeof FabricatedDepositStep03SpendRedeemerSchema
 >;
 export const FabricatedDepositStep03SpendRedeemer =
-  FabricatedDepositStep03SpendRedeemerSchema as unknown as FabricatedDepositStep03SpendRedeemer;
+  asDataType<FabricatedDepositStep03SpendRedeemer>(
+    FabricatedDepositStep03SpendRedeemerSchema,
+  );
 
 // ## Step 04 — the established fault
 
@@ -293,8 +305,9 @@ export const FabricatedDepositFaultSchema = Data.Enum([
 export type FabricatedDepositFault = Data.Static<
   typeof FabricatedDepositFaultSchema
 >;
-export const FabricatedDepositFault =
-  FabricatedDepositFaultSchema as unknown as FabricatedDepositFault;
+export const FabricatedDepositFault = asDataType<FabricatedDepositFault>(
+  FabricatedDepositFaultSchema,
+);
 
 export const FabricatedDepositStep04StateSchema = Data.Object({
   /** 28-byte hash of the challenged block header. */
@@ -312,7 +325,7 @@ export type FabricatedDepositStep04State = Data.Static<
   typeof FabricatedDepositStep04StateSchema
 >;
 export const FabricatedDepositStep04State =
-  FabricatedDepositStep04StateSchema as unknown as FabricatedDepositStep04State;
+  asDataType<FabricatedDepositStep04State>(FabricatedDepositStep04StateSchema);
 
 export const FabricatedDepositStep04DatumSchema = faultProofStepDatumSchema(
   FabricatedDepositStep04StateSchema,
@@ -321,7 +334,7 @@ export type FabricatedDepositStep04Datum = Data.Static<
   typeof FabricatedDepositStep04DatumSchema
 >;
 export const FabricatedDepositStep04Datum =
-  FabricatedDepositStep04DatumSchema as unknown as FabricatedDepositStep04Datum;
+  asDataType<FabricatedDepositStep04Datum>(FabricatedDepositStep04DatumSchema);
 
 export const FabricatedDepositStep04ArgsSchema = Data.Object({
   /** Own input index. */
@@ -335,7 +348,7 @@ export type FabricatedDepositStep04Args = Data.Static<
   typeof FabricatedDepositStep04ArgsSchema
 >;
 export const FabricatedDepositStep04Args =
-  FabricatedDepositStep04ArgsSchema as unknown as FabricatedDepositStep04Args;
+  asDataType<FabricatedDepositStep04Args>(FabricatedDepositStep04ArgsSchema);
 
 export const FabricatedDepositStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(FabricatedDepositStep04ArgsSchema);
@@ -343,7 +356,9 @@ export type FabricatedDepositStep04SpendRedeemer = Data.Static<
   typeof FabricatedDepositStep04SpendRedeemerSchema
 >;
 export const FabricatedDepositStep04SpendRedeemer =
-  FabricatedDepositStep04SpendRedeemerSchema as unknown as FabricatedDepositStep04SpendRedeemer;
+  asDataType<FabricatedDepositStep04SpendRedeemer>(
+    FabricatedDepositStep04SpendRedeemerSchema,
+  );
 
 // ## Step resolver
 

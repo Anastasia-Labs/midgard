@@ -9,6 +9,7 @@
  * Catalogue registration is append-only at category id `0000001c`; the shared
  * contract loader applies the deployment network id to step 01.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
@@ -34,7 +35,7 @@ export const NetworkIdFaultSchema = Data.Enum([
   Data.Literal("ForcedNetworkIdMismatch"),
 ]);
 export type NetworkIdFault = Data.Static<typeof NetworkIdFaultSchema>;
-export const NetworkIdFault = NetworkIdFaultSchema as unknown as NetworkIdFault;
+export const NetworkIdFault = asDataType<NetworkIdFault>(NetworkIdFaultSchema);
 
 export const NetworkIdStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export const NetworkIdPostUtxoPredecessorSchema = Data.Enum([
@@ -49,7 +50,7 @@ export type NetworkIdPostUtxoPredecessor = Data.Static<
   typeof NetworkIdPostUtxoPredecessorSchema
 >;
 export const NetworkIdPostUtxoPredecessor =
-  NetworkIdPostUtxoPredecessorSchema as unknown as NetworkIdPostUtxoPredecessor;
+  asDataType<NetworkIdPostUtxoPredecessor>(NetworkIdPostUtxoPredecessorSchema);
 export const NetworkIdPostUtxoMembershipSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -64,7 +65,7 @@ export type NetworkIdPostUtxoMembership = Data.Static<
   typeof NetworkIdPostUtxoMembershipSchema
 >;
 export const NetworkIdPostUtxoMembership =
-  NetworkIdPostUtxoMembershipSchema as unknown as NetworkIdPostUtxoMembership;
+  asDataType<NetworkIdPostUtxoMembership>(NetworkIdPostUtxoMembershipSchema);
 export const NetworkIdStep01ArgsSchema = Data.Object({
   tx_inclusion: Data.Nullable(NativeTxInclusionCarriageSchema),
   post_utxo_membership: Data.Nullable(NetworkIdPostUtxoMembershipSchema),
@@ -111,8 +112,9 @@ export const NetworkIdStep02StateSchema = Data.Object({
 export type NetworkIdStep02State = Data.Static<
   typeof NetworkIdStep02StateSchema
 >;
-export const NetworkIdStep02State =
-  NetworkIdStep02StateSchema as unknown as NetworkIdStep02State;
+export const NetworkIdStep02State = asDataType<NetworkIdStep02State>(
+  NetworkIdStep02StateSchema,
+);
 
 export const NetworkIdStep02DatumSchema = faultProofStepDatumSchema(
   NetworkIdStep02StateSchema,
@@ -120,8 +122,9 @@ export const NetworkIdStep02DatumSchema = faultProofStepDatumSchema(
 export type NetworkIdStep02Datum = Data.Static<
   typeof NetworkIdStep02DatumSchema
 >;
-export const NetworkIdStep02Datum =
-  NetworkIdStep02DatumSchema as unknown as NetworkIdStep02Datum;
+export const NetworkIdStep02Datum = asDataType<NetworkIdStep02Datum>(
+  NetworkIdStep02DatumSchema,
+);
 export const NetworkIdStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -139,8 +142,9 @@ export const NetworkIdStep02ArgsSchema = Data.Object({
   ),
 });
 export type NetworkIdStep02Args = Data.Static<typeof NetworkIdStep02ArgsSchema>;
-export const NetworkIdStep02Args =
-  NetworkIdStep02ArgsSchema as unknown as NetworkIdStep02Args;
+export const NetworkIdStep02Args = asDataType<NetworkIdStep02Args>(
+  NetworkIdStep02ArgsSchema,
+);
 export const NetworkIdStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
   NetworkIdStep02ArgsSchema,
 );

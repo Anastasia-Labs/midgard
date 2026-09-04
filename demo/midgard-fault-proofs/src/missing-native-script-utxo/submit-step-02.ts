@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   encodeMidgardTxInputCanonical,
   type FieldOpening,
@@ -41,16 +42,19 @@ type Step02State = NonNullable<
   Data.Static<typeof MissingNativeScriptUtxoStep02DatumSchema>["data"]
 >;
 type Step02Datum = Data.Static<typeof MissingNativeScriptUtxoStep02DatumSchema>;
-const Step02Datum =
-  MissingNativeScriptUtxoStep02DatumSchema as unknown as Step02Datum;
+const Step02Datum = asDataType<Step02Datum>(
+  MissingNativeScriptUtxoStep02DatumSchema,
+);
 type Step03Datum = Data.Static<typeof MissingNativeScriptUtxoStep03DatumSchema>;
-const Step03Datum =
-  MissingNativeScriptUtxoStep03DatumSchema as unknown as Step03Datum;
+const Step03Datum = asDataType<Step03Datum>(
+  MissingNativeScriptUtxoStep03DatumSchema,
+);
 type Step02Redeemer = Data.Static<
   typeof MissingNativeScriptUtxoStep02SpendRedeemerSchema
 >;
-const Step02Redeemer =
-  MissingNativeScriptUtxoStep02SpendRedeemerSchema as unknown as Step02Redeemer;
+const Step02Redeemer = asDataType<Step02Redeemer>(
+  MissingNativeScriptUtxoStep02SpendRedeemerSchema,
+);
 
 export const submitMissingNativeScriptUtxoStep02 = async ({
   lucid,

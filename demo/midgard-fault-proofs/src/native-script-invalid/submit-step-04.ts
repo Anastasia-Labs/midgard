@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type FieldOpening,
   MIDGARD_FIELD_INDEX,
@@ -46,16 +47,19 @@ type State = NonNullable<
   Data.Static<typeof NativeScriptInvalidStep04DatumSchema>["data"]
 >;
 type Step04Datum = Data.Static<typeof NativeScriptInvalidStep04DatumSchema>;
-const Step04Datum =
-  NativeScriptInvalidStep04DatumSchema as unknown as Step04Datum;
+const Step04Datum = asDataType<Step04Datum>(
+  NativeScriptInvalidStep04DatumSchema,
+);
 type Step05Datum = Data.Static<typeof NativeScriptInvalidStep05DatumSchema>;
-const Step05Datum =
-  NativeScriptInvalidStep05DatumSchema as unknown as Step05Datum;
+const Step05Datum = asDataType<Step05Datum>(
+  NativeScriptInvalidStep05DatumSchema,
+);
 type Redeemer = Data.Static<
   typeof NativeScriptInvalidStep04SpendRedeemerSchema
 >;
-const Redeemer =
-  NativeScriptInvalidStep04SpendRedeemerSchema as unknown as Redeemer;
+const Redeemer = asDataType<Redeemer>(
+  NativeScriptInvalidStep04SpendRedeemerSchema,
+);
 
 export const submitNativeScriptInvalidStep04 = async ({
   lucid,

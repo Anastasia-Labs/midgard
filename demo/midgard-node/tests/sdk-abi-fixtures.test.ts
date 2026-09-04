@@ -850,6 +850,7 @@ describe("SDK canonical ABI fixtures", () => {
         ),
       ),
     ).toEqual([
+      "yield_to_ref_input_index",
       "header_node_key",
       "confirmed_state_input_outref",
       "confirmed_state_output_index",
@@ -1128,6 +1129,7 @@ describe("SDK canonical ABI fixtures", () => {
       roundTrip(
         {
           CommitBlockHeader: {
+            yield_to_ref_input_index: 0n,
             new_block_output_index: 1n,
             continued_latest_block_output_index: 2n,
             operator: h28,
@@ -1145,6 +1147,7 @@ describe("SDK canonical ABI fixtures", () => {
       roundTrip(
         {
           MergeToConfirmedStateV1: {
+            yield_to_ref_input_index: 0n,
             header_node_key: h28,
             confirmed_state_input_outref: outputReference,
             confirmed_state_output_index: 0n,

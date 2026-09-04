@@ -1,5 +1,3 @@
-import { spawn } from "node:child_process";
-
 import {
   computeHash32,
   deriveMidgardNativeTxWitnessSetCompact,
@@ -14,7 +12,7 @@ import {
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
@@ -81,99 +79,6 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
-
-const isolatedUplcWorker = new URL(
-  "./support/isolated-uplc-evaluator-v1.cjs",
-  import.meta.url,
-);
-const redeemerTags = [
-  "spend",
-  "mint",
-  "publish",
-  "withdraw",
-  "vote",
-  "propose",
-] as const;
-const runIsolatedUplcWorker = async (input: string): Promise<string> =>
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [isolatedUplcWorker.pathname], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        const output = Buffer.concat(stdout).toString("utf8");
-        if (output.length === 0) {
-          reject(
-            new Error(
-              `Isolated UPLC worker returned no output: ${Buffer.concat(stderr).toString("utf8")}`,
-            ),
-          );
-        } else {
-          resolve(output);
-        }
-      } else {
-        reject(
-          new Error(
-            `Isolated UPLC worker exited ${String(code)}: ${Buffer.concat(stderr).toString("utf8")}`,
-          ),
-        );
-      }
-    });
-    child.stdin.end(input);
-  });
-const makeIsolatedUplcEvaluator = () => ({
-  name: "aiken-isolated-process-v1",
-  evaluate: async ({
-    tx,
-    additionalUTxOs,
-    context,
-  }: Parameters<
-    NonNullable<
-      NonNullable<
-        NonNullable<
-          Parameters<typeof makeFaultProofEmulatorHarness>[0]
-        >["lucidOptions"]
-      >["evaluator"]
-    >["evaluate"]
-  >[0]) => {
-    const stdout = await runIsolatedUplcWorker(
-      JSON.stringify(
-        {
-          tx,
-          additionalUTxOs,
-          costModels: context.costModels.to_cbor_hex(),
-          maxTxExSteps: context.protocolParameters.maxTxExSteps.toString(),
-          maxTxExMem: context.protocolParameters.maxTxExMem.toString(),
-          zeroTime: context.slotConfig.zeroTime.toString(),
-          zeroSlot: context.slotConfig.zeroSlot.toString(),
-          slotLength: context.slotConfig.slotLength,
-        },
-        (_key, value) =>
-          typeof value === "bigint" ? { $bigint: value.toString() } : value,
-      ),
-    );
-    return (JSON.parse(stdout) as string[]).map((hex) => {
-      const redeemer = CML.LegacyRedeemer.from_cbor_hex(hex);
-      const redeemerTag = redeemerTags[redeemer.tag()];
-      if (redeemerTag === undefined) {
-        throw new Error(`Unknown CML redeemer tag ${redeemer.tag()}`);
-      }
-      return {
-        ex_units: {
-          mem: Number(redeemer.ex_units().mem()),
-          steps: Number(redeemer.ex_units().steps()),
-        },
-        redeemer_index: Number(redeemer.index()),
-        redeemer_tag: redeemerTag,
-      };
-    });
-  },
-});
 
 const field8Checkpoint = (
   checkpoint: ReturnType<typeof initialMissingNativeScriptTxGrammarCheckpoint>,
@@ -925,13 +830,15 @@ describe("script-integrity-hash-missing real lifecycle", () => {
   }, 600_000);
 
   it("splits 224+224 certified items across resumable ledger transactions", async () => {
-    const isolatedEvaluator = makeIsolatedUplcEvaluator();
-    expect(isolatedEvaluator.name).toBe("aiken-isolated-process-v1");
+    // This journey evaluates ~60 transactions in one worker. It used to hand
+    // each evaluation to a fresh subprocess (tests/support/
+    // isolated-uplc-evaluator-v1.cjs) purely to dodge the @lucid-evolution/uplc
+    // linear-memory leak, at ~2.5 s of process spawn and module load per
+    // evaluation — 150 s for a journey that runs in 19 s in-process. With the
+    // allocator fix (lucid-evolution PR #728) the in-process evaluator is the
+    // same pinned Aiken UPLC evaluator with no leak to dodge.
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
-      // Resource isolation only: the worker executes the same pinned local
-      // Aiken UPLC evaluator with the unchanged harness protocol parameters.
-      lucidOptions: { evaluator: isolatedEvaluator },
     });
     const chain =
       harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;

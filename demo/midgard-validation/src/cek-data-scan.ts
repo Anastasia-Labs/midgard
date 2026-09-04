@@ -27,7 +27,6 @@ import {
   dataFromCbor,
   DataI,
   DataList,
-  DataMap,
 } from "@harmoniclabs/plutus-data";
 import { Constr, Data as LucidData, fromHex } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -36,6 +35,11 @@ import {
   encodeMidgardCekPlutusData,
   midgardCekIntegerMemorySize,
 } from "./cek-constant.js";
+import {
+  isByteStringLike,
+  isPlutusDataMap,
+  type PlutusDataMap,
+} from "./plutus-data-narrowing.js";
 import {
   emptyMidgardCekDataListSummary,
   emptyMidgardCekDataPairSummary,
@@ -361,7 +365,7 @@ type MutableFrame = {
   children: MidgardCekDataSummary[];
 };
 
-type StructuredData = DataConstr | DataList | DataMap<Data, Data>;
+type StructuredData = DataConstr | DataList | PlutusDataMap;
 
 type ScanWork =
   | {
@@ -423,16 +427,15 @@ const constructorHeaderLength = (constructor: bigint): number => {
 };
 
 const scalarBytes = (value: DataB): Uint8Array => {
-  const candidate = value.bytes as unknown;
-  if (
-    typeof candidate !== "object" ||
-    candidate === null ||
-    !("toBuffer" in candidate) ||
-    typeof candidate.toBuffer !== "function"
-  ) {
+  const candidate: unknown = value.bytes;
+  if (!isByteStringLike(candidate)) {
     throw new Error("CEK Data scanner received an invalid byte leaf");
   }
-  return candidate.toBuffer();
+  const bytes = candidate.toBuffer();
+  if (!(bytes instanceof Uint8Array)) {
+    throw new Error("CEK Data scanner byte leaf did not produce bytes");
+  }
+  return bytes;
 };
 
 const scalarSummary = (data: DataI | DataB): MidgardCekDataSummary => {
@@ -564,7 +567,7 @@ export const buildMidgardCekDataScanTrace = (
       if (
         !(data instanceof DataConstr) &&
         !(data instanceof DataList) &&
-        !(data instanceof DataMap)
+        !isPlutusDataMap(data)
       ) {
         throw new Error("CEK Data scanner received an unknown node");
       }

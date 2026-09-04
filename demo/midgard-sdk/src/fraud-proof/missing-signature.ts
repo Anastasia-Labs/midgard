@@ -36,6 +36,7 @@
  * 1:1 — the PlutusData encoding is positional, so re-ordering here would
  * silently produce redeemers the validators reject.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -178,7 +179,7 @@ export type MissingSignatureStep01Datum = Data.Static<
   typeof MissingSignatureStep01DatumSchema
 >;
 export const MissingSignatureStep01Datum =
-  MissingSignatureStep01DatumSchema as unknown as MissingSignatureStep01Datum;
+  asDataType<MissingSignatureStep01Datum>(MissingSignatureStep01DatumSchema);
 
 export const MissingSignatureStep01ArgsSchema = NativeTxInclusionArgsSchema;
 export type MissingSignatureStep01Args = NativeTxInclusionArgs;
@@ -191,7 +192,9 @@ export type MissingSignatureStep01SpendRedeemer = Data.Static<
   typeof MissingSignatureStep01SpendRedeemerSchema
 >;
 export const MissingSignatureStep01SpendRedeemer =
-  MissingSignatureStep01SpendRedeemerSchema as unknown as MissingSignatureStep01SpendRedeemer;
+  asDataType<MissingSignatureStep01SpendRedeemer>(
+    MissingSignatureStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — open field 4 and select the accused required signer
 
@@ -210,7 +213,7 @@ export type MissingSignatureStep02State = Data.Static<
   typeof MissingSignatureStep02StateSchema
 >;
 export const MissingSignatureStep02State =
-  MissingSignatureStep02StateSchema as unknown as MissingSignatureStep02State;
+  asDataType<MissingSignatureStep02State>(MissingSignatureStep02StateSchema);
 
 export const MissingSignatureStep02DatumSchema = faultProofStepDatumSchema(
   MissingSignatureStep02StateSchema,
@@ -219,7 +222,7 @@ export type MissingSignatureStep02Datum = Data.Static<
   typeof MissingSignatureStep02DatumSchema
 >;
 export const MissingSignatureStep02Datum =
-  MissingSignatureStep02DatumSchema as unknown as MissingSignatureStep02Datum;
+  asDataType<MissingSignatureStep02Datum>(MissingSignatureStep02DatumSchema);
 
 /**
  * Mirrors `midgard/fraud_proofs/missing_signature/step_02.Args`.
@@ -238,7 +241,7 @@ export type MissingSignatureStep02Args = Data.Static<
   typeof MissingSignatureStep02ArgsSchema
 >;
 export const MissingSignatureStep02Args =
-  MissingSignatureStep02ArgsSchema as unknown as MissingSignatureStep02Args;
+  asDataType<MissingSignatureStep02Args>(MissingSignatureStep02ArgsSchema);
 
 export const MissingSignatureStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingSignatureStep02ArgsSchema);
@@ -246,7 +249,9 @@ export type MissingSignatureStep02SpendRedeemer = Data.Static<
   typeof MissingSignatureStep02SpendRedeemerSchema
 >;
 export const MissingSignatureStep02SpendRedeemer =
-  MissingSignatureStep02SpendRedeemerSchema as unknown as MissingSignatureStep02SpendRedeemer;
+  asDataType<MissingSignatureStep02SpendRedeemer>(
+    MissingSignatureStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — lift the accused hash to its verification-key preimage
 
@@ -260,7 +265,7 @@ export type MissingSignatureStep03State = Data.Static<
   typeof MissingSignatureStep03StateSchema
 >;
 export const MissingSignatureStep03State =
-  MissingSignatureStep03StateSchema as unknown as MissingSignatureStep03State;
+  asDataType<MissingSignatureStep03State>(MissingSignatureStep03StateSchema);
 
 export const MissingSignatureStep03DatumSchema = faultProofStepDatumSchema(
   MissingSignatureStep03StateSchema,
@@ -269,7 +274,7 @@ export type MissingSignatureStep03Datum = Data.Static<
   typeof MissingSignatureStep03DatumSchema
 >;
 export const MissingSignatureStep03Datum =
-  MissingSignatureStep03DatumSchema as unknown as MissingSignatureStep03Datum;
+  asDataType<MissingSignatureStep03Datum>(MissingSignatureStep03DatumSchema);
 
 /** Mirrors `midgard/fraud_proofs/missing_signature/step_03.Args`. */
 export const MissingSignatureStep03ArgsSchema = Data.Object({
@@ -281,7 +286,7 @@ export type MissingSignatureStep03Args = Data.Static<
   typeof MissingSignatureStep03ArgsSchema
 >;
 export const MissingSignatureStep03Args =
-  MissingSignatureStep03ArgsSchema as unknown as MissingSignatureStep03Args;
+  asDataType<MissingSignatureStep03Args>(MissingSignatureStep03ArgsSchema);
 
 export const MissingSignatureStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingSignatureStep03ArgsSchema);
@@ -289,7 +294,9 @@ export type MissingSignatureStep03SpendRedeemer = Data.Static<
   typeof MissingSignatureStep03SpendRedeemerSchema
 >;
 export const MissingSignatureStep03SpendRedeemer =
-  MissingSignatureStep03SpendRedeemerSchema as unknown as MissingSignatureStep03SpendRedeemer;
+  asDataType<MissingSignatureStep03SpendRedeemer>(
+    MissingSignatureStep03SpendRedeemerSchema,
+  );
 
 // ## Step 04 — open field 7 and prove the witness absent
 
@@ -307,7 +314,7 @@ export type MissingSignatureStep04State = Data.Static<
   typeof MissingSignatureStep04StateSchema
 >;
 export const MissingSignatureStep04State =
-  MissingSignatureStep04StateSchema as unknown as MissingSignatureStep04State;
+  asDataType<MissingSignatureStep04State>(MissingSignatureStep04StateSchema);
 
 export const MissingSignatureStep04DatumSchema = faultProofStepDatumSchema(
   MissingSignatureStep04StateSchema,
@@ -316,7 +323,7 @@ export type MissingSignatureStep04Datum = Data.Static<
   typeof MissingSignatureStep04DatumSchema
 >;
 export const MissingSignatureStep04Datum =
-  MissingSignatureStep04DatumSchema as unknown as MissingSignatureStep04Datum;
+  asDataType<MissingSignatureStep04Datum>(MissingSignatureStep04DatumSchema);
 
 /**
  * Mirrors `midgard/fraud_proofs/missing_signature/step_04.Args`.
@@ -349,7 +356,7 @@ export type MissingSignatureStep04Args = Data.Static<
   typeof MissingSignatureStep04ArgsSchema
 >;
 export const MissingSignatureStep04Args =
-  MissingSignatureStep04ArgsSchema as unknown as MissingSignatureStep04Args;
+  asDataType<MissingSignatureStep04Args>(MissingSignatureStep04ArgsSchema);
 
 export const MissingSignatureStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingSignatureStep04ArgsSchema);
@@ -357,7 +364,9 @@ export type MissingSignatureStep04SpendRedeemer = Data.Static<
   typeof MissingSignatureStep04SpendRedeemerSchema
 >;
 export const MissingSignatureStep04SpendRedeemer =
-  MissingSignatureStep04SpendRedeemerSchema as unknown as MissingSignatureStep04SpendRedeemer;
+  asDataType<MissingSignatureStep04SpendRedeemer>(
+    MissingSignatureStep04SpendRedeemerSchema,
+  );
 
 // ## Step-04 deterministic field-7 checkpoint
 

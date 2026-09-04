@@ -23,13 +23,13 @@ import {
   DataConstr,
   DataI,
   DataList,
-  DataMap,
 } from "@harmoniclabs/plutus-data";
 
 import {
   encodeMidgardCekPlutusData,
   midgardCekIntegerMemorySize,
 } from "./cek-constant.js";
+import { isByteStringLike, isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 type HashedMaterial<Node> = {
   readonly node: Node;
@@ -110,12 +110,7 @@ const addExact = <Node>(
 };
 
 const asByteArray = (value: unknown): Uint8Array => {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("toBuffer" in value) ||
-    typeof value.toBuffer !== "function"
-  ) {
+  if (!isByteStringLike(value)) {
     throw new Error("Plutus Data bytes leaf has an invalid byte string");
   }
   const bytes = value.toBuffer();
@@ -268,7 +263,7 @@ export const commitMidgardCekDataTree = (
           memory,
         };
       }
-    } else if (data instanceof DataMap) {
+    } else if (isPlutusDataMap(data)) {
       node = {
         kind: "map",
         entriesCount: sequence.length,
@@ -333,7 +328,7 @@ export const commitMidgardCekDataTree = (
         }
         continue;
       }
-      if (operation.data instanceof DataMap) {
+      if (isPlutusDataMap(operation.data)) {
         const children = emptyListWork(MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT);
         operations.push({
           kind: "finishData",

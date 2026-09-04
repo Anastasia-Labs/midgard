@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
 import {
   buildDoubleSpendFaultProofContracts,
@@ -57,7 +58,6 @@ const h28 = "11".repeat(28);
 const h28b = "22".repeat(28);
 const placeholderInvalidRange = "55".repeat(28);
 const referenceScriptAuthNativeScript = `8200581c${"00".repeat(28)}`;
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const deploymentManifest = (contracts: Record<string, unknown>) => ({
   referenceScriptAuthPolicy: {
@@ -102,19 +102,18 @@ const encodeCatalogueKey = (id: string): Buffer =>
   Buffer.from(
     Data.to(
       id,
-      Data.Bytes({
-        minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-        maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-      }) as unknown as LucidDataSchema,
+      asLucidSchema(
+        Data.Bytes({
+          minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+          maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+        }),
+      ),
     ),
     "hex",
   );
 
 const encodeCatalogueValue = (scriptHash: string): Buffer =>
-  Buffer.from(
-    Data.to(scriptHash, ScriptHashSchema as unknown as LucidDataSchema),
-    "hex",
-  );
+  Buffer.from(Data.to(scriptHash, asLucidSchema(ScriptHashSchema)), "hex");
 
 const trieRootHex = (trie: Trie): string =>
   trie.hash == null

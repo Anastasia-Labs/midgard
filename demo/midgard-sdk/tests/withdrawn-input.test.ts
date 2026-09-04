@@ -1,3 +1,4 @@
+import { type LucidDataSchema } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -8,8 +9,6 @@ import {
   WithdrawnInputStep02Datum,
   WithdrawnInputStep03SpendRedeemer,
 } from "../src/index.js";
-
-type Schema = Parameters<typeof Data.to>[1];
 
 const input = { tx_id: "11".repeat(32), output_index: 7n };
 
@@ -30,7 +29,7 @@ const withdrawal = (
   validity,
 });
 
-const roundTrip = <A>(value: A, schema: Schema): A =>
+const roundTrip = <A>(value: A, schema: LucidDataSchema): A =>
   Data.from(Data.to(value as never, schema as never), schema as never) as A;
 
 describe("withdrawn-input V1 wire twin", () => {

@@ -3,6 +3,7 @@ import {
   MIDGARD_PROTOCOL_VERSION,
   MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
@@ -32,7 +33,7 @@ export { NO_DA_ATTESTATION } from "./da-availability-state.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
-export const HeaderHash = HeaderHashSchema as unknown as HeaderHash;
+export const HeaderHash = asDataType<HeaderHash>(HeaderHashSchema);
 
 /** Canonical proof-complete Midgard V1 block header. */
 export const HeaderSchema = Data.Object({
@@ -63,7 +64,7 @@ export const HeaderSchema = Data.Object({
   protocolVersion: Data.Integer(),
 });
 export type Header = Data.Static<typeof HeaderSchema>;
-export const Header = HeaderSchema as unknown as Header;
+export const Header = asDataType<Header>(HeaderSchema);
 
 export const HeaderTransitionCommitmentsSchema = Data.Object({
   forcedTransactionsRoot: MerkleRootSchema,
@@ -82,7 +83,7 @@ export type HeaderTransitionCommitments = Data.Static<
   typeof HeaderTransitionCommitmentsSchema
 >;
 export const HeaderTransitionCommitments =
-  HeaderTransitionCommitmentsSchema as unknown as HeaderTransitionCommitments;
+  asDataType<HeaderTransitionCommitments>(HeaderTransitionCommitmentsSchema);
 
 export const EMPTY_HEADER_TRANSITION_COMMITMENTS: HeaderTransitionCommitments =
   {
@@ -367,7 +368,7 @@ export const StateQueueNodeSchema = Data.Object({
   da_attestation: DaAvailabilityStateQueueStatusSchema,
 });
 export type StateQueueNode = Data.Static<typeof StateQueueNodeSchema>;
-export const StateQueueNode = StateQueueNodeSchema as unknown as StateQueueNode;
+export const StateQueueNode = asDataType<StateQueueNode>(StateQueueNodeSchema);
 export const castStateQueueNodeToData = (node: StateQueueNode): unknown =>
   Data.castTo(node, StateQueueNode);
 
@@ -477,7 +478,7 @@ export const ConfirmedStateSchema = Data.Object({
   protocolVersion: Data.Integer(),
 });
 export type ConfirmedState = Data.Static<typeof ConfirmedStateSchema>;
-export const ConfirmedState = ConfirmedStateSchema as unknown as ConfirmedState;
+export const ConfirmedState = asDataType<ConfirmedState>(ConfirmedStateSchema);
 export const castConfirmedStateToData = (
   confirmedState: ConfirmedState,
 ): unknown => Data.castTo(confirmedState, ConfirmedState);
@@ -540,7 +541,7 @@ export const CardanoDatumSchema = Data.Enum([
   }),
 ]);
 export type CardanoDatum = Data.Static<typeof CardanoDatumSchema>;
-export const CardanoDatum = CardanoDatumSchema as unknown as CardanoDatum;
+export const CardanoDatum = asDataType<CardanoDatum>(CardanoDatumSchema);
 
 export const DepositInfoSchema = Data.Object({
   l2_address: AddressSchema,
@@ -548,14 +549,14 @@ export const DepositInfoSchema = Data.Object({
   l2_datum: Data.Nullable(Data.Any()),
 });
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
-export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
+export const DepositInfo = asDataType<DepositInfo>(DepositInfoSchema);
 
 export const DepositEventSchema = Data.Object({
   id: OutputReferenceSchema,
   info: DepositInfoSchema,
 });
 export type DepositEvent = Data.Static<typeof DepositEventSchema>;
-export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
+export const DepositEvent = asDataType<DepositEvent>(DepositEventSchema);
 
 /**
  * Twin of `midgard/ledger_state.MidgardTxValidity`. #640 collapsed the old
@@ -567,8 +568,9 @@ export const MidgardTxValiditySchema = Data.Enum([
   Data.Literal("TxIsInvalid"),
 ]);
 export type MidgardTxValidity = Data.Static<typeof MidgardTxValiditySchema>;
-export const MidgardTxValidity =
-  MidgardTxValiditySchema as unknown as MidgardTxValidity;
+export const MidgardTxValidity = asDataType<MidgardTxValidity>(
+  MidgardTxValiditySchema,
+);
 
 export const NativeTxProofSourceSchema = Data.Object({
   compact_cbor: Data.Bytes(),
@@ -576,8 +578,9 @@ export const NativeTxProofSourceSchema = Data.Object({
   field_preimage_lengths_cbor: Data.Bytes(),
 });
 export type NativeTxProofSource = Data.Static<typeof NativeTxProofSourceSchema>;
-export const NativeTxProofSource =
-  NativeTxProofSourceSchema as unknown as NativeTxProofSource;
+export const NativeTxProofSource = asDataType<NativeTxProofSource>(
+  NativeTxProofSourceSchema,
+);
 
 export const BoundedBlobFrontierPeakSchema = Data.Object({
   height: Data.Integer(),
@@ -586,8 +589,9 @@ export const BoundedBlobFrontierPeakSchema = Data.Object({
 export type BoundedBlobFrontierPeak = Data.Static<
   typeof BoundedBlobFrontierPeakSchema
 >;
-export const BoundedBlobFrontierPeak =
-  BoundedBlobFrontierPeakSchema as unknown as BoundedBlobFrontierPeak;
+export const BoundedBlobFrontierPeak = asDataType<BoundedBlobFrontierPeak>(
+  BoundedBlobFrontierPeakSchema,
+);
 
 export const BoundedBlobChunkProofSchema = Data.Object({
   version: Data.Integer(),
@@ -601,8 +605,9 @@ export const BoundedBlobChunkProofSchema = Data.Object({
 export type BoundedBlobChunkProof = Data.Static<
   typeof BoundedBlobChunkProofSchema
 >;
-export const BoundedBlobChunkProof =
-  BoundedBlobChunkProofSchema as unknown as BoundedBlobChunkProof;
+export const BoundedBlobChunkProof = asDataType<BoundedBlobChunkProof>(
+  BoundedBlobChunkProofSchema,
+);
 
 export const BoundedCollectionItemProofSchema = Data.Object({
   version: Data.Integer(),
@@ -618,7 +623,7 @@ export type BoundedCollectionItemProof = Data.Static<
   typeof BoundedCollectionItemProofSchema
 >;
 export const BoundedCollectionItemProof =
-  BoundedCollectionItemProofSchema as unknown as BoundedCollectionItemProof;
+  asDataType<BoundedCollectionItemProof>(BoundedCollectionItemProofSchema);
 
 export const BoundedItemChunkProofSchema = Data.Object({
   version: Data.Integer(),
@@ -633,8 +638,9 @@ export const BoundedItemChunkProofSchema = Data.Object({
 export type BoundedItemChunkProof = Data.Static<
   typeof BoundedItemChunkProofSchema
 >;
-export const BoundedItemChunkProof =
-  BoundedItemChunkProofSchema as unknown as BoundedItemChunkProof;
+export const BoundedItemChunkProof = asDataType<BoundedItemChunkProof>(
+  BoundedItemChunkProofSchema,
+);
 
 // `TxFieldPreimageV1Schema` and `TxFieldReceiptV1Schema` used to sit here as the
 // twins of `midgard/ledger_state`'s two counted publication datums. Both retired
@@ -658,8 +664,9 @@ export const CekProgramMaterialDatumSchema = Data.Object({
 export type CekProgramMaterialDatum = Data.Static<
   typeof CekProgramMaterialDatumSchema
 >;
-export const CekProgramMaterialDatum =
-  CekProgramMaterialDatumSchema as unknown as CekProgramMaterialDatum;
+export const CekProgramMaterialDatum = asDataType<CekProgramMaterialDatum>(
+  CekProgramMaterialDatumSchema,
+);
 
 /**
  * Twin of `midgard/ledger_state.TxOrderPayload`.
@@ -677,14 +684,14 @@ export const TxOrderPayloadSchema = Data.Object({
   source: NativeTxProofSourceSchema,
 });
 export type TxOrderPayload = Data.Static<typeof TxOrderPayloadSchema>;
-export const TxOrderPayload = TxOrderPayloadSchema as unknown as TxOrderPayload;
+export const TxOrderPayload = asDataType<TxOrderPayload>(TxOrderPayloadSchema);
 
 export const TxOrderEventSchema = Data.Object({
   id: OutputReferenceSchema,
   tx: TxOrderPayloadSchema,
 });
 export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
-export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
+export const TxOrderEvent = asDataType<TxOrderEvent>(TxOrderEventSchema);
 
 /**
  * Twin of `midgard/ledger_state.L2TransactionSource`.
@@ -704,8 +711,9 @@ export const L2TransactionSourceSchema = Data.Object({
   source: NativeTxProofSourceSchema,
 });
 export type L2TransactionSource = Data.Static<typeof L2TransactionSourceSchema>;
-export const L2TransactionSource =
-  L2TransactionSourceSchema as unknown as L2TransactionSource;
+export const L2TransactionSource = asDataType<L2TransactionSource>(
+  L2TransactionSourceSchema,
+);
 
 /**
  * Twin of `midgard/ledger_state.ForcedInclusionTxV1`. It shed
@@ -718,8 +726,9 @@ export const ForcedInclusionTxV1Schema = Data.Object({
   verdict: OperatorVerdictSchema,
 });
 export type ForcedInclusionTxV1 = Data.Static<typeof ForcedInclusionTxV1Schema>;
-export const ForcedInclusionTxV1 =
-  ForcedInclusionTxV1Schema as unknown as ForcedInclusionTxV1;
+export const ForcedInclusionTxV1 = asDataType<ForcedInclusionTxV1>(
+  ForcedInclusionTxV1Schema,
+);
 
 export const TransitionPhaseSchema = Data.Enum([
   Data.Literal("Withdrawal"),
@@ -728,8 +737,9 @@ export const TransitionPhaseSchema = Data.Enum([
   Data.Literal("Deposit"),
 ]);
 export type TransitionPhase = Data.Static<typeof TransitionPhaseSchema>;
-export const TransitionPhase =
-  TransitionPhaseSchema as unknown as TransitionPhase;
+export const TransitionPhase = asDataType<TransitionPhase>(
+  TransitionPhaseSchema,
+);
 
 export const EventKeySchema = Data.Enum([
   Data.Object({
@@ -754,15 +764,16 @@ export const EventKeySchema = Data.Enum([
   }),
 ]);
 export type EventKey = Data.Static<typeof EventKeySchema>;
-export const EventKey = EventKeySchema as unknown as EventKey;
+export const EventKey = asDataType<EventKey>(EventKeySchema);
 
 export const EventToStepValueSchema = Data.Object({
   step_index: Data.Integer(),
   phase: TransitionPhaseSchema,
 });
 export type EventToStepValue = Data.Static<typeof EventToStepValueSchema>;
-export const EventToStepValue =
-  EventToStepValueSchema as unknown as EventToStepValue;
+export const EventToStepValue = asDataType<EventToStepValue>(
+  EventToStepValueSchema,
+);
 
 export const TRANSITION_STEP_SCHEMA_VERSION = BigInt(
   MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
@@ -777,8 +788,9 @@ export const TransitionStepV1Schema = Data.Object({
   post_utxos_root: MerkleRootSchema,
 });
 export type TransitionStepV1 = Data.Static<typeof TransitionStepV1Schema>;
-export const TransitionStepV1 =
-  TransitionStepV1Schema as unknown as TransitionStepV1;
+export const TransitionStepV1 = asDataType<TransitionStepV1>(
+  TransitionStepV1Schema,
+);
 
 // The unqualified names remain source aliases for consumers of the canonical
 // schema; they do not define a second wire identity.
@@ -796,8 +808,9 @@ export const ValidationVerdictSchema = Data.Enum([
   Data.Literal("Rejected"),
 ]);
 export type ValidationVerdict = Data.Static<typeof ValidationVerdictSchema>;
-export const ValidationVerdict =
-  ValidationVerdictSchema as unknown as ValidationVerdict;
+export const ValidationVerdict = asDataType<ValidationVerdict>(
+  ValidationVerdictSchema,
+);
 
 export const ValidationTraceDescriptorSchema = Data.Object({
   schema_version: Data.Integer(),
@@ -812,8 +825,9 @@ export const ValidationTraceDescriptorSchema = Data.Object({
 export type ValidationTraceDescriptor = Data.Static<
   typeof ValidationTraceDescriptorSchema
 >;
-export const ValidationTraceDescriptor =
-  ValidationTraceDescriptorSchema as unknown as ValidationTraceDescriptor;
+export const ValidationTraceDescriptor = asDataType<ValidationTraceDescriptor>(
+  ValidationTraceDescriptorSchema,
+);
 
 export const WithdrawalBodySchema = Data.Object({
   l2_outref: OutputReferenceSchema,
@@ -823,15 +837,16 @@ export const WithdrawalBodySchema = Data.Object({
   l1_datum: CardanoDatumSchema,
 });
 export type WithdrawalBody = Data.Static<typeof WithdrawalBodySchema>;
-export const WithdrawalBody = WithdrawalBodySchema as unknown as WithdrawalBody;
+export const WithdrawalBody = asDataType<WithdrawalBody>(WithdrawalBodySchema);
 
 export const WithdrawalSignatureSchema = Data.Tuple([
   Data.Bytes(),
   Data.Bytes(),
 ]);
 export type WithdrawalSignature = Data.Static<typeof WithdrawalSignatureSchema>;
-export const WithdrawalSignature =
-  WithdrawalSignatureSchema as unknown as WithdrawalSignature;
+export const WithdrawalSignature = asDataType<WithdrawalSignature>(
+  WithdrawalSignatureSchema,
+);
 
 export const WithdrawalValiditySchema = Data.Enum([
   Data.Literal("WithdrawalIsValid"),
@@ -848,8 +863,9 @@ export const WithdrawalValiditySchema = Data.Enum([
   Data.Literal("UnpayableWithdrawalValue"),
 ]);
 export type WithdrawalValidity = Data.Static<typeof WithdrawalValiditySchema>;
-export const WithdrawalValidity =
-  WithdrawalValiditySchema as unknown as WithdrawalValidity;
+export const WithdrawalValidity = asDataType<WithdrawalValidity>(
+  WithdrawalValiditySchema,
+);
 
 export const WithdrawalInfoSchema = Data.Object({
   body: WithdrawalBodySchema,
@@ -857,12 +873,13 @@ export const WithdrawalInfoSchema = Data.Object({
   validity: WithdrawalValiditySchema,
 });
 export type WithdrawalInfo = Data.Static<typeof WithdrawalInfoSchema>;
-export const WithdrawalInfo = WithdrawalInfoSchema as unknown as WithdrawalInfo;
+export const WithdrawalInfo = asDataType<WithdrawalInfo>(WithdrawalInfoSchema);
 
 export const WithdrawalEventSchema = Data.Object({
   id: OutputReferenceSchema,
   info: WithdrawalInfoSchema,
 });
 export type WithdrawalEvent = Data.Static<typeof WithdrawalEventSchema>;
-export const WithdrawalEvent =
-  WithdrawalEventSchema as unknown as WithdrawalEvent;
+export const WithdrawalEvent = asDataType<WithdrawalEvent>(
+  WithdrawalEventSchema,
+);

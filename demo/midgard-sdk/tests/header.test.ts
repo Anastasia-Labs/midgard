@@ -1,3 +1,4 @@
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -20,9 +21,6 @@ import {
   TransitionStepV1,
   validateHeaderTransitionCommitmentsProgram,
 } from "../src/index.js";
-
-const h32 = (byte: number): string => Buffer.alloc(32, byte).toString("hex");
-const h28 = (byte: number): string => Buffer.alloc(28, byte).toString("hex");
 
 const header = (): Header => ({
   prevUtxosRoot: h32(1),

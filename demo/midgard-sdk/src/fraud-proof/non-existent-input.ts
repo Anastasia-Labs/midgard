@@ -6,6 +6,7 @@
  * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -57,7 +58,9 @@ export type NonExistentInputStep01SpendRedeemer = Data.Static<
   typeof NonExistentInputStep01SpendRedeemerSchema
 >;
 export const NonExistentInputStep01SpendRedeemer =
-  NonExistentInputStep01SpendRedeemerSchema as unknown as NonExistentInputStep01SpendRedeemer;
+  asDataType<NonExistentInputStep01SpendRedeemer>(
+    NonExistentInputStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — provide the spend-inputs preimage and select the bad input
 
@@ -75,7 +78,7 @@ export type NonExistentInputStep02State = Data.Static<
   typeof NonExistentInputStep02StateSchema
 >;
 export const NonExistentInputStep02State =
-  NonExistentInputStep02StateSchema as unknown as NonExistentInputStep02State;
+  asDataType<NonExistentInputStep02State>(NonExistentInputStep02StateSchema);
 
 export const NonExistentInputStep02DatumSchema = faultProofStepDatumSchema(
   NonExistentInputStep02StateSchema,
@@ -84,7 +87,7 @@ export type NonExistentInputStep02Datum = Data.Static<
   typeof NonExistentInputStep02DatumSchema
 >;
 export const NonExistentInputStep02Datum =
-  NonExistentInputStep02DatumSchema as unknown as NonExistentInputStep02Datum;
+  asDataType<NonExistentInputStep02Datum>(NonExistentInputStep02DatumSchema);
 
 /** Mirrors `midgard/fraud_proofs/no_input/step_02.Args`. */
 export const NonExistentInputStep02ArgsSchema = Data.Object({
@@ -97,7 +100,7 @@ export type NonExistentInputStep02Args = Data.Static<
   typeof NonExistentInputStep02ArgsSchema
 >;
 export const NonExistentInputStep02Args =
-  NonExistentInputStep02ArgsSchema as unknown as NonExistentInputStep02Args;
+  asDataType<NonExistentInputStep02Args>(NonExistentInputStep02ArgsSchema);
 
 export const NonExistentInputStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NonExistentInputStep02ArgsSchema);
@@ -105,7 +108,9 @@ export type NonExistentInputStep02SpendRedeemer = Data.Static<
   typeof NonExistentInputStep02SpendRedeemerSchema
 >;
 export const NonExistentInputStep02SpendRedeemer =
-  NonExistentInputStep02SpendRedeemerSchema as unknown as NonExistentInputStep02SpendRedeemer;
+  asDataType<NonExistentInputStep02SpendRedeemer>(
+    NonExistentInputStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — prove the missing input is absent from the block's prev ledger
 //
@@ -124,7 +129,7 @@ export type NonExistentInputStep03State = Data.Static<
   typeof NonExistentInputStep03StateSchema
 >;
 export const NonExistentInputStep03State =
-  NonExistentInputStep03StateSchema as unknown as NonExistentInputStep03State;
+  asDataType<NonExistentInputStep03State>(NonExistentInputStep03StateSchema);
 
 export const NonExistentInputStep03DatumSchema = faultProofStepDatumSchema(
   NonExistentInputStep03StateSchema,
@@ -133,7 +138,7 @@ export type NonExistentInputStep03Datum = Data.Static<
   typeof NonExistentInputStep03DatumSchema
 >;
 export const NonExistentInputStep03Datum =
-  NonExistentInputStep03DatumSchema as unknown as NonExistentInputStep03Datum;
+  asDataType<NonExistentInputStep03Datum>(NonExistentInputStep03DatumSchema);
 
 export const NonExistentInputStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -144,7 +149,7 @@ export type NonExistentInputStep03Args = Data.Static<
   typeof NonExistentInputStep03ArgsSchema
 >;
 export const NonExistentInputStep03Args =
-  NonExistentInputStep03ArgsSchema as unknown as NonExistentInputStep03Args;
+  asDataType<NonExistentInputStep03Args>(NonExistentInputStep03ArgsSchema);
 
 export const NonExistentInputStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NonExistentInputStep03ArgsSchema);
@@ -152,7 +157,9 @@ export type NonExistentInputStep03SpendRedeemer = Data.Static<
   typeof NonExistentInputStep03SpendRedeemerSchema
 >;
 export const NonExistentInputStep03SpendRedeemer =
-  NonExistentInputStep03SpendRedeemerSchema as unknown as NonExistentInputStep03SpendRedeemer;
+  asDataType<NonExistentInputStep03SpendRedeemer>(
+    NonExistentInputStep03SpendRedeemerSchema,
+  );
 
 // ## Step 04 — prove the missing input was not produced within the block
 
@@ -164,7 +171,7 @@ export type NonExistentInputStep04State = Data.Static<
   typeof NonExistentInputStep04StateSchema
 >;
 export const NonExistentInputStep04State =
-  NonExistentInputStep04StateSchema as unknown as NonExistentInputStep04State;
+  asDataType<NonExistentInputStep04State>(NonExistentInputStep04StateSchema);
 
 export const NonExistentInputStep04DatumSchema = faultProofStepDatumSchema(
   NonExistentInputStep04StateSchema,
@@ -173,7 +180,7 @@ export type NonExistentInputStep04Datum = Data.Static<
   typeof NonExistentInputStep04DatumSchema
 >;
 export const NonExistentInputStep04Datum =
-  NonExistentInputStep04DatumSchema as unknown as NonExistentInputStep04Datum;
+  asDataType<NonExistentInputStep04Datum>(NonExistentInputStep04DatumSchema);
 
 export const NonExistentInputStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -185,7 +192,7 @@ export type NonExistentInputStep04Args = Data.Static<
   typeof NonExistentInputStep04ArgsSchema
 >;
 export const NonExistentInputStep04Args =
-  NonExistentInputStep04ArgsSchema as unknown as NonExistentInputStep04Args;
+  asDataType<NonExistentInputStep04Args>(NonExistentInputStep04ArgsSchema);
 
 export const NonExistentInputStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NonExistentInputStep04ArgsSchema);
@@ -193,4 +200,6 @@ export type NonExistentInputStep04SpendRedeemer = Data.Static<
   typeof NonExistentInputStep04SpendRedeemerSchema
 >;
 export const NonExistentInputStep04SpendRedeemer =
-  NonExistentInputStep04SpendRedeemerSchema as unknown as NonExistentInputStep04SpendRedeemer;
+  asDataType<NonExistentInputStep04SpendRedeemer>(
+    NonExistentInputStep04SpendRedeemerSchema,
+  );

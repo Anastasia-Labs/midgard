@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type Address,
   Data,
@@ -33,8 +34,9 @@ export const CorrectionIdentitySchema = Data.Enum([
   }),
 ]);
 export type CorrectionIdentity = Data.Static<typeof CorrectionIdentitySchema>;
-export const CorrectionIdentity =
-  CorrectionIdentitySchema as unknown as CorrectionIdentity;
+export const CorrectionIdentity = asDataType<CorrectionIdentity>(
+  CorrectionIdentitySchema,
+);
 
 export const CorrectionLockDatumSchema = Data.Enum([
   Data.Literal("Idle"),
@@ -46,8 +48,9 @@ export const CorrectionLockDatumSchema = Data.Enum([
   }),
 ]);
 export type CorrectionLockDatum = Data.Static<typeof CorrectionLockDatumSchema>;
-export const CorrectionLockDatum =
-  CorrectionLockDatumSchema as unknown as CorrectionLockDatum;
+export const CorrectionLockDatum = asDataType<CorrectionLockDatum>(
+  CorrectionLockDatumSchema,
+);
 
 export const CorrectionLockRedeemerSchema = Data.Enum([
   Data.Object({
@@ -60,8 +63,9 @@ export const CorrectionLockRedeemerSchema = Data.Enum([
 export type CorrectionLockRedeemer = Data.Static<
   typeof CorrectionLockRedeemerSchema
 >;
-export const CorrectionLockRedeemer =
-  CorrectionLockRedeemerSchema as unknown as CorrectionLockRedeemer;
+export const CorrectionLockRedeemer = asDataType<CorrectionLockRedeemer>(
+  CorrectionLockRedeemerSchema,
+);
 
 export type CorrectionLockConfig = {
   readonly correctionLockAddress: Address;

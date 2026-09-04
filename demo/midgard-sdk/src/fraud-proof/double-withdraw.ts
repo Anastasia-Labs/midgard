@@ -28,6 +28,7 @@
  * (`committedWithdrawalKeyBytes`/`committedWithdrawalValueBytes`) rather
  * than duplicating them.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { OutputReference, OutputReferenceSchema } from "../common.js";
@@ -93,8 +94,9 @@ export const DoubleWithdrawStep01DatumSchema = faultProofStepDatumSchema(
 export type DoubleWithdrawStep01Datum = Data.Static<
   typeof DoubleWithdrawStep01DatumSchema
 >;
-export const DoubleWithdrawStep01Datum =
-  DoubleWithdrawStep01DatumSchema as unknown as DoubleWithdrawStep01Datum;
+export const DoubleWithdrawStep01Datum = asDataType<DoubleWithdrawStep01Datum>(
+  DoubleWithdrawStep01DatumSchema,
+);
 
 export const DoubleWithdrawStep01ArgsSchema = Data.Object({
   /** Own input index. */
@@ -111,8 +113,9 @@ export const DoubleWithdrawStep01ArgsSchema = Data.Object({
 export type DoubleWithdrawStep01Args = Data.Static<
   typeof DoubleWithdrawStep01ArgsSchema
 >;
-export const DoubleWithdrawStep01Args =
-  DoubleWithdrawStep01ArgsSchema as unknown as DoubleWithdrawStep01Args;
+export const DoubleWithdrawStep01Args = asDataType<DoubleWithdrawStep01Args>(
+  DoubleWithdrawStep01ArgsSchema,
+);
 
 export const DoubleWithdrawStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(DoubleWithdrawStep01ArgsSchema);
@@ -120,7 +123,9 @@ export type DoubleWithdrawStep01SpendRedeemer = Data.Static<
   typeof DoubleWithdrawStep01SpendRedeemerSchema
 >;
 export const DoubleWithdrawStep01SpendRedeemer =
-  DoubleWithdrawStep01SpendRedeemerSchema as unknown as DoubleWithdrawStep01SpendRedeemer;
+  asDataType<DoubleWithdrawStep01SpendRedeemer>(
+    DoubleWithdrawStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — second payable leaf and finalization
 
@@ -135,8 +140,9 @@ export const DoubleWithdrawStep02StateSchema = Data.Object({
 export type DoubleWithdrawStep02State = Data.Static<
   typeof DoubleWithdrawStep02StateSchema
 >;
-export const DoubleWithdrawStep02State =
-  DoubleWithdrawStep02StateSchema as unknown as DoubleWithdrawStep02State;
+export const DoubleWithdrawStep02State = asDataType<DoubleWithdrawStep02State>(
+  DoubleWithdrawStep02StateSchema,
+);
 
 export const DoubleWithdrawStep02DatumSchema = faultProofStepDatumSchema(
   DoubleWithdrawStep02StateSchema,
@@ -144,8 +150,9 @@ export const DoubleWithdrawStep02DatumSchema = faultProofStepDatumSchema(
 export type DoubleWithdrawStep02Datum = Data.Static<
   typeof DoubleWithdrawStep02DatumSchema
 >;
-export const DoubleWithdrawStep02Datum =
-  DoubleWithdrawStep02DatumSchema as unknown as DoubleWithdrawStep02Datum;
+export const DoubleWithdrawStep02Datum = asDataType<DoubleWithdrawStep02Datum>(
+  DoubleWithdrawStep02DatumSchema,
+);
 
 export const DoubleWithdrawStep02ArgsSchema = Data.Object({
   /** Own input index. */
@@ -164,8 +171,9 @@ export const DoubleWithdrawStep02ArgsSchema = Data.Object({
 export type DoubleWithdrawStep02Args = Data.Static<
   typeof DoubleWithdrawStep02ArgsSchema
 >;
-export const DoubleWithdrawStep02Args =
-  DoubleWithdrawStep02ArgsSchema as unknown as DoubleWithdrawStep02Args;
+export const DoubleWithdrawStep02Args = asDataType<DoubleWithdrawStep02Args>(
+  DoubleWithdrawStep02ArgsSchema,
+);
 
 export const DoubleWithdrawStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(DoubleWithdrawStep02ArgsSchema);
@@ -173,7 +181,9 @@ export type DoubleWithdrawStep02SpendRedeemer = Data.Static<
   typeof DoubleWithdrawStep02SpendRedeemerSchema
 >;
 export const DoubleWithdrawStep02SpendRedeemer =
-  DoubleWithdrawStep02SpendRedeemerSchema as unknown as DoubleWithdrawStep02SpendRedeemer;
+  asDataType<DoubleWithdrawStep02SpendRedeemer>(
+    DoubleWithdrawStep02SpendRedeemerSchema,
+  );
 
 // ## Step resolver
 

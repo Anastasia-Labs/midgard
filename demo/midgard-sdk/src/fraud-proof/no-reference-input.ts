@@ -6,6 +6,7 @@
  * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -57,7 +58,9 @@ export type NoReferenceInputStep01SpendRedeemer = Data.Static<
   typeof NoReferenceInputStep01SpendRedeemerSchema
 >;
 export const NoReferenceInputStep01SpendRedeemer =
-  NoReferenceInputStep01SpendRedeemerSchema as unknown as NoReferenceInputStep01SpendRedeemer;
+  asDataType<NoReferenceInputStep01SpendRedeemer>(
+    NoReferenceInputStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — provide the reference-inputs preimage and select the bad input
 
@@ -74,7 +77,7 @@ export type NoReferenceInputStep02State = Data.Static<
   typeof NoReferenceInputStep02StateSchema
 >;
 export const NoReferenceInputStep02State =
-  NoReferenceInputStep02StateSchema as unknown as NoReferenceInputStep02State;
+  asDataType<NoReferenceInputStep02State>(NoReferenceInputStep02StateSchema);
 
 export const NoReferenceInputStep02DatumSchema = faultProofStepDatumSchema(
   NoReferenceInputStep02StateSchema,
@@ -83,7 +86,7 @@ export type NoReferenceInputStep02Datum = Data.Static<
   typeof NoReferenceInputStep02DatumSchema
 >;
 export const NoReferenceInputStep02Datum =
-  NoReferenceInputStep02DatumSchema as unknown as NoReferenceInputStep02Datum;
+  asDataType<NoReferenceInputStep02Datum>(NoReferenceInputStep02DatumSchema);
 
 /**
  * Mirrors `midgard/fraud_proofs/no_reference_input/step_02.Args`. Field 1, not
@@ -100,7 +103,7 @@ export type NoReferenceInputStep02Args = Data.Static<
   typeof NoReferenceInputStep02ArgsSchema
 >;
 export const NoReferenceInputStep02Args =
-  NoReferenceInputStep02ArgsSchema as unknown as NoReferenceInputStep02Args;
+  asDataType<NoReferenceInputStep02Args>(NoReferenceInputStep02ArgsSchema);
 
 export const NoReferenceInputStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NoReferenceInputStep02ArgsSchema);
@@ -108,7 +111,9 @@ export type NoReferenceInputStep02SpendRedeemer = Data.Static<
   typeof NoReferenceInputStep02SpendRedeemerSchema
 >;
 export const NoReferenceInputStep02SpendRedeemer =
-  NoReferenceInputStep02SpendRedeemerSchema as unknown as NoReferenceInputStep02SpendRedeemer;
+  asDataType<NoReferenceInputStep02SpendRedeemer>(
+    NoReferenceInputStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — prove the missing reference input is absent from the block's
 // prev ledger
@@ -128,7 +133,7 @@ export type NoReferenceInputStep03State = Data.Static<
   typeof NoReferenceInputStep03StateSchema
 >;
 export const NoReferenceInputStep03State =
-  NoReferenceInputStep03StateSchema as unknown as NoReferenceInputStep03State;
+  asDataType<NoReferenceInputStep03State>(NoReferenceInputStep03StateSchema);
 
 export const NoReferenceInputStep03DatumSchema = faultProofStepDatumSchema(
   NoReferenceInputStep03StateSchema,
@@ -137,7 +142,7 @@ export type NoReferenceInputStep03Datum = Data.Static<
   typeof NoReferenceInputStep03DatumSchema
 >;
 export const NoReferenceInputStep03Datum =
-  NoReferenceInputStep03DatumSchema as unknown as NoReferenceInputStep03Datum;
+  asDataType<NoReferenceInputStep03Datum>(NoReferenceInputStep03DatumSchema);
 
 export const NoReferenceInputStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -148,7 +153,7 @@ export type NoReferenceInputStep03Args = Data.Static<
   typeof NoReferenceInputStep03ArgsSchema
 >;
 export const NoReferenceInputStep03Args =
-  NoReferenceInputStep03ArgsSchema as unknown as NoReferenceInputStep03Args;
+  asDataType<NoReferenceInputStep03Args>(NoReferenceInputStep03ArgsSchema);
 
 export const NoReferenceInputStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NoReferenceInputStep03ArgsSchema);
@@ -156,7 +161,9 @@ export type NoReferenceInputStep03SpendRedeemer = Data.Static<
   typeof NoReferenceInputStep03SpendRedeemerSchema
 >;
 export const NoReferenceInputStep03SpendRedeemer =
-  NoReferenceInputStep03SpendRedeemerSchema as unknown as NoReferenceInputStep03SpendRedeemer;
+  asDataType<NoReferenceInputStep03SpendRedeemer>(
+    NoReferenceInputStep03SpendRedeemerSchema,
+  );
 
 // ## Step 04 — prove the missing reference input was not produced within the
 // block
@@ -169,7 +176,7 @@ export type NoReferenceInputStep04State = Data.Static<
   typeof NoReferenceInputStep04StateSchema
 >;
 export const NoReferenceInputStep04State =
-  NoReferenceInputStep04StateSchema as unknown as NoReferenceInputStep04State;
+  asDataType<NoReferenceInputStep04State>(NoReferenceInputStep04StateSchema);
 
 export const NoReferenceInputStep04DatumSchema = faultProofStepDatumSchema(
   NoReferenceInputStep04StateSchema,
@@ -178,7 +185,7 @@ export type NoReferenceInputStep04Datum = Data.Static<
   typeof NoReferenceInputStep04DatumSchema
 >;
 export const NoReferenceInputStep04Datum =
-  NoReferenceInputStep04DatumSchema as unknown as NoReferenceInputStep04Datum;
+  asDataType<NoReferenceInputStep04Datum>(NoReferenceInputStep04DatumSchema);
 
 export const NoReferenceInputStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -190,7 +197,7 @@ export type NoReferenceInputStep04Args = Data.Static<
   typeof NoReferenceInputStep04ArgsSchema
 >;
 export const NoReferenceInputStep04Args =
-  NoReferenceInputStep04ArgsSchema as unknown as NoReferenceInputStep04Args;
+  asDataType<NoReferenceInputStep04Args>(NoReferenceInputStep04ArgsSchema);
 
 export const NoReferenceInputStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NoReferenceInputStep04ArgsSchema);
@@ -198,4 +205,6 @@ export type NoReferenceInputStep04SpendRedeemer = Data.Static<
   typeof NoReferenceInputStep04SpendRedeemerSchema
 >;
 export const NoReferenceInputStep04SpendRedeemer =
-  NoReferenceInputStep04SpendRedeemerSchema as unknown as NoReferenceInputStep04SpendRedeemer;
+  asDataType<NoReferenceInputStep04SpendRedeemer>(
+    NoReferenceInputStep04SpendRedeemerSchema,
+  );

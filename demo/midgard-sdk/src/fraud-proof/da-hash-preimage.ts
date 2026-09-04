@@ -16,6 +16,7 @@ import {
   encodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { L2TransactionSource } from "../ledger-state.js";
@@ -42,8 +43,9 @@ export const DaHashPreimageVerdictSchema = Data.Enum([
 export type DaHashPreimageVerdict = Data.Static<
   typeof DaHashPreimageVerdictSchema
 >;
-export const DaHashPreimageVerdict =
-  DaHashPreimageVerdictSchema as unknown as DaHashPreimageVerdict;
+export const DaHashPreimageVerdict = asDataType<DaHashPreimageVerdict>(
+  DaHashPreimageVerdictSchema,
+);
 
 export type DaHashPreimageAdjudication = {
   readonly verdict: DaHashPreimageVerdict;
@@ -191,8 +193,9 @@ export const DaHashPreimageStep01DatumSchema = faultProofStepDatumSchema(
 export type DaHashPreimageStep01Datum = Data.Static<
   typeof DaHashPreimageStep01DatumSchema
 >;
-export const DaHashPreimageStep01Datum =
-  DaHashPreimageStep01DatumSchema as unknown as DaHashPreimageStep01Datum;
+export const DaHashPreimageStep01Datum = asDataType<DaHashPreimageStep01Datum>(
+  DaHashPreimageStep01DatumSchema,
+);
 
 export const DaHashPreimageStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeTxInclusionArgsSchema);
@@ -200,7 +203,9 @@ export type DaHashPreimageStep01SpendRedeemer = Data.Static<
   typeof DaHashPreimageStep01SpendRedeemerSchema
 >;
 export const DaHashPreimageStep01SpendRedeemer =
-  DaHashPreimageStep01SpendRedeemerSchema as unknown as DaHashPreimageStep01SpendRedeemer;
+  asDataType<DaHashPreimageStep01SpendRedeemer>(
+    DaHashPreimageStep01SpendRedeemerSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/da_hash_preimage/step_02.State`. */
 export const DaHashPreimageStep02StateSchema = Data.Object({
@@ -209,8 +214,9 @@ export const DaHashPreimageStep02StateSchema = Data.Object({
 export type DaHashPreimageStep02State = Data.Static<
   typeof DaHashPreimageStep02StateSchema
 >;
-export const DaHashPreimageStep02State =
-  DaHashPreimageStep02StateSchema as unknown as DaHashPreimageStep02State;
+export const DaHashPreimageStep02State = asDataType<DaHashPreimageStep02State>(
+  DaHashPreimageStep02StateSchema,
+);
 
 export const DaHashPreimageStep02DatumSchema = faultProofStepDatumSchema(
   DaHashPreimageStep02StateSchema,
@@ -218,8 +224,9 @@ export const DaHashPreimageStep02DatumSchema = faultProofStepDatumSchema(
 export type DaHashPreimageStep02Datum = Data.Static<
   typeof DaHashPreimageStep02DatumSchema
 >;
-export const DaHashPreimageStep02Datum =
-  DaHashPreimageStep02DatumSchema as unknown as DaHashPreimageStep02Datum;
+export const DaHashPreimageStep02Datum = asDataType<DaHashPreimageStep02Datum>(
+  DaHashPreimageStep02DatumSchema,
+);
 
 export const DaHashPreimageStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -229,8 +236,9 @@ export const DaHashPreimageStep02ArgsSchema = Data.Object({
 export type DaHashPreimageStep02Args = Data.Static<
   typeof DaHashPreimageStep02ArgsSchema
 >;
-export const DaHashPreimageStep02Args =
-  DaHashPreimageStep02ArgsSchema as unknown as DaHashPreimageStep02Args;
+export const DaHashPreimageStep02Args = asDataType<DaHashPreimageStep02Args>(
+  DaHashPreimageStep02ArgsSchema,
+);
 
 export const DaHashPreimageStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(DaHashPreimageStep02ArgsSchema);
@@ -238,7 +246,9 @@ export type DaHashPreimageStep02SpendRedeemer = Data.Static<
   typeof DaHashPreimageStep02SpendRedeemerSchema
 >;
 export const DaHashPreimageStep02SpendRedeemer =
-  DaHashPreimageStep02SpendRedeemerSchema as unknown as DaHashPreimageStep02SpendRedeemer;
+  asDataType<DaHashPreimageStep02SpendRedeemer>(
+    DaHashPreimageStep02SpendRedeemerSchema,
+  );
 
 /** Step-01 args are the shared source-leaf inclusion args. */
 export const DaHashPreimageTxInclusionArgsSchema = NativeTxInclusionArgsSchema;

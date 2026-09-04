@@ -45,6 +45,7 @@ import {
   encodeMidgardSpendInputItem,
   midgardFieldCommitmentFromItems,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -157,8 +158,9 @@ export const MidgardCredentialSchema = Data.Enum([
   Data.Object({ ScriptCredential: Data.Tuple([Data.Bytes()]) }),
 ]);
 export type MidgardCredential = Data.Static<typeof MidgardCredentialSchema>;
-export const MidgardCredential =
-  MidgardCredentialSchema as unknown as MidgardCredential;
+export const MidgardCredential = asDataType<MidgardCredential>(
+  MidgardCredentialSchema,
+);
 
 export const MidgardAddressSchema = Data.Object({
   protected: Data.Boolean(),
@@ -167,7 +169,7 @@ export const MidgardAddressSchema = Data.Object({
   stake_credential: Data.Nullable(MidgardCredentialSchema),
 });
 export type MidgardAddress = Data.Static<typeof MidgardAddressSchema>;
-export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
+export const MidgardAddress = asDataType<MidgardAddress>(MidgardAddressSchema);
 
 /** `MidgardValue { lovelace, assets }`; `assets` is a flat policy/name map. */
 export const MidgardValueSchema = Data.Object({
@@ -175,7 +177,7 @@ export const MidgardValueSchema = Data.Object({
   assets: Data.Map(Data.Bytes(), Data.Integer()),
 });
 export type MidgardValue = Data.Static<typeof MidgardValueSchema>;
-export const MidgardValue = MidgardValueSchema as unknown as MidgardValue;
+export const MidgardValue = asDataType<MidgardValue>(MidgardValueSchema);
 
 /** `NativeCardanoScript | PlutusV3Script | MidgardV1Script`, in that order. */
 export const MidgardScriptLanguageSchema = Data.Enum([
@@ -186,8 +188,9 @@ export const MidgardScriptLanguageSchema = Data.Enum([
 export type MidgardScriptLanguage = Data.Static<
   typeof MidgardScriptLanguageSchema
 >;
-export const MidgardScriptLanguage =
-  MidgardScriptLanguageSchema as unknown as MidgardScriptLanguage;
+export const MidgardScriptLanguage = asDataType<MidgardScriptLanguage>(
+  MidgardScriptLanguageSchema,
+);
 
 export const MidgardVersionedScriptSchema = Data.Object({
   language: MidgardScriptLanguageSchema,
@@ -196,8 +199,9 @@ export const MidgardVersionedScriptSchema = Data.Object({
 export type MidgardVersionedScript = Data.Static<
   typeof MidgardVersionedScriptSchema
 >;
-export const MidgardVersionedScript =
-  MidgardVersionedScriptSchema as unknown as MidgardVersionedScript;
+export const MidgardVersionedScript = asDataType<MidgardVersionedScript>(
+  MidgardVersionedScriptSchema,
+);
 
 export const MidgardTxOutputSchema = Data.Object({
   address: MidgardAddressSchema,
@@ -206,13 +210,15 @@ export const MidgardTxOutputSchema = Data.Object({
   script_ref: Data.Nullable(MidgardVersionedScriptSchema),
 });
 export type MidgardTxOutput = Data.Static<typeof MidgardTxOutputSchema>;
-export const MidgardTxOutput =
-  MidgardTxOutputSchema as unknown as MidgardTxOutput;
+export const MidgardTxOutput = asDataType<MidgardTxOutput>(
+  MidgardTxOutputSchema,
+);
 
 export const MidgardTxOutputListSchema = Data.Array(MidgardTxOutputSchema);
 export type MidgardTxOutputList = Data.Static<typeof MidgardTxOutputListSchema>;
-export const MidgardTxOutputList =
-  MidgardTxOutputListSchema as unknown as MidgardTxOutputList;
+export const MidgardTxOutputList = asDataType<MidgardTxOutputList>(
+  MidgardTxOutputListSchema,
+);
 
 // ## On-chain step schemas (positional agreement with the Aiken step modules)
 
@@ -222,8 +228,9 @@ export const InputNoIdxStep01DatumSchema = faultProofStepDatumSchema(
 export type InputNoIdxStep01Datum = Data.Static<
   typeof InputNoIdxStep01DatumSchema
 >;
-export const InputNoIdxStep01Datum =
-  InputNoIdxStep01DatumSchema as unknown as InputNoIdxStep01Datum;
+export const InputNoIdxStep01Datum = asDataType<InputNoIdxStep01Datum>(
+  InputNoIdxStep01DatumSchema,
+);
 
 export const InputNoIdxStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
   NativeTxInclusionCarriageSchema,
@@ -232,7 +239,9 @@ export type InputNoIdxStep01SpendRedeemer = Data.Static<
   typeof InputNoIdxStep01SpendRedeemerSchema
 >;
 export const InputNoIdxStep01SpendRedeemer =
-  InputNoIdxStep01SpendRedeemerSchema as unknown as InputNoIdxStep01SpendRedeemer;
+  asDataType<InputNoIdxStep01SpendRedeemer>(
+    InputNoIdxStep01SpendRedeemerSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/input_no_idx/step_02.State` — **one state, one
@@ -247,8 +256,9 @@ export const InputNoIdxStep02StateSchema = Data.Object({
 export type InputNoIdxStep02State = Data.Static<
   typeof InputNoIdxStep02StateSchema
 >;
-export const InputNoIdxStep02State =
-  InputNoIdxStep02StateSchema as unknown as InputNoIdxStep02State;
+export const InputNoIdxStep02State = asDataType<InputNoIdxStep02State>(
+  InputNoIdxStep02StateSchema,
+);
 
 export const InputNoIdxStep02DatumSchema = faultProofStepDatumSchema(
   InputNoIdxStep02StateSchema,
@@ -256,8 +266,9 @@ export const InputNoIdxStep02DatumSchema = faultProofStepDatumSchema(
 export type InputNoIdxStep02Datum = Data.Static<
   typeof InputNoIdxStep02DatumSchema
 >;
-export const InputNoIdxStep02Datum =
-  InputNoIdxStep02DatumSchema as unknown as InputNoIdxStep02Datum;
+export const InputNoIdxStep02Datum = asDataType<InputNoIdxStep02Datum>(
+  InputNoIdxStep02DatumSchema,
+);
 
 /**
  * Mirrors `midgard/fraud_proofs/input_no_idx/step_02.Args`. The single route
@@ -273,8 +284,9 @@ export const InputNoIdxStep02ArgsSchema = Data.Object({
 export type InputNoIdxStep02Args = Data.Static<
   typeof InputNoIdxStep02ArgsSchema
 >;
-export const InputNoIdxStep02Args =
-  InputNoIdxStep02ArgsSchema as unknown as InputNoIdxStep02Args;
+export const InputNoIdxStep02Args = asDataType<InputNoIdxStep02Args>(
+  InputNoIdxStep02ArgsSchema,
+);
 
 export const InputNoIdxStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
   InputNoIdxStep02ArgsSchema,
@@ -283,7 +295,9 @@ export type InputNoIdxStep02SpendRedeemer = Data.Static<
   typeof InputNoIdxStep02SpendRedeemerSchema
 >;
 export const InputNoIdxStep02SpendRedeemer =
-  InputNoIdxStep02SpendRedeemerSchema as unknown as InputNoIdxStep02SpendRedeemer;
+  asDataType<InputNoIdxStep02SpendRedeemer>(
+    InputNoIdxStep02SpendRedeemerSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/input_no_idx/step_03.State`. */
 export const InputNoIdxStep03StateSchema = Data.Object({
@@ -293,8 +307,9 @@ export const InputNoIdxStep03StateSchema = Data.Object({
 export type InputNoIdxStep03State = Data.Static<
   typeof InputNoIdxStep03StateSchema
 >;
-export const InputNoIdxStep03State =
-  InputNoIdxStep03StateSchema as unknown as InputNoIdxStep03State;
+export const InputNoIdxStep03State = asDataType<InputNoIdxStep03State>(
+  InputNoIdxStep03StateSchema,
+);
 
 export const InputNoIdxStep03DatumSchema = faultProofStepDatumSchema(
   InputNoIdxStep03StateSchema,
@@ -302,8 +317,9 @@ export const InputNoIdxStep03DatumSchema = faultProofStepDatumSchema(
 export type InputNoIdxStep03Datum = Data.Static<
   typeof InputNoIdxStep03DatumSchema
 >;
-export const InputNoIdxStep03Datum =
-  InputNoIdxStep03DatumSchema as unknown as InputNoIdxStep03Datum;
+export const InputNoIdxStep03Datum = asDataType<InputNoIdxStep03Datum>(
+  InputNoIdxStep03DatumSchema,
+);
 
 /** Step 03 re-enters the shared native inclusion binding. */
 export const InputNoIdxStep03SpendRedeemerSchema = faultProofStepRedeemerSchema(
@@ -313,7 +329,9 @@ export type InputNoIdxStep03SpendRedeemer = Data.Static<
   typeof InputNoIdxStep03SpendRedeemerSchema
 >;
 export const InputNoIdxStep03SpendRedeemer =
-  InputNoIdxStep03SpendRedeemerSchema as unknown as InputNoIdxStep03SpendRedeemer;
+  asDataType<InputNoIdxStep03SpendRedeemer>(
+    InputNoIdxStep03SpendRedeemerSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/input_no_idx/step_04.State`.
@@ -329,8 +347,9 @@ export const InputNoIdxStep04StateSchema = Data.Object({
 export type InputNoIdxStep04State = Data.Static<
   typeof InputNoIdxStep04StateSchema
 >;
-export const InputNoIdxStep04State =
-  InputNoIdxStep04StateSchema as unknown as InputNoIdxStep04State;
+export const InputNoIdxStep04State = asDataType<InputNoIdxStep04State>(
+  InputNoIdxStep04StateSchema,
+);
 
 export const InputNoIdxStep04DatumSchema = faultProofStepDatumSchema(
   InputNoIdxStep04StateSchema,
@@ -338,8 +357,9 @@ export const InputNoIdxStep04DatumSchema = faultProofStepDatumSchema(
 export type InputNoIdxStep04Datum = Data.Static<
   typeof InputNoIdxStep04DatumSchema
 >;
-export const InputNoIdxStep04Datum =
-  InputNoIdxStep04DatumSchema as unknown as InputNoIdxStep04Datum;
+export const InputNoIdxStep04Datum = asDataType<InputNoIdxStep04Datum>(
+  InputNoIdxStep04DatumSchema,
+);
 
 /**
  * Mirrors `midgard/fraud_proofs/input_no_idx/step_04.Args`.
@@ -358,8 +378,9 @@ export const InputNoIdxStep04ArgsSchema = Data.Object({
 export type InputNoIdxStep04Args = Data.Static<
   typeof InputNoIdxStep04ArgsSchema
 >;
-export const InputNoIdxStep04Args =
-  InputNoIdxStep04ArgsSchema as unknown as InputNoIdxStep04Args;
+export const InputNoIdxStep04Args = asDataType<InputNoIdxStep04Args>(
+  InputNoIdxStep04ArgsSchema,
+);
 
 export const InputNoIdxStep04SpendRedeemerSchema = faultProofStepRedeemerSchema(
   InputNoIdxStep04ArgsSchema,
@@ -368,7 +389,9 @@ export type InputNoIdxStep04SpendRedeemer = Data.Static<
   typeof InputNoIdxStep04SpendRedeemerSchema
 >;
 export const InputNoIdxStep04SpendRedeemer =
-  InputNoIdxStep04SpendRedeemerSchema as unknown as InputNoIdxStep04SpendRedeemer;
+  asDataType<InputNoIdxStep04SpendRedeemer>(
+    InputNoIdxStep04SpendRedeemerSchema,
+  );
 
 export {
   MidgardTxInput as InputNoIdxSpendInput,

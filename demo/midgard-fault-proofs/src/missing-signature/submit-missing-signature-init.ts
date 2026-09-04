@@ -8,6 +8,7 @@
  * `missingSignature` entry in the production `submitInit` category union is
  * parent-owned and lands at registration (plan §2.2, D1).
  */
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofComputationThreadRedeemer,
@@ -61,8 +62,6 @@ import {
   type MissingSignatureCatalogueCategory,
   missingSignatureSubmitError,
 } from "./submit-common.js";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 export type SubmitMissingSignatureInitResult = {
   readonly txHash: string;
@@ -254,17 +253,21 @@ export const submitMissingSignatureInit = async ({
         root: catalogue.root,
         keyCbor: Data.to(
           category.categoryId,
-          Data.Bytes({
-            minLength: 4,
-            maxLength: 4,
-          }) as unknown as LucidDataSchema,
+          asLucidSchema(
+            Data.Bytes({
+              minLength: 4,
+              maxLength: 4,
+            }),
+          ),
         ),
         valueCbor: Data.to(
           category.scriptHash,
-          Data.Bytes({
-            minLength: 28,
-            maxLength: 28,
-          }) as unknown as LucidDataSchema,
+          asLucidSchema(
+            Data.Bytes({
+              minLength: 28,
+              maxLength: 28,
+            }),
+          ),
         ),
         membershipProofCbor: category.membershipProofCbor,
       }),

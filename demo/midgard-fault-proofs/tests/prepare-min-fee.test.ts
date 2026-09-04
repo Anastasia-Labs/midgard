@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deriveMidgardNativeTxProofSourceFromCanonicalCbor } from "@al-ft/midgard-core";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -20,7 +21,6 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 
 const CATEGORY_ID = "00000013";
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const fixture = async (fee: bigint) => {
   const tx = buildFixtureTransaction({
@@ -162,14 +162,14 @@ describe("prepare-min-fee", () => {
         min_fee_b: Data.Integer(),
       });
       expect(Data.to(state, SDK.MinFeeStep02State)).toBe(
-        Data.to(state, manualStateSchema as unknown as LucidDataSchema),
+        Data.to(state, asLucidSchema(manualStateSchema)),
       );
 
       const carriages = output.tx.fieldItemCbors.map((items) => ({
         Inline: {
           preimage: Data.to(
             [...items],
-            Data.Array(Data.Bytes()) as unknown as LucidDataSchema,
+            asLucidSchema(Data.Array(Data.Bytes())),
           ),
         },
       })) as unknown as SDK.MinFeeStep02Args["field_carriages"];
@@ -201,7 +201,7 @@ describe("prepare-min-fee", () => {
         ]),
       });
       expect(Data.to(args, SDK.MinFeeStep02Args)).toBe(
-        Data.to(args, manualArgsSchema as unknown as LucidDataSchema),
+        Data.to(args, asLucidSchema(manualArgsSchema)),
       );
       expect(
         Data.from(Data.to(args, SDK.MinFeeStep02Args), SDK.MinFeeStep02Args),

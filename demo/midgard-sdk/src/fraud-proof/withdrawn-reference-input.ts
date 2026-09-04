@@ -19,6 +19,7 @@
  * step-0{1,2,3}.ak` field for field and constructor index for constructor
  * index.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -86,7 +87,9 @@ export type WithdrawnReferenceInputStep01SpendRedeemer = Data.Static<
   typeof WithdrawnReferenceInputStep01SpendRedeemerSchema
 >;
 export const WithdrawnReferenceInputStep01SpendRedeemer =
-  WithdrawnReferenceInputStep01SpendRedeemerSchema as unknown as WithdrawnReferenceInputStep01SpendRedeemer;
+  asDataType<WithdrawnReferenceInputStep01SpendRedeemer>(
+    WithdrawnReferenceInputStep01SpendRedeemerSchema,
+  );
 
 export const WithdrawnReferenceInputStep01DatumSchema =
   faultProofStepDatumSchema(Data.Any());
@@ -94,7 +97,9 @@ export type WithdrawnReferenceInputStep01Datum = Data.Static<
   typeof WithdrawnReferenceInputStep01DatumSchema
 >;
 export const WithdrawnReferenceInputStep01Datum =
-  WithdrawnReferenceInputStep01DatumSchema as unknown as WithdrawnReferenceInputStep01Datum;
+  asDataType<WithdrawnReferenceInputStep01Datum>(
+    WithdrawnReferenceInputStep01DatumSchema,
+  );
 
 // ## Step 02 — open the reference-inputs preimage and select the bad input
 
@@ -112,7 +117,9 @@ export type WithdrawnReferenceInputStep02State = Data.Static<
   typeof WithdrawnReferenceInputStep02StateSchema
 >;
 export const WithdrawnReferenceInputStep02State =
-  WithdrawnReferenceInputStep02StateSchema as unknown as WithdrawnReferenceInputStep02State;
+  asDataType<WithdrawnReferenceInputStep02State>(
+    WithdrawnReferenceInputStep02StateSchema,
+  );
 
 export const WithdrawnReferenceInputStep02DatumSchema =
   faultProofStepDatumSchema(WithdrawnReferenceInputStep02StateSchema);
@@ -120,7 +127,9 @@ export type WithdrawnReferenceInputStep02Datum = Data.Static<
   typeof WithdrawnReferenceInputStep02DatumSchema
 >;
 export const WithdrawnReferenceInputStep02Datum =
-  WithdrawnReferenceInputStep02DatumSchema as unknown as WithdrawnReferenceInputStep02Datum;
+  asDataType<WithdrawnReferenceInputStep02Datum>(
+    WithdrawnReferenceInputStep02DatumSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/withdrawn_reference_input/step_02.Args`.
@@ -137,7 +146,9 @@ export type WithdrawnReferenceInputStep02Args = Data.Static<
   typeof WithdrawnReferenceInputStep02ArgsSchema
 >;
 export const WithdrawnReferenceInputStep02Args =
-  WithdrawnReferenceInputStep02ArgsSchema as unknown as WithdrawnReferenceInputStep02Args;
+  asDataType<WithdrawnReferenceInputStep02Args>(
+    WithdrawnReferenceInputStep02ArgsSchema,
+  );
 
 export const WithdrawnReferenceInputStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(WithdrawnReferenceInputStep02ArgsSchema);
@@ -145,7 +156,9 @@ export type WithdrawnReferenceInputStep02SpendRedeemer = Data.Static<
   typeof WithdrawnReferenceInputStep02SpendRedeemerSchema
 >;
 export const WithdrawnReferenceInputStep02SpendRedeemer =
-  WithdrawnReferenceInputStep02SpendRedeemerSchema as unknown as WithdrawnReferenceInputStep02SpendRedeemer;
+  asDataType<WithdrawnReferenceInputStep02SpendRedeemer>(
+    WithdrawnReferenceInputStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — prove a valid committed withdrawal spent the referenced input
 //
@@ -165,7 +178,9 @@ export type WithdrawnReferenceInputStep03State = Data.Static<
   typeof WithdrawnReferenceInputStep03StateSchema
 >;
 export const WithdrawnReferenceInputStep03State =
-  WithdrawnReferenceInputStep03StateSchema as unknown as WithdrawnReferenceInputStep03State;
+  asDataType<WithdrawnReferenceInputStep03State>(
+    WithdrawnReferenceInputStep03StateSchema,
+  );
 
 export const WithdrawnReferenceInputStep03DatumSchema =
   faultProofStepDatumSchema(WithdrawnReferenceInputStep03StateSchema);
@@ -173,7 +188,9 @@ export type WithdrawnReferenceInputStep03Datum = Data.Static<
   typeof WithdrawnReferenceInputStep03DatumSchema
 >;
 export const WithdrawnReferenceInputStep03Datum =
-  WithdrawnReferenceInputStep03DatumSchema as unknown as WithdrawnReferenceInputStep03Datum;
+  asDataType<WithdrawnReferenceInputStep03Datum>(
+    WithdrawnReferenceInputStep03DatumSchema,
+  );
 
 export const WithdrawnReferenceInputStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -185,7 +202,9 @@ export type WithdrawnReferenceInputStep03Args = Data.Static<
   typeof WithdrawnReferenceInputStep03ArgsSchema
 >;
 export const WithdrawnReferenceInputStep03Args =
-  WithdrawnReferenceInputStep03ArgsSchema as unknown as WithdrawnReferenceInputStep03Args;
+  asDataType<WithdrawnReferenceInputStep03Args>(
+    WithdrawnReferenceInputStep03ArgsSchema,
+  );
 
 export const WithdrawnReferenceInputStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(WithdrawnReferenceInputStep03ArgsSchema);
@@ -193,7 +212,9 @@ export type WithdrawnReferenceInputStep03SpendRedeemer = Data.Static<
   typeof WithdrawnReferenceInputStep03SpendRedeemerSchema
 >;
 export const WithdrawnReferenceInputStep03SpendRedeemer =
-  WithdrawnReferenceInputStep03SpendRedeemerSchema as unknown as WithdrawnReferenceInputStep03SpendRedeemer;
+  asDataType<WithdrawnReferenceInputStep03SpendRedeemer>(
+    WithdrawnReferenceInputStep03SpendRedeemerSchema,
+  );
 
 // ## Step resolver
 

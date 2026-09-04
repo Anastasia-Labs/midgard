@@ -23,7 +23,6 @@ import {
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -48,7 +47,11 @@ import {
   WatcherRuleBundleError,
   type WatcherRuleBundleErrorCode,
 } from "../../src/verification/rule-bundle.js";
-import { canonicalFraudProofCatalogueFixture } from "../canonical-fraud-proof-catalogue.js";
+import {
+  canonicalFraudProofCatalogueFixture,
+  positionalContractScriptCbor,
+  positionalContractScriptHash,
+} from "../canonical-fraud-proof-catalogue.js";
 import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-authority-fixture.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
@@ -94,8 +97,8 @@ const referenceOutRefByContract = new Map<
 
 const canonicalManifestIdentity = (): MutableRecord => {
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName, index) => {
-      const contractScriptCbor = (index + 1).toString(16).padStart(2, "0");
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => {
+      const contractScriptCbor = positionalContractScriptCbor(contractName);
       return [
         contractName,
         {
@@ -113,10 +116,7 @@ const canonicalManifestIdentity = (): MutableRecord => {
           scriptHash:
             contractName === "referenceScriptAuthMint"
               ? NATIVE_SCRIPT_HASH
-              : validatorToScriptHash({
-                  type: "PlutusV3",
-                  script: contractScriptCbor,
-                }),
+              : positionalContractScriptHash(contractName),
         },
       ];
     }),

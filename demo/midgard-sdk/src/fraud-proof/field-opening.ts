@@ -45,6 +45,7 @@
  * stylistic one — see {@link nativeTxAnchorForField}.
  */
 
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -102,7 +103,7 @@ export const BodyAnchorSchema = Data.Object({
   tx_id: H32Schema,
 });
 export type BodyAnchorV1 = Data.Static<typeof BodyAnchorSchema>;
-export const BodyAnchorV1 = BodyAnchorSchema as unknown as BodyAnchorV1;
+export const BodyAnchorV1 = asDataType<BodyAnchorV1>(BodyAnchorSchema);
 
 /**
  * Fields 6–8. 64 bytes of thread state — the same width the retired
@@ -114,8 +115,7 @@ export const WitnessAnchorSchema = Data.Object({
   witness_set_hash: H32Schema,
 });
 export type WitnessAnchorV1 = Data.Static<typeof WitnessAnchorSchema>;
-export const WitnessAnchorV1 =
-  WitnessAnchorSchema as unknown as WitnessAnchorV1;
+export const WitnessAnchorV1 = asDataType<WitnessAnchorV1>(WitnessAnchorSchema);
 
 /**
  * `midgard/fraud_proofs/field_opening_v1.NativeTxAnchor` — what a family's own
@@ -128,7 +128,7 @@ export const NativeTxAnchorSchema = Data.Enum([
   Data.Object({ WitnessAnchor: WitnessAnchorSchema }),
 ]);
 export type NativeTxAnchor = Data.Static<typeof NativeTxAnchorSchema>;
-export const NativeTxAnchor = NativeTxAnchorSchema as unknown as NativeTxAnchor;
+export const NativeTxAnchor = asDataType<NativeTxAnchor>(NativeTxAnchorSchema);
 
 // ---------------------------------------------------------------------------
 // FieldOpening — what a downstream step's redeemer carries
@@ -143,8 +143,9 @@ export const BodyFieldOpeningSchema = Data.Object({
   carriage: FieldCarriageSchema,
 });
 export type BodyFieldOpeningV1 = Data.Static<typeof BodyFieldOpeningSchema>;
-export const BodyFieldOpeningV1 =
-  BodyFieldOpeningSchema as unknown as BodyFieldOpeningV1;
+export const BodyFieldOpeningV1 = asDataType<BodyFieldOpeningV1>(
+  BodyFieldOpeningSchema,
+);
 
 /**
  * Fields 6–8. Both `witness_set` and `native_tx_compact_cbor`'s trailing
@@ -160,8 +161,9 @@ export const WitnessFieldOpeningSchema = Data.Object({
 export type WitnessFieldOpeningV1 = Data.Static<
   typeof WitnessFieldOpeningSchema
 >;
-export const WitnessFieldOpeningV1 =
-  WitnessFieldOpeningSchema as unknown as WitnessFieldOpeningV1;
+export const WitnessFieldOpeningV1 = asDataType<WitnessFieldOpeningV1>(
+  WitnessFieldOpeningSchema,
+);
 
 /**
  * `midgard/fraud_proofs/field_opening_v1.FieldOpening` — everything a
@@ -175,7 +177,7 @@ export const FieldOpeningSchema = Data.Enum([
   Data.Object({ WitnessFieldOpening: WitnessFieldOpeningSchema }),
 ]);
 export type FieldOpening = Data.Static<typeof FieldOpeningSchema>;
-export const FieldOpening = FieldOpeningSchema as unknown as FieldOpening;
+export const FieldOpening = asDataType<FieldOpening>(FieldOpeningSchema);
 
 // ---------------------------------------------------------------------------
 // Constructors — the only supported way to build either shape

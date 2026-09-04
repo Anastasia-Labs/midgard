@@ -1,4 +1,9 @@
-import type { AuthenticatedValidator } from "@al-ft/midgard-sdk";
+import type {
+  AuthenticatedValidator,
+  StateQueueValidator,
+  StateQueueYieldValidators,
+  WithdrawalValidator,
+} from "@al-ft/midgard-sdk";
 import {
   mintingPolicyToId,
   validatorToAddress,
@@ -21,7 +26,7 @@ export type MidgardDeploymentOutRef = {
 
 export type MidgardDeploymentContract = {
   readonly key: string;
-  readonly purpose: "mint" | "spend";
+  readonly purpose: "mint" | "spend" | "withdraw";
   readonly script: MidgardDeploymentScript;
   readonly scriptHash: string;
   // Null for contracts the deployment manifest gives no reference-script
@@ -46,6 +51,15 @@ export type MidgardNodeDeployment = {
   readonly daAttestation: MidgardAuthenticatedDeployment;
   readonly daParamsGovernor: MidgardAuthenticatedDeployment;
   readonly stateQueue: MidgardAuthenticatedDeployment;
+  /**
+   * The state-queue spend yields its five state transitions to withdrawal
+   * scripts, so the spend contract alone no longer describes the validator the
+   * SDK builders need. Each name is a first-class deployment-manifest contract
+   * and is parsed like any other.
+   */
+  readonly stateQueueYields: Readonly<
+    Record<keyof StateQueueYieldValidators, MidgardDeploymentContract>
+  >;
 };
 
 export type DaAttestationValidatorSet = {
@@ -53,7 +67,7 @@ export type DaAttestationValidatorSet = {
   readonly availabilityChallenge: AuthenticatedValidator;
   readonly daAttestation: AuthenticatedValidator;
   readonly daParamsGovernor: AuthenticatedValidator;
-  readonly stateQueue: AuthenticatedValidator;
+  readonly stateQueue: StateQueueValidator;
 };
 
 export const daAttestationValidatorsFromDeployment = (
@@ -67,7 +81,26 @@ export const daAttestationValidatorsFromDeployment = (
   daParamsGovernor: authenticatedValidatorFromDeployment(
     deployment.daParamsGovernor,
   ),
-  stateQueue: authenticatedValidatorFromDeployment(deployment.stateQueue),
+  stateQueue: {
+    ...authenticatedValidatorFromDeployment(deployment.stateQueue),
+    yields: {
+      commit: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.commit,
+      ),
+      unattestedTimeout: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.unattestedTimeout,
+      ),
+      unavailableTimeout: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.unavailableTimeout,
+      ),
+      fraudRemoval: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.fraudRemoval,
+      ),
+      merge: withdrawalValidatorFromDeployment(
+        deployment.stateQueueYields.merge,
+      ),
+    },
+  },
 });
 
 export const parseMidgardNodeDeploymentInfo = (
@@ -136,6 +169,33 @@ export const parseMidgardNodeDeploymentInfo = (
       "state queue",
       lucidNetwork,
     ),
+    stateQueueYields: {
+      commit: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueCommitWithdraw",
+        "state queue commit withdraw",
+      ),
+      unattestedTimeout: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueUnattestedTimeoutWithdraw",
+        "state queue unattested timeout withdraw",
+      ),
+      unavailableTimeout: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueUnavailableTimeoutWithdraw",
+        "state queue unavailable timeout withdraw",
+      ),
+      fraudRemoval: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueFraudRemovalWithdraw",
+        "state queue fraud removal withdraw",
+      ),
+      merge: withdrawDeploymentContract(
+        deploymentInfo,
+        "stateQueueMergeWithdraw",
+        "state queue merge withdraw",
+      ),
+    },
   };
 };
 
@@ -186,6 +246,21 @@ const authenticatedDeployment = (
   };
 };
 
+const withdrawDeploymentContract = (
+  deploymentInfo: Record<string, unknown>,
+  key: string,
+  label: string,
+): MidgardDeploymentContract =>
+  deploymentContract(deploymentInfo, key, label, "withdraw");
+
+const withdrawalValidatorFromDeployment = (
+  contract: MidgardDeploymentContract,
+): WithdrawalValidator => ({
+  withdrawalScriptCBOR: contract.script.script,
+  withdrawalScript: contract.script as never,
+  withdrawalScriptHash: contract.scriptHash,
+});
+
 const authenticatedValidatorFromDeployment = (
   contract: MidgardAuthenticatedDeployment,
 ): AuthenticatedValidator => ({
@@ -202,7 +277,7 @@ const deploymentContract = (
   deploymentInfo: Record<string, unknown>,
   key: string,
   label: string,
-  purpose: "mint" | "spend",
+  purpose: "mint" | "spend" | "withdraw",
 ): MidgardDeploymentContract => {
   const root = objectAt(deploymentInfo, ["contracts", key]);
   if (root === undefined) {

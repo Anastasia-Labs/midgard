@@ -17,6 +17,7 @@ import {
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import {
   buildCanonicalTransitionEffect,
   buildValidationMachineLedgerInsertOp,
@@ -595,11 +596,6 @@ const replay = async (
     config,
   });
 };
-
-const h32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
-const h28 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(28);
 
 const L1_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",

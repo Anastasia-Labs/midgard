@@ -25,7 +25,6 @@ import {
   DEPLOYMENT_MANIFEST_STEP_NAMES,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -45,7 +44,11 @@ import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../../src/runtime/deployment-identity.js";
-import { canonicalFraudProofCatalogueFixture } from "../canonical-fraud-proof-catalogue.js";
+import {
+  canonicalFraudProofCatalogueFixture,
+  positionalContractScriptCbor,
+  positionalContractScriptHash,
+} from "../canonical-fraud-proof-catalogue.js";
 
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH =
@@ -73,8 +76,8 @@ const referenceOutRefByContract = new Map<
 
 const canonicalIdentity = (): MutableRecord => {
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName, index) => {
-      const contractScriptCbor = (index + 1).toString(16).padStart(2, "0");
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => {
+      const contractScriptCbor = positionalContractScriptCbor(contractName);
       return [
         contractName,
         {
@@ -92,10 +95,7 @@ const canonicalIdentity = (): MutableRecord => {
           scriptHash:
             contractName === "referenceScriptAuthMint"
               ? NATIVE_SCRIPT_HASH
-              : validatorToScriptHash({
-                  type: "PlutusV3",
-                  script: contractScriptCbor,
-                }),
+              : positionalContractScriptHash(contractName),
         },
       ];
     }),
@@ -706,7 +706,7 @@ describe("watcher deployment identity", () => {
       scriptHash:
         fixture.policy.appliedScriptHashes.fraudProofMintDeclaredAssetLimit,
     });
-    expect(Object.keys(categories)).toHaveLength(42);
+    expect(Object.keys(categories)).toHaveLength(54);
 
     fixture.policy = {
       ...fixture.policy,

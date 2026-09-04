@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   faultProofStepRedeemerSchema,
   FraudProofComputationThreadRedeemer,
@@ -42,7 +43,7 @@ import {
 
 const CancelSchema = faultProofStepRedeemerSchema(Data.Any());
 type Cancel = Data.Static<typeof CancelSchema>;
-const Cancel = CancelSchema as unknown as Cancel;
+const Cancel = asDataType<Cancel>(CancelSchema);
 
 export const submitLinearFaultCancel = async ({
   lucid,

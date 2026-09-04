@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   MissingNativeScriptUtxoStep01SpendRedeemerSchema,
   MissingNativeScriptUtxoStep02DatumSchema,
@@ -25,8 +26,9 @@ import {
 } from "./contracts.js";
 
 type Step02Datum = Data.Static<typeof MissingNativeScriptUtxoStep02DatumSchema>;
-const Step02Datum =
-  MissingNativeScriptUtxoStep02DatumSchema as unknown as Step02Datum;
+const Step02Datum = asDataType<Step02Datum>(
+  MissingNativeScriptUtxoStep02DatumSchema,
+);
 
 export const submitMissingNativeScriptUtxoStep01 = async ({
   lucid,

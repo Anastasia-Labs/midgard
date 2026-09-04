@@ -5,6 +5,7 @@
  * challenged block and by a different confirmed settlement header. The family
  * Production catalogue category `crossBlockDuplicateEvent` (`00000016`).
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -60,7 +61,7 @@ export type CrossBlockDuplicateEventKind = Data.Static<
   typeof CrossBlockDuplicateEventKindSchema
 >;
 export const CrossBlockDuplicateEventKind =
-  CrossBlockDuplicateEventKindSchema as unknown as CrossBlockDuplicateEventKind;
+  asDataType<CrossBlockDuplicateEventKind>(CrossBlockDuplicateEventKindSchema);
 
 export const CommittedDuplicateEventProofSchema = Data.Enum([
   Data.Object({
@@ -96,7 +97,7 @@ export type CommittedDuplicateEventProof =
       };
     };
 export const CommittedDuplicateEventProof =
-  CommittedDuplicateEventProofSchema as unknown as CommittedDuplicateEventProof;
+  asDataType<CommittedDuplicateEventProof>(CommittedDuplicateEventProofSchema);
 
 export const CrossBlockDuplicateEventStep01DatumSchema =
   faultProofStepDatumSchema(Data.Any());
@@ -104,7 +105,9 @@ export type CrossBlockDuplicateEventStep01Datum = Data.Static<
   typeof CrossBlockDuplicateEventStep01DatumSchema
 >;
 export const CrossBlockDuplicateEventStep01Datum =
-  CrossBlockDuplicateEventStep01DatumSchema as unknown as CrossBlockDuplicateEventStep01Datum;
+  asDataType<CrossBlockDuplicateEventStep01Datum>(
+    CrossBlockDuplicateEventStep01DatumSchema,
+  );
 
 export const CrossBlockDuplicateEventStep01ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -117,7 +120,9 @@ export type CrossBlockDuplicateEventStep01Args = Data.Static<
   typeof CrossBlockDuplicateEventStep01ArgsSchema
 >;
 export const CrossBlockDuplicateEventStep01Args =
-  CrossBlockDuplicateEventStep01ArgsSchema as unknown as CrossBlockDuplicateEventStep01Args;
+  asDataType<CrossBlockDuplicateEventStep01Args>(
+    CrossBlockDuplicateEventStep01ArgsSchema,
+  );
 
 export const CrossBlockDuplicateEventStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(CrossBlockDuplicateEventStep01ArgsSchema);
@@ -125,7 +130,9 @@ export type CrossBlockDuplicateEventStep01SpendRedeemer = Data.Static<
   typeof CrossBlockDuplicateEventStep01SpendRedeemerSchema
 >;
 export const CrossBlockDuplicateEventStep01SpendRedeemer =
-  CrossBlockDuplicateEventStep01SpendRedeemerSchema as unknown as CrossBlockDuplicateEventStep01SpendRedeemer;
+  asDataType<CrossBlockDuplicateEventStep01SpendRedeemer>(
+    CrossBlockDuplicateEventStep01SpendRedeemerSchema,
+  );
 
 export const CrossBlockDuplicateEventStep02StateSchema = Data.Object({
   challenged_header_hash: CrossBlockDuplicateEventHeaderHashSchema,
@@ -137,7 +144,9 @@ export type CrossBlockDuplicateEventStep02State = Data.Static<
   typeof CrossBlockDuplicateEventStep02StateSchema
 >;
 export const CrossBlockDuplicateEventStep02State =
-  CrossBlockDuplicateEventStep02StateSchema as unknown as CrossBlockDuplicateEventStep02State;
+  asDataType<CrossBlockDuplicateEventStep02State>(
+    CrossBlockDuplicateEventStep02StateSchema,
+  );
 
 export const CrossBlockDuplicateEventStep02DatumSchema =
   faultProofStepDatumSchema(CrossBlockDuplicateEventStep02StateSchema);
@@ -145,7 +154,9 @@ export type CrossBlockDuplicateEventStep02Datum = Data.Static<
   typeof CrossBlockDuplicateEventStep02DatumSchema
 >;
 export const CrossBlockDuplicateEventStep02Datum =
-  CrossBlockDuplicateEventStep02DatumSchema as unknown as CrossBlockDuplicateEventStep02Datum;
+  asDataType<CrossBlockDuplicateEventStep02Datum>(
+    CrossBlockDuplicateEventStep02DatumSchema,
+  );
 
 export const CrossBlockDuplicateEventStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -158,7 +169,9 @@ export type CrossBlockDuplicateEventStep02Args = Data.Static<
   typeof CrossBlockDuplicateEventStep02ArgsSchema
 >;
 export const CrossBlockDuplicateEventStep02Args =
-  CrossBlockDuplicateEventStep02ArgsSchema as unknown as CrossBlockDuplicateEventStep02Args;
+  asDataType<CrossBlockDuplicateEventStep02Args>(
+    CrossBlockDuplicateEventStep02ArgsSchema,
+  );
 
 export const CrossBlockDuplicateEventStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(CrossBlockDuplicateEventStep02ArgsSchema);
@@ -166,7 +179,9 @@ export type CrossBlockDuplicateEventStep02SpendRedeemer = Data.Static<
   typeof CrossBlockDuplicateEventStep02SpendRedeemerSchema
 >;
 export const CrossBlockDuplicateEventStep02SpendRedeemer =
-  CrossBlockDuplicateEventStep02SpendRedeemerSchema as unknown as CrossBlockDuplicateEventStep02SpendRedeemer;
+  asDataType<CrossBlockDuplicateEventStep02SpendRedeemer>(
+    CrossBlockDuplicateEventStep02SpendRedeemerSchema,
+  );
 
 export const CROSS_BLOCK_DUPLICATE_EVENT_STEP_NAMES = [
   "step_01",

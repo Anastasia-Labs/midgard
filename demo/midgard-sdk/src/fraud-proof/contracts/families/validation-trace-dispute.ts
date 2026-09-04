@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -933,8 +934,9 @@ export const buildValidationTraceDisputeChain = ({
     type SemanticResolverHashes = Data.Static<
       typeof semanticResolverHashesSchema
     >;
-    const SemanticResolverHashes =
-      semanticResolverHashesSchema as unknown as SemanticResolverHashes;
+    const SemanticResolverHashes = asDataType<SemanticResolverHashes>(
+      semanticResolverHashesSchema,
+    );
 
     const prepareTitles = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
@@ -1011,7 +1013,7 @@ export const buildValidationTraceDisputeChain = ({
     }
     const resolverHashesSchema = Data.Array(Data.Bytes());
     type ResolverHashes = Data.Static<typeof resolverHashesSchema>;
-    const ResolverHashes = resolverHashesSchema as unknown as ResolverHashes;
+    const ResolverHashes = asDataType<ResolverHashes>(resolverHashesSchema);
     const resolverHashesData = Data.from(
       Data.to(
         resolvers.map(({ spendingScriptHash }) => spendingScriptHash),

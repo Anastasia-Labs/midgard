@@ -47,6 +47,7 @@ import {
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -186,7 +187,9 @@ export type MissingNativeScriptTxStep01Datum = Data.Static<
   typeof MissingNativeScriptTxStep01DatumSchema
 >;
 export const MissingNativeScriptTxStep01Datum =
-  MissingNativeScriptTxStep01DatumSchema as unknown as MissingNativeScriptTxStep01Datum;
+  asDataType<MissingNativeScriptTxStep01Datum>(
+    MissingNativeScriptTxStep01DatumSchema,
+  );
 
 export const MissingNativeScriptTxStep01ArgsSchema =
   NativeTxInclusionArgsSchema;
@@ -200,7 +203,9 @@ export type MissingNativeScriptTxStep01SpendRedeemer = Data.Static<
   typeof MissingNativeScriptTxStep01SpendRedeemerSchema
 >;
 export const MissingNativeScriptTxStep01SpendRedeemer =
-  MissingNativeScriptTxStep01SpendRedeemerSchema as unknown as MissingNativeScriptTxStep01SpendRedeemer;
+  asDataType<MissingNativeScriptTxStep01SpendRedeemer>(
+    MissingNativeScriptTxStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — open the bad transaction's spend inputs
 
@@ -219,7 +224,9 @@ export type MissingNativeScriptTxStep02State = Data.Static<
   typeof MissingNativeScriptTxStep02StateSchema
 >;
 export const MissingNativeScriptTxStep02State =
-  MissingNativeScriptTxStep02StateSchema as unknown as MissingNativeScriptTxStep02State;
+  asDataType<MissingNativeScriptTxStep02State>(
+    MissingNativeScriptTxStep02StateSchema,
+  );
 
 export const MissingNativeScriptTxStep02DatumSchema = faultProofStepDatumSchema(
   MissingNativeScriptTxStep02StateSchema,
@@ -228,7 +235,9 @@ export type MissingNativeScriptTxStep02Datum = Data.Static<
   typeof MissingNativeScriptTxStep02DatumSchema
 >;
 export const MissingNativeScriptTxStep02Datum =
-  MissingNativeScriptTxStep02DatumSchema as unknown as MissingNativeScriptTxStep02Datum;
+  asDataType<MissingNativeScriptTxStep02Datum>(
+    MissingNativeScriptTxStep02DatumSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/missing_native_script_tx/step_02.Args`. */
 export const MissingNativeScriptTxStep02ArgsSchema = Data.Object({
@@ -241,7 +250,9 @@ export type MissingNativeScriptTxStep02Args = Data.Static<
   typeof MissingNativeScriptTxStep02ArgsSchema
 >;
 export const MissingNativeScriptTxStep02Args =
-  MissingNativeScriptTxStep02ArgsSchema as unknown as MissingNativeScriptTxStep02Args;
+  asDataType<MissingNativeScriptTxStep02Args>(
+    MissingNativeScriptTxStep02ArgsSchema,
+  );
 
 export const MissingNativeScriptTxStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptTxStep02ArgsSchema);
@@ -249,7 +260,9 @@ export type MissingNativeScriptTxStep02SpendRedeemer = Data.Static<
   typeof MissingNativeScriptTxStep02SpendRedeemerSchema
 >;
 export const MissingNativeScriptTxStep02SpendRedeemer =
-  MissingNativeScriptTxStep02SpendRedeemerSchema as unknown as MissingNativeScriptTxStep02SpendRedeemer;
+  asDataType<MissingNativeScriptTxStep02SpendRedeemer>(
+    MissingNativeScriptTxStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — bind the producing transaction
 
@@ -263,7 +276,9 @@ export type MissingNativeScriptTxStep03State = Data.Static<
   typeof MissingNativeScriptTxStep03StateSchema
 >;
 export const MissingNativeScriptTxStep03State =
-  MissingNativeScriptTxStep03StateSchema as unknown as MissingNativeScriptTxStep03State;
+  asDataType<MissingNativeScriptTxStep03State>(
+    MissingNativeScriptTxStep03StateSchema,
+  );
 
 export const MissingNativeScriptTxStep03DatumSchema = faultProofStepDatumSchema(
   MissingNativeScriptTxStep03StateSchema,
@@ -272,7 +287,9 @@ export type MissingNativeScriptTxStep03Datum = Data.Static<
   typeof MissingNativeScriptTxStep03DatumSchema
 >;
 export const MissingNativeScriptTxStep03Datum =
-  MissingNativeScriptTxStep03DatumSchema as unknown as MissingNativeScriptTxStep03Datum;
+  asDataType<MissingNativeScriptTxStep03Datum>(
+    MissingNativeScriptTxStep03DatumSchema,
+  );
 
 export const MissingNativeScriptTxStep03ArgsSchema =
   NativeTxInclusionArgsSchema;
@@ -286,7 +303,9 @@ export type MissingNativeScriptTxStep03SpendRedeemer = Data.Static<
   typeof MissingNativeScriptTxStep03SpendRedeemerSchema
 >;
 export const MissingNativeScriptTxStep03SpendRedeemer =
-  MissingNativeScriptTxStep03SpendRedeemerSchema as unknown as MissingNativeScriptTxStep03SpendRedeemer;
+  asDataType<MissingNativeScriptTxStep03SpendRedeemer>(
+    MissingNativeScriptTxStep03SpendRedeemerSchema,
+  );
 
 // ## Step 04 — open the producing transaction's outputs
 
@@ -301,7 +320,9 @@ export type MissingNativeScriptTxStep04State = Data.Static<
   typeof MissingNativeScriptTxStep04StateSchema
 >;
 export const MissingNativeScriptTxStep04State =
-  MissingNativeScriptTxStep04StateSchema as unknown as MissingNativeScriptTxStep04State;
+  asDataType<MissingNativeScriptTxStep04State>(
+    MissingNativeScriptTxStep04StateSchema,
+  );
 
 export const MissingNativeScriptTxStep04DatumSchema = faultProofStepDatumSchema(
   MissingNativeScriptTxStep04StateSchema,
@@ -310,7 +331,9 @@ export type MissingNativeScriptTxStep04Datum = Data.Static<
   typeof MissingNativeScriptTxStep04DatumSchema
 >;
 export const MissingNativeScriptTxStep04Datum =
-  MissingNativeScriptTxStep04DatumSchema as unknown as MissingNativeScriptTxStep04Datum;
+  asDataType<MissingNativeScriptTxStep04Datum>(
+    MissingNativeScriptTxStep04DatumSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/missing_native_script_tx/step_04.Args`. */
 export const MissingNativeScriptTxStep04ArgsSchema = Data.Object({
@@ -322,7 +345,9 @@ export type MissingNativeScriptTxStep04Args = Data.Static<
   typeof MissingNativeScriptTxStep04ArgsSchema
 >;
 export const MissingNativeScriptTxStep04Args =
-  MissingNativeScriptTxStep04ArgsSchema as unknown as MissingNativeScriptTxStep04Args;
+  asDataType<MissingNativeScriptTxStep04Args>(
+    MissingNativeScriptTxStep04ArgsSchema,
+  );
 
 export const MissingNativeScriptTxStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptTxStep04ArgsSchema);
@@ -330,7 +355,9 @@ export type MissingNativeScriptTxStep04SpendRedeemer = Data.Static<
   typeof MissingNativeScriptTxStep04SpendRedeemerSchema
 >;
 export const MissingNativeScriptTxStep04SpendRedeemer =
-  MissingNativeScriptTxStep04SpendRedeemerSchema as unknown as MissingNativeScriptTxStep04SpendRedeemer;
+  asDataType<MissingNativeScriptTxStep04SpendRedeemer>(
+    MissingNativeScriptTxStep04SpendRedeemerSchema,
+  );
 
 // ## Step 05 — classify the credential as a native script
 
@@ -344,7 +371,9 @@ export type MissingNativeScriptTxStep05State = Data.Static<
   typeof MissingNativeScriptTxStep05StateSchema
 >;
 export const MissingNativeScriptTxStep05State =
-  MissingNativeScriptTxStep05StateSchema as unknown as MissingNativeScriptTxStep05State;
+  asDataType<MissingNativeScriptTxStep05State>(
+    MissingNativeScriptTxStep05StateSchema,
+  );
 
 export const MissingNativeScriptTxStep05DatumSchema = faultProofStepDatumSchema(
   MissingNativeScriptTxStep05StateSchema,
@@ -353,7 +382,9 @@ export type MissingNativeScriptTxStep05Datum = Data.Static<
   typeof MissingNativeScriptTxStep05DatumSchema
 >;
 export const MissingNativeScriptTxStep05Datum =
-  MissingNativeScriptTxStep05DatumSchema as unknown as MissingNativeScriptTxStep05Datum;
+  asDataType<MissingNativeScriptTxStep05Datum>(
+    MissingNativeScriptTxStep05DatumSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/missing_native_script_tx/step_05.Args`. */
 export const MissingNativeScriptTxStep05ArgsSchema = Data.Object({
@@ -365,7 +396,9 @@ export type MissingNativeScriptTxStep05Args = Data.Static<
   typeof MissingNativeScriptTxStep05ArgsSchema
 >;
 export const MissingNativeScriptTxStep05Args =
-  MissingNativeScriptTxStep05ArgsSchema as unknown as MissingNativeScriptTxStep05Args;
+  asDataType<MissingNativeScriptTxStep05Args>(
+    MissingNativeScriptTxStep05ArgsSchema,
+  );
 
 export const MissingNativeScriptTxStep05SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptTxStep05ArgsSchema);
@@ -373,7 +406,9 @@ export type MissingNativeScriptTxStep05SpendRedeemer = Data.Static<
   typeof MissingNativeScriptTxStep05SpendRedeemerSchema
 >;
 export const MissingNativeScriptTxStep05SpendRedeemer =
-  MissingNativeScriptTxStep05SpendRedeemerSchema as unknown as MissingNativeScriptTxStep05SpendRedeemer;
+  asDataType<MissingNativeScriptTxStep05SpendRedeemer>(
+    MissingNativeScriptTxStep05SpendRedeemerSchema,
+  );
 
 // ## Step 06 — open the script witnesses and convict the absence
 
@@ -397,7 +432,7 @@ export type MissingNativeScriptTxPhase = Data.Static<
   typeof MissingNativeScriptTxPhaseSchema
 >;
 export const MissingNativeScriptTxPhase =
-  MissingNativeScriptTxPhaseSchema as unknown as MissingNativeScriptTxPhase;
+  asDataType<MissingNativeScriptTxPhase>(MissingNativeScriptTxPhaseSchema);
 
 export const MissingNativeScriptTxStep06StateSchema = Data.Object({
   expected_missing_script_hash: H28Schema,
@@ -409,7 +444,9 @@ export type MissingNativeScriptTxStep06State = Data.Static<
   typeof MissingNativeScriptTxStep06StateSchema
 >;
 export const MissingNativeScriptTxStep06State =
-  MissingNativeScriptTxStep06StateSchema as unknown as MissingNativeScriptTxStep06State;
+  asDataType<MissingNativeScriptTxStep06State>(
+    MissingNativeScriptTxStep06StateSchema,
+  );
 
 export const MissingNativeScriptTxStep06DatumSchema = faultProofStepDatumSchema(
   MissingNativeScriptTxStep06StateSchema,
@@ -418,7 +455,9 @@ export type MissingNativeScriptTxStep06Datum = Data.Static<
   typeof MissingNativeScriptTxStep06DatumSchema
 >;
 export const MissingNativeScriptTxStep06Datum =
-  MissingNativeScriptTxStep06DatumSchema as unknown as MissingNativeScriptTxStep06Datum;
+  asDataType<MissingNativeScriptTxStep06Datum>(
+    MissingNativeScriptTxStep06DatumSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/missing_native_script_tx/step_06.Args`.
@@ -452,7 +491,9 @@ export type MissingNativeScriptTxStep06Args = Data.Static<
   typeof MissingNativeScriptTxStep06ArgsSchema
 >;
 export const MissingNativeScriptTxStep06Args =
-  MissingNativeScriptTxStep06ArgsSchema as unknown as MissingNativeScriptTxStep06Args;
+  asDataType<MissingNativeScriptTxStep06Args>(
+    MissingNativeScriptTxStep06ArgsSchema,
+  );
 
 export const MissingNativeScriptTxStep06SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptTxStep06ArgsSchema);
@@ -460,7 +501,9 @@ export type MissingNativeScriptTxStep06SpendRedeemer = Data.Static<
   typeof MissingNativeScriptTxStep06SpendRedeemerSchema
 >;
 export const MissingNativeScriptTxStep06SpendRedeemer =
-  MissingNativeScriptTxStep06SpendRedeemerSchema as unknown as MissingNativeScriptTxStep06SpendRedeemer;
+  asDataType<MissingNativeScriptTxStep06SpendRedeemer>(
+    MissingNativeScriptTxStep06SpendRedeemerSchema,
+  );
 
 // ## Step 07 — grammar certification and semantic-scan transition
 
@@ -477,7 +520,9 @@ export type MissingNativeScriptTxStep07Datum = Data.Static<
   typeof MissingNativeScriptTxStep07DatumSchema
 >;
 export const MissingNativeScriptTxStep07Datum =
-  MissingNativeScriptTxStep07DatumSchema as unknown as MissingNativeScriptTxStep07Datum;
+  asDataType<MissingNativeScriptTxStep07Datum>(
+    MissingNativeScriptTxStep07DatumSchema,
+  );
 
 export const MissingNativeScriptTxStep07ArgsSchema = Data.Enum([
   Data.Object({
@@ -503,7 +548,9 @@ export type MissingNativeScriptTxStep07Args = Data.Static<
   typeof MissingNativeScriptTxStep07ArgsSchema
 >;
 export const MissingNativeScriptTxStep07Args =
-  MissingNativeScriptTxStep07ArgsSchema as unknown as MissingNativeScriptTxStep07Args;
+  asDataType<MissingNativeScriptTxStep07Args>(
+    MissingNativeScriptTxStep07ArgsSchema,
+  );
 
 export const MissingNativeScriptTxStep07SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptTxStep07ArgsSchema);
@@ -511,7 +558,9 @@ export type MissingNativeScriptTxStep07SpendRedeemer = Data.Static<
   typeof MissingNativeScriptTxStep07SpendRedeemerSchema
 >;
 export const MissingNativeScriptTxStep07SpendRedeemer =
-  MissingNativeScriptTxStep07SpendRedeemerSchema as unknown as MissingNativeScriptTxStep07SpendRedeemer;
+  asDataType<MissingNativeScriptTxStep07SpendRedeemer>(
+    MissingNativeScriptTxStep07SpendRedeemerSchema,
+  );
 
 // ## Step 08 — bounded semantic resume/finalize
 
@@ -528,7 +577,9 @@ export type MissingNativeScriptTxStep08Datum = Data.Static<
   typeof MissingNativeScriptTxStep08DatumSchema
 >;
 export const MissingNativeScriptTxStep08Datum =
-  MissingNativeScriptTxStep08DatumSchema as unknown as MissingNativeScriptTxStep08Datum;
+  asDataType<MissingNativeScriptTxStep08Datum>(
+    MissingNativeScriptTxStep08DatumSchema,
+  );
 
 export const MissingNativeScriptTxStep08ArgsSchema = Data.Enum([
   Data.Object({
@@ -555,7 +606,9 @@ export type MissingNativeScriptTxStep08Args = Data.Static<
   typeof MissingNativeScriptTxStep08ArgsSchema
 >;
 export const MissingNativeScriptTxStep08Args =
-  MissingNativeScriptTxStep08ArgsSchema as unknown as MissingNativeScriptTxStep08Args;
+  asDataType<MissingNativeScriptTxStep08Args>(
+    MissingNativeScriptTxStep08ArgsSchema,
+  );
 
 export const MissingNativeScriptTxStep08SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptTxStep08ArgsSchema);
@@ -563,7 +616,9 @@ export type MissingNativeScriptTxStep08SpendRedeemer = Data.Static<
   typeof MissingNativeScriptTxStep08SpendRedeemerSchema
 >;
 export const MissingNativeScriptTxStep08SpendRedeemer =
-  MissingNativeScriptTxStep08SpendRedeemerSchema as unknown as MissingNativeScriptTxStep08SpendRedeemer;
+  asDataType<MissingNativeScriptTxStep08SpendRedeemer>(
+    MissingNativeScriptTxStep08SpendRedeemerSchema,
+  );
 
 // ## Step-state builders (twins of the on-chain forwarding rules)
 

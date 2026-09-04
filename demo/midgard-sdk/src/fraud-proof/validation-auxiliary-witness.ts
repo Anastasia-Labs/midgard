@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { ProofSchema, ProofStepSchema } from "../common.js";
@@ -13,7 +14,7 @@ export const FrontierPeakSchema = Data.Object({
   hash: Data.Bytes(),
 });
 export type FrontierPeak = Data.Static<typeof FrontierPeakSchema>;
-export const FrontierPeak = FrontierPeakSchema as unknown as FrontierPeak;
+export const FrontierPeak = asDataType<FrontierPeak>(FrontierPeakSchema);
 
 const FrontierSchema = Data.Array(FrontierPeakSchema);
 
@@ -764,8 +765,9 @@ export const NativeScriptFrameSchema = Data.Object({
   required: Data.Integer(),
 });
 export type NativeScriptFrame = Data.Static<typeof NativeScriptFrameSchema>;
-export const NativeScriptFrame =
-  NativeScriptFrameSchema as unknown as NativeScriptFrame;
+export const NativeScriptFrame = asDataType<NativeScriptFrame>(
+  NativeScriptFrameSchema,
+);
 
 /**
  * Twin of `midgard/native_tx_script_pushdown_v1.NativeScriptFrame`.
@@ -781,8 +783,9 @@ export const NativeScriptPushdownFrameSchema = Data.Object({
 export type NativeScriptPushdownFrame = Data.Static<
   typeof NativeScriptPushdownFrameSchema
 >;
-export const NativeScriptPushdownFrame =
-  NativeScriptPushdownFrameSchema as unknown as NativeScriptPushdownFrame;
+export const NativeScriptPushdownFrame = asDataType<NativeScriptPushdownFrame>(
+  NativeScriptPushdownFrameSchema,
+);
 
 export const SignerSetProofSchema = Data.Enum([
   Data.Literal("NoSignerSetProof"),
@@ -824,7 +827,7 @@ export const SignerSetProofSchema = Data.Enum([
   }),
 ]);
 export type SignerSetProof = Data.Static<typeof SignerSetProofSchema>;
-export const SignerSetProof = SignerSetProofSchema as unknown as SignerSetProof;
+export const SignerSetProof = asDataType<SignerSetProof>(SignerSetProofSchema);
 
 const LedgerOutputProofWitnessSchema = Data.Enum([
   Data.Literal("LedgerOutputProofNoWitness"),
@@ -1274,7 +1277,7 @@ export type ValidationAuxiliaryWitness = Data.Static<
   typeof ValidationAuxiliaryWitnessSchema
 >;
 export const ValidationAuxiliaryWitness =
-  ValidationAuxiliaryWitnessSchema as unknown as ValidationAuxiliaryWitness;
+  asDataType<ValidationAuxiliaryWitness>(ValidationAuxiliaryWitnessSchema);
 
 /**
  * A field preimage published once, at the proof-item script address, for the
@@ -1303,5 +1306,6 @@ export const ValidationProofItemDatumSchema = Data.Object({
 export type ValidationProofItemDatum = Data.Static<
   typeof ValidationProofItemDatumSchema
 >;
-export const ValidationProofItemDatum =
-  ValidationProofItemDatumSchema as unknown as ValidationProofItemDatum;
+export const ValidationProofItemDatum = asDataType<ValidationProofItemDatum>(
+  ValidationProofItemDatumSchema,
+);

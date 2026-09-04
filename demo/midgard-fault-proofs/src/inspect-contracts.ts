@@ -1,6 +1,7 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   buildFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
@@ -329,7 +330,6 @@ const FraudProofCatalogueIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
 });
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 export const parseNetwork = (network: string | undefined): Network => {
   const resolved = network ?? DEFAULT_FAULT_PROOF_NETWORK;
@@ -504,18 +504,12 @@ const parseDeploymentContract = (
 
 const encodeCatalogueKey = (categoryId: string): Buffer =>
   Buffer.from(
-    Data.to(
-      categoryId,
-      FraudProofCatalogueIdSchema as unknown as LucidDataSchema,
-    ),
+    Data.to(categoryId, asLucidSchema(FraudProofCatalogueIdSchema)),
     "hex",
   );
 
 const encodeCatalogueValue = (scriptHash: string): Buffer =>
-  Buffer.from(
-    Data.to(scriptHash, ScriptHashSchema as unknown as LucidDataSchema),
-    "hex",
-  );
+  Buffer.from(Data.to(scriptHash, asLucidSchema(ScriptHashSchema)), "hex");
 
 const trieRootHex = (trie: Trie): string => {
   const hash = trie.hash;

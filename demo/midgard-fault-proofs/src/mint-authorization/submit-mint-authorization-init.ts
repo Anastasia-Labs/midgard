@@ -8,6 +8,7 @@
  * production `submitInit` category union entry is parent-owned and lands at
  * registration.
  */
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofComputationThreadRedeemer,
@@ -61,8 +62,6 @@ import {
   type MintAuthorizationCatalogueCategory,
   mintAuthorizationSubmitError,
 } from "./submit-common.js";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 export type SubmitMintAuthorizationInitResult = {
   readonly txHash: string;
@@ -254,17 +253,21 @@ export const submitMintAuthorizationInit = async ({
         root: catalogue.root,
         keyCbor: Data.to(
           category.categoryId,
-          Data.Bytes({
-            minLength: 4,
-            maxLength: 4,
-          }) as unknown as LucidDataSchema,
+          asLucidSchema(
+            Data.Bytes({
+              minLength: 4,
+              maxLength: 4,
+            }),
+          ),
         ),
         valueCbor: Data.to(
           category.scriptHash,
-          Data.Bytes({
-            minLength: 28,
-            maxLength: 28,
-          }) as unknown as LucidDataSchema,
+          asLucidSchema(
+            Data.Bytes({
+              minLength: 28,
+              maxLength: 28,
+            }),
+          ),
         ),
         membershipProofCbor: category.membershipProofCbor,
       }),

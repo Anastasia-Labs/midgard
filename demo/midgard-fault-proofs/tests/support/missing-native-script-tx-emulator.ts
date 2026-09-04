@@ -10,6 +10,7 @@ import {
   hashMidgardVersionedScript,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   encodeMidgardTxInputCanonical,
   faultProofStepRedeemerSchema,
@@ -763,8 +764,9 @@ export const submitRawMissingNativeScriptTxStep06 = async ({
 
 const RawCancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type RawCancelSpendRedeemer = Data.Static<typeof RawCancelSpendRedeemerSchema>;
-const RawCancelSpendRedeemer =
-  RawCancelSpendRedeemerSchema as unknown as RawCancelSpendRedeemer;
+const RawCancelSpendRedeemer = asDataType<RawCancelSpendRedeemer>(
+  RawCancelSpendRedeemerSchema,
+);
 
 export const submitRawMissingNativeScriptTxOutsiderCancel = async ({
   harness,

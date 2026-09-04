@@ -1,4 +1,5 @@
 import { decodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
@@ -235,8 +236,9 @@ export const FieldPreimageLengthStateSchema = Data.Object({
 export type FieldPreimageLengthState = Data.Static<
   typeof FieldPreimageLengthStateSchema
 >;
-export const FieldPreimageLengthState =
-  FieldPreimageLengthStateSchema as unknown as FieldPreimageLengthState;
+export const FieldPreimageLengthState = asDataType<FieldPreimageLengthState>(
+  FieldPreimageLengthStateSchema,
+);
 export const FieldPreimageLengthStep03DatumSchema = faultProofStepDatumSchema(
   FieldPreimageLengthStateSchema,
 );

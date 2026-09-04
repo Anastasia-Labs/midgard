@@ -34,6 +34,7 @@ import {
   encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -68,11 +69,6 @@ import {
   type RetainedDaLibp2pTransport,
   type TransitionTraceReconstruction,
 } from "../src/transition-trace/index.js";
-
-const h32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
-const h28 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(28);
 
 const outRef = (byte: number): SDK.OutputReference => ({
   transactionId: h32(byte),

@@ -1,4 +1,5 @@
 import { normalizeHex } from "@al-ft/midgard-core/hex";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   compareOutRefs,
   outRefLabel,
@@ -109,8 +110,6 @@ import {
 import { aikenSerialisedPlutusDataCbor } from "./plutus-data-cbor.js";
 
 const DEFAULT_WALLET_SEED_ENV = "USER_WALLET";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 export const DEFAULT_CONFIRMATION_POLL_MS = 5_000;
 
@@ -1837,21 +1836,19 @@ export const encodePhasMembershipProofRedeemer = ({
   const keyData = Data.from(
     Data.to(
       aikenSerialisedPlutusDataCbor(keyCbor),
-      Data.Bytes() as unknown as LucidDataSchema,
+      asLucidSchema(Data.Bytes()),
     ),
   );
   const valueData = Data.from(
     Data.to(
       aikenSerialisedPlutusDataCbor(valueCbor),
-      Data.Bytes() as unknown as LucidDataSchema,
+      asLucidSchema(Data.Bytes()),
     ),
   );
-  const proofData = Data.from(
-    Data.to(proof, Proof as unknown as LucidDataSchema),
-  );
+  const proofData = Data.from(Data.to(proof, asLucidSchema(Proof)));
   return Data.to(
     [rootData, keyData, valueData, proofData],
-    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+    asLucidSchema(Data.Array(Data.Any())),
   );
 };
 
@@ -1873,15 +1870,11 @@ export const encodeRawPexcludesProofRedeemer = ({
 }): string => {
   const proof = Data.from(nonMembershipProofCbor, Proof);
   const rootData = Data.from(Data.to(root, MerkleRoot));
-  const keyData = Data.from(
-    Data.to(keyBytes, Data.Bytes() as unknown as LucidDataSchema),
-  );
-  const proofData = Data.from(
-    Data.to(proof, Proof as unknown as LucidDataSchema),
-  );
+  const keyData = Data.from(Data.to(keyBytes, asLucidSchema(Data.Bytes())));
+  const proofData = Data.from(Data.to(proof, asLucidSchema(Proof)));
   return Data.to(
     [rootData, keyData, proofData],
-    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+    asLucidSchema(Data.Array(Data.Any())),
   );
 };
 
@@ -1898,17 +1891,11 @@ export const encodeRawPhasMembershipProofRedeemer = ({
 }): string => {
   const proof = Data.from(membershipProofCbor, Proof);
   const rootData = Data.from(Data.to(root, MerkleRoot));
-  const keyData = Data.from(
-    Data.to(keyBytes, Data.Bytes() as unknown as LucidDataSchema),
-  );
-  const valueData = Data.from(
-    Data.to(valueBytes, Data.Bytes() as unknown as LucidDataSchema),
-  );
-  const proofData = Data.from(
-    Data.to(proof, Proof as unknown as LucidDataSchema),
-  );
+  const keyData = Data.from(Data.to(keyBytes, asLucidSchema(Data.Bytes())));
+  const valueData = Data.from(Data.to(valueBytes, asLucidSchema(Data.Bytes())));
+  const proofData = Data.from(Data.to(proof, asLucidSchema(Proof)));
   return Data.to(
     [rootData, keyData, valueData, proofData],
-    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+    asLucidSchema(Data.Array(Data.Any())),
   );
 };

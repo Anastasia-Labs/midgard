@@ -13,6 +13,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile";
+import { parseJsonUnknown } from "@al-ft/midgard-core/narrowing";
 import {
   deriveCanonicalDecodeItemStageData,
   validationOneStepEvidenceHash,
@@ -77,7 +78,7 @@ import {
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
   resolve(process.cwd(), "../../onchain/aiken/plutus.json");
-const blueprintJson = JSON.parse(readFileSync(blueprintPath, "utf8"));
+const blueprintJson = parseJsonUnknown(readFileSync(blueprintPath, "utf8"));
 
 const HUB_ORACLE_POLICY_ID = "11".repeat(28);
 const FRAUD_PROOF_CATALOGUE_POLICY_ID = "22".repeat(28);

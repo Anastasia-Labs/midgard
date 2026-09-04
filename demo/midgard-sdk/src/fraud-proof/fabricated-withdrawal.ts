@@ -35,6 +35,7 @@
  * commitments and leaf bytes no on-chain step can reproduce; the twin test pins
  * both forms so the difference cannot regress unnoticed.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -122,7 +123,9 @@ export type FabricatedWithdrawalStep01Datum = Data.Static<
   typeof FabricatedWithdrawalStep01DatumSchema
 >;
 export const FabricatedWithdrawalStep01Datum =
-  FabricatedWithdrawalStep01DatumSchema as unknown as FabricatedWithdrawalStep01Datum;
+  asDataType<FabricatedWithdrawalStep01Datum>(
+    FabricatedWithdrawalStep01DatumSchema,
+  );
 
 export const FabricatedWithdrawalStep01ArgsSchema = Data.Object({
   /** Own input index. */
@@ -140,7 +143,9 @@ export type FabricatedWithdrawalStep01Args = Data.Static<
   typeof FabricatedWithdrawalStep01ArgsSchema
 >;
 export const FabricatedWithdrawalStep01Args =
-  FabricatedWithdrawalStep01ArgsSchema as unknown as FabricatedWithdrawalStep01Args;
+  asDataType<FabricatedWithdrawalStep01Args>(
+    FabricatedWithdrawalStep01ArgsSchema,
+  );
 
 export const FabricatedWithdrawalStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(FabricatedWithdrawalStep01ArgsSchema);
@@ -148,7 +153,9 @@ export type FabricatedWithdrawalStep01SpendRedeemer = Data.Static<
   typeof FabricatedWithdrawalStep01SpendRedeemerSchema
 >;
 export const FabricatedWithdrawalStep01SpendRedeemer =
-  FabricatedWithdrawalStep01SpendRedeemerSchema as unknown as FabricatedWithdrawalStep01SpendRedeemer;
+  asDataType<FabricatedWithdrawalStep01SpendRedeemer>(
+    FabricatedWithdrawalStep01SpendRedeemerSchema,
+  );
 
 // ## Step 02 — authenticated L1 withdrawal evidence
 
@@ -168,7 +175,9 @@ export type FabricatedWithdrawalStep02State = Data.Static<
   typeof FabricatedWithdrawalStep02StateSchema
 >;
 export const FabricatedWithdrawalStep02State =
-  FabricatedWithdrawalStep02StateSchema as unknown as FabricatedWithdrawalStep02State;
+  asDataType<FabricatedWithdrawalStep02State>(
+    FabricatedWithdrawalStep02StateSchema,
+  );
 
 export const FabricatedWithdrawalStep02DatumSchema = faultProofStepDatumSchema(
   FabricatedWithdrawalStep02StateSchema,
@@ -177,7 +186,9 @@ export type FabricatedWithdrawalStep02Datum = Data.Static<
   typeof FabricatedWithdrawalStep02DatumSchema
 >;
 export const FabricatedWithdrawalStep02Datum =
-  FabricatedWithdrawalStep02DatumSchema as unknown as FabricatedWithdrawalStep02Datum;
+  asDataType<FabricatedWithdrawalStep02Datum>(
+    FabricatedWithdrawalStep02DatumSchema,
+  );
 
 /** The prover's chosen L1 witness about the committed withdrawal identity. */
 export const FabricatedWithdrawalEvidenceSchema = Data.Enum([
@@ -197,7 +208,7 @@ export type FabricatedWithdrawalEvidence = Data.Static<
   typeof FabricatedWithdrawalEvidenceSchema
 >;
 export const FabricatedWithdrawalEvidence =
-  FabricatedWithdrawalEvidenceSchema as unknown as FabricatedWithdrawalEvidence;
+  asDataType<FabricatedWithdrawalEvidence>(FabricatedWithdrawalEvidenceSchema);
 
 /** What L1 says about the committed identity, once authenticated. */
 export const FabricatedWithdrawalEvidenceVerdictSchema = Data.Enum([
@@ -213,7 +224,9 @@ export type FabricatedWithdrawalEvidenceVerdict = Data.Static<
   typeof FabricatedWithdrawalEvidenceVerdictSchema
 >;
 export const FabricatedWithdrawalEvidenceVerdict =
-  FabricatedWithdrawalEvidenceVerdictSchema as unknown as FabricatedWithdrawalEvidenceVerdict;
+  asDataType<FabricatedWithdrawalEvidenceVerdict>(
+    FabricatedWithdrawalEvidenceVerdictSchema,
+  );
 
 export const FabricatedWithdrawalStep02ArgsSchema = Data.Object({
   /** Own input index. */
@@ -227,7 +240,9 @@ export type FabricatedWithdrawalStep02Args = Data.Static<
   typeof FabricatedWithdrawalStep02ArgsSchema
 >;
 export const FabricatedWithdrawalStep02Args =
-  FabricatedWithdrawalStep02ArgsSchema as unknown as FabricatedWithdrawalStep02Args;
+  asDataType<FabricatedWithdrawalStep02Args>(
+    FabricatedWithdrawalStep02ArgsSchema,
+  );
 
 export const FabricatedWithdrawalStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(FabricatedWithdrawalStep02ArgsSchema);
@@ -235,7 +250,9 @@ export type FabricatedWithdrawalStep02SpendRedeemer = Data.Static<
   typeof FabricatedWithdrawalStep02SpendRedeemerSchema
 >;
 export const FabricatedWithdrawalStep02SpendRedeemer =
-  FabricatedWithdrawalStep02SpendRedeemerSchema as unknown as FabricatedWithdrawalStep02SpendRedeemer;
+  asDataType<FabricatedWithdrawalStep02SpendRedeemer>(
+    FabricatedWithdrawalStep02SpendRedeemerSchema,
+  );
 
 // ## Step 03 — fault classification
 
@@ -257,7 +274,9 @@ export type FabricatedWithdrawalStep03State = Data.Static<
   typeof FabricatedWithdrawalStep03StateSchema
 >;
 export const FabricatedWithdrawalStep03State =
-  FabricatedWithdrawalStep03StateSchema as unknown as FabricatedWithdrawalStep03State;
+  asDataType<FabricatedWithdrawalStep03State>(
+    FabricatedWithdrawalStep03StateSchema,
+  );
 
 export const FabricatedWithdrawalStep03DatumSchema = faultProofStepDatumSchema(
   FabricatedWithdrawalStep03StateSchema,
@@ -266,7 +285,9 @@ export type FabricatedWithdrawalStep03Datum = Data.Static<
   typeof FabricatedWithdrawalStep03DatumSchema
 >;
 export const FabricatedWithdrawalStep03Datum =
-  FabricatedWithdrawalStep03DatumSchema as unknown as FabricatedWithdrawalStep03Datum;
+  asDataType<FabricatedWithdrawalStep03Datum>(
+    FabricatedWithdrawalStep03DatumSchema,
+  );
 
 /**
  * The prover's opening of step-02's retained event-datum commitment.
@@ -289,7 +310,9 @@ export type FabricatedWithdrawalAuthenticContentOpening = Data.Static<
   typeof FabricatedWithdrawalAuthenticContentOpeningSchema
 >;
 export const FabricatedWithdrawalAuthenticContentOpening =
-  FabricatedWithdrawalAuthenticContentOpeningSchema as unknown as FabricatedWithdrawalAuthenticContentOpening;
+  asDataType<FabricatedWithdrawalAuthenticContentOpening>(
+    FabricatedWithdrawalAuthenticContentOpeningSchema,
+  );
 
 export const FabricatedWithdrawalStep03ArgsSchema = Data.Object({
   /** Own input index. */
@@ -303,7 +326,9 @@ export type FabricatedWithdrawalStep03Args = Data.Static<
   typeof FabricatedWithdrawalStep03ArgsSchema
 >;
 export const FabricatedWithdrawalStep03Args =
-  FabricatedWithdrawalStep03ArgsSchema as unknown as FabricatedWithdrawalStep03Args;
+  asDataType<FabricatedWithdrawalStep03Args>(
+    FabricatedWithdrawalStep03ArgsSchema,
+  );
 
 export const FabricatedWithdrawalStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(FabricatedWithdrawalStep03ArgsSchema);
@@ -311,7 +336,9 @@ export type FabricatedWithdrawalStep03SpendRedeemer = Data.Static<
   typeof FabricatedWithdrawalStep03SpendRedeemerSchema
 >;
 export const FabricatedWithdrawalStep03SpendRedeemer =
-  FabricatedWithdrawalStep03SpendRedeemerSchema as unknown as FabricatedWithdrawalStep03SpendRedeemer;
+  asDataType<FabricatedWithdrawalStep03SpendRedeemer>(
+    FabricatedWithdrawalStep03SpendRedeemerSchema,
+  );
 
 // ## Step 04 — the established fault
 
@@ -329,8 +356,9 @@ export const FabricatedWithdrawalFaultSchema = Data.Enum([
 export type FabricatedWithdrawalFault = Data.Static<
   typeof FabricatedWithdrawalFaultSchema
 >;
-export const FabricatedWithdrawalFault =
-  FabricatedWithdrawalFaultSchema as unknown as FabricatedWithdrawalFault;
+export const FabricatedWithdrawalFault = asDataType<FabricatedWithdrawalFault>(
+  FabricatedWithdrawalFaultSchema,
+);
 
 export const FabricatedWithdrawalStep04StateSchema = Data.Object({
   /** 28-byte hash of the challenged block header. */
@@ -348,7 +376,9 @@ export type FabricatedWithdrawalStep04State = Data.Static<
   typeof FabricatedWithdrawalStep04StateSchema
 >;
 export const FabricatedWithdrawalStep04State =
-  FabricatedWithdrawalStep04StateSchema as unknown as FabricatedWithdrawalStep04State;
+  asDataType<FabricatedWithdrawalStep04State>(
+    FabricatedWithdrawalStep04StateSchema,
+  );
 
 export const FabricatedWithdrawalStep04DatumSchema = faultProofStepDatumSchema(
   FabricatedWithdrawalStep04StateSchema,
@@ -357,7 +387,9 @@ export type FabricatedWithdrawalStep04Datum = Data.Static<
   typeof FabricatedWithdrawalStep04DatumSchema
 >;
 export const FabricatedWithdrawalStep04Datum =
-  FabricatedWithdrawalStep04DatumSchema as unknown as FabricatedWithdrawalStep04Datum;
+  asDataType<FabricatedWithdrawalStep04Datum>(
+    FabricatedWithdrawalStep04DatumSchema,
+  );
 
 export const FabricatedWithdrawalStep04ArgsSchema = Data.Object({
   /** Own input index. */
@@ -371,7 +403,9 @@ export type FabricatedWithdrawalStep04Args = Data.Static<
   typeof FabricatedWithdrawalStep04ArgsSchema
 >;
 export const FabricatedWithdrawalStep04Args =
-  FabricatedWithdrawalStep04ArgsSchema as unknown as FabricatedWithdrawalStep04Args;
+  asDataType<FabricatedWithdrawalStep04Args>(
+    FabricatedWithdrawalStep04ArgsSchema,
+  );
 
 export const FabricatedWithdrawalStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(FabricatedWithdrawalStep04ArgsSchema);
@@ -379,7 +413,9 @@ export type FabricatedWithdrawalStep04SpendRedeemer = Data.Static<
   typeof FabricatedWithdrawalStep04SpendRedeemerSchema
 >;
 export const FabricatedWithdrawalStep04SpendRedeemer =
-  FabricatedWithdrawalStep04SpendRedeemerSchema as unknown as FabricatedWithdrawalStep04SpendRedeemer;
+  asDataType<FabricatedWithdrawalStep04SpendRedeemer>(
+    FabricatedWithdrawalStep04SpendRedeemerSchema,
+  );
 
 // ## Step resolver
 

@@ -1174,6 +1174,10 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "unusedScriptWitness",
   "missingScriptSource",
   "missingRedeemer",
+  "unusedRedeemer",
+  "executionNativeScriptInvalid",
+  "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
 ] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
 
 const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
@@ -1197,56 +1201,98 @@ const REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME: ReadonlyMap<string, string> =
 const upperFirst = (value: string): string =>
   `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 
+/**
+ * Chains whose canonical contract names are NOT `…Step{index + 1}`.
+ *
+ * The generic rule below assumes a chain's Nth compiled step is the Nth
+ * declared step, which stops being true the moment a family inserts a lettered
+ * step (`step_02a`) or appends a set of named entries after its numbered ones.
+ * Getting that wrong is worse than failing to publish: `abiRegisteredChainSteps`
+ * only asks whether a NAME is declared, so an off-by-one still finds a real
+ * role and publishes one family member's script under another member's role.
+ *
+ * Each array is the family's `steps` order from `midgard-sdk`, so index N here
+ * is the validator at index N there. Adding a step to a chain means adding it
+ * in the same position here.
+ */
+const FAULT_PROOF_STEP_CONTRACT_NAMES: Partial<
+  Record<
+    (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+    readonly string[]
+  >
+> = {
+  nativeScriptDecoding: [
+    "fraudProofNativeScriptDecoding",
+    "fraudProofNativeScriptDecodingStep02",
+    "fraudProofNativeScriptDecodingStep03OpenSubject",
+    "fraudProofNativeScriptDecodingStep03BindDescriptor",
+    "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+    "fraudProofNativeScriptDecodingStep04",
+  ],
+  fieldPreimageLengthMismatch: [
+    "fraudProofFieldPreimageLengthMismatch",
+    "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+    "fraudProofFieldPreimageLengthMismatchStep02Forced",
+    "fraudProofFieldPreimageLengthMismatchStep03",
+  ],
+  scriptIntegrityHashMissing: [
+    "fraudProofScriptIntegrityHashMissing",
+    "fraudProofScriptIntegrityHashMissingStep02",
+    "fraudProofScriptIntegrityHashMissingStep03",
+    "fraudProofScriptIntegrityHashMissingScriptGrammar",
+    "fraudProofScriptIntegrityHashMissingScriptScan",
+    "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+    "fraudProofScriptIntegrityHashMissingStep04",
+  ],
+  missingRedeemer: [
+    "fraudProofMissingRedeemer",
+    "fraudProofMissingRedeemerStep02",
+    "fraudProofMissingRedeemerStep02a",
+    "fraudProofMissingRedeemerStep02b",
+    "fraudProofMissingRedeemerStep03",
+    "fraudProofMissingRedeemerStep04",
+    "fraudProofMissingRedeemerStep05",
+  ],
+  unusedRedeemer: [
+    "fraudProofUnusedRedeemer",
+    "fraudProofUnusedRedeemerStep02",
+    "fraudProofUnusedRedeemerStep02a",
+    "fraudProofUnusedRedeemerStep02b",
+    "fraudProofUnusedRedeemerStep02c",
+    "fraudProofUnusedRedeemerStep03",
+    "fraudProofUnusedRedeemerStep04",
+    "fraudProofUnusedRedeemerStep05",
+    "fraudProofUnusedRedeemerStep06",
+  ],
+  executionNativeScriptInvalid: [
+    "fraudProofExecutionNativeScriptInvalid",
+    "fraudProofExecutionNativeScriptInvalidStep02",
+    "fraudProofExecutionNativeScriptInvalidStep03",
+    "fraudProofExecutionNativeScriptInvalidStep04",
+    "fraudProofExecutionNativeScriptInvalidStep05",
+    "fraudProofExecutionNativeScriptInvalidStep06",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+    "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+  ],
+};
+
 const faultProofStepContractName = (
   category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
   stepIndex: number,
 ): string => {
-  if (category === "nativeScriptDecoding") {
-    const names = [
-      "fraudProofNativeScriptDecoding",
-      "fraudProofNativeScriptDecodingStep02",
-      "fraudProofNativeScriptDecodingStep03OpenSubject",
-      "fraudProofNativeScriptDecodingStep03BindDescriptor",
-      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
-      "fraudProofNativeScriptDecodingStep04",
-    ] as const;
-    const name = names[stepIndex];
+  const declared = FAULT_PROOF_STEP_CONTRACT_NAMES[category];
+  if (declared !== undefined) {
+    const name = declared[stepIndex];
     if (name === undefined) {
       throw new Error(
-        `native-script-decoding exposes an unexpected step index ${stepIndex.toString()}`,
+        `${category} exposes an unexpected step index ${stepIndex.toString()}`,
       );
     }
-    return name;
-  }
-  if (category === "fieldPreimageLengthMismatch") {
-    const names = [
-      "fraudProofFieldPreimageLengthMismatch",
-      "fraudProofFieldPreimageLengthMismatchStep02Accepted",
-      "fraudProofFieldPreimageLengthMismatchStep02Forced",
-      "fraudProofFieldPreimageLengthMismatchStep03",
-    ] as const;
-    const name = names[stepIndex];
-    if (name === undefined)
-      throw new Error(
-        `field-preimage-length-mismatch exposes an unexpected step index ${stepIndex.toString()}`,
-      );
-    return name;
-  }
-  if (category === "scriptIntegrityHashMissing") {
-    const names = [
-      "fraudProofScriptIntegrityHashMissing",
-      "fraudProofScriptIntegrityHashMissingStep02",
-      "fraudProofScriptIntegrityHashMissingStep03",
-      "fraudProofScriptIntegrityHashMissingScriptGrammar",
-      "fraudProofScriptIntegrityHashMissingScriptScan",
-      "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
-      "fraudProofScriptIntegrityHashMissingStep04",
-    ] as const;
-    const name = names[stepIndex];
-    if (name === undefined)
-      throw new Error(
-        `script-integrity-hash-missing exposes an unexpected step index ${stepIndex.toString()}`,
-      );
     return name;
   }
   return `fraudProof${upperFirst(category)}${

@@ -34,7 +34,10 @@ import {
 import { computeDaPayloadRoots } from "../src/da/payload.js";
 import type { DaPayloadSource } from "../src/da/source.js";
 import type { Header, ObservedStateQueueNode } from "../src/domain.js";
-import type { MidgardAuthenticatedDeployment } from "../src/l1/deployment.js";
+import type {
+  MidgardAuthenticatedDeployment,
+  MidgardNodeDeployment,
+} from "../src/l1/deployment.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
 
 export const tempDir = (): Promise<string> =>
@@ -365,6 +368,29 @@ const minimalAuthenticatedDeployment = ({
   spendingScriptAddress,
 });
 
+export const minimalStateQueueYields =
+  (): MidgardNodeDeployment["stateQueueYields"] =>
+    Object.fromEntries(
+      (
+        [
+          ["commit", "stateQueueCommitWithdraw", "c1"],
+          ["unattestedTimeout", "stateQueueUnattestedTimeoutWithdraw", "c2"],
+          ["unavailableTimeout", "stateQueueUnavailableTimeoutWithdraw", "c3"],
+          ["fraudRemoval", "stateQueueFraudRemovalWithdraw", "c4"],
+          ["merge", "stateQueueMergeWithdraw", "c5"],
+        ] as const
+      ).map(([role, key, byte]) => [
+        role,
+        {
+          key,
+          purpose: "withdraw",
+          script: { type: "Native", script: "00" },
+          scriptHash: byte.repeat(28),
+          refScriptOutRef: { txHash: byte.repeat(32), outputIndex: 0 },
+        },
+      ]),
+    ) as MidgardNodeDeployment["stateQueueYields"];
+
 export const minimalConfig = ({
   dir,
   manifestPath,
@@ -448,6 +474,7 @@ export const minimalConfig = ({
       spendingScriptHash: "88".repeat(28),
       spendingScriptAddress: "addr_test1statequeue",
     }),
+    stateQueueYields: minimalStateQueueYields(),
   },
   l1Source: {
     sourceMode: "local_node",

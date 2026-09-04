@@ -12,6 +12,7 @@
  * core never cancels on its own (§4.3 — an unexpected abort surfaces as a
  * stalled outcome instead).
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
   faultProofStepRedeemerSchema,
@@ -60,8 +61,9 @@ import {
  */
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelSpendRedeemer = Data.Static<typeof CancelSpendRedeemerSchema>;
-const CancelSpendRedeemer =
-  CancelSpendRedeemerSchema as unknown as CancelSpendRedeemer;
+const CancelSpendRedeemer = asDataType<CancelSpendRedeemer>(
+  CancelSpendRedeemerSchema,
+);
 
 export type SubmitCrossBlockDuplicateEventCancelResult = {
   readonly txHash: string;

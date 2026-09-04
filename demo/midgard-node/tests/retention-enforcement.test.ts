@@ -34,9 +34,13 @@ let deploymentManifest: Awaited<
   ReturnType<typeof makeFinalizedDeploymentManifestFixture>
 >;
 
+// The fixture compiles and parameterizes the whole canonical contract set —
+// 287 contracts as of this writing — so it runs well past Vitest's 10-second
+// default hook budget. The budget is the fixture's, not a symptom: the suite's
+// own assertions are pure and fast.
 beforeAll(async () => {
   deploymentManifest = await makeFinalizedDeploymentManifestFixture();
-});
+}, 120_000);
 
 const readinessBase = {
   nowMillis: NOW.getTime(),

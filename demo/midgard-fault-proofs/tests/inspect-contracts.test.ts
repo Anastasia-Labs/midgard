@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   buildFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
@@ -184,7 +185,6 @@ const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
 });
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const deploymentManifest = (contracts: Record<string, unknown>) => ({
   referenceScriptAuthPolicy,
@@ -192,16 +192,10 @@ const deploymentManifest = (contracts: Record<string, unknown>) => ({
 });
 
 const encodeCatalogueKey = (id: string): Buffer =>
-  Buffer.from(
-    Data.to(id, categoryIdSchema as unknown as LucidDataSchema),
-    "hex",
-  );
+  Buffer.from(Data.to(id, asLucidSchema(categoryIdSchema)), "hex");
 
 const encodeCatalogueValue = (scriptHash: string): Buffer =>
-  Buffer.from(
-    Data.to(scriptHash, ScriptHashSchema as unknown as LucidDataSchema),
-    "hex",
-  );
+  Buffer.from(Data.to(scriptHash, asLucidSchema(ScriptHashSchema)), "hex");
 
 const trieRootHex = (trie: Trie): string =>
   trie.hash == null

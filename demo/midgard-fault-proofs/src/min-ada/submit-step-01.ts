@@ -1,4 +1,5 @@
 /** Bind Q27's accepted transaction or challenged post-block UTxO roots. */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
@@ -60,10 +61,11 @@ import {
 import type { PreparedMinAdaTx, PreparedMinAdaUtxo } from "./prepare.js";
 
 type Step02Datum = Data.Static<typeof MinAdaStep02DatumSchema>;
-const Step02Datum = MinAdaStep02DatumSchema as unknown as Step02Datum;
+const Step02Datum = asDataType<Step02Datum>(MinAdaStep02DatumSchema);
 type Step01Redeemer = Data.Static<typeof MinAdaStep01SpendRedeemerSchema>;
-const Step01Redeemer =
-  MinAdaStep01SpendRedeemerSchema as unknown as Step01Redeemer;
+const Step01Redeemer = asDataType<Step01Redeemer>(
+  MinAdaStep01SpendRedeemerSchema,
+);
 
 const stepState = (prepared: PreparedMinAdaTx | PreparedMinAdaUtxo) => ({
   bad_tx_id:

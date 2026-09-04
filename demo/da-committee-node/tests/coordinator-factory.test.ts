@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { onChainCoordinatorFromConfig } from "../src/coordinator/factory.js";
 import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";
 import type { L1SubmitterPreflightOptions } from "../src/l1/submitter.js";
-import { minimalConfig } from "./helpers.js";
+import { minimalConfig, minimalStateQueueYields } from "./helpers.js";
 
 describe("onChainCoordinatorFromConfig", () => {
   it("fails closed without an L1 submitter key source", async () => {
@@ -26,6 +26,7 @@ describe("onChainCoordinatorFromConfig", () => {
         daAttestation: fakeDeployment("aa".repeat(28)),
         daParamsGovernor: fakeDeployment("bb".repeat(28)),
         stateQueue: fakeDeployment("cc".repeat(28)),
+        stateQueueYields: minimalStateQueueYields(),
       },
       cardanoProviderUrls: [
         "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
@@ -151,6 +152,7 @@ const l1ReadyConfig = () => ({
     daAttestation: fakeDeployment("aa".repeat(28)),
     daParamsGovernor: fakeDeployment("bb".repeat(28)),
     stateQueue: fakeDeployment("cc".repeat(28)),
+    stateQueueYields: minimalStateQueueYields(),
   },
   cardanoProviderUrls: [
     "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",

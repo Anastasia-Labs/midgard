@@ -22,6 +22,7 @@ import {
   formatUnknownError,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   commitCountedRootProgram,
   EMPTY_MERKLE_TREE_ROOT,
@@ -52,8 +53,6 @@ import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
 import { nativeTxFromCoreCompact } from "./submit-step-01.js";
 import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
 import { reconstructDaPayload } from "./transition-trace/reconstruct.js";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 /**
  * One reference input of the bad transaction, as committed by its native
@@ -244,7 +243,7 @@ const resolveLedgerNonMembershipProof = async ({
     reconstruction.rootData.utxos,
     ledgerKey,
   );
-  return Data.to(proof, Proof as unknown as LucidDataSchema);
+  return Data.to(proof, asLucidSchema(Proof));
 };
 
 /**

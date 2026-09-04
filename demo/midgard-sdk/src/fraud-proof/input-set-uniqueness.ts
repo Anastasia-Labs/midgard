@@ -15,6 +15,7 @@
  * native-script-decoding, this family predates its catalogue registration.
  */
 
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
@@ -36,7 +37,9 @@ export type InputSetUniquenessStep01Datum = Data.Static<
   typeof InputSetUniquenessStep01DatumSchema
 >;
 export const InputSetUniquenessStep01Datum =
-  InputSetUniquenessStep01DatumSchema as unknown as InputSetUniquenessStep01Datum;
+  asDataType<InputSetUniquenessStep01Datum>(
+    InputSetUniquenessStep01DatumSchema,
+  );
 
 export const InputSetUniquenessStep01SourceSchema = Data.Enum([
   Data.Object({
@@ -63,7 +66,9 @@ export type InputSetUniquenessStep01SpendRedeemer = Data.Static<
   typeof InputSetUniquenessStep01SpendRedeemerSchema
 >;
 export const InputSetUniquenessStep01SpendRedeemer =
-  InputSetUniquenessStep01SpendRedeemerSchema as unknown as InputSetUniquenessStep01SpendRedeemer;
+  asDataType<InputSetUniquenessStep01SpendRedeemer>(
+    InputSetUniquenessStep01SpendRedeemerSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/input_set_uniqueness/step_02.State`: the
@@ -76,7 +81,9 @@ export type InputSetUniquenessStep02State = Data.Static<
   typeof InputSetUniquenessStep02StateSchema
 >;
 export const InputSetUniquenessStep02State =
-  InputSetUniquenessStep02StateSchema as unknown as InputSetUniquenessStep02State;
+  asDataType<InputSetUniquenessStep02State>(
+    InputSetUniquenessStep02StateSchema,
+  );
 
 export const InputSetUniquenessStep02DatumSchema = faultProofStepDatumSchema(
   InputSetUniquenessStep02StateSchema,
@@ -85,7 +92,9 @@ export type InputSetUniquenessStep02Datum = Data.Static<
   typeof InputSetUniquenessStep02DatumSchema
 >;
 export const InputSetUniquenessStep02Datum =
-  InputSetUniquenessStep02DatumSchema as unknown as InputSetUniquenessStep02Datum;
+  asDataType<InputSetUniquenessStep02Datum>(
+    InputSetUniquenessStep02DatumSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/input_set_uniqueness/step_02.Args`.
@@ -134,7 +143,7 @@ export type InputSetUniquenessStep02Args = Data.Static<
   typeof InputSetUniquenessStep02ArgsSchema
 >;
 export const InputSetUniquenessStep02Args =
-  InputSetUniquenessStep02ArgsSchema as unknown as InputSetUniquenessStep02Args;
+  asDataType<InputSetUniquenessStep02Args>(InputSetUniquenessStep02ArgsSchema);
 
 export const InputSetUniquenessStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(InputSetUniquenessStep02ArgsSchema);
@@ -142,7 +151,9 @@ export type InputSetUniquenessStep02SpendRedeemer = Data.Static<
   typeof InputSetUniquenessStep02SpendRedeemerSchema
 >;
 export const InputSetUniquenessStep02SpendRedeemer =
-  InputSetUniquenessStep02SpendRedeemerSchema as unknown as InputSetUniquenessStep02SpendRedeemer;
+  asDataType<InputSetUniquenessStep02SpendRedeemer>(
+    InputSetUniquenessStep02SpendRedeemerSchema,
+  );
 
 export const InputSetUniquenessVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),

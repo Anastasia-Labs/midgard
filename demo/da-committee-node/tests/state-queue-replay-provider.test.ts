@@ -30,6 +30,7 @@ const harness = ({ rollback = false, tipHeight = 119 } = {}) => {
   const redeemer = Data.to(
     {
       RemoveUnattestedBlockAfterTimeout: {
+        yield_to_ref_input_index: 0n,
         timed_out_header_hash: target,
         removal_approach: {
           PruneTimedOutBlockDescendant: {

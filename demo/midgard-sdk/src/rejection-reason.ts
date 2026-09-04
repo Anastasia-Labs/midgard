@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 /**
@@ -215,8 +216,9 @@ export const RejectionReasonSchema = Data.Enum([
   Data.Literal("ValueNotPreserved"),
 ]);
 export type RejectionReason = Data.Static<typeof RejectionReasonSchema>;
-export const RejectionReason =
-  RejectionReasonSchema as unknown as RejectionReason;
+export const RejectionReason = asDataType<RejectionReason>(
+  RejectionReasonSchema,
+);
 
 /**
  * Twin of `midgard/rejection_reason_v1.OperatorVerdict` (#640): the
@@ -232,8 +234,9 @@ export const OperatorVerdictSchema = Data.Enum([
   }),
 ]);
 export type OperatorVerdict = Data.Static<typeof OperatorVerdictSchema>;
-export const OperatorVerdict =
-  OperatorVerdictSchema as unknown as OperatorVerdict;
+export const OperatorVerdict = asDataType<OperatorVerdict>(
+  OperatorVerdictSchema,
+);
 
 /**
  * The 19 `E_*` rejection-code byte strings (hex of the ASCII label), twins of

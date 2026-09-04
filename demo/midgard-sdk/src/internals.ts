@@ -1,3 +1,4 @@
+import { type LucidDataSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Assets as LucidAssets,
@@ -15,8 +16,6 @@ import {
   LucidError,
   UnauthenticUtxoError,
 } from "./errors.js";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const getSingleAssetApartFromAda = (
   assets: LucidAssets,

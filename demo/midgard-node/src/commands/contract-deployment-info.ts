@@ -68,6 +68,11 @@ import {
   mutateDeploymentRunState,
   sha256File,
 } from "../e2e/run-state.js";
+import {
+  contractDeploymentInfoPathOverride,
+  daAvailabilityChallengeEnvironmentInput,
+  deploymentEconomicsProfileFromEnvironment,
+} from "../environment.js";
 import { writeJsonFileAtomic } from "../files/atomic-write.js";
 import { normalizeOgmiosHttpUrl } from "../local-ledger-slot.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
@@ -1039,83 +1044,18 @@ export type DeploymentManifestIdentityContext = Pick<
   | "availabilityChallenge"
 >;
 
-const configuredDeploymentEconomics = (): DeploymentManifestEconomics => {
-  const profile = process.env.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE?.trim();
-  if (
-    profile !== "public-preprod-launch-v1" &&
-    profile !== "bounded-acceptance-v1"
-  ) {
-    throw new Error(
-      "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE must explicitly equal public-preprod-launch-v1 or bounded-acceptance-v1",
-    );
-  }
-  return DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
-    profile as DeploymentManifestEconomicsProfile
+const configuredDeploymentEconomics = (): DeploymentManifestEconomics =>
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
+    deploymentEconomicsProfileFromEnvironment()
   ];
-};
 
 const configuredAvailabilityChallenge =
-  (): DeploymentManifestAvailabilityChallenge => {
-    const requiredInteger = (name: string): number => {
-      const raw = process.env[name]?.trim();
-      if (raw === undefined || !/^[1-9][0-9]*$/u.test(raw)) {
-        throw new Error(`${name} must be an explicit positive decimal integer`);
-      }
-      const value = Number(raw);
-      if (!Number.isSafeInteger(value)) {
-        throw new Error(`${name} must fit a JavaScript safe integer`);
-      }
-      return value;
-    };
-    return parseDeploymentManifestAvailabilityChallenge({
-      responseClasses: {
-        smallPayloadMaxBytes: 65_536,
-        smallResponseWindowMs: 3_600_000,
-        fullPayloadMaxBytes: 67_108_864,
-        fullResponseWindowMs: 172_800_000,
-      },
-      responseGeometry: {
-        chunkByteLength: requiredInteger(
-          "MIDGARD_DA_AVAILABILITY_CHUNK_BYTE_LENGTH",
-        ),
-        trancheByteLength: requiredInteger(
-          "MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH",
-        ),
-        maxTrancheCount: requiredInteger(
-          "MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT",
-        ),
-      },
-      daBondLovelace: requiredInteger("MIDGARD_DA_AVAILABILITY_BOND_LOVELACE"),
-      challengerBondLovelace: requiredInteger(
-        "MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE",
+  (): DeploymentManifestAvailabilityChallenge =>
+    parseDeploymentManifestAvailabilityChallenge(
+      daAvailabilityChallengeEnvironmentInput(
+        (name) => `${name} must be an explicit positive decimal integer`,
       ),
-      maxOpenFeeLovelace: requiredInteger(
-        "MIDGARD_DA_AVAILABILITY_MAX_OPEN_FEE_LOVELACE",
-      ),
-      maxPublicationFeeLovelace: requiredInteger(
-        "MIDGARD_DA_AVAILABILITY_MAX_PUBLICATION_FEE_LOVELACE",
-      ),
-      maxSettlementFeeLovelace: requiredInteger(
-        "MIDGARD_DA_AVAILABILITY_MAX_SETTLEMENT_FEE_LOVELACE",
-      ),
-      maxCloseFeeLovelace: requiredInteger(
-        "MIDGARD_DA_AVAILABILITY_MAX_CLOSE_FEE_LOVELACE",
-      ),
-      maxTimeoutFeeLovelace: requiredInteger(
-        "MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE",
-      ),
-      bondOwnerCredential: (() => {
-        const value =
-          process.env.MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL?.trim();
-        if (value === undefined || !/^[0-9a-f]{56}$/u.test(value)) {
-          throw new Error(
-            "MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL must be exactly 28 lowercase hex bytes",
-          );
-        }
-        return value;
-      })(),
-    });
-  };
+    );
 
 const protocolRecord = (
   value: unknown,
@@ -1595,9 +1535,8 @@ export const verifyDeploymentManifestAgainstConfig = (
 };
 
 export const configuredContractDeploymentInfoPath = (): string => {
-  const configuredPath =
-    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
-  return configuredPath === undefined || configuredPath.length === 0
+  const configuredPath = contractDeploymentInfoPathOverride();
+  return configuredPath === undefined
     ? defaultContractDeploymentInfoOutputPath()
     : normalizeOutputPath(configuredPath);
 };

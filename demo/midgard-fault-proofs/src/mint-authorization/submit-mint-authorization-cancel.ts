@@ -11,6 +11,7 @@
  * Cancellation is always an explicit prover decision; the proving core
  * never cancels on its own.
  */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   faultProofStepRedeemerSchema,
   FraudProofComputationThreadRedeemer,
@@ -60,8 +61,9 @@ import {
  */
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelSpendRedeemer = Data.Static<typeof CancelSpendRedeemerSchema>;
-const CancelSpendRedeemer =
-  CancelSpendRedeemerSchema as unknown as CancelSpendRedeemer;
+const CancelSpendRedeemer = asDataType<CancelSpendRedeemer>(
+  CancelSpendRedeemerSchema,
+);
 
 export type SubmitMintAuthorizationCancelResult = {
   readonly txHash: string;

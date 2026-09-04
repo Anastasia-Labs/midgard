@@ -301,7 +301,7 @@ const buildResolutionNodes = (
     10_000_000n,
     Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x11)]),
   );
-  const nodes: ResolutionNode[] = new Array(ordered.length);
+  const nodes = new Array<ResolutionNode>(ordered.length);
   let scheduleHash = emptyMidgardInputResolutionSchedule();
   for (let index = ordered.length - 1; index >= 0; index -= 1) {
     const item = ordered[index]!;

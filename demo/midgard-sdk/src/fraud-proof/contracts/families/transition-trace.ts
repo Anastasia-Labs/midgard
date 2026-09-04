@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -133,7 +134,7 @@ export const buildTransitionTraceChain = ({
     }
     const finalHashesSchema = Data.Array(Data.Bytes());
     type FinalHashes = Data.Static<typeof finalHashesSchema>;
-    const FinalHashes = finalHashesSchema as unknown as FinalHashes;
+    const FinalHashes = asDataType<FinalHashes>(finalHashesSchema);
     const finalHashesData = Data.from(
       Data.to(
         finals.map(({ spendingScriptHash }) => spendingScriptHash),

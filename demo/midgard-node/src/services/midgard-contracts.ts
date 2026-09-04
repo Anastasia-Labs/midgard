@@ -43,6 +43,11 @@ import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
 } from "../e2e/run-state.js";
+import {
+  contractDeploymentInfoPathOverride,
+  daAvailabilityChallengeEnvironmentInput,
+  realBlueprintPathOverride,
+} from "../environment.js";
 import { AlwaysSucceedsContract } from "./always-succeeds.js";
 import { NodeConfig, type NodeConfigDep } from "./config.js";
 
@@ -115,65 +120,13 @@ export const availabilityParametersFromManifest = (
 };
 
 export const availabilityParametersFromExplicitEnvironment =
-  (): SDK.DaAvailabilityParameters => {
-    const integer = (name: string): number => {
-      const raw = process.env[name]?.trim();
-      if (raw === undefined || !/^[1-9][0-9]*$/u.test(raw)) {
-        throw new Error(
+  (): SDK.DaAvailabilityParameters =>
+    availabilityParametersFromManifest(
+      daAvailabilityChallengeEnvironmentInput(
+        (name) =>
           `${name} must be set to an explicit positive integer before deriving Q58 scripts without a finalized manifest`,
-        );
-      }
-      const parsed = Number(raw);
-      if (!Number.isSafeInteger(parsed)) {
-        throw new Error(`${name} must fit a JavaScript safe integer`);
-      }
-      return parsed;
-    };
-    return availabilityParametersFromManifest({
-      responseClasses: {
-        smallPayloadMaxBytes: 65_536,
-        smallResponseWindowMs: 3_600_000,
-        fullPayloadMaxBytes: 67_108_864,
-        fullResponseWindowMs: 172_800_000,
-      },
-      responseGeometry: {
-        chunkByteLength: integer("MIDGARD_DA_AVAILABILITY_CHUNK_BYTE_LENGTH"),
-        trancheByteLength: integer(
-          "MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH",
-        ),
-        maxTrancheCount: integer("MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT"),
-      },
-      daBondLovelace: integer("MIDGARD_DA_AVAILABILITY_BOND_LOVELACE"),
-      challengerBondLovelace: integer(
-        "MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE",
       ),
-      maxOpenFeeLovelace: integer(
-        "MIDGARD_DA_AVAILABILITY_MAX_OPEN_FEE_LOVELACE",
-      ),
-      maxPublicationFeeLovelace: integer(
-        "MIDGARD_DA_AVAILABILITY_MAX_PUBLICATION_FEE_LOVELACE",
-      ),
-      maxSettlementFeeLovelace: integer(
-        "MIDGARD_DA_AVAILABILITY_MAX_SETTLEMENT_FEE_LOVELACE",
-      ),
-      maxCloseFeeLovelace: integer(
-        "MIDGARD_DA_AVAILABILITY_MAX_CLOSE_FEE_LOVELACE",
-      ),
-      maxTimeoutFeeLovelace: integer(
-        "MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE",
-      ),
-      bondOwnerCredential: (() => {
-        const value =
-          process.env.MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL?.trim();
-        if (value === undefined || !/^[0-9a-f]{56}$/u.test(value)) {
-          throw new Error(
-            "MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL must be exactly 28 lowercase hex bytes",
-          );
-        }
-        return value;
-      })(),
-    });
-  };
+    );
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REAL_BLUEPRINT_CANDIDATES = [
@@ -219,10 +172,8 @@ const resolveDefaultRealBlueprintPath = (): string => {
   );
 };
 
-const resolveConfiguredRealBlueprintPath = (): string => {
-  const configuredPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
-  return configuredPath ? configuredPath : resolveDefaultRealBlueprintPath();
-};
+const resolveConfiguredRealBlueprintPath = (): string =>
+  realBlueprintPathOverride() ?? resolveDefaultRealBlueprintPath();
 
 export const loadRealBlueprintSha256 = (): Effect.Effect<string, Error> =>
   Effect.try({
@@ -354,9 +305,8 @@ export const readRuntimeDeploymentManifestFile = (
 };
 
 const readConfiguredDeploymentManifest = () => {
-  const configuredPath =
-    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
-  if (configuredPath === undefined || configuredPath.length === 0) {
+  const configuredPath = contractDeploymentInfoPathOverride();
+  if (configuredPath === undefined) {
     return undefined;
   }
   return readRuntimeDeploymentManifestFile(path.resolve(configuredPath), true);

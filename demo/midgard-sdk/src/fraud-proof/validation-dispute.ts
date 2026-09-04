@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import type { MidgardValidationDispute } from "@al-ft/midgard-core/validation-dispute";
 import type {
   MidgardValidationMachineState,
@@ -72,8 +73,9 @@ export const ValidationMachineStateSchema = Data.Object({
 export type ValidationMachineState = Data.Static<
   typeof ValidationMachineStateSchema
 >;
-export const ValidationMachineState =
-  ValidationMachineStateSchema as unknown as ValidationMachineState;
+export const ValidationMachineState = asDataType<ValidationMachineState>(
+  ValidationMachineStateSchema,
+);
 
 export const ValidationTraceProofSchema = Data.Object({
   state_index: Data.Integer(),
@@ -83,8 +85,9 @@ export const ValidationTraceProofSchema = Data.Object({
 export type ValidationTraceProof = Data.Static<
   typeof ValidationTraceProofSchema
 >;
-export const ValidationTraceProof =
-  ValidationTraceProofSchema as unknown as ValidationTraceProof;
+export const ValidationTraceProof = asDataType<ValidationTraceProof>(
+  ValidationTraceProofSchema,
+);
 
 export const ValidationDisputeTurnSchema = Data.Enum([
   Data.Object({
@@ -113,8 +116,9 @@ export const ValidationDisputeSchema = Data.Object({
   turn: ValidationDisputeTurnSchema,
 });
 export type ValidationDispute = Data.Static<typeof ValidationDisputeSchema>;
-export const ValidationDispute =
-  ValidationDisputeSchema as unknown as ValidationDispute;
+export const ValidationDispute = asDataType<ValidationDispute>(
+  ValidationDisputeSchema,
+);
 
 export const ValidationDisputeStateSchema = Data.Object({
   challenged_header_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -124,8 +128,9 @@ export const ValidationDisputeStateSchema = Data.Object({
 export type ValidationDisputeState = Data.Static<
   typeof ValidationDisputeStateSchema
 >;
-export const ValidationDisputeState =
-  ValidationDisputeStateSchema as unknown as ValidationDisputeState;
+export const ValidationDisputeState = asDataType<ValidationDisputeState>(
+  ValidationDisputeStateSchema,
+);
 
 export const ValidationDisputeDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -134,8 +139,9 @@ export const ValidationDisputeDatumSchema = Data.Object({
 export type ValidationDisputeDatum = Data.Static<
   typeof ValidationDisputeDatumSchema
 >;
-export const ValidationDisputeDatum =
-  ValidationDisputeDatumSchema as unknown as ValidationDisputeDatum;
+export const ValidationDisputeDatum = asDataType<ValidationDisputeDatum>(
+  ValidationDisputeDatumSchema,
+);
 
 export const ValidationResolutionStateSchema = Data.Object({
   version: Data.Integer(),
@@ -146,8 +152,9 @@ export const ValidationResolutionStateSchema = Data.Object({
 export type ValidationResolutionState = Data.Static<
   typeof ValidationResolutionStateSchema
 >;
-export const ValidationResolutionState =
-  ValidationResolutionStateSchema as unknown as ValidationResolutionState;
+export const ValidationResolutionState = asDataType<ValidationResolutionState>(
+  ValidationResolutionStateSchema,
+);
 
 export const ValidationResolutionDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -156,8 +163,9 @@ export const ValidationResolutionDatumSchema = Data.Object({
 export type ValidationResolutionDatum = Data.Static<
   typeof ValidationResolutionDatumSchema
 >;
-export const ValidationResolutionDatum =
-  ValidationResolutionDatumSchema as unknown as ValidationResolutionDatum;
+export const ValidationResolutionDatum = asDataType<ValidationResolutionDatum>(
+  ValidationResolutionDatumSchema,
+);
 
 export const PreparedValidationResolutionStateSchema = Data.Object({
   version: Data.Integer(),
@@ -168,7 +176,9 @@ export type PreparedValidationResolutionState = Data.Static<
   typeof PreparedValidationResolutionStateSchema
 >;
 export const PreparedValidationResolutionState =
-  PreparedValidationResolutionStateSchema as unknown as PreparedValidationResolutionState;
+  asDataType<PreparedValidationResolutionState>(
+    PreparedValidationResolutionStateSchema,
+  );
 
 export const PreparedValidationResolutionDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -178,7 +188,9 @@ export type PreparedValidationResolutionDatum = Data.Static<
   typeof PreparedValidationResolutionDatumSchema
 >;
 export const PreparedValidationResolutionDatum =
-  PreparedValidationResolutionDatumSchema as unknown as PreparedValidationResolutionDatum;
+  asDataType<PreparedValidationResolutionDatum>(
+    PreparedValidationResolutionDatumSchema,
+  );
 
 export const CanonicalDecodeItemSourceSchema = Data.Object({
   expected_field_commitment: H32Schema,
@@ -187,8 +199,9 @@ export const CanonicalDecodeItemSourceSchema = Data.Object({
 export type CanonicalDecodeItemSource = Data.Static<
   typeof CanonicalDecodeItemSourceSchema
 >;
-export const CanonicalDecodeItemSource =
-  CanonicalDecodeItemSourceSchema as unknown as CanonicalDecodeItemSource;
+export const CanonicalDecodeItemSource = asDataType<CanonicalDecodeItemSource>(
+  CanonicalDecodeItemSourceSchema,
+);
 
 /**
  * What opening the item through §8's door established about it: the field's
@@ -209,7 +222,9 @@ export type CanonicalDecodeItemObservation = Data.Static<
   typeof CanonicalDecodeItemObservationSchema
 >;
 export const CanonicalDecodeItemObservation =
-  CanonicalDecodeItemObservationSchema as unknown as CanonicalDecodeItemObservation;
+  asDataType<CanonicalDecodeItemObservation>(
+    CanonicalDecodeItemObservationSchema,
+  );
 
 export const CanonicalDecodeItemProofSchema = Data.Object({
   active_item_count: Data.Integer(),
@@ -219,8 +234,9 @@ export const CanonicalDecodeItemProofSchema = Data.Object({
 export type CanonicalDecodeItemProof = Data.Static<
   typeof CanonicalDecodeItemProofSchema
 >;
-export const CanonicalDecodeItemProof =
-  CanonicalDecodeItemProofSchema as unknown as CanonicalDecodeItemProof;
+export const CanonicalDecodeItemProof = asDataType<CanonicalDecodeItemProof>(
+  CanonicalDecodeItemProofSchema,
+);
 
 export const WinningValidationResolutionStateSchema = Data.Object({
   version: Data.Integer(),
@@ -229,7 +245,9 @@ export type WinningValidationResolutionState = Data.Static<
   typeof WinningValidationResolutionStateSchema
 >;
 export const WinningValidationResolutionState =
-  WinningValidationResolutionStateSchema as unknown as WinningValidationResolutionState;
+  asDataType<WinningValidationResolutionState>(
+    WinningValidationResolutionStateSchema,
+  );
 
 export const WinningValidationResolutionDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -239,7 +257,9 @@ export type WinningValidationResolutionDatum = Data.Static<
   typeof WinningValidationResolutionDatumSchema
 >;
 export const WinningValidationResolutionDatum =
-  WinningValidationResolutionDatumSchema as unknown as WinningValidationResolutionDatum;
+  asDataType<WinningValidationResolutionDatum>(
+    WinningValidationResolutionDatumSchema,
+  );
 
 export const ValidationOneStepWitnessSchema = Data.Object({
   work_witness_cbor: Data.Bytes(),
@@ -248,8 +268,9 @@ export const ValidationOneStepWitnessSchema = Data.Object({
 export type ValidationOneStepWitness = Data.Static<
   typeof ValidationOneStepWitnessSchema
 >;
-export const ValidationOneStepWitness =
-  ValidationOneStepWitnessSchema as unknown as ValidationOneStepWitness;
+export const ValidationOneStepWitness = asDataType<ValidationOneStepWitness>(
+  ValidationOneStepWitnessSchema,
+);
 
 export const AuthenticatedCanonicalDecodeItemSchema = Data.Object({
   version: Data.Integer(),
@@ -260,7 +281,9 @@ export type AuthenticatedCanonicalDecodeItem = Data.Static<
   typeof AuthenticatedCanonicalDecodeItemSchema
 >;
 export const AuthenticatedCanonicalDecodeItem =
-  AuthenticatedCanonicalDecodeItemSchema as unknown as AuthenticatedCanonicalDecodeItem;
+  asDataType<AuthenticatedCanonicalDecodeItem>(
+    AuthenticatedCanonicalDecodeItemSchema,
+  );
 
 export const PreparedCanonicalDecodeItemSchema = Data.Object({
   version: Data.Integer(),
@@ -271,7 +294,7 @@ export type PreparedCanonicalDecodeItem = Data.Static<
   typeof PreparedCanonicalDecodeItemSchema
 >;
 export const PreparedCanonicalDecodeItem =
-  PreparedCanonicalDecodeItemSchema as unknown as PreparedCanonicalDecodeItem;
+  asDataType<PreparedCanonicalDecodeItem>(PreparedCanonicalDecodeItemSchema);
 
 export const ObservedCanonicalDecodeItemSchema = Data.Object({
   version: Data.Integer(),
@@ -282,7 +305,7 @@ export type ObservedCanonicalDecodeItem = Data.Static<
   typeof ObservedCanonicalDecodeItemSchema
 >;
 export const ObservedCanonicalDecodeItem =
-  ObservedCanonicalDecodeItemSchema as unknown as ObservedCanonicalDecodeItem;
+  asDataType<ObservedCanonicalDecodeItem>(ObservedCanonicalDecodeItemSchema);
 
 export const VerifiedCanonicalDecodeItemSchema = Data.Object({
   version: Data.Integer(),
@@ -293,7 +316,7 @@ export type VerifiedCanonicalDecodeItem = Data.Static<
   typeof VerifiedCanonicalDecodeItemSchema
 >;
 export const VerifiedCanonicalDecodeItem =
-  VerifiedCanonicalDecodeItemSchema as unknown as VerifiedCanonicalDecodeItem;
+  asDataType<VerifiedCanonicalDecodeItem>(VerifiedCanonicalDecodeItemSchema);
 
 export const AuthenticatedCanonicalDecodeItemDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -303,7 +326,9 @@ export type AuthenticatedCanonicalDecodeItemDatum = Data.Static<
   typeof AuthenticatedCanonicalDecodeItemDatumSchema
 >;
 export const AuthenticatedCanonicalDecodeItemDatum =
-  AuthenticatedCanonicalDecodeItemDatumSchema as unknown as AuthenticatedCanonicalDecodeItemDatum;
+  asDataType<AuthenticatedCanonicalDecodeItemDatum>(
+    AuthenticatedCanonicalDecodeItemDatumSchema,
+  );
 
 export const PreparedCanonicalDecodeItemDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -313,7 +338,9 @@ export type PreparedCanonicalDecodeItemDatum = Data.Static<
   typeof PreparedCanonicalDecodeItemDatumSchema
 >;
 export const PreparedCanonicalDecodeItemDatum =
-  PreparedCanonicalDecodeItemDatumSchema as unknown as PreparedCanonicalDecodeItemDatum;
+  asDataType<PreparedCanonicalDecodeItemDatum>(
+    PreparedCanonicalDecodeItemDatumSchema,
+  );
 
 export const ObservedCanonicalDecodeItemDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -323,7 +350,9 @@ export type ObservedCanonicalDecodeItemDatum = Data.Static<
   typeof ObservedCanonicalDecodeItemDatumSchema
 >;
 export const ObservedCanonicalDecodeItemDatum =
-  ObservedCanonicalDecodeItemDatumSchema as unknown as ObservedCanonicalDecodeItemDatum;
+  asDataType<ObservedCanonicalDecodeItemDatum>(
+    ObservedCanonicalDecodeItemDatumSchema,
+  );
 
 export const VerifiedCanonicalDecodeItemDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -333,7 +362,9 @@ export type VerifiedCanonicalDecodeItemDatum = Data.Static<
   typeof VerifiedCanonicalDecodeItemDatumSchema
 >;
 export const VerifiedCanonicalDecodeItemDatum =
-  VerifiedCanonicalDecodeItemDatumSchema as unknown as VerifiedCanonicalDecodeItemDatum;
+  asDataType<VerifiedCanonicalDecodeItemDatum>(
+    VerifiedCanonicalDecodeItemDatumSchema,
+  );
 
 export const ValidationOneStepEvidenceSchema = Data.Object({
   transition: ValidationOneStepWitnessSchema,
@@ -342,8 +373,9 @@ export const ValidationOneStepEvidenceSchema = Data.Object({
 export type ValidationOneStepEvidence = Data.Static<
   typeof ValidationOneStepEvidenceSchema
 >;
-export const ValidationOneStepEvidence =
-  ValidationOneStepEvidenceSchema as unknown as ValidationOneStepEvidence;
+export const ValidationOneStepEvidence = asDataType<ValidationOneStepEvidence>(
+  ValidationOneStepEvidenceSchema,
+);
 
 const ValidationDescriptorMembershipSchema = rootMembershipProofSchema(
   EventKeySchema,
@@ -394,8 +426,9 @@ export const ValidationClaimWitnessSchema = Data.Object({
 export type ValidationClaimWitness = Data.Static<
   typeof ValidationClaimWitnessSchema
 >;
-export const ValidationClaimWitness =
-  ValidationClaimWitnessSchema as unknown as ValidationClaimWitness;
+export const ValidationClaimWitness = asDataType<ValidationClaimWitness>(
+  ValidationClaimWitnessSchema,
+);
 
 export const PendingValidationClaimSchema = Data.Object({
   challenged_header_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -407,8 +440,9 @@ export const PendingValidationClaimSchema = Data.Object({
 export type PendingValidationClaim = Data.Static<
   typeof PendingValidationClaimSchema
 >;
-export const PendingValidationClaim =
-  PendingValidationClaimSchema as unknown as PendingValidationClaim;
+export const PendingValidationClaim = asDataType<PendingValidationClaim>(
+  PendingValidationClaimSchema,
+);
 
 export const PendingValidationClaimDatumSchema = Data.Object({
   fraud_prover: PubKeyHashSchema,
@@ -418,7 +452,7 @@ export type PendingValidationClaimDatum = Data.Static<
   typeof PendingValidationClaimDatumSchema
 >;
 export const PendingValidationClaimDatum =
-  PendingValidationClaimDatumSchema as unknown as PendingValidationClaimDatum;
+  asDataType<PendingValidationClaimDatum>(PendingValidationClaimDatumSchema);
 
 const cancelActionSchema = Data.Object({
   Cancel: Data.Object({
@@ -442,7 +476,7 @@ export type ValidationDisputeOpenAction = Data.Static<
   typeof ValidationDisputeOpenActionSchema
 >;
 export const ValidationDisputeOpenAction =
-  ValidationDisputeOpenActionSchema as unknown as ValidationDisputeOpenAction;
+  asDataType<ValidationDisputeOpenAction>(ValidationDisputeOpenActionSchema);
 
 export const ValidationDisputeOpenSpendRedeemerSchema = Data.Enum([
   cancelActionSchema,
@@ -454,7 +488,9 @@ export type ValidationDisputeOpenSpendRedeemer = Data.Static<
   typeof ValidationDisputeOpenSpendRedeemerSchema
 >;
 export const ValidationDisputeOpenSpendRedeemer =
-  ValidationDisputeOpenSpendRedeemerSchema as unknown as ValidationDisputeOpenSpendRedeemer;
+  asDataType<ValidationDisputeOpenSpendRedeemer>(
+    ValidationDisputeOpenSpendRedeemerSchema,
+  );
 
 export const ValidationSourceActionSchema = Data.Object({
   input_index: Data.Integer(),
@@ -463,8 +499,9 @@ export const ValidationSourceActionSchema = Data.Object({
 export type ValidationSourceAction = Data.Static<
   typeof ValidationSourceActionSchema
 >;
-export const ValidationSourceAction =
-  ValidationSourceActionSchema as unknown as ValidationSourceAction;
+export const ValidationSourceAction = asDataType<ValidationSourceAction>(
+  ValidationSourceActionSchema,
+);
 
 export const ValidationSourceSpendRedeemerSchema = Data.Enum([
   cancelActionSchema,
@@ -474,7 +511,9 @@ export type ValidationSourceSpendRedeemer = Data.Static<
   typeof ValidationSourceSpendRedeemerSchema
 >;
 export const ValidationSourceSpendRedeemer =
-  ValidationSourceSpendRedeemerSchema as unknown as ValidationSourceSpendRedeemer;
+  asDataType<ValidationSourceSpendRedeemer>(
+    ValidationSourceSpendRedeemerSchema,
+  );
 
 export const ValidationGameActionSchema = Data.Enum([
   Data.Object({
@@ -507,8 +546,9 @@ export const ValidationGameActionSchema = Data.Enum([
 export type ValidationGameAction = Data.Static<
   typeof ValidationGameActionSchema
 >;
-export const ValidationGameAction =
-  ValidationGameActionSchema as unknown as ValidationGameAction;
+export const ValidationGameAction = asDataType<ValidationGameAction>(
+  ValidationGameActionSchema,
+);
 
 export const ValidationGameSpendRedeemerSchema = Data.Enum([
   cancelActionSchema,
@@ -518,7 +558,7 @@ export type ValidationGameSpendRedeemer = Data.Static<
   typeof ValidationGameSpendRedeemerSchema
 >;
 export const ValidationGameSpendRedeemer =
-  ValidationGameSpendRedeemerSchema as unknown as ValidationGameSpendRedeemer;
+  asDataType<ValidationGameSpendRedeemer>(ValidationGameSpendRedeemerSchema);
 
 export const ValidationBoundaryEvidenceSchema = Data.Object({
   pre_state: ValidationMachineStateSchema,
@@ -529,7 +569,7 @@ export type ValidationBoundaryEvidence = Data.Static<
   typeof ValidationBoundaryEvidenceSchema
 >;
 export const ValidationBoundaryEvidence =
-  ValidationBoundaryEvidenceSchema as unknown as ValidationBoundaryEvidence;
+  asDataType<ValidationBoundaryEvidence>(ValidationBoundaryEvidenceSchema);
 
 export const ValidationBoundaryActionSchema = Data.Object({
   input_index: Data.Integer(),
@@ -540,8 +580,9 @@ export const ValidationBoundaryActionSchema = Data.Object({
 export type ValidationBoundaryAction = Data.Static<
   typeof ValidationBoundaryActionSchema
 >;
-export const ValidationBoundaryAction =
-  ValidationBoundaryActionSchema as unknown as ValidationBoundaryAction;
+export const ValidationBoundaryAction = asDataType<ValidationBoundaryAction>(
+  ValidationBoundaryActionSchema,
+);
 
 export const ValidationBoundarySpendRedeemerSchema = Data.Enum([
   cancelActionSchema,
@@ -551,7 +592,9 @@ export type ValidationBoundarySpendRedeemer = Data.Static<
   typeof ValidationBoundarySpendRedeemerSchema
 >;
 export const ValidationBoundarySpendRedeemer =
-  ValidationBoundarySpendRedeemerSchema as unknown as ValidationBoundarySpendRedeemer;
+  asDataType<ValidationBoundarySpendRedeemer>(
+    ValidationBoundarySpendRedeemerSchema,
+  );
 
 const ValidationPrepareSelectedFieldsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -566,7 +609,9 @@ export type ValidationPrepareSelectedAction = Data.Static<
   typeof ValidationPrepareSelectedActionSchema
 >;
 export const ValidationPrepareSelectedAction =
-  ValidationPrepareSelectedActionSchema as unknown as ValidationPrepareSelectedAction;
+  asDataType<ValidationPrepareSelectedAction>(
+    ValidationPrepareSelectedActionSchema,
+  );
 
 export const ValidationPrepareSelectedSpendRedeemerSchema = Data.Enum([
   cancelActionSchema,
@@ -578,7 +623,9 @@ export type ValidationPrepareSelectedSpendRedeemer = Data.Static<
   typeof ValidationPrepareSelectedSpendRedeemerSchema
 >;
 export const ValidationPrepareSelectedSpendRedeemer =
-  ValidationPrepareSelectedSpendRedeemerSchema as unknown as ValidationPrepareSelectedSpendRedeemer;
+  asDataType<ValidationPrepareSelectedSpendRedeemer>(
+    ValidationPrepareSelectedSpendRedeemerSchema,
+  );
 
 // Option B (#620): the canonical-decode preparation commits to the transition
 // alone — the validator computes `hash_one_step_evidence(transition,
@@ -598,7 +645,9 @@ export type ValidationCanonicalDecodePrepareSelectedAction = Data.Static<
   typeof ValidationCanonicalDecodePrepareSelectedActionSchema
 >;
 export const ValidationCanonicalDecodePrepareSelectedAction =
-  ValidationCanonicalDecodePrepareSelectedActionSchema as unknown as ValidationCanonicalDecodePrepareSelectedAction;
+  asDataType<ValidationCanonicalDecodePrepareSelectedAction>(
+    ValidationCanonicalDecodePrepareSelectedActionSchema,
+  );
 
 export const ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema =
   Data.Enum([
@@ -613,7 +662,9 @@ export type ValidationCanonicalDecodePrepareSelectedSpendRedeemer = Data.Static<
   typeof ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema
 >;
 export const ValidationCanonicalDecodePrepareSelectedSpendRedeemer =
-  ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema as unknown as ValidationCanonicalDecodePrepareSelectedSpendRedeemer;
+  asDataType<ValidationCanonicalDecodePrepareSelectedSpendRedeemer>(
+    ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
+  );
 
 /**
  * CEK complete-material carriage named by the `material_route` field of the
@@ -651,7 +702,7 @@ export type ValidationCekMaterialRoute = Data.Static<
   typeof ValidationCekMaterialRouteSchema
 >;
 export const ValidationCekMaterialRoute =
-  ValidationCekMaterialRouteSchema as unknown as ValidationCekMaterialRoute;
+  asDataType<ValidationCekMaterialRoute>(ValidationCekMaterialRouteSchema);
 
 export const ValidationAwardArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -659,8 +710,9 @@ export const ValidationAwardArgsSchema = Data.Object({
   fraud_proof_mint_redeemer_index: Data.Integer(),
 });
 export type ValidationAwardArgs = Data.Static<typeof ValidationAwardArgsSchema>;
-export const ValidationAwardArgs =
-  ValidationAwardArgsSchema as unknown as ValidationAwardArgs;
+export const ValidationAwardArgs = asDataType<ValidationAwardArgs>(
+  ValidationAwardArgsSchema,
+);
 
 export const ValidationAwardSpendRedeemerSchema = Data.Enum([
   cancelActionSchema,
@@ -672,7 +724,7 @@ export type ValidationAwardSpendRedeemer = Data.Static<
   typeof ValidationAwardSpendRedeemerSchema
 >;
 export const ValidationAwardSpendRedeemer =
-  ValidationAwardSpendRedeemerSchema as unknown as ValidationAwardSpendRedeemer;
+  asDataType<ValidationAwardSpendRedeemer>(ValidationAwardSpendRedeemerSchema);
 
 export const ValidationTimeoutActionSchema = Data.Object({
   input_index: Data.Integer(),
@@ -682,8 +734,9 @@ export const ValidationTimeoutActionSchema = Data.Object({
 export type ValidationTimeoutAction = Data.Static<
   typeof ValidationTimeoutActionSchema
 >;
-export const ValidationTimeoutAction =
-  ValidationTimeoutActionSchema as unknown as ValidationTimeoutAction;
+export const ValidationTimeoutAction = asDataType<ValidationTimeoutAction>(
+  ValidationTimeoutActionSchema,
+);
 
 export const ValidationTimeoutSpendRedeemerSchema = Data.Enum([
   cancelActionSchema,
@@ -693,7 +746,9 @@ export type ValidationTimeoutSpendRedeemer = Data.Static<
   typeof ValidationTimeoutSpendRedeemerSchema
 >;
 export const ValidationTimeoutSpendRedeemer =
-  ValidationTimeoutSpendRedeemerSchema as unknown as ValidationTimeoutSpendRedeemer;
+  asDataType<ValidationTimeoutSpendRedeemer>(
+    ValidationTimeoutSpendRedeemerSchema,
+  );
 
 const bytesHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");

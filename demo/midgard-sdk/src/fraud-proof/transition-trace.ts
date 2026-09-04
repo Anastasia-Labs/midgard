@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -59,41 +60,52 @@ export const TraceBoundarySideSchema = Data.Enum([
   Data.Literal("TraceEnd"),
 ]);
 export type TraceBoundarySide = "TraceStart" | "TraceEnd";
-export const TraceBoundarySide =
-  TraceBoundarySideSchema as unknown as TraceBoundarySide;
+export const TraceBoundarySide = asDataType<TraceBoundarySide>(
+  TraceBoundarySideSchema,
+);
 
 export const L2TransactionSourceMembershipProofSchema =
   RawRootMembershipProofSchema;
 export type L2TransactionSourceMembershipProof = RawRootMembershipProof;
 export const L2TransactionSourceMembershipProof =
-  L2TransactionSourceMembershipProofSchema as unknown as L2TransactionSourceMembershipProof;
+  asDataType<L2TransactionSourceMembershipProof>(
+    L2TransactionSourceMembershipProofSchema,
+  );
 
 export const WithdrawalSourceNonMembershipProofSchema =
   rootNonMembershipProofSchema(OutputReferenceSchema);
 export type WithdrawalSourceNonMembershipProof =
   RootNonMembershipProof<OutputReference>;
 export const WithdrawalSourceNonMembershipProof =
-  WithdrawalSourceNonMembershipProofSchema as unknown as WithdrawalSourceNonMembershipProof;
+  asDataType<WithdrawalSourceNonMembershipProof>(
+    WithdrawalSourceNonMembershipProofSchema,
+  );
 
 export const ForcedTransactionSourceNonMembershipProofSchema =
   rootNonMembershipProofSchema(OutputReferenceSchema);
 export type ForcedTransactionSourceNonMembershipProof =
   RootNonMembershipProof<OutputReference>;
 export const ForcedTransactionSourceNonMembershipProof =
-  ForcedTransactionSourceNonMembershipProofSchema as unknown as ForcedTransactionSourceNonMembershipProof;
+  asDataType<ForcedTransactionSourceNonMembershipProof>(
+    ForcedTransactionSourceNonMembershipProofSchema,
+  );
 
 export const L2TransactionSourceNonMembershipProofSchema =
   RawRootNonMembershipProofSchema;
 export type L2TransactionSourceNonMembershipProof = RawRootNonMembershipProof;
 export const L2TransactionSourceNonMembershipProof =
-  L2TransactionSourceNonMembershipProofSchema as unknown as L2TransactionSourceNonMembershipProof;
+  asDataType<L2TransactionSourceNonMembershipProof>(
+    L2TransactionSourceNonMembershipProofSchema,
+  );
 
 export const DepositSourceNonMembershipProofSchema =
   rootNonMembershipProofSchema(OutputReferenceSchema);
 export type DepositSourceNonMembershipProof =
   RootNonMembershipProof<OutputReference>;
 export const DepositSourceNonMembershipProof =
-  DepositSourceNonMembershipProofSchema as unknown as DepositSourceNonMembershipProof;
+  asDataType<DepositSourceNonMembershipProof>(
+    DepositSourceNonMembershipProofSchema,
+  );
 
 export const TransitionSourceMembershipProofSchema = Data.Enum([
   Data.Object({
@@ -139,7 +151,9 @@ export type TransitionSourceMembershipProof =
       };
     };
 export const TransitionSourceMembershipProof =
-  TransitionSourceMembershipProofSchema as unknown as TransitionSourceMembershipProof;
+  asDataType<TransitionSourceMembershipProof>(
+    TransitionSourceMembershipProofSchema,
+  );
 
 export const TransitionSourceNonMembershipProofSchema = Data.Enum([
   Data.Object({
@@ -185,7 +199,9 @@ export type TransitionSourceNonMembershipProof =
       };
     };
 export const TransitionSourceNonMembershipProof =
-  TransitionSourceNonMembershipProofSchema as unknown as TransitionSourceNonMembershipProof;
+  asDataType<TransitionSourceNonMembershipProof>(
+    TransitionSourceNonMembershipProofSchema,
+  );
 
 export const SourceMembershipMismatchWitnessSchema = Data.Enum([
   Data.Object({
@@ -229,7 +245,9 @@ export type SourceMembershipMismatchWitness =
       };
     };
 export const SourceMembershipMismatchWitness =
-  SourceMembershipMismatchWitnessSchema as unknown as SourceMembershipMismatchWitness;
+  asDataType<SourceMembershipMismatchWitness>(
+    SourceMembershipMismatchWitnessSchema,
+  );
 
 export const LedgerDeleteWitnessSchema = Data.Object({
   key: Data.Bytes(),
@@ -243,8 +261,9 @@ export type LedgerDeleteWitness = {
   readonly membership_proof: Proof;
   readonly delete_proof: Proof;
 };
-export const LedgerDeleteWitness =
-  LedgerDeleteWitnessSchema as unknown as LedgerDeleteWitness;
+export const LedgerDeleteWitness = asDataType<LedgerDeleteWitness>(
+  LedgerDeleteWitnessSchema,
+);
 
 export const LedgerInsertWitnessSchema = Data.Object({
   key: Data.Bytes(),
@@ -258,8 +277,9 @@ export type LedgerInsertWitness = {
   readonly non_membership_proof: Proof;
   readonly insert_proof: Proof;
 };
-export const LedgerInsertWitness =
-  LedgerInsertWitnessSchema as unknown as LedgerInsertWitness;
+export const LedgerInsertWitness = asDataType<LedgerInsertWitness>(
+  LedgerInsertWitnessSchema,
+);
 
 export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
   Data.Object({
@@ -351,7 +371,9 @@ export type InvalidOneStepTransitionWitness =
       };
     };
 export const InvalidOneStepTransitionWitness =
-  InvalidOneStepTransitionWitnessSchema as unknown as InvalidOneStepTransitionWitness;
+  asDataType<InvalidOneStepTransitionWitness>(
+    InvalidOneStepTransitionWitnessSchema,
+  );
 
 export const OmittedDueL1EventWitnessSchema = Data.Enum([
   Data.Object({
@@ -400,8 +422,9 @@ export type OmittedDueL1EventWitness =
         readonly source_non_membership: ForcedTransactionSourceNonMembershipProof;
       };
     };
-export const OmittedDueL1EventWitness =
-  OmittedDueL1EventWitnessSchema as unknown as OmittedDueL1EventWitness;
+export const OmittedDueL1EventWitness = asDataType<OmittedDueL1EventWitness>(
+  OmittedDueL1EventWitnessSchema,
+);
 
 export const OutOfWindowSourceEventWitnessSchema = Data.Enum([
   Data.Object({
@@ -453,7 +476,9 @@ export type OutOfWindowSourceEventWitness =
       };
     };
 export const OutOfWindowSourceEventWitness =
-  OutOfWindowSourceEventWitnessSchema as unknown as OutOfWindowSourceEventWitness;
+  asDataType<OutOfWindowSourceEventWitness>(
+    OutOfWindowSourceEventWitnessSchema,
+  );
 
 export const CountFaultWitnessSchema = Data.Enum([
   Data.Literal("HeaderTotalCountMismatch"),
@@ -484,8 +509,9 @@ export type CountFaultWitness =
         readonly proof: RootCountProof;
       };
     };
-export const CountFaultWitness =
-  CountFaultWitnessSchema as unknown as CountFaultWitness;
+export const CountFaultWitness = asDataType<CountFaultWitness>(
+  CountFaultWitnessSchema,
+);
 
 export const TransitionFaultSchema = Data.Enum([
   Data.Object({
@@ -588,8 +614,9 @@ export type TransitionFault =
         };
       };
     };
-export const TransitionFault =
-  TransitionFaultSchema as unknown as TransitionFault;
+export const TransitionFault = asDataType<TransitionFault>(
+  TransitionFaultSchema,
+);
 
 export const TransitionFaultProofSchema = Data.Object({
   challenged_header_hash: HeaderHashSchema,
@@ -601,8 +628,9 @@ export type TransitionFaultProof = {
   readonly header: Header;
   readonly fault: TransitionFault;
 };
-export const TransitionFaultProof =
-  TransitionFaultProofSchema as unknown as TransitionFaultProof;
+export const TransitionFaultProof = asDataType<TransitionFaultProof>(
+  TransitionFaultProofSchema,
+);
 
 export const TransitionTraceStepDatumSchema = faultProofStepDatumSchema(
   TransitionFaultProofSchema,
@@ -611,8 +639,9 @@ export type TransitionTraceStepDatum = {
   readonly fraud_prover: string;
   readonly data: TransitionFaultProof | null;
 };
-export const TransitionTraceStepDatum =
-  TransitionTraceStepDatumSchema as unknown as TransitionTraceStepDatum;
+export const TransitionTraceStepDatum = asDataType<TransitionTraceStepDatum>(
+  TransitionTraceStepDatumSchema,
+);
 
 export const TransitionTraceRouteArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -624,8 +653,9 @@ export type TransitionTraceRouteArgs = {
   readonly output_index: bigint;
   readonly proof: TransitionFaultProof;
 };
-export const TransitionTraceRouteArgs =
-  TransitionTraceRouteArgsSchema as unknown as TransitionTraceRouteArgs;
+export const TransitionTraceRouteArgs = asDataType<TransitionTraceRouteArgs>(
+  TransitionTraceRouteArgsSchema,
+);
 
 export const TransitionTraceRouteSpendRedeemerSchema =
   faultProofStepRedeemerSchema(TransitionTraceRouteArgsSchema);
@@ -633,7 +663,9 @@ export type TransitionTraceRouteSpendRedeemer =
   | { readonly Cancel: FaultProofStepCancel }
   | { readonly Continue: readonly [TransitionTraceRouteArgs] };
 export const TransitionTraceRouteSpendRedeemer =
-  TransitionTraceRouteSpendRedeemerSchema as unknown as TransitionTraceRouteSpendRedeemer;
+  asDataType<TransitionTraceRouteSpendRedeemer>(
+    TransitionTraceRouteSpendRedeemerSchema,
+  );
 
 export const TransitionTraceFinalArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -644,8 +676,9 @@ export const TransitionTraceFinalArgsSchema = Data.Object({
 export type TransitionTraceFinalArgs = Data.Static<
   typeof TransitionTraceFinalArgsSchema
 >;
-export const TransitionTraceFinalArgs =
-  TransitionTraceFinalArgsSchema as unknown as TransitionTraceFinalArgs;
+export const TransitionTraceFinalArgs = asDataType<TransitionTraceFinalArgs>(
+  TransitionTraceFinalArgsSchema,
+);
 
 export const TransitionTraceFinalSpendRedeemerSchema =
   faultProofStepRedeemerSchema(TransitionTraceFinalArgsSchema);
@@ -653,7 +686,9 @@ export type TransitionTraceFinalSpendRedeemer =
   | { readonly Cancel: FaultProofStepCancel }
   | { readonly Continue: readonly [TransitionTraceFinalArgs] };
 export const TransitionTraceFinalSpendRedeemer =
-  TransitionTraceFinalSpendRedeemerSchema as unknown as TransitionTraceFinalSpendRedeemer;
+  asDataType<TransitionTraceFinalSpendRedeemer>(
+    TransitionTraceFinalSpendRedeemerSchema,
+  );
 
 export const makeTransitionFaultProof = ({
   challengedHeaderHash,

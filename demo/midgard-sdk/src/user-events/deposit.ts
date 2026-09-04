@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type Assets,
   Data,
@@ -39,7 +40,7 @@ export const DepositDatumSchema = Data.Object({
   witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
 });
 export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
-export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
+export const DepositDatum = asDataType<DepositDatum>(DepositDatumSchema);
 export const DepositSpendRedeemerSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -52,8 +53,9 @@ export const DepositSpendRedeemerSchema = Data.Object({
 export type DepositSpendRedeemer = Data.Static<
   typeof DepositSpendRedeemerSchema
 >;
-export const DepositSpendRedeemer =
-  DepositSpendRedeemerSchema as unknown as DepositSpendRedeemer;
+export const DepositSpendRedeemer = asDataType<DepositSpendRedeemer>(
+  DepositSpendRedeemerSchema,
+);
 
 export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
 

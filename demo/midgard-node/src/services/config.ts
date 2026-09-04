@@ -32,6 +32,7 @@ import {
   assertRetentionDaysMatchesDeployment,
   validateRetentionDays,
 } from "../database/retention-policy.js";
+import { parseDeploymentEconomicsProfile } from "../environment.js";
 
 /**
  * Validates the *encoding* of one of the DA key sets (`DA_COMMITTEE_HEX`,
@@ -307,19 +308,7 @@ const makeConfig = Effect.gen(function* () {
   )("NETWORK");
   const deploymentEconomicsProfile = yield* Config.string(
     "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE",
-  ).pipe(
-    Config.mapAttempt((value): DeploymentManifestEconomicsProfile => {
-      if (
-        value !== "public-preprod-launch-v1" &&
-        value !== "bounded-acceptance-v1"
-      ) {
-        throw new Error(
-          "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE must explicitly equal public-preprod-launch-v1 or bounded-acceptance-v1",
-        );
-      }
-      return value;
-    }),
-  );
+  ).pipe(Config.mapAttempt(parseDeploymentEconomicsProfile));
   const deploymentEconomics =
     DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[deploymentEconomicsProfile];
   const l1ProviderPreflightTimeoutMs = yield* Config.integer(

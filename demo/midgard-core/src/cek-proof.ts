@@ -2202,11 +2202,30 @@ type SemanticDataValue =
   | ReadonlyMap<SemanticDataValue, SemanticDataValue>
   | SemanticConstr;
 
+/**
+ * `Array.isArray` is declared `value is any[]`, so using it to pick the list
+ * member out of {@link SemanticDataValue} discards the element type. This
+ * narrows to the union member instead.
+ */
+const isSemanticList = (
+  value: SemanticDataValue,
+): value is readonly SemanticDataValue[] => Array.isArray(value);
+
+/**
+ * `instanceof Map` narrows to `ReadonlyMap<...> & Map<any, any>`, and the
+ * intersection resolves `entries()` against `Map<any, any>`, so every key and
+ * value read back out is `any`. This picks the union member instead.
+ */
+const isSemanticMap = (
+  value: SemanticDataValue,
+): value is ReadonlyMap<SemanticDataValue, SemanticDataValue> =>
+  value instanceof Map;
+
 const isSemanticConstr = (value: SemanticDataValue): value is SemanticConstr =>
   typeof value === "object" &&
   value !== null &&
   !Array.isArray(value) &&
-  !(value instanceof Map) &&
+  !isSemanticMap(value) &&
   "kind" in value &&
   value.kind === "constr";
 
@@ -2269,10 +2288,10 @@ const encodeSemanticData = (value: SemanticDataValue): Buffer => {
   if (typeof value === "string") {
     return encodeSemanticBytes(Buffer.from(value, "hex"));
   }
-  if (Array.isArray(value)) {
+  if (isSemanticList(value)) {
     return encodeSemanticList(value);
   }
-  if (value instanceof Map) {
+  if (isSemanticMap(value)) {
     return Buffer.concat([
       semanticCborHeader(5, BigInt(value.size)),
       ...[...value.entries()].flatMap(([key, mapped]) => [
@@ -2414,11 +2433,8 @@ const commitSemanticData = (value: SemanticDataValue): SemanticDataSummary => {
       ),
       memory: 4n + items.memory,
     };
-  } else if (value instanceof Map) {
-    const entries = commitPairs([...value.entries()] as readonly (readonly [
-      SemanticDataValue,
-      SemanticDataValue,
-    ])[]);
+  } else if (isSemanticMap(value)) {
+    const entries = commitPairs([...value.entries()]);
     node = {
       kind: "map",
       entriesCount: entries.length,
@@ -2507,7 +2523,7 @@ const semanticConstantPayloadMatchesType = (
   }
   if (type.kind === "list") {
     return (
-      Array.isArray(value) &&
+      isSemanticList(value) &&
       value.every((item) =>
         semanticConstantPayloadMatchesType(type.element, item),
       )
@@ -2550,10 +2566,10 @@ const semanticConstantMemory = (
   }
   if (type.kind === "unit" || type.kind === "boolean") return 1n;
   if (type.kind === "list") {
-    if (!Array.isArray(value)) {
+    if (!isSemanticList(value)) {
       throw new Error("CEK list payload is not a list");
     }
-    return value.reduce(
+    return value.reduce<bigint>(
       (total, item) => total + semanticConstantMemory(type.element, item),
       0n,
     );

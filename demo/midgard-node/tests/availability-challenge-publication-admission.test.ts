@@ -32,13 +32,13 @@ describe("Q58 availability-challenge publication admission V1", () => {
     expect(measured).toEqual([
       {
         name: "availability-challenge spending",
-        scriptHash: "8cd5ef370e2dd7e5af3ad3f7d80729cd79bed9c14e0e9f2ce79f47c4",
-        rawScriptBytes: 20_017,
+        scriptHash: "47fa50cc3818cddba8b2d7f6d2d02e63b4efa325a5cdbe719aee4286",
+        rawScriptBytes: 20_029,
       },
       {
         name: "availability-challenge minting",
-        scriptHash: "8cd5ef370e2dd7e5af3ad3f7d80729cd79bed9c14e0e9f2ce79f47c4",
-        rawScriptBytes: 20_017,
+        scriptHash: "47fa50cc3818cddba8b2d7f6d2d02e63b4efa325a5cdbe719aee4286",
+        rawScriptBytes: 20_029,
       },
     ]);
     expect(() =>

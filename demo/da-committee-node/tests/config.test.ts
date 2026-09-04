@@ -857,7 +857,11 @@ describe("loadWatcherConfig", () => {
     expect(
       config.midgardNodeDeployment?.daAttestation.mint.refScriptOutRef,
     ).toEqual({
-      txHash: "01".repeat(32),
+      // The reference-script out-ref the DA fixture records for
+      // `daAttestationMint`; a literal rather than a re-read of
+      // `expectedDeployment` so the config path is proved to carry the
+      // document's own value rather than agreeing with itself.
+      txHash: "06".repeat(32),
       outputIndex: 0,
     });
     expect(config.midgardNodeDeployment?.stateQueue.spend.scriptHash).toBe(

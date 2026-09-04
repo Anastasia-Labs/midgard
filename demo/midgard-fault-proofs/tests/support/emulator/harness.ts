@@ -1,5 +1,6 @@
 import {} from "node:path";
 
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   createReferenceScriptAuthPolicy,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
@@ -56,11 +57,7 @@ import {
   readBlueprint,
   realBlueprintPath,
 } from "./blueprints.js";
-import {
-  buildCatalogueDeploymentInfo,
-  categoryIdSchema,
-  type LucidDataSchema,
-} from "./catalogue.js";
+import { buildCatalogueDeploymentInfo, categoryIdSchema } from "./catalogue.js";
 import { buildMinimalFaultProofContracts } from "./contracts.js";
 import {
   fundedProverEmulatorAccount,
@@ -89,11 +86,8 @@ const encodeCatalogueMembershipRedeemer = ({
 }): string =>
   encodePhasMembershipProofRedeemer({
     root,
-    keyCbor: Data.to(id, categoryIdSchema as unknown as LucidDataSchema),
-    valueCbor: Data.to(
-      categoryScriptHash,
-      ScriptHashSchema as unknown as LucidDataSchema,
-    ),
+    keyCbor: Data.to(id, asLucidSchema(categoryIdSchema)),
+    valueCbor: Data.to(categoryScriptHash, asLucidSchema(ScriptHashSchema)),
     membershipProofCbor,
   });
 

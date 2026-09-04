@@ -1,5 +1,6 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { compareOutRefs, findOutRefIndex } from "@al-ft/midgard-core";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
@@ -16,8 +17,6 @@ export const categoryIdSchema = Data.Bytes({
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
 });
 
-export type LucidDataSchema = Parameters<typeof Data.to>[1];
-
 export const categoryId = (index: number): string => {
   const buf = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
   buf.writeUInt32BE(index);
@@ -25,16 +24,10 @@ export const categoryId = (index: number): string => {
 };
 
 export const encodeCatalogueKey = (id: string): Buffer =>
-  Buffer.from(
-    Data.to(id, categoryIdSchema as unknown as LucidDataSchema),
-    "hex",
-  );
+  Buffer.from(Data.to(id, asLucidSchema(categoryIdSchema)), "hex");
 
 export const encodeCatalogueValue = (scriptHash: string): Buffer =>
-  Buffer.from(
-    Data.to(scriptHash, ScriptHashSchema as unknown as LucidDataSchema),
-    "hex",
-  );
+  Buffer.from(Data.to(scriptHash, asLucidSchema(ScriptHashSchema)), "hex");
 
 export const trieRootHex = (trie: Trie): string =>
   trie.hash == null

@@ -10,6 +10,7 @@ import {
   MIDGARD_ENVELOPE_MEASUREMENTS,
   MIDGARD_RELEASE_EVIDENCE_DIGEST,
 } from "../src/index.js";
+import { isPlainRecord, parseJsonUnknown } from "../src/narrowing.js";
 
 describe("canonical V1 consensus profile", () => {
   it("pins the indivisible V1 version tuple", () => {
@@ -63,10 +64,10 @@ describe("canonical V1 consensus profile", () => {
     expect(
       MIDGARD_ENVELOPE_MEASUREMENTS.maxScriptEnvelopeResolverArgumentsBytes,
     ).toBe(7_546);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramMaterialBytes).toBe(
     // 64 MiB minus the 447-byte fixed V1 DA framing that a payload carrying
     // any program material pays. `midgard-sdk`'s da-payload suite measures that
     // framing against the canonical encoder rather than restating it.
+    expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramMaterialBytes).toBe(
       67_108_417,
     );
     expect(MIDGARD_CONSENSUS_LIMITS.maxCekBlobChunkBytes).toBe(4_095);
@@ -362,7 +363,12 @@ describe("canonical V1 consensus profile", () => {
   });
 
   it("accepts only the exact compiled V1 profile", () => {
-    const roundTrip = JSON.parse(JSON.stringify(MIDGARD_CONSENSUS_PROFILE));
+    const roundTrip = parseJsonUnknown(
+      JSON.stringify(MIDGARD_CONSENSUS_PROFILE),
+    );
+    if (!isPlainRecord(roundTrip)) {
+      throw new Error("the profile must round-trip through JSON as an object");
+    }
     expect(isMidgardConsensusProfile(roundTrip)).toBe(true);
     expect(
       isMidgardConsensusProfile({

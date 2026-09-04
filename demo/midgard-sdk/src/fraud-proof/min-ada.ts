@@ -1,4 +1,5 @@
 /** Q27 `min-ada` non-interactive wire types. */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
@@ -18,7 +19,7 @@ export const MinAdaFaultSchema = Data.Enum([
   Data.Literal("MinAdaUtxo"),
 ]);
 export type MinAdaFault = Data.Static<typeof MinAdaFaultSchema>;
-export const MinAdaFault = MinAdaFaultSchema as unknown as MinAdaFault;
+export const MinAdaFault = asDataType<MinAdaFault>(MinAdaFaultSchema);
 
 export const MinAdaPostUtxoMembershipSchema = Data.Object({
   input_index: Data.Integer(),
@@ -31,8 +32,9 @@ export const MinAdaPostUtxoMembershipSchema = Data.Object({
 export type MinAdaPostUtxoMembership = Data.Static<
   typeof MinAdaPostUtxoMembershipSchema
 >;
-export const MinAdaPostUtxoMembership =
-  MinAdaPostUtxoMembershipSchema as unknown as MinAdaPostUtxoMembership;
+export const MinAdaPostUtxoMembership = asDataType<MinAdaPostUtxoMembership>(
+  MinAdaPostUtxoMembershipSchema,
+);
 
 export const MinAdaStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export const MinAdaStep01ArgsSchema = Data.Object({
@@ -56,8 +58,9 @@ export const MinAdaStep02StateSchema = Data.Object({
   post_utxo: Data.Nullable(MinAdaPostUtxoStateSchema),
 });
 export type MinAdaStep02State = Data.Static<typeof MinAdaStep02StateSchema>;
-export const MinAdaStep02State =
-  MinAdaStep02StateSchema as unknown as MinAdaStep02State;
+export const MinAdaStep02State = asDataType<MinAdaStep02State>(
+  MinAdaStep02StateSchema,
+);
 
 export const MinAdaStep02DatumSchema = faultProofStepDatumSchema(
   MinAdaStep02StateSchema,

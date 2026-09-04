@@ -39,6 +39,7 @@ import {
   MIDGARD_WALK_DERIVED_STRIDE,
   midgardFieldStride,
 } from "@al-ft/midgard-core";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
@@ -328,7 +329,9 @@ export type CommittedFieldShapeStep01Datum = Data.Static<
   typeof CommittedFieldShapeStep01DatumSchema
 >;
 export const CommittedFieldShapeStep01Datum =
-  CommittedFieldShapeStep01DatumSchema as unknown as CommittedFieldShapeStep01Datum;
+  asDataType<CommittedFieldShapeStep01Datum>(
+    CommittedFieldShapeStep01DatumSchema,
+  );
 
 /** Mirrors `midgard/fraud_proofs/committed_field_shape/step_01.Args`. */
 export const CommittedFieldShapeStep01ArgsSchema = Data.Object({
@@ -339,7 +342,9 @@ export type CommittedFieldShapeStep01Args = Data.Static<
   typeof CommittedFieldShapeStep01ArgsSchema
 >;
 export const CommittedFieldShapeStep01Args =
-  CommittedFieldShapeStep01ArgsSchema as unknown as CommittedFieldShapeStep01Args;
+  asDataType<CommittedFieldShapeStep01Args>(
+    CommittedFieldShapeStep01ArgsSchema,
+  );
 
 export const CommittedFieldShapeStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(CommittedFieldShapeStep01ArgsSchema);
@@ -347,7 +352,9 @@ export type CommittedFieldShapeStep01SpendRedeemer = Data.Static<
   typeof CommittedFieldShapeStep01SpendRedeemerSchema
 >;
 export const CommittedFieldShapeStep01SpendRedeemer =
-  CommittedFieldShapeStep01SpendRedeemerSchema as unknown as CommittedFieldShapeStep01SpendRedeemer;
+  asDataType<CommittedFieldShapeStep01SpendRedeemer>(
+    CommittedFieldShapeStep01SpendRedeemerSchema,
+  );
 
 /**
  * Mirrors `midgard/fraud_proofs/committed_field_shape/step_02.State`.
@@ -366,7 +373,9 @@ export type CommittedFieldShapeStep02State = Data.Static<
   typeof CommittedFieldShapeStep02StateSchema
 >;
 export const CommittedFieldShapeStep02State =
-  CommittedFieldShapeStep02StateSchema as unknown as CommittedFieldShapeStep02State;
+  asDataType<CommittedFieldShapeStep02State>(
+    CommittedFieldShapeStep02StateSchema,
+  );
 
 export const CommittedFieldShapeStep02DatumSchema = faultProofStepDatumSchema(
   CommittedFieldShapeStep02StateSchema,
@@ -375,7 +384,9 @@ export type CommittedFieldShapeStep02Datum = Data.Static<
   typeof CommittedFieldShapeStep02DatumSchema
 >;
 export const CommittedFieldShapeStep02Datum =
-  CommittedFieldShapeStep02DatumSchema as unknown as CommittedFieldShapeStep02Datum;
+  asDataType<CommittedFieldShapeStep02Datum>(
+    CommittedFieldShapeStep02DatumSchema,
+  );
 
 export const CommittedFieldShapeStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -386,7 +397,9 @@ export type CommittedFieldShapeStep02Args = Data.Static<
   typeof CommittedFieldShapeStep02ArgsSchema
 >;
 export const CommittedFieldShapeStep02Args =
-  CommittedFieldShapeStep02ArgsSchema as unknown as CommittedFieldShapeStep02Args;
+  asDataType<CommittedFieldShapeStep02Args>(
+    CommittedFieldShapeStep02ArgsSchema,
+  );
 
 export const CommittedFieldShapeStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(CommittedFieldShapeStep02ArgsSchema);
@@ -394,7 +407,9 @@ export type CommittedFieldShapeStep02SpendRedeemer = Data.Static<
   typeof CommittedFieldShapeStep02SpendRedeemerSchema
 >;
 export const CommittedFieldShapeStep02SpendRedeemer =
-  CommittedFieldShapeStep02SpendRedeemerSchema as unknown as CommittedFieldShapeStep02SpendRedeemer;
+  asDataType<CommittedFieldShapeStep02SpendRedeemer>(
+    CommittedFieldShapeStep02SpendRedeemerSchema,
+  );
 
 export const CommittedFieldShapeTxInclusionArgsSchema =
   NativeTxInclusionArgsSchema;

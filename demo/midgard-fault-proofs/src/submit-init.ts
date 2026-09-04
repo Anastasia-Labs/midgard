@@ -1,3 +1,4 @@
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   type FraudProofCatalogueCategoryDeploymentInfo,
@@ -62,8 +63,6 @@ import {
 
 const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
 
-type LucidDataSchema = Parameters<typeof Data.to>[1];
-
 export type SubmitInitCliConfig = SubmitProviderConfig &
   ProverSignerConfig & {
     readonly blueprintPath: string;
@@ -124,14 +123,16 @@ const encodePhasMembershipRedeemer = ({
     root,
     keyCbor: Data.to(
       categoryId,
-      Data.Bytes({ minLength: 4, maxLength: 4 }) as unknown as LucidDataSchema,
+      asLucidSchema(Data.Bytes({ minLength: 4, maxLength: 4 })),
     ),
     valueCbor: Data.to(
       categoryScriptHash,
-      Data.Bytes({
-        minLength: 28,
-        maxLength: 28,
-      }) as unknown as LucidDataSchema,
+      asLucidSchema(
+        Data.Bytes({
+          minLength: 28,
+          maxLength: 28,
+        }),
+      ),
     ),
     membershipProofCbor,
   });

@@ -1,3 +1,4 @@
+import { canonicalJson } from "./canonical-json.js";
 import {
   MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
@@ -441,45 +442,9 @@ export const MIDGARD_CONSENSUS_PROFILE = Object.freeze({
 
 export type MidgardConsensusProfile = typeof MIDGARD_CONSENSUS_PROFILE;
 
-const stableJsonValue = (value: unknown): unknown => {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new TypeError("V1 consensus profile numbers must be safe integers");
-    }
-    return value;
-  }
-  if (Array.isArray(value)) {
-    if (Object.keys(value).length !== value.length) {
-      throw new TypeError("V1 consensus profile arrays must be dense");
-    }
-    return value.map(stableJsonValue);
-  }
-  if (typeof value !== "object") {
-    throw new TypeError("V1 consensus profile contains an unsupported value");
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    throw new TypeError("V1 consensus profile objects must be plain records");
-  }
-  if (Reflect.ownKeys(value).length !== Object.keys(value).length) {
-    throw new TypeError("V1 consensus profile contains a non-string key");
-  }
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, child]) => [key, stableJsonValue(child)]),
-  );
-};
-
-const CONSENSUS_PROFILE_STABLE_JSON = JSON.stringify(
-  stableJsonValue(MIDGARD_CONSENSUS_PROFILE),
+const CONSENSUS_PROFILE_STABLE_JSON = canonicalJson(
+  MIDGARD_CONSENSUS_PROFILE,
+  "V1 consensus profile",
 );
 
 export const encodeMidgardConsensusProfile = (): Buffer =>
@@ -494,7 +459,8 @@ export const isMidgardConsensusProfile = (
 ): value is MidgardConsensusProfile => {
   try {
     return (
-      JSON.stringify(stableJsonValue(value)) === CONSENSUS_PROFILE_STABLE_JSON
+      canonicalJson(value, "V1 consensus profile") ===
+      CONSENSUS_PROFILE_STABLE_JSON
     );
   } catch {
     return false;
