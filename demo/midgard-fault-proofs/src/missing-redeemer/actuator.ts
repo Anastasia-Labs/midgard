@@ -8,6 +8,7 @@ import {
   captureCursorRemoval,
   type CursorFamilyActionInput,
 } from "../workflow/cursor-family-runtime.js";
+import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   type LocallyEvaluatedTransaction,
@@ -27,6 +28,7 @@ import {
 import { submitMissingRedeemerCancel } from "./submit-cancel.js";
 import {
   type MissingRedeemerStep03Action,
+  planMissingRedeemerFieldOpening,
   submitMissingRedeemerStep03,
   submitMissingRedeemerStep04,
 } from "./submit-field-scan.js";
@@ -100,6 +102,39 @@ const capture = async (
   Object.freeze({
     transaction: await captureLocallyEvaluatedTransaction(submit),
   });
+
+/** The field-8 carriage every field-consuming action opens; null elsewhere. */
+export const missingRedeemerFieldRequirement = ({
+  action,
+  artifact,
+  owner,
+  certificate,
+}: {
+  readonly action: MissingRedeemerActuatorAction;
+  readonly artifact: unknown;
+  readonly owner: string;
+  readonly certificate: FieldCarriageRequirement["certificate"];
+}): FieldCarriageRequirement | null => {
+  if (action.stage !== "field" && action.stage !== "scan") return null;
+  const admitted = admitMissingRedeemerArtifact(artifact);
+  const witnessSetCompactCbor =
+    admitted.authentication.control.witness_set_compact_cbor;
+  return {
+    planned: planMissingRedeemerFieldOpening({
+      evidence: admitted.evidence,
+      nativeTxCompactCbor: admitted.nativeTxCompactCbor,
+      witnessSetCompactCbor,
+      staged: planMissingRedeemerStagedWalk({
+        transactionId: admitted.evidence.subject.transaction_id,
+        fieldPreimageCbor: admitted.evidence.fieldPreimageHex,
+      }),
+      owner,
+    }),
+    compactCbor: admitted.nativeTxCompactCbor,
+    witnessSetCompactCbor,
+    certificate,
+  };
+};
 
 /** Concrete seven-role actuator; configuration contains infrastructure only. */
 export const createMissingRedeemerActuator = (
@@ -209,6 +244,8 @@ export const createMissingRedeemerActuator = (
           await submitMissingRedeemerStep03({
             ...common!,
             nativeTxCompactCbor: artifact.nativeTxCompactCbor,
+            witnessSetCompactCbor:
+              artifact.authentication.control.witness_set_compact_cbor,
             staged,
             action: action.action,
             referenceScriptUtxo: config.references.steps[4],
@@ -221,6 +258,8 @@ export const createMissingRedeemerActuator = (
           await submitMissingRedeemerStep04({
             ...common!,
             nativeTxCompactCbor: artifact.nativeTxCompactCbor,
+            witnessSetCompactCbor:
+              artifact.authentication.control.witness_set_compact_cbor,
             staged,
             referenceScriptUtxo: config.references.steps[5],
             preSubmitBoundary,

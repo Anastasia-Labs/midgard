@@ -9,6 +9,7 @@ export * from "./staged-plan.js";
 export * from "./submit-authentication.js";
 export * from "./submit-cancel.js";
 export * from "./submit-field-scan.js";
+export * from "./submit-init.js";
 export * from "./submit-step-01.js";
 export * from "./submit-step-05.js";
 export * from "./v1.js";

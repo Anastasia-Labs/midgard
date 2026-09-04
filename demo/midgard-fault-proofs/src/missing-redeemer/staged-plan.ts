@@ -57,6 +57,7 @@ export const hashMissingRedeemerWalkCheckpoint = (
 
 export type MissingRedeemerStagedPlan = Readonly<{
   items: readonly Buffer[];
+  itemBudget: number;
   initialGrammar: MissingRedeemerGrammarCheckpoint;
   grammar: readonly MissingRedeemerGrammarCheckpoint[];
   initialWalk: MissingRedeemerWalkCheckpoint;
@@ -115,6 +116,7 @@ export const planMissingRedeemerStagedWalk = ({
   }
   return Object.freeze({
     items: Object.freeze(items),
+    itemBudget,
     initialGrammar,
     grammar: Object.freeze(grammar),
     initialWalk,

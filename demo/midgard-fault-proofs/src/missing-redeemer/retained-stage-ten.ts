@@ -336,8 +336,14 @@ export const buildMissingRedeemerStageTenAuthenticationFromRetainedDa = async ({
         );
       return { key, retained };
     });
-  const terminals = validated.flatMap(({ retained }) => {
-    if (retained.auxiliary !== "NoAuxiliaryWitness") return [];
+  const acceptedEvent = "L2TransactionEventKey" in eventKey;
+  // The producer's earliest stage-10 state whose discovery selects the exact
+  // purpose. Every such state carries the same purpose and matched-source
+  // frontiers, and the family's own committed field-8 scan, not the
+  // producer's auxiliary, decides presence; the earliest state is the one a
+  // producer whose trace stops at this purpose (an honest missing-redeemer
+  // rejection, or its wrongful claim) is guaranteed to have committed.
+  const selections = validated.flatMap(({ retained }) => {
     try {
       const control = decodeMissingRedeemerStageTenControl(
         Buffer.from(retained.witness_cbor, "hex"),
@@ -350,12 +356,18 @@ export const buildMissingRedeemerStageTenAuthenticationFromRetainedDa = async ({
       return [];
     }
   });
+  const terminals = [...selections]
+    .sort((left, right) =>
+      left.retained.program_counter < right.retained.program_counter
+        ? -1
+        : left.retained.program_counter > right.retained.program_counter
+          ? 1
+          : 0,
+    )
+    .slice(0, 1);
   if (terminals.length !== 1)
-    throw new Error(
-      "missingRedeemer exact terminal stage-10 state is absent or duplicated",
-    );
+    throw new Error("missingRedeemer stage-10 purpose selection is absent");
   const { retained, control } = terminals[0]!;
-  const acceptedEvent = "L2TransactionEventKey" in eventKey;
   if (
     retained.machine_state.source_kind !==
       (acceptedEvent ? "Normal" : "Forced") ||

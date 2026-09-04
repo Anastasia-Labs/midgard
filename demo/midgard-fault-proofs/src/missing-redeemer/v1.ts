@@ -22,6 +22,10 @@ import {
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
 import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation.js";
+import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriagePrerequisitePort,
+} from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   computeFraudProofWorkflowId,
@@ -33,10 +37,12 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   createMissingRedeemerActuator,
   type MissingRedeemerActuatorAction,
+  missingRedeemerFieldRequirement,
   type MissingRedeemerWorkflowReferences,
 } from "./actuator.js";
 import {
@@ -126,6 +132,7 @@ export type ManifestBoundMissingRedeemerWorkflow = Readonly<{
   l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   actuator: ReturnType<typeof createMissingRedeemerActuator>;
+  prerequisite: FieldCarriagePrerequisitePort<"missingRedeemer">;
 }>;
 
 const manifestContracts = Object.freeze({
@@ -222,7 +229,7 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
         role as keyof MissingRedeemerRemovalReferenceScripts
       ],
     );
-  bind(
+  const fieldPreimageCertificateMint = bind(
     "fieldPreimageCertificateMint",
     config.referenceScripts.fieldPreimageCertificateMint,
   );
@@ -251,6 +258,29 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
+  // Field 8 is opened from published carriage: the prerequisite port
+  // publishes (and, above the raw bound, certifies) it before the first
+  // field-consuming action and recovers it from the raw L1 afterwards.
+  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
+    category: MISSING_REDEEMER_CATEGORY,
+    lucid: config.lucid,
+    network: binding.network,
+    signer: config.signer,
+    publications: l1.publications,
+    requirementForAction: ({ action, artifact }) =>
+      missingRedeemerFieldRequirement({
+        action: action.input as unknown as MissingRedeemerActuatorAction,
+        artifact,
+        owner: config.signer.paymentKeyHash,
+        certificate: {
+          policyId: certificate.policyId,
+          mintingScript: certificate.mintingScript,
+          referenceScriptUtxo: fieldPreimageCertificateMint,
+        },
+      }),
+    transactionConfirmed: async ({ headerHash, txHash }) =>
+      await l1.transactionConfirmed({ headerHash, txHash }),
+  });
   return Object.freeze({
     binding,
     lucid: config.lucid,
@@ -267,6 +297,7 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
       stateQueueMutationLeaseCoordinator:
         config.stateQueueMutationLeaseCoordinator,
     }),
+    prerequisite,
   });
 };
 
@@ -467,6 +498,59 @@ export const executeManifestBoundMissingRedeemerWorkflow = async ({
   }
   const selected = await actionFor({ workflow, artifact, entries });
   if (selected === "removed") return { kind: "completed" as const, workflowId };
+  const actionInput = {
+    schemaVersion: "midgard-production-cursor-family-action-v1",
+    category: MISSING_REDEEMER_CATEGORY,
+    ...selected.action,
+  };
+  const baseAction: FraudProofWorkflowAction = {
+    actionId: selected.actionId,
+    input: actionInput as unknown as FraudProofWorkflowAction["input"],
+  };
+  const journalArtifact =
+    artifact as unknown as FraudProofWorkflowAction["input"];
+  const prerequisite = await workflow.prerequisite.inspect({
+    headerHash,
+    baseAction,
+    artifact: journalArtifact,
+    entries,
+  });
+  if (prerequisite.kind === "pending")
+    return { kind: "pending" as const, workflowId };
+  if (prerequisite.kind === "required") {
+    const carriage = await workflow.prerequisite.capture({
+      headerHash,
+      action: prerequisite.action,
+      artifact: journalArtifact,
+    });
+    await appendEvent(journal, workflowId, identity, {
+      kind: "preflight_passed",
+      actionId: prerequisite.action.actionId,
+      txHash: carriage.transaction.txHash,
+      localEvaluator: "lucid-evolution-local-uplc-v1",
+      referenceScripts: carriage.transaction.referenceScripts,
+    });
+    await appendEvent(journal, workflowId, identity, {
+      kind: "submission_intent",
+      actionId: prerequisite.action.actionId,
+      actionInput: prerequisite.action.input,
+      durableRecovery: carriage.durableRecovery,
+      attempt: 1,
+      txHash: carriage.transaction.txHash,
+    });
+    const submittedCarriage = await submitCapturedTransaction(
+      carriage.transaction,
+    );
+    if (submittedCarriage !== carriage.transaction.txHash)
+      throw new Error("missingRedeemer provider substituted carriage");
+    await appendEvent(journal, workflowId, identity, {
+      kind: "submitted",
+      actionId: prerequisite.action.actionId,
+      attempt: 1,
+      txHash: submittedCarriage,
+    });
+    return { kind: "pending" as const, workflowId, txHash: submittedCarriage };
+  }
   const captured = await workflow.actuator.capture({
     action: selected.action,
     artifact,
@@ -481,11 +565,7 @@ export const executeManifestBoundMissingRedeemerWorkflow = async ({
   await appendEvent(journal, workflowId, identity, {
     kind: "submission_intent",
     actionId: selected.actionId,
-    actionInput: {
-      schemaVersion: "midgard-production-cursor-family-action-v1",
-      category: MISSING_REDEEMER_CATEGORY,
-      stage: selected.action.stage,
-    },
+    actionInput: baseAction.input,
     attempt: 1,
     txHash: captured.transaction.txHash,
   });

@@ -9,8 +9,11 @@ import {
   acceptedVerdictSubject,
   decodeRetainedValidationWitness,
   decodeRetainedValidationWitnessKey,
+  type EventKey,
   EventKeySchema,
   forcedVerdictSubject,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -139,7 +142,8 @@ const terminalCoordinates = (
   return [...coordinates.values()];
 };
 
-const retainedPurpose = (
+/** The family's authenticated purpose view of one retained stage-10 selection. */
+export const authenticatedPurposeFromStageTen = (
   authentication: MissingRedeemerStageTenAuthentication,
 ): AuthenticatedScriptPurpose => ({
   purposeKind: Number(
@@ -221,7 +225,8 @@ export const replayMissingRedeemer = async (
               subject: acceptedVerdictSubject(transaction.nodeTxId),
               ...coordinate,
             },
-            authenticatedPurpose: retainedPurpose(authentication),
+            authenticatedPurpose:
+              authenticatedPurposeFromStageTen(authentication),
             redeemerFieldPreimage: field,
             committedFieldHashHex:
               midgardFieldCommitment(field).toString("hex"),
@@ -333,7 +338,8 @@ export const replayMissingRedeemer = async (
             }),
             ...coordinate,
           },
-          authenticatedPurpose: retainedPurpose(authentication),
+          authenticatedPurpose:
+            authenticatedPurposeFromStageTen(authentication),
           redeemerFieldPreimage: field,
           committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
         });
@@ -378,3 +384,91 @@ export const detectMissingRedeemerCanonicalViolations = async (
   Object.freeze(
     (await replayMissingRedeemer(block)).map(({ detection }) => detection),
   );
+
+export type MissingRedeemerMaterial = Readonly<{
+  evidence: MissingRedeemerEvidence;
+  authentication: MissingRedeemerStageTenAuthentication;
+  nativeTxCompactCbor: string;
+  witnessSetCompactCbor: string;
+}>;
+
+/**
+ * One coordinate's complete submission material from public retained DA and
+ * the exact canonical transaction bytes the subject names. Unlike the replay
+ * it does not require the evidence to close, so an honest block yields the
+ * material whose terminal step the validators must refuse.
+ */
+export const buildMissingRedeemerMaterialFromRetainedDa = async ({
+  eventKey,
+  subject,
+  purposeKind,
+  purposeIndex,
+  txCbor,
+  authenticatedValidationTraceEntries,
+  retainedValidationWitnessEntries,
+  expectedValidationTracesRoot,
+}: {
+  readonly eventKey: EventKey;
+  readonly subject: VerdictSubject;
+  readonly purposeKind: MissingRedeemerPurposeKind;
+  readonly purposeIndex: number;
+  readonly txCbor: Uint8Array;
+  readonly authenticatedValidationTraceEntries: readonly Readonly<{
+    key: Uint8Array;
+    value: Uint8Array;
+  }>[];
+  readonly retainedValidationWitnessEntries: readonly Readonly<{
+    key: Uint8Array;
+    value: Uint8Array;
+  }>[];
+  readonly expectedValidationTracesRoot: string;
+}): Promise<MissingRedeemerMaterial> => {
+  const authentication =
+    await buildMissingRedeemerStageTenAuthenticationFromRetainedDa({
+      eventKey,
+      transactionId: subject.transaction_id,
+      purposeKind,
+      purposeIndex,
+      authenticatedValidationTraceEntries,
+      retainedValidationWitnessEntries,
+      expectedValidationTracesRoot,
+    });
+  // A rejected forced transaction is committed with its validity adjudicated
+  // to `TxIsInvalid`; only that bound scalar moves, never the field bytes.
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
+      ? encodeMidgardNativeTxCanonical(
+          adjudicateMidgardNativeTxFullValidity(
+            decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(txCbor)),
+            "TxIsInvalid",
+          ),
+        )
+      : Buffer.from(txCbor),
+  );
+  const witnessSetCompactCbor =
+    material.proofSource.witnessSetCompactCbor.toString("hex");
+  if (
+    material.transactionId.toString("hex") !== subject.transaction_id ||
+    material.proofSource.compactCbor.toString("hex") !==
+      authentication.control.compact_cbor ||
+    witnessSetCompactCbor !== authentication.control.witness_set_compact_cbor
+  )
+    throw new Error(
+      "missingRedeemer transaction bytes differ from the authenticated stage-10 control",
+    );
+  const field = material.fieldPreimages[8];
+  if (field === undefined)
+    throw new Error("missingRedeemer transaction omitted field 8");
+  const evidence = prepareMissingRedeemerEvidence({
+    finding: { subject, purposeKind, purposeIndex },
+    authenticatedPurpose: authenticatedPurposeFromStageTen(authentication),
+    redeemerFieldPreimage: field,
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
+  });
+  return Object.freeze({
+    evidence,
+    authentication,
+    nativeTxCompactCbor: material.proofSource.compactCbor.toString("hex"),
+    witnessSetCompactCbor,
+  });
+};

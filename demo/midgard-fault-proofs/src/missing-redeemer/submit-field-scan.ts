@@ -1,4 +1,8 @@
 import {
+  computeHash32,
+  decodeMidgardNativeTxWitnessSetCompact,
+} from "@al-ft/midgard-core";
+import {
   type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -59,21 +63,56 @@ type Common = Readonly<{
   threadOutRef: string;
   evidence: MissingRedeemerEvidence;
   nativeTxCompactCbor: string;
+  /** The compact witness set the thread anchored through `witness_set_hash`. */
+  witnessSetCompactCbor: string;
   staged: MissingRedeemerStagedPlan;
   referenceScriptUtxo: UTxO;
   preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }>;
 
-const opening = async (common: Common, stepIndex: number) => {
-  const planned = planFaultProofFieldOpening({
+/**
+ * The §8 carriage plan for the transaction's field 8. The field lives in the
+ * witness set, so the opening anchors on the exact compact witness set whose
+ * hash step 01 bound into the thread state.
+ */
+export const planMissingRedeemerFieldOpening = ({
+  evidence,
+  nativeTxCompactCbor,
+  witnessSetCompactCbor,
+  staged,
+  owner,
+}: Pick<
+  Common,
+  "evidence" | "nativeTxCompactCbor" | "witnessSetCompactCbor" | "staged"
+> & { readonly owner: string }) => {
+  const witnessSetBytes = Buffer.from(witnessSetCompactCbor, "hex");
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompact(witnessSetBytes);
+  return planFaultProofFieldOpening({
     fieldIndex: 8,
-    anchorTxId: common.evidence.subject.transaction_id,
-    nativeTxCompactCbor: common.nativeTxCompactCbor,
-    itemCbors: common.staged.items,
-    owner: common.signer.paymentKeyHash,
+    anchorTxId: evidence.subject.transaction_id,
+    nativeTxCompactCbor,
+    itemCbors: staged.items,
+    owner,
     publish: true,
+    witnessSet: {
+      addr_tx_wits_hash: Buffer.from(witnessSet.addrTxWitsHash).toString("hex"),
+      script_tx_wits_hash: Buffer.from(witnessSet.scriptTxWitsHash).toString(
+        "hex",
+      ),
+      redeemer_tx_wits_hash: Buffer.from(
+        witnessSet.redeemerTxWitsHash,
+      ).toString("hex"),
+    },
+    anchorWitnessSetHash: computeHash32(witnessSetBytes).toString("hex"),
     label: "missingRedeemer field 8",
+  });
+};
+
+const opening = async (common: Common, stepIndex: number) => {
+  const planned = planMissingRedeemerFieldOpening({
+    ...common,
+    owner: common.signer.paymentKeyHash,
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
     lucid: common.lucid,
@@ -198,7 +237,12 @@ export const submitMissingRedeemerStep03 = async (
       common.action.kind === "direct"
         ? { AuthenticateDirect: base }
         : common.action.kind === "grammar_start"
-          ? { StartGrammar: { ...base, item_budget: 16n } }
+          ? {
+              StartGrammar: {
+                ...base,
+                item_budget: BigInt(common.staged.itemBudget),
+              },
+            }
           : common.action.kind === "grammar_resume"
             ? {
                 ResumeGrammar: {
@@ -206,7 +250,7 @@ export const submitMissingRedeemerStep03 = async (
                   checkpoint_bytes: encodeMissingRedeemerGrammarCheckpoint(
                     common.staged.grammar[common.action.ordinal - 1]!,
                   ).toString("hex"),
-                  item_budget: 16n,
+                  item_budget: BigInt(common.staged.itemBudget),
                 },
               }
             : {
@@ -274,7 +318,10 @@ export const submitMissingRedeemerStep04 = async (common: Common) => {
     hashMissingRedeemerWalkCheckpoint(checkpoint) !== state.checkpoint_hash
   )
     throw new Error("missingRedeemer scan checkpoint is unreachable");
-  const nextCursor = Math.min(cursor + 16, common.evidence.itemCount);
+  const nextCursor = Math.min(
+    cursor + common.staged.itemBudget,
+    common.evidence.itemCount,
+  );
   const found =
     state.found ||
     common.evidence.scannedPointers
@@ -327,7 +374,7 @@ export const submitMissingRedeemerStep04 = async (common: Common) => {
             opening: field.value,
             checkpoint_bytes:
               encodeMissingRedeemerWalkCheckpoint(checkpoint).toString("hex"),
-            item_budget: 16n,
+            item_budget: BigInt(common.staged.itemBudget),
           },
         ],
       } as never,
