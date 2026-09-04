@@ -89,7 +89,25 @@ export const buildCatalogueDeploymentInfo = async (
       encodeCatalogueValue(category.scriptHash),
     );
   }
-  for (const extra of Object.values(extraCategories)) {
+  const canonicalHashById = new Map(
+    Object.values(categories).map((category) => [
+      category.categoryId,
+      category.scriptHash,
+    ]),
+  );
+  for (const [name, extra] of Object.entries(extraCategories)) {
+    // A family that reached central registration keeps its family-local
+    // lifecycle suites; re-registering its canonical id is a no-op only when
+    // the applied first-step hash is the canonical one.
+    const canonicalHash = canonicalHashById.get(extra.categoryId);
+    if (canonicalHash !== undefined) {
+      if (canonicalHash !== extra.scriptHash) {
+        throw new Error(
+          `extra catalogue category ${name} reuses canonical id ${extra.categoryId} with first-step hash ${extra.scriptHash}, but the registered chain applies ${canonicalHash}`,
+        );
+      }
+      continue;
+    }
     await trie.insert(
       encodeCatalogueKey(extra.categoryId),
       encodeCatalogueValue(extra.scriptHash),

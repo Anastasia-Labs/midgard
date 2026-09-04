@@ -34,10 +34,10 @@ describe("fault-proof emulator catalogue registration", () => {
   it("registers every appended production category from its canonical chain", async () => {
     const harness = await makeFaultProofEmulatorHarness();
 
-    // Guard against a vacuous loop. 32 canonical categories minus the 11
-    // foundational ones; the wave appended networkId, missingNativeScriptUtxo,
-    // nativeScriptInvalid and minAda to the previous 17.
-    expect(APPENDED_CATEGORY_NAMES).toHaveLength(21);
+    // Guard against a vacuous loop. 54 canonical categories minus the 11
+    // foundational ones: the 21 appended through minAda plus the 22
+    // non-interactive proof-thread families (IDs 20 through 35).
+    expect(APPENDED_CATEGORY_NAMES).toHaveLength(43);
     for (const name of APPENDED_CATEGORY_NAMES) {
       const category = harness.catalogue.categories[name];
       const firstStep = harness.contracts.fraudProofContracts[name].firstStep;
