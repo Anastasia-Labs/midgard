@@ -1385,6 +1385,20 @@ const registeredFraudProofReferenceScriptTargets = (
         validator.spendingScript,
       ),
   ),
+  // The network-id forced (wrongful-rejection) door and the resumable output
+  // scan it hands off to are applied like every other step but are
+  // deliberately not members of `steps`, so the chain walk above never reaches
+  // them. They still have to be published: both legs spend from their own
+  // script addresses and `validateReferenceScripts` requires a confirmed
+  // reference script for every declared role.
+  manifestReferenceScriptTarget(
+    "fraudProofNetworkIdForcedStep",
+    contracts.fraudProofContracts.networkId.forcedStep.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofNetworkIdForcedScan",
+    contracts.fraudProofContracts.networkId.forcedScan.spendingScript,
+  ),
 ];
 
 const legacyFraudProofReferenceScriptTargets = (

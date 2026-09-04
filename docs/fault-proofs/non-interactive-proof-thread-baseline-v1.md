@@ -16,7 +16,7 @@ not a release-readiness claim.
   `2f7361162be0f1c4fc456cea5ad0706a5473612d732f416cb73433e36ab30103`
 - Catalogue entries: 32 (`00000000` through `0000001f`)
 - Catalogue root:
-  `85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90`
+  `690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4`
 
 The working-tree blueprint digest intentionally differs from the previously
 documented clean-tree digest because the preserved withdrawal-mistag work

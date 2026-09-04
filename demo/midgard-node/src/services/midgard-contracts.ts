@@ -771,6 +771,29 @@ const linearFaultProofChainFromManifest = <
   if (firstStep === undefined) {
     throw new Error(`Fault-proof chain has no first step: ${category}`);
   }
+  if (category === "networkId") {
+    // The forced (wrongful-rejection) door and the resumable output scan it
+    // hands off to are side entrances into step 02, not third and fourth links
+    // in the chain, so `buildNetworkIdChain` returns them outside `steps`.
+    // Restoring either by step index would silently bind step 02's script to
+    // an auxiliary role, so both are resolved by their own manifest names.
+    return {
+      firstStep,
+      steps,
+      forcedStep: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofNetworkIdForcedStep",
+      ),
+      forcedScan: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofNetworkIdForcedScan",
+      ),
+    } as unknown as SDK.FaultProofContractChains[Category];
+  }
   if (category === "fieldPreimageLengthMismatch") {
     return {
       firstStep,

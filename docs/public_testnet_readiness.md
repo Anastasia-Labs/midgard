@@ -54,10 +54,9 @@ Current decision: no-go for an open public testnet.
     reproducible byte-for-byte from the working tree with the pinned fork
     (`~/.aiken/versions/v1.1.23-org-5adf7837`). The 32-category source
     catalogue (`00000000`–`0000001f`) derives root
-    `85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90`,
-    pinned by the inspection suite; that suite currently fails on
-    deployment-fixture drift after the reference-script role-NFT change, so
-    the pin is not re-verified against this blueprint. Do not deploy an older
+    `690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4`,
+    pinned by the inspection suite and re-verified on 2026-09-04 against the
+    working-tree testnet blueprint. Do not deploy an older
     blueprint or catalogue identity as a substitute.
   - Acceptance: at least the intended public-testnet fraud-proof family is fully end-to-end on preprod from invalid block fixture to computation thread steps to fraudulent block removal.
   - Blocker: 51 compiled scripts exceed the 16,384-byte reference-script publication limit on the reproducible blueprint: 47 `validationTraceDispute` resolver bodies, both `transitionTrace` finals, `withdrawalMistag` step 03, and the availability challenge. Their emulator lifecycles pass only through a raised-limit oversized publication path in the test harness; production publication refuses them. Those three families cannot be deployed as compiled.

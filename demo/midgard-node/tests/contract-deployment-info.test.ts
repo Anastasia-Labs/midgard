@@ -895,6 +895,81 @@ describe("contract deployment info", () => {
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
+  it.effect(
+    "publishes and restores the network-id forced (wrongful-rejection) step and scan",
+    () =>
+      Effect.gen(function* () {
+        const contracts = yield* AlwaysSucceedsContract;
+        const authPolicy = testReferenceScriptAuthPolicy(
+          contracts.referenceScriptAuth.policyId,
+          contracts.referenceScriptAuth.mintingScriptCBOR,
+        );
+        const deploymentInfo = yield* buildFinalizedContractDeploymentInfo(
+          contracts,
+          authPolicy,
+        );
+        const manifest = buildDeploymentManifest(deploymentInfo, {
+          ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
+        });
+        const reconstructed = midgardContractsFromDeploymentManifest(
+          "Preprod",
+          manifest,
+          "fixture-contract-deployment-info.json",
+          contracts,
+        );
+
+        // `buildNetworkIdChain` keeps the forced door and the resumable output
+        // scan out of `steps`, so each can only reach the manifest through its
+        // own canonical name. Without those entries the deployment publishes
+        // no reference script for the forced leg and the wrongful-rejection
+        // proof cannot be submitted at all.
+        const auxiliaryContracts = [
+          [
+            "fraudProofNetworkIdForcedStep",
+            "V1 fraud-proof network-id forced step",
+            contracts.fraudProofContracts.networkId.forcedStep,
+            reconstructed.fraudProofContracts.networkId.forcedStep,
+          ],
+          [
+            "fraudProofNetworkIdForcedScan",
+            "V1 fraud-proof network-id forced scan",
+            contracts.fraudProofContracts.networkId.forcedScan,
+            reconstructed.fraudProofContracts.networkId.forcedScan,
+          ],
+        ] as const;
+        for (const [
+          contractName,
+          role,
+          applied,
+          restored,
+        ] of auxiliaryContracts) {
+          const record = manifest.contracts[contractName];
+          expect(record).toBeDefined();
+          expect(record.scriptHash).toEqual(applied.spendingScriptHash);
+          expect(record.contract.cborHex).toEqual(
+            applied.spendingScript.script,
+          );
+          expect(record.refScriptUTxO).not.toBeNull();
+          expect(manifest.referenceScripts[role]).toMatchObject({
+            status: "confirmed",
+          });
+          expect(restored.spendingScriptHash).toEqual(record.scriptHash);
+          expect(restored.spendingScript.script).toEqual(
+            record.contract.cborHex,
+          );
+        }
+
+        expect(
+          reconstructed.fraudProofContracts.networkId.steps.map(
+            ({ spendingScriptHash }) => spendingScriptHash,
+          ),
+        ).toEqual([
+          manifest.contracts.fraudProofNetworkId.scriptHash,
+          manifest.contracts.fraudProofNetworkIdStep02.scriptHash,
+        ]);
+      }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
   it.effect("rejects deployment manifest contract hash drift", () =>
     Effect.gen(function* () {
       const contracts = yield* AlwaysSucceedsContract;

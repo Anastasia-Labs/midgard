@@ -159,6 +159,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
   "V1 fraud-proof network-id step-01": "V1FpNetworkIdS01",
   "V1 fraud-proof network-id step-02": "V1FpNetworkIdS02",
+  "V1 fraud-proof network-id forced step": "V1FpNetworkIdForced",
+  "V1 fraud-proof network-id forced scan": "V1FpNetworkIdForcedScan",
   "V1 fraud-proof computation-thread minting": "V1FpComputationThreadMint",
   "V1 fraud-proof token minting": "V1FpTokenMint",
   "V1 MPF chunked-verify withdrawal": "V1MpfChunkedVerifyWithdraw",

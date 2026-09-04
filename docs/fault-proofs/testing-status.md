@@ -18,9 +18,9 @@ The generated testnet blueprint on the working tree (built 2026-09-01 with
 `597c38912123f7f2c167bb73b61c3b37be44cd274be506538ee9bd4437711c96`, and a
 rebuild from the working tree with the pinned fork reproduces it
 byte-for-byte. The inspection suite pins catalogue root
-`85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90`, but that
-suite currently fails on deployment-fixture drift (see below), so the pin is
-not re-verified against this blueprint.
+`690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4`,
+re-verified on 2026-09-04 against the working-tree testnet blueprint after the
+`networkId` forced-scan chain and the parameter-only check removal landed.
 
 ## Fidelity
 
@@ -68,25 +68,28 @@ Van Rossem headroom; a forced 29-signer direct submission is rejected before
 builder work. Missing-native-script-UTxO passes both its direct and its staged
 step-05→06→07 predecessor-material paths, including cancel/resume and removal.
 
-Emulator green is not deployability. The `validationTraceDispute`,
-`transitionTrace`, and `withdrawalMistag` lifecycles publish 50 reference
-scripts whose raw bodies exceed 16,384 bytes through the harness's
-`oversized: true` publication path, which skips the L1 byte-margin assertion
-(the validation-dispute suite additionally raises `maxTxSize` to 262,144 for
-those publications). The mint-authorization, network-id, and
-value-not-preserved helpers use the same flag for every step, so their
-publication fit is unasserted even though their bodies are under the limit.
-Production publication refuses oversized bodies, so the three affected
-families cannot be deployed as compiled; see the size table in
-[`catalogue-status.md`](catalogue-status.md).
+Emulator green is not deployability. The `validationTraceDispute` and
+`transitionTrace` lifecycles publish 49 reference scripts whose raw bodies
+exceed 16,384 bytes through the harness's `oversized: true` publication path,
+which skips the L1 byte-margin assertion (the validation-dispute suite
+additionally raises `maxTxSize` to 262,144 for those publications).
+Every other publication path asserts a positive L1 byte margin:
+`publishFinalFamilyReferenceScripts` enforces the envelope by default for the
+missing-native-script-UTxO, native-script-invalid, and min-ADA families, and
+the mint-authorization, network-id, value-not-preserved, and withdrawal-mistag
+helpers publish without the flag, with withdrawal-mistag additionally
+requiring 1,024 bytes of headroom. Production publication refuses oversized
+bodies, so the two affected families cannot be deployed as compiled; see the
+size table in [`catalogue-status.md`](catalogue-status.md).
 
-Two suites in the package are currently red because their fixtures predate
-the reference-script role-NFT change, not because of a validator or
-transaction-fit problem: `inspect-contracts.test.ts` (9 of 12 tests fail on
-the `referenceScriptAuthPolicy` deployment-info shape check) and
-`submit-init-emulator-min-ada.test.ts` (the validation-dispute journey to
-the `E_MIN_ADA` conviction fails at stage setup with "Reference-script auth
-policy must be a native script").
+`inspect-contracts.test.ts` is green again as of 2026-09-04 (12 of 12, with
+the catalogue root re-pinned against the working-tree blueprint). The
+validation-dispute journey suites that build their deployment through the
+emulator lifecycle harness (`submit-init-emulator-min-ada`, `-value-and-mint`,
+`-cek-value-and-mint`, `-soundness*`, `-option-b-*`, `-route-freedom-*`) are
+still red at stage setup with "Reference-script auth policy must be a native
+script": their fixtures predate the reference-script role-NFT change, which is
+a fixture-drift problem, not a validator or transaction-fit problem.
 
 ## Verification commands
 

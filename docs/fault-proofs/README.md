@@ -9,7 +9,7 @@ Current-state documentation reviewed against the working tree on 2026-09-01.
 - `networkId`, `missingNativeScriptUtxo`, `nativeScriptInvalid`, and `minAda`
   occupy IDs `0000001c` through `0000001f`.
 - The applied catalogue root is
-  `85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90`.
+  `690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4`.
 - The checked-in testnet blueprint contains **563 validators** and has SHA-256
   `b885c3abb0eeaace296011a108fbe4a06d0e5303bfb9d73bbec48fc30f32f9de`.
 - `transitionTrace` remains category `00000004`; its deployed graph is one

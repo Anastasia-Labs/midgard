@@ -6,6 +6,7 @@ export const NETWORK_ID_CATEGORY_LABEL = "network-id";
 export const NETWORK_ID_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/network_id/step_01.main.spend",
   forcedStep: "fraud_proofs/network_id/forced_step.main.spend",
+  forcedScan: "fraud_proofs/network_id/forced_scan.main.spend",
   step02: "fraud_proofs/network_id/step_02.main.spend",
 } as const;
 
@@ -23,6 +24,12 @@ export type NetworkIdStepContract = {
 export type NetworkIdContracts = {
   readonly steps: readonly [NetworkIdStepContract, NetworkIdStepContract];
   readonly forcedStep?: NetworkIdStepContract;
+  /**
+   * Resumable forced outputs scan. Present on exactly the deployments that
+   * carry the forced door: the door writes this validator's `Ready` state and
+   * only this validator writes step 02's `ForcedNetworkIdMismatch` state.
+   */
+  readonly forcedScan?: NetworkIdStepContract;
   readonly expectedNetworkId: 0n | 1n;
   readonly computationThread: {
     readonly policyId: string;

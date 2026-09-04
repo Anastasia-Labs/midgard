@@ -10,7 +10,7 @@ Current Aiken map reviewed against the working tree on 2026-09-01.
 | Validators           | 563                                                                |
 | SHA-256              | `b885c3abb0eeaace296011a108fbe4a06d0e5303bfb9d73bbec48fc30f32f9de` |
 | Catalogue categories | 32, IDs `00000000`–`0000001f`                                      |
-| Catalogue root       | `85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90` |
+| Catalogue root       | `690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4` |
 
 ## Shared validators and libraries
 

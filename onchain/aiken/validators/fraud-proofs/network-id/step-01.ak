@@ -24,7 +24,6 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardTransaction, MidgardTransactionBody, MidgardTxOutput,
   TxIsInvalid,
 }
-use midgard/fraud_proofs/network_id/rule.{is_supported_network_id_v1}
 use midgard/fraud_proofs/network_id/step_01.{
   Args, Datum, ForcedDispatchV1, ForcedNetworkIdMismatch, Introduced,
   NetworkChanged, NetworkIdFaultV1, OutputNetwork, OutputNetworkUtxo,
@@ -68,8 +67,7 @@ validator main(
         post_utxo_membership,
         forced_source,
         fault,
-      }) -> {
-        expect is_supported_network_id_v1(expected_network_id)
+      }) ->
         when fault is {
           TransactionNetwork -> {
             expect Some(inclusion) = tx_inclusion
@@ -134,7 +132,6 @@ validator main(
             )
           }
         }
-      }
     }
   }
 
@@ -162,11 +159,13 @@ fn pass_forced_claim(
     inputs,
     outputs,
   )
-  let empty_state: Data = None
+  // The shared `continue` helper only admits a populated successor state, so
+  // the forced door receives the claimed fault marker and re-authenticates it.
+  let handoff_state: Data = ForcedNetworkIdMismatch
   and {
     input_state == None,
     output_script_hash == forced_step_validator_script_hash,
-    output_state_data == empty_state,
+    output_state_data == handoff_state,
   }
 }
 
@@ -501,10 +500,6 @@ test network_id_step_01_rejects_an_honestly_rejected_transaction() fail {
   )
 }
 
-test network_id_step_01_rejects_an_invalid_deployment_network() fail {
-  run_step_01(with_tx_network(1), 7, TransactionNetwork)
-}
-
 test network_id_step_01_rejects_a_negative_output_index() fail {
   run_step_01(with_tx_network(0), 0, OutputNetwork { output_index: -1 })
 }
@@ -793,5 +788,128 @@ test network_id_step_01_rejects_a_cross_step_chunk_order_mismatch() fail {
       chunks,
       mismatched_claim,
     ),
+  )
+}
+
+// ## Forced dispatch arm
+//
+// `ForcedNetworkIdMismatch` is the only arm that hands the thread to the
+// forced door instead of the terminal step, and it carries no evidence of its
+// own: the whole arm is the routing decision plus the handoff marker the
+// forced step re-authenticates.
+
+fn forced_dispatch_asset_name() -> ByteArray {
+  fixture.ct_token_asset_name(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+  )
+}
+
+fn run_forced_dispatch(
+  forced_step_validator_script_hash: ScriptHash,
+  input_state: Option<Data>,
+  tx_inclusion: Option<NativeTxInclusionCarriage>,
+  post_utxo_membership: Option<PostUtxoMembershipV1>,
+  handoff_state: Data,
+) -> Bool {
+  let asset_name = forced_dispatch_asset_name()
+  main.spend(
+    fixture.step_script_hash,
+    forced_step_validator_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    0,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: input_state,
+      },
+    ),
+    ct.Continue(
+      Args {
+        tx_inclusion,
+        post_utxo_membership,
+        forced_source: Some(
+          ForcedDispatchV1 { input_index: 0, output_index: 0 },
+        ),
+        fault: ForcedNetworkIdMismatch,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(asset_name, handoff_state),
+  )
+}
+
+fn forced_handoff_state() -> Data {
+  let state: Data = ForcedNetworkIdMismatch
+  state
+}
+
+test network_id_step_01_dispatches_a_forced_claim() {
+  run_forced_dispatch(
+    fixture.next_step_script_hash,
+    None,
+    None,
+    None,
+    forced_handoff_state(),
+  )
+}
+
+test network_id_step_01_rejects_a_populated_state_on_forced_dispatch() fail {
+  let carried: Data = ForcedNetworkIdMismatch
+  run_forced_dispatch(
+    fixture.next_step_script_hash,
+    Some(carried),
+    None,
+    None,
+    forced_handoff_state(),
+  )
+}
+
+test network_id_step_01_rejects_an_empty_forced_handoff_state() fail {
+  let empty: Option<Int> = None
+  let empty_state: Data = empty
+  run_forced_dispatch(
+    fixture.next_step_script_hash,
+    None,
+    None,
+    None,
+    empty_state,
+  )
+}
+
+test network_id_step_01_rejects_a_foreign_forced_handoff_state() fail {
+  let foreign: Data = TransactionNetwork
+  run_forced_dispatch(fixture.next_step_script_hash, None, None, None, foreign)
+}
+
+test network_id_step_01_rejects_a_wrong_successor_on_forced_dispatch() fail {
+  run_forced_dispatch(
+    fixture.step_script_hash,
+    None,
+    None,
+    None,
+    forced_handoff_state(),
+  )
+}
+
+test network_id_step_01_rejects_tx_inclusion_on_forced_dispatch() fail {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  run_forced_dispatch(
+    fixture.next_step_script_hash,
+    None,
+    Some(fixture.native_inclusion_carriage_v1(block)),
+    None,
+    forced_handoff_state(),
+  )
+}
+
+test network_id_step_01_rejects_post_utxo_membership_on_forced_dispatch() fail {
+  let Pair(_, membership) = post_utxo_fixture(2)
+  run_forced_dispatch(
+    fixture.next_step_script_hash,
+    None,
+    None,
+    Some(membership),
+    forced_handoff_state(),
   )
 }

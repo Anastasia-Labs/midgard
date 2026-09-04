@@ -75,6 +75,7 @@ import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/re
 import { detectMissingScriptSourceCanonicalViolations } from "../missing-script-source/authenticated-replay.js";
 import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
+import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
 import { detectObserverOrderInvalidCompleteReplay } from "../observer-order-invalid/replay.js";
 import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-untagged-network/replay.js";
 import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.js";
@@ -565,6 +566,37 @@ const detectLedgerRelativeMissingInputs = async ({
 };
 
 const detectNetworkIds = (
+  evidence: CanonicalBlockEvidence,
+): readonly CanonicalViolationDetection[] => [
+  ...detectAcceptedNetworkIds(evidence),
+  ...detectNetworkIdWrongfulRejectionsForHeader(evidence).map((detection) => ({
+    detectionId: detection.detectionId,
+    headerHash: detection.headerHash,
+    violationId: detection.violationId,
+    position: detection.position,
+    diagnostic: `forced transaction ${detection.transactionId} was rejected for NetworkIdMismatch despite every authenticated network id agreeing with the committed expectation`,
+  })),
+];
+
+/**
+ * The forced direction argues about a rejection typed `NetworkIdMismatch`, and
+ * that argument only exists against a committed expectation the ledger can
+ * actually carry. A header expecting anything but mainnet/testnet is a
+ * different fault, so it contributes no wrongful-rejection detection here.
+ */
+const detectNetworkIdWrongfulRejectionsForHeader = (
+  evidence: CanonicalBlockEvidence,
+) => {
+  const expectedNetworkId = evidence.header.expectedNetworkId;
+  return expectedNetworkId === 0n || expectedNetworkId === 1n
+    ? detectNetworkIdWrongfulRejections({
+        block: evidence,
+        expectedNetworkId,
+      })
+    : [];
+};
+
+const detectAcceptedNetworkIds = (
   evidence: CanonicalBlockEvidence,
 ): readonly CanonicalViolationDetection[] =>
   evidence.transactions.flatMap((transaction, transactionIndex) =>

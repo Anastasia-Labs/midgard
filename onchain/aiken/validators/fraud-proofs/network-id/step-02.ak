@@ -30,8 +30,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardTransaction, MidgardTransactionBody, MidgardTxOutput,
 }
 use midgard/fraud_proofs/network_id/rule.{
-  is_any_network_violation_v1, is_output_network_violation_v1,
-  is_transaction_network_violation_v1,
+  is_output_network_violation_v1, is_transaction_network_violation_v1,
 }
 use midgard/fraud_proofs/network_id/step_01.{
   ForcedNetworkIdMismatch, Introduced, NetworkChanged, NetworkIdFaultV1,
@@ -46,7 +45,7 @@ use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_output_v1
-use midgard/native_tx_field_access_v1.{field_item_at, field_item_count}
+use midgard/native_tx_field_access_v1.{field_item_at}
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -179,26 +178,21 @@ validator main(
             )
           }
           ForcedNetworkIdMismatch -> {
-            expect Some(opening) = outputs_opening
+            // Shape only. The verdict was established before the thread got
+            // here: `forced_step` decided the body half of the negated
+            // predicate and refused an honest mismatch at the door, and
+            // `forced_scan` walked every output of field 2 in batches and
+            // refused the moment one named a foreign network. `forced_scan` is
+            // the ONLY writer of a `ForcedNetworkIdMismatch` state into this
+            // step — step 01's forced dispatch hands the thread to
+            // `forced_step`, never here, and `forced_step` writes a
+            // `forced_scan.State` at the scan's address — so there is no route
+            // that reaches this arm with the scan unperformed.
+            expect None = outputs_opening
             expect None = predecessor_carriage
             expect None = state.post_utxo
             expect Some(_) = state.forced_source_key
-            let outputs_view = opened_field_view(
-              opening,
-              BodyAnchor { tx_id: state.bad_tx_id },
-              outputs_field_index,
-              reference_inputs,
-              field_preimage_certificate_policy_id,
-            )
-            !is_any_network_violation_v1(
-              state.committed_tx_network_id,
-              output_network_ids(
-                outputs_view,
-                0,
-                field_item_count(outputs_view),
-              ),
-              state.expected_network_id,
-            )
+            True
           }
         }
       }
@@ -207,17 +201,6 @@ validator main(
 
   else(_) {
     fail
-  }
-}
-
-fn output_network_ids(view, index: Int, count: Int) -> List<Int> {
-  if index == count {
-    []
-  } else {
-    [
-      decode_midgard_tx_output_cbor(field_item_at(view, index)).address.network_id,
-      ..output_network_ids(view, index + 1, count)
-    ]
   }
 }
 
@@ -925,4 +908,190 @@ test network_id_step_02_rejects_unused_output_evidence_for_tx_claim() fail {
   }
   let block = fixture.native_block_fixture_v1(bad)
   run_finalize(block, TransactionNetwork, Some(block.tx.body.outputs))
+}
+
+// ## Forced (wrongful-rejection) arm
+//
+// The forced polarity is the only one whose conviction is a *negation*: the
+// operator's forced leaf claimed `NetworkIdMismatch`, so the thread convicts
+// exactly when the complete network predicate is false — the optional body
+// field agrees with the deployment and every output address does too. Neither
+// half is decided here any more. `forced_step` decides the body half at the
+// door, and `forced_scan` walks field 2 in batches and writes the state below
+// only when every output agreed; both refuse the honest-rejection direction
+// where they see it. What is left for this step is the shape that state must
+// have, and the mint.
+
+const forced_source_key_bytes =
+  #"d8799f5820777777777777777777777777777777777777777777777777777777777777777700ff"
+
+fn with_tx_network_id(network_id: Int) -> MidgardTransaction {
+  let base = fixture.valid_native_tx_v1()
+  MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, network_id },
+  }
+}
+
+fn run_forced_finalize(
+  block: fixture.NativeBlockFixtureV1,
+  carried_outputs: Option<List<MidgardTxOutput>>,
+  forced_source_key: Option<ByteArray>,
+  post_utxo: Option<PostUtxoStateV1>,
+  predecessor_carriage: Option<PostUtxoPredecessorCarriageV1>,
+) -> Bool {
+  let outputs_opening = when carried_outputs is {
+    None -> None
+    Some(items) ->
+      Some(
+        fixture.inline_body_opening(
+          block.compact_cbor,
+          items |> list.map(encode_midgard_tx_output),
+        ),
+      )
+  }
+  let state = State {
+    bad_tx_id: block.tx_id,
+    committed_tx_network_id: block.compact.body.network_id,
+    expected_network_id: 0,
+    fault: ForcedNetworkIdMismatch,
+    post_utxo,
+    forced_source_key,
+  }
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        outputs_opening,
+        predecessor_carriage,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(fixture.ct_token_asset_name(block)),
+  )
+}
+
+/// Exactly the state `forced_scan`'s completing `Advance` writes: the bound it
+/// carried from the door, no opening and no carriage.
+test network_id_step_02_convicts_the_state_the_forced_scan_writes() {
+  run_forced_finalize(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+    None,
+    Some(forced_source_key_bytes),
+    None,
+    None,
+  )
+}
+
+/// The same, over a transaction whose optional body field is absent — the
+/// value `forced_step` admits and freezes as `255`.
+test network_id_step_02_convicts_a_forced_state_over_an_untagged_tx() {
+  run_forced_finalize(
+    fixture.native_block_fixture_v1(with_tx_network_id(255)),
+    None,
+    Some(forced_source_key_bytes),
+    None,
+    None,
+  )
+}
+
+/// There is no field to open here any more, so an opening is evidence for a
+/// check this step no longer performs.
+test network_id_step_02_rejects_a_forced_claim_carrying_an_outputs_opening() fail {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  run_forced_finalize(
+    block,
+    Some(block.tx.body.outputs),
+    Some(forced_source_key_bytes),
+    None,
+    None,
+  )
+}
+
+/// Without the authenticated forced key the state is indistinguishable from
+/// an accepted-invalid route's, so the wrongful-rejection polarity is unfixed.
+test network_id_step_02_rejects_a_forced_claim_without_a_source_key() fail {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  run_forced_finalize(block, None, None, None, None)
+}
+
+test network_id_step_02_rejects_a_forced_claim_carrying_post_utxo_state() fail {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  let (out_ref, post_descriptor, _) = post_utxo_material(2)
+  run_forced_finalize(
+    block,
+    None,
+    Some(forced_source_key_bytes),
+    Some(
+      PostUtxoStateV1 {
+        out_ref,
+        descriptor_cbor: post_descriptor,
+        prev_utxos_root: env.empty_merkle_tree_root,
+        predecessor: Introduced,
+      },
+    ),
+    None,
+  )
+}
+
+test network_id_step_02_rejects_a_forced_claim_carrying_predecessor_evidence() fail {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  run_forced_finalize(
+    block,
+    None,
+    Some(forced_source_key_bytes),
+    None,
+    Some(
+      IntroducedPredecessor(
+        RedeemerCarriedNonMembership {
+          non_membership_proof: [],
+          non_membership_proof_script_redeemer_index: 0,
+        },
+      ),
+    ),
+  )
+}
+
+/// The forced source key must not leak into the accepted-invalid routes.
+test network_id_step_02_rejects_a_forced_source_key_on_a_transaction_claim() fail {
+  let block = fixture.native_block_fixture_v1(with_tx_network_id(1))
+  let state = State {
+    ..state_for(block, TransactionNetwork),
+    forced_source_key: Some(forced_source_key_bytes),
+  }
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        outputs_opening: None,
+        predecessor_carriage: None,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(fixture.ct_token_asset_name(block)),
+  )
 }

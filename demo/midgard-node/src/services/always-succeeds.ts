@@ -423,7 +423,15 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       valueNotPreserved: repeatedFaultProofChain(zeroInput, 4),
       inputSetUniqueness: repeatedFaultProofChain(doubleSpend, 4),
       mintAuthorization: repeatedFaultProofChain(zeroInput, 5),
-      networkId: repeatedFaultProofChain(invalidRange, 2),
+      // `steps` holds the two linear steps; the forced (wrongful-rejection)
+      // door and the resumable output scan it hands off to hang off the chain
+      // by name, exactly as `buildNetworkIdChain` returns them.
+      networkId: {
+        firstStep: invalidRange,
+        forcedStep: invalidRange,
+        forcedScan: invalidRange,
+        steps: [invalidRange, invalidRange],
+      },
       missingNativeScriptUtxo: repeatedFaultProofChain(zeroInput, 5),
       nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 3),
       minAda: {

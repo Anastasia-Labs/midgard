@@ -28,6 +28,7 @@ import type {
   PreparedNetworkIdProof,
 } from "../../src/network-id/prepare.js";
 import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
+import { type CompleteSignedTransactionMeasurement } from "./emulator/measurement.js";
 import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-fixtures.js";
 import {
   applyCompiledScript,
@@ -218,12 +219,23 @@ export const makeNetworkIdEmulatorHarness = async () => {
       ],
     ),
   );
+  const forcedScan = makeSpendingValidator(
+    applyCompiledScript(
+      harness.realBlueprint,
+      NETWORK_ID_BLUEPRINT_TITLES.forcedScan,
+      [
+        step02.spendingScriptHash,
+        harness.contracts.computationThread.policyId,
+        harness.contracts.fieldPreimageCertificate.policyId,
+      ],
+    ),
+  );
   const forcedStep = makeSpendingValidator(
     applyCompiledScript(
       harness.realBlueprint,
       NETWORK_ID_BLUEPRINT_TITLES.forcedStep,
       [
-        step02.spendingScriptHash,
+        forcedScan.spendingScriptHash,
         harness.contracts.computationThread.policyId,
         0n,
       ],
@@ -245,6 +257,7 @@ export const makeNetworkIdEmulatorHarness = async () => {
   const networkId: NetworkIdContracts = {
     steps: [step01, step02],
     forcedStep,
+    forcedScan,
     expectedNetworkId: 0n,
     computationThread: harness.contracts.computationThread,
     fraudProof: harness.contracts.fraudProof,
@@ -266,7 +279,20 @@ export const makeNetworkIdEmulatorHarness = async () => {
   return { ...harness, networkId, catalogue, category };
 };
 
-export const publishNetworkIdReferenceScripts = async ({
+/**
+ * Publishes the four applied reference scripts (step 01, step 02, forced step,
+ * forced scan) and returns their UTxOs with the measured publication
+ * transactions so a suite can record the publication margins in its fit
+ * ledger.
+ */
+/** The four scripts the forced direction needs published as references. */
+export type NetworkIdPublishedReferenceScriptName =
+  | "step01"
+  | "step02"
+  | "forcedStep"
+  | "forcedScan";
+
+export const publishNetworkIdReferenceScriptsMeasured = async ({
   lucid,
   contracts,
 }: {
@@ -274,18 +300,53 @@ export const publishNetworkIdReferenceScripts = async ({
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
   readonly contracts: NetworkIdContracts;
-}): Promise<readonly [UTxO, UTxO]> => {
-  const published: UTxO[] = [];
-  for (const [index, step] of contracts.steps.entries()) {
-    published.push(
-      (
-        await publishPlainReferenceScriptUtxo({
-          lucid,
-          script: step.spendingScript as Script,
-          label: `network-id step-0${(index + 1).toString()}`,
-        })
-      ).utxo,
-    );
+}): Promise<{
+  readonly utxos: readonly [UTxO, UTxO, UTxO, UTxO];
+  readonly measurements: readonly {
+    readonly name: NetworkIdPublishedReferenceScriptName;
+    readonly scriptHash: string;
+    readonly measurement: CompleteSignedTransactionMeasurement;
+  }[];
+}> => {
+  if (contracts.forcedStep === undefined)
+    throw new Error("network-id emulator harness deploys the forced step");
+  if (contracts.forcedScan === undefined)
+    throw new Error("network-id emulator harness deploys the forced scan");
+  const targets = [
+    ["step01", contracts.steps[0]],
+    ["step02", contracts.steps[1]],
+    ["forcedStep", contracts.forcedStep],
+    ["forcedScan", contracts.forcedScan],
+  ] as const;
+  const utxos: UTxO[] = [];
+  const measurements: {
+    name: NetworkIdPublishedReferenceScriptName;
+    scriptHash: string;
+    measurement: CompleteSignedTransactionMeasurement;
+  }[] = [];
+  for (const [name, step] of targets) {
+    const published = await publishPlainReferenceScriptUtxo({
+      lucid,
+      script: step.spendingScript as Script,
+      label: `network-id ${name}`,
+    });
+    utxos.push(published.utxo);
+    measurements.push({
+      name,
+      scriptHash: step.spendingScriptHash,
+      measurement: published.publicationMeasurement,
+    });
   }
-  return published as unknown as readonly [UTxO, UTxO];
+  return {
+    utxos: utxos as unknown as readonly [UTxO, UTxO, UTxO, UTxO],
+    measurements,
+  };
 };
+
+export const publishNetworkIdReferenceScripts = async (params: {
+  readonly lucid: Parameters<
+    typeof publishPlainReferenceScriptUtxo
+  >[0]["lucid"];
+  readonly contracts: NetworkIdContracts;
+}): Promise<readonly [UTxO, UTxO, UTxO, UTxO]> =>
+  (await publishNetworkIdReferenceScriptsMeasured(params)).utxos;

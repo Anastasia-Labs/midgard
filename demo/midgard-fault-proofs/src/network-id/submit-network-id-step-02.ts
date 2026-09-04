@@ -276,24 +276,14 @@ export const submitNetworkIdStep02 = async ({
         "forced step state or retained evidence does not contradict NetworkIdMismatch",
       );
     }
-    if (outputsOpeningPlan === undefined) {
+    // The whole-field scan moved to `forced_scan`, which folds the outputs in
+    // batches and only then writes this state. Re-opening the field here would
+    // re-impose the single-transaction budget the scan exists to escape.
+    if (outputsOpeningPlan !== undefined) {
       throw networkIdSubmitError(
-        "forced NetworkIdMismatch contradiction requires the complete field-2 opening",
+        "forced finalization must not carry an outputs opening; the forced outputs scan already certified field 2",
       );
     }
-    if (
-      outputsOpeningPlan.fieldIndex !== 2 ||
-      outputsOpeningPlan.nativeTxId !== state.bad_tx_id ||
-      outputsOpeningPlan.nativeTxCompactCbor !==
-        forcedPrepared!.nativeTxCompactCbor ||
-      outputsOpeningPlan.itemCount !==
-        forcedPrepared!.evidence.outputNetworkIds.length
-    ) {
-      throw networkIdSubmitError(
-        "forced outputs opening changed the authenticated transaction",
-      );
-    }
-    planned = outputsOpeningPlan;
   } else if (prepared.faultClaim.kind === "transaction-network") {
     if (outputsOpeningPlan !== undefined) {
       throw networkIdSubmitError(

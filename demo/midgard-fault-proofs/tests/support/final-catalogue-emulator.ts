@@ -156,7 +156,7 @@ export const publishFinalFamilyReferenceScripts = async <
   lucid,
   family,
   label,
-  enforceL1Envelope = false,
+  enforceL1Envelope = true,
   onPublication,
 }: {
   readonly lucid: Parameters<

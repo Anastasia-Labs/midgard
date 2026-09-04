@@ -4,17 +4,34 @@
  * dependency because every publication/certificate needs its own journaled
  * action before the final proof transaction.
  */
-import { decodeMidgardNativeTxCompact, outRefLabel } from "@al-ft/midgard-core";
+import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
+import {
+  computeHash28,
+  decodeMidgardAddressBytes,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardOutputFieldPreimage,
+  outRefLabel,
+} from "@al-ft/midgard-core";
 import {
   type AuthenticatedStateQueueHeaderObservation,
+  bindExactVerdictSubjectReason,
   deriveFieldPreimageCertification,
+  encodeHeaderCbor,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
+  ForcedInclusionTxV1Schema,
+  forcedVerdictSubject,
   FraudProofComputationThreadStepDatum,
+  HeaderSchema,
   type NetworkIdFault,
+  NetworkIdForcedScanDatum,
   NetworkIdStep02Datum,
+  OutputReferenceSchema,
+  rootMembershipProofSchema,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@al-ft/midgard-sdk";
 import {
+  Data,
   type LucidEvolution,
   type Network,
   toUnit,
@@ -24,6 +41,7 @@ import {
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   certifyFaultProofFieldCarriage,
+  type FaultProofFieldOpeningPlan,
   fieldPreimageCertificateAddress,
   findMissingFaultProofFieldPublication,
   publishFaultProofFieldCarriage,
@@ -37,10 +55,14 @@ import type {
   StateQueueMutationLeaseCoordinator,
 } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
-import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY,
+  type ResolvedProverSigner,
+} from "../runtime.js";
 import { nativeTxFromCoreCompact } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   assertManifestBoundWorkflowSigner,
@@ -104,20 +126,48 @@ import {
 } from "../workflow/transaction-boundary.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import {
+  type NetworkIdForcedScanStep,
+  networkIdForcedScanStepForState,
+  networkIdForcedScanStepOrdinal,
+  planNetworkIdForcedScan,
+} from "./forced-scan-plan.js";
+import {
   planNetworkIdOutputsOpening,
   type PreparedNetworkIdProof,
   prepareNetworkIdFromCanonicalEvidence,
 } from "./prepare.js";
 import type { NetworkIdCatalogueCategory } from "./submit-common.js";
+import { submitNetworkIdForcedBind } from "./submit-network-id-forced-bind.js";
+import { submitNetworkIdForcedScanAction } from "./submit-network-id-forced-scan.js";
+import { submitNetworkIdForcedStep01 } from "./submit-network-id-forced-step-01.js";
 import { submitNetworkIdInit } from "./submit-network-id-init.js";
 import { submitNetworkIdStep01 } from "./submit-network-id-step-01.js";
 import { submitNetworkIdStep02 } from "./submit-network-id-step-02.js";
+import {
+  createNetworkIdWrongfulRejectionPlanner,
+  detectNetworkIdWrongfulRejections,
+  NETWORK_ID_MISMATCH_REASON,
+  NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID,
+  networkIdWrongfulRejectionCloses,
+  type NetworkIdWrongfulRejectionEvidence,
+  type PreparedNetworkIdWrongfulRejection,
+} from "./wrongful-rejection.js";
 
 const ARTIFACT_VERSION = "midgard-network-id-workflow-artifact-v1" as const;
 const CATEGORY = "networkId";
 
+/**
+ * Direction discriminator for the durable artifact.
+ *
+ * The accepted direction predates it, so an artifact without the field is
+ * exactly the accepted shape it always was; the forced direction is additive
+ * and the schema version is unchanged.
+ */
+export type NetworkIdWorkflowDirection = "accepted" | "forced";
+
 type NetworkIdWorkflowArtifact = {
   readonly schemaVersion: typeof ARTIFACT_VERSION;
+  readonly direction?: "accepted";
   readonly headerHash: string;
   readonly expectedNetworkId: "0" | "1";
   readonly badTxId: string;
@@ -131,6 +181,41 @@ type NetworkIdWorkflowArtifact = {
   readonly txMembershipProofCbor: string;
 };
 
+/**
+ * §5.2 forced (wrongful-rejection) artifact.
+ *
+ * Everything the forced door and step 02 re-derive on chain is carried as the
+ * authenticated bytes it is derived from: the counted-root membership proof
+ * (header + leaf) as canonical `Data` CBOR, and the field-2 preimage. The
+ * verdict subject, the transaction's own network id, the output network ids
+ * and the item list are all re-derived on admission, never journaled as a
+ * prover assertion.
+ */
+/**
+ * Durable §5.2 journal artifact. It is the accepted artifact's sibling, not its
+ * successor: the shared `schemaVersion` plus the additive `direction`
+ * discriminator keeps every already-journaled accepted artifact admissible.
+ */
+export type NetworkIdForcedWorkflowArtifact = {
+  readonly schemaVersion: typeof ARTIFACT_VERSION;
+  readonly direction: "forced";
+  readonly headerHash: string;
+  readonly expectedNetworkId: "0" | "1";
+  readonly badTxId: string;
+  readonly nativeTxCompactCbor: string;
+  readonly outputsPreimageCbor: string;
+  readonly outputsItemCbors: readonly string[];
+  readonly forcedSourceCbor: string;
+};
+
+export const NetworkIdForcedSourceSchema = Data.Object({
+  header: HeaderSchema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+});
+
 type WorkflowContext = Parameters<
   FraudProofFamilyWorkflowAdapter["observe"]
 >[0];
@@ -138,10 +223,34 @@ type WorkflowContext = Parameters<
 type ActionKind =
   | "init"
   | "step01"
+  | "forced_step01"
+  | "forced_bind"
+  | "forced_scan_open"
+  | "forced_scan_grammar"
+  | "forced_scan_advance"
   | "step02"
   | "publish_field"
   | "certify_field"
   | "remove";
+
+/** The three scan stages, named by the §10 phase each one drives. */
+const FORCED_SCAN_KINDS = [
+  "forced_scan_open",
+  "forced_scan_grammar",
+  "forced_scan_advance",
+] as const;
+
+type ForcedScanKind = (typeof FORCED_SCAN_KINDS)[number];
+
+const isForcedScanKind = (kind: ActionKind): kind is ForcedScanKind =>
+  (FORCED_SCAN_KINDS as readonly string[]).includes(kind);
+
+const forcedScanKindFor = (step: NetworkIdForcedScanStep): ForcedScanKind =>
+  step.kind === "open"
+    ? "forced_scan_open"
+    : step.kind === "advance"
+      ? "forced_scan_advance"
+      : "forced_scan_grammar";
 
 const requireString = (value: unknown, label: string): string => {
   if (typeof value !== "string" || value.length === 0) {
@@ -155,6 +264,11 @@ const actionKind = (action: FraudProofWorkflowAction): ActionKind => {
   if (
     kind !== "init" &&
     kind !== "step01" &&
+    kind !== "forced_step01" &&
+    kind !== "forced_bind" &&
+    kind !== "forced_scan_open" &&
+    kind !== "forced_scan_grammar" &&
+    kind !== "forced_scan_advance" &&
     kind !== "step02" &&
     kind !== "publish_field" &&
     kind !== "certify_field" &&
@@ -275,6 +389,234 @@ const preparedFromArtifact = (
       txMembershipProofCbor: artifact.txMembershipProofCbor,
     },
   };
+};
+
+type ForcedSourcePayload = Data.Static<typeof NetworkIdForcedSourceSchema>;
+
+const proofSteps = (proof: ForcedSourcePayload["membership"]["proof"]) =>
+  proof.map((step) => {
+    if ("Branch" in step) {
+      return {
+        type: "branch" as const,
+        skip: Number(step.Branch.skip),
+        neighbors: step.Branch.neighbors,
+      };
+    }
+    if ("Fork" in step) {
+      return {
+        type: "fork" as const,
+        skip: Number(step.Fork.skip),
+        neighbor: {
+          nibble: Number(step.Fork.neighbor.nibble),
+          prefix: step.Fork.neighbor.prefix,
+          root: step.Fork.neighbor.root,
+        },
+      };
+    }
+    return {
+      type: "leaf" as const,
+      skip: Number(step.Leaf.skip),
+      neighbor: { key: step.Leaf.key, value: step.Leaf.value },
+    };
+  });
+
+/**
+ * Replays the counted-root membership the forced door re-derives on chain, so a
+ * journal artifact whose proof no longer opens its own leaf is refused here
+ * rather than at submission.
+ */
+const bindForcedLeafMembership = (source: ForcedSourcePayload): void => {
+  const membership = source.membership;
+  let replayed: Buffer | null;
+  try {
+    replayed = MpfProof.fromJSON(
+      Buffer.from(
+        Data.to(membership.key as never, OutputReferenceSchema as never),
+        "hex",
+      ),
+      Buffer.from(
+        Data.to(membership.value as never, ForcedInclusionTxV1Schema as never),
+        "hex",
+      ),
+      proofSteps(membership.proof),
+    ).verify(true);
+  } catch {
+    throw new Error(
+      "network-id forced artifact membership proof cannot be replayed",
+    );
+  }
+  if (replayed?.toString("hex") !== membership.phas_root) {
+    throw new Error(
+      "network-id forced artifact membership proof opens another root",
+    );
+  }
+};
+
+/** Prepared forced contradiction to its durable journal artifact. */
+export const networkIdForcedArtifactFromPrepared = (
+  prepared: PreparedNetworkIdWrongfulRejection,
+): NetworkIdForcedWorkflowArtifact => ({
+  schemaVersion: ARTIFACT_VERSION,
+  direction: "forced",
+  headerHash: prepared.headerHash,
+  expectedNetworkId: prepared.expectedNetworkId.toString() as "0" | "1",
+  badTxId: prepared.badTxId,
+  nativeTxCompactCbor: prepared.nativeTxCompactCbor,
+  outputsPreimageCbor: prepared.evidence.outputsPreimageCbor,
+  outputsItemCbors: [...prepared.outputsItemCbors],
+  forcedSourceCbor: Data.to(
+    {
+      header: prepared.forcedSource.header,
+      membership: prepared.forcedSource.membership,
+    } as never,
+    NetworkIdForcedSourceSchema as never,
+  ),
+});
+
+/**
+ * Durable journal artifact back to the prepared forced contradiction, deriving
+ * every claim from the artifact's own authenticated leaf.
+ */
+export const admitNetworkIdForcedArtifact = (
+  artifact: NetworkIdForcedWorkflowArtifact,
+): PreparedNetworkIdWrongfulRejection => {
+  const expectedNetworkId =
+    artifact.expectedNetworkId === "0"
+      ? 0n
+      : artifact.expectedNetworkId === "1"
+        ? 1n
+        : undefined;
+  if (expectedNetworkId === undefined) {
+    throw new Error("network-id workflow artifact has an invalid network id");
+  }
+  const headerHash = requireString(artifact.headerHash, "header hash");
+  const badTxId = requireString(artifact.badTxId, "transaction id");
+  const nativeTxCompactCbor = requireString(
+    artifact.nativeTxCompactCbor,
+    "compact transaction",
+  );
+  const forcedSource = Data.from(
+    requireString(artifact.forcedSourceCbor, "forced source"),
+    NetworkIdForcedSourceSchema as never,
+  ) as ForcedSourcePayload;
+  if (
+    computeHash28(encodeHeaderCbor(forcedSource.header)).toString("hex") !==
+      headerHash ||
+    forcedSource.membership.root !==
+      forcedSource.header.forcedTransactionsRoot ||
+    forcedSource.membership.count !== forcedSource.header.forcedTransactionCount
+  ) {
+    throw new Error(
+      "network-id forced artifact does not bind its authenticated header",
+    );
+  }
+  bindForcedLeafMembership(forcedSource);
+  const leaf = forcedSource.membership.value;
+  if (
+    leaf.tx_id !== badTxId ||
+    leaf.source.compact_cbor !== nativeTxCompactCbor ||
+    leaf.verdict === "ForcedTxValid"
+  ) {
+    throw new Error(
+      "network-id forced artifact does not bind its authenticated forced leaf",
+    );
+  }
+  const subject = forcedVerdictSubject({
+    transactionId: leaf.tx_id,
+    sourceKey: forcedSource.membership.key,
+    rejectionReason: leaf.verdict.ForcedTxInvalid.reason,
+  });
+  // Refuses another family's typed rejection reason before anything downstream
+  // can treat this thread as a network-id contradiction.
+  bindExactVerdictSubjectReason(subject, NETWORK_ID_MISMATCH_REASON);
+  const outputsPreimage = Buffer.from(
+    requireString(artifact.outputsPreimageCbor, "outputs preimage"),
+    "hex",
+  );
+  const outputsItemCbors = decodeMidgardFieldPreimage(outputsPreimage).map(
+    (item) => Buffer.from(item).toString("hex"),
+  );
+  if (
+    outputsItemCbors.length !== artifact.outputsItemCbors.length ||
+    outputsItemCbors.some(
+      (item, index) => item !== artifact.outputsItemCbors[index],
+    )
+  ) {
+    throw new Error(
+      "network-id forced artifact outputs differ from their authenticated preimage",
+    );
+  }
+  const outputNetworkIds = decodeMidgardOutputFieldPreimage(
+    outputsPreimage,
+  ).map((output) =>
+    BigInt(decodeMidgardAddressBytes(output.address).networkId),
+  );
+  const evidence: NetworkIdWrongfulRejectionEvidence = Object.freeze({
+    subject,
+    expectedNetworkId,
+    committedNetworkId: nativeTxFromCoreCompact(
+      decodeMidgardNativeTxCompact(Buffer.from(nativeTxCompactCbor, "hex")),
+    ).body.network_id,
+    outputNetworkIds: Object.freeze(outputNetworkIds),
+    outputsItemCbors: Object.freeze(outputsItemCbors),
+    outputsPreimageCbor: outputsPreimage.toString("hex"),
+  });
+  if (!networkIdWrongfulRejectionCloses(evidence)) {
+    throw new Error(
+      "network-id forced artifact does not contradict NetworkIdMismatch; the rejection was honest",
+    );
+  }
+  return Object.freeze({
+    headerHash,
+    expectedNetworkId,
+    badTxId,
+    nativeTxCompactCbor,
+    outputsItemCbors: evidence.outputsItemCbors,
+    faultClaim: Object.freeze({ kind: "forced-network-mismatch" as const }),
+    fault: "ForcedNetworkIdMismatch" as NetworkIdFault,
+    subject,
+    forcedSource: Object.freeze({
+      header: forcedSource.header,
+      membership: forcedSource.membership,
+      direction: 1n as const,
+    }),
+    evidence,
+  });
+};
+
+/** Either direction of the family, discriminated by the artifact itself. */
+export type AdmittedNetworkIdArtifact =
+  | {
+      readonly direction: "accepted";
+      readonly prepared: PreparedNetworkIdProof;
+    }
+  | {
+      readonly direction: "forced";
+      readonly prepared: PreparedNetworkIdWrongfulRejection;
+    };
+
+export const admitNetworkIdWorkflowArtifact = (
+  value: WorkflowContext["artifact"],
+): AdmittedNetworkIdArtifact => {
+  const candidate = value as unknown as {
+    readonly schemaVersion?: unknown;
+    readonly direction?: unknown;
+  };
+  if (candidate.schemaVersion !== ARTIFACT_VERSION) {
+    throw new Error("network-id workflow artifact has an unsupported version");
+  }
+  if (candidate.direction === "forced") {
+    return {
+      direction: "forced",
+      prepared: admitNetworkIdForcedArtifact(
+        value as unknown as NetworkIdForcedWorkflowArtifact,
+      ),
+    };
+  }
+  if (candidate.direction !== undefined && candidate.direction !== "accepted") {
+    throw new Error("network-id workflow artifact has an unknown direction");
+  }
+  return { direction: "accepted", prepared: preparedFromArtifact(value) };
 };
 
 const confirmedTxHash = (
@@ -540,6 +882,18 @@ export type NetworkIdWorkflowAdapterConfig = {
   };
   readonly signer: ResolvedProverSigner;
   readonly stepReferenceScripts: readonly [UTxO, UTxO];
+  /**
+   * Published `fraudProofNetworkIdForcedStep` reference script. Optional in the
+   * deployment shape and mandatory the moment a forced (§5.2) artifact is
+   * admitted; the forced door is reference-script-only like every other step.
+   */
+  readonly forcedStepReferenceScript?: UTxO;
+  /**
+   * Published `fraudProofNetworkIdForcedScan` reference script: the resumable
+   * outputs scan the forced door hands the thread to. Optional and mandatory
+   * on the same terms as the forced step.
+   */
+  readonly forcedScanReferenceScript?: UTxO;
   readonly fieldPreimageCertificateReferenceScript: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly removal: {
@@ -617,6 +971,8 @@ export type ManifestBoundNetworkIdWorkflow = {
 
 export type ManifestBoundNetworkIdRuntimeSeal = {
   readonly stepReferenceScripts: readonly [UTxO, UTxO];
+  readonly forcedStepReferenceScript?: UTxO;
+  readonly forcedScanReferenceScript?: UTxO;
   readonly fieldPreimageCertificateReferenceScript: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly removal: ManifestBoundNetworkIdWorkflowConfig["removal"] & {
@@ -635,6 +991,8 @@ export const sealManifestBoundNetworkIdRuntime = ({
   binding,
   signer,
   stepReferenceScripts,
+  forcedStepReferenceScript,
+  forcedScanReferenceScript,
   fieldPreimageCertificateReferenceScript,
   witnessReferenceScripts,
   removal,
@@ -645,6 +1003,8 @@ export const sealManifestBoundNetworkIdRuntime = ({
   >;
   readonly signer: ResolvedProverSigner;
   readonly stepReferenceScripts: readonly [UTxO, UTxO];
+  readonly forcedStepReferenceScript?: UTxO;
+  readonly forcedScanReferenceScript?: UTxO;
   readonly fieldPreimageCertificateReferenceScript: UTxO;
   readonly witnessReferenceScripts: ManifestBoundNetworkIdWorkflowConfig["witnessReferenceScripts"];
   readonly removal: ManifestBoundNetworkIdWorkflowConfig["removal"];
@@ -665,6 +1025,22 @@ export const sealManifestBoundNetworkIdRuntime = ({
       requireReference("fraudProofNetworkId", stepReferenceScripts[0]),
       requireReference("fraudProofNetworkIdStep02", stepReferenceScripts[1]),
     ],
+    ...(forcedStepReferenceScript === undefined
+      ? {}
+      : {
+          forcedStepReferenceScript: requireReference(
+            "fraudProofNetworkIdForcedStep",
+            forcedStepReferenceScript,
+          ),
+        }),
+    ...(forcedScanReferenceScript === undefined
+      ? {}
+      : {
+          forcedScanReferenceScript: requireReference(
+            NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY,
+            forcedScanReferenceScript,
+          ),
+        }),
     fieldPreimageCertificateReferenceScript: requireReference(
       "fieldPreimageCertificateMint",
       fieldPreimageCertificateReferenceScript,
@@ -729,6 +1105,12 @@ export const createManifestBoundNetworkIdWorkflow = async (
     binding,
     signer: config.signer,
     stepReferenceScripts: config.stepReferenceScripts,
+    ...(config.forcedStepReferenceScript === undefined
+      ? {}
+      : { forcedStepReferenceScript: config.forcedStepReferenceScript }),
+    ...(config.forcedScanReferenceScript === undefined
+      ? {}
+      : { forcedScanReferenceScript: config.forcedScanReferenceScript }),
     fieldPreimageCertificateReferenceScript:
       config.fieldPreimageCertificateReferenceScript,
     witnessReferenceScripts: config.witnessReferenceScripts,
@@ -746,6 +1128,7 @@ export const createManifestBoundNetworkIdWorkflow = async (
     network: binding.network,
     contracts: {
       steps: networkIdContracts.steps,
+      forcedStep: networkIdContracts.forcedStep,
       expectedNetworkId: binding.network === "Mainnet" ? 1n : 0n,
       computationThread: {
         policyId: resolved.contracts.computationThread.policyId,
@@ -767,6 +1150,16 @@ export const createManifestBoundNetworkIdWorkflow = async (
     catalogue: binding.catalogue,
     signer: config.signer,
     stepReferenceScripts: sealedRuntime.stepReferenceScripts,
+    ...(sealedRuntime.forcedStepReferenceScript === undefined
+      ? {}
+      : {
+          forcedStepReferenceScript: sealedRuntime.forcedStepReferenceScript,
+        }),
+    ...(sealedRuntime.forcedScanReferenceScript === undefined
+      ? {}
+      : {
+          forcedScanReferenceScript: sealedRuntime.forcedScanReferenceScript,
+        }),
     fieldPreimageCertificateReferenceScript:
       sealedRuntime.fieldPreimageCertificateReferenceScript,
     witnessReferenceScripts: sealedRuntime.witnessReferenceScripts,
@@ -806,18 +1199,148 @@ export const createNetworkIdWorkflowAdapter = (
   const mutationLeaseByTxHash = new Map<string, StateQueueMutationLease>();
   const category = CATEGORY;
 
-  const live = async (prepared: PreparedNetworkIdProof) => {
+  const requireForcedStep = () => {
+    const forcedStep = config.contracts.forcedStep;
+    if (forcedStep === undefined) {
+      throw new Error(
+        "network-id forced direction requires the deployed forced step",
+      );
+    }
+    return forcedStep;
+  };
+
+  const requireForcedStepReferenceScript = (): UTxO => {
+    const referenceScript = config.forcedStepReferenceScript;
+    if (referenceScript === undefined) {
+      throw new Error(
+        "network-id forced direction requires the published fraudProofNetworkIdForcedStep reference script",
+      );
+    }
+    return referenceScript;
+  };
+
+  const requireForcedScan = () => {
+    const forcedScan = config.contracts.forcedScan;
+    if (forcedScan === undefined) {
+      throw new Error(
+        "network-id forced direction requires the deployed forced outputs scan",
+      );
+    }
+    return forcedScan;
+  };
+
+  const requireForcedScanReferenceScript = (): UTxO => {
+    const referenceScript = config.forcedScanReferenceScript;
+    if (referenceScript === undefined) {
+      throw new Error(
+        `network-id forced direction requires the published ${NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY} reference script`,
+      );
+    }
+    return referenceScript;
+  };
+
+  /**
+   * The single scan thread, read directly for the same reason the forced door
+   * is: the §10 loop self-loops at one address, so it is not a link the linear
+   * raw-L1 family definition can walk.
+   */
+  const forcedScanThread = async (
+    headerHash: string,
+  ): Promise<UTxO | undefined> => {
+    const forcedScan = requireForcedScan();
+    const utxos = await config.lucid.utxosAtWithUnit(
+      forcedScan.spendingScriptAddress,
+      toUnit(
+        config.contracts.computationThread.policyId,
+        `${config.category.categoryId}${headerHash}`,
+      ),
+    );
+    if (utxos.length > 1) {
+      throw new Error("network-id workflow found duplicate forced-scan UTxOs");
+    }
+    return utxos[0];
+  };
+
+  /**
+   * Scan occupancy, read only for the stages whose progress it decides. An
+   * accepted artifact, or a deployment without the scan, never pays the query.
+   */
+  const forcedScanOutRef = async ({
+    admitted,
+    kind,
+  }: {
+    readonly admitted: AdmittedNetworkIdArtifact;
+    readonly kind: ActionKind;
+  }): Promise<string | undefined> => {
+    if (admitted.direction !== "forced") return undefined;
+    if (
+      kind !== "init" &&
+      kind !== "forced_step01" &&
+      kind !== "forced_bind" &&
+      !isForcedScanKind(kind)
+    ) {
+      return undefined;
+    }
+    if (config.contracts.forcedScan === undefined) return undefined;
+    const utxo = await forcedScanThread(admitted.prepared.headerHash);
+    return utxo === undefined ? undefined : outRefLabel(utxo);
+  };
+
+  /**
+   * The forced door is deliberately not a link in the linear chain the raw-L1
+   * family definition walks, so its occupancy is read directly. Nothing here is
+   * trusted: `submitNetworkIdForcedBind` re-authenticates the thread token, the
+   * handoff datum, the prover and the header before it spends this UTxO.
+   */
+  const forcedThreadOutRef = async (
+    headerHash: string,
+  ): Promise<string | undefined> => {
+    const forcedStep = requireForcedStep();
+    const utxos = await config.lucid.utxosAtWithUnit(
+      forcedStep.spendingScriptAddress,
+      toUnit(
+        config.contracts.computationThread.policyId,
+        `${config.category.categoryId}${headerHash}`,
+      ),
+    );
+    if (utxos.length > 1) {
+      throw new Error("network-id workflow found duplicate forced-step UTxOs");
+    }
+    return utxos[0] === undefined ? undefined : outRefLabel(utxos[0]);
+  };
+
+  /**
+   * Forced-door occupancy, read only for the stages whose progress it decides.
+   * An accepted artifact never touches the door, so it never pays the query.
+   */
+  const forcedDoorOccupied = async ({
+    admitted,
+    kind,
+  }: {
+    readonly admitted: AdmittedNetworkIdArtifact;
+    readonly kind: ActionKind;
+  }): Promise<boolean> => {
+    if (admitted.direction !== "forced") return false;
+    if (kind !== "init" && kind !== "forced_step01" && kind !== "forced_bind") {
+      return false;
+    }
+    return (
+      (await forcedThreadOutRef(admitted.prepared.headerHash)) !== undefined
+    );
+  };
+
+  const live = async (headerHash: string) => {
     const threadUnit = toUnit(
       config.contracts.computationThread.policyId,
-      `${config.category.categoryId}${prepared.headerHash}`,
+      `${config.category.categoryId}${headerHash}`,
     );
     const proofUnit = toUnit(
       config.contracts.fraudProof.policyId,
-      `${config.category.categoryId}${prepared.headerHash}`,
+      `${config.category.categoryId}${headerHash}`,
     );
     const stateQueueUnit = toUnit(
       config.contracts.stateQueuePolicyId,
-      `${STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${prepared.headerHash}`,
+      `${STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`,
     );
     const [step01, step02, proofs, stateQueue] = await Promise.all([
       config.lucid.utxosAtWithUnit(
@@ -854,12 +1377,88 @@ export const createNetworkIdWorkflowAdapter = (
     };
   };
 
+  /**
+   * The §2.5 field-2 opening this direction's final step needs, or `undefined`
+   * when the claim opens no field at all. The forced contradiction always opens
+   * the complete output field, and publishes it: the door reads every output's
+   * network id, so the bytes never ride the step redeemer.
+   */
+  const outputsOpeningPlanFor = (
+    admitted: AdmittedNetworkIdArtifact,
+  ): FaultProofFieldOpeningPlan | undefined =>
+    admitted.direction === "forced"
+      ? planNetworkIdOutputsOpening({
+          prepared: admitted.prepared,
+          owner: config.signer.paymentKeyHash,
+          publish: true,
+        })
+      : admitted.prepared.faultClaim.kind === "output-network"
+        ? planNetworkIdOutputsOpening({
+            prepared: admitted.prepared,
+            owner: config.signer.paymentKeyHash,
+          })
+        : undefined;
+
+  /**
+   * What the *final* step opens. The forced direction opens nothing there any
+   * more: `forced_scan` certifies field 2 in batches and step 02 takes its
+   * terminal state as established, so re-opening the field at finalization
+   * would put back exactly the single-transaction budget the scan escapes.
+   */
+  const finalStepOutputsOpeningPlanFor = (
+    admitted: AdmittedNetworkIdArtifact,
+  ): FaultProofFieldOpeningPlan | undefined =>
+    admitted.direction === "forced"
+      ? undefined
+      : outputsOpeningPlanFor(admitted);
+
+  /** The planned §10 batch schedule for an admitted forced artifact. */
+  const forcedScanPlanFor = (admitted: AdmittedNetworkIdArtifact) => {
+    const opening = outputsOpeningPlanFor(admitted);
+    if (opening === undefined) {
+      throw new Error(
+        "network-id forced scan requires the authenticated field-2 opening",
+      );
+    }
+    return {
+      opening,
+      plan: planNetworkIdForcedScan({
+        outputsCarriagePlan: opening,
+        outputCount: opening.itemCount,
+      }),
+    };
+  };
+
+  /** The batch the live scan thread is waiting for, read from its datum. */
+  const forcedScanNextStep = ({
+    utxo,
+    plan,
+  }: {
+    readonly utxo: UTxO;
+    readonly plan: ReturnType<typeof forcedScanPlanFor>["plan"];
+  }): NetworkIdForcedScanStep => {
+    if (utxo.datum == null) {
+      throw new Error(
+        `network-id forced scan thread ${outRefLabel(utxo)} has no inline datum`,
+      );
+    }
+    const datum = Data.from(utxo.datum, NetworkIdForcedScanDatum);
+    if (datum.data === null) {
+      throw new Error(
+        "network-id forced scan thread carries an empty scan state",
+      );
+    }
+    return networkIdForcedScanStepForState(plan, datum.data);
+  };
+
   const authenticateFieldInputs = async ({
     prepared,
     publications,
     certificate,
   }: {
-    readonly prepared: PreparedNetworkIdProof;
+    readonly prepared:
+      | PreparedNetworkIdProof
+      | PreparedNetworkIdWrongfulRejection;
     readonly publications: readonly UTxO[];
     readonly certificate?: UTxO;
   }): Promise<void> => {
@@ -918,14 +1517,16 @@ export const createNetworkIdWorkflowAdapter = (
   const observe = async (
     context: WorkflowContext,
   ): Promise<FraudProofWorkflowObservation> => {
-    const prepared = preparedFromArtifact(context.artifact);
+    const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
+    const prepared = admitted.prepared;
     const rawStage = await config.rawL1?.observe({
       headerHash: prepared.headerHash,
     });
     if (rawStage?.kind === "removed") {
       return { kind: "completed", terminal: rawStage.terminal };
     }
-    const state = rawStage === undefined ? await live(prepared) : undefined;
+    const state =
+      rawStage === undefined ? await live(prepared.headerHash) : undefined;
     const proofUnit =
       state?.proofUnit ??
       toUnit(
@@ -1054,11 +1655,8 @@ export const createNetworkIdWorkflowAdapter = (
       };
     }
     if (step02OutRef !== undefined) {
-      if (prepared.faultClaim.kind === "output-network") {
-        const opening = planNetworkIdOutputsOpening({
-          prepared,
-          owner: config.signer.paymentKeyHash,
-        });
+      const opening = finalStepOutputsOpeningPlanFor(admitted);
+      if (opening !== undefined) {
         const missing = await findMissingFaultProofFieldPublication({
           lucid: config.lucid,
           publisherAddress: config.signer.address,
@@ -1129,14 +1727,105 @@ export const createNetworkIdWorkflowAdapter = (
         action: action("step02", { threadOutRef: step02OutRef }),
       };
     }
+    if (
+      admitted.direction === "forced" &&
+      config.contracts.forcedScan !== undefined
+    ) {
+      const scanUtxo = await forcedScanThread(prepared.headerHash);
+      if (scanUtxo !== undefined) {
+        const scanOutRef = outRefLabel(scanUtxo);
+        const { opening, plan } = forcedScanPlanFor(admitted);
+        const missing = await findMissingFaultProofFieldPublication({
+          lucid: config.lucid,
+          publisherAddress: config.signer.address,
+          planned: opening,
+        });
+        if (missing !== undefined) {
+          const base = `network-id:publish-field:${opening.commitment}:${missing.digest}`;
+          return {
+            kind: "action_required",
+            action: action(
+              "publish_field",
+              {
+                threadOutRef: scanOutRef,
+                fieldCommitment: opening.commitment,
+                publicationDatumCbor: missing.datumCbor,
+              },
+              contentActionId({ base, entries: context.entries }),
+            ),
+          };
+        }
+        let certificateOutRef: string | undefined;
+        if (opening.plan.tier === "Certified") {
+          const certificate = await resolveFaultProofFieldPreimageCertificate({
+            lucid: config.lucid,
+            network: config.network,
+            planned: opening,
+            certificatePolicyId:
+              config.contracts.fieldPreimageCertificatePolicyId,
+          });
+          if (certificate === undefined) {
+            const publications =
+              await resolveFaultProofFieldCarriagePublications({
+                lucid: config.lucid,
+                publisherAddress: config.signer.address,
+                planned: opening,
+              });
+            if (publications === undefined) {
+              throw new Error(
+                "network-id tier-3 publications disappeared before certification",
+              );
+            }
+            const base = `network-id:certify-field:${opening.commitment}`;
+            return {
+              kind: "action_required",
+              action: action(
+                "certify_field",
+                {
+                  threadOutRef: scanOutRef,
+                  fieldCommitment: opening.commitment,
+                  chunkOutRefs: publications
+                    .map((utxo) => outRefLabel(utxo))
+                    .join(","),
+                },
+                contentActionId({ base, entries: context.entries }),
+              ),
+            };
+          }
+          certificateOutRef = outRefLabel(certificate);
+        }
+        const step = forcedScanNextStep({ utxo: scanUtxo, plan });
+        return {
+          kind: "action_required",
+          action: action(forcedScanKindFor(step), {
+            threadOutRef: scanOutRef,
+            scanAction: step.kind,
+            scanOrdinal: networkIdForcedScanStepOrdinal(step).toString(),
+            ...(certificateOutRef === undefined ? {} : { certificateOutRef }),
+          }),
+        };
+      }
+    }
     if (step01OutRef !== undefined) {
       return {
         kind: "action_required",
-        action: action("step01", {
-          threadOutRef: step01OutRef,
-          stateQueueBlockOutRef: stateQueueOutRef,
-        }),
+        action:
+          admitted.direction === "forced"
+            ? action("forced_step01", { threadOutRef: step01OutRef })
+            : action("step01", {
+                threadOutRef: step01OutRef,
+                stateQueueBlockOutRef: stateQueueOutRef,
+              }),
       };
+    }
+    if (admitted.direction === "forced") {
+      const forcedOutRef = await forcedThreadOutRef(prepared.headerHash);
+      if (forcedOutRef !== undefined) {
+        return {
+          kind: "action_required",
+          action: action("forced_bind", { threadOutRef: forcedOutRef }),
+        };
+      }
     }
     return {
       kind: "action_required",
@@ -1152,18 +1841,48 @@ export const createNetworkIdWorkflowAdapter = (
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async ({
       evidence,
+      classification,
     }: {
       readonly evidence: CanonicalBlockEvidence;
-    }): Promise<JournalJsonObject> =>
-      artifactFromPrepared(
+      readonly classification?: Extract<
+        CanonicalBlockClassification,
+        { readonly decision: "fault_detected" }
+      >;
+    }): Promise<JournalJsonObject> => {
+      if (
+        classification?.category === CATEGORY &&
+        classification.selected.violationId ===
+          NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID
+      ) {
+        const expectedNetworkId = config.contracts.expectedNetworkId;
+        const detections = detectNetworkIdWrongfulRejections({
+          block: evidence,
+          expectedNetworkId,
+        });
+        if (
+          detections[0]?.detectionId !== classification.selected.detectionId
+        ) {
+          throw new Error(
+            "network-id forced classification does not select the earliest authenticated wrongful rejection",
+          );
+        }
+        return networkIdForcedArtifactFromPrepared(
+          await createNetworkIdWrongfulRejectionPlanner(expectedNetworkId)({
+            block: evidence,
+          }),
+        ) as unknown as JournalJsonObject;
+      }
+      return artifactFromPrepared(
         await prepareNetworkIdFromCanonicalEvidence({
           evidence,
           expectedNetworkId: config.contracts.expectedNetworkId,
         }),
-      ),
+      );
+    },
     observe,
     preflight: async (context): Promise<FraudProofWorkflowPreflight> => {
-      const prepared = preparedFromArtifact(context.artifact);
+      const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
+      const prepared = admitted.prepared;
       const kind = actionKind(context.action);
       let mutationLease: StateQueueMutationLease | undefined;
       const boundaryInvocation = async (
@@ -1189,6 +1908,11 @@ export const createNetworkIdWorkflowAdapter = (
           return;
         }
         if (kind === "step01") {
+          if (admitted.direction !== "accepted") {
+            throw new Error(
+              "network-id forced artifact cannot enter the accepted step-01",
+            );
+          }
           await submitNetworkIdStep01({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -1204,7 +1928,7 @@ export const createNetworkIdWorkflowAdapter = (
               context.action.input.stateQueueBlockOutRef,
               "step-01 state-queue out-ref",
             ),
-            prepared,
+            prepared: admitted.prepared,
             referenceScriptUtxo: config.stepReferenceScripts[0],
             witnessReferenceScripts: config.witnessReferenceScripts,
             preSubmitBoundary: boundary,
@@ -1212,16 +1936,146 @@ export const createNetworkIdWorkflowAdapter = (
           });
           return;
         }
+        if (kind === "forced_step01") {
+          if (admitted.direction !== "forced") {
+            throw new Error(
+              "network-id accepted artifact cannot enter the forced step-01 handover",
+            );
+          }
+          requireForcedStep();
+          await submitNetworkIdForcedStep01({
+            lucid: config.lucid,
+            contracts: config.contracts,
+            categoryId: config.category.categoryId,
+            signer: config.signer,
+            threadOutRef: requireString(
+              context.action.input.threadOutRef,
+              "forced step-01 thread out-ref",
+            ),
+            prepared: admitted.prepared,
+            referenceScriptUtxo: config.stepReferenceScripts[0],
+            preSubmitBoundary: boundary,
+            awaitConfirmation: false,
+          });
+          return;
+        }
+        if (kind === "forced_bind") {
+          if (admitted.direction !== "forced") {
+            throw new Error(
+              "network-id accepted artifact cannot enter the forced door",
+            );
+          }
+          await submitNetworkIdForcedBind({
+            lucid: config.lucid,
+            contracts: config.contracts,
+            categoryId: config.category.categoryId,
+            signer: config.signer,
+            threadOutRef: requireString(
+              context.action.input.threadOutRef,
+              "forced-step thread out-ref",
+            ),
+            prepared: admitted.prepared,
+            referenceScriptUtxo: requireForcedStepReferenceScript(),
+            preSubmitBoundary: boundary,
+            awaitConfirmation: false,
+          });
+          return;
+        }
+        if (isForcedScanKind(kind)) {
+          if (admitted.direction !== "forced") {
+            throw new Error(
+              "network-id accepted artifact cannot enter the forced outputs scan",
+            );
+          }
+          requireForcedScan();
+          const threadOutRef = requireString(
+            context.action.input.threadOutRef,
+            "forced-scan thread out-ref",
+          );
+          const { opening, plan } = forcedScanPlanFor(admitted);
+          const scanUtxo = await forcedScanThread(prepared.headerHash);
+          if (
+            scanUtxo === undefined ||
+            outRefLabel(scanUtxo) !== threadOutRef
+          ) {
+            throw new Error(
+              "network-id forced scan thread moved away from the journaled batch out-ref",
+            );
+          }
+          const step = forcedScanNextStep({ utxo: scanUtxo, plan });
+          if (
+            forcedScanKindFor(step) !== kind ||
+            context.action.input.scanAction !== step.kind ||
+            context.action.input.scanOrdinal !==
+              networkIdForcedScanStepOrdinal(step).toString()
+          ) {
+            throw new Error(
+              "network-id forced scan action is no longer the batch the live thread state is waiting for",
+            );
+          }
+          const publications = await resolveFaultProofFieldCarriagePublications(
+            {
+              lucid: config.lucid,
+              publisherAddress: config.signer.address,
+              planned: opening,
+            },
+          );
+          if (publications === undefined) {
+            throw new Error(
+              "network-id forced scan carriage is not observable on L1",
+            );
+          }
+          const certificate =
+            opening.plan.tier === "Certified"
+              ? await resolveFaultProofFieldPreimageCertificate({
+                  lucid: config.lucid,
+                  network: config.network,
+                  planned: opening,
+                  certificatePolicyId:
+                    config.contracts.fieldPreimageCertificatePolicyId,
+                })
+              : undefined;
+          if (
+            opening.plan.tier === "Certified" &&
+            (certificate === undefined ||
+              context.action.input.certificateOutRef !==
+                outRefLabel(certificate))
+          ) {
+            throw new Error(
+              "network-id forced scan does not bind the observed field certificate",
+            );
+          }
+          await authenticateFieldInputs({
+            prepared,
+            publications,
+            ...(certificate === undefined ? {} : { certificate }),
+          });
+          await submitNetworkIdForcedScanAction({
+            lucid: config.lucid,
+            contracts: config.contracts,
+            categoryId: config.category.categoryId,
+            network: config.network,
+            signer: config.signer,
+            threadOutRef,
+            prepared: admitted.prepared,
+            outputsOpeningPlan: opening,
+            scan: plan,
+            step,
+            referenceScriptUtxo: requireForcedScanReferenceScript(),
+            carriageUtxos: publications,
+            certificateUtxos: certificate === undefined ? [] : [certificate],
+            preSubmitBoundary: boundary,
+            awaitConfirmation: false,
+          });
+          return;
+        }
         if (kind === "publish_field" || kind === "certify_field") {
-          if (prepared.faultClaim.kind !== "output-network") {
+          const opening = outputsOpeningPlanFor(admitted);
+          if (opening === undefined) {
             throw new Error(
               "transaction-network faults have no field-carriage action",
             );
           }
-          const opening = planNetworkIdOutputsOpening({
-            prepared,
-            owner: config.signer.paymentKeyHash,
-          });
           if (context.action.input.fieldCommitment !== opening.commitment) {
             throw new Error(
               "network-id field action does not match the prepared opening",
@@ -1296,13 +2150,7 @@ export const createNetworkIdWorkflowAdapter = (
           return;
         }
         if (kind === "step02") {
-          const opening =
-            prepared.faultClaim.kind === "output-network"
-              ? planNetworkIdOutputsOpening({
-                  prepared,
-                  owner: config.signer.paymentKeyHash,
-                })
-              : undefined;
+          const opening = finalStepOutputsOpeningPlanFor(admitted);
           const publications =
             opening === undefined
               ? []
@@ -1519,20 +2367,18 @@ export const createNetworkIdWorkflowAdapter = (
       }
     },
     reconcile: async (context): Promise<FraudProofWorkflowReconcileResult> => {
-      const prepared = preparedFromArtifact(context.artifact);
+      const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
+      const prepared = admitted.prepared;
       const kind = actionKind(context.action);
       let advanced: boolean;
       if (kind === "publish_field" || kind === "certify_field") {
-        if (prepared.faultClaim.kind !== "output-network") {
+        const opening = outputsOpeningPlanFor(admitted);
+        if (opening === undefined) {
           return {
             kind: "conflict",
             reason: "field action exists for a transaction-network fault",
           };
         }
-        const opening = planNetworkIdOutputsOpening({
-          prepared,
-          owner: config.signer.paymentKeyHash,
-        });
         if (context.action.input.fieldCommitment !== opening.commitment) {
           return {
             kind: "conflict",
@@ -1615,19 +2461,31 @@ export const createNetworkIdWorkflowAdapter = (
         const rawStage = await config.rawL1.observe({
           headerHash: prepared.headerHash,
         });
-        const stageAdvanced =
-          kind === "init"
-            ? rawStage.kind !== "not_started"
+        const forcedOccupied = await forcedDoorOccupied({ admitted, kind });
+        const scanOutRef = await forcedScanOutRef({ admitted, kind });
+        const scanOccupied = scanOutRef !== undefined;
+        const beyondStep01 =
+          rawStage.kind === "step"
+            ? rawStage.step >= 2
+            : rawStage.kind === "proof_token" || rawStage.kind === "removed";
+        const tokenMinted =
+          rawStage.kind === "proof_token" || rawStage.kind === "removed";
+        const stageAdvanced = isForcedScanKind(kind)
+          ? scanOutRef !== context.action.input.threadOutRef
+          : kind === "init"
+            ? rawStage.kind !== "not_started" || forcedOccupied || scanOccupied
             : kind === "step01"
-              ? rawStage.kind === "step"
-                ? rawStage.step >= 2
-                : rawStage.kind === "proof_token" || rawStage.kind === "removed"
-              : kind === "step02"
-                ? rawStage.kind === "proof_token" || rawStage.kind === "removed"
-                : rawStage.kind === "removed" ||
-                  (rawStage.kind === "proof_token" &&
-                    rawStage.nextRemovalOutRef !==
-                      context.action.input.stateQueueBlockOutRef);
+              ? beyondStep01
+              : kind === "forced_step01"
+                ? forcedOccupied || scanOccupied || beyondStep01
+                : kind === "forced_bind"
+                  ? !forcedOccupied && (scanOccupied || beyondStep01)
+                  : kind === "step02"
+                    ? tokenMinted
+                    : rawStage.kind === "removed" ||
+                      (rawStage.kind === "proof_token" &&
+                        rawStage.nextRemovalOutRef !==
+                          context.action.input.stateQueueBlockOutRef);
         const intendedTransactionConfirmed =
           await config.rawL1.transactionConfirmed({
             headerHash: prepared.headerHash,
@@ -1642,22 +2500,35 @@ export const createNetworkIdWorkflowAdapter = (
         }
         advanced = stageAdvanced && intendedTransactionConfirmed;
       } else {
-        const state = await live(prepared);
-        advanced =
-          kind === "init"
+        const state = await live(prepared.headerHash);
+        const forcedOccupied = await forcedDoorOccupied({ admitted, kind });
+        const scanOutRef = await forcedScanOutRef({ admitted, kind });
+        const scanOccupied = scanOutRef !== undefined;
+        const beyondStep01 =
+          state.step01 === undefined &&
+          (state.step02 !== undefined ||
+            state.proof !== undefined ||
+            state.stateQueue === undefined);
+        advanced = isForcedScanKind(kind)
+          ? scanOutRef !== context.action.input.threadOutRef
+          : kind === "init"
             ? state.step01 !== undefined ||
               state.step02 !== undefined ||
               state.proof !== undefined ||
-              state.stateQueue === undefined
+              state.stateQueue === undefined ||
+              forcedOccupied ||
+              scanOccupied
             : kind === "step01"
-              ? state.step01 === undefined &&
-                (state.step02 !== undefined ||
-                  state.proof !== undefined ||
-                  state.stateQueue === undefined)
-              : kind === "step02"
-                ? state.step02 === undefined &&
-                  (state.proof !== undefined || state.stateQueue === undefined)
-                : state.stateQueue === undefined;
+              ? beyondStep01
+              : kind === "forced_step01"
+                ? forcedOccupied || scanOccupied || beyondStep01
+                : kind === "forced_bind"
+                  ? !forcedOccupied && (scanOccupied || beyondStep01)
+                  : kind === "step02"
+                    ? state.step02 === undefined &&
+                      (state.proof !== undefined ||
+                        state.stateQueue === undefined)
+                    : state.stateQueue === undefined;
       }
       if (advanced) {
         if (context.txHash === undefined) {

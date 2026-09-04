@@ -19,6 +19,7 @@ import {
 } from "../src/network-id/index.js";
 import { publishProofChunks } from "../src/publish-proof-chunks.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { expectProofFit } from "./support/emulator/proof-fit.js";
 import {
   buildNetworkIdFixture,
   buildNetworkIdPostUtxoFixture,
@@ -550,14 +551,31 @@ describe("Q35 network-id real-fault lifecycle", () => {
         publishedPredecessorProofChunks: predecessorPublication.result.chunks,
       }),
     );
-    const { maxTxSize, maxTxExMem, maxTxExSteps } =
-      harness.emulator.protocolParameters;
-    for (const measured of [step01.measurement, step02.measurement]) {
-      expect(measured.completeSignedBytes).toBeLessThanOrEqual(maxTxSize);
-      expect(measured.executionMemory).toBeLessThanOrEqual(maxTxExMem);
-      expect(measured.executionSteps).toBeLessThanOrEqual(maxTxExSteps);
-      expect(measured.plutusV3ScriptCount).toBe(0);
+    const { maxTxExMem, maxTxExSteps } = harness.emulator.protocolParameters;
+    const measured = [
+      { stage: "step01", measurement: step01.measurement },
+      { stage: "step02", measurement: step02.measurement },
+    ];
+    for (const { stage, measurement } of measured) {
+      expectProofFit({
+        stage: `accepted-maximum-depth:${stage}`,
+        measurement,
+        maxTxExMem,
+        maxTxExSteps,
+      });
+      expect(measurement.plutusV3ScriptCount).toBe(0);
     }
+    console.info(
+      `[network-id-accepted-lifecycle:maximum-depth] ${JSON.stringify(
+        measured.map(({ stage, measurement }) => ({
+          stage,
+          bytes: measurement.completeSignedBytes,
+          margin: measurement.l1ByteMargin,
+          memory: measurement.executionMemory.toString(),
+          cpu: measurement.executionSteps.toString(),
+        })),
+      )}`,
+    );
     expect(step01.measurement.referenceInputCount).toBe(8);
     expect(step02.measurement.referenceInputCount).toBe(8);
     expect(step02.result.fraudProofUnit).toBe(

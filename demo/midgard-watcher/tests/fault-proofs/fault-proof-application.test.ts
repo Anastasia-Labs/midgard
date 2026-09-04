@@ -384,6 +384,8 @@ describe("watcher production fault-proof application V1", () => {
                   ? {
                       step01: true,
                       step02: true,
+                      forcedStep: true,
+                      forcedScan: true,
                       computationThreadMint: true,
                       fraudProofMint: true,
                       phasMembershipWithdraw: true,

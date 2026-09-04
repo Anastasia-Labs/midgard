@@ -1,6 +1,6 @@
 # Non-interactive fault-proof thread completion program V1
 
-- **Status:** Planned
+- **Status:** In progress (Wave 9 `networkId` complete; all other waves planned)
 - **Scope:** canonical V1 transaction-validation fault coverage
 - **Execution model:** rolling window of at most three concurrent family agents
   across at most two adjacent waves
@@ -527,6 +527,36 @@ Run three family agents:
 **Gate:** every typed rejection coordinate or transaction-global reason is
 bound from the forced leaf; equality/boundary cases refuse conviction; all
 existing accepted-invalid lifecycles remain green.
+
+**`networkId` result (2026-09-04).** Four physical scripts, two of them
+registered steps: step 01 dispatches the forced claim carrying the
+`ForcedNetworkIdMismatch` marker; the forced door binds the header, the
+counted forced-transactions root, the leaf's `ForcedTxInvalid {
+NetworkIdMismatch }` verdict and the committed body network id from the
+verified source bytes, refuses an honest body-network mismatch, and hands the
+thread to the forced scan; the forced scan is a §10 resumable walk over
+field 2 (a direct open under tiers 1–2, or envelope-grammar certification in
+batches under tier 3, then address-only network-id folds carrying a 32-byte
+checkpoint commitment; the on-chain caps are 64 outputs and 128 grammar items
+per transaction, and the driver folds 64 outputs over direct carriage, 48 over
+chunked carriage and certifies 64 items per grammar batch, the measured
+payable batches under the reserve) that refuses
+the first foreign output it reads and writes step 02's state only when the
+walk reaches the field's exact end; step 02 mints over that state without
+opening a field. A single-transaction scan was measured first and rejected:
+every output costs roughly 100k memory on chain (envelope head, slice and
+address decode), so one transaction fits about a hundred outputs against the
+20% reserve while a forced transaction's outputs field reaches the
+raw-carriage bound and beyond. Lifecycle evidence lives in
+`demo/midgard-fault-proofs/tests/network-id-wrongful-rejection-lifecycle.test.ts`
+and the fit ledger in
+`size-plans/network-id-wrongful-rejection-v1-fit-ledger.json`; the maximum
+supported shapes are the largest raw-carriage field (352 minimal outputs,
+15,139 bytes, one opening plus six folds) and the adjacent certified field (353
+outputs, six grammar transactions plus eight folds), both walked to completion
+with every transaction inside the reserve; the thinnest memory margin is the
+raw-carriage opening itself, which authenticates the whole 15 KB field in one
+transaction and cannot grow past the carriage bound.
 
 ### Wave 10 — signature and witness direction upgrades
 

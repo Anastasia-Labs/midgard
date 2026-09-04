@@ -271,10 +271,35 @@ describe("V1 deployment manifest", () => {
     // Re-derived from the wave-current `midgard-core` roster. The shared test
     // pins the same three numbers and this package fails closed against the
     // complete ordered copies above.
-    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(287);
-    expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES).toHaveLength(280);
-    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(281);
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(289);
+    expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES).toHaveLength(282);
+    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(283);
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(54);
+  });
+
+  it("names the network-id forced (wrongful-rejection) step and scan", () => {
+    // The forced door and the resumable output scan it hands off to are
+    // applied by `buildNetworkIdChain` but are not members of the chain's
+    // `steps`, so each can only be deployed, published and restored through
+    // its own canonical name and reference-script role.
+    const auxiliaryContracts = [
+      [
+        "V1 fraud-proof network-id forced step",
+        "fraudProofNetworkIdForcedStep",
+      ],
+      [
+        "V1 fraud-proof network-id forced scan",
+        "fraudProofNetworkIdForcedScan",
+      ],
+    ] as const;
+    for (const [role, contractName] of auxiliaryContracts) {
+      expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(contractName);
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
+        contractName,
+      );
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES).toContain(role);
+      expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES).toHaveProperty(role);
+    }
   });
 
   it("accepts a canonical authenticated V1 manifest", () => {

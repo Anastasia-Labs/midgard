@@ -27,6 +27,7 @@ export const makeNativeTx = ({
   redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST,
   validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
   validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
+  networkId = 0n,
 }: {
   readonly spendInputCbors: readonly Buffer[];
   readonly fee: bigint;
@@ -41,6 +42,8 @@ export const makeNativeTx = ({
   readonly redeemerTxWitsPreimageCbor?: Buffer;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
+  /** Body network id; 255 is the canonical absent value. */
+  readonly networkId?: bigint;
 }): MidgardNativeTxFull =>
   materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -85,7 +88,7 @@ export const makeNativeTx = ({
       fee,
       validityIntervalStart,
       validityIntervalEnd,
-      networkId: 0n,
+      networkId,
     },
     witnessSet: {
       addrTxWitsPreimageCbor:

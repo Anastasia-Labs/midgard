@@ -241,6 +241,7 @@ export const makeAlwaysSucceedsContracts = (
     networkId: {
       ...scaffoldChain(appendedFamilyFallback, 2),
       forcedStep: appendedFamilyFallback,
+      forcedScan: appendedFamilyFallback,
     },
     missingNativeScriptUtxo: scaffoldChain(appendedFamilyFallback, 7),
     nativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 5),

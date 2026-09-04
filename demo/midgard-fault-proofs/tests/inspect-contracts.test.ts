@@ -179,8 +179,18 @@ const Q13_APPLIED_STEP_HASHES = [
 // (`q13AppliedIdentities.catalogueRoot`), and it agrees with the live
 // catalogue derivation asserted on the preceding line.
 // `914d498f…` -> `85ecf82f…`.
+// Re-pinned 2026-09-04 for two blueprint movements that land together: the
+// removal of parameter-only checks recompiled fifteen fault-proof validators,
+// and the `networkId` wrongful-rejection direction gained its resumable
+// `forced_scan` step, which re-parameterizes the forced door that step 01
+// dispatches to. Both move applied step-01 hashes, so the fold moves; the
+// four hashes in `Q13_APPLIED_STEP_HASHES` and
+// `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` (32) are measured unchanged. Derived
+// by this suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1` under the
+// working-tree testnet blueprint (sha256 1a301746…, aiken v1.1.23+5adf783).
+// `e2919c17…` -> `690aee59…`.
 const Q13_CATALOGUE_ROOT =
-  "e2919c1776d2c2c358f9abbff9b13dcdd8a3f2717ec49ffecd634fcc19a91d11";
+  "690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

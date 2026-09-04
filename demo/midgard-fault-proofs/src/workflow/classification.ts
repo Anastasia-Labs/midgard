@@ -175,7 +175,10 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
     category: "mintAuthorization",
     violationIds: [MINT_AUTHORIZATION_VIOLATION_ID],
   },
-  { category: "networkId", violationIds: [NETWORK_ID_VIOLATION_ID] },
+  {
+    category: "networkId",
+    violationIds: [NETWORK_ID_VIOLATION_ID, "network-id-wrongful-rejection"],
+  },
   {
     category: "missingNativeScriptUtxo",
     violationIds: [MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID],

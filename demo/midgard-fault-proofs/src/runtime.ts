@@ -545,6 +545,29 @@ export type ResolvedInvalidSignatureDeploymentContracts = {
 export type SupportedFaultProofCategoryName = FraudProofCatalogueCategoryName;
 
 /**
+ * The network-id family's forced (wrongful-rejection) door.
+ *
+ * `buildNetworkIdChain` deliberately keeps it out of `steps` — it is a side
+ * entrance into step 02, not a third link — so it cannot be named by the
+ * step-indexed table below without binding step 02's script to the forced
+ * role. It carries its own canonical deployment name and reference-script
+ * role instead.
+ */
+export const NETWORK_ID_FORCED_STEP_DEPLOYMENT_ENTRY =
+  "fraudProofNetworkIdForcedStep" as const;
+
+/**
+ * The network-id family's resumable forced output scan.
+ *
+ * The forced door hands off to it, and it hands off to step 02 once every
+ * output of the rejected forced transaction has been folded. Like the forced
+ * door it is deliberately outside `steps`, so it too carries its own canonical
+ * deployment name and reference-script role.
+ */
+export const NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY =
+  "fraudProofNetworkIdForcedScan" as const;
+
+/**
  * Canonical manifest entries in the same order as each SDK chain's `steps`.
  *
  * The older families still have only their historical first-step deployment
@@ -1333,6 +1356,32 @@ export const resolveFaultProofDeploymentContracts = async ({
       deployed: deployedStepHash,
       derived: derivedStep.spendingScriptHash,
     });
+  }
+  if (categoryName === "networkId") {
+    const auxiliary = categoryContracts as {
+      readonly forcedStep?: { readonly spendingScriptHash: string };
+      readonly forcedScan?: { readonly spendingScriptHash: string };
+    };
+    const forcedStep = auxiliary.forcedStep;
+    const deployedForcedStepHash =
+      parsedDeploymentInfo[NETWORK_ID_FORCED_STEP_DEPLOYMENT_ENTRY]?.scriptHash;
+    if (forcedStep !== undefined && deployedForcedStepHash !== undefined) {
+      requireMatchingScriptHash({
+        label: `${NETWORK_ID_FORCED_STEP_DEPLOYMENT_ENTRY} forced-step script`,
+        deployed: deployedForcedStepHash,
+        derived: forcedStep.spendingScriptHash,
+      });
+    }
+    const forcedScan = auxiliary.forcedScan;
+    const deployedForcedScanHash =
+      parsedDeploymentInfo[NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY]?.scriptHash;
+    if (forcedScan !== undefined && deployedForcedScanHash !== undefined) {
+      requireMatchingScriptHash({
+        label: `${NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY} forced-scan script`,
+        deployed: deployedForcedScanHash,
+        derived: forcedScan.spendingScriptHash,
+      });
+    }
   }
   const readyCategory = await assertFraudProofCatalogueCategoryReady({
     catalogue,

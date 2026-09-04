@@ -1,5 +1,5 @@
 import {
-  FraudProofComputationThreadStepDatum,
+  NetworkIdForcedStepDatum,
   NetworkIdStep01SpendRedeemerSchema,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -64,9 +64,11 @@ export const submitNetworkIdForcedStep01 = async ({
   const forcedStep = contracts.forcedStep;
   if (forcedStep === undefined)
     throw new Error("networkId: forced binding step is not deployed");
+  // The forced door authenticates this marker as its input state; step 01
+  // refuses any other successor state (see `pass_forced_claim` on chain).
   const datum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: null },
-    FraudProofComputationThreadStepDatum,
+    { fraud_prover: signer.paymentKeyHash, data: "ForcedNetworkIdMismatch" },
+    NetworkIdForcedStepDatum,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: forcedStep.spendingScriptAddress,

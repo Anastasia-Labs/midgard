@@ -43,7 +43,7 @@ The same topology is represented in:
 
 Every family step named by deployment identity is consumed as an authenticated
 reference script. The catalogue root is
-`85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90`.
+`690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4`.
 
 ## Computation threads
 

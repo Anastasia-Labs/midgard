@@ -1303,6 +1303,8 @@ const referenceContracts = (
       return Object.freeze({
         step01: "fraudProofNetworkId",
         step02: "fraudProofNetworkIdStep02",
+        forcedStep: "fraudProofNetworkIdForcedStep",
+        forcedScan: "fraudProofNetworkIdForcedScan",
         ...base,
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         pexcludesWithdraw: "pexcludesWithdraw",
@@ -2643,6 +2645,8 @@ function taggedConfig(
             reference("step01"),
             reference("step02"),
           ] as const),
+          forcedStepReferenceScript: reference("forcedStep"),
+          forcedScanReferenceScript: reference("forcedScan"),
           fieldPreimageCertificateReferenceScript: reference(
             "fieldPreimageCertificateMint",
           ),
@@ -3386,6 +3390,12 @@ const taggedReferenceOutRefs = (
       case "networkId":
         return [
           ...tagged.config.stepReferenceScripts,
+          ...(tagged.config.forcedStepReferenceScript === undefined
+            ? []
+            : [tagged.config.forcedStepReferenceScript]),
+          ...(tagged.config.forcedScanReferenceScript === undefined
+            ? []
+            : [tagged.config.forcedScanReferenceScript]),
           ...Object.values(tagged.config.witnessReferenceScripts),
           tagged.config.fieldPreimageCertificateReferenceScript,
         ];

@@ -178,13 +178,13 @@ describe("DeploymentManifestV1 shared identity", () => {
       "scriptIntegrityHashMismatch",
       "distinctAssetAccumulationLimit",
     ]);
-    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(287);
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(289);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
-    ).toHaveLength(280);
+    ).toHaveLength(282);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES),
-    ).toHaveLength(281);
+    ).toHaveLength(283);
     expect(
       DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof min-ada step-02 tx yield"
@@ -344,6 +344,45 @@ describe("DeploymentManifestV1 shared identity", () => {
         ],
       ).toBe(contractName);
     });
+  });
+
+  it("names the network-id auxiliary forced door and forced scan", () => {
+    // Neither is a member of the network-id chain's `steps` — the forced door
+    // is a side entrance into step 02 and the forced scan is the resumable
+    // output walk between them — so a step-indexed roster reaches neither.
+    // Each has to carry its own contract name, reference-script role and
+    // auth-token name or it is applied on every deployment and published
+    // nowhere.
+    const networkIdAuxiliaryContracts = [
+      [
+        "V1 fraud-proof network-id forced step",
+        "fraudProofNetworkIdForcedStep",
+        "V1FpNetworkIdForced",
+      ],
+      [
+        "V1 fraud-proof network-id forced scan",
+        "fraudProofNetworkIdForcedScan",
+        "V1FpNetworkIdForcedScan",
+      ],
+    ] as const;
+    for (const [role, contractName, tokenName] of networkIdAuxiliaryContracts) {
+      expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(contractName);
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
+        contractName,
+      );
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
+        tokenName,
+      );
+    }
+    expect(
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES.indexOf(
+        "fraudProofNetworkIdForcedScan",
+      ),
+    ).toBe(
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES.indexOf(
+        "fraudProofNetworkIdForcedStep",
+      ) + 1,
+    );
   });
 
   it("authenticates the exact 54-entry fraud-proof catalogue root and proofs", () => {

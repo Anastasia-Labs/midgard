@@ -570,6 +570,20 @@ const registeredFaultProofScriptDescriptors = (
       );
     },
   ),
+  // `buildNetworkIdChain` keeps the forced (wrongful-rejection) door and the
+  // resumable output scan it hands off to out of `steps`, so the chain walk
+  // above never emits them. Each carries its own manifest name and
+  // reference-script role and is emitted here by name.
+  spendDescriptor(
+    "fraudProofNetworkIdForcedStep",
+    contracts.fraudProofContracts.networkId.forcedStep,
+    referenceScriptTargetForContract("fraudProofNetworkIdForcedStep"),
+  ),
+  spendDescriptor(
+    "fraudProofNetworkIdForcedScan",
+    contracts.fraudProofContracts.networkId.forcedScan,
+    referenceScriptTargetForContract("fraudProofNetworkIdForcedScan"),
+  ),
 ];
 
 const legacyFaultProofMissingStepDescriptors = (

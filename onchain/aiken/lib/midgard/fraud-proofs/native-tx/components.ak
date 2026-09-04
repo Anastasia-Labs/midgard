@@ -754,6 +754,27 @@ pub fn decode_midgard_tx_output_cbor(output_cbor: ByteArray) -> MidgardTxOutput 
   }
 }
 
+/// The network id of an output's address, read from the output's canonical
+/// CBOR without decoding its value, datum, or script reference.
+///
+/// The map head, the `0` key, and the address entry are read exactly as
+/// `decode_midgard_tx_output_cbor` reads them, so whenever the whole output
+/// decodes the two agree on the network id. The remaining entries are not
+/// walked: a scan that needs every output's network id, and nothing else,
+/// pays for the address alone. An output whose later entries are not
+/// canonical is a different fault (`OutputNonCanonical`), and its address
+/// network id is still the id the canonical decoder would have produced.
+pub fn decode_midgard_tx_output_network_id_cbor(output_cbor: ByteArray) -> Int {
+  let entry_count_tag = byte_at(output_cbor, 0)
+  expect and {
+      entry_count_tag >= 162,
+      entry_count_tag <= 164,
+    }
+  let offset = expect_byte(output_cbor, 1, 0)
+  let Pair(_, address) = decode_midgard_address_at(output_cbor, offset)
+  address.network_id
+}
+
 pub fn encode_midgard_address_witness(
   witness: MidgardAddressWitness,
 ) -> ByteArray {
