@@ -21,6 +21,7 @@ import {
   buildMinAdaFaultProofContracts,
   buildMinFeeFaultProofContracts,
   buildMintAuthorizationFaultProofContracts,
+  buildMintDeclaredAssetLimitFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
   buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
@@ -28,9 +29,15 @@ import {
   buildNativeScriptInvalidFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
+  buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
+  buildOutputReferenceScriptDecodingFaultProofContracts,
+  buildProtectedOutputSignerMissingFaultProofContracts,
   buildRedeemerCanonicityFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
+  buildResolvedOutputNonCanonicalFaultProofContracts,
   buildScriptIntegrityHashMissingFaultProofContracts,
+  buildSpendInputSignerMissingFaultProofContracts,
+  buildTransactionOutputNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildValueNotPreservedFaultProofContracts,
@@ -990,6 +997,13 @@ export const buildMinimalFaultProofContracts = async (
     realValueNotPreserved = false,
     realMintAuthorization = false,
     realDistinctAssetAccumulationLimit = false,
+    realMintDeclaredAssetLimit = false,
+    realTransactionOutputNonCanonical = false,
+    realResolvedOutputNonCanonical = false,
+    realSpendInputSignerMissing = false,
+    realProtectedOutputSignerMissing = false,
+    realObserversForbiddenOnUntaggedNetwork = false,
+    realOutputReferenceScriptDecoding = false,
     alwaysFraudProofCatalogue = false,
     alwaysStateQueue = false,
     referenceScriptAuthPolicyId,
@@ -1030,6 +1044,13 @@ export const buildMinimalFaultProofContracts = async (
     readonly realValueNotPreserved?: boolean;
     readonly realMintAuthorization?: boolean;
     readonly realDistinctAssetAccumulationLimit?: boolean;
+    readonly realMintDeclaredAssetLimit?: boolean;
+    readonly realTransactionOutputNonCanonical?: boolean;
+    readonly realResolvedOutputNonCanonical?: boolean;
+    readonly realSpendInputSignerMissing?: boolean;
+    readonly realProtectedOutputSignerMissing?: boolean;
+    readonly realObserversForbiddenOnUntaggedNetwork?: boolean;
+    readonly realOutputReferenceScriptDecoding?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
     /**
      * Test-only admission bypass for faults whose malformed header is rejected
@@ -1363,6 +1384,38 @@ export const buildMinimalFaultProofContracts = async (
   const distinctAssetAccumulationLimitContracts = await buildFamilyContracts(
     realDistinctAssetAccumulationLimit,
     buildDistinctAssetAccumulationLimitFaultProofContracts,
+  );
+  // Centrally registered proof-thread families: their lifecycle suites drive
+  // the very chain the catalogue root folds, so the real chain is opt-in here
+  // exactly like every other real family above.
+  const mintDeclaredAssetLimitContracts = await buildFamilyContracts(
+    realMintDeclaredAssetLimit,
+    buildMintDeclaredAssetLimitFaultProofContracts,
+  );
+  const transactionOutputNonCanonicalContracts = await buildFamilyContracts(
+    realTransactionOutputNonCanonical,
+    buildTransactionOutputNonCanonicalFaultProofContracts,
+  );
+  const resolvedOutputNonCanonicalContracts = await buildFamilyContracts(
+    realResolvedOutputNonCanonical,
+    buildResolvedOutputNonCanonicalFaultProofContracts,
+  );
+  const spendInputSignerMissingContracts = await buildFamilyContracts(
+    realSpendInputSignerMissing,
+    buildSpendInputSignerMissingFaultProofContracts,
+  );
+  const protectedOutputSignerMissingContracts = await buildFamilyContracts(
+    realProtectedOutputSignerMissing,
+    buildProtectedOutputSignerMissingFaultProofContracts,
+  );
+  const observersForbiddenOnUntaggedNetworkContracts =
+    await buildFamilyContracts(
+      realObserversForbiddenOnUntaggedNetwork,
+      buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
+    );
+  const outputReferenceScriptDecodingContracts = await buildFamilyContracts(
+    realOutputReferenceScriptDecoding,
+    buildOutputReferenceScriptDecodingFaultProofContracts,
   );
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
@@ -1896,6 +1949,28 @@ export const buildMinimalFaultProofContracts = async (
     redeemerCanonicity:
       redeemerCanonicityContracts?.redeemerCanonicity ??
       withActiveOperators.fraudProofContracts.redeemerCanonicity,
+    mintDeclaredAssetLimit:
+      mintDeclaredAssetLimitContracts?.mintDeclaredAssetLimit ??
+      withActiveOperators.fraudProofContracts.mintDeclaredAssetLimit,
+    transactionOutputNonCanonical:
+      transactionOutputNonCanonicalContracts?.transactionOutputNonCanonical ??
+      withActiveOperators.fraudProofContracts.transactionOutputNonCanonical,
+    resolvedOutputNonCanonical:
+      resolvedOutputNonCanonicalContracts?.resolvedOutputNonCanonical ??
+      withActiveOperators.fraudProofContracts.resolvedOutputNonCanonical,
+    spendInputSignerMissing:
+      spendInputSignerMissingContracts?.spendInputSignerMissing ??
+      withActiveOperators.fraudProofContracts.spendInputSignerMissing,
+    protectedOutputSignerMissing:
+      protectedOutputSignerMissingContracts?.protectedOutputSignerMissing ??
+      withActiveOperators.fraudProofContracts.protectedOutputSignerMissing,
+    observersForbiddenOnUntaggedNetwork:
+      observersForbiddenOnUntaggedNetworkContracts?.observersForbiddenOnUntaggedNetwork ??
+      withActiveOperators.fraudProofContracts
+        .observersForbiddenOnUntaggedNetwork,
+    outputReferenceScriptDecoding:
+      outputReferenceScriptDecodingContracts?.outputReferenceScriptDecoding ??
+      withActiveOperators.fraudProofContracts.outputReferenceScriptDecoding,
   };
 
   return {
