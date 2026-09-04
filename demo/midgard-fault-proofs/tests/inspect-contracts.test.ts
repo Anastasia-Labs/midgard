@@ -196,8 +196,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // hashes move and the fold moves with them. Derived by this suite's own
 // producer under the working-tree testnet blueprint (sha256 faf55254…,
 // aiken v1.1.23+5adf783). `690aee59…` -> `53211786…`.
+// Re-pinned 2026-09-04 (Wave 6, `unusedScriptWitness`): step 04 became a
+// bounded resumable alternate-source walk, re-parameterizing steps 01–04, so
+// the family's applied step-01 hash and the fold move. Derived under the
+// working-tree testnet blueprint (sha256 6236b3f8…). `53211786…` ->
+// `085027d4…`.
 const Q13_CATALOGUE_ROOT =
-  "5321178663c6170e8fe322b14e94b47109c5191220649ab6d54e55f502681b2c";
+  "085027d494940213bb1fdbf94657c7fc36d711737ae82b3508f24914df64a032";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
