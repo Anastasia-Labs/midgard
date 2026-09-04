@@ -9,11 +9,16 @@ import {
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
+  buildProtectedOutputSignerMissingFaultProofContracts,
   forcedVerdictSubject,
   missingSignatureVkeyHash,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import {
+  applyProtectedOutputSignerMissingScripts,
+  PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
+} from "../src/protected-output-signer-missing/contracts.js";
 import {
   classifyProtectedOutputSignerMissingFinding,
   detectProtectedOutputSignerMissingCompleteReplay,
@@ -21,6 +26,7 @@ import {
   PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
   PROTECTED_OUTPUT_SIGNER_MISSING_ID,
 } from "../src/protected-output-signer-missing/index.js";
+import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 const txId = "11".repeat(32);
@@ -241,5 +247,26 @@ describe("protectedOutputSignerMissing V1 binding", () => {
         ]),
       ),
     ).toEqual([]);
+  });
+});
+
+describe("protectedOutputSignerMissing registered-chain parity", () => {
+  it("applies the same chain the SDK registers for the same shared policies", async () => {
+    const fixture = await buildRegisteredChainFixture(
+      buildProtectedOutputSignerMissingFaultProofContracts,
+    );
+    const registered = fixture.contracts.protectedOutputSignerMissing;
+    const applied = applyProtectedOutputSignerMissingScripts(
+      fixture.applyParams,
+    );
+    expect(applied.map((step) => step.spendingScriptHash)).toStrictEqual(
+      registered.steps.map((step) => step.spendingScriptHash),
+    );
+    expect(registered.firstStep.spendingScriptHash).toBe(
+      applied[0].spendingScriptHash,
+    );
+    expect(applied.map((step) => step.blueprintTitle)).toStrictEqual([
+      ...PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
+    ]);
   });
 });

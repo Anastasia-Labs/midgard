@@ -21,10 +21,10 @@ import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
+  applyProtectedOutputSignerMissingScripts,
   prepareProtectedOutputSignerMissingEvidence,
   PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
   PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
-  PROTECTED_OUTPUT_SIGNER_MISSING_ID,
   type ProtectedOutputSignerMissingContracts,
   submitProtectedOutputSignerMissingCancel,
   submitProtectedOutputSignerMissingStep01Accepted,
@@ -35,15 +35,18 @@ import {
 } from "../src/protected-output-signer-missing/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { makeProtectedOutputSignerIsolatedEvaluator } from "./protected-output-signer-missing-isolated-evaluator.js";
-import { applyCompiledScript } from "./support/emulator/blueprints.js";
-import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import {
+  expectRegisteredChainParity,
+  familyStepsFromRegisteredChain,
+} from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { makeSpendingValidator } from "./support/emulator/validators.js";
+import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
   countedTransactionsRoot,
   EMULATOR_HEADER_CLOCK_HEADROOM_MS,
@@ -58,85 +61,71 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
-const firstStepDeploymentEntry = "fraudProofProtectedOutputSignerMissing";
+const coverage = createLifecycleCoverageRecorder();
 
-describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
+/**
+ * The registered chain is the deployed identity: the harness folds its first
+ * step into the catalogue root. The family-side application must reproduce it
+ * step for step before the suite drives it.
+ */
+const registeredContracts = async (
+  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
+) => {
+  const addressData = await Effect.runPromise(
+    addressDataFromBech32(
+      harness.contracts.fraudProof.spendingScriptAddress,
+    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
+  );
+  const registered =
+    harness.contracts.fraudProofContracts.protectedOutputSignerMissing;
+  const category = harness.catalogue.categories.protectedOutputSignerMissing;
+  expectRegisteredChainParity({
+    registered,
+    applied: applyProtectedOutputSignerMissingScripts({
+      blueprint: harness.realBlueprint,
+      network,
+      computationThreadPolicyId: harness.contracts.computationThread.policyId,
+      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
+      fraudProofTokenAddressData: addressData,
+      fieldPreimageCertificatePolicyId:
+        harness.contracts.fieldPreimageCertificate.policyId,
+      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+    }),
+    category,
+  });
+  const steps = familyStepsFromRegisteredChain(
+    registered.steps,
+    PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
+  );
+  const contracts: ProtectedOutputSignerMissingContracts = {
+    steps,
+    computationThread: harness.contracts.computationThread,
+    fraudProof: harness.contracts.fraudProof,
+    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+    fieldPreimageCertificatePolicyId:
+      harness.contracts.fieldPreimageCertificate.policyId,
+    fieldPreimageCertificateMintingScript:
+      harness.contracts.fieldPreimageCertificate.mintingScript,
+  };
+  return { steps, contracts, catalogue: harness.catalogue, category };
+};
+
+describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
   it("runs maximum-carriage evidence through cancel, restartable scan, mint and leased removal", async () => {
     const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: { alwaysFraudProofCatalogue: true },
+      contractOptions: {
+        realProtectedOutputSignerMissing: true,
+        alwaysFraudProofCatalogue: true,
+      },
       lucidOptions: {
         evaluator: makeProtectedOutputSignerIsolatedEvaluator(),
       },
     });
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info("protected-output-signer-missing:max:harness-ready");
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const titles = PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES;
-    const step05 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[4], [
-        harness.contracts.fraudProof.policyId,
-        addressData,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step04 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[3], [
-        step05.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step03 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[2], [
-        step04.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step02 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[1], [
-        step03.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step01 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[0], [
-        step02.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.hubOracle.policyId,
-      ]),
-    );
-    const steps = [step01, step02, step03, step04, step05] as const;
-    const contracts: ProtectedOutputSignerMissingContracts = {
-      steps: steps.map((step, index) => ({
-        ...step,
-        blueprintTitle: titles[index]!,
-        referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as ProtectedOutputSignerMissingContracts["steps"],
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        protectedOutputSignerMissing: {
-          categoryId: PROTECTED_OUTPUT_SIGNER_MISSING_ID,
-          scriptHash: step01.spendingScriptHash,
-        },
-      },
-    );
-    const category = catalogue.extraCategories.protectedOutputSignerMissing!;
+    const { steps, contracts, catalogue, category } =
+      await registeredContracts(harness);
     const credential = Buffer.alloc(28, 0xa7);
     const output = encodeMidgardTxOutput({
       address: Buffer.concat([Buffer.from([0x68]), credential]),
@@ -235,6 +224,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     });
     expect(evidence.witnessCarriage).toBe("Certified");
     expect(evidence.validSignerHashes).toEqual([]);
+    coverage.scenario("maximum_supported_evidence");
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info("protected-output-signer-missing:max:evidence-ready");
 
@@ -293,6 +283,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       }),
     );
     expect(cancellation.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.cancelled("step-01");
 
     const init = await initThread();
     const [threadUtxo] = await harness.proverLucid.utxosByOutRef([
@@ -384,6 +375,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       if (result.result.terminal) break;
     }
     expect(scanResults).toHaveLength(10);
+    coverage.resumed();
     const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
       submitProtectedOutputSignerMissingStep05({
         lucid: harness.proverLucid,
@@ -397,6 +389,8 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       }),
     );
     expect(step05Result.result.fraudProofUnit).toBeTruthy();
+    coverage.reason("ProtectedOutputSignerMissing", "accepted_invalid");
+    coverage.scenario("wrongful_acceptance_success");
     for (const capture of [
       init,
       step01Result,
@@ -436,24 +430,14 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       lucid: harness.proverLucid,
       contracts: harness.contracts,
     });
-    const baseDeployment = buildRemovalDeploymentInfo(
+    // A registered family resolves removal through the canonical catalogue:
+    // the manifest's fraudProofProtectedOutputSignerMissing entries carry the
+    // registered chain the harness built.
+    const deploymentInfo = buildRemovalDeploymentInfo(
       harness.contracts,
       catalogue,
       { removalReferenceScripts: removalReferences.published },
     );
-    const deploymentInfo = {
-      ...baseDeployment,
-      contracts: {
-        ...baseDeployment.contracts,
-        [firstStepDeploymentEntry]: {
-          scriptHash: step01.spendingScriptHash,
-          contract: {
-            type: step01.spendingScript.type,
-            cborHex: step01.spendingScript.script,
-          },
-        },
-      },
-    };
     const now = BigInt(harness.emulator.now());
     const removal = await captureEmulatorSubmission(harness.emulator, () =>
       submitRemoveFraudulentBlock({
@@ -462,18 +446,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
         deploymentInfo,
         network,
         signer: harness.proverSigner,
-        fraudCategory: {
-          name: "protectedOutputSignerMissing" as never,
-          categoryId: category.categoryId,
-          firstStepDeploymentEntry,
-          firstStepScriptHash: step01.spendingScriptHash,
-          fraudProof: {
-            policyId: harness.contracts.fraudProof.policyId,
-            spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-            spendingScriptAddress:
-              harness.contracts.fraudProof.spendingScriptAddress,
-          },
-        },
+        fraudCategory: "protectedOutputSignerMissing",
         fraudulentHeaderHash: setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,
@@ -492,6 +465,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     );
     expect(removal.result.fraudCategoryId).toBe("0000002b");
     expect(removal.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.scenario("permanent_proof_token_and_descendant_removal");
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info(
         JSON.stringify(
@@ -504,4 +478,32 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
         ),
       );
   }, 300_000);
+
+  it("declares the lifecycle coverage it exercised and the gaps it leaves open", () => {
+    // Recorded while the suite above ran, never pre-filled. The gate lists
+    // every omission; the suite pins that list so a silent regression of what
+    // it does cover, or an unannounced closure of a gap, both fail here.
+    expect(() =>
+      assertCompleteLifecycleCoverage({
+        coverage: coverage.snapshot(),
+        expectedReasonArms: ["ProtectedOutputSignerMissing"],
+        authenticationSeams: [
+          "tx_membership",
+          "field_certificate",
+          "forced_leaf",
+        ],
+        cancellablePhysicalSteps: [
+          "step-01",
+          "step-02",
+          "step-03",
+          "step-04",
+          "step-05",
+        ],
+        resumable: true,
+        hasAdjacentConsensusBound: false,
+      }),
+    ).toThrow(
+      "incomplete fault-proof lifecycle coverage: ProtectedOutputSignerMissing success directions: forced_rejection_wrong; scenarios: wrongful_forced_rejection_success, honest_accepted_block_refusal, honest_forced_rejection_refusal, reason_or_subject_coordinate_mutation; authentication seams: tx_membership, field_certificate, forced_leaf; cancel steps: step-02, step-03, step-04, step-05",
+    );
+  });
 });
