@@ -620,11 +620,11 @@ describe("fault-proof spend-input preimage cardinality", () => {
 
     // The ceiling the measured boundaries below are judged against, named so
     // the pinned cardinalities cannot be read as protocol-independent: it is
-    // the Cardano default this whole artifact measures execution fit by, and it
-    // is BELOW the consensus profile's own 16,500,000-unit capability floor, so
-    // the boundary is the conservative one.
+    // the emulator's 16,500,000-unit budget less the shared 20% execution
+    // reserve, so it sits BELOW the consensus profile's own 16,500,000-unit
+    // capability floor and the boundary is the conservative one.
     expect(EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem).toBe(16_500_000n);
-    expect(executionCeilings().memory).toBe(11_200_000n);
+    expect(executionCeilings().memory).toBe(13_200_000n);
     expect(
       MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits,
     ).toBe(16_500_000);
