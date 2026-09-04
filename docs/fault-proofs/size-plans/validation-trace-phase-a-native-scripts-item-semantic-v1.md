@@ -251,7 +251,7 @@ cd onchain/aiken && /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken b
 node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/phase_a_native_scripts_item/.test(v.title))console.log(v.title,Buffer.from(v.compiledCode,"hex").length)'
 # expect three scripts: main.spend ≈12,000; native.withdraw ≈12,548; foreign.withdraw ≈13,638; all ≤ 15,000
 /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken check -m phase_a_split   # §8 tests (13 validator-level + 1 property)
-cd demo/midgard-fault-proofs && pnpm test -- tests/submit-init-emulator-validation-dispute-phase-a-item.test.ts tests/semantic-resolver-arity-gate.test.ts tests/compiled-script-arity-gate.test.ts tests/inspect-contracts.test.ts
+cd demo/midgard-fault-proofs && pnpm test -- tests/submit-init-emulator-validation-dispute-phase-a-item.test.ts tests/inspect-contracts.test.ts
 cd ../midgard-core && pnpm test -- tests/deployment-manifest-identity.test.ts
 ```
 

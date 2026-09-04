@@ -1,4 +1,3 @@
-use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
@@ -110,7 +109,6 @@ validator main(
                 state.envelope_binder_script_hash,
                 state.traversal_normalizer_script_hash,
               ),
-              bytearray.length(deployment_id) == 32,
               normalization.outer_normalizer_route_is_exact_v1(
                 state,
                 input_script_hash,

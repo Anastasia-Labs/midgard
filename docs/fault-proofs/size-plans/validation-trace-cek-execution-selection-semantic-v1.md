@@ -265,7 +265,7 @@ node -e 'const b=require("./plutus.json");let n=0,bad=0;for(const v of b.validat
 cd /home/gumbo/midgard-hub/midgard
 pnpm --filter @al-ft/midgard-sdk test -- tests/validation-resolver-applied-hashes.test.ts
 pnpm --filter @al-ft/midgard-core test -- src/deployment-manifest-identity.test.ts   # manifest id re-pin
-pnpm --filter @al-ft/midgard-fault-proofs test -- tests/semantic-resolver-arity-gate.test.ts tests/validation-dispute-submit.test.ts tests/submit-init-emulator-validation-dispute.test.ts tests/submit-init-emulator-cek-execution-selection-v1.test.ts
+pnpm --filter @al-ft/midgard-fault-proofs test -- tests/validation-dispute-submit.test.ts tests/submit-init-emulator-validation-dispute.test.ts tests/submit-init-emulator-cek-execution-selection-v1.test.ts
 ```
 
 ## 10. Ordering and dependencies

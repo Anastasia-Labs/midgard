@@ -333,17 +333,15 @@ pub type PrepareSelectedActionV1 {
 pub type PrepareSelectedSpendRedeemer =
   ct.StepRedeemer<PrepareSelectedActionV1>
 
-/// Authenticates one semantic resolver selection against the complete deployed
-/// phase group. Keeping the exact group cardinality in this selector makes a
-/// stale or truncated parameter list fail closed before resolver handoff.
+/// Selects one semantic resolver from the deployed phase group. The group's
+/// cardinality is a deployment parameter and is asserted off-chain at
+/// parameter application, not here.
 pub fn select_semantic_resolver(
   semantic_resolver_script_hashes: List<ScriptHash>,
   expected_semantic_resolver_count: Int,
   semantic_resolver_index: Int,
 ) -> Option<ScriptHash> {
   if and {
-    expected_semantic_resolver_count > 0,
-    list.length(semantic_resolver_script_hashes) == expected_semantic_resolver_count,
     semantic_resolver_index >= 0,
     semantic_resolver_index < expected_semantic_resolver_count,
   } {

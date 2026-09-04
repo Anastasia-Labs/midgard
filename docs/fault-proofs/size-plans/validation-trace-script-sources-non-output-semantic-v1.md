@@ -302,8 +302,7 @@ Nothing named exists for this contract today beyond the `contracts.ts` title.
   `[[dispatcher.spendingScriptHash], fieldPreimageCertificatePolicyId?]`; the
   slot-0 resolver gains `reference_script_auth_policy_id` and loses
   `field_preimage_certificate_policy_id` — both changes flow through the
-  name-keyed semantic parameter map that `semantic-resolver-arity-gate.test.ts`
-  guards (declare the new name, drop nothing globally: other resolvers still use the certificate policy).
+  name-keyed semantic parameter map (declare the new name, drop nothing globally: other resolvers still use the certificate policy).
 - **Reference-script roles**: add the eight `V1VtSs…Yield` names to
   `REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` (`demo/midgard-sdk/src/reference-scripts.ts`)
   and to `midgard-core`'s `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES`
@@ -413,7 +412,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/script
 aiken check -m script_sources_raw_frame      # expected: ≥ 10 tests, 0 failures
 aiken check -m non_output_split              # expected: ≥ 16 tests, 0 failures
 cd ../../demo
-pnpm --filter @al-ft/midgard-fault-proofs test -- tests/semantic-resolver-arity-gate.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
+pnpm --filter @al-ft/midgard-fault-proofs test -- tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
 pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-script-sources-non-output-v1.test.ts   # 1 journey, ≤ 900 s
 pnpm --filter @al-ft/midgard-sdk test -- tests/reference-scripts.test.ts
 ```

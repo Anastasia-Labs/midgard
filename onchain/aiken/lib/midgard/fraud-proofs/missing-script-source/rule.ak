@@ -393,7 +393,6 @@ pub fn initial_scan_v1(
   authenticated: AuthenticatedResolvedSourcesV1,
   scan_script_hash: ByteArray,
 ) -> SourceScanStateV1 {
-  expect bytearray.length(scan_script_hash) == 28
   SourceScanStateV1 {
     authenticated,
     cursor: 0,
@@ -441,7 +440,6 @@ pub fn scan_source_v1(
         descriptor_leaf(descriptor),
         descriptor.siblings,
       ),
-      bytearray.length(next_script_hash) == 28,
     }
   let cursor = state.cursor + 1
   let found = or {

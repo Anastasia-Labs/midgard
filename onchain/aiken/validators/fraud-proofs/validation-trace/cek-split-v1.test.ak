@@ -1175,18 +1175,6 @@ test prepare_routes_the_core_step_kind_to_slot_three() {
   prepare_routes_kind(3)
 }
 
-/// The group cardinality is pinned at four: the retired single-resolver
-/// shape (a one-hash group) is refused before any hand-off.
-test prepare_refuses_the_retired_single_resolver_group() fail {
-  let f = finish_fixture()
-  run_prepare(
-    f,
-    [fixture.next_step_script_hash],
-    0,
-    expected_prepared_output(f),
-  )
-}
-
 test prepare_refuses_a_fifth_semantic_resolver_index() fail {
   let f = finish_fixture()
   run_prepare(
@@ -1198,22 +1186,6 @@ test prepare_refuses_a_fifth_semantic_resolver_index() fail {
       fixture.step_script_hash,
     ],
     4,
-    expected_prepared_output(f),
-  )
-}
-
-test prepare_refuses_a_widened_resolver_group() fail {
-  let f = finish_fixture()
-  run_prepare(
-    f,
-    [
-      fixture.next_step_script_hash,
-      fixture.step_script_hash,
-      fixture.step_script_hash,
-      fixture.step_script_hash,
-      fixture.step_script_hash,
-    ],
-    0,
     expected_prepared_output(f),
   )
 }

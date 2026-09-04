@@ -73,7 +73,6 @@ validator main(
       ct.Continue(Args { input_index, output_index, proof }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        expect list.length(final_validator_script_hashes) == 8
         continue(
           computation_thread_token_policy_id,
           step_datum,

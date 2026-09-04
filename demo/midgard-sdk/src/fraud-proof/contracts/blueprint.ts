@@ -33,6 +33,13 @@ import {
  */
 export type FaultProofBlueprintParameter = {
   readonly title: string;
+  /**
+   * The compiler's `schema.$ref` for the parameter, when it is a reference
+   * (`#/definitions/aiken~1crypto~1ScriptHash`, `#/definitions/Int`, ...).
+   * Carried so {@link applyBlueprintParams} can check each applied term has
+   * the SHAPE the declared type promises — see {@link assertParameterShapes}.
+   */
+  readonly schemaRef?: string;
 };
 
 export type FaultProofBlueprintValidator = {
@@ -59,7 +66,19 @@ export const deriveValidationTraceDeploymentId = (
       "Fraud-proof catalogue policy id must be exactly 28 bytes of hexadecimal",
     );
   }
-  return toHex(blake2b(fromHex(fraudProofCataloguePolicyId), { dkLen: 32 }));
+  const deploymentId = toHex(
+    blake2b(fromHex(fraudProofCataloguePolicyId), { dkLen: 32 }),
+  );
+  // The stage-one script-sources validators take this id as a plain
+  // `ByteArray` parameter and used to re-check its 32-byte width on every
+  // execution. Deployment parameterization is trusted on chain, so the width is
+  // asserted once here, where the value is produced, instead.
+  if (!/^[0-9a-f]{64}$/u.test(deploymentId)) {
+    throw new Error(
+      "Validation-trace deployment id must be exactly 32 bytes of hexadecimal",
+    );
+  }
+  return deploymentId;
 };
 
 export const parseFaultProofBlueprint = (
@@ -102,14 +121,24 @@ export const parseFaultProofBlueprint = (
         title: candidate.title,
         compiledCode: candidate.compiledCode,
         parameters: rawParameters.map((parameter, parameterIndex) => {
-          const parameterTitle = (parameter as { readonly title?: unknown })
-            .title;
+          const candidateParameter = parameter as {
+            readonly title?: unknown;
+            readonly schema?: unknown;
+          };
+          const parameterTitle = candidateParameter.title;
           if (typeof parameterTitle !== "string") {
             throw new Error(
               `validators[${index}].parameters[${parameterIndex}].title must be a string`,
             );
           }
-          return { title: parameterTitle };
+          const schemaRef =
+            typeof candidateParameter.schema === "object" &&
+            candidateParameter.schema !== null
+              ? (candidateParameter.schema as { readonly $ref?: unknown }).$ref
+              : undefined;
+          return typeof schemaRef === "string"
+            ? { title: parameterTitle, schemaRef }
+            : { title: parameterTitle };
         }),
       };
     }),
@@ -186,6 +215,7 @@ export const applyBlueprintParams = (
         "apply exactly the declared parameters (#609).",
     );
   }
+  assertParameterShapes(validator, params);
   const cacheKey = appliedScriptCacheKey(validator.compiledCode, params);
   const cached = appliedScriptCache.get(cacheKey);
   if (cached !== undefined) {
@@ -194,6 +224,118 @@ export const applyBlueprintParams = (
   const applied = applyParamsToScript(validator.compiledCode, [...params]);
   appliedScriptCache.set(cacheKey, applied);
   return applied;
+};
+
+/**
+ * Blueprint definitions whose values are 28-byte Blake2b-224 hashes. A term
+ * applied to such a parameter must be exactly 56 hexadecimal characters.
+ */
+const HASH28_DEFINITION_REFS: ReadonlySet<string> = new Set([
+  "#/definitions/aiken~1crypto~1ScriptHash",
+  "#/definitions/cardano~1assets~1PolicyId",
+  "#/definitions/aiken~1crypto~1VerificationKeyHash",
+]);
+
+const INT_DEFINITION_REF = "#/definitions/Int";
+const BYTEARRAY_DEFINITION_REF = "#/definitions/ByteArray";
+const LIST_DEFINITION_REF = /^#\/definitions\/List<(?<element>.+)>$/u;
+
+const HEX28 = /^[0-9a-f]{56}$/u;
+const HEX = /^(?:[0-9a-f]{2})*$/u;
+
+const describeShape = (value: Data): string =>
+  typeof value === "string"
+    ? `${(value.length / 2).toString()}-byte bytestring`
+    : typeof value === "bigint"
+      ? "integer"
+      : Array.isArray(value)
+        ? `list of ${value.length.toString()}`
+        : "constructor or map";
+
+/**
+ * Checks one applied term against the parameter's declared definition. Only
+ * definitions with a fixed on-chain shape are checked; `Address` and other
+ * structured parameters are encoded by dedicated helpers and pass through.
+ */
+const assertParameterShape = (
+  validatorTitle: string,
+  parameterTitle: string,
+  ref: string,
+  value: Data,
+): void => {
+  const refuse = (expected: string): never => {
+    throw new Error(
+      `Blueprint validator "${validatorTitle}" parameter "${parameterTitle}" ` +
+        `is declared ${ref.replace("#/definitions/", "").replace(/~1/gu, "/")} ` +
+        `and must be ${expected}, but a ${describeShape(value)} was applied. ` +
+        "On-chain code trusts deployment parameters; this is the only check.",
+    );
+  };
+  if (HASH28_DEFINITION_REFS.has(ref)) {
+    if (typeof value !== "string" || !HEX28.test(value)) {
+      refuse("a 28-byte hash as 56 lowercase hexadecimal characters");
+    }
+    return;
+  }
+  if (ref === INT_DEFINITION_REF) {
+    if (typeof value !== "bigint") {
+      refuse("an integer");
+    }
+    return;
+  }
+  if (ref === BYTEARRAY_DEFINITION_REF) {
+    if (typeof value !== "string" || !HEX.test(value)) {
+      refuse("a bytestring as lowercase hexadecimal characters");
+    }
+    return;
+  }
+  const list = LIST_DEFINITION_REF.exec(ref);
+  const elementDefinition = list?.groups?.["element"];
+  if (elementDefinition !== undefined) {
+    const elements: readonly Data[] = Array.isArray(value)
+      ? value
+      : refuse("a list");
+    const elementRef = `#/definitions/${elementDefinition}`;
+    elements.forEach((element, index) => {
+      assertParameterShape(
+        validatorTitle,
+        `${parameterTitle}[${index.toString()}]`,
+        elementRef,
+        element,
+      );
+    });
+  }
+};
+
+/**
+ * Midgard's on-chain code assumes every deployed script was parameterized
+ * honestly and correctly, so validators do not re-check the width of a script
+ * hash parameter, the cardinality of a deployed resolver list, or the domain
+ * of a deployment constant on every execution — doing so spent execution units
+ * re-proving a fixed fact. Those checks belong exactly here, at the one place
+ * this package applies parameters, and they are driven by the compiler's own
+ * declared parameter types rather than by a per-family list that could go
+ * stale: every parameter declared as a 28-byte hash, an integer, a bytestring,
+ * or a list of those is checked against the term actually applied to it.
+ * Cardinalities and value domains that are not expressible in the blueprint
+ * schema (a phase group's resolver count, the supported network ids) are
+ * asserted by the family builders next to the constant they mirror.
+ */
+export const assertParameterShapes = (
+  validator: FaultProofBlueprintValidator,
+  params: readonly Data[],
+): void => {
+  declaredParameters(validator).forEach((parameter, index) => {
+    const value = params[index];
+    if (parameter.schemaRef !== undefined && value !== undefined) {
+      assertParameterShape(
+        validator.title,
+        parameter.title,
+        parameter.schemaRef,
+        value,
+      );
+    }
+  });
 };
 
 /**

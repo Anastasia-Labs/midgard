@@ -117,7 +117,6 @@ pub fn initial_v1(
   next_expected_script_hash: ByteArray,
 ) -> StateV1 {
   expect bound.subject.direction == substrate.direction_wrongful_acceptance
-  expect bytearray.length(next_expected_script_hash) == 28
   with_checkpoint(
     StateV1 {
       bound,

@@ -343,8 +343,7 @@ yield, any withdraw route, any reference-script role beyond the finals.
    extend `TransitionTraceFaultProofContracts["transitionTrace"]` with
    `yields: { l2Open, l2Summaries, l2Replay, claimStructure, claimSource,
    claimEndpoints }`. Dispatcher hash depends only on the four parameters, so
-   there is no cycle. Arity: `semantic-resolver-arity-gate.test.ts` /
-   `compiled-script-arity-gate.test.ts` must see the new titles.
+   there is no cycle.
 2. **Reference-script roles**: add six rows to
    `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES`
    (`"V1 fraud-proof transition-trace final-4 L2 open yield": "V1FpTtF4L2OpenYield"`,

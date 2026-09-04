@@ -74,6 +74,18 @@ targets another environment.
   changes, and keep patches scoped to the request.
 - Before finalizing changes, run the narrow checks that prove the touched
   behavior and report exactly what ran.
+- On-chain code trusts deployment parameterization: a validator never
+  re-checks a `validator main(...)` parameter's width, cardinality, or domain.
+  Such facts are asserted once, off chain, where the parameter is applied
+  (`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`).
+- Every contract has lucid-evolution emulator scenario tests that succeed on
+  the happy path and fail where the validator must refuse; those scenarios are
+  the assurance that parameters were applied correctly. Whenever a change to a
+  validator affects its parameters (added, removed, reordered, retyped), the
+  same change updates every off-chain builder, parameter application,
+  deployment fixture, and emulator scenario that deploys it, and the emulator
+  scenarios are re-run in both polarities. No dedicated arity gate stands in
+  for that process.
 - Install the repository hooks once per clone: `bash .githooks/install` (or
   `pnpm --dir demo run hooks:install`). The pre-commit hook formats and lints
   exactly what you staged — Prettier and ESLint over `demo/**/*.{ts,tsx,md}`,

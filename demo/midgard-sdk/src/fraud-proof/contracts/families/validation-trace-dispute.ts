@@ -27,6 +27,33 @@ import {
   type FraudProofChain,
 } from "../types.js";
 
+/**
+ * The semantic-resolver group each prepare validator routes into, in
+ * {@link VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares} order, and the
+ * cardinality each validator's `expected_semantic_resolver_count` argument
+ * mirrors on chain (`validators/fraud-proofs/validation-trace/<phase>-v1.ak`,
+ * `lib/midgard/validation-resolver-v1.ak`). The validators no longer re-check
+ * the deployed list against that count on every execution — deployment
+ * parameterization is trusted on chain — so the builder asserts it here, once,
+ * before the list is applied.
+ */
+export const VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES = {
+  canonicalDecode: 2,
+  compactBinding: 1,
+  staticLedgerRules: 1,
+  inputSets: 2,
+  signatures: 4,
+  phaseANativeScripts: 14,
+  phaseAScriptPreconditions: 2,
+  resolveInputs: 6,
+  scriptSources: 29,
+  nativeScripts: 3,
+  scriptIntegrity: 4,
+  cek: 4,
+  valueAndMint: 11,
+  ledgerDelta: 8,
+} as const;
+
 export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
   proofItem: "fraud_proofs/validation_trace/proof_item_v1.main.else",
   dispute: "fraud_proofs/validation_trace/dispute_v1.main.spend",
@@ -938,11 +965,26 @@ export const buildValidationTraceDisputeChain = ({
       semanticResolverHashesSchema,
     );
 
-    const prepareTitles = Object.values(
+    const prepareTitles = Object.entries(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
-    );
+    ) as readonly (readonly [
+      keyof typeof VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
+      string,
+    ])[];
     const builtPrepareResolvers: SpendingValidator[] = [];
-    for (const [index, title] of prepareTitles.entries()) {
+    for (const [index, [phase, title]] of prepareTitles.entries()) {
+      const expectedGroupSize =
+        VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES[phase];
+      const groupSize = semanticResolverGroups[index]!.length;
+      if (groupSize !== expectedGroupSize) {
+        return yield* Effect.fail(
+          new Error(
+            `Validation-trace prepare resolver "${title}" routes into ` +
+              `${expectedGroupSize.toString()} semantic resolver(s) on chain ` +
+              `but ${groupSize.toString()} were deployed for it`,
+          ),
+        );
+      }
       const semanticResolverHashesData = Data.from(
         Data.to(
           semanticResolverGroups[index]!.map(
@@ -965,7 +1007,7 @@ export const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtPrepareResolvers.length !== 14) {
+    if (builtPrepareResolvers.length !== VALIDATION_TRACE_RESOLVER_COUNT) {
       return yield* Effect.fail(
         new Error("Validation-trace prepare resolver set is incomplete"),
       );
@@ -1009,6 +1051,18 @@ export const buildValidationTraceDisputeChain = ({
     ) {
       return yield* Effect.fail(
         new Error("Validation-trace resolver hashes must be distinct"),
+      );
+    }
+    // `boundary_v1` dispatches on a one-step resolver index over this list and
+    // used to re-check its length against `resolver_count` per execution; the
+    // deployed list is trusted on chain, so the cardinality is pinned here.
+    const resolverCount: number = resolvers.length;
+    if (resolverCount !== VALIDATION_TRACE_RESOLVER_COUNT) {
+      return yield* Effect.fail(
+        new Error(
+          `Validation-trace boundary routes over ${VALIDATION_TRACE_RESOLVER_COUNT.toString()} ` +
+            `one-step resolvers but ${resolverCount.toString()} were deployed`,
+        ),
       );
     }
     const resolverHashesSchema = Data.Array(Data.Bytes());

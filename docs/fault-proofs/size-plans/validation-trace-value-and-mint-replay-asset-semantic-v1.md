@@ -231,7 +231,6 @@ parameter on a semantic resolver, and any funding row for a validation-trace
 yield.
 
 - **SDK contracts** (`demo/midgard-sdk/src/fraud-proof/contracts.ts`): add `["reference_script_auth_policy_id", referenceScriptAuthPolicyId]` to `semanticResolverParameterValues` (name-keyed, ~line 3883 — the three asset dispatchers are then served automatically and the `builtSemanticResolvers.length !== 90` check is unchanged; make `referenceScriptAuthPolicyId` a required builder input for the validation-trace chain). Add `VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields.valueAndMintAssetFold = "fraud_proofs/validation_trace/value_and_mint_asset_fold_yield_v1.main.withdraw"` and `validationTraceDispute.yields.valueAndMintAssetFold = makeWithdrawalValidator(applyBlueprintParams(blueprint, title, [replayAsset.spendingScriptHash, outputAsset.spendingScriptHash, mintAsset.spendingScriptHash]))` (no cycle: dispatchers depend only on the role constant). Extend `ValidationTraceDisputeFaultProofContracts` with `yields`.
-- **Arity gate** `demo/midgard-fault-proofs/tests/semantic-resolver-arity-gate.test.ts`: derives parameters from the blueprint; passes once the name is in the map, fails closed (#609 message) otherwise.
 - **Reference-script roles**: `"V1 validation-trace value-and-mint asset-fold yield": "V1VtVamAssetFoldYield"` in `REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` (`demo/midgard-sdk/src/reference-scripts.ts`) and `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES` (`demo/midgard-core/src/deployment-manifest-identity.ts`, with its `deployment-manifest-identity.test.ts`); Aiken `asset_fold_role` must equal the string.
 - **Manifest / deployment info**: `demo/midgard-node/src/deployment-manifest.ts` step-name map entry → `validationTraceDisputeValueAndMintAssetFoldWithdraw`; `demo/midgard-node/src/commands/contract-deployment-info.ts` `withdrawalDescriptor("validationTraceDisputeValueAndMintAssetFoldWithdraw", contracts.validationTraceDispute.yields.valueAndMintAssetFold, "V1 validation-trace value-and-mint asset-fold yield")`; `demo/midgard-node/src/transactions/reference-scripts.ts` `manifestReferenceScriptTarget(...)` next to the min-ADA yield (line ~1565). Inspection fixtures: `inspect-contracts.test.ts` derives `oversizedAppliedSpendingScripts` from the applied scripts (no hardcoded list) but pins `Q13_CATALOGUE_ROOT` — re-pin once for the whole regeneration.
 - **Stake registration**: `demo/midgard-sdk/src/initialization.ts` (`.register.Stake(scriptRewardAddress(network, …yields.valueAndMintAssetFold.withdrawalScript))`, alongside the min-ADA yields at lines ~326–333); emulator `tests/support/emulator/setup-tx.ts` analogue of `registerStateQueueYieldRewardAccountsV1`.
@@ -276,7 +275,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/value_
 cd - && rm -rf /tmp/size-check-vam
 
 # 2. TypeScript (from demo/midgard-fault-proofs, pinned Node 22.22.2)
-pnpm exec vitest run tests/semantic-resolver-arity-gate.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
+pnpm exec vitest run tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
 pnpm exec vitest run tests/submit-init-emulator-value-and-mint-replay-asset-v1.test.ts   # publication margins > 0, award + removal
 # from demo/midgard-core
 pnpm exec vitest run tests/deployment-manifest-identity.test.ts

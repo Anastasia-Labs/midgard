@@ -22,10 +22,7 @@ import {
 // for each `fraud_proofs/missing_native_script_tx/step_NN.main.spend` entry of
 // `onchain/aiken/plutus.json`, built with `aiken build --env testnet`. Both are
 // read through `measureBlueprintValidatorBytes`, so this file never touches a
-// blueprint body itself — the #610 bare-loader scan in
-// `semantic-resolver-arity-gate.test.ts` is a deliberately dumb text scan, and
-// its own instruction is to word comments around the field name rather than
-// grow the allowlist for a file that loads nothing.
+// blueprint body itself; it measures and deploys nothing.
 const EXPECTED_UNAPPLIED_SIZES_BYTES = {
   step01: 7_872,
   step02: 7_199,

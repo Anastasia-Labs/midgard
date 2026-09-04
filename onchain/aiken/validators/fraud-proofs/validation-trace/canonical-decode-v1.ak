@@ -83,7 +83,6 @@ fn prepare_selected(
         evidence_hash,
       }
       and {
-        list.length(semantic_resolver_script_hashes) == 2,
         semantic_resolver_index >= 0,
         semantic_resolver_index < 2,
         state.pre_state.phase == CanonicalDecode,

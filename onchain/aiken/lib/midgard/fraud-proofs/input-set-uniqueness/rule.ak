@@ -141,7 +141,6 @@ pub fn initial_scan_state_v1(
   expect and {
       spend_count >= 0,
       reference_count >= 0,
-      bytearray.length(scan_script_hash) == 28,
       coordinate_is_in_range(
         bound.first_field_index,
         bound.first_item_index,

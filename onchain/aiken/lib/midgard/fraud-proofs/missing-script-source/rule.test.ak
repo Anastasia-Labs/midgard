@@ -291,11 +291,6 @@ test malformed_checkpoint_refuses() fail {
   ).cursor == 1
 }
 
-test wrong_successor_hash_refuses() fail {
-  let Pair(state, leaves) = initial(0, [h28b, h28b, h28b])
-  rule.scan_source_v1(state, descriptor(leaves, 0, 0, h28b), h32).cursor == 1
-}
-
 fn trace_authenticated_purpose(
   substitute_source_frontier: Bool,
 ) -> rule.AuthenticatedPurposeV1 {

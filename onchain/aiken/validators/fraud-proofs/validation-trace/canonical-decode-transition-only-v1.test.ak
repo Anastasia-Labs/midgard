@@ -732,21 +732,6 @@ test prepare_refuses_a_third_semantic_resolver_index() fail {
   )
 }
 
-test prepare_refuses_a_widened_resolver_list() fail {
-  let f = small_fixture()
-  run_prepare(
-    f,
-    [
-      fixture.step_script_hash,
-      fixture.next_step_script_hash,
-      fixture.step_script_hash,
-    ],
-    1,
-    f.transition,
-    expected_prepared_output(f),
-  )
-}
-
 /// The phase pin: a resolution state parked in another phase cannot be
 /// prepared through the canonical-decode resolver, even when its transition
 /// is structurally coherent for that phase.

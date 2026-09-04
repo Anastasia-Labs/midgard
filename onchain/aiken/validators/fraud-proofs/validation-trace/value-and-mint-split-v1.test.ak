@@ -1352,34 +1352,12 @@ test prepare_routes_finalize_to_slot_ten() {
   prepare_routes_kind(10)
 }
 
-/// The group cardinality is pinned at eleven: the retired single-resolver
-/// shape is refused before any hand-off.
-test prepare_refuses_the_retired_single_resolver_group() fail {
-  let f = begin_fixture()
-  run_prepare(
-    f,
-    [fixture.next_step_script_hash],
-    0,
-    expected_prepared_output(f),
-  )
-}
-
 test prepare_refuses_a_twelfth_semantic_resolver_index() fail {
   let f = begin_fixture()
   run_prepare(
     f,
     group_with_slot(-1, kind_count),
     kind_count,
-    expected_prepared_output(f),
-  )
-}
-
-test prepare_refuses_a_widened_resolver_group() fail {
-  let f = begin_fixture()
-  run_prepare(
-    f,
-    group_with_slot(0, kind_count + 1),
-    0,
     expected_prepared_output(f),
   )
 }

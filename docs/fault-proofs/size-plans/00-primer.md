@@ -195,8 +195,8 @@ state-queue redesign directly.
   (compare `min_ada/yield.tx_role`), deployment-manifest entries, and the
   contract-deployment-info / inspection fixtures.
 - **SDK contract wiring.** `demo/midgard-sdk/src/fraud-proof/contracts/`
-  applies parameters by blueprint title; new validators need entries and the
-  arity test (`semantic-resolver-arity-gate.test.ts`) must see them.
+  applies parameters by blueprint title; new validators need entries, and
+  their emulator scenarios (both polarities) must deploy them.
 - **Submit routing.** `demo/midgard-fault-proofs/src/validation-dispute/submit.ts`
   attaches resolver reference inputs by deployment entry; a yield needs its
   reference input and a zero withdrawal added to the transaction builder.

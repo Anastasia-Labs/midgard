@@ -807,7 +807,6 @@ pub fn execution_attestation_settlement_is_exact_v1(
 ) -> Bool {
   let expected_output_state: Data = validation_resolution_v1.winning_resolution()
   and {
-    bytearray.length(expected_award_script_hash) == 28,
     execution_attestation_is_bound_to_envelope_v1(
       state,
       envelope,

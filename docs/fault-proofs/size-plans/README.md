@@ -5,8 +5,9 @@ under the 16,384-byte transaction limit. Read [`00-primer.md`](00-primer.md)
 first; every plan assumes it.
 
 Sizes are raw unapplied blueprint bodies from the reproducible 2026-09-01
-build. `fraud_proofs/withdrawal_mistag/step_03` (25,518) is being fixed
-separately and has no plan here.
+build. `fraud_proofs/withdrawal_mistag/step_03` measured 25,518 in that build;
+it has since been reduced to 11,457, publishes under the harness fit
+assertion, and needs no plan here.
 
 ## validation_trace: CEK semantics
 

@@ -19,6 +19,13 @@ import {
   type FraudProofChain,
 } from "../types.js";
 
+/**
+ * The route-index domain `validators/fraud-proofs/transition-trace/route-v1.ak`
+ * dispatches over: one entry per final validator, in
+ * {@link TRANSITION_TRACE_FAULT_PROOF_TITLES} final order.
+ */
+export const TRANSITION_TRACE_ROUTE_FINAL_COUNT = 8;
+
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
   route: "fraud_proofs/transition_trace/route_v1.main.spend",
   control: "fraud_proofs/transition_trace/control_v1.main.spend",
@@ -130,6 +137,18 @@ export const buildTransitionTraceChain = ({
     ) {
       return yield* Effect.fail(
         new Error("Transition-trace final validator hashes must be distinct"),
+      );
+    }
+    // `route_v1` selects a final validator by route index over this list and
+    // used to re-check `list.length == 8` on every execution. Deployment
+    // parameterization is trusted on chain, so the cardinality is pinned here.
+    const finalCount: number = finals.length;
+    if (finalCount !== TRANSITION_TRACE_ROUTE_FINAL_COUNT) {
+      return yield* Effect.fail(
+        new Error(
+          `Transition-trace route dispatches over ${TRANSITION_TRACE_ROUTE_FINAL_COUNT.toString()} ` +
+            `final validators but ${finalCount.toString()} were deployed`,
+        ),
       );
     }
     const finalHashesSchema = Data.Array(Data.Bytes());

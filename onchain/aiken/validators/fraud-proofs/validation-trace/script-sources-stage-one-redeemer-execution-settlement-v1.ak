@@ -65,27 +65,20 @@ validator main(
             output_state,
           ) {
             expect Some(state) = input_state
-            and {
-              bytearray.length(deployment_id) == 32,
-              bytearray.length(expected_traversal_normalizer_script_hash) == 28,
-              bytearray.length(expected_outer_normalizer_script_hash) == 28,
-              bytearray.length(expected_fold_map_executor_script_hash) == 28,
-              bytearray.length(expected_finalize_frame_executor_script_hash) == 28,
-              normalization.execution_attestation_settlement_is_exact_v1(
-                state,
-                envelope,
-                deployment_id,
-                state.envelope_binder_script_hash,
-                expected_traversal_normalizer_script_hash,
-                expected_outer_normalizer_script_hash,
-                expected_fold_map_executor_script_hash,
-                expected_finalize_frame_executor_script_hash,
-                input_script_hash,
-                expected_award_script_hash,
-                output_script_hash,
-                output_state,
-              ),
-            }
+            normalization.execution_attestation_settlement_is_exact_v1(
+              state,
+              envelope,
+              deployment_id,
+              state.envelope_binder_script_hash,
+              expected_traversal_normalizer_script_hash,
+              expected_outer_normalizer_script_hash,
+              expected_fold_map_executor_script_hash,
+              expected_finalize_frame_executor_script_hash,
+              input_script_hash,
+              expected_award_script_hash,
+              output_script_hash,
+              output_state,
+            )
           },
         )
       }

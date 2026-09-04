@@ -1,4 +1,3 @@
-use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_data_traverse_v1
@@ -122,7 +121,6 @@ validator main(
                 deployment_id,
                 state.envelope_binder_script_hash,
               ),
-              bytearray.length(deployment_id) == 32,
               normalization.traversal_normalizer_route_is_exact_v1(
                 state,
                 input_script_hash,

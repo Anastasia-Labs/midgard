@@ -107,7 +107,6 @@ validator main(
                   actual_next_item_control_hash,
                 )
                 and {
-                  bytearray.length(deployment_id) == 32,
                   normalization.outer_normalized_state_is_bound_v1(
                     state,
                     normalization.finalize_frame_family,

@@ -350,7 +350,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/phase_
 # expect: main.spend 12,324 ± regeneration drift, and ≤ 15,000
 /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken check -m phase_a   # all phase_a tests pass; new count = existing 7 + those in §8
 cd demo/midgard-fault-proofs && pnpm test -- tests/submit-init-emulator-validation-dispute-phase-a-signature.test.ts   # 1 publication-fit + 1 lifecycle + 1 negative + 1 cancel + 1 max-shape
-pnpm test -- tests/semantic-resolver-arity-gate.test.ts tests/compiled-script-arity-gate.test.ts tests/inspect-contracts.test.ts
+pnpm test -- tests/inspect-contracts.test.ts
 MIDGARD_PRINT_PROOF_FIT=1 pnpm test -- tests/submit-init-emulator-validation-dispute-phase-a-signature.test.ts   # prints ExUnits per stage
 ```
 

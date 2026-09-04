@@ -53,7 +53,7 @@ exception instead.
 Issue numbers, Goal-program identifiers (`W25`, `Q35`, `C21`, `RF-021`), and
 review-row labels change meaning as the program moves. They never appear in a
 file name or an identifier. A file is named for what it does
-(`replay-authority-fixtures.ts`, `semantic-resolver-arity-gate.test.ts`); the
+(`replay-authority-fixtures.ts`, `final-catalogue-emulator.ts`); the
 ticket that motivated it is the first line of its doc comment, where it can be
 read, searched, and retired without a rename.
 

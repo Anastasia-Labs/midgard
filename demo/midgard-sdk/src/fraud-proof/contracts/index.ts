@@ -1,4 +1,5 @@
 export {
+  assertParameterShapes,
   deriveValidationTraceDeploymentId,
   type FaultProofBlueprint,
   type FaultProofBlueprintParameter,
@@ -188,6 +189,7 @@ export {
   type BuildNetworkIdFaultProofContractsParams,
   NETWORK_ID_FAULT_PROOF_TITLES,
   type NetworkIdFaultProofContracts,
+  SUPPORTED_NETWORK_IDS,
 } from "./families/network-id.js";
 export {
   buildNoReferenceInputFaultProofContracts,
@@ -277,6 +279,7 @@ export {
   buildTransitionTraceFaultProofContracts,
   type BuildTransitionTraceFaultProofContractsParams,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
+  TRANSITION_TRACE_ROUTE_FINAL_COUNT,
   type TransitionTraceFaultProofContracts,
 } from "./families/transition-trace.js";
 export {
@@ -295,6 +298,7 @@ export {
   buildValidationTraceDisputeFaultProofContracts,
   type BuildValidationTraceDisputeFaultProofContractsParams,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
+  VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
   type ValidationTraceDisputeFaultProofContracts,
 } from "./families/validation-trace-dispute.js";
 export {

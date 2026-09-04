@@ -149,13 +149,7 @@ validator main(
                     base.resolution.pre_state,
                     transition,
                   ),
-                  bytearray.length(deployment_id) == 32,
                   bytearray.length(input_script_hash) == 28,
-                  bytearray.length(traversal_normalizer_script_hash) == 28,
-                  bytearray.length(outer_normalizer_script_hash) == 28,
-                  bytearray.length(fold_map_executor_script_hash) == 28,
-                  bytearray.length(finalize_frame_executor_script_hash) == 28,
-                  bytearray.length(settlement_script_hash) == 28,
                   output_script_hash == traversal_normalizer_script_hash,
                   output_state == expected_output_state,
                 }

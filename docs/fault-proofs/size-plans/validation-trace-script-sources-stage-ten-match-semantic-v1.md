@@ -357,10 +357,6 @@ TypeScript producer of ScriptSources stage 7–12 one-step arguments (see §7).
   constant). Extend `ValidationTraceDisputeFaultProofContracts` with `yields`.
   The semantic title list and `script_sources_semantic_resolver_count = 29` are
   unchanged, so global slot 54 and `VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1` stay.
-- **Arity gate** `demo/midgard-fault-proofs/tests/semantic-resolver-arity-gate.test.ts`
-  derives parameters from the blueprint; passes once the name is in the map,
-  fails closed with the #609 message otherwise. `compiled-script-arity-gate.test.ts`
-  sees the new withdraw validator.
 - **Reference-script roles**: `"V1 validation-trace script-sources redeemer-item-step yield": "V1VtSsRedeemerItemStepYield"`
   in `REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` (`demo/midgard-sdk/src/reference-scripts.ts`,
   next to the min-ADA yields at lines 215–216) and in
@@ -520,7 +516,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/script
 cd - && rm -rf /tmp/size-check-ssb
 
 # 2. TypeScript (from demo/midgard-fault-proofs, pinned Node 22.22.2)
-pnpm exec vitest run tests/semantic-resolver-arity-gate.test.ts tests/compiled-script-arity-gate.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
+pnpm exec vitest run tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
 pnpm exec vitest run tests/submit-init-emulator-script-sources-stage-ten-match-v1.test.ts   # publication margins > 0, award + removal
 # from demo/midgard-core
 pnpm exec vitest run tests/deployment-manifest-identity.test.ts

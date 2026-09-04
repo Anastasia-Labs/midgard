@@ -78,7 +78,6 @@ validator main(
               evidence.challenger_post,
             )
             and {
-              list.length(one_step_resolver_script_hashes) == validation_resolution_v1.resolver_count,
               resolver_index == validation_resolution_v1.resolver_index(
                 evidence.pre_state.phase,
               ),
