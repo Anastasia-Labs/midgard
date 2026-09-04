@@ -44,11 +44,11 @@ pub const program_envelope_version: Int = 1
 /// Exact maximum of `[1, [1, 1, 0], h32, uint32, uint32]`.
 pub const max_program_envelope_cbor_bytes = 50
 
-/// `floor((64 MiB - 446 fixed V1 DA bytes) / 42 minimum tuple bytes)`.
+/// `floor((64 MiB - 447 fixed V1 DA bytes) / 42 minimum tuple bytes)`.
 pub const max_program_node_count = 1597819
 
-/// Structural DA upper bound after the exact 446-byte fixed V1 framing.
-pub const max_program_material_byte_length = 67108418
+/// Structural DA upper bound after the exact 447-byte fixed V1 framing.
+pub const max_program_material_byte_length = 67108417
 
 pub type ProgramEnvelopeV1 {
   term_root: ByteArray,

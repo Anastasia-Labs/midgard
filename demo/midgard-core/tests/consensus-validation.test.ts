@@ -535,7 +535,10 @@ describe("canonical V1 consensus transaction bounds", () => {
     const aboveOldLimit = encodeMidgardVersionedScriptListPreimage([
       ...Array.from({ length: 220 }, () => ({
         language: "PlutusV3" as const,
-        scriptBytes: cekProgramEnvelope(1_597_819n, 67_108_418n),
+        scriptBytes: cekProgramEnvelope(
+          BigInt(MIDGARD_CONSENSUS_LIMITS.maxCekProgramNodeCount),
+          BigInt(MIDGARD_CONSENSUS_LIMITS.maxCekProgramMaterialBytes),
+        ),
       })),
     ]);
     const malformed = Buffer.alloc(40_000, 0x80);

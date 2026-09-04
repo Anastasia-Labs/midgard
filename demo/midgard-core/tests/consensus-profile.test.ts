@@ -64,7 +64,10 @@ describe("canonical V1 consensus profile", () => {
       MIDGARD_ENVELOPE_MEASUREMENTS.maxScriptEnvelopeResolverArgumentsBytes,
     ).toBe(7_546);
     expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramMaterialBytes).toBe(
-      67_108_418,
+    // 64 MiB minus the 447-byte fixed V1 DA framing that a payload carrying
+    // any program material pays. `midgard-sdk`'s da-payload suite measures that
+    // framing against the canonical encoder rather than restating it.
+      67_108_417,
     );
     expect(MIDGARD_CONSENSUS_LIMITS.maxCekBlobChunkBytes).toBe(4_095);
     expect(MIDGARD_CONSENSUS_LIMITS.maxCekBuiltinTag).toBe(86);

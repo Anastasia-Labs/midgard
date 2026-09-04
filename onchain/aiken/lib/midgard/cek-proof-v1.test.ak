@@ -116,7 +116,7 @@ test canonical_program_envelope_decodes_with_exact_bounds() {
       h_01,
       cek_proof_v1.max_program_node_count,
       cek_proof_v1.max_program_material_byte_length,
-    ) == #"5d6e5b270acedb1791dcb8a1cd7552efc37be56f8b2370e76f75729700cd9e17",
+    ) == #"bb37134727abbc3462385a48497eca4d0090b8cda1d291f028cc864716ba0a15",
   }
 }
 

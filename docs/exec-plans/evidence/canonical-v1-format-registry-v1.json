@@ -10245,7 +10245,7 @@
             "1: exact three-item UPLC version [1,1,0]",
             "2: exact 32-byte term root",
             "3: node count 1..1597819",
-            "4: material byte length 1..67108418"
+            "4: material byte length 1..67108417"
           ],
           "constructorTagsNotApplicable": "Definite CBOR array with no sum-type constructor.",
           "arrayArity": 5,

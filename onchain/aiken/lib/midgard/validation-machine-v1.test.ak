@@ -9537,7 +9537,7 @@ fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
   }
   expect and {
       bytearray.length(maximum_program_envelope) == 50,
-      maximum_program_envelope_hash == #"e4fe7f19ef343b55fef5a5c4a80383dd4bbe4bc7009db0a3214bfec086584697",
+      maximum_program_envelope_hash == #"6f25a78e8bbffffce7c062e1281984afa4b5fae7a479db7f191c56ebe4fd1260",
     }
   CekSelectionFixtureV1 { pre, evidence, tampered_post }
 }
