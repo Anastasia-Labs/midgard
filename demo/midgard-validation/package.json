@@ -152,6 +152,8 @@
     "typecheck": "tsc --noEmit",
     "fixtures:ordered-collection-boundary-aiken:sync": "pnpm run build && node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs",
     "fixtures:ordered-collection-boundary-aiken:check": "pnpm run build && node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs --check",
+    "fixtures:cek-core-step-v1:sync": "pnpm run build && node scripts/generate-cek-core-step-v1-goldens.mjs",
+    "fixtures:cek-core-step-v1:check": "pnpm run build && node scripts/generate-cek-core-step-v1-goldens.mjs --check",
     "test": "vitest run",
     "test:evidence": "node scripts/run-scan-bench-evidence-v1.mjs && MIDGARD_VALIDATION_EVIDENCE=1 vitest run tests/resolver-proof-fit-sweep.test.ts",
     "test:evidence:update": "MIDGARD_SCAN_BENCH_UPDATE=1 node scripts/run-scan-bench-evidence-v1.mjs && MIDGARD_VALIDATION_EVIDENCE=1 vitest run tests/resolver-proof-fit-sweep.test.ts",

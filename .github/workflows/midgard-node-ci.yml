@@ -258,6 +258,18 @@ jobs:
       # hand-mirrored twins again the moment the boundary moves (#588).
       - name: Check ordered-collection boundary Aiken constants
         run: pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:check
+      # The V1 CEK core-step channel. Before it the Aiken CEK and the TypeScript
+      # CEK were pinned against each other by seventeen integer tags and one
+      # hand-pasted CBOR vector; nothing proved that a step the TypeScript trace
+      # builder emits is a step `verify_core_step_v1` accepts. The generator
+      # compiles the curated programs, emits every step's `CoreStepEvidenceV1`
+      # CBOR and state hashes plus per-program negative twists, and writes both
+      # the JSON fixture and the generated Aiken module. Same footing as the
+      # channels above: both artifacts are regenerated from the TypeScript twins
+      # and never hand-edited, so without this step an edited producer plus a
+      # `:sync` re-greens both language suites unnoticed.
+      - name: Check V1 CEK core-step golden vectors
+        run: pnpm --dir demo/midgard-validation run fixtures:cek-core-step-v1:check
       - name: Build, typecheck, and test fault-proof tooling
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
       - name: Verify DA committee transport and admission
