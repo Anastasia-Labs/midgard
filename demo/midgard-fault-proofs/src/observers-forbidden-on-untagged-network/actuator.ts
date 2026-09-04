@@ -223,22 +223,12 @@ export const createObserversForbiddenActuator = (
             awaitConfirmation: false,
           });
         });
+      // A registered family resolves removal through the canonical catalogue:
+      // the deployment manifest's
+      // `fraudProofObserversForbiddenOnUntaggedNetwork` entry pins the step-01
+      // script, so no explicit category is described here.
       return await captureCursorRemoval({
-        category: {
-          name: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
-          categoryId,
-          firstStepDeploymentEntry:
-            "fraudProofObserversForbiddenOnUntaggedNetwork",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash:
-              config.binding.resolvedContracts.contracts.fraudProof
-                .spendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,

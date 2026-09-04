@@ -34,12 +34,10 @@ import { createObserversForbiddenActuator } from "../src/observers-forbidden-on-
 import { buildObserversForbiddenArtifact } from "../src/observers-forbidden-on-untagged-network/artifact.js";
 import {
   applyObserversForbiddenScripts,
+  OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES,
   type ObserversForbiddenContracts,
 } from "../src/observers-forbidden-on-untagged-network/contracts.js";
-import {
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
-  prepareObserversForbiddenEvidence,
-} from "../src/observers-forbidden-on-untagged-network/family.js";
+import { prepareObserversForbiddenEvidence } from "../src/observers-forbidden-on-untagged-network/family.js";
 import { submitObserversForbiddenCancel } from "../src/observers-forbidden-on-untagged-network/submit-cancel.js";
 import {
   submitObserversForbiddenStep01Accepted,
@@ -47,9 +45,9 @@ import {
 } from "../src/observers-forbidden-on-untagged-network/submit-step-01.js";
 import { submitObserversForbiddenStep02 } from "../src/observers-forbidden-on-untagged-network/submit-step-02.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
-import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -58,8 +56,13 @@ import {
   makeNativeTx,
 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import {
+  expectRegisteredChainParity,
+  familyStepsFromRegisteredChain,
+} from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
   setupFraudulentBlock,
@@ -67,35 +70,43 @@ import {
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
+const coverage = createLifecycleCoverageRecorder();
 
-const runForcedContradiction = async ({
-  networkId,
-  observerCount,
-}: {
-  readonly networkId: 0 | 1 | 255;
-  readonly observerCount: number;
-}) => {
-  const harness = await makeFaultProofEmulatorHarness({
-    contractOptions: {
-      alwaysFraudProofCatalogue: true,
-      alwaysStateQueue: true,
-    },
-  });
+/**
+ * The registered chain is the deployed identity: the harness folds its first
+ * step into the catalogue root. The family-side application must reproduce it
+ * step for step before the suite drives it.
+ */
+const registeredContracts = async (
+  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
+) => {
   const addressData = await Effect.runPromise(
     addressDataFromBech32(
       harness.contracts.fraudProof.spendingScriptAddress,
     ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
   );
-  const applied = applyObserversForbiddenScripts({
-    blueprint: harness.realBlueprint,
-    network,
-    computationThreadPolicyId: harness.contracts.computationThread.policyId,
-    fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-    fraudProofTokenAddressData: addressData,
-    fieldPreimageCertificatePolicyId:
-      harness.contracts.fieldPreimageCertificate.policyId,
-    hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+  const registered =
+    harness.contracts.fraudProofContracts.observersForbiddenOnUntaggedNetwork;
+  const category =
+    harness.catalogue.categories.observersForbiddenOnUntaggedNetwork;
+  expectRegisteredChainParity({
+    registered,
+    applied: applyObserversForbiddenScripts({
+      blueprint: harness.realBlueprint,
+      network,
+      computationThreadPolicyId: harness.contracts.computationThread.policyId,
+      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
+      fraudProofTokenAddressData: addressData,
+      fieldPreimageCertificatePolicyId:
+        harness.contracts.fieldPreimageCertificate.policyId,
+      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+    }),
+    category,
   });
+  const applied = familyStepsFromRegisteredChain(
+    registered.steps,
+    OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES,
+  );
   const contracts: ObserversForbiddenContracts = {
     steps: applied,
     computationThread: harness.contracts.computationThread,
@@ -107,17 +118,25 @@ const runForcedContradiction = async ({
     fieldPreimageCertificateMintingScript:
       harness.contracts.fieldPreimageCertificate.mintingScript,
   };
-  const catalogue = await buildCatalogueDeploymentInfo(
-    harness.contracts.fraudProofs,
-    {
-      observersForbiddenOnUntaggedNetwork: {
-        categoryId: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
-        scriptHash: applied[0].spendingScriptHash,
-      },
+  return { applied, contracts, catalogue: harness.catalogue, category };
+};
+
+const runForcedContradiction = async ({
+  networkId,
+  observerCount,
+}: {
+  readonly networkId: 0 | 1 | 255;
+  readonly observerCount: number;
+}) => {
+  const harness = await makeFaultProofEmulatorHarness({
+    contractOptions: {
+      realObserversForbiddenOnUntaggedNetwork: true,
+      alwaysFraudProofCatalogue: true,
+      alwaysStateQueue: true,
     },
-  );
-  const category =
-    catalogue.extraCategories.observersForbiddenOnUntaggedNetwork!;
+  });
+  const { applied, contracts, catalogue, category } =
+    await registeredContracts(harness);
   const credential = getAddressDetails(
     await harness.funderLucid.wallet().address(),
   ).paymentCredential;
@@ -284,6 +303,11 @@ const runForcedContradiction = async ({
     }),
   );
   expect(final.result.fraudProofUnit).toBeTruthy();
+  coverage.reason(
+    "ObserversForbiddenOnUntaggedNetwork",
+    "forced_rejection_wrong",
+  );
+  coverage.scenario("wrongful_forced_rejection_success");
   for (const captured of [initialized, bound, final]) {
     expect(captured.measurement.l1ByteMargin).toBeGreaterThan(0);
     expect(captured.measurement.executionMemory).toBeGreaterThan(0n);
@@ -291,53 +315,22 @@ const runForcedContradiction = async ({
   }
 };
 
-describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
+describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () => {
   it("runs maximum certified accepted Init, cancel/restart, and permanent mint", async () => {
     const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: { alwaysFraudProofCatalogue: true },
-    });
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const applied = applyObserversForbiddenScripts({
-      blueprint: harness.realBlueprint,
-      network,
-      computationThreadPolicyId: harness.contracts.computationThread.policyId,
-      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
-    });
-    const contracts: ObserversForbiddenContracts = {
-      steps: applied,
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        observersForbiddenOnUntaggedNetwork: {
-          categoryId: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
-          scriptHash: applied[0].spendingScriptHash,
-        },
+      contractOptions: {
+        realObserversForbiddenOnUntaggedNetwork: true,
+        alwaysFraudProofCatalogue: true,
       },
-    );
-    const category =
-      catalogue.extraCategories.observersForbiddenOnUntaggedNetwork!;
+    });
+    const { applied, contracts, catalogue, category } =
+      await registeredContracts(harness);
 
     const observerField = encodeMidgardFieldPreimage(
       Array.from({ length: 505 }, (_, index) => Buffer.alloc(28, index + 1)),
     );
     expect(observerField).toHaveLength(15_153);
+    coverage.scenario("maximum_supported_evidence");
     const base = makeNativeTx({ spendInputCbors: [], fee: 7n });
     const nativeTx = materializeMidgardNativeTxFromCanonical({
       version: base.version,
@@ -562,6 +555,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       }),
     );
     captures.push(["cancel-step-01", cancelInit]);
+    coverage.cancelled("step-01");
 
     const cancelledAtStep2 = await bind(await initialize());
     captures.push(["step-01-before-cancel", cancelledAtStep2]);
@@ -578,6 +572,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       }),
     );
     captures.push(["cancel-step-02", cancelStep2]);
+    coverage.cancelled("step-02");
 
     const restarted = await initialize();
     const step01 = await captureEmulatorSubmission(
@@ -638,28 +633,20 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
     );
     captures.push(["permanent-proof-mint", final]);
     expect(final.result.fraudProofUnit).toBeTruthy();
+    coverage.reason("ObserversForbiddenOnUntaggedNetwork", "accepted_invalid");
+    coverage.scenario("wrongful_acceptance_success");
     const removalReferences = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.contracts,
     });
-    const baseDeployment = buildRemovalDeploymentInfo(
+    // A registered family resolves removal through the canonical catalogue:
+    // the manifest's fraudProofObserversForbiddenOnUntaggedNetwork entries
+    // carry the registered chain the harness built.
+    const deploymentInfo = buildRemovalDeploymentInfo(
       harness.contracts,
       catalogue,
       { removalReferenceScripts: removalReferences.published },
     );
-    const deploymentInfo = {
-      ...baseDeployment,
-      contracts: {
-        ...baseDeployment.contracts,
-        fraudProofObserversForbiddenOnUntaggedNetwork: {
-          scriptHash: applied[0].spendingScriptHash,
-          contract: {
-            type: applied[0].spendingScript.type,
-            cborHex: applied[0].spendingScript.script,
-          },
-        },
-      },
-    };
     const removalActuator = createObserversForbiddenActuator({
       binding: {
         definition: { headerHash: setup.headerHash },
@@ -716,6 +703,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       },
     );
     captures.push(["fraudulent-block-removal", removal]);
+    coverage.scenario("permanent_proof_token_and_descendant_removal");
     expect(carriage.measurements).toHaveLength(2);
     expect(certificate.measurement.l1ByteMargin).toBeGreaterThan(0);
     for (const [label, captured] of captures) {
@@ -749,4 +737,28 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
     async (scenario) => await runForcedContradiction(scenario),
     300_000,
   );
+
+  it("declares the lifecycle coverage it exercised and the gaps it leaves open", () => {
+    // Recorded while the suites above ran, never pre-filled. The gate lists
+    // every omission; the suite pins that list so a silent regression of what
+    // it does cover, or an unannounced closure of a gap, both fail here.
+    expect(() =>
+      assertCompleteLifecycleCoverage({
+        coverage: coverage.snapshot(),
+        expectedReasonArms: ["ObserversForbiddenOnUntaggedNetwork"],
+        authenticationSeams: [
+          "tx_membership",
+          "forced_leaf",
+          "field_certificate",
+        ],
+        cancellablePhysicalSteps: ["step-01", "step-02"],
+        // Two physical steps: the family closes in one step-02 transaction
+        // and declares no checkpoint to resume from.
+        resumable: false,
+        hasAdjacentConsensusBound: false,
+      }),
+    ).toThrow(
+      "incomplete fault-proof lifecycle coverage: scenarios: honest_accepted_block_refusal, honest_forced_rejection_refusal, reason_or_subject_coordinate_mutation; authentication seams: tx_membership, forced_leaf, field_certificate",
+    );
+  });
 });

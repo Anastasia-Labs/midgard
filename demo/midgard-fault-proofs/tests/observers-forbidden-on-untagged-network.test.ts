@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
+  buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
@@ -13,6 +14,10 @@ import {
   buildObserversForbiddenArtifact,
   observersForbiddenArtifactDigest,
 } from "../src/observers-forbidden-on-untagged-network/artifact.js";
+import {
+  applyObserversForbiddenScripts,
+  OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES,
+} from "../src/observers-forbidden-on-untagged-network/contracts.js";
 import {
   classifyObserversForbiddenFinding,
   MIDGARD_UNTAGGED_NETWORK_ID,
@@ -26,6 +31,7 @@ import {
   type ObserversForbiddenReplayDetection,
   selectCanonicalObserversForbiddenDetection,
 } from "../src/observers-forbidden-on-untagged-network/replay.js";
+import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 
 const transactionId = "01".repeat(32);
 const accepted = acceptedVerdictSubject(transactionId);
@@ -194,5 +200,24 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
         fieldPreimageCbor: `${artifact.fieldPreimageCbor.slice(0, -2)}ff`,
       }),
     ).toThrow(/commitment changed/u);
+  });
+});
+
+describe("observersForbiddenOnUntaggedNetwork registered-chain parity", () => {
+  it("applies the same chain the SDK registers for the same shared policies", async () => {
+    const fixture = await buildRegisteredChainFixture(
+      buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
+    );
+    const registered = fixture.contracts.observersForbiddenOnUntaggedNetwork;
+    const applied = applyObserversForbiddenScripts(fixture.applyParams);
+    expect(applied.map((step) => step.spendingScriptHash)).toStrictEqual(
+      registered.steps.map((step) => step.spendingScriptHash),
+    );
+    expect(registered.firstStep.spendingScriptHash).toBe(
+      applied[0].spendingScriptHash,
+    );
+    expect(applied.map((step) => step.blueprintTitle)).toStrictEqual([
+      ...OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES,
+    ]);
   });
 });
