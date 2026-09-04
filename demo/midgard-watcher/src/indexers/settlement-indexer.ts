@@ -62,9 +62,12 @@ import {
   journalWatcherProtocolUtxoTransition,
   makeWatcherDurableStore,
   parseWatcherDurableStore,
+  watcherCanonicalJson,
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherSameCanonicalJson,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
 
 export const WATCHER_SETTLEMENT_INDEXER_POLICY_SCHEMA_VERSION =
@@ -463,12 +466,6 @@ export type WatcherSettlementResultVerificationContext = Readonly<{
 }>;
 
 type PlainRecord = Record<string, unknown>;
-type CanonicalJson =
-  | null
-  | boolean
-  | string
-  | readonly CanonicalJson[]
-  | { readonly [key: string]: CanonicalJson };
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -485,31 +482,7 @@ const TARGET_ROLES = new Set<WatcherSettlementResourceRole>([
   "withdrawal",
 ]);
 
-const canonicalJson = (value: CanonicalJson): string => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((member) => canonicalJson(member)).join(",")}]`;
-  }
-  const record = value as { readonly [key: string]: CanonicalJson };
-  return `{${Object.keys(record)
-    .sort()
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${canonicalJson(record[key] as CanonicalJson)}`,
-    )
-    .join(",")}}`;
-};
-
-const sha256Canonical = (value: unknown): string =>
-  createHash("sha256")
-    .update(canonicalJson(value as CanonicalJson), "utf8")
-    .digest("hex");
+const sha256Canonical = watcherSha256CanonicalJson;
 
 const sha256Bytes = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
@@ -678,9 +651,7 @@ const isNullable = <T>(
   predicate: (candidate: unknown) => candidate is T,
 ): value is T | null => value === null || predicate(value);
 
-const same = (left: unknown, right: unknown): boolean =>
-  canonicalJson(left as CanonicalJson) ===
-  canonicalJson(right as CanonicalJson);
+const same = watcherSameCanonicalJson;
 
 const sameMarker = (left: DeploymentMarker, right: DeploymentMarker): boolean =>
   left.schemaVersion === right.schemaVersion &&
@@ -5868,10 +5839,8 @@ export const parseWatcherSettlementIndexerResult = (
 
 export const encodeWatcherSettlementIndexerState = (
   value: WatcherSettlementIndexerState,
-): Buffer =>
-  Buffer.from(canonicalJson(value as unknown as CanonicalJson), "utf8");
+): Buffer => Buffer.from(watcherCanonicalJson(value), "utf8");
 
 export const encodeWatcherSettlementIndexerResult = (
   value: WatcherSettlementIndexerResult,
-): Buffer =>
-  Buffer.from(canonicalJson(value as unknown as CanonicalJson), "utf8");
+): Buffer => Buffer.from(watcherCanonicalJson(value), "utf8");

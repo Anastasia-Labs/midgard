@@ -10,6 +10,11 @@ import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
+  watcherCanonicalJson,
+  watcherSameCanonicalJson,
+  watcherSha256CanonicalJson,
+} from "../storage/durable-store.js";
+import {
   type WatcherNativeChainSyncAuthority,
   watcherNativeChainSyncAuthorityDetails,
 } from "./native-chain-sync.js";
@@ -597,32 +602,8 @@ const preflightTransactionCollections = (
 const sha256Bytes = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
 
-const sha256Utf8 = (value: string): string =>
-  createHash("sha256").update(value, "utf8").digest("hex");
-
-const canonicalJson = (value: CanonicalJson): string => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((member) => canonicalJson(member)).join(",")}]`;
-  }
-  const record = value as { readonly [key: string]: CanonicalJson };
-  return `{${Object.keys(record)
-    .sort()
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${canonicalJson(record[key] as CanonicalJson)}`,
-    )
-    .join(",")}}`;
-};
-
 const digestCanonicalJson = (value: CanonicalJson): string =>
-  sha256Utf8(canonicalJson(value));
+  watcherSha256CanonicalJson(value);
 
 const freezePublicBytes = (
   bytesHex: string,
@@ -1149,7 +1130,7 @@ const deriveCanonicalTransaction = (
       WATCHER_L1_ADAPTER_BOUNDS.normalizationSessionEntries
   ) {
     const retainedBytes = Buffer.byteLength(
-      canonicalJson(derived as unknown as CanonicalJson),
+      watcherCanonicalJson(derived),
       "utf8",
     );
     if (
@@ -1209,7 +1190,7 @@ const assertWitnessViewsMatch = (
       claimed[field].length !== actual[field].length ||
       claimed[field].some(
         (entry, index) =>
-          canonicalJson(entry) !== canonicalJson(actual[field][index]!),
+          !watcherSameCanonicalJson(entry, actual[field][index]!),
       )
     ) {
       fail("identity_mismatch", `${path}.${field}`);
@@ -1225,7 +1206,7 @@ const assertUtxoViewsMatch = (
   if (
     claimed.length !== actual.length ||
     claimed.some(
-      (entry, index) => canonicalJson(entry) !== canonicalJson(actual[index]!),
+      (entry, index) => !watcherSameCanonicalJson(entry, actual[index]!),
     )
   ) {
     fail("identity_mismatch", path);
@@ -1962,7 +1943,7 @@ export const encodeWatcherNormalizedL1Block = (
   value: WatcherNormalizedL1Block,
 ): Buffer =>
   Buffer.from(
-    canonicalJson({
+    watcherCanonicalJson({
       schemaVersion: value.schemaVersion,
       network: value.network,
       provider: providerJson(value.provider),

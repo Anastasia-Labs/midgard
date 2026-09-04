@@ -24,68 +24,7 @@ import {
   evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw,
   WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION,
 } from "../../src/l1/multi-provider-consistency.js";
-
-const canonicalJsonForTest = (
-  value: unknown,
-  ancestors = new WeakSet<object>(),
-): string => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) throw new Error("unsupported number");
-    return value.toString();
-  }
-  if (typeof value !== "object") throw new Error("unsupported value");
-  if (ancestors.has(value)) throw new Error("cycle");
-  ancestors.add(value);
-  let result: string;
-  if (Array.isArray(value)) {
-    if (
-      Object.getPrototypeOf(value) !== Array.prototype ||
-      Reflect.ownKeys(value).length !== value.length + 1 ||
-      Reflect.ownKeys(value).some(
-        (key) =>
-          key !== "length" &&
-          (typeof key !== "string" ||
-            !/^(?:0|[1-9][0-9]*)$/u.test(key) ||
-            Number(key) >= value.length),
-      )
-    ) {
-      throw new Error("unsupported array");
-    }
-    result = `[${value
-      .map((member) => canonicalJsonForTest(member, ancestors))
-      .join(",")}]`;
-  } else {
-    const record = value as Record<string, unknown>;
-    const prototype = Object.getPrototypeOf(record);
-    if (
-      (prototype !== Object.prototype && prototype !== null) ||
-      Reflect.ownKeys(record).length !== Object.keys(record).length
-    ) {
-      throw new Error("unsupported object");
-    }
-    result = `{${Object.keys(record)
-      .sort()
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${canonicalJsonForTest(record[key], ancestors)}`,
-      )
-      .join(",")}}`;
-  }
-  ancestors.delete(value);
-  return result;
-};
-
-const sha256CanonicalForTest = (value: unknown): string =>
-  createHash("sha256")
-    .update(canonicalJsonForTest(value), "utf8")
-    .digest("hex");
+import { sha256Canonical as sha256CanonicalForTest } from "../support/canonical-json.js";
 
 const reorderObjectKeysForTest = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(reorderObjectKeysForTest);

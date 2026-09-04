@@ -1,86 +1,31 @@
 /**
  * Canonical JSON serialization, as the watcher test suites recompute it.
  *
- * The suites re-derive digests the watcher itself computed, so they need the
- * same key-ordering rule the production canonicalizer uses. Two spellings grew
- * up independently and they are *not* interchangeable, so both live here
- * rather than being collapsed into one:
- *
- * - {@link canonicalJson} is permissive: any number is stringified as-is.
- * - {@link canonicalJsonForTest} is strict: it rejects non-safe-integer numbers
- *   and any value JSON cannot carry, so a fixture that drifts into a float or
- *   an `undefined` fails loudly instead of silently digesting something else.
- *
- * Suites that assert on digests of hand-built fixtures use the strict form;
- * suites that digest values already round-tripped through the wire use the
- * permissive one.
+ * The suites re-derive digests the watcher itself computed, so they must use
+ * the production canonicalizer — `watcherCanonicalJson` in
+ * `src/storage/durable-store.ts`, the one hardened walk every watcher digest
+ * and equality now goes through. Two independent test spellings used to live
+ * here (one permissive about numbers, one strict); a fixture that drifts into a
+ * float or an `undefined` now fails loudly on the same rule production applies.
  */
-import { createHash } from "node:crypto";
+import {
+  watcherCanonicalJson,
+  watcherSha256CanonicalJson,
+} from "../../src/storage/durable-store.js";
 
-/** Permissive canonical JSON — every number is emitted via `toString()`. */
-export const canonicalJson = (value: unknown): string => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number") {
-    return value.toString();
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-    .join(",")}}`;
-};
+/** The production canonical JSON string. */
+export const canonicalJson = (value: unknown): string =>
+  watcherCanonicalJson(value);
 
 /** SHA-256 over {@link canonicalJson}. */
 export const canonicalDigest = (value: unknown): string =>
-  createHash("sha256").update(canonicalJson(value), "utf8").digest("hex");
+  watcherSha256CanonicalJson(value);
 
-/**
- * Strict canonical JSON — rejects anything the canonical wire form cannot
- * carry, so a malformed fixture surfaces as a throw rather than a wrong digest.
- */
-export const canonicalJsonForTest = (value: unknown): string => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value) as string;
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new Error("unsupported test number");
-    }
-    return value.toString();
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJsonForTest).join(",")}]`;
-  }
-  if (typeof value === "object" && value !== null) {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map(
-        (key) => `${JSON.stringify(key)}:${canonicalJsonForTest(record[key])}`,
-      )
-      .join(",")}}`;
-  }
-  throw new Error("unsupported test value");
-};
+/** Alias kept for the suites that name the strict spelling. */
+export const canonicalJsonForTest = canonicalJson;
 
 /** SHA-256 over {@link canonicalJsonForTest}. */
-export const sha256Canonical = (value: unknown): string =>
-  createHash("sha256")
-    .update(canonicalJsonForTest(value), "utf8")
-    .digest("hex");
+export const sha256Canonical = canonicalDigest;
 
 /**
  * Reverse every object's key order, recursively.

@@ -16,6 +16,7 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
+import { watcherCanonicalJson } from "../storage/durable-store.js";
 
 export const WATCHER_WORKFLOW_FUNDING_PROFILE_BUNDLE =
   "midgard-watcher-production-workflow-funding-profile-bundle-v1" as const;
@@ -74,28 +75,7 @@ const exact = (
   return value;
 };
 
-const canonicalJson = (value: unknown): string => {
-  if (value === null) return "null";
-  if (typeof value === "boolean" || typeof value === "string") {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new Error("funding profile bundle contains a non-safe number");
-    }
-    return value.toString();
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (!isPlainObject(value)) {
-    throw new Error("funding profile bundle contains a non-JSON value");
-  }
-  return `{${Object.keys(value)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-    .join(",")}}`;
-};
+const canonicalJson = watcherCanonicalJson;
 
 const sha256 = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");

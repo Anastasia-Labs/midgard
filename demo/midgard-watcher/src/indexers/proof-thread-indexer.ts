@@ -58,6 +58,8 @@ import {
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherSameCanonicalJson,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
 
 export const WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION =
@@ -880,13 +882,6 @@ export type WatcherProofThreadResult = Readonly<{
 }>;
 
 type PlainRecord = Record<string, unknown>;
-type CanonicalJson =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly CanonicalJson[]
-  | { readonly [key: string]: CanonicalJson };
 
 const HEX_4 = /^[0-9a-f]{8}$/u;
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -898,40 +893,10 @@ const CATALOGUE_CATEGORY = /^[a-z][A-Za-z0-9]*$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
 
-const canonicalJson = (value: CanonicalJson): string => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new Error("noncanonical number");
-    }
-    return value.toString();
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((member) => canonicalJson(member)).join(",")}]`;
-  }
-  const record = value as { readonly [key: string]: CanonicalJson };
-  return `{${Object.keys(record)
-    .sort()
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${canonicalJson(record[key] as CanonicalJson)}`,
-    )
-    .join(",")}}`;
-};
-
 const sha256Bytes = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
-const sha256Canonical = (value: unknown): string =>
-  sha256Bytes(Buffer.from(canonicalJson(value as CanonicalJson), "utf8"));
-const same = (left: unknown, right: unknown): boolean =>
-  canonicalJson(left as CanonicalJson) ===
-  canonicalJson(right as CanonicalJson);
+const sha256Canonical = watcherSha256CanonicalJson;
+const same = watcherSameCanonicalJson;
 
 const exactRecord = (
   value: unknown,

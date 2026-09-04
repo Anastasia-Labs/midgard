@@ -52,6 +52,7 @@ import {
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
 } from "../../src/storage/durable-store.js";
+import { sha256Canonical } from "../support/canonical-json.js";
 
 /*
  * W44 crash/rollback matrix.
@@ -188,40 +189,6 @@ const rollbackAuthorityKey = Uint8Array.from(
   { length: 32 },
   (_, index) => index + 1,
 );
-
-const canonicalJsonForTest = (value: unknown): string => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new Error("unsupported test number");
-    }
-    return value.toString();
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJsonForTest).join(",")}]`;
-  }
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map(
-        (key) => `${JSON.stringify(key)}:${canonicalJsonForTest(record[key])}`,
-      )
-      .join(",")}}`;
-  }
-  throw new Error("unsupported test value");
-};
-
-const sha256Canonical = (value: unknown): string =>
-  createHash("sha256")
-    .update(canonicalJsonForTest(value), "utf8")
-    .digest("hex");
 
 /**
  * A durable backend that can be crashed at an exact compare-and-swap boundary.

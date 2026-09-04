@@ -74,6 +74,8 @@ import {
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherSameCanonicalJson,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
 
 export const WATCHER_STATE_QUEUE_INDEXER_POLICY_SCHEMA_VERSION =
@@ -403,13 +405,6 @@ type EvidenceGraphBudget = {
   nodes: number;
   bytes: number;
 };
-type CanonicalJson =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly CanonicalJson[]
-  | { readonly [key: string]: CanonicalJson };
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -532,40 +527,11 @@ const evidenceWithinBounds = (
     return false;
   }
 };
-const canonicalJson = (value: CanonicalJson): string => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new Error("noncanonical number");
-    }
-    return value.toString();
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((member) => canonicalJson(member)).join(",")}]`;
-  }
-  const record = value as { readonly [key: string]: CanonicalJson };
-  return `{${Object.keys(record)
-    .sort()
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${canonicalJson(record[key] as CanonicalJson)}`,
-    )
-    .join(",")}}`;
-};
 
 const sha256Bytes = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
-const sha256Canonical = (value: unknown): string =>
-  sha256Bytes(Buffer.from(canonicalJson(value as CanonicalJson), "utf8"));
-const same = (left: unknown, right: unknown): boolean =>
-  canonicalJson(left as CanonicalJson) ===
-  canonicalJson(right as CanonicalJson);
+const sha256Canonical = watcherSha256CanonicalJson;
+const same = watcherSameCanonicalJson;
 const headerHashFromCbor = (cborHex: string): string =>
   Buffer.from(blake2b(Buffer.from(cborHex, "hex"), { dkLen: 28 })).toString(
     "hex",

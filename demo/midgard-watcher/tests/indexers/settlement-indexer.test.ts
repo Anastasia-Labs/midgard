@@ -28,6 +28,8 @@ import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  encodeWatcherSettlementIndexerResult,
+  encodeWatcherSettlementIndexerState,
   evaluateWatcherSettlementIndexer as evaluateWatcherSettlementIndexerRaw,
   makeWatcherSettlementIndexerPolicy,
   makeWatcherSettlementObservation,
@@ -77,9 +79,11 @@ import {
   journalWatcherProtocolUtxoTransition,
   makeWatcherDurablePayload,
   makeWatcherDurableStore,
+  watcherCanonicalJson,
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherSha256CanonicalJson,
 } from "../../src/storage/durable-store.js";
 import {
   h28,
@@ -1637,6 +1641,37 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const state = accepted(null, evidence);
     expect(state.activeHistory).toHaveLength(1);
     expect(state.snapshot.resources).toEqual([]);
+  });
+
+  it("encodes state and result bytes through the hardened canonical-JSON walk", () => {
+    const evidence = bundle({
+      kind: "bootstrap",
+      previousState: null,
+      snapshot: emptySnapshot(),
+    });
+    const result = evaluateWatcherSettlementIndexer(
+      policy,
+      null,
+      evidence.observation,
+      evidence.context,
+    );
+    expect(result.action).toBe("accept");
+    expect(result.state).not.toBeNull();
+    expect(
+      encodeWatcherSettlementIndexerState(result.state!).toString("utf8"),
+    ).toBe(watcherCanonicalJson(result.state));
+    expect(encodeWatcherSettlementIndexerResult(result).toString("utf8")).toBe(
+      watcherCanonicalJson(result),
+    );
+    // Numbers must survive the walk verbatim: the previous indexer-local walk
+    // had no number branch and serialized them as `{}`, which collapsed
+    // numerically distinct values into one digest.
+    expect(
+      watcherCanonicalJson({ retries: 3, nested: [1, { depth: 2 }] }),
+    ).toBe('{"nested":[1,{"depth":2}],"retries":3}');
+    expect(watcherSha256CanonicalJson({ retries: 3 })).not.toBe(
+      watcherSha256CanonicalJson({ retries: 4 }),
+    );
   });
 
   it("preserves an existing foreign role but rejects inserting an ordinary output under it", () => {
