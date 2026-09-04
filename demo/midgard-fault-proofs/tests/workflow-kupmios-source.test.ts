@@ -528,7 +528,7 @@ describe("production local Kupmios raw source V1", () => {
     const paths = [
       "l1-services/docker-compose.yml",
       "demo/midgard-node/scripts/run-ogmios.sh",
-      "demo/midgard-node/devnet/phase4-process/compose.yaml",
+      "demo/midgard-node-tools/devnet/phase4-process/compose.yaml",
     ];
     for (const path of paths) {
       await expect(
