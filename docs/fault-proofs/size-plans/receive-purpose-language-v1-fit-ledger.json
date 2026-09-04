@@ -1,31 +1,201 @@
 {
-  "schemaVersion": "midgard-receive-purpose-language-fit-ledger-v1",
+  "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "receivePurposeLanguage",
-  "categoryId": "00000034",
+  "blueprintSha256": "1a30174645c166bd33f4060f22debfbac175a8fda053e307ab7a893520b413e9",
   "compilerVersion": "aiken v1.1.23+5adf783",
-  "blueprintSha256": "d7e0fa22551385f259b956240add81a30dc103c3e6fd9b68fbd568e6bc392841",
-  "limits": { "publicationReserveBytes": 15872, "transactionBytes": 16384, "memory": 16500000, "cpu": 10000000000 },
-  "maximum": { "validationTraceLeaves": 65536, "purposeLeaves": 65536, "sourceLeaves": 65536, "executionLeaves": 65536 },
-  "measurementMethod": "Fully applied testnet blueprint payloads plus the signed reference-publication envelope measured for the identical ID31 step templates; lifecycle rows are conservative signed ID31 superset transactions (ID34 removes item opening and scan evidence).",
-  "referencePublications": [
-    { "step": 1, "compiledBytes": 14592, "signedBytes": 14975, "reserveMarginBytes": 897 },
-    { "step": 2, "compiledBytes": 15388, "signedBytes": 15736, "reserveMarginBytes": 136 },
-    { "step": 3, "compiledBytes": 1860, "signedBytes": 2253, "reserveMarginBytes": 13619 }
+  "entries": [
+    {
+      "name": "accepted-cancel-step01",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (plutusV3 receive at execution 255), 16 validation traces",
+      "signedBytes": 611,
+      "memoryUnits": "124808",
+      "cpuUnits": "42452566",
+      "signedByteMargin": 15773,
+      "memoryUnitMargin": "16375192",
+      "cpuUnitMargin": "9957547434",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "accepted-cancel-step02",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (plutusV3 receive at execution 255), 16 validation traces",
+      "signedBytes": 611,
+      "memoryUnits": "116576",
+      "cpuUnits": "41120424",
+      "signedByteMargin": 15773,
+      "memoryUnitMargin": "16383424",
+      "cpuUnitMargin": "9958879576",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "accepted-cancel-step03",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (plutusV3 receive at execution 255), 16 validation traces",
+      "signedBytes": 611,
+      "memoryUnits": "111876",
+      "cpuUnits": "40368424",
+      "signedByteMargin": 15773,
+      "memoryUnitMargin": "16388124",
+      "cpuUnitMargin": "9959631576",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "accepted-init",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (plutusV3 receive at execution 255), 16 validation traces",
+      "signedBytes": 1365,
+      "memoryUnits": "705617",
+      "cpuUnits": "241672461",
+      "signedByteMargin": 15019,
+      "memoryUnitMargin": "15794383",
+      "cpuUnitMargin": "9758327539",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "accepted-remove",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (plutusV3 receive at execution 255), 16 validation traces",
+      "signedBytes": 2060,
+      "memoryUnits": "3014651",
+      "cpuUnits": "1027123206",
+      "signedByteMargin": 14324,
+      "memoryUnitMargin": "13485349",
+      "cpuUnitMargin": "8972876794",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "accepted-step01",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (plutusV3 receive at execution 255), 16 validation traces",
+      "signedBytes": 2448,
+      "memoryUnits": "1459339",
+      "cpuUnits": "492352464",
+      "signedByteMargin": 13936,
+      "memoryUnitMargin": "15040661",
+      "cpuUnitMargin": "9507647536",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "accepted-step02",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (plutusV3 receive at execution 255), 16 validation traces",
+      "signedBytes": 3621,
+      "memoryUnits": "1997235",
+      "cpuUnits": "800005489",
+      "signedByteMargin": 12763,
+      "memoryUnitMargin": "14502765",
+      "cpuUnitMargin": "9199994511",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "accepted-step03-mint",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (plutusV3 receive at execution 255), 16 validation traces",
+      "signedBytes": 916,
+      "memoryUnits": "267321",
+      "cpuUnits": "97355498",
+      "signedByteMargin": 15468,
+      "memoryUnitMargin": "16232679",
+      "cpuUnitMargin": "9902644502",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-init",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (native receive at execution 255), 16 validation traces",
+      "signedBytes": 1365,
+      "memoryUnits": "711753",
+      "cpuUnits": "243520955",
+      "signedByteMargin": 15019,
+      "memoryUnitMargin": "15788247",
+      "cpuUnitMargin": "9756479045",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-remove",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (native receive at execution 255), 16 validation traces",
+      "signedBytes": 2060,
+      "memoryUnits": "3016941",
+      "cpuUnits": "1031461762",
+      "signedByteMargin": 14324,
+      "memoryUnitMargin": "13483059",
+      "cpuUnitMargin": "8968538238",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step01",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (native receive at execution 255), 16 validation traces",
+      "signedBytes": 1761,
+      "memoryUnits": "1091688",
+      "cpuUnits": "447903172",
+      "signedByteMargin": 14623,
+      "memoryUnitMargin": "15408312",
+      "cpuUnitMargin": "9552096828",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step02",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (native receive at execution 255), 16 validation traces",
+      "signedBytes": 3492,
+      "memoryUnits": "1963235",
+      "cpuUnits": "795002633",
+      "signedByteMargin": 12892,
+      "memoryUnitMargin": "14536765",
+      "cpuUnitMargin": "9204997367",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step03-mint",
+      "kind": "lifecycle",
+      "maximumShape": "256 purposes (native receive at execution 255), 16 validation traces",
+      "signedBytes": 916,
+      "memoryUnits": "293732",
+      "cpuUnits": "106308421",
+      "signedByteMargin": 15468,
+      "memoryUnitMargin": "16206268",
+      "cpuUnitMargin": "9893691579",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "publish-step01",
+      "kind": "publication",
+      "maximumShape": "applied testnet fraud_proofs/receive_purpose_language/step_01.main.spend",
+      "signedBytes": 14975,
+      "memoryUnits": "0",
+      "cpuUnits": "0",
+      "signedByteMargin": 1409,
+      "memoryUnitMargin": "16500000",
+      "cpuUnitMargin": "10000000000",
+      "publicationReserveMargin": 897
+    },
+    {
+      "name": "publish-step02",
+      "kind": "publication",
+      "maximumShape": "applied testnet fraud_proofs/receive_purpose_language/step_02.main.spend",
+      "signedBytes": 15736,
+      "memoryUnits": "0",
+      "cpuUnits": "0",
+      "signedByteMargin": 648,
+      "memoryUnitMargin": "16500000",
+      "cpuUnitMargin": "10000000000",
+      "publicationReserveMargin": 136
+    },
+    {
+      "name": "publish-step03",
+      "kind": "publication",
+      "maximumShape": "applied testnet fraud_proofs/receive_purpose_language/step_03.main.spend",
+      "signedBytes": 2253,
+      "memoryUnits": "0",
+      "cpuUnits": "0",
+      "signedByteMargin": 14131,
+      "memoryUnitMargin": "16500000",
+      "cpuUnitMargin": "10000000000",
+      "publicationReserveMargin": 13619
+    }
   ],
-  "focusedAikenMaximum": { "test": "receive_authenticates_exact_purpose_source_language_and_execution", "memory": 1464637, "cpu": 713365704, "memoryMargin": 15035363, "cpuMargin": 9286634296 },
-  "forcedLifecycleUpperBounds": [
-    { "stage": "init", "signedBytes": 1221, "byteMargin": 15163, "memory": 622323, "cpu": 215528475 },
-    { "stage": "step01-forced", "signedBytes": 1758, "byteMargin": 14626, "memory": 1086840, "cpu": 446459704 },
-    { "stage": "step02-authenticate", "signedBytes": 2666, "byteMargin": 13718, "memory": 1479385, "cpu": 654415424 },
-    { "stage": "step03-mint", "signedBytes": 916, "byteMargin": 15468, "memory": 357691, "cpu": 148969666 },
-    { "stage": "remove", "signedBytes": 2060, "byteMargin": 14324, "memory": 3051446, "cpu": 1035916306 }
-  ],
-  "acceptedLifecycleUpperBounds": [
-    { "stage": "init", "signedBytes": 1221, "byteMargin": 15163, "memory": 628459, "cpu": 217376969 },
-    { "stage": "step01-accepted", "signedBytes": 2023, "byteMargin": 14361, "memory": 1325466, "cpu": 450736395 },
-    { "stage": "step02-authenticate", "signedBytes": 2616, "byteMargin": 13768, "memory": 1403396, "cpu": 620652930 },
-    { "stage": "step03-mint", "signedBytes": 916, "byteMargin": 15468, "memory": 365283, "cpu": 149749390 },
-    { "stage": "remove", "signedBytes": 2060, "byteMargin": 14324, "memory": 3020900, "cpu": 1032659768 }
-  ],
-  "evidenceDigest": "126bb8570c34c064ca17188807f5fdc11d1404ab02d300ea2dabd8ab2fa39f21"
+  "ledgerSha256": "0290f62d714de72c9287b6fe44c8f8246f6d415a8e9864bb2ad8c340f48a2e30"
 }

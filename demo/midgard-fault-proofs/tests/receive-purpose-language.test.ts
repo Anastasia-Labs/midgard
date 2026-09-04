@@ -27,7 +27,10 @@ import {
   runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
 } from "../src/receive-purpose-language/manifest-workflow.js";
 import { detectReceivePurposeLanguageAcceptedReplay } from "../src/receive-purpose-language/replay.js";
-import { AuthenticatedReceiveLanguageSchema } from "../src/receive-purpose-language/schemas.js";
+import {
+  AuthenticatedReceiveLanguageSchema,
+  ReceivePurposeBoundExecutionSchema,
+} from "../src/receive-purpose-language/schemas.js";
 import {
   createReceivePurposeLanguageWorkflow,
   RECEIVE_PURPOSE_LANGUAGE_DIRECT_CONFIG_KEYS,
@@ -40,6 +43,8 @@ import {
 } from "../src/receive-purpose-language/workflow.js";
 
 const txId = "00".repeat(32);
+const txIdGolden =
+  "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const scriptHash = Buffer.from("22".repeat(28), "hex");
 const commitment = Buffer.from("33".repeat(32), "hex");
 const accepted = acceptedVerdictSubject(txId);
@@ -194,6 +199,60 @@ describe("receivePurposeLanguage V1", () => {
         AuthenticatedReceiveLanguageSchema as never,
       ),
     ).toBe(encoded);
+  });
+  it("pins the cross-language golden vectors of the bound and authenticated states", () => {
+    // Twin of `receive_*_golden_vector` in
+    // onchain/aiken/lib/midgard/fraud-proofs/receive-purpose-language/rule.test.ak.
+    const bound = (subject: unknown) => ({
+      subject,
+      validation_traces_root: txIdGolden,
+      validation_trace_count: 1n,
+      execution_index: 2n,
+    });
+    const authenticated = (subject: unknown, languageTag: bigint) => ({
+      bound: bound(subject),
+      prior_ledger_root:
+        "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+      purpose_kind: 3n,
+      purpose_index: 2n,
+      source_index: 0n,
+      origin_kind: 0n,
+      source_key: "00",
+      language_tag: languageTag,
+      script_hash: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b",
+    });
+    const acceptedGolden = acceptedVerdictSubject(txIdGolden);
+    const forcedGolden = forcedVerdictSubject({
+      transactionId: txIdGolden,
+      sourceKey: { transactionId: "44".repeat(32), outputIndex: 0n },
+      rejectionReason: {
+        ReceivePurposePlutusV3Forbidden: { execution_index: 2n },
+      },
+    });
+    expect(
+      Data.to(
+        bound(acceptedGolden) as never,
+        ReceivePurposeBoundExecutionSchema as never,
+      ),
+    ).toBe(
+      `d8799fd8799f0100005820${txIdGolden}40d87a80ff5820${txIdGolden}0102ff`,
+    );
+    expect(
+      Data.to(
+        authenticated(acceptedGolden, 3n) as never,
+        AuthenticatedReceiveLanguageSchema as never,
+      ),
+    ).toBe(
+      `d8799fd8799fd8799f0100005820${txIdGolden}40d87a80ff5820${txIdGolden}0102ff5820101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f03020000410003581c000102030405060708090a0b0c0d0e0f101112131415161718191a1bff`,
+    );
+    expect(
+      Data.to(
+        authenticated(forcedGolden, 0n) as never,
+        AuthenticatedReceiveLanguageSchema as never,
+      ),
+    ).toBe(
+      `d8799fd8799fd8799f0101015820${txIdGolden}5827d8799f5820${"44".repeat(32)}00ffd8799fd905219f02ffffff5820${txIdGolden}0102ff5820101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f03020000410000581c000102030405060708090a0b0c0d0e0f101112131415161718191a1bff`,
+    );
   });
   it("convicts only accepted receive PlutusV3 and contradicts allowed languages", () => {
     expect(receivePurposeLanguageEvidenceCloses(evidence(3))).toBe(true);
