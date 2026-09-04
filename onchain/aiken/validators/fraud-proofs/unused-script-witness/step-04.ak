@@ -1,3 +1,4 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -5,7 +6,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/unused_script_witness/rule.{
   ReverseScanV1, SourceOpeningV1, alternate_sources_complete_v1,
-  authenticate_earlier_source_v1,
+  authenticate_earlier_source_v1, maximum_scan_batch,
 }
 use midgard/fraud_proofs/unused_script_witness/step_04.{
   Args, Datum, SpendRedeemer,
@@ -32,9 +33,13 @@ validator main(
           tx,
         )
       ct.Continue(args) -> {
+        expect and {
+            args.item_budget > 0,
+            args.item_budget <= maximum_scan_batch,
+          }
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        let _, _, _, input_state, output_hash, output_state <- continue(
+        let own_hash, _, _, input_state, output_hash, output_state <- continue(
           computation_thread_token_policy_id,
           step_datum,
           args.input_index,
@@ -44,12 +49,21 @@ validator main(
           outputs,
         )
         expect Some(state) = input_state
-        let scanned = advance_sources(state, args.openings)
-        expect alternate_sources_complete_v1(scanned)
+        let scanned = advance_sources(state, args.openings, args.item_budget)
         let expected: Data = scanned
-        and {
-          output_hash == step_05_validator_script_hash,
-          output_state == expected,
+        if alternate_sources_complete_v1(scanned) {
+          and {
+            output_hash == step_05_validator_script_hash,
+            output_state == expected,
+          }
+        } else {
+          // An incomplete batch must be exactly full: a shorter list cannot
+          // idle the thread on its own script.
+          expect list.length(args.openings) == args.item_budget
+          and {
+            output_hash == own_hash,
+            output_state == expected,
+          }
         }
       }
     }
@@ -63,10 +77,19 @@ validator main(
 fn advance_sources(
   state: ReverseScanV1,
   openings: List<SourceOpeningV1>,
+  budget: Int,
 ) -> ReverseScanV1 {
-  when openings is {
-    [] -> state
-    [opening, ..rest] ->
-      advance_sources(authenticate_earlier_source_v1(state, opening), rest)
+  if or {
+    budget == 0,
+    alternate_sources_complete_v1(state),
+  } {
+    state
+  } else {
+    expect [opening, ..rest] = openings
+    advance_sources(
+      authenticate_earlier_source_v1(state, opening),
+      rest,
+      budget - 1,
+    )
   }
 }

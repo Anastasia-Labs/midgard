@@ -19,7 +19,10 @@ import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { advanceUnusedScriptWitnessSources } from "./checkpoint.js";
+import {
+  advanceUnusedScriptWitnessSources,
+  UNUSED_SCRIPT_WITNESS_MAXIMUM_SCAN_BATCH,
+} from "./checkpoint.js";
 import type { UnusedScriptWitnessContracts } from "./contracts.js";
 import type { UnusedScriptWitnessEvidence } from "./family.js";
 import {
@@ -30,6 +33,12 @@ import {
 } from "./schemas.js";
 
 const FAMILY = "unused-script-witness";
+
+/**
+ * One bounded batch of the alternate-source walk. The thread stays on the
+ * step-04 script until every earlier inline source is authenticated, then
+ * hands the same checkpointed state to step 05.
+ */
 export const submitUnusedScriptWitnessStep04 = async ({
   lucid,
   contracts,
@@ -38,6 +47,7 @@ export const submitUnusedScriptWitnessStep04 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
+  itemBudget = UNUSED_SCRIPT_WITNESS_MAXIMUM_SCAN_BATCH,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -48,6 +58,7 @@ export const submitUnusedScriptWitnessStep04 = async ({
   threadOutRef: string;
   evidence: UnusedScriptWitnessEvidence;
   referenceScriptUtxo: UTxO;
+  itemBudget?: number;
   preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
@@ -69,28 +80,39 @@ export const submitUnusedScriptWitnessStep04 = async ({
     family: FAMILY,
     stepIndex,
   });
+  const start = Number(source.alternate_cursor);
+  const end = Math.min(start + itemBudget, evidence.finding.scriptIndex);
+  const selected = evidence.sources.slice(start, end);
+  if (selected.length === 0 && start < evidence.finding.scriptIndex)
+    throw new Error(`${FAMILY}: alternate-source batch is empty`);
   const nextState = advanceUnusedScriptWitnessSources({
     state: source,
     evidence,
+    itemBudget,
   });
-  const openings = evidence.sources
-    .slice(0, evidence.finding.scriptIndex)
-    .map((opening) => ({
-      source_index: BigInt(opening.sourceIndex),
-      language_tag: BigInt(opening.languageTag),
-      script_hash: opening.scriptHashHex,
-      total_length: BigInt(opening.scriptTotalLength),
-      item_commitment: opening.itemCommitmentHex,
-      siblings: opening.membership.siblings.map((value) =>
-        Buffer.from(value).toString("hex"),
-      ),
-    }));
+  const complete =
+    nextState.alternate_cursor === nextState.witness.bound.script_index;
+  const nextAddress = complete
+    ? contracts.steps[4].spendingScriptAddress
+    : contracts.steps[3].spendingScriptAddress;
+  const openings = selected.map((opening) => ({
+    source_index: BigInt(opening.sourceIndex),
+    language_tag: BigInt(opening.languageTag),
+    script_hash: opening.scriptHashHex,
+    total_length: BigInt(opening.scriptTotalLength),
+    item_commitment: opening.itemCommitmentHex,
+    siblings: opening.membership.siblings.map((value) =>
+      Buffer.from(value).toString("hex"),
+    ),
+  }));
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    UnusedScriptStep05DatumSchema as never,
+    (complete
+      ? UnusedScriptStep05DatumSchema
+      : UnusedScriptStep04DatumSchema) as never,
   );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[4].spendingScriptAddress,
+    address: nextAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -112,7 +134,12 @@ export const submitUnusedScriptWitnessStep04 = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, openings },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            openings,
+            item_budget: BigInt(itemBudget),
+          },
         ],
       } as never,
       UnusedScriptStep04RedeemerSchema as never,
@@ -127,7 +154,7 @@ export const submitUnusedScriptWitnessStep04 = async ({
     stepReference,
     stepScript: contracts.steps[stepIndex].spendingScript,
     stepRole: `${FAMILY} step 04`,
-    nextAddress: contracts.steps[4].spendingScriptAddress,
+    nextAddress,
     nextDatum,
     redeemer,
     preSubmitBoundary,
@@ -135,5 +162,9 @@ export const submitUnusedScriptWitnessStep04 = async ({
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: unresolved layout`);
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    txHash,
+    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    complete,
+  };
 };

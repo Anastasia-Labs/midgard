@@ -134,6 +134,7 @@ export const UnusedScriptStep04RedeemerSchema = faultProofStepRedeemerSchema(
     input_index: Data.Integer(),
     output_index: Data.Integer(),
     openings: Data.Array(UnusedScriptSourceOpeningSchema),
+    item_budget: Data.Integer(),
   }),
 );
 export const UnusedScriptStep05DatumSchema = UnusedScriptStep04DatumSchema;

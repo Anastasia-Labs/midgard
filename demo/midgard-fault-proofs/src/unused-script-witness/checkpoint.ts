@@ -40,15 +40,31 @@ export const initialUnusedScriptWitnessReverseScan = (
   ),
 });
 
+/** The on-chain `maximum_scan_batch` shared by the step-04 and step-05 self-loops. */
+export const UNUSED_SCRIPT_WITNESS_MAXIMUM_SCAN_BATCH = 24;
+
 export const advanceUnusedScriptWitnessSources = ({
   state,
   evidence,
+  itemBudget = UNUSED_SCRIPT_WITNESS_MAXIMUM_SCAN_BATCH,
 }: {
   state: UnusedScriptReverseScanDatum;
   evidence: UnusedScriptWitnessEvidence;
+  itemBudget?: number;
 }): UnusedScriptReverseScanDatum => {
+  if (
+    !Number.isSafeInteger(itemBudget) ||
+    itemBudget < 1 ||
+    itemBudget > UNUSED_SCRIPT_WITNESS_MAXIMUM_SCAN_BATCH
+  )
+    throw new Error("unusedScriptWitness item budget changed");
   let next = state;
-  while (next.alternate_cursor < next.witness.bound.script_index) {
+  let remaining = itemBudget;
+  while (
+    remaining > 0 &&
+    next.alternate_cursor < next.witness.bound.script_index
+  ) {
+    remaining -= 1;
     const source = evidence.sources[Number(next.alternate_cursor)];
     if (
       source === undefined ||
