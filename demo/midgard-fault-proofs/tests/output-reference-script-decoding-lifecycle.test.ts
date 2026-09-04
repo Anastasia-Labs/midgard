@@ -35,8 +35,8 @@ import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
+  applyOutputReferenceScriptDecodingScripts,
   OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
   type OutputReferenceScriptDecodingContracts,
   OutputReferenceScriptResultClasses,
   prepareOutputReferenceScriptDecodingEvidence,
@@ -51,20 +51,23 @@ import {
 } from "../src/output-reference-script-decoding/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
-import { applyCompiledScript } from "./support/emulator/blueprints.js";
-import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import {
+  expectRegisteredChainParity,
+  familyStepsFromRegisteredChain,
+} from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { makeSpendingValidator } from "./support/emulator/validators.js";
+import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
   outputReferenceCbor,
   setupFraudulentBlock,
@@ -83,7 +86,55 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
-const firstStepDeploymentEntry = "fraudProofOutputReferenceScriptDecoding";
+const coverage = createLifecycleCoverageRecorder();
+
+/**
+ * The registered chain is the deployed identity: the harness folds its first
+ * step into the catalogue root. The family-side application must reproduce it
+ * step for step before the suite drives it.
+ */
+const registeredContracts = async (
+  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
+) => {
+  const addressData = await Effect.runPromise(
+    addressDataFromBech32(
+      harness.contracts.fraudProof.spendingScriptAddress,
+    ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
+  );
+  const registered =
+    harness.contracts.fraudProofContracts.outputReferenceScriptDecoding;
+  const category = harness.catalogue.categories.outputReferenceScriptDecoding;
+  expectRegisteredChainParity({
+    registered,
+    applied: applyOutputReferenceScriptDecodingScripts({
+      blueprint: harness.realBlueprint,
+      network,
+      computationThreadPolicyId: harness.contracts.computationThread.policyId,
+      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
+      fraudProofTokenAddressData: addressData,
+      fieldPreimageCertificatePolicyId:
+        harness.contracts.fieldPreimageCertificate.policyId,
+      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+    }),
+    category,
+  });
+  const validators = familyStepsFromRegisteredChain(
+    registered.steps,
+    OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
+  );
+  const contracts: OutputReferenceScriptDecodingContracts = {
+    steps: validators,
+    computationThread: harness.contracts.computationThread,
+    fraudProof: harness.contracts.fraudProof,
+    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+    fieldPreimageCertificatePolicyId:
+      harness.contracts.fieldPreimageCertificate.policyId,
+    fieldPreimageCertificateMintingScript:
+      harness.contracts.fieldPreimageCertificate.mintingScript,
+  };
+  return { validators, contracts, catalogue: harness.catalogue, category };
+};
 
 const forcedFixture = async (operatorVkey: string, now: number) => {
   const txOrderId = transitionTraceOutRef("f1");
@@ -257,90 +308,16 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
   };
 };
 
-describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
+describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
   it("runs maximum accepted output through resume and permanent proof mint", async () => {
     const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: { alwaysFraudProofCatalogue: true },
-    });
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const titles = OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES;
-    const step06 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[5], [
-        harness.contracts.fraudProof.policyId,
-        addressData,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step05 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[4], [
-        step06.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step04 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[3], [
-        step05.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step03 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[2], [
-        step04.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step02 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[1], [
-        step03.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step01 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[0], [
-        step02.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.hubOracle.policyId,
-      ]),
-    );
-    const validators = [
-      step01,
-      step02,
-      step03,
-      step04,
-      step05,
-      step06,
-    ] as const;
-    const contracts: OutputReferenceScriptDecodingContracts = {
-      steps: validators.map((step, index) => ({
-        ...step,
-        blueprintTitle: titles[index]!,
-        referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as OutputReferenceScriptDecodingContracts["steps"],
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        outputReferenceScriptDecoding: {
-          categoryId: OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
-          scriptHash: step01.spendingScriptHash,
-        },
+      contractOptions: {
+        realOutputReferenceScriptDecoding: true,
+        alwaysFraudProofCatalogue: true,
       },
-    );
-    const category = catalogue.extraCategories.outputReferenceScriptDecoding!;
+    });
+    const { validators, contracts, catalogue, category } =
+      await registeredContracts(harness);
     let output = Buffer.alloc(0);
     for (let payload = 16_320; payload > 15_000; payload -= 1) {
       const candidate = encodeMidgardTxOutput({
@@ -361,6 +338,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     if (markerOffset < 0) throw new Error("versioned script marker absent");
     output[markerOffset + 1] = 0;
     expect(output.length).toBeGreaterThan(16_300);
+    coverage.scenario("maximum_supported_evidence");
     const nativeTx = makeNativeTx({
       spendInputCbors: [],
       fee: 7n,
@@ -536,6 +514,9 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       }),
     );
     expect(s6.result.fraudProofUnit).toBeTruthy();
+    if (scans.length > 1) coverage.resumed();
+    coverage.reason("OutputReferenceScriptMalformed", "accepted_invalid");
+    coverage.scenario("wrongful_acceptance_success");
     for (const capture of [init, s1, s2, ...scans, s4, s5, s6]) {
       expect(capture.measurement.l1ByteMargin).toBeGreaterThan(0);
       expect(capture.measurement.executionMemory).toBeGreaterThan(0n);
@@ -619,6 +600,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       }),
     );
     expect(cancelStep01.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.cancelled("step-01");
 
     const cancelStep02 = await captureEmulatorSubmission(
       harness.emulator,
@@ -634,6 +616,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         }),
     );
     expect(cancelStep02.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.cancelled("step-02");
 
     const cancelOutputScan = await captureEmulatorSubmission(
       harness.emulator,
@@ -649,6 +632,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         }),
     );
     expect(cancelOutputScan.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.cancelled("step-03");
 
     const referenceBindStart = await startThreadAtOutputScan();
     let referenceBindThread = referenceBindStart.nextThreadOutRef;
@@ -679,6 +663,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         }),
     );
     expect(cancelReferenceBind.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.cancelled("step-04");
 
     const step05Start = await startThreadAtOutputScan();
     let step05Thread = step05Start.nextThreadOutRef;
@@ -721,29 +706,20 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       }),
     );
     expect(cancelStep05.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.cancelled("step-05");
 
     const removalReferences = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.contracts,
     });
-    const baseDeployment = buildRemovalDeploymentInfo(
+    // A registered family resolves removal through the canonical catalogue:
+    // the manifest's fraudProofOutputReferenceScriptDecoding entries carry
+    // the registered chain the harness built.
+    const deploymentInfo = buildRemovalDeploymentInfo(
       harness.contracts,
       catalogue,
       { removalReferenceScripts: removalReferences.published },
     );
-    const deploymentInfo = {
-      ...baseDeployment,
-      contracts: {
-        ...baseDeployment.contracts,
-        [firstStepDeploymentEntry]: {
-          scriptHash: step01.spendingScriptHash,
-          contract: {
-            type: step01.spendingScript.type,
-            cborHex: step01.spendingScript.script,
-          },
-        },
-      },
-    };
     const now = BigInt(harness.emulator.now());
     const removal = await captureEmulatorSubmission(harness.emulator, () =>
       submitRemoveFraudulentBlock({
@@ -752,18 +728,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         deploymentInfo,
         network,
         signer: harness.proverSigner,
-        fraudCategory: {
-          name: "outputReferenceScriptDecoding" as never,
-          categoryId: category.categoryId,
-          firstStepDeploymentEntry,
-          firstStepScriptHash: step01.spendingScriptHash,
-          fraudProof: {
-            policyId: harness.contracts.fraudProof.policyId,
-            spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-            spendingScriptAddress:
-              harness.contracts.fraudProof.spendingScriptAddress,
-          },
-        },
+        fraudCategory: "outputReferenceScriptDecoding",
         fraudulentHeaderHash: setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,
@@ -782,6 +747,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     );
     expect(removal.result.fraudCategoryId).toBe("0000002a");
     expect(removal.measurement.l1ByteMargin).toBeGreaterThan(0);
+    coverage.scenario("permanent_proof_token_and_descendant_removal");
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info(
         JSON.stringify(
@@ -811,89 +777,15 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       );
   }, 600_000);
 
-  it("runs a decodable forced wrongful rejection through the real chain", async () => {
+  it("runs a decodable forced wrongful rejection through the registered chain", async () => {
     const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: { alwaysFraudProofCatalogue: true },
-    });
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        harness.contracts.fraudProof.spendingScriptAddress,
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
-    );
-    const titles = OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES;
-    const step06 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[5], [
-        harness.contracts.fraudProof.policyId,
-        addressData,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step05 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[4], [
-        step06.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step04 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[3], [
-        step05.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step03 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[2], [
-        step04.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-      ]),
-    );
-    const step02 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[1], [
-        step03.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ]),
-    );
-    const step01 = makeSpendingValidator(
-      applyCompiledScript(harness.realBlueprint, titles[0], [
-        step02.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.hubOracle.policyId,
-      ]),
-    );
-    const validators = [
-      step01,
-      step02,
-      step03,
-      step04,
-      step05,
-      step06,
-    ] as const;
-    const contracts: OutputReferenceScriptDecodingContracts = {
-      steps: validators.map((step, index) => ({
-        ...step,
-        blueprintTitle: titles[index]!,
-        referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as OutputReferenceScriptDecodingContracts["steps"],
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-    };
-    const catalogue = await buildCatalogueDeploymentInfo(
-      harness.contracts.fraudProofs,
-      {
-        outputReferenceScriptDecoding: {
-          categoryId: OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
-          scriptHash: step01.spendingScriptHash,
-        },
+      contractOptions: {
+        realOutputReferenceScriptDecoding: true,
+        alwaysFraudProofCatalogue: true,
       },
-    );
-    const category = catalogue.extraCategories.outputReferenceScriptDecoding!;
+    });
+    const { validators, contracts, catalogue, category } =
+      await registeredContracts(harness);
     const funderCredential = (
       await import("@lucid-evolution/lucid")
     ).getAddressDetails(
@@ -1089,6 +981,8 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       }),
     );
     expect(result.result.fraudProofUnit).toBeTruthy();
+    coverage.reason("OutputReferenceScriptMalformed", "forced_rejection_wrong");
+    coverage.scenario("wrongful_forced_rejection_success");
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info(
         JSON.stringify(
@@ -1111,4 +1005,39 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         ),
       );
   }, 300_000);
+
+  it("declares the lifecycle coverage it exercised and the gaps it leaves open", () => {
+    // Recorded while the suites above ran, never pre-filled. The gate lists
+    // every omission; the suite pins that list so a silent regression of what
+    // it does cover, or an unannounced closure of a gap, both fail here. The
+    // NodeLimit and DepthLimit arms are exact typed reasons the family binds
+    // off chain (see the unit suite) but no emulator lifecycle drives them.
+    expect(() =>
+      assertCompleteLifecycleCoverage({
+        coverage: coverage.snapshot(),
+        expectedReasonArms: [
+          "OutputReferenceScriptMalformed",
+          "OutputReferenceScriptNodeLimit",
+          "OutputReferenceScriptDepthLimit",
+        ],
+        authenticationSeams: [
+          "tx_membership",
+          "forced_leaf",
+          "field_certificate",
+        ],
+        cancellablePhysicalSteps: [
+          "step-01",
+          "step-02",
+          "step-03",
+          "step-04",
+          "step-05",
+          "step-06",
+        ],
+        resumable: true,
+        hasAdjacentConsensusBound: false,
+      }),
+    ).toThrow(
+      "incomplete fault-proof lifecycle coverage: reason arms: OutputReferenceScriptNodeLimit, OutputReferenceScriptDepthLimit; OutputReferenceScriptNodeLimit success directions: accepted_invalid, forced_rejection_wrong; OutputReferenceScriptDepthLimit success directions: accepted_invalid, forced_rejection_wrong; scenarios: honest_accepted_block_refusal, honest_forced_rejection_refusal, reason_or_subject_coordinate_mutation; authentication seams: tx_membership, forced_leaf, field_certificate; cancel steps: step-06",
+    );
+  });
 });

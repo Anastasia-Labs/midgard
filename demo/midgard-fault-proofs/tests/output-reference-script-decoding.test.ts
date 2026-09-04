@@ -5,10 +5,15 @@ import {
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
+  buildOutputReferenceScriptDecodingFaultProofContracts,
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import {
+  applyOutputReferenceScriptDecodingScripts,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
+} from "../src/output-reference-script-decoding/contracts.js";
 import {
   classifyOutputReferenceScriptDecodingFinding,
   OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
@@ -19,6 +24,7 @@ import {
   OutputReferenceScriptResultClasses,
   prepareOutputReferenceScriptDecodingEvidence,
 } from "../src/output-reference-script-decoding/index.js";
+import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 const outputWithScript = (kind: "valid" | "malformed") => {
@@ -179,5 +185,26 @@ describe("outputReferenceScriptDecoding V1", () => {
         outputIndex: 0,
       }),
     ).toThrow(/wrong typed reason/u);
+  });
+});
+
+describe("outputReferenceScriptDecoding registered-chain parity", () => {
+  it("applies the same chain the SDK registers for the same shared policies", async () => {
+    const fixture = await buildRegisteredChainFixture(
+      buildOutputReferenceScriptDecodingFaultProofContracts,
+    );
+    const registered = fixture.contracts.outputReferenceScriptDecoding;
+    const applied = applyOutputReferenceScriptDecodingScripts(
+      fixture.applyParams,
+    );
+    expect(applied.map((step) => step.spendingScriptHash)).toStrictEqual(
+      registered.steps.map((step) => step.spendingScriptHash),
+    );
+    expect(registered.firstStep.spendingScriptHash).toBe(
+      applied[0].spendingScriptHash,
+    );
+    expect(applied.map((step) => step.blueprintTitle)).toStrictEqual([
+      ...OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
+    ]);
   });
 });
