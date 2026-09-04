@@ -31,9 +31,9 @@ import {
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML, Data } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,

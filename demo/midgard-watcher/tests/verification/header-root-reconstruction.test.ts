@@ -42,9 +42,9 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
 import {
   evaluateWatcherHeaderRootReconstruction,

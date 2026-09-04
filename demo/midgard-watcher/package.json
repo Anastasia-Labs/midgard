@@ -47,6 +47,7 @@
     "@libp2p/tcp": "11.0.22",
     "@lucid-evolution/lucid": "0.6.2",
     "@multiformats/multiaddr": "13.0.3",
+    "@noble/hashes": "^2.0.1",
     "libp2p": "3.3.4"
   },
   "devDependencies": {

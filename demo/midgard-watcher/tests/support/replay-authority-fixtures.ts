@@ -14,8 +14,8 @@ import {
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 
-import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import { makeQueued } from "../../../midgard-validation/tests/validation-fixtures.js";
 import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
 import {

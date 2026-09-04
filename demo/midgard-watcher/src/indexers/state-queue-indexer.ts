@@ -31,8 +31,8 @@ import {
   type StateQueueTransitionNode,
 } from "@al-ft/midgard-sdk";
 import { CML, Data, valueToAssets } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 
-import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import {
   evaluateWatcherFinality,
   parseWatcherFinalityPolicy,

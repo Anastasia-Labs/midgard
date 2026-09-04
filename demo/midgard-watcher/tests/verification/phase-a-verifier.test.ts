@@ -65,9 +65,9 @@ import type {
 } from "@al-ft/midgard-validation/types";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML, Data } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import {
   makeNativeTx,
   makeOutput,
