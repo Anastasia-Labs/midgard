@@ -627,3 +627,127 @@ test wrong_forced_rejection_hash_refuses() fail {
     h32,
   ).source_language_tag == 3
 }
+
+test exact_pointer_is_found_for_every_purpose_kind() {
+  let check = fn(kind, item) {
+    let scanned = rule.scan_item_v1(
+      rule.initial_scan_v1(
+        authenticated(1, kind),
+        #"5555555555555555555555555555555555555555555555555555555555555555",
+        3,
+      ),
+      0,
+      item,
+    )
+    and {
+      scanned.found,
+      scanned.cursor == 1,
+      rule.terminal_contradiction_v1(rule.decision_v1(scanned)),
+    }
+  }
+  and {
+    check(0, #"8400074100820102"),
+    check(1, #"8401074100820102"),
+    check(2, #"8403074100820102"),
+    check(3, #"8406074100820102"),
+  }
+}
+
+test malformed_pointer_item_refuses() fail {
+  rule.scan_item_v1(
+    rule.initial_scan_v1(
+      authenticated(0, 0),
+      #"5555555555555555555555555555555555555555555555555555555555555555",
+      1,
+    ),
+    0,
+    #"820007",
+  ).found
+}
+
+test skipped_item_index_refuses() fail {
+  rule.scan_item_v1(
+    rule.initial_scan_v1(
+      authenticated(0, 0),
+      #"5555555555555555555555555555555555555555555555555555555555555555",
+      2,
+    ),
+    1,
+    #"8400084100820102",
+  ).found
+}
+
+test scan_past_item_count_refuses() fail {
+  rule.scan_item_v1(
+    rule.initial_scan_v1(
+      authenticated(0, 0),
+      #"5555555555555555555555555555555555555555555555555555555555555555",
+      0,
+    ),
+    0,
+    #"8400084100820102",
+  ).found
+}
+
+test scan_after_presence_refuses() fail {
+  rule.scan_item_v1(
+    rule.ScanStateV1 {
+      authenticated: authenticated(1, 0),
+      checkpoint_hash: #"5555555555555555555555555555555555555555555555555555555555555555",
+      cursor: 1,
+      item_count: 2,
+      found: True,
+    },
+    1,
+    #"8400084100820102",
+  ).found
+}
+
+test premature_absence_decision_refuses() fail {
+  rule.decision_v1(
+    rule.ScanStateV1 {
+      authenticated: authenticated(0, 0),
+      checkpoint_hash: #"5555555555555555555555555555555555555555555555555555555555555555",
+      cursor: 1,
+      item_count: 2,
+      found: False,
+    },
+  ).redeemer_missing
+}
+
+test out_of_range_purpose_kind_refuses() fail {
+  rule.bind_purpose_v1(
+    subject(0, 0),
+    #"1111111111111111111111111111111111111111111111111111111111111111",
+    #"2222222222222222222222222222222222222222222222222222222222222222",
+    1,
+    4,
+    0,
+  ).purpose_kind == 4
+}
+
+test honest_accepted_presence_is_not_a_contradiction() {
+  let scanned = rule.scan_item_v1(
+    rule.initial_scan_v1(
+      authenticated(0, 0),
+      #"5555555555555555555555555555555555555555555555555555555555555555",
+      1,
+    ),
+    0,
+    #"8400074100820102",
+  )
+  !rule.terminal_contradiction_v1(rule.decision_v1(scanned))
+}
+
+test honest_forced_absence_is_not_a_contradiction() {
+  let scanned = rule.scan_item_v1(
+    rule.initial_scan_v1(
+      authenticated(1, 0),
+      #"5555555555555555555555555555555555555555555555555555555555555555",
+      1,
+    ),
+    0,
+    #"8400084100820102",
+  )
+  !rule.terminal_contradiction_v1(rule.decision_v1(scanned))
+}

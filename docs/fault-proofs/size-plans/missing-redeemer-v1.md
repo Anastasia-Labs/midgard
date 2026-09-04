@@ -52,18 +52,26 @@ the matched source descriptor membership, and admits only Plutus language 3
 or 128. It does not accept a caller-authored purpose root. A fabricated
 frontier therefore makes the producer-committed trace invalid; an honest
 canonical trace cannot convict an honest transaction. Steps 03/04 authenticate
-field 8 through direct, published, or certified carriage and scan every item.
+field 8 through published raw or certified carriage and scan every item.
 A terminal absence is reachable only at `cursor == item_count`.
 Alternate-purpose or alternate-pointer substitution, skipped/reordered items,
 checkpoint regression, a premature absence terminal, malformed pointers, and
 an omitted suffix all fail.
 
+The stage-10 state the family binds is the producer's earliest selection state
+for the exact purpose: every such state carries the same purpose and
+matched-source frontiers, and the family's own committed field-8 scan, not
+the producer's auxiliary witness, decides presence. An honest missing-redeemer
+rejection commits exactly that state as its terminal; a wrongful
+`RedeemerMissing` claim commits it before its own scan continues.
+
 Maximum evidence is the exact 32,768-byte certified field frontier and the
 largest purpose frontier admitted by the native-transaction aggregate bounds.
 The fit lifecycle publishes every applied validator in an ordinary signed
 reference-script transaction, runs accepted absence and forced presence in all
-four purpose kinds, resumes the maximum scan, cancels each nonterminal state,
-mints the permanent proof, and performs descendant-aware leased removal.
+four purpose kinds with both inline and reference-script sources, resumes the
+maximum scan, cancels each nonterminal state, mints the permanent proof, and
+performs descendant-aware leased removal.
 
 ## Reachability and fit gate
 
@@ -79,18 +87,50 @@ local UPLC evaluation enabled. Signed bytes must be `<= 16,384`, memory
 `<= 15,872` bytes. Every recorded margin must be positive.
 
 The retained replay consumes only public `validation_traces` plus retained
-`ScriptPurposeScanWitness`, `ScriptSourceScanWitness`, and the terminal stage-10
-`NoAuxiliaryWitness`. It reconstructs the exact 31-field work witness, joins the
+`ScriptPurposeScanWitness`, `ScriptSourceScanWitness`, and the stage-10
+selection states. It reconstructs the exact 31-field work witness, joins the
 purpose and selected-source membership proofs, and rejects duplicate or
 ambiguous coordinates. The production runner owns its fsynced directory
-journal and concrete Lucid actuator. Its path is `Init -> 01 -> 02 -> 02a ->
-02b -> 03 -> 04* -> 05 -> permanent proof -> leased removal`; cancellation
+journal, concrete Lucid actuator, and the authenticated field-carriage
+prerequisite port that publishes (and, above the raw bound, certifies) field 8
+before the first field-consuming action. Its path is `Init -> 01 -> 02 -> 02a
+-> 02b -> 03 -> 04* -> 05 -> permanent proof -> leased removal`; cancellation
 burns the computation thread from every nonterminal physical validator.
 
-Fresh testnet blueprint SHA-256:
-`845116acc86a8884f5d25558a594df62fd947e3fb7bd28ccfc307e38815accb9`.
-Raw applied script bytes in declaration order are `14,774`, `7,296`, `11,872`,
-`4,970`, `10,229`, `9,401`, and `1,820`. Ordinary signed reference-script
-publication transaction bytes are `15,157`, `7,644`, `12,220`, `5,319`,
-`10,612`, `9,783`, and `2,213`, leaving respective reserve margins `715`,
-`8,228`, `3,652`, `10,553`, `5,260`, `6,089`, and `13,659` bytes.
+## Evidence
+
+Fresh pinned `aiken v1.1.23+5adf783` testnet blueprint SHA-256 at the family
+fit gate:
+`ae5d600efa7ac46b2e58286d125d6b94521e010493a4c0d93c4b2e97faf435ef`. The
+machine-readable ledger is `missing-redeemer-v1-fit-ledger.json`
+(42 entries, digest
+`45d86d9ff9bb2f57b9841ff1431297b63fca981ba0520c2e2697452d9bc51b21`),
+reproduced by `demo/midgard-fault-proofs/tests/missing-redeemer-fit-ledger.test.ts`
+from the rows `tests/missing-redeemer-lifecycle.test.ts` prints under
+`MIDGARD_PRINT_FIT=1`.
+
+Fully applied signed reference-script publication sizes in physical order are
+`15,129`, `7,616`, `12,192`, `5,291`, `10,601`, `9,755`, and `2,185` bytes,
+leaving respective 15,872-byte reserve margins `743`, `8,256`, `3,680`,
+`10,581`, `5,271`, `6,117`, and `13,687` bytes. (The `Preprod`-addressed
+publication-fit suite measures the same scripts at `15,157`, `7,644`,
+`12,220`, `5,319`, `10,629`, `9,783`, and `2,213` bytes.)
+
+The maximum supported shape is the exact 32,768-byte field 8 carrying 17
+redeemer items under tier-3 certified carriage: two full 15,148-byte chunk
+publications at `15,872` signed bytes each (the shared chunker's publishable
+frontier, 512 bytes below the hard limit), a 2,800-byte remainder chunk, and a
+`1,318`-byte certificate mint. Its thread runs `Init` (`1,641` bytes), step 01
+(`2,062`), step 02 (`1,174`), step 02a (`2,776`), step 02b (`914`), the
+grammar start/resume/finish triple (`1,426`/`1,518`/`1,522`), the widest
+16-item pointer batch (`1,486` bytes, `5,019,938` memory,
+`2,182,994,737` CPU), the resumed final batch (`1,378`), the permanent mint
+(`916`), and the leased target and descendant removals (`2,429` and `1,544`).
+The wrongful forced rejection of a mint purpose with a reference-script source
+runs the raw-carriage direct opening (`1,364`) and one exact pointer match
+(`1,312`); every cancellation, the certified grammar state and the mid-walk
+checkpoint included, is `611` bytes.
+
+Minimum margins across the ledger: `512` signed bytes (a full carriage chunk),
+`11,480,062` memory units and `7,817,005,263` CPU units (the widest pointer
+batch), and `743` bytes of publication reserve (step 01).
