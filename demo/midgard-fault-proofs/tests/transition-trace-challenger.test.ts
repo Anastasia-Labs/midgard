@@ -346,7 +346,15 @@ const encodedEntry = <K, V>({
   readonly value: V;
   readonly valueSchema: Parameters<typeof Data.Nullable>[0];
 }): SDK.DaPayloadEntry =>
-  entry(encodeData(key, keySchema), encodeData(value, valueSchema));
+  entry(
+    encodeData(key, keySchema),
+    valueSchema === SDK.WithdrawalInfoSchema
+      ? Buffer.from(
+          SDK.committedWithdrawalValueBytes(value as SDK.WithdrawalInfo),
+          "hex",
+        )
+      : encodeData(value, valueSchema),
+  );
 
 const traceEntryWithKey = (
   key: bigint,
@@ -763,6 +771,51 @@ const buildL2ReplayFixture = async ({
 };
 
 describe("transition-trace challenger tooling", () => {
+  it("reconstructs exact Aiken withdrawal asset maps and refuses alternate framing or root substitution", async () => {
+    const info = withdrawalInfo(2);
+    info.body.l2_value.set(h28(8), new Map([["01", 5n]]));
+    const key = Data.to(outRef(4), SDK.OutputReference);
+    const encoded = SDK.committedWithdrawalValueBytes(info);
+    const lucidEncoded = Data.to(info, SDK.WithdrawalInfo);
+    expect(encoded).not.toBe(lucidEncoded);
+    const eventKey = withdrawalEventKey(outRef(4));
+    const source = {
+      steps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: eventKey,
+          phase: "Withdrawal" as const,
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+      ],
+      eventToStep: [
+        eventToStepEntry(eventKey, { step_index: 0n, phase: "Withdrawal" }),
+      ],
+    };
+    const fixture = await buildPayloadFixture({
+      ...source,
+      withdrawals: [[key, encoded]],
+    });
+    const admitted = await reconstruct(fixture);
+    expect(admitted.withdrawals[0]!.valueBytes.toString("hex")).toBe(encoded);
+    const alternate = await buildPayloadFixture({
+      ...source,
+      withdrawals: [[key, lucidEncoded]],
+    });
+    await expect(reconstruct(alternate)).rejects.toThrow(
+      /Failed to decode withdrawals/u,
+    );
+    await expect(
+      reconstructDaPayload({
+        payloadEnvelopeCbor: alternate.payloadEnvelopeCbor,
+        expectedHeaderHash: fixture.headerHash,
+        committedHeader: fixture.header,
+      }),
+    ).rejects.toThrow();
+  });
+
   const expectBuildableDetection = (
     detections: readonly unknown[],
     expected: {

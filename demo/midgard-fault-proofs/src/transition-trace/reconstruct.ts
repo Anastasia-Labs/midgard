@@ -169,11 +169,15 @@ const decodeData = <A>(
   hex: string,
   schema: DataSchema,
   fieldName: string,
+  canonicalEncoder?: (value: A) => string,
 ): A => {
   const normalized = normalizeEntryHex(hex, fieldName);
   try {
     const decoded = Data.from(normalized, schema as never) as A;
-    const canonical = Data.to(decoded as never, schema as never);
+    const canonical =
+      canonicalEncoder === undefined
+        ? Data.to(decoded as never, schema as never)
+        : canonicalEncoder(decoded);
     if (canonical !== normalized) {
       throw new Error(`${fieldName} is not canonical for its schema`);
     }
@@ -391,11 +395,13 @@ const decodeTypedEntries = <K, V>({
   entries,
   keySchema,
   valueSchema,
+  valueEncoder,
 }: {
   readonly fieldName: string;
   readonly entries: readonly SDK.DaPayloadEntry[];
   readonly keySchema: DataSchema;
   readonly valueSchema: DataSchema;
+  readonly valueEncoder?: (value: V) => string;
 }): readonly DecodedRootEntry<K, V>[] =>
   entries.map(([keyHex, valueHex], index) => {
     const keyBytes = entryBuffer(keyHex, `${fieldName}[${index}].key`);
@@ -406,6 +412,7 @@ const decodeTypedEntries = <K, V>({
         valueHex,
         valueSchema,
         `${fieldName}[${index}].value`,
+        valueEncoder,
       ),
       keyBytes,
       valueBytes,
@@ -965,6 +972,9 @@ export const reconstructDaPayload = async ({
     entries: body.withdrawals,
     keySchema: SDK.OutputReference as never,
     valueSchema: SDK.WithdrawalInfoSchema,
+    // The producer and Aiken serialiseData commit definite asset maps.
+    // Lucid Data.to alone emits different map framing.
+    valueEncoder: SDK.committedWithdrawalValueBytes,
   });
   const decodedForcedTransactions = decodeTypedEntries<
     SDK.OutputReference,
