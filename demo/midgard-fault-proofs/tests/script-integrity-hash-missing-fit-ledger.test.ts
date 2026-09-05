@@ -1,532 +1,105 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger.js";
+import {
+  buildVanRossemFitLedger,
+  type VanRossemFitLedger,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
+import { realBlueprintPath } from "./support/emulator/blueprints.js";
 
-const measurements = [
-  [
-    "field-6-certificate",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1249,
-    467283n,
-    180774076n,
-  ],
-  [
-    "field-8-certificate",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1249,
-    472475n,
-    180497630n,
-  ],
-  [
-    "init",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1497,
-    670066n,
-    230271531n,
-  ],
-  [
-    "redeemer-grammar-finish",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1342,
-    941175n,
-    339069938n,
-  ],
-  [
-    "redeemer-grammar-resume-00",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    4060405n,
-    2126247281n,
-  ],
-  [
-    "redeemer-grammar-resume-01",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    4060405n,
-    2126247281n,
-  ],
-  [
-    "redeemer-grammar-resume-02",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    4060405n,
-    2126247281n,
-  ],
-  [
-    "redeemer-grammar-resume-03",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    4060405n,
-    2126247281n,
-  ],
-  [
-    "redeemer-grammar-resume-04",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    4060405n,
-    2126247281n,
-  ],
-  [
-    "redeemer-grammar-resume-05",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    4060405n,
-    2126247281n,
-  ],
-  [
-    "redeemer-grammar-resume-06",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    4060405n,
-    2126247281n,
-  ],
-  [
-    "redeemer-grammar-resume-07",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    4117765n,
-    1996089751n,
-  ],
-  [
-    "redeemer-grammar-resume-08",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    2176864n,
-    755856659n,
-  ],
-  [
-    "redeemer-grammar-start",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1320,
-    3778696n,
-    1983491470n,
-  ],
-  [
-    "script-grammar-close-start-scan",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1412,
-    5099935n,
-    2779695303n,
-  ],
-  [
-    "script-grammar-resume-00",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    4045033n,
-    2122022305n,
-  ],
-  [
-    "script-grammar-resume-01",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    4045033n,
-    2122022305n,
-  ],
-  [
-    "script-grammar-resume-02",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    4045033n,
-    2122022305n,
-  ],
-  [
-    "script-grammar-resume-03",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    4045033n,
-    2122022305n,
-  ],
-  [
-    "script-grammar-resume-04",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    4045033n,
-    2122022305n,
-  ],
-  [
-    "script-grammar-resume-05",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    4045033n,
-    2122022305n,
-  ],
-  [
-    "script-grammar-resume-06",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    4045033n,
-    2122022305n,
-  ],
-  [
-    "script-grammar-resume-07",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    4228585n,
-    1735469697n,
-  ],
-  [
-    "script-grammar-resume-08",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1409,
-    2161492n,
-    768479395n,
-  ],
-  [
-    "script-scan-00",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1375,
-    5106422n,
-    2809067948n,
-  ],
-  [
-    "script-scan-01",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1375,
-    5106422n,
-    2809067948n,
-  ],
-  [
-    "script-scan-02",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1375,
-    5106422n,
-    2809067948n,
-  ],
-  [
-    "script-scan-03",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1375,
-    5106422n,
-    2809067948n,
-  ],
-  [
-    "script-scan-04",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1375,
-    5106422n,
-    2809067948n,
-  ],
-  [
-    "script-scan-05",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1375,
-    5106422n,
-    2809067948n,
-  ],
-  [
-    "script-scan-06",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1375,
-    5106422n,
-    2809067948n,
-  ],
-  [
-    "script-scan-07",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1375,
-    5421117n,
-    2243107230n,
-  ],
-  [
-    "script-scan-08",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1341,
-    2487423n,
-    867860268n,
-  ],
-  [
-    "state-queue-removal",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    2060,
-    2965721n,
-    1011090038n,
-  ],
-  [
-    "step01",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    2020,
-    1285820n,
-    434750731n,
-  ],
-  [
-    "step02",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1095,
-    163348n,
-    58220391n,
-  ],
-  [
-    "step03-start-staged",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1317,
-    3990736n,
-    2047493928n,
-  ],
-  [
-    "step04-mint",
-    "lifecycle",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    916,
-    270038n,
-    97827598n,
-  ],
-  [
-    "field-6-chunks-00",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    15872,
-    0n,
-    0n,
-  ],
-  [
-    "field-6-chunks-01",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    2187,
-    0n,
-    0n,
-  ],
-  [
-    "field-8-chunks-00",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    15872,
-    0n,
-    0n,
-  ],
-  [
-    "field-8-chunks-01",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    1263,
-    0n,
-    0n,
-  ],
-  [
-    "field-certificate-reference-script",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    3989,
-    0n,
-    0n,
-  ],
-  [
-    "reference-script-01",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    9338,
-    0n,
-    0n,
-  ],
-  [
-    "reference-script-02",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    9762,
-    0n,
-    0n,
-  ],
-  [
-    "reference-script-03",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    9819,
-    0n,
-    0n,
-  ],
-  [
-    "reference-script-04",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    10599,
-    0n,
-    0n,
-  ],
-  [
-    "reference-script-05",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    9267,
-    0n,
-    0n,
-  ],
-  [
-    "reference-script-06",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    9628,
-    0n,
-    0n,
-  ],
-  [
-    "reference-script-07",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    2364,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-00",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    6141,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-01",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    2012,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-02",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    5470,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-03",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    5526,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-04",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    11407,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-05",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    480,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-06",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    9665,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-07",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    9364,
-    0n,
-    0n,
-  ],
-  [
-    "removal-reference-scripts-08",
-    "publication",
-    "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
-    6077,
-    0n,
-    0n,
-  ],
+const ledgerPath = new URL(
+  "../../../docs/fault-proofs/size-plans/script-integrity-hash-missing-v1-fit-ledger.json",
+  import.meta.url,
+);
+
+/**
+ * Every transaction the maximum lifecycle submits, by name. The stored ledger
+ * is regenerated from that lifecycle's `[script-integrity-hash-missing-max-
+ * fit-ledger]` line; this list pins that no row of the maximum shape has gone
+ * missing from it.
+ */
+const MAXIMUM_SHAPE_ROWS = [
+  "init",
+  "step01",
+  "step02",
+  "step03-start-staged",
+  ...Array.from(
+    { length: 9 },
+    (_, index) => `script-grammar-resume-${index.toString().padStart(2, "0")}`,
+  ),
+  "script-grammar-close-start-scan",
+  ...Array.from(
+    { length: 9 },
+    (_, index) => `script-scan-${index.toString().padStart(2, "0")}`,
+  ),
+  "redeemer-grammar-start",
+  ...Array.from(
+    { length: 9 },
+    (_, index) =>
+      `redeemer-grammar-resume-${index.toString().padStart(2, "0")}`,
+  ),
+  "redeemer-grammar-finish",
+  "step04-mint",
+  "field-6-certificate",
+  "field-8-certificate",
+  "state-queue-removal",
+  ...Array.from(
+    { length: 7 },
+    (_, index) => `reference-script-${(index + 1).toString().padStart(2, "0")}`,
+  ),
+  "field-certificate-reference-script",
+  "field-6-chunks-00",
+  "field-6-chunks-01",
+  "field-8-chunks-00",
+  "field-8-chunks-01",
 ] as const;
 
 describe("scriptIntegrityHashMissing signed Van Rossem fit ledger", () => {
-  it("reproduces every maximum publication and lifecycle row", async () => {
-    const ledger = buildVanRossemFitLedger({
-      category: "scriptIntegrityHashMissing",
-      blueprintSha256:
-        "99c8108c2fb404035c10aec076ab37493804b967fa347f6b31428c102feb5a7d",
-      compilerVersion: "v1.1.23+5adf783",
-      measurements: measurements.map(
-        ([name, kind, maximumShape, signedBytes, memoryUnits, cpuUnits]) => ({
-          name,
-          kind,
-          maximumShape,
-          signedBytes,
-          memoryUnits,
-          cpuUnits,
-        }),
-      ),
+  it("is bound to the fresh locked build and reproduces every maximum row with positive margins", async () => {
+    const stored = JSON.parse(
+      await readFile(ledgerPath, "utf8"),
+    ) as VanRossemFitLedger;
+    const blueprintBytes = await readFile(realBlueprintPath);
+    const blueprint = JSON.parse(blueprintBytes.toString("utf8")) as {
+      readonly preamble: { readonly compiler: { readonly version: string } };
+    };
+    expect(stored.blueprintSha256).toBe(
+      createHash("sha256").update(blueprintBytes).digest("hex"),
+    );
+    expect(stored.compilerVersion).toBe(blueprint.preamble.compiler.version);
+    expect(stored.category).toBe("scriptIntegrityHashMissing");
+    // The margins and the ledger digest are derived, never hand-edited: the
+    // writer must reproduce the stored file from its raw measurements alone.
+    const rebuilt = buildVanRossemFitLedger({
+      category: stored.category,
+      blueprintSha256: stored.blueprintSha256,
+      compilerVersion: stored.compilerVersion,
+      measurements: stored.entries.map((entry) => ({
+        name: entry.name,
+        kind: entry.kind,
+        maximumShape: entry.maximumShape,
+        signedBytes: entry.signedBytes,
+        memoryUnits: BigInt(entry.memoryUnits),
+        cpuUnits: BigInt(entry.cpuUnits),
+      })),
     });
-    expect(ledger.entries).toHaveLength(measurements.length);
-    expect(
-      ledger.entries.every(({ signedByteMargin }) => signedByteMargin > 0),
-    ).toBe(true);
-    expect(
-      ledger.entries.every(
-        ({ memoryUnitMargin, cpuUnitMargin }) =>
-          BigInt(memoryUnitMargin) > 0n && BigInt(cpuUnitMargin) > 0n,
-      ),
-    ).toBe(true);
-    expect(
-      ledger.entries
-        .filter(({ kind }) => kind === "publication")
-        .every(
-          ({ publicationReserveMargin }) =>
-            publicationReserveMargin !== null && publicationReserveMargin >= 0,
-        ),
-    ).toBe(true);
-    expect(ledger.ledgerSha256).toBe(
-      "1d18cb8d22f0f95dfae64c3c17268ed8c5f6514a08dae1fa6602e71c512a1407",
-    );
-    const stored: unknown = JSON.parse(
-      await readFile(
-        new URL(
-          "../../../docs/fault-proofs/size-plans/script-integrity-hash-missing-v1-fit-ledger.json",
-          import.meta.url,
-        ),
-        "utf8",
-      ),
-    );
-    expect(stored).toStrictEqual(ledger);
+    expect(rebuilt).toStrictEqual(stored);
+    const names = new Set(stored.entries.map((entry) => entry.name));
+    for (const row of MAXIMUM_SHAPE_ROWS)
+      expect(names.has(row), row).toBe(true);
+    for (const entry of stored.entries) {
+      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
+      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
+      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
+      if (entry.kind === "publication") {
+        expect(entry.publicationReserveMargin, entry.name).not.toBeNull();
+        expect(
+          entry.publicationReserveMargin!,
+          entry.name,
+        ).toBeGreaterThanOrEqual(0);
+      }
+    }
   });
 });

@@ -13,6 +13,7 @@ import {
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
@@ -50,7 +51,13 @@ import {
 } from "../src/script-integrity-hash-missing/replay.js";
 import { ScriptIntegrityStepDatums } from "../src/script-integrity-hash-missing/schemas.js";
 import {
+  encodeScriptIntegrityField8Checkpoint,
+  hashScriptIntegrityField8Checkpoint,
+  planScriptIntegrityHashMissingStagedWalk,
+} from "../src/script-integrity-hash-missing/staged-plan.js";
+import {
   submitScriptIntegrityHashMissingStep01Accepted,
+  submitScriptIntegrityHashMissingStep01Forced,
   submitScriptIntegrityHashMissingStep02Accepted,
   submitScriptIntegrityHashMissingStep03Direct,
 } from "../src/script-integrity-hash-missing/submit-direct.js";
@@ -60,14 +67,20 @@ import {
   submitScriptIntegrityHashMissingRedeemerGrammar,
   submitScriptIntegrityHashMissingScriptGrammar,
   submitScriptIntegrityHashMissingScriptScan,
+  submitScriptIntegrityHashMissingStep02,
+  submitScriptIntegrityHashMissingStep03,
   submitScriptIntegrityHashMissingStep04,
 } from "../src/script-integrity-hash-missing/submitters.js";
+import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { expectRegisteredChainParity } from "./support/emulator/registered-chain.js";
+import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -122,25 +135,363 @@ const hashField8 = (checkpoint: ReturnType<typeof field8Checkpoint>): string =>
     ]),
   ).toString("hex");
 
+const REASON = "ScriptIntegrityHashMissing";
+const ZERO_HASH = "00".repeat(32);
+/** Every seam a step authenticates before it reads or commits anything. */
+const AUTHENTICATION_SEAMS = [
+  "tx_membership",
+  "forced_leaf",
+  "compact_tx",
+  "witness_set_anchor",
+  "field_preimage",
+  "field_certificate",
+  "checkpoint",
+] as const;
+/** The seven physical scripts, in chain order; every one carries a cancel arm. */
+const PHYSICAL_STEPS = [
+  "step-01",
+  "step-02",
+  "step-03",
+  "script-grammar",
+  "script-scan",
+  "redeemer-grammar",
+  "step-04",
+] as const;
+const coverage = createLifecycleCoverageRecorder();
+
+type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
+
+/**
+ * The registered chain is the deployed identity: the harness folds its first
+ * step into the catalogue root. A fresh application of the same blueprint and
+ * shared policies must reproduce it step for step before a suite drives it.
+ */
+const registeredFamily = async (harness: Harness) => {
+  const registered =
+    harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
+  const category = harness.catalogue.categories.scriptIntegrityHashMissing!;
+  const applied = await Effect.runPromise(
+    SDK.buildScriptIntegrityHashMissingFaultProofContracts({
+      blueprint: SDK.parseFaultProofBlueprint(
+        structuredClone(harness.realBlueprint),
+      ),
+      network,
+      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+      fraudProofCataloguePolicyId:
+        harness.contracts.fraudProofCatalogue.policyId,
+    }),
+  );
+  expectRegisteredChainParity({
+    registered,
+    applied: applied.scriptIntegrityHashMissing.steps,
+    category,
+  });
+  expect(applied.computationThread.policyId).toBe(
+    harness.contracts.computationThread.policyId,
+  );
+  expect(applied.fraudProof.policyId).toBe(
+    harness.contracts.fraudProof.policyId,
+  );
+  const family: ScriptIntegrityHashMissingContracts = {
+    steps: registered.steps,
+    computationThread: harness.contracts.computationThread,
+    fraudProof: harness.contracts.fraudProof,
+    fieldPreimageCertificatePolicyId:
+      harness.contracts.fieldPreimageCertificate.policyId,
+    fieldPreimageCertificateMintingScript:
+      harness.contracts.fieldPreimageCertificate.mintingScript,
+    hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+    stateQueuePolicyId: harness.contracts.stateQueue.policyId,
+  };
+  return { family, category };
+};
+
+const nativeTxOf = ({
+  scriptItems,
+  redeemerItems,
+  scriptIntegrityHash,
+  fee,
+}: {
+  readonly scriptItems: readonly Buffer[];
+  readonly redeemerItems: readonly Buffer[];
+  readonly scriptIntegrityHash: Buffer;
+  readonly fee: bigint;
+}) =>
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    validity: "TxIsValid",
+    body: {
+      spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimageCbor: EMPTY_CBOR_LIST,
+      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor: EMPTY_CBOR_LIST,
+      scriptIntegrityHash,
+      auxiliaryDataHash: Buffer.alloc(32),
+      fee,
+      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+      networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimageCbor: encodeCbor([...scriptItems]),
+      redeemerTxWitsPreimageCbor: encodeCbor([...redeemerItems]),
+    },
+  });
+
+const plutusScript = (byte: number) =>
+  encodeMidgardVersionedScript({
+    language: "PlutusV3",
+    scriptBytes: Buffer.from([byte]),
+  });
+
+const FORCED_ORDER_KEY = { transactionId: "ab".repeat(32), outputIndex: 0n };
+
+/**
+ * One committed block on the registered chain with the family's seven
+ * reference scripts published, plus raw submitters that hand the caller's
+ * datum and redeemer to the chain unchanged, so every negative below is a
+ * validator refusal rather than an off-chain guard.
+ */
+const makeScenario = async ({
+  nativeTx,
+  forcedReason,
+}: {
+  readonly nativeTx: ReturnType<typeof nativeTxOf>;
+  readonly forcedReason?: SDK.RejectionReason;
+}) => {
+  const harness = await makeFaultProofEmulatorHarness({
+    contractOptions: { realScriptIntegrityHashMissing: true },
+  });
+  const { family, category } = await registeredFamily(harness);
+  const block = await buildDecodingBlockFixture({
+    operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
+    startTime: BigInt(
+      alignUnixTimeToEmulatorSlotBoundary(
+        harness.funderLucid,
+        harness.emulator.now() + 120_000,
+      ) - 1,
+    ),
+    priorLedgerRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    subject:
+      forcedReason === undefined
+        ? { kind: "normal", nativeTx }
+        : {
+            kind: "forced",
+            nativeTx,
+            orderKey: FORCED_ORDER_KEY,
+            verdict: { ForcedTxInvalid: { reason: forcedReason } },
+          },
+  });
+  const setup = await submitSetupTx({
+    lucid: harness.funderLucid,
+    contracts: harness.contracts,
+    nonceUtxo: harness.nonceUtxo,
+    catalogue: harness.catalogue,
+    header: block.header,
+  });
+  const refs: UTxO[] = [];
+  for (const [index, step] of family.steps.entries())
+    refs.push(
+      (
+        await publishPlainReferenceScriptUtxo({
+          lucid: harness.funderLucid,
+          script: step.spendingScript,
+          label: `integrity scenario step ${(index + 1).toString()}`,
+        })
+      ).utxo,
+    );
+  const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact).toString(
+    "hex",
+  );
+  const derived = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
+  const witnessSet: SDK.NativeTxWitnessSetCompact = {
+    addr_tx_wits_hash: Buffer.from(derived.addrTxWitsHash).toString("hex"),
+    script_tx_wits_hash: Buffer.from(derived.scriptTxWitsHash).toString("hex"),
+    redeemer_tx_wits_hash: Buffer.from(derived.redeemerTxWitsHash).toString(
+      "hex",
+    ),
+  };
+  const witnessSetCbor = encodeMidgardNativeTxWitnessSetCompact({
+    addrTxWitsHash: Buffer.from(derived.addrTxWitsHash),
+    scriptTxWitsHash: Buffer.from(derived.scriptTxWitsHash),
+    redeemerTxWitsHash: Buffer.from(derived.redeemerTxWitsHash),
+  }).toString("hex");
+  const witnessSetHash =
+    nativeTx.compact.transactionWitnessSetHash.toString("hex");
+  const owner = harness.proverSigner.paymentKeyHash;
+  const common = (index: number) => ({
+    lucid: harness.proverLucid,
+    contracts: family,
+    categoryId: category.categoryId,
+    signer: harness.proverSigner,
+    referenceScriptUtxo: refs[index]!,
+  });
+  const datum = (index: number, data: unknown) =>
+    Data.to(
+      { fraud_prover: owner, data } as never,
+      ScriptIntegrityStepDatums[index] as never,
+    );
+  const init = async () =>
+    (
+      await submitScriptIntegrityHashMissingInit({
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        network,
+        contracts: family,
+        category,
+        catalogue: {
+          policyId: harness.contracts.fraudProofCatalogue.policyId,
+          spendingScriptAddress:
+            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+          root: harness.catalogue.root,
+        },
+        signer: harness.proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      })
+    ).nextThreadOutRef;
+  const accepted01 = async (
+    threadOutRef: string,
+    txInclusion = block.txInclusion!,
+  ) =>
+    (
+      await submitScriptIntegrityHashMissingStep01Accepted({
+        ...common(0),
+        blueprint: harness.realBlueprint,
+        network,
+        threadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      })
+    ).nextThreadOutRef;
+  const forced01 = async (threadOutRef: string) =>
+    (
+      await submitScriptIntegrityHashMissingStep01Forced({
+        ...common(0),
+        threadOutRef,
+        direction: 1n,
+      })
+    ).nextThreadOutRef;
+  const step02 = async (
+    threadOutRef: string,
+    {
+      subject,
+      anchoredWitnessSetHash = witnessSetHash,
+      forcedMembership = null,
+    }: {
+      readonly subject: SDK.VerdictSubject;
+      readonly anchoredWitnessSetHash?: string;
+      readonly forcedMembership?: SDK.RootMembershipProof<
+        SDK.OutputReference,
+        SDK.ForcedInclusionTxV1
+      > | null;
+    },
+  ) =>
+    (
+      await submitScriptIntegrityHashMissingStep02({
+        ...common(1),
+        threadOutRef,
+        nextDatum: datum(2, {
+          subject,
+          witness_set_hash: anchoredWitnessSetHash,
+        }),
+        buildArgs: ({ input_index, output_index }) => ({
+          input_index,
+          output_index,
+          header: block.header,
+          forced_membership: forcedMembership,
+        }),
+      })
+    ).nextThreadOutRef;
+  const direct03 = async (
+    threadOutRef: string,
+    {
+      decision,
+      compact = compactCbor,
+      scriptPreimage,
+      redeemerPreimage,
+      staged = false,
+    }: {
+      readonly decision: {
+        readonly subject: SDK.VerdictSubject;
+        readonly script_integrity_hash: string;
+        readonly contains_non_native_script: boolean;
+        readonly has_redeemers: boolean;
+      };
+      readonly compact?: string;
+      readonly scriptPreimage: Buffer;
+      readonly redeemerPreimage: Buffer;
+      readonly staged?: boolean;
+    },
+  ) =>
+    (
+      await submitScriptIntegrityHashMissingStep03({
+        ...common(2),
+        threadOutRef,
+        staged,
+        nextDatum: datum(6, decision),
+        buildArgs: ({ input_index, output_index }) => ({
+          Direct: {
+            input_index,
+            output_index,
+            native_tx_compact_cbor: compact,
+            witness_set: witnessSet,
+            script_witnesses: {
+              Inline: { preimage: scriptPreimage.toString("hex") },
+            },
+            redeemers: {
+              Inline: { preimage: redeemerPreimage.toString("hex") },
+            },
+          },
+        }),
+      })
+    ).nextThreadOutRef;
+  const step04 = (threadOutRef: string) =>
+    submitScriptIntegrityHashMissingStep04({
+      ...common(6),
+      threadOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+  const cancel = (threadOutRef: string, index: number) =>
+    submitScriptIntegrityHashMissingCancel({
+      ...common(index),
+      threadOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+  return {
+    harness,
+    family,
+    category,
+    block,
+    setup,
+    refs,
+    compactCbor,
+    witnessSet,
+    witnessSetCbor,
+    witnessSetHash,
+    owner,
+    common,
+    datum,
+    init,
+    accepted01,
+    forced01,
+    step02,
+    direct03,
+    step04,
+    cancel,
+  };
+};
+
 describe("script-integrity-hash-missing real lifecycle", () => {
   it("publishes, proves accepted zero integrity hash, mints, and removes", async () => {
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
     });
-    const chain =
-      harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
-    const family: ScriptIntegrityHashMissingContracts = {
-      steps: chain.steps,
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    };
-    const category = harness.catalogue.categories.scriptIntegrityHashMissing!;
+    const { family, category } = await registeredFamily(harness);
     const item = encodeMidgardVersionedScript({
       language: "PlutusV3",
       scriptBytes: Buffer.from([1]),
@@ -362,17 +713,20 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     await measured("cancel-step01", () =>
       cancel(cancel01.nextThreadOutRef, refs[0]!),
     );
+    coverage.cancelled("step-01");
     const cancel02Init = await initialize();
     const cancel02State = await accepted01(cancel02Init.nextThreadOutRef);
     await measured("cancel-step02", () =>
       cancel(cancel02State.nextThreadOutRef, refs[1]!),
     );
+    coverage.cancelled("step-02");
     const cancel03Init = await initialize();
     const cancel03Bound = await accepted01(cancel03Init.nextThreadOutRef);
     const cancel03State = await accepted02(cancel03Bound.nextThreadOutRef);
     await measured("cancel-step03", () =>
       cancel(cancel03State.nextThreadOutRef, refs[2]!),
     );
+    coverage.cancelled("step-03");
     const cancel04Init = await initialize();
     const cancel04Bound = await accepted01(cancel04Init.nextThreadOutRef);
     const cancel04Subject = await accepted02(cancel04Bound.nextThreadOutRef);
@@ -380,6 +734,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     await measured("cancel-step04", () =>
       cancel(cancel04State.nextThreadOutRef, refs[6]!),
     );
+    coverage.cancelled("step-04");
     const removalRefs = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.contracts,
@@ -544,6 +899,9 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       expect(BigInt(row.memory), row.label).toBeLessThanOrEqual(16_500_000n);
       expect(BigInt(row.cpu), row.label).toBeLessThanOrEqual(10_000_000_000n);
     }
+    coverage.reason(REASON, "accepted_invalid");
+    coverage.scenario("wrongful_acceptance_success");
+    coverage.scenario("permanent_proof_token_and_descendant_removal");
     console.info(
       `[script-integrity-hash-missing-publication] ${JSON.stringify(publication)}`,
     );
@@ -556,20 +914,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
     });
-    const chain =
-      harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
-    const family: ScriptIntegrityHashMissingContracts = {
-      steps: chain.steps,
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    };
-    const category = harness.catalogue.categories.scriptIntegrityHashMissing!;
+    const { family, category } = await registeredFamily(harness);
     const item = encodeMidgardVersionedScript({
       language: "PlutusV3",
       scriptBytes: Buffer.from([2]),
@@ -827,6 +1172,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(final.fraudProofUnit).toContain(category.categoryId);
+    coverage.reason(REASON, "forced_rejection_wrong");
+    coverage.scenario("wrongful_forced_rejection_success");
   }, 600_000);
 
   it("splits 224+224 certified items across resumable ledger transactions", async () => {
@@ -840,20 +1187,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
     });
-    const chain =
-      harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
-    const family: ScriptIntegrityHashMissingContracts = {
-      steps: chain.steps,
-      computationThread: harness.contracts.computationThread,
-      fraudProof: harness.contracts.fraudProof,
-      fieldPreimageCertificatePolicyId:
-        harness.contracts.fieldPreimageCertificate.policyId,
-      fieldPreimageCertificateMintingScript:
-        harness.contracts.fieldPreimageCertificate.mintingScript,
-      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-      stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    };
-    const category = harness.catalogue.categories.scriptIntegrityHashMissing!;
+    const { family, category } = await registeredFamily(harness);
     const measurements: VanRossemFitMeasurement[] = [];
     const maximumShape =
       "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints";
@@ -1294,13 +1628,44 @@ describe("script-integrity-hash-missing real lifecycle", () => {
               }),
       );
       grammarResumeIndex += 1;
+      outRef = transition.nextThreadOutRef;
       if (grammarResumeIndex === 1) {
         console.info("[script-integrity-max] first grammar resume confirmed");
+        // A real interruption: the next resume starts from nothing but the
+        // durable checkpoint bytes the previous transaction committed.
         grammar = decodeMissingNativeScriptTxGrammarCheckpoint(
           encodeMissingNativeScriptTxGrammarCheckpoint(grammar),
         );
+        coverage.resumed();
+        // Field 8's certificate and chunks cannot resume the field-6 grammar:
+        // the certificate names its field, and the door refuses the mismatch.
+        await expectOnchainRefusal(() =>
+          submitScriptIntegrityHashMissingScriptGrammar({
+            lucid: harness.proverLucid,
+            contracts: family,
+            categoryId: category.categoryId,
+            signer: harness.proverSigner,
+            threadOutRef: outRef,
+            referenceScriptUtxo: refs[3]!,
+            authenticatedCarriageUtxos: carriage(redeemerPublished),
+            closes: false,
+            nextDatum: datum(3, state),
+            buildArgs: ({ input_index, output_index }) => ({
+              Resume: {
+                input_index,
+                output_index,
+                opening: opening(redeemerPlan, redeemerPublished, refs[3]!),
+                checkpoint_bytes:
+                  encodeMissingNativeScriptTxGrammarCheckpoint(
+                    grammar,
+                  ).toString("hex"),
+                item_budget: BigInt(itemBudget),
+              },
+            }),
+          }),
+        );
+        coverage.seamMutated("field_certificate");
       }
-      outRef = transition.nextThreadOutRef;
     }
     let semantic = advanceMissingNativeScriptTxSemanticCheckpoint({
       checkpoint: initialMissingNativeScriptTxSemanticCheckpoint({
@@ -1602,7 +1967,430 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     console.info(
       `[script-integrity-hash-missing-max-fit-ledger] ${JSON.stringify(ledger)}`,
     );
+    coverage.scenario("maximum_supported_evidence");
   }, 1_200_000);
+
+  it("refuses an honest accepted block and every substituted accepted seam on chain", async () => {
+    // Effectful (a PlutusV3 witness) with a genuine integrity hash: the
+    // canonical rule finds no fault, so no acceptance thread may close.
+    const plutus = plutusScript(7);
+    const scriptPreimage = encodeCbor([plutus]);
+    const redeemerPreimage = EMPTY_CBOR_LIST;
+    const s = await makeScenario({
+      nativeTx: nativeTxOf({
+        scriptItems: [plutus],
+        redeemerItems: [],
+        scriptIntegrityHash: Buffer.alloc(32, 1),
+        fee: 4_000n,
+      }),
+    });
+    const subject = SDK.acceptedVerdictSubject(s.block.nativeTxId);
+    const honest = {
+      subject,
+      script_integrity_hash: "01".repeat(32),
+      contains_non_native_script: true,
+      has_redeemers: false,
+    };
+    const thread = await s.init();
+    // Transaction membership: a foreign transactions root cannot bind the
+    // header's counted root, whatever proof rides with it.
+    await expectOnchainRefusal(() =>
+      s.accepted01(thread, {
+        ...s.block.txInclusion!,
+        transactionsPhasRoot: "11".repeat(32),
+      }),
+    );
+    coverage.seamMutated("tx_membership");
+    const bound = await s.accepted01(thread);
+    // Subject coordinate: step 02 recomputes the subject from the bound
+    // source and refuses a datum naming another transaction.
+    await expectOnchainRefusal(() =>
+      s.step02(bound, { subject: SDK.acceptedVerdictSubject("99".repeat(32)) }),
+    );
+    coverage.scenario("reason_or_subject_coordinate_mutation");
+    // Witness-set anchor: the carried anchor must be the bound one.
+    await expectOnchainRefusal(() =>
+      s.step02(bound, { subject, anchoredWitnessSetHash: "22".repeat(32) }),
+    );
+    coverage.seamMutated("witness_set_anchor");
+    const anchored = await s.step02(bound, { subject });
+    // Compact transaction: another transaction's bytes under the anchored id.
+    const foreign = nativeTxOf({
+      scriptItems: [plutus],
+      redeemerItems: [],
+      scriptIntegrityHash: Buffer.alloc(32, 1),
+      fee: 5_000n,
+    });
+    await expectOnchainRefusal(() =>
+      s.direct03(anchored, {
+        decision: honest,
+        compact: encodeMidgardNativeTxCompact(foreign.compact).toString("hex"),
+        scriptPreimage,
+        redeemerPreimage,
+      }),
+    );
+    coverage.seamMutated("compact_tx");
+    // Field preimage: a substituted script field under the anchored witness set.
+    await expectOnchainRefusal(() =>
+      s.direct03(anchored, {
+        decision: honest,
+        scriptPreimage: encodeCbor([plutusScript(8)]),
+        redeemerPreimage,
+      }),
+    );
+    coverage.seamMutated("field_preimage");
+    // Wrong successor: the direct decision may only continue at step 04.
+    await expectOnchainRefusal(() =>
+      s.direct03(anchored, {
+        decision: honest,
+        scriptPreimage,
+        redeemerPreimage,
+        staged: true,
+      }),
+    );
+    const decided = await s.direct03(anchored, {
+      decision: honest,
+      scriptPreimage,
+      redeemerPreimage,
+    });
+    await expectOnchainRefusal(() => s.step04(decided));
+    coverage.scenario("honest_accepted_block_refusal");
+    coverage.reason(REASON);
+  }, 600_000);
+
+  it("refuses an honest forced rejection, a mutated forced reason, and a substituted forced leaf on chain", async () => {
+    // Effectful with a zero integrity hash: the operator's rejection is
+    // exactly right, so no wrongful-rejection thread may close.
+    const plutus = plutusScript(9);
+    const scriptPreimage = encodeCbor([plutus]);
+    const redeemerPreimage = EMPTY_CBOR_LIST;
+    const s = await makeScenario({
+      nativeTx: nativeTxOf({
+        scriptItems: [plutus],
+        redeemerItems: [],
+        scriptIntegrityHash: Buffer.alloc(32),
+        fee: 5_000n,
+      }),
+      forcedReason: REASON,
+    });
+    const membership = await buildForcedTransactionLeafMembershipProof({
+      reconstruction: s.block.reconstruction,
+      eventKey: {
+        ForcedTransactionEventKey: { tx_order_id: FORCED_ORDER_KEY },
+      },
+    });
+    const subject = SDK.forcedVerdictSubject({
+      transactionId: s.block.nativeTxId,
+      sourceKey: FORCED_ORDER_KEY,
+      rejectionReason: REASON,
+    });
+    const pending = await s.forced01(await s.init());
+    // Reason coordinate: the datum claims another family's reason for the
+    // same leaf; the exact-reason bind refuses it.
+    await expectOnchainRefusal(() =>
+      s.step02(pending, {
+        subject: SDK.forcedVerdictSubject({
+          transactionId: s.block.nativeTxId,
+          sourceKey: FORCED_ORDER_KEY,
+          rejectionReason: "ObserversForbiddenOnUntaggedNetwork",
+        }),
+        forcedMembership: membership,
+      }),
+    );
+    coverage.scenario("reason_or_subject_coordinate_mutation");
+    // Forced leaf: a leaf carrying another verdict is not in the forced root.
+    await expectOnchainRefusal(() =>
+      s.step02(pending, {
+        subject,
+        forcedMembership: {
+          ...membership,
+          value: { ...membership.value, verdict: "ForcedTxValid" },
+        },
+      }),
+    );
+    coverage.seamMutated("forced_leaf");
+    const anchored = await s.step02(pending, {
+      subject,
+      forcedMembership: membership,
+    });
+    const decided = await s.direct03(anchored, {
+      decision: {
+        subject,
+        script_integrity_hash: ZERO_HASH,
+        contains_non_native_script: true,
+        has_redeemers: false,
+      },
+      scriptPreimage,
+      redeemerPreimage,
+    });
+    await expectOnchainRefusal(() => s.step04(decided));
+    coverage.scenario("honest_forced_rejection_refusal");
+  }, 600_000);
+
+  it("walks the staged route below the direct item limit, refuses the direct route there, and cancels every staged step", async () => {
+    // No script witnesses and one redeemer past the direct limit: the fault
+    // holds through `has_redeemers`, and only the staged route can reach it.
+    const redeemerItems = Array.from({ length: 65 }, (_, index) =>
+      Buffer.from([index]),
+    );
+    const scriptPreimage = encodeCbor([]);
+    const redeemerPreimage = encodeCbor(redeemerItems);
+    const s = await makeScenario({
+      nativeTx: nativeTxOf({
+        scriptItems: [],
+        redeemerItems,
+        scriptIntegrityHash: Buffer.alloc(32),
+        fee: 6_000n,
+      }),
+    });
+    const subject = SDK.acceptedVerdictSubject(s.block.nativeTxId);
+    const evidence = prepareScriptIntegrityHashMissingEvidence({
+      finding: {
+        category: "scriptIntegrityHashMissing",
+        headerHash: s.setup.headerHash,
+        transactionId: s.block.nativeTxId,
+        direction: "wrongfulAcceptance",
+        source: "accepted",
+        rejectionReason: null,
+      },
+      subject,
+      nativeTxCompactCbor: s.compactCbor,
+      witnessSetCompactCbor: s.witnessSetCbor,
+      fieldPreimageLengthsCbor: "80",
+      scriptWitnessesPreimageCbor: scriptPreimage.toString("hex"),
+      redeemersPreimageCbor: redeemerPreimage.toString("hex"),
+      scriptIntegrityHash: ZERO_HASH,
+      scriptLanguages: [],
+      redeemerCount: 65,
+    });
+    const artifact = testingOnlyScriptIntegrityHashMissingArtifact({
+      detectionId: `script-integrity-hash-missing:accepted:0:${s.block.nativeTxId}`,
+      evidence,
+      source: {
+        header: s.block.header,
+        nativeTxCompactCbor: s.compactCbor,
+        witnessSetCompactCbor: s.witnessSetCbor,
+        acceptedInclusion: s.block.txInclusion!,
+      },
+    });
+    const plan = (fieldIndex: 6 | 8, items: readonly Buffer[]) =>
+      planFaultProofFieldOpening({
+        fieldIndex,
+        anchorTxId: s.block.nativeTxId,
+        nativeTxCompactCbor: s.compactCbor,
+        witnessSet: s.witnessSet,
+        itemCbors: items,
+        owner: s.owner,
+        publish: true,
+        anchorWitnessSetHash: s.witnessSetHash,
+        label: `integrity small field ${fieldIndex.toString()}`,
+      });
+    const scriptPlan = plan(6, []);
+    const redeemerPlan = plan(8, redeemerItems);
+    expect(scriptPlan.plan.tier).toBe("RawUtxo");
+    expect(redeemerPlan.plan.tier).toBe("RawUtxo");
+    const publish = (planned: typeof scriptPlan) =>
+      publishFaultProofFieldCarriage({
+        lucid: s.harness.proverLucid,
+        signer: s.harness.proverSigner,
+        planned,
+        publisherAddress: s.harness.proverSigner.address,
+        label: "integrity small carriage",
+      });
+    await publish(scriptPlan);
+    const redeemerPublished = await publish(redeemerPlan);
+    const port = createScriptIntegrityHashMissingTransactionPort({
+      binding: {
+        blueprint: s.harness.realBlueprint,
+        deploymentInfo: {},
+        network,
+        definition: { headerHash: s.setup.headerHash },
+        resolvedContracts: { category: s.category },
+        releaseEconomics: {
+          policy: { fraudProverRewardLovelace: "400000000" },
+        },
+      } as unknown as FraudProofWorkflowDeploymentBinding<"scriptIntegrityHashMissing">,
+      lucid: s.harness.proverLucid,
+      signer: s.harness.proverSigner,
+      contracts: s.family,
+      references: {
+        steps: s.refs as unknown as readonly [
+          UTxO,
+          UTxO,
+          UTxO,
+          UTxO,
+          UTxO,
+          UTxO,
+          UTxO,
+        ],
+        witnesses: s.harness.witnessReferenceScripts as Required<
+          typeof s.harness.witnessReferenceScripts
+        >,
+        fieldPreimageCertificateMint: s.refs[0]!,
+      },
+      lease: {
+        acquire: async () => ({
+          token: "script-integrity-small-emulator",
+          source: "emulator",
+          renew: async () => {},
+          release: async () => {},
+          fail: async () => {},
+        }),
+      },
+    });
+    /** Drives one production action and returns the thread it leaves at `nextIndex`. */
+    const actor = async (
+      stage: `step_0${3 | 4 | 5 | 6 | 7}`,
+      nextIndex: number | null,
+      threadOutRef: string,
+    ) => {
+      const captured = await port.capture({
+        action: {
+          actionId: `${stage}:${threadOutRef}:${s.setup.fraudulentBlockOutRef}`,
+          input: {
+            schemaVersion: CURSOR_FAMILY_ACTION,
+            category: "scriptIntegrityHashMissing",
+            stage,
+            ordinal: Number(stage.slice(-1)),
+            threadOutRef,
+            stateQueueBlockOutRef: s.setup.fraudulentBlockOutRef,
+          },
+        },
+        artifact,
+      });
+      const txHash = await submitCapturedTransaction(captured.transaction);
+      await s.harness.proverLucid.awaitTx(txHash);
+      if (nextIndex === null) return txHash;
+      const next = (
+        await s.harness.proverLucid.utxosAt(
+          s.family.steps[nextIndex]!.spendingScriptAddress,
+        )
+      ).find((utxo) => utxo.txHash === txHash);
+      if (next === undefined)
+        throw new Error(`production actuator omitted the ${stage} thread`);
+      return `${next.txHash}#${next.outputIndex.toString()}`;
+    };
+    const anchoredThread = async () =>
+      s.step02(await s.accepted01(await s.init()), { subject });
+    const anchored = await anchoredThread();
+    // One past the direct bound: 65 redeemers refuse the direct route on chain.
+    await expectOnchainRefusal(() =>
+      s.direct03(anchored, {
+        decision: {
+          subject,
+          script_integrity_hash: ZERO_HASH,
+          contains_non_native_script: false,
+          has_redeemers: true,
+        },
+        scriptPreimage,
+        redeemerPreimage,
+      }),
+    );
+    // The production actuator selects the staged route: an empty field 6
+    // completes its grammar and its walk inside their first batches.
+    const grammar = await actor("step_03", 3, anchored);
+    const scan = await actor("step_04", 4, grammar);
+    const complete = await actor("step_05", 5, scan);
+    const started = await actor("step_06", 5, complete);
+    const staged = planScriptIntegrityHashMissingStagedWalk({
+      transactionId: s.block.nativeTxId,
+      scriptWitnessesPreimageCbor: scriptPreimage.toString("hex"),
+      redeemersPreimageCbor: redeemerPreimage.toString("hex"),
+    });
+    const [first, second] = staged.redeemerGrammar;
+    const redeemerOpening = faultProofFieldOpening({
+      planned: redeemerPlan,
+      referenceInputs: [...redeemerPublished, s.refs[5]!],
+      certificatePolicyId: s.family.fieldPreimageCertificatePolicyId,
+      label: "integrity small redeemer opening",
+    });
+    const resume = (checkpointBytes: Buffer, budget: bigint) =>
+      submitScriptIntegrityHashMissingRedeemerGrammar({
+        ...s.common(5),
+        threadOutRef: started,
+        authenticatedCarriageUtxos: redeemerPublished,
+        closes: false,
+        nextDatum: s.datum(5, {
+          subject,
+          witness_set_hash: s.witnessSetHash,
+          script_integrity_hash: ZERO_HASH,
+          phase: {
+            RedeemerGrammar: {
+              checkpoint_hash: hashScriptIntegrityField8Checkpoint(second!),
+              contains_non_native_script: false,
+            },
+          },
+        }),
+        buildArgs: ({ input_index, output_index }) => ({
+          Resume: {
+            input_index,
+            output_index,
+            opening: redeemerOpening,
+            checkpoint_bytes: checkpointBytes.toString("hex"),
+            item_budget: budget,
+          },
+        }),
+      });
+    // Consensus bound: one item past `staged_batch_limit` is refused.
+    await expectOnchainRefusal(() =>
+      resume(encodeScriptIntegrityField8Checkpoint(first!), 33n),
+    );
+    coverage.adjacentOverBoundRefused();
+    // Checkpoint: a later position under the committed hash, then malformed bytes.
+    await expectOnchainRefusal(() =>
+      resume(encodeScriptIntegrityField8Checkpoint(second!), 24n),
+    );
+    await expectOnchainRefusal(() =>
+      resume(
+        encodeScriptIntegrityField8Checkpoint(first!).subarray(0, 40),
+        24n,
+      ),
+    );
+    coverage.seamMutated("checkpoint");
+    const resumedOnce = await actor("step_06", 5, started);
+    const resumedTwice = await actor("step_06", 5, resumedOnce);
+    const decided = await actor("step_06", 6, resumedTwice);
+    const minted = await actor("step_07", null, decided);
+    expect(minted).toMatch(/^[0-9a-f]{64}$/u);
+    coverage.reason(REASON, "accepted_invalid");
+    // Cancel from every staged physical step.
+    const atGrammar = await actor("step_03", 3, await anchoredThread());
+    await s.cancel(atGrammar, 3);
+    coverage.cancelled("script-grammar");
+    const atScan = await actor(
+      "step_04",
+      4,
+      await actor("step_03", 3, await anchoredThread()),
+    );
+    await s.cancel(atScan, 4);
+    coverage.cancelled("script-scan");
+    const atRedeemer = await actor(
+      "step_06",
+      5,
+      await actor(
+        "step_05",
+        5,
+        await actor(
+          "step_04",
+          4,
+          await actor("step_03", 3, await anchoredThread()),
+        ),
+      ),
+    );
+    await s.cancel(atRedeemer, 5);
+    coverage.cancelled("redeemer-grammar");
+  }, 600_000);
+
+  it("declares the complete lifecycle coverage it exercised", () => {
+    assertCompleteLifecycleCoverage({
+      coverage: coverage.snapshot(),
+      expectedReasonArms: [REASON],
+      authenticationSeams: [...AUTHENTICATION_SEAMS],
+      cancellablePhysicalSteps: [...PHYSICAL_STEPS],
+      resumable: true,
+      hasAdjacentConsensusBound: true,
+    });
+  });
 });
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";

@@ -23,12 +23,18 @@ spending validators:
 3. `fraud_proofs/script_integrity_hash_missing/step_03.main.spend`
    parameters: successor step-04 hash, script-grammar hash,
    computation-thread policy id, and field certificate policy id. It handles
-   direct evidence up to 64 items per field or starts certified field-6
-   grammar certification.
+   direct evidence up to 64 items per field or starts field-6 grammar
+   certification. The staged route is open to every field-6 shape under any
+   carriage tier, including an empty field or one whose grammar completes in
+   its first batch: a transaction with few script witnesses but more than 64
+   redeemers has no direct route, and the staged route is its only proof.
 4. `fraud_proofs/script_integrity_hash_missing/script_grammar.main.spend`
    parameters: script-scan hash, computation-thread policy id, certificate
    policy id. It resumes grammar certification in fit-safe 24-item batches and opens
-   the authenticated semantic walk only from a terminal grammar checkpoint.
+   the authenticated semantic walk only from a terminal grammar checkpoint. A
+   walk that completes inside that first batch still hands the scan validator
+   its committed terminal, which resumes it without visiting an item and
+   closes the field.
 5. `fraud_proofs/script_integrity_hash_missing/script_scan.main.spend`
    parameters: redeemer-grammar hash, computation-thread policy id,
    certificate policy id. It scans field 6 in fit-safe 24-item batches and carries the
@@ -118,8 +124,8 @@ wire the family without inference through these direct modules:
   step 03, script grammar, script scan, redeemer grammar, terminal mint, and
   cancellation. Each uses reference scripts, resolves input/output indices at
   transaction construction, performs local UPLC evaluation, and admits staged
-  evidence only as reference inputs containing the configured field-certificate
-  policy token;
+  evidence only as reference inputs (a chunked carriage must contain the
+  configured field-certificate policy token);
 - `family.ts` supplies retained-evidence preparation, exact accepted/forced
   source binding, semantic parity, carriage selection, classifier, durable
   journal reconciliation, and the precise central wiring manifest;

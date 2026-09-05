@@ -16,6 +16,7 @@ import {
   type ScriptIntegrityHashMissingWorkflowStage,
   selectScriptIntegrityHashMissingCarriage,
 } from "../src/script-integrity-hash-missing/family.js";
+import { scriptIntegrityHashMissingUsesDirectRoute } from "../src/script-integrity-hash-missing/staged-plan.js";
 
 const TX_ID = "42".repeat(32);
 const HEADER = "33".repeat(28);
@@ -146,6 +147,40 @@ describe("scriptIntegrityHashMissing V1", () => {
         fieldBytes: 15_149,
       }),
     ).toBe("certifiedFields");
+  });
+
+  it("takes the direct route only when both fields fit its item cap and byte budget", () => {
+    const small = {
+      scriptItemCount: 1,
+      redeemerItemCount: 64,
+      fieldBytes: 900,
+    };
+    expect(scriptIntegrityHashMissingUsesDirectRoute(small)).toBe(true);
+    // One redeemer past the cap has no direct route however small the bytes.
+    expect(
+      scriptIntegrityHashMissingUsesDirectRoute({
+        ...small,
+        redeemerItemCount: 65,
+      }),
+    ).toBe(false);
+    expect(
+      scriptIntegrityHashMissingUsesDirectRoute({
+        ...small,
+        scriptItemCount: 65,
+      }),
+    ).toBe(false);
+    expect(
+      scriptIntegrityHashMissingUsesDirectRoute({
+        ...small,
+        fieldBytes: 15_149,
+      }),
+    ).toBe(false);
+    expect(() =>
+      scriptIntegrityHashMissingUsesDirectRoute({
+        ...small,
+        redeemerItemCount: -1,
+      }),
+    ).toThrow(/negative/);
   });
 
   it("reconstructs init through permanent mint/removal from chain state after restart", async () => {
