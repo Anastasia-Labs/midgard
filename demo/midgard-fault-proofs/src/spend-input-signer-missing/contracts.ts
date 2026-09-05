@@ -136,6 +136,7 @@ export const applySpendInputSignerMissingScripts = ({
   ]);
   const step02 = applied(1, [
     step03.spendingScriptHash,
+    step05.spendingScriptHash,
     computationThreadPolicyId,
     fieldPreimageCertificatePolicyId,
   ]);

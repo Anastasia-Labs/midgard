@@ -242,7 +242,11 @@ export const submitSpendInputSignerMissingStep04 = async ({
     ? Data.to(
         {
           fraud_prover: signer.paymentKeyHash,
-          data: { subject: evidence.subject, signer_missing: !signerPresent },
+          data: {
+            subject: evidence.subject,
+            signer_required: true,
+            signer_missing: !signerPresent,
+          },
         } as never,
         SpendInputSignerStep05DatumSchema as never,
       )

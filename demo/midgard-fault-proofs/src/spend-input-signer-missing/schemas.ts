@@ -38,6 +38,7 @@ export const SpendInputSignerScanSchema = Data.Object({
 });
 export const SpendInputSignerVerdictSchema = Data.Object({
   subject: SpendInputSignerVerdictSubjectSchema,
+  signer_required: Data.Boolean(),
   signer_missing: Data.Boolean(),
 });
 export const SpendInputSignerStep01SourceSchema = Data.Enum([

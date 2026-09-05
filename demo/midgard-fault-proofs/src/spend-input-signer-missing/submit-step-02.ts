@@ -11,6 +11,7 @@ import {
   Data,
   type LucidEvolution,
   type Network,
+  type TxBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -45,9 +46,21 @@ import {
   SpendInputSignerStep02DatumSchema,
   SpendInputSignerStep02RedeemerSchema,
   SpendInputSignerStep03DatumSchema,
+  SpendInputSignerStep05DatumSchema,
 } from "./schemas.js";
-import type { SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
+import {
+  requireSpendInputSignerResolvedOutput,
+  requireSpendInputSignerScanEvidence,
+  type SpendInputSignerMissingEvidence,
+} from "./spend-input-signer-missing.js";
 
+/**
+ * Step 02 resolves the bound spend input and classifies its credential the
+ * way the validator does: a pub-key credential is handed to the witness scan
+ * at step 03; a script credential, or a coordinate past the field-0 count,
+ * closes at step 05 with the direct verdict. The out-of-range arm reads no
+ * prior-ledger membership, so it carries none.
+ */
 export const submitSpendInputSignerMissingStep02 = async ({
   lucid,
   network,
@@ -110,13 +123,17 @@ export const submitSpendInputSignerMissingStep02 = async ({
   });
   if (
     state.input_index !== BigInt(evidence.inputIndex) ||
-    state.prior_root !== evidence.resolved.priorRoot ||
+    state.prior_root !== evidence.priorRoot ||
     state.witness_set_hash !== evidence.witnessSetHashHex
   )
     throw new Error(
       "spend-input-signer-missing: authenticated bind state changed",
     );
-  if (evidence.resolved.membershipProof === undefined)
+  const outOfRange = evidence.route === "coordinate_out_of_range";
+  const resolved = outOfRange
+    ? undefined
+    : requireSpendInputSignerResolvedOutput(evidence);
+  if (resolved !== undefined && resolved.membershipProof === undefined)
     throw new Error(
       "spend-input-signer-missing: production predecessor membership object is absent",
     );
@@ -185,7 +202,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
     ...carriageUtxos,
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
-    ...membershipCarriage.referenceInputs,
+    ...(resolved === undefined ? [] : membershipCarriage.referenceInputs),
   ];
   const opening: FieldOpening = faultProofFieldOpening({
     planned,
@@ -193,20 +210,39 @@ export const submitSpendInputSignerMissingStep02 = async ({
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: "spend-input-signer-missing spend inputs",
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        subject: evidence.subject,
-        transaction_id: evidence.subject.transaction_id,
-        witness_set_hash: evidence.witnessSetHashHex,
-        payment_credential: evidence.paymentCredentialHex,
-      },
-    } as never,
-    SpendInputSignerStep03DatumSchema as never,
-  );
+  // The witness-scan route hands the credential to step 03; every direct
+  // route writes the terminal verdict step 02 derives on chain
+  // (`direct_verdict_v1`) and continues at step 05.
+  const scan = evidence.route === "witness_scan";
+  const nextStepIndex = scan ? 2 : 4;
+  const nextDatum = scan
+    ? Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            subject: evidence.subject,
+            transaction_id: evidence.subject.transaction_id,
+            witness_set_hash: evidence.witnessSetHashHex,
+            payment_credential:
+              requireSpendInputSignerScanEvidence(evidence)
+                .paymentCredentialHex,
+          },
+        } as never,
+        SpendInputSignerStep03DatumSchema as never,
+      )
+    : Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            subject: evidence.subject,
+            signer_required: false,
+            signer_missing: false,
+          },
+        } as never,
+        SpendInputSignerStep05DatumSchema as never,
+      );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[2].spendingScriptAddress,
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -234,16 +270,20 @@ export const submitSpendInputSignerMissingStep02 = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             spend_inputs_opening: opening,
-            descriptor_cbor: evidence.resolved.descriptorCborHex,
+            // Past the field's count no membership is read; the carriage
+            // slot is filled with an empty proof the validator never opens.
+            descriptor_cbor: resolved?.descriptorCborHex ?? "",
             membership: {
               RedeemerCarriedMembership: {
-                membership_proof: evidence.resolved.membershipProof,
+                membership_proof: resolved?.membershipProof ?? [],
                 membership_proof_script_redeemer_index:
-                  requireWithdrawalRedeemerIndex(
-                    ctx,
-                    membershipAddress,
-                    "spend-input-signer-missing membership",
-                  ),
+                  resolved === undefined
+                    ? 0n
+                    : requireWithdrawalRedeemerIndex(
+                        ctx,
+                        membershipAddress,
+                        "spend-input-signer-missing membership",
+                      ),
               },
             },
           },
@@ -258,37 +298,40 @@ export const submitSpendInputSignerMissingStep02 = async ({
       await lucid.wallet().getUtxos(),
     ),
   );
-  const unsigned = await membershipCarriage
-    .attach(
-      lucid
-        .newTx()
-        .collectFrom([feeInput])
-        .collectFrom([threadUtxo], redeemer)
-        .readFrom(referenceInputs)
-        .withdraw(
-          membershipAddress,
-          0n,
-          encodeRawPhasMembershipProofRedeemer({
-            root: evidence.resolved.priorRoot,
-            keyBytes: encodeMidgardSpendInputItem({
-              txId: Buffer.from(evidence.resolved.transactionId, "hex"),
-              outputIndex: evidence.resolved.outputIndex,
-            }).toString("hex"),
-            valueBytes: evidence.resolved.descriptorCborHex,
-            membershipProofCbor: evidence.resolved.membershipProofCborHex,
-          }),
-        )
-        .pay.ToContract(
-          contracts.steps[2].spendingScriptAddress,
-          { kind: "inline", value: nextDatum },
-          {
-            lovelace: threadUtxo.assets.lovelace ?? 0n,
-            [threadToken.unit]: 1n,
-          },
-        )
-        .addSignerKey(signer.paymentKeyHash),
-    )
-    .complete({ localUPLCEval: true });
+  const withMembership = (tx: TxBuilder): TxBuilder =>
+    resolved === undefined
+      ? tx
+      : membershipCarriage.attach(
+          tx.withdraw(
+            membershipAddress,
+            0n,
+            encodeRawPhasMembershipProofRedeemer({
+              root: evidence.priorRoot,
+              keyBytes: encodeMidgardSpendInputItem({
+                txId: Buffer.from(resolved.transactionId, "hex"),
+                outputIndex: resolved.outputIndex,
+              }).toString("hex"),
+              valueBytes: resolved.descriptorCborHex,
+              membershipProofCbor: resolved.membershipProofCborHex,
+            }),
+          ),
+        );
+  const unsigned = await withMembership(
+    lucid
+      .newTx()
+      .collectFrom([feeInput])
+      .collectFrom([threadUtxo], redeemer)
+      .readFrom(referenceInputs)
+      .pay.ToContract(
+        contracts.steps[nextStepIndex].spendingScriptAddress,
+        { kind: "inline", value: nextDatum },
+        {
+          lovelace: threadUtxo.assets.lovelace ?? 0n,
+          [threadToken.unit]: 1n,
+        },
+      )
+      .addSignerKey(signer.paymentKeyHash),
+  ).complete({ localUPLCEval: true });
   if (outputIndex === undefined)
     throw new Error("spend-input-signer-missing: step-02 layout unresolved");
   const signed = await unsigned.sign.withWallet().complete();
@@ -300,11 +343,15 @@ export const submitSpendInputSignerMissingStep02 = async ({
         utxo: stepReference,
         expectedScript: contracts.steps[1].spendingScript,
       }),
-      workflowReferenceScript({
-        role: "spend-input-signer-missing-membership",
-        utxo: membershipReferenceScriptUtxo,
-        expectedScript: membershipScript,
-      }),
+      ...(resolved === undefined
+        ? []
+        : [
+            workflowReferenceScript({
+              role: "spend-input-signer-missing-membership",
+              utxo: membershipReferenceScriptUtxo,
+              expectedScript: membershipScript,
+            }),
+          ]),
     ],
     boundary: preSubmitBoundary,
   });
@@ -319,5 +366,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
     carriageTier: planned.plan.tier,
+    route: evidence.route,
+    stage: scan ? ("step03" as const) : ("step05" as const),
   };
 };

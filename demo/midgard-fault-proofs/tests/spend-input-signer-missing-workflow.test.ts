@@ -20,6 +20,9 @@ const evidence: SpendInputSignerMissingEvidence = Object.freeze({
   inputFieldPreimageHex: "80",
   addressWitnessFieldPreimageHex: "80",
   witnessSetHashHex: "22".repeat(32),
+  priorRoot: "33".repeat(32),
+  route: "witness_scan",
+  signerRequired: true,
   resolved: Object.freeze({
     priorRoot: "33".repeat(32),
     transactionId: "44".repeat(32),

@@ -139,6 +139,7 @@ const AUTHENTICATION_SEAMS = [
   "prior_output_membership",
   "field_certificate",
   "forced_leaf",
+  "credential",
 ] as const;
 const PHYSICAL_STEPS = [
   "step-01",
@@ -239,10 +240,12 @@ const garbageWitness = (index: number): Buffer => {
 const priorLedgerFor = async (
   paymentCredentialHex: string,
   priorTxId: string,
+  /** Address header: `0x60` pub-key enterprise, `0x70` script enterprise. */
+  addressHeader = 0x60,
 ) => {
   const priorOutput = encodeMidgardTxOutput({
     address: Buffer.concat([
-      Buffer.from([0x60]),
+      Buffer.from([addressHeader]),
       Buffer.from(paymentCredentialHex, "hex"),
     ]),
     value: { lovelace: 2_000_000n, assets: new Map() },
@@ -1204,7 +1207,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         {
           ...honest,
           resolved: {
-            ...honest.resolved,
+            ...honest.resolved!,
             descriptorCborHex: foreign.resolved.descriptorCborHex,
             outputCborHex: foreign.resolved.outputCborHex,
           },
@@ -1411,6 +1414,23 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       honest,
       block.forcedSource,
     );
+    // Credential seam: a pub-key coordinate whose signer really is missing
+    // cannot skip the witness scan through the direct exit; the validator
+    // classifies the resolved credential itself.
+    await expectRefusedOnChain(() =>
+      run.step02(
+        bound.nextThreadOutRef,
+        {
+          ...honest,
+          route: "script_credential",
+          signerRequired: false,
+          signerMissing: false,
+        },
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    coverage.seamMutated("credential");
     const authenticated = await run.step02(
       bound.nextThreadOutRef,
       honest,
@@ -1435,6 +1455,99 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     );
     await expectRefusedOnChain(() => run.finalizeDirect(scan.nextThreadOutRef));
     coverage.scenario("honest_forced_rejection_refusal");
+  }, 600_000);
+
+  it("proves a forced rejection over a script-locked spend input through the direct terminal route and refuses the scan door for it", async () => {
+    const harness = await newHarness();
+    const family = await registeredContracts(harness);
+    // The operator rejected a transaction whose spend input is script-locked:
+    // canonical validation authorizes a script credential with no signer, so
+    // the rejection is wrong without any witness and step 02 closes at the
+    // terminal directly.
+    const scriptHash = Buffer.alloc(28, 0x5c).toString("hex");
+    const prior = await priorLedgerFor(scriptHash, "e1".repeat(32), 0x70);
+    const nativeTx = signedNativeTx({
+      outRefBytes: prior.outRefBytes,
+      fee: 17n,
+      witnesses: () => [],
+    });
+    const reason = { SpendInputSignerMissing: { input_index: 0n } } as const;
+    const block = await commitForcedBlock(
+      harness,
+      family,
+      nativeTx,
+      prior.priorRoot,
+      reason,
+      "f9",
+    );
+    const evidence = prepareSpendInputSignerMissingEvidence({
+      subject: block.subject,
+      inputIndex: 0,
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+      resolved: prior.resolved,
+    });
+    expect(evidence.route).toBe("script_credential");
+    expect(evidence.signerRequired).toBe(false);
+    const shape = "script-locked spend input; direct terminal route; no scan";
+    const { references, certificateReference } = await publishReferences(
+      harness,
+      family,
+      `${FAMILY}-forced-direct`,
+      false,
+    );
+    const run = familyDriver(harness, family, references, certificateReference);
+    const measured = async <T>(
+      name: string,
+      operation: () => Promise<T>,
+    ): Promise<T> => {
+      const captured = await captureEmulatorSubmission(
+        harness.emulator,
+        operation,
+      );
+      recordMeasurements(name, "lifecycle", shape, captured);
+      return captured.result;
+    };
+    const thread = await measured("forced-direct-init", () =>
+      run.initThread(block.blockOutRef),
+    );
+    const step01 = await measured("forced-direct-step01", () =>
+      run.step01Forced(thread.threadOutRef, evidence, block.forcedSource),
+    );
+    // Credential seam: the same forced claim on this coordinate cannot take
+    // the witness-scan door; the validator classifies the credential itself.
+    await expectRefusedOnChain(() =>
+      run.step02(
+        step01.nextThreadOutRef,
+        {
+          ...evidence,
+          route: "witness_scan",
+          signerRequired: true,
+          signerMissing: false,
+          paymentCredentialHex: scriptHash,
+        },
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    const step02 = await measured("forced-direct-step02-terminal-verdict", () =>
+      run.step02(
+        step01.nextThreadOutRef,
+        evidence,
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    expect(step02.stage).toBe("step05");
+    expect(step02.route).toBe("script_credential");
+    const step05 = await measured("forced-direct-step05-proof-mint", () =>
+      run.step05(step02.nextThreadOutRef, evidence),
+    );
+    expect(step05.fraudProofUnit).toBeTruthy();
+    coverage.reason(REASON, "forced_rejection_wrong");
+    coverage.scenario("wrongful_forced_rejection_success");
+    const removal = await run.removal(block.headerHash);
+    expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
+    recordMeasurements("forced-direct-remove", "lifecycle", shape, removal);
   }, 600_000);
 
   it("declares the complete lifecycle coverage it exercised and writes the fit ledger it measured", async () => {

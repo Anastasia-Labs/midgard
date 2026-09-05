@@ -106,6 +106,7 @@ validator main(
         let expected_state: Data = if terminal {
           let value: Data = VerdictV1 {
             subject: scan.authenticated.subject,
+            signer_required: True,
             signer_missing: !signer_present,
           }
           value
@@ -310,6 +311,7 @@ fn scan_of(
 fn verdict_of(block: fixture.NativeBlockFixtureV1, signer_missing: Bool) -> Data {
   let value: Data = VerdictV1 {
     subject: authenticated_of(block).subject,
+    signer_required: True,
     signer_missing,
   }
   value

@@ -56,6 +56,7 @@ export const submitSpendInputSignerMissingStep05 = async ({
   });
   const state = requireLinearFaultStepState<{
     subject: unknown;
+    signer_required: boolean;
     signer_missing: boolean;
   }>({
     threadUtxo,
@@ -64,7 +65,10 @@ export const submitSpendInputSignerMissingStep05 = async ({
     family: "spend-input-signer-missing",
     stepIndex,
   });
-  if (state.signer_missing !== evidence.signerMissing)
+  if (
+    state.signer_required !== evidence.signerRequired ||
+    state.signer_missing !== evidence.signerMissing
+  )
     throw new Error(
       "spend-input-signer-missing: terminal signer verdict changed",
     );

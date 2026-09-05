@@ -241,6 +241,105 @@ describe("spendInputSignerMissing V1", () => {
       }),
     ).toThrow(/frontier exceeds the canonical maximum/u);
   });
+
+  it("routes a forced script-locked or out-of-range coordinate to the direct terminal and refuses it for an accepted subject", () => {
+    // Canonical validation needs no signer at a script credential or past
+    // the field-0 count, so the forced rejection is wrong without a scan.
+    const transaction = transactionWithSignature("empty");
+    const txId = computeMidgardNativeTxId(transaction).toString("hex");
+    const canonicalTransactionCbor =
+      encodeMidgardNativeTxCanonical(transaction);
+    const scriptOutput = encodeMidgardTxOutput({
+      address: Buffer.concat([
+        Buffer.from([0x70]),
+        Buffer.from(paymentCredential, "hex"),
+      ]),
+      value: { lovelace: 2_000_000n, assets: new Map() },
+    });
+    const scriptDescriptor = buildCanonicalMidgardLedgerOutputMaterial({
+      outputIndex: 0,
+      outputCbor: scriptOutput,
+    });
+    const scriptResolved = {
+      ...resolved,
+      descriptorCborHex: scriptDescriptor.descriptorCbor.toString("hex"),
+      outputCborHex: scriptOutput.toString("hex"),
+    };
+    const forced = (inputIndex: bigint) =>
+      forcedVerdictSubject({
+        transactionId: txId,
+        sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
+        rejectionReason: {
+          SpendInputSignerMissing: { input_index: inputIndex },
+        },
+      });
+    const scriptLocked = prepareSpendInputSignerMissingEvidence({
+      subject: forced(0n),
+      inputIndex: 0,
+      canonicalTransactionCbor,
+      resolved: scriptResolved,
+    });
+    expect(scriptLocked.route).toBe("script_credential");
+    expect(scriptLocked.signerRequired).toBe(false);
+    expect(scriptLocked.signerMissing).toBe(false);
+    expect(scriptLocked.paymentCredentialHex).toBeUndefined();
+    expect(scriptLocked.resolved).toEqual(scriptResolved);
+    expect(scriptLocked.checkpoints).toHaveLength(0);
+    // The single spend input sits at 0; the leaf rejects a position that
+    // does not exist, so no prior-ledger output is resolved.
+    const outOfRange = prepareSpendInputSignerMissingEvidence({
+      subject: forced(1n),
+      inputIndex: 1,
+      canonicalTransactionCbor,
+      priorRoot,
+    });
+    expect(outOfRange.route).toBe("coordinate_out_of_range");
+    expect(outOfRange.signerRequired).toBe(false);
+    expect(outOfRange.resolved).toBeUndefined();
+    expect(outOfRange.priorRoot).toBe(priorRoot);
+    expect(() =>
+      prepareSpendInputSignerMissingEvidence({
+        subject: forced(1n),
+        inputIndex: 1,
+        canonicalTransactionCbor,
+      }),
+    ).toThrow(/prior-ledger root is required/u);
+    expect(() =>
+      prepareSpendInputSignerMissingEvidence({
+        subject: forced(0n),
+        inputIndex: 0,
+        canonicalTransactionCbor,
+        priorRoot,
+      }),
+    ).toThrow(/resolved prior-ledger output is required/u);
+    // An accepted subject has no fault at either coordinate.
+    expect(() =>
+      prepareSpendInputSignerMissingEvidence({
+        subject: acceptedVerdictSubject(txId),
+        inputIndex: 0,
+        canonicalTransactionCbor,
+        resolved: scriptResolved,
+      }),
+    ).toThrow(/not key locked/u);
+    expect(() =>
+      prepareSpendInputSignerMissingEvidence({
+        subject: acceptedVerdictSubject(txId),
+        inputIndex: 1,
+        canonicalTransactionCbor,
+        priorRoot,
+      }),
+    ).toThrow(/out of range/u);
+    // The witness-scan route is unchanged for a pub-key coordinate.
+    const scan = prepareSpendInputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(txId),
+      inputIndex: 0,
+      canonicalTransactionCbor,
+      resolved,
+    });
+    expect(scan.route).toBe("witness_scan");
+    expect(scan.signerRequired).toBe(true);
+    expect(scan.signerMissing).toBe(true);
+  });
 });
 
 describe("spendInputSignerMissing registered-chain parity", () => {

@@ -76,7 +76,7 @@ export const submitSpendInputSignerMissingStep01Forced = async ({
       data: {
         subject: evidence.subject,
         input_index: BigInt(evidence.inputIndex),
-        prior_root: evidence.resolved.priorRoot,
+        prior_root: evidence.priorRoot,
         witness_set_hash: evidence.witnessSetHashHex,
       },
     } as never,

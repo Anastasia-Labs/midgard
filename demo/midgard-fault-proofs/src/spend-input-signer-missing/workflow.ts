@@ -66,13 +66,18 @@ export const spendInputSignerWorkflowEvidenceIdentity = (
           category: "spendInputSignerMissing",
           subject: evidence.subject,
           inputIndex: evidence.inputIndex,
+          route: evidence.route,
           transaction: evidence.canonicalTransactionCborHex,
-          outRef: [
-            evidence.resolved.transactionId,
-            evidence.resolved.outputIndex,
-          ],
-          descriptor: evidence.resolved.descriptorCborHex,
-          credential: evidence.paymentCredentialHex,
+          priorRoot: evidence.priorRoot,
+          outRef:
+            evidence.resolved === undefined
+              ? null
+              : [
+                  evidence.resolved.transactionId,
+                  evidence.resolved.outputIndex,
+                ],
+          descriptor: evidence.resolved?.descriptorCborHex ?? null,
+          credential: evidence.paymentCredentialHex ?? null,
           witnesses: evidence.addressWitnessFieldPreimageHex,
         },
         (_key, value: unknown) =>
@@ -115,7 +120,11 @@ const targetFor = (
     case "submitStep01":
       return "step02";
     case "submitStep02":
-      return "step03";
+      // The witness scan continues at step 03; a coordinate that needs no
+      // signer closes at step 05 directly.
+      if (claimed !== "step03" && claimed !== "step05")
+        throw new Error("spendInputSignerMissing step-02 target is invalid");
+      return claimed;
     case "submitStep03":
       return "scanning";
     case "submitScan":
