@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "executionSourceScriptDecoding:00000031:testnet",
-  "blueprintSha256": "9af7bc1979cff2825cf11791f59083a4fd9786a5dfa7ea86b47689246c02769f",
+  "blueprintSha256": "eae812c72946515e4f413d44c25866b02ce19ccee6af264bbc53dcfc8ad2e838",
   "compilerVersion": "aiken v1.1.23+5adf783",
   "entries": [
     {
@@ -21,11 +21,11 @@
       "kind": "lifecycle",
       "maximumShape": "empty native payload, one chunk",
       "signedBytes": 916,
-      "memoryUnits": "369904",
-      "cpuUnits": "151109355",
+      "memoryUnits": "365280",
+      "cpuUnits": "149740510",
       "signedByteMargin": 15468,
-      "memoryUnitMargin": "16130096",
-      "cpuUnitMargin": "9848890645",
+      "memoryUnitMargin": "16134720",
+      "cpuUnitMargin": "9850259490",
       "publicationReserveMargin": null
     },
     {
@@ -225,11 +225,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 1221,
-      "memoryUnits": "628459",
-      "cpuUnits": "217376969",
+      "memoryUnits": "625391",
+      "cpuUnits": "216452722",
       "signedByteMargin": 15163,
-      "memoryUnitMargin": "15871541",
-      "cpuUnitMargin": "9782623031",
+      "memoryUnitMargin": "15874609",
+      "cpuUnitMargin": "9783547278",
       "publicationReserveMargin": null
     },
     {
@@ -237,11 +237,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 2060,
-      "memoryUnits": "3013777",
-      "cpuUnits": "1030683016",
+      "memoryUnits": "2990377",
+      "cpuUnits": "1017487979",
       "signedByteMargin": 14324,
-      "memoryUnitMargin": "13486223",
-      "cpuUnitMargin": "8969316984",
+      "memoryUnitMargin": "13509623",
+      "cpuUnitMargin": "8982512021",
       "publicationReserveMargin": null
     },
     {
@@ -249,11 +249,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 2027,
-      "memoryUnits": "1330688",
-      "cpuUnits": "452367413",
+      "memoryUnits": "1333556",
+      "cpuUnits": "453259660",
       "signedByteMargin": 14357,
-      "memoryUnitMargin": "15169312",
-      "cpuUnitMargin": "9547632587",
+      "memoryUnitMargin": "15166444",
+      "cpuUnitMargin": "9546740340",
       "publicationReserveMargin": null
     },
     {
@@ -297,11 +297,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 916,
-      "memoryUnits": "365284",
-      "cpuUnits": "149749563",
+      "memoryUnits": "369908",
+      "cpuUnits": "151118408",
       "signedByteMargin": 15468,
-      "memoryUnitMargin": "16134716",
-      "cpuUnitMargin": "9850250437",
+      "memoryUnitMargin": "16130092",
+      "cpuUnitMargin": "9848881592",
       "publicationReserveMargin": null
     },
     {
@@ -365,5 +365,5 @@
       "publicationReserveMargin": 12882
     }
   ],
-  "ledgerSha256": "51c0028f02cf4ced703f8881092c325f30729d59d91c1977db996054efb0433e"
+  "ledgerSha256": "e458afd37032fca178ba93d190809b0fc028ce3e84d9d461e412bc81e156cab7"
 }
