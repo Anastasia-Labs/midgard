@@ -12,5 +12,9 @@ pub type Datum =
 pub type Args =
   NativeTxInclusionArgs
 
-pub type SpendRedeemer =
-  ct.StepRedeemer<Args>
+/// Existing Continue/Cancel retain their positional wire constructors.
+pub type SpendRedeemer {
+  Cancel { input_index: Int, computation_thread_mint_redeemer_index: Int }
+  Continue(Args)
+  ForcedDispatch { input_index: Int, output_index: Int }
+}

@@ -3,8 +3,10 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
-use midgard/fraud_proofs/missing_signature/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/common.{cancel, continue, pass_native_tx_to_next_step}
+use midgard/fraud_proofs/missing_signature/step_01.{
+  Cancel, Continue, Datum, ForcedDispatch, SpendRedeemer,
+}
 use midgard/fraud_proofs/missing_signature/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/types.{
@@ -13,6 +15,7 @@ use midgard/fraud_proofs/native_tx/types.{
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
+  forced_step_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
 ) {
@@ -23,7 +26,7 @@ validator main(
     tx: Transaction,
   ) {
     when redeemer is {
-      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+      Cancel { input_index, computation_thread_mint_redeemer_index } ->
         cancel(
           computation_thread_token_policy_id,
           datum,
@@ -32,7 +35,25 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_args) -> {
+      ForcedDispatch { input_index, output_index } -> {
+        expect Some(step_datum) = datum
+        let _, _, _, input_state, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        expect None = input_state
+        let marker: Data = 1
+        and {
+          output_hash == forced_step_validator_script_hash,
+          output_state == marker,
+        }
+      }
+      Continue(tx_inclusion_args) -> {
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
@@ -116,10 +137,11 @@ test missing_signature_step_01_binds_native_v1_block_fixture() {
   )
   main.spend(
     fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_args_v1(block)),
+    Continue(fixture.native_inclusion_args_v1(block)),
     fixture.own_out_ref(),
     l1_tx,
   )

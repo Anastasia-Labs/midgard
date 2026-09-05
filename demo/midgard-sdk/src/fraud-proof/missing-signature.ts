@@ -8,9 +8,11 @@
  *
  * **Violation.** A block commits an accepted transaction naming a required
  * signer (body field 4) whose witness is absent from the address-witness
- * collection (witness field 7). Single direction — wrongful acceptance only.
+ * collection (witness field 7). The forced direction instead authenticates
+ * RequiredSignerUnsigned and proves that exact required signer genuinely
+ * signed, or that the reason coordinate names no required signer.
  *
- * The proof is a four-step computation thread:
+ * The accepted-invalid proof is a four-step computation thread:
  *
  * 1. bind the bad transaction to the block's counted `transactions_root` and
  *    forward the §2.5 anchor — the transaction id plus the `witness_set_hash`
@@ -40,7 +42,13 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { H32Schema, VerificationKeyHashSchema } from "../common.js";
+import {
+  H32Schema,
+  OutputReferenceSchema,
+  VerificationKeyHashSchema,
+} from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
@@ -169,8 +177,8 @@ export const MissingSignatureStepCancel =
 //
 // The step-01 UTxO is the initialized fraud proof (its `data` is `None`), so
 // it is read with the generic computation-thread step datum. `Args` is the
-// bare `NativeTxInclusionArgs` — this step has no published-chunk carriage
-// arm on-chain (plan §5, D3).
+// bare `NativeTxInclusionArgs` in Continue. A separate ForcedDispatch arm
+// routes to the authenticated forced-source binding step.
 
 export const MissingSignatureStep01DatumSchema = faultProofStepDatumSchema(
   Data.Any(),
@@ -186,8 +194,16 @@ export type MissingSignatureStep01Args = NativeTxInclusionArgs;
 export const MissingSignatureStep01Args =
   NativeTxInclusionArgs as unknown as MissingSignatureStep01Args;
 
-export const MissingSignatureStep01SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(MissingSignatureStep01ArgsSchema);
+export const MissingSignatureStep01SpendRedeemerSchema = Data.Enum([
+  Data.Object({ Cancel: FaultProofStepCancelSchema }),
+  Data.Object({ Continue: Data.Tuple([MissingSignatureStep01ArgsSchema]) }),
+  Data.Object({
+    ForcedDispatch: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+    }),
+  }),
+]);
 export type MissingSignatureStep01SpendRedeemer = Data.Static<
   typeof MissingSignatureStep01SpendRedeemerSchema
 >;
@@ -549,3 +565,130 @@ export const missingSignatureStep02StateFromVerifiedTx = ({
   verified_tx_id: verifiedTxId.toLowerCase(),
   verified_witness_set_hash: verifiedWitnessSetHash.toLowerCase(),
 });
+
+// Forced rejection: exact source/reason binding, signer coordinate, genuine witness.
+export const MissingSignatureForcedStepArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  header: HeaderSchema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
+export const MissingSignatureForcedSignerStateSchema = Data.Object({
+  verified_tx_id: H32Schema,
+  verified_witness_set_hash: H32Schema,
+  forced_source_key: Data.Bytes(),
+  signer_index: Data.Integer(),
+});
+export const MissingSignatureForcedSignerArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  required_signers_opening: FieldOpeningSchema,
+});
+export const MissingSignatureForcedWitnessStateSchema = Data.Object({
+  verified_tx_id: H32Schema,
+  verified_witness_set_hash: H32Schema,
+  forced_source_key: Data.Bytes(),
+  signer_index: Data.Integer(),
+  required_signer_hash: Data.Nullable(VerificationKeyHashSchema),
+});
+export const MissingSignatureForcedWitnessArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+  addr_tx_wits_opening: Data.Nullable(FieldOpeningSchema),
+  witness_index: Data.Integer(),
+});
+export const MissingSignatureForcedStepDatumSchema = faultProofStepDatumSchema(
+  Data.Integer(),
+);
+export const MissingSignatureForcedStepSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(MissingSignatureForcedStepArgsSchema);
+export type MissingSignatureForcedStepArgs = Data.Static<
+  typeof MissingSignatureForcedStepArgsSchema
+>;
+export const MissingSignatureForcedStepArgs =
+  asDataType<MissingSignatureForcedStepArgs>(
+    MissingSignatureForcedStepArgsSchema,
+  );
+export type MissingSignatureForcedStepDatum = Data.Static<
+  typeof MissingSignatureForcedStepDatumSchema
+>;
+export const MissingSignatureForcedStepDatum =
+  asDataType<MissingSignatureForcedStepDatum>(
+    MissingSignatureForcedStepDatumSchema,
+  );
+export type MissingSignatureForcedStepSpendRedeemer = Data.Static<
+  typeof MissingSignatureForcedStepSpendRedeemerSchema
+>;
+export const MissingSignatureForcedStepSpendRedeemer =
+  asDataType<MissingSignatureForcedStepSpendRedeemer>(
+    MissingSignatureForcedStepSpendRedeemerSchema,
+  );
+export const MissingSignatureForcedSignerDatumSchema =
+  faultProofStepDatumSchema(MissingSignatureForcedSignerStateSchema);
+export const MissingSignatureForcedSignerSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(MissingSignatureForcedSignerArgsSchema);
+export type MissingSignatureForcedSignerArgs = Data.Static<
+  typeof MissingSignatureForcedSignerArgsSchema
+>;
+export const MissingSignatureForcedSignerArgs =
+  asDataType<MissingSignatureForcedSignerArgs>(
+    MissingSignatureForcedSignerArgsSchema,
+  );
+export type MissingSignatureForcedSignerDatum = Data.Static<
+  typeof MissingSignatureForcedSignerDatumSchema
+>;
+export const MissingSignatureForcedSignerDatum =
+  asDataType<MissingSignatureForcedSignerDatum>(
+    MissingSignatureForcedSignerDatumSchema,
+  );
+export type MissingSignatureForcedSignerSpendRedeemer = Data.Static<
+  typeof MissingSignatureForcedSignerSpendRedeemerSchema
+>;
+export const MissingSignatureForcedSignerSpendRedeemer =
+  asDataType<MissingSignatureForcedSignerSpendRedeemer>(
+    MissingSignatureForcedSignerSpendRedeemerSchema,
+  );
+export type MissingSignatureForcedSignerState = Data.Static<
+  typeof MissingSignatureForcedSignerStateSchema
+>;
+export const MissingSignatureForcedSignerState =
+  asDataType<MissingSignatureForcedSignerState>(
+    MissingSignatureForcedSignerStateSchema,
+  );
+export const MissingSignatureForcedWitnessDatumSchema =
+  faultProofStepDatumSchema(MissingSignatureForcedWitnessStateSchema);
+export const MissingSignatureForcedWitnessSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(MissingSignatureForcedWitnessArgsSchema);
+export type MissingSignatureForcedWitnessArgs = Data.Static<
+  typeof MissingSignatureForcedWitnessArgsSchema
+>;
+export const MissingSignatureForcedWitnessArgs =
+  asDataType<MissingSignatureForcedWitnessArgs>(
+    MissingSignatureForcedWitnessArgsSchema,
+  );
+export type MissingSignatureForcedWitnessDatum = Data.Static<
+  typeof MissingSignatureForcedWitnessDatumSchema
+>;
+export const MissingSignatureForcedWitnessDatum =
+  asDataType<MissingSignatureForcedWitnessDatum>(
+    MissingSignatureForcedWitnessDatumSchema,
+  );
+export type MissingSignatureForcedWitnessSpendRedeemer = Data.Static<
+  typeof MissingSignatureForcedWitnessSpendRedeemerSchema
+>;
+export const MissingSignatureForcedWitnessSpendRedeemer =
+  asDataType<MissingSignatureForcedWitnessSpendRedeemer>(
+    MissingSignatureForcedWitnessSpendRedeemerSchema,
+  );
+export type MissingSignatureForcedWitnessState = Data.Static<
+  typeof MissingSignatureForcedWitnessStateSchema
+>;
+export const MissingSignatureForcedWitnessState =
+  asDataType<MissingSignatureForcedWitnessState>(
+    MissingSignatureForcedWitnessStateSchema,
+  );

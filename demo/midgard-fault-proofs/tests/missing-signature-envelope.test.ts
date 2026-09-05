@@ -61,7 +61,10 @@ import {
 // `fraud_proofs/missing_signature/step_NN.main.spend` entry of
 // `onchain/aiken/plutus.json`, built with `aiken build --env testnet`.
 const EXPECTED_UNAPPLIED_BYTES = {
-  step01: 7_872,
+  step01: 8_008,
+  forcedStep: 9_052,
+  forcedSigner: 6_914,
+  forcedWitness: 7_351,
   step02: 6_777,
   step03: 1_510,
   step04: 9_836,
@@ -74,7 +77,7 @@ const bytes = (hex: string) => hex.length / 2;
 describe("missing-signature compiled envelope", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
-  it("pins all four unapplied sizes and parameter-order-distinct applied hashes", async () => {
+  it("pins all seven unapplied sizes and parameter-order-distinct applied hashes", async () => {
     for (const [step, title] of Object.entries(
       MISSING_SIGNATURE_BLUEPRINT_TITLES,
     )) {
