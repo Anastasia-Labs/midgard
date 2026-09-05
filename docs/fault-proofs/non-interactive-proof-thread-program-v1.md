@@ -392,7 +392,7 @@ regression against its final central diff.
 
 ### Current execution checkpoint (2026-09-05)
 
-The shared integration checkpoint is `9f819337`. The 22 new categories are
+The shared integration checkpoint is `f159253b`. The 22 new categories are
 registered; registration alone does not establish the vertical-slice gates.
 The three Wave 4 structural decoding families are integrated, including the
 maximum-depth `witnessScriptDecoding` lifecycle and regenerated fit evidence.
@@ -410,10 +410,17 @@ source and descriptor proofs, and 32-level state proofs. Its accepted maximum
 uses journaled proof-chunk publication. The shared-tree six-file regression
 passed 35 tests, and the ledger contains 241 signed rows.
 
-The remaining extensions are `missingSignature`, `nativeScriptInvalid`,
-`nonExistentInput`, `noReferenceInput`, `minAda`, and `valueNotPreserved`.
-`missingSignature` has a verified two-commit handoff awaiting shared build and
-regression. The active worktrees own `nativeScriptInvalid`, `nonExistentInput`,
+`missingSignature` is integrated with all three forced-direction scripts,
+durable replay, and deployment/reference-script wiring. The rebuilt testnet
+blueprint has 813 entries and digest
+`3e2e1a78570fa6da04be6ac865114480121b5b891be41202ad327fc08a7d1796`.
+Against it, 64 family/regression tests and 22 deployment tests passed; the
+144-row maximum ledger was regenerated. Earlier family ledgers require
+regeneration against the final combined blueprint.
+
+The remaining extensions are `nativeScriptInvalid`, `nonExistentInput`,
+`noReferenceInput`, `minAda`, and `valueNotPreserved`.
+The active worktrees own `nativeScriptInvalid`, `nonExistentInput`,
 and the earlier Wave 7 `distinctAssetAccumulationLimit` lifecycle evidence
 repair. Central integration remains serial.
 
