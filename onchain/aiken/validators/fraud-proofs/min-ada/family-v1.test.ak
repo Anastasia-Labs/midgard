@@ -23,6 +23,7 @@ use midgard/fraud_proofs/common.{
   PublishedChunkMembership, PublishedChunkNonMembership,
   RedeemerCarriedMembership, RedeemerCarriedNonMembership,
 }
+use midgard/fraud_proofs/field_opening_v1 as field_opening
 use midgard/fraud_proofs/min_ada/step_01.{
   Args as Step01Args, MinAdaTx, MinAdaUtxo, PostUtxoMembershipV1,
   PostUtxoStateV1,
@@ -31,7 +32,7 @@ use midgard/fraud_proofs/min_ada/step_02.{
   Args as Step02Args, Datum as Step02Datum, State, YieldMinAdaStep02V1,
 }
 use midgard/fraud_proofs/min_ada/step_03.{
-  Args as Step03Args, Datum as Step03Datum, MinAdaTxDescriptor,
+  Args as Step03Args, Datum as Step03Datum, MinAdaTxDescriptor, MinAdaTxScan,
   MinAdaUtxoDescriptor, State as Step03State,
 }
 use midgard/fraud_proofs/min_ada/step_04.{
@@ -47,10 +48,13 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTxOutput, MidgardValue,
   TxIsInvalid,
 }
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/fraud_proofs/transaction_output_non_canonical/rule as scan_rule
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
+use midgard/native_tx_machine_walk_v1 as field_walk
 use midgard/validation_machine/shared as vm_shared
 use pexcludes as pexcludes_validator
 use phas as phas_validator
@@ -194,6 +198,10 @@ fn run_tx_step_01(tx: MidgardTransaction, output_index: Int) -> Bool {
   let block = fixture.native_block_fixture_v1(tx)
   let fault = MinAdaTx { output_index }
   let expected_state: Data = State {
+    grammar_checkpoint_hash: #"",
+    grammar_complete: False,
+    walk_checkpoint_hash: #"",
+    direction: 0,
     bad_tx_id: block.tx_id,
     fault,
     post_utxo: None,
@@ -205,6 +213,7 @@ fn run_tx_step_01(tx: MidgardTransaction, output_index: Int) -> Bool {
     Some(fixture.step_datum_without_state()),
     ct.Continue(
       Step01Args {
+        forced_source: None,
         tx_inclusion: Some(fixture.native_inclusion_carriage_v1(block)),
         post_utxo_membership: None,
         fault,
@@ -230,6 +239,10 @@ fn run_post_step_01_with_claim(
 ) -> Bool {
   let fault = MinAdaUtxo
   let expected_state: Data = State {
+    grammar_checkpoint_hash: #"",
+    grammar_complete: False,
+    walk_checkpoint_hash: #"",
+    direction: 0,
     bad_tx_id: membership.out_ref.transaction_id,
     fault,
     post_utxo: Some(
@@ -248,6 +261,7 @@ fn run_post_step_01_with_claim(
     Some(fixture.step_datum_without_state()),
     ct.Continue(
       Step01Args {
+        forced_source: None,
         tx_inclusion: None,
         post_utxo_membership: Some(membership),
         fault,
@@ -444,14 +458,39 @@ fn run_tx_step_02_with_successors(
   step_04_script_hash: ByteArray,
 ) -> Bool {
   let block = fixture.native_block_fixture_v1(transaction_with_output(output))
+  let Pair(view, initial) = field_opening.opened_field_grammar_certification(
+    fixture.inline_body_opening(block.compact_cbor, [carried_output_cbor]),
+    field_opening.BodyAnchor { tx_id: block.tx_id },
+    2,
+    [],
+    fixture.test_certificate_policy_id,
+  )
+  let grammar = field_walk.certify_field_grammar(view, initial, 32)
   let state = State {
+    grammar_checkpoint_hash: field_walk.field_grammar_checkpoint_hash(grammar),
+    grammar_complete: True,
+    walk_checkpoint_hash: #"",
+    direction: 0,
     bad_tx_id: block.tx_id,
     fault: MinAdaTx { output_index: 0 },
     post_utxo: None,
   }
-  let next_state_data: Data = MinAdaTxDescriptor {
-    total_length: bytearray.length(carried_output_cbor),
-    lovelace: output.value.lovelace,
+  let next_state_data: Data = MinAdaTxScan {
+    direction: 0,
+    scan: scan_rule.initial_scan_v1(
+      scan_rule.BoundOutputV1 {
+        subject: substrate.VerdictSubjectV1 {
+          version: 1,
+          direction: 0,
+          source_kind: 0,
+          transaction_id: block.tx_id,
+          source_key: #"",
+          rejection_reason: None,
+        },
+        output_index: 0,
+      },
+      carried_output_cbor,
+    ),
   }
   let base_tx = fixture.continue_mid_step_l1_tx_v1(
     fixture.ct_token_asset_name(block),
@@ -463,6 +502,10 @@ fn run_tx_step_02_with_successors(
   }
   let spend_redeemer = ct.Continue(
     Step02Args {
+      grammar_checkpoint_bytes: field_walk.encode_field_grammar_checkpoint(
+        grammar,
+      ),
+      walk_checkpoint_bytes: #"",
       input_index: 0,
       output_index: 0,
       yield_to_ref_input_index: list.length(base_tx.reference_inputs),
@@ -530,6 +573,10 @@ fn post_state(
   prev_root: ByteArray,
 ) -> State {
   State {
+    grammar_checkpoint_hash: #"",
+    grammar_complete: False,
+    walk_checkpoint_hash: #"",
+    direction: 0,
     bad_tx_id: out_ref.transaction_id,
     fault: MinAdaUtxo,
     post_utxo: Some(
@@ -568,6 +615,8 @@ fn run_post_membership_published(
   }
   let spend_redeemer = ct.Continue(
     Step02Args {
+      grammar_checkpoint_bytes: #"",
+      walk_checkpoint_bytes: #"",
       input_index: 0,
       output_index: 0,
       yield_to_ref_input_index: list.length(chunks),
@@ -635,6 +684,8 @@ fn run_post_membership_direct(
   }
   let spend_redeemer = ct.Continue(
     Step02Args {
+      grammar_checkpoint_bytes: #"",
+      walk_checkpoint_bytes: #"",
       input_index: 0,
       output_index: 0,
       yield_to_ref_input_index: 0,
@@ -680,7 +731,7 @@ fn run_post_membership_direct(
 }
 
 fn run_tx_predicate(total_length: Int, lovelace: Int) -> Bool {
-  let state = MinAdaTxDescriptor { total_length, lovelace }
+  let state = MinAdaTxDescriptor { direction: 0, total_length, lovelace }
   let terminal_state: Data = PredicateAndCulpabilityAuthenticated
   let asset_name = fixture.ct_token_asset_name(
     fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
@@ -695,7 +746,7 @@ fn run_tx_predicate(total_length: Int, lovelace: Int) -> Bool {
         data: Some(state),
       },
     ),
-    ct.Continue(Step03Args { input_index: 0, output_index: 0 }),
+    ct.Continue(Step03Args { window: #"", input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
     fixture.continue_mid_step_l1_tx_v1(asset_name, terminal_state),
   )
@@ -732,7 +783,7 @@ fn run_post_predicate_at(
         data: Some(state),
       },
     ),
-    ct.Continue(Step03Args { input_index: 0, output_index: 0 }),
+    ct.Continue(Step03Args { window: #"", input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
     fixture.continue_mid_step_l1_tx_v1(asset_name, next_state),
   )

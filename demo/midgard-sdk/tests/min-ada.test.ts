@@ -24,6 +24,7 @@ describe("Q27 min-Ada wire codec", () => {
     const redeemer = {
       Continue: [
         {
+          forced_source: null,
           tx_inclusion: null,
           post_utxo_membership: {
             input_index: 0n,
@@ -47,6 +48,10 @@ describe("Q27 min-Ada wire codec", () => {
     const datum = {
       fraud_prover: h28,
       data: {
+        grammar_checkpoint_hash: "",
+        grammar_complete: false,
+        walk_checkpoint_hash: "",
+        direction: 0n,
         bad_tx_id: h32,
         fault: "MinAdaUtxo",
         post_utxo: {
@@ -67,6 +72,8 @@ describe("Q27 min-Ada wire codec", () => {
         {
           input_index: 0n,
           output_index: 0n,
+          grammar_checkpoint_bytes: "",
+          walk_checkpoint_bytes: "",
           yield_to_ref_input_index: 0n,
           outputs_opening: null,
           post_membership: {

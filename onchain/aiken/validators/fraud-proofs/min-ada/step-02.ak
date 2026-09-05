@@ -6,7 +6,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/min_ada/step_01.{MinAdaTx, MinAdaUtxo}
-use midgard/fraud_proofs/min_ada/step_02.{Args, Datum, SpendRedeemer}
+use midgard/fraud_proofs/min_ada/step_02.{Args, Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/min_ada/step_03 as step_03
 use midgard/fraud_proofs/min_ada/yield
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
@@ -40,6 +40,7 @@ validator main(
         yield_to_ref_input_index,
         outputs_opening,
         post_membership,
+        ..
       }) -> {
         let
             Transaction {
@@ -53,7 +54,7 @@ validator main(
           = tx
         expect Some(step_datum) = datum
         let
-            _own_script_hash,
+            own_script_hash,
             _computation_thread_token_asset_name,
             _fraud_prover,
             m_input_state_data,
@@ -74,8 +75,14 @@ validator main(
             expect Some(opening) = outputs_opening
             expect None = post_membership
             expect None = state.post_utxo
-            expect output_script_hash == step_03_validator_script_hash
-            expect step_03.MinAdaTxDescriptor { .. }: step_03.State = output_state_data
+            expect _shape = if output_script_hash == own_script_hash {
+              expect _: State = output_state_data
+              True
+            } else {
+              expect output_script_hash == step_03_validator_script_hash
+              expect step_03.MinAdaTxScan { .. }: step_03.State = output_state_data
+              True
+            }
             expect _ = bad_output_index
             expect _yield_hash = require_authenticated_zero_yield(
               reference_inputs,

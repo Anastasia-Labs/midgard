@@ -68,6 +68,10 @@ const Step01Redeemer = asDataType<Step01Redeemer>(
 );
 
 const stepState = (prepared: PreparedMinAdaTx | PreparedMinAdaUtxo) => ({
+  grammar_checkpoint_hash: "",
+  grammar_complete: false,
+  walk_checkpoint_hash: "",
+  direction: 0n,
   bad_tx_id:
     prepared.kind === "min-ada-tx"
       ? prepared.badTxId
@@ -225,6 +229,7 @@ export const submitMinAdaTxStep01 = async ({
       {
         Continue: [
           {
+            forced_source: null,
             tx_inclusion: inclusion.redeemer(ctx, {
               input_index: inputIndex,
               output_index: outputIndex,
@@ -369,6 +374,7 @@ export const submitMinAdaUtxoStep01 = async ({
       {
         Continue: [
           {
+            forced_source: null,
             tx_inclusion: null,
             post_utxo_membership: {
               input_index: inputIndex,

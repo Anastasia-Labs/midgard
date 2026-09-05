@@ -123,6 +123,7 @@ describe("min-ada standalone emulator lifecycle", () => {
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: step02.nextThreadOutRef,
+      outputItemCbors: prepared.outputItemCbors,
       coinsPerUtxoByte: MIDGARD_COINS_PER_UTXO_BYTE,
       referenceScriptUtxo: refs[2],
     });
@@ -258,6 +259,7 @@ describe("min-ada standalone emulator lifecycle", () => {
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: step02.nextThreadOutRef,
+
       coinsPerUtxoByte: MIDGARD_COINS_PER_UTXO_BYTE,
       referenceScriptUtxo: refs[2],
     });

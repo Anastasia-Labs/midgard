@@ -3,6 +3,8 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
@@ -11,6 +13,7 @@ import {
   NativeTxInclusionCarriageSchema,
   NonMembershipCarriageSchema,
 } from "./native.js";
+import { NativeScriptInvalidVerdictSubjectSchema } from "./native-script-invalid.js";
 
 export const MIN_ADA_VIOLATION_ID = "min-ada" as const;
 
@@ -36,8 +39,29 @@ export const MinAdaPostUtxoMembership = asDataType<MinAdaPostUtxoMembership>(
   MinAdaPostUtxoMembershipSchema,
 );
 
+export const MinAdaForcedSourcePayloadSchema = Data.Object({
+  header: HeaderSchema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
+
 export const MinAdaStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export const MinAdaStep01ArgsSchema = Data.Object({
+  forced_source: Data.Nullable(
+    Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+      direction: Data.Integer(),
+    }),
+  ),
   tx_inclusion: Data.Nullable(NativeTxInclusionCarriageSchema),
   post_utxo_membership: Data.Nullable(MinAdaPostUtxoMembershipSchema),
   fault: MinAdaFaultSchema,
@@ -53,6 +77,10 @@ export const MinAdaPostUtxoStateSchema = Data.Object({
   prev_utxos_root: H32Schema,
 });
 export const MinAdaStep02StateSchema = Data.Object({
+  grammar_checkpoint_hash: Data.Bytes(),
+  grammar_complete: Data.Boolean(),
+  walk_checkpoint_hash: Data.Bytes(),
+  direction: Data.Integer(),
   bad_tx_id: H32Schema,
   fault: MinAdaFaultSchema,
   post_utxo: Data.Nullable(MinAdaPostUtxoStateSchema),
@@ -66,6 +94,8 @@ export const MinAdaStep02DatumSchema = faultProofStepDatumSchema(
   MinAdaStep02StateSchema,
 );
 export const MinAdaStep02ArgsSchema = Data.Object({
+  grammar_checkpoint_bytes: Data.Bytes(),
+  walk_checkpoint_bytes: Data.Bytes(),
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   yield_to_ref_input_index: Data.Integer(),
@@ -76,9 +106,55 @@ export const MinAdaStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
   MinAdaStep02ArgsSchema,
 );
 
+const FrontierPeakSchema = Data.Object({
+  height: Data.Integer(),
+  hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
+});
+export const MinAdaOutputScanControlSchema = Data.Object({
+  version: Data.Integer(),
+  stage: Data.Integer(),
+  cursor: Data.Integer(),
+  map_entry_count: Data.Integer(),
+  optional_field_count: Data.Integer(),
+  address: Data.Bytes(),
+  lovelace: Data.Integer(),
+  cardano_value_size: Data.Integer(),
+  policy_remaining: Data.Integer(),
+  asset_remaining: Data.Integer(),
+  policy_asset_cursor: Data.Integer(),
+  previous_policy: Data.Bytes(),
+  current_policy: Data.Bytes(),
+  previous_asset_name: Data.Bytes(),
+  asset_count: Data.Integer(),
+  asset_peaks: Data.Array(FrontierPeakSchema),
+  datum_offset: Data.Integer(),
+  datum_length: Data.Integer(),
+  payload_remaining: Data.Integer(),
+  reference_script_language: Data.Integer(),
+  reference_script_item_offset: Data.Integer(),
+  reference_script_offset: Data.Integer(),
+  reference_script_length: Data.Integer(),
+});
+
+export const MinAdaOutputScanStateSchema = Data.Object({
+  subject: NativeScriptInvalidVerdictSubjectSchema,
+  output_index: Data.Integer(),
+  item_length: Data.Integer(),
+  item_hash: Data.Bytes(),
+  chunk_hashes: Data.Array(Data.Bytes({ minLength: 32, maxLength: 32 })),
+  control: MinAdaOutputScanControlSchema,
+  outcome: Data.Integer(),
+});
 export const MinAdaStep03StateSchema = Data.Enum([
   Data.Object({
+    MinAdaTxScan: Data.Object({
+      direction: Data.Integer(),
+      scan: MinAdaOutputScanStateSchema,
+    }),
+  }),
+  Data.Object({
     MinAdaTxDescriptor: Data.Object({
+      direction: Data.Integer(),
       total_length: Data.Integer(),
       lovelace: Data.Integer(),
     }),
@@ -95,6 +171,7 @@ export const MinAdaStep03DatumSchema = faultProofStepDatumSchema(
   MinAdaStep03StateSchema,
 );
 export const MinAdaStep03ArgsSchema = Data.Object({
+  window: Data.Bytes(),
   input_index: Data.Integer(),
   output_index: Data.Integer(),
 });

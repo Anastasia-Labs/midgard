@@ -64,7 +64,22 @@ import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
   type MinAdaContracts,
 } from "./contracts.js";
+import {
+  advanceMinAdaGrammarCheckpoint,
+  advanceMinAdaSemanticCheckpoint,
+  encodeMinAdaGrammarCheckpoint,
+  encodeMinAdaSemanticCheckpoint,
+  hashMinAdaGrammarCheckpoint,
+  hashMinAdaSemanticCheckpoint,
+  initialMinAdaGrammarCheckpoint,
+  initialMinAdaSemanticCheckpoint,
+  minAdaGrammarCheckpointIsComplete,
+  resolveMinAdaGrammarCheckpoint,
+  resolveMinAdaSemanticCheckpoint,
+} from "./field-walk.js";
+import type { detectMinAdaForcedReplay } from "./forced.js";
 import type { PreparedMinAdaTx, PreparedMinAdaUtxo } from "./prepare.js";
+import { minAdaInitialScanState, minAdaOutputScanEvidence } from "./scan.js";
 
 type State = NonNullable<Data.Static<typeof MinAdaStep02DatumSchema>["data"]>;
 type Step02Datum = Data.Static<typeof MinAdaStep02DatumSchema>;
@@ -139,13 +154,16 @@ export const submitMinAdaTxStep02 = async ({
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  unsafeSkipLocalViolationCheckForTest = false,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinAdaContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly prepared: PreparedMinAdaTx;
+  readonly prepared:
+    | PreparedMinAdaTx
+    | ReturnType<typeof detectMinAdaForcedReplay>[number]["evidence"];
   readonly publishCarriage?: boolean;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
@@ -154,7 +172,13 @@ export const submitMinAdaTxStep02 = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}) => {
+  readonly unsafeSkipLocalViolationCheckForTest?: boolean;
+}): Promise<{
+  txHash: string;
+  nextThreadOutRef: string;
+  carriageTier: string;
+  nextStepIndex: number;
+}> => {
   const { stepIndex, threadUtxo, threadToken, state } = await requireStep02({
     lucid,
     contracts,
@@ -183,11 +207,13 @@ export const submitMinAdaTxStep02 = async ({
   });
   if (
     material.descriptorCbor.toString("hex") !== prepared.descriptorCbor ||
-    outputMeetsMinAda(
-      MIDGARD_COINS_PER_UTXO_BYTE,
-      BigInt(material.descriptor.totalLength),
-      material.descriptor.lovelace,
-    )
+    (!unsafeSkipLocalViolationCheckForTest &&
+      outputMeetsMinAda(
+        MIDGARD_COINS_PER_UTXO_BYTE,
+        BigInt(material.descriptor.totalLength),
+        material.descriptor.lovelace,
+      ) !==
+        (state.direction === 1n))
   ) {
     throw new Error(`${label}: selected output does not violate min-Ada`);
   }
@@ -234,20 +260,95 @@ export const submitMinAdaTxStep02 = async ({
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: `${label} field 2`,
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        MinAdaTxDescriptor: {
-          total_length: BigInt(material.descriptor.totalLength),
-          lovelace: material.descriptor.lovelace,
-        },
-      },
-    },
-    Step03Datum,
+  const items = prepared.outputItemCbors.map((item) =>
+    Buffer.from(item, "hex"),
   );
+  let grammarBytes = "";
+  let walkBytes = "";
+  let nextStepIndex = 2;
+  let continuationState: State | undefined;
+  if (!state.grammar_complete) {
+    const prior =
+      state.grammar_checkpoint_hash === ""
+        ? initialMinAdaGrammarCheckpoint({ txId: state.bad_tx_id, items })
+        : resolveMinAdaGrammarCheckpoint({
+            txId: state.bad_tx_id,
+            items,
+            committedHash: state.grammar_checkpoint_hash,
+          });
+    grammarBytes =
+      state.grammar_checkpoint_hash === ""
+        ? ""
+        : encodeMinAdaGrammarCheckpoint(prior).toString("hex");
+    const next = advanceMinAdaGrammarCheckpoint({
+      checkpoint: prior,
+      items,
+      budget: 32,
+    });
+    continuationState = {
+      ...state,
+      grammar_checkpoint_hash: hashMinAdaGrammarCheckpoint(next),
+      grammar_complete: minAdaGrammarCheckpointIsComplete(next),
+    };
+    nextStepIndex = 1;
+  } else {
+    const grammar = resolveMinAdaGrammarCheckpoint({
+      txId: state.bad_tx_id,
+      items,
+      committedHash: state.grammar_checkpoint_hash,
+    });
+    grammarBytes = encodeMinAdaGrammarCheckpoint(grammar).toString("hex");
+    const prior =
+      state.walk_checkpoint_hash === ""
+        ? initialMinAdaSemanticCheckpoint({ grammar, items })
+        : resolveMinAdaSemanticCheckpoint({
+            txId: state.bad_tx_id,
+            items,
+            committedHash: state.walk_checkpoint_hash,
+          });
+    walkBytes =
+      state.walk_checkpoint_hash === ""
+        ? ""
+        : encodeMinAdaSemanticCheckpoint(prior).toString("hex");
+    if (Number(prepared.badOutputIndex) - prior.nextItemIndex >= 32) {
+      const next = advanceMinAdaSemanticCheckpoint({
+        checkpoint: prior,
+        txId: state.bad_tx_id,
+        items,
+        budget: 32,
+      });
+      continuationState = {
+        ...state,
+        walk_checkpoint_hash: hashMinAdaSemanticCheckpoint(next),
+      };
+      nextStepIndex = 1;
+    }
+  }
+  const nextDatum = continuationState
+    ? Data.to(
+        { fraud_prover: signer.paymentKeyHash, data: continuationState },
+        Step02Datum,
+      )
+    : Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            MinAdaTxScan: {
+              direction: state.direction,
+              scan: minAdaInitialScanState(
+                minAdaOutputScanEvidence(
+                  state.bad_tx_id,
+                  prepared.badOutputIndex,
+                  prepared.outputItemCbors,
+                ),
+              ),
+            },
+          },
+        },
+        Step03Datum,
+      );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[2].spendingScriptAddress,
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -260,6 +361,8 @@ export const submitMinAdaTxStep02 = async ({
       {
         Continue: [
           {
+            grammar_checkpoint_bytes: grammarBytes,
+            walk_checkpoint_bytes: walkBytes,
             input_index: inputIndex,
             output_index: outputIndex,
             yield_to_ref_input_index: requireReferenceInputIndex(
@@ -301,7 +404,7 @@ export const submitMinAdaTxStep02 = async ({
       Data.void(),
     )
     .pay.ToContract(
-      contracts.steps[2].spendingScriptAddress,
+      contracts.steps[nextStepIndex].spendingScriptAddress,
       { kind: "inline", value: nextDatum },
       {
         lovelace: threadUtxo.assets.lovelace ?? 0n,
@@ -341,10 +444,29 @@ export const submitMinAdaTxStep02 = async ({
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
+  if (nextStepIndex === 1 && awaitConfirmation)
+    return submitMinAdaTxStep02({
+      lucid,
+      contracts,
+      categoryId,
+      signer,
+      threadOutRef: `${txHash}#${outputIndex}`,
+      prepared,
+      publishCarriage,
+      publishedCarriageUtxos: carriageUtxos,
+      certificateUtxo,
+      referenceScriptUtxo,
+      yieldReferenceScriptUtxo,
+      publicationPreSubmitBoundary,
+      preSubmitBoundary,
+      awaitConfirmation,
+      unsafeSkipLocalViolationCheckForTest,
+    });
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
     carriageTier: planned.plan.tier,
+    nextStepIndex,
   };
 };
 
@@ -494,6 +616,8 @@ export const submitMinAdaUtxoStep02 = async ({
       {
         Continue: [
           {
+            grammar_checkpoint_bytes: "",
+            walk_checkpoint_bytes: "",
             input_index: inputIndex,
             output_index: outputIndex,
             yield_to_ref_input_index: requireReferenceInputIndex(

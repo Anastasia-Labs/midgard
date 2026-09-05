@@ -5,6 +5,8 @@
 use cardano/transaction.{OutputReference}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{NativeTxInclusionCarriage}
+use midgard/ledger_state
+use midgard/transition_trace
 
 pub type MinAdaFaultV1 {
   MinAdaTx { output_index: Int }
@@ -27,7 +29,19 @@ pub type PostUtxoStateV1 {
   prev_utxos_root: ByteArray,
 }
 
+pub type ForcedSource {
+  input_index: Int,
+  output_index: Int,
+  header: ledger_state.HeaderV1,
+  membership: transition_trace.RootMembershipProof<
+    ledger_state.TxOrderId,
+    ledger_state.ForcedInclusionTxV1,
+  >,
+  direction: Int,
+}
+
 pub type Args {
+  forced_source: Option<ForcedSource>,
   tx_inclusion: Option<NativeTxInclusionCarriage>,
   post_utxo_membership: Option<PostUtxoMembershipV1>,
   fault: MinAdaFaultV1,

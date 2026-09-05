@@ -16,9 +16,11 @@ use midgard/fraud_proofs/min_ada/step_01.{
   PostUtxoStateV1, SpendRedeemer,
 }
 use midgard/fraud_proofs/min_ada/step_02 as step_02
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/hub_oracle as hub
-use midgard/ledger_output_commitment_v1
+use midgard/rejection_reason_v1.{OutputBelowMinAda}
 use midgard/state_queue
 
 validator main(
@@ -42,7 +44,56 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args { tx_inclusion, post_utxo_membership, fault }) ->
+      ct.Continue(Args {
+        forced_source: Some(source),
+        tx_inclusion,
+        post_utxo_membership,
+        fault,
+      }) -> {
+        expect None = tx_inclusion
+        expect None = post_utxo_membership
+        expect MinAdaTx { output_index: claimed_index } = fault
+        expect Some(step_datum) = datum
+        let _, name, _, prior, output_hash, output_data <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          source.input_index,
+          source.output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        expect None = prior
+        let subject = substrate.bind_forced_subject_to_thread_v1(
+          name,
+          source.header,
+          source.membership,
+          source.direction,
+        )
+        expect subject.direction == substrate.direction_wrongful_rejection
+        expect Some(OutputBelowMinAda { output_index }) = subject.rejection_reason
+        expect output_index >= 0 && output_index == claimed_index
+        let verified = verify_native_tx_compact_cbor_v1(
+          subject.transaction_id,
+          source.membership.value.source.compact_cbor,
+        )
+        let expected: Data = step_02.State {
+          grammar_checkpoint_hash: #"",
+          grammar_complete: False,
+          walk_checkpoint_hash: #"",
+          direction: subject.direction,
+          bad_tx_id: verified.tx_id,
+          fault,
+          post_utxo: None,
+        }
+        output_hash == step_02_validator_script_hash && output_data == expected
+      }
+      ct.Continue(Args {
+        forced_source: None,
+        tx_inclusion,
+        post_utxo_membership,
+        fault,
+      }) ->
         when fault is {
           MinAdaTx { output_index } -> {
             expect output_index >= 0
@@ -114,6 +165,10 @@ fn pass_transaction_claim(
   expect bad_tx_view.tx_compact.validity_code == 0
   expect output_script_hash == step_02_validator_script_hash
   let expected_output_state: Data = step_02.State {
+    grammar_checkpoint_hash: #"",
+    grammar_complete: False,
+    walk_checkpoint_hash: #"",
+    direction: 0,
     bad_tx_id,
     fault,
     post_utxo: None,
@@ -168,11 +223,11 @@ fn pass_post_utxo_claim(
       computation_thread_token_asset_name,
       fraud_proof_catalogue.id_byte_count,
     )
-  let descriptor = ledger_output_commitment_v1.decode(
-    membership.descriptor_cbor,
-  )
-  expect descriptor.output_index == membership.out_ref.output_index
   let expected_output_state: Data = step_02.State {
+    grammar_checkpoint_hash: #"",
+    grammar_complete: False,
+    walk_checkpoint_hash: #"",
+    direction: 0,
     bad_tx_id: membership.out_ref.transaction_id,
     fault,
     post_utxo: Some(

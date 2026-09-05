@@ -5,12 +5,18 @@ use midgard/fraud_proofs/min_ada/step_01.{MinAdaFaultV1, PostUtxoStateV1}
 use midgard/ledger_state.{MidgardTxId}
 
 pub type State {
+  grammar_checkpoint_hash: ByteArray,
+  grammar_complete: Bool,
+  walk_checkpoint_hash: ByteArray,
+  direction: Int,
   bad_tx_id: MidgardTxId,
   fault: MinAdaFaultV1,
   post_utxo: Option<PostUtxoStateV1>,
 }
 
 pub type Args {
+  grammar_checkpoint_bytes: ByteArray,
+  walk_checkpoint_bytes: ByteArray,
   input_index: Int,
   output_index: Int,
   /// Authenticated reference input carrying this fault arm's rewarding script.
