@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "executionSourceScriptDecoding:00000031:testnet",
-  "blueprintSha256": "eae812c72946515e4f413d44c25866b02ce19ccee6af264bbc53dcfc8ad2e838",
+  "blueprintSha256": "3e2e1a78570fa6da04be6ac865114480121b5b891be41202ad327fc08a7d1796",
   "compilerVersion": "aiken v1.1.23+5adf783",
   "entries": [
     {
@@ -105,11 +105,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 916,
-      "memoryUnits": "359207",
-      "cpuUnits": "150517123",
+      "memoryUnits": "354583",
+      "cpuUnits": "149148278",
       "signedByteMargin": 15468,
-      "memoryUnitMargin": "16140793",
-      "cpuUnitMargin": "9849482877",
+      "memoryUnitMargin": "16145417",
+      "cpuUnitMargin": "9850851722",
       "publicationReserveMargin": null
     },
     {
@@ -225,11 +225,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 1221,
-      "memoryUnits": "625391",
-      "cpuUnits": "216452722",
+      "memoryUnits": "640731",
+      "cpuUnits": "221073957",
       "signedByteMargin": 15163,
-      "memoryUnitMargin": "15874609",
-      "cpuUnitMargin": "9783547278",
+      "memoryUnitMargin": "15859269",
+      "cpuUnitMargin": "9778926043",
       "publicationReserveMargin": null
     },
     {
@@ -237,11 +237,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 2060,
-      "memoryUnits": "2990377",
-      "cpuUnits": "1017487979",
+      "memoryUnits": "3005189",
+      "cpuUnits": "1028968360",
       "signedByteMargin": 14324,
-      "memoryUnitMargin": "13509623",
-      "cpuUnitMargin": "8982512021",
+      "memoryUnitMargin": "13494811",
+      "cpuUnitMargin": "8971031640",
       "publicationReserveMargin": null
     },
     {
@@ -249,11 +249,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 2027,
-      "memoryUnits": "1333556",
-      "cpuUnits": "453259660",
+      "memoryUnits": "1339292",
+      "cpuUnits": "455044154",
       "signedByteMargin": 14357,
-      "memoryUnitMargin": "15166444",
-      "cpuUnitMargin": "9546740340",
+      "memoryUnitMargin": "15160708",
+      "cpuUnitMargin": "9544955846",
       "publicationReserveMargin": null
     },
     {
@@ -261,11 +261,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 2795,
-      "memoryUnits": "1486365",
-      "cpuUnits": "645695518",
+      "memoryUnits": "1489233",
+      "cpuUnits": "646587765",
       "signedByteMargin": 13589,
-      "memoryUnitMargin": "15013635",
-      "cpuUnitMargin": "9354304482",
+      "memoryUnitMargin": "15010767",
+      "cpuUnitMargin": "9353412235",
       "publicationReserveMargin": null
     },
     {
@@ -297,11 +297,11 @@
       "kind": "lifecycle",
       "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 916,
-      "memoryUnits": "369908",
-      "cpuUnits": "151118408",
+      "memoryUnits": "365284",
+      "cpuUnits": "149749563",
       "signedByteMargin": 15468,
-      "memoryUnitMargin": "16130092",
-      "cpuUnitMargin": "9848881592",
+      "memoryUnitMargin": "16134716",
+      "cpuUnitMargin": "9850250437",
       "publicationReserveMargin": null
     },
     {
@@ -365,5 +365,5 @@
       "publicationReserveMargin": 12882
     }
   ],
-  "ledgerSha256": "e458afd37032fca178ba93d190809b0fc028ce3e84d9d461e412bc81e156cab7"
+  "ledgerSha256": "1f769f28a49c970af7de235ad812b9a10ede86d7fa3815998d39cd8326dca752"
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "scriptIntegrityHashMissing",
-  "blueprintSha256": "137e608cbbcccffb002b4ed638eb5cc4bdda212de8b40f18313d414f8803c461",
+  "blueprintSha256": "3e2e1a78570fa6da04be6ac865114480121b5b891be41202ad327fc08a7d1796",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -21,11 +21,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1249,
-      "memoryUnits": "466739",
-      "cpuUnits": "178713136",
+      "memoryUnits": "469607",
+      "cpuUnits": "179605383",
       "signedByteMargin": 15135,
-      "memoryUnitMargin": "16033261",
-      "cpuUnitMargin": "9821286864",
+      "memoryUnitMargin": "16030393",
+      "cpuUnitMargin": "9820394617",
       "publicationReserveMargin": null
     },
     {
@@ -33,11 +33,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1641,
-      "memoryUnits": "758021",
-      "cpuUnits": "258191696",
+      "memoryUnits": "773361",
+      "cpuUnits": "262812931",
       "signedByteMargin": 14743,
-      "memoryUnitMargin": "15741979",
-      "cpuUnitMargin": "9741808304",
+      "memoryUnitMargin": "15726639",
+      "cpuUnitMargin": "9737187069",
       "publicationReserveMargin": null
     },
     {
@@ -177,11 +177,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1412,
-      "memoryUnits": "5102556",
-      "cpuUnits": "2780175024",
+      "memoryUnits": "5096820",
+      "cpuUnits": "2778390530",
       "signedByteMargin": 14972,
-      "memoryUnitMargin": "11397444",
-      "cpuUnitMargin": "7219824976",
+      "memoryUnitMargin": "11403180",
+      "cpuUnitMargin": "7221609470",
       "publicationReserveMargin": null
     },
     {
@@ -189,11 +189,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "4053637",
-      "cpuUnits": "2124699046",
+      "memoryUnits": "4047901",
+      "cpuUnits": "2122914552",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "12446363",
-      "cpuUnitMargin": "7875300954",
+      "memoryUnitMargin": "12452099",
+      "cpuUnitMargin": "7877085448",
       "publicationReserveMargin": null
     },
     {
@@ -201,11 +201,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "4053637",
-      "cpuUnits": "2124699046",
+      "memoryUnits": "4047901",
+      "cpuUnits": "2122914552",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "12446363",
-      "cpuUnitMargin": "7875300954",
+      "memoryUnitMargin": "12452099",
+      "cpuUnitMargin": "7877085448",
       "publicationReserveMargin": null
     },
     {
@@ -213,11 +213,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "4053637",
-      "cpuUnits": "2124699046",
+      "memoryUnits": "4047901",
+      "cpuUnits": "2122914552",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "12446363",
-      "cpuUnitMargin": "7875300954",
+      "memoryUnitMargin": "12452099",
+      "cpuUnitMargin": "7877085448",
       "publicationReserveMargin": null
     },
     {
@@ -225,11 +225,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "4053637",
-      "cpuUnits": "2124699046",
+      "memoryUnits": "4047901",
+      "cpuUnits": "2122914552",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "12446363",
-      "cpuUnitMargin": "7875300954",
+      "memoryUnitMargin": "12452099",
+      "cpuUnitMargin": "7877085448",
       "publicationReserveMargin": null
     },
     {
@@ -237,11 +237,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "4053637",
-      "cpuUnits": "2124699046",
+      "memoryUnits": "4047901",
+      "cpuUnits": "2122914552",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "12446363",
-      "cpuUnitMargin": "7875300954",
+      "memoryUnitMargin": "12452099",
+      "cpuUnitMargin": "7877085448",
       "publicationReserveMargin": null
     },
     {
@@ -249,11 +249,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "4053637",
-      "cpuUnits": "2124699046",
+      "memoryUnits": "4047901",
+      "cpuUnits": "2122914552",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "12446363",
-      "cpuUnitMargin": "7875300954",
+      "memoryUnitMargin": "12452099",
+      "cpuUnitMargin": "7877085448",
       "publicationReserveMargin": null
     },
     {
@@ -261,11 +261,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "4053637",
-      "cpuUnits": "2124699046",
+      "memoryUnits": "4047901",
+      "cpuUnits": "2122914552",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "12446363",
-      "cpuUnitMargin": "7875300954",
+      "memoryUnitMargin": "12452099",
+      "cpuUnitMargin": "7877085448",
       "publicationReserveMargin": null
     },
     {
@@ -273,11 +273,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "4237189",
-      "cpuUnits": "1738146438",
+      "memoryUnits": "4231453",
+      "cpuUnits": "1736361944",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "12262811",
-      "cpuUnitMargin": "8261853562",
+      "memoryUnitMargin": "12268547",
+      "cpuUnitMargin": "8263638056",
       "publicationReserveMargin": null
     },
     {
@@ -285,11 +285,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1409,
-      "memoryUnits": "2170096",
-      "cpuUnits": "771156136",
+      "memoryUnits": "2164360",
+      "cpuUnits": "769371642",
       "signedByteMargin": 14975,
-      "memoryUnitMargin": "14329904",
-      "cpuUnitMargin": "9228843864",
+      "memoryUnitMargin": "14335640",
+      "cpuUnitMargin": "9230628358",
       "publicationReserveMargin": null
     },
     {
@@ -297,11 +297,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1375,
-      "memoryUnits": "5109290",
-      "cpuUnits": "2809960195",
+      "memoryUnits": "5112158",
+      "cpuUnits": "2810852442",
       "signedByteMargin": 15009,
-      "memoryUnitMargin": "11390710",
-      "cpuUnitMargin": "7190039805",
+      "memoryUnitMargin": "11387842",
+      "cpuUnitMargin": "7189147558",
       "publicationReserveMargin": null
     },
     {
@@ -309,11 +309,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1375,
-      "memoryUnits": "5109290",
-      "cpuUnits": "2809960195",
+      "memoryUnits": "5112158",
+      "cpuUnits": "2810852442",
       "signedByteMargin": 15009,
-      "memoryUnitMargin": "11390710",
-      "cpuUnitMargin": "7190039805",
+      "memoryUnitMargin": "11387842",
+      "cpuUnitMargin": "7189147558",
       "publicationReserveMargin": null
     },
     {
@@ -321,11 +321,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1375,
-      "memoryUnits": "5109290",
-      "cpuUnits": "2809960195",
+      "memoryUnits": "5112158",
+      "cpuUnits": "2810852442",
       "signedByteMargin": 15009,
-      "memoryUnitMargin": "11390710",
-      "cpuUnitMargin": "7190039805",
+      "memoryUnitMargin": "11387842",
+      "cpuUnitMargin": "7189147558",
       "publicationReserveMargin": null
     },
     {
@@ -333,11 +333,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1375,
-      "memoryUnits": "5109290",
-      "cpuUnits": "2809960195",
+      "memoryUnits": "5112158",
+      "cpuUnits": "2810852442",
       "signedByteMargin": 15009,
-      "memoryUnitMargin": "11390710",
-      "cpuUnitMargin": "7190039805",
+      "memoryUnitMargin": "11387842",
+      "cpuUnitMargin": "7189147558",
       "publicationReserveMargin": null
     },
     {
@@ -345,11 +345,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1375,
-      "memoryUnits": "5109290",
-      "cpuUnits": "2809960195",
+      "memoryUnits": "5112158",
+      "cpuUnits": "2810852442",
       "signedByteMargin": 15009,
-      "memoryUnitMargin": "11390710",
-      "cpuUnitMargin": "7190039805",
+      "memoryUnitMargin": "11387842",
+      "cpuUnitMargin": "7189147558",
       "publicationReserveMargin": null
     },
     {
@@ -357,11 +357,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1375,
-      "memoryUnits": "5109290",
-      "cpuUnits": "2809960195",
+      "memoryUnits": "5112158",
+      "cpuUnits": "2810852442",
       "signedByteMargin": 15009,
-      "memoryUnitMargin": "11390710",
-      "cpuUnitMargin": "7190039805",
+      "memoryUnitMargin": "11387842",
+      "cpuUnitMargin": "7189147558",
       "publicationReserveMargin": null
     },
     {
@@ -369,11 +369,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1375,
-      "memoryUnits": "5109290",
-      "cpuUnits": "2809960195",
+      "memoryUnits": "5112158",
+      "cpuUnits": "2810852442",
       "signedByteMargin": 15009,
-      "memoryUnitMargin": "11390710",
-      "cpuUnitMargin": "7190039805",
+      "memoryUnitMargin": "11387842",
+      "cpuUnitMargin": "7189147558",
       "publicationReserveMargin": null
     },
     {
@@ -381,11 +381,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1375,
-      "memoryUnits": "5423985",
-      "cpuUnits": "2243999477",
+      "memoryUnits": "5426853",
+      "cpuUnits": "2244891724",
       "signedByteMargin": 15009,
-      "memoryUnitMargin": "11076015",
-      "cpuUnitMargin": "7756000523",
+      "memoryUnitMargin": "11073147",
+      "cpuUnitMargin": "7755108276",
       "publicationReserveMargin": null
     },
     {
@@ -393,11 +393,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1341,
-      "memoryUnits": "2490291",
-      "cpuUnits": "868752515",
+      "memoryUnits": "2493159",
+      "cpuUnits": "869644762",
       "signedByteMargin": 15043,
-      "memoryUnitMargin": "14009709",
-      "cpuUnitMargin": "9131247485",
+      "memoryUnitMargin": "14006841",
+      "cpuUnitMargin": "9130355238",
       "publicationReserveMargin": null
     },
     {
@@ -405,11 +405,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 2060,
-      "memoryUnits": "2955924",
-      "cpuUnits": "1007346319",
+      "memoryUnits": "2988936",
+      "cpuUnits": "1017227552",
       "signedByteMargin": 14324,
-      "memoryUnitMargin": "13544076",
-      "cpuUnitMargin": "8992653681",
+      "memoryUnitMargin": "13511064",
+      "cpuUnitMargin": "8982772448",
       "publicationReserveMargin": null
     },
     {
@@ -417,11 +417,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 2020,
-      "memoryUnits": "1288688",
-      "cpuUnits": "435642978",
+      "memoryUnits": "1297292",
+      "cpuUnits": "438319719",
       "signedByteMargin": 14364,
-      "memoryUnitMargin": "15211312",
-      "cpuUnitMargin": "9564357022",
+      "memoryUnitMargin": "15202708",
+      "cpuUnitMargin": "9561680281",
       "publicationReserveMargin": null
     },
     {
@@ -441,11 +441,11 @@
       "kind": "lifecycle",
       "maximumShape": "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints",
       "signedBytes": 1317,
-      "memoryUnits": "3970068",
-      "cpuUnits": "2041628549",
+      "memoryUnits": "3972936",
+      "cpuUnits": "2042520796",
       "signedByteMargin": 15067,
-      "memoryUnitMargin": "12529932",
-      "cpuUnitMargin": "7958371451",
+      "memoryUnitMargin": "12527064",
+      "cpuUnitMargin": "7957479204",
       "publicationReserveMargin": null
     },
     {
@@ -713,5 +713,5 @@
       "publicationReserveMargin": 9795
     }
   ],
-  "ledgerSha256": "1f479d3257bea9567bd00f4e507f4e125af99a91596f60a74a6f185410856f33"
+  "ledgerSha256": "c735c33ce6ff9bc385f5f06be9040a4e91682c81b171dcdb9ece0ee2ac3310a3"
 }

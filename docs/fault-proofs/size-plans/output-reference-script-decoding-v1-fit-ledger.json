@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "outputReferenceScriptDecoding:0000002a:testnet",
-  "blueprintSha256": "026b47d00eb9bb7fecd10e5132c14de2f89c9266a06aa72fd6b017360eab63f3",
+  "blueprintSha256": "3e2e1a78570fa6da04be6ac865114480121b5b891be41202ad327fc08a7d1796",
   "compilerVersion": "aiken v1.1.23+5adf783",
   "entries": [
     {
@@ -105,11 +105,11 @@
       "kind": "lifecycle",
       "maximumShape": "12-deep nested all-of containers, Inline carriage",
       "signedBytes": 1175,
-      "memoryUnits": "540176",
-      "cpuUnits": "172905568",
+      "memoryUnits": "543044",
+      "cpuUnits": "173797815",
       "signedByteMargin": 15209,
-      "memoryUnitMargin": "15959824",
-      "cpuUnitMargin": "9827094432",
+      "memoryUnitMargin": "15956956",
+      "cpuUnitMargin": "9826202185",
       "publicationReserveMargin": null
     },
     {
@@ -117,11 +117,11 @@
       "kind": "lifecycle",
       "maximumShape": "12-deep nested all-of containers, Inline carriage",
       "signedBytes": 1189,
-      "memoryUnits": "1247002",
-      "cpuUnits": "474272045",
+      "memoryUnits": "1249870",
+      "cpuUnits": "475164292",
       "signedByteMargin": 15195,
-      "memoryUnitMargin": "15252998",
-      "cpuUnitMargin": "9525727955",
+      "memoryUnitMargin": "15250130",
+      "cpuUnitMargin": "9524835708",
       "publicationReserveMargin": null
     },
     {
@@ -237,11 +237,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte accepted output (zero native payload) with Certified field-2 carriage and eight resumable descriptor windows; widest all-of native script that fits the bound (16-step resumable scans, adjacent chunk windows); nested containers; cancellation from every step; mint and leased removal",
       "signedBytes": 1246,
-      "memoryUnits": "456059",
-      "cpuUnits": "176276039",
+      "memoryUnits": "450323",
+      "cpuUnits": "174491545",
       "signedByteMargin": 15138,
-      "memoryUnitMargin": "16043941",
-      "cpuUnitMargin": "9823723961",
+      "memoryUnitMargin": "16049677",
+      "cpuUnitMargin": "9825508455",
       "publicationReserveMargin": null
     },
     {
@@ -381,11 +381,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte accepted output (zero native payload) with Certified field-2 carriage and eight resumable descriptor windows; widest all-of native script that fits the bound (16-step resumable scans, adjacent chunk windows); nested containers; cancellation from every step; mint and leased removal",
       "signedBytes": 1266,
-      "memoryUnits": "1839301",
-      "cpuUnits": "779628001",
+      "memoryUnits": "1836433",
+      "cpuUnits": "778735754",
       "signedByteMargin": 15118,
-      "memoryUnitMargin": "14660699",
-      "cpuUnitMargin": "9220371999",
+      "memoryUnitMargin": "14663567",
+      "cpuUnitMargin": "9221264246",
       "publicationReserveMargin": null
     },
     {
@@ -489,11 +489,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte accepted output (zero native payload) with Certified field-2 carriage and eight resumable descriptor windows; widest all-of native script that fits the bound (16-step resumable scans, adjacent chunk windows); nested containers; cancellation from every step; mint and leased removal",
       "signedBytes": 1641,
-      "memoryUnits": "776175",
-      "cpuUnits": "263631223",
+      "memoryUnits": "773107",
+      "cpuUnits": "262706976",
       "signedByteMargin": 14743,
-      "memoryUnitMargin": "15723825",
-      "cpuUnitMargin": "9736368777",
+      "memoryUnitMargin": "15726893",
+      "cpuUnitMargin": "9737293024",
       "publicationReserveMargin": null
     },
     {
@@ -501,11 +501,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte accepted output (zero native payload) with Certified field-2 carriage and eight resumable descriptor windows; widest all-of native script that fits the bound (16-step resumable scans, adjacent chunk windows); nested containers; cancellation from every step; mint and leased removal",
       "signedBytes": 2060,
-      "memoryUnits": "3110107",
-      "cpuUnits": "1060668718",
+      "memoryUnits": "3052048",
+      "cpuUnits": "1043742812",
       "signedByteMargin": 14324,
-      "memoryUnitMargin": "13389893",
-      "cpuUnitMargin": "8939331282",
+      "memoryUnitMargin": "13447952",
+      "cpuUnitMargin": "8956257188",
       "publicationReserveMargin": null
     },
     {
@@ -513,11 +513,11 @@
       "kind": "lifecycle",
       "maximumShape": "small canonical output with Inline field-2 carriage",
       "signedBytes": 2126,
-      "memoryUnits": "1395526",
-      "cpuUnits": "471942458",
+      "memoryUnits": "1392658",
+      "cpuUnits": "471050211",
       "signedByteMargin": 14258,
-      "memoryUnitMargin": "15104474",
-      "cpuUnitMargin": "9528057542",
+      "memoryUnitMargin": "15107342",
+      "cpuUnitMargin": "9528949789",
       "publicationReserveMargin": null
     },
     {
@@ -537,11 +537,11 @@
       "kind": "lifecycle",
       "maximumShape": "small canonical output with Inline field-2 carriage",
       "signedBytes": 1133,
-      "memoryUnits": "1078310",
-      "cpuUnits": "396892767",
+      "memoryUnits": "1075442",
+      "cpuUnits": "396000520",
       "signedByteMargin": 15251,
-      "memoryUnitMargin": "15421690",
-      "cpuUnitMargin": "9603107233",
+      "memoryUnitMargin": "15424558",
+      "cpuUnitMargin": "9603999480",
       "publicationReserveMargin": null
     },
     {
@@ -573,11 +573,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte accepted output (zero native payload) with Certified field-2 carriage and eight resumable descriptor windows; widest all-of native script that fits the bound (16-step resumable scans, adjacent chunk windows); nested containers; cancellation from every step; mint and leased removal",
       "signedBytes": 2272,
-      "memoryUnits": "1481287",
-      "cpuUnits": "498982398",
+      "memoryUnits": "1478419",
+      "cpuUnits": "498090151",
       "signedByteMargin": 14112,
-      "memoryUnitMargin": "15018713",
-      "cpuUnitMargin": "9501017602",
+      "memoryUnitMargin": "15021581",
+      "cpuUnitMargin": "9501909849",
       "publicationReserveMargin": null
     },
     {
@@ -741,11 +741,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte accepted output (zero native payload) with Certified field-2 carriage and eight resumable descriptor windows; widest all-of native script that fits the bound (16-step resumable scans, adjacent chunk windows); nested containers; cancellation from every step; mint and leased removal",
       "signedBytes": 1221,
-      "memoryUnits": "1833831",
-      "cpuUnits": "774423532",
+      "memoryUnits": "1836699",
+      "cpuUnits": "775315779",
       "signedByteMargin": 15163,
-      "memoryUnitMargin": "14666169",
-      "cpuUnitMargin": "9225576468",
+      "memoryUnitMargin": "14663301",
+      "cpuUnitMargin": "9224684221",
       "publicationReserveMargin": null
     },
     {
@@ -765,11 +765,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte accepted output (zero native payload) with Certified field-2 carriage and eight resumable descriptor windows; widest all-of native script that fits the bound (16-step resumable scans, adjacent chunk windows); nested containers; cancellation from every step; mint and leased removal",
       "signedBytes": 916,
-      "memoryUnits": "354804",
-      "cpuUnits": "143379405",
+      "memoryUnits": "359428",
+      "cpuUnits": "144748250",
       "signedByteMargin": 15468,
-      "memoryUnitMargin": "16145196",
-      "cpuUnitMargin": "9856620595",
+      "memoryUnitMargin": "16140572",
+      "cpuUnitMargin": "9855251750",
       "publicationReserveMargin": null
     },
     {
@@ -845,5 +845,5 @@
       "publicationReserveMargin": 12942
     }
   ],
-  "ledgerSha256": "54f9a31a957ddbe0447d09b3d851c2dc908d9ff168484f8fe7789dafd8dff074"
+  "ledgerSha256": "f027f9250622d9bd21115299f230948f591fd6c6f32ce4aaff80f39ff98f7202"
 }

@@ -40,6 +40,7 @@ import {
 import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { createScriptIntegrityHashMissingTransactionPort } from "../src/script-integrity-hash-missing/actuator.js";
 import { testingOnlyScriptIntegrityHashMissingArtifact } from "../src/script-integrity-hash-missing/artifact.js";
@@ -1967,6 +1968,17 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     console.info(
       `[script-integrity-hash-missing-max-fit-ledger] ${JSON.stringify(ledger)}`,
     );
+    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
+      await writeVanRossemFitLedger(
+        fileURLToPath(
+          new URL(
+            "../../../docs/fault-proofs/size-plans/script-integrity-hash-missing-v1-fit-ledger.json",
+            import.meta.url,
+          ),
+        ),
+        ledger,
+      );
+    }
     coverage.scenario("maximum_supported_evidence");
   }, 1_200_000);
 
@@ -2394,3 +2406,4 @@ describe("script-integrity-hash-missing real lifecycle", () => {
 });
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";

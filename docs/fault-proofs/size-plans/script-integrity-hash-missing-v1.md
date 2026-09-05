@@ -171,7 +171,12 @@ test starts from generic Init, uses both authenticated certified fields,
 resumes every grammar/semantic self-loop at the 224/224 frontier, mints the
 permanent proof, removes the fraudulent state, and emits a
 blueprint-digest-bound machine-readable Van Rossem ledger persisted at
-`script-integrity-hash-missing-v1-fit-ledger.json`. Its staged start and first
+`script-integrity-hash-missing-v1-fit-ledger.json`. Regenerate it from the
+repository root with
+`MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/script-integrity-hash-missing-lifecycle.test.ts`
+after the pinned testnet build, then run
+`tests/script-integrity-hash-missing-fit-ledger.test.ts` against that blueprint.
+Its staged start and first
 same-script restart, plus the accepted and forced source-binding paths, execute
 through the package-owned production transaction port. Production watcher
 installation is now only the serial central registration step; no
