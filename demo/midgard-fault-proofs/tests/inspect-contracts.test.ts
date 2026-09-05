@@ -216,8 +216,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // 01–03, so the family's applied step-01 hash and the fold move. Derived
 // under the working-tree testnet blueprint (sha256 9efba702…).
 // `07f587d7…` -> `a90dc0b3…`.
+// Re-pinned 2026-09-04 (Wave 3, `observersForbiddenOnUntaggedNetwork`): the
+// family twin now gates on a present script integrity hash like the canonical
+// phase-A arm, re-parameterizing both steps, so the applied step-01 hash and
+// the fold move. Derived under the working-tree testnet blueprint (sha256
+// fab48c7b…). `a90dc0b3…` -> `bca119f2…`.
 const Q13_CATALOGUE_ROOT =
-  "a90dc0b3068ec3152e879d46b0cbbb63527bd6fcd9f573883250d0e9d56a8b6e";
+  "bca119f2817fa817a300af03ed4c65932d55d569763a64080691e3217b16b5d0";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
