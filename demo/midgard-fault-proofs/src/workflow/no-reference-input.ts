@@ -1,8 +1,8 @@
 import {
   FraudProofComputationThreadStepDatum,
-  NoReferenceInputStep02Datum,
-  NoReferenceInputStep03Datum,
-  NoReferenceInputStep04Datum,
+  NoReferenceInputStep02ThreadDatum,
+  NoReferenceInputStep03ThreadDatum,
+  NoReferenceInputStep04ThreadDatum,
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
@@ -12,10 +12,24 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
+  admitNoReferenceInputForcedArtifact,
+  NO_REFERENCE_INPUT_FORCED_ARTIFACT,
+  noReferenceInputForcedArtifact,
+} from "../no-reference-input/artifact.js";
+import {
+  noReferenceInputForcedFieldPlan,
+  submitNoReferenceInputForcedStep,
+} from "../no-reference-input/submit.js";
+import {
+  detectNoReferenceInputWrongfulRejections,
+  NO_REFERENCE_INPUT_WRONGFUL_REJECTION_VIOLATION_ID,
+} from "../no-reference-input/wrongful-rejection.js";
+import {
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
+import { resolveNoReferenceInputDeploymentContracts } from "../runtime.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import { submitNoReferenceInputStep01 } from "../submit-no-reference-input-step-01.js";
@@ -24,6 +38,7 @@ import { submitNoReferenceInputStep03 } from "../submit-no-reference-input-step-
 import { submitNoReferenceInputStep04 } from "../submit-no-reference-input-step-04.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import { completeCanonicalReplayPredecessorEvidence } from "./complete-replay.js";
 import {
   type CompleteCanonicalReplayContext,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -179,10 +194,9 @@ const resolveChunks = async ({
     address: config.signer.address,
     proofCbor,
   });
-  // Missing chunks select the exact direct attempt. The prerequisite wrapper
-  // admits a publication route only after the direct body has failed for the
-  // release-bound capacity reason and then holds the base step until its exact
-  // raw-L1-confirmed chunks are present.
+  // Absence is the expected state for the direct-first attempt. Once a
+  // publication route is journal-authorized, the outer prerequisite refuses
+  // to expose the base step until the exact raw-L1-confirmed chunks exist.
   return chunks;
 };
 
@@ -245,15 +259,128 @@ const createTransactionPort = (
 ): LinearFamilyTransactionPort<"noReferenceInput"> => ({
   portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "noReferenceInput",
-  prepare: async ({ evidence, replayContext, classification }) =>
-    await prepareLedgerAbsenceArtifact({
+  prepare: async ({ evidence, replayContext, classification }) => {
+    if (
+      classification.selected.violationId ===
+      NO_REFERENCE_INPUT_WRONGFUL_REJECTION_VIOLATION_ID
+    ) {
+      const detections = await detectNoReferenceInputWrongfulRejections({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorEvidence({
+          evidence,
+          context: replayContext,
+        }),
+      });
+      const detected = detections.find(
+        (item) => item.detectionId === classification.selected.detectionId,
+      );
+      if (
+        classification.category !== "noReferenceInput" ||
+        classification.headerHash !== evidence.headerHash ||
+        detected === undefined
+      )
+        throw new Error("noReferenceInput: forced classification changed");
+      return noReferenceInputForcedArtifact(detected.prepared);
+    }
+    return await prepareLedgerAbsenceArtifact({
       category: "noReferenceInput",
       evidence,
       replayContext,
       classification,
       owner: config.signer.paymentKeyHash,
-    }),
+    });
+  },
   capture: async ({ action, artifact }) => {
+    if (artifact.schemaVersion === NO_REFERENCE_INPUT_FORCED_ARTIFACT) {
+      const prepared = await admitNoReferenceInputForcedArtifact(artifact);
+      if (prepared.headerHash !== config.binding.definition.headerHash)
+        throw new Error("noReferenceInput: forced workflow header changed");
+      const input = actionInput(action);
+      if (input.stage === "remove") return await captureRemoval(config, input);
+      if (input.stage === "init")
+        return {
+          transaction: await captureLocallyEvaluatedTransaction(
+            async (preSubmitBoundary) => {
+              await submitInit({
+                lucid: config.lucid,
+                blueprint: config.binding.blueprint,
+                deploymentInfo: config.binding.deploymentInfo,
+                network: config.binding.network,
+                signer: config.signer,
+                fraudCategory: "noReferenceInput",
+                fraudulentBlockOutRef: stringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+                fraudulentHeaderHash: prepared.headerHash,
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+                preSubmitBoundary,
+                awaitConfirmation: false,
+              });
+            },
+          ),
+        };
+      const stepIndex = (
+        ["step_01", "step_02", "step_03", "step_04"] as const
+      ).findIndex((stage) => stage === input.stage);
+      if (stepIndex < 0 || stepIndex > 3)
+        throw new Error("noReferenceInput: unknown forced stage");
+      const { contracts, noReferenceInputCategory } =
+        await resolveNoReferenceInputDeploymentContracts({
+          blueprint: config.binding.blueprint,
+          deploymentInfo: config.binding.deploymentInfo,
+          network: config.binding.network,
+          requireFraudProofSpend: true,
+        });
+      const carriage =
+        stepIndex === 1
+          ? await resolveField(
+              config,
+              noReferenceInputForcedFieldPlan(
+                prepared,
+                config.signer.paymentKeyHash,
+              ),
+            )
+          : null;
+      return {
+        transaction: await captureLocallyEvaluatedTransaction(
+          async (preSubmitBoundary) => {
+            await submitNoReferenceInputForcedStep({
+              lucid: config.lucid,
+              contracts: {
+                steps: contracts.noReferenceInput.steps,
+                computationThread: contracts.computationThread,
+                fraudProof: contracts.fraudProof,
+              },
+              categoryId: noReferenceInputCategory.categoryId,
+              signer: config.signer,
+              threadOutRef: stringField(input, "threadOutRef"),
+              prepared,
+              stepIndex: stepIndex as 0 | 1 | 2 | 3,
+              referenceScripts: {
+                steps: config.referenceScripts.steps,
+                computationThreadMint:
+                  config.referenceScripts.witnesses.computationThreadMint,
+                fraudProofMint:
+                  config.referenceScripts.witnesses.fraudProofMint,
+              },
+              carriageUtxos:
+                carriage === null
+                  ? []
+                  : [
+                      ...carriage.publications,
+                      ...(carriage.certificate === undefined
+                        ? []
+                        : [carriage.certificate]),
+                    ],
+              certificatePolicyId: config.certificate.policyId,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            });
+          },
+        ),
+      };
+    }
     const admitted = admitLedgerAbsenceArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -455,9 +582,9 @@ export const createManifestBoundNoReferenceInputWorkflow = async (
     proverCredential: config.signer.paymentKeyHash,
     stepDatumSchemas: [
       FraudProofComputationThreadStepDatum,
-      NoReferenceInputStep02Datum,
-      NoReferenceInputStep03Datum,
-      NoReferenceInputStep04Datum,
+      NoReferenceInputStep02ThreadDatum,
+      NoReferenceInputStep03ThreadDatum,
+      NoReferenceInputStep04ThreadDatum,
     ],
   });
   assertManifestBoundWorkflowSigner({
@@ -554,8 +681,27 @@ export const createManifestBoundNoReferenceInputWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    requirementForAction: ({ action, artifact }) => {
+    requirementForAction: async ({ action, artifact }) => {
       if (actionInput(action).stage !== "step_02") return null;
+      if (artifact.schemaVersion === NO_REFERENCE_INPUT_FORCED_ARTIFACT) {
+        const prepared = await admitNoReferenceInputForcedArtifact(artifact);
+        return {
+          planned: noReferenceInputForcedFieldPlan(
+            prepared,
+            config.signer.paymentKeyHash,
+          ),
+          compactCbor:
+            prepared.forcedSource.membership.value.source.compact_cbor,
+          witnessSetCompactCbor:
+            prepared.forcedSource.membership.value.source
+              .witness_set_compact_cbor,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        } satisfies FieldCarriageRequirement;
+      }
       const admitted = admitLedgerAbsenceArtifact(
         artifact,
         config.signer.paymentKeyHash,
@@ -586,6 +732,8 @@ export const createManifestBoundNoReferenceInputWorkflow = async (
     publications: l1.publications,
     maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
     proofCborForAction: ({ action, artifact }) => {
+      if (artifact.schemaVersion === NO_REFERENCE_INPUT_FORCED_ARTIFACT)
+        return null;
       const stage = actionInput(action).stage;
       const admitted = admitLedgerAbsenceArtifact(
         artifact,

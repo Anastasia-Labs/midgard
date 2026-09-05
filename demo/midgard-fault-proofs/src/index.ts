@@ -43,6 +43,9 @@ export {
   type ManifestBoundMissingScriptSourceWorkflow,
   type ManifestBoundMissingScriptSourceWorkflowConfig,
 } from "./missing-script-source/v1.js";
+export * from "./no-reference-input/artifact.js";
+export * from "./no-reference-input/submit.js";
+export * from "./no-reference-input/wrongful-rejection.js";
 export * from "./non-existent-input/artifact.js";
 export * from "./non-existent-input/submit.js";
 export * from "./non-existent-input/wrongful-rejection.js";

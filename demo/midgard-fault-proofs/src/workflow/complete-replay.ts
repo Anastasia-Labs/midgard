@@ -80,6 +80,7 @@ import { detectNativeScriptInvalidForcedReplay } from "../native-script-invalid/
 import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
+import { detectNoReferenceInputWrongfulRejections } from "../no-reference-input/wrongful-rejection.js";
 import { detectNonExistentInputWrongfulRejections } from "../non-existent-input/wrongful-rejection.js";
 import { detectObserverOrderInvalidCompleteReplay } from "../observer-order-invalid/replay.js";
 import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-untagged-network/replay.js";
@@ -1394,15 +1395,25 @@ export const ZERO_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   detectZeroInputs,
 );
 
-/** Complete accepted reference-input scan against current and predecessor state. */
+/** Complete accepted and wrongful-rejected reference-input scan. */
 export const NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["noReferenceInput"],
-  async (evidence, context) =>
-    await detectLedgerRelativeMissingInputs({
-      evidence,
-      context,
-      kind: "reference",
-    }),
+  async (evidence, context) => [
+    ...(await (evidence.transactions.length === 0
+      ? []
+      : detectLedgerRelativeMissingInputs({
+          evidence,
+          context,
+          kind: "reference",
+        }))),
+    ...(await detectNoReferenceInputWrongfulRejections({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence,
+        context,
+      }),
+    })),
+  ],
 );
 
 /**

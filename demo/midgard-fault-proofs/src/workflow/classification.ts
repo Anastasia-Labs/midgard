@@ -95,7 +95,10 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   },
   {
     category: "noReferenceInput",
-    violationIds: ["no-reference-input"],
+    violationIds: [
+      "no-reference-input",
+      "no-reference-input-wrongful-rejection",
+    ],
   },
   {
     category: "referenceInputNoIdx",
