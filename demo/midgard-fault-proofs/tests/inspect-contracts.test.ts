@@ -211,8 +211,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // 01–04, so the family's applied step-01 hash and the fold move. Derived
 // under the working-tree testnet blueprint (sha256 494cbdfe…).
 // `b3474673…` -> `07f587d7…`.
+// Re-pinned 2026-09-04 (Wave 3, `spendInputSignerMissing`): step 03 now
+// asserts the frontier count needs no certification, re-parameterizing steps
+// 01–03, so the family's applied step-01 hash and the fold move. Derived
+// under the working-tree testnet blueprint (sha256 9efba702…).
+// `07f587d7…` -> `a90dc0b3…`.
 const Q13_CATALOGUE_ROOT =
-  "07f587d7754fa94d3ba91c1fb5c25fd7a96294c4d8d86dc1d373358175d7213b";
+  "a90dc0b3068ec3152e879d46b0cbbb63527bd6fcd9f573883250d0e9d56a8b6e";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
