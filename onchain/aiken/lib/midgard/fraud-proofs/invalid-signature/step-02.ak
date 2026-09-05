@@ -1,6 +1,6 @@
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
-use midgard/ledger_state.{MidgardTxId}
+use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 
 /// The bad transaction's §2.5 anchor, both levels of it.
 ///
@@ -12,7 +12,7 @@ use midgard/ledger_state.{MidgardTxId}
 /// `bad_addr_tx_wits_hash` cost, covering all three witness-set fields rather
 /// than one.
 pub type State {
-  bad_tx_id: MidgardTxId,
+  subject: VerdictSubjectV1,
   bad_tx_witness_set_hash: ByteArray,
 }
 

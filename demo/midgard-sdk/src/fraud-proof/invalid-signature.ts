@@ -1,35 +1,10 @@
 /**
- * `invalid-signature` fault-proof family (Goal task `Q15`). Thread state carries
- * the §2.5 transaction anchor, and field 7 is opened through `FieldOpeningV1`.
- *
- * **Rule.** Every address witness of every committed transaction must carry an
- * Ed25519 signature that verifies against that transaction's native id:
- * `∀t ∈ Ledger, ∀(v, s) ∈ addr_tx_wits(t): is_valid_signature(v, t.id, s)`.
- *
- * **Violation.** A block commits a transaction one of whose address witnesses
- * does not verify. The rule is unconditional over the block's transactions, so
- * the proof deliberately never consults `validity_code`: a block may not excuse
- * an invalid signature by declaring the offending transaction invalid.
- *
- * The proof is a two-step computation thread:
- *
- * 1. bind the bad transaction to the block's counted `transactions_root`, open
- *    its committed `witness_set_hash` with the witness-set compact, and forward
- *    the transaction id together with the exposed `addr_tx_wits_hash`; and
- * 2. open that canonical address-witness collection with the complete witness
- *    preimage and require the witness at the accused index not to verify.
- *
- * Two preimages are needed to reach one signature, and both openings fit in one
- * thread because the family takes only a single transaction-inclusion proof (in
- * step 01) and is therefore not subject to the one-`plutarch_phas`-per-
- * transaction limit that forces the `input-no-idx` family to spread its
- * openings over four steps.
- *
- * This module is the strict TypeScript twin of
- * `onchain/aiken/lib/midgard/fraud-proofs/invalid-signature/step-0{1,2}.ak`.
- * Field order in every `Data.Object` mirrors the aiken record declarations 1:1 —
- * the PlutusData encoding is positional, so re-ordering here would silently
- * produce redeemers the validators reject.
+ * Signature contradiction proof: bind an accepted or forced transaction, then
+ * authenticate field 7 and verify the selected Ed25519 signature. A forced
+ * rejection binds its exact typed reason and witness coordinate. The persistent
+ * subject carries transaction/source identity and verdict direction; the
+ * witness-set hash is separately authenticated because transaction IDs commit
+ * the body only. PlutusData field order mirrors the Aiken records.
  */
 import {
   computeHash32,
@@ -41,7 +16,11 @@ import {
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { CML, Data } from "@lucid-evolution/lucid";
 
+import { OutputReferenceSchema } from "../common.js";
 import { H32Schema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { RejectionReasonSchema } from "../rejection-reason.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
@@ -53,6 +32,11 @@ import {
   NativeTxInclusionCarriageSchema,
   type NativeTxWitnessSetCompact as NativeTxWitnessSetCompactData,
 } from "./native.js";
+import {
+  acceptedVerdictSubject,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
+} from "./proof-thread-substrate.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
 export const INVALID_SIGNATURE_VIOLATION_ID = "invalid-signature" as const;
@@ -274,7 +258,7 @@ export const InvalidSignatureStep01Datum =
 /**
  * Mirrors `midgard/fraud_proofs/invalid_signature/step_01.Args`.
  *
- * Step 01 accepts `NativeTxInclusionCarriage`. Step 02 opens field 7 through
+ * Step 01 selects accepted inclusion carriage or forced-root membership. Step 02 opens field 7 through
  * the shared field-opening door; step 01 forwards the authenticated witness-set
  * hash in its next-state datum because the transaction id alone does not commit
  * witness fields.
@@ -282,7 +266,43 @@ export const InvalidSignatureStep01Datum =
  * Any additional wrapper fields change the positional PlutusData shape and are
  * therefore outside this ABI.
  */
-export const InvalidSignatureStep01ArgsSchema = NativeTxInclusionCarriageSchema;
+export const InvalidSignatureVerdictSubjectSchema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: Data.Bytes(),
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
+});
+export const InvalidSignatureStep01SourceSchema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+      direction: Data.Integer(),
+    }),
+  }),
+]);
+export const InvalidSignatureForcedSourcePayloadSchema = Data.Object({
+  header: HeaderSchema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
+
+export const InvalidSignatureStep01ArgsSchema = Data.Object({
+  source: InvalidSignatureStep01SourceSchema,
+});
 export type InvalidSignatureStep01Args = Data.Static<
   typeof InvalidSignatureStep01ArgsSchema
 >;
@@ -315,7 +335,7 @@ export const InvalidSignatureStep01SpendRedeemer =
  * checks the supplied witness set against.
  */
 export const InvalidSignatureStep02StateSchema = Data.Object({
-  bad_tx_id: H32Schema,
+  subject: InvalidSignatureVerdictSubjectSchema,
   bad_tx_witness_set_hash: H32Schema,
 });
 export type InvalidSignatureStep02State = Data.Static<
@@ -383,6 +403,40 @@ export const invalidSignatureStep02StateFromBadTx = ({
    */
   readonly badTxWitnessSetHash: string;
 }): InvalidSignatureStep02State => ({
-  bad_tx_id: badTxId.toLowerCase(),
+  subject: acceptedVerdictSubject(badTxId),
   bad_tx_witness_set_hash: badTxWitnessSetHash.toLowerCase(),
 });
+
+/** Exact forced coordinate and terminal polarity over an authenticated field. */
+export const invalidSignatureTerminalContradiction = ({
+  subject,
+  witnessIndex,
+  addressWitnesses,
+}: {
+  readonly subject: VerdictSubject;
+  readonly witnessIndex: bigint;
+  readonly addressWitnesses: readonly MidgardAddressWitnessData[];
+}): boolean => {
+  if (!verdictSubjectIsCanonical(subject))
+    throw new Error("invalidSignature: noncanonical subject");
+  if (subject.direction === 1n) {
+    const reason = subject.rejection_reason;
+    if (
+      reason === null ||
+      typeof reason !== "object" ||
+      !("AddressWitnessSignatureInvalid" in reason) ||
+      reason.AddressWitnessSignatureInvalid.witness_index !== witnessIndex
+    )
+      throw new Error(
+        "invalidSignature: authenticated rejection reason/index changed",
+      );
+  }
+  const witness =
+    witnessIndex >= 0n && witnessIndex < BigInt(addressWitnesses.length)
+      ? addressWitnesses[Number(witnessIndex)]
+      : undefined;
+  const fault =
+    witness !== undefined &&
+    !verifyAddressWitness({ txId: subject.transaction_id, witness });
+  return subject.direction === 0n ? fault : !fault;
+};

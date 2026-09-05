@@ -2,10 +2,16 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
-use midgard/fraud_proofs/invalid_signature/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/common.{
+  cancel, continue, pass_native_tx_to_next_step_carried,
+}
+use midgard/fraud_proofs/invalid_signature/step_01.{
+  AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
+}
 use midgard/fraud_proofs/invalid_signature/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -28,18 +34,18 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_args) -> {
+      ct.Continue(Args{source: AcceptedSource { inclusion: tx_inclusion_args }}) -> {
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
             _own_script_hash,
             _computation_thread_token_asset_name,
             _fraud_prover,
-            _m_input_state_data,
+            m_input_state_data,
             output_script_hash,
             output_state_data,
             _header,
-            bad_tx_id,
+            _bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
@@ -50,6 +56,7 @@ validator main(
           tx,
         )
 
+        expect None = m_input_state_data
         expect bad_tx_view.tx_compact.validity_code == 0
 
         // 2. The UTxO must be produced at next step's script hash with the bad
@@ -63,13 +70,54 @@ validator main(
         //    authenticated rather than asserted.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          bad_tx_id,
+          subject: substrate.bind_accepted_subject_v1(bad_tx_view),
           bad_tx_witness_set_hash: bad_tx_view.tx_compact.witness_set_hash,
         }
         expect output_state_data == expected_output_state
 
         // Done.
         True
+      }
+      ct.Continue(Args{source: ForcedSource {
+        input_index,
+        output_index,
+        header,
+        membership,
+        direction,
+      }}) -> {
+        let Transaction { inputs, outputs, .. } = tx
+        expect Some(step_datum) = datum
+        let _, thread_name, _, input_state, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
+        expect None = input_state
+        let subject = substrate.bind_forced_subject_to_thread_v1(
+          thread_name,
+          header,
+          membership,
+          direction,
+        )
+        let leaf = membership.value
+        let Pair(verified, _) = verify_native_tx_proof_source_v1(
+          leaf.tx_id,
+          leaf.source.compact_cbor,
+          leaf.source.witness_set_compact_cbor,
+          leaf.source.field_preimage_lengths_cbor,
+        )
+        let expected: Data = step_02.State {
+          subject,
+          bad_tx_witness_set_hash: verified.tx_compact.witness_set_hash,
+        }
+        and {
+          output_hash == step_02_validator_script_hash,
+          output_state == expected,
+        }
       }
     }
   }
@@ -85,7 +133,7 @@ validator main(
 test invalid_signature_step_01_binds_native_v1_block_fixture() {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let expected_output_state: Data = step_02.State {
-    bad_tx_id: block.tx_id,
+    subject: fixture_subject(block.tx_id),
     bad_tx_witness_set_hash: block.compact.witness_set_hash,
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
@@ -100,7 +148,13 @@ test invalid_signature_step_01_binds_native_v1_block_fixture() {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_carriage_v1(block)),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(block),
+        },
+      },
+    ),
     fixture.own_out_ref(),
     l1_tx,
   )
@@ -113,7 +167,7 @@ test invalid_signature_step_01_rejects_an_uncommitted_transaction() fail {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let forged_tx_id = #"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
   let expected_output_state: Data = step_02.State {
-    bad_tx_id: forged_tx_id,
+    subject: fixture_subject(forged_tx_id),
     bad_tx_witness_set_hash: block.compact.witness_set_hash,
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
@@ -128,8 +182,25 @@ test invalid_signature_step_01_rejects_an_uncommitted_transaction() fail {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_carriage_v1(block)),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(block),
+        },
+      },
+    ),
     fixture.own_out_ref(),
     l1_tx,
   )
+}
+
+fn fixture_subject(tx_id: ByteArray) -> substrate.VerdictSubjectV1 {
+  substrate.VerdictSubjectV1 {
+    version: 1,
+    direction: 0,
+    source_kind: 0,
+    transaction_id: tx_id,
+    source_key: #"",
+    rejection_reason: None,
+  }
 }

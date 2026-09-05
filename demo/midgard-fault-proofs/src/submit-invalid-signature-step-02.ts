@@ -30,6 +30,7 @@ import {
   FraudProofTokenMintRedeemer,
   InvalidSignatureStep02Datum,
   InvalidSignatureStep02SpendRedeemer,
+  invalidSignatureTerminalContradiction,
   MIDGARD_FIELD_INDEX,
   type MidgardAddressWitness,
   type NativeTxWitnessSetCompact,
@@ -38,7 +39,6 @@ import {
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  verifyAddressWitness,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -163,7 +163,7 @@ export type SubmitInvalidSignatureStep02Result = {
   readonly badTxWitnessSetHash: string;
   readonly addrTxWitsPreimageItemCount: number;
   readonly badAddrTxWitIndex: number;
-  readonly badAddrTxWitVerificationKey: string;
+  readonly badAddrTxWitVerificationKey: string | null;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
@@ -419,7 +419,7 @@ export const submitInvalidSignatureStep02 = async ({
     categoryLabel: "invalid-signature",
   });
   const inputDatum = requireStep02Datum({ threadUtxo, signer });
-  const badTxId = inputDatum.data.bad_tx_id;
+  const badTxId = inputDatum.data.subject.transaction_id;
   const badTxWitnessSetHash = inputDatum.data.bad_tx_witness_set_hash;
 
   // Mirror every check the door makes, in its order: the compact bytes
@@ -484,14 +484,22 @@ export const submitInvalidSignatureStep02 = async ({
     label: "Invalid-signature step 02 address-witnesses",
   });
   const badAddrTxWit = addrTxWitsPreimage[Number(badAddrTxWitIndex)];
-  if (badAddrTxWit === undefined) {
+  if (inputDatum.data.subject.direction === 0n && badAddrTxWit === undefined) {
     throw new Error(
       `--bad-addr-tx-wit-index ${badAddrTxWitIndex.toString()} is out of range for a ${addrTxWitsPreimage.length.toString()}-witness preimage.`,
     );
   }
-  if (verifyAddressWitness({ txId: badTxId, witness: badAddrTxWit })) {
+  if (
+    !invalidSignatureTerminalContradiction({
+      subject: inputDatum.data.subject,
+      witnessIndex: badAddrTxWitIndex,
+      addressWitnesses: addrTxWitsPreimage,
+    })
+  ) {
     throw new Error(
-      `Address witness ${badAddrTxWitIndex.toString()} signs transaction ${badTxId} validly, so it does not violate the signature ledger rule.`,
+      inputDatum.data.subject.direction === 0n
+        ? `Address witness ${badAddrTxWitIndex.toString()} signs transaction ${badTxId} validly, so it does not violate the signature ledger rule.`
+        : "invalidSignature: evidence does not contradict the authenticated verdict",
     );
   }
 
@@ -640,7 +648,7 @@ export const submitInvalidSignatureStep02 = async ({
     badTxWitnessSetHash,
     addrTxWitsPreimageItemCount: addrTxWitsPreimage.length,
     badAddrTxWitIndex: Number(badAddrTxWitIndex),
-    badAddrTxWitVerificationKey: badAddrTxWit.verification_key,
+    badAddrTxWitVerificationKey: badAddrTxWit?.verification_key ?? null,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     computationThreadMintRedeemerIndex: Number(

@@ -1,0 +1,691 @@
+{
+  "schemaVersion": "midgard-invalid-signature-wrongful-rejection-fit-ledger-v1",
+  "category": "invalidSignature",
+  "categoryId": "0000000a",
+  "compiler": "aiken v1.1.23+5adf783",
+  "environment": "testnet",
+  "blueprintSha256": "4d435c9a549359ce0bc625fd5ac14f45a004fc4610604656b05c50bb89b00852",
+  "maximumField": {
+    "witnessCount": 318,
+    "preimageBytes": 32757,
+    "carriage": "Certified",
+    "chunks": 3
+  },
+  "referencePublications": [
+    {
+      "step": 1,
+      "scriptHash": "4c00cd6a1532c54ef558cf1e6c517fb02e6d4cde1b92eeb2c6cc7c5b",
+      "bytes": 14460,
+      "memory": "0",
+      "cpu": "0",
+      "reserveMarginBytes": 1412
+    },
+    {
+      "step": 2,
+      "scriptHash": "07367779c95a6be5369be2a4a6efb03c1074b5527db5efa16df25b5c",
+      "bytes": 8113,
+      "memory": "0",
+      "cpu": "0",
+      "reserveMarginBytes": 7759
+    }
+  ],
+  "acceptedLifecycle": [
+    {
+      "stage": "init",
+      "bytes": 1365,
+      "memory": "715527",
+      "cpu": "244589357"
+    },
+    {
+      "stage": "step-01",
+      "bytes": 2013,
+      "memory": "1295221",
+      "cpu": "439467261"
+    },
+    {
+      "stage": "step-02",
+      "bytes": 1464,
+      "memory": "698941",
+      "cpu": "280428277"
+    }
+  ],
+  "forcedLifecycle": [
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 0,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 1,
+      "bytes": 611,
+      "memory": "122408",
+      "cpu": "42068566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16377592",
+      "cpuMargin": "9957931434"
+    },
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 2,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 3,
+      "bytes": 1751,
+      "memory": "965162",
+      "cpu": "406641151",
+      "signedByteMargin": 14633,
+      "memoryMargin": "15534838",
+      "cpuMargin": "9593358849"
+    },
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 4,
+      "bytes": 611,
+      "memory": "113608",
+      "cpu": "40660566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16386392",
+      "cpuMargin": "9959339434"
+    },
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 5,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 6,
+      "bytes": 1751,
+      "memory": "965162",
+      "cpu": "406641151",
+      "signedByteMargin": 14633,
+      "memoryMargin": "15534838",
+      "cpuMargin": "9593358849"
+    },
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 7,
+      "bytes": 1464,
+      "memory": "759205",
+      "cpu": "306755433",
+      "signedByteMargin": 14920,
+      "memoryMargin": "15740795",
+      "cpuMargin": "9693244567"
+    },
+    {
+      "vector": "0-selected-single",
+      "transitionIndex": 8,
+      "bytes": 2060,
+      "memory": "2966346",
+      "cpu": "1010467400",
+      "signedByteMargin": 14324,
+      "memoryMargin": "13533654",
+      "cpuMargin": "8989532600"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 0,
+      "bytes": 1365,
+      "memory": "706323",
+      "cpu": "241816616",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15793677",
+      "cpuMargin": "9758183384"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 1,
+      "bytes": 611,
+      "memory": "122408",
+      "cpu": "42068566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16377592",
+      "cpuMargin": "9957931434"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 2,
+      "bytes": 1365,
+      "memory": "706323",
+      "cpu": "241816616",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15793677",
+      "cpuMargin": "9758183384"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 3,
+      "bytes": 1754,
+      "memory": "969786",
+      "cpu": "408249897",
+      "signedByteMargin": 14630,
+      "memoryMargin": "15530214",
+      "cpuMargin": "9591750103"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 4,
+      "bytes": 611,
+      "memory": "113608",
+      "cpu": "40660566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16386392",
+      "cpuMargin": "9959339434"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 5,
+      "bytes": 1365,
+      "memory": "706323",
+      "cpu": "241816616",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15793677",
+      "cpuMargin": "9758183384"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 6,
+      "bytes": 1754,
+      "memory": "969786",
+      "cpu": "408249897",
+      "signedByteMargin": 14630,
+      "memoryMargin": "15530214",
+      "cpuMargin": "9591750103"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 7,
+      "bytes": 15123,
+      "memory": "0",
+      "cpu": "0",
+      "signedByteMargin": 1261,
+      "memoryMargin": "16500000",
+      "cpuMargin": "10000000000"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 8,
+      "bytes": 1392,
+      "memory": "784131",
+      "cpu": "329518665",
+      "signedByteMargin": 14992,
+      "memoryMargin": "15715869",
+      "cpuMargin": "9670481335"
+    },
+    {
+      "vector": "139-selected-single",
+      "transitionIndex": 9,
+      "bytes": 2060,
+      "memory": "3076204",
+      "cpu": "1048188628",
+      "signedByteMargin": 14324,
+      "memoryMargin": "13423796",
+      "cpuMargin": "8951811372"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 0,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 1,
+      "bytes": 611,
+      "memory": "122408",
+      "cpu": "42068566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16377592",
+      "cpuMargin": "9957931434"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 2,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 3,
+      "bytes": 1755,
+      "memory": "963964",
+      "cpu": "406596261",
+      "signedByteMargin": 14629,
+      "memoryMargin": "15536036",
+      "cpuMargin": "9593403739"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 4,
+      "bytes": 611,
+      "memory": "113608",
+      "cpu": "40660566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16386392",
+      "cpuMargin": "9959339434"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 5,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 6,
+      "bytes": 1755,
+      "memory": "963964",
+      "cpu": "406596261",
+      "signedByteMargin": 14629,
+      "memoryMargin": "15536036",
+      "cpuMargin": "9593403739"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 7,
+      "bytes": 15872,
+      "memory": "0",
+      "cpu": "0",
+      "signedByteMargin": 512,
+      "memoryMargin": "16500000",
+      "cpuMargin": "10000000000"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 8,
+      "bytes": 15872,
+      "memory": "0",
+      "cpu": "0",
+      "signedByteMargin": 512,
+      "memoryMargin": "16500000",
+      "cpuMargin": "10000000000"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 9,
+      "bytes": 2789,
+      "memory": "0",
+      "cpu": "0",
+      "signedByteMargin": 13595,
+      "memoryMargin": "16500000",
+      "cpuMargin": "10000000000"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 10,
+      "bytes": 1317,
+      "memory": "511858",
+      "cpu": "227246923",
+      "signedByteMargin": 15067,
+      "memoryMargin": "15988142",
+      "cpuMargin": "9772753077"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 11,
+      "bytes": 1505,
+      "memory": "1094850",
+      "cpu": "417913924",
+      "signedByteMargin": 14879,
+      "memoryMargin": "15405150",
+      "cpuMargin": "9582086076"
+    },
+    {
+      "vector": "317-selected-single",
+      "transitionIndex": 12,
+      "bytes": 2060,
+      "memory": "2999369",
+      "cpu": "1021914442",
+      "signedByteMargin": 14324,
+      "memoryMargin": "13500631",
+      "cpuMargin": "8978085558"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 0,
+      "bytes": 1365,
+      "memory": "712459",
+      "cpu": "243665110",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15787541",
+      "cpuMargin": "9756334890"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 1,
+      "bytes": 611,
+      "memory": "122408",
+      "cpu": "42068566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16377592",
+      "cpuMargin": "9957931434"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 2,
+      "bytes": 1365,
+      "memory": "712459",
+      "cpu": "243665110",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15787541",
+      "cpuMargin": "9756334890"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 3,
+      "bytes": 1751,
+      "memory": "965162",
+      "cpu": "406641151",
+      "signedByteMargin": 14633,
+      "memoryMargin": "15534838",
+      "cpuMargin": "9593358849"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 4,
+      "bytes": 611,
+      "memory": "113608",
+      "cpu": "40660566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16386392",
+      "cpuMargin": "9959339434"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 5,
+      "bytes": 1365,
+      "memory": "712459",
+      "cpu": "243665110",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15787541",
+      "cpuMargin": "9756334890"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 6,
+      "bytes": 1751,
+      "memory": "965162",
+      "cpu": "406641151",
+      "signedByteMargin": 14633,
+      "memoryMargin": "15534838",
+      "cpuMargin": "9593358849"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 7,
+      "bytes": 1464,
+      "memory": "655095",
+      "cpu": "222170019",
+      "signedByteMargin": 14920,
+      "memoryMargin": "15844905",
+      "cpuMargin": "9777829981"
+    },
+    {
+      "vector": "0-1-single",
+      "transitionIndex": 8,
+      "bytes": 2060,
+      "memory": "3052213",
+      "cpu": "1044775606",
+      "signedByteMargin": 14324,
+      "memoryMargin": "13447787",
+      "cpuMargin": "8955224394"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 0,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 1,
+      "bytes": 611,
+      "memory": "122408",
+      "cpu": "42068566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16377592",
+      "cpuMargin": "9957931434"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 2,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 3,
+      "bytes": 1751,
+      "memory": "965162",
+      "cpu": "406641151",
+      "signedByteMargin": 14633,
+      "memoryMargin": "15534838",
+      "cpuMargin": "9593358849"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 4,
+      "bytes": 611,
+      "memory": "113608",
+      "cpu": "40660566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16386392",
+      "cpuMargin": "9959339434"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 5,
+      "bytes": 1365,
+      "memory": "703255",
+      "cpu": "240892369",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15796745",
+      "cpuMargin": "9759107631"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 6,
+      "bytes": 1751,
+      "memory": "965162",
+      "cpu": "406641151",
+      "signedByteMargin": 14633,
+      "memoryMargin": "15534838",
+      "cpuMargin": "9593358849"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 7,
+      "bytes": 1464,
+      "memory": "647044",
+      "cpu": "219596882",
+      "signedByteMargin": 14920,
+      "memoryMargin": "15852956",
+      "cpuMargin": "9780403118"
+    },
+    {
+      "vector": "0--1-single",
+      "transitionIndex": 8,
+      "bytes": 2060,
+      "memory": "3022292",
+      "cpu": "1034292382",
+      "signedByteMargin": 14324,
+      "memoryMargin": "13477708",
+      "cpuMargin": "8965707618"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 0,
+      "bytes": 1365,
+      "memory": "706323",
+      "cpu": "241816616",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15793677",
+      "cpuMargin": "9758183384"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 1,
+      "bytes": 611,
+      "memory": "122408",
+      "cpu": "42068566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16377592",
+      "cpuMargin": "9957931434"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 2,
+      "bytes": 1365,
+      "memory": "706323",
+      "cpu": "241816616",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15793677",
+      "cpuMargin": "9758183384"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 3,
+      "bytes": 10588,
+      "memory": "3507859",
+      "cpu": "1150189907",
+      "signedByteMargin": 5796,
+      "memoryMargin": "12992141",
+      "cpuMargin": "8849810093"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 4,
+      "bytes": 611,
+      "memory": "113608",
+      "cpu": "40660566",
+      "signedByteMargin": 15773,
+      "memoryMargin": "16386392",
+      "cpuMargin": "9959339434"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 5,
+      "bytes": 1365,
+      "memory": "706323",
+      "cpu": "241816616",
+      "signedByteMargin": 15019,
+      "memoryMargin": "15793677",
+      "cpuMargin": "9758183384"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 6,
+      "bytes": 10588,
+      "memory": "3507859",
+      "cpu": "1150189907",
+      "signedByteMargin": 5796,
+      "memoryMargin": "12992141",
+      "cpuMargin": "8849810093"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 7,
+      "bytes": 15872,
+      "memory": "0",
+      "cpu": "0",
+      "signedByteMargin": 512,
+      "memoryMargin": "16500000",
+      "cpuMargin": "10000000000"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 8,
+      "bytes": 15872,
+      "memory": "0",
+      "cpu": "0",
+      "signedByteMargin": 512,
+      "memoryMargin": "16500000",
+      "cpuMargin": "10000000000"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 9,
+      "bytes": 2789,
+      "memory": "0",
+      "cpu": "0",
+      "signedByteMargin": 13595,
+      "memoryMargin": "16500000",
+      "cpuMargin": "10000000000"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 10,
+      "bytes": 1317,
+      "memory": "508990",
+      "cpu": "226354676",
+      "signedByteMargin": 15067,
+      "memoryMargin": "15991010",
+      "cpuMargin": "9773645324"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 11,
+      "bytes": 1505,
+      "memory": "1109190",
+      "cpu": "422375159",
+      "signedByteMargin": 14879,
+      "memoryMargin": "15390810",
+      "cpuMargin": "9577624841"
+    },
+    {
+      "vector": "317-selected-deep64",
+      "transitionIndex": 12,
+      "bytes": 2060,
+      "memory": "3042572",
+      "cpu": "1036548753",
+      "signedByteMargin": 14324,
+      "memoryMargin": "13457428",
+      "cpuMargin": "8963451247"
+    }
+  ],
+  "scope": "Actual signed Lucid transactions with real stateQueue removal: reference scripts, both directions, all cancellation boundaries, 64-level synthetic forced membership, maximum 318-witness certified field, permanent proof mint and leased removal.",
+  "maximumForcedMembership": {
+    "branchLevels": 64,
+    "claimedCount": 1,
+    "combinedWithMaximumWitnessField": true
+  },
+  "ledgerDigest": "62bd5ba0e141b17fbeecdafb5bd85984140d1bed4ebc740068623537c319c665"
+}

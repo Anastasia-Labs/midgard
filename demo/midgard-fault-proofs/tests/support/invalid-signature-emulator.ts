@@ -148,23 +148,26 @@ const nativeTxWithWitnesses = ({
   fee,
   addrTxWits,
 }: {
-  readonly spendInputByte: string;
+  readonly spendInputByte: string | null;
   readonly fee: bigint;
   readonly addrTxWits: readonly SDK.MidgardAddressWitness[];
 }): MidgardNativeTxFull =>
   makeNativeTx({
-    spendInputCbors: [
-      Buffer.from(
-        Data.to(
-          { tx_id: spendInputByte.repeat(32), output_index: 0n } as never,
-          Data.Object({
-            tx_id: Data.Bytes({ minLength: 32, maxLength: 32 }),
-            output_index: Data.Integer(),
-          }) as never,
-        ),
-        "hex",
-      ),
-    ],
+    spendInputCbors:
+      spendInputByte === null
+        ? []
+        : [
+            Buffer.from(
+              Data.to(
+                { tx_id: spendInputByte.repeat(32), output_index: 0n } as never,
+                Data.Object({
+                  tx_id: Data.Bytes({ minLength: 32, maxLength: 32 }),
+                  output_index: Data.Integer(),
+                }) as never,
+              ),
+              "hex",
+            ),
+          ],
     fee,
     addrTxWitsPreimageCbor: SDK.encodeAddressWitnessPreimage(addrTxWits),
   });
@@ -244,7 +247,7 @@ export const buildInvalidSignatureSubject = async ({
 }: {
   readonly accused: "invalid" | "honest";
   readonly decoyWitnessCount?: number;
-  readonly spendInputByte?: string;
+  readonly spendInputByte?: string | null;
   readonly fee?: bigint;
 }): Promise<InvalidSignatureSubject> => {
   const bodyOnly = nativeTxWithWitnesses({
@@ -376,7 +379,10 @@ export const submitRawInvalidSignatureStep02 = async ({
   referenceScriptUtxo,
   badAddrTxWitIndex,
 }: {
-  readonly harness: InvalidSignatureEmulatorHarness;
+  readonly harness: Pick<
+    InvalidSignatureEmulatorHarness,
+    "proverLucid" | "proverSigner" | "realBlueprint" | "witnessReferenceScripts"
+  >;
   readonly deploymentInfo: unknown;
   readonly threadOutRef: string;
   readonly subject: InvalidSignatureSubject;
@@ -417,7 +423,7 @@ export const submitRawInvalidSignatureStep02 = async ({
   }
   const planned = planFaultProofFieldOpening({
     fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
-    anchorTxId: datum.data.bad_tx_id,
+    anchorTxId: datum.data.subject.transaction_id,
     nativeTxCompactCbor: subject.nativeTxCompactCbor,
     itemCbors: subject.addrTxWits.map(SDK.encodeMidgardAddressWitnessCanonical),
     owner: signer.paymentKeyHash,

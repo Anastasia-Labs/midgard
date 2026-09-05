@@ -8,6 +8,7 @@ use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/field_opening_v1.{
   WitnessAnchor, address_witnesses_field_index, opened_field_view,
 }
+use midgard/fraud_proofs/invalid_signature/rule
 use midgard/fraud_proofs/invalid_signature/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
@@ -18,7 +19,8 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddressWitness, MidgardTransactionWitnessSet, NativeTxWitnessSetCompact,
 }
-use midgard/native_tx_field_access_v1.{field_item_at}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/native_tx_field_access_v1.{field_item_at, field_item_count}
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -74,7 +76,7 @@ validator main(
           redeemers,
         )
 
-        expect Some(State { bad_tx_id, bad_tx_witness_set_hash }) = m_input_state_data
+        expect Some(State { subject, bad_tx_witness_set_hash }) = m_input_state_data
 
         // 2. Field 7's preimage is authenticated through the §8.8 door. Being a
         //    witness-set field, the door additionally re-derives the supplied
@@ -86,7 +88,7 @@ validator main(
         let addr_tx_wits_view = opened_field_view(
           addr_tx_wits_opening,
           WitnessAnchor {
-            tx_id: bad_tx_id,
+            tx_id: subject.transaction_id,
             witness_set_hash: bad_tx_witness_set_hash,
           },
           address_witnesses_field_index,
@@ -97,18 +99,26 @@ validator main(
         // 3. The referenced witness's signature over the native transaction ID
         //    must be invalid. §5.3 fixes the address-witness item at 101 bytes,
         //    so reaching witness `n` is arithmetic rather than a walk.
-        let bad_addr_tx_wit = decode_midgard_address_witness_cbor(
-          field_item_at(addr_tx_wits_view, bad_addr_tx_wit_index),
-        )
-        expect
+        let witness_count = field_item_count(addr_tx_wits_view)
+        let in_range = bad_addr_tx_wit_index >= 0 && bad_addr_tx_wit_index < witness_count
+        let signature_valid = if in_range {
+          let witness = decode_midgard_address_witness_cbor(
+            field_item_at(addr_tx_wits_view, bad_addr_tx_wit_index),
+          )
           verify_ed25519_signature(
-            bad_addr_tx_wit.verification_key,
-            bad_tx_id,
-            bad_addr_tx_wit.signature,
-          ) == False
-
-        // Done.
-        True
+            witness.verification_key,
+            subject.transaction_id,
+            witness.signature,
+          )
+        } else {
+          False
+        }
+        rule.terminal_contradiction(
+          subject,
+          bad_addr_tx_wit_index,
+          in_range,
+          signature_valid,
+        )
       }
     }
   }
@@ -148,7 +158,14 @@ fn run_finalize_against(
         fraud_prover: fixture.fraud_prover_key_hash,
         data: Some(
           State {
-            bad_tx_id: anchored_block.tx_id,
+            subject: substrate.VerdictSubjectV1 {
+              version: 1,
+              direction: 0,
+              source_kind: 0,
+              transaction_id: anchored_block.tx_id,
+              source_key: #"",
+              rejection_reason: None,
+            },
             bad_tx_witness_set_hash: anchored_block.compact.witness_set_hash,
           },
         ),

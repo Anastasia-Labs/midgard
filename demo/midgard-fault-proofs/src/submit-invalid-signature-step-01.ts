@@ -362,13 +362,19 @@ export const submitInvalidSignatureStep01 = async ({
         // builder still takes is checked below and forwarded as a *hash* in the
         // step-02 state, never as a redeemer argument.
         Continue: [
-          inclusionCarriage.redeemer(ctx, {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              layout.stateQueueNodeRefInputIndex,
-          }),
+          {
+            source: {
+              AcceptedSource: {
+                inclusion: inclusionCarriage.redeemer(ctx, {
+                  input_index: layout.inputIndex,
+                  output_index: layout.outputIndex,
+                  hub_ref_input_index: layout.hubOracleRefInputIndex,
+                  state_queue_node_ref_input_index:
+                    layout.stateQueueNodeRefInputIndex,
+                }),
+              },
+            },
+          },
         ],
       },
       InvalidSignatureStep01SpendRedeemer,
