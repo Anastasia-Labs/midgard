@@ -230,3 +230,140 @@ test exact_and_adjacent_depth_boundary() {
     refusal_class,
   ) == rule.result_depth_limit
 }
+
+// ## Bind twin on real canonical outputs
+//
+// : the
+// canonical output map with a reference script as its last (optional) field.
+// The descriptor scan below is self-validating: a non-canonical hand-assembled
+// output never reaches , so a wrong fixture fails the test
+// rather than silently binding.
+
+const output_head =
+  #"a300581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a003"
+
+fn canonical_output_with_script(item: ByteArray) -> ByteArray {
+  bytearray.concat(output_head, item)
+}
+
+fn descriptor_state_for(output: ByteArray) -> rule.OutputDescriptorStateV1 {
+  let bound = rule.bind_output_v1(accepted_subject(), 0)
+  scan_to_terminal(rule.initial_output_scan_v1(bound, output), output, 64)
+}
+
+fn scan_to_terminal(
+  state: rule.OutputDescriptorStateV1,
+  output: ByteArray,
+  fuel: Int,
+) -> rule.OutputDescriptorStateV1 {
+  if state.outcome != rule.output_scanning {
+    state
+  } else {
+    expect fuel > 0
+    scan_to_terminal(
+      rule.advance_output_scan_v1(state, output),
+      output,
+      fuel - 1,
+    )
+  }
+}
+
+test empty_native_payload_closes_malformed_at_bind() {
+  let output = canonical_output_with_script(fixture.empty_payload_item_v1())
+  let state = descriptor_state_for(output)
+  expect state.outcome == rule.output_canonical
+  let scan = rule.bind_reference_script_v1(state, output, scan_hash)
+  and {
+    scan.result_class == rule.result_malformed,
+    scan.control_cbor == #"",
+    scan.total_length == 3,
+    scan.next_expected_script_hash == scan_hash,
+  }
+}
+
+test signature_native_payload_binds_pending() {
+  let item = fixture.signature_script_item_v1()
+  let output = canonical_output_with_script(item)
+  let state = descriptor_state_for(output)
+  expect state.outcome == rule.output_canonical
+  let scan = rule.bind_reference_script_v1(state, output, scan_hash)
+  let expected = native_script_scan_v1.encode_structure_control_v1(
+    native_script_scan_v1.initial_structure_control_v1(4, 32),
+  )
+  and {
+    scan.result_class == rule.result_pending,
+    scan.control_cbor == expected,
+    scan.total_length == bytearray.length(item),
+    scan.item_commitment == bounded_item_v1.from_bytes(
+      rule.outputs_field_index,
+      0,
+      item,
+    ),
+  }
+}
+
+test plutus_payload_closes_no_fault_at_bind() {
+  let output = canonical_output_with_script(fixture.plutus_script_item_v1())
+  let scan = rule.bind_reference_script_v1(
+    descriptor_state_for(output),
+    output,
+    scan_hash,
+  )
+  scan.result_class == rule.result_no_fault && scan.control_cbor == #""
+}
+
+test window_refuses_substituted_chunk_coordinate() fail {
+  let item = fixture.signature_script_item_v1()
+  let output = canonical_output_with_script(item)
+  let scan = rule.bind_reference_script_v1(
+    descriptor_state_for(output),
+    output,
+    scan_hash,
+  )
+  let proof = fixture.single_chunk_proof_v1(0, item)
+  let substituted = bounded_item_v1.ChunkProofV1 { ..proof, item_index: 1 }
+  expect _ = rule.authenticated_window_v1(
+    scan,
+    native_script_scan_v1.decode_structure_control_v1(scan.control_cbor),
+    substituted,
+    None,
+  )
+  True
+}
+
+test window_admits_the_exact_chunk() {
+  let item = fixture.signature_script_item_v1()
+  let output = canonical_output_with_script(item)
+  let scan = rule.bind_reference_script_v1(
+    descriptor_state_for(output),
+    output,
+    scan_hash,
+  )
+  let window = rule.authenticated_window_v1(
+    scan,
+    native_script_scan_v1.decode_structure_control_v1(scan.control_cbor),
+    fixture.single_chunk_proof_v1(0, item),
+    None,
+  )
+  window.bytes == item && window.start_offset == 0
+}
+
+test tampered_checkpoint_is_not_authentic() {
+  let state = closed_state(
+    accepted_subject(),
+    rule.result_pending,
+    rule.result_malformed,
+  )
+  and {
+    rule.scan_state_is_authentic_v1(state),
+    !rule.scan_state_is_authentic_v1(
+      rule.ReferenceScriptScanStateV1 { ..state, total_length: 1 },
+    ),
+    !rule.scan_state_is_authentic_v1(
+      rule.ReferenceScriptScanStateV1 { ..state, checkpoint_hash: tx_id },
+    ),
+    !rule.scan_state_is_authentic_v1(
+      rule.ReferenceScriptScanStateV1 { ..state, control_cbor: #"00" },
+    ),
+  }
+}

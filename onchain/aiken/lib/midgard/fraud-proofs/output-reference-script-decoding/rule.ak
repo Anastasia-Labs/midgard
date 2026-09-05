@@ -304,10 +304,13 @@ pub fn bind_reference_script_v1(
       output_state.bound.output_index,
       item,
     )
-    when
-      native_script_scan_v1.versioned_script_header_v1(item, total_length)
-    is {
-      None ->
+    // The frozen engine's bind is the canonical decoder's twin
+    // (`ledger_output_proof_v1` closes `InvalidReferenceScript` on an
+    // undecodable wrapper OR a tag-0 empty payload). A bare header parse
+    // aborted on the empty payload instead of closing malformed, which left
+    // that coordinate unprovable in both directions.
+    when scan_engine.bind_machine_v1(item, total_length) is {
+      scan_engine.MachineBindMalformedV1 ->
         scan_state_with(
           output_state.bound,
           total_length,
@@ -316,30 +319,24 @@ pub fn bind_reference_script_v1(
           scan_script_hash,
           result_malformed,
         )
-      Some(header) ->
-        if header.language_tag != 0 {
-          scan_state_with(
-            output_state.bound,
-            total_length,
-            commitment,
-            #"",
-            scan_script_hash,
-            result_no_fault,
-          )
-        } else {
-          let control = native_script_scan_v1.initial_structure_control_v1(
-            header.payload_offset,
-            header.payload_length,
-          )
-          scan_state_with(
-            output_state.bound,
-            total_length,
-            commitment,
-            native_script_scan_v1.encode_structure_control_v1(control),
-            scan_script_hash,
-            result_pending,
-          )
-        }
+      scan_engine.MachineBindNonNativeV1 { .. } ->
+        scan_state_with(
+          output_state.bound,
+          total_length,
+          commitment,
+          #"",
+          scan_script_hash,
+          result_no_fault,
+        )
+      scan_engine.MachineBoundV1 { control } ->
+        scan_state_with(
+          output_state.bound,
+          total_length,
+          commitment,
+          native_script_scan_v1.encode_structure_control_v1(control),
+          scan_script_hash,
+          result_pending,
+        )
     }
   }
 }
