@@ -83,8 +83,8 @@ use midgard/native_tx_machine_walk_v1.{
   open_field_grammar_certification, open_field_walk,
   resume_field_grammar_certification_from_commitment,
   resume_field_walk_from_commitment, spend_input_at, spend_input_count,
-  walk_field_index, walk_fold, walk_is_complete, walk_next, walk_next_item_index,
-  walk_remaining, walk_skip, walk_tx_id,
+  walk_field_index, walk_fold, walk_is_complete, walk_next, walk_next_extent,
+  walk_next_item_index, walk_remaining, walk_skip, walk_tx_id,
 }
 
 // ---------------------------------------------------------------------------
@@ -2325,4 +2325,31 @@ test walk_tx_id_reports_the_authenticated_transaction() {
     walk_tx_id(other_start) == other_tx_id,
     other_tx_id != sample_tx_id,
   }
+}
+
+test next_extent_preserves_the_authenticated_checkpoint_and_payload() {
+  let preimage = authenticate_once_preimage()
+  let committed = source(sample_tx_id, 0, preimage)
+  let Pair(view, start) = open_inline_from(committed, 0, preimage)
+  let Pair(Pair(offset, length), next) = walk_next_extent(view, start)
+  let Pair(item, copied_next) = walk_next(view, start)
+  and {
+    bytearray.take(bytearray.drop(preimage, offset), length) == item,
+    length == spend_input_item_bytes,
+    encode_field_walk_checkpoint(next) == encode_field_walk_checkpoint(
+      copied_next,
+    ),
+  }
+}
+
+test next_extent_refuses_an_exhausted_checkpoint() fail {
+  let preimage = encode_field_preimage([])
+  let Pair(view, start) = open(
+    sample_tx_id,
+    0,
+    preimage,
+    Inline { preimage },
+    [],
+  )
+  walk_next_extent(view, start) == walk_next_extent(view, start)
 }

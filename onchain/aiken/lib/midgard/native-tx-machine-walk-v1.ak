@@ -606,6 +606,17 @@ pub fn walk_next(
   view: FieldViewV1,
   checkpoint: FieldWalkCheckpointV1,
 ) -> Pair<ByteArray, FieldWalkCheckpointV1> {
+  let Pair(Pair(offset, length), advanced) = walk_next_extent(view, checkpoint)
+  Pair(field_read_range(view, offset, length), advanced)
+}
+
+/// Advance the authenticated envelope without materializing its payload.
+/// A caller must consume the returned extent before admitting its semantic
+/// contribution; the returned next checkpoint still enforces exact exhaustion.
+pub fn walk_next_extent(
+  view: FieldViewV1,
+  checkpoint: FieldWalkCheckpointV1,
+) -> Pair<Pair<Int, Int>, FieldWalkCheckpointV1> {
   // §10.8 row 13, a backstop. Every complete checkpoint a caller can hold sits
   // at `total_length` — `walk_at_start` derives it, the advances compute it,
   // §10.2 item 5 refuses any other at resume, and the opaque type leaves no
@@ -642,18 +653,16 @@ pub fn walk_next(
   let next_item_index = checkpoint.next_item_index + 1
   // §7.3 abort, never clamp — and §5.1's no-trailing-bytes rule at the end.
   //
-  // The bounds line is §10.8 row 16, a backstop: the read two lines down goes
-  // through `field_read_range`, which refuses any extent outside the
-  // authenticated bytes, so no fixture can attribute a refusal to this line
-  // rather than to that one. The no-trailing-bytes line below is live and
-  // `walk_next_refuses_a_final_advance_that_misses_the_end` isolates it.
+  // Extent-only callers do not materialize the payload here, so its complete
+  // range must be inside the authenticated field independently of a later read.
+  // `walk_next_refuses_a_final_advance_that_misses_the_end` isolates exact end.
   expect next_offset <= checkpoint.total_length
   expect or {
       next_item_index < checkpoint.item_count,
       next_offset == checkpoint.total_length,
     }
   Pair(
-    field_read_range(view, payload_offset, length),
+    Pair(payload_offset, length),
     FieldWalkCheckpointV1 { ..checkpoint, next_item_index, next_offset },
   )
 }
