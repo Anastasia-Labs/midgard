@@ -221,8 +221,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // phase-A arm, re-parameterizing both steps, so the applied step-01 hash and
 // the fold move. Derived under the working-tree testnet blueprint (sha256
 // fab48c7b…). `a90dc0b3…` -> `bca119f2…`.
+// Re-pinned 2026-09-04 (Wave 2, `mintDeclaredAssetLimit`): the step-03 fold
+// became resumable inside a policy item (budgeted cursor state), re-
+// parameterizing steps 01–03, so the applied step-01 hash and the fold move.
+// Derived under the working-tree testnet blueprint (sha256 e0894542…).
+// `bca119f2…` -> `dba5b076…`.
 const Q13_CATALOGUE_ROOT =
-  "bca119f2817fa817a300af03ed4c65932d55d569763a64080691e3217b16b5d0";
+  "dba5b07665e0f71ee95f578e62ebd6ffd03b9509287c2b5c58bf997977f7dea8";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
