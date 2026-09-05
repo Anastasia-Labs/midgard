@@ -88,3 +88,51 @@ terminal mint; and state-queue target plus descendant removal. Acceptance uses
 ordinary Van Rossem limits: signed bytes `<= 16,384`, memory `<= 16,500,000`,
 CPU `<= 10,000,000,000`; reference publication additionally targets
 `<= 15,872` bytes. Local UPLC evaluation remains enabled.
+
+## Wrongful-rejection direction: state/transition sketch
+
+The forced direction (`ForcedTxInvalid { InputSpentOutputNonCanonical
+{ source_kind, input_index } }` on a forced leaf whose resolved output is
+canonical) rides the same five physical scripts, the same parameter order,
+and the same canonical wire shapes as the accepted direction. No physical
+split is required: every forced-only branch is a data path through code the
+accepted direction already compiles (step 01's `ForcedSource` arm, step 04's
+`FinalizeCanonical` arm, step 05's rejection polarity), and the measured
+publications stay inside the 15,872-byte reserve.
+
+| Physical step | Forced-direction transition                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| step 01       | `ForcedSource { header, membership, direction: 1 }`: `bind_forced_subject_to_thread_v1` binds the header to the thread token, opens the leaf under the counted forced-transactions root, re-verifies the adjudicated proof source and tx id, and copies the leaf's typed reason into the subject; `bind_input_v1` then requires that reason to be exactly `InputSpentOutputNonCanonical { source_kind, input_index }` for the claimed coordinate and binds `header.prev_utxos_root`. Forwards `BoundInputV1`. |
+| step 02       | Unchanged: opens field 0 (`source_kind = 0`) or field 1 (`source_kind = 1`) of the forced transaction's committed compact bytes (raw, published or certified carriage) and decodes the exact out-ref at `input_index`. Forwards `AuthenticatedOutRefV1`.                                                                                                                                                 |
+| step 03       | Unchanged: proves the out-ref key and descriptor in `prev_utxos_root` and starts the scan control. Forwards `ReconstructionV1`.                                                                                                                                                                                                                                                                       |
+| step 04       | `Advance` self-loops through `advance_reconstruction_v1` exactly as the accepted direction does. The direction closes through `FinalizeCanonical`, admitted only at the control the engine's zero-byte closing edge accepts (`finish_v1`, optional fields complete, `cursor == total_length`) whose terminal is exact (`terminal_is_exact_v1`). A control that can finish is never advanced (see below). Forwards `CanonicalVerdictV1 { output_is_non_canonical: False }`. |
+| step 05       | `terminal_contradiction_v1`: a rejection subject closes only on `False`; an accepted subject only on `True`.                                                                                                                                                                                                                                                                                          |
+
+The finishing rule is the one on-chain change this direction needed. The
+shared engine's `step_v1` refuses a window whose offset has reached the
+window's end, and at `cursor == total_length` that refusal is exactly what
+`Advance` would hand it; step 04 previously read every `None` as the
+structural non-canonical verdict, so a prover could close a canonical
+resolved output as non-canonical under an accepted subject.
+`advance_reconstruction_v1` now refuses to advance a control that
+`finish_v1` can already close, which makes `None` mean a structural fault at
+the cursor and nothing else. The off-chain driver was aligned with the same
+rule: it no longer persists a pseudo-terminal control and issues
+`FinalizeCanonical` at the finishable control.
+
+Maximum dynamic evidence for the forced direction is the largest canonical
+resolved output the ledger admits: a 16,384-byte four-entry output (address,
+multi-asset value, datum payload, reference script) walked to its exact end,
+under both source kinds. Its transaction's input field takes the same raw,
+published or Certified carriage as the accepted direction. The forced
+mutation frontier adds: a leaf committed under another typed reason or
+coordinate; a subject whose reason was rewritten to match a lying coordinate;
+a forced root, header or leaf substitution at the forced-leaf seam; premature
+`FinalizeCanonical`; `Advance` at the finishable control; and `Advance` with
+substituted chunk bytes or a checkpoint the thread never committed.
+
+The family fit ledger records, beside the accepted rows, every forced
+lifecycle transaction at that maximum shape: forced step 01, the field
+opening, the prior-ledger membership, every step-04 stage including the
+`FinalizeCanonical` closing transaction, the permanent mint, cancellation and
+removal.
