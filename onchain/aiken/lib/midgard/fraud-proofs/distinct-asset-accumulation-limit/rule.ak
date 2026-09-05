@@ -144,7 +144,12 @@ pub fn initialize_accumulator_v1(
 pub fn skip_fold_v1(state: FoldStateV1, fold: Int) -> FoldStateV1 {
   expect state.stage == fold
   expect state.bound.coordinate.fold != fold
-  expect state.decisive_fault_holds == None
+  expect
+    if state.bound.coordinate.fold < fold {
+      state.decisive_fault_holds != None
+    } else {
+      state.decisive_fault_holds == None
+    }
   FoldStateV1 { ..state, stage: fold + 1 }
 }
 

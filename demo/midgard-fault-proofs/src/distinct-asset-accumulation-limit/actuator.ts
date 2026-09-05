@@ -5,6 +5,7 @@ import {
 import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
+import type { PublishedProofChunk } from "../proof-chunk-carriage.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
@@ -120,11 +121,13 @@ export const createDistinctAssetAccumulationActuator = (
     capture: async ({
       action,
       artifact,
+      publishedProofChunks,
     }: {
       readonly action: DistinctAssetAccumulationActuatorAction;
       readonly artifact: DistinctAssetAccumulationActuationArtifact;
+      readonly publishedProofChunks?: readonly PublishedProofChunk[];
     }): Promise<DistinctAssetAccumulationCapturedAction> => {
-      if (!/^[0-9a-f]{64}$/u.test(artifact.headerHash))
+      if (!/^[0-9a-f]{56}$/u.test(artifact.headerHash))
         throw new Error(
           "distinctAssetAccumulationLimit artifact header changed",
         );
@@ -192,6 +195,7 @@ export const createDistinctAssetAccumulationActuator = (
               threadToken,
               stateQueueBlockOutRef: action.stateQueueBlockOutRef,
               txInclusion: accepted.txInclusion,
+              publishedProofChunks,
               validationTracesRoot: accepted.validationTracesRoot,
               validationTraceCount: accepted.validationTraceCount,
               referenceScriptUtxo: config.references.steps[0],

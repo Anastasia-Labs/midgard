@@ -90,7 +90,12 @@ export const submitDistinctAssetAccumulationFold = async ({
     family: "distinct-asset-accumulation-limit",
     stepIndex,
   });
-  if (state.stage !== BigInt(fold) || state.decisive_fault_holds !== null)
+  if (
+    state.stage !== BigInt(fold) ||
+    (state.bound.coordinate.fold < BigInt(fold)
+      ? state.decisive_fault_holds === null
+      : state.decisive_fault_holds !== null)
+  )
     throw new Error(
       "distinctAssetAccumulationLimit: fold checkpoint stage changed",
     );
@@ -108,7 +113,7 @@ export const submitDistinctAssetAccumulationFold = async ({
     throw new Error("distinctAssetAccumulationLimit: control disappeared");
   const decisiveFault =
     action.kind === "skip"
-      ? null
+      ? state.decisive_fault_holds
       : !action.evidence.mutation.delta_was_present &&
         control.value_accumulator.seen_asset_count >= 16_384n;
   const nextState = {

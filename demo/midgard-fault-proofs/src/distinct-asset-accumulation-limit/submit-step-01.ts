@@ -17,6 +17,7 @@ import {
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import type { PublishedProofChunk } from "../proof-chunk-carriage.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   requireInitialStepDatum,
@@ -69,6 +70,7 @@ export const submitDistinctAssetAccumulationStep01Accepted = async ({
   threadToken,
   stateQueueBlockOutRef,
   txInclusion,
+  publishedProofChunks,
   validationTracesRoot,
   validationTraceCount,
   referenceScriptUtxo,
@@ -89,6 +91,7 @@ export const submitDistinctAssetAccumulationStep01Accepted = async ({
   };
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   readonly validationTracesRoot: string;
   readonly validationTraceCount: bigint;
   readonly referenceScriptUtxo: UTxO;
@@ -120,14 +123,11 @@ export const submitDistinctAssetAccumulationStep01Accepted = async ({
     threadToken,
     stateQueueBlockOutRef,
     txInclusion,
+    publishedProofChunks,
     nextDatum,
     spendRedeemerSchema: DistinctAssetStep01RedeemerSchema,
-    wrapInclusionArgs: (inclusion) => ({
-      source: {
-        AcceptedSource: {
-          inclusion: { RedeemerCarriedInclusion: [inclusion] },
-        },
-      },
+    wrapInclusionCarriage: (inclusion) => ({
+      source: { AcceptedSource: { inclusion } },
       coordinate: coordinateData(finding),
     }),
     referenceScriptUtxo,
@@ -175,16 +175,16 @@ export const submitDistinctAssetAccumulationStep01Forced = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   const header = forcedSource.header as {
-    validation_traces_root: string;
-    validation_trace_count: bigint;
+    validationTracesRoot: string;
+    validationTraceCount: bigint;
   };
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
         subject: finding.subject,
-        validation_traces_root: header.validation_traces_root,
-        validation_trace_count: header.validation_trace_count,
+        validation_traces_root: header.validationTracesRoot,
+        validation_trace_count: header.validationTraceCount,
         coordinate: coordinateData(finding),
       },
     } as never,

@@ -167,3 +167,35 @@ test target_fold_cannot_be_skipped() fail {
   }
   rule.skip_fold_v1(initialized, 0).stage == 1
 }
+
+test preserves_an_input_decision_through_later_folds() {
+  let state = rule.FoldStateV1 {
+    bound: rule.bind_coordinate_v1(
+      accepted(),
+      root,
+      1,
+      rule.CoordinateV1 { fold: 0, primary_index: 0, asset_index: 0 },
+    ),
+    control: None,
+    stage: 1,
+    decisive_fault_holds: Some(True),
+  }
+  let output = rule.skip_fold_v1(state, 1)
+  let mint = rule.skip_fold_v1(output, 2)
+  rule.terminal_contradiction_v1(mint)
+}
+
+test refuses_a_missing_decision_after_the_target_fold() fail {
+  let state = rule.FoldStateV1 {
+    bound: rule.bind_coordinate_v1(
+      accepted(),
+      root,
+      1,
+      rule.CoordinateV1 { fold: 0, primary_index: 0, asset_index: 0 },
+    ),
+    control: None,
+    stage: 1,
+    decisive_fault_holds: None,
+  }
+  rule.skip_fold_v1(state, 1).stage == 2
+}

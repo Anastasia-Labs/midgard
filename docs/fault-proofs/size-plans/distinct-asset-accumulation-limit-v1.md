@@ -36,79 +36,73 @@ leaf. The adjacent vector leaves `seen_asset_count == 16,384`; the over-bound
 vector attempts `16,385`. Checkpoints are fixed-size and cannot be transplanted
 between input, output, or mint folds.
 
-The family fit test will build the fresh `testnet` blueprint with the pinned
+The family fit test uses the fresh `testnet` blueprint with the pinned
 compiler, publish all six applied reference scripts under the 15,872-byte
-reliability target, and record signed bytes, memory, CPU, and positive margins
+reliability target, and records signed bytes, memory, CPU, and positive margins
 for publications, direct/certified carriage, all three reason arms in both
 directions, every physical cancel, restart after a committed fold checkpoint,
 permanent proof mint, and mutation-leased target plus descendant removal. It
-will fail closed on `oversized`, raised protocol limits, or disabled local UPLC
-evaluation and write the deterministic ledger to
+fails closed on `oversized`, raised protocol limits, or disabled local UPLC
+evaluation and writes the deterministic ledger to
 `distinct-asset-accumulation-limit-v1-fit-ledger.json`.
 
-## Current compiled fit evidence
+## Completed lifecycle and recovery evidence
 
-The fresh `testnet` blueprint built with Aiken `v1.1.23+5adf783` at SHA-256
-`5a131c16641da7b254a01f0fa739114172c3583e60ff0f1231677bad5dd35de3`
-contains the following fully applied raw programs. These figures are a compile
-gate; the signed-transaction and measured execution-unit ledger is recorded
-below.
+The test matrix contains all three typed coordinates in both verdict directions,
+each with a baseline, a maximum-envelope case, and an honest refusal: 18 real
+Lucid lifecycles. Each successful proof starts from the registered catalogue,
+authenticates the selected source and retained control, traverses all six
+physical scripts, mints the permanent proof, and removes the leased target and
+descendant. All six cancellation positions are exercised in both directions.
+Input and output decisions survive the remaining non-target checkpoints; those
+checkpoints refuse a missing prior decision. Honest boundary/crossing opposites
+also refuse deliberately forged terminal diagnostic evidence. Corrupted work
+roots and delta-presence witnesses fail before the valid continuation.
 
-| Applied validator    | Raw compiled bytes | Margin to 15,872 bytes |
-| -------------------- | -----------------: | ---------------------: |
-| `step_01.main.spend` |             14,822 |                  1,050 |
-| `step_02.main.spend` |             10,647 |                  5,225 |
-| `step_03.main.spend` |             12,281 |                  3,591 |
-| `step_04.main.spend` |             12,130 |                  3,742 |
-| `step_05.main.spend` |              8,229 |                  7,643 |
-| `step_06.main.spend` |              1,872 |                 14,000 |
+The maximum envelope combines a 64-step source MPF proof, 32 validation-trace
+siblings, 14 asset/mint siblings, a 16-step delta insertion proof, a 32-byte asset
+name and maximum-width signed quantity. Input/output descriptors include a
+57-byte address, maximum uint64 lovelace, the 5,000-byte Cardano Value bound,
+and complete reference-script hash/length/commitment fields. Source compact
+integers use their maximum widths. The retained native control simultaneously
+fills all 15 possible frontier heights below the 32,768-byte field ceiling in
+every nonselected domain, plus full compact/witness fields, maximum declared
+field lengths, and a conservative context envelope with uint64 integers.
+This simultaneous frontier shape conservatively exceeds any one canonical
+transaction's aggregate field allocation.
 
-The real Van Rossem emulator publication transactions, completed and signed
-with the freshly applied scripts, measure as follows. Reference publication
-executes no validator, so its memory and CPU columns are canonically zero.
+Maximum source and accumulator proofs use explicitly constructed operator
+subtree commitments. The selected source, descriptor, control work root,
+coordinate and mutation are authenticated by the real validators; the test does
+not allocate hidden trees or claim their unrelated leaves are valid canonical
+transactions. The 16,384-leaf asset frontier likewise stresses its admitted
+membership shape. Complete field bytes are not proof inputs: the family opens
+fixed output descriptors and selected assets, never a full output/script/value.
 
-| Applied validator    | Signed publication bytes | Margin to 15,872 bytes | Memory | CPU |
-| -------------------- | -----------------------: | ---------------------: | -----: | --: |
-| `step_01.main.spend` |                   15,204 |                    668 |      0 |   0 |
-| `step_02.main.spend` |                   10,995 |                  4,877 |      0 |   0 |
-| `step_03.main.spend` |                   12,630 |                  3,242 |      0 |   0 |
-| `step_04.main.spend` |                   12,479 |                  3,393 |      0 |   0 |
-| `step_05.main.spend` |                    8,577 |                  7,295 |      0 |   0 |
-| `step_06.main.spend` |                    2,265 |                 13,607 |      0 |   0 |
+The installed family actuator rehydrates retained DA between maximum-case
+stages. A fresh directory-journal reader resumes after each durable intent and
+confirmation. Prepared witness bytes are compared on every turn; changed
+artifacts and publication recovery payloads refuse admission. An accepted
+64-step proof exceeds the direct transaction size because it is carried twice.
+The installed runner catches only the exact release-bound `maxTxSize` refusal,
+publishes shared proof chunks, journals their intended hash and exact outputs,
+reconciles them through the authenticated publication observer, and resumes the
+same step with chunked verification. The forced source fits directly. No manual
+certificate input or increased ledger limit is used.
 
-The real Lucid/Van Rossem lifecycle starts the registered category-35 thread,
-restarts it from each committed out-ref, exercises every physical cancel,
-authenticates the retained `ValueAndMint` state, advances the input and output
-checkpoints, proves the mint-domain first crossing, mints the permanent proof,
-and removes the mutation-leased target plus descendant. The table retains the
-maximum observed execution units across repeated signed runs (address-dependent
-hash comparisons can select different bounded branches). All execution-unit
-margins are against 16,500,000 memory units and 10,000,000,000 CPU units.
+The shared `buildVanRossemFitLedger`/`writeVanRossemFitLedger` writer records all
+255 signed transactions: 111 publications (108 applied-script publications and
+three automatic proof-chunk publications) and 144 transactions with nonzero
+execution units. The verifier reconstructs every margin and digest, checks all
+18 shapes and named arms, and hashes the current `realBlueprintPath`; rebuilding
+the blueprint requires regenerating this evidence.
 
-| Lifecycle transaction          | Signed bytes |    Memory |           CPU |
-| ------------------------------ | -----------: | --------: | ------------: |
-| cancel step 1                  |          611 |   124,808 |    42,452,566 |
-| cancel step 2                  |          611 |   113,576 |    40,640,424 |
-| cancel step 3                  |          611 |   111,876 |    40,368,424 |
-| cancel step 4                  |          611 |   111,876 |    40,368,424 |
-| cancel step 5                  |          611 |   111,376 |    40,288,424 |
-| cancel step 6                  |          611 |   111,876 |    40,368,424 |
-| init                           |        1,497 |   685,608 |   235,025,974 |
-| step 1 accepted source         |        2,030 | 1,349,088 |   459,158,245 |
-| step 2 retained authentication |        2,004 |   983,928 |   465,786,728 |
-| step 3 input checkpoint        |        1,064 |   133,910 |    58,383,591 |
-| step 4 output checkpoint       |        1,064 |   133,910 |    58,383,591 |
-| step 5 mint first crossing     |        1,126 |   325,812 |   126,582,342 |
-| step 6 permanent proof mint    |          916 |   271,347 |    98,742,003 |
-| mutation-leased removal        |        2,060 | 3,090,203 | 1,050,218,245 |
+Reproduce with the declared Node/pnpm toolchain, after a fresh pinned testnet
+Aiken build:
 
-The deterministic ledger is
-`distinct-asset-accumulation-limit-v1-fit-ledger.json`, SHA-256
-`eddd4b4f310dcda08f70501eb163fb3f9e3c1f8fac6eef0a110e2b9284b5ac96`.
+```sh
+MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/distinct-asset-accumulation-limit-lifecycle.test.ts
+pnpm --dir demo/midgard-fault-proofs exec vitest run tests/distinct-asset-accumulation-limit-fit-ledger.test.ts tests/distinct-asset-accumulation-limit-publication-fit.test.ts tests/distinct-asset-accumulation-limit.test.ts tests/distinct-asset-accumulation-recovery.test.ts
+```
 
-The retained-DA prerequisite is now precise: step 2 consumes the authenticated
-`ValueAndMint` pre-state/control and proves its phase, stage, work root and
-trace membership. Steps 3--5 consume only the retained negative-coordinate
-`valueInputAsset`, `valueOutputAsset`, or `valueMintAsset` auxiliary selected by
-the typed coordinate. No complete transaction-wide auxiliary stream is
-required by this family.
+The current ledger records maxima of 15,204 signed bytes, 5,656,307 memory units, and 2,153,991,585 CPU units. All margins are positive; the largest reference publication leaves 668 bytes beneath the 15,872-byte reliability target.

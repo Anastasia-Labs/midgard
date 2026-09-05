@@ -28,6 +28,7 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
+import { journalJsonDigest } from "../workflow/journal.js";
 import {
   computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
@@ -53,6 +54,13 @@ import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
 } from "./family.js";
+import {
+  captureDistinctAssetActionWithProofCarriage,
+  createDistinctAssetProofPrerequisite,
+  distinctAssetPreparedJournalArtifact,
+  distinctAssetProofPublicationRecovery,
+  requireDistinctAssetPreparedArtifact,
+} from "./proof-carriage.js";
 import { DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS } from "./schemas.js";
 
 export const DISTINCT_ASSET_ACCUMULATION_WORKFLOW =
@@ -103,6 +111,7 @@ export type ManifestBoundDistinctAssetAccumulationWorkflowConfig = Readonly<{
 export type ManifestBoundDistinctAssetAccumulationWorkflow = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"distinctAssetAccumulationLimit">;
   lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
   decisionDigest: string;
   l1: FraudProofFamilyL1ObservationPort<"distinctAssetAccumulationLimit">;
   actuator: ReturnType<typeof createDistinctAssetAccumulationActuator>;
@@ -232,6 +241,7 @@ export const createManifestBoundDistinctAssetAccumulationWorkflow = async (
   return Object.freeze({
     binding,
     lucid: config.lucid,
+    signer: config.signer,
     decisionDigest: config.decisionDigest,
     l1,
     actuator: createDistinctAssetAccumulationActuator({
@@ -329,6 +339,19 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
     sources,
   });
   const artifact = await prepareDistinctAssetAccumulationArtifact(block);
+  if (workflow.l1.publications === undefined)
+    throw new Error("distinct-asset L1 authority omitted publication observer");
+  const prerequisite = createDistinctAssetProofPrerequisite({
+    maximumTransactionBytes:
+      workflow.binding.cardanoProtocolParameters.maxTxSize,
+    lucid: workflow.lucid,
+    network: workflow.binding.network,
+    signer: workflow.signer,
+    publications: workflow.l1.publications,
+    artifact,
+    transactionConfirmed: async ({ headerHash, txHash }) =>
+      await workflow.l1.transactionConfirmed({ headerHash, txHash }),
+  });
   const identity: FraudProofWorkflowIdentity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
@@ -337,11 +360,26 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
     decisionDigest: workflow.decisionDigest,
   };
   const workflowId = computeFraudProofWorkflowId(identity);
+  const preparedArtifact = distinctAssetPreparedJournalArtifact(artifact);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
     await appendEvent(journal, workflowId, identity, { kind: "started" });
+    await appendEvent(journal, workflowId, identity, {
+      kind: "prepared",
+      artifact: preparedArtifact,
+      artifactDigest: journalJsonDigest(preparedArtifact),
+    });
     entries = await journal.load(workflowId);
   }
+  if (entries.length === 1) {
+    await appendEvent(journal, workflowId, identity, {
+      kind: "prepared",
+      artifact: preparedArtifact,
+      artifactDigest: journalJsonDigest(preparedArtifact),
+    });
+    entries = await journal.load(workflowId);
+  }
+  requireDistinctAssetPreparedArtifact(entries, artifact);
   const pending = [...entries]
     .reverse()
     .find(({ event }) => event.kind === "submission_intent");
@@ -361,6 +399,28 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
       }))
     )
       return { kind: "pending" as const, workflowId, txHash: intent.txHash };
+    if (intent.actionId.startsWith("publish-proof-chunks:")) {
+      const reconciled = await prerequisite.reconcile({
+        headerHash,
+        action: { actionId: intent.actionId, input: intent.actionInput },
+        artifact: {},
+        txHash: intent.txHash,
+        durableRecovery: distinctAssetProofPublicationRecovery(
+          intent.durableRecovery,
+          Number(workflow.binding.cardanoProtocolParameters.maxTxSize),
+        ),
+      });
+      if (reconciled.kind !== "confirmed")
+        throw new Error(
+          "distinct-asset pending source publication changed or is not final",
+        );
+    }
+    await appendEvent(journal, workflowId, identity, {
+      kind: "reconciled",
+      actionId: intent.actionId,
+      txHash: intent.txHash,
+      outcome: "confirmed",
+    });
     await appendEvent(journal, workflowId, identity, {
       kind: "confirmed",
       actionId: intent.actionId,
@@ -369,8 +429,17 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
   }
   const action = await actionFor({ workflow, headerHash });
   if (action === "removed") return { kind: "completed" as const, workflowId };
-  const actionId = `distinctAssetAccumulationLimit:${action.stage}:${"stepIndex" in action ? action.stepIndex.toString() : "0"}`;
-  const captured = await workflow.actuator.capture({ action, artifact });
+  entries = await journal.load(workflowId);
+  const captured = await captureDistinctAssetActionWithProofCarriage({
+    actuator: workflow.actuator,
+    action,
+    artifact,
+    entries,
+    prerequisite,
+    lucid: workflow.lucid,
+    signer: workflow.signer,
+  });
+  const actionId = captured.actionId;
   await appendEvent(journal, workflowId, identity, {
     kind: "preflight_passed",
     actionId,
@@ -381,11 +450,10 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
   await appendEvent(journal, workflowId, identity, {
     kind: "submission_intent",
     actionId,
-    actionInput: {
-      schemaVersion: "midgard-production-cursor-family-action-v1",
-      category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
-      stage: action.stage,
-    },
+    actionInput: captured.actionInput,
+    ...(captured.durableRecovery === undefined
+      ? {}
+      : { durableRecovery: captured.durableRecovery }),
     ...(captured.mutationLease === undefined
       ? {}
       : {

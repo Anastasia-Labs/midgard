@@ -220,11 +220,7 @@ const replayCandidates = async (
       if (!rejectionReasonMatches(finding)) continue;
       position = block.transactions.length + forcedPosition;
       forcedSource = {
-        header: {
-          ...block.header,
-          validation_traces_root: block.header.validationTracesRoot,
-          validation_trace_count: block.header.validationTraceCount,
-        },
+        header: block.header,
         membership: await buildForcedTransactionLeafMembershipProof({
           reconstruction: block.reconstruction,
           eventKey: candidate.eventKey,
