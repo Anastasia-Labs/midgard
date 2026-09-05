@@ -8,6 +8,7 @@ import {
   buildMintDeclaredAssetLimitFaultProofContracts,
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,12 +21,16 @@ import {
   MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
 } from "../src/mint-declared-asset-limit/contracts.js";
 import {
+  advanceMintDeclaredFold,
   classifyMintDeclaredAssetLimitFinding,
   decodeMintDeclaredPolicyHeader,
   foldMintDeclaredAssetLimit,
+  initialMintDeclaredFoldCursor,
   MINT_DECLARED_ASSET_LIMIT_CATEGORY,
   MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
   mintDeclaredAssetLimitEvidenceCloses,
+  MintDeclaredAssetLimitFoldStateSchema,
+  mintDeclaredFoldStateData,
   prepareMintDeclaredAssetLimitEvidence,
 } from "../src/mint-declared-asset-limit/family.js";
 import {
@@ -172,9 +177,20 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     const restarted = planMintDeclaredAssetLimitStagedWalk(input);
     expect(first).toEqual(restarted);
     expect(first.grammar).toHaveLength(3);
-    expect(first.walk).toHaveLength(3);
+    // 256 units: 28 singleton policies (9 units each) per fold transaction,
+    // then 20 more and the target header.
+    expect(first.walk).toHaveLength(2);
+    expect(first.walk[0]!.checkpoint.nextItemIndex).toBe(28);
+    expect(first.walk[0]!.cursor.accumulatedCount).toBe(28);
+    expect(first.walk[0]!.cursor.activePolicy).toBe("");
+    // The bound item is itself a singleton: a complete non-crossing fold.
+    expect(first.walk[1]!.cursor.outcome).toBe(2);
+    expect(first.walk[1]!.cursor.accumulatedCount).toBe(49);
+    expect(first.crossing).toBe(false);
     const grammarBytes = encodeMintDeclaredGrammarCheckpoint(first.grammar[0]!);
-    const walkBytes = encodeMintDeclaredWalkCheckpoint(first.walk[0]!);
+    const walkBytes = encodeMintDeclaredWalkCheckpoint(
+      first.walk[0]!.checkpoint,
+    );
     expect(grammarBytes).toHaveLength(87);
     expect(walkBytes).toHaveLength(53);
     expect(grammarBytes[36]).toBe(5);
@@ -182,8 +198,138 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     expect(hashMintDeclaredGrammarCheckpoint(first.grammar[0]!)).toMatch(
       /^[0-9a-f]{64}$/u,
     );
-    expect(hashMintDeclaredWalkCheckpoint(first.walk[0]!)).toMatch(
+    expect(hashMintDeclaredWalkCheckpoint(first.walk[0]!.checkpoint)).toMatch(
       /^[0-9a-f]{64}$/u,
+    );
+  });
+
+  it("consumes a wide prior policy across fold transactions without moving the walk", () => {
+    const wide = encodeMidgardMintPolicyItem({
+      policyId: Buffer.alloc(28, 0),
+      assets: Array.from({ length: 600 }, (_, index) => ({
+        assetName: Buffer.from([index >> 8, index & 255]),
+        quantity: 1n,
+      })),
+    });
+    const items = [wide, singleton(1), crossing(2)];
+    const field = encodeMidgardFieldPreimage(items);
+    const plan = planMintDeclaredAssetLimitStagedWalk({
+      transactionId: txId,
+      fieldPreimageCbor: field.toString("hex"),
+      policyIndex: 2,
+    });
+    // 8 + 248 assets, 256 assets, 96 assets + singleton + target header.
+    expect(
+      plan.walk.map((snapshot) => snapshot.cursor.accumulatedCount),
+    ).toEqual([248, 504, 601]);
+    expect(plan.walk[0]!.checkpoint).toEqual(plan.initialWalk);
+    expect(plan.walk[0]!.cursor.activePolicy).toBe("00".repeat(28));
+    expect(plan.walk[0]!.cursor.assetsRemaining).toBe(352);
+    expect(plan.walk[1]!.checkpoint).toEqual(plan.initialWalk);
+    expect(plan.walk[2]!.cursor.outcome).toBe(1);
+    expect(plan.crossing).toBe(true);
+    // Straight fold and staged fold agree.
+    expect(foldMintDeclaredAssetLimit(items, 2)).toEqual({
+      crossing: true,
+      accumulatedCount: 601,
+      targetPolicyId: "02".repeat(28),
+      targetDeclaredCount: 16_385,
+    });
+    // A partial resume from any snapshot reaches the same terminal state.
+    const resumed = advanceMintDeclaredFold({
+      cursor: plan.walk[0]!.cursor,
+      nextItemIndex: 0,
+      items,
+      target: plan.target,
+      budget: 17,
+    });
+    expect(resumed.cursor.accumulatedCount).toBe(265);
+    expect(resumed.nextItemIndex).toBe(0);
+    expect(() =>
+      advanceMintDeclaredFold({
+        cursor: plan.walk[0]!.cursor,
+        nextItemIndex: 1,
+        items,
+        target: plan.target,
+      }),
+    ).toThrow(/asset name/u);
+  });
+
+  it("encodes the fold state exactly as the Aiken golden vector", () => {
+    const item = Buffer.concat([
+      Buffer.from([0x82, 0x58, 0x1c]),
+      Buffer.alloc(28, 0),
+      Buffer.from("a3400141000142000001", "hex"),
+    ]);
+    const target = {
+      policyIndex: 0,
+      targetPolicyId: "00".repeat(28),
+      targetDeclaredCount: 3,
+    };
+    const partial = advanceMintDeclaredFold({
+      cursor: initialMintDeclaredFoldCursor(),
+      nextItemIndex: 0,
+      items: [item],
+      target,
+      budget: 10,
+    });
+    expect(partial.cursor).toEqual({
+      accumulatedCount: 2,
+      previousPolicy: "",
+      activePolicy: "00".repeat(28),
+      itemCursor: 37,
+      assetsRemaining: 1,
+      policyAssetCursor: 2,
+      previousAsset: "00",
+      outcome: 0,
+    });
+    const encoded = Data.to(
+      mintDeclaredFoldStateData({
+        subject: {
+          version: 1n,
+          direction: 1n,
+          source_kind: 1n,
+          transaction_id:
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          source_key: "01",
+          rejection_reason: { MintDeclaredAssetLimit: { policy_index: 0n } },
+        } as never,
+        target,
+        cursor: partial.cursor,
+        checkpointHash: "aa".repeat(32),
+      }) as never,
+      MintDeclaredAssetLimitFoldStateSchema as never,
+    );
+    expect(encoded).toBe(
+      "d8799fd8799f0101015820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f4101d8799fd905179f00ffffff00581c" +
+        "00".repeat(28) +
+        "035820" +
+        "aa".repeat(32) +
+        "0240581c" +
+        "00".repeat(28) +
+        "18250102410000ff",
+    );
+  });
+
+  it("reads the machine's array head and refuses a malformed prior body", () => {
+    const wideHead = Buffer.concat([
+      Buffer.from([0x98, 0x02, 0x58, 0x1c]),
+      Buffer.alloc(28, 1),
+      Buffer.from("a14001", "hex"),
+    ]);
+    expect(decodeMintDeclaredPolicyHeader(wideHead).declaredCount).toBe(1);
+    expect(foldMintDeclaredAssetLimit([wideHead], 0).crossing).toBe(false);
+    const trailing = Buffer.concat([singleton(1), Buffer.from([0])]);
+    expect(() =>
+      foldMintDeclaredAssetLimit([trailing, crossing(2)], 1),
+    ).toThrow(/declared count/u);
+    const zero = Buffer.concat([
+      Buffer.from([0x82, 0x58, 0x1c]),
+      Buffer.alloc(28, 1),
+      Buffer.from("a14000", "hex"),
+    ]);
+    expect(() => foldMintDeclaredAssetLimit([zero, crossing(2)], 1)).toThrow(
+      /quantity is zero/u,
     );
   });
 

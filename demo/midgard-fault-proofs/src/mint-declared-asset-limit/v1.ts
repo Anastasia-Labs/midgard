@@ -67,6 +67,10 @@ import {
   type MintDeclaredAssetLimitContracts,
 } from "./contracts.js";
 import {
+  type MintDeclaredAssetLimitFoldStateData,
+  mintDeclaredFoldDataMatches,
+} from "./family.js";
+import {
   detectMintDeclaredAssetLimitAcceptedRawReplay,
   mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayload,
   prepareMintDeclaredAssetLimitAcceptedArtifact,
@@ -79,8 +83,9 @@ import {
 } from "./schemas.js";
 import {
   hashMintDeclaredGrammarCheckpoint,
-  hashMintDeclaredWalkCheckpoint,
+  initialMintDeclaredFoldSnapshot,
 } from "./staged-plan.js";
+import { mintDeclaredFoldSnapshotData } from "./submit-step-03.js";
 
 export const MINT_DECLARED_ASSET_LIMIT_WORKFLOW =
   "midgard-mint-declared-asset-limit-production-workflow-v1" as const;
@@ -390,13 +395,19 @@ const currentAction = async ({
     const state = Data.from(
       utxo.datum,
       MintDeclaredAssetLimitStep03DatumSchema as never,
-    ) as { data: { checkpoint_hash: string } };
-    const hash = state.data.checkpoint_hash;
+    ) as { data: MintDeclaredAssetLimitFoldStateData };
     const ordinal = [
-      admitted.staged.initialWalk,
+      initialMintDeclaredFoldSnapshot(admitted.staged),
       ...admitted.staged.walk,
-    ].findIndex(
-      (checkpoint) => hashMintDeclaredWalkCheckpoint(checkpoint) === hash,
+    ].findIndex((snapshot) =>
+      mintDeclaredFoldDataMatches(
+        state.data,
+        mintDeclaredFoldSnapshotData({
+          evidence: admitted.evidence,
+          staged: admitted.staged,
+          snapshot,
+        }),
+      ),
     );
     if (ordinal < 0 || ordinal >= admitted.staged.walk.length)
       throw new Error("mintDeclaredAssetLimit fold checkpoint substitution");

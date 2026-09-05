@@ -1,8 +1,4 @@
-import {
-  computeHash32,
-  decodeMidgardFieldPreimage,
-  decodeMidgardMintPolicyItem,
-} from "@al-ft/midgard-core";
+import { computeHash32, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 
 import {
   advanceMissingNativeScriptTxGrammarCheckpoint,
@@ -15,10 +11,15 @@ import {
   type MissingNativeScriptTxSemanticCheckpoint,
 } from "../missing-native-script-tx/staged-walk.js";
 import {
+  advanceMintDeclaredFold,
   decodeMintDeclaredPolicyHeader,
-  foldMintDeclaredAssetLimit,
-  MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS,
+  initialMintDeclaredFoldCursor,
+  MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET,
   MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET,
+  MINT_DECLARED_OUTCOME_CROSSING,
+  MINT_DECLARED_OUTCOME_SCANNING,
+  type MintDeclaredFoldCursor,
+  type MintDeclaredFoldTarget,
 } from "./family.js";
 
 const GRAMMAR_DOMAIN = Buffer.from("MidgardFieldGrammarCheckpointV1", "ascii");
@@ -76,19 +77,82 @@ export const hashMintDeclaredWalkCheckpoint = (
     Buffer.concat([WALK_DOMAIN, encodeMintDeclaredWalkCheckpoint(value)]),
   ).toString("hex");
 
+/** The fold cursor and walk position committed after one step-03 transaction. */
+export type MintDeclaredFoldSnapshot = Readonly<{
+  cursor: MintDeclaredFoldCursor;
+  checkpoint: MintDeclaredWalkCheckpoint;
+}>;
+
 export type MintDeclaredAssetLimitStagedPlan = Readonly<{
   items: readonly Buffer[];
   initialGrammar: MintDeclaredGrammarCheckpoint;
   initialWalk: MintDeclaredWalkCheckpoint;
   grammar: readonly MintDeclaredGrammarCheckpoint[];
-  walk: readonly MintDeclaredWalkCheckpoint[];
+  /** One entry per step-03 transaction; the last one carries the decision. */
+  walk: readonly MintDeclaredFoldSnapshot[];
+  foldBudget: number;
+  target: MintDeclaredFoldTarget;
   crossing: boolean;
   targetPolicyId: string;
   targetDeclaredCount: number;
   accumulatedCount: number;
 }>;
 
-export const planMintDeclaredAssetLimitStagedWalk = ({
+export const initialMintDeclaredFoldSnapshot = (
+  plan: Pick<MintDeclaredAssetLimitStagedPlan, "initialWalk">,
+): MintDeclaredFoldSnapshot =>
+  Object.freeze({
+    cursor: initialMintDeclaredFoldCursor(),
+    checkpoint: plan.initialWalk,
+  });
+
+/** One step-03 transaction of `budget` units from `snapshot`. */
+export const advanceMintDeclaredFoldSnapshot = ({
+  snapshot,
+  transactionId,
+  items,
+  target,
+  budget,
+}: {
+  readonly snapshot: MintDeclaredFoldSnapshot;
+  readonly transactionId: string;
+  readonly items: readonly Uint8Array[];
+  readonly target: MintDeclaredFoldTarget;
+  readonly budget: number;
+}): MintDeclaredFoldSnapshot => {
+  const advanced = advanceMintDeclaredFold({
+    cursor: snapshot.cursor,
+    nextItemIndex: snapshot.checkpoint.nextItemIndex,
+    items,
+    target,
+    budget,
+  });
+  const closed = advanced.nextItemIndex - snapshot.checkpoint.nextItemIndex;
+  const checkpoint =
+    closed === 0
+      ? snapshot.checkpoint
+      : walk5(
+          advanceMissingNativeScriptTxSemanticCheckpoint({
+            checkpoint: walk6(snapshot.checkpoint),
+            txId: transactionId,
+            items,
+            budget: closed,
+          }),
+        );
+  return Object.freeze({ cursor: advanced.cursor, checkpoint });
+};
+
+export type MintDeclaredAssetLimitFieldPlan = Pick<
+  MintDeclaredAssetLimitStagedPlan,
+  "items" | "initialGrammar" | "initialWalk" | "grammar" | "target"
+>;
+
+/**
+ * The grammar certification and initial walk position of field 5 plus the
+ * bound target header, without folding: the part of a plan that exists for
+ * any authenticated field, foldable to completion or not.
+ */
+export const planMintDeclaredAssetLimitField = ({
   transactionId,
   fieldPreimageCbor,
   policyIndex,
@@ -98,12 +162,23 @@ export const planMintDeclaredAssetLimitStagedWalk = ({
   readonly fieldPreimageCbor: string;
   readonly policyIndex: number;
   readonly itemBudget?: number;
-}): MintDeclaredAssetLimitStagedPlan => {
+}): MintDeclaredAssetLimitFieldPlan => {
   if (!Number.isSafeInteger(itemBudget) || itemBudget <= 0 || itemBudget > 24)
     throw new Error("mintDeclaredAssetLimit item budget must be in 1..24");
   const items = decodeMidgardFieldPreimage(
     Buffer.from(fieldPreimageCbor, "hex"),
   ).map(Buffer.from);
+  const targetItem = items[policyIndex];
+  if (targetItem === undefined)
+    throw new Error(
+      "mintDeclaredAssetLimit policy coordinate is outside field 5",
+    );
+  const header = decodeMintDeclaredPolicyHeader(targetItem);
+  const target: MintDeclaredFoldTarget = Object.freeze({
+    policyIndex,
+    targetPolicyId: header.policyId.toString("hex"),
+    targetDeclaredCount: header.declaredCount,
+  });
   const initialGrammar = grammar5(
     initialMissingNativeScriptTxGrammarCheckpoint({
       txId: transactionId,
@@ -128,63 +203,60 @@ export const planMintDeclaredAssetLimitStagedWalk = ({
       items,
     }),
   );
-  const walk: MintDeclaredWalkCheckpoint[] = [];
-  let walkCursor = initialWalk;
-  while (walkCursor.nextItemIndex <= policyIndex) {
-    const remaining = policyIndex + 1 - walkCursor.nextItemIndex;
-    walkCursor = walk5(
-      advanceMissingNativeScriptTxSemanticCheckpoint({
-        checkpoint: walk6(walkCursor),
-        txId: transactionId,
-        items,
-        budget: Math.min(itemBudget, remaining),
-      }),
-    );
-    walk.push(walkCursor);
-  }
-  const decision = foldMintDeclaredAssetLimit(items, policyIndex);
   return Object.freeze({
     items: Object.freeze(items),
     initialGrammar,
     initialWalk,
     grammar: Object.freeze(grammar),
-    walk: Object.freeze(walk),
-    ...decision,
+    target,
   });
 };
 
-export const mintDeclaredFoldPrefix = ({
-  items,
-  nextItemIndex,
+export const planMintDeclaredAssetLimitStagedWalk = ({
+  transactionId,
+  fieldPreimageCbor,
   policyIndex,
+  itemBudget = MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET,
+  foldBudget = MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET,
 }: {
-  readonly items: readonly Uint8Array[];
-  readonly nextItemIndex: number;
+  readonly transactionId: string;
+  readonly fieldPreimageCbor: string;
   readonly policyIndex: number;
-}): Readonly<{ accumulatedCount: number; previousPolicy: string }> => {
+  readonly itemBudget?: number;
+  readonly foldBudget?: number;
+}): MintDeclaredAssetLimitStagedPlan => {
   if (
-    !Number.isSafeInteger(nextItemIndex) ||
-    nextItemIndex < 0 ||
-    nextItemIndex > policyIndex
+    !Number.isSafeInteger(foldBudget) ||
+    foldBudget <= 0 ||
+    foldBudget > MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET
   )
-    throw new Error("mintDeclaredAssetLimit prefix cursor is invalid");
-  let accumulatedCount = 0;
-  let previousPolicy = "";
-  for (let index = 0; index < nextItemIndex; index += 1) {
-    const item = items[index];
-    if (item === undefined)
-      throw new Error("mintDeclaredAssetLimit prefix exceeds field");
-    const header = decodeMintDeclaredPolicyHeader(item);
-    if (
-      previousPolicy !== "" &&
-      Buffer.compare(Buffer.from(previousPolicy, "hex"), header.policyId) >= 0
-    )
-      throw new Error("mintDeclaredAssetLimit prefix policy order changed");
-    const decoded = decodeMidgardMintPolicyItem(item);
-    accumulatedCount += decoded.assets.length;
-    if (accumulatedCount > MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS)
-      throw new Error("mintDeclaredAssetLimit prefix crossed before target");
-    previousPolicy = header.policyId.toString("hex");
+    throw new Error("mintDeclaredAssetLimit fold budget must be in 1..256");
+  const field = planMintDeclaredAssetLimitField({
+    transactionId,
+    fieldPreimageCbor,
+    policyIndex,
+    itemBudget,
+  });
+  const { items, initialWalk, target } = field;
+  const walk: MintDeclaredFoldSnapshot[] = [];
+  let snapshot = initialMintDeclaredFoldSnapshot({ initialWalk });
+  while (snapshot.cursor.outcome === MINT_DECLARED_OUTCOME_SCANNING) {
+    snapshot = advanceMintDeclaredFoldSnapshot({
+      snapshot,
+      transactionId,
+      items,
+      target,
+      budget: foldBudget,
+    });
+    walk.push(snapshot);
   }
-  return Object.freeze({ accumulatedCount, previousPolicy });
+  return Object.freeze({
+    ...field,
+    walk: Object.freeze(walk),
+    foldBudget,
+    crossing: snapshot.cursor.outcome === MINT_DECLARED_OUTCOME_CROSSING,
+    targetPolicyId: target.targetPolicyId,
+    targetDeclaredCount: target.targetDeclaredCount,
+    accumulatedCount: snapshot.cursor.accumulatedCount,
+  });
 };

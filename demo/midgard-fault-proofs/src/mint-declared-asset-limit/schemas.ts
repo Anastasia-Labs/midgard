@@ -87,7 +87,7 @@ export const MintDeclaredAssetLimitStep03ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   opening: FieldOpeningSchema,
   checkpoint_bytes: Data.Bytes(),
-  item_budget: Data.Integer(),
+  budget: Data.Integer(),
 });
 export const MintDeclaredAssetLimitStep03RedeemerSchema =
   faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep03ArgsSchema);

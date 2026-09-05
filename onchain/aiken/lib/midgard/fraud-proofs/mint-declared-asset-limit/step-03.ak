@@ -7,7 +7,7 @@ pub type Args {
   output_index: Int,
   opening: FieldOpeningV1,
   checkpoint_bytes: ByteArray,
-  item_budget: Int,
+  budget: Int,
 }
 
 pub type Datum =

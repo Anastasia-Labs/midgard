@@ -2,6 +2,7 @@ import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -33,26 +34,22 @@ import {
   MintDeclaredAssetLimitStep02DatumSchema,
 } from "./schemas.js";
 
-const nextDatum = (
-  finding: MintDeclaredAssetLimitFinding,
+const boundDatum = (
+  subject: VerdictSubject,
+  policyIndex: number,
   signer: ResolvedProverSigner,
-): string => {
-  const exact = classifyMintDeclaredAssetLimitFinding(finding);
-  return Data.to(
+): string =>
+  Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
         Bound: {
-          bound: {
-            subject: exact.subject,
-            policy_index: BigInt(exact.policyIndex),
-          },
+          bound: { subject, policy_index: BigInt(policyIndex) },
         },
       },
     } as never,
     MintDeclaredAssetLimitStep02DatumSchema as never,
   );
-};
 
 export const submitMintDeclaredAssetLimitStep01Accepted = async ({
   lucid,
@@ -87,8 +84,9 @@ export const submitMintDeclaredAssetLimitStep01Accepted = async ({
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}) =>
-  await submitMissingNativeScriptTxBinding({
+}) => {
+  const exact = classifyMintDeclaredAssetLimitFinding(finding);
+  return await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
@@ -99,7 +97,7 @@ export const submitMintDeclaredAssetLimitStep01Accepted = async ({
     threadToken,
     stateQueueBlockOutRef,
     txInclusion,
-    nextDatum: nextDatum(finding, signer),
+    nextDatum: boundDatum(exact.subject, exact.policyIndex, signer),
     spendRedeemerSchema: MintDeclaredAssetLimitStep01RedeemerSchema,
     wrapInclusionArgs: (inclusion) => ({
       source: {
@@ -107,21 +105,30 @@ export const submitMintDeclaredAssetLimitStep01Accepted = async ({
           inclusion: { RedeemerCarriedInclusion: [inclusion] },
         },
       },
-      policy_index: BigInt(finding.policyIndex),
+      policy_index: BigInt(exact.policyIndex),
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
     preSubmitBoundary,
     awaitConfirmation,
   });
+};
 
-export const submitMintDeclaredAssetLimitStep01Forced = async ({
+/**
+ * Binds a forced leaf from explicit wire inputs: the subject the datum will
+ * carry, the coordinate the datum claims and the coordinate the redeemer
+ * asserts. The classified builder below keeps them consistent; this form
+ * lets a lifecycle present a mutated coordinate, subject or leaf on chain.
+ */
+export const submitMintDeclaredAssetLimitStep01ForcedRaw = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
-  finding,
+  subject,
+  datumPolicyIndex,
+  redeemerPolicyIndex,
   forcedSource,
   referenceScriptUtxo,
   preSubmitBoundary,
@@ -132,13 +139,14 @@ export const submitMintDeclaredAssetLimitStep01Forced = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly finding: MintDeclaredAssetLimitFinding;
+  readonly subject: VerdictSubject;
+  readonly datumPolicyIndex: number;
+  readonly redeemerPolicyIndex: number;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const exact = classifyMintDeclaredAssetLimitFinding(finding);
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
@@ -155,7 +163,7 @@ export const submitMintDeclaredAssetLimitStep01Forced = async ({
     family: "mint-declared-asset-limit",
     stepIndex: 0,
   });
-  const datum = nextDatum(exact, signer);
+  const datum = boundDatum(subject, datumPolicyIndex, signer);
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[1].spendingScriptAddress,
     datum,
@@ -189,7 +197,7 @@ export const submitMintDeclaredAssetLimitStep01Forced = async ({
                 output_index: resolvedOutputIndex,
               },
             },
-            policy_index: BigInt(exact.policyIndex),
+            policy_index: BigInt(redeemerPolicyIndex),
           },
         ],
       } as never,
@@ -216,4 +224,28 @@ export const submitMintDeclaredAssetLimitStep01Forced = async ({
     txHash,
     nextThreadOutRef: `${txHash}#${resolvedOutputIndex.toString()}`,
   };
+};
+
+export const submitMintDeclaredAssetLimitStep01Forced = async ({
+  finding,
+  ...rest
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: MintDeclaredAssetLimitContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly finding: MintDeclaredAssetLimitFinding;
+  readonly forcedSource: Readonly<Record<string, unknown>>;
+  readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const exact = classifyMintDeclaredAssetLimitFinding(finding);
+  return await submitMintDeclaredAssetLimitStep01ForcedRaw({
+    ...rest,
+    subject: exact.subject,
+    datumPolicyIndex: exact.policyIndex,
+    redeemerPolicyIndex: exact.policyIndex,
+  });
 };

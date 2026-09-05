@@ -28,7 +28,14 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
-import type { MintDeclaredAssetLimitEvidence } from "./family.js";
+import {
+  MINT_DECLARED_OUTCOME_CROSSING,
+  MINT_DECLARED_OUTCOME_SCANNING,
+  type MintDeclaredAssetLimitEvidence,
+  type MintDeclaredAssetLimitFoldStateData,
+  mintDeclaredFoldDataMatches,
+  mintDeclaredFoldStateData,
+} from "./family.js";
 import {
   MintDeclaredAssetLimitStep03DatumSchema,
   MintDeclaredAssetLimitStep03RedeemerSchema,
@@ -37,11 +44,18 @@ import {
 import {
   encodeMintDeclaredWalkCheckpoint,
   hashMintDeclaredWalkCheckpoint,
+  initialMintDeclaredFoldSnapshot,
   type MintDeclaredAssetLimitStagedPlan,
-  mintDeclaredFoldPrefix,
+  type MintDeclaredFoldSnapshot,
 } from "./staged-plan.js";
 
-export const submitMintDeclaredAssetLimitStep03 = async ({
+/**
+ * Builds one step-03 transaction from explicit wire inputs. The plan-driven
+ * builder below derives every input from the staged plan; the explicit form
+ * exists so a lifecycle can present the validator with a substituted
+ * checkpoint, budget, successor or claimed state and observe its refusal.
+ */
+export const submitMintDeclaredAssetLimitStep03Raw = async ({
   lucid,
   contracts,
   categoryId,
@@ -49,9 +63,13 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
   threadOutRef,
   evidence,
   nativeTxCompactCbor,
-  staged,
-  walkOrdinal,
+  priorData,
+  checkpointBytesHex,
+  budget,
+  next,
+  nextStepIndex = next.kind === "decision" ? 3 : 2,
   referenceScriptUtxo,
+  stepRole,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -62,17 +80,20 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
   readonly threadOutRef: string;
   readonly evidence: MintDeclaredAssetLimitEvidence;
   readonly nativeTxCompactCbor: string;
-  readonly staged: MintDeclaredAssetLimitStagedPlan;
-  readonly walkOrdinal: number;
+  /** The fold datum the thread is expected to carry now. */
+  readonly priorData: MintDeclaredAssetLimitFoldStateData;
+  readonly checkpointBytesHex: string;
+  readonly budget: bigint;
+  readonly next:
+    | Readonly<{ kind: "fold"; data: MintDeclaredAssetLimitFoldStateData }>
+    | Readonly<{ kind: "decision"; crossing: boolean }>;
+  /** Successor step index; the honest value is 2 (fold) or 3 (decision). */
+  readonly nextStepIndex?: 0 | 1 | 2 | 3;
   readonly referenceScriptUtxo: UTxO;
+  readonly stepRole: string;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const nextCheckpoint = staged.walk[walkOrdinal];
-  if (nextCheckpoint === undefined)
-    throw new Error("mintDeclaredAssetLimit: walk ordinal is outside plan");
-  const priorCheckpoint =
-    walkOrdinal === 0 ? staged.initialWalk : staged.walk[walkOrdinal - 1]!;
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -82,40 +103,16 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepState<{
-    subject: unknown;
-    policy_index: bigint;
-    target_policy_id: string;
-    target_declared_count: bigint;
-    checkpoint_hash: string;
-    accumulated_count: bigint;
-    previous_policy: string;
-    outcome: bigint;
-  }>({
-    threadUtxo,
-    signer,
-    schema: MintDeclaredAssetLimitStep03DatumSchema as never,
-    family: "mint-declared-asset-limit",
-    stepIndex,
-  });
-  if (
-    state.policy_index !== BigInt(evidence.policyIndex) ||
-    state.target_policy_id !== evidence.targetPolicyId ||
-    state.target_declared_count !== BigInt(evidence.targetDeclaredCount) ||
-    state.checkpoint_hash !== hashMintDeclaredWalkCheckpoint(priorCheckpoint) ||
-    state.outcome !== 0n
-  )
+  const state =
+    requireLinearFaultStepState<MintDeclaredAssetLimitFoldStateData>({
+      threadUtxo,
+      signer,
+      schema: MintDeclaredAssetLimitStep03DatumSchema as never,
+      family: "mint-declared-asset-limit",
+      stepIndex,
+    });
+  if (!mintDeclaredFoldDataMatches(state, priorData))
     throw new Error("mintDeclaredAssetLimit: fold datum/checkpoint changed");
-  const prefix = mintDeclaredFoldPrefix({
-    items: staged.items,
-    nextItemIndex: priorCheckpoint.nextItemIndex,
-    policyIndex: evidence.policyIndex,
-  });
-  if (
-    state.accumulated_count !== BigInt(prefix.accumulatedCount) ||
-    state.previous_policy !== prefix.previousPolicy
-  )
-    throw new Error("mintDeclaredAssetLimit: fold accumulator changed");
   const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
@@ -159,37 +156,21 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: "mintDeclaredAssetLimit fold field 5",
   });
-  const terminal = walkOrdinal === staged.walk.length - 1;
-  const nextPrefix = terminal
-    ? null
-    : mintDeclaredFoldPrefix({
-        items: staged.items,
-        nextItemIndex: nextCheckpoint.nextItemIndex,
-        policyIndex: evidence.policyIndex,
-      });
-  const nextData = terminal
-    ? {
-        subject: evidence.subject,
-        policy_index: BigInt(evidence.policyIndex),
-        crossing: evidence.crossing,
-      }
-    : {
-        subject: evidence.subject,
-        policy_index: BigInt(evidence.policyIndex),
-        target_policy_id: evidence.targetPolicyId,
-        target_declared_count: BigInt(evidence.targetDeclaredCount),
-        checkpoint_hash: hashMintDeclaredWalkCheckpoint(nextCheckpoint),
-        accumulated_count: BigInt(nextPrefix!.accumulatedCount),
-        previous_policy: nextPrefix!.previousPolicy,
-        outcome: 0n,
-      };
+  const nextData =
+    next.kind === "decision"
+      ? {
+          subject: evidence.subject,
+          policy_index: BigInt(evidence.policyIndex),
+          crossing: next.crossing,
+        }
+      : next.data;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
-    (terminal
+    (next.kind === "decision"
       ? MintDeclaredAssetLimitStep04DatumSchema
       : MintDeclaredAssetLimitStep03DatumSchema) as never,
   );
-  const nextStep = terminal ? contracts.steps[3] : contracts.steps[2];
+  const nextStep = contracts.steps[nextStepIndex];
   const outputMatches = computationThreadOutputPredicate({
     address: nextStep.spendingScriptAddress,
     datum: nextDatum,
@@ -215,11 +196,8 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             opening,
-            checkpoint_bytes:
-              encodeMintDeclaredWalkCheckpoint(priorCheckpoint).toString("hex"),
-            item_budget: BigInt(
-              nextCheckpoint.nextItemIndex - priorCheckpoint.nextItemIndex,
-            ),
+            checkpoint_bytes: checkpointBytesHex,
+            budget,
           },
         ],
       } as never,
@@ -233,7 +211,7 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
     threadUnit: threadToken.unit,
     stepReference,
     stepScript: contracts.steps[2].spendingScript,
-    stepRole: `mintDeclaredAssetLimit step-03 walk ${walkOrdinal.toString()}`,
+    stepRole,
     nextAddress: nextStep.spendingScriptAddress,
     nextDatum,
     redeemer,
@@ -246,4 +224,101 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
   if (outputIndex === undefined)
     throw new Error("mintDeclaredAssetLimit: step-03 layout unresolved");
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+};
+
+/** The fold datum committed by snapshot `ordinal` of the plan (-1: initial). */
+export const mintDeclaredFoldSnapshotData = ({
+  evidence,
+  staged,
+  snapshot,
+}: {
+  readonly evidence: MintDeclaredAssetLimitEvidence;
+  readonly staged: MintDeclaredAssetLimitStagedPlan;
+  readonly snapshot: MintDeclaredFoldSnapshot;
+}): MintDeclaredAssetLimitFoldStateData =>
+  mintDeclaredFoldStateData({
+    subject: evidence.subject,
+    target: staged.target,
+    cursor: snapshot.cursor,
+    checkpointHash: hashMintDeclaredWalkCheckpoint(snapshot.checkpoint),
+  });
+
+export const submitMintDeclaredAssetLimitStep03 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  nativeTxCompactCbor,
+  staged,
+  walkOrdinal,
+  referenceScriptUtxo,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: MintDeclaredAssetLimitContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: MintDeclaredAssetLimitEvidence;
+  readonly nativeTxCompactCbor: string;
+  readonly staged: MintDeclaredAssetLimitStagedPlan;
+  readonly walkOrdinal: number;
+  readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const nextSnapshot = staged.walk[walkOrdinal];
+  if (nextSnapshot === undefined)
+    throw new Error("mintDeclaredAssetLimit: walk ordinal is outside plan");
+  const priorSnapshot =
+    walkOrdinal === 0
+      ? initialMintDeclaredFoldSnapshot(staged)
+      : staged.walk[walkOrdinal - 1]!;
+  if (
+    staged.target.policyIndex !== evidence.policyIndex ||
+    staged.target.targetPolicyId !== evidence.targetPolicyId ||
+    staged.target.targetDeclaredCount !== evidence.targetDeclaredCount
+  )
+    throw new Error("mintDeclaredAssetLimit: staged plan target changed");
+  const terminal =
+    nextSnapshot.cursor.outcome !== MINT_DECLARED_OUTCOME_SCANNING;
+  return await submitMintDeclaredAssetLimitStep03Raw({
+    lucid,
+    contracts,
+    categoryId,
+    signer,
+    threadOutRef,
+    evidence,
+    nativeTxCompactCbor,
+    priorData: mintDeclaredFoldSnapshotData({
+      evidence,
+      staged,
+      snapshot: priorSnapshot,
+    }),
+    checkpointBytesHex: encodeMintDeclaredWalkCheckpoint(
+      priorSnapshot.checkpoint,
+    ).toString("hex"),
+    budget: BigInt(staged.foldBudget),
+    next: terminal
+      ? {
+          kind: "decision",
+          crossing:
+            nextSnapshot.cursor.outcome === MINT_DECLARED_OUTCOME_CROSSING,
+        }
+      : {
+          kind: "fold",
+          data: mintDeclaredFoldSnapshotData({
+            evidence,
+            staged,
+            snapshot: nextSnapshot,
+          }),
+        },
+    referenceScriptUtxo,
+    stepRole: `mintDeclaredAssetLimit step-03 walk ${walkOrdinal.toString()}`,
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
 };

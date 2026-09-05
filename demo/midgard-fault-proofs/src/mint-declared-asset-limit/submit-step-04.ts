@@ -18,13 +18,20 @@ import {
   MintDeclaredAssetLimitStep04RedeemerSchema,
 } from "./schemas.js";
 
-export const submitMintDeclaredAssetLimitStep04 = async ({
+/**
+ * Finalizes the decision the thread carries, whatever its polarity. The
+ * evidence-checked builder below refuses honest evidence off chain; this form
+ * lets a lifecycle hand an honest decision to the validator and observe the
+ * on-chain refusal.
+ */
+export const submitMintDeclaredAssetLimitStep04Raw = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
-  evidence,
+  policyIndex,
+  crossing,
   referenceScriptUtxo,
   witnessReferenceScripts,
   preSubmitBoundary,
@@ -35,14 +42,13 @@ export const submitMintDeclaredAssetLimitStep04 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: MintDeclaredAssetLimitEvidence;
+  readonly policyIndex: number;
+  readonly crossing: boolean;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!mintDeclaredAssetLimitEvidenceCloses(evidence))
-    throw new Error("mintDeclaredAssetLimit: terminal evidence is honest");
   const stepIndex = 3;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -63,10 +69,7 @@ export const submitMintDeclaredAssetLimitStep04 = async ({
     family: "mint-declared-asset-limit",
     stepIndex,
   });
-  if (
-    state.policy_index !== BigInt(evidence.policyIndex) ||
-    state.crossing !== evidence.crossing
-  )
+  if (state.policy_index !== BigInt(policyIndex) || state.crossing !== crossing)
     throw new Error(
       "mintDeclaredAssetLimit: terminal datum differs from evidence",
     );
@@ -94,5 +97,29 @@ export const submitMintDeclaredAssetLimitStep04 = async ({
     witnessReferenceScripts,
     preSubmitBoundary,
     awaitConfirmation,
+  });
+};
+
+export const submitMintDeclaredAssetLimitStep04 = async ({
+  evidence,
+  ...rest
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: MintDeclaredAssetLimitContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: MintDeclaredAssetLimitEvidence;
+  readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  if (!mintDeclaredAssetLimitEvidenceCloses(evidence))
+    throw new Error("mintDeclaredAssetLimit: terminal evidence is honest");
+  return await submitMintDeclaredAssetLimitStep04Raw({
+    ...rest,
+    policyIndex: evidence.policyIndex,
+    crossing: evidence.crossing,
   });
 };

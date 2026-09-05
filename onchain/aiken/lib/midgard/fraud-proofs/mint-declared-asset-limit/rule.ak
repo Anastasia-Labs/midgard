@@ -2,7 +2,9 @@
 
 use aiken/cbor
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/codec.{decode_canonical_int_at, expect_byte}
+use midgard/fraud_proofs/native_tx/codec.{
+  decode_canonical_int_at, decode_definite_array_header_at,
+}
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at,
@@ -14,7 +16,14 @@ pub const mint_field_index: Int = 5
 
 pub const max_distinct_asset_count: Int = 16384
 
+/// Field items one step-02 grammar transaction certifies.
 pub const staged_policy_budget: Int = 24
+
+/// Work units one step-03 fold transaction may spend. Opening a policy item
+/// costs `fold_policy_cost`; every consumed asset entry costs one unit.
+pub const staged_fold_budget: Int = 256
+
+pub const fold_policy_cost: Int = 8
 
 pub const outcome_scanning: Int = 0
 
@@ -33,6 +42,11 @@ pub type PolicyHeaderV1 {
   assets_offset: Int,
 }
 
+/// Constant-size fold cursor. `active_policy`, `item_cursor`,
+/// `assets_remaining`, `policy_asset_cursor` and `previous_asset` mirror the
+/// machine's `MintFoldControlV1` so one policy item can be consumed across
+/// several transactions; while a policy is open the carried walk checkpoint
+/// stays on that item.
 pub type FoldStateV1 {
   subject: substrate.VerdictSubjectV1,
   policy_index: Int,
@@ -41,6 +55,11 @@ pub type FoldStateV1 {
   checkpoint_hash: ByteArray,
   accumulated_count: Int,
   previous_policy: ByteArray,
+  active_policy: ByteArray,
+  item_cursor: Int,
+  assets_remaining: Int,
+  policy_asset_cursor: Int,
+  previous_asset: ByteArray,
   outcome: Int,
 }
 
@@ -69,11 +88,13 @@ pub fn bind_policy_v1(
   BoundPolicyV1 { subject, policy_index }
 }
 
-/// Reads exactly the scalars inspected by `script_sources_begin_mint_policy`
-/// before its asset-limit branch. The item body is deliberately not decoded:
-/// the real machine rejects a crossing before doing so.
+/// Reads exactly the scalars `script_sources_begin_mint_policy` inspects
+/// before its asset-limit branch, with the machine's own head decoders. The
+/// item body is deliberately not decoded: the real machine rejects a crossing
+/// before doing so.
 pub fn policy_header_v1(item: ByteArray) -> PolicyHeaderV1 {
-  let offset = expect_byte(item, 0, 130)
+  let Pair(offset, item_count) = decode_definite_array_header_at(item, 0)
+  expect item_count == 2
   let Pair(offset, policy_id) = decode_canonical_bytes_at(item, offset)
   expect bytearray.length(policy_id) == 28
   let Pair(assets_offset, declared_count) = decode_canonical_map_header_at(
@@ -85,42 +106,6 @@ pub fn policy_header_v1(item: ByteArray) -> PolicyHeaderV1 {
       assets_offset < bytearray.length(item),
     }
   PolicyHeaderV1 { policy_id, declared_count, assets_offset }
-}
-
-/// Completes the policy item exactly as the machine must before advancing to
-/// the following policy. Returns its authenticated declared/actual count.
-pub fn canonical_policy_asset_count_v1(item: ByteArray) -> Int {
-  let header = policy_header_v1(item)
-  let terminal = consume_assets(
-    item,
-    header.assets_offset,
-    header.declared_count,
-    None,
-  )
-  expect terminal == bytearray.length(item)
-  header.declared_count
-}
-
-fn consume_assets(
-  item: ByteArray,
-  offset: Int,
-  remaining: Int,
-  previous: Option<ByteArray>,
-) -> Int {
-  if remaining == 0 {
-    offset
-  } else {
-    let Pair(offset, asset_name) = decode_canonical_bytes_at(item, offset)
-    expect bytearray.length(asset_name) <= 32
-    expect
-      when previous is {
-        None -> True
-        Some(prior) -> canonical_bytes_key_precedes(prior, asset_name)
-      }
-    let Pair(offset, quantity) = decode_canonical_int_at(item, offset)
-    expect quantity != 0
-    consume_assets(item, offset, remaining - 1, Some(asset_name))
-  }
 }
 
 pub fn initial_fold_v1(
@@ -138,17 +123,26 @@ pub fn initial_fold_v1(
     checkpoint_hash,
     accumulated_count: 0,
     previous_policy: #"",
+    active_policy: #"",
+    item_cursor: 0,
+    assets_remaining: 0,
+    policy_asset_cursor: 0,
+    previous_asset: #"",
     outcome: outcome_scanning,
   }
 }
 
-pub fn fold_item_v1(
+/// Opens the policy item at `item_index`: the machine's begin step. At the
+/// bound coordinate the declared-count crossing is decided here, before the
+/// body; otherwise the item is opened for asset consumption.
+pub fn begin_policy_v1(
   state: FoldStateV1,
   item_index: Int,
   item: ByteArray,
 ) -> FoldStateV1 {
   expect and {
       state.outcome == outcome_scanning,
+      state.active_policy == #"",
       item_index >= 0,
       item_index <= state.policy_index,
       state.accumulated_count >= 0,
@@ -168,22 +162,111 @@ pub fn fold_item_v1(
     if next_count > max_distinct_asset_count {
       FoldStateV1 { ..state, outcome: outcome_crossing }
     } else {
-      expect canonical_policy_asset_count_v1(item) == header.declared_count
-      FoldStateV1 {
-        ..state,
-        accumulated_count: next_count,
-        previous_policy: header.policy_id,
-        outcome: outcome_non_crossing,
-      }
+      open_policy(state, header)
     }
   } else {
     expect next_count <= max_distinct_asset_count
-    expect canonical_policy_asset_count_v1(item) == header.declared_count
+    open_policy(state, header)
+  }
+}
+
+fn open_policy(state: FoldStateV1, header: PolicyHeaderV1) -> FoldStateV1 {
+  FoldStateV1 {
+    ..state,
+    active_policy: header.policy_id,
+    item_cursor: header.assets_offset,
+    assets_remaining: header.declared_count,
+    policy_asset_cursor: 0,
+    previous_asset: #"",
+  }
+}
+
+/// Consumes one asset entry of the open policy item: the machine's
+/// `script_sources_fold_mint_asset`. Closing the bound item records the
+/// complete non-crossing result.
+pub fn consume_asset_v1(
+  state: FoldStateV1,
+  item_index: Int,
+  item: ByteArray,
+) -> FoldStateV1 {
+  expect and {
+      state.outcome == outcome_scanning,
+      bytearray.length(state.active_policy) == 28,
+      state.assets_remaining > 0,
+      state.policy_asset_cursor >= 0,
+    }
+  let Pair(quantity_offset, asset_name) = decode_canonical_bytes_at(
+    item,
+    state.item_cursor,
+  )
+  let Pair(next_cursor, quantity) = decode_canonical_int_at(
+    item,
+    quantity_offset,
+  )
+  let next_count = state.accumulated_count + 1
+  let item_length = bytearray.length(item)
+  expect and {
+      bytearray.length(asset_name) <= 32,
+      quantity != 0,
+      next_count <= max_distinct_asset_count,
+      or {
+        state.policy_asset_cursor == 0,
+        canonical_bytes_key_precedes(state.previous_asset, asset_name),
+      },
+      if state.assets_remaining == 1 {
+        next_cursor == item_length
+      } else {
+        next_cursor < item_length
+      },
+    }
+  if state.assets_remaining == 1 {
     FoldStateV1 {
       ..state,
       accumulated_count: next_count,
-      previous_policy: header.policy_id,
+      previous_policy: state.active_policy,
+      active_policy: #"",
+      item_cursor: 0,
+      assets_remaining: 0,
+      policy_asset_cursor: 0,
+      previous_asset: #"",
+      outcome: if item_index == state.policy_index {
+        outcome_non_crossing
+      } else {
+        outcome_scanning
+      },
     }
+  } else {
+    FoldStateV1 {
+      ..state,
+      accumulated_count: next_count,
+      item_cursor: next_cursor,
+      assets_remaining: state.assets_remaining - 1,
+      policy_asset_cursor: state.policy_asset_cursor + 1,
+      previous_asset: asset_name,
+    }
+  }
+}
+
+/// Consumes asset entries of the open item until it closes or `budget` units
+/// are spent. Returns the state and the unspent budget.
+pub fn consume_assets_v1(
+  state: FoldStateV1,
+  item_index: Int,
+  item: ByteArray,
+  budget: Int,
+) -> Pair<FoldStateV1, Int> {
+  if or {
+    budget == 0,
+    state.assets_remaining == 0,
+  } {
+    Pair(state, budget)
+  } else {
+    consume_assets_v1(
+      consume_asset_v1(state, item_index, item),
+      item_index,
+      item,
+      budget - 1,
+    )
   }
 }
 

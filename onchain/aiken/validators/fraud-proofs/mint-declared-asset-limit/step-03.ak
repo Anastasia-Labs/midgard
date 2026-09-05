@@ -5,8 +5,8 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{BodyAnchor, resume_opened_field_walk}
 use midgard/fraud_proofs/mint_declared_asset_limit/rule.{
-  FoldStateV1, decision_v1, fold_item_v1, mint_field_index, outcome_scanning,
-  staged_policy_budget,
+  FoldStateV1, begin_policy_v1, consume_assets_v1, decision_v1, fold_policy_cost,
+  mint_field_index, outcome_scanning, staged_fold_budget,
 }
 use midgard/fraud_proofs/mint_declared_asset_limit/step_03.{
   Args, Datum, SpendRedeemer,
@@ -40,8 +40,8 @@ validator main(
         )
       ct.Continue(args) -> {
         expect and {
-            args.item_budget > 0,
-            args.item_budget <= staged_policy_budget,
+            args.budget > 0,
+            args.budget <= staged_fold_budget,
           }
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
@@ -65,9 +65,13 @@ validator main(
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        let Pair(folded, next) = advance(view, resumed, state, args.item_budget)
+        let Pair(folded, next) = advance(view, resumed, state, args.budget)
         if folded.outcome == outcome_scanning {
-          expect !walk_is_complete(next)
+          // A self-loop must move the fold: no identical re-commitment.
+          expect and {
+              folded != state,
+              !walk_is_complete(next),
+            }
           let expected: Data = FoldStateV1 {
             ..folded,
             checkpoint_hash: field_walk_checkpoint_hash(next),
@@ -92,28 +96,44 @@ validator main(
   }
 }
 
+/// Spends `budget` work units over the authenticated walk. The walk
+/// checkpoint advances only when an item closes, so a partially consumed
+/// policy is re-read from the same authenticated position next time.
 fn advance(
   view: FieldViewV1,
   checkpoint: FieldWalkCheckpointV1,
   state: FoldStateV1,
   budget: Int,
 ) -> Pair<FoldStateV1, FieldWalkCheckpointV1> {
-  if or {
-    budget == 0,
-    state.outcome != outcome_scanning,
+  if state.outcome != outcome_scanning {
+    Pair(state, checkpoint)
+  } else if and {
+    state.active_policy == #"",
+    budget < fold_policy_cost,
   } {
     Pair(state, checkpoint)
   } else {
     let Pair(item, next) = walk_next(view, checkpoint)
-    advance(
-      view,
-      next,
-      fold_item_v1(state, state_index(checkpoint), item),
-      budget - 1,
-    )
+    let item_index = walk_next_item_index(checkpoint)
+    let Pair(opened, remaining) = if state.active_policy == #"" {
+      Pair(begin_policy_v1(state, item_index, item), budget - fold_policy_cost)
+    } else {
+      Pair(state, budget)
+    }
+    if opened.outcome != outcome_scanning {
+      Pair(opened, checkpoint)
+    } else {
+      let Pair(consumed, left) = consume_assets_v1(
+        opened,
+        item_index,
+        item,
+        remaining,
+      )
+      if consumed.active_policy == #"" {
+        advance(view, next, consumed, left)
+      } else {
+        Pair(consumed, checkpoint)
+      }
+    }
   }
-}
-
-fn state_index(checkpoint: FieldWalkCheckpointV1) -> Int {
-  walk_next_item_index(checkpoint)
 }
