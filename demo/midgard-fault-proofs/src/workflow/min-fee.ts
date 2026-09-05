@@ -25,11 +25,17 @@ import {
 } from "../field-opening.js";
 import type { MinFeeContracts } from "../min-fee-contracts.js";
 import {
+  admitMinFeeForcedArtifact,
+  MIN_FEE_FORCED_ARTIFACT,
+  prepareMinFeeForcedArtifact,
+} from "../min-fee-forced-artifact.js";
+import {
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { submitMinFeeStep01Forced } from "../submit-min-fee-forced-step-01.js";
 import { submitMinFeeInit } from "../submit-min-fee-init.js";
 import { submitMinFeeStep01 } from "../submit-min-fee-step-01.js";
 import {
@@ -436,6 +442,46 @@ export const admitMinFeeArtifact = (
   return Object.freeze({ ...parsed, fieldPlans: Object.freeze(fieldPlans) });
 };
 
+const admitWorkflowArtifact = async (
+  artifact: JournalJsonObject,
+  owner: string,
+) => {
+  if (artifact.schemaVersion !== MIN_FEE_FORCED_ARTIFACT)
+    return { ...admitMinFeeArtifact(artifact, owner), forced: null };
+  const forced = await admitMinFeeForcedArtifact(artifact);
+  const evidence = forced.evidence;
+  const fieldItemCbors = parseFieldItems(evidence.fieldItemCbors);
+  return {
+    forced,
+    inclusion: null,
+    witnessSet: evidence.witnessSet,
+    fieldItemCbors,
+    artifact: {
+      headerHash: forced.headerHash,
+      nativeTxId: forced.transactionId,
+      nativeTxCompactCbor: evidence.nativeTxCompactCbor,
+      txMembershipProofCbor: "",
+    },
+    fieldPlans: fieldItemCbors.map((items, fieldIndex) =>
+      planFaultProofFieldOpening({
+        fieldIndex,
+        anchorTxId: forced.transactionId,
+        nativeTxCompactCbor: evidence.nativeTxCompactCbor,
+        itemCbors: items,
+        owner,
+        publish: true,
+        ...(fieldIndex < 6
+          ? {}
+          : {
+              witnessSet: evidence.witnessSet,
+              anchorWitnessSetHash: evidence.state.bad_tx.witness_set_hash,
+            }),
+        label: `min-fee forced field ${fieldIndex}`,
+      }),
+    ),
+  };
+};
+
 const selectedTxId = (
   classification: Extract<
     CanonicalBlockClassification,
@@ -626,7 +672,7 @@ const captureRemoval = async ({
 
 const resolveFieldCarriages = async (
   config: BoundConfig,
-  admitted: AdmittedMinFeeArtifact,
+  admitted: Pick<AdmittedMinFeeArtifact, "fieldPlans">,
 ): Promise<
   Readonly<{ publications: readonly UTxO[]; certificates: readonly UTxO[] }>
 > => {
@@ -669,14 +715,30 @@ const createTransactionPort = (
 ): LinearFamilyTransactionPort<"minFee"> => ({
   portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "minFee",
-  prepare: async ({ evidence, classification }) =>
-    await prepareMinFeeArtifact({
+  prepare: async ({ evidence, classification }) => {
+    if (
+      classification.category !== "minFee" ||
+      classification.headerHash !== evidence.headerHash ||
+      classification.selected.violationId !== MIN_FEE_VIOLATION_ID
+    )
+      throw new Error("min-fee classification differs from canonical evidence");
+    if (classification.selected.detectionId.startsWith("min-fee:forced:")) {
+      const artifact = await prepareMinFeeForcedArtifact({
+        block: evidence,
+        detectionId: classification.selected.detectionId,
+      });
+      if (classification.selected.position !== BigInt(artifact.forcedIndex))
+        throw new Error("min-fee forced classification position changed");
+      return artifact;
+    }
+    return await prepareMinFeeArtifact({
       evidence,
       classification,
       categoryId: config.category.categoryId,
-    }),
+    });
+  },
   capture: async ({ action, artifact }) => {
-    const admitted = admitMinFeeArtifact(
+    const admitted = await admitWorkflowArtifact(
       artifact,
       config.signer.paymentKeyHash,
     );
@@ -710,6 +772,25 @@ const createTransactionPort = (
       });
     }
     if (input.stage === "step_01") {
+      if (admitted.forced !== null)
+        return Object.freeze({
+          transaction: await captureLocallyEvaluatedTransaction(
+            async (preSubmitBoundary) => {
+              await submitMinFeeStep01Forced({
+                lucid: config.lucid,
+                contracts: config.contracts,
+                categoryId: config.category.categoryId,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                state: admitted.forced.evidence.state,
+                forcedSource: admitted.forced.forcedSource,
+                referenceScriptUtxo: config.referenceScripts.steps[0],
+                preSubmitBoundary,
+                awaitConfirmation: false,
+              });
+            },
+          ),
+        });
       const chunks = await resolveDirectFirstProofChunks({
         action,
         lucid: config.lucid,
@@ -761,7 +842,7 @@ const createTransactionPort = (
               certificateUtxos: carriages.certificates,
               existingPublicationUtxos: carriages.publications,
               publishMissingCarriages: false,
-              publishCarriages: false,
+              publishCarriages: admitted.forced !== null,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -925,10 +1006,10 @@ export const createManifestBoundMinFeeWorkflow = async (
       network: binding.network,
       signer: config.signer,
       publications: l1.publications,
-      requirementForAction: ({ action, artifact }) => {
+      requirementForAction: async ({ action, artifact }) => {
         const input = record(action.input, "min-fee prerequisite action");
         if (input.stage !== "step_02") return null;
-        const admitted = admitMinFeeArtifact(
+        const admitted = await admitWorkflowArtifact(
           artifact,
           config.signer.paymentKeyHash,
         );
@@ -966,7 +1047,8 @@ export const createManifestBoundMinFeeWorkflow = async (
     publications: l1.publications,
     proofCborForAction: ({ action, artifact }) => {
       const input = record(action.input, "min-fee proof prerequisite action");
-      return input.stage === "step_01"
+      return input.stage === "step_01" &&
+        artifact.schemaVersion !== MIN_FEE_FORCED_ARTIFACT
         ? admitMinFeeArtifact(artifact, config.signer.paymentKeyHash).artifact
             .txMembershipProofCbor
         : null;

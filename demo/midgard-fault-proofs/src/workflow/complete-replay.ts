@@ -70,6 +70,7 @@ import {
   scanInputSetUniqueness,
 } from "../input-set-uniqueness/scan.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
+import { detectMinFeeForcedReplay } from "../min-fee-forced.js";
 import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset-limit/replay.js";
 import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
 import { detectMissingScriptSourceCanonicalViolations } from "../missing-script-source/authenticated-replay.js";
@@ -1531,7 +1532,10 @@ export const L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 /** Complete exact-size/header-schedule fee scan of every transaction leaf. */
 export const MIN_FEE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["minFee"],
-  detectMinFees,
+  async (evidence) => [
+    ...(await detectMinFees(evidence)),
+    ...detectMinFeeForcedReplay(evidence),
+  ],
 );
 
 /** Complete input-set scan for every accepted transaction leaf. */
