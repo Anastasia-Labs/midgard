@@ -1,35 +1,28 @@
-/**
- * `value-not-preserved` deployed-contract record (offchain plan §2/§4).
- *
- * The family predates its catalogue registration, exactly like
- * `native-script-decoding`: the `SupportedFaultProofCategoryName` entry, the
- * SDK chain builder and the category-id constant are parent-owned surfaces
- * that land at registration. Until then, submitters take this explicit
- * already-resolved record instead of going through
- * `resolveFaultProofDeploymentContracts`, and the emulator harness assembles
- * it from the same parameterized chain whose step-01 hash the tests register
- * as an extra catalogue category.
- *
- * Blueprint-declared parameter order per step (pinned here; the arity guard
- * checks count, not order):
- *
- * - step_01: `[step_02_validator_script_hash, computation_thread_token_policy_id, hub_oracle]`
- * - step_02: `[step_03_validator_script_hash, computation_thread_token_policy_id, field_preimage_certificate_policy_id]`
- * - step_03: `[step_04_validator_script_hash, computation_thread_token_policy_id, field_preimage_certificate_policy_id]`
- * - step_04: `[fraud_proof_token_policy_id, fraud_proof_token_address, computation_thread_token_policy_id]`
- *
- * Note the family's own order differs from native-script-decoding's on both
- * ends: steps 02 and 03 both carry the §8.6 field-preimage certificate policy
- * (each opens a committed field through the §8.8 door), and step-04 leads
- * with the fraud-proof pair.
- */
 import type { Script } from "@lucid-evolution/lucid";
 
 /** Human-readable family label used in every local failure message. */
 export const VALUE_NOT_PRESERVED_CATEGORY_LABEL = "value-not-preserved";
 
-/** Blueprint titles of the four parameterized step validators. */
+/** Blueprint titles of the registered family validators. */
 export const VALUE_NOT_PRESERVED_BLUEPRINT_TITLES = {
+  unionAcceptedSource:
+    "fraud_proofs/value_not_preserved/union_accepted_source.main.spend",
+  unionForcedSource:
+    "fraud_proofs/value_not_preserved/union_forced_source.main.spend",
+  unionEvent: "fraud_proofs/value_not_preserved/union_event.main.spend",
+  unionPreState: "fraud_proofs/value_not_preserved/union_pre_state.main.spend",
+  unionInputs: "fraud_proofs/value_not_preserved/union_inputs.main.spend",
+  unionInputValue:
+    "fraud_proofs/value_not_preserved/union_input_value.main.spend",
+  unionAssets: "fraud_proofs/value_not_preserved/union_assets.main.spend",
+  unionFieldGrammar:
+    "fraud_proofs/value_not_preserved/union_field_grammar.main.spend",
+  unionOutputs: "fraud_proofs/value_not_preserved/union_outputs.main.spend",
+  unionOutputScan:
+    "fraud_proofs/value_not_preserved/union_output_scan.main.spend",
+  unionMint: "fraud_proofs/value_not_preserved/union_mint.main.spend",
+  unionUpdate: "fraud_proofs/value_not_preserved/union_update.main.spend",
+  unionTerminal: "fraud_proofs/value_not_preserved/union_terminal.main.spend",
   step01: "fraud_proofs/value_not_preserved/step_01.main.spend",
   step02: "fraud_proofs/value_not_preserved/step_02.main.spend",
   step03: "fraud_proofs/value_not_preserved/step_03.main.spend",
@@ -52,6 +45,19 @@ export type ValueNotPreservedStepContract = {
  * separately from the deployment they are actually talking to.
  */
 export type ValueNotPreservedContracts = {
+  readonly unionAcceptedSource: ValueNotPreservedStepContract;
+  readonly unionForcedSource: ValueNotPreservedStepContract;
+  readonly unionEvent: ValueNotPreservedStepContract;
+  readonly unionPreState: ValueNotPreservedStepContract;
+  readonly unionInputs: ValueNotPreservedStepContract;
+  readonly unionInputValue: ValueNotPreservedStepContract;
+  readonly unionAssets: ValueNotPreservedStepContract;
+  readonly unionFieldGrammar: ValueNotPreservedStepContract;
+  readonly unionOutputs: ValueNotPreservedStepContract;
+  readonly unionOutputScan: ValueNotPreservedStepContract;
+  readonly unionMint: ValueNotPreservedStepContract;
+  readonly unionUpdate: ValueNotPreservedStepContract;
+  readonly unionTerminal: ValueNotPreservedStepContract;
   /** Steps 01..04, in order. */
   readonly steps: readonly [
     ValueNotPreservedStepContract,
@@ -72,10 +78,30 @@ export type ValueNotPreservedContracts = {
   readonly stateQueuePolicyId: string;
   /**
    * Policy id steps 02/03 were parameterized with for §8.6 field-preimage
-   * certificates. In the emulator harness this is the always-succeeds
-   * stand-in; in production it is the real certificate policy. The step-03
+   * certificates. The installed workflow binds the published certificate
+   * policy to its deployment manifest. The step-03
    * submitter selects §8.4 tiers purely from preimage size, so a field over
    * the tier-2 window would name its §8.6 manifest by this policy id.
    */
   readonly fieldPreimageCertificatePolicyId: string;
 };
+
+export const CONSERVATION_POSITIONS = [
+  "unionAcceptedSource",
+  "unionForcedSource",
+  "unionEvent",
+  "unionPreState",
+  "unionInputs",
+  "unionInputValue",
+  "unionAssets",
+  "unionFieldGrammar",
+  "unionOutputs",
+  "unionOutputScan",
+  "unionMint",
+  "unionUpdate",
+  "unionTerminal",
+] as const;
+export const conservationManifestName = (
+  position: (typeof CONSERVATION_POSITIONS)[number],
+): string =>
+  `fraudProofValueNotPreserved${position[0]!.toUpperCase()}${position.slice(1)}`;

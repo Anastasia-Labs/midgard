@@ -245,6 +245,7 @@ export type ValueNotPreservedFixtureSpentInput = {
 };
 
 export type ValueNotPreservedFixture = {
+  readonly nativeTx: MidgardNativeTxFull;
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
   readonly nativeTxId: string;
@@ -262,6 +263,7 @@ export type ValueNotPreservedFixture = {
     readonly spentInputs: readonly {
       readonly input: MidgardTxInput;
       readonly descriptorCbor: string;
+      readonly outputCbor: string;
       readonly spentValue: MidgardValue;
     }[];
   };
@@ -371,6 +373,7 @@ export const buildValueNotPreservedFixture = async ({
   const ledgerSpentInputs: {
     readonly input: MidgardTxInput;
     readonly descriptorCbor: string;
+    readonly outputCbor: string;
     readonly spentValue: MidgardValue;
   }[] = [];
   for (const { input, spentValue } of spentInputs) {
@@ -388,6 +391,10 @@ export const buildValueNotPreservedFixture = async ({
     ledgerSpentInputs.push({
       input,
       descriptorCbor: material.descriptorCbor.toString("hex"),
+      outputCbor: encodeMidgardTxOutput({
+        address: VNP_LEDGER_OUTPUT_ADDRESS,
+        value: spentValue,
+      }).toString("hex"),
       spentValue,
     });
   }
@@ -401,6 +408,7 @@ export const buildValueNotPreservedFixture = async ({
   const ledgerRootHex = trieRootHex(ledgerTrie);
 
   return {
+    nativeTx: badTx,
     transactionsRoot: trieRootHex(txTrie),
     l2TransactionCount: 2n,
     nativeTxId: badTxId,
@@ -434,11 +442,13 @@ export const buildValueNotPreservedFixture = async ({
 // Harness, committed header, reference scripts, removal category
 // ---------------------------------------------------------------------------
 
-export const makeValueNotPreservedEmulatorHarness = async () => {
+export const makeValueNotPreservedEmulatorHarness = async ({
+  alwaysFraudProofCatalogue = true,
+}: { readonly alwaysFraudProofCatalogue?: boolean } = {}) => {
   const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realValueNotPreserved: true,
-      alwaysFraudProofCatalogue: true,
+      alwaysFraudProofCatalogue,
     },
   });
   const family = harness.contracts.valueNotPreserved;

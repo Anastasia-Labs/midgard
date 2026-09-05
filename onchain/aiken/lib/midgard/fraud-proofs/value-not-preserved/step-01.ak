@@ -168,14 +168,12 @@ pub fn unit_matches_claim_v1(
 // ## Step-01 thread types
 
 pub type Args {
-  /// The blessed binding of the challenged transaction to the challenged
-  /// block: counted `transactions_root` plus `plutarch_phas_raw` membership,
-  /// through `common.pass_native_tx_to_next_step` and no other path.
-  tx_inclusion: NativeTxInclusionArgs,
-  /// The single asset this thread accuses the transaction of not conserving.
-  claimed_asset: ClaimedAssetV1,
-  /// The direction of the claimed imbalance.
-  claimed_direction: ClaimedImbalanceDirectionV1,
+  Args {
+    tx_inclusion: NativeTxInclusionArgs,
+    claimed_asset: ClaimedAssetV1,
+    claimed_direction: ClaimedImbalanceDirectionV1,
+  }
+  LaunchUnion { input_index: Int, output_index: Int, claim: Data }
 }
 
 pub type Datum =

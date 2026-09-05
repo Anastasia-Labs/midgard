@@ -11,19 +11,24 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, continue, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/value_not_preserved/step_01.{
-  Args, ClaimedAssetInflated, Datum, SpendRedeemer, TokenAsset,
+  Args, ClaimedAssetInflated, Datum, LaunchUnion, SpendRedeemer, TokenAsset,
   claimed_asset_is_well_formed_v1,
 }
 use midgard/fraud_proofs/value_not_preserved/step_02
 use midgard/fraud_proofs/value_not_preserved/thread_fixture_v1 as tf
+use midgard/fraud_proofs/value_not_preserved/union.{
+  AcceptedImbalance, ConservationClaim, ForcedConservation,
+}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
+  accepted_source_script_hash: ScriptHash,
+  forced_source_script_hash: ScriptHash,
 ) {
   spend(
     datum: Option<Datum>,
@@ -41,6 +46,26 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
+      ct.Continue(LaunchUnion { input_index, output_index, claim }) -> {
+        expect Some(step_datum) = datum
+        let _, _, _, input_state, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        expect input_state == None
+        expect typed_claim: ConservationClaim = claim
+        expect output_state == claim
+        when typed_claim is {
+          AcceptedImbalance { asset, .. } ->
+            claimed_asset_is_well_formed_v1(asset) && output_hash == accepted_source_script_hash
+          ForcedConservation -> output_hash == forced_source_script_hash
+        }
+      }
       ct.Continue(Args { tx_inclusion, claimed_asset, claimed_direction }) -> {
         // 1. Generic validations for passing the provided challenged tx to
         //    the next step must pass — the one blessed binding path.
@@ -130,6 +155,8 @@ fn run_step_01(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
+    fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
     Some(fixture.step_datum_without_state()),
     ct.Continue(
       Args {
