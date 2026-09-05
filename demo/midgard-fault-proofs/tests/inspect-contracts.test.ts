@@ -206,8 +206,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // field-6 shapes unprovable, re-parameterizing steps 01–03, so the family's
 // applied step-01 hash and the fold move. Derived under the working-tree
 // testnet blueprint (sha256 137e608c…). `085027d4…` -> `b3474673…`.
+// Re-pinned 2026-09-04 (Wave 2, `resolvedOutputNonCanonical`): step 04 now
+// refuses to advance a finishable reconstruction, re-parameterizing steps
+// 01–04, so the family's applied step-01 hash and the fold move. Derived
+// under the working-tree testnet blueprint (sha256 494cbdfe…).
+// `b3474673…` -> `07f587d7…`.
 const Q13_CATALOGUE_ROOT =
-  "b3474673abc758dda35582f015dd8702a0461ec4d141fb4bc22ca20ec604eab8";
+  "07f587d7754fa94d3ba91c1fb5c25fd7a96294c4d8d86dc1d373358175d7213b";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
