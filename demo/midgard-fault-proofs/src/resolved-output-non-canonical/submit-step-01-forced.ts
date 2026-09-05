@@ -1,7 +1,13 @@
 import {
+  type ForcedInclusionTxV1,
+  type Header,
+  type OutputReference,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  RejectionReason,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+  type RootMembershipProof,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -29,6 +35,50 @@ import {
   ResolvedOutputStep02DatumSchema,
 } from "./schemas.js";
 
+/**
+ * The forced leaf as step 01 authenticates it: the challenged header, the
+ * leaf's membership under its counted forced-transactions root, and the
+ * direction the subject claims (always wrongful rejection for this family's
+ * forced door, since an accepted forced transaction carries no typed reason).
+ */
+export type ResolvedOutputForcedSource = Readonly<{
+  header: Header;
+  membership: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  direction: bigint;
+}>;
+
+/**
+ * Off-chain pre-check of the forced door. The validator repeats every
+ * binding; this only refuses to sign a transaction the chain would refuse.
+ */
+export const requireResolvedOutputForcedSource = (
+  finding: ResolvedOutputEvidence,
+  source: ResolvedOutputForcedSource,
+): ResolvedOutputForcedSource => {
+  const fail = (message: string): never => {
+    throw new Error(`resolved-output-non-canonical: ${message}`);
+  };
+  if (
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION ||
+    source.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
+  )
+    return fail("forced source direction is not a wrongful rejection");
+  const leaf = source.membership.value;
+  if (leaf.tx_id !== finding.subject.transaction_id)
+    return fail("forced leaf transaction differs from the subject");
+  if (leaf.verdict === "ForcedTxValid")
+    return fail("forced leaf carries no typed rejection reason");
+  if (
+    finding.subject.rejection_reason === null ||
+    Data.to(leaf.verdict.ForcedTxInvalid.reason, RejectionReason) !==
+      Data.to(finding.subject.rejection_reason, RejectionReason)
+  )
+    return fail("forced leaf reason differs from the bound subject");
+  if (source.header.prevUtxosRoot !== finding.resolved.priorRoot)
+    return fail("challenged header prior root differs from the evidence");
+  return source;
+};
+
 export const submitResolvedOutputNonCanonicalStep01Forced = async ({
   lucid,
   contracts,
@@ -47,12 +97,13 @@ export const submitResolvedOutputNonCanonicalStep01Forced = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly finding: ResolvedOutputEvidence;
-  readonly forcedSource: Readonly<Record<string, unknown>>;
+  readonly forcedSource: ResolvedOutputForcedSource;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   classifyResolvedOutputNonCanonicalFinding(finding);
+  requireResolvedOutputForcedSource(finding, forcedSource);
   const stepIndex = 0;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
