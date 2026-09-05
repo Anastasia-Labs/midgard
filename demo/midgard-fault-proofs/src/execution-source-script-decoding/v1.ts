@@ -169,13 +169,15 @@ export const createManifestBoundExecutionSourceScriptDecodingWorkflow = async (
   const chain =
     binding.resolvedContracts.contracts.executionSourceScriptDecoding;
   const hubOraclePolicyId = rawBinding.deploymentInfo.hubOracleMint?.scriptHash;
+  const stateQueuePolicyId = rawBinding.resolvedContracts.stateQueuePolicyId;
   if (
     chain === undefined ||
     chain.steps.length !== 5 ||
-    hubOraclePolicyId === undefined
+    hubOraclePolicyId === undefined ||
+    stateQueuePolicyId === undefined
   )
     throw new Error(
-      "executionSourceScriptDecoding manifest omitted five-step chain",
+      "executionSourceScriptDecoding manifest omitted five-step chain or state-queue policy",
     );
   const bindReference = (name: string, utxo: UTxO) =>
     requireManifestBoundReferenceScriptUtxo({
@@ -220,6 +222,7 @@ export const createManifestBoundExecutionSourceScriptDecodingWorkflow = async (
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: binding.resolvedContracts.contracts.fraudProof,
     hubOraclePolicyId,
+    stateQueuePolicyId,
   };
   const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,

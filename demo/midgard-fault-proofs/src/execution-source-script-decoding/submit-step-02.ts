@@ -38,28 +38,19 @@ export type ExecutionSourceAuthenticationData = Omit<
   "input_index" | "output_index"
 >;
 
-export const submitExecutionSourceScriptDecodingStep02 = async ({
+/** The thread as step 02 holds it: its UTxO, token, and bound execution. */
+export const readExecutionSourceBoundState = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
-  evidence,
-  authentication,
-  referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
-  lucid: LucidEvolution;
-  contracts: ExecutionSourceScriptDecodingContracts;
-  categoryId: string;
-  signer: ResolvedProverSigner;
-  threadOutRef: string;
-  evidence: ExecutionSourceScriptDecodingEvidence;
-  authentication: ExecutionSourceAuthenticationData;
-  referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  awaitConfirmation?: boolean;
+  readonly lucid: LucidEvolution;
+  readonly contracts: ExecutionSourceScriptDecodingContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -79,34 +70,62 @@ export const submitExecutionSourceScriptDecodingStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
-  if (
-    bound.subject.transaction_id !== evidence.finding.subject.transaction_id ||
-    bound.execution_index !== BigInt(evidence.finding.executionIndex) ||
-    authentication.execution_siblings.length !==
-      evidence.descriptor.executionMembership.siblings.length
-  )
-    throw new Error(
-      `${FAMILY}: retained execution authentication differs from bound subject`,
-    );
-  const source: Data.Static<typeof AuthenticatedExecutionSourceSchema> = {
-    bound,
-    prior_ledger_root: authentication.machine_state.prior_ledger_root,
-    source_index: authentication.source_index,
-    origin_kind: authentication.origin_kind,
-    source_key: authentication.source_key,
-    language_tag: authentication.language_tag,
-    script_hash: authentication.script_hash,
-    total_length: authentication.total_length,
-    item_commitment: authentication.item_commitment,
-  };
-  if (
-    source.item_commitment !== evidence.itemCommitmentHex ||
-    source.total_length !== BigInt(evidence.itemLength) ||
-    source.source_index !== BigInt(evidence.descriptor.sourceIndex)
-  )
-    throw new Error(
-      `${FAMILY}: authenticated source descriptor was substituted`,
-    );
+  return { threadUtxo, threadToken, bound };
+};
+
+/** The step-03 state step 02 forwards for a retained authentication. */
+export const executionSourceAuthenticatedSource = (
+  bound: Data.Static<typeof ExecutionSourceBoundSchema>,
+  authentication: ExecutionSourceAuthenticationData,
+): Data.Static<typeof AuthenticatedExecutionSourceSchema> => ({
+  bound,
+  prior_ledger_root: authentication.machine_state.prior_ledger_root,
+  source_index: authentication.source_index,
+  origin_kind: authentication.origin_kind,
+  source_key: authentication.source_key,
+  language_tag: authentication.language_tag,
+  script_hash: authentication.script_hash,
+  total_length: authentication.total_length,
+  item_commitment: authentication.item_commitment,
+});
+
+/**
+ * Submits exactly the retained authentication and successor state the caller
+ * names, so a lifecycle suite can drive a substituted script hash, descriptor
+ * or execution coordinate through the real step-02 validator. The classified
+ * builder below checks them against the retained evidence first.
+ */
+export const submitExecutionSourceScriptDecodingStep02Raw = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  authentication,
+  source,
+  referenceScriptUtxo,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: ExecutionSourceScriptDecodingContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly authentication: ExecutionSourceAuthenticationData;
+  readonly source: Data.Static<typeof AuthenticatedExecutionSourceSchema>;
+  readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const stepIndex = 1;
+  const { threadUtxo, threadToken } = await readExecutionSourceBoundState({
+    lucid,
+    contracts,
+    categoryId,
+    signer,
+    threadOutRef,
+  });
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: source } as never,
     ExecutionSourceStep03DatumSchema as never,
@@ -162,4 +181,39 @@ export const submitExecutionSourceScriptDecodingStep02 = async ({
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: unresolved layout`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+};
+
+export const submitExecutionSourceScriptDecodingStep02 = async ({
+  evidence,
+  ...rest
+}: Omit<
+  Parameters<typeof submitExecutionSourceScriptDecodingStep02Raw>[0],
+  "source"
+> & {
+  readonly evidence: ExecutionSourceScriptDecodingEvidence;
+}) => {
+  const { authentication } = rest;
+  const { bound } = await readExecutionSourceBoundState(rest);
+  if (
+    bound.subject.transaction_id !== evidence.finding.subject.transaction_id ||
+    bound.execution_index !== BigInt(evidence.finding.executionIndex) ||
+    authentication.execution_siblings.length !==
+      evidence.descriptor.executionMembership.siblings.length
+  )
+    throw new Error(
+      `${FAMILY}: retained execution authentication differs from bound subject`,
+    );
+  const source = executionSourceAuthenticatedSource(bound, authentication);
+  if (
+    source.item_commitment !== evidence.itemCommitmentHex ||
+    source.total_length !== BigInt(evidence.itemLength) ||
+    source.source_index !== BigInt(evidence.descriptor.sourceIndex)
+  )
+    throw new Error(
+      `${FAMILY}: authenticated source descriptor was substituted`,
+    );
+  return await submitExecutionSourceScriptDecodingStep02Raw({
+    ...rest,
+    source,
+  });
 };

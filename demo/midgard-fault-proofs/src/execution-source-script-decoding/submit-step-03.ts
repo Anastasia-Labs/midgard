@@ -35,6 +35,102 @@ import {
 } from "./schemas.js";
 
 const FAMILY = "execution-source-script-decoding";
+
+/**
+ * Submits exactly the first-chunk proof and successor state the caller names,
+ * so a lifecycle suite can drive a substituted chunk or a forged bind result
+ * through the real step-03 validator. The classified builder below derives
+ * both from the retained evidence.
+ */
+export const submitExecutionSourceScriptDecodingStep03Raw = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  firstChunk,
+  nextState,
+  referenceScriptUtxo,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: ExecutionSourceScriptDecodingContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly firstChunk: ReturnType<typeof buildNativeScriptDecodingChunkProof>;
+  readonly nextState: Data.Static<typeof ExecutionSourceScanStateSchema>;
+  readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const stepIndex = 2;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    family: FAMILY,
+    stepIndex,
+    threadOutRef,
+  });
+  const nextDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
+    ExecutionSourceStep04DatumSchema as never,
+  );
+  const outputMatches = computationThreadOutputPredicate({
+    address: contracts.steps[3].spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
+    family: FAMILY,
+    stepIndex,
+  });
+  let outputIndex: bigint | undefined;
+  const redeemer = ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, `${FAMILY} step 03`);
+    const inputIndex = requireInputIndex(ctx, threadUtxo, `${FAMILY} step 03`);
+    outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      outputMatches,
+      `${FAMILY} step 03`,
+    );
+    return Data.to(
+      {
+        Continue: [
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            first_chunk: firstChunk,
+          },
+        ],
+      } as never,
+      ExecutionSourceStep03RedeemerSchema as never,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  signer.selectWallet(lucid);
+  const txHash = await submitLinearFaultContinue({
+    lucid,
+    signerPaymentKeyHash: signer.paymentKeyHash,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[stepIndex].spendingScript,
+    stepRole: `${FAMILY} step 03`,
+    nextAddress: contracts.steps[3].spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
+  if (outputIndex === undefined)
+    throw new Error(`${FAMILY}: unresolved layout`);
+  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+};
+
 export const submitExecutionSourceScriptDecodingStep03 = async ({
   lucid,
   contracts,

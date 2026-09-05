@@ -1,9 +1,5 @@
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  requireLinearFaultStepState,
-  requireLinearFaultThreadUtxo,
-} from "../linear-fault-family.js";
 import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -14,67 +10,47 @@ import {
   type ExecutionSourceScriptDecodingEvidence,
   executionSourceScriptDecodingEvidenceCloses,
 } from "./family.js";
-import {
-  ExecutionSourceScanStateSchema,
-  ExecutionSourceStep05DatumSchema,
-  ExecutionSourceStep05RedeemerSchema,
-} from "./schemas.js";
+import { ExecutionSourceStep05RedeemerSchema } from "./schemas.js";
+import { readExecutionSourceScanState } from "./submit-step-04.js";
 
 const FAMILY = "execution-source-script-decoding";
-export const submitExecutionSourceScriptDecodingStep05 = async ({
+
+/**
+ * Burns the thread and mints the permanent proof from whatever terminal state
+ * the thread holds, with no off-chain polarity guard: step 05 itself is the
+ * decisive twin (`terminal_contradiction_v1`), and a lifecycle suite drives an
+ * honest verdict through it to prove the refusal happens on chain.
+ */
+export const submitExecutionSourceScriptDecodingStep05Raw = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
-  evidence,
   referenceScriptUtxo,
   witnessReferenceScripts,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
-  lucid: LucidEvolution;
-  contracts: ExecutionSourceScriptDecodingContracts;
-  categoryId: string;
-  signer: ResolvedProverSigner;
-  threadOutRef: string;
-  evidence: ExecutionSourceScriptDecodingEvidence;
-  referenceScriptUtxo: UTxO;
-  witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  awaitConfirmation?: boolean;
+  readonly lucid: LucidEvolution;
+  readonly contracts: ExecutionSourceScriptDecodingContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+  const { threadUtxo, threadToken } = await readExecutionSourceScanState({
     lucid,
     contracts,
     categoryId,
-    family: FAMILY,
-    stepIndex,
-    threadOutRef,
-  });
-  const state = requireLinearFaultStepState<
-    Data.Static<typeof ExecutionSourceScanStateSchema>
-  >({
-    threadUtxo,
     signer,
-    schema: ExecutionSourceStep05DatumSchema as never,
-    family: FAMILY,
+    threadOutRef,
     stepIndex,
   });
-  if (
-    !executionSourceScriptDecodingEvidenceCloses(evidence) ||
-    state.result_class === -1n ||
-    state.checkpoint_hash !==
-      executionSourceScriptDecodingCheckpoint({
-        evidence,
-        controlCbor: state.control_cbor,
-        nextExpectedScriptHash: state.next_expected_script_hash,
-      })
-  )
-    throw new Error(
-      `${FAMILY}: terminal state is not the retained contradiction`,
-    );
   return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
@@ -96,4 +72,30 @@ export const submitExecutionSourceScriptDecodingStep05 = async ({
     preSubmitBoundary,
     awaitConfirmation,
   });
+};
+
+export const submitExecutionSourceScriptDecodingStep05 = async ({
+  evidence,
+  ...rest
+}: Parameters<typeof submitExecutionSourceScriptDecodingStep05Raw>[0] & {
+  readonly evidence: ExecutionSourceScriptDecodingEvidence;
+}) => {
+  const { state } = await readExecutionSourceScanState({
+    ...rest,
+    stepIndex: 4,
+  });
+  if (
+    !executionSourceScriptDecodingEvidenceCloses(evidence) ||
+    state.result_class === -1n ||
+    state.checkpoint_hash !==
+      executionSourceScriptDecodingCheckpoint({
+        evidence,
+        controlCbor: state.control_cbor,
+        nextExpectedScriptHash: state.next_expected_script_hash,
+      })
+  )
+    throw new Error(
+      `${FAMILY}: terminal state is not the retained contradiction`,
+    );
+  return await submitExecutionSourceScriptDecodingStep05Raw(rest);
 };

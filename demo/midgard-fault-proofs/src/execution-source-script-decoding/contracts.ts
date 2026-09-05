@@ -40,6 +40,8 @@ export type ExecutionSourceScriptDecodingContracts = Readonly<{
     readonly spendingScriptAddress: string;
   };
   hubOraclePolicyId: string;
+  /** The accepted door (`submitMissingNativeScriptTxBinding`) reads the state-queue block by this policy. */
+  stateQueuePolicyId: string;
 }>;
 type Blueprint = Readonly<{
   validators: readonly Readonly<{
