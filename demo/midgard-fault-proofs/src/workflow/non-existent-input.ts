@@ -1,8 +1,8 @@
 import {
   FraudProofComputationThreadStepDatum,
-  NonExistentInputStep02Datum,
-  NonExistentInputStep03Datum,
-  NonExistentInputStep04Datum,
+  NonExistentInputStep02ThreadDatum,
+  NonExistentInputStep03ThreadDatum,
+  NonExistentInputStep04ThreadDatum,
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
@@ -16,14 +16,29 @@ import { neSubmitStep02 } from "../ne-submit-step-02.js";
 import { neSubmitStep03 } from "../ne-submit-step-03.js";
 import { neSubmitStep04 } from "../ne-submit-step-04.js";
 import {
+  admitNonExistentInputForcedArtifact,
+  NON_EXISTENT_INPUT_FORCED_ARTIFACT,
+  nonExistentInputForcedArtifact,
+} from "../non-existent-input/artifact.js";
+import {
+  nonExistentInputForcedFieldPlan,
+  submitNonExistentInputForcedStep,
+} from "../non-existent-input/submit.js";
+import {
+  detectNonExistentInputWrongfulRejections,
+  NON_EXISTENT_INPUT_WRONGFUL_REJECTION_VIOLATION_ID,
+} from "../non-existent-input/wrongful-rejection.js";
+import {
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
+import { resolveNonExistentInputDeploymentContracts } from "../runtime.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import { completeCanonicalReplayPredecessorEvidence } from "./complete-replay.js";
 import {
   type CompleteCanonicalReplayContext,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -244,15 +259,128 @@ const createTransactionPort = (
 ): LinearFamilyTransactionPort<"nonExistentInput"> => ({
   portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "nonExistentInput",
-  prepare: async ({ evidence, replayContext, classification }) =>
-    await prepareLedgerAbsenceArtifact({
+  prepare: async ({ evidence, replayContext, classification }) => {
+    if (
+      classification.selected.violationId ===
+      NON_EXISTENT_INPUT_WRONGFUL_REJECTION_VIOLATION_ID
+    ) {
+      const detections = await detectNonExistentInputWrongfulRejections({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorEvidence({
+          evidence,
+          context: replayContext,
+        }),
+      });
+      const detected = detections.find(
+        (item) => item.detectionId === classification.selected.detectionId,
+      );
+      if (
+        classification.category !== "nonExistentInput" ||
+        classification.headerHash !== evidence.headerHash ||
+        detected === undefined
+      )
+        throw new Error("nonExistentInput: forced classification changed");
+      return nonExistentInputForcedArtifact(detected.prepared);
+    }
+    return await prepareLedgerAbsenceArtifact({
       category: "nonExistentInput",
       evidence,
       replayContext,
       classification,
       owner: config.signer.paymentKeyHash,
-    }),
+    });
+  },
   capture: async ({ action, artifact }) => {
+    if (artifact.schemaVersion === NON_EXISTENT_INPUT_FORCED_ARTIFACT) {
+      const prepared = await admitNonExistentInputForcedArtifact(artifact);
+      if (prepared.headerHash !== config.binding.definition.headerHash)
+        throw new Error("nonExistentInput: forced workflow header changed");
+      const input = actionInput(action);
+      if (input.stage === "remove") return await captureRemoval(config, input);
+      if (input.stage === "init")
+        return {
+          transaction: await captureLocallyEvaluatedTransaction(
+            async (preSubmitBoundary) => {
+              await submitInit({
+                lucid: config.lucid,
+                blueprint: config.binding.blueprint,
+                deploymentInfo: config.binding.deploymentInfo,
+                network: config.binding.network,
+                signer: config.signer,
+                fraudCategory: "nonExistentInput",
+                fraudulentBlockOutRef: stringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+                fraudulentHeaderHash: prepared.headerHash,
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+                preSubmitBoundary,
+                awaitConfirmation: false,
+              });
+            },
+          ),
+        };
+      const stepIndex = (
+        ["step_01", "step_02", "step_03", "step_04"] as const
+      ).findIndex((stage) => stage === input.stage);
+      if (stepIndex < 0 || stepIndex > 3)
+        throw new Error("nonExistentInput: unknown forced stage");
+      const { contracts, nonExistentInputCategory } =
+        await resolveNonExistentInputDeploymentContracts({
+          blueprint: config.binding.blueprint,
+          deploymentInfo: config.binding.deploymentInfo,
+          network: config.binding.network,
+          requireFraudProofSpend: true,
+        });
+      const carriage =
+        stepIndex === 1
+          ? await resolveField(
+              config,
+              nonExistentInputForcedFieldPlan(
+                prepared,
+                config.signer.paymentKeyHash,
+              ),
+            )
+          : null;
+      return {
+        transaction: await captureLocallyEvaluatedTransaction(
+          async (preSubmitBoundary) => {
+            await submitNonExistentInputForcedStep({
+              lucid: config.lucid,
+              contracts: {
+                steps: contracts.nonExistentInput.steps,
+                computationThread: contracts.computationThread,
+                fraudProof: contracts.fraudProof,
+              },
+              categoryId: nonExistentInputCategory.categoryId,
+              signer: config.signer,
+              threadOutRef: stringField(input, "threadOutRef"),
+              prepared,
+              stepIndex: stepIndex as 0 | 1 | 2 | 3,
+              referenceScripts: {
+                steps: config.referenceScripts.steps,
+                computationThreadMint:
+                  config.referenceScripts.witnesses.computationThreadMint,
+                fraudProofMint:
+                  config.referenceScripts.witnesses.fraudProofMint,
+              },
+              carriageUtxos:
+                carriage === null
+                  ? []
+                  : [
+                      ...carriage.publications,
+                      ...(carriage.certificate === undefined
+                        ? []
+                        : [carriage.certificate]),
+                    ],
+              certificatePolicyId: config.certificate.policyId,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            });
+          },
+        ),
+      };
+    }
     const admitted = admitLedgerAbsenceArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -452,9 +580,9 @@ export const createManifestBoundNonExistentInputWorkflow = async (
     proverCredential: config.signer.paymentKeyHash,
     stepDatumSchemas: [
       FraudProofComputationThreadStepDatum,
-      NonExistentInputStep02Datum,
-      NonExistentInputStep03Datum,
-      NonExistentInputStep04Datum,
+      NonExistentInputStep02ThreadDatum,
+      NonExistentInputStep03ThreadDatum,
+      NonExistentInputStep04ThreadDatum,
     ],
   });
   assertManifestBoundWorkflowSigner({
@@ -551,8 +679,27 @@ export const createManifestBoundNonExistentInputWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    requirementForAction: ({ action, artifact }) => {
+    requirementForAction: async ({ action, artifact }) => {
       if (actionInput(action).stage !== "step_02") return null;
+      if (artifact.schemaVersion === NON_EXISTENT_INPUT_FORCED_ARTIFACT) {
+        const prepared = await admitNonExistentInputForcedArtifact(artifact);
+        return {
+          planned: nonExistentInputForcedFieldPlan(
+            prepared,
+            config.signer.paymentKeyHash,
+          ),
+          compactCbor:
+            prepared.forcedSource.membership.value.source.compact_cbor,
+          witnessSetCompactCbor:
+            prepared.forcedSource.membership.value.source
+              .witness_set_compact_cbor,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        } satisfies FieldCarriageRequirement;
+      }
       const admitted = admitLedgerAbsenceArtifact(
         artifact,
         config.signer.paymentKeyHash,
@@ -583,6 +730,8 @@ export const createManifestBoundNonExistentInputWorkflow = async (
     publications: l1.publications,
     maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
     proofCborForAction: ({ action, artifact }) => {
+      if (artifact.schemaVersion === NON_EXISTENT_INPUT_FORCED_ARTIFACT)
+        return null;
       const stage = actionInput(action).stage;
       const admitted = admitLedgerAbsenceArtifact(
         artifact,

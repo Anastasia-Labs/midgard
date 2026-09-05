@@ -57,7 +57,11 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   { category: "doubleSpend", violationIds: [DOUBLE_SPEND_VIOLATION_ID] },
   {
     category: "nonExistentInput",
-    violationIds: ["no-input", "non-existent-input"],
+    violationIds: [
+      "no-input",
+      "non-existent-input",
+      "non-existent-input-wrongful-rejection",
+    ],
   },
   {
     category: "nonExistentInputNoIndex",

@@ -79,6 +79,7 @@ import { detectMissingSignatureWrongfulRejections } from "../missing-signature/w
 import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
+import { detectNonExistentInputWrongfulRejections } from "../non-existent-input/wrongful-rejection.js";
 import { detectObserverOrderInvalidCompleteReplay } from "../observer-order-invalid/replay.js";
 import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-untagged-network/replay.js";
 import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.js";
@@ -1356,12 +1357,22 @@ export const DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 /** Complete accepted spend-input scan against current and predecessor state. */
 export const NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nonExistentInput"],
-  async (evidence, context) =>
-    await detectLedgerRelativeMissingInputs({
-      evidence,
-      context,
-      kind: "spend",
-    }),
+  async (evidence, context) => [
+    ...(await (evidence.transactions.length === 0
+      ? []
+      : detectLedgerRelativeMissingInputs({
+          evidence,
+          context,
+          kind: "spend",
+        }))),
+    ...(await detectNonExistentInputWrongfulRejections({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence,
+        context,
+      }),
+    })),
+  ],
 );
 
 /** Complete replay for every transaction/output covered by the Q35 family. */
