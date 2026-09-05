@@ -1,6 +1,6 @@
 # Non-interactive fault-proof thread completion program V1
 
-- **Status:** In progress (Wave 9 `networkId` complete; all other waves planned)
+- **Status:** In progress (54 categories registered; family completion and closure verification remain)
 - **Scope:** canonical V1 transaction-validation fault coverage
 - **Execution model:** rolling window of at most three concurrent family agents
   across at most two adjacent waves
@@ -389,6 +389,57 @@ counts and exact commands, and the wave commit records one green consolidated
 regression against its final central diff.
 
 ## 7. Work waves
+
+### Current execution checkpoint (2026-09-05)
+
+The shared integration checkpoint is `9f819337`. The 22 new categories are
+registered; registration alone does not establish the vertical-slice gates.
+The three Wave 4 structural decoding families are integrated, including the
+maximum-depth `witnessScriptDecoding` lifecycle and regenerated fit evidence.
+The original "all other waves planned" status was stale.
+
+The `minFee` and `invalidSignature` direction extensions, durable workflows,
+and replay wiring are integrated. Their combined testnet build is
+`9cd5a8b1f19c2cb5977f69062547e3be24617bf97470a598347d349bd927becc`;
+63 family tests passed against it. The shared-format maximum ledgers now
+require that exact blueprint digest rather than only checking stored margins.
+
+`scriptIntegrityHashMismatch` now has both polarities for all four language
+bitmaps, honest on-chain refusal, corrupted-authentication refusal, 64-branch
+source and descriptor proofs, and 32-level state proofs. Its accepted maximum
+uses journaled proof-chunk publication. The shared-tree six-file regression
+passed 35 tests, and the ledger contains 241 signed rows.
+
+The remaining extensions are `missingSignature`, `nativeScriptInvalid`,
+`nonExistentInput`, `noReferenceInput`, `minAda`, and `valueNotPreserved`.
+`missingSignature` has a verified two-commit handoff awaiting shared build and
+regression. The active worktrees own `nativeScriptInvalid`, `nonExistentInput`,
+and the earlier Wave 7 `distinctAssetAccumulationLimit` lifecycle evidence
+repair. Central integration remains serial.
+
+The baseline full Aiken check passed 3,687/3,687. The full fault-proof suite
+passed 1,513 tests with 29 failures: four stale ledger digests, legacy reference
+authentication fixtures, and oversized transition-trace publication. Repairing
+the authentication fixtures exposes additional existing oversized validation
+resolvers; those publication blockers remain open. All evidence still needs
+the consolidated final-tree closure gate.
+
+Production installs 47 of 54 watcher categories. The seven explicit omissions
+are `transitionTrace`, `validationTraceDispute`, `nativeScriptDecoding`,
+`withdrawalMistag`, `crossBlockDuplicateEvent`, `valueNotPreserved`, and
+`mintAuthorization`. The typed-reason runner residue consists of the three
+resolved-reference decoding arms and `ValueNotPreserved`. Closure requires
+the residue to be empty, not merely pinned in a passing inventory test.
+
+The baseline blueprint still contains 47 oversized validation-dispute bodies
+and two oversized transition-trace bodies. Resolve their production use and
+the corresponding positive-test escape hatches before claiming the literal
+54-category publication gate. The availability challenge's oversized body is
+tracked separately from the catalogue. Sections 8–10 remain open: exhaustive
+closure, the single independent review, and reviewed final delivery.
+
+The pre-existing modification to `docs/agents/naming-and-versioning.md` is
+preserved and excluded from program commits.
 
 The waves below define family membership, gates, and integration order. Apply
 the rolling eligibility and ordered-integration rules from Section 6 when

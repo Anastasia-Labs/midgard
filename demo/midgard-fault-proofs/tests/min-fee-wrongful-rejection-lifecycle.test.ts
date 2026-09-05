@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
@@ -28,6 +29,11 @@ import {
   MIN_FEE_FORCED_ARTIFACT,
   prepareMinFeeForcedArtifact,
 } from "../src/min-fee-forced-artifact.js";
+import {
+  buildVanRossemFitLedger,
+  type VanRossemFitMeasurement,
+  writeVanRossemFitLedger,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { submitMinFeeCancel } from "../src/submit-min-fee-cancel.js";
 import { submitMinFeeStep01Forced } from "../src/submit-min-fee-forced-step-01.js";
@@ -42,6 +48,7 @@ import {
   commitCountedRoot,
 } from "../src/transition-trace/phas.js";
 import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
+import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
@@ -56,46 +63,27 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
-const fitRows: unknown[] = [];
+const fitRows: VanRossemFitMeasurement[] = [];
 afterAll(async () => {
-  if (process.env.MIN_FEE_FIT_LEDGER_PATH) {
-    const body = {
-      schemaVersion: "midgard-min-fee-wrongful-rejection-fit-ledger-v1",
-      category: "minFee",
-      categoryId: "00000013",
-      compiler: "aiken v1.1.23+5adf783",
-      environment: "testnet",
-      limits: {
-        signedBytes: 16_384,
-        publicationBytes: 15_872,
-        memory: "13200000",
-        cpu: "8000000000",
-      },
-      shapes: fitRows,
-    };
-    const blueprintSha256 = createHash("sha256")
-      .update(await readFile(process.env.MIDGARD_REAL_BLUEPRINT_PATH!))
-      .digest("hex");
-    const json = JSON.parse(
-      JSON.stringify(body, (_, value) =>
-        typeof value === "bigint" ? value.toString() : value,
+  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
+  expect(new Set(fitRows.map((row) => row.maximumShape)).size).toBe(6);
+  const blueprintBytes = await readFile(realBlueprintPath);
+  const ledger = buildVanRossemFitLedger({
+    category: "minFee",
+    blueprintSha256: createHash("sha256").update(blueprintBytes).digest("hex"),
+    compilerVersion: JSON.parse(blueprintBytes.toString()).preamble.compiler
+      .version,
+    measurements: fitRows,
+  });
+  await writeVanRossemFitLedger(
+    fileURLToPath(
+      new URL(
+        "../../../docs/fault-proofs/size-plans/min-fee-wrongful-rejection-v1-fit-ledger.json",
+        import.meta.url,
       ),
-    );
-    json.blueprintSha256 = blueprintSha256;
-    await writeFile(
-      process.env.MIN_FEE_FIT_LEDGER_PATH,
-      JSON.stringify(
-        {
-          ...json,
-          ledgerDigest: createHash("sha256")
-            .update(JSON.stringify(json))
-            .digest("hex"),
-        },
-        null,
-        2,
-      ) + "\n",
-    );
-  }
+    ),
+    ledger,
+  );
 });
 
 const setup = async (
@@ -627,15 +615,52 @@ describe("minFee wrongful rejection registered lifecycle", () => {
         expect(row.executionMemory).toBeLessThanOrEqual(13_200_000n);
         expect(row.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
       }
-      fitRows.push({
-        shape:
-          inputCount === -64
-            ? "maximum-proof-64-and-certified-field"
-            : inputCount === -80
-              ? "all-nine-populated"
-              : `field0-${inputCount}`,
-        stages,
-      });
+      const shape =
+        inputCount === -64
+          ? "maximum-proof-64-and-certified-field"
+          : inputCount === -80
+            ? "all-nine-populated"
+            : `field0-${inputCount}`;
+      const groups = [
+        {
+          name: "script-publication",
+          kind: "publication" as const,
+          rows: s.scriptPublications,
+        },
+        { name: "init", kind: "lifecycle" as const, rows: init.measurements },
+        { name: "bind", kind: "lifecycle" as const, rows: bind.measurements },
+        {
+          name: "field-publication",
+          kind: "publication" as const,
+          rows: publication.measurements,
+        },
+        {
+          name: "final",
+          kind: "lifecycle" as const,
+          rows: finished.measurements,
+        },
+        {
+          name: "removal-reference",
+          kind: "publication" as const,
+          rows: removal.slice(0, -1),
+        },
+        {
+          name: "removal",
+          kind: "lifecycle" as const,
+          rows: removal.slice(-1),
+        },
+      ];
+      for (const group of groups)
+        group.rows.forEach((row, index) =>
+          fitRows.push({
+            name: `${shape}-${group.name}-${index}`,
+            kind: group.kind,
+            maximumShape: shape,
+            signedBytes: row.completeSignedBytes,
+            memoryUnits: row.executionMemory,
+            cpuUnits: row.executionSteps,
+          }),
+        );
     },
     600_000,
   );

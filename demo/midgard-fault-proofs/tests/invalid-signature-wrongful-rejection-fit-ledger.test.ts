@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
-describe("invalidSignature measured field-maximum ledger", () => {
-  it("checks digest, category, publications and all signed transaction margins", async () => {
-    const ledger = JSON.parse(
+
+import {
+  buildVanRossemFitLedger,
+  type VanRossemFitLedger,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
+import { realBlueprintPath } from "./support/emulator/blueprints.js";
+
+describe("invalidSignature consolidated maximum fit ledger", () => {
+  it("binds complete shape measurements and reproducible positive margins to the current blueprint", async () => {
+    const stored = JSON.parse(
       await readFile(
         new URL(
           "../../../docs/fault-proofs/size-plans/invalid-signature-wrongful-rejection-v1-fit-ledger.json",
@@ -13,32 +19,50 @@ describe("invalidSignature measured field-maximum ledger", () => {
         ),
         "utf8",
       ),
-    ) as {
-      categoryId: string;
-      referencePublications: { reserveMarginBytes: number }[];
-      acceptedLifecycle: { bytes: number; memory: string; cpu: string }[];
-      forcedLifecycle: { bytes: number; memory: string; cpu: string }[];
-      ledgerDigest: string;
-    };
-    expect(ledger.categoryId).toBe(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.invalidSignature,
+    ) as VanRossemFitLedger;
+    const blueprint = await readFile(realBlueprintPath);
+    expect(stored.blueprintSha256).toBe(
+      createHash("sha256").update(blueprint).digest("hex"),
     );
-    expect(ledger.referencePublications).toHaveLength(2);
-    for (const row of ledger.referencePublications)
-      expect(row.reserveMarginBytes).toBeGreaterThan(0);
-    expect(ledger.forcedLifecycle.length).toBeGreaterThan(40);
-    expect(ledger.acceptedLifecycle.length).toBeGreaterThan(0);
-    for (const row of [
-      ...ledger.acceptedLifecycle,
-      ...ledger.forcedLifecycle,
-    ]) {
-      expect(row.bytes).toBeLessThan(16_384);
-      expect(BigInt(row.memory)).toBeLessThan(16_500_000n);
-      expect(BigInt(row.cpu)).toBeLessThan(10_000_000_000n);
-    }
-    const { ledgerDigest, ...body } = ledger;
+    expect(stored.compilerVersion).toBe(
+      JSON.parse(blueprint.toString()).preamble.compiler.version,
+    );
+    expect(stored.category).toBe("invalidSignature");
     expect(
-      createHash("sha256").update(JSON.stringify(body)).digest("hex"),
-    ).toBe(ledgerDigest);
+      buildVanRossemFitLedger({
+        category: stored.category,
+        blueprintSha256: stored.blueprintSha256,
+        compilerVersion: stored.compilerVersion,
+        measurements: stored.entries.map((entry) => ({
+          ...entry,
+          memoryUnits: BigInt(entry.memoryUnits),
+          cpuUnits: BigInt(entry.cpuUnits),
+        })),
+      }),
+    ).toEqual(stored);
+    expect(stored.entries).toHaveLength(68);
+    for (const shape of [
+      "0-selected-single",
+      "139-selected-single",
+      "317-selected-single",
+      "0-1-single",
+      "0--1-single",
+      "317-selected-deep64",
+    ]) {
+      for (const stage of ["bind", "final", "removal"])
+        expect(
+          stored.entries.some(
+            (entry) => entry.name === `forced-${shape}-${stage}`,
+          ),
+        ).toBe(true);
+    }
+    for (const name of [
+      "reference-1",
+      "reference-2",
+      "accepted-init",
+      "accepted-step-01",
+      "accepted-step-02",
+    ])
+      expect(stored.entries.some((entry) => entry.name === name)).toBe(true);
   });
 });

@@ -45,3 +45,26 @@ exact forced key/value and count 1. Its reconstructed PHAS root is committed
 into the counted root and challenged header. This is combined with the
 maximum witness field in the same complete lifecycle; binding remains below
 the signed transaction and execution envelopes.
+
+## Consolidated evidence
+
+The integrated testnet blueprint is
+`9cd5a8b1f19c2cb5977f69062547e3be24617bf97470a598347d349bd927becc`.
+The adjacent ledger uses the shared Van Rossem writer, with named rows and
+recomputed byte, memory, CPU, and publication margins. Its test requires the
+current blueprint digest and compiler version. The combined minFee and
+invalidSignature family regression passed 63 tests on this tree.
+
+Capture a single passing Vitest run of
+`invalid-signature-wrongful-rejection-lifecycle.test.ts`,
+`submit-init-emulator-invalid-signature-lifecycle.test.ts`, and
+`invalid-signature-wrongful-rejection-publication-fit.test.ts` against the final
+`MIDGARD_REAL_BLUEPRINT_PATH`. From the repository root run:
+
+```sh
+node demo/midgard-fault-proofs/scripts/write-invalid-signature-fit-ledger.mjs CAPTURE_LOG onchain/aiken/plutus.json
+```
+
+The generator checks the capture's blueprint marker, all six forced shapes,
+the accepted stages, and both publications before writing 68 measured rows.
+Then run `invalid-signature-wrongful-rejection-fit-ledger.test.ts`.

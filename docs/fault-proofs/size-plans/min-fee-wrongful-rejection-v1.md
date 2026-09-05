@@ -41,7 +41,7 @@ The real registered Lucid lifecycle now measures six complete shapes through
 permanent mint and state-queue removal. Every family script publication,
 carriage publication, certificate-script publication, certification, Init,
 forced binding, terminal and removal-reference publication is captured. The
-ordered `stages` in the sibling fit ledger comprise two family publications,
+named entries in the sibling fit ledger comprise two family publications,
 Init, binding, all field prerequisites, terminal, removal reference
 publications, and removal.
 
@@ -72,3 +72,16 @@ header/count/root/MPF/source and exact reason, and re-derives all nine lengths
 and economics. A serialize/reopen/live-bind/reopen/finalize/remove test proves
 that the resumed evidence matches the actual step-02 datum. Trailing source
 CBOR, source substitutions, altered identity and unexpected fields are refused.
+
+## Consolidated evidence
+
+The integrated testnet blueprint is
+`9cd5a8b1f19c2cb5977f69062547e3be24617bf97470a598347d349bd927becc`.
+The adjacent ledger uses the shared Van Rossem writer, with named rows and
+recomputed byte, memory, CPU, and publication margins. Its test requires the
+current blueprint digest and compiler version. The combined minFee and
+invalidSignature family regression passed 63 tests on this tree.
+
+Regenerate with `MIDGARD_WRITE_FIT_LEDGER=1` while running the complete
+`tests/min-fee-wrongful-rejection-lifecycle.test.ts` against
+`MIDGARD_REAL_BLUEPRINT_PATH`, then run the family fit-ledger test.

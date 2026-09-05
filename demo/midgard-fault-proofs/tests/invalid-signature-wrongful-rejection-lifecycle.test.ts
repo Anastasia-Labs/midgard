@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   adjudicateMidgardNativeTxFullValidity,
@@ -14,7 +17,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import {
   certifyFaultProofFieldCarriage,
@@ -35,6 +38,7 @@ import {
   commitCountedRoot,
 } from "../src/transition-trace/phas.js";
 import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
+import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -582,5 +586,13 @@ describe("invalidSignature wrongful-rejection real lifecycle", () => {
       );
     },
     600_000,
+  );
+});
+
+afterAll(async () => {
+  console.info(
+    `[invalid-signature-blueprint] ${createHash("sha256")
+      .update(await readFile(realBlueprintPath))
+      .digest("hex")}`,
   );
 });
