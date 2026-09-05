@@ -375,7 +375,7 @@ export const neSubmitStep01 = async ({
           ],
         };
     return Data.to(
-      { Continue: [carriage] },
+      { Continue: [{ source: { AcceptedSource: { inclusion: carriage } } }] },
       NonExistentInputStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;

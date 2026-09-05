@@ -1,3 +1,4 @@
+use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -10,9 +11,15 @@ use midgard/fraud_proofs/field_opening_v1.{
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/native_tx/types.{MidgardTxInput}
-use midgard/fraud_proofs/no_input/step_02.{Args, Datum, SpendRedeemer, State}
+use midgard/fraud_proofs/no_input/step_02.{
+  Args, Datum, ForcedArgs, ForcedState, SpendRedeemer, State,
+}
 use midgard/fraud_proofs/no_input/step_03
-use midgard/native_tx_machine_walk_v1.{spend_input_at}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/ledger_state
+use midgard/native_tx_machine_walk_v1.{spend_input_at, spend_input_count}
+use midgard/rejection_reason_v1.{InputNotFound}
+use midgard/transition_trace
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -98,6 +105,76 @@ validator main(
 
         // Done.
         True
+      }
+      ct.Continue(ForcedArgs {
+        input_index,
+        output_index,
+        spend_inputs_opening,
+        event_membership,
+      }) -> {
+        expect Some(step_datum) = datum
+        let _, _, _, input_state, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        expect
+            Some(ForcedState {
+              subject,
+              event_key,
+              event_root,
+              event_count,
+              trace_root,
+              trace_count,
+            })
+          = input_state
+        expect InputNotFound { source_kind, input_index: selected_index } = substrate.rejection_reason_of_v1(
+          subject,
+        )
+        expect source_kind == 0
+        let view = opened_field_view(
+          spend_inputs_opening,
+          BodyAnchor { tx_id: subject.transaction_id },
+          spend_inputs_field_index,
+          tx.reference_inputs,
+          field_preimage_certificate_policy_id,
+        )
+        let selected_input = if selected_index >= 0 && selected_index < spend_input_count(
+          view,
+        ) {
+          Some(spend_input_at(view, selected_index))
+        } else {
+          None
+        }
+        expect and {
+            transition_trace.verify_root_membership_with_bytes(
+              event_membership,
+              transition_trace.EventToStepRootDomain,
+              event_root,
+              event_count,
+              cbor.serialise(event_membership.key),
+              cbor.serialise(event_membership.value),
+            ),
+            event_membership.key == event_key,
+            event_membership.value.phase == ledger_state.ForcedTransaction,
+            event_membership.value.step_index >= 0,
+            event_membership.value.step_index < trace_count,
+          }
+        let expected: Data = step_03.ForcedState {
+          event_key,
+          trace_root,
+          trace_count,
+          step_index: event_membership.value.step_index,
+          selected_input,
+        }
+        and {
+          output_hash == step_03_validator_script_hash,
+          output_state == expected,
+        }
       }
     }
   }

@@ -11,13 +11,18 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
-  cancel, carriage_transactions_phas_root, pass_native_tx_to_next_step_carried,
+  cancel, carriage_transactions_phas_root, continue,
+  pass_native_tx_to_next_step_carried,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/types as native_types
-use midgard/fraud_proofs/no_input/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/no_input/step_01.{
+  AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
+}
 use midgard/fraud_proofs/no_input/step_02
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
+use midgard/rejection_reason_v1.{InputNotFound}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -40,7 +45,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_args) -> {
+      ct.Continue(Args{source: AcceptedSource { inclusion: tx_inclusion_args }}) -> {
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
@@ -89,6 +94,49 @@ validator main(
         // Done.
         True
       }
+      ct.Continue(Args{source: ForcedSource {
+        input_index,
+        output_index,
+        header,
+        membership,
+        direction,
+      }}) -> {
+        expect Some(step_datum) = datum
+        let _, thread_name, _, input_state, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        expect None = input_state
+        let subject = substrate.bind_forced_subject_to_thread_v1(
+          thread_name,
+          header,
+          membership,
+          direction,
+        )
+        expect InputNotFound { source_kind, .. } = substrate.rejection_reason_of_v1(
+          subject,
+        )
+        expect source_kind == 0
+        let expected: Data = step_02.ForcedState {
+          subject,
+          event_key: ledger_state.ForcedTransactionEventKey {
+            tx_order_id: membership.key,
+          },
+          event_root: header.event_to_step_root,
+          event_count: header.total_event_count,
+          trace_root: header.transition_trace_root,
+          trace_count: header.transition_step_count,
+        }
+        and {
+          output_hash == step_02_validator_script_hash,
+          output_state == expected,
+        }
+      }
     }
   }
 
@@ -117,7 +165,13 @@ fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_carriage_v1(claimed)),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(claimed),
+        },
+      },
+    ),
     fixture.own_out_ref(),
     l1_tx,
   )
@@ -172,7 +226,14 @@ fn run_step_01_published(
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
     ct.Continue(
-      fixture.published_chunk_inclusion_carriage_v1(carriage_block, chunk_count),
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.published_chunk_inclusion_carriage_v1(
+            carriage_block,
+            chunk_count,
+          ),
+        },
+      },
     ),
     fixture.own_out_ref(),
     fixture.continue_step_chunked_l1_tx_v1(
