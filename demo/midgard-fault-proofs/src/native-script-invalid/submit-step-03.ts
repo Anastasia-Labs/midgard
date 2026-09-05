@@ -30,6 +30,7 @@ import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
   type NativeScriptInvalidContracts,
 } from "./contracts.js";
+import { nativeScriptInvalidSignerSet } from "./evidence-machine.js";
 import { assertNativeScriptInvalidDirectRoute } from "./evidence-machine.js";
 
 type State = NonNullable<
@@ -55,6 +56,7 @@ export const submitNativeScriptInvalidStep03 = async ({
   scriptItemCbor,
   addressWitnessItems,
   addressWitnessVerificationKeys,
+  unsafeSkipLocalViolationCheckForTest = false,
   publishCarriage = false,
   publishedCarriageUtxos,
   certificateUtxo,
@@ -74,6 +76,7 @@ export const submitNativeScriptInvalidStep03 = async ({
   readonly scriptItemCbor: Uint8Array;
   readonly addressWitnessItems: readonly Uint8Array[];
   readonly addressWitnessVerificationKeys: readonly Uint8Array[];
+  readonly unsafeSkipLocalViolationCheckForTest?: boolean;
   readonly publishCarriage?: boolean;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
@@ -101,19 +104,33 @@ export const submitNativeScriptInvalidStep03 = async ({
     stepIndex,
   });
   const script = decodeMidgardVersionedScript(scriptItemCbor);
-  if (
-    script.language !== "NativeCardano" ||
+  const satisfied =
+    script.language === "NativeCardano" &&
     verifyMidgardNativeScript(script.nativeScript, {
       validityIntervalStart: state.validity_interval_start,
       validityIntervalEnd: state.validity_interval_end,
-      witnessSigners: new Set(
-        addressWitnessVerificationKeys.map((key) =>
-          missingSignatureVkeyHash(Buffer.from(key).toString("hex")),
-        ),
-      ),
-    })
+      witnessSigners:
+        state.subject.direction === 1n
+          ? new Set(
+              nativeScriptInvalidSignerSet(
+                addressWitnessItems,
+                state.bad_tx_id,
+              ).hashes.map((hash) => hash.toString("hex")),
+            )
+          : new Set(
+              addressWitnessVerificationKeys.map((key) =>
+                missingSignatureVkeyHash(Buffer.from(key).toString("hex")),
+              ),
+            ),
+    });
+  if (
+    !unsafeSkipLocalViolationCheckForTest &&
+    (script.language !== "NativeCardano" ||
+      satisfied !== (state.subject.direction === 1n))
   ) {
-    throw new Error(`${FAMILY}: native witness is not evaluation-false`);
+    throw new Error(
+      `${FAMILY}: native witness does not contradict the claimed verdict`,
+    );
   }
   const planned = planFaultProofFieldOpening({
     fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,

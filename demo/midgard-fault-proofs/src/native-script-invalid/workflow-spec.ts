@@ -6,7 +6,7 @@ export const NATIVE_SCRIPT_INVALID_CURSOR_SPEC = Object.freeze({
   stepCount: 5,
   successors: Object.freeze({
     1: Object.freeze([2] as const),
-    2: Object.freeze([3] as const),
+    2: Object.freeze([2, 3] as const),
     3: Object.freeze(["proof_token", 4] as const),
     4: Object.freeze([4, 5] as const),
     5: Object.freeze([5, "proof_token"] as const),

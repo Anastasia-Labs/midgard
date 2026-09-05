@@ -2,7 +2,10 @@
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { H32Schema } from "../common.js";
+import { H32Schema, OutputReferenceSchema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { RejectionReasonSchema } from "../rejection-reason.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
@@ -25,31 +28,93 @@ export const nativeScriptItemCommitment = (item: Uint8Array): string =>
 export const NativeScriptInvalidStep01DatumSchema = faultProofStepDatumSchema(
   Data.Any(),
 );
+export const NativeScriptInvalidVerdictSubjectSchema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: Data.Bytes(),
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
+});
+export const NativeScriptInvalidStep01SourceSchema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+      direction: Data.Integer(),
+    }),
+  }),
+]);
+export const NativeScriptInvalidForcedSourcePayloadSchema = Data.Object({
+  header: HeaderSchema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
 export const NativeScriptInvalidStep01ArgsSchema = Data.Object({
-  carriage: NativeTxInclusionCarriageSchema,
+  source: NativeScriptInvalidStep01SourceSchema,
 });
 export const NativeScriptInvalidStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptInvalidStep01ArgsSchema);
 
 export const NativeScriptInvalidStep02StateSchema = Data.Object({
+  subject: NativeScriptInvalidVerdictSubjectSchema,
   bad_tx_id: H32Schema,
   bad_tx_witness_set_hash: H32Schema,
   validity_interval_start: Data.Integer(),
   validity_interval_end: Data.Integer(),
+  grammar_checkpoint_hash: Data.Bytes(),
+  grammar_complete: Data.Boolean(),
+  script_checkpoint_hash: Data.Bytes(),
 });
 export const NativeScriptInvalidStep02DatumSchema = faultProofStepDatumSchema(
   NativeScriptInvalidStep02StateSchema,
 );
-export const NativeScriptInvalidStep02ArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  script_index: Data.Integer(),
-  script_tx_wits_opening: FieldOpeningSchema,
-});
+export const NativeScriptInvalidStep02ArgsSchema = Data.Enum([
+  Data.Object({
+    Args: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningSchema,
+    }),
+  }),
+  Data.Object({
+    CertifyScriptField: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningSchema,
+      checkpoint_bytes: Data.Bytes(),
+      item_budget: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    SelectCertifiedScript: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningSchema,
+      grammar_checkpoint_bytes: Data.Bytes(),
+      walk_checkpoint_bytes: Data.Bytes(),
+      item_budget: Data.Integer(),
+    }),
+  }),
+]);
 export const NativeScriptInvalidStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptInvalidStep02ArgsSchema);
 
 export const NativeScriptInvalidStep03StateSchema = Data.Object({
+  subject: NativeScriptInvalidVerdictSubjectSchema,
   bad_tx_id: H32Schema,
   bad_tx_witness_set_hash: H32Schema,
   script_item_hash: H32Schema,
@@ -83,6 +148,7 @@ export const NativeScriptInvalidStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptInvalidStep03ArgsSchema);
 
 export const NativeScriptInvalidStep04StateSchema = Data.Object({
+  subject: NativeScriptInvalidVerdictSubjectSchema,
   bad_tx_id: H32Schema,
   bad_tx_witness_set_hash: H32Schema,
   script_item_hash: H32Schema,
@@ -124,6 +190,7 @@ export const NativeScriptInvalidStep05PhaseSchema = Data.Enum([
   Data.Object({ ScriptWalk: Data.Object({ cursor_hash: H32Schema }) }),
 ]);
 export const NativeScriptInvalidStep05StateSchema = Data.Object({
+  subject: NativeScriptInvalidVerdictSubjectSchema,
   bad_tx_id: H32Schema,
   script_item_hash: H32Schema,
   validity_interval_start: Data.Integer(),

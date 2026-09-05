@@ -70,6 +70,7 @@ export const submitNativeScriptInvalidStep05 = async ({
   threadOutRef,
   scriptItemCbor,
   addressWitnessItems,
+  unsafeSkipLocalViolationCheckForTest = false,
   cursorBytes,
   frames = [],
   nodeBudget = NATIVE_SCRIPT_INVALID_NODE_BATCH,
@@ -85,6 +86,7 @@ export const submitNativeScriptInvalidStep05 = async ({
   readonly threadOutRef: string;
   readonly scriptItemCbor: Uint8Array;
   readonly addressWitnessItems: readonly Uint8Array[];
+  readonly unsafeSkipLocalViolationCheckForTest?: boolean;
   readonly cursorBytes?: Uint8Array;
   readonly frames?: readonly NativeScriptPushdownFrame[];
   readonly nodeBudget?: number;
@@ -119,7 +121,10 @@ export const submitNativeScriptInvalidStep05 = async ({
   if (script.language !== "NativeCardano") {
     throw new Error(`${label}: selected witness is not a native script`);
   }
-  const signerSet = nativeScriptInvalidSignerSet(addressWitnessItems);
+  const signerSet = nativeScriptInvalidSignerSet(
+    addressWitnessItems,
+    state.subject.direction === 1n ? state.bad_tx_id : undefined,
+  );
   if (
     BigInt(signerSet.frontier.count) !== state.signer_count ||
     !samePeaks(state.signer_peaks, signerSet.frontier.peaks)
@@ -162,7 +167,11 @@ export const submitNativeScriptInvalidStep05 = async ({
     signer_hash: signerHash,
     proof: signerSet.proofFor(Buffer.from(signerHash, "hex")),
   }));
-  if (transition.complete && transition.satisfied !== false) {
+  if (
+    !unsafeSkipLocalViolationCheckForTest &&
+    transition.complete &&
+    transition.satisfied !== (state.subject.direction === 1n)
+  ) {
     throw new Error(`${label}: native script does not evaluate to false`);
   }
   const common = {

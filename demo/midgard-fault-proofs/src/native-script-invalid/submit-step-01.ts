@@ -1,5 +1,6 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
+  acceptedVerdictSubject,
   NativeScriptInvalidStep01SpendRedeemerSchema,
   NativeScriptInvalidStep02DatumSchema,
 } from "@al-ft/midgard-sdk";
@@ -76,6 +77,10 @@ export const submitNativeScriptInvalidStep01 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
+        grammar_checkpoint_hash: "",
+        grammar_complete: false,
+        script_checkpoint_hash: "",
+        subject: acceptedVerdictSubject(txInclusion.nativeTxId),
         bad_tx_id: txInclusion.nativeTxId,
         bad_tx_witness_set_hash: txInclusion.nativeTx.witness_set_hash,
         validity_interval_start:
@@ -99,7 +104,9 @@ export const submitNativeScriptInvalidStep01 = async ({
     nextDatum,
     spendRedeemerSchema: NativeScriptInvalidStep01SpendRedeemerSchema,
     wrapInclusionArgs: (args) => ({
-      carriage: { RedeemerCarriedInclusion: [args] },
+      source: {
+        AcceptedSource: { inclusion: { RedeemerCarriedInclusion: [args] } },
+      },
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,

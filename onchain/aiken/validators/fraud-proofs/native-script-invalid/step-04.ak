@@ -2,20 +2,17 @@ use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   WitnessAnchor, address_witnesses_field_index, resume_opened_field_walk,
 }
+use midgard/fraud_proofs/native_script_invalid/rule
 use midgard/fraud_proofs/native_script_invalid/step_04.{
   Args, Datum, FinalizeSignerScan, ResumeSignerScan, SpendRedeemer, State,
   staged_signer_finalize_batch_limit, staged_signer_resume_batch_limit,
 }
 use midgard/fraud_proofs/native_script_invalid/step_05
-use midgard/fraud_proofs/native_tx/components.{
-  decode_midgard_address_witness_cbor, encode_midgard_address_witness,
-}
 use midgard/native_tx_machine_walk_v1 as machine_walk
 use midgard/script_proof_v1
 use midgard/validation_merkle_v1
@@ -89,7 +86,10 @@ validator main(
             signer_peaks: state.signer_peaks,
           },
           fn(accumulator, _index, item) {
-            append_signer(accumulator, signer_hash_of(item))
+            when rule.authenticated_signer(state.subject, item) is {
+              Some(hash) -> append_signer(accumulator, hash)
+              None -> accumulator
+            }
           },
         )
         when action is {
@@ -116,6 +116,7 @@ validator main(
             expect machine_walk.walk_is_complete(next)
             expect output_script_hash == step_05_validator_script_hash
             let expected_output_state: Data = step_05.State {
+              subject: state.subject,
               bad_tx_id: state.bad_tx_id,
               script_item_hash: state.script_item_hash,
               validity_interval_start: state.validity_interval_start,
@@ -170,12 +171,6 @@ fn budget_of(action: Args) -> Int {
     ResumeSignerScan { item_budget, .. } -> item_budget
     FinalizeSignerScan { item_budget, .. } -> item_budget
   }
-}
-
-fn signer_hash_of(item: ByteArray) -> ByteArray {
-  let witness = decode_midgard_address_witness_cbor(item)
-  expect encode_midgard_address_witness(witness) == item
-  utils.get_verification_key_hash(witness.verification_key)
 }
 
 fn append_signer(

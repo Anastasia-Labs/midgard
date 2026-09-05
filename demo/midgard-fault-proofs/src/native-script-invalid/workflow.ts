@@ -68,19 +68,20 @@ import {
 } from "../workflow/proof-chunk-prerequisite.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import {
-  admitNativeScriptInvalidArtifact,
-  prepareNativeScriptInvalidArtifact,
-} from "./artifact.js";
 import type { NativeScriptInvalidContracts } from "./contracts.js";
 import { nativeScriptInvalidUsesDirectRoute } from "./evidence-machine.js";
 import { submitNativeScriptInvalidInit } from "./submit-init.js";
 import { submitNativeScriptInvalidStep01 } from "./submit-step-01.js";
+import { submitNativeScriptInvalidStep01Forced } from "./submit-step-01-forced.js";
 import { submitNativeScriptInvalidStep02 } from "./submit-step-02.js";
 import { submitNativeScriptInvalidStep03 } from "./submit-step-03.js";
 import { submitNativeScriptInvalidStep03StartSignerScan } from "./submit-step-03-staged.js";
 import { submitNativeScriptInvalidStep04 } from "./submit-step-04.js";
 import { submitNativeScriptInvalidStep05 } from "./submit-step-05.js";
+import {
+  admitNativeScriptInvalidWorkflowArtifact,
+  prepareNativeScriptInvalidWorkflowArtifact,
+} from "./workflow-artifact.js";
 import { NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "./workflow-spec.js";
 
 export type NativeScriptInvalidWorkflowReferenceScripts = Readonly<{
@@ -102,7 +103,9 @@ const buffers = (values: readonly string[]): readonly Uint8Array[] =>
   values.map((value) => Buffer.from(value, "hex"));
 
 const witnessSet = (
-  admitted: ReturnType<typeof admitNativeScriptInvalidArtifact>,
+  admitted: Awaited<
+    ReturnType<typeof admitNativeScriptInvalidWorkflowArtifact>
+  >,
 ) => {
   const compact = deriveMidgardNativeTxWitnessSetCompact(
     decodeMidgardNativeTxFullFromCanonicalCbor(
@@ -119,7 +122,9 @@ const witnessSet = (
 };
 
 const scriptFieldPlan = (
-  admitted: ReturnType<typeof admitNativeScriptInvalidArtifact>,
+  admitted: Awaited<
+    ReturnType<typeof admitNativeScriptInvalidWorkflowArtifact>
+  >,
   owner: string,
 ) =>
   planFaultProofFieldOpening({
@@ -130,13 +135,14 @@ const scriptFieldPlan = (
     owner,
     publish: true,
     witnessSet: witnessSet(admitted),
-    anchorWitnessSetHash:
-      admitted.prepared.txInclusion.nativeTx.witness_set_hash,
+    anchorWitnessSetHash: admitted.witnessSetHash,
     label: "native-script-invalid field 6",
   });
 
 const signerFieldPlan = (
-  admitted: ReturnType<typeof admitNativeScriptInvalidArtifact>,
+  admitted: Awaited<
+    ReturnType<typeof admitNativeScriptInvalidWorkflowArtifact>
+  >,
   owner: string,
 ) =>
   planFaultProofFieldOpening({
@@ -147,13 +153,14 @@ const signerFieldPlan = (
     owner,
     publish: true,
     witnessSet: witnessSet(admitted),
-    anchorWitnessSetHash:
-      admitted.prepared.txInclusion.nativeTx.witness_set_hash,
+    anchorWitnessSetHash: admitted.witnessSetHash,
     label: "native-script-invalid field 7",
   });
 
 const isDirect = (
-  admitted: ReturnType<typeof admitNativeScriptInvalidArtifact>,
+  admitted: Awaited<
+    ReturnType<typeof admitNativeScriptInvalidWorkflowArtifact>
+  >,
 ): boolean =>
   nativeScriptInvalidUsesDirectRoute({
     signerCount: admitted.prepared.addrWitnessItemCbors.length,
@@ -195,12 +202,12 @@ const transactionPort = (
   portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "nativeScriptInvalid",
   prepare: async ({ evidence, classification }) =>
-    await prepareNativeScriptInvalidArtifact({
+    await prepareNativeScriptInvalidWorkflowArtifact({
       evidence,
       classification,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = admitNativeScriptInvalidArtifact(artifact);
+    const admitted = await admitNativeScriptInvalidWorkflowArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
       throw new Error(
         "native-script-invalid artifact changed the bound header",
@@ -245,11 +252,31 @@ const transactionPort = (
         ),
       });
     }
+    if (stage === "step_01" && admitted.forced !== undefined) {
+      const forced = admitted.forced;
+      return {
+        transaction: await captureLocallyEvaluatedTransaction(
+          async (preSubmitBoundary) => {
+            await submitNativeScriptInvalidStep01Forced({
+              ...common,
+              threadOutRef: threadOutRef(),
+              state: forced.evidence.state,
+              forcedSource: forced.forcedSource,
+              referenceScriptUtxo: config.references.steps[0],
+              preSubmitBoundary,
+            });
+          },
+        ),
+      };
+    }
     if (stage === "step_01") {
+      const txInclusion = admitted.prepared.txInclusion;
+      if (txInclusion === undefined)
+        throw new Error("native-script-invalid: accepted inclusion is absent");
       const chunks = await resolvePublishedProofChunks({
         lucid: config.lucid,
         address: config.signer.address,
-        proofCbor: admitted.prepared.txInclusion.txMembershipProofCbor,
+        proofCbor: txInclusion.txMembershipProofCbor,
       });
       if (chunks === undefined) {
         throw new Error("native-script-invalid transaction proof disappeared");
@@ -269,9 +296,7 @@ const transactionPort = (
                 input,
                 "stateQueueBlockOutRef",
               ),
-              txInclusion: parseSubmitStep01TxInclusion(
-                admitted.prepared.txInclusion,
-              ),
+              txInclusion: parseSubmitStep01TxInclusion(txInclusion),
               referenceScriptUtxo: config.references.steps[0],
               witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
@@ -574,12 +599,12 @@ export const createManifestBoundNativeScriptInvalidWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    requirementForAction: ({ action, artifact }) => {
+    requirementForAction: async ({ action, artifact }) => {
       const input = cursorFamilyActionInput({
         category: "nativeScriptInvalid",
         action,
       });
-      const admitted = admitNativeScriptInvalidArtifact(artifact);
+      const admitted = await admitNativeScriptInvalidWorkflowArtifact(artifact);
       const planned =
         input.stage === "step_02"
           ? scriptFieldPlan(admitted, config.signer.paymentKeyHash)
@@ -611,11 +636,11 @@ export const createManifestBoundNativeScriptInvalidWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    proofCborForAction: ({ action, artifact }) =>
-      action.input.stage === "step_01"
-        ? admitNativeScriptInvalidArtifact(artifact).prepared.txInclusion
-            .txMembershipProofCbor
-        : null,
+    proofCborForAction: async ({ action, artifact }) => {
+      if (action.input.stage !== "step_01") return null;
+      const admitted = await admitNativeScriptInvalidWorkflowArtifact(artifact);
+      return admitted.prepared.txInclusion?.txMembershipProofCbor ?? null;
+    },
     transactionConfirmed: async ({ headerHash, txHash }) =>
       await l1.transactionConfirmed({ headerHash, txHash }),
   });

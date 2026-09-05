@@ -16,6 +16,7 @@ import {
   missingSignatureVkeyHash,
   type NativeScriptPushdownFrame,
   type SignerSetProof,
+  verifyAddressWitness,
 } from "@al-ft/midgard-sdk";
 
 export const NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT = 28;
@@ -55,10 +56,24 @@ const u24 = (value: number, label: string): Buffer => {
 
 const exactSignerHashes = (
   addressWitnessItems: readonly Uint8Array[],
+  verifiedTxId?: string,
 ): readonly Buffer[] => {
   const hashes: Buffer[] = [];
   for (const item of addressWitnessItems) {
     const witness = decodeMidgardAddressWitnessItem(item);
+    if (
+      verifiedTxId !== undefined &&
+      !verifyAddressWitness({
+        txId: verifiedTxId,
+        witness: {
+          verification_key: Buffer.from(witness.verificationKey).toString(
+            "hex",
+          ),
+          signature: Buffer.from(witness.signature).toString("hex"),
+        },
+      })
+    )
+      continue;
     const hash = Buffer.from(
       missingSignatureVkeyHash(
         Buffer.from(witness.verificationKey).toString("hex"),
@@ -141,12 +156,14 @@ export const nativeScriptInvalidSignerScanState = ({
   totalLength,
   committedCheckpointHash = "",
   batchSize = NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH,
+  verifySignatures = false,
 }: {
   readonly txId: string;
   readonly addressWitnessItems: readonly Uint8Array[];
   readonly totalLength: number;
   readonly committedCheckpointHash?: string;
   readonly batchSize?: number;
+  readonly verifySignatures?: boolean;
 }): NativeScriptInvalidSignerScanState => {
   if (
     !Number.isSafeInteger(batchSize) ||
@@ -168,6 +185,7 @@ export const nativeScriptInvalidSignerScanState = ({
   );
   const signerHashes = exactSignerHashes(
     addressWitnessItems.slice(0, nextItemIndex),
+    verifySignatures ? txId : undefined,
   );
   const frontier = signerHashes.reduce(
     (currentFrontier, signerHash) =>
@@ -202,8 +220,9 @@ export type NativeScriptInvalidSignerSet = Readonly<{
 
 export const nativeScriptInvalidSignerSet = (
   addressWitnessItems: readonly Uint8Array[],
+  verifiedTxId?: string,
 ): NativeScriptInvalidSignerSet => {
-  const hashes = exactSignerHashes(addressWitnessItems);
+  const hashes = exactSignerHashes(addressWitnessItems, verifiedTxId);
   const leafHashes = hashes.map(hashMidgardSignerLeaf);
   const membership = buildMidgardValidationMerkleMembershipIndex(leafHashes);
   const peaks = frontierWire(membership.frontier);

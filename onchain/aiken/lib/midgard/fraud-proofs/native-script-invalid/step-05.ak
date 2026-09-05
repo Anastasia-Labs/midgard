@@ -1,4 +1,5 @@
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 use midgard/native_tx_script_pushdown_v1.{NativeScriptFrameV1}
 use midgard/validation_machine/machine_types.{SignerSetProofV1}
 use midgard/validation_merkle_v1.{FrontierPeak}
@@ -11,6 +12,7 @@ pub type PhaseV1 {
 }
 
 pub type State {
+  subject: VerdictSubjectV1,
   bad_tx_id: ByteArray,
   script_item_hash: ByteArray,
   validity_interval_start: Int,

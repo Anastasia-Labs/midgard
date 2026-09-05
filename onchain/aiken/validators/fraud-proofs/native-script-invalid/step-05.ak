@@ -7,6 +7,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue, finalize}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
+use midgard/fraud_proofs/native_script_invalid/rule
 use midgard/fraud_proofs/native_script_invalid/step_05.{
   Args, Datum, FinalizeScriptScan, PhaseV1, ResumeScriptScan, ScriptReady,
   ScriptWalk, SignerQueryV1, SpendRedeemer, StartScriptFinalize, StartScriptScan,
@@ -113,8 +114,8 @@ validator main(
             expect Some(state) = m_input_state_data
             let terminal = run_action(state, action)
             expect pushdown.native_script_walk_is_complete(terminal)
-            expect Some(False) = pushdown.native_script_verdict(terminal)
-            True
+            expect Some(satisfied) = pushdown.native_script_verdict(terminal)
+            rule.terminal(state.subject, satisfied)
           }
         }
       }
@@ -359,6 +360,9 @@ fn one_signer_peaks() -> List<validation_merkle_v1.FrontierPeak> {
 
 fn state_for(script_item_cbor: ByteArray, phase: PhaseV1) -> State {
   State {
+    subject: rule.accepted_subject(
+      #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ),
     bad_tx_id: #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     script_item_hash: blake2b_256(script_item_cbor),
     validity_interval_start: -1,

@@ -31,6 +31,19 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import {
+  advanceMissingNativeScriptTxGrammarCheckpoint,
+  advanceMissingNativeScriptTxSemanticCheckpoint,
+  encodeMissingNativeScriptTxGrammarCheckpoint,
+  encodeMissingNativeScriptTxSemanticCheckpoint,
+  hashMissingNativeScriptTxGrammarCheckpoint,
+  hashMissingNativeScriptTxSemanticCheckpoint,
+  initialMissingNativeScriptTxGrammarCheckpoint,
+  initialMissingNativeScriptTxSemanticCheckpoint,
+  missingNativeScriptTxGrammarCheckpointIsComplete,
+  resolveMissingNativeScriptTxGrammarCheckpoint,
+  resolveMissingNativeScriptTxSemanticCheckpoint,
+} from "../missing-native-script-tx/staged-walk.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
@@ -156,21 +169,166 @@ export const submitNativeScriptInvalidStep02 = async ({
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: `${label} field 6`,
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        bad_tx_id: state.bad_tx_id,
-        bad_tx_witness_set_hash: state.bad_tx_witness_set_hash,
-        script_item_hash: nativeScriptItemCommitment(item),
-        validity_interval_start: state.validity_interval_start,
-        validity_interval_end: state.validity_interval_end,
+  const requiresScan =
+    planned.plan.tier === "Certified" || scriptWitnessItems.length > 32;
+  let nextStep = 2;
+  let nextState: Step02State | NonNullable<Step03Datum["data"]> = {
+    subject: state.subject,
+    bad_tx_id: state.bad_tx_id,
+    bad_tx_witness_set_hash: state.bad_tx_witness_set_hash,
+    script_item_hash: nativeScriptItemCommitment(item),
+    validity_interval_start: state.validity_interval_start,
+    validity_interval_end: state.validity_interval_end,
+  };
+  const actionFor = (
+    input_index: bigint,
+    output_index: bigint,
+  ): Extract<Step02Redeemer, { Continue: unknown }>["Continue"][0] => {
+    const indices = { input_index, output_index };
+    if (!requiresScan)
+      return {
+        Args: {
+          ...indices,
+          script_index: scriptIndex,
+          script_tx_wits_opening: opening,
+        },
+      };
+    if (!state.grammar_complete) {
+      const prior =
+        state.grammar_checkpoint_hash === ""
+          ? initialMissingNativeScriptTxGrammarCheckpoint({
+              txId: state.bad_tx_id,
+              items: scriptWitnessItems,
+            })
+          : resolveMissingNativeScriptTxGrammarCheckpoint({
+              txId: state.bad_tx_id,
+              items: scriptWitnessItems,
+              committedHash: state.grammar_checkpoint_hash,
+            });
+      return {
+        CertifyScriptField: {
+          ...indices,
+          script_tx_wits_opening: opening,
+          checkpoint_bytes:
+            state.grammar_checkpoint_hash === ""
+              ? ""
+              : encodeMissingNativeScriptTxGrammarCheckpoint(prior).toString(
+                  "hex",
+                ),
+          item_budget: 32n,
+        },
+      };
+    }
+    const grammar = resolveMissingNativeScriptTxGrammarCheckpoint({
+      txId: state.bad_tx_id,
+      items: scriptWitnessItems,
+      committedHash: state.grammar_checkpoint_hash,
+    });
+    const prior =
+      state.script_checkpoint_hash === ""
+        ? initialMissingNativeScriptTxSemanticCheckpoint({
+            grammar,
+            items: scriptWitnessItems,
+          })
+        : resolveMissingNativeScriptTxSemanticCheckpoint({
+            txId: state.bad_tx_id,
+            items: scriptWitnessItems,
+            committedHash: state.script_checkpoint_hash,
+          });
+    return {
+      SelectCertifiedScript: {
+        ...indices,
+        script_index: scriptIndex,
+        script_tx_wits_opening: opening,
+        grammar_checkpoint_bytes:
+          encodeMissingNativeScriptTxGrammarCheckpoint(grammar).toString("hex"),
+        walk_checkpoint_bytes:
+          state.script_checkpoint_hash === ""
+            ? ""
+            : encodeMissingNativeScriptTxSemanticCheckpoint(prior).toString(
+                "hex",
+              ),
+        item_budget: 32n,
       },
-    },
-    Step03Datum,
-  );
+    };
+  };
+  if (requiresScan) {
+    if (!state.grammar_complete) {
+      const prior =
+        state.grammar_checkpoint_hash === ""
+          ? initialMissingNativeScriptTxGrammarCheckpoint({
+              txId: state.bad_tx_id,
+              items: scriptWitnessItems,
+            })
+          : resolveMissingNativeScriptTxGrammarCheckpoint({
+              txId: state.bad_tx_id,
+              items: scriptWitnessItems,
+              committedHash: state.grammar_checkpoint_hash,
+            });
+      const next = advanceMissingNativeScriptTxGrammarCheckpoint({
+        checkpoint: prior,
+        items: scriptWitnessItems,
+        budget: 32,
+      });
+      nextStep = 1;
+      nextState = {
+        ...state,
+        grammar_checkpoint_hash:
+          hashMissingNativeScriptTxGrammarCheckpoint(next),
+        grammar_complete:
+          missingNativeScriptTxGrammarCheckpointIsComplete(next),
+      };
+    } else {
+      const grammar = resolveMissingNativeScriptTxGrammarCheckpoint({
+        txId: state.bad_tx_id,
+        items: scriptWitnessItems,
+        committedHash: state.grammar_checkpoint_hash,
+      });
+      const prior =
+        state.script_checkpoint_hash === ""
+          ? initialMissingNativeScriptTxSemanticCheckpoint({
+              grammar,
+              items: scriptWitnessItems,
+            })
+          : resolveMissingNativeScriptTxSemanticCheckpoint({
+              txId: state.bad_tx_id,
+              items: scriptWitnessItems,
+              committedHash: state.script_checkpoint_hash,
+            });
+      if (Number(scriptIndex) - prior.nextItemIndex >= 32) {
+        const next = advanceMissingNativeScriptTxSemanticCheckpoint({
+          checkpoint: prior,
+          txId: state.bad_tx_id,
+          items: scriptWitnessItems,
+          budget: 32,
+        });
+        nextStep = 1;
+        nextState = {
+          ...state,
+          script_checkpoint_hash:
+            hashMissingNativeScriptTxSemanticCheckpoint(next),
+        };
+      }
+    }
+  }
+  const nextDatum =
+    nextStep === 1
+      ? Data.to(
+          {
+            fraud_prover: signer.paymentKeyHash,
+            data: nextState as Step02State,
+          },
+          Step02Datum,
+        )
+      : Data.to(
+          {
+            fraud_prover: signer.paymentKeyHash,
+            data: nextState as NonNullable<Step03Datum["data"]>,
+          },
+          Step03Datum,
+        );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[2].spendingScriptAddress,
+    address: contracts.steps[nextStep]!.spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -181,14 +339,7 @@ export const submitNativeScriptInvalidStep02 = async ({
     outputIndex = requireUniqueOutputIndex(ctx.outputs, outputMatches, label);
     return Data.to(
       {
-        Continue: [
-          {
-            input_index: inputIndex,
-            output_index: outputIndex,
-            script_index: scriptIndex,
-            script_tx_wits_opening: opening,
-          },
-        ],
+        Continue: [actionFor(inputIndex, outputIndex)],
       },
       Step02Redeemer,
     );
@@ -201,7 +352,7 @@ export const submitNativeScriptInvalidStep02 = async ({
     stepReference,
     stepScript: contracts.steps[stepIndex].spendingScript,
     stepRole: label,
-    nextAddress: contracts.steps[2].spendingScriptAddress,
+    nextAddress: contracts.steps[nextStep]!.spendingScriptAddress,
     nextDatum,
     redeemer,
     carriageUtxos,
@@ -216,5 +367,6 @@ export const submitNativeScriptInvalidStep02 = async ({
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
     scriptItemCbor: Buffer.from(item).toString("hex"),
     carriageTier: planned.plan.tier,
+    nextStepIndex: nextStep,
   };
 };

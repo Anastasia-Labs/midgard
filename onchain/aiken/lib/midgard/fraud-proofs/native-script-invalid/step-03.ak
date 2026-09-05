@@ -1,5 +1,6 @@
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
+use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 
 pub const direct_signer_limit: Int = 28
 
@@ -8,6 +9,7 @@ pub const direct_script_bytes_limit: Int = 1024
 pub const staged_signer_start_batch_limit: Int = 16
 
 pub type State {
+  subject: VerdictSubjectV1,
   bad_tx_id: ByteArray,
   bad_tx_witness_set_hash: ByteArray,
   script_item_hash: ByteArray,

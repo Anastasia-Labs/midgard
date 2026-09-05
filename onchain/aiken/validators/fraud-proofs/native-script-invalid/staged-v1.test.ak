@@ -13,6 +13,7 @@ use midgard/fraud_proofs/field_opening_v1.{
   WitnessFieldOpening, address_witnesses_field_index,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_script_invalid/rule
 use midgard/fraud_proofs/native_script_invalid/step_03
 use midgard/fraud_proofs/native_script_invalid/step_04
 use midgard/fraud_proofs/native_script_invalid/step_05
@@ -104,6 +105,7 @@ fn native_script_item() -> ByteArray {
 
 fn input_state() -> step_03.State {
   step_03.State {
+    subject: rule.accepted_subject(tx_id),
     bad_tx_id: tx_id,
     bad_tx_witness_set_hash: witness_set_hash,
     script_item_hash: blake2b_256(native_script_item()),
@@ -287,6 +289,7 @@ fn continue_tx(output_state: Data, output_script_hash: ByteArray) -> Transaction
 fn state_32() -> step_04.State {
   let state = input_state()
   step_04.State {
+    subject: state.subject,
     bad_tx_id: state.bad_tx_id,
     bad_tx_witness_set_hash: state.bad_tx_witness_set_hash,
     script_item_hash: state.script_item_hash,
@@ -302,6 +305,7 @@ fn state_32() -> step_04.State {
 fn state_16() -> step_04.State {
   let state = input_state()
   step_04.State {
+    subject: state.subject,
     bad_tx_id: state.bad_tx_id,
     bad_tx_witness_set_hash: state.bad_tx_witness_set_hash,
     script_item_hash: state.script_item_hash,
@@ -347,6 +351,7 @@ fn state_304() -> step_04.State {
 fn state_318() -> step_05.State {
   let state = input_state()
   step_05.State {
+    subject: state.subject,
     bad_tx_id: state.bad_tx_id,
     script_item_hash: state.script_item_hash,
     validity_interval_start: state.validity_interval_start,

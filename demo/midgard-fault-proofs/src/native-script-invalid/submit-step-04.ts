@@ -137,6 +137,7 @@ export const submitNativeScriptInvalidStep04 = async ({
       ? remainingItems
       : NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH;
   const next = nativeScriptInvalidSignerScanState({
+    verifySignatures: state.subject.direction === 1n,
     txId: state.bad_tx_id,
     addressWitnessItems,
     totalLength: planned.preimage.length,
@@ -176,6 +177,7 @@ export const submitNativeScriptInvalidStep04 = async ({
         {
           fraud_prover: signer.paymentKeyHash,
           data: {
+            subject: state.subject,
             bad_tx_id: state.bad_tx_id,
             script_item_hash: state.script_item_hash,
             validity_interval_start: state.validity_interval_start,

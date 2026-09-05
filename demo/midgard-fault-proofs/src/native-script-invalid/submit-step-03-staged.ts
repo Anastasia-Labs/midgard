@@ -139,6 +139,7 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
     label: `${label} staged field 7`,
   });
   const next = nativeScriptInvalidSignerScanState({
+    verifySignatures: state.subject.direction === 1n,
     txId: state.bad_tx_id,
     addressWitnessItems,
     totalLength: planned.preimage.length,
@@ -175,6 +176,7 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
+        subject: state.subject,
         bad_tx_id: state.bad_tx_id,
         bad_tx_witness_set_hash: state.bad_tx_witness_set_hash,
         script_item_hash: state.script_item_hash,

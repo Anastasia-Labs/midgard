@@ -13,15 +13,16 @@ use midgard/fraud_proofs/field_opening_v1.{
 use midgard/fraud_proofs/mint_authorization/engine
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
+use midgard/fraud_proofs/native_script_invalid/rule
 use midgard/fraud_proofs/native_script_invalid/step_03.{
-  Args, Datum, DirectFinalize, SpendRedeemer, StartSignerScan, State,
+  Datum, DirectFinalize, SpendRedeemer, StartSignerScan, State,
   direct_script_bytes_limit, direct_signer_limit,
   staged_signer_start_batch_limit,
 }
 use midgard/fraud_proofs/native_script_invalid/step_04
 use midgard/fraud_proofs/native_tx/components.{
-  decode_midgard_address_witness_cbor, decode_midgard_versioned_script_at,
-  encode_midgard_address_witness, encode_midgard_versioned_script,
+  decode_midgard_versioned_script_at, encode_midgard_address_witness,
+  encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionWitnessSet, MidgardVersionedScript,
@@ -105,15 +106,20 @@ validator main(
             let signer_hashes = fold_opened_field(
               addr_tx_wits_walk,
               [],
-              fn(acc, _index, item) { [signer_hash_of(item), ..acc] },
+              fn(acc, _index, item) {
+                when rule.authenticated_signer(state.subject, item) is {
+                  Some(hash) -> [hash, ..acc]
+                  None -> acc
+                }
+              },
             )
-            expect engine.ScriptEvaluatedV1 { satisfied: False } = engine.evaluate_native_script_v1(
+            expect engine.ScriptEvaluatedV1 { satisfied } = engine.evaluate_native_script_v1(
               script_bytes,
               signer_hashes,
               state.validity_interval_start,
               state.validity_interval_end,
             )
-            True
+            rule.terminal(state.subject, satisfied)
           }
           StartSignerScan {
             input_index,
@@ -162,11 +168,15 @@ validator main(
                 signer_peaks: validation_merkle_v1.empty_frontier(),
               },
               fn(accumulator, _index, item) {
-                append_signer(accumulator, signer_hash_of(item))
+                when rule.authenticated_signer(state.subject, item) is {
+                  Some(hash) -> append_signer(accumulator, hash)
+                  None -> accumulator
+                }
               },
             )
             expect output_script_hash == step_04_validator_script_hash
             let expected_output_state: Data = step_04.State {
+              subject: state.subject,
               bad_tx_id: state.bad_tx_id,
               bad_tx_witness_set_hash: state.bad_tx_witness_set_hash,
               script_item_hash: state.script_item_hash,
@@ -223,12 +233,6 @@ fn native_script_bytes(state: State, script_item_cbor: ByteArray) -> ByteArray {
   script_bytes
 }
 
-fn signer_hash_of(item: ByteArray) -> ByteArray {
-  let witness = decode_midgard_address_witness_cbor(item)
-  expect encode_midgard_address_witness(witness) == item
-  utils.get_verification_key_hash(witness.verification_key)
-}
-
 fn append_signer(
   accumulator: SignerAccumulatorV1,
   signer_hash: ByteArray,
@@ -278,6 +282,7 @@ fn run_native_verdict(script_bytes: ByteArray) -> Bool {
   let block = fixture.native_block_fixture_v1(tx)
   let script_item_cbor = encode_midgard_versioned_script(script)
   let state = State {
+    subject: rule.accepted_subject(block.tx_id),
     bad_tx_id: block.tx_id,
     bad_tx_witness_set_hash: block.compact.witness_set_hash,
     script_item_hash: blake2b_256(script_item_cbor),
