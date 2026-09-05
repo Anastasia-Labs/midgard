@@ -353,11 +353,13 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY = Object.freeze({
   },
   nativeScriptInvalid: {
     familyId: "native-script-invalid",
-    stepCount: 3,
+    stepCount: 5,
     deployedStepContractNames: [
       "fraudProofNativeScriptInvalid",
       "fraudProofNativeScriptInvalidStep02",
       "fraudProofNativeScriptInvalidStep03",
+      "fraudProofNativeScriptInvalidStep04",
+      "fraudProofNativeScriptInvalidStep05",
     ],
   },
   minAda: {

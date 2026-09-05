@@ -497,16 +497,10 @@ const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
  * The prefix of a compiled fault-proof chain that the canonical deployment ABI
  * actually registers.
  *
- * `midgard-core`'s `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` names five
- * `missingNativeScriptUtxo` steps and three `nativeScriptInvalid` steps, while
- * `onchain/aiken` compiles seven and five and `midgard-fault-proofs`'s runtime
- * submits against `fraudProofMissingNativeScriptUtxoStep06`/`Step07` and
- * `fraudProofNativeScriptInvalidStep04`/`Step05`. `validateContracts` takes an
- * EXACT key set, so a manifest carrying those four surplus steps is rejected
- * outright and one omitting the five/three is rejected too — this builder can
- * only emit what the ABI names. Extending the ABI moves the manifest identity
- * for `midgard-core`, `midgard-watcher`, `da-committee-node` and this package,
- * so it is not a change this module can make on its own.
+ * The canonical ABI registers all five `nativeScriptInvalid` steps. The
+ * separate `missingNativeScriptUtxo` chain still compiles seven steps while
+ * its manifest names five. The exact manifest key set therefore bounds that
+ * chain until its own ABI extension is implemented across consumers.
  *
  * This is a BOUND, not a filter. It only ever drops a TAIL of unregistered
  * steps: an unregistered step with a registered step after it, or a chain whose

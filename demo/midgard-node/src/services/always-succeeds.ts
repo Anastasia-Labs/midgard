@@ -438,7 +438,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         steps: [invalidRange, invalidRange],
       },
       missingNativeScriptUtxo: repeatedFaultProofChain(zeroInput, 5),
-      nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 3),
+      nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 5),
       minAda: {
         ...repeatedFaultProofChain(invalidRange, 5),
         yields: {

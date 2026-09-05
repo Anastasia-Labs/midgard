@@ -219,6 +219,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof native-script-invalid step-01": "V1FpNativeScriptInvalidS01",
   "V1 fraud-proof native-script-invalid step-02": "V1FpNativeScriptInvalidS02",
   "V1 fraud-proof native-script-invalid step-03": "V1FpNativeScriptInvalidS03",
+  "V1 fraud-proof native-script-invalid step-04": "V1FpNativeScriptInvalidS04",
+  "V1 fraud-proof native-script-invalid step-05": "V1FpNativeScriptInvalidS05",
   "V1 fraud-proof min-ada step-01": "V1FpMinAdaS01",
   "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
   "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
