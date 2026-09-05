@@ -237,8 +237,14 @@ const Q13_APPLIED_STEP_HASHES = [
 // at every stage) re-parameterize steps 01–04, so the applied step-01 hash
 // and the fold move. Derived under the working-tree testnet blueprint
 // (sha256 eae812c7…). `102ef380…` -> `fb90accd…`.
+// Re-pinned 2026-09-05 (Wave 3 follow-up, both signer families): step 02 of
+// `spendInputSignerMissing` and `protectedOutputSignerMissing` gained the
+// terminal step's hash as a parameter so a forced rejection that needs no
+// signer closes directly, re-parameterizing steps 01–02 of both, so both
+// applied step-01 hashes and the fold move. Derived under the working-tree
+// testnet blueprint (sha256 b86c2357…). `fb90accd…` -> `48100d04…`.
 const Q13_CATALOGUE_ROOT =
-  "fb90accdafa6fbb9d394b0f223b64c1d84e230989f846374a0bf67859d6a6bcb";
+  "48100d04f99237bf14ad03755e0e96e281b976b656a0e86963fa4b58dd0b8046";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
