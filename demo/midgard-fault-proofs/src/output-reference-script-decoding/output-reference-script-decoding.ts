@@ -172,8 +172,15 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
   subject,
   outputIndex,
   canonicalTransactionCbor,
+  admitHonestVerdict = false,
 }: OutputReferenceScriptDecodingFinding & {
   readonly canonicalTransactionCbor: Uint8Array;
+  /**
+   * Diagnostic only: keep the authenticated evidence of a verdict the decoder
+   * agrees with, so a lifecycle suite can drive the honest refusal through
+   * the real chain. The submission builders still refuse to close on it.
+   */
+  readonly admitHonestVerdict?: boolean;
 }): OutputReferenceScriptDecodingEvidence => {
   classifyOutputReferenceScriptDecodingFinding({ subject, outputIndex });
   const material = deriveMidgardNativeTxFaultEvidenceMaterial(
@@ -242,7 +249,7 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
           ).toString("hex")
         : "",
   });
-  if (!outputReferenceScriptEvidenceCloses(evidence))
+  if (!admitHonestVerdict && !outputReferenceScriptEvidenceCloses(evidence))
     return fail("authenticated decoder agrees with operator verdict");
   return evidence;
 };

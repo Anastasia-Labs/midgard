@@ -21,28 +21,26 @@ import {
   OutputReferenceStep06RedeemerSchema,
 } from "./schemas.js";
 
-export const submitOutputReferenceScriptDecodingStep06 = async ({
+type TerminalState = {
+  readonly bound: {
+    readonly subject: { readonly transaction_id: string };
+    readonly output_index: bigint;
+  };
+  readonly result_class: bigint;
+};
+
+const readTerminalState = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
-  evidence,
-  referenceScriptUtxo,
-  witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: OutputReferenceScriptDecodingEvidence;
-  readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 5;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -53,28 +51,50 @@ export const submitOutputReferenceScriptDecodingStep06 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepState<{
-    readonly bound: {
-      readonly subject: { readonly transaction_id: string };
-      readonly output_index: bigint;
-    };
-    readonly result_class: bigint;
-  }>({
+  const state = requireLinearFaultStepState<TerminalState>({
     threadUtxo,
     signer,
     schema: OutputReferenceStep06DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
-  if (
-    !outputReferenceScriptEvidenceCloses(evidence) ||
-    state.result_class === -1n ||
-    state.bound.subject.transaction_id !== evidence.subject.transaction_id ||
-    state.bound.output_index !== BigInt(evidence.outputIndex)
-  )
-    throw new Error(
-      `${FAMILY}: terminal state differs from retained contradiction`,
-    );
+  return { stepIndex, threadUtxo, threadToken, state };
+};
+
+/**
+ * The terminal mint exactly as the closed thread state names it, without the
+ * retained-contradiction guard: the lifecycle suite uses it to show the
+ * validator itself refuses to mint under an honest verdict. Production
+ * callers use the guarded entry point below.
+ */
+export const submitOutputReferenceScriptDecodingStep06Raw = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: OutputReferenceScriptDecodingContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const { stepIndex, threadUtxo, threadToken } = await readTerminalState({
+    lucid,
+    contracts,
+    categoryId,
+    signer,
+    threadOutRef,
+  });
   return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
@@ -96,4 +116,23 @@ export const submitOutputReferenceScriptDecodingStep06 = async ({
     preSubmitBoundary,
     awaitConfirmation,
   });
+};
+
+export const submitOutputReferenceScriptDecodingStep06 = async ({
+  evidence,
+  ...rest
+}: Parameters<typeof submitOutputReferenceScriptDecodingStep06Raw>[0] & {
+  readonly evidence: OutputReferenceScriptDecodingEvidence;
+}) => {
+  const { state } = await readTerminalState(rest);
+  if (
+    !outputReferenceScriptEvidenceCloses(evidence) ||
+    state.result_class === -1n ||
+    state.bound.subject.transaction_id !== evidence.subject.transaction_id ||
+    state.bound.output_index !== BigInt(evidence.outputIndex)
+  )
+    throw new Error(
+      `${FAMILY}: terminal state differs from retained contradiction`,
+    );
+  return await submitOutputReferenceScriptDecodingStep06Raw(rest);
 };

@@ -2,6 +2,7 @@ import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -32,13 +33,21 @@ import {
   OutputReferenceStep02DatumSchema,
 } from "./schemas.js";
 
-export const submitOutputReferenceScriptDecodingStep01Forced = async ({
+/**
+ * The forced-door transaction exactly as the redeemer and datum name it: no
+ * off-chain classification, so a lifecycle suite can put a substituted
+ * coordinate, reason, direction, header, or leaf in front of the validator
+ * and observe the on-chain refusal. Production callers use the classified
+ * entry point below.
+ */
+export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
-  evidence,
+  bound,
+  claimedOutputIndex = bound.outputIndex,
   forcedSource,
   referenceScriptUtxo,
   preSubmitBoundary,
@@ -49,13 +58,18 @@ export const submitOutputReferenceScriptDecodingStep01Forced = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: OutputReferenceScriptDecodingEvidence;
+  readonly bound: {
+    readonly subject: VerdictSubject;
+    readonly outputIndex: number;
+    readonly accusedClass: number;
+  };
+  /** The redeemer's output coordinate; defaults to the datum's. */
+  readonly claimedOutputIndex?: number;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  classifyOutputReferenceScriptDecodingFinding(evidence);
   const stepIndex = 0;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -77,9 +91,9 @@ export const submitOutputReferenceScriptDecodingStep01Forced = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        subject: evidence.subject,
-        output_index: BigInt(evidence.outputIndex),
-        accused_class: BigInt(evidence.accusedClass),
+        subject: bound.subject,
+        output_index: BigInt(bound.outputIndex),
+        accused_class: BigInt(bound.accusedClass),
       },
     } as never,
     OutputReferenceStep02DatumSchema as never,
@@ -113,7 +127,7 @@ export const submitOutputReferenceScriptDecodingStep01Forced = async ({
                 output_index: outputIndex,
               },
             },
-            output_index: BigInt(evidence.outputIndex),
+            output_index: BigInt(claimedOutputIndex),
           },
         ],
       } as never,
@@ -137,4 +151,24 @@ export const submitOutputReferenceScriptDecodingStep01Forced = async ({
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: forced step01 layout unresolved`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+};
+
+export const submitOutputReferenceScriptDecodingStep01Forced = async ({
+  evidence,
+  ...rest
+}: Omit<
+  Parameters<typeof submitOutputReferenceScriptDecodingStep01ForcedRaw>[0],
+  "bound" | "claimedOutputIndex"
+> & {
+  readonly evidence: OutputReferenceScriptDecodingEvidence;
+}) => {
+  classifyOutputReferenceScriptDecodingFinding(evidence);
+  return await submitOutputReferenceScriptDecodingStep01ForcedRaw({
+    ...rest,
+    bound: {
+      subject: evidence.subject,
+      outputIndex: evidence.outputIndex,
+      accusedClass: evidence.accusedClass,
+    },
+  });
 };

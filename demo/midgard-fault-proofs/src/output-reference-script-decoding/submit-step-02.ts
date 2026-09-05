@@ -41,22 +41,25 @@ import {
   OutputReferenceStep03DatumSchema,
 } from "./schemas.js";
 
-export const submitOutputReferenceScriptDecodingStep02 = async ({
+/**
+ * Step 02 over an already planned, published and (for tier 3) certified
+ * field-2 carriage. The caller chooses the plan's anchor, so a lifecycle
+ * suite can name another transaction's genuine certificate and observe the
+ * opening door refuse the anchor on chain. Production callers use the
+ * classified entry point below, which plans the opening for the bound
+ * subject itself.
+ */
+export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
   evidence,
-  nativeTxCompactCbor,
-  witnessSetCompactCbor,
-  publishCarriage = false,
-  publishedCarriageUtxos,
-  certificateUtxo: suppliedCertificate,
-  certificateReferenceScriptUtxo,
+  planned,
+  carriageUtxos,
+  certificateUtxo,
   referenceScriptUtxo,
-  publicationPreSubmitBoundary,
-  certificatePreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -66,15 +69,10 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly evidence: OutputReferenceScriptDecodingEvidence;
-  readonly nativeTxCompactCbor: string;
-  readonly witnessSetCompactCbor: string;
-  readonly publishCarriage?: boolean;
-  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly planned: ReturnType<typeof planFaultProofFieldOpening>;
+  readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
-  readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
@@ -103,55 +101,6 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     bound.output_index !== BigInt(evidence.outputIndex)
   )
     throw new Error(`${FAMILY}: retained output differs from bound subject`);
-  const items = decodeMidgardFieldPreimage(
-    Buffer.from(evidence.outputFieldPreimageHex, "hex"),
-  );
-  const planned = planFaultProofFieldOpening({
-    fieldIndex: 2,
-    anchorTxId: evidence.subject.transaction_id,
-    nativeTxCompactCbor,
-    itemCbors: items,
-    owner: signer.paymentKeyHash,
-    publish: publishCarriage,
-    label: `${FAMILY} field 2`,
-  });
-  signer.selectWallet(lucid);
-  const carriageUtxos =
-    publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriage({
-      lucid,
-      signer,
-      planned,
-      publisherAddress: signer.address,
-      label: `${FAMILY} field 2`,
-      preSubmitBoundary: publicationPreSubmitBoundary,
-    }));
-  const certificateUtxo =
-    suppliedCertificate ??
-    (planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network: lucid.config().network!,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo:
-              certificateReferenceScriptUtxo ??
-              (() => {
-                throw new Error(
-                  `${FAMILY}: certified opening requires certificate reference`,
-                );
-              })(),
-            chunkUtxos: carriageUtxos,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificatePreSubmitBoundary,
-          })
-        ).certificateUtxo
-      : undefined);
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
@@ -207,6 +156,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
       OutputReferenceStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
+  signer.selectWallet(lucid);
   const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
@@ -233,4 +183,106 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     carriageUtxos,
     certificateUtxo,
   };
+};
+
+export const submitOutputReferenceScriptDecodingStep02 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  nativeTxCompactCbor,
+  witnessSetCompactCbor,
+  publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo: suppliedCertificate,
+  certificateReferenceScriptUtxo,
+  referenceScriptUtxo,
+  publicationPreSubmitBoundary,
+  certificatePreSubmitBoundary,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: OutputReferenceScriptDecodingContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: OutputReferenceScriptDecodingEvidence;
+  readonly nativeTxCompactCbor: string;
+  readonly witnessSetCompactCbor: string;
+  readonly publishCarriage?: boolean;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
+  readonly certificateReferenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const items = decodeMidgardFieldPreimage(
+    Buffer.from(evidence.outputFieldPreimageHex, "hex"),
+  );
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: 2,
+    anchorTxId: evidence.subject.transaction_id,
+    nativeTxCompactCbor,
+    itemCbors: items,
+    owner: signer.paymentKeyHash,
+    publish: publishCarriage,
+    label: `${FAMILY} field 2`,
+  });
+  signer.selectWallet(lucid);
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: `${FAMILY} field 2`,
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
+  const certificateUtxo =
+    suppliedCertificate ??
+    (planned.plan.tier === "Certified"
+      ? (
+          await certifyFaultProofFieldCarriage({
+            lucid,
+            network: lucid.config().network!,
+            signer,
+            planned,
+            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+            certificateMintingScript:
+              contracts.fieldPreimageCertificateMintingScript,
+            certificateReferenceScriptUtxo:
+              certificateReferenceScriptUtxo ??
+              (() => {
+                throw new Error(
+                  `${FAMILY}: certified opening requires certificate reference`,
+                );
+              })(),
+            chunkUtxos: carriageUtxos,
+            compactCbor: nativeTxCompactCbor,
+            witnessSetCompactCbor,
+            preSubmitBoundary: certificatePreSubmitBoundary,
+          })
+        ).certificateUtxo
+      : undefined);
+  return await submitOutputReferenceScriptDecodingStep02Raw({
+    lucid,
+    contracts,
+    categoryId,
+    signer,
+    threadOutRef,
+    evidence,
+    planned,
+    carriageUtxos,
+    certificateUtxo,
+    referenceScriptUtxo,
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
 };
