@@ -32,6 +32,7 @@ import {
 import {
   buildNativeScriptDecodingScanPlan,
   NativeScriptDecodingPlanRoutes,
+  type NativeScriptDecodingScanPlan,
 } from "../native-script-decoding/scan-plan.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -50,75 +51,64 @@ const mappedRefusal = (
   refusalClass: MidgardNativeScriptDecodingRefusalClass,
 ): bigint => BigInt(refusalClass + 1);
 
-export const submitWitnessScriptDecodingStep03 = async ({
-  lucid,
-  contracts,
-  categoryId,
-  signer,
-  threadOutRef,
-  evidence,
-  referenceScriptUtxo,
-  preSubmitBoundary,
-  preSubmitBoundaryForResult,
-  awaitConfirmation = true,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly contracts: WitnessScriptDecodingContracts;
-  readonly categoryId: string;
-  readonly signer: ResolvedProverSigner;
-  readonly threadOutRef: string;
-  readonly evidence: WitnessScriptDecodingEvidence;
-  readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundaryForResult?: (
-    closed: boolean,
-  ) => Promise<FraudProofPreSubmitBoundary | undefined>;
-  readonly awaitConfirmation?: boolean;
-}) => {
-  const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
-    lucid,
-    contracts,
-    categoryId,
-    family: FAMILY,
-    stepIndex,
-    threadOutRef,
-  });
-  const state = requireLinearFaultStepState<WitnessScriptDecodingScanState>({
-    threadUtxo,
-    signer,
-    schema: WitnessScriptDecodingStep03DatumSchema as never,
-    family: FAMILY,
-    stepIndex,
-  });
-  if (
-    state.item_commitment !== evidence.itemCommitmentHex ||
-    state.total_length !== BigInt(evidence.itemLength) ||
-    state.checkpoint_hash !==
-      witnessScriptDecodingCheckpoint({
-        evidence,
-        controlCbor: state.control_cbor,
-        nextExpectedScriptHash: state.next_expected_script_hash,
-      })
-  ) {
-    throw new Error(
-      `${FAMILY}: authenticated scan state differs from evidence`,
-    );
-  }
+export type WitnessScriptDecodingScanArgs = {
+  readonly control_cbor: string;
+  readonly chunk_proof: ReturnType<
+    typeof nativeScriptDecodingWindowProofs
+  >["chunk_proof"];
+  readonly next_chunk_proof: ReturnType<
+    typeof nativeScriptDecodingWindowProofs
+  >["next_chunk_proof"];
+  readonly frames: readonly ReturnType<typeof nativeScriptDecodingFrameData>[];
+  readonly step_budget: bigint;
+};
 
-  let args: {
-    readonly control_cbor: string;
-    readonly chunk_proof: ReturnType<
-      typeof nativeScriptDecodingWindowProofs
-    >["chunk_proof"];
-    readonly next_chunk_proof: ReturnType<
-      typeof nativeScriptDecodingWindowProofs
-    >["next_chunk_proof"];
-    readonly frames: readonly ReturnType<
-      typeof nativeScriptDecodingFrameData
-    >[];
-    readonly step_budget: bigint;
-  };
+/**
+ * The exact scan plan is a pure function of the retained item and the
+ * direction; a long resumable scan replans once per evidence value rather
+ * than once per transaction.
+ */
+const scanPlans = new WeakMap<
+  WitnessScriptDecodingEvidence,
+  NativeScriptDecodingScanPlan
+>();
+
+const scanPlanOf = (
+  evidence: WitnessScriptDecodingEvidence,
+): NativeScriptDecodingScanPlan => {
+  const cached = scanPlans.get(evidence);
+  if (cached !== undefined) return cached;
+  const plan = buildNativeScriptDecodingScanPlan({
+    itemBytes: Buffer.from(evidence.itemHex, "hex"),
+    direction: Number(evidence.finding.subject.direction) as 0 | 1,
+  });
+  scanPlans.set(evidence, plan);
+  return plan;
+};
+
+/**
+ * The step-03 transition the validator expects from an authenticated scan
+ * state: the redeemer arguments (the checkpointed control, the authenticated
+ * window, the frame witnesses, the exact budget) and the successor state.
+ * A state that step 02 already closed passes through to step 04 with empty
+ * arguments.
+ */
+export const planWitnessScriptDecodingStep03Transition = ({
+  state,
+  evidence,
+  contracts,
+}: {
+  readonly state: WitnessScriptDecodingScanState;
+  readonly evidence: WitnessScriptDecodingEvidence;
+  readonly contracts: WitnessScriptDecodingContracts;
+}): {
+  readonly args: WitnessScriptDecodingScanArgs;
+  readonly nextState: WitnessScriptDecodingScanState;
+  readonly closes: boolean;
+  readonly route: "closed" | "segment" | "verdict";
+  readonly nextStepIndex: 2 | 3;
+} => {
+  let args: WitnessScriptDecodingScanArgs;
   let nextControl = state.control_cbor;
   let nextClass = state.result_class;
   let closes =
@@ -126,10 +116,7 @@ export const submitWitnessScriptDecodingStep03 = async ({
   let route: "closed" | "segment" | "verdict" = "closed";
 
   if (!closes) {
-    const plan = buildNativeScriptDecodingScanPlan({
-      itemBytes: Buffer.from(evidence.itemHex, "hex"),
-      direction: Number(evidence.finding.subject.direction) as 0 | 1,
-    });
+    const plan = scanPlanOf(evidence);
     if (plan.route !== NativeScriptDecodingPlanRoutes.Machine) {
       throw new Error(`${FAMILY}: pending state has a non-machine plan`);
     }
@@ -205,6 +192,66 @@ export const submitWitnessScriptDecodingStep03 = async ({
     }),
     result_class: nextClass,
   };
+  return { args, nextState, closes, route, nextStepIndex };
+};
+
+export const submitWitnessScriptDecodingStep03 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  referenceScriptUtxo,
+  preSubmitBoundary,
+  preSubmitBoundaryForResult,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: WitnessScriptDecodingContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: WitnessScriptDecodingEvidence;
+  readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundaryForResult?: (
+    closed: boolean,
+  ) => Promise<FraudProofPreSubmitBoundary | undefined>;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const stepIndex = 2;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    family: FAMILY,
+    stepIndex,
+    threadOutRef,
+  });
+  const state = requireLinearFaultStepState<WitnessScriptDecodingScanState>({
+    threadUtxo,
+    signer,
+    schema: WitnessScriptDecodingStep03DatumSchema as never,
+    family: FAMILY,
+    stepIndex,
+  });
+  if (
+    state.item_commitment !== evidence.itemCommitmentHex ||
+    state.total_length !== BigInt(evidence.itemLength) ||
+    state.checkpoint_hash !==
+      witnessScriptDecodingCheckpoint({
+        evidence,
+        controlCbor: state.control_cbor,
+        nextExpectedScriptHash: state.next_expected_script_hash,
+      })
+  ) {
+    throw new Error(
+      `${FAMILY}: authenticated scan state differs from evidence`,
+    );
+  }
+  const { args, nextState, closes, route, nextStepIndex } =
+    planWitnessScriptDecodingStep03Transition({ state, evidence, contracts });
   const nextSchema = closes
     ? WitnessScriptDecodingStep04DatumSchema
     : WitnessScriptDecodingStep03DatumSchema;
