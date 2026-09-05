@@ -100,3 +100,30 @@ Retained-DA replay checks also spend an output created by an earlier forced
 transaction in the same block. They establish the selected event's pre-state
 and reject an inconsistent prior committed effect root, independently of the
 block's initial ledger root.
+
+## Final evidence
+
+The pinned testnet tree passes 3,750 Aiken tests. The registered lifecycle suite
+passes all 16 shapes, including both 1,304-asset, exact 5,000-byte Cardano Values;
+both exact 32,768-byte aggregate field cases; maximum 64-node source/input and
+32-node event/transition proofs; maximum multi-policy output Values; Ada-only,
+mint/burn, honest-rejection refusals, and every visited program's cancellation.
+Every positive shape reaches permanent proof mint and block removal.
+
+The standard ledger contains **13,538** measured transactions across those
+16 shapes (363 publication rows and
+13,175 evaluated lifecycle rows). Maximum signed
+size is **15,872 bytes**, memory is
+**7,167,847 units**, and CPU is
+**2,711,657,991 units**. Every hard-limit margin is positive;
+all publication rows retain the 512-byte reserve.
+
+Blueprint SHA-256: `989174f8050cba2f6cd61664929451a36826d1f7090eeb75ec1b15cc45317824`.
+Ledger SHA-256: `96e1dec152f0de322aa40f72cc7c1a5e54722e03ca9ad768b3919db5bdb90262`.
+
+Additional regressions pass: 7 original accepted lifecycle cases; 22 durable
+adapter, retained-DA replay and workflow-runtime checks; 7 SDK reference-script
+checks; and 2 watcher installation checks. Core, SDK, fault-proof, node and
+watcher TypeScript checks pass. The ledger verifier checks the current blueprint,
+recomputed margins and the required terminal/removal evidence for each positive
+shape, so a partial run cannot satisfy its shape count alone.
