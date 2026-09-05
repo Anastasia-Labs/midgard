@@ -225,9 +225,14 @@ export const prepareWitnessScriptDecodingEvidence = ({
   const initialResultClass =
     header === null
       ? WitnessScriptDecodingResultClasses.HeaderMalformed
-      : header.languageTag === 0
-        ? WitnessScriptDecodingResultClasses.Pending
-        : WitnessScriptDecodingResultClasses.NoFault;
+      : header.languageTag !== 0
+        ? WitnessScriptDecodingResultClasses.NoFault
+        : header.payloadLength === 0
+          ? // Twin of `authenticate_item_v1`: a decodable tag-0 wrapper over an
+            // empty payload is the structural class, fixed at step 02 because
+            // the frozen scan control cannot open an empty region.
+            WitnessScriptDecodingResultClasses.NativeMalformed
+          : WitnessScriptDecodingResultClasses.Pending;
   // Materialize all proofs here from retained bytes; submission selects only
   // the cursor and optional adjacent proof needed by each resume transaction.
   const chunkProofCount = midgardBoundedItemChunkCount(item.length);

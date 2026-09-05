@@ -168,6 +168,21 @@ pub fn authenticate_item_v1(
           scan_script_hash,
           result_no_fault,
         )
+      } else if header.payload_length == 0 {
+        // The wrapper decodes, so this is not a header fault. Canonical
+        // validation (`phase_a_native_scripts`) opens the token scan at the
+        // payload offset, which is already the item end, and `token_at_v1`
+        // refuses there: the empty tag-0 payload is the structural (body)
+        // rejection. The frozen scan control cannot be initialised over an
+        // empty region, so the class is fixed here rather than at step 03.
+        state_with(
+          bound,
+          total_length,
+          item_commitment,
+          #"",
+          scan_script_hash,
+          result_native_malformed,
+        )
       } else {
         let control = native_script_scan_v1.initial_structure_control_v1(
           header.payload_offset,

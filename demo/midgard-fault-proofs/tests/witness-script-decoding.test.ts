@@ -104,8 +104,24 @@ describe("witnessScriptDecoding V1 evidence", () => {
     expect(evidence({ item: plutusItem }).resultClass).toBe(
       WitnessScriptDecodingResultClasses.NoFault,
     );
-    expect(evidence({ item: Buffer.from("820040", "hex") }).resultClass).toBe(
+    // The empty tag-0 payload decodes its wrapper, so it is the structural
+    // class, and step 02 fixes it without a scan (empty control).
+    const emptyPayload = evidence({ item: Buffer.from("820040", "hex") });
+    expect(emptyPayload.resultClass).toBe(
       WitnessScriptDecodingResultClasses.NativeMalformed,
+    );
+    expect(emptyPayload.initialResultClass).toBe(
+      WitnessScriptDecodingResultClasses.NativeMalformed,
+    );
+    expect(emptyPayload.initialControlCbor).toBe("");
+    expect(evidence({ item: malformedNativeItem }).initialResultClass).toBe(
+      WitnessScriptDecodingResultClasses.Pending,
+    );
+    expect(evidence().initialResultClass).toBe(
+      WitnessScriptDecodingResultClasses.HeaderMalformed,
+    );
+    expect(evidence({ item: plutusItem }).initialResultClass).toBe(
+      WitnessScriptDecodingResultClasses.NoFault,
     );
   });
 

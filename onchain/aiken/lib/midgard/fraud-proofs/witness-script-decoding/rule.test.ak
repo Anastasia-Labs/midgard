@@ -1,3 +1,4 @@
+use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_script_decoding/engine as scan_engine
@@ -6,7 +7,8 @@ use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/witness_script_decoding/rule
 use midgard/native_script_scan_v1
 use midgard/rejection_reason_v1.{
-  WitnessNativeScriptMalformed, WitnessScriptHeaderMalformed,
+  RejectionReasonV1, WitnessNativeScriptDepthLimit, WitnessNativeScriptMalformed,
+  WitnessNativeScriptNodeLimit, WitnessScriptHeaderMalformed,
 }
 use midgard/validation_merkle_v1
 
@@ -355,4 +357,177 @@ test adjacent_depth_over_bound_is_refused() {
     1,
   )
   rule.mapped_refusal_class_v1(refusal_class) == rule.result_depth_limit
+}
+
+fn forced_subject_with(reason: RejectionReasonV1) -> substrate.VerdictSubjectV1 {
+  substrate.VerdictSubjectV1 {
+    version: substrate.version,
+    direction: substrate.direction_wrongful_rejection,
+    source_kind: substrate.source_kind_forced,
+    transaction_id: accepted_tx_id,
+    source_key: #"01",
+    rejection_reason: Some(reason),
+  }
+}
+
+/// `[0, h'']` decodes its wrapper, so it is not a header fault; canonical
+/// validation opens the token scan at the item end and refuses, which is the
+/// structural class. Step 02 must fix that class itself: the frozen control
+/// cannot be initialised over an empty payload region.
+test empty_tag0_payload_is_the_native_malformed_class() {
+  let item = fixture.empty_payload_item_v1()
+  let accepted = rule.authenticate_item_v1(
+    rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
+    item,
+    scan_hash,
+  )
+  let honest = rule.authenticate_item_v1(
+    rule.bind_subject_v1(
+      forced_subject_with(WitnessNativeScriptMalformed { script_index: 0 }),
+      witness_hash,
+      0,
+    ),
+    item,
+    scan_hash,
+  )
+  let wrong_class = rule.authenticate_item_v1(
+    rule.bind_subject_v1(forced_header_subject(), witness_hash, 0),
+    item,
+    scan_hash,
+  )
+  and {
+    accepted.result_class == rule.result_native_malformed,
+    accepted.control_cbor == #"",
+    rule.state_is_authentic_v1(accepted),
+    rule.terminal_contradiction_v1(
+      rule.closed_state_v1(accepted, accepted.result_class, final_hash),
+    ),
+    !rule.terminal_contradiction_v1(
+      rule.closed_state_v1(honest, honest.result_class, final_hash),
+    ),
+    rule.terminal_contradiction_v1(
+      rule.closed_state_v1(wrong_class, wrong_class.result_class, final_hash),
+    ),
+  }
+}
+
+/// Every forced arm binds its own class; the terminal predicate convicts
+/// exactly when the authenticated decoder result is a different class.
+test binds_every_accused_class_and_contradicts_only_a_different_result() {
+  let reasons = [
+    Pair(
+      WitnessScriptHeaderMalformed { script_index: 2 },
+      rule.result_header_malformed,
+    ),
+    Pair(
+      WitnessNativeScriptMalformed { script_index: 2 },
+      rule.result_native_malformed,
+    ),
+    Pair(
+      WitnessNativeScriptNodeLimit { script_index: 2 },
+      rule.result_node_limit,
+    ),
+    Pair(
+      WitnessNativeScriptDepthLimit { script_index: 2 },
+      rule.result_depth_limit,
+    ),
+  ]
+  list.all(
+    reasons,
+    fn(entry) {
+      let Pair(reason, accused) = entry
+      let bound = rule.bind_subject_v1(
+        forced_subject_with(reason),
+        witness_hash,
+        2,
+      )
+      let state = rule.authenticate_item_v1(
+        bound,
+        fixture.signature_script_item_v1(),
+        scan_hash,
+      )
+      let other = if accused == rule.result_node_limit {
+        rule.result_depth_limit
+      } else {
+        rule.result_node_limit
+      }
+      and {
+        bound.accused_class == accused,
+        rule.terminal_contradiction_v1(
+          rule.closed_state_v1(state, rule.result_no_fault, final_hash),
+        ),
+        rule.terminal_contradiction_v1(
+          rule.closed_state_v1(state, other, final_hash),
+        ),
+        !rule.terminal_contradiction_v1(
+          rule.closed_state_v1(state, accused, final_hash),
+        ),
+      }
+    },
+  )
+}
+
+test refuses_a_negative_coordinate() fail {
+  expect _bound = rule.bind_subject_v1(accepted_subject(), witness_hash, -1)
+  True
+}
+
+test refuses_a_substituted_witness_set_hash_width() fail {
+  expect _bound = rule.bind_subject_v1(
+    accepted_subject(),
+    bytearray.drop(witness_hash, 1),
+    0,
+  )
+  True
+}
+
+/// A checkpoint that does not recompute over the carried fields is refused
+/// before any verdict is read.
+test refuses_a_malformed_checkpoint() fail {
+  let state = rule.closed_state_v1(
+    rule.authenticate_item_v1(
+      rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
+      fixture.malformed_wrapper_item_v1(),
+      scan_hash,
+    ),
+    rule.result_header_malformed,
+    final_hash,
+  )
+  let tampered = rule.WitnessScriptScanStateV1 {
+    ..state,
+    checkpoint_hash: witness_hash,
+  }
+  expect rule.terminal_contradiction_v1(tampered)
+  True
+}
+
+/// Rewriting the next expected script (the successor) without recomputing
+/// the checkpoint is refused: the successor is part of the commitment.
+test refuses_a_substituted_successor_in_the_checkpoint() fail {
+  let state = rule.authenticate_item_v1(
+    rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
+    fixture.signature_script_item_v1(),
+    scan_hash,
+  )
+  let rerouted = rule.WitnessScriptScanStateV1 {
+    ..state,
+    next_expected_script_hash: final_hash,
+  }
+  expect rule.state_is_authentic_v1(rerouted)
+  True
+}
+
+/// A non-native language is a successful decoder result: an accepted block
+/// carrying it is honest and the closed state never convicts.
+test closed_non_native_result_is_honest_for_an_accepted_block() {
+  let state = rule.closed_state_v1(
+    rule.authenticate_item_v1(
+      rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
+      fixture.plutus_script_item_v1(),
+      scan_hash,
+    ),
+    rule.result_no_fault,
+    final_hash,
+  )
+  !rule.terminal_contradiction_v1(state)
 }
