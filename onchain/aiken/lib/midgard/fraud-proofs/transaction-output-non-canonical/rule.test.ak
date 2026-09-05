@@ -173,3 +173,52 @@ test maximum_output_scans_with_bounded_windows() {
     rule.terminal_contradiction_v1(terminal),
   }
 }
+
+test negative_output_coordinate_refuses() fail {
+  rule.bind_output_v1(accepted(), -1).output_index == -1
+}
+
+test substituted_chunk_digest_refuses_window() fail {
+  let initial = rule.initial_scan_v1(
+    rule.bind_output_v1(accepted(), 0),
+    canonical_output,
+  )
+  let forged = rule.OutputScanStateV1 {
+    ..initial,
+    chunk_hashes: [
+      #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    ],
+  }
+  rule.advance_scan_v1(forged, canonical_output).outcome == rule.outcome_scanning
+}
+
+test oversized_window_refuses() fail {
+  let initial = rule.initial_scan_v1(
+    rule.bind_output_v1(accepted(), 0),
+    canonical_output,
+  )
+  rule.advance_scan_v1(initial, bytearray.concat(canonical_output, #"00")).outcome == rule.outcome_scanning
+}
+
+test scanning_checkpoint_refuses_terminal_polarity() fail {
+  let initial = rule.initial_scan_v1(
+    rule.bind_output_v1(rejected(0), 0),
+    canonical_output,
+  )
+  rule.terminal_contradiction_v1(initial)
+}
+
+test successor_follows_outcome_until_the_terminal_transition() {
+  let initial = rule.initial_scan_v1(
+    rule.bind_output_v1(rejected(0), 0),
+    canonical_output,
+  )
+  let first = rule.advance_scan_v1(initial, canonical_output)
+  let terminal = scan(rejected(0), canonical_output)
+  and {
+    first.outcome == rule.outcome_scanning,
+    rule.state_is_well_formed_v1(first),
+    terminal.outcome != rule.outcome_scanning,
+    rule.state_is_well_formed_v1(terminal),
+  }
+}
