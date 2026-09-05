@@ -26,10 +26,19 @@ The two-step chain lives under:
 - `onchain/aiken/validators/fraud-proofs/min-fee/`
 - `onchain/aiken/lib/midgard/fraud-proofs/min-fee/`
 
-Step 01 authenticates the transaction and carries its compact form, fee, id,
-and header fee parameters. Step 02 opens all nine authenticated fields,
-recomputes the canonical transaction size and minimum fee, and finalizes only
-for the strict violation. Cancellation is explicit.
+Step 01 authenticates either accepted inclusion or the exact forced leaf with
+`FeeBelowMinimum`, carrying the canonical verdict subject, compact transaction,
+fee, id, and header schedule. Step 02 authenticates all nine lengths and
+recomputes the canonical minimum. Accepted-invalid requires `fee < minimum`;
+wrongful rejection requires `fee >= minimum`. The forced branch reads lengths
+through the authenticated raw-preimage door, so variable-field item grammar
+never adds an unbounded scan. Cancellation is explicit at both steps.
+
+Wave 9 wrongful-rejection evidence and six complete maximum-shape lifecycles
+are recorded in `size-plans/min-fee-wrongful-rejection-v1.md` and its fit ledger.
+The durable workflow reopens exact header/root/count/MPF/source/reason evidence
+on restart and plans all field/chunk/certificate publications before terminal
+submission.
 
 ## Off-chain surfaces
 

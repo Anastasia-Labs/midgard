@@ -1,5 +1,6 @@
 /** Bind the disputed transaction and header fee schedule into step-02 state. */
 import {
+  acceptedVerdictSubject,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
@@ -147,6 +148,7 @@ export const submitMinFeeStep01 = async ({
     ),
   );
   const state = {
+    subject: acceptedVerdictSubject(txInclusion.nativeTxId),
     bad_tx: txInclusion.nativeTx,
     bad_tx_body_fee: txInclusion.nativeTx.body.fee,
     bad_tx_id: txInclusion.nativeTxId,
@@ -192,20 +194,26 @@ export const submitMinFeeStep01 = async ({
     return Data.to(
       {
         Continue: [
-          inclusionCarriage.redeemer(ctx, {
-            input_index: inputIndex,
-            output_index: outputIndex,
-            hub_ref_input_index: requireReferenceInputIndex(
-              ctx,
-              hubOracleUtxo,
-              `${STEP_LABEL} hub oracle`,
-            ),
-            state_queue_node_ref_input_index: requireReferenceInputIndex(
-              ctx,
-              stateQueueBlockUtxo,
-              `${STEP_LABEL} state-queue block`,
-            ),
-          }),
+          {
+            source: {
+              AcceptedSource: {
+                inclusion: inclusionCarriage.redeemer(ctx, {
+                  input_index: inputIndex,
+                  output_index: outputIndex,
+                  hub_ref_input_index: requireReferenceInputIndex(
+                    ctx,
+                    hubOracleUtxo,
+                    `${STEP_LABEL} hub oracle`,
+                  ),
+                  state_queue_node_ref_input_index: requireReferenceInputIndex(
+                    ctx,
+                    stateQueueBlockUtxo,
+                    `${STEP_LABEL} state-queue block`,
+                  ),
+                }),
+              },
+            },
+          },
         ],
       },
       MinFeeStep01SpendRedeemer,

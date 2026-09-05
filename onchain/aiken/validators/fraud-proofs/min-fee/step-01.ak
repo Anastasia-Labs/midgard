@@ -2,10 +2,17 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
-use midgard/fraud_proofs/min_fee/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/common.{
+  cancel, continue, pass_native_tx_to_next_step_carried,
+}
+use midgard/fraud_proofs/min_fee/step_01.{
+  AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
+}
 use midgard/fraud_proofs/min_fee/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/rejection_reason_v1.{FeeBelowMinimum}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -28,7 +35,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_args) -> {
+      ct.Continue(Args{source: AcceptedSource { inclusion: tx_inclusion_args }}) -> {
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
@@ -64,6 +71,7 @@ validator main(
         //    which is what entitles step-02 to treat its state as anchored.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
+          subject: substrate.bind_accepted_subject_v1(bad_tx_view),
           bad_tx: bad_tx_view.tx_compact,
           bad_tx_body_fee: bad_tx_view.tx_compact.body.fee,
           bad_tx_id,
@@ -75,6 +83,51 @@ validator main(
         // Done.
         True
       }
+      ct.Continue(Args{source: ForcedSource {
+        input_index,
+        output_index,
+        header,
+        membership,
+        direction,
+      }}) -> {
+        expect Some(step_datum) = datum
+        let _, thread_name, _, _, output_script_hash, output_state_data <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        let subject = substrate.bind_forced_subject_to_thread_v1(
+          thread_name,
+          header,
+          membership,
+          direction,
+        )
+        expect subject.direction == substrate.direction_wrongful_rejection
+        expect _reason = substrate.bind_exact_rejection_reason_v1(
+          subject,
+          FeeBelowMinimum,
+        )
+        let verified = verify_native_tx_compact_cbor_v1(
+          membership.value.tx_id,
+          membership.value.source.compact_cbor,
+        )
+        let expected: Data = step_02.State {
+          subject,
+          bad_tx: verified.tx_compact,
+          bad_tx_body_fee: verified.tx_compact.body.fee,
+          bad_tx_id: verified.tx_id,
+          min_fee_a: header.min_fee_a,
+          min_fee_b: header.min_fee_b,
+        }
+        and {
+          output_script_hash == step_02_validator_script_hash,
+          output_state_data == expected,
+        }
+      }
     }
   }
 
@@ -85,6 +138,9 @@ validator main(
 
 fn expected_state_for(block: fixture.NativeBlockFixtureV1) -> Data {
   let state: Data = step_02.State {
+    subject: substrate.bind_accepted_subject_v1(
+      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    ),
     bad_tx: block.compact,
     bad_tx_body_fee: block.compact.body.fee,
     bad_tx_id: block.tx_id,
@@ -107,7 +163,13 @@ fn run_continue(block: fixture.NativeBlockFixtureV1, output_state: Data) -> Bool
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_carriage_v1(block)),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(block),
+        },
+      },
+    ),
     fixture.own_out_ref(),
     l1_tx,
   )
@@ -155,6 +217,9 @@ test min_fee_step_01_rejects_forged_transactions_root() fail {
 test min_fee_step_01_rejects_a_forged_fee_schedule_in_state() fail {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let forged_state: Data = step_02.State {
+    subject: substrate.bind_accepted_subject_v1(
+      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    ),
     bad_tx: block.compact,
     bad_tx_body_fee: block.compact.body.fee,
     bad_tx_id: block.tx_id,

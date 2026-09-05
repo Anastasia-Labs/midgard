@@ -3,6 +3,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_tx/types.{
   NativeTxCompact, NativeTxWitnessSetCompact,
 }
+use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 use midgard/ledger_state.{MidgardTxId}
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 
@@ -23,6 +24,7 @@ use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 /// binds into the validation machine's context, read here off the header that
 /// `pass_native_tx_to_next_step` authenticated against the state queue.
 pub type State {
+  subject: VerdictSubjectV1,
   bad_tx: NativeTxCompact,
   bad_tx_body_fee: Lovelace,
   bad_tx_id: MidgardTxId,

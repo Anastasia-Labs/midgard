@@ -16,8 +16,11 @@ import {
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "../common.js";
+import { H32Schema, OutputReferenceSchema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
 import { FieldCarriageSchema } from "../native-tx-field-access.js";
+import { RejectionReasonSchema } from "../rejection-reason.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -28,6 +31,11 @@ import {
   NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
 } from "./native.js";
+import {
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
+} from "./proof-thread-substrate.js";
 
 export const MIN_FEE_VIOLATION_ID = "min-fee" as const;
 
@@ -56,8 +64,41 @@ export const MinFeeStep01Datum = asDataType<MinFeeStep01Datum>(
   MinFeeStep01DatumSchema,
 );
 
+export const MinFeeVerdictSubjectSchema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: Data.Bytes(),
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
+});
+export const MinFeeStep01SourceSchema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+      direction: Data.Integer(),
+    }),
+  }),
+]);
+export const MinFeeForcedSourcePayloadSchema = Data.Object({
+  header: HeaderSchema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
 export const MinFeeStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  NativeTxInclusionCarriageSchema,
+  Data.Object({ source: MinFeeStep01SourceSchema }),
 );
 export type MinFeeStep01SpendRedeemer = Data.Static<
   typeof MinFeeStep01SpendRedeemerSchema
@@ -69,6 +110,7 @@ export const MinFeeStep01SpendRedeemer = asDataType<MinFeeStep01SpendRedeemer>(
 // ## Step 02 — authenticate all nine lengths and compare the exact boundary
 
 export const MinFeeStep02StateSchema = Data.Object({
+  subject: MinFeeVerdictSubjectSchema,
   bad_tx: NativeTxCompactSchema,
   bad_tx_body_fee: Data.Integer(),
   bad_tx_id: H32Schema,
@@ -189,3 +231,18 @@ export const hasMinFeeViolation = ({
 }): boolean =>
   requireNonNegative(fee, "fee") <
   minFeeLovelace({ minFeeA, minFeeB, canonicalTxSize });
+
+/** A conviction contradicts the exact authenticated verdict polarity. */
+export const minFeeTerminalContradiction = (
+  subject: VerdictSubject,
+  faultHolds: boolean,
+): boolean => {
+  if (!verdictSubjectIsCanonical(subject))
+    throw new Error("minFee: noncanonical subject");
+  if (
+    subject.direction === 1n &&
+    subject.rejection_reason !== "FeeBelowMinimum"
+  )
+    throw new Error("minFee: wrong forced rejection reason");
+  return terminalVerdictContradiction(subject, faultHolds);
+};

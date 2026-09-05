@@ -13,6 +13,7 @@ import {
   MinFeeStep02Datum,
   MinFeeStep02SpendRedeemer,
   type MinFeeStep02State,
+  minFeeTerminalContradiction,
   minimumFeeFromProofSource,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
@@ -235,9 +236,12 @@ export const submitMinFeeStep02 = async ({
     minFeeB: state.min_fee_b,
     canonicalTxSize: boundary.canonicalTxSize,
   });
-  if (!violation && !unsafeSkipLocalViolationCheckForTest) {
+  if (
+    !minFeeTerminalContradiction(state.subject, violation) &&
+    !unsafeSkipLocalViolationCheckForTest
+  ) {
     throw minFeeSubmitError(
-      `honest fee ${state.bad_tx_body_fee.toString()} satisfies exact minimum ${boundary.minimumFee.toString()}.`,
+      `fee ${state.bad_tx_body_fee.toString()} and exact minimum ${boundary.minimumFee.toString()} do not contradict the authenticated verdict.`,
     );
   }
 

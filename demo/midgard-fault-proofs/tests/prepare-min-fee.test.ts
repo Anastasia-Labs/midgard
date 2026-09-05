@@ -148,6 +148,7 @@ describe("prepare-min-fee", () => {
         outputDir: dir,
       });
       const state: SDK.MinFeeStep02State = {
+        subject: SDK.acceptedVerdictSubject(output.tx.nodeTxId),
         bad_tx: output.tx.nativeTx,
         bad_tx_body_fee: output.tx.fee,
         bad_tx_id: output.tx.nodeTxId,
@@ -155,6 +156,7 @@ describe("prepare-min-fee", () => {
         min_fee_b: output.minFeeB,
       };
       const manualStateSchema = Data.Object({
+        subject: SDK.MinFeeVerdictSubjectSchema,
         bad_tx: SDK.NativeTxCompactSchema,
         bad_tx_body_fee: Data.Integer(),
         bad_tx_id: SDK.H32Schema,

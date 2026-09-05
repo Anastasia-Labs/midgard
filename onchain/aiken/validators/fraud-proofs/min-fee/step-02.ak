@@ -12,6 +12,7 @@
 //// length would only *shrink* the claimed minimum, and overstating one
 //// requires a preimage the committed field hashes refuse.
 
+use aiken/primitive/bytearray
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -29,12 +30,19 @@ use midgard/fraud_proofs/min_fee/step_02.{Args, Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
   min_fee_lovelace_v1, native_tx_canonical_size_v1,
+  verify_native_tx_compact_cbor_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
 }
-use midgard/native_tx_field_access_v1.{FieldCarriageV1, field_total_length}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/native_tx_field_access_v1.{
+  FieldCarriageV1, authenticated_committed_preimage, field_total_length,
+}
+use midgard/rejection_reason_v1.{
+  FeeBelowMinimum, NetworkIdMismatch, RejectionReasonV1,
+}
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -93,6 +101,7 @@ validator main(
 
         expect
             Some(State {
+              subject,
               bad_tx,
               bad_tx_body_fee,
               bad_tx_id,
@@ -100,6 +109,16 @@ validator main(
               min_fee_b,
             })
           = m_input_state_data
+
+        expect substrate.subject_is_canonical_v1(subject)
+        expect subject.transaction_id == bad_tx_id
+        expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
+          Some(
+            substrate.bind_exact_rejection_reason_v1(subject, FeeBelowMinimum),
+          )
+        } else {
+          None
+        }
 
         // 2. All nine field-preimage lengths are read through the §8.8 door,
         //    one anchored handle per §2.5 half. The witness half's anchor is
@@ -128,10 +147,19 @@ validator main(
             witness_set_hash: bad_tx.witness_set_hash,
           },
         )
-        let body_field_length = fn(field_index: Int, carriage) {
-          field_total_length(
-            anchored_field_view(
-              body_handle,
+        // The forced negation needs exact byte lengths, never an item count.
+        // Authenticate committed bytes directly so variable field grammar does
+        // not consume unbounded work merely to compute bytearray.length.
+        let verified = verify_native_tx_compact_cbor_v1(
+          bad_tx_id,
+          native_tx_compact_cbor,
+        )
+        expect verified.tx_compact.witness_set_hash == bad_tx.witness_set_hash
+        let raw_length = fn(field_index, carriage) {
+          bytearray.length(
+            authenticated_committed_preimage(
+              verified,
+              witness_set,
               field_index,
               carriage,
               reference_inputs,
@@ -139,16 +167,35 @@ validator main(
             ),
           )
         }
+        let body_field_length = fn(field_index: Int, carriage) {
+          if subject.direction == substrate.direction_wrongful_rejection {
+            raw_length(field_index, carriage)
+          } else {
+            field_total_length(
+              anchored_field_view(
+                body_handle,
+                field_index,
+                carriage,
+                reference_inputs,
+                field_preimage_certificate_policy_id,
+              ),
+            )
+          }
+        }
         let witness_field_length = fn(field_index: Int, carriage) {
-          field_total_length(
-            anchored_field_view(
-              witness_handle,
-              field_index,
-              carriage,
-              reference_inputs,
-              field_preimage_certificate_policy_id,
-            ),
-          )
+          if subject.direction == substrate.direction_wrongful_rejection {
+            raw_length(field_index, carriage)
+          } else {
+            field_total_length(
+              anchored_field_view(
+                witness_handle,
+                field_index,
+                carriage,
+                reference_inputs,
+                field_preimage_certificate_policy_id,
+              ),
+            )
+          }
         }
         let field_lengths = NativeTxFieldPreimageLengthsV1 {
           spend_inputs: body_field_length(
@@ -192,10 +239,13 @@ validator main(
           field_lengths,
         )
         expect
-          bad_tx_body_fee < min_fee_lovelace_v1(
-            min_fee_a,
-            min_fee_b,
-            canonical_tx_size,
+          substrate.terminal_contradiction_v1(
+            subject,
+            bad_tx_body_fee < min_fee_lovelace_v1(
+              min_fee_a,
+              min_fee_b,
+              canonical_tx_size,
+            ),
           )
 
         // Done.
@@ -226,6 +276,9 @@ fn state_for(
   min_fee_b: Int,
 ) -> State {
   State {
+    subject: substrate.bind_accepted_subject_v1(
+      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    ),
     bad_tx: block.compact,
     bad_tx_body_fee: block.compact.body.fee,
     bad_tx_id: block.tx_id,
@@ -390,4 +443,65 @@ test min_fee_step_02_rejects_a_forged_witness_set_inflation() fail {
     forged.witness_set_compact,
     fixture.inline_field_carriages_v1(forged_tx),
   )
+}
+
+fn run_forced_boundary(min_fee_b: Int, reason: RejectionReasonV1) -> Bool {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  let base = state_for(block, 0, min_fee_b)
+  let state = State {
+    ..base,
+    subject: substrate.VerdictSubjectV1 {
+      ..base.subject,
+      direction: substrate.direction_wrongful_rejection,
+      source_kind: substrate.source_kind_forced,
+      source_key: #"01",
+      rejection_reason: Some(reason),
+    },
+  }
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        native_tx_compact_cbor: block.compact_cbor,
+        witness_set: block.witness_set_compact,
+        field_carriages: fixture.inline_field_carriages_v1(block.tx),
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(fixture.ct_token_asset_name(block)),
+  )
+}
+
+test min_fee_step_02_proves_wrongful_rejection_at_equality() {
+  run_forced_boundary(fixture.valid_native_tx_v1().body.fee, FeeBelowMinimum)
+}
+
+test min_fee_step_02_proves_wrongful_rejection_above_minimum() {
+  run_forced_boundary(
+    fixture.valid_native_tx_v1().body.fee - 1,
+    FeeBelowMinimum,
+  )
+}
+
+test min_fee_step_02_refuses_honest_forced_rejection() fail {
+  run_forced_boundary(
+    fixture.valid_native_tx_v1().body.fee + 1,
+    FeeBelowMinimum,
+  )
+}
+
+test min_fee_step_02_refuses_foreign_rejection_reason() fail {
+  run_forced_boundary(fixture.valid_native_tx_v1().body.fee, NetworkIdMismatch)
 }
