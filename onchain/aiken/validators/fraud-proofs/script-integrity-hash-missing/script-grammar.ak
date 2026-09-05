@@ -19,7 +19,6 @@ use midgard/fraud_proofs/script_integrity_hash_missing/state.{
 use midgard/native_tx_machine_walk_v1.{
   certify_field_grammar, field_grammar_checkpoint_hash,
   field_grammar_is_complete, field_walk_checkpoint_hash, walk_fold,
-  walk_is_complete,
 }
 
 validator main(
@@ -112,7 +111,10 @@ validator main(
                 }
               },
             )
-            expect !walk_is_complete(next)
+            // A walk that completes inside this batch (few or no script
+            // witnesses) still hands the scan validator its committed
+            // terminal position; that validator resumes the complete walk
+            // without visiting an item and closes the field.
             expect output_script_hash == script_scan_validator_script_hash
             expect_state(
               output_state_data,

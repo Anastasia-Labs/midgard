@@ -49,14 +49,17 @@ export type ScriptIntegrityHashMissingContinueArgs = {
   readonly awaitConfirmation?: boolean;
 };
 
-const requireCertifiedCarriage = (
+/**
+ * A staged transition opens its field through whatever §8.4 carriage the
+ * preimage's size selected: none (tier 1 rides the redeemer), one raw
+ * publication (tier 2), or chunks plus the §8.6 certificate (tier 3). Only
+ * the last is a multi-UTxO carriage, and only it must carry the certificate.
+ */
+const requireAuthenticatedCarriage = (
   contracts: ScriptIntegrityHashMissingContracts,
   utxos: readonly UTxO[],
 ): void => {
-  if (utxos.length === 0)
-    throw new Error(
-      `${FAMILY}: staged transition requires authenticated carriage`,
-    );
+  if (utxos.length <= 1) return;
   const prefix = contracts.fieldPreimageCertificatePolicyId;
   if (
     !utxos.some(({ assets }) =>
@@ -66,7 +69,7 @@ const requireCertifiedCarriage = (
     )
   ) {
     throw new Error(
-      `${FAMILY}: staged carriage has no field-preimage certificate token`,
+      `${FAMILY}: chunked staged carriage has no field-preimage certificate token`,
     );
   }
 };
@@ -90,7 +93,7 @@ const submitContinue = async (
     awaitConfirmation = true,
   } = args;
   if (physicalStep >= 3)
-    requireCertifiedCarriage(contracts, authenticatedCarriageUtxos);
+    requireAuthenticatedCarriage(contracts, authenticatedCarriageUtxos);
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,

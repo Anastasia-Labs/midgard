@@ -17,12 +17,9 @@ use midgard/fraud_proofs/script_integrity_hash_missing/state.{
 use midgard/fraud_proofs/script_integrity_hash_missing/step_03.{
   Args, Datum, Direct, SpendRedeemer, StartStaged,
 }
-use midgard/native_tx_field_access_v1.{
-  field_item_count, provisional_field_item_count_for_certification,
-}
+use midgard/native_tx_field_access_v1.{field_item_count}
 use midgard/native_tx_machine_walk_v1.{
   certify_field_grammar, field_grammar_checkpoint_hash,
-  field_grammar_is_complete,
 }
 
 validator main(
@@ -121,10 +118,13 @@ validator main(
               reference_inputs,
               field_preimage_certificate_policy_id,
             )
-            expect
-              provisional_field_item_count_for_certification(view) > direct_field_item_limit
+            // The staged route is open to every field-6 shape, including a
+            // field whose grammar completes inside this first batch: a
+            // transaction with few (or no) script witnesses but more than
+            // `direct_field_item_limit` redeemers has no direct route, and the
+            // grammar successor only ever opens the semantic walk from a
+            // complete grammar checkpoint.
             let next = certify_field_grammar(view, start, item_budget)
-            expect !field_grammar_is_complete(next)
             expect WitnessFieldOpening { native_tx_compact_cbor, .. } = script_witnesses_opening
             let verified = verify_native_tx_compact_cbor_v1(
               state.subject.transaction_id,

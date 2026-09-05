@@ -16,6 +16,38 @@ import {
 
 export const SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET = 24;
 
+/** `state.direct_field_item_limit`: the per-field item cap of step 03 `Direct`. */
+export const SCRIPT_INTEGRITY_HASH_MISSING_DIRECT_FIELD_ITEM_LIMIT = 64;
+
+/**
+ * Whether step 03 may take its direct route. The validator caps both opened
+ * fields at `direct_field_item_limit` items, so byte size alone does not
+ * decide: a small field with many items has no direct route and takes the
+ * staged walk, which is open to every field-6 shape.
+ */
+export const scriptIntegrityHashMissingUsesDirectRoute = ({
+  scriptItemCount,
+  redeemerItemCount,
+  fieldBytes,
+  directBudget = 15_148,
+}: {
+  readonly scriptItemCount: number;
+  readonly redeemerItemCount: number;
+  readonly fieldBytes: number;
+  readonly directBudget?: number;
+}): boolean => {
+  if (scriptItemCount < 0 || redeemerItemCount < 0 || fieldBytes < 0)
+    throw new Error(
+      "scriptIntegrityHashMissing evidence sizes cannot be negative",
+    );
+  return (
+    scriptItemCount <= SCRIPT_INTEGRITY_HASH_MISSING_DIRECT_FIELD_ITEM_LIMIT &&
+    redeemerItemCount <=
+      SCRIPT_INTEGRITY_HASH_MISSING_DIRECT_FIELD_ITEM_LIMIT &&
+    fieldBytes <= directBudget
+  );
+};
+
 type Grammar = ReturnType<typeof initialMissingNativeScriptTxGrammarCheckpoint>;
 type Semantic = ReturnType<
   typeof initialMissingNativeScriptTxSemanticCheckpoint

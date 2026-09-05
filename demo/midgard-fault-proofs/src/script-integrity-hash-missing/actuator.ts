@@ -27,11 +27,11 @@ import {
 } from "../workflow/transaction-boundary.js";
 import {
   admitScriptIntegrityHashMissingArtifact,
+  type AdmittedScriptIntegrityHashMissingArtifact,
   prepareScriptIntegrityHashMissingArtifact,
   scriptIntegrityHashMissingWitnessSet,
 } from "./artifact.js";
 import type { ScriptIntegrityHashMissingContracts } from "./contracts.js";
-import { selectScriptIntegrityHashMissingCarriage } from "./family.js";
 import { ScriptIntegrityStepDatums } from "./schemas.js";
 import {
   encodeScriptIntegrityField8Checkpoint,
@@ -40,6 +40,7 @@ import {
   hashScriptIntegrityField8Checkpoint,
   SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET,
   scriptIntegrityGrammarHash,
+  scriptIntegrityHashMissingUsesDirectRoute,
   scriptIntegritySemanticHash,
 } from "./staged-plan.js";
 import {
@@ -146,14 +147,19 @@ const captured = async (
     transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
-const direct = (scriptHex: string, redeemerHex: string): boolean =>
-  selectScriptIntegrityHashMissingCarriage({
-    membershipBytes: 0,
+const direct = (
+  admitted: Pick<
+    AdmittedScriptIntegrityHashMissingArtifact,
+    "evidence" | "staged"
+  >,
+): boolean =>
+  scriptIntegrityHashMissingUsesDirectRoute({
+    scriptItemCount: admitted.staged.scriptItems.length,
+    redeemerItemCount: admitted.staged.redeemerItems.length,
     fieldBytes:
-      Buffer.from(scriptHex, "hex").length +
-      Buffer.from(redeemerHex, "hex").length,
-    directBudget: 15_148,
-  }) === "direct";
+      Buffer.from(admitted.evidence.scriptWitnessesPreimageCbor, "hex").length +
+      Buffer.from(admitted.evidence.redeemersPreimageCbor, "hex").length,
+  });
 
 export const createScriptIntegrityHashMissingTransactionPort = (
   config: BoundScriptIntegrityHashMissingActuatorConfig,
@@ -274,12 +280,7 @@ export const createScriptIntegrityHashMissingTransactionPort = (
       });
 
     if (input.stage === "step_03") {
-      if (
-        direct(
-          admitted.evidence.scriptWitnessesPreimageCbor,
-          admitted.evidence.redeemersPreimageCbor,
-        )
-      )
+      if (direct(admitted))
         return await captured(async (preSubmitBoundary) => {
           await submitScriptIntegrityHashMissingStep03Direct({
             lucid: config.lucid,
@@ -432,13 +433,17 @@ export const createScriptIntegrityHashMissingTransactionPort = (
       const index = admitted.staged.semantic.findIndex(
         (value) => scriptIntegritySemanticHash(value) === currentHash,
       );
-      const current = admitted.staged.semantic[index]!;
-      const next = admitted.staged.semantic[index + 1];
-      if (index < 0 || next === undefined)
+      if (index < 0)
         throw new Error(
           "scriptIntegrityHashMissing semantic checkpoint substitution",
         );
-      const closes = index + 1 === admitted.staged.semantic.length - 1;
+      const current = admitted.staged.semantic[index]!;
+      const next = admitted.staged.semantic[index + 1];
+      // A walk that completed inside `StartScan` (few or no script witnesses)
+      // committed its terminal; this transition resumes it, folds nothing,
+      // and closes the field.
+      const closes =
+        next === undefined || index + 1 === admitted.staged.semantic.length - 1;
       return await captured(async (preSubmitBoundary) => {
         await submitScriptIntegrityHashMissingScriptScan({
           lucid: config.lucid,
@@ -459,7 +464,7 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                 }
               : {
                   ScriptScan: {
-                    checkpoint_hash: scriptIntegritySemanticHash(next),
+                    checkpoint_hash: scriptIntegritySemanticHash(next!),
                     contains_non_native_script: containsNonNative,
                   },
                 },
@@ -650,14 +655,7 @@ export const scriptIntegrityHashMissingFieldRequirement = ({
   readonly owner: string;
 }): FaultProofFieldOpeningPlan | null => {
   const admitted = admitScriptIntegrityHashMissingArtifact(artifact, owner);
-  if (
-    actionStage === "step_03" &&
-    direct(
-      admitted.evidence.scriptWitnessesPreimageCbor,
-      admitted.evidence.redeemersPreimageCbor,
-    )
-  )
-    return null;
+  if (actionStage === "step_03" && direct(admitted)) return null;
   if (["step_03", "step_04", "step_05"].includes(String(actionStage)))
     return admitted.scriptPlan;
   return actionStage === "step_06" ? admitted.redeemerPlan : null;
