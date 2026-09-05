@@ -1020,6 +1020,14 @@ describe("watcher production fault-proof application V1", () => {
                                                                                 true,
                                                                               step04:
                                                                                 true,
+                                                                              forcedStep:
+                                                                                true,
+                                                                              forcedSigner:
+                                                                                true,
+                                                                              forcedWitness:
+                                                                                true,
+                                                                              fieldPreimageCertificateMint:
+                                                                                true,
                                                                               computationThreadMint:
                                                                                 true,
                                                                               fraudProofMint:
