@@ -127,6 +127,12 @@ import {
   type LoadUnusedScriptWitnessWorkflow,
 } from "../unused-script-witness/v1.js";
 import {
+  createManifestBoundValueConservationWorkflow,
+  type ManifestBoundValueConservationWorkflow,
+  type ManifestBoundValueConservationWorkflowConfig,
+  runOrResumeManifestBoundValueConservationWorkflow,
+} from "../value-not-preserved/workflow.js";
+import {
   createWitnessScriptDecodingWorkflowRunnerSurface,
   type LoadWitnessScriptDecodingWorkflow,
 } from "../witness-script-decoding/workflow.js";
@@ -803,6 +809,26 @@ export const createMinAdaWorkflowRunner = (
     }),
   });
 
+export const createValueConservationWorkflowRunner = (
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundValueConservationWorkflowConfig>,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner =>
+  createAdmittedWorkflowRunner({
+    category: "valueNotPreserved",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundWorkflowRunOrResume({
+      category: "valueNotPreserved",
+      loadRuntimeConfig,
+      constructWorkflow: createManifestBoundValueConservationWorkflow,
+      execute: async ({ workflow, sources, journal }) =>
+        await runOrResumeManifestBoundValueConservationWorkflow({
+          workflow: workflow as ManifestBoundValueConservationWorkflow,
+          sources,
+          journal,
+        }),
+    }),
+  });
+
 export const createNativeScriptInvalidWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundNativeScriptInvalidWorkflowConfig>,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -1296,6 +1322,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner,
   nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner,
   minAda: createMinAdaWorkflowRunner,
+  valueNotPreserved: createValueConservationWorkflowRunner,
   fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner,
   fieldItemWidthIllegal: createFieldItemWidthIllegalWorkflowRunner,
   witnessScriptDecoding: createWitnessScriptDecodingWorkflowRunner,

@@ -1357,6 +1357,37 @@ export const resolveFaultProofDeploymentContracts = async ({
       derived: derivedStep.spendingScriptHash,
     });
   }
+  if (categoryName === "valueNotPreserved") {
+    const value = contracts.valueNotPreserved;
+    if (value === undefined)
+      throw new Error("valueNotPreserved deployed chain absent");
+    for (const [name, step] of [
+      [
+        "fraudProofValueNotPreservedUnionAcceptedSource",
+        value.unionAcceptedSource,
+      ],
+      ["fraudProofValueNotPreservedUnionForcedSource", value.unionForcedSource],
+      ["fraudProofValueNotPreservedUnionEvent", value.unionEvent],
+      ["fraudProofValueNotPreservedUnionPreState", value.unionPreState],
+      ["fraudProofValueNotPreservedUnionInputs", value.unionInputs],
+      ["fraudProofValueNotPreservedUnionInputValue", value.unionInputValue],
+      ["fraudProofValueNotPreservedUnionAssets", value.unionAssets],
+      ["fraudProofValueNotPreservedUnionFieldGrammar", value.unionFieldGrammar],
+      ["fraudProofValueNotPreservedUnionOutputs", value.unionOutputs],
+      ["fraudProofValueNotPreservedUnionOutputScan", value.unionOutputScan],
+      ["fraudProofValueNotPreservedUnionMint", value.unionMint],
+      ["fraudProofValueNotPreservedUnionUpdate", value.unionUpdate],
+      ["fraudProofValueNotPreservedUnionTerminal", value.unionTerminal],
+    ] as const) {
+      const deployed = parsedDeploymentInfo[name]?.scriptHash;
+      if (deployed !== undefined)
+        requireMatchingScriptHash({
+          label: name,
+          deployed,
+          derived: step.spendingScriptHash,
+        });
+    }
+  }
   if (categoryName === "missingSignature") {
     const missing = contracts.missingSignature;
     if (missing === undefined)

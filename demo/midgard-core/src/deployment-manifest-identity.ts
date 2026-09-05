@@ -165,6 +165,20 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofValueNotPreservedStep02",
   "fraudProofValueNotPreservedStep03",
   "fraudProofValueNotPreservedStep04",
+  "fraudProofValueNotPreservedUnionAcceptedSource",
+  "fraudProofValueNotPreservedUnionForcedSource",
+  "fraudProofValueNotPreservedUnionEvent",
+  "fraudProofValueNotPreservedUnionPreState",
+  "fraudProofValueNotPreservedUnionInputs",
+  "fraudProofValueNotPreservedUnionInputValue",
+  "fraudProofValueNotPreservedUnionAssets",
+  "fraudProofValueNotPreservedUnionFieldGrammar",
+  "fraudProofValueNotPreservedUnionOutputs",
+  "fraudProofValueNotPreservedUnionOutputScan",
+  "fraudProofValueNotPreservedUnionMint",
+  "fraudProofValueNotPreservedUnionUpdate",
+  "fraudProofValueNotPreservedUnionTerminal",
+
   "fraudProofInputSetUniqueness",
   "fraudProofInputSetUniquenessStep02",
   "fraudProofInputSetUniquenessStep03",
@@ -699,6 +713,25 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofValueNotPreservedStep03",
     "V1 fraud-proof value-not-preserved step-04":
       "fraudProofValueNotPreservedStep04",
+    "value conservation accepted-source":
+      "fraudProofValueNotPreservedUnionAcceptedSource",
+    "value conservation forced-source":
+      "fraudProofValueNotPreservedUnionForcedSource",
+    "value conservation event": "fraudProofValueNotPreservedUnionEvent",
+    "value conservation pre-state": "fraudProofValueNotPreservedUnionPreState",
+    "value conservation inputs": "fraudProofValueNotPreservedUnionInputs",
+    "value conservation input-value":
+      "fraudProofValueNotPreservedUnionInputValue",
+    "value conservation assets": "fraudProofValueNotPreservedUnionAssets",
+    "value conservation field-grammar":
+      "fraudProofValueNotPreservedUnionFieldGrammar",
+    "value conservation outputs": "fraudProofValueNotPreservedUnionOutputs",
+    "value conservation output-scan":
+      "fraudProofValueNotPreservedUnionOutputScan",
+    "value conservation mint": "fraudProofValueNotPreservedUnionMint",
+    "value conservation update": "fraudProofValueNotPreservedUnionUpdate",
+    "value conservation terminal": "fraudProofValueNotPreservedUnionTerminal",
+
     "V1 fraud-proof input-set-uniqueness step-01":
       "fraudProofInputSetUniqueness",
     "V1 fraud-proof input-set-uniqueness step-02":
@@ -1168,6 +1201,20 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof value-not-preserved step-02": "V1FpValueNotPreservedS02",
   "V1 fraud-proof value-not-preserved step-03": "V1FpValueNotPreservedS03",
   "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
+  "value conservation accepted-source": "ValueConservationAcceptedSource",
+  "value conservation forced-source": "ValueConservationForcedSource",
+  "value conservation event": "ValueConservationEvent",
+  "value conservation pre-state": "ValueConservationPreState",
+  "value conservation inputs": "ValueConservationInputs",
+  "value conservation input-value": "ValueConservationInputValue",
+  "value conservation assets": "ValueConservationAssets",
+  "value conservation field-grammar": "ValueConservationFieldGrammar",
+  "value conservation outputs": "ValueConservationOutputs",
+  "value conservation output-scan": "ValueConservationOutputScan",
+  "value conservation mint": "ValueConservationMint",
+  "value conservation update": "ValueConservationUpdate",
+  "value conservation terminal": "ValueConservationTerminal",
+
   "V1 fraud-proof input-set-uniqueness step-01": "V1FpInputSetUniquenessS01",
   "V1 fraud-proof input-set-uniqueness step-02": "V1FpInputSetUniquenessS02",
   "V1 fraud-proof input-set-uniqueness step-03": "V1FpInputSetUniquenessS03",

@@ -601,6 +601,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       "nativeScriptInvalid",
       "nativeScriptDecoding",
       "minAda",
+      "valueNotPreserved",
       "fieldPreimageLengthMismatch",
       "fieldItemWidthIllegal",
       "witnessScriptDecoding",

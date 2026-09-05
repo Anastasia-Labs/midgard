@@ -88,7 +88,7 @@ export const createFraudProofFamilyRawL1ObservationPort = <
   if (
     authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
     definition.computationThread.steps.length === 0 ||
-    definition.computationThread.steps.length > 9
+    definition.computationThread.steps.length > 17
   ) {
     throw new Error(
       `${definition.category} raw L1 observation authority is incomplete`,

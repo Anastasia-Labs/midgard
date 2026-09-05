@@ -19,7 +19,15 @@ export type FraudProofRawL1ComputationStepRole =
   | "computation_thread_step_06"
   | "computation_thread_step_07"
   | "computation_thread_step_08"
-  | "computation_thread_step_09";
+  | "computation_thread_step_09"
+  | "computation_thread_step_10"
+  | "computation_thread_step_11"
+  | "computation_thread_step_12"
+  | "computation_thread_step_13"
+  | "computation_thread_step_14"
+  | "computation_thread_step_15"
+  | "computation_thread_step_16"
+  | "computation_thread_step_17";
 
 export type FraudProofRawL1ScopeRole =
   | "state_queue"
@@ -136,6 +144,15 @@ const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRole>([
   "computation_thread_step_07",
   "computation_thread_step_08",
   "computation_thread_step_09",
+  "computation_thread_step_10",
+  "computation_thread_step_11",
+  "computation_thread_step_12",
+  "computation_thread_step_13",
+  "computation_thread_step_14",
+  "computation_thread_step_15",
+  "computation_thread_step_16",
+  "computation_thread_step_17",
+
   "permanent_proof_token",
   "active_operator_directory",
   "retired_operator_directory",

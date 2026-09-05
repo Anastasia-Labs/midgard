@@ -771,6 +771,90 @@ const linearFaultProofChainFromManifest = <
   if (firstStep === undefined) {
     throw new Error(`Fault-proof chain has no first step: ${category}`);
   }
+  if (category === "valueNotPreserved") {
+    return {
+      firstStep,
+      steps,
+      unionAcceptedSource: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionAcceptedSource",
+      ),
+      unionForcedSource: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionForcedSource",
+      ),
+      unionEvent: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionEvent",
+      ),
+      unionPreState: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionPreState",
+      ),
+      unionInputs: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionInputs",
+      ),
+      unionInputValue: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionInputValue",
+      ),
+      unionAssets: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionAssets",
+      ),
+      unionFieldGrammar: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionFieldGrammar",
+      ),
+      unionOutputs: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionOutputs",
+      ),
+      unionOutputScan: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionOutputScan",
+      ),
+      unionMint: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionMint",
+      ),
+      unionUpdate: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionUpdate",
+      ),
+      unionTerminal: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofValueNotPreservedUnionTerminal",
+      ),
+    } as unknown as SDK.FaultProofContractChains[Category];
+  }
   if (category === "missingSignature") {
     return {
       firstStep,

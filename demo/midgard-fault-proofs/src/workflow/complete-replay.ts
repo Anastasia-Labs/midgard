@@ -106,6 +106,7 @@ import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
 import { detectUnusedRedeemerCanonicalViolations } from "../unused-redeemer/replay.js";
 import { detectUnusedScriptWitnessCanonicalViolations } from "../unused-script-witness/replay.js";
+import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { detectZeroInputForcedReplay } from "../zero-input/replay.js";
 import {
@@ -1940,3 +1941,15 @@ export const completeCanonicalReplayDecisionDigest = ({
     )
     .digest("hex");
 };
+
+export const VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["valueNotPreserved"],
+  async (evidence, context) =>
+    detectValueConservationFaults({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence,
+        context,
+      }),
+    }),
+);

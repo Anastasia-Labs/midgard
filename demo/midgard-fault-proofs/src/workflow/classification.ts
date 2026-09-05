@@ -173,7 +173,10 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   },
   {
     category: "valueNotPreserved",
-    violationIds: ["value-not-preserved"],
+    violationIds: [
+      "value-not-preserved",
+      "value-not-preserved-wrongful-rejection",
+    ],
   },
   {
     category: "inputSetUniqueness",

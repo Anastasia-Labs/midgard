@@ -79,10 +79,14 @@ describe("reference-script SDK boundary", () => {
   it("assigns unique <=32-byte auth tokens to every registered fraud-proof role", () => {
     const fraudProofEntries = Object.entries(
       REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
-    ).filter(([role]) => role.startsWith("V1 fraud-proof "));
+    ).filter(
+      ([role]) =>
+        role.startsWith("V1 fraud-proof ") ||
+        role.startsWith("value conservation "),
+    );
     const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
 
-    expect(fraudProofEntries).toHaveLength(236);
+    expect(fraudProofEntries).toHaveLength(254);
     expect(new Set(tokenNames).size).toBe(tokenNames.length);
     expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
       true,
@@ -99,6 +103,20 @@ describe("reference-script SDK boundary", () => {
         "V1FpMissingNativeScriptTxS08",
       "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
       "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
+      "value conservation accepted-source": "ValueConservationAcceptedSource",
+      "value conservation forced-source": "ValueConservationForcedSource",
+      "value conservation event": "ValueConservationEvent",
+      "value conservation pre-state": "ValueConservationPreState",
+      "value conservation inputs": "ValueConservationInputs",
+      "value conservation input-value": "ValueConservationInputValue",
+      "value conservation assets": "ValueConservationAssets",
+      "value conservation field-grammar": "ValueConservationFieldGrammar",
+      "value conservation outputs": "ValueConservationOutputs",
+      "value conservation output-scan": "ValueConservationOutputScan",
+      "value conservation mint": "ValueConservationMint",
+      "value conservation update": "ValueConservationUpdate",
+      "value conservation terminal": "ValueConservationTerminal",
+
       "V1 fraud-proof input-set-uniqueness step-02":
         "V1FpInputSetUniquenessS02",
       "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",

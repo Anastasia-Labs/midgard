@@ -284,6 +284,7 @@ describe("watcher production fault-proof application V1", () => {
         "doubleWithdraw",
         "l2TxMistag",
         "withdrawnInput",
+        "valueNotPreserved",
         "inputSetUniqueness",
         "networkId",
         "missingNativeScriptUtxo",
@@ -317,7 +318,6 @@ describe("watcher production fault-proof application V1", () => {
         "validationTraceDispute",
         "withdrawalMistag",
         "crossBlockDuplicateEvent",
-        "valueNotPreserved",
         "mintAuthorization",
       ]);
       expect(
@@ -327,9 +327,9 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: 48,
-        requestedCategoryCount: 48,
-        readyCategoryCount: 48,
+        installedCategoryCount: 49,
+        requestedCategoryCount: 49,
+        readyCategoryCount: 49,
         missingCategoryCount: 0,
       });
 
@@ -346,6 +346,43 @@ describe("watcher production fault-proof application V1", () => {
             headerHash: HEADER,
           }),
         );
+        if (category === "valueNotPreserved") {
+          expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual([
+            "step01",
+            "step02",
+            "step03",
+            "step04",
+            "unionAcceptedSource",
+            "unionForcedSource",
+            "unionEvent",
+            "unionPreState",
+            "unionInputs",
+            "unionInputValue",
+            "unionAssets",
+            "unionFieldGrammar",
+            "unionOutputs",
+            "unionOutputScan",
+            "unionMint",
+            "unionUpdate",
+            "unionTerminal",
+            "computationThreadMint",
+            "fraudProofMint",
+            "phasMembershipWithdraw",
+            "chunkedVerifyWithdraw",
+            "pexcludesWithdraw",
+            "fieldPreimageCertificateMint",
+            "correctionLockSpend",
+            "stateQueueSpend",
+            "stateQueueMint",
+            "stateQueueFraudRemovalWithdraw",
+            "activeOperatorsSpend",
+            "activeOperatorsMint",
+            "retiredOperatorsSpend",
+            "retiredOperatorsMint",
+            "schedulerSpend",
+          ]);
+          continue;
+        }
         expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual(
           Object.keys(
             category === "doubleSpend" ||
@@ -1126,8 +1163,8 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      expect(deps.makeLucid).toHaveBeenCalledTimes(48);
-      expect(transport.stop).toHaveBeenCalledTimes(48);
+      expect(deps.makeLucid).toHaveBeenCalledTimes(49);
+      expect(transport.stop).toHaveBeenCalledTimes(49);
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),

@@ -905,11 +905,135 @@ export const buildValueNotPreservedChain = ({
       ],
     ),
   );
+  const unionTerminal = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionTerminal,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const unionUpdate = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionUpdate,
+      [computationThreadPolicyId],
+    ),
+  );
+  const unionAssets = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionAssets,
+      [unionUpdate.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const unionOutputScan = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionOutputScan,
+      [unionAssets.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const unionOutputs = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionOutputs,
+      [
+        unionOutputScan.spendingScriptHash,
+        fieldPreimageCertificatePolicyId,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const unionMint = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionMint,
+      [
+        unionUpdate.spendingScriptHash,
+        unionTerminal.spendingScriptHash,
+        fieldPreimageCertificatePolicyId,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const unionFieldGrammar = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionFieldGrammar,
+      [
+        unionOutputs.spendingScriptHash,
+        unionMint.spendingScriptHash,
+        fieldPreimageCertificatePolicyId,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const unionInputValue = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionInputValue,
+      [unionAssets.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const unionInputs = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionInputs,
+      [
+        unionInputValue.spendingScriptHash,
+        unionFieldGrammar.spendingScriptHash,
+        fieldPreimageCertificatePolicyId,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const unionPreState = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionPreState,
+      [unionInputs.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const unionEvent = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionEvent,
+      [unionPreState.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const unionAcceptedSource = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionAcceptedSource,
+      [
+        unionEvent.spendingScriptHash,
+        computationThreadPolicyId,
+        hubOraclePolicyId,
+      ],
+    ),
+  );
+  const unionForcedSource = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.unionForcedSource,
+      [unionEvent.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
       VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.step01,
-      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+      [
+        step02.spendingScriptHash,
+        computationThreadPolicyId,
+        hubOraclePolicyId,
+        unionAcceptedSource.spendingScriptHash,
+        unionForcedSource.spendingScriptHash,
+      ],
     ),
   );
   return [step01, step02, step03, step04];
@@ -1814,7 +1938,7 @@ export const buildMinimalFaultProofContracts = async (
     valueNotPreservedContracts === undefined
       ? undefined
       : {
-          steps: valueNotPreservedContracts.valueNotPreserved.steps,
+          ...valueNotPreservedContracts.valueNotPreserved,
           computationThread: valueNotPreservedContracts.computationThread,
           fraudProof: valueNotPreservedContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
@@ -1987,9 +2111,9 @@ export const buildMinimalFaultProofContracts = async (
         ? withActiveOperators.fraudProofContracts.withdrawnInput
         : chainFromSteps(withdrawnInput.steps),
     valueNotPreserved:
-      valueNotPreserved === undefined
+      valueNotPreservedContracts === undefined
         ? withActiveOperators.fraudProofContracts.valueNotPreserved
-        : chainFromSteps(valueNotPreserved.steps),
+        : valueNotPreservedContracts.valueNotPreserved,
     inputSetUniqueness:
       inputSetUniqueness === undefined
         ? withActiveOperators.fraudProofContracts.inputSetUniqueness

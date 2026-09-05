@@ -79,7 +79,24 @@ export type FraudProofRawL1FamilyStage =
     }
   | {
       readonly kind: "step";
-      readonly step: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+      readonly step:
+        | 1
+        | 2
+        | 3
+        | 4
+        | 5
+        | 6
+        | 7
+        | 8
+        | 9
+        | 10
+        | 11
+        | 12
+        | 13
+        | 14
+        | 15
+        | 16
+        | 17;
       readonly threadOutRef: string;
       readonly stateQueueBlockOutRef: string;
     }
@@ -106,6 +123,14 @@ const COMPUTATION_STEP_ROLES = Object.freeze([
   "computation_thread_step_07",
   "computation_thread_step_08",
   "computation_thread_step_09",
+  "computation_thread_step_10",
+  "computation_thread_step_11",
+  "computation_thread_step_12",
+  "computation_thread_step_13",
+  "computation_thread_step_14",
+  "computation_thread_step_15",
+  "computation_thread_step_16",
+  "computation_thread_step_17",
 ] as const satisfies readonly FraudProofRawL1ComputationStepRole[]);
 
 const assertCanonicalComputationSteps = (

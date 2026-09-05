@@ -441,13 +441,17 @@ const workflowAdapterRegistrationRows = [
   {
     category: "valueNotPreserved",
     status: "missing",
-    reason: "prover_is_not_chain_state_resumable",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
-      "value-not-preserved/prover.ts",
-      "value-not-preserved/evidence.ts",
+      "value-not-preserved/workflow.ts",
+      "workflow/runtime.ts#createValueConservationWorkflowRunner",
+      "value-not-preserved/artifact.ts",
+      "value-not-preserved/field-prerequisite.ts",
+      "value-not-preserved/submit-union.ts",
+      "remove-fraudulent-block.ts",
     ],
     requiredClosure:
-      "derive the current fold cursor from the live thread and persist intent/confirmation around every fold transaction",
+      "install the manifest-bound value-conservation runner with its complete reference roster and public retained-DA runtime in the compiled application",
   },
   {
     category: "inputSetUniqueness",

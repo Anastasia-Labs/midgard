@@ -1386,6 +1386,65 @@ const registeredFraudProofReferenceScriptTargets = (
   // script addresses and `validateReferenceScripts` requires a confirmed
   // reference script for every declared role.
   manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionAcceptedSource",
+    contracts.fraudProofContracts.valueNotPreserved.unionAcceptedSource
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionForcedSource",
+    contracts.fraudProofContracts.valueNotPreserved.unionForcedSource
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionEvent",
+    contracts.fraudProofContracts.valueNotPreserved.unionEvent.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionPreState",
+    contracts.fraudProofContracts.valueNotPreserved.unionPreState
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionInputs",
+    contracts.fraudProofContracts.valueNotPreserved.unionInputs.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionInputValue",
+    contracts.fraudProofContracts.valueNotPreserved.unionInputValue
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionAssets",
+    contracts.fraudProofContracts.valueNotPreserved.unionAssets.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionFieldGrammar",
+    contracts.fraudProofContracts.valueNotPreserved.unionFieldGrammar
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionOutputs",
+    contracts.fraudProofContracts.valueNotPreserved.unionOutputs.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionOutputScan",
+    contracts.fraudProofContracts.valueNotPreserved.unionOutputScan
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionMint",
+    contracts.fraudProofContracts.valueNotPreserved.unionMint.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionUpdate",
+    contracts.fraudProofContracts.valueNotPreserved.unionUpdate.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionTerminal",
+    contracts.fraudProofContracts.valueNotPreserved.unionTerminal
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
     "fraudProofMissingSignatureForcedStep",
     contracts.fraudProofContracts.missingSignature.forcedStep.spendingScript,
   ),

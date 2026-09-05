@@ -2,6 +2,12 @@ import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
 import {
+  createManifestBoundValueConservationWorkflow,
+  createValueConservationWorkflowRunner,
+  type ManifestBoundValueConservationWorkflowConfig,
+  VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
+} from "@al-ft/midgard-fault-proofs";
+import {
   CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   classifyHeader as classifyProductionHeaderV1,
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
@@ -288,6 +294,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "doubleWithdraw",
   "l2TxMistag",
   "withdrawnInput",
+  "valueNotPreserved",
   "inputSetUniqueness",
   "networkId",
   "missingNativeScriptUtxo",
@@ -325,7 +332,6 @@ export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([
   "validationTraceDispute",
   "withdrawalMistag",
   "crossBlockDuplicateEvent",
-  "valueNotPreserved",
   "mintAuthorization",
 ] as const);
 
@@ -509,10 +515,16 @@ type TaggedWorkflowConfig =
       category: "missingNativeScriptUtxo";
       config: ManifestBoundMissingNativeScriptUtxoWorkflowConfig;
     }>
-  | Readonly<{
-      category: "minAda";
-      config: ManifestBoundMinAdaWorkflowConfig;
-    }>
+  | Readonly<
+      | {
+          category: "valueNotPreserved";
+          config: ManifestBoundValueConservationWorkflowConfig;
+        }
+      | {
+          category: "minAda";
+          config: ManifestBoundMinAdaWorkflowConfig;
+        }
+    >
   | Readonly<{
       category: "fieldPreimageLengthMismatch";
       config: ManifestBoundFieldPreimageLengthWorkflowConfig;
@@ -800,6 +812,8 @@ const constructProductionWorkflow = async (
       return await createManifestBoundMissingNativeScriptUtxoWorkflow(
         input.config,
       );
+    case "valueNotPreserved":
+      return await createManifestBoundValueConservationWorkflow(input.config);
     case "minAda":
       return await createManifestBoundMinAdaWorkflow(input.config);
   }
@@ -1364,6 +1378,39 @@ const referenceContracts = (
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         pexcludesWithdraw: "pexcludesWithdraw",
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "valueNotPreserved":
+      return Object.freeze({
+        step01: "fraudProofValueNotPreserved",
+        step02: "fraudProofValueNotPreservedStep02",
+        step03: "fraudProofValueNotPreservedStep03",
+        step04: "fraudProofValueNotPreservedStep04",
+        unionAcceptedSource: "fraudProofValueNotPreservedUnionAcceptedSource",
+        unionForcedSource: "fraudProofValueNotPreservedUnionForcedSource",
+        unionEvent: "fraudProofValueNotPreservedUnionEvent",
+        unionPreState: "fraudProofValueNotPreservedUnionPreState",
+        unionInputs: "fraudProofValueNotPreservedUnionInputs",
+        unionInputValue: "fraudProofValueNotPreservedUnionInputValue",
+        unionAssets: "fraudProofValueNotPreservedUnionAssets",
+        unionFieldGrammar: "fraudProofValueNotPreservedUnionFieldGrammar",
+        unionOutputs: "fraudProofValueNotPreservedUnionOutputs",
+        unionOutputScan: "fraudProofValueNotPreservedUnionOutputScan",
+        unionMint: "fraudProofValueNotPreservedUnionMint",
+        unionUpdate: "fraudProofValueNotPreservedUnionUpdate",
+        unionTerminal: "fraudProofValueNotPreservedUnionTerminal",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
       });
     case "minAda":
       return Object.freeze({
@@ -2092,6 +2139,10 @@ function taggedConfig(
   { readonly category: "missingNativeScriptUtxo" }
 >;
 function taggedConfig(
+  category: "valueNotPreserved",
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "valueNotPreserved" }>;
+function taggedConfig(
   category: "minAda",
   common: CommonInfrastructure,
 ): Extract<TaggedWorkflowConfig, { readonly category: "minAda" }>;
@@ -2784,6 +2835,60 @@ function taggedConfig(
             common.historicalNativeScriptAuthority.checkpointStore,
           historicalNativeScriptHistorySource:
             common.historicalNativeScriptAuthority.historySource,
+        }),
+      });
+    case "valueNotPreserved":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          ...(common.replayContext === undefined
+            ? {}
+            : { replayContext: common.replayContext }),
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+            ] as const),
+            union: Object.freeze({
+              unionAcceptedSource: reference("unionAcceptedSource"),
+              unionForcedSource: reference("unionForcedSource"),
+              unionEvent: reference("unionEvent"),
+              unionPreState: reference("unionPreState"),
+              unionInputs: reference("unionInputs"),
+              unionInputValue: reference("unionInputValue"),
+              unionAssets: reference("unionAssets"),
+              unionFieldGrammar: reference("unionFieldGrammar"),
+              unionOutputs: reference("unionOutputs"),
+              unionOutputScan: reference("unionOutputScan"),
+              unionMint: reference("unionMint"),
+              unionUpdate: reference("unionUpdate"),
+              unionTerminal: reference("unionTerminal"),
+            }),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
         }),
       });
     case "minAda":
@@ -3484,6 +3589,14 @@ const taggedReferenceOutRefs = (
           ...Object.values(tagged.config.referenceScripts.witnesses),
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
         ];
+      case "valueNotPreserved":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.union),
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          ...Object.values(tagged.config.referenceScripts.removal),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
       case "minAda":
         return [
           ...tagged.config.referenceScripts.steps,
@@ -3720,6 +3833,7 @@ const WATCHER_INSTALLED_COMPLETE_REPLAY = createCompleteCanonicalReplayUnion([
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
   L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
   INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
   NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
   NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
@@ -3918,6 +4032,9 @@ const createApplication = ({
     category: "minAda",
   ): TaggedWorkflowLoaderFor<"minAda">;
   function makeTaggedLoader(
+    category: "valueNotPreserved",
+  ): TaggedWorkflowLoaderFor<"valueNotPreserved">;
+  function makeTaggedLoader(
     category: "fieldPreimageLengthMismatch",
   ): TaggedWorkflowLoaderFor<"fieldPreimageLengthMismatch">;
   function makeTaggedLoader(
@@ -4032,6 +4149,7 @@ const createApplication = ({
     nativeScriptInvalid: makeTaggedLoader("nativeScriptInvalid"),
     nativeScriptDecoding: makeTaggedLoader("nativeScriptDecoding"),
     minAda: makeTaggedLoader("minAda"),
+    valueNotPreserved: makeTaggedLoader("valueNotPreserved"),
     fieldPreimageLengthMismatch: makeTaggedLoader(
       "fieldPreimageLengthMismatch",
     ),
@@ -4429,6 +4547,20 @@ const createApplication = ({
   ) => {
     const loaded = await taggedLoaders.minAda(input);
     if (loaded.config.category !== "minAda") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const valueNotPreservedLoader = async (
+    input: Parameters<(typeof taggedLoaders)["valueNotPreserved"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.valueNotPreserved(input);
+    if (loaded.config.category !== "valueNotPreserved") {
       await loaded.close();
       throw new Error("workflow loader changed its fixed category");
     }
@@ -4861,6 +4993,10 @@ const createApplication = ({
       fundingProfile("nativeScriptDecoding"),
     ),
     minAda: createMinAdaWorkflowRunner(minAdaLoader, fundingProfile("minAda")),
+    valueNotPreserved: createValueConservationWorkflowRunner(
+      valueNotPreservedLoader,
+      fundingProfile("valueNotPreserved"),
+    ),
     fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner(
       fieldPreimageLengthMismatchLoader,
       fundingProfile("fieldPreimageLengthMismatch"),

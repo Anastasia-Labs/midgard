@@ -27,7 +27,11 @@ export type CursorFamilyStep =
   | 10
   | 11
   | 12
-  | 13;
+  | 13
+  | 14
+  | 15
+  | 16
+  | 17;
 export type CursorFamilySuccessor = CursorFamilyStep | "proof_token";
 
 export type CursorFamilySpec<
