@@ -14,9 +14,11 @@ use midgard/fraud_proofs/common.{
   RedeemerCarriedNonMembership, cancel, finalize, verify_non_membership_carried,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/no_reference_input/step_04.{
-  Args, Datum, SpendRedeemer, State,
+  Args, Datum, ForcedArgs, ForcedState, SpendRedeemer, State,
 }
+use midgard/mpf_proof_v1
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -92,6 +94,40 @@ validator main(
 
         // Done.
         True
+      }
+      ct.Continue(ForcedArgs {
+        input_index,
+        output_index,
+        fraud_proof_mint_redeemer_index,
+        membership,
+      }) -> {
+        expect Some(step_datum) = datum
+        let _, _, _, input_state <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+          tx.redeemers,
+        )
+        expect Some(ForcedState { selected_input, pre_utxos_root }) = input_state
+        when selected_input is {
+          None -> membership == None
+          Some(input) -> {
+            expect Some(witness) = membership
+            mpf_proof_v1.has_value_hash(
+              pre_utxos_root,
+              encode_midgard_tx_input(input),
+              witness.value_hash,
+              witness.proof,
+            )
+          }
+        }
       }
     }
   }

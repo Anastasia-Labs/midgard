@@ -330,13 +330,19 @@ export const submitNoReferenceInputStep01 = async ({
     return Data.to(
       {
         Continue: [
-          inclusionCarriage.redeemer(ctx, {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              layout.stateQueueNodeRefInputIndex,
-          }),
+          {
+            source: {
+              AcceptedSource: {
+                inclusion: inclusionCarriage.redeemer(ctx, {
+                  input_index: layout.inputIndex,
+                  output_index: layout.outputIndex,
+                  hub_ref_input_index: layout.hubOracleRefInputIndex,
+                  state_queue_node_ref_input_index:
+                    layout.stateQueueNodeRefInputIndex,
+                }),
+              },
+            },
+          },
         ],
       },
       NoReferenceInputStep01SpendRedeemer,

@@ -1,3 +1,4 @@
+use aiken/cbor
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{nibble}
@@ -16,9 +17,11 @@ use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/native_tx/types.{MidgardTxInput} as native_tx_types
 use midgard/fraud_proofs/no_reference_input/step_03.{
-  Args, Datum, SpendRedeemer, State,
+  Args, Datum, ForcedArgs, ForcedState, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/no_reference_input/step_04
+use midgard/ledger_state
+use midgard/transition_trace
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
@@ -97,6 +100,57 @@ validator main(
 
         // Done.
         True
+      }
+      ct.Continue(ForcedArgs {
+        input_index,
+        output_index,
+        transition_membership,
+      }) -> {
+        expect Some(step_datum) = datum
+        let _, _, _, input_state, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        expect
+            Some(ForcedState {
+              event_key,
+              trace_root,
+              trace_count,
+              step_index,
+              selected_input,
+            })
+          = input_state
+        let transition = transition_membership.value
+        expect and {
+            transition_trace.verify_root_membership_with_bytes(
+              transition_membership,
+              transition_trace.TransitionTraceRootDomain,
+              trace_root,
+              trace_count,
+              cbor.serialise(transition_membership.key),
+              cbor.serialise(transition),
+            ),
+            transition_membership.key == step_index,
+            transition.step_index == step_index,
+            step_index >= 0,
+            step_index < trace_count,
+            transition.schema_version == ledger_state.transition_step_schema_version_v1,
+            transition.event_key == event_key,
+            transition.phase == ledger_state.ForcedTransaction,
+          }
+        let expected: Data = step_04.ForcedState {
+          selected_input,
+          pre_utxos_root: transition.pre_utxos_root,
+        }
+        and {
+          output_hash == step_04_validator_script_hash,
+          output_state == expected,
+        }
       }
     }
   }

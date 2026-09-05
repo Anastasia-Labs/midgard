@@ -5,11 +5,21 @@
  * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
  * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
-
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "../common.js";
+import { H32Schema, OutputReferenceSchema, ProofSchema } from "../common.js";
+import {
+  EventKeySchema,
+  ForcedInclusionTxV1Schema,
+  HeaderSchema,
+} from "../ledger-state.js";
+import { RejectionReasonSchema } from "../rejection-reason.js";
+import {
+  EventToStepMembershipProofSchema,
+  rootMembershipProofSchema,
+  TransitionTraceMembershipProofSchema,
+} from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
@@ -52,8 +62,46 @@ export const NoReferenceInputStepCancel =
 // is read with the generic computation-thread step datum. Spending it requires
 // only the native-tx inclusion redeemer; the produced UTxO carries step-02.
 
+export const NoReferenceInputVerdictSubjectSchema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: Data.Bytes(),
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
+});
+export const NoReferenceInputStep01SourceSchema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderSchema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+      direction: Data.Integer(),
+    }),
+  }),
+]);
+export const NoReferenceInputForcedSourcePayloadSchema = Data.Object({
+  header: HeaderSchema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
+
+export const NoReferenceInputStep01ArgsSchema = Data.Object({
+  source: NoReferenceInputStep01SourceSchema,
+});
+
 export const NoReferenceInputStep01SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(NoReferenceInputTxInclusionArgsSchema);
+  faultProofStepRedeemerSchema(NoReferenceInputStep01ArgsSchema);
 export type NoReferenceInputStep01SpendRedeemer = Data.Static<
   typeof NoReferenceInputStep01SpendRedeemerSchema
 >;
@@ -207,4 +255,222 @@ export type NoReferenceInputStep04SpendRedeemer = Data.Static<
 export const NoReferenceInputStep04SpendRedeemer =
   asDataType<NoReferenceInputStep04SpendRedeemer>(
     NoReferenceInputStep04SpendRedeemerSchema,
+  );
+
+export const NoReferenceInputStep02ForcedStateSchema = Data.Object({
+  subject: NoReferenceInputVerdictSubjectSchema,
+  event_key: EventKeySchema,
+  event_root: H32Schema,
+  event_count: Data.Integer(),
+  trace_root: H32Schema,
+  trace_count: Data.Integer(),
+});
+export type NoReferenceInputStep02ForcedState = Data.Static<
+  typeof NoReferenceInputStep02ForcedStateSchema
+>;
+export const NoReferenceInputStep02ForcedState =
+  asDataType<NoReferenceInputStep02ForcedState>(
+    NoReferenceInputStep02ForcedStateSchema,
+  );
+
+export const NoReferenceInputStep02ForcedArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  reference_inputs_opening: FieldOpeningSchema,
+  event_membership: EventToStepMembershipProofSchema,
+});
+export type NoReferenceInputStep02ForcedArgs = Data.Static<
+  typeof NoReferenceInputStep02ForcedArgsSchema
+>;
+export const NoReferenceInputStep02ForcedArgs =
+  asDataType<NoReferenceInputStep02ForcedArgs>(
+    NoReferenceInputStep02ForcedArgsSchema,
+  );
+
+export const NoReferenceInputStep02ThreadStateSchema = Data.Enum([
+  Data.Object({ State: NoReferenceInputStep02StateSchema }),
+  Data.Object({ ForcedState: NoReferenceInputStep02ForcedStateSchema }),
+]);
+export type NoReferenceInputStep02ThreadState = Data.Static<
+  typeof NoReferenceInputStep02ThreadStateSchema
+>;
+export const NoReferenceInputStep02ThreadState =
+  asDataType<NoReferenceInputStep02ThreadState>(
+    NoReferenceInputStep02ThreadStateSchema,
+  );
+
+export const NoReferenceInputStep02ThreadDatumSchema =
+  faultProofStepDatumSchema(NoReferenceInputStep02ThreadStateSchema);
+export type NoReferenceInputStep02ThreadDatum = Data.Static<
+  typeof NoReferenceInputStep02ThreadDatumSchema
+>;
+export const NoReferenceInputStep02ThreadDatum =
+  asDataType<NoReferenceInputStep02ThreadDatum>(
+    NoReferenceInputStep02ThreadDatumSchema,
+  );
+
+export const NoReferenceInputStep02ThreadArgsSchema = Data.Enum([
+  Data.Object({ Args: NoReferenceInputStep02ArgsSchema }),
+  Data.Object({ ForcedArgs: NoReferenceInputStep02ForcedArgsSchema }),
+]);
+export type NoReferenceInputStep02ThreadArgs = Data.Static<
+  typeof NoReferenceInputStep02ThreadArgsSchema
+>;
+export const NoReferenceInputStep02ThreadArgs =
+  asDataType<NoReferenceInputStep02ThreadArgs>(
+    NoReferenceInputStep02ThreadArgsSchema,
+  );
+
+export const NoReferenceInputStep02ThreadSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NoReferenceInputStep02ThreadArgsSchema);
+export type NoReferenceInputStep02ThreadSpendRedeemer = Data.Static<
+  typeof NoReferenceInputStep02ThreadSpendRedeemerSchema
+>;
+export const NoReferenceInputStep02ThreadSpendRedeemer =
+  asDataType<NoReferenceInputStep02ThreadSpendRedeemer>(
+    NoReferenceInputStep02ThreadSpendRedeemerSchema,
+  );
+
+export const NoReferenceInputStep03ForcedStateSchema = Data.Object({
+  event_key: EventKeySchema,
+  trace_root: H32Schema,
+  trace_count: Data.Integer(),
+  step_index: Data.Integer(),
+  selected_input: Data.Nullable(MidgardTxInputSchema),
+});
+export type NoReferenceInputStep03ForcedState = Data.Static<
+  typeof NoReferenceInputStep03ForcedStateSchema
+>;
+export const NoReferenceInputStep03ForcedState =
+  asDataType<NoReferenceInputStep03ForcedState>(
+    NoReferenceInputStep03ForcedStateSchema,
+  );
+
+export const NoReferenceInputStep03ForcedArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  transition_membership: TransitionTraceMembershipProofSchema,
+});
+export type NoReferenceInputStep03ForcedArgs = Data.Static<
+  typeof NoReferenceInputStep03ForcedArgsSchema
+>;
+export const NoReferenceInputStep03ForcedArgs =
+  asDataType<NoReferenceInputStep03ForcedArgs>(
+    NoReferenceInputStep03ForcedArgsSchema,
+  );
+
+export const NoReferenceInputStep03ThreadStateSchema = Data.Enum([
+  Data.Object({ State: NoReferenceInputStep03StateSchema }),
+  Data.Object({ ForcedState: NoReferenceInputStep03ForcedStateSchema }),
+]);
+export type NoReferenceInputStep03ThreadState = Data.Static<
+  typeof NoReferenceInputStep03ThreadStateSchema
+>;
+export const NoReferenceInputStep03ThreadState =
+  asDataType<NoReferenceInputStep03ThreadState>(
+    NoReferenceInputStep03ThreadStateSchema,
+  );
+
+export const NoReferenceInputStep03ThreadDatumSchema =
+  faultProofStepDatumSchema(NoReferenceInputStep03ThreadStateSchema);
+export type NoReferenceInputStep03ThreadDatum = Data.Static<
+  typeof NoReferenceInputStep03ThreadDatumSchema
+>;
+export const NoReferenceInputStep03ThreadDatum =
+  asDataType<NoReferenceInputStep03ThreadDatum>(
+    NoReferenceInputStep03ThreadDatumSchema,
+  );
+
+export const NoReferenceInputStep03ThreadArgsSchema = Data.Enum([
+  Data.Object({ Args: NoReferenceInputStep03ArgsSchema }),
+  Data.Object({ ForcedArgs: NoReferenceInputStep03ForcedArgsSchema }),
+]);
+export type NoReferenceInputStep03ThreadArgs = Data.Static<
+  typeof NoReferenceInputStep03ThreadArgsSchema
+>;
+export const NoReferenceInputStep03ThreadArgs =
+  asDataType<NoReferenceInputStep03ThreadArgs>(
+    NoReferenceInputStep03ThreadArgsSchema,
+  );
+
+export const NoReferenceInputStep03ThreadSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NoReferenceInputStep03ThreadArgsSchema);
+export type NoReferenceInputStep03ThreadSpendRedeemer = Data.Static<
+  typeof NoReferenceInputStep03ThreadSpendRedeemerSchema
+>;
+export const NoReferenceInputStep03ThreadSpendRedeemer =
+  asDataType<NoReferenceInputStep03ThreadSpendRedeemer>(
+    NoReferenceInputStep03ThreadSpendRedeemerSchema,
+  );
+
+export const NoReferenceInputStep04ForcedStateSchema = Data.Object({
+  selected_input: Data.Nullable(MidgardTxInputSchema),
+  pre_utxos_root: H32Schema,
+});
+export type NoReferenceInputStep04ForcedState = Data.Static<
+  typeof NoReferenceInputStep04ForcedStateSchema
+>;
+export const NoReferenceInputStep04ForcedState =
+  asDataType<NoReferenceInputStep04ForcedState>(
+    NoReferenceInputStep04ForcedStateSchema,
+  );
+
+export const NoReferenceInputStep04ForcedArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+  membership: Data.Nullable(
+    Data.Object({ value_hash: H32Schema, proof: ProofSchema }),
+  ),
+});
+export type NoReferenceInputStep04ForcedArgs = Data.Static<
+  typeof NoReferenceInputStep04ForcedArgsSchema
+>;
+export const NoReferenceInputStep04ForcedArgs =
+  asDataType<NoReferenceInputStep04ForcedArgs>(
+    NoReferenceInputStep04ForcedArgsSchema,
+  );
+
+export const NoReferenceInputStep04ThreadStateSchema = Data.Enum([
+  Data.Object({ State: NoReferenceInputStep04StateSchema }),
+  Data.Object({ ForcedState: NoReferenceInputStep04ForcedStateSchema }),
+]);
+export type NoReferenceInputStep04ThreadState = Data.Static<
+  typeof NoReferenceInputStep04ThreadStateSchema
+>;
+export const NoReferenceInputStep04ThreadState =
+  asDataType<NoReferenceInputStep04ThreadState>(
+    NoReferenceInputStep04ThreadStateSchema,
+  );
+
+export const NoReferenceInputStep04ThreadDatumSchema =
+  faultProofStepDatumSchema(NoReferenceInputStep04ThreadStateSchema);
+export type NoReferenceInputStep04ThreadDatum = Data.Static<
+  typeof NoReferenceInputStep04ThreadDatumSchema
+>;
+export const NoReferenceInputStep04ThreadDatum =
+  asDataType<NoReferenceInputStep04ThreadDatum>(
+    NoReferenceInputStep04ThreadDatumSchema,
+  );
+
+export const NoReferenceInputStep04ThreadArgsSchema = Data.Enum([
+  Data.Object({ Args: NoReferenceInputStep04ArgsSchema }),
+  Data.Object({ ForcedArgs: NoReferenceInputStep04ForcedArgsSchema }),
+]);
+export type NoReferenceInputStep04ThreadArgs = Data.Static<
+  typeof NoReferenceInputStep04ThreadArgsSchema
+>;
+export const NoReferenceInputStep04ThreadArgs =
+  asDataType<NoReferenceInputStep04ThreadArgs>(
+    NoReferenceInputStep04ThreadArgsSchema,
+  );
+
+export const NoReferenceInputStep04ThreadSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NoReferenceInputStep04ThreadArgsSchema);
+export type NoReferenceInputStep04ThreadSpendRedeemer = Data.Static<
+  typeof NoReferenceInputStep04ThreadSpendRedeemerSchema
+>;
+export const NoReferenceInputStep04ThreadSpendRedeemer =
+  asDataType<NoReferenceInputStep04ThreadSpendRedeemer>(
+    NoReferenceInputStep04ThreadSpendRedeemerSchema,
   );
