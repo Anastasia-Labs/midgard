@@ -421,7 +421,7 @@ export const runForcedValidationDisputeScenario = async (
       ),
   );
   const valueAndMintSemanticPublication =
-    valueAndMintSemanticContract !== undefined && semanticIsOversized
+    valueAndMintSemanticContract !== undefined
       ? semanticPublication
       : undefined;
   const semanticDeploymentInfo =

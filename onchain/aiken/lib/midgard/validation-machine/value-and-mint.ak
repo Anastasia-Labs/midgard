@@ -223,6 +223,9 @@ fn complete_value_input_replay(
   }
 }
 
+// The aggregate dispatcher and specialized resolvers share exact action bodies.
+// Calling an action directly keeps unrelated branches out of its deployed script;
+// each specialized wrapper still authenticates control and pins the dispatch guard.
 fn value_and_mint_stage_two(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -230,346 +233,121 @@ fn value_and_mint_stage_two(
   control: ValueAndMintControlV1,
 ) -> Bool {
   if control.replay_remaining_schedule_hash == empty_resolution_schedule_hash() {
-    and {
-      auxiliary == NoAuxiliaryWitness,
-      control.replay_cursor == control.native_control.resolved_input_count,
-      control.replay_asset_cursor == 0,
-      control.replay_value_hash == no_rejection_code_hash,
-      control.replay_accumulator == control.native_control.resolved_inputs_accumulator,
-      value_and_mint_successor_is_exact(
-        pre,
-        witness,
-        ValueAndMintControlV1 { ..control, stage: 3 },
-      ),
-    }
+    value_and_mint_replay_finish(pre, witness, auxiliary, control)
   } else if control.replay_asset_cursor == 0 {
-    expect
-        ResolvedInputReplayWitness {
-          source_kind,
-          key,
-          next_schedule_hash,
-          value,
-        }
-      = auxiliary
-    if and {
-      source_kind == 0 || source_kind == 1,
-      resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
-      control.replay_cursor < control.native_control.resolved_input_count,
-    } {
-      let descriptor = ledger_output_commitment_v1.decode(value)
-      let next_value = if source_kind == 0 {
-        ValueAccumulatorV1 {
-          ..control.value_accumulator,
-          lovelace_delta: control.value_accumulator.lovelace_delta + descriptor.lovelace,
-        }
-      } else {
-        control.value_accumulator
-      }
-      let next_control = if or {
-        source_kind == 1,
-        descriptor.asset_count == 0,
-      } {
-        complete_value_input_replay(
-          control,
-          source_kind,
-          key,
-          value,
-          next_schedule_hash,
-          next_value,
-        )
-      } else {
-        ValueAndMintControlV1 {
-          ..control,
-          replay_asset_cursor: 1,
-          replay_value_hash: blake2b_256(value),
-          value_accumulator: next_value,
-        }
-      }
-      value_and_mint_successor_is_exact(pre, witness, next_control)
-    } else {
-      False
-    }
+    value_and_mint_replay_input(pre, witness, auxiliary, control)
   } else {
-    expect
-        ValueInputAssetWitness {
-          source_kind,
-          key,
-          next_schedule_hash,
-          descriptor_cbor,
-          asset_index,
-          policy_id,
-          asset_name,
-          quantity,
-          asset_peaks,
-          asset_siblings,
-          mutation,
-        }
-      = auxiliary
-    if and {
-      source_kind == 0,
-      resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
-      control.replay_cursor < control.native_control.resolved_input_count,
-      blake2b_256(descriptor_cbor) == control.replay_value_hash,
-      asset_index == control.replay_asset_cursor - 1,
+    value_and_mint_replay_asset(pre, witness, auxiliary, control)
+  }
+}
+
+fn value_and_mint_replay_finish(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  and {
+    auxiliary == NoAuxiliaryWitness,
+    control.replay_cursor == control.native_control.resolved_input_count,
+    control.replay_asset_cursor == 0,
+    control.replay_value_hash == no_rejection_code_hash,
+    control.replay_accumulator == control.native_control.resolved_inputs_accumulator,
+    value_and_mint_successor_is_exact(
+      pre,
+      witness,
+      ValueAndMintControlV1 { ..control, stage: 3 },
+    ),
+  }
+}
+
+fn value_and_mint_replay_input(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  expect
+      ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value }
+    = auxiliary
+  if and {
+    source_kind == 0 || source_kind == 1,
+    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    control.replay_cursor < control.native_control.resolved_input_count,
+  } {
+    let descriptor = ledger_output_commitment_v1.decode(value)
+    let next_value = if source_kind == 0 {
+      ValueAccumulatorV1 {
+        ..control.value_accumulator,
+        lovelace_delta: control.value_accumulator.lovelace_delta + descriptor.lovelace,
+      }
+    } else {
+      control.value_accumulator
+    }
+    let next_control = if or {
+      source_kind == 1,
+      descriptor.asset_count == 0,
     } {
-      let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-      if ledger_output_commitment_v1.verify_asset_membership(
-        descriptor,
+      complete_value_input_replay(
+        control,
+        source_kind,
+        key,
+        value,
+        next_schedule_hash,
+        next_value,
+      )
+    } else {
+      ValueAndMintControlV1 {
+        ..control,
+        replay_asset_cursor: 1,
+        replay_value_hash: blake2b_256(value),
+        value_accumulator: next_value,
+      }
+    }
+    value_and_mint_successor_is_exact(pre, witness, next_control)
+  } else {
+    False
+  }
+}
+
+fn value_and_mint_replay_asset(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  expect
+      ValueInputAssetWitness {
+        source_kind,
+        key,
+        next_schedule_hash,
+        descriptor_cbor,
         asset_index,
         policy_id,
         asset_name,
         quantity,
         asset_peaks,
         asset_siblings,
-      ) {
-        when
-          apply_value_asset_mutation(
-            control.value_accumulator,
-            policy_id |> bytearray.concat(asset_name),
-            quantity,
-            mutation,
-          )
-        is {
-          ValueAccumulatorAssetLimitExceeded ->
-            rejected_successor_is_exact(
-              pre,
-              witness.claimed_successor,
-              reject_asset_count,
-            )
-          ValueAccumulatorMutationInvalid -> False
-          ValueAccumulatorUpdated(next_value) -> {
-            let next_control = if control.replay_asset_cursor == descriptor.asset_count {
-              complete_value_input_replay(
-                control,
-                source_kind,
-                key,
-                descriptor_cbor,
-                next_schedule_hash,
-                next_value,
-              )
-            } else {
-              ValueAndMintControlV1 {
-                ..control,
-                replay_asset_cursor: control.replay_asset_cursor + 1,
-                value_accumulator: next_value,
-              }
-            }
-            value_and_mint_successor_is_exact(pre, witness, next_control)
-          }
-        }
-      } else {
-        False
+        mutation,
       }
-    } else {
-      False
-    }
-  }
-}
-
-fn value_and_mint_stage_three(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-  control: ValueAndMintControlV1,
-) -> Bool {
-  if control.output_cursor == control.native_control.output_count {
-    and {
-      auxiliary == NoAuxiliaryWitness,
-      control.output_asset_cursor == 0,
-      control.replay_value_hash == no_rejection_code_hash,
-      value_and_mint_successor_is_exact(
-        pre,
-        witness,
-        ValueAndMintControlV1 { ..control, stage: 4 },
-      ),
-    }
-  } else if control.output_asset_cursor == 0 {
-    expect
-        ValueOutputDescriptorWitness { output_index, descriptor_cbor, siblings }
-      = auxiliary
-    if and {
-      output_index == control.output_cursor,
-      validation_merkle_v1.verify_membership(
-        control.native_control.output_count,
-        control.native_control.output_descriptor_peaks,
-        output_index,
-        script_proof_v1.output_descriptor_leaf_hash(
-          output_index,
-          descriptor_cbor,
-        ),
-        siblings,
-      ),
-    } {
-      let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-      // E_MIN_ADA (#618 ruling 1; R8 of decision 0005; decision 0003 Q27).
-      // The parameterized minimum-Ada floor, bound to a machine rejection code
-      // at the first step that sees the whole output. Both operands are facts
-      // of the descriptor the membership conjunct above just authenticated
-      // against `output_descriptor_peaks`: `total_length` is the length of the
-      // canonical serialized output (`descriptor_is_well_formed` in
-      // lib/midgard/ledger-output-commitment-v1.ak binds it to the bounded item
-      // the output scan chunked), and `lovelace` is that output's Ada. Neither
-      // is re-derived here, so this step convicts on authenticated bytes alone.
-      //
-      // The floor is evaluated BEFORE the output's Ada is folded into the value
-      // accumulator, and before the per-asset cursor opens: an under-funded
-      // output is convictable from the single descriptor step, with no asset
-      // steps and no dependence on the rest of the transaction. This is the
-      // MIN-ADA-TX shape of technical-spec §5 (5-ledger-rules); MIN-ADA-UTXO,
-      // the same floor over a member of the post-block UTxO set, is Q27's own
-      // membership shape and is deliberately not reachable from here.
-      //
-      // The rate is `env.coins_per_utxo_byte`, a compiled deployment constant
-      // (owner ruling 2026-08-23 on #627, option B) rather than a header field
-      // or a context element: the rate that convicts a block is not the block
-      // producer's to declare. Its TypeScript mirror is
-      // `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`.
-      if !output_meets_min_ada_v1(
-        env.coins_per_utxo_byte,
-        descriptor.total_length,
-        descriptor.lovelace,
-      ) {
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          reject_min_ada,
-        )
-      } else {
-        let next_value = ValueAccumulatorV1 {
-          ..control.value_accumulator,
-          lovelace_delta: control.value_accumulator.lovelace_delta - descriptor.lovelace,
-        }
-        let next_control = if descriptor.asset_count == 0 {
-          ValueAndMintControlV1 {
-            ..control,
-            output_cursor: control.output_cursor + 1,
-            value_accumulator: next_value,
-          }
-        } else {
-          ValueAndMintControlV1 {
-            ..control,
-            output_asset_cursor: 1,
-            replay_value_hash: blake2b_256(descriptor_cbor),
-            value_accumulator: next_value,
-          }
-        }
-        value_and_mint_successor_is_exact(pre, witness, next_control)
-      }
-    } else {
-      False
-    }
-  } else {
-    expect
-        ValueOutputAssetWitness {
-          output_index,
-          descriptor_cbor,
-          asset_index,
-          policy_id,
-          asset_name,
-          quantity,
-          asset_peaks,
-          asset_siblings,
-          mutation,
-        }
-      = auxiliary
-    if and {
-      output_index == control.output_cursor,
-      asset_index == control.output_asset_cursor - 1,
-      blake2b_256(descriptor_cbor) == control.replay_value_hash,
-    } {
-      let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-      if ledger_output_commitment_v1.verify_asset_membership(
-        descriptor,
-        asset_index,
-        policy_id,
-        asset_name,
-        quantity,
-        asset_peaks,
-        asset_siblings,
-      ) {
-        when
-          apply_value_asset_mutation(
-            control.value_accumulator,
-            policy_id |> bytearray.concat(asset_name),
-            0 - quantity,
-            mutation,
-          )
-        is {
-          ValueAccumulatorAssetLimitExceeded ->
-            rejected_successor_is_exact(
-              pre,
-              witness.claimed_successor,
-              reject_asset_count,
-            )
-          ValueAccumulatorMutationInvalid -> False
-          ValueAccumulatorUpdated(next_value) -> {
-            let next_control = if control.output_asset_cursor == descriptor.asset_count {
-              ValueAndMintControlV1 {
-                ..control,
-                output_cursor: control.output_cursor + 1,
-                output_asset_cursor: 0,
-                replay_value_hash: no_rejection_code_hash,
-                value_accumulator: next_value,
-              }
-            } else {
-              ValueAndMintControlV1 {
-                ..control,
-                output_asset_cursor: control.output_asset_cursor + 1,
-                value_accumulator: next_value,
-              }
-            }
-            value_and_mint_successor_is_exact(pre, witness, next_control)
-          }
-        }
-      } else {
-        False
-      }
-    } else {
-      False
-    }
-  }
-}
-
-fn value_and_mint_stage_four(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-  control: ValueAndMintControlV1,
-) -> Bool {
-  let native_control = control.native_control
-  if control.mint_cursor == native_control.mint_count {
-    and {
-      auxiliary == NoAuxiliaryWitness,
-      value_and_mint_successor_is_exact(
-        pre,
-        witness,
-        ValueAndMintControlV1 { ..control, stage: 5 },
-      ),
-    }
-  } else {
-    expect
-        ValueMintAssetWitness {
-          mint_index,
-          policy_id,
-          asset_name,
-          quantity,
-          siblings,
-          mutation,
-        }
-      = auxiliary
-    if and {
-      mint_index == control.mint_cursor,
-      bytearray.length(policy_id) == 28,
-      bytearray.length(asset_name) <= 32,
-      quantity != 0,
-      validation_merkle_v1.verify_membership(
-        native_control.mint_count,
-        native_control.mint_peaks,
-        mint_index,
-        mint_asset_leaf_hash(policy_id, asset_name, quantity),
-        siblings,
-      ),
-    } {
+    = auxiliary
+  if and {
+    source_kind == 0,
+    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    control.replay_cursor < control.native_control.resolved_input_count,
+    blake2b_256(descriptor_cbor) == control.replay_value_hash,
+    asset_index == control.replay_asset_cursor - 1,
+  } {
+    let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+    if ledger_output_commitment_v1.verify_asset_membership(
+      descriptor,
+      asset_index,
+      policy_id,
+      asset_name,
+      quantity,
+      asset_peaks,
+      asset_siblings,
+    ) {
       when
         apply_value_asset_mutation(
           control.value_accumulator,
@@ -585,20 +363,310 @@ fn value_and_mint_stage_four(
             reject_asset_count,
           )
         ValueAccumulatorMutationInvalid -> False
-        ValueAccumulatorUpdated(next_value) ->
-          value_and_mint_successor_is_exact(
-            pre,
-            witness,
+        ValueAccumulatorUpdated(next_value) -> {
+          let next_control = if control.replay_asset_cursor == descriptor.asset_count {
+            complete_value_input_replay(
+              control,
+              source_kind,
+              key,
+              descriptor_cbor,
+              next_schedule_hash,
+              next_value,
+            )
+          } else {
             ValueAndMintControlV1 {
               ..control,
-              mint_cursor: control.mint_cursor + 1,
+              replay_asset_cursor: control.replay_asset_cursor + 1,
               value_accumulator: next_value,
-            },
-          )
+            }
+          }
+          value_and_mint_successor_is_exact(pre, witness, next_control)
+        }
       }
     } else {
       False
     }
+  } else {
+    False
+  }
+}
+
+fn value_and_mint_stage_three(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  if control.output_cursor == control.native_control.output_count {
+    value_and_mint_output_finish(pre, witness, auxiliary, control)
+  } else if control.output_asset_cursor == 0 {
+    value_and_mint_output_descriptor(pre, witness, auxiliary, control)
+  } else {
+    value_and_mint_output_asset(pre, witness, auxiliary, control)
+  }
+}
+
+fn value_and_mint_output_finish(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  and {
+    auxiliary == NoAuxiliaryWitness,
+    control.output_asset_cursor == 0,
+    control.replay_value_hash == no_rejection_code_hash,
+    value_and_mint_successor_is_exact(
+      pre,
+      witness,
+      ValueAndMintControlV1 { ..control, stage: 4 },
+    ),
+  }
+}
+
+fn value_and_mint_output_descriptor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  expect
+      ValueOutputDescriptorWitness { output_index, descriptor_cbor, siblings }
+    = auxiliary
+  if and {
+    output_index == control.output_cursor,
+    validation_merkle_v1.verify_membership(
+      control.native_control.output_count,
+      control.native_control.output_descriptor_peaks,
+      output_index,
+      script_proof_v1.output_descriptor_leaf_hash(output_index, descriptor_cbor),
+      siblings,
+    ),
+  } {
+    let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+    // E_MIN_ADA (#618 ruling 1; R8 of decision 0005; decision 0003 Q27).
+    // The parameterized minimum-Ada floor, bound to a machine rejection code
+    // at the first step that sees the whole output. Both operands are facts
+    // of the descriptor the membership conjunct above just authenticated
+    // against `output_descriptor_peaks`: `total_length` is the length of the
+    // canonical serialized output (`descriptor_is_well_formed` in
+    // lib/midgard/ledger-output-commitment-v1.ak binds it to the bounded item
+    // the output scan chunked), and `lovelace` is that output's Ada. Neither
+    // is re-derived here, so this step convicts on authenticated bytes alone.
+    //
+    // The floor is evaluated BEFORE the output's Ada is folded into the value
+    // accumulator, and before the per-asset cursor opens: an under-funded
+    // output is convictable from the single descriptor step, with no asset
+    // steps and no dependence on the rest of the transaction. This is the
+    // MIN-ADA-TX shape of technical-spec §5 (5-ledger-rules); MIN-ADA-UTXO,
+    // the same floor over a member of the post-block UTxO set, is Q27's own
+    // membership shape and is deliberately not reachable from here.
+    //
+    // The rate is `env.coins_per_utxo_byte`, a compiled deployment constant
+    // (owner ruling 2026-08-23 on #627, option B) rather than a header field
+    // or a context element: the rate that convicts a block is not the block
+    // producer's to declare. Its TypeScript mirror is
+    // `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`.
+    if !output_meets_min_ada_v1(
+      env.coins_per_utxo_byte,
+      descriptor.total_length,
+      descriptor.lovelace,
+    ) {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_min_ada,
+      )
+    } else {
+      let next_value = ValueAccumulatorV1 {
+        ..control.value_accumulator,
+        lovelace_delta: control.value_accumulator.lovelace_delta - descriptor.lovelace,
+      }
+      let next_control = if descriptor.asset_count == 0 {
+        ValueAndMintControlV1 {
+          ..control,
+          output_cursor: control.output_cursor + 1,
+          value_accumulator: next_value,
+        }
+      } else {
+        ValueAndMintControlV1 {
+          ..control,
+          output_asset_cursor: 1,
+          replay_value_hash: blake2b_256(descriptor_cbor),
+          value_accumulator: next_value,
+        }
+      }
+      value_and_mint_successor_is_exact(pre, witness, next_control)
+    }
+  } else {
+    False
+  }
+}
+
+fn value_and_mint_output_asset(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  expect
+      ValueOutputAssetWitness {
+        output_index,
+        descriptor_cbor,
+        asset_index,
+        policy_id,
+        asset_name,
+        quantity,
+        asset_peaks,
+        asset_siblings,
+        mutation,
+      }
+    = auxiliary
+  if and {
+    output_index == control.output_cursor,
+    asset_index == control.output_asset_cursor - 1,
+    blake2b_256(descriptor_cbor) == control.replay_value_hash,
+  } {
+    let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+    if ledger_output_commitment_v1.verify_asset_membership(
+      descriptor,
+      asset_index,
+      policy_id,
+      asset_name,
+      quantity,
+      asset_peaks,
+      asset_siblings,
+    ) {
+      when
+        apply_value_asset_mutation(
+          control.value_accumulator,
+          policy_id |> bytearray.concat(asset_name),
+          0 - quantity,
+          mutation,
+        )
+      is {
+        ValueAccumulatorAssetLimitExceeded ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_asset_count,
+          )
+        ValueAccumulatorMutationInvalid -> False
+        ValueAccumulatorUpdated(next_value) -> {
+          let next_control = if control.output_asset_cursor == descriptor.asset_count {
+            ValueAndMintControlV1 {
+              ..control,
+              output_cursor: control.output_cursor + 1,
+              output_asset_cursor: 0,
+              replay_value_hash: no_rejection_code_hash,
+              value_accumulator: next_value,
+            }
+          } else {
+            ValueAndMintControlV1 {
+              ..control,
+              output_asset_cursor: control.output_asset_cursor + 1,
+              value_accumulator: next_value,
+            }
+          }
+          value_and_mint_successor_is_exact(pre, witness, next_control)
+        }
+      }
+    } else {
+      False
+    }
+  } else {
+    False
+  }
+}
+
+fn value_and_mint_stage_four(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  let native_control = control.native_control
+  if control.mint_cursor == native_control.mint_count {
+    value_and_mint_mint_finish(pre, witness, auxiliary, control)
+  } else {
+    value_and_mint_mint_asset(pre, witness, auxiliary, control)
+  }
+}
+
+fn value_and_mint_mint_finish(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  and {
+    auxiliary == NoAuxiliaryWitness,
+    value_and_mint_successor_is_exact(
+      pre,
+      witness,
+      ValueAndMintControlV1 { ..control, stage: 5 },
+    ),
+  }
+}
+
+fn value_and_mint_mint_asset(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Bool {
+  let native_control = control.native_control
+  expect
+      ValueMintAssetWitness {
+        mint_index,
+        policy_id,
+        asset_name,
+        quantity,
+        siblings,
+        mutation,
+      }
+    = auxiliary
+  if and {
+    mint_index == control.mint_cursor,
+    bytearray.length(policy_id) == 28,
+    bytearray.length(asset_name) <= 32,
+    quantity != 0,
+    validation_merkle_v1.verify_membership(
+      native_control.mint_count,
+      native_control.mint_peaks,
+      mint_index,
+      mint_asset_leaf_hash(policy_id, asset_name, quantity),
+      siblings,
+    ),
+  } {
+    when
+      apply_value_asset_mutation(
+        control.value_accumulator,
+        policy_id |> bytearray.concat(asset_name),
+        quantity,
+        mutation,
+      )
+    is {
+      ValueAccumulatorAssetLimitExceeded ->
+        rejected_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          reject_asset_count,
+        )
+      ValueAccumulatorMutationInvalid -> False
+      ValueAccumulatorUpdated(next_value) ->
+        value_and_mint_successor_is_exact(
+          pre,
+          witness,
+          ValueAndMintControlV1 {
+            ..control,
+            mint_cursor: control.mint_cursor + 1,
+            value_accumulator: next_value,
+          },
+        )
+    }
+  } else {
+    False
   }
 }
 
@@ -793,7 +861,7 @@ pub fn verify_value_and_mint_replay_input_semantics_v1(
     control.stage == 2,
     control.replay_remaining_schedule_hash != empty_resolution_schedule_hash(),
     control.replay_asset_cursor == 0,
-    value_and_mint_stage_two(
+    value_and_mint_replay_input(
       pre,
       witness,
       ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value },
@@ -828,7 +896,7 @@ pub fn verify_value_and_mint_replay_asset_semantics_v1(
     control.stage == 2,
     control.replay_remaining_schedule_hash != empty_resolution_schedule_hash(),
     control.replay_asset_cursor > 0,
-    value_and_mint_stage_two(
+    value_and_mint_replay_asset(
       pre,
       witness,
       ValueInputAssetWitness {
@@ -863,7 +931,7 @@ pub fn verify_value_and_mint_replay_finish_semantics_v1(
     control_is_well_formed,
     control.stage == 2,
     control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
-    value_and_mint_stage_two(pre, witness, NoAuxiliaryWitness, control),
+    value_and_mint_replay_finish(pre, witness, NoAuxiliaryWitness, control),
   }
 }
 
@@ -885,7 +953,7 @@ pub fn verify_value_and_mint_output_descriptor_semantics_v1(
     control.stage == 3,
     control.output_cursor < control.native_control.output_count,
     control.output_asset_cursor == 0,
-    value_and_mint_stage_three(
+    value_and_mint_output_descriptor(
       pre,
       witness,
       ValueOutputDescriptorWitness { output_index, descriptor_cbor, siblings },
@@ -918,7 +986,7 @@ pub fn verify_value_and_mint_output_asset_semantics_v1(
     control.stage == 3,
     control.output_cursor < control.native_control.output_count,
     control.output_asset_cursor > 0,
-    value_and_mint_stage_three(
+    value_and_mint_output_asset(
       pre,
       witness,
       ValueOutputAssetWitness {
@@ -951,7 +1019,7 @@ pub fn verify_value_and_mint_output_finish_semantics_v1(
     control_is_well_formed,
     control.stage == 3,
     control.output_cursor == control.native_control.output_count,
-    value_and_mint_stage_three(pre, witness, NoAuxiliaryWitness, control),
+    value_and_mint_output_finish(pre, witness, NoAuxiliaryWitness, control),
   }
 }
 
@@ -975,7 +1043,7 @@ pub fn verify_value_and_mint_mint_asset_semantics_v1(
     control_is_well_formed,
     control.stage == 4,
     control.mint_cursor < control.native_control.mint_count,
-    value_and_mint_stage_four(
+    value_and_mint_mint_asset(
       pre,
       witness,
       ValueMintAssetWitness {
@@ -1005,7 +1073,7 @@ pub fn verify_value_and_mint_mint_finish_semantics_v1(
     control_is_well_formed,
     control.stage == 4,
     control.mint_cursor == control.native_control.mint_count,
-    value_and_mint_stage_four(pre, witness, NoAuxiliaryWitness, control),
+    value_and_mint_mint_finish(pre, witness, NoAuxiliaryWitness, control),
   }
 }
 

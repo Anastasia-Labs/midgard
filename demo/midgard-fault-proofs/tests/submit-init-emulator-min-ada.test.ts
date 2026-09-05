@@ -12,48 +12,9 @@ import {
   runForcedValidationDisputeScenario,
 } from "./support/submit-init-emulator-shared.js";
 
-// R8 of decision 0005 (#618), with the #627 owner ruling deciding where the
-// rate lives: the ValueAndMint output ladder now convicts an under-funded
-// produced output with `E_MIN_ADA`. This is the emulator measurement of how
-// far that conviction travels on L1 -- open, source, bisection,
-// enter-resolution, prepare-resolution and `value_and_mint_v1`'s
-// prepare-selected, which routes the disputed step to semantic slot 5,
-// `value_and_mint_output_descriptor_semantic_v1`.
-//
-// WHY THIS NOW REACHES SEMANTIC RESOLUTION (#634, re-authored 2026-08-23).
-// This journey previously stopped at `prepare-selected`: the resolution
-// transaction that follows measured 21,576 complete signed bytes against the
-// literal 16,384-byte L1 proof envelope. The cause was never min-Ada and never
-// this fixture -- the ValueAndMint semantic resolvers were attached INLINE,
-// because `VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1`
-// (src/validation-dispute/submit.ts) published reference scripts for the CEK
-// decomposition's oversized semantics only and had no ValueAndMint
-// counterpart; and eight of the eleven ValueAndMint semantic bodies are over
-// the envelope on their own, before any redeemer. Applied bodies measured in
-// THIS tree (#634, 2026-08-23) by resolving each semantic through
-// `resolveValidationTraceDisputeDeploymentContracts` -- the same route the
-// resolution hash-checks -- against a blueprint built from this tree's
-// `onchain/`: replay_input 21,367, replay_asset 22,046, replay_finish 21,138,
-// output_descriptor 21,207, output_asset 21,823, output_finish 20,987,
-// mint_asset 18,622 and mint_finish 17,931 bytes. Only begin (11,545),
-// replay_begin (11,085) and finalize (12,059) fit -- exactly the set the
-// existing journeys in submit-init-emulator-cek-value-and-mint.test.ts
-// exercise. The output-descriptor body is 21,207 bytes with the E_MIN_ADA
-// wiring in place -- 4,823 bytes past the envelope on the body alone: the gap
-// is structural to the ValueAndMint decomposition, not something E_MIN_ADA
-// created.
-//
-// #634 gave the eleven ValueAndMint semantics the reference-script deployment
-// role the CEK ones already had
-// (`VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1`),
-// so the conviction is now carriable: the harness publishes the
-// output-descriptor resolver as a reference script at deployment time -- a
-// publication that is itself necessarily oversized, exactly as the CEK ones
-// are -- and the resolution reads it instead of embedding it. What this test
-// measures is the whole distance the E_MIN_ADA conviction travels on L1: open,
-// source, bisection, enter-resolution, prepare-resolution,
-// `value_and_mint_v1`'s prepare-selected, and the output-descriptor semantic
-// resolution itself, inside the real envelope.
+// A committed Accepted claim over an underfunded output is resolved through
+// the exact ValueAndMint descriptor branch. Both the authenticated reference
+// publication and the complete signed resolution must fit real L1 limits.
 describe("validation-dispute journey to the E_MIN_ADA output-descriptor conviction", () => {
   it("resolves an Accepted claim over a min-Ada rejection on the output-descriptor semantic resolver", async () => {
     const result = await runForcedValidationDisputeScenario(
@@ -109,19 +70,18 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
       "fraud_proofs/validation_trace/value_and_mint_output_descriptor_semantic_v1.main.spend",
     );
 
-    // #634. The deployment-time publication is honestly oversized: the applied
-    // output-descriptor body alone is over the L1 proof envelope, which is
-    // precisely why it cannot ride inline and why its own publication cannot
-    // fit either.
+    // Publication is part of the release gate, including the 512-byte reserve.
     const publication = result.valueAndMintSemanticReferencePublication;
     expect(publication).toBeDefined();
     expect(publication!.entryName).toBe(
       "validationTraceDisputeValueAndMintOutputDescriptorSemantic",
     );
-    expect(publication!.appliedResolverBytes).toBeGreaterThan(
+    expect(publication!.appliedResolverBytes).toBeLessThan(
       MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
     );
-    expect(publication!.publicationMeasurement.l1ByteMargin).toBeLessThan(0);
+    expect(
+      publication!.publicationMeasurement.l1ByteMargin,
+    ).toBeGreaterThanOrEqual(512);
     expect(publication!.utxo.scriptRef).toBeDefined();
 
     // THE OUTCOME, NOT JUST THE FIT. The semantic resolution transaction was
@@ -146,8 +106,7 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
       true,
     );
 
-    // THE FIT. Reference carriage is what buys it: the same transaction
-    // measured 21,576 bytes when the resolver rode inline.
+    // The complete signed semantic transaction also fits the ledger envelope.
     const measurement = result.semanticMeasurement;
     expect(measurement).toBeDefined();
     expect(measurement!.completeSignedBytes).toBeLessThan(

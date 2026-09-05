@@ -147,3 +147,22 @@ Lands with the group's regeneration; depends only on the arm split of
 
 None specific: 3.8k margin, no ABI change, no spec interaction beyond the
 unchanged C49 predicate.
+
+## Implementation evidence (2026-09-05)
+
+The library branch extraction is implemented in the isolated
+`codex/value-semantics-fit` worktree. It preserves the existing datum,
+parameters, evidence hash, and semantic guards. Integration remains grouped
+with the three asset-fold yielding resolvers required by the replay-asset plan.
+
+The pinned testnet build `b7803f9a2ddec61f9de2a0c98c5b6c7509b95cbfb0e210473c41f193fb74f74e` measures 11,189 raw bytes for this
+resolver. Its fully applied signed publication is 11,509 bytes,
+leaving 4,875 bytes of ledger margin and
+4,363 bytes beyond the 512-byte publication reserve.
+
+Validation: 16 exact Aiken scenarios passed, including all eleven
+specialized-versus-aggregate routes, the cross-kind partition, and four
+min-Ada boundary/rejection cases. The five-script publication test passed,
+as did the min-Ada semantic-resolution and ValueAndMint begin/removal
+emulator journeys. These checks do not close the remaining asset-fold
+yielding, maximum-evidence, or final-tree gates.
