@@ -30,6 +30,9 @@ import {
   acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
+  EventKeySchema,
+  EventToStepValueSchema,
+  type FieldOpening,
   type ForcedInclusionTxV1,
   ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
@@ -42,6 +45,8 @@ import {
   requireUniqueOutputIndex,
   ROOT_DOMAINS,
   type RootMembershipProof,
+  TransitionStepSchema,
+  ValidationTraceDescriptorSchema,
   type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
@@ -56,6 +61,7 @@ import { expect } from "vitest";
 import { submitCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
   certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
@@ -76,6 +82,8 @@ import {
   type ResolvedOutputNonCanonicalContracts,
   ResolvedOutputStep01RedeemerSchema,
   ResolvedOutputStep02DatumSchema,
+  ResolvedOutputStep02RedeemerSchema,
+  ResolvedOutputStep03DatumSchema,
   ResolvedOutputStep04DatumSchema,
   ResolvedOutputStep04RedeemerSchema,
   ResolvedOutputStep05DatumSchema,
@@ -113,9 +121,11 @@ import {
   submitSuccessorBlockTx,
 } from "./submit-init-emulator-fixtures.js";
 import {
+  h32,
   makeHeader,
   makeNativeTx,
   publishRemovalReferenceScripts,
+  transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./submit-init-emulator-shared.js";
 
@@ -465,23 +475,25 @@ export const commitBlock = async ({
     deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
   ).toString("hex");
 
-  let transactionsRoot: string | undefined;
   let accepted: CommittedBlock["accepted"];
   let forced: CommittedBlock["forced"];
   let compactCborHex = encodeMidgardNativeTxCompact(nativeTx.compact).toString(
     "hex",
   );
+  // The transactions trie carrying the subject. The accepted successor
+  // commits it; the predecessor of either shape commits it too, as a valid
+  // one-transaction block whose content the proofs never touch.
+  const sourceCbor = l2TransactionSourceCbor(nativeTx);
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  await trie.insert(
+    Buffer.from(nativeTxId, "hex"),
+    Buffer.from(sourceCbor, "hex"),
+  );
+  const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
+  const transactionsRoot = Buffer.from(trie.hash).toString("hex");
   if (reason === undefined) {
-    const sourceCbor = l2TransactionSourceCbor(nativeTx);
-    const store = new Store(undefined);
-    await store.ready();
-    const trie = new Trie(store);
-    await trie.insert(
-      Buffer.from(nativeTxId, "hex"),
-      Buffer.from(sourceCbor, "hex"),
-    );
-    const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
-    transactionsRoot = Buffer.from(trie.hash).toString("hex");
     accepted = {
       transactionsRoot,
       txInclusion: {
@@ -501,8 +513,8 @@ export const commitBlock = async ({
     contracts: harness.contracts,
     catalogue,
     fixture: {
-      transactionsRoot: transactionsRoot ?? "00".repeat(32),
-      l2TransactionCount: transactionsRoot === undefined ? 0n : 1n,
+      transactionsRoot,
+      l2TransactionCount: 1n,
       utxosRoot: priorRoot,
       headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
     },
@@ -517,7 +529,7 @@ export const commitBlock = async ({
       ...makeHeader(
         predecessor.header.operatorVkey,
         targetStart,
-        await countedTransactionsRoot(transactionsRoot!, 1n),
+        await countedTransactionsRoot(transactionsRoot, 1n),
         1n,
       ),
       prevHeaderHash: predecessor.headerHash,
@@ -547,10 +559,10 @@ export const commitBlock = async ({
     const counted = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
       { key: keyBytes, value: valueBytes },
     ]);
-    const store = new Store(undefined);
-    await store.ready();
-    const trie = new Trie(store);
-    await trie.insert(keyBytes, valueBytes);
+    const forcedStore = new Store(undefined);
+    await forcedStore.ready();
+    const forcedTrie = new Trie(forcedStore);
+    await forcedTrie.insert(keyBytes, valueBytes);
     const membership: RootMembershipProof<
       OutputReference,
       ForcedInclusionTxV1
@@ -562,16 +574,77 @@ export const commitBlock = async ({
       key,
       value: leaf,
       proof: Data.from(
-        (await trie.prove(keyBytes)).toCBOR().toString("hex"),
+        (await forcedTrie.prove(keyBytes)).toCBOR().toString("hex"),
         Proof,
       ),
     };
     forced = { leaf, membership, reason };
+    // The header's other event commitments must carry the one forced event
+    // too (`header_transition_commitments_v1_are_valid`): a rejected forced
+    // transaction leaves the ledger at the prior root.
+    const eventKey = { ForcedTransactionEventKey: { tx_order_id: key } };
+    const countedEntries = async (
+      domain: Parameters<typeof buildCountedRoot>[0],
+      entries: readonly (readonly [string, string])[],
+    ) =>
+      await buildCountedRoot(
+        domain,
+        entries.map(([entryKey, entryValue]) => ({
+          key: Buffer.from(entryKey, "hex"),
+          value: Buffer.from(entryValue, "hex"),
+        })),
+      );
+    const [transitionRoot, eventRoot, validationRoot] = await Promise.all([
+      countedEntries(ROOT_DOMAINS.transitionTrace, [
+        transitionTraceDaEntry({
+          key: 0n,
+          keySchema: Data.Integer() as never,
+          value: {
+            schema_version: 1n,
+            step_index: 0n,
+            event_key: eventKey,
+            phase: "ForcedTransaction",
+            pre_utxos_root: priorRoot,
+            post_utxos_root: priorRoot,
+          },
+          valueSchema: TransitionStepSchema,
+        }),
+      ]),
+      countedEntries(ROOT_DOMAINS.eventToStep, [
+        transitionTraceDaEntry({
+          key: eventKey,
+          keySchema: EventKeySchema,
+          value: { step_index: 0n, phase: "ForcedTransaction" },
+          valueSchema: EventToStepValueSchema,
+        }),
+      ]),
+      countedEntries(ROOT_DOMAINS.validationTraces, [
+        transitionTraceDaEntry({
+          key: eventKey,
+          keySchema: EventKeySchema,
+          value: {
+            schema_version: 1n,
+            machine_version: 1n,
+            trace_root: h32("c1"),
+            step_count: 1n,
+            initial_state_hash: h32("c2"),
+            terminal_state_hash: h32("c3"),
+            verdict: "Rejected",
+            rejection_code_hash: h32("c4"),
+          },
+          valueSchema: ValidationTraceDescriptorSchema,
+        }),
+      ]),
+    ]);
     header = {
       ...makeHeader(predecessor.header.operatorVkey, targetStart),
       prevHeaderHash: predecessor.headerHash,
       prevUtxosRoot: priorRoot,
+      utxosRoot: priorRoot,
       forcedTransactionsRoot: counted.root,
+      transitionTraceRoot: transitionRoot.root,
+      eventToStepRoot: eventRoot.root,
+      validationTracesRoot: validationRoot.root,
       forcedTransactionCount: 1n,
       totalEventCount: 1n,
       transitionStepCount: 1n,
@@ -857,6 +930,7 @@ export const makeResolvedOutputStages = async (
     evidence: ResolvedOutputEvidence,
     options: {
       readonly certificateUtxo?: UTxO;
+      readonly publishedCarriageUtxos?: readonly UTxO[];
       readonly compactCborHex?: string;
     } = {},
   ) =>
@@ -870,8 +944,133 @@ export const makeResolvedOutputStages = async (
         ...(options.certificateUtxo === undefined
           ? {}
           : { certificateUtxo: options.certificateUtxo }),
+        ...(options.publishedCarriageUtxos === undefined
+          ? {}
+          : { publishedCarriageUtxos: options.publishedCarriageUtxos }),
       }),
     );
+
+  /**
+   * Step 02 with the honest Certified opening of the evidence's field, except
+   * that the redeemer's certificate index names `otherCertificate` (a genuine
+   * certificate for another field of the same transaction), which is also a
+   * reference input. The builder's own certificate lookup is bypassed so the
+   * field-opening door refuses the substitution itself. Returns the honest
+   * carriage so the honest step 02 can reuse it.
+   */
+  const step02Raw = async ({
+    threadOutRef,
+    evidence,
+    otherCertificate,
+  }: {
+    readonly threadOutRef: string;
+    readonly evidence: ResolvedOutputEvidence;
+    readonly otherCertificate: UTxO;
+  }) => {
+    const fieldIndex = evidence.coordinate.sourceKind;
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      block.canonicalCbor,
+    );
+    const planned = planFaultProofFieldOpening({
+      fieldIndex,
+      anchorTxId: block.nativeTxId,
+      nativeTxCompactCbor: block.compactCborHex,
+      itemCbors: decodeMidgardFieldPreimage(
+        material.fieldPreimages[fieldIndex]!,
+      ),
+      owner: harness.proverSigner.paymentKeyHash,
+      publish: false,
+      label: `${FAMILY} raw field opening`,
+    });
+    expect(planned.plan.tier).toBe("Certified");
+    harness.proverSigner.selectWallet(harness.proverLucid);
+    const chunkUtxos = await publishFaultProofFieldCarriage({
+      lucid: harness.proverLucid,
+      signer: harness.proverSigner,
+      planned,
+      publisherAddress: harness.proverSigner.address,
+      label: `${FAMILY} raw field opening`,
+    });
+    const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+      lucid: harness.proverLucid,
+      network,
+      signer: harness.proverSigner,
+      planned,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      certificateMintingScript: contracts.fieldPreimageCertificateMintingScript,
+      certificateReferenceScriptUtxo: certificateReference,
+      chunkUtxos,
+      compactCbor: block.compactCborHex,
+      witnessSetCompactCbor: block.witnessSetCompactCborHex,
+    });
+    const stepReference = references[1]!;
+    const referenceInputs = [
+      ...chunkUtxos,
+      stepReference,
+      certificateUtxo,
+      otherCertificate,
+    ];
+    const honest = faultProofFieldOpening({
+      planned,
+      referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${FAMILY} raw field opening`,
+    });
+    // The ledger orders reference inputs by `(txHash, outputIndex)`.
+    const otherIndex = [...referenceInputs]
+      .sort((left, right) =>
+        left.txHash < right.txHash
+          ? -1
+          : left.txHash > right.txHash
+            ? 1
+            : left.outputIndex - right.outputIndex,
+      )
+      .findIndex(
+        (utxo) =>
+          utxo.txHash === otherCertificate.txHash &&
+          utxo.outputIndex === otherCertificate.outputIndex,
+      );
+    expect(otherIndex).toBeGreaterThanOrEqual(0);
+    if (!("BodyFieldOpening" in honest))
+      throw new Error("input fields open through BodyFieldOpening");
+    const carriage = honest.BodyFieldOpening.carriage;
+    if (!("Certified" in carriage))
+      throw new Error("raw field opening expected Certified carriage");
+    const opening: FieldOpening = {
+      BodyFieldOpening: {
+        ...honest.BodyFieldOpening,
+        carriage: {
+          Certified: {
+            ...carriage.Certified,
+            cert_ref_input_index: BigInt(otherIndex),
+          },
+        },
+      },
+    };
+    const submitted = await continueRaw({
+      threadOutRef,
+      stepIndex: 1,
+      nextStepIndex: 2,
+      nextData: {
+        subject: evidence.subject,
+        prior_root: evidence.resolved.priorRoot,
+        out_ref: {
+          transactionId: evidence.resolved.transactionId,
+          outputIndex: BigInt(evidence.resolved.outputIndex),
+        },
+      },
+      nextDatumSchema: ResolvedOutputStep03DatumSchema,
+      redeemerSchema: ResolvedOutputStep02RedeemerSchema,
+      args: (input_index, output_index) => ({
+        input_index,
+        output_index,
+        opening,
+      }),
+      carriageUtxos: chunkUtxos,
+      extraReferenceInputs: [certificateUtxo, otherCertificate],
+    });
+    return { ...submitted, chunkUtxos, certificateUtxo };
+  };
 
   const step03 = async (
     threadOutRef: string,
@@ -1003,6 +1202,8 @@ export const makeResolvedOutputStages = async (
     nextDatumSchema,
     redeemerSchema,
     args,
+    carriageUtxos = [],
+    extraReferenceInputs = [],
   }: {
     readonly threadOutRef: string;
     readonly stepIndex: number;
@@ -1014,6 +1215,8 @@ export const makeResolvedOutputStages = async (
       inputIndex: bigint,
       outputIndex: bigint,
     ) => Record<string, unknown>;
+    readonly carriageUtxos?: readonly UTxO[];
+    readonly extraReferenceInputs?: readonly UTxO[];
   }) => {
     const lucid = harness.proverLucid;
     const signer = harness.proverSigner;
@@ -1063,6 +1266,8 @@ export const makeResolvedOutputStages = async (
       nextAddress,
       nextDatum,
       redeemer,
+      carriageUtxos,
+      extraReferenceInputs,
       awaitConfirmation: true,
     });
     if (outputIndex === undefined)
@@ -1177,6 +1382,7 @@ export const makeResolvedOutputStages = async (
     step01Forced,
     step01ForcedRaw,
     step02,
+    step02Raw,
     step03,
     step04,
     step04Raw,

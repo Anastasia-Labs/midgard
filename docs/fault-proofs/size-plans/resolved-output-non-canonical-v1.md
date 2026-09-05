@@ -100,13 +100,13 @@ accepted direction already compiles (step 01's `ForcedSource` arm, step 04's
 `FinalizeCanonical` arm, step 05's rejection polarity), and the measured
 publications stay inside the 15,872-byte reserve.
 
-| Physical step | Forced-direction transition                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Physical step | Forced-direction transition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | step 01       | `ForcedSource { header, membership, direction: 1 }`: `bind_forced_subject_to_thread_v1` binds the header to the thread token, opens the leaf under the counted forced-transactions root, re-verifies the adjudicated proof source and tx id, and copies the leaf's typed reason into the subject; `bind_input_v1` then requires that reason to be exactly `InputSpentOutputNonCanonical { source_kind, input_index }` for the claimed coordinate and binds `header.prev_utxos_root`. Forwards `BoundInputV1`. |
-| step 02       | Unchanged: opens field 0 (`source_kind = 0`) or field 1 (`source_kind = 1`) of the forced transaction's committed compact bytes (raw, published or certified carriage) and decodes the exact out-ref at `input_index`. Forwards `AuthenticatedOutRefV1`.                                                                                                                                                 |
-| step 03       | Unchanged: proves the out-ref key and descriptor in `prev_utxos_root` and starts the scan control. Forwards `ReconstructionV1`.                                                                                                                                                                                                                                                                       |
-| step 04       | `Advance` self-loops through `advance_reconstruction_v1` exactly as the accepted direction does. The direction closes through `FinalizeCanonical`, admitted only at the control the engine's zero-byte closing edge accepts (`finish_v1`, optional fields complete, `cursor == total_length`) whose terminal is exact (`terminal_is_exact_v1`). A control that can finish is never advanced (see below). Forwards `CanonicalVerdictV1 { output_is_non_canonical: False }`. |
-| step 05       | `terminal_contradiction_v1`: a rejection subject closes only on `False`; an accepted subject only on `True`.                                                                                                                                                                                                                                                                                          |
+| step 02       | Unchanged: opens field 0 (`source_kind = 0`) or field 1 (`source_kind = 1`) of the forced transaction's committed compact bytes (raw, published or certified carriage) and decodes the exact out-ref at `input_index`. Forwards `AuthenticatedOutRefV1`.                                                                                                                                                                                                                                                      |
+| step 03       | Unchanged: proves the out-ref key and descriptor in `prev_utxos_root` and starts the scan control. Forwards `ReconstructionV1`.                                                                                                                                                                                                                                                                                                                                                                               |
+| step 04       | `Advance` self-loops through `advance_reconstruction_v1` exactly as the accepted direction does. The direction closes through `FinalizeCanonical`, admitted only at the control the engine's zero-byte closing edge accepts (`finish_v1`, optional fields complete, `cursor == total_length`) whose terminal is exact (`terminal_is_exact_v1`). A control that can finish is never advanced (see below). Forwards `CanonicalVerdictV1 { output_is_non_canonical: False }`.                                    |
+| step 05       | `terminal_contradiction_v1`: a rejection subject closes only on `False`; an accepted subject only on `True`.                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 The finishing rule is the one on-chain change this direction needed. The
 shared engine's `step_v1` refuses a window whose offset has reached the
@@ -131,8 +131,18 @@ a forced root, header or leaf substitution at the forced-leaf seam; premature
 `FinalizeCanonical`; `Advance` at the finishable control; and `Advance` with
 substituted chunk bytes or a checkpoint the thread never committed.
 
-The family fit ledger records, beside the accepted rows, every forced
-lifecycle transaction at that maximum shape: forced step 01, the field
-opening, the prior-ledger membership, every step-04 stage including the
+Off chain, `reconstruction-plan.ts` is the one deterministic choice the
+step-04 submitter and the workflow share: `Advance` while the authenticated
+trace continues or stops at a structural fault, `FinalizeCanonical` exactly
+at the control `finish_v1` admits, and a refusal when the evidence's own
+verdict disagrees with its trace.
+
+Planned fit test: `tests/resolved-output-non-canonical-lifecycle.test.ts`
+measures every publication and lifecycle transaction of both directions at
+the maximum shape (forced step 01, the Certified field opening, the
+adversarial-depth prior-ledger membership, every step-04 stage including the
 `FinalizeCanonical` closing transaction, the permanent mint, cancellation and
-removal.
+removal) and writes `resolved-output-non-canonical-v1-fit-ledger.json` under
+`MIDGARD_WRITE_FIT_LEDGER=1`;
+`tests/resolved-output-non-canonical-fit-ledger.test.ts` pins that ledger to
+the locked testnet blueprint digest and a positive margin on every row.
