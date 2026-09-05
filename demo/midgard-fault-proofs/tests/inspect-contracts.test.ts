@@ -232,8 +232,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // 01–05, so the applied step-01 hash and the fold move. Derived under the
 // working-tree testnet blueprint (sha256 026b47d0…). `dba5b076…` ->
 // `102ef380…`.
+// Re-pinned 2026-09-05 (Wave 4, `executionSourceScriptDecoding`): the same
+// two engine-pattern fixes (empty-payload bind close, window authentication
+// at every stage) re-parameterize steps 01–04, so the applied step-01 hash
+// and the fold move. Derived under the working-tree testnet blueprint
+// (sha256 eae812c7…). `102ef380…` -> `fb90accd…`.
 const Q13_CATALOGUE_ROOT =
-  "102ef380a07977c99379a74d0a3250de46b9cdd80d5d107a0b5c7d93660a97c6";
+  "fb90accdafa6fbb9d394b0f223b64c1d84e230989f846374a0bf67859d6a6bcb";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
