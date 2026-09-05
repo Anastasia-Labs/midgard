@@ -37,11 +37,15 @@ export type ObserversForbiddenReplayDetection = Readonly<{
   position: bigint;
   transactionId: string;
   networkId: 0 | 1 | 255;
+  scriptIntegrityHash: string;
   observerCount: number;
   source: "accepted" | "forced";
   direction: "wrongfulAcceptance" | "wrongfulRejection";
   forcedIndex?: number;
 }>;
+
+const integrityHashHex = (value: Uint8Array): string =>
+  Buffer.from(value).toString("hex");
 
 /**
  * Authenticates the retained DA envelope and transactions root before the
@@ -70,11 +74,15 @@ export const detectObserversForbiddenAcceptedRawReplay = (
       transaction.material.canonical.body.networkId,
     );
     if (field === undefined || networkId === null) continue;
+    const scriptIntegrityHash = integrityHashHex(
+      transaction.material.canonical.body.scriptIntegrityHash,
+    );
     try {
       const evidence = prepareObserversForbiddenEvidence({
         finding: {
           subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
           networkId,
+          scriptIntegrityHash,
         },
         observerFieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -88,6 +96,7 @@ export const detectObserversForbiddenAcceptedRawReplay = (
           position: BigInt(transaction.index),
           transactionId: transaction.nodeTxId,
           networkId,
+          scriptIntegrityHash,
           observerCount: evidence.observerCount,
           source: "accepted",
           direction: "wrongfulAcceptance",
@@ -133,6 +142,9 @@ export const detectObserversForbiddenForcedReplay = (
         ];
       const networkId = exactNetwork(material.canonical.body.networkId);
       if (field === undefined || networkId === null) return;
+      const scriptIntegrityHash = integrityHashHex(
+        material.canonical.body.scriptIntegrityHash,
+      );
       const evidence = prepareObserversForbiddenEvidence({
         finding: {
           subject: SDK.forcedVerdictSubject({
@@ -141,6 +153,7 @@ export const detectObserversForbiddenForcedReplay = (
             rejectionReason: verdict.ForcedTxInvalid.reason,
           }),
           networkId,
+          scriptIntegrityHash,
         },
         observerFieldPreimage: field,
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -154,6 +167,7 @@ export const detectObserversForbiddenForcedReplay = (
           position: BigInt(forcedIndex),
           transactionId: transaction.value.tx_id,
           networkId,
+          scriptIntegrityHash,
           observerCount: evidence.observerCount,
           source: "forced",
           direction: "wrongfulRejection",
@@ -202,6 +216,7 @@ export const prepareObserversForbiddenAcceptedArtifact = async (
     finding: {
       subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
       networkId: detection.networkId,
+      scriptIntegrityHash: detection.scriptIntegrityHash,
     },
     observerFieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
@@ -272,6 +287,9 @@ export const prepareObserversForbiddenForcedArtifact = async (
         rejectionReason: reason,
       }),
       networkId,
+      scriptIntegrityHash: integrityHashHex(
+        material.canonical.body.scriptIntegrityHash,
+      ),
     },
     observerFieldPreimage: field,
     committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),

@@ -30,6 +30,7 @@ export type ObserversForbiddenArtifact = JournalJsonObject &
     transactionId: string;
     sourceKind: "accepted" | "forced";
     networkId: 0 | 1 | 255;
+    scriptIntegrityHash: string;
     subjectCbor: string;
     nativeTxCompactCbor: string;
     witnessSetCompactCbor: string;
@@ -96,6 +97,7 @@ export const buildObserversForbiddenArtifact = ({
     transactionId: evidence.subject.transaction_id,
     sourceKind,
     networkId: evidence.networkId,
+    scriptIntegrityHash: evidence.scriptIntegrityHash,
     subjectCbor: Data.to(
       evidence.subject as never,
       ObserversForbiddenVerdictSubjectSchema as never,
@@ -149,6 +151,7 @@ export const admitObserversForbiddenArtifact = (
     "transactionId",
     "sourceKind",
     "networkId",
+    "scriptIntegrityHash",
     "subjectCbor",
     "nativeTxCompactCbor",
     "witnessSetCompactCbor",
@@ -179,6 +182,11 @@ export const admitObserversForbiddenArtifact = (
             throw new Error("observersForbidden source kind changed");
           })(),
     networkId: network(raw.networkId),
+    scriptIntegrityHash: canonicalHex(
+      raw.scriptIntegrityHash,
+      32,
+      "script integrity hash",
+    ),
     subjectCbor: canonicalHex(raw.subjectCbor, null, "subject"),
     nativeTxCompactCbor: canonicalHex(
       raw.nativeTxCompactCbor,
@@ -230,7 +238,11 @@ export const admitObserversForbiddenArtifact = (
   )
     throw new Error("observersForbidden artifact source payload changed");
   const evidence = prepareObserversForbiddenEvidence({
-    finding: { subject, networkId: artifact.networkId },
+    finding: {
+      subject,
+      networkId: artifact.networkId,
+      scriptIntegrityHash: artifact.scriptIntegrityHash,
+    },
     observerFieldPreimage: field,
     committedFieldHashHex: artifact.fieldCommitment,
   });

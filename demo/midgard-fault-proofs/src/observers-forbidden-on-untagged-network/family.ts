@@ -20,10 +20,18 @@ export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX = 3 as const;
 export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_ID =
   "ObserversForbiddenOnUntaggedNetwork" as const;
 export const MIDGARD_UNTAGGED_NETWORK_ID = 255 as const;
+/**
+ * The canonical absent `script_integrity_hash`. Phase-A script preconditions
+ * reach the observer arm only past this value: a zero hash either needs no
+ * Plutus evaluation or is rejected first as `ScriptIntegrityHashMissing`.
+ */
+export const MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH = "00".repeat(32);
 
 export type ObserversForbiddenFinding = Readonly<{
   subject: VerdictSubject;
   networkId: 0 | 1 | 255;
+  /** Body `script_integrity_hash`, 32 bytes of lowercase hex. */
+  scriptIntegrityHash: string;
 }>;
 
 export const classifyObserversForbiddenFinding = (
@@ -34,6 +42,8 @@ export const classifyObserversForbiddenFinding = (
   const direction = finding.subject.direction;
   if (![0, 1, 255].includes(finding.networkId))
     throw new Error("observersForbidden: network scalar changed");
+  if (!/^[0-9a-f]{64}$/u.test(finding.scriptIntegrityHash))
+    throw new Error("observersForbidden: script integrity hash changed");
   if (direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     const reason = finding.subject.rejection_reason;
     if (reason !== OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_ID)
@@ -82,9 +92,18 @@ export const prepareObserversForbiddenEvidence = ({
   });
 };
 
+/**
+ * Twin of `forbidden_observers_hold_v1`: the phase-A observer arm holds only
+ * when Plutus evaluation is required and the integrity hash is present, which
+ * collapses to a non-zero hash; then observers present on scalar 255.
+ */
 export const observersForbiddenFaultHolds = (
-  evidence: Pick<ObserversForbiddenEvidence, "observerCount" | "networkId">,
+  evidence: Pick<
+    ObserversForbiddenEvidence,
+    "observerCount" | "networkId" | "scriptIntegrityHash"
+  >,
 ): boolean =>
+  evidence.scriptIntegrityHash !== MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH &&
   evidence.observerCount > 0 &&
   evidence.networkId === MIDGARD_UNTAGGED_NETWORK_ID;
 
