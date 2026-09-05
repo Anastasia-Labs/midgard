@@ -75,6 +75,7 @@ import { detectMinFeeForcedReplay } from "../min-fee-forced.js";
 import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset-limit/replay.js";
 import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
 import { detectMissingScriptSourceCanonicalViolations } from "../missing-script-source/authenticated-replay.js";
+import { detectMissingSignatureWrongfulRejections } from "../missing-signature/wrongful-rejection.js";
 import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
@@ -1418,7 +1419,10 @@ export const CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY =
 /** Complete required-signer scan of every committed accepted transaction. */
 export const MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["missingSignature"],
-  detectMissingSignatures,
+  async (evidence) => [
+    ...(await detectMissingSignatures(evidence)),
+    ...detectMissingSignatureWrongfulRejections({ block: evidence }),
+  ],
 );
 
 /** Complete same-block missing-script-witness scan for every accepted input. */

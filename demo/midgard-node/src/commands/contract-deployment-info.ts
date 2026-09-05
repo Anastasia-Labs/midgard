@@ -575,6 +575,21 @@ const registeredFaultProofScriptDescriptors = (
   // above never emits them. Each carries its own manifest name and
   // reference-script role and is emitted here by name.
   spendDescriptor(
+    "fraudProofMissingSignatureForcedStep",
+    contracts.fraudProofContracts.missingSignature.forcedStep,
+    referenceScriptTargetForContract("fraudProofMissingSignatureForcedStep"),
+  ),
+  spendDescriptor(
+    "fraudProofMissingSignatureForcedSigner",
+    contracts.fraudProofContracts.missingSignature.forcedSigner,
+    referenceScriptTargetForContract("fraudProofMissingSignatureForcedSigner"),
+  ),
+  spendDescriptor(
+    "fraudProofMissingSignatureForcedWitness",
+    contracts.fraudProofContracts.missingSignature.forcedWitness,
+    referenceScriptTargetForContract("fraudProofMissingSignatureForcedWitness"),
+  ),
+  spendDescriptor(
     "fraudProofNetworkIdForcedStep",
     contracts.fraudProofContracts.networkId.forcedStep,
     referenceScriptTargetForContract("fraudProofNetworkIdForcedStep"),

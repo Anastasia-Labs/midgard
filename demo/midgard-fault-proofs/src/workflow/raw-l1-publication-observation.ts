@@ -77,7 +77,10 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
       const output = CML.TransactionOutput.from_cbor_hex(candidate.outputCbor);
       const decoded = coreToTxOutput(output);
       if (
-        candidate.datumCbor !== input.expectedDatumCbor ||
+        candidate.datumCbor !==
+          CML.PlutusData.from_cbor_hex(
+            input.expectedDatumCbor,
+          ).to_canonical_cbor_hex() ||
         output.datum_hash() !== undefined ||
         candidate.referenceScriptCbor !== null ||
         (input.expectedUnit === undefined

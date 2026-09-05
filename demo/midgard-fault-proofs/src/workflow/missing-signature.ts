@@ -1,7 +1,13 @@
 import {
   decodeMidgardNativeByteListPreimage,
   deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import {
+  MissingSignatureForcedSignerDatum,
+  MissingSignatureForcedStepDatum,
+  MissingSignatureForcedWitnessDatum,
+} from "@al-ft/midgard-sdk";
 import {
   decodeAddressWitnessPreimage,
   FraudProofComputationThreadStepDatum,
@@ -20,11 +26,25 @@ import {
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
 import type { MissingSignatureContracts } from "../missing-signature/contracts.js";
+import {
+  planMissingSignatureAddressWitnessesOpening,
+  planMissingSignatureRequiredSignersOpening,
+} from "../missing-signature/evidence.js";
+import {
+  admitMissingSignatureForcedArtifact,
+  MISSING_SIGNATURE_FORCED_ARTIFACT,
+  missingSignatureForcedArtifact,
+} from "../missing-signature/forced-artifact.js";
+import { submitMissingSignatureForcedAction } from "../missing-signature/submit-forced.js";
 import { submitMissingSignatureInit } from "../missing-signature/submit-missing-signature-init.js";
 import { submitMissingSignatureStep01 } from "../missing-signature/submit-missing-signature-step-01.js";
 import { submitMissingSignatureStep02 } from "../missing-signature/submit-missing-signature-step-02.js";
 import { submitMissingSignatureStep03 } from "../missing-signature/submit-missing-signature-step-03.js";
 import { submitMissingSignatureStep04 } from "../missing-signature/submit-missing-signature-step-04.js";
+import {
+  MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,
+  prepareMissingSignatureWrongfulRejection,
+} from "../missing-signature/wrongful-rejection.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -59,6 +79,10 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
+import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
+} from "./field-carriage-prerequisite.js";
 import {
   type FraudProofWorkflowJournalStore,
   type JournalJsonObject,
@@ -493,6 +517,8 @@ export const prepareMissingSignatureArtifact = async ({
 
 export type MissingSignatureWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
+  fieldPreimageCertificateMint?: UTxO;
+  forced?: Readonly<{ bind: UTxO; signer: UTxO; witness: UTxO }>;
   witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
@@ -501,6 +527,8 @@ export type MissingSignatureWorkflowReferenceScripts = Readonly<{
   fieldCertificates?: Readonly<{
     step02?: UTxO;
     step04?: UTxO;
+    forcedSigner?: UTxO;
+    forcedWitness?: UTxO;
   }>;
 }>;
 
@@ -562,6 +590,35 @@ const stringField = (
   return value;
 };
 
+export const prepareMissingSignatureWorkflowArtifact = async (
+  input: Parameters<typeof prepareMissingSignatureArtifact>[0],
+): Promise<JournalJsonObject> => {
+  if (
+    input.classification.selected.violationId !==
+    MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID
+  )
+    return prepareMissingSignatureArtifact(input);
+  admitCanonicalEvidenceForProofBuild(input.evidence);
+  const prepared = await prepareMissingSignatureWrongfulRejection({
+    block: input.evidence,
+  });
+  if (
+    prepared.headerHash !== input.classification.headerHash ||
+    prepared.detectionId !== input.classification.selected.detectionId
+  )
+    throw new Error(
+      "missingSignature: forced classification differs from authenticated evidence",
+    );
+  const artifact = missingSignatureForcedArtifact(
+    prepared,
+    input.evidence.reconstruction.forcedTransactions[
+      prepared.forcedIndex
+    ]!.fullTransactionCbor.toString("hex"),
+  );
+  await admitMissingSignatureForcedArtifact(artifact);
+  return artifact;
+};
+
 const createBoundTransactionPort = ({
   config,
   builders,
@@ -572,13 +629,23 @@ const createBoundTransactionPort = ({
   portVersion: MISSING_SIGNATURE_TRANSACTION_PORT,
   category: "missingSignature",
   prepare: async ({ evidence, classification }) =>
-    await prepareMissingSignatureArtifact({
+    await prepareMissingSignatureWorkflowArtifact({
       evidence,
       classification,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = await admitMissingSignatureArtifact(artifact);
-    if (admitted.artifact.headerHash !== config.headerHash) {
+    const forced =
+      artifact.schemaVersion === MISSING_SIGNATURE_FORCED_ARTIFACT
+        ? await admitMissingSignatureForcedArtifact(artifact)
+        : undefined;
+    const admitted =
+      forced === undefined
+        ? await admitMissingSignatureArtifact(artifact)
+        : undefined;
+    if (
+      (forced?.headerHash ?? admitted?.artifact.headerHash) !==
+      config.headerHash
+    ) {
       throw new Error(
         "missing-signature artifact targets a different manifest-bound header",
       );
@@ -605,7 +672,51 @@ const createBoundTransactionPort = ({
       );
       return Object.freeze({ transaction });
     }
+    if (forced !== undefined && input.stage !== "remove") {
+      const refs = config.referenceScripts.forced;
+      if (refs === undefined)
+        throw new Error(
+          "missingSignature: forced reference scripts are not deployed",
+        );
+      const referenceScriptUtxo =
+        input.stage === "step_01"
+          ? config.referenceScripts.steps[0]
+          : input.stage === "step_05"
+            ? refs.bind
+            : input.stage === "step_06"
+              ? refs.signer
+              : input.stage === "step_07"
+                ? refs.witness
+                : undefined;
+      if (referenceScriptUtxo === undefined)
+        throw new Error(
+          "missingSignature: forced artifact entered an accepted stage",
+        );
+      const transaction = await captureLocallyEvaluatedTransaction(
+        async (preSubmitBoundary) => {
+          await submitMissingSignatureForcedAction({
+            lucid: config.lucid,
+            contracts: config.contracts,
+            categoryId: config.category.categoryId,
+            signer: config.signer,
+            threadOutRef: stringField(input, "threadOutRef"),
+            prepared: forced,
+            referenceScriptUtxo,
+            witnessReferenceScripts: config.referenceScripts.witnesses,
+            certificateUtxo:
+              input.stage === "step_06"
+                ? config.referenceScripts.fieldCertificates?.forcedSigner
+                : config.referenceScripts.fieldCertificates?.forcedWitness,
+            preSubmitBoundary,
+            awaitConfirmation: false,
+          });
+        },
+      );
+      return Object.freeze({ transaction });
+    }
     if (input.stage === "step_01") {
+      if (admitted === undefined)
+        throw new Error("missingSignature: accepted artifact missing");
       const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step01({
@@ -628,6 +739,8 @@ const createBoundTransactionPort = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_02") {
+      if (admitted === undefined)
+        throw new Error("missingSignature: accepted artifact missing");
       const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step02({
@@ -649,6 +762,8 @@ const createBoundTransactionPort = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_03") {
+      if (admitted === undefined)
+        throw new Error("missingSignature: accepted artifact missing");
       const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step03({
@@ -667,6 +782,8 @@ const createBoundTransactionPort = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_04") {
+      if (admitted === undefined)
+        throw new Error("missingSignature: accepted artifact missing");
       const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step04({
@@ -825,6 +942,27 @@ export const createManifestBoundMissingSignatureWorkflow = async (
         utxo: config.referenceScripts.steps[3],
       }),
     ] as const),
+    ...(config.referenceScripts.forced === undefined
+      ? {}
+      : {
+          forced: Object.freeze({
+            bind: requireManifestBoundReferenceScriptUtxo({
+              binding,
+              contractName: "fraudProofMissingSignatureForcedStep",
+              utxo: config.referenceScripts.forced.bind,
+            }),
+            signer: requireManifestBoundReferenceScriptUtxo({
+              binding,
+              contractName: "fraudProofMissingSignatureForcedSigner",
+              utxo: config.referenceScripts.forced.signer,
+            }),
+            witness: requireManifestBoundReferenceScriptUtxo({
+              binding,
+              contractName: "fraudProofMissingSignatureForcedWitness",
+              utxo: config.referenceScripts.forced.witness,
+            }),
+          }),
+        }),
     witnesses: Object.freeze({
       computationThreadMint: requireManifestBoundReferenceScriptUtxo({
         binding,
@@ -842,12 +980,26 @@ export const createManifestBoundMissingSignatureWorkflow = async (
         utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
       }),
     }),
+    ...(config.referenceScripts.fieldPreimageCertificateMint === undefined
+      ? {}
+      : {
+          fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo(
+            {
+              binding,
+              contractName: "fieldPreimageCertificateMint",
+              utxo: config.referenceScripts.fieldPreimageCertificateMint,
+            },
+          ),
+        }),
     ...(config.referenceScripts.fieldCertificates === undefined
       ? {}
       : { fieldCertificates: config.referenceScripts.fieldCertificates }),
   });
   const contracts: MissingSignatureContracts = Object.freeze({
     steps: chain.steps,
+    forcedStep: chain.forcedStep,
+    forcedSigner: chain.forcedSigner,
+    forcedWitness: chain.forcedWitness,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
       policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
@@ -864,7 +1016,30 @@ export const createManifestBoundMissingSignatureWorkflow = async (
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
+    definition: {
+      ...binding.definition,
+      computationThread: {
+        ...binding.definition.computationThread,
+        steps: [
+          ...binding.definition.computationThread.steps,
+          {
+            role: "computation_thread_step_05",
+            address: chain.forcedStep.spendingScriptAddress,
+            datumSchema: MissingSignatureForcedStepDatum,
+          },
+          {
+            role: "computation_thread_step_06",
+            address: chain.forcedSigner.spendingScriptAddress,
+            datumSchema: MissingSignatureForcedSignerDatum,
+          },
+          {
+            role: "computation_thread_step_07",
+            address: chain.forcedWitness.spendingScriptAddress,
+            datumSchema: MissingSignatureForcedWitnessDatum,
+          },
+        ],
+      },
+    },
   });
   const transactions = createBoundTransactionPort({
     config: {
@@ -886,19 +1061,130 @@ export const createManifestBoundMissingSignatureWorkflow = async (
     },
     builders: productionBuilders,
   });
+  if (l1.publications === undefined)
+    throw new Error("missing-signature raw L1 omitted publication observer");
+  const certificate = binding.fieldPreimageCertificate;
+  let adapter = createMissingSignatureWorkflowAdapter({
+    l1,
+    transactions,
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+  });
+  const prerequisite = createMissingSignatureForcedFieldPrerequisite({
+    lucid: config.lucid,
+    network: binding.network,
+    signer: config.signer,
+    publications: l1.publications,
+    certificate,
+    certificateReference: references.fieldPreimageCertificateMint,
+    transactionConfirmed: async ({ headerHash, txHash }) =>
+      await l1.transactionConfirmed({ headerHash, txHash }),
+  });
+  adapter = withFieldCarriagePrerequisite({
+    category: "missingSignature",
+    base: adapter,
+    prerequisite,
+  });
   return Object.freeze({
     binding,
     l1,
     transactions,
-    adapter: createMissingSignatureWorkflowAdapter({
-      l1,
-      transactions,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    }),
+    adapter,
     terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
       releaseFinalityAuthorityFromDeploymentBinding(binding),
+  });
+};
+
+export const createMissingSignatureForcedFieldPrerequisite = ({
+  lucid,
+  network,
+  signer,
+  publications,
+  certificate,
+  certificateReference,
+  transactionConfirmed,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly network: import("@lucid-evolution/lucid").Network;
+  readonly signer: ResolvedProverSigner;
+  readonly publications: import("./raw-l1-publication-observation.js").FraudProofAuthenticatedPublicationObserver;
+  readonly certificate: {
+    readonly policyId: string;
+    readonly mintingScript: import("@lucid-evolution/lucid").MintingPolicy;
+  };
+  readonly certificateReference: UTxO | undefined;
+  readonly transactionConfirmed: (input: {
+    headerHash: string;
+    txHash: string;
+  }) => Promise<boolean>;
+}) => {
+  return createAuthenticatedFieldCarriagePrerequisitePort({
+    category: "missingSignature",
+    lucid: lucid,
+    network: network,
+    signer: signer,
+    publications: publications,
+    requirementForAction: async ({ action, artifact }) => {
+      const input = record(
+        action.input,
+        "missing-signature prerequisite action",
+      );
+      if (
+        artifact.schemaVersion !== MISSING_SIGNATURE_FORCED_ARTIFACT ||
+        (input.stage !== "step_06" && input.stage !== "step_07")
+      )
+        return null;
+      const prepared = await admitMissingSignatureForcedArtifact(artifact);
+      if (input.stage === "step_07" && prepared.witnessIndex === -1n)
+        return null;
+      const planned =
+        input.stage === "step_06"
+          ? planMissingSignatureRequiredSignersOpening({
+              anchorTxId: prepared.transactionId,
+              nativeTxCompactCbor: prepared.nativeTxCompactCbor,
+              requiredSignerHashes: prepared.evidence.requiredSignerHashes,
+              owner: signer.paymentKeyHash,
+            })
+          : planMissingSignatureAddressWitnessesOpening({
+              anchorTxId: prepared.transactionId,
+              nativeTxCompactCbor: prepared.nativeTxCompactCbor,
+              addrTxWits: prepared.evidence.addrTxWits,
+              witnessSet: prepared.witnessSetCompact,
+              anchorWitnessSetHash: prepared.verifiedWitnessSetHash,
+              owner: signer.paymentKeyHash,
+            });
+      const referenceScriptUtxo = certificateReference;
+      if (referenceScriptUtxo === undefined)
+        throw new Error(
+          "missing-signature installed forced path omitted certificate mint reference",
+        );
+      return {
+        planned,
+        compactCbor: prepared.nativeTxCompactCbor,
+        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact({
+          addrTxWitsHash: Buffer.from(
+            prepared.witnessSetCompact.addr_tx_wits_hash,
+            "hex",
+          ),
+          scriptTxWitsHash: Buffer.from(
+            prepared.witnessSetCompact.script_tx_wits_hash,
+            "hex",
+          ),
+          redeemerTxWitsHash: Buffer.from(
+            prepared.witnessSetCompact.redeemer_tx_wits_hash,
+            "hex",
+          ),
+        }).toString("hex"),
+        certificate: {
+          policyId: certificate.policyId,
+          mintingScript: certificate.mintingScript,
+          referenceScriptUtxo,
+        },
+      };
+    },
+    transactionConfirmed: async ({ headerHash, txHash }) =>
+      await transactionConfirmed({ headerHash, txHash }),
   });
 };
 

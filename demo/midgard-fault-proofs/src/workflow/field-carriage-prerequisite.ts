@@ -17,6 +17,7 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 import {
+  CML,
   coreToTxOutput,
   type LucidEvolution,
   type MintingPolicy,
@@ -422,7 +423,8 @@ const recovery = ({
       found === undefined &&
       decoded.address === address &&
       output.datum_hash() === undefined &&
-      output.datum()?.as_datum()?.to_canonical_cbor_hex() === datumCbor &&
+      output.datum()?.as_datum()?.to_canonical_cbor_hex() ===
+        CML.PlutusData.from_cbor_hex(datumCbor).to_canonical_cbor_hex() &&
       output.script_ref() === undefined &&
       (unit === null
         ? Object.entries(decoded.assets).every(

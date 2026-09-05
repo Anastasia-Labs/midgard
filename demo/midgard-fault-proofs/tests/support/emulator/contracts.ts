@@ -293,11 +293,46 @@ export const buildMissingSignatureChain = ({
       ],
     ),
   );
+  const forcedWitness = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_SIGNATURE_BLUEPRINT_TITLES.forcedWitness,
+      [
+        computationThreadPolicyId,
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const forcedSigner = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_SIGNATURE_BLUEPRINT_TITLES.forcedSigner,
+      [
+        forcedWitness.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const forcedStep = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_SIGNATURE_BLUEPRINT_TITLES.forcedStep,
+      [forcedSigner.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
       MISSING_SIGNATURE_BLUEPRINT_TITLES.step01,
-      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+      [
+        step02.spendingScriptHash,
+        forcedStep.spendingScriptHash,
+        computationThreadPolicyId,
+        hubOraclePolicyId,
+      ],
     ),
   );
   return [step01, step02, step03, step04];
@@ -1622,6 +1657,7 @@ export const buildMinimalFaultProofContracts = async (
     missingSignatureContracts === undefined
       ? undefined
       : {
+          ...missingSignatureContracts.missingSignature,
           steps: missingSignatureContracts.missingSignature.steps,
           computationThread: missingSignatureContracts.computationThread,
           fraudProof: missingSignatureContracts.fraudProof,
@@ -1886,7 +1922,18 @@ export const buildMinimalFaultProofContracts = async (
     missingSignature:
       missingSignature === undefined
         ? withActiveOperators.fraudProofContracts.missingSignature
-        : chainFromSteps(missingSignature.steps),
+        : {
+            ...chainFromSteps(missingSignature.steps),
+            forcedStep: makeSpendingValidator(
+              missingSignature.forcedStep.spendingScript.script,
+            ),
+            forcedSigner: makeSpendingValidator(
+              missingSignature.forcedSigner.spendingScript.script,
+            ),
+            forcedWitness: makeSpendingValidator(
+              missingSignature.forcedWitness.spendingScript.script,
+            ),
+          },
     missingNativeScriptTx:
       missingNativeScriptTx === undefined
         ? withActiveOperators.fraudProofContracts.missingNativeScriptTx

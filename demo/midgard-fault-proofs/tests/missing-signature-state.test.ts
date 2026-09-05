@@ -154,7 +154,7 @@ describe("production missing-signature authenticated cursor V1", () => {
         provenance,
         stage: {
           kind: "step",
-          step: 5,
+          step: 8,
           threadOutRef: outRef("51"),
           stateQueueBlockOutRef: outRef("10"),
         },

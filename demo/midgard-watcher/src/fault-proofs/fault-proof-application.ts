@@ -1248,6 +1248,10 @@ const referenceContracts = (
         step02: "fraudProofMissingSignatureStep02",
         step03: "fraudProofMissingSignatureStep03",
         step04: "fraudProofMissingSignatureStep04",
+        forcedStep: "fraudProofMissingSignatureForcedStep",
+        forcedSigner: "fraudProofMissingSignatureForcedSigner",
+        forcedWitness: "fraudProofMissingSignatureForcedWitness",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
         ...base,
       });
     case "missingNativeScriptTx":
@@ -2538,6 +2542,14 @@ function taggedConfig(
               reference("step03"),
               reference("step04"),
             ] as const),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            forced: Object.freeze({
+              bind: reference("forcedStep"),
+              signer: reference("forcedSigner"),
+              witness: reference("forcedWitness"),
+            }),
             witnesses: Object.freeze(baseWitnesses(common.references)),
           }),
         }),
@@ -3550,6 +3562,13 @@ const taggedReferenceOutRefs = (
       case "missingSignature":
         return [
           ...tagged.config.referenceScripts.steps,
+          ...(tagged.category === "missingSignature" &&
+          tagged.config.referenceScripts.forced !== undefined
+            ? [
+                ...Object.values(tagged.config.referenceScripts.forced),
+                tagged.config.referenceScripts.fieldPreimageCertificateMint!,
+              ]
+            : []),
           ...Object.values(tagged.config.referenceScripts.witnesses),
         ];
     }

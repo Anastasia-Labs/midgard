@@ -118,7 +118,10 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   },
   {
     category: "missingSignature",
-    violationIds: [MISSING_SIGNATURE_VIOLATION_ID],
+    violationIds: [
+      MISSING_SIGNATURE_VIOLATION_ID,
+      "missing-signature-wrongful-rejection",
+    ],
   },
   {
     category: "missingNativeScriptTx",

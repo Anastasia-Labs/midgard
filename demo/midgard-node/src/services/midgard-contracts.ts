@@ -771,6 +771,30 @@ const linearFaultProofChainFromManifest = <
   if (firstStep === undefined) {
     throw new Error(`Fault-proof chain has no first step: ${category}`);
   }
+  if (category === "missingSignature") {
+    return {
+      firstStep,
+      steps,
+      forcedStep: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofMissingSignatureForcedStep",
+      ),
+      forcedSigner: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofMissingSignatureForcedSigner",
+      ),
+      forcedWitness: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofMissingSignatureForcedWitness",
+      ),
+    } as unknown as SDK.FaultProofContractChains[Category];
+  }
   if (category === "networkId") {
     // The forced (wrongful-rejection) door and the resumable output scan it
     // hands off to are side entrances into step 02, not third and fourth links

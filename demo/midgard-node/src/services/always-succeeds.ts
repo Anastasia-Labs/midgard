@@ -409,7 +409,12 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       fabricatedDeposit: repeatedFaultProofChain(zeroInput, 4),
       fabricatedWithdrawal: repeatedFaultProofChain(zeroInput, 4),
       nativeScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
-      missingSignature: repeatedFaultProofChain(invalidSignature, 4),
+      missingSignature: {
+        ...repeatedFaultProofChain(invalidSignature, 4),
+        forcedStep: invalidSignature,
+        forcedSigner: invalidSignature,
+        forcedWitness: invalidSignature,
+      },
       missingNativeScriptTx: repeatedFaultProofChain(zeroInput, 8),
       withdrawnReferenceInput: repeatedFaultProofChain(referenceInputNoIdx, 3),
       canonicalDecodability: repeatedFaultProofChain(zeroInput, 2),

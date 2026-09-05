@@ -204,12 +204,15 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY = Object.freeze({
   },
   missingSignature: {
     familyId: "missing-signature",
-    stepCount: 4,
+    stepCount: 7,
     deployedStepContractNames: [
       "fraudProofMissingSignature",
       "fraudProofMissingSignatureStep02",
       "fraudProofMissingSignatureStep03",
       "fraudProofMissingSignatureStep04",
+      "fraudProofMissingSignatureForcedStep",
+      "fraudProofMissingSignatureForcedSigner",
+      "fraudProofMissingSignatureForcedWitness",
     ],
   },
   missingNativeScriptTx: {

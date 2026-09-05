@@ -1392,6 +1392,18 @@ const registeredFraudProofReferenceScriptTargets = (
   // script addresses and `validateReferenceScripts` requires a confirmed
   // reference script for every declared role.
   manifestReferenceScriptTarget(
+    "fraudProofMissingSignatureForcedStep",
+    contracts.fraudProofContracts.missingSignature.forcedStep.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMissingSignatureForcedSigner",
+    contracts.fraudProofContracts.missingSignature.forcedSigner.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMissingSignatureForcedWitness",
+    contracts.fraudProofContracts.missingSignature.forcedWitness.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
     "fraudProofNetworkIdForcedStep",
     contracts.fraudProofContracts.networkId.forcedStep.spendingScript,
   ),

@@ -1357,6 +1357,24 @@ export const resolveFaultProofDeploymentContracts = async ({
       derived: derivedStep.spendingScriptHash,
     });
   }
+  if (categoryName === "missingSignature") {
+    const missing = contracts.missingSignature;
+    if (missing === undefined)
+      throw new Error("missingSignature deployed chain absent");
+    for (const [name, step] of [
+      ["fraudProofMissingSignatureForcedStep", missing.forcedStep],
+      ["fraudProofMissingSignatureForcedSigner", missing.forcedSigner],
+      ["fraudProofMissingSignatureForcedWitness", missing.forcedWitness],
+    ] as const) {
+      const deployed = parsedDeploymentInfo[name]?.scriptHash;
+      if (deployed !== undefined)
+        requireMatchingScriptHash({
+          label: name,
+          deployed,
+          derived: step.spendingScriptHash,
+        });
+    }
+  }
   if (categoryName === "networkId") {
     const auxiliary = categoryContracts as {
       readonly forcedStep?: { readonly spendingScriptHash: string };

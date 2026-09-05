@@ -845,6 +845,21 @@ describe("contract deployment info", () => {
           contracts,
         );
 
+        for (const [field, name] of [
+          ["forcedStep", "fraudProofMissingSignatureForcedStep"],
+          ["forcedSigner", "fraudProofMissingSignatureForcedSigner"],
+          ["forcedWitness", "fraudProofMissingSignatureForcedWitness"],
+        ] as const) {
+          expect(
+            reconstructed.fraudProofContracts.missingSignature[field]
+              .spendingScriptHash,
+          ).toEqual(manifest.contracts[name].scriptHash);
+          expect(
+            reconstructed.fraudProofContracts.missingSignature[field]
+              .spendingScript.script,
+          ).toEqual(manifest.contracts[name].contract.cborHex);
+        }
+
         expect(reconstructed.scheduler.spendingScriptHash).toEqual(
           manifest.contracts.schedulerSpend.scriptHash,
         );

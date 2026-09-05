@@ -140,6 +140,9 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofMissingSignatureStep02",
   "fraudProofMissingSignatureStep03",
   "fraudProofMissingSignatureStep04",
+  "fraudProofMissingSignatureForcedStep",
+  "fraudProofMissingSignatureForcedSigner",
+  "fraudProofMissingSignatureForcedWitness",
   "fraudProofMissingNativeScriptTx",
   "fraudProofMissingNativeScriptTxStep02",
   "fraudProofMissingNativeScriptTxStep03",
@@ -434,6 +437,12 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 fraud-proof native-script-decoding step-04":
       "fraudProofNativeScriptDecodingStep04",
     "V1 fraud-proof missing-signature step-01": "fraudProofMissingSignature",
+    "V1 fraud-proof missing-signature forced step":
+      "fraudProofMissingSignatureForcedStep",
+    "V1 fraud-proof missing-signature forced signer":
+      "fraudProofMissingSignatureForcedSigner",
+    "V1 fraud-proof missing-signature forced witness":
+      "fraudProofMissingSignatureForcedWitness",
     "V1 fraud-proof missing-signature step-02":
       "fraudProofMissingSignatureStep02",
     "V1 fraud-proof missing-signature step-03":

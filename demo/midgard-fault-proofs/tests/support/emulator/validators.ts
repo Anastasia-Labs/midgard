@@ -224,7 +224,12 @@ export const makeAlwaysSucceedsContracts = (
     fabricatedDeposit: scaffoldChain(appendedFamilyFallback, 4),
     fabricatedWithdrawal: scaffoldChain(appendedFamilyFallback, 4),
     nativeScriptDecoding: scaffoldChain(appendedFamilyFallback, 6),
-    missingSignature: scaffoldChain(appendedFamilyFallback, 4),
+    missingSignature: {
+      ...scaffoldChain(appendedFamilyFallback, 4),
+      forcedStep: appendedFamilyFallback,
+      forcedSigner: appendedFamilyFallback,
+      forcedWitness: appendedFamilyFallback,
+    },
     missingNativeScriptTx: scaffoldChain(appendedFamilyFallback, 8),
     withdrawnReferenceInput: scaffoldChain(appendedFamilyFallback, 3),
     canonicalDecodability: scaffoldChain(appendedFamilyFallback, 2),

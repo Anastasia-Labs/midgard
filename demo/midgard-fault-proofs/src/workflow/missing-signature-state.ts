@@ -57,7 +57,7 @@ const admitStage = ({
   }
   canonicalOutRef(stage.stateQueueBlockOutRef, "state-queue block outRef");
   if (stage.kind === "step") {
-    if (stage.step < 1 || stage.step > 4) {
+    if (stage.step < 1 || stage.step > 7) {
       throw new Error(
         `missingSignature authenticated L1 reported step ${stage.step.toString()} outside its exact production chain`,
       );
@@ -144,8 +144,8 @@ export const missingSignatureObservation = ({
 };
 
 type ParsedAction = Readonly<{
-  stage: "init" | "remove" | `step_0${1 | 2 | 3 | 4}`;
-  ordinal?: 1 | 2 | 3 | 4;
+  stage: "init" | "remove" | `step_0${1 | 2 | 3 | 4 | 5 | 6 | 7}`;
+  ordinal?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   inputOutRef: string;
   proofOutRef?: string;
 }>;
@@ -199,10 +199,10 @@ const parsedAction = (action: FraudProofWorkflowAction): ParsedAction => {
       ),
     };
   }
-  if (!/^step_0[1-4]$/u.test(input.stage)) {
+  if (!/^step_0[1-7]$/u.test(input.stage)) {
     throw new Error("missingSignature workflow action names an unknown stage");
   }
-  const ordinal = Number(input.stage.slice(-1)) as 1 | 2 | 3 | 4;
+  const ordinal = Number(input.stage.slice(-1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7;
   if (
     input.ordinal !== ordinal ||
     typeof input.threadOutRef !== "string" ||
@@ -251,7 +251,14 @@ const exactSuccessor = ({
     );
   }
   const ordinal = parsed.ordinal!;
-  if (ordinal < 4) {
+  if (ordinal === 1 && stage.kind === "step" && stage.step === 5)
+    return outputBelongsToTransaction(stage.threadOutRef, txHash);
+  if (ordinal === 7)
+    return (
+      stage.kind === "proof_token" &&
+      outputBelongsToTransaction(stage.fraudProofOutRef, txHash)
+    );
+  if (ordinal < 4 || ordinal === 5 || ordinal === 6) {
     return (
       stage.kind === "step" &&
       stage.step === ordinal + 1 &&
