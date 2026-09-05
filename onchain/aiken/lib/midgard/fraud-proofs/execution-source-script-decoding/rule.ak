@@ -325,28 +325,23 @@ pub fn bind_exact_item_v1(
   scan_script_hash: ByteArray,
 ) -> ExecutionSourceScanStateV1 {
   expect chunk_matches(source, first_chunk, 0)
-  when
-    native_script_scan_v1.versioned_script_header_v1(
-      first_chunk.chunk,
-      source.total_length,
-    )
-  is {
-    None -> state_with(source, #"", scan_script_hash, result_malformed)
-    Some(header) ->
-      if header.language_tag != 0 {
-        state_with(source, #"", scan_script_hash, result_no_fault)
-      } else {
-        let control = native_script_scan_v1.initial_structure_control_v1(
-          header.payload_offset,
-          header.payload_length,
-        )
-        state_with(
-          source,
-          native_script_scan_v1.encode_structure_control_v1(control),
-          scan_script_hash,
-          result_pending,
-        )
-      }
+  // The frozen engine's bind is the canonical decoder's twin: an undecodable
+  // wrapper OR a tag-0 empty payload closes malformed, exactly as canonical
+  // validation refuses the script item. A bare header parse aborted on the
+  // empty payload (`initial_structure_control_v1` over a zero-length region)
+  // and left that coordinate unprovable in both directions.
+  when scan_engine.bind_machine_v1(first_chunk.chunk, source.total_length) is {
+    scan_engine.MachineBindMalformedV1 ->
+      state_with(source, #"", scan_script_hash, result_malformed)
+    scan_engine.MachineBindNonNativeV1 { .. } ->
+      state_with(source, #"", scan_script_hash, result_no_fault)
+    scan_engine.MachineBoundV1 { control } ->
+      state_with(
+        source,
+        native_script_scan_v1.encode_structure_control_v1(control),
+        scan_script_hash,
+        result_pending,
+      )
   }
 }
 

@@ -73,22 +73,28 @@ validator main(
           let control = native_script_scan_v1.decode_structure_control_v1(
             control_cbor,
           )
-          let window = if control.stage == native_script_scan_v1.structure_stage_token {
-            expect Some(proof) = chunk_proof
-            Some(
-              rule.authenticated_window_v1(
-                state,
-                control,
-                proof,
-                next_chunk_proof,
-              ),
-            )
-          } else {
-            expect and {
-                chunk_proof == None,
-                next_chunk_proof == None,
-              }
-            None
+          // The window is keyed by the checkpointed cursor, which frame and
+          // finalize steps never move, so a segment that begins in frame
+          // stage still reads its tokens from the chunk holding that cursor —
+          // the same rule the frozen engine's own thread applies. Requiring
+          // `None` outside the token stage stalled every such segment at its
+          // first token and left wide containers unreachable. A token step
+          // without a window merely stops the fold; the no-progress guard
+          // below refuses a stalled transaction instead of misreading it.
+          let window = when chunk_proof is {
+            None -> {
+              expect None = next_chunk_proof
+              None
+            }
+            Some(proof) ->
+              Some(
+                rule.authenticated_window_v1(
+                  state,
+                  control,
+                  proof,
+                  next_chunk_proof,
+                ),
+              )
           }
           when
             scan_engine.budgeted_scan_v1(control, window, frames, step_budget)

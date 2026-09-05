@@ -10,7 +10,8 @@ use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/native_script_scan_v1
 use midgard/rejection_reason_v1.{
-  ExecutionNativeScriptMalformed, RejectionReasonV1,
+  ExecutionNativeScriptDepthLimit, ExecutionNativeScriptMalformed,
+  ExecutionNativeScriptNodeLimit, RejectionReasonV1,
 }
 use midgard/script_proof_v1
 use midgard/transition_trace
@@ -74,17 +75,9 @@ fn direct_source(
   item: ByteArray,
 ) -> rule.AuthenticatedExecutionSourceV1 {
   rule.AuthenticatedExecutionSourceV1 {
-    bound: rule.BoundExecutionV1 {
-      subject,
-      validation_traces_root: h32,
-      validation_trace_count: 1,
-      execution_index: 0,
-      accused_class: if subject.direction == substrate.direction_wrongful_rejection {
-        rule.result_malformed
-      } else {
-        rule.result_pending
-      },
-    },
+    // The real bind, so a forced subject's accused class is exactly the one
+    // its typed reason names (malformed 0, node limit 1, depth limit 2).
+    bound: rule.bind_execution_v1(subject, h32, 1, 0),
     prior_ledger_root: h32,
     source_index: 0,
     origin_kind: 0,
@@ -276,6 +269,36 @@ test header_and_payload_malformed_map_to_the_same_execution_class() {
   }
 }
 
+/// The bind is the canonical decoder's twin: a tag-0 script with an empty
+/// payload (`[0, h'']`) is refused by canonical validation, so the exact item
+/// closes malformed at bind for an accepted subject — it never aborts and it
+/// never opens a scan over a zero-length region. A non-native wrapper is no
+/// fault of this family, and a decodable native wrapper opens the scan.
+test empty_native_payload_closes_malformed_at_bind() {
+  let empty = fixture.empty_payload_item_v1()
+  let plutus = fixture.plutus_script_item_v1()
+  let native = fixture.signature_script_item_v1()
+  let bind = fn(item: ByteArray) {
+    rule.bind_exact_item_v1(
+      direct_source(accepted_subject(), item),
+      item_proof(item),
+      scan_hash,
+    )
+  }
+  let closed = rule.closed_state_v1(
+    bind(empty),
+    rule.result_malformed,
+    final_hash,
+  )
+  and {
+    bind(empty).result_class == rule.result_malformed,
+    bind(empty).control_cbor == #"",
+    rule.terminal_contradiction_v1(closed),
+    bind(plutus).result_class == rule.result_no_fault,
+    bind(native).result_class == rule.result_pending,
+  }
+}
+
 test scan_resume_changes_checkpoint_and_reaches_exact_terminal() {
   let item = fixture.signature_script_item_v1()
   let state = rule.bind_exact_item_v1(
@@ -461,4 +484,195 @@ test honest_results_do_not_convict() {
     !rule.terminal_contradiction_v1(accepted),
     !rule.terminal_contradiction_v1(forced),
   }
+}
+
+/// `all [sig, sig]` cut after two primitive steps lands in frame stage. The
+/// resumed segment still reads its remaining tokens from the chunk holding
+/// the checkpointed cursor (frame steps never move it), so step 04 accepts
+/// a window there exactly as the frozen engine's own thread does; without
+/// one the fold stalls after the frame step instead of reaching the terminal.
+test frame_stage_segment_reads_tokens_through_the_cursor_window() {
+  let item = fixture.all_of_two_signatures_item_v1()
+  let opened = rule.bind_exact_item_v1(
+    direct_source(accepted_subject(), item),
+    item_proof(item),
+    scan_hash,
+  )
+  let control = native_script_scan_v1.decode_structure_control_v1(
+    opened.control_cbor,
+  )
+  expect scan_engine.ScanAdvancedV1 { control: mid } = scan_engine.budgeted_scan_v1(
+    control,
+    Some(rule.authenticated_window_v1(opened, control, item_proof(item), None)),
+    [],
+    2,
+  )
+  expect mid.stage == native_script_scan_v1.structure_stage_frame
+  let resumed = rule.advanced_state_v1(opened, mid, scan_hash)
+  let frame = native_script_scan_v1.NativeScriptFrameV1 {
+    tail: #"",
+    kind: native_script_scan_v1.all_node,
+    child_count: 2,
+    remaining: 2,
+    valid_count: 0,
+    required: 0,
+  }
+  let frames = [
+    frame,
+    native_script_scan_v1.NativeScriptFrameV1 { ..frame, remaining: 1 },
+  ]
+  expect scan_engine.ScanAdvancedV1 { control: terminal } = scan_engine.budgeted_scan_v1(
+    mid,
+    Some(rule.authenticated_window_v1(resumed, mid, item_proof(item), None)),
+    frames,
+    4,
+  )
+  expect scan_engine.ScanAdvancedV1 { control: stalled } = scan_engine.budgeted_scan_v1(
+    mid,
+    None,
+    frames,
+    4,
+  )
+  and {
+    resumed.checkpoint_hash != opened.checkpoint_hash,
+    native_script_scan_v1.structure_terminal_is_exact_v1(terminal),
+    terminal.node_count == 3,
+    stalled.stage == native_script_scan_v1.structure_stage_token,
+    stalled.node_count == 2,
+  }
+}
+
+/// Every reason arm in the wrongful-rejection direction: a decodable item
+/// scans to the terminal, so an operator's node-limit or depth-limit
+/// rejection contradicts the canonical result exactly as a malformed one.
+test forced_node_and_depth_accusations_convict_on_a_decodable_item() {
+  let item = fixture.signature_script_item_v1()
+  let closed = fn(reason: RejectionReasonV1) {
+    rule.bind_exact_item_v1(
+      direct_source(forced_subject(reason), item),
+      item_proof(item),
+      scan_hash,
+    )
+      |> rule.closed_state_v1(rule.result_no_fault, final_hash)
+  }
+  let node = closed(ExecutionNativeScriptNodeLimit { execution_index: 0 })
+  let depth = closed(ExecutionNativeScriptDepthLimit { execution_index: 0 })
+  and {
+    node.source.bound.accused_class == rule.result_node_limit,
+    depth.source.bound.accused_class == rule.result_depth_limit,
+    rule.terminal_contradiction_v1(node),
+    rule.terminal_contradiction_v1(depth),
+  }
+}
+
+/// The exact-code twin: a node-limit rejection is honest only when the scan
+/// result is the node-limit class, and likewise for depth. Any other class,
+/// including the sibling bound, is a wrong rejection code and convicts.
+test honest_node_and_depth_rejections_do_not_convict() {
+  let item = fixture.all_of_two_signatures_item_v1()
+  let closed = fn(reason: RejectionReasonV1, result: Int) {
+    rule.bind_exact_item_v1(
+      direct_source(forced_subject(reason), item),
+      item_proof(item),
+      scan_hash,
+    )
+      |> rule.closed_state_v1(result, final_hash)
+  }
+  let node = ExecutionNativeScriptNodeLimit { execution_index: 0 }
+  let depth = ExecutionNativeScriptDepthLimit { execution_index: 0 }
+  and {
+    !rule.terminal_contradiction_v1(closed(node, rule.result_node_limit)),
+    !rule.terminal_contradiction_v1(closed(depth, rule.result_depth_limit)),
+    rule.terminal_contradiction_v1(closed(node, rule.result_depth_limit)),
+    rule.terminal_contradiction_v1(closed(depth, rule.result_node_limit)),
+    rule.terminal_contradiction_v1(closed(node, rule.result_malformed)),
+  }
+}
+
+/// Every reason arm in the wrongful-acceptance direction: an accepted block
+/// whose execution source refuses with any of the three classes is convicted,
+/// and the engine's refusal classes map one-to-one onto them.
+test accepted_node_and_depth_results_convict() {
+  let item = fixture.all_of_two_signatures_item_v1()
+  let closed = fn(result: Int) {
+    rule.bind_exact_item_v1(
+      direct_source(accepted_subject(), item),
+      item_proof(item),
+      scan_hash,
+    )
+      |> rule.closed_state_v1(result, final_hash)
+  }
+  and {
+    rule.terminal_contradiction_v1(closed(rule.result_node_limit)),
+    rule.terminal_contradiction_v1(closed(rule.result_depth_limit)),
+    rule.terminal_contradiction_v1(closed(rule.result_malformed)),
+    !rule.terminal_contradiction_v1(closed(rule.result_no_fault)),
+    rule.mapped_refusal_class_v1(scan_engine.refusal_class_malformed) == rule.result_malformed,
+    rule.mapped_refusal_class_v1(scan_engine.refusal_class_node_limit) == rule.result_node_limit,
+    rule.mapped_refusal_class_v1(scan_engine.refusal_class_depth_limit) == rule.result_depth_limit,
+  }
+}
+
+test binds_node_limit_reason_to_its_exact_execution_coordinate() fail {
+  rule.bind_execution_v1(
+    forced_subject(ExecutionNativeScriptNodeLimit { execution_index: 1 }),
+    h32,
+    1,
+    0,
+  ) == rule.bind_execution_v1(
+    forced_subject(ExecutionNativeScriptNodeLimit { execution_index: 0 }),
+    h32,
+    1,
+    0,
+  )
+}
+
+test binds_depth_limit_reason_to_its_exact_execution_coordinate() fail {
+  rule.bind_execution_v1(
+    forced_subject(ExecutionNativeScriptDepthLimit { execution_index: 1 }),
+    h32,
+    1,
+    0,
+  ) == rule.bind_execution_v1(
+    forced_subject(ExecutionNativeScriptDepthLimit { execution_index: 0 }),
+    h32,
+    1,
+    0,
+  )
+}
+
+/// A tampered checkpoint is never a terminal: the datum's own hash must
+/// recompute from the carried source, control, and successor.
+test refuses_a_substituted_checkpoint() fail {
+  let item = fixture.malformed_payload_item_v1()
+  let closed = rule.bind_exact_item_v1(
+    direct_source(accepted_subject(), item),
+    item_proof(item),
+    scan_hash,
+  )
+    |> rule.closed_state_v1(rule.result_malformed, final_hash)
+  rule.terminal_contradiction_v1(
+    rule.ExecutionSourceScanStateV1 { ..closed, checkpoint_hash: h32 },
+  )
+}
+
+/// The successor is part of the checkpoint: swapping the next expected
+/// script without recomputing the checkpoint leaves an inauthentic state,
+/// and recomputing it for a different successor yields a different hash.
+test wrong_successor_is_bound_into_the_checkpoint() fail {
+  let item = fixture.malformed_payload_item_v1()
+  let opened = rule.bind_exact_item_v1(
+    direct_source(accepted_subject(), item),
+    item_proof(item),
+    scan_hash,
+  )
+  let to_final = rule.closed_state_v1(opened, rule.result_malformed, final_hash)
+  let to_scan = rule.closed_state_v1(opened, rule.result_malformed, scan_hash)
+  expect to_final.checkpoint_hash != to_scan.checkpoint_hash
+  rule.terminal_contradiction_v1(
+    rule.ExecutionSourceScanStateV1 {
+      ..to_final,
+      next_expected_script_hash: scan_hash,
+    },
+  )
 }
