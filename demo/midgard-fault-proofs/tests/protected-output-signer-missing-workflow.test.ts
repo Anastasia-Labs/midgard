@@ -15,6 +15,8 @@ import {
 const evidence = Object.freeze({
   subject: acceptedVerdictSubject("11".repeat(32)),
   outputIndex: 0,
+  route: "witness_scan" as const,
+  signerRequired: true,
   canonicalTransactionCborHex: "80",
   outputCborHex: "a0",
   paymentCredentialHex: "22".repeat(28),

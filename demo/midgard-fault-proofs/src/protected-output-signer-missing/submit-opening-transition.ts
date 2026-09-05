@@ -33,6 +33,7 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   nextDatum,
   opening,
   checkpointCbor,
+  coordinateOutOfRange,
   referenceScriptUtxo,
   carriageReferenceInputs,
   redeemerSchema,
@@ -45,10 +46,13 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stepIndex: 1 | 2 | 3;
+  /** Step 02 continues at index 2 (witness scan) or index 4 (direct verdict). */
   readonly nextStepIndex: 2 | 3 | 4;
   readonly nextDatum: string;
   readonly opening: FieldOpening;
   readonly checkpointCbor?: string;
+  /** Step 02 only: names the out-of-range direct arm in the redeemer. */
+  readonly coordinateOutOfRange?: boolean;
   readonly referenceScriptUtxo: UTxO;
   readonly carriageReferenceInputs: readonly UTxO[];
   readonly redeemerSchema: PlutusData;
@@ -99,6 +103,11 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             opening,
+            // Step 02's redeemer names the out-of-range arm; the scan and
+            // credential arms leave it unset.
+            ...(stepIndex === 1
+              ? { coordinate_out_of_range: coordinateOutOfRange ?? false }
+              : {}),
             ...(checkpointCbor === undefined
               ? {}
               : { checkpoint_cbor: checkpointCbor }),

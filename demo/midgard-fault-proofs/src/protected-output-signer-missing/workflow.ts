@@ -67,9 +67,10 @@ export const protectedOutputSignerEvidenceIdentity = (
           category: "protectedOutputSignerMissing",
           subject: evidence.subject,
           outputIndex: evidence.outputIndex,
+          route: evidence.route,
           tx: evidence.canonicalTransactionCborHex,
-          output: evidence.outputCborHex,
-          credential: evidence.paymentCredentialHex,
+          output: evidence.outputCborHex ?? null,
+          credential: evidence.paymentCredentialHex ?? null,
           witnesses: evidence.addressWitnessFieldPreimageHex,
         },
         (_key, value: unknown) =>
@@ -112,7 +113,13 @@ const requiredTargetStage = (
     case "submitStep01":
       return "step02";
     case "submitStep02":
-      return "step03";
+      // The witness scan continues at step 03; a coordinate that needs no
+      // signer closes at step 05 directly.
+      if (claimed !== "step03" && claimed !== "step05")
+        throw new Error(
+          "protectedOutputSignerMissing step-02 target is invalid",
+        );
+      return claimed;
     case "submitStep03":
       return "scanning";
     case "submitScan":

@@ -162,6 +162,7 @@ validator main(
         if walk_remaining(next_checkpoint) == 0 {
           let expected: Data = VerdictV1 {
             subject: protected.subject,
+            signer_required: True,
             signer_present: found,
           }
           and {
@@ -319,6 +320,7 @@ fn verdict_of(
 ) -> Data {
   let value: Data = VerdictV1 {
     subject: subject_of(block, direction),
+    signer_required: True,
     signer_present,
   }
   value

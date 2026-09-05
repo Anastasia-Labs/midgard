@@ -55,6 +55,7 @@ export const submitProtectedOutputSignerMissingStep05 = async ({
   });
   const state = requireLinearFaultStepState<{
     subject: unknown;
+    signer_required: boolean;
     signer_present: boolean;
   }>({
     threadUtxo,
@@ -63,7 +64,10 @@ export const submitProtectedOutputSignerMissingStep05 = async ({
     family: "protected-output-signer-missing",
     stepIndex: 4,
   });
-  if (state.signer_present !== evidence.signerPresent)
+  if (
+    state.signer_required !== evidence.signerRequired ||
+    state.signer_present !== evidence.signerPresent
+  )
     throw new Error(
       "protected-output-signer-missing: terminal signer result changed",
     );

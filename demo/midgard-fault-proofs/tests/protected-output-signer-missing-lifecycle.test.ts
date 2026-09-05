@@ -111,6 +111,7 @@ const AUTHENTICATION_SEAMS = [
   "field_preimage",
   "field_certificate",
   "checkpoint",
+  "credential",
 ] as const;
 /** The five physical scripts, in chain order; every one carries a cancel arm. */
 const PHYSICAL_STEPS = [
@@ -146,10 +147,17 @@ const signerCredentialHex = missingSignatureVkeyHash(
   signerVerificationKey.toString("hex"),
 );
 
-const protectedOutputCbor = (credentialHex: string): Buffer =>
+/**
+ * Address header `0x68` is a protected pub-key enterprise address; `0x60` is
+ * its unprotected form and `0x78` a protected script enterprise address.
+ */
+const protectedOutputCbor = (
+  credentialHex: string,
+  addressHeader = 0x68,
+): Buffer =>
   encodeMidgardTxOutput({
     address: Buffer.concat([
-      Buffer.from([0x68]),
+      Buffer.from([addressHeader]),
       Buffer.from(credentialHex, "hex"),
     ]),
     value: { lovelace: 2_000_000n, assets: new Map() },
@@ -186,22 +194,24 @@ const decoyWitness = (index: number): Buffer => {
 const nativeTxWith = ({
   fee,
   credentialHex = signerCredentialHex,
+  addressHeader = 0x68,
   witnesses,
 }: {
   readonly fee: bigint;
   readonly credentialHex?: string;
+  readonly addressHeader?: number;
   readonly witnesses: (txId: Buffer) => readonly Buffer[];
 }): MidgardNativeTxFull => {
   const unsigned = makeNativeTx({
     spendInputCbors: [],
     fee,
-    outputCbor: protectedOutputCbor(credentialHex),
+    outputCbor: protectedOutputCbor(credentialHex, addressHeader),
   });
   const txId = computeMidgardNativeTxId(unsigned);
   return makeNativeTx({
     spendInputCbors: [],
     fee,
-    outputCbor: protectedOutputCbor(credentialHex),
+    outputCbor: protectedOutputCbor(credentialHex, addressHeader),
     addrTxWitsPreimageCbor: encodeCbor([...witnesses(txId)]),
   });
 };
@@ -1462,6 +1472,8 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       Object.freeze({
         subject: acceptedVerdictSubject(overBoundId),
         outputIndex: 0,
+        route: "witness_scan" as const,
+        signerRequired: true,
         canonicalTransactionCborHex:
           encodeMidgardNativeTxCanonical(overBoundTx).toString("hex"),
         outputCborHex: protectedOutputCbor(overBoundCredentialHex).toString(
@@ -1626,6 +1638,111 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     );
     await expectOnchainRefusal(() => s.rawStep05(terminal));
     coverage.scenario("honest_forced_rejection_refusal");
+  }, 900_000);
+
+  it("proves forced rejections over an unprotected and a script-locked output through the direct terminal route and refuses the direct exit for a protected key", async () => {
+    // Canonical validation authorizes an unprotected output, and a protected
+    // script output, with no signer at all: the operator's rejection is
+    // wrong without any witness, and step 02 closes at step 05 directly.
+    const forcedReason = {
+      ProtectedOutputSignerMissing: { output_index: 0n },
+    } as const;
+    for (const [label, addressHeader, route] of [
+      ["unprotected", 0x60, "unprotected_output"],
+      ["script-locked", 0x78, "script_credential"],
+    ] as const) {
+      const nativeTx = nativeTxWith({
+        fee: 23n,
+        addressHeader,
+        witnesses: () => [],
+      });
+      const s = await makeScenario({ nativeTx, forcedReason });
+      const adjudicated = adjudicateMidgardNativeTxFullValidity(
+        nativeTx,
+        "TxIsInvalid",
+      );
+      const evidence = evidenceFor(
+        forcedVerdictSubject({
+          transactionId: s.block.nativeTxId,
+          sourceKey: FORCED_ORDER_KEY,
+          rejectionReason: forcedReason,
+        }),
+        adjudicated,
+      );
+      expect(evidence.route).toBe(route);
+      expect(evidence.signerRequired).toBe(false);
+      expect(evidence.paymentCredentialHex).toBeUndefined();
+      const bound = await s.forced01(await s.init(), evidence);
+      // Credential seam: the same forced claim cannot take the scan door,
+      // and an in-range coordinate cannot claim the out-of-range arm.
+      await expectOnchainRefusal(() =>
+        s.step02(
+          bound.nextThreadOutRef,
+          Object.freeze({
+            ...evidence,
+            route: "witness_scan",
+            signerRequired: true,
+            paymentCredentialHex: signerCredentialHex,
+          }),
+          adjudicated,
+        ),
+      );
+      await expectOnchainRefusal(() =>
+        s.step02(
+          bound.nextThreadOutRef,
+          Object.freeze({ ...evidence, route: "coordinate_out_of_range" }),
+          adjudicated,
+        ),
+      );
+      const direct = await captureEmulatorSubmission(s.harness.emulator, () =>
+        s.step02(bound.nextThreadOutRef, evidence, adjudicated),
+      );
+      expect(direct.result.stage).toBe("step05");
+      expect(direct.measurement.l1ByteMargin).toBeGreaterThan(0);
+      console.info(
+        `[protected-output-signer-missing-forced-direct-${label}] ${JSON.stringify({ bytes: direct.measurement.completeSignedBytes, memory: direct.measurement.executionMemory.toString(), cpu: direct.measurement.executionSteps.toString() })}`,
+      );
+      const minted = await s.step05(direct.result.nextThreadOutRef, evidence);
+      expect(minted.fraudProofUnit).toContain(s.category.categoryId);
+    }
+    coverage.reason(REASON, "forced_rejection_wrong");
+    coverage.scenario("wrongful_forced_rejection_success");
+
+    // Credential seam, the other way: a protected pub-key output whose
+    // signer really is missing cannot skip the scan through the direct exit.
+    const unsignedTx = nativeTxWith({
+      fee: 29n,
+      witnesses: () => [forgedWitness()],
+    });
+    const s = await makeScenario({ nativeTx: unsignedTx, forcedReason });
+    const adjudicated = adjudicateMidgardNativeTxFullValidity(
+      unsignedTx,
+      "TxIsInvalid",
+    );
+    const honest = honestEvidenceFor(
+      forcedVerdictSubject({
+        transactionId: s.block.nativeTxId,
+        sourceKey: FORCED_ORDER_KEY,
+        rejectionReason: forcedReason,
+      }),
+      acceptedVerdictSubject(s.block.nativeTxId),
+      adjudicated,
+    );
+    expect(honest.route).toBe("witness_scan");
+    const bound = await s.forced01(await s.init(), honest);
+    await expectOnchainRefusal(() =>
+      s.step02(
+        bound.nextThreadOutRef,
+        Object.freeze({
+          ...honest,
+          route: "unprotected_output",
+          signerRequired: false,
+          signerPresent: false,
+        }),
+        adjudicated,
+      ),
+    );
+    coverage.seamMutated("credential");
   }, 900_000);
 
   it("declares the complete lifecycle coverage it exercised", () => {

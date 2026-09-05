@@ -30,8 +30,15 @@ pub type WitnessScanV1 {
   signer_present: Bool,
 }
 
+/// Terminal verdict. `signer_required` is `True` when the coordinate is an
+/// in-range protected pub-key output and `signer_present` is the complete
+/// scan's answer; it is `False` when canonical validation needs no signer at
+/// the coordinate (an unprotected output, a protected script output, or a
+/// position past the field-2 count), in which case `signer_present` is
+/// `False` by construction.
 pub type VerdictV1 {
   subject: substrate.VerdictSubjectV1,
+  signer_required: Bool,
   signer_present: Bool,
 }
 
@@ -54,8 +61,32 @@ pub fn bind_output_v1(
   BoundOutputV1 { subject, output_index }
 }
 
+/// The verdict the witness scan writes when it reaches the field's end.
+pub fn scan_verdict_v1(
+  subject: substrate.VerdictSubjectV1,
+  signer_present: Bool,
+) -> VerdictV1 {
+  VerdictV1 { subject, signer_required: True, signer_present }
+}
+
+/// The verdict step 02 writes straight to the terminal when canonical
+/// validation requires no signer at the bound coordinate. Only a wrongful
+/// forced rejection can be contradicted this way: an accepted subject has no
+/// fault to close on, so the direct exit is refused for it.
+pub fn direct_verdict_v1(bound: BoundOutputV1) -> VerdictV1 {
+  expect bound.subject.direction == substrate.direction_wrongful_rejection
+  VerdictV1 {
+    subject: bound.subject,
+    signer_required: False,
+    signer_present: False,
+  }
+}
+
 pub fn terminal_v1(verdict: VerdictV1) -> Bool {
-  substrate.terminal_contradiction_v1(verdict.subject, !verdict.signer_present)
+  substrate.terminal_contradiction_v1(
+    verdict.subject,
+    verdict.signer_required && !verdict.signer_present,
+  )
 }
 
 pub fn encode_bound_v1(value: BoundOutputV1) -> ByteArray {

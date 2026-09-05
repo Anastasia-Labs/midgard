@@ -154,7 +154,11 @@ export const submitProtectedOutputSignerMissingStep04 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: terminal
-        ? { subject: evidence.subject, signer_present: signerPresent }
+        ? {
+            subject: evidence.subject,
+            signer_required: true,
+            signer_present: signerPresent,
+          }
         : {
             protected: state.protected,
             checkpoint_hash: missingSignatureFieldWalkCheckpoint({

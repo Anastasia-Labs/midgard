@@ -693,7 +693,11 @@ const createManifestBoundProtectedOutputSignerMissingSubmission = ({
         : action === "submitStep01"
           ? (["step01", "step02"] as const)
           : action === "submitStep02"
-            ? (["step02", "step03"] as const)
+            ? // The witness scan continues at step 03; a coordinate that
+              // needs no signer closes at step 05 directly.
+              evidence.signerRequired
+              ? (["step02", "step03"] as const)
+              : (["step02", "step05"] as const)
             : action === "submitStep03"
               ? (["step03", "scanning"] as const)
               : action === "submitScan"
@@ -847,7 +851,7 @@ const createManifestBoundProtectedOutputSignerMissingSubmission = ({
         ),
       });
       return {
-        stage: "step03" as const,
+        stage: result.stage,
         txHash: result.txHash,
         outputReference: result.nextThreadOutRef,
       };

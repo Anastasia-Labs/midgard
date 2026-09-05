@@ -35,12 +35,30 @@ export type ProtectedOutputSignerMissingFinding = Readonly<{
   outputIndex: number;
 }>;
 
+/**
+ * Which physical route step 02 takes. Canonical validation consults the
+ * signer frontier only for a protected pub-key output at a position its
+ * cursor visits (`protected_output_authorization`); every other coordinate
+ * is authorized with no signer, so a forced rejection citing it is wrong
+ * without any witness and step 02 closes at step 05 directly.
+ */
+export type ProtectedOutputSignerMissingRoute =
+  | "witness_scan"
+  | "unprotected_output"
+  | "script_credential"
+  | "coordinate_out_of_range";
+
 export type ProtectedOutputSignerMissingEvidence =
   ProtectedOutputSignerMissingFinding &
     Readonly<{
       canonicalTransactionCborHex: string;
-      outputCborHex: string;
-      paymentCredentialHex: string;
+      route: ProtectedOutputSignerMissingRoute;
+      /** `true` exactly on the witness-scan route. */
+      signerRequired: boolean;
+      /** Absent only when the coordinate is past the field-2 count. */
+      outputCborHex?: string;
+      /** Present only on the witness-scan route. */
+      paymentCredentialHex?: string;
       witnessSetHashHex: string;
       addressWitnessFieldPreimageHex: string;
       validSignerHashes: readonly string[];
@@ -52,6 +70,22 @@ export type ProtectedOutputSignerMissingEvidence =
         signerPresent: boolean;
       }>[];
     }>;
+
+/** Narrows scan-route evidence to the fields the scan steps consume. */
+export const requireProtectedOutputSignerScanEvidence = (
+  evidence: ProtectedOutputSignerMissingEvidence,
+): Readonly<{ outputCborHex: string; paymentCredentialHex: string }> => {
+  if (
+    evidence.route !== "witness_scan" ||
+    evidence.outputCborHex === undefined ||
+    evidence.paymentCredentialHex === undefined
+  )
+    return fail("evidence does not take the witness-scan route");
+  return {
+    outputCborHex: evidence.outputCborHex,
+    paymentCredentialHex: evidence.paymentCredentialHex,
+  };
+};
 
 const exactForcedOutputIndex = (subject: VerdictSubject): number => {
   const reason = subject.rejection_reason;
@@ -87,6 +121,40 @@ export const classifyProtectedOutputSignerMissingFinding = ({
   }
 };
 
+/**
+ * Classifies the bound coordinate the way step 02 does on chain. A direct
+ * route contradicts only a wrongful forced rejection; an accepted subject at
+ * such a coordinate has no fault, and the preparer refuses it.
+ */
+const classifyRoute = (
+  subject: VerdictSubject,
+  outputCbor: Uint8Array | undefined,
+): ProtectedOutputSignerMissingRoute => {
+  const direct = (
+    route: Exclude<ProtectedOutputSignerMissingRoute, "witness_scan">,
+    reason: string,
+  ): ProtectedOutputSignerMissingRoute =>
+    subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
+      ? route
+      : fail(reason);
+  if (outputCbor === undefined)
+    return direct(
+      "coordinate_out_of_range",
+      "output coordinate is out of range",
+    );
+  const address = decodeMidgardAddressBytes(
+    decodeMidgardTxOutput(outputCbor).address,
+  );
+  if (!address.protected)
+    return direct("unprotected_output", "selected output is not protected");
+  if (address.paymentCredential.kind !== "PubKey")
+    return direct(
+      "script_credential",
+      "selected protected output does not use a key credential",
+    );
+  return "witness_scan";
+};
+
 export const prepareProtectedOutputSignerMissingEvidence = ({
   subject,
   outputIndex,
@@ -102,17 +170,53 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
     return fail("transaction identity was substituted");
   const outputItems = decodeMidgardFieldPreimage(material.fieldPreimages[2]!);
   const outputCbor = outputItems[outputIndex];
-  if (outputCbor === undefined)
-    return fail("output coordinate is out of range");
-  const output = decodeMidgardTxOutput(outputCbor);
-  const address = decodeMidgardAddressBytes(output.address);
-  if (!address.protected) return fail("selected output is not protected");
-  if (address.paymentCredential.kind !== "PubKey")
-    return fail("selected protected output does not use a key credential");
-  const paymentCredentialHex = address.paymentCredential.hash.toString("hex");
+  const route = classifyRoute(subject, outputCbor);
   const witnessItems = decodeMidgardFieldPreimage(material.fieldPreimages[7]!);
   if (witnessItems.length > PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES)
     return fail("address-witness frontier exceeds the canonical maximum");
+  const common = {
+    subject,
+    outputIndex,
+    route,
+    signerRequired: route === "witness_scan",
+    canonicalTransactionCborHex: Buffer.from(canonicalTransactionCbor).toString(
+      "hex",
+    ),
+    ...(outputCbor === undefined
+      ? {}
+      : { outputCborHex: Buffer.from(outputCbor).toString("hex") }),
+    witnessSetHashHex: Buffer.from(
+      material.compact.transactionWitnessSetHash,
+    ).toString("hex"),
+    addressWitnessFieldPreimageHex: material.fieldPreimages[7]!.toString("hex"),
+    outputCarriage: selectMidgardFieldCarriageTier(
+      material.fieldPreimages[2]!.length,
+    ),
+    witnessCarriage: selectMidgardFieldCarriageTier(
+      material.fieldPreimages[7]!.length,
+    ),
+  } as const;
+  if (route !== "witness_scan") {
+    // No signer is required, so no scan runs: the verdict step 02 writes is
+    // `signer_required = False, signer_present = False` by construction.
+    const evidence: ProtectedOutputSignerMissingEvidence = Object.freeze({
+      ...common,
+      validSignerHashes: Object.freeze([]),
+      signerPresent: false,
+      checkpoints: Object.freeze([]),
+    });
+    if (!protectedOutputSignerMissingEvidenceCloses(evidence))
+      return fail(
+        "authenticated signer state agrees with the operator verdict",
+      );
+    return evidence;
+  }
+  const address = decodeMidgardAddressBytes(
+    decodeMidgardTxOutput(outputCbor!).address,
+  );
+  if (address.paymentCredential.kind !== "PubKey")
+    return fail("selected protected output does not use a key credential");
+  const paymentCredentialHex = address.paymentCredential.hash.toString("hex");
   let signerPresent = false;
   const validSignerHashes: string[] = [];
   const checkpoints: { cursor: number; signerPresent: boolean }[] = [];
@@ -142,26 +246,11 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
   });
   if (witnessItems.length === 0)
     checkpoints.push({ cursor: 0, signerPresent: false });
-  const evidence = Object.freeze({
-    subject,
-    outputIndex,
-    canonicalTransactionCborHex: Buffer.from(canonicalTransactionCbor).toString(
-      "hex",
-    ),
-    outputCborHex: Buffer.from(outputCbor).toString("hex"),
+  const evidence: ProtectedOutputSignerMissingEvidence = Object.freeze({
+    ...common,
     paymentCredentialHex,
-    witnessSetHashHex: Buffer.from(
-      material.compact.transactionWitnessSetHash,
-    ).toString("hex"),
-    addressWitnessFieldPreimageHex: material.fieldPreimages[7]!.toString("hex"),
     validSignerHashes: Object.freeze(validSignerHashes),
     signerPresent,
-    outputCarriage: selectMidgardFieldCarriageTier(
-      material.fieldPreimages[2]!.length,
-    ),
-    witnessCarriage: selectMidgardFieldCarriageTier(
-      material.fieldPreimages[7]!.length,
-    ),
     checkpoints: Object.freeze(
       checkpoints.map((checkpoint) => Object.freeze(checkpoint)),
     ),
@@ -171,10 +260,17 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
   return evidence;
 };
 
+/** Mirrors `rule.terminal_v1`: the decisive fault is a required, absent signer. */
 export const protectedOutputSignerMissingEvidenceCloses = (
-  evidence: ProtectedOutputSignerMissingEvidence,
+  evidence: Pick<
+    ProtectedOutputSignerMissingEvidence,
+    "subject" | "signerRequired" | "signerPresent"
+  >,
 ): boolean =>
-  terminalVerdictContradiction(evidence.subject, !evidence.signerPresent);
+  terminalVerdictContradiction(
+    evidence.subject,
+    evidence.signerRequired && !evidence.signerPresent,
+  );
 
 /** Exhaustive accepted plus exact forced-reason replay over authenticated DA. */
 export const detectProtectedOutputSignerMissingCompleteReplay = (
@@ -195,6 +291,9 @@ export const detectProtectedOutputSignerMissingCompleteReplay = (
       if (protectedOutputSignerMissingEvidenceCloses(evidence))
         detections.push(evidence);
     } catch (cause) {
+      // An accepted coordinate that needs no signer is not a fault; the
+      // forced direction never reaches these refusals because the direct
+      // route classifies such a coordinate instead.
       if (
         cause instanceof Error &&
         (cause.message.endsWith("selected output is not protected") ||

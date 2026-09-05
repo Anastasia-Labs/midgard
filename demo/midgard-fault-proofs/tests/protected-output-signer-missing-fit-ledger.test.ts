@@ -26,40 +26,61 @@ const lifecycle = "318 address witnesses; three-chunk Certified field 7";
  */
 const forcedBinding =
   "forced leaf under the header's counted forced root; exact ProtectedOutputSignerMissing reason";
+/**
+ * The direct terminal route: step 02 classifies an unprotected or a
+ * script-locked output as needing no signer and closes at step 05 without a
+ * scan, so the forced door plus one field-2 opening is its whole cost.
+ */
+const forcedDirect =
+  "forced leaf under the header's counted forced root; direct terminal route from step 02, no scan";
 const measurements = [
   ["accepted-cancel-step01", "lifecycle", 611, 124408n, 42388566n],
-  ["accepted-carriage-certificate", "lifecycle", 1317, 514726n, 228139170n],
-  ["accepted-init", "lifecycle", 1641, 764105n, 260067443n],
+  ["accepted-carriage-certificate", "lifecycle", 1317, 508990n, 226354676n],
+  ["accepted-init", "lifecycle", 1641, 776377n, 263764431n],
   [
     "accepted-remove-fraudulent-block",
     "lifecycle",
     2361,
-    2986041n,
-    1020151393n,
+    3078731n,
+    1053089202n,
   ],
-  ["accepted-step01", "lifecycle", 2020, 1315166n, 447054806n],
-  ["accepted-step02", "lifecycle", 1135, 582522n, 181217778n],
-  ["accepted-step03-witness-open", "lifecycle", 1383, 727967n, 240985721n],
-  ["accepted-step04-resume-00", "lifecycle", 1438, 7911222n, 4009503955n],
-  ["accepted-step04-resume-01", "lifecycle", 1438, 7911222n, 4009503955n],
-  ["accepted-step04-resume-02", "lifecycle", 1438, 7911222n, 4009503955n],
-  ["accepted-step04-resume-03", "lifecycle", 1438, 7911222n, 4009503955n],
-  ["accepted-step04-resume-04", "lifecycle", 1438, 8157089n, 4101478888n],
-  ["accepted-step04-resume-05", "lifecycle", 1438, 8461878n, 4180815379n],
-  ["accepted-step04-resume-06", "lifecycle", 1438, 8461878n, 4180815379n],
-  ["accepted-step04-resume-07", "lifecycle", 1438, 8461878n, 4180815379n],
-  ["accepted-step04-resume-08", "lifecycle", 1438, 8461878n, 4180815379n],
-  ["accepted-step04-terminal", "lifecycle", 1302, 8380053n, 3138795307n],
-  ["accepted-step05-proof-mint", "lifecycle", 916, 262772n, 95619396n],
+  ["accepted-step01", "lifecycle", 2020, 1318034n, 447947053n],
+  ["accepted-step02", "lifecycle", 1138, 594301n, 185112871n],
+  ["accepted-step03-witness-open", "lifecycle", 1383, 736571n, 243662462n],
+  ["accepted-step04-resume-00", "lifecycle", 1438, 7905486n, 4007719461n],
+  ["accepted-step04-resume-01", "lifecycle", 1438, 7905486n, 4007719461n],
+  ["accepted-step04-resume-02", "lifecycle", 1438, 7905486n, 4007719461n],
+  ["accepted-step04-resume-03", "lifecycle", 1438, 7905486n, 4007719461n],
+  ["accepted-step04-resume-04", "lifecycle", 1438, 8151353n, 4099694394n],
+  ["accepted-step04-resume-05", "lifecycle", 1438, 8456142n, 4179030885n],
+  ["accepted-step04-resume-06", "lifecycle", 1438, 8456142n, 4179030885n],
+  ["accepted-step04-resume-07", "lifecycle", 1438, 8456142n, 4179030885n],
+  ["accepted-step04-resume-08", "lifecycle", 1438, 8456142n, 4179030885n],
+  ["accepted-step04-terminal", "lifecycle", 1305, 8375250n, 3137412340n],
+  ["accepted-step05-proof-mint", "lifecycle", 916, 266098n, 96823317n],
   ["forced-step01", "lifecycle", 1757, 1058186n, 443761399n],
+  [
+    "forced-direct-step02-unprotected-output",
+    "lifecycle",
+    1090,
+    590721n,
+    183238621n,
+  ],
+  [
+    "forced-direct-step02-script-credential",
+    "lifecycle",
+    1090,
+    593654n,
+    184299840n,
+  ],
   ["field7-carriage-chunk01", "publication", 15872, 0n, 0n],
   ["field7-carriage-chunk02", "publication", 15872, 0n, 0n],
   ["field7-carriage-chunk03", "publication", 2789, 0n, 0n],
   ["step01-reference-publication", "publication", 14827, 0n, 0n],
-  ["step02-reference-publication", "publication", 9239, 0n, 0n],
+  ["step02-reference-publication", "publication", 9665, 0n, 0n],
   ["step03-reference-publication", "publication", 7488, 0n, 0n],
-  ["step04-reference-publication", "publication", 9119, 0n, 0n],
-  ["step05-reference-publication", "publication", 2214, 0n, 0n],
+  ["step04-reference-publication", "publication", 9140, 0n, 0n],
+  ["step05-reference-publication", "publication", 2239, 0n, 0n],
 ] as const;
 
 describe("protectedOutputSignerMissing signed Van Rossem fit ledger", () => {
@@ -67,7 +88,7 @@ describe("protectedOutputSignerMissing signed Van Rossem fit ledger", () => {
     const ledger = buildVanRossemFitLedger({
       category: "protectedOutputSignerMissing:0000002b:testnet",
       blueprintSha256:
-        "137e608cbbcccffb002b4ed638eb5cc4bdda212de8b40f18313d414f8803c461",
+        "7fa798050bf90e9dba1232f456879e8a56e29c48a2c3748067832d69a1f403fa",
       compilerVersion: "aiken v1.1.23+5adf783",
       measurements: measurements.map(
         ([name, kind, signedBytes, memoryUnits, cpuUnits]) => ({
@@ -78,7 +99,9 @@ describe("protectedOutputSignerMissing signed Van Rossem fit ledger", () => {
               ? "fully applied validator or exact 15,148-byte carriage chunk"
               : name === "forced-step01"
                 ? forcedBinding
-                : lifecycle,
+                : name.startsWith("forced-direct-")
+                  ? forcedDirect
+                  : lifecycle,
           signedBytes,
           memoryUnits,
           cpuUnits,

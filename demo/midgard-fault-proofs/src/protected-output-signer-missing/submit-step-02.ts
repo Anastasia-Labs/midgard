@@ -10,11 +10,15 @@ import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-bounda
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 import { actuateProtectedOutputSignerFieldOpening } from "./field-opening-actuation.js";
 import { planProtectedOutputSignerOutputOpening } from "./field-plans.js";
-import type { ProtectedOutputSignerMissingEvidence } from "./protected-output-signer-missing.js";
+import {
+  type ProtectedOutputSignerMissingEvidence,
+  requireProtectedOutputSignerScanEvidence,
+} from "./protected-output-signer-missing.js";
 import {
   ProtectedOutputSignerStep02DatumSchema,
   ProtectedOutputSignerStep02RedeemerSchema,
   ProtectedOutputSignerStep03DatumSchema,
+  ProtectedOutputSignerStep05DatumSchema,
 } from "./schemas.js";
 import { submitProtectedOutputSignerOpeningTransition } from "./submit-opening-transition.js";
 
@@ -101,33 +105,57 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     label: "protected-output-signer-missing outputs",
     onReady: onCarriageReady,
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        subject: evidence.subject,
-        transaction_id: evidence.subject.transaction_id,
-        witness_set_hash: evidence.witnessSetHashHex,
-        output_index: BigInt(evidence.outputIndex),
-        payment_credential: evidence.paymentCredentialHex,
-      },
-    } as never,
-    ProtectedOutputSignerStep03DatumSchema as never,
-  );
-  return await submitProtectedOutputSignerOpeningTransition({
+  // The witness-scan route hands the protected credential to step 03; every
+  // direct route writes the terminal verdict step 02 derives on chain
+  // (`direct_verdict_v1`) and continues at step 05.
+  const scan = evidence.route === "witness_scan";
+  const nextDatum = scan
+    ? Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            subject: evidence.subject,
+            transaction_id: evidence.subject.transaction_id,
+            witness_set_hash: evidence.witnessSetHashHex,
+            output_index: BigInt(evidence.outputIndex),
+            payment_credential:
+              requireProtectedOutputSignerScanEvidence(evidence)
+                .paymentCredentialHex,
+          },
+        } as never,
+        ProtectedOutputSignerStep03DatumSchema as never,
+      )
+    : Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            subject: evidence.subject,
+            signer_required: false,
+            signer_present: false,
+          },
+        } as never,
+        ProtectedOutputSignerStep05DatumSchema as never,
+      );
+  const result = await submitProtectedOutputSignerOpeningTransition({
     lucid,
     contracts,
     categoryId,
     signer,
     threadOutRef,
     stepIndex: 1,
-    nextStepIndex: 2,
+    nextStepIndex: scan ? 2 : 4,
     nextDatum,
     opening: actuated.opening,
+    coordinateOutOfRange: evidence.route === "coordinate_out_of_range",
     referenceScriptUtxo,
     carriageReferenceInputs: actuated.referenceInputs,
     redeemerSchema: ProtectedOutputSignerStep02RedeemerSchema as never,
     preSubmitBoundary,
     awaitConfirmation,
   });
+  return {
+    ...result,
+    route: evidence.route,
+    stage: scan ? ("step03" as const) : ("step05" as const),
+  };
 };

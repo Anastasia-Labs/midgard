@@ -41,6 +41,7 @@ export const ProtectedOutputSignerScanSchema = Data.Object({
 });
 export const ProtectedOutputSignerVerdictSchema = Data.Object({
   subject: ProtectedOutputSignerVerdictSubjectSchema,
+  signer_required: Data.Boolean(),
   signer_present: Data.Boolean(),
 });
 export const ProtectedOutputSignerStep01SourceSchema = Data.Enum([
@@ -76,13 +77,20 @@ export const ProtectedOutputSignerStep02RedeemerSchema =
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       opening: FieldOpeningSchema,
+      coordinate_out_of_range: Data.Boolean(),
     }),
   );
 export const ProtectedOutputSignerStep03DatumSchema = faultProofStepDatumSchema(
   ProtectedOutputSignerCredentialSchema,
 );
 export const ProtectedOutputSignerStep03RedeemerSchema =
-  ProtectedOutputSignerStep02RedeemerSchema;
+  faultProofStepRedeemerSchema(
+    Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      opening: FieldOpeningSchema,
+    }),
+  );
 export const ProtectedOutputSignerStep04DatumSchema = faultProofStepDatumSchema(
   ProtectedOutputSignerScanSchema,
 );

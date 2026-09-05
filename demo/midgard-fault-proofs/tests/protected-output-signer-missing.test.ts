@@ -248,6 +248,92 @@ describe("protectedOutputSignerMissing V1 binding", () => {
       ),
     ).toEqual([]);
   });
+
+  it("routes a forced unprotected, script-locked or out-of-range coordinate to the direct terminal and refuses it for an accepted subject", () => {
+    // Canonical validation consults the signer frontier only for a
+    // protected pub-key output at a position its cursor visits; every other
+    // coordinate is authorized with no signer, so the forced rejection is
+    // wrong without a scan.
+    const outputAt = (header: number) =>
+      encodeMidgardTxOutput({
+        address: Buffer.concat([
+          Buffer.from([header]),
+          Buffer.from(paymentCredential, "hex"),
+        ]),
+        value: { lovelace: 2_000_000n, assets: new Map() },
+      });
+    const transactionWithOutput = (outputCbor: Buffer) =>
+      makeNativeTx({
+        spendInputCbors: [],
+        fee: 9n,
+        outputCbor,
+        addrTxWitsPreimageCbor: encodeCbor([]),
+      });
+    const prepare = (
+      transaction: ReturnType<typeof makeNativeTx>,
+      outputIndex: number,
+      direction: "forced" | "accepted",
+    ) => {
+      const id = computeMidgardNativeTxId(transaction).toString("hex");
+      return prepareProtectedOutputSignerMissingEvidence({
+        subject:
+          direction === "forced"
+            ? forcedVerdictSubject({
+                transactionId: id,
+                sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
+                rejectionReason: {
+                  ProtectedOutputSignerMissing: {
+                    output_index: BigInt(outputIndex),
+                  },
+                },
+              })
+            : acceptedVerdictSubject(id),
+        outputIndex,
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
+      });
+    };
+    const unprotected = prepare(
+      transactionWithOutput(outputAt(0x60)),
+      0,
+      "forced",
+    );
+    expect(unprotected.route).toBe("unprotected_output");
+    expect(unprotected.signerRequired).toBe(false);
+    expect(unprotected.signerPresent).toBe(false);
+    expect(unprotected.paymentCredentialHex).toBeUndefined();
+    expect(unprotected.outputCborHex).toBe(outputAt(0x60).toString("hex"));
+    const scriptLocked = prepare(
+      transactionWithOutput(outputAt(0x78)),
+      0,
+      "forced",
+    );
+    expect(scriptLocked.route).toBe("script_credential");
+    expect(scriptLocked.signerRequired).toBe(false);
+    const outOfRange = prepare(
+      transactionWithOutput(outputAt(0x68)),
+      1,
+      "forced",
+    );
+    expect(outOfRange.route).toBe("coordinate_out_of_range");
+    expect(outOfRange.signerRequired).toBe(false);
+    expect(outOfRange.outputCborHex).toBeUndefined();
+    expect(outOfRange.checkpoints).toHaveLength(0);
+    // An accepted subject has no fault at any of these coordinates.
+    expect(() =>
+      prepare(transactionWithOutput(outputAt(0x60)), 0, "accepted"),
+    ).toThrow(/not protected/u);
+    expect(() =>
+      prepare(transactionWithOutput(outputAt(0x78)), 0, "accepted"),
+    ).toThrow(/does not use a key credential/u);
+    expect(() =>
+      prepare(transactionWithOutput(outputAt(0x68)), 1, "accepted"),
+    ).toThrow(/out of range/u);
+    // The witness-scan route is unchanged for a protected pub-key output.
+    const scan = prepare(transactionWithOutput(outputAt(0x68)), 0, "accepted");
+    expect(scan.route).toBe("witness_scan");
+    expect(scan.signerRequired).toBe(true);
+    expect(scan.signerPresent).toBe(false);
+  });
 });
 
 describe("protectedOutputSignerMissing registered-chain parity", () => {

@@ -90,6 +90,7 @@ export const buildProtectedOutputSignerMissingChain = ({
       PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step02,
       [
         step03.spendingScriptHash,
+        step05.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
       ],

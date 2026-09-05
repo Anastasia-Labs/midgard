@@ -131,7 +131,11 @@ test protected_output_step_05_mints_for_an_accepted_missing_signer() {
   let block = challenged_block()
   run_step_05(
     block,
-    VerdictV1 { subject: accepted_subject(block), signer_present: False },
+    VerdictV1 {
+      subject: accepted_subject(block),
+      signer_required: True,
+      signer_present: False,
+    },
   )
 }
 
@@ -140,7 +144,11 @@ test protected_output_step_05_refuses_an_accepted_present_signer() fail {
   let block = challenged_block()
   run_step_05(
     block,
-    VerdictV1 { subject: accepted_subject(block), signer_present: True },
+    VerdictV1 {
+      subject: accepted_subject(block),
+      signer_required: True,
+      signer_present: True,
+    },
   )
 }
 
@@ -150,7 +158,11 @@ test protected_output_step_05_mints_for_a_forced_present_signer() {
   let block = challenged_block()
   run_step_05(
     block,
-    VerdictV1 { subject: forced_subject(block), signer_present: True },
+    VerdictV1 {
+      subject: forced_subject(block),
+      signer_required: True,
+      signer_present: True,
+    },
   )
 }
 
@@ -160,7 +172,11 @@ test protected_output_step_05_refuses_a_forced_missing_signer() fail {
   let block = challenged_block()
   run_step_05(
     block,
-    VerdictV1 { subject: forced_subject(block), signer_present: False },
+    VerdictV1 {
+      subject: forced_subject(block),
+      signer_required: True,
+      signer_present: False,
+    },
   )
 }
 
@@ -175,6 +191,7 @@ test protected_output_step_05_refuses_a_forced_subject_without_a_reason() fail {
         ..forced_subject(block),
         rejection_reason: None,
       },
+      signer_required: True,
       signer_present: True,
     },
   )
@@ -190,6 +207,56 @@ test protected_output_step_05_refuses_an_accepted_subject_with_a_reason() fail {
         ..accepted_subject(block),
         rejection_reason: Some(ProtectedOutputSignerMissing { output_index: 0 }),
       },
+      signer_required: True,
+      signer_present: False,
+    },
+  )
+}
+
+// ### Direct terminal route
+//
+// Step 02 may hand the terminal a verdict that needed no scan: canonical
+// validation required no signer at the bound coordinate. That verdict closes
+// only a wrongful forced rejection.
+
+/// Wrongful forced rejection closes on the direct verdict.
+test protected_output_step_05_mints_for_a_forced_unrequired_signer() {
+  let block = challenged_block()
+  run_step_05(
+    block,
+    VerdictV1 {
+      subject: forced_subject(block),
+      signer_required: False,
+      signer_present: False,
+    },
+  )
+}
+
+/// An accepted subject has no fault where no signer is required, whatever the
+/// carried scan answer says.
+test protected_output_step_05_refuses_an_accepted_unrequired_signer() fail {
+  let block = challenged_block()
+  run_step_05(
+    block,
+    VerdictV1 {
+      subject: accepted_subject(block),
+      signer_required: False,
+      signer_present: False,
+    },
+  )
+}
+
+/// The direct verdict still needs a canonical forced subject.
+test protected_output_step_05_refuses_an_unrequired_signer_without_a_reason() fail {
+  let block = challenged_block()
+  run_step_05(
+    block,
+    VerdictV1 {
+      subject: substrate.VerdictSubjectV1 {
+        ..forced_subject(block),
+        rejection_reason: None,
+      },
+      signer_required: False,
       signer_present: False,
     },
   )
