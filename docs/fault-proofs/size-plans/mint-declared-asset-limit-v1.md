@@ -56,9 +56,9 @@ this family refuses it.
 
    The intra-item cursor is what makes every field shape reachable: a prior
    policy inside the 32,768-byte field bound can carry roughly 8,000 asset
-   entries, and one consumed entry costs about 36K memory and 11M CPU, so a
+   entries, and one consumed entry costs about 45K memory and 14M CPU, so a
    fold that had to complete a policy item inside one transaction could not
-   reach the bound coordinate past roughly 400 assets in any earlier policy.
+   reach the bound coordinate past roughly 300 assets in any earlier policy.
 
 4. `fraud_proofs/mint_declared_asset_limit/step_04.main.spend`
    parameters: permanent fraud-proof policy id, permanent token address, and
