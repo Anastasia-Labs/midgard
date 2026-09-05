@@ -1749,7 +1749,7 @@ describe("compiled production workflow boundary", () => {
         ({ category }) => category === "nativeScriptDecoding",
       ),
     ).toMatchObject({
-      reason: "one_shot_prover_has_no_pre_submit_journal_hook",
+      reason: "manual_step_chain_has_no_atomic_driver",
     });
     expect(
       WORKFLOW_ADAPTER_REGISTRATIONS.find(

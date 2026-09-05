@@ -456,11 +456,12 @@ ValueAndMint resolver branch extractions are verified in an isolated worktree;
 that group awaits its three asset-fold yields before integration. All evidence
 still needs the consolidated final-tree closure gate.
 
-Production installs 47 of 54 watcher categories. The seven explicit omissions
-are `transitionTrace`, `validationTraceDispute`, `nativeScriptDecoding`,
+Production installs 48 of 54 watcher categories. The six explicit omissions
+are `transitionTrace`, `validationTraceDispute`,
 `withdrawalMistag`, `crossBlockDuplicateEvent`, `valueNotPreserved`, and
-`mintAuthorization`. The typed-reason runner residue consists of the three
-resolved-reference decoding arms and `ValueNotPreserved`. Closure requires
+`mintAuthorization`. The typed-reason runner residue consists of `ValueNotPreserved`. Native script
+decoding now has authenticated retained evidence, a manifest-bound durable
+cursor runner, and watcher installation for all three resolved-reference arms. Closure requires
 the residue to be empty, not merely pinned in a passing inventory test.
 
 The baseline blueprint still contains 47 oversized validation-dispute bodies

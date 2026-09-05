@@ -53,6 +53,12 @@ import {
   type LoadMissingScriptSourceWorkflow,
 } from "../missing-script-source/v1.js";
 import {
+  createManifestBoundNativeScriptDecodingWorkflow,
+  type ManifestBoundNativeScriptDecodingWorkflow,
+  type ManifestBoundNativeScriptDecodingWorkflowConfig,
+  runOrResumeManifestBoundNativeScriptDecodingWorkflow,
+} from "../native-script-decoding/workflow.js";
+import {
   createManifestBoundNativeScriptInvalidWorkflow,
   type ManifestBoundNativeScriptInvalidWorkflow,
   type ManifestBoundNativeScriptInvalidWorkflowConfig,
@@ -817,6 +823,26 @@ export const createNativeScriptInvalidWorkflowRunner = (
     }),
   });
 
+export const createNativeScriptDecodingWorkflowRunner = (
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundNativeScriptDecodingWorkflowConfig>,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner =>
+  createAdmittedWorkflowRunner({
+    category: "nativeScriptDecoding",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundWorkflowRunOrResume({
+      category: "nativeScriptDecoding",
+      loadRuntimeConfig,
+      constructWorkflow: createManifestBoundNativeScriptDecodingWorkflow,
+      execute: async ({ workflow, sources, journal }) =>
+        await runOrResumeManifestBoundNativeScriptDecodingWorkflow({
+          workflow: workflow as ManifestBoundNativeScriptDecodingWorkflow,
+          sources,
+          journal,
+        }),
+    }),
+  });
+
 export const createMissingNativeScriptUtxoWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMissingNativeScriptUtxoWorkflowConfig>,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -1268,6 +1294,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   networkId: createNetworkIdWorkflowRunner,
   missingNativeScriptUtxo: createMissingNativeScriptUtxoWorkflowRunner,
   nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner,
+  nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner,
   minAda: createMinAdaWorkflowRunner,
   fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner,
   fieldItemWidthIllegal: createFieldItemWidthIllegalWorkflowRunner,
@@ -1293,7 +1320,8 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   missingScriptSource: createMissingScriptSourceWorkflowRunner,
   missingRedeemer: createMissingRedeemerWorkflowRunner,
   unusedRedeemer: createUnusedRedeemerWorkflowRunner,
-  executionNativeScriptInvalid: createExecutionNativeScriptInvalidWorkflowRunner,
+  executionNativeScriptInvalid:
+    createExecutionNativeScriptInvalidWorkflowRunner,
   scriptIntegrityHashMismatch: createScriptIntegrityHashMismatchWorkflowRunner,
   distinctAssetAccumulationLimit: createDistinctAssetAccumulationWorkflowRunner,
 });

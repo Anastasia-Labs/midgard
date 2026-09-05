@@ -88,12 +88,7 @@ describe("typed rejection-reason disposition", () => {
       missingNonInteractiveInstallations(
         Object.keys(WORKFLOW_RUNNER_FACTORIES),
       ),
-    ).toEqual([
-      "ResolvedReferenceScriptMalformed -> nativeScriptDecoding",
-      "ResolvedReferenceScriptNodeLimit -> nativeScriptDecoding",
-      "ResolvedReferenceScriptDepthLimit -> nativeScriptDecoding",
-      "ValueNotPreserved -> valueNotPreserved",
-    ]);
+    ).toEqual(["ValueNotPreserved -> valueNotPreserved"]);
   });
 
   it("lists every omission when a surface lacks a direct category", () => {

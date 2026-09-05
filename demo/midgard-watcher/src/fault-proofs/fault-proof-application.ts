@@ -53,6 +53,7 @@ import {
   createManifestBoundMissingRedeemerWorkflow,
   createManifestBoundMissingScriptSourceWorkflow,
   createManifestBoundMissingSignatureWorkflow,
+  createManifestBoundNativeScriptDecodingWorkflow,
   createManifestBoundNativeScriptInvalidWorkflow,
   createManifestBoundNetworkIdWorkflow,
   createManifestBoundNonExistentInputWorkflow,
@@ -83,6 +84,7 @@ import {
   createMissingRedeemerWorkflowRunner,
   createMissingScriptSourceWorkflowRunner,
   createMissingSignatureWorkflowRunner,
+  createNativeScriptDecodingWorkflowRunner,
   createNativeScriptInvalidWorkflowRunner,
   createNetworkIdWorkflowRunner,
   createNonExistentInputWorkflowRunner,
@@ -151,6 +153,7 @@ import {
   type ManifestBoundMissingRedeemerWorkflowConfig,
   type ManifestBoundMissingScriptSourceWorkflowConfig,
   type ManifestBoundMissingSignatureWorkflowConfig,
+  type ManifestBoundNativeScriptDecodingWorkflowConfig,
   type ManifestBoundNativeScriptInvalidWorkflowConfig,
   type ManifestBoundNetworkIdWorkflowConfig,
   type ManifestBoundNonExistentInputWorkflowConfig,
@@ -180,6 +183,7 @@ import {
   MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
   MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
   MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
   NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -274,6 +278,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "invalidSignature",
   "fabricatedDeposit",
   "fabricatedWithdrawal",
+  "nativeScriptDecoding",
   "missingSignature",
   "missingNativeScriptTx",
   "withdrawnReferenceInput",
@@ -318,7 +323,6 @@ export type WatcherInstalledWorkflowCategory =
 export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([
   "transitionTrace",
   "validationTraceDispute",
-  "nativeScriptDecoding",
   "withdrawalMistag",
   "crossBlockDuplicateEvent",
   "valueNotPreserved",
@@ -496,6 +500,10 @@ type TaggedWorkflowConfig =
   | Readonly<{
       category: "nativeScriptInvalid";
       config: ManifestBoundNativeScriptInvalidWorkflowConfig;
+    }>
+  | Readonly<{
+      category: "nativeScriptDecoding";
+      config: ManifestBoundNativeScriptDecodingWorkflowConfig;
     }>
   | Readonly<{
       category: "missingNativeScriptUtxo";
@@ -784,6 +792,10 @@ const constructProductionWorkflow = async (
       return await createManifestBoundNetworkIdWorkflow(input.config);
     case "nativeScriptInvalid":
       return await createManifestBoundNativeScriptInvalidWorkflow(input.config);
+    case "nativeScriptDecoding":
+      return await createManifestBoundNativeScriptDecodingWorkflow(
+        input.config,
+      );
     case "missingNativeScriptUtxo":
       return await createManifestBoundMissingNativeScriptUtxoWorkflow(
         input.config,
@@ -1326,6 +1338,19 @@ const referenceContracts = (
         pexcludesWithdraw: "pexcludesWithdraw",
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
       });
+    case "nativeScriptDecoding":
+      return Object.freeze({
+        step01: "fraudProofNativeScriptDecoding",
+        step02: "fraudProofNativeScriptDecodingStep02",
+        step03: "fraudProofNativeScriptDecodingStep03OpenSubject",
+        step04: "fraudProofNativeScriptDecodingStep03BindDescriptor",
+        step05: "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+        step06: "fraudProofNativeScriptDecodingStep04",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
     case "missingNativeScriptUtxo":
       return Object.freeze({
         step01: "fraudProofMissingNativeScriptUtxo",
@@ -1863,7 +1888,9 @@ const buildCommonInfrastructure = async ({
       : replayContexts.get(executionInvocation.decisionDigest);
   if (
     executionInvocation.decisionDigest !== undefined &&
-    (category === "nonExistentInput" || category === "noReferenceInput") &&
+    (category === "nonExistentInput" ||
+      category === "noReferenceInput" ||
+      category === "nativeScriptDecoding") &&
     replayContext === undefined
   ) {
     throw new Error(
@@ -2053,6 +2080,10 @@ function taggedConfig(
   category: "nativeScriptInvalid",
   common: CommonInfrastructure,
 ): Extract<TaggedWorkflowConfig, { readonly category: "nativeScriptInvalid" }>;
+function taggedConfig(
+  category: "nativeScriptDecoding",
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "nativeScriptDecoding" }>;
 function taggedConfig(
   category: "missingNativeScriptUtxo",
   common: CommonInfrastructure,
@@ -2685,6 +2716,34 @@ function taggedConfig(
               reference("step03"),
               reference("step04"),
               reference("step05"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+          }),
+        }),
+      });
+    case "nativeScriptDecoding":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          ...(common.replayContext === undefined
+            ? {}
+            : { replayContext: common.replayContext }),
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+              reference("step06"),
             ] as const),
             witnesses: Object.freeze({
               ...baseWitnesses(common.references),
@@ -3418,6 +3477,7 @@ const taggedReferenceOutRefs = (
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
         ];
       case "nativeScriptInvalid":
+      case "nativeScriptDecoding":
       case "missingNativeScriptUtxo":
         return [
           ...tagged.config.referenceScripts.steps,
@@ -3650,6 +3710,7 @@ const WATCHER_INSTALLED_COMPLETE_REPLAY = createCompleteCanonicalReplayUnion([
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
   INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
   MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -3848,6 +3909,9 @@ const createApplication = ({
     category: "nativeScriptInvalid",
   ): TaggedWorkflowLoaderFor<"nativeScriptInvalid">;
   function makeTaggedLoader(
+    category: "nativeScriptDecoding",
+  ): TaggedWorkflowLoaderFor<"nativeScriptDecoding">;
+  function makeTaggedLoader(
     category: "missingNativeScriptUtxo",
   ): TaggedWorkflowLoaderFor<"missingNativeScriptUtxo">;
   function makeTaggedLoader(
@@ -3966,6 +4030,7 @@ const createApplication = ({
     networkId: makeTaggedLoader("networkId"),
     missingNativeScriptUtxo: makeTaggedLoader("missingNativeScriptUtxo"),
     nativeScriptInvalid: makeTaggedLoader("nativeScriptInvalid"),
+    nativeScriptDecoding: makeTaggedLoader("nativeScriptDecoding"),
     minAda: makeTaggedLoader("minAda"),
     fieldPreimageLengthMismatch: makeTaggedLoader(
       "fieldPreimageLengthMismatch",
@@ -4322,6 +4387,20 @@ const createApplication = ({
   ) => {
     const loaded = await taggedLoaders.nativeScriptInvalid(input);
     if (loaded.config.category !== "nativeScriptInvalid") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const nativeScriptDecodingLoader = async (
+    input: Parameters<(typeof taggedLoaders)["nativeScriptDecoding"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.nativeScriptDecoding(input);
+    if (loaded.config.category !== "nativeScriptDecoding") {
       await loaded.close();
       throw new Error("workflow loader changed its fixed category");
     }
@@ -4776,6 +4855,10 @@ const createApplication = ({
     nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner(
       nativeScriptInvalidLoader,
       fundingProfile("nativeScriptInvalid"),
+    ),
+    nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner(
+      nativeScriptDecodingLoader,
+      fundingProfile("nativeScriptDecoding"),
     ),
     minAda: createMinAdaWorkflowRunner(minAdaLoader, fundingProfile("minAda")),
     fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner(

@@ -288,17 +288,12 @@ const workflowAdapterRegistrationRows = [
     requiredClosure:
       "install and exercise the manifest-bound fabricated-withdrawal runner in a compiled application with its public L1 event authority and retained-DA runtime",
   },
-  {
-    category: "nativeScriptDecoding",
-    status: "missing",
-    reason: "one_shot_prover_has_no_pre_submit_journal_hook",
-    existingSurface: [
-      "native-script-decoding/prover.ts",
-      "native-script-decoding/prover-adapters.ts",
-    ],
-    requiredClosure:
-      "emit durable shared-workflow intent before each internal prover transaction; then forward each submitted/confirmed hash into the shared journal",
-  },
+  manual("nativeScriptDecoding", [
+    "native-script-decoding/replay.ts",
+    "native-script-decoding/artifact.ts",
+    "native-script-decoding/workflow.ts",
+    "workflow/runtime.ts#createNativeScriptDecodingWorkflowRunner",
+  ]),
   {
     category: "missingSignature",
     status: "missing",
