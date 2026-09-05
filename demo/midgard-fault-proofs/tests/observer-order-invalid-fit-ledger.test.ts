@@ -24,7 +24,7 @@ const path = new URL(
  * `observer-order-invalid-lifecycle.test.ts` with `MIDGARD_WRITE_FIT_LEDGER=1`.
  */
 const PINNED_BLUEPRINT_SHA256 =
-  "569daa74f2f35c97fcfa3f541a123ca4c7dde3ff113b8fa8dd1bfba8c5499182";
+  "a38795dbcb8ecdfe8548405a133cbda5d233b5016650907d3e701d6e6bd2e78a";
 const PINNED_COMPILER = "aiken v1.1.23+5adf783";
 
 /** The §5.4 aggregate-bound field: 1,092 observers over three chunks. */
