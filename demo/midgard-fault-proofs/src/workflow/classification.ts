@@ -29,6 +29,7 @@ import {
   blockTransactionsFromCanonicalEvidence,
   type CanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
+import { INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID } from "../invalid-signature/wrongful-rejection.js";
 
 export const FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION =
   "midgard-fraud-proof-classification-v1" as const;
@@ -98,7 +99,10 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   },
   {
     category: "invalidSignature",
-    violationIds: [INVALID_SIGNATURE_VIOLATION_ID],
+    violationIds: [
+      INVALID_SIGNATURE_VIOLATION_ID,
+      INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,
+    ],
   },
   {
     category: "fabricatedDeposit",

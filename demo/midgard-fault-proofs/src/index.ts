@@ -28,6 +28,10 @@ export * from "./output-reference-script-decoding/index.js";
 // part of the production package surface.  The CLI and file entrypoints retain
 // the same retirement guard until an authenticated canonical submitter exists.
 export * from "./distinct-asset-accumulation-limit/index.js";
+export * from "./invalid-signature/artifact.js";
+export * from "./invalid-signature/contracts.js";
+export * from "./invalid-signature/submit.js";
+export * from "./invalid-signature/wrongful-rejection.js";
 export * from "./min-fee-forced.js";
 export * from "./min-fee-forced-artifact.js";
 export * from "./mint-declared-asset-limit/index.js";

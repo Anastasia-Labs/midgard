@@ -70,6 +70,7 @@ import {
   scanInputSetUniqueness,
 } from "../input-set-uniqueness/scan.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
+import { detectInvalidSignatureWrongfulRejections } from "../invalid-signature/wrongful-rejection.js";
 import { detectMinFeeForcedReplay } from "../min-fee-forced.js";
 import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset-limit/replay.js";
 import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
@@ -1447,7 +1448,18 @@ export const createMissingNativeScriptUtxoCompleteCanonicalReplay = (
 /** Complete Ed25519 verification of every committed address witness. */
 export const INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["invalidSignature"],
-  detectInvalidSignatures,
+  async (evidence) => [
+    ...(await detectInvalidSignatures(evidence)),
+    ...detectInvalidSignatureWrongfulRejections({ block: evidence }).map(
+      (detection) => ({
+        detectionId: detection.detectionId,
+        headerHash: detection.headerHash,
+        violationId: detection.violationId,
+        position: detection.position,
+        diagnostic: `forced transaction ${detection.transactionId} has no invalid signature at its authenticated rejected coordinate`,
+      }),
+    ),
+  ],
 );
 
 /**

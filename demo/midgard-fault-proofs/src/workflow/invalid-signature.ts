@@ -25,11 +25,24 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
+  admitInvalidSignatureForcedArtifact,
+  INVALID_SIGNATURE_FORCED_ARTIFACT,
+  prepareInvalidSignatureForcedArtifact,
+} from "../invalid-signature/artifact.js";
+import { submitInvalidSignatureStep01Forced } from "../invalid-signature/submit.js";
+import {
+  detectInvalidSignatureWrongfulRejections,
+  INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,
+} from "../invalid-signature/wrongful-rejection.js";
+import {
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
-import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  type ResolvedProverSigner,
+  resolveInvalidSignatureDeploymentContracts,
+} from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import { submitInvalidSignatureStep01 } from "../submit-invalid-signature-step-01.js";
 import { submitInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.js";
@@ -404,6 +417,40 @@ export const admitInvalidSignatureArtifact = (
   });
 };
 
+const admitWorkflowArtifact = async (
+  artifact: JournalJsonObject,
+  owner: string,
+) => {
+  if (artifact.schemaVersion !== INVALID_SIGNATURE_FORCED_ARTIFACT)
+    return { ...admitInvalidSignatureArtifact(artifact, owner), forced: null };
+  const prepared = await admitInvalidSignatureForcedArtifact(artifact);
+  const { evidence } = prepared;
+  return {
+    forced: prepared,
+    artifact: {
+      headerHash: prepared.headerHash,
+      nativeTxCompactCbor: evidence.nativeTxCompactCbor,
+      badWitnessIndex: evidence.witnessIndex,
+      txMembershipProofCbor: "",
+    },
+    inclusion: null,
+    witnessSet: evidence.witnessSet,
+    addressWitnesses: evidence.addressWitnesses,
+    fieldPlan: planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
+      anchorTxId: evidence.subject.transaction_id,
+      nativeTxCompactCbor: evidence.nativeTxCompactCbor,
+      itemCbors: evidence.addressWitnesses.map(
+        encodeMidgardAddressWitnessCanonical,
+      ),
+      owner,
+      witnessSet: evidence.witnessSet,
+      anchorWitnessSetHash: evidence.witnessSetHash,
+      label: "invalid-signature forced artifact",
+    }),
+  };
+};
+
 const selectedIdentity = (
   classification: Extract<
     CanonicalBlockClassification,
@@ -588,7 +635,7 @@ const captureRemoval = async (
 
 const resolveFieldCarriage = async (
   config: BoundConfig,
-  admitted: AdmittedArtifact,
+  admitted: Pick<AdmittedArtifact, "fieldPlan">,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
     lucid: config.lucid,
@@ -625,13 +672,28 @@ const createTransactionPort = (
 ): LinearFamilyTransactionPort<"invalidSignature"> => ({
   portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "invalidSignature",
-  prepare: async ({ evidence, classification }) =>
-    await prepareInvalidSignatureArtifact({
-      evidence,
-      classification,
-    }),
+  prepare: async ({ evidence, classification }) => {
+    if (
+      classification.selected.violationId ===
+      INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID
+    ) {
+      const detected = detectInvalidSignatureWrongfulRejections({
+        block: evidence,
+      })[0];
+      if (
+        classification.category !== "invalidSignature" ||
+        classification.headerHash !== evidence.headerHash ||
+        detected?.detectionId !== classification.selected.detectionId
+      )
+        throw new Error(
+          "invalid-signature forced classification changed authenticated evidence",
+        );
+      return await prepareInvalidSignatureForcedArtifact({ block: evidence });
+    }
+    return await prepareInvalidSignatureArtifact({ evidence, classification });
+  },
   capture: async ({ action, artifact }) => {
-    const admitted = admitInvalidSignatureArtifact(
+    const admitted = await admitWorkflowArtifact(
       artifact,
       config.signer.paymentKeyHash,
     );
@@ -666,6 +728,46 @@ const createTransactionPort = (
       });
     }
     if (input.stage === "step_01") {
+      if (admitted.forced !== null) {
+        const { contracts, invalidSignatureCategory } =
+          await resolveInvalidSignatureDeploymentContracts({
+            blueprint: config.blueprint,
+            deploymentInfo: config.deploymentInfo,
+            network: config.network,
+            requireFraudProofSpend: true,
+          });
+        const forced = admitted.forced;
+        return {
+          transaction: await captureLocallyEvaluatedTransaction(
+            async (preSubmitBoundary) => {
+              await submitInvalidSignatureStep01Forced({
+                lucid: config.lucid,
+                contracts: {
+                  steps: contracts.invalidSignature.steps.map(
+                    (step, index) => ({
+                      ...step,
+                      blueprintTitle: `fraud_proofs/invalid_signature/step_0${index + 1}.main.spend`,
+                      referenceOutRef: `${config.referenceScripts.steps[index]!.txHash}#${config.referenceScripts.steps[index]!.outputIndex}`,
+                    }),
+                  ) as never,
+                  computationThread: contracts.computationThread,
+                  fraudProof: contracts.fraudProof,
+                },
+                categoryId: invalidSignatureCategory.categoryId,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                evidence: forced.evidence,
+                forcedSource: forced.forcedSource,
+                referenceScriptUtxo: config.referenceScripts.steps[0],
+                preSubmitBoundary,
+                awaitConfirmation: false,
+              });
+            },
+          ),
+        };
+      }
+      if (admitted.inclusion === null)
+        throw new Error("invalid-signature accepted inclusion absent");
       const chunks = await resolveDirectFirstProofChunks({
         action,
         lucid: config.lucid,
@@ -686,7 +788,7 @@ const createTransactionPort = (
                 input,
                 "stateQueueBlockOutRef",
               ),
-              txInclusion: admitted.inclusion,
+              txInclusion: admitted.inclusion!,
               badTxWitnessSetCompact: admitted.witnessSet,
               publishedProofChunks: chunks,
               referenceScriptUtxo: config.referenceScripts.steps[0],
@@ -863,13 +965,13 @@ export const createManifestBoundInvalidSignatureWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    requirementForAction: ({ action, artifact }) => {
+    requirementForAction: async ({ action, artifact }) => {
       const input = record(
         action.input,
         "invalid-signature field prerequisite action",
       );
       if (input.stage !== "step_02") return null;
-      const admitted = admitInvalidSignatureArtifact(
+      const admitted = await admitWorkflowArtifact(
         artifact,
         config.signer.paymentKeyHash,
       );
@@ -898,13 +1000,14 @@ export const createManifestBoundInvalidSignatureWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    proofCborForAction: ({ action, artifact }) => {
+    proofCborForAction: async ({ action, artifact }) => {
       const input = record(
         action.input,
         "invalid-signature proof prerequisite action",
       );
-      return input.stage === "step_01"
-        ? admitInvalidSignatureArtifact(artifact, config.signer.paymentKeyHash)
+      return input.stage === "step_01" &&
+        artifact.schemaVersion !== INVALID_SIGNATURE_FORCED_ARTIFACT
+        ? (await admitWorkflowArtifact(artifact, config.signer.paymentKeyHash))
             .artifact.txMembershipProofCbor
         : null;
     },
