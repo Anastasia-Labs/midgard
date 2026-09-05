@@ -27,7 +27,9 @@
 3. `fraud-proofs/spend-input-signer-missing/step-03`
    `(step_04_hash, computation_thread_policy, field_preimage_certificate_policy)`:
    opens the transaction's authenticated field-7 address-witness collection,
-   checks its complete carriage/certificate commitment, and initializes the
+   checks its complete carriage/certificate commitment, asserts that the
+   opened view's item count is authenticated (field 7 is fixed-stride, so no
+   tier hands the scan a provisional §5.1 count), and initializes the
    canonical field-walk checkpoint. No caller-supplied signer frontier enters
    thread state.
 4. `fraud-proofs/spend-input-signer-missing/step-04`
@@ -53,10 +55,16 @@ key, signature, membership proof, or caller-selected reason.
 The fixed field-7 address-witness stride is 103 bytes. The exact maximum field
 therefore contains
 `floor((32,768 - 3) / 103) = 318` witnesses; 319 is refused by the aggregate
-field bound. The maximum run initializes once and performs twenty step-04
-transactions (nineteen 16-item batches and one 14-item suffix). Each step
-re-opens field 7 through direct, published, or certified carriage and resumes
-only from the checkpoint bytes whose digest the preceding transaction stored.
+field bound. That bound is the family's adjacent consensus bound, and it is
+enforced below any lifecycle transaction: the L2 codec refuses to lay out a
+32,860-byte field for carriage, and the door refuses the certified view over
+it (`step_04_refuses_an_adjacent_over_bound_witness_field`). The lifecycle
+suite therefore records no adjacent refusal of its own; the off-chain refusal
+is pinned by the family unit test. The maximum run initializes once and
+performs twenty step-04 transactions (nineteen 16-item batches and one 14-item
+suffix). Each step re-opens field 7 through direct, published, or certified
+carriage and resumes only from the checkpoint bytes whose digest the preceding
+transaction stored.
 
 The prior-ledger credential proof exercises the maximum supported MPF depth and
 both raw-redeemer and published-proof-chunk carriage. Field 0 and field 7 each
@@ -72,6 +80,32 @@ valid signature from the wrong key; checkpoint substitution; skipped batch;
 premature terminal; missing signer under forced wrongful-rejection polarity;
 and present valid signer under accepted polarity. The two honest terminals are
 accepted-plus-missing and forced-exact-reason-plus-present.
+
+Where each negative is pinned:
+
+- Aiken, `fraud_proofs/spend_input_signer_missing/step_03.{..}`: inline and
+  certified frontier initialization; a field-6 certificate presented for
+  field 7; a certificate minted over a substituted preimage; a substituted
+  witness-set anchor; a wrong successor.
+- Aiken, `fraud_proofs/spend_input_signer_missing/step_04.{..}`: the
+  decisive fold (valid signature enters; invalid signature never enters;
+  valid signature from the wrong credential never matches); exhaustion of an
+  invalid witness and of an empty field to `signer_missing = True`; the
+  16-item loop and its resumed suffix; substituted and malformed checkpoint
+  bytes; a premature terminal; a claimed present signer; wrong successors on
+  loop and on terminal; the adjacent 319-witness certified field.
+- Aiken, `midgard/fraud_proofs/spend_input_signer_missing/rule.{..}`: both
+  terminal polarities and the exact forced coordinate.
+- Lucid lifecycle, on the registered chain: both successful directions;
+  cancel from every physical step including the resumed scan; the honest
+  accepted block (a certified 160-witness field whose valid signature is in
+  the tenth batch) refused by the family builder and by the generic
+  finalizer; the honest forced rejection (a valid signature from the wrong
+  key beside the right key with an invalid signature) refused the same way;
+  a substituted transactions root, a substituted prior-output descriptor, a
+  certificate honestly minted over another transaction's witness field, a
+  substituted forced leaf, an out-of-range spend coordinate, and a shifted
+  forced reason coordinate.
 
 ## Reachability boundary
 
@@ -101,3 +135,11 @@ Acceptance requires signed bytes `<= 16,384`, memory `<= 16,500,000`, and CPU
 `<= 10,000,000,000`; reference publication additionally targets
 `<= 15,872` bytes. Every margin must be positive and the ledger test must
 reproduce the artifact from the lifecycle measurements.
+
+The ledger is written by the lifecycle suite itself
+(`MIDGARD_UPDATE_FIT=1 vitest run tests/spend-input-signer-missing-lifecycle.test.ts`)
+from the transactions it submitted, never transcribed by hand, and it is bound
+to the SHA-256 of the `plutus.json` the suite ran against. The fit-ledger test
+re-derives every margin from the stored raw measurements, checks the stored
+digest against the blueprint on disk, and pins the row names of the maximum
+shape, the cancel sweep, and every applied-script publication.

@@ -1,4 +1,10 @@
-import { createPrivateKey, createPublicKey, sign } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  sign,
+} from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
@@ -13,31 +19,60 @@ import {
   encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
   EMPTY_MERKLE_TREE_ROOT,
+  type FieldOpening,
   forcedVerdictSubject,
   hashBlockHeader,
+  missingSignatureFieldWalkCheckpoint,
   missingSignatureVkeyHash,
   Proof,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import {
+  certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "../src/field-opening.js";
+import {
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
+} from "../src/linear-fault-family.js";
+import { submitLinearFaultFinalize } from "../src/linear-fault-finalize.js";
+import { submitLinearFaultContinue } from "../src/linear-fault-submit.js";
+import {
+  buildVanRossemFitLedger,
+  type VanRossemFitMeasurement,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { planSpendInputSignerWitnessOpening } from "../src/spend-input-signer-missing/field-plans.js";
 import {
   applySpendInputSignerMissingScripts,
+  classifySpendInputSignerMissingFinding,
   prepareSpendInputSignerMissingEvidence,
   SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
   SPEND_INPUT_SIGNER_MISSING_ID,
   type SpendInputSignerMissingContracts,
+  type SpendInputSignerMissingEvidence,
   submitSpendInputSignerMissingCancel,
   submitSpendInputSignerMissingStep01Accepted,
   submitSpendInputSignerMissingStep01Forced,
@@ -46,12 +81,25 @@ import {
   submitSpendInputSignerMissingStep04,
   submitSpendInputSignerMissingStep05,
 } from "../src/spend-input-signer-missing/index.js";
-import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import {
+  SpendInputSignerStep03RedeemerSchema,
+  SpendInputSignerStep04DatumSchema,
+  SpendInputSignerStep05RedeemerSchema,
+} from "../src/spend-input-signer-missing/schemas.js";
+import {
+  nativeTxFromCoreCompact,
+  type SubmitStep01TxInclusion,
+} from "../src/submit-step-01.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { computationThreadOutputPredicate } from "../src/tx-layout.js";
+import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
+import {
+  l2TransactionSourceCbor,
+  makeNativeTx,
+} from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
   expectRegisteredChainParity,
@@ -69,22 +117,198 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   makeHeader,
-  makeNativeTx,
   publishRemovalReferenceScripts,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
+const FAMILY = "spend-input-signer-missing" as const;
+const REASON = "SpendInputSignerMissing" as const;
+const MAXIMUM_WITNESSES = 318;
+const MAXIMUM_SHAPE =
+  "318 address witnesses; 32,757-byte Certified field; 16-witness scan batches";
+/**
+ * The smallest witness field the honest refusal run needs so that field 7
+ * rides tier-3 certified carriage: 160 witnesses encode to 16,483 bytes, past
+ * the raw-carriage bound, and the valid signature sits in the last batch so
+ * the scan resumes nine times before it terminates.
+ */
+const HONEST_ACCEPTED_WITNESSES = 160;
+const AUTHENTICATION_SEAMS = [
+  "tx_membership",
+  "prior_output_membership",
+  "field_certificate",
+  "forced_leaf",
+] as const;
+const PHYSICAL_STEPS = [
+  "step-01",
+  "step-02",
+  "step-03",
+  "step-04",
+  "step-05",
+] as const;
+
+/**
+ * Asserts that a submission was refused by a validator during local UPLC
+ * evaluation, not by a builder precondition. Lucid's default evaluator reports
+ * `failed script execution`; the scalus evaluator this suite runs under
+ * reports the evaluation error together with the budget spent before the
+ * abort. Anything else is a non-validator failure and fails the test.
+ */
+const expectRefusedOnChain = async (
+  build: () => Promise<unknown>,
+): Promise<string> => {
+  let failure: unknown;
+  try {
+    await build();
+  } catch (error) {
+    failure = error;
+  }
+  if (failure === undefined)
+    throw new Error(
+      "expected the validator to refuse this transaction, but it succeeded",
+    );
+  const text = failure instanceof Error ? failure.message : String(failure);
+  if (!/failed script execution|Error evaluated at/u.test(text))
+    throw new Error(
+      `expected an on-chain validator refusal, got a non-validator failure: ${text}`,
+    );
+  return text;
+};
+
 const coverage = createLifecycleCoverageRecorder();
+/** Every submitted transaction of the maximum and adjacent runs, by name. */
+const measurements: VanRossemFitMeasurement[] = [];
+
+type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
+type Captured = Awaited<ReturnType<typeof captureEmulatorSubmission>>;
+type Family = Awaited<ReturnType<typeof registeredContracts>>;
+
+const recordMeasurements = (
+  name: string,
+  kind: VanRossemFitMeasurement["kind"],
+  maximumShape: string,
+  captured: Captured,
+): void => {
+  captured.measurements.forEach((measurement, index) => {
+    const measurementName =
+      captured.measurements.length === 1
+        ? name
+        : `${name}-${index.toString().padStart(2, "0")}`;
+    expect(measurement.l1ByteMargin, measurementName).toBeGreaterThan(0);
+    measurements.push({
+      name: measurementName,
+      kind,
+      maximumShape,
+      signedBytes: measurement.completeSignedBytes,
+      memoryUnits: measurement.executionMemory,
+      cpuUnits: measurement.executionSteps,
+    });
+  });
+};
+
+const ed25519Keypair = (seedByte: number) => {
+  const privateKey = createPrivateKey({
+    key: Buffer.concat([
+      Buffer.from("302e020100300506032b657004220420", "hex"),
+      Buffer.alloc(32, seedByte),
+    ]),
+    format: "der",
+    type: "pkcs8",
+  });
+  const verificationKey = createPublicKey(privateKey)
+    .export({ format: "der", type: "spki" })
+    .subarray(-32);
+  return {
+    privateKey,
+    verificationKey,
+    keyHash: missingSignatureVkeyHash(verificationKey.toString("hex")),
+  };
+};
+
+/** A witness whose signature cannot verify over any transaction id. */
+const garbageWitness = (index: number): Buffer => {
+  const verificationKey = Buffer.alloc(32);
+  verificationKey.writeUInt32BE(index + 1, 28);
+  return encodeMidgardAddressWitnessItem({
+    verificationKey,
+    signature: Buffer.alloc(64, 0xff),
+  });
+};
+
+const priorLedgerFor = async (
+  paymentCredentialHex: string,
+  priorTxId: string,
+) => {
+  const priorOutput = encodeMidgardTxOutput({
+    address: Buffer.concat([
+      Buffer.from([0x60]),
+      Buffer.from(paymentCredentialHex, "hex"),
+    ]),
+    value: { lovelace: 2_000_000n, assets: new Map() },
+  });
+  const outRefBytes = encodeMidgardSpendInputItem({
+    txId: Buffer.from(priorTxId, "hex"),
+    outputIndex: 0,
+  });
+  const outputMaterial = buildCanonicalMidgardLedgerOutputMaterial({
+    outputIndex: 0,
+    outputCbor: priorOutput,
+  });
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  await trie.insert(outRefBytes, outputMaterial.descriptorCbor);
+  const proof = await trie.prove(outRefBytes);
+  const priorRoot = Buffer.from(trie.hash).toString("hex");
+  return {
+    outRefBytes,
+    priorRoot,
+    resolved: {
+      priorRoot,
+      transactionId: priorTxId,
+      outputIndex: 0,
+      descriptorCborHex: outputMaterial.descriptorCbor.toString("hex"),
+      outputCborHex: priorOutput.toString("hex"),
+      membershipProofCborHex: proof.toCBOR().toString("hex"),
+      membershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
+    },
+  };
+};
+
+/** Signs the body-only transaction id with `keypair` and rebuilds the
+ * transaction with the given witness items in field 7. */
+const signedNativeTx = ({
+  outRefBytes,
+  fee,
+  witnesses,
+}: {
+  readonly outRefBytes: Buffer;
+  readonly fee: bigint;
+  readonly witnesses: (txId: Buffer) => readonly Buffer[];
+}): MidgardNativeTxFull => {
+  const unsigned = makeNativeTx({ spendInputCbors: [outRefBytes], fee });
+  const txId = computeMidgardNativeTxId(unsigned);
+  const nativeTx = makeNativeTx({
+    spendInputCbors: [outRefBytes],
+    fee,
+    addrTxWitsPreimageCbor: encodeCbor([...witnesses(txId)]),
+  });
+  expect(computeMidgardNativeTxId(nativeTx)).toEqual(txId);
+  return nativeTx;
+};
+
+const witnessSetCompactHex = (nativeTx: MidgardNativeTxFull): string =>
+  encodeMidgardNativeTxWitnessSetCompact(
+    deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
+  ).toString("hex");
 
 /**
  * The registered chain is the deployed identity: the harness folds its first
  * step into the catalogue root. The family-side application must reproduce it
  * step for step before the suite drives it.
  */
-const registeredContracts = async (
-  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
-) => {
+const registeredContracts = async (harness: Harness) => {
   const addressData = await Effect.runPromise(
     addressDataFromBech32(
       harness.contracts.fraudProof.spendingScriptAddress,
@@ -125,150 +349,596 @@ const registeredContracts = async (
   return { steps, contracts, catalogue: harness.catalogue, category };
 };
 
-describe("spendInputSignerMissing registered-chain lifecycle", () => {
-  it("runs the accepted 318-witness maximum from Init through proof mint", async () => {
-    const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: {
-        realSpendInputSignerMissing: true,
-        alwaysFraudProofCatalogue: true,
-      },
-      lucidOptions: { evaluator: createScalusEvaluator() },
-    });
-    const { steps, contracts, catalogue, category } =
-      await registeredContracts(harness);
+const newHarness = async () =>
+  makeFaultProofEmulatorHarness({
+    contractOptions: {
+      realSpendInputSignerMissing: true,
+      alwaysFraudProofCatalogue: true,
+    },
+    lucidOptions: { evaluator: createScalusEvaluator() },
+  });
 
-    const paymentCredential = Buffer.alloc(28, 0x51);
-    const priorOutput = encodeMidgardTxOutput({
-      address: Buffer.concat([Buffer.from([0x60]), paymentCredential]),
-      value: { lovelace: 2_000_000n, assets: new Map() },
-    });
-    const priorTxId = "ab".repeat(32);
-    const outRefBytes = encodeMidgardSpendInputItem({
-      txId: Buffer.from(priorTxId, "hex"),
-      outputIndex: 0,
-    });
-    const outputMaterial = buildCanonicalMidgardLedgerOutputMaterial({
-      outputIndex: 0,
-      outputCbor: priorOutput,
-    });
-    const priorStore = new Store(undefined);
-    await priorStore.ready();
-    const priorTrie = new Trie(priorStore);
-    await priorTrie.insert(outRefBytes, outputMaterial.descriptorCbor);
-    const priorProof = await priorTrie.prove(outRefBytes);
-    const priorRoot = Buffer.from(priorTrie.hash).toString("hex");
-    const witnessPreimage = encodeCbor(
-      Array.from({ length: 318 }, (_unused, index) => {
-        const verificationKey = Buffer.alloc(32);
-        verificationKey.writeUInt32BE(index + 1, 28);
-        return encodeMidgardAddressWitnessItem({
-          verificationKey,
-          signature: Buffer.alloc(64, 0xff),
-        });
+/** Publishes the five applied steps and the certificate mint as plain
+ * reference scripts; measured only for the maximum run's ledger. */
+const publishReferences = async (
+  harness: Harness,
+  family: Family,
+  label: string,
+  measure: boolean,
+) => {
+  const references: UTxO[] = [];
+  for (const [index, step] of family.steps.entries()) {
+    const captured = await captureEmulatorSubmission(harness.emulator, () =>
+      publishPlainReferenceScriptUtxo({
+        lucid: harness.funderLucid,
+        script: step.spendingScript,
+        label: `${label}-${index.toString()}`,
       }),
     );
-    const nativeTx = makeNativeTx({
-      spendInputCbors: [outRefBytes],
-      fee: 7n,
-      addrTxWitsPreimageCbor: witnessPreimage,
-    });
-    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
-    const witnessSetCompactCbor = encodeMidgardNativeTxWitnessSetCompact(
-      deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
-    ).toString("hex");
-    const sourceCbor = l2TransactionSourceCborV1(nativeTx);
-    const txStore = new Store(undefined);
-    await txStore.ready();
-    const txTrie = new Trie(txStore);
-    await txTrie.insert(
-      Buffer.from(nativeTxId, "hex"),
-      Buffer.from(sourceCbor, "hex"),
-    );
-    const txProof = await txTrie.prove(Buffer.from(nativeTxId, "hex"));
-    const transactionsRoot = Buffer.from(txTrie.hash).toString("hex");
-    const txInclusion = {
-      nativeTxId,
-      nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
-      nativeTxCompactCbor: compactCbor.toString("hex"),
-      l2TransactionSourceCbor: sourceCbor,
-      transactionsPhasRoot: transactionsRoot,
-      txMembershipProof: Data.from(txProof.toCBOR().toString("hex"), Proof),
-      txMembershipProofCbor: txProof.toCBOR().toString("hex"),
-    };
-    const predecessor = await setupFraudulentBlock({
-      funderLucid: harness.funderLucid,
-      emulator: harness.emulator,
-      contracts: harness.contracts,
-      catalogue,
-      fixture: {
-        transactionsRoot,
-        l2TransactionCount: 1n,
-        utxosRoot: priorRoot,
-        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-      },
-    });
-    const targetHeader = {
-      ...makeHeader(
-        predecessor.header.operatorVkey,
-        emulatorSuccessorHeaderStart({
-          predecessorEndTime: predecessor.header.endTime,
-          emulator: harness.emulator,
-        }),
-        await countedTransactionsRoot(transactionsRoot, 1n),
-        1n,
-      ),
-      prevHeaderHash: predecessor.headerHash,
-      prevUtxosRoot: priorRoot,
-    };
-    const target = await submitSuccessorBlockTx({
-      lucid: harness.funderLucid,
-      emulator: harness.emulator,
-      contracts: harness.contracts,
-      anchorBlockUnit: predecessor.stateQueueBlockUnit,
-      header: targetHeader,
-      hubOracle: predecessor.hubOracle,
-      scheduler: predecessor.scheduler,
-      activeOperatorNode: predecessor.activeOperatorNode,
-      activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
-    });
-    const evidence = prepareSpendInputSignerMissingEvidence({
-      subject: acceptedVerdictSubject(nativeTxId),
-      inputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
-      resolved: {
-        priorRoot,
-        transactionId: priorTxId,
-        outputIndex: 0,
-        descriptorCborHex: outputMaterial.descriptorCbor.toString("hex"),
-        outputCborHex: priorOutput.toString("hex"),
-        membershipProofCborHex: priorProof.toCBOR().toString("hex"),
-        membershipProof: Data.from(priorProof.toCBOR().toString("hex"), Proof),
-      },
-    });
-    expect(evidence.witnessCarriage).toBe("Certified");
-    coverage.scenario("maximum_supported_evidence");
-
-    const references: UTxO[] = [];
-    for (const [index, step] of steps.entries()) {
-      references.push(
-        (
-          await publishPlainReferenceScriptUtxo({
-            lucid: harness.funderLucid,
-            script: step.spendingScript,
-            label: `spend-input-signer-missing-${index.toString()}`,
-          })
-        ).utxo,
+    if (measure)
+      recordMeasurements(
+        `step0${(index + 1).toString()}-reference-publication`,
+        "publication",
+        "fully applied testnet validator",
+        captured,
       );
-    }
-    const certificateReference = (
-      await publishPlainReferenceScriptUtxo({
+    references.push(captured.result.utxo);
+  }
+  const certificateCaptured = await captureEmulatorSubmission(
+    harness.emulator,
+    () =>
+      publishPlainReferenceScriptUtxo({
         lucid: harness.funderLucid,
         script: harness.contracts.fieldPreimageCertificate.mintingScript,
-        label: "spend-input-signer-missing-certificate",
-      })
-    ).utxo;
-    const cancellationMeasurements: [string, unknown][] = [];
+        label: `${label}-certificate`,
+      }),
+  );
+  if (measure)
+    recordMeasurements(
+      "certificate-reference-publication",
+      "publication",
+      "field-preimage certificate mint",
+      certificateCaptured,
+    );
+  return {
+    references,
+    certificateReference: certificateCaptured.result.utxo,
+  };
+};
+
+/** Commits `nativeTx` as the single transaction of an accepted successor block
+ * whose header names `priorRoot` as its previous UTxO root. */
+const commitAcceptedBlock = async (
+  harness: Harness,
+  family: Family,
+  nativeTx: MidgardNativeTxFull,
+  priorRoot: string,
+) => {
+  const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact).toString(
+    "hex",
+  );
+  const sourceCbor = l2TransactionSourceCbor(nativeTx);
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  await trie.insert(
+    Buffer.from(nativeTxId, "hex"),
+    Buffer.from(sourceCbor, "hex"),
+  );
+  const txProof = await trie.prove(Buffer.from(nativeTxId, "hex"));
+  const transactionsRoot = Buffer.from(trie.hash).toString("hex");
+  const txInclusion: SubmitStep01TxInclusion = {
+    nativeTxId,
+    nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
+    nativeTxCompactCbor: compactCbor,
+    l2TransactionSourceCbor: sourceCbor,
+    transactionsPhasRoot: transactionsRoot,
+    txMembershipProof: Data.from(txProof.toCBOR().toString("hex"), Proof),
+    txMembershipProofCbor: txProof.toCBOR().toString("hex"),
+  };
+  const predecessor = await setupFraudulentBlock({
+    funderLucid: harness.funderLucid,
+    emulator: harness.emulator,
+    contracts: harness.contracts,
+    catalogue: family.catalogue,
+    fixture: {
+      transactionsRoot,
+      l2TransactionCount: 1n,
+      utxosRoot: priorRoot,
+      headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+    },
+  });
+  const header = {
+    ...makeHeader(
+      predecessor.header.operatorVkey,
+      emulatorSuccessorHeaderStart({
+        predecessorEndTime: predecessor.header.endTime,
+        emulator: harness.emulator,
+      }),
+      await countedTransactionsRoot(transactionsRoot, 1n),
+      1n,
+    ),
+    prevHeaderHash: predecessor.headerHash,
+    prevUtxosRoot: priorRoot,
+  };
+  const target = await submitSuccessorBlockTx({
+    lucid: harness.funderLucid,
+    emulator: harness.emulator,
+    contracts: harness.contracts,
+    anchorBlockUnit: predecessor.stateQueueBlockUnit,
+    header,
+    hubOracle: predecessor.hubOracle,
+    scheduler: predecessor.scheduler,
+    activeOperatorNode: predecessor.activeOperatorNode,
+    activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
+  });
+  return {
+    nativeTxId,
+    compactCbor,
+    witnessSetCompactCbor: witnessSetCompactHex(nativeTx),
+    txInclusion,
+    blockOutRef: target.successorOutRef,
+    headerHash: target.successorHeaderHash,
+  };
+};
+
+/** Commits `nativeTx` as a forced transaction the operator rejected with
+ * `reason`, in a successor block whose header names `priorRoot`. */
+const commitForcedBlock = async (
+  harness: Harness,
+  family: Family,
+  nativeTx: MidgardNativeTxFull,
+  priorRoot: string,
+  reason: {
+    readonly SpendInputSignerMissing: { readonly input_index: bigint };
+  },
+  sourceKeyByte: string,
+) => {
+  const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const proofSource = deriveMidgardNativeTxProofSource(
+    adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
+  );
+  const sourceKey = transitionTraceOutRef(sourceKeyByte);
+  const predecessor = await setupFraudulentBlock({
+    funderLucid: harness.funderLucid,
+    emulator: harness.emulator,
+    contracts: harness.contracts,
+    catalogue: family.catalogue,
+    fixture: {
+      transactionsRoot: EMPTY_MERKLE_TREE_ROOT,
+      l2TransactionCount: 0n,
+      utxosRoot: priorRoot,
+      headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+    },
+  });
+  const forcedBlock = await buildDecodingBlockFixture({
+    operatorVkey: predecessor.header.operatorVkey,
+    startTime: BigInt(
+      emulatorSuccessorHeaderStart({
+        predecessorEndTime: predecessor.header.endTime,
+        emulator: harness.emulator,
+      }),
+    ),
+    priorLedgerRoot: priorRoot,
+    subject: {
+      kind: "forced",
+      nativeTx,
+      orderKey: sourceKey,
+      verdict: { ForcedTxInvalid: { reason } },
+    },
+  });
+  const membership = await buildForcedTransactionLeafMembershipProof({
+    reconstruction: forcedBlock.reconstruction,
+    eventKey: { ForcedTransactionEventKey: { tx_order_id: sourceKey } },
+  });
+  const header = {
+    ...forcedBlock.header,
+    prevUtxosRoot: priorRoot,
+    utxosRoot: priorRoot,
+    prevHeaderHash: predecessor.headerHash,
+  };
+  const setup = await submitSuccessorBlockTx({
+    lucid: harness.funderLucid,
+    emulator: harness.emulator,
+    contracts: harness.contracts,
+    anchorBlockUnit: predecessor.stateQueueBlockUnit,
+    header,
+    hubOracle: predecessor.hubOracle,
+    scheduler: predecessor.scheduler,
+    activeOperatorNode: predecessor.activeOperatorNode,
+    activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
+  });
+  expect(setup.successorHeaderHash).toBe(
+    await Effect.runPromise(hashBlockHeader(header)),
+  );
+  return {
+    nativeTxId,
+    sourceKey,
+    subject: forcedVerdictSubject({
+      transactionId: nativeTxId,
+      sourceKey,
+      rejectionReason: reason,
+    }),
+    compactCbor: proofSource.compactCbor.toString("hex"),
+    witnessSetCompactCbor: proofSource.witnessSetCompactCbor.toString("hex"),
+    forcedSource: { header, membership, direction: 1n },
+    membership,
+    blockOutRef: setup.successorOutRef,
+    headerHash: setup.successorHeaderHash,
+  };
+};
+
+/** Thin step drivers over one harness, family, and reference set. */
+const familyDriver = (
+  harness: Harness,
+  family: Family,
+  references: readonly UTxO[],
+  certificateReference: UTxO,
+) => {
+  const { contracts, category } = family;
+  const lucid = harness.proverLucid;
+  const signer = harness.proverSigner;
+  const categoryId = category.categoryId;
+  const init = (blockOutRef: string) =>
+    submitCommittedFieldShapeInit({
+      lucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: contracts as never,
+      category,
+      catalogue: {
+        policyId: harness.contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: family.catalogue.root,
+      },
+      signer,
+      fraudulentBlockOutRef: blockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+  const initThread = async (blockOutRef: string) => {
+    const result = await init(blockOutRef);
+    return {
+      result,
+      threadOutRef: `${result.txHash}#${result.firstStepOutputIndex.toString()}`,
+    };
+  };
+  const threadUtxoAt = async (threadOutRef: string) => {
+    const [txHash, outputIndex] = threadOutRef.split("#");
+    const [utxo] = await lucid.utxosByOutRef([
+      { txHash: txHash!, outputIndex: Number(outputIndex) },
+    ]);
+    if (utxo === undefined) throw new Error(`thread ${threadOutRef} absent`);
+    return utxo;
+  };
+  const step01Accepted = async (
+    thread: Awaited<ReturnType<typeof initThread>>,
+    evidence: SpendInputSignerMissingEvidence,
+    blockOutRef: string,
+    txInclusion: SubmitStep01TxInclusion,
+  ) =>
+    submitSpendInputSignerMissingStep01Accepted({
+      lucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts,
+      signer,
+      evidence,
+      threadUtxo: await threadUtxoAt(thread.threadOutRef),
+      threadToken: {
+        unit: thread.result.computationThreadUnit,
+        fraudulentHeaderHash: thread.result.fraudulentHeaderHash,
+      },
+      stateQueueBlockOutRef: blockOutRef,
+      txInclusion,
+      referenceScriptUtxo: references[0]!,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+  const step01Forced = (
+    threadOutRef: string,
+    evidence: SpendInputSignerMissingEvidence,
+    forcedSource: Readonly<Record<string, unknown>>,
+  ) =>
+    submitSpendInputSignerMissingStep01Forced({
+      lucid,
+      contracts,
+      categoryId,
+      signer,
+      threadOutRef,
+      evidence,
+      forcedSource,
+      referenceScriptUtxo: references[0]!,
+    });
+  const step02 = (
+    threadOutRef: string,
+    evidence: SpendInputSignerMissingEvidence,
+    nativeTxCompactCbor: string,
+    witnessSetCompactCbor: string,
+  ) =>
+    submitSpendInputSignerMissingStep02({
+      lucid,
+      network,
+      contracts,
+      categoryId,
+      signer,
+      threadOutRef,
+      evidence,
+      nativeTxCompactCbor,
+      witnessSetCompactCbor,
+      referenceScriptUtxo: references[1]!,
+      membershipReferenceScriptUtxo:
+        harness.witnessReferenceScripts.phasMembershipWithdraw!,
+    });
+  const step03 = (
+    threadOutRef: string,
+    evidence: SpendInputSignerMissingEvidence,
+    nativeTxCompactCbor: string,
+    witnessSetCompactCbor: string,
+  ) =>
+    submitSpendInputSignerMissingStep03({
+      lucid,
+      network,
+      contracts,
+      categoryId,
+      signer,
+      threadOutRef,
+      evidence,
+      nativeTxCompactCbor,
+      witnessSetCompactCbor,
+      referenceScriptUtxo: references[2]!,
+      certificateReferenceScriptUtxo: certificateReference,
+    });
+  const step04 = (
+    threadOutRef: string,
+    evidence: SpendInputSignerMissingEvidence,
+    nativeTxCompactCbor: string,
+    witnessSetCompactCbor: string,
+  ) =>
+    submitSpendInputSignerMissingStep04({
+      lucid,
+      network,
+      contracts,
+      categoryId,
+      signer,
+      threadOutRef,
+      evidence,
+      nativeTxCompactCbor,
+      witnessSetCompactCbor,
+      referenceScriptUtxo: references[3]!,
+      certificateReferenceScriptUtxo: certificateReference,
+    });
+  const step05 = (
+    threadOutRef: string,
+    evidence: SpendInputSignerMissingEvidence,
+  ) =>
+    submitSpendInputSignerMissingStep05({
+      lucid,
+      contracts,
+      categoryId,
+      signer,
+      threadOutRef,
+      evidence,
+      referenceScriptUtxo: references[4]!,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+  const cancel = (threadOutRef: string, stepIndex: number) =>
+    submitSpendInputSignerMissingCancel({
+      lucid,
+      contracts,
+      categoryId,
+      signer,
+      threadOutRef,
+      referenceScriptUtxo: references[stepIndex]!,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+  /**
+   * The generic finalizer over a step-05 thread, with no family evidence in
+   * the way: this is what an honest terminal has to be refused by, on chain.
+   */
+  const finalizeDirect = async (threadOutRef: string) => {
+    const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+      lucid,
+      contracts,
+      categoryId,
+      family: FAMILY,
+      stepIndex: 4,
+      threadOutRef,
+    });
+    return submitLinearFaultFinalize({
+      lucid,
+      family: FAMILY,
+      stepIndex: 4,
+      step: contracts.steps[4],
+      computationThread: contracts.computationThread,
+      fraudProof: contracts.fraudProof,
+      signer,
+      threadUtxo,
+      threadToken,
+      spendRedeemerSchema: SpendInputSignerStep05RedeemerSchema,
+      buildFamilyArgs: ({
+        inputIndex,
+        outputIndex,
+        fraudProofMintRedeemerIndex,
+      }) => ({
+        input_index: inputIndex,
+        output_index: outputIndex,
+        fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
+      }),
+      referenceScriptUtxo: references[4]!,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+      awaitConfirmation: true,
+    });
+  };
+  /** Runs step 04 to its terminal, returning every capture. */
+  const scanToTerminal = async (
+    threadOutRef: string,
+    evidence: SpendInputSignerMissingEvidence,
+    nativeTxCompactCbor: string,
+    witnessSetCompactCbor: string,
+  ) => {
+    const scans: Captured[] = [];
+    let outRef = threadOutRef;
+    for (;;) {
+      const scan = await captureEmulatorSubmission(harness.emulator, () =>
+        step04(outRef, evidence, nativeTxCompactCbor, witnessSetCompactCbor),
+      );
+      scans.push(scan);
+      outRef = scan.result.nextThreadOutRef;
+      if (scan.result.stage === "step05") break;
+    }
+    return { scans, threadOutRef: outRef };
+  };
+  const removal = async (headerHash: string) => {
+    const removalReferences = await publishRemovalReferenceScripts({
+      lucid,
+      contracts: harness.contracts,
+    });
+    // A registered family resolves removal through the canonical catalogue:
+    // the manifest's fraudProofSpendInputSignerMissing entries carry the
+    // registered chain the harness built.
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      harness.contracts,
+      family.catalogue,
+      { removalReferenceScripts: removalReferences.published },
+    );
+    const now = BigInt(harness.emulator.now());
+    return captureEmulatorSubmission(harness.emulator, () =>
+      submitRemoveFraudulentBlock({
+        lucid,
+        blueprint: harness.realBlueprint,
+        deploymentInfo,
+        network,
+        signer,
+        fraudCategory: "spendInputSignerMissing",
+        fraudulentHeaderHash: headerHash,
+        requireReferenceScripts: true,
+        awaitConfirmation: true,
+        validFrom: now > 120_000n ? now - 120_000n : 0n,
+        validTo: now + 300_000n,
+      }),
+    );
+  };
+  return {
+    initThread,
+    step01Accepted,
+    step01Forced,
+    step02,
+    step03,
+    step04,
+    step05,
+    cancel,
+    finalizeDirect,
+    scanToTerminal,
+    removal,
+  };
+};
+
+describe("spendInputSignerMissing registered-chain lifecycle", () => {
+  it("runs the accepted 318-witness maximum from Init through proof mint, cancelling every physical step", async () => {
+    const harness = await newHarness();
+    const family = await registeredContracts(harness);
+    const paymentCredential = Buffer.alloc(28, 0x51).toString("hex");
+    const prior = await priorLedgerFor(paymentCredential, "ab".repeat(32));
+    const nativeTx = makeNativeTx({
+      spendInputCbors: [prior.outRefBytes],
+      fee: 7n,
+      addrTxWitsPreimageCbor: encodeCbor(
+        Array.from({ length: MAXIMUM_WITNESSES }, (_unused, index) =>
+          garbageWitness(index),
+        ),
+      ),
+    });
+    const block = await commitAcceptedBlock(
+      harness,
+      family,
+      nativeTx,
+      prior.priorRoot,
+    );
+    const evidence = prepareSpendInputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(block.nativeTxId),
+      inputIndex: 0,
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+      resolved: prior.resolved,
+    });
+    expect(evidence.witnessCarriage).toBe("Certified");
+    expect(evidence.checkpoints).toHaveLength(20);
+    coverage.scenario("maximum_supported_evidence");
+
+    const { references, certificateReference } = await publishReferences(
+      harness,
+      family,
+      FAMILY,
+      true,
+    );
+    const run = familyDriver(harness, family, references, certificateReference);
+    const measured = async <T>(
+      name: string,
+      operation: () => Promise<T>,
+    ): Promise<T> => {
+      const captured = await captureEmulatorSubmission(
+        harness.emulator,
+        operation,
+      );
+      recordMeasurements(name, "lifecycle", MAXIMUM_SHAPE, captured);
+      return captured.result;
+    };
+
+    const thread = await measured("accepted-init", () =>
+      run.initThread(block.blockOutRef),
+    );
+    const step01 = await measured("accepted-step01", () =>
+      run.step01Accepted(
+        thread,
+        evidence,
+        block.blockOutRef,
+        block.txInclusion,
+      ),
+    );
+    const step02 = await measured("accepted-step02", () =>
+      run.step02(
+        step01.nextThreadOutRef,
+        evidence,
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    const step03 = await measured("accepted-step03", () =>
+      run.step03(
+        step02.nextThreadOutRef,
+        evidence,
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    const { scans, threadOutRef } = await run.scanToTerminal(
+      step03.nextThreadOutRef,
+      evidence,
+      block.compactCbor,
+      block.witnessSetCompactCbor,
+    );
+    expect(scans).toHaveLength(20);
+    scans.forEach((scan, index) =>
+      recordMeasurements(
+        `accepted-step04-${index.toString().padStart(2, "0")}`,
+        "lifecycle",
+        MAXIMUM_SHAPE,
+        scan,
+      ),
+    );
+    // Nineteen resumptions from nothing but the checkpoint digest the previous
+    // transaction committed and the redeemer's re-supplied checkpoint bytes.
+    coverage.resumed();
+    const step05 = await measured("accepted-step05-proof-mint", () =>
+      run.step05(threadOutRef, evidence),
+    );
+    expect(step05.fraudProofUnit).toBeTruthy();
+    coverage.reason(REASON, "accepted_invalid");
+    coverage.scenario("wrongful_acceptance_success");
+
+    // Cancel from every physical step, including the resumed scan position,
+    // on fresh threads over the same block. The chunks the maximum run
+    // published above are reused, so only the cancels themselves are measured.
     for (const cancelTarget of [
       "step01",
       "step02",
@@ -277,68 +947,26 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       "step04-resumed",
       "step05",
     ] as const) {
-      const cancelInit = await submitCommittedFieldShapeInit({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: contracts as never,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: target.successorOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      });
-      let cancelThreadOutRef = `${cancelInit.txHash}#${cancelInit.firstStepOutputIndex.toString()}`;
+      const thread = await run.initThread(block.blockOutRef);
+      let outRef = thread.threadOutRef;
       if (cancelTarget !== "step01") {
-        const [cancelThreadUtxo] = await harness.proverLucid.utxosByOutRef([
-          {
-            txHash: cancelInit.txHash,
-            outputIndex: cancelInit.firstStepOutputIndex,
-          },
-        ]);
-        if (cancelThreadUtxo === undefined)
-          throw new Error("cancel step01 thread absent");
-        cancelThreadOutRef = (
-          await submitSpendInputSignerMissingStep01Accepted({
-            lucid: harness.proverLucid,
-            blueprint: harness.realBlueprint,
-            network,
-            contracts,
-            signer: harness.proverSigner,
+        outRef = (
+          await run.step01Accepted(
+            thread,
             evidence,
-            threadUtxo: cancelThreadUtxo,
-            threadToken: {
-              unit: cancelInit.computationThreadUnit,
-              fraudulentHeaderHash: cancelInit.fraudulentHeaderHash,
-            },
-            stateQueueBlockOutRef: target.successorOutRef,
-            txInclusion,
-            referenceScriptUtxo: references[0]!,
-            witnessReferenceScripts: harness.witnessReferenceScripts,
-          })
+            block.blockOutRef,
+            block.txInclusion,
+          )
         ).nextThreadOutRef;
       }
       if (cancelTarget !== "step01" && cancelTarget !== "step02") {
-        cancelThreadOutRef = (
-          await submitSpendInputSignerMissingStep02({
-            lucid: harness.proverLucid,
-            network,
-            contracts,
-            categoryId: category.categoryId,
-            signer: harness.proverSigner,
-            threadOutRef: cancelThreadOutRef,
+        outRef = (
+          await run.step02(
+            outRef,
             evidence,
-            nativeTxCompactCbor: compactCbor.toString("hex"),
-            witnessSetCompactCbor,
-            referenceScriptUtxo: references[1]!,
-            membershipReferenceScriptUtxo:
-              harness.witnessReferenceScripts.phasMembershipWithdraw!,
-          })
+            block.compactCbor,
+            block.witnessSetCompactCbor,
+          )
         ).nextThreadOutRef;
       }
       if (
@@ -346,38 +974,24 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         cancelTarget === "step04-resumed" ||
         cancelTarget === "step05"
       ) {
-        cancelThreadOutRef = (
-          await submitSpendInputSignerMissingStep03({
-            lucid: harness.proverLucid,
-            network,
-            contracts,
-            categoryId: category.categoryId,
-            signer: harness.proverSigner,
-            threadOutRef: cancelThreadOutRef,
+        outRef = (
+          await run.step03(
+            outRef,
             evidence,
-            nativeTxCompactCbor: compactCbor.toString("hex"),
-            witnessSetCompactCbor,
-            referenceScriptUtxo: references[2]!,
-            certificateReferenceScriptUtxo: certificateReference,
-          })
+            block.compactCbor,
+            block.witnessSetCompactCbor,
+          )
         ).nextThreadOutRef;
       }
       if (cancelTarget === "step04-resumed" || cancelTarget === "step05") {
         for (;;) {
-          const scan = await submitSpendInputSignerMissingStep04({
-            lucid: harness.proverLucid,
-            network,
-            contracts,
-            categoryId: category.categoryId,
-            signer: harness.proverSigner,
-            threadOutRef: cancelThreadOutRef,
+          const scan = await run.step04(
+            outRef,
             evidence,
-            nativeTxCompactCbor: compactCbor.toString("hex"),
-            witnessSetCompactCbor,
-            referenceScriptUtxo: references[3]!,
-            certificateReferenceScriptUtxo: certificateReference,
-          });
-          cancelThreadOutRef = scan.nextThreadOutRef;
+            block.compactCbor,
+            block.witnessSetCompactCbor,
+          );
+          outRef = scan.nextThreadOutRef;
           if (cancelTarget === "step04-resumed" || scan.stage === "step05")
             break;
         }
@@ -392,565 +1006,656 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
               : cancelTarget === "step05"
                 ? 4
                 : 3;
-      const cancellation = await captureEmulatorSubmission(
-        harness.emulator,
-        () =>
-          submitSpendInputSignerMissingCancel({
-            lucid: harness.proverLucid,
-            contracts,
-            categoryId: category.categoryId,
-            signer: harness.proverSigner,
-            threadOutRef: cancelThreadOutRef,
-            referenceScriptUtxo: references[referenceIndex]!,
-            witnessReferenceScripts: harness.witnessReferenceScripts,
-          }),
+      await measured(`cancel-${cancelTarget}`, () =>
+        run.cancel(outRef, referenceIndex),
       );
-      expect(cancellation.measurement.l1ByteMargin).toBeGreaterThan(0);
-      expect(cancellation.measurement.executionMemory).toBeGreaterThan(0n);
       coverage.cancelled(`step-0${(referenceIndex + 1).toString()}`);
-      cancellationMeasurements.push([
-        `cancel-${cancelTarget}`,
-        cancellation.measurement,
-      ]);
     }
-    const init = await captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: contracts as never,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: target.successorOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    const [threadUtxo] = await harness.proverLucid.utxosByOutRef([
-      {
-        txHash: init.result.txHash,
-        outputIndex: init.result.firstStepOutputIndex,
-      },
-    ]);
-    if (threadUtxo === undefined) throw new Error("init thread absent");
-    const step01Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep01Accepted({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts,
-        signer: harness.proverSigner,
-        evidence,
-        threadUtxo,
-        threadToken: {
-          unit: init.result.computationThreadUnit,
-          fraudulentHeaderHash: init.result.fraudulentHeaderHash,
-        },
-        stateQueueBlockOutRef: target.successorOutRef,
-        txInclusion,
-        referenceScriptUtxo: references[0]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    const step02Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep02({
-        lucid: harness.proverLucid,
-        network,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step01Result.result.nextThreadOutRef,
-        evidence,
-        nativeTxCompactCbor: compactCbor.toString("hex"),
-        witnessSetCompactCbor,
-        referenceScriptUtxo: references[1]!,
-        membershipReferenceScriptUtxo:
-          harness.witnessReferenceScripts.phasMembershipWithdraw!,
-      }),
-    );
-    const step03Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep03({
-        lucid: harness.proverLucid,
-        network,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step02Result.result.nextThreadOutRef,
-        evidence,
-        nativeTxCompactCbor: compactCbor.toString("hex"),
-        witnessSetCompactCbor,
-        referenceScriptUtxo: references[2]!,
-        certificateReferenceScriptUtxo: certificateReference,
-      }),
-    );
-    const scans: Awaited<ReturnType<typeof captureEmulatorSubmission>>[] = [];
-    let threadOutRef = step03Result.result.nextThreadOutRef;
-    for (;;) {
-      const scan = await captureEmulatorSubmission(harness.emulator, () =>
-        submitSpendInputSignerMissingStep04({
-          lucid: harness.proverLucid,
-          network,
-          contracts,
-          categoryId: category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef,
-          evidence,
-          nativeTxCompactCbor: compactCbor.toString("hex"),
-          witnessSetCompactCbor,
-          referenceScriptUtxo: references[3]!,
-          certificateReferenceScriptUtxo: certificateReference,
-        }),
-      );
-      scans.push(scan);
-      threadOutRef = scan.result.nextThreadOutRef;
-      if (scan.result.stage === "step05") break;
-    }
-    expect(scans).toHaveLength(20);
-    coverage.resumed();
-    const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep05({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        evidence,
-        referenceScriptUtxo: references[4]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    expect(step05Result.result.fraudProofUnit).toBeTruthy();
-    coverage.reason("SpendInputSignerMissing", "accepted_invalid");
-    coverage.scenario("wrongful_acceptance_success");
-    const removalReferences = await publishRemovalReferenceScripts({
-      lucid: harness.proverLucid,
-      contracts: harness.contracts,
-    });
-    // A registered family resolves removal through the canonical catalogue:
-    // the manifest's fraudProofSpendInputSignerMissing entries carry the
-    // registered chain the harness built.
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      harness.contracts,
-      catalogue,
-      { removalReferenceScripts: removalReferences.published },
-    );
-    const removalNow = BigInt(harness.emulator.now());
-    const removal = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRemoveFraudulentBlock({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        deploymentInfo,
-        network,
-        signer: harness.proverSigner,
-        fraudCategory: "spendInputSignerMissing",
-        fraudulentHeaderHash: target.successorHeaderHash,
-        requireReferenceScripts: true,
-        awaitConfirmation: true,
-        validFrom: removalNow > 120_000n ? removalNow - 120_000n : 0n,
-        validTo: removalNow + 300_000n,
-      }),
-    );
+    const removal = await run.removal(block.headerHash);
     expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
+    recordMeasurements("accepted-remove", "lifecycle", MAXIMUM_SHAPE, removal);
     coverage.scenario("permanent_proof_token_and_descendant_removal");
-    for (const capture of [
-      init,
-      step01Result,
-      step02Result,
-      step03Result,
-      ...scans,
-      step05Result,
-      removal,
-    ]) {
-      expect(capture.measurement.l1ByteMargin).toBeGreaterThan(0);
-      expect(capture.measurement.executionMemory).toBeGreaterThan(0n);
-      expect(capture.measurement.executionSteps).toBeGreaterThan(0n);
-    }
-    console.info(
-      `[spend-input-signer-missing-lifecycle] ${JSON.stringify(
-        [
-          ["init", init.measurement],
-          ["step01", step01Result.measurement],
-          ...step02Result.measurements.map((measurement, index) => [
-            `step02-${index.toString()}`,
-            measurement,
-          ]),
-          ["step02", step02Result.measurement],
-          ...step03Result.measurements.map((measurement, index) => [
-            `step03-${index.toString()}`,
-            measurement,
-          ]),
-          ["step03", step03Result.measurement],
-          ...scans.map((capture, index) => [
-            `step04-${index.toString().padStart(2, "0")}`,
-            capture.measurement,
-          ]),
-          ["step05", step05Result.measurement],
-          ["removal", removal.measurement],
-          ...cancellationMeasurements,
-        ],
-        (_key, value: unknown) =>
-          typeof value === "bigint" ? value.toString() : value,
-      )}`,
-    );
-  }, 600_000);
+  }, 900_000);
 
   it("runs a forced wrongful rejection with a valid matching signature through removal", async () => {
-    const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: {
-        realSpendInputSignerMissing: true,
-        alwaysFraudProofCatalogue: true,
-      },
-      lucidOptions: { evaluator: createScalusEvaluator() },
-    });
-    const { steps, contracts, catalogue, category } =
-      await registeredContracts(harness);
-
-    const seed = Buffer.alloc(32, 7);
-    const privateKey = createPrivateKey({
-      key: Buffer.concat([
-        Buffer.from("302e020100300506032b657004220420", "hex"),
-        seed,
-      ]),
-      format: "der",
-      type: "pkcs8",
-    });
-    const verificationKey = createPublicKey(privateKey)
-      .export({ format: "der", type: "spki" })
-      .subarray(-32);
-    const paymentCredential = missingSignatureVkeyHash(
-      verificationKey.toString("hex"),
-    );
-    const priorTxId = "cd".repeat(32);
-    const priorOutput = encodeMidgardTxOutput({
-      address: Buffer.concat([
-        Buffer.from([0x60]),
-        Buffer.from(paymentCredential, "hex"),
-      ]),
-      value: { lovelace: 2_000_000n, assets: new Map() },
-    });
-    const outRefBytes = encodeMidgardSpendInputItem({
-      txId: Buffer.from(priorTxId, "hex"),
-      outputIndex: 0,
-    });
-    const outputMaterial = buildCanonicalMidgardLedgerOutputMaterial({
-      outputIndex: 0,
-      outputCbor: priorOutput,
-    });
-    const priorStore = new Store(undefined);
-    await priorStore.ready();
-    const priorTrie = new Trie(priorStore);
-    await priorTrie.insert(outRefBytes, outputMaterial.descriptorCbor);
-    const priorProof = await priorTrie.prove(outRefBytes);
-    const priorRoot = Buffer.from(priorTrie.hash).toString("hex");
-
-    const unsigned = makeNativeTx({ spendInputCbors: [outRefBytes], fee: 7n });
-    const signature = sign(
-      null,
-      computeMidgardNativeTxId(unsigned),
-      privateKey,
-    );
-    const nativeTx = makeNativeTx({
-      spendInputCbors: [outRefBytes],
+    const harness = await newHarness();
+    const family = await registeredContracts(harness);
+    const signerKey = ed25519Keypair(7);
+    const prior = await priorLedgerFor(signerKey.keyHash, "cd".repeat(32));
+    const nativeTx = signedNativeTx({
+      outRefBytes: prior.outRefBytes,
       fee: 7n,
-      addrTxWitsPreimageCbor: encodeCbor([
-        encodeMidgardAddressWitnessItem({ verificationKey, signature }),
-      ]),
-    });
-    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
-    expect(nativeTxId).toBe(computeMidgardNativeTxId(unsigned).toString("hex"));
-    const proofSource = deriveMidgardNativeTxProofSource(
-      adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
-    );
-    const reason = {
-      SpendInputSignerMissing: { input_index: 0n },
-    } as const;
-    const sourceKey = transitionTraceOutRef("f7");
-    const predecessor = await setupFraudulentBlock({
-      funderLucid: harness.funderLucid,
-      emulator: harness.emulator,
-      contracts: harness.contracts,
-      catalogue,
-      fixture: {
-        transactionsRoot: EMPTY_MERKLE_TREE_ROOT,
-        l2TransactionCount: 0n,
-        utxosRoot: priorRoot,
-        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-      },
-    });
-    const forcedBlock = await buildDecodingBlockFixture({
-      operatorVkey: predecessor.header.operatorVkey,
-      startTime: BigInt(
-        emulatorSuccessorHeaderStart({
-          predecessorEndTime: predecessor.header.endTime,
-          emulator: harness.emulator,
+      witnesses: (txId) => [
+        encodeMidgardAddressWitnessItem({
+          verificationKey: signerKey.verificationKey,
+          signature: sign(null, txId, signerKey.privateKey),
         }),
-      ),
-      priorLedgerRoot: priorRoot,
-      subject: {
-        kind: "forced",
-        nativeTx,
-        orderKey: sourceKey,
-        verdict: { ForcedTxInvalid: { reason } },
-      },
+      ],
     });
-    const membership = await buildForcedTransactionLeafMembershipProof({
-      reconstruction: forcedBlock.reconstruction,
-      eventKey: { ForcedTransactionEventKey: { tx_order_id: sourceKey } },
-    });
-    const forcedHeader = {
-      ...forcedBlock.header,
-      prevUtxosRoot: priorRoot,
-      utxosRoot: priorRoot,
-      prevHeaderHash: predecessor.headerHash,
-    };
-    const forcedSetup = await submitSuccessorBlockTx({
-      lucid: harness.funderLucid,
-      emulator: harness.emulator,
-      contracts: harness.contracts,
-      anchorBlockUnit: predecessor.stateQueueBlockUnit,
-      header: forcedHeader,
-      hubOracle: predecessor.hubOracle,
-      scheduler: predecessor.scheduler,
-      activeOperatorNode: predecessor.activeOperatorNode,
-      activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
-    });
-    expect(forcedSetup.successorHeaderHash).toBe(
-      await Effect.runPromise(hashBlockHeader(forcedHeader)),
+    const reason = { SpendInputSignerMissing: { input_index: 0n } } as const;
+    const block = await commitForcedBlock(
+      harness,
+      family,
+      nativeTx,
+      prior.priorRoot,
+      reason,
+      "f7",
     );
     const evidence = prepareSpendInputSignerMissingEvidence({
+      subject: block.subject,
+      inputIndex: 0,
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+      resolved: prior.resolved,
+    });
+    expect(evidence.signerMissing).toBe(false);
+    expect(evidence.validSignerHashes).toEqual([signerKey.keyHash]);
+    const shape =
+      "1 valid matching address witness; Inline field; one scan batch";
+    const { references, certificateReference } = await publishReferences(
+      harness,
+      family,
+      `${FAMILY}-forced`,
+      false,
+    );
+    const run = familyDriver(harness, family, references, certificateReference);
+    const measured = async <T>(
+      name: string,
+      operation: () => Promise<T>,
+    ): Promise<T> => {
+      const captured = await captureEmulatorSubmission(
+        harness.emulator,
+        operation,
+      );
+      recordMeasurements(name, "lifecycle", shape, captured);
+      return captured.result;
+    };
+    const thread = await measured("forced-init", () =>
+      run.initThread(block.blockOutRef),
+    );
+    const step01 = await measured("forced-step01", () =>
+      run.step01Forced(thread.threadOutRef, evidence, block.forcedSource),
+    );
+    const step02 = await measured("forced-step02", () =>
+      run.step02(
+        step01.nextThreadOutRef,
+        evidence,
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    const step03 = await measured("forced-step03", () =>
+      run.step03(
+        step02.nextThreadOutRef,
+        evidence,
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    const step04 = await measured("forced-step04", () =>
+      run.step04(
+        step03.nextThreadOutRef,
+        evidence,
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    expect(step04.stage).toBe("step05");
+    const step05 = await measured("forced-step05-proof-mint", () =>
+      run.step05(step04.nextThreadOutRef, evidence),
+    );
+    expect(step05.fraudProofUnit).toBeTruthy();
+    coverage.reason(REASON, "forced_rejection_wrong");
+    coverage.scenario("wrongful_forced_rejection_success");
+    const removal = await run.removal(block.headerHash);
+    expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
+    recordMeasurements("forced-remove", "lifecycle", shape, removal);
+  }, 600_000);
+
+  it("refuses an honest accepted block, every substituted accepted seam, and a mutated spend coordinate on chain", async () => {
+    const harness = await newHarness();
+    const family = await registeredContracts(harness);
+    // The credential's key signs the transaction from the last position of a
+    // certified 160-witness field: the block is honest, so no acceptance
+    // thread may close, however far the scan has to walk to learn it.
+    const signerKey = ed25519Keypair(9);
+    const prior = await priorLedgerFor(signerKey.keyHash, "ef".repeat(32));
+    const nativeTx = signedNativeTx({
+      outRefBytes: prior.outRefBytes,
+      fee: 9n,
+      witnesses: (txId) => [
+        ...Array.from({ length: HONEST_ACCEPTED_WITNESSES - 1 }, (_u, index) =>
+          garbageWitness(index),
+        ),
+        encodeMidgardAddressWitnessItem({
+          verificationKey: signerKey.verificationKey,
+          signature: sign(null, txId, signerKey.privateKey),
+        }),
+      ],
+    });
+    const block = await commitAcceptedBlock(
+      harness,
+      family,
+      nativeTx,
+      prior.priorRoot,
+    );
+    const accepted = acceptedVerdictSubject(block.nativeTxId);
+    // Off chain the package refuses to prepare evidence that does not
+    // contradict the verdict; the honest run below carries the authenticated
+    // material under the accepted subject anyway, so the refusal is the
+    // chain's.
+    expect(() =>
+      prepareSpendInputSignerMissingEvidence({
+        subject: accepted,
+        inputIndex: 0,
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+        resolved: prior.resolved,
+      }),
+    ).toThrow(/agrees with the operator verdict/u);
+    const contradicting = prepareSpendInputSignerMissingEvidence({
       subject: forcedVerdictSubject({
-        transactionId: nativeTxId,
-        sourceKey,
-        rejectionReason: reason,
+        transactionId: block.nativeTxId,
+        sourceKey: transitionTraceOutRef("f9"),
+        rejectionReason: { SpendInputSignerMissing: { input_index: 0n } },
       }),
       inputIndex: 0,
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
-      resolved: {
-        priorRoot,
-        transactionId: priorTxId,
-        outputIndex: 0,
-        descriptorCborHex: outputMaterial.descriptorCbor.toString("hex"),
-        outputCborHex: priorOutput.toString("hex"),
-        membershipProofCborHex: priorProof.toCBOR().toString("hex"),
-        membershipProof: Data.from(priorProof.toCBOR().toString("hex"), Proof),
-      },
+      resolved: prior.resolved,
     });
-    expect(evidence.signerMissing).toBe(false);
-    expect(evidence.validSignerHashes).toEqual([paymentCredential]);
+    expect(contradicting.signerMissing).toBe(false);
+    expect(contradicting.witnessCarriage).toBe("Certified");
+    expect(contradicting.checkpoints).toHaveLength(10);
+    const honest: SpendInputSignerMissingEvidence = {
+      ...contradicting,
+      subject: accepted,
+    };
+    const { references, certificateReference } = await publishReferences(
+      harness,
+      family,
+      `${FAMILY}-honest`,
+      false,
+    );
+    const run = familyDriver(harness, family, references, certificateReference);
 
-    const references: UTxO[] = [];
-    for (const [index, step] of steps.entries()) {
-      references.push(
-        (
-          await publishPlainReferenceScriptUtxo({
-            lucid: harness.funderLucid,
-            script: step.spendingScript,
-            label: `spend-input-signer-missing-forced-${index.toString()}`,
-          })
-        ).utxo,
-      );
-    }
-    const certificateReference = (
-      await publishPlainReferenceScriptUtxo({
-        lucid: harness.funderLucid,
-        script: harness.contracts.fieldPreimageCertificate.mintingScript,
-        label: "spend-input-signer-missing-forced-certificate",
-      })
-    ).utxo;
-    const forcedInit = await captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: contracts as never,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: catalogue.root,
+    const thread = await run.initThread(block.blockOutRef);
+    // Transaction membership: a foreign transactions root cannot bind the
+    // header's counted root, whatever proof rides with it.
+    await expectRefusedOnChain(() =>
+      run.step01Accepted(thread, honest, block.blockOutRef, {
+        ...block.txInclusion,
+        transactionsPhasRoot: "11".repeat(32),
+      }),
+    );
+    coverage.seamMutated("tx_membership");
+    const bound = await run.step01Accepted(
+      thread,
+      honest,
+      block.blockOutRef,
+      block.txInclusion,
+    );
+    // Prior-output membership: a descriptor for another output under the same
+    // out-ref is not a member of the bound prior root.
+    const foreign = await priorLedgerFor(
+      Buffer.alloc(28, 0x77).toString("hex"),
+      "ef".repeat(32),
+    );
+    await expectRefusedOnChain(() =>
+      run.step02(
+        bound.nextThreadOutRef,
+        {
+          ...honest,
+          resolved: {
+            ...honest.resolved,
+            descriptorCborHex: foreign.resolved.descriptorCborHex,
+            outputCborHex: foreign.resolved.outputCborHex,
+          },
         },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: forcedSetup.successorOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
     );
-    const forced01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep01Forced({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: `${forcedInit.result.txHash}#${forcedInit.result.firstStepOutputIndex.toString()}`,
-        evidence,
-        forcedSource: { header: forcedHeader, membership, direction: 1n },
-        referenceScriptUtxo: references[0]!,
-      }),
+    coverage.seamMutated("prior_output_membership");
+    const authenticated = await run.step02(
+      bound.nextThreadOutRef,
+      honest,
+      block.compactCbor,
+      block.witnessSetCompactCbor,
     );
-    const compactCbor = proofSource.compactCbor.toString("hex");
-    const witnessSetCompactCbor =
-      proofSource.witnessSetCompactCbor.toString("hex");
-    const forced02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep02({
-        lucid: harness.proverLucid,
-        network,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: forced01.result.nextThreadOutRef,
-        evidence,
-        nativeTxCompactCbor: compactCbor,
-        witnessSetCompactCbor,
-        referenceScriptUtxo: references[1]!,
-        membershipReferenceScriptUtxo:
-          harness.witnessReferenceScripts.phasMembershipWithdraw!,
-      }),
-    );
-    const forced03 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep03({
-        lucid: harness.proverLucid,
-        network,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: forced02.result.nextThreadOutRef,
-        evidence,
-        nativeTxCompactCbor: compactCbor,
-        witnessSetCompactCbor,
-        referenceScriptUtxo: references[2]!,
-        certificateReferenceScriptUtxo: certificateReference,
-      }),
-    );
-    const forced04 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep04({
-        lucid: harness.proverLucid,
-        network,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: forced03.result.nextThreadOutRef,
-        evidence,
-        nativeTxCompactCbor: compactCbor,
-        witnessSetCompactCbor,
-        referenceScriptUtxo: references[3]!,
-        certificateReferenceScriptUtxo: certificateReference,
-      }),
-    );
-    expect(forced04.result.stage).toBe("step05");
-    const forced05 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep05({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: forced04.result.nextThreadOutRef,
-        evidence,
-        referenceScriptUtxo: references[4]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    expect(forced05.result.fraudProofUnit).toBeTruthy();
-    coverage.reason("SpendInputSignerMissing", "forced_rejection_wrong");
-    coverage.scenario("wrongful_forced_rejection_success");
-    const removalReferences = await publishRemovalReferenceScripts({
-      lucid: harness.proverLucid,
-      contracts: harness.contracts,
+    // Field certificate: a certificate honestly minted over another
+    // transaction's witness field, presented under this transaction's compact
+    // structure and witness set, wears the wrong field hash and is refused at
+    // the door.
+    const foreignTx = makeNativeTx({
+      spendInputCbors: [prior.outRefBytes],
+      fee: 11n,
+      addrTxWitsPreimageCbor: encodeCbor(
+        Array.from({ length: HONEST_ACCEPTED_WITNESSES }, (_u, index) =>
+          garbageWitness(index + 1_000),
+        ),
+      ),
     });
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      harness.contracts,
-      catalogue,
-      { removalReferenceScripts: removalReferences.published },
+    const foreignEvidence = prepareSpendInputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(
+        computeMidgardNativeTxId(foreignTx).toString("hex"),
+      ),
+      inputIndex: 0,
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(foreignTx),
+      resolved: prior.resolved,
+    });
+    expect(foreignEvidence.witnessCarriage).toBe("Certified");
+    await expectRefusedOnChain(() =>
+      submitStep03WithForeignCertificate({
+        harness,
+        family,
+        threadOutRef: authenticated.nextThreadOutRef,
+        evidence: honest,
+        nativeTxCompactCbor: block.compactCbor,
+        witnessSetCompactCbor: block.witnessSetCompactCbor,
+        foreign: {
+          evidence: foreignEvidence,
+          nativeTxCompactCbor: encodeMidgardNativeTxCompact(
+            foreignTx.compact,
+          ).toString("hex"),
+          witnessSetCompactCbor: witnessSetCompactHex(foreignTx),
+        },
+        referenceScriptUtxo: references[2]!,
+        certificateReference,
+      }),
     );
-    const removalNow = BigInt(harness.emulator.now());
-    const forcedRemoval = await captureEmulatorSubmission(
-      harness.emulator,
-      () =>
-        submitRemoveFraudulentBlock({
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          deploymentInfo,
-          network,
-          signer: harness.proverSigner,
-          fraudCategory: "spendInputSignerMissing",
-          fraudulentHeaderHash: forcedSetup.successorHeaderHash,
-          requireReferenceScripts: true,
-          awaitConfirmation: true,
-          validFrom: removalNow > 120_000n ? removalNow - 120_000n : 0n,
-          validTo: removalNow + 300_000n,
+    coverage.seamMutated("field_certificate");
+    const scanning = await run.step03(
+      authenticated.nextThreadOutRef,
+      honest,
+      block.compactCbor,
+      block.witnessSetCompactCbor,
+    );
+    const { scans, threadOutRef } = await run.scanToTerminal(
+      scanning.nextThreadOutRef,
+      honest,
+      block.compactCbor,
+      block.witnessSetCompactCbor,
+    );
+    // The valid signature sits in the tenth batch: nine real resumptions
+    // before the frontier admits it and the scan terminates.
+    expect(scans).toHaveLength(10);
+    // The family builder refuses to finalize a terminal that agrees with the
+    // block, and the generic finalizer is refused by the validator itself.
+    await expect(run.step05(threadOutRef, honest)).rejects.toThrow(
+      /does not contradict verdict/u,
+    );
+    await expectRefusedOnChain(() => run.finalizeDirect(threadOutRef));
+    coverage.scenario("honest_accepted_block_refusal");
+    coverage.reason(REASON);
+
+    // Spend coordinate: step 01 binds whatever coordinate the redeemer names;
+    // step 02 selects it from the authenticated field and a one-input
+    // transaction has no item 1.
+    const mutated = await run.initThread(block.blockOutRef);
+    const boundOutOfRange = await run.step01Accepted(
+      mutated,
+      { ...honest, inputIndex: 1 },
+      block.blockOutRef,
+      block.txInclusion,
+    );
+    await expectRefusedOnChain(() =>
+      run.step02(
+        boundOutOfRange.nextThreadOutRef,
+        { ...honest, inputIndex: 1 },
+        block.compactCbor,
+        block.witnessSetCompactCbor,
+      ),
+    );
+    coverage.scenario("reason_or_subject_coordinate_mutation");
+  }, 900_000);
+
+  it("refuses an honest forced rejection, a mutated forced reason coordinate, and a substituted forced leaf on chain", async () => {
+    const harness = await newHarness();
+    const family = await registeredContracts(harness);
+    // Both Wave 3 mutations in one witness field: a valid signature from the
+    // wrong key, and the right key with an invalid signature. Neither enters
+    // the frontier, so the operator's rejection is exactly right.
+    const signerKey = ed25519Keypair(11);
+    const strangerKey = ed25519Keypair(12);
+    const prior = await priorLedgerFor(signerKey.keyHash, "1a".repeat(32));
+    const nativeTx = signedNativeTx({
+      outRefBytes: prior.outRefBytes,
+      fee: 13n,
+      witnesses: (txId) => [
+        encodeMidgardAddressWitnessItem({
+          verificationKey: strangerKey.verificationKey,
+          signature: sign(null, txId, strangerKey.privateKey),
         }),
+        encodeMidgardAddressWitnessItem({
+          verificationKey: signerKey.verificationKey,
+          signature: Buffer.alloc(64, 0xff),
+        }),
+      ],
+    });
+    const reason = { SpendInputSignerMissing: { input_index: 0n } } as const;
+    const block = await commitForcedBlock(
+      harness,
+      family,
+      nativeTx,
+      prior.priorRoot,
+      reason,
+      "fb",
     );
-    expect(forcedRemoval.result.fraudCategoryId).toBe(
-      SPEND_INPUT_SIGNER_MISSING_ID,
+    expect(() =>
+      prepareSpendInputSignerMissingEvidence({
+        subject: block.subject,
+        inputIndex: 0,
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+        resolved: prior.resolved,
+      }),
+    ).toThrow(/agrees with the operator verdict/u);
+    const contradicting = prepareSpendInputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(block.nativeTxId),
+      inputIndex: 0,
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+      resolved: prior.resolved,
+    });
+    expect(contradicting.signerMissing).toBe(true);
+    // The stranger's signature verifies, so it is a signer — of the wrong
+    // credential; the credential's own witness never verifies.
+    expect(contradicting.validSignerHashes).toEqual([strangerKey.keyHash]);
+    const honest: SpendInputSignerMissingEvidence = {
+      ...contradicting,
+      subject: block.subject,
+    };
+    // Classification refuses another family's typed reason outright.
+    expect(() =>
+      classifySpendInputSignerMissingFinding({
+        subject: forcedVerdictSubject({
+          transactionId: block.nativeTxId,
+          sourceKey: block.sourceKey,
+          rejectionReason: "ObserversForbiddenOnUntaggedNetwork",
+        }),
+        inputIndex: 0,
+      }),
+    ).toThrow(/wrong typed rejection reason/u);
+    const { references, certificateReference } = await publishReferences(
+      harness,
+      family,
+      `${FAMILY}-honest-forced`,
+      false,
     );
-    for (const capture of [
-      forcedInit,
-      forced01,
-      forced02,
-      forced03,
-      forced04,
-      forced05,
-      forcedRemoval,
-    ]) {
-      expect(capture.measurement.l1ByteMargin).toBeGreaterThan(0);
-      expect(capture.measurement.executionMemory).toBeGreaterThan(0n);
-      expect(capture.measurement.executionSteps).toBeGreaterThan(0n);
-    }
-    console.info(
-      `[spend-input-signer-missing-forced-lifecycle] ${JSON.stringify(
-        [
-          ["forced-init", forcedInit.measurement],
-          ["forced-step01", forced01.measurement],
-          ...forced02.measurements.map((measurement, index) => [
-            `forced-step02-${index.toString()}`,
-            measurement,
-          ]),
-          ["forced-step02", forced02.measurement],
-          ...forced03.measurements.map((measurement, index) => [
-            `forced-step03-${index.toString()}`,
-            measurement,
-          ]),
-          ["forced-step03", forced03.measurement],
-          ["forced-step04", forced04.measurement],
-          ["forced-step05", forced05.measurement],
-          ["forced-remove", forcedRemoval.measurement],
-        ],
-        (_key, value: unknown) =>
-          typeof value === "bigint" ? value.toString() : value,
-      )}`,
+    const run = familyDriver(harness, family, references, certificateReference);
+    const thread = await run.initThread(block.blockOutRef);
+    // Forced leaf: a leaf carrying another verdict is not in the forced root.
+    await expectRefusedOnChain(() =>
+      run.step01Forced(thread.threadOutRef, honest, {
+        ...block.forcedSource,
+        membership: {
+          ...block.membership,
+          value: { ...block.membership.value, verdict: "ForcedTxValid" },
+        },
+      }),
     );
+    coverage.seamMutated("forced_leaf");
+    // Reason coordinate: the leaf rejects input 0; a thread claiming the same
+    // reason at input 1 is refused by the exact-reason bind.
+    const shifted: VerdictSubject = forcedVerdictSubject({
+      transactionId: block.nativeTxId,
+      sourceKey: block.sourceKey,
+      rejectionReason: { SpendInputSignerMissing: { input_index: 1n } },
+    });
+    await expectRefusedOnChain(() =>
+      run.step01Forced(
+        thread.threadOutRef,
+        { ...honest, subject: shifted, inputIndex: 1 },
+        block.forcedSource,
+      ),
+    );
+    coverage.scenario("reason_or_subject_coordinate_mutation");
+    const bound = await run.step01Forced(
+      thread.threadOutRef,
+      honest,
+      block.forcedSource,
+    );
+    const authenticated = await run.step02(
+      bound.nextThreadOutRef,
+      honest,
+      block.compactCbor,
+      block.witnessSetCompactCbor,
+    );
+    const scanning = await run.step03(
+      authenticated.nextThreadOutRef,
+      honest,
+      block.compactCbor,
+      block.witnessSetCompactCbor,
+    );
+    const scan = await run.step04(
+      scanning.nextThreadOutRef,
+      honest,
+      block.compactCbor,
+      block.witnessSetCompactCbor,
+    );
+    expect(scan.stage).toBe("step05");
+    await expect(run.step05(scan.nextThreadOutRef, honest)).rejects.toThrow(
+      /does not contradict verdict/u,
+    );
+    await expectRefusedOnChain(() => run.finalizeDirect(scan.nextThreadOutRef));
+    coverage.scenario("honest_forced_rejection_refusal");
   }, 600_000);
 
-  it("declares the lifecycle coverage it exercised and the gaps it leaves open", () => {
-    // Recorded while the suites above ran, never pre-filled. The gate lists
-    // every omission; the suite pins that list so a silent regression of what
-    // it does cover, or an unannounced closure of a gap, both fail here.
-    expect(() =>
-      assertCompleteLifecycleCoverage({
-        coverage: coverage.snapshot(),
-        expectedReasonArms: ["SpendInputSignerMissing"],
-        authenticationSeams: [
-          "tx_membership",
-          "prior_output_membership",
-          "field_certificate",
-          "forced_leaf",
-        ],
-        cancellablePhysicalSteps: [
-          "step-01",
-          "step-02",
-          "step-03",
-          "step-04",
-          "step-05",
-        ],
-        resumable: true,
-        hasAdjacentConsensusBound: false,
-      }),
-    ).toThrow(
-      "incomplete fault-proof lifecycle coverage: scenarios: honest_accepted_block_refusal, honest_forced_rejection_refusal, reason_or_subject_coordinate_mutation; authentication seams: tx_membership, prior_output_membership, field_certificate, forced_leaf",
+  it("declares the complete lifecycle coverage it exercised and writes the fit ledger it measured", async () => {
+    // Recorded while the suites above ran, never pre-filled. The aggregate
+    // field bound (32,768 bytes, 318 witnesses) is this family's consensus
+    // bound, but no lifecycle transaction can present the adjacent 319-witness
+    // field: the L2 codec refuses to lay it out and the door refuses its
+    // certified view (`step_04_refuses_an_adjacent_over_bound_witness_field`),
+    // so the suite claims no adjacent bound of its own.
+    assertCompleteLifecycleCoverage({
+      coverage: coverage.snapshot(),
+      expectedReasonArms: [REASON],
+      authenticationSeams: [...AUTHENTICATION_SEAMS],
+      cancellablePhysicalSteps: [...PHYSICAL_STEPS],
+      resumable: true,
+      hasAdjacentConsensusBound: false,
+    });
+    const blueprintBytes = await readFile(realBlueprintPath);
+    const blueprint = JSON.parse(blueprintBytes.toString("utf8")) as {
+      readonly preamble?: { readonly compiler?: { readonly version?: string } };
+    };
+    const ledger = buildVanRossemFitLedger({
+      category: "spendInputSignerMissing:00000027:testnet",
+      blueprintSha256: createHash("sha256")
+        .update(blueprintBytes)
+        .digest("hex"),
+      compilerVersion:
+        blueprint.preamble?.compiler?.version ?? "unknown-aiken-compiler",
+      measurements,
+    });
+    expect(ledger.entries).toHaveLength(measurements.length);
+    expect(
+      ledger.entries.every(
+        (entry) =>
+          entry.signedByteMargin > 0 &&
+          BigInt(entry.memoryUnitMargin) > 0n &&
+          BigInt(entry.cpuUnitMargin) > 0n,
+      ),
+    ).toBe(true);
+    expect(
+      ledger.entries
+        .filter((entry) => entry.kind === "publication")
+        .every((entry) => (entry.publicationReserveMargin ?? -1) >= 0),
+    ).toBe(true);
+    console.info(
+      `[spend-input-signer-missing-fit-ledger] ${JSON.stringify(ledger)}`,
     );
+    if (process.env.MIDGARD_UPDATE_FIT === "1")
+      await writeFile(
+        new URL(
+          "../../../docs/fault-proofs/size-plans/spend-input-signer-missing-v1-fit-ledger.json",
+          import.meta.url,
+        ),
+        `${JSON.stringify(ledger, null, 2)}\n`,
+        "utf8",
+      );
   });
 });
+
+/**
+ * Step 03 over `threadOutRef` with a certificate and chunks honestly minted
+ * for `foreign`'s witness field, carried under the thread's own compact
+ * structure and witness set. Everything the family builder does is done here
+ * with the same primitives; only the carriage is another transaction's.
+ */
+const submitStep03WithForeignCertificate = async ({
+  harness,
+  family,
+  threadOutRef,
+  evidence,
+  nativeTxCompactCbor,
+  witnessSetCompactCbor,
+  foreign,
+  referenceScriptUtxo,
+  certificateReference,
+}: {
+  readonly harness: Harness;
+  readonly family: Family;
+  readonly threadOutRef: string;
+  readonly evidence: SpendInputSignerMissingEvidence;
+  readonly nativeTxCompactCbor: string;
+  readonly witnessSetCompactCbor: string;
+  readonly foreign: {
+    readonly evidence: SpendInputSignerMissingEvidence;
+    readonly nativeTxCompactCbor: string;
+    readonly witnessSetCompactCbor: string;
+  };
+  readonly referenceScriptUtxo: UTxO;
+  readonly certificateReference: UTxO;
+}) => {
+  const lucid = harness.proverLucid;
+  const signer = harness.proverSigner;
+  const { contracts, category } = family;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId: category.categoryId,
+    family: FAMILY,
+    stepIndex: 2,
+    threadOutRef,
+  });
+  const own = planSpendInputSignerWitnessOpening({
+    evidence,
+    nativeTxCompactCbor,
+    witnessSetCompactCbor,
+    owner: signer.paymentKeyHash,
+  });
+  const planned = planSpendInputSignerWitnessOpening({
+    evidence: foreign.evidence,
+    nativeTxCompactCbor: foreign.nativeTxCompactCbor,
+    witnessSetCompactCbor: foreign.witnessSetCompactCbor,
+    owner: signer.paymentKeyHash,
+  });
+  expect(planned.plan.tier).toBe("Certified");
+  signer.selectWallet(lucid);
+  const carriageUtxos = await publishFaultProofFieldCarriage({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "foreign address witnesses",
+  });
+  const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+    lucid,
+    network,
+    signer,
+    planned,
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    certificateMintingScript: contracts.fieldPreimageCertificateMintingScript,
+    certificateReferenceScriptUtxo: certificateReference,
+    chunkUtxos: carriageUtxos,
+    compactCbor: foreign.nativeTxCompactCbor,
+    witnessSetCompactCbor: foreign.witnessSetCompactCbor,
+  });
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[2].spendingScriptHash,
+    family: FAMILY,
+    stepIndex: 2,
+  });
+  const referenceInputs = [...carriageUtxos, certificateUtxo, stepReference];
+  const foreignOpening = faultProofFieldOpening({
+    planned,
+    referenceInputs,
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    label: "foreign address witnesses",
+  });
+  if (
+    !("WitnessFieldOpening" in foreignOpening) ||
+    own.witnessSet === undefined
+  )
+    throw new Error("witness field openings expected");
+  const opening: FieldOpening = {
+    WitnessFieldOpening: {
+      ...foreignOpening.WitnessFieldOpening,
+      native_tx_compact_cbor: own.nativeTxCompactCbor,
+      witness_set: own.witnessSet,
+    },
+  };
+  const initial = missingSignatureFieldWalkCheckpoint({
+    txId: evidence.subject.transaction_id,
+    itemCount: own.itemCount,
+    totalLength: own.preimage.length,
+    nextItemIndex: 0,
+  });
+  const nextDatum = Data.to(
+    {
+      fraud_prover: signer.paymentKeyHash,
+      data: {
+        authenticated: {
+          subject: evidence.subject,
+          transaction_id: evidence.subject.transaction_id,
+          witness_set_hash: evidence.witnessSetHashHex,
+          payment_credential: evidence.paymentCredentialHex,
+        },
+        checkpoint_hash: initial.checkpointHash,
+      },
+    } as never,
+    SpendInputSignerStep04DatumSchema as never,
+  );
+  const outputMatches = computationThreadOutputPredicate({
+    address: contracts.steps[3].spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  const redeemer = ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, "foreign-certificate step-03");
+    return Data.to(
+      {
+        Continue: [
+          {
+            input_index: requireInputIndex(
+              ctx,
+              threadUtxo,
+              "foreign-certificate step-03",
+            ),
+            output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              outputMatches,
+              "foreign-certificate step-03 output",
+            ),
+            witnesses_opening: opening,
+          },
+        ],
+      } as never,
+      SpendInputSignerStep03RedeemerSchema as never,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  return submitLinearFaultContinue({
+    lucid,
+    signerPaymentKeyHash: signer.paymentKeyHash,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[2].spendingScript,
+    stepRole: "foreign-certificate step-03",
+    nextAddress: contracts.steps[3].spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    carriageUtxos,
+    extraReferenceInputs: [certificateUtxo],
+    awaitConfirmation: true,
+  });
+};
