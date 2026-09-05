@@ -30,6 +30,7 @@ import {
   buildNativeScriptInvalidFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
+  buildObserverOrderInvalidFaultProofContracts,
   buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
   buildOutputReferenceScriptDecodingFaultProofContracts,
   buildProtectedOutputSignerMissingFaultProofContracts,
@@ -1004,6 +1005,7 @@ export const buildMinimalFaultProofContracts = async (
     realSpendInputSignerMissing = false,
     realProtectedOutputSignerMissing = false,
     realObserversForbiddenOnUntaggedNetwork = false,
+    realObserverOrderInvalid = false,
     realOutputReferenceScriptDecoding = false,
     realExecutionSourceScriptDecoding = false,
     alwaysFraudProofCatalogue = false,
@@ -1052,6 +1054,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realSpendInputSignerMissing?: boolean;
     readonly realProtectedOutputSignerMissing?: boolean;
     readonly realObserversForbiddenOnUntaggedNetwork?: boolean;
+    readonly realObserverOrderInvalid?: boolean;
     readonly realOutputReferenceScriptDecoding?: boolean;
     readonly realExecutionSourceScriptDecoding?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
@@ -1416,6 +1419,10 @@ export const buildMinimalFaultProofContracts = async (
       realObserversForbiddenOnUntaggedNetwork,
       buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
     );
+  const observerOrderInvalidContracts = await buildFamilyContracts(
+    realObserverOrderInvalid,
+    buildObserverOrderInvalidFaultProofContracts,
+  );
   const outputReferenceScriptDecodingContracts = await buildFamilyContracts(
     realOutputReferenceScriptDecoding,
     buildOutputReferenceScriptDecodingFaultProofContracts,
@@ -1975,6 +1982,9 @@ export const buildMinimalFaultProofContracts = async (
       observersForbiddenOnUntaggedNetworkContracts?.observersForbiddenOnUntaggedNetwork ??
       withActiveOperators.fraudProofContracts
         .observersForbiddenOnUntaggedNetwork,
+    observerOrderInvalid:
+      observerOrderInvalidContracts?.observerOrderInvalid ??
+      withActiveOperators.fraudProofContracts.observerOrderInvalid,
     outputReferenceScriptDecoding:
       outputReferenceScriptDecodingContracts?.outputReferenceScriptDecoding ??
       withActiveOperators.fraudProofContracts.outputReferenceScriptDecoding,
