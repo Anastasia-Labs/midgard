@@ -734,6 +734,24 @@ pub type ValueAssetMutationWitnessV1 {
   delta_proof: Proof,
 }
 
+pub type AssetDescriptorClaim {
+  descriptor_cbor: ByteArray,
+  asset_index: Int,
+  asset_peaks: List<validation_merkle_v1.FrontierPeak>,
+  asset_siblings: List<ByteArray>,
+  asset_count: Int,
+}
+
+pub type AssetFoldClaim {
+  policy_id: ByteArray,
+  asset_name: ByteArray,
+  quantity: Int,
+  mutation: ValueAssetMutationWitnessV1,
+  pre_value_accumulator: ValueAccumulatorV1,
+  outcome: ValueAccumulatorUpdateV1,
+  descriptor: Option<AssetDescriptorClaim>,
+}
+
 pub type ValueAndMintControlV1 {
   native_control: NativeScriptsControlV1,
   stage: Int,

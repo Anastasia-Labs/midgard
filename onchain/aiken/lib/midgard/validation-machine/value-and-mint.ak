@@ -14,12 +14,12 @@ use midgard/rejection_reason_v1.{
 }
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
-  NoAuxiliaryWitness, ResolvedInputReplayWitness, ValidationAuxiliaryWitnessV1,
-  ValidationOneStepWitnessV1, ValueAccumulatorAssetLimitExceeded,
-  ValueAccumulatorMutationInvalid, ValueAccumulatorUpdateV1,
-  ValueAccumulatorUpdated, ValueAccumulatorV1, ValueAndMintControlV1,
-  ValueAssetMutationWitnessV1, ValueInputAssetWitness, ValueMintAssetWitness,
-  ValueOutputAssetWitness, ValueOutputDescriptorWitness,
+  AssetFoldClaim, NoAuxiliaryWitness, ResolvedInputReplayWitness,
+  ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
+  ValueAccumulatorAssetLimitExceeded, ValueAccumulatorMutationInvalid,
+  ValueAccumulatorUpdateV1, ValueAccumulatorUpdated, ValueAccumulatorV1,
+  ValueAndMintControlV1, ValueAssetMutationWitnessV1, ValueInputAssetWitness,
+  ValueMintAssetWitness, ValueOutputAssetWitness, ValueOutputDescriptorWitness,
 }
 use midgard/validation_machine/shared.{
   mint_asset_leaf_hash, no_rejection_code_hash, output_meets_min_ada_v1,
@@ -65,7 +65,7 @@ fn update_value_asset_delta_root(
   }
 }
 
-fn apply_value_asset_mutation(
+pub fn apply_value_asset_mutation(
   accumulator: ValueAccumulatorV1,
   unit: ByteArray,
   quantity_delta: Int,
@@ -348,41 +348,22 @@ fn value_and_mint_replay_asset(
       asset_peaks,
       asset_siblings,
     ) {
-      when
+      value_and_mint_replay_asset_successor(
+        pre,
+        witness,
+        control,
+        source_kind,
+        key,
+        descriptor_cbor,
+        next_schedule_hash,
+        descriptor.asset_count,
         apply_value_asset_mutation(
           control.value_accumulator,
           policy_id |> bytearray.concat(asset_name),
           quantity,
           mutation,
-        )
-      is {
-        ValueAccumulatorAssetLimitExceeded ->
-          rejected_successor_is_exact(
-            pre,
-            witness.claimed_successor,
-            reject_asset_count,
-          )
-        ValueAccumulatorMutationInvalid -> False
-        ValueAccumulatorUpdated(next_value) -> {
-          let next_control = if control.replay_asset_cursor == descriptor.asset_count {
-            complete_value_input_replay(
-              control,
-              source_kind,
-              key,
-              descriptor_cbor,
-              next_schedule_hash,
-              next_value,
-            )
-          } else {
-            ValueAndMintControlV1 {
-              ..control,
-              replay_asset_cursor: control.replay_asset_cursor + 1,
-              value_accumulator: next_value,
-            }
-          }
-          value_and_mint_successor_is_exact(pre, witness, next_control)
-        }
-      }
+        ),
+      )
     } else {
       False
     }
@@ -537,40 +518,18 @@ fn value_and_mint_output_asset(
       asset_peaks,
       asset_siblings,
     ) {
-      when
+      value_and_mint_output_asset_successor(
+        pre,
+        witness,
+        control,
+        descriptor.asset_count,
         apply_value_asset_mutation(
           control.value_accumulator,
           policy_id |> bytearray.concat(asset_name),
           0 - quantity,
           mutation,
-        )
-      is {
-        ValueAccumulatorAssetLimitExceeded ->
-          rejected_successor_is_exact(
-            pre,
-            witness.claimed_successor,
-            reject_asset_count,
-          )
-        ValueAccumulatorMutationInvalid -> False
-        ValueAccumulatorUpdated(next_value) -> {
-          let next_control = if control.output_asset_cursor == descriptor.asset_count {
-            ValueAndMintControlV1 {
-              ..control,
-              output_cursor: control.output_cursor + 1,
-              output_asset_cursor: 0,
-              replay_value_hash: no_rejection_code_hash,
-              value_accumulator: next_value,
-            }
-          } else {
-            ValueAndMintControlV1 {
-              ..control,
-              output_asset_cursor: control.output_asset_cursor + 1,
-              value_accumulator: next_value,
-            }
-          }
-          value_and_mint_successor_is_exact(pre, witness, next_control)
-        }
-      }
+        ),
+      )
     } else {
       False
     }
@@ -639,32 +598,17 @@ fn value_and_mint_mint_asset(
       siblings,
     ),
   } {
-    when
+    value_and_mint_mint_asset_successor(
+      pre,
+      witness,
+      control,
       apply_value_asset_mutation(
         control.value_accumulator,
         policy_id |> bytearray.concat(asset_name),
         quantity,
         mutation,
-      )
-    is {
-      ValueAccumulatorAssetLimitExceeded ->
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          reject_asset_count,
-        )
-      ValueAccumulatorMutationInvalid -> False
-      ValueAccumulatorUpdated(next_value) ->
-        value_and_mint_successor_is_exact(
-          pre,
-          witness,
-          ValueAndMintControlV1 {
-            ..control,
-            mint_cursor: control.mint_cursor + 1,
-            value_accumulator: next_value,
-          },
-        )
-    }
+      ),
+    )
   } else {
     False
   }
@@ -1091,5 +1035,261 @@ pub fn verify_value_and_mint_finalize_semantics_v1(
     control_is_well_formed,
     control.stage == 5,
     value_and_mint_stage_five(pre, witness, NoAuxiliaryWitness, control, body),
+  }
+}
+
+/// The shared rewarding validator checks the pure fold. Dispatchers bind every
+/// claim input to authenticated control and derive the exact successor.
+pub fn verify_asset_fold_claim(
+  claim: AssetFoldClaim,
+  negate_quantity: Bool,
+) -> Bool {
+  when claim.outcome is {
+    ValueAccumulatorMutationInvalid -> False
+    _ -> and {
+        when claim.descriptor is {
+          None -> True
+          Some(d) -> {
+            let descriptor = ledger_output_commitment_v1.decode(
+              d.descriptor_cbor,
+            )
+            and {
+              descriptor.asset_count == d.asset_count,
+              ledger_output_commitment_v1.verify_asset_membership(
+                descriptor,
+                d.asset_index,
+                claim.policy_id,
+                claim.asset_name,
+                claim.quantity,
+                d.asset_peaks,
+                d.asset_siblings,
+              ),
+            }
+          }
+        },
+        apply_value_asset_mutation(
+          claim.pre_value_accumulator,
+          claim.policy_id |> bytearray.concat(claim.asset_name),
+          if negate_quantity {
+            0 - claim.quantity
+          } else {
+            claim.quantity
+          },
+          claim.mutation,
+        ) == claim.outcome,
+      }
+  }
+}
+
+fn value_and_mint_replay_asset_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ValueAndMintControlV1,
+  source_kind: Int,
+  key: ByteArray,
+  descriptor_cbor: ByteArray,
+  next_schedule_hash: ByteArray,
+  asset_count: Int,
+  outcome: ValueAccumulatorUpdateV1,
+) -> Bool {
+  when outcome is {
+    ValueAccumulatorAssetLimitExceeded ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_asset_count,
+      )
+    ValueAccumulatorMutationInvalid -> False
+    ValueAccumulatorUpdated(next_value) -> {
+      let next_control = if control.replay_asset_cursor == asset_count {
+        complete_value_input_replay(
+          control,
+          source_kind,
+          key,
+          descriptor_cbor,
+          next_schedule_hash,
+          next_value,
+        )
+      } else {
+        ValueAndMintControlV1 {
+          ..control,
+          replay_asset_cursor: control.replay_asset_cursor + 1,
+          value_accumulator: next_value,
+        }
+      }
+      value_and_mint_successor_is_exact(pre, witness, next_control)
+    }
+  }
+}
+
+fn value_and_mint_output_asset_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ValueAndMintControlV1,
+  asset_count: Int,
+  outcome: ValueAccumulatorUpdateV1,
+) -> Bool {
+  when outcome is {
+    ValueAccumulatorAssetLimitExceeded ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_asset_count,
+      )
+    ValueAccumulatorMutationInvalid -> False
+    ValueAccumulatorUpdated(next_value) -> {
+      let next_control = if control.output_asset_cursor == asset_count {
+        ValueAndMintControlV1 {
+          ..control,
+          output_cursor: control.output_cursor + 1,
+          output_asset_cursor: 0,
+          replay_value_hash: no_rejection_code_hash,
+          value_accumulator: next_value,
+        }
+      } else {
+        ValueAndMintControlV1 {
+          ..control,
+          output_asset_cursor: control.output_asset_cursor + 1,
+          value_accumulator: next_value,
+        }
+      }
+      value_and_mint_successor_is_exact(pre, witness, next_control)
+    }
+  }
+}
+
+fn value_and_mint_mint_asset_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ValueAndMintControlV1,
+  outcome: ValueAccumulatorUpdateV1,
+) -> Bool {
+  when outcome is {
+    ValueAccumulatorAssetLimitExceeded ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_asset_count,
+      )
+    ValueAccumulatorMutationInvalid -> False
+    ValueAccumulatorUpdated(next_value) ->
+      value_and_mint_successor_is_exact(
+        pre,
+        witness,
+        ValueAndMintControlV1 {
+          ..control,
+          mint_cursor: control.mint_cursor + 1,
+          value_accumulator: next_value,
+        },
+      )
+  }
+}
+
+pub fn verify_value_and_mint_replay_asset_dispatch(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_kind: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  claim: AssetFoldClaim,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, valid_control) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  expect Some(d) = claim.descriptor
+  and {
+    valid_control,
+    control.stage == 2,
+    control.replay_remaining_schedule_hash != empty_resolution_schedule_hash(),
+    control.replay_asset_cursor > 0,
+    control.value_accumulator == claim.pre_value_accumulator,
+    source_kind == 0,
+    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    control.replay_cursor < control.native_control.resolved_input_count,
+    blake2b_256(d.descriptor_cbor) == control.replay_value_hash,
+    d.asset_index == control.replay_asset_cursor - 1,
+    value_and_mint_replay_asset_successor(
+      pre,
+      witness,
+      control,
+      source_kind,
+      key,
+      d.descriptor_cbor,
+      next_schedule_hash,
+      d.asset_count,
+      claim.outcome,
+    ),
+  }
+}
+
+pub fn verify_value_and_mint_output_asset_dispatch(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  output_index: Int,
+  claim: AssetFoldClaim,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, valid_control) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  expect Some(d) = claim.descriptor
+  and {
+    valid_control,
+    control.stage == 3,
+    control.output_cursor < control.native_control.output_count,
+    control.output_asset_cursor > 0,
+    control.value_accumulator == claim.pre_value_accumulator,
+    output_index == control.output_cursor,
+    d.asset_index == control.output_asset_cursor - 1,
+    blake2b_256(d.descriptor_cbor) == control.replay_value_hash,
+    value_and_mint_output_asset_successor(
+      pre,
+      witness,
+      control,
+      d.asset_count,
+      claim.outcome,
+    ),
+  }
+}
+
+pub fn verify_value_and_mint_mint_asset_dispatch(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  mint_index: Int,
+  siblings: List<ByteArray>,
+  claim: AssetFoldClaim,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, valid_control) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    valid_control,
+    control.stage == 4,
+    control.mint_cursor < control.native_control.mint_count,
+    control.value_accumulator == claim.pre_value_accumulator,
+    when claim.descriptor is {
+      None -> True
+      Some(_) -> False
+    },
+    mint_index == control.mint_cursor,
+    bytearray.length(claim.policy_id) == 28,
+    bytearray.length(claim.asset_name) <= 32,
+    claim.quantity != 0,
+    validation_merkle_v1.verify_membership(
+      control.native_control.mint_count,
+      control.native_control.mint_peaks,
+      mint_index,
+      mint_asset_leaf_hash(claim.policy_id, claim.asset_name, claim.quantity),
+      siblings,
+    ),
+    value_and_mint_mint_asset_successor(pre, witness, control, claim.outcome),
   }
 }

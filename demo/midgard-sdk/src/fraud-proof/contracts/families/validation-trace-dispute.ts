@@ -6,6 +6,7 @@ import {
   AuthenticatedValidator,
   MintingValidator,
   SpendingValidator,
+  WithdrawalValidator,
 } from "../../../common.js";
 import {
   applyBlueprintParams,
@@ -15,6 +16,7 @@ import {
   getBlueprintValidator,
   getUnappliedScript,
   makeSpendingValidator,
+  makeWithdrawalValidator,
   tryBuild,
 } from "../blueprint.js";
 import { buildSharedFaultProofContracts } from "../shared.js";
@@ -290,6 +292,10 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     ledgerDeltaTerminal:
       "fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend",
   },
+  yields: {
+    valueAndMintAssetFold:
+      "fraud_proofs/validation_trace/value_and_mint_asset_fold_yield.main.withdraw",
+  },
 } as const;
 
 export type ValidationTraceDisputeFaultProofContracts = {
@@ -334,6 +340,9 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
     ];
+    readonly yields: {
+      readonly valueAndMintAssetFold: WithdrawalValidator;
+    };
     readonly semanticResolvers: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -447,7 +456,9 @@ export type ValidationTraceDisputeFaultProofContracts = {
 };
 
 export type BuildValidationTraceDisputeFaultProofContractsParams =
-  BuildFaultProofContractsParams;
+  BuildFaultProofContractsParams & {
+    readonly referenceScriptAuthPolicyId: string;
+  };
 
 export const buildValidationTraceDisputeChain = ({
   blueprint,
@@ -458,6 +469,7 @@ export const buildValidationTraceDisputeChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
+  referenceScriptAuthPolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -467,6 +479,7 @@ export const buildValidationTraceDisputeChain = ({
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
+  readonly referenceScriptAuthPolicyId: string;
 }): Effect.Effect<
   ValidationTraceDisputeFaultProofContracts["validationTraceDispute"],
   Error
@@ -705,6 +718,7 @@ export const buildValidationTraceDisputeChain = ({
      */
     const semanticResolverParameterValues = new Map<string, Data>([
       ["award_script_hash", award.spendingScriptHash],
+      ["reference_script_auth_policy_id", referenceScriptAuthPolicyId],
       ["computation_thread_policy_id", computationThread.policyId],
       [
         "field_preimage_certificate_policy_id",
@@ -853,6 +867,37 @@ export const buildValidationTraceDisputeChain = ({
       ...baseSemanticResolvers,
       stageOneRedeemerEnvelope,
     ] as const;
+    const valueAndMintAssetFold = yield* tryBuild(
+      "Failed to build validation-trace asset-fold yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .valueAndMintAssetFold,
+            [
+              builtSemanticResolvers[
+                semanticTitles.indexOf(
+                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    .valueAndMintReplayAsset,
+                )
+              ]!.spendingScriptHash,
+              builtSemanticResolvers[
+                semanticTitles.indexOf(
+                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    .valueAndMintOutputAsset,
+                )
+              ]!.spendingScriptHash,
+              builtSemanticResolvers[
+                semanticTitles.indexOf(
+                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    .valueAndMintMintAsset,
+                )
+              ]!.spendingScriptHash,
+            ],
+          ),
+        ),
+    );
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
       [semanticResolvers[2]],
@@ -1183,6 +1228,7 @@ export const buildValidationTraceDisputeChain = ({
       scriptSourcesStageOneRedeemerStages,
       prepareResolvers,
       semanticResolvers,
+      yields: { valueAndMintAssetFold },
       resolvers,
     };
   });

@@ -24,6 +24,7 @@ export const makeNativeTx = ({
   addrTxWitsPreimageCbor,
   requiredSignerHashes = [],
   scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST,
+  mintPreimageCbor = EMPTY_CBOR_LIST,
   redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST,
   validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
   validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
@@ -39,6 +40,7 @@ export const makeNativeTx = ({
   readonly addrTxWitsPreimageCbor?: Buffer;
   readonly requiredSignerHashes?: readonly string[];
   readonly scriptTxWitsPreimageCbor?: Buffer;
+  readonly mintPreimageCbor?: Buffer;
   readonly redeemerTxWitsPreimageCbor?: Buffer;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
@@ -82,7 +84,7 @@ export const makeNativeTx = ({
           return Buffer.from(hash, "hex");
         }),
       ),
-      mintPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor,
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
       fee,

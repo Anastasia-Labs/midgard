@@ -2305,6 +2305,7 @@ export const buildRealValidationTraceDisputeValidator = (
         network,
         hubOraclePolicyId: contracts.hubOracle.policyId,
         fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+        referenceScriptAuthPolicyId: contracts.referenceScriptAuth.policyId,
       });
 
     yield* expectDerivedScriptHash(

@@ -32,12 +32,20 @@
 //// semantics, and every fixture below is shown to be an honest step of the
 //// aggregate route before it is used against a validator.
 
+use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use aiken/crypto.{blake2b_256}
+use aiken/fuzz
 use aiken/merkle_patricia_forestry/helpers.{combine, suffix}
 use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
+use cardano/address.{Script}
+use cardano/assets
+use cardano/transaction.{Input,
+  Output, Spend, Transaction, Withdraw} as l1_transaction
 use env
+use fraud_proofs/validation_trace/value_and_mint_asset_fold_yield as asset_fold_yield
 use fraud_proofs/validation_trace/value_and_mint_begin_semantic_v1 as begin_validator
 use fraud_proofs/validation_trace/value_and_mint_finalize_semantic_v1 as finalize_validator
 use fraud_proofs/validation_trace/value_and_mint_mint_asset_semantic_v1 as mint_asset_validator
@@ -66,15 +74,18 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/ledger_output_commitment_v1
 use midgard/script_proof_v1
+use midgard/validation_asset_fold.{asset_fold_role}
 use midgard/validation_machine/machine_types.{
-  NativeScriptsControlV1, NoAuxiliaryWitness, ResolvedInputReplayWitness,
-  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1, ValueAccumulatorV1, ValueAndMintControlV1,
+  AssetDescriptorClaim, AssetFoldClaim, NativeScriptsControlV1,
+  NoAuxiliaryWitness, ResolvedInputReplayWitness, ValidationAuxiliaryWitnessV1,
+  ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
+  ValueAccumulatorAssetLimitExceeded, ValueAccumulatorV1, ValueAndMintControlV1,
   ValueAssetMutationWitnessV1, ValueInputAssetWitness, ValueMintAssetWitness,
   ValueOutputAssetWitness, ValueOutputDescriptorWitness,
 }
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/shared as vm_shared
+use midgard/validation_machine/value_and_mint as value_fold
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1.{FrontierPeak}
 use midgard/validation_resolution_v1.{
@@ -878,20 +889,14 @@ type ReplayInputMirrorV1 {
 
 type ReplayAssetMirrorV1 {
   ReplayAssetMirror {
+    claim: AssetFoldClaim,
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     source_kind: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
-    descriptor_cbor: ByteArray,
-    asset_index: Int,
-    policy_id: ByteArray,
-    asset_name: ByteArray,
-    quantity: Int,
-    asset_peaks: List<FrontierPeak>,
-    asset_siblings: List<ByteArray>,
-    mutation: ValueAssetMutationWitnessV1,
+    yield_to_ref_input_index: Int,
   }
 }
 
@@ -908,32 +913,24 @@ type OutputDescriptorMirrorV1 {
 
 type OutputAssetMirrorV1 {
   OutputAssetMirror {
+    claim: AssetFoldClaim,
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     ledger_output_index: Int,
-    descriptor_cbor: ByteArray,
-    asset_index: Int,
-    policy_id: ByteArray,
-    asset_name: ByteArray,
-    quantity: Int,
-    asset_peaks: List<FrontierPeak>,
-    asset_siblings: List<ByteArray>,
-    mutation: ValueAssetMutationWitnessV1,
+    yield_to_ref_input_index: Int,
   }
 }
 
 type MintAssetMirrorV1 {
   MintAssetMirror {
+    claim: AssetFoldClaim,
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     mint_index: Int,
-    policy_id: ByteArray,
-    asset_name: ByteArray,
-    quantity: Int,
     siblings: List<ByteArray>,
-    mutation: ValueAssetMutationWitnessV1,
+    yield_to_ref_input_index: Int,
   }
 }
 
@@ -1089,38 +1086,26 @@ test replay_asset_wire_layout_is_pinned() {
     = f.auxiliary
   let real: replay_asset_validator.SpendRedeemer = ct.Continue(
     replay_asset_validator.VerifyReplayAsset {
+      claim: asset_claim(f.transition, f.auxiliary),
+      yield_to_ref_input_index: 0,
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
       source_kind,
       key,
       next_schedule_hash,
-      descriptor_cbor,
-      asset_index,
-      policy_id,
-      asset_name,
-      quantity,
-      asset_peaks,
-      asset_siblings,
-      mutation,
     },
   )
   let mirror: ct.StepRedeemer<ReplayAssetMirrorV1> = ct.Continue(
     ReplayAssetMirror {
+      claim: asset_claim(f.transition, f.auxiliary),
+      yield_to_ref_input_index: 0,
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
       source_kind,
       key,
       next_schedule_hash,
-      descriptor_cbor,
-      asset_index,
-      policy_id,
-      asset_name,
-      quantity,
-      asset_peaks,
-      asset_siblings,
-      mutation,
     },
   )
   let mirror_data: Data = mirror
@@ -1177,34 +1162,22 @@ test output_asset_wire_layout_is_pinned() {
     = f.auxiliary
   let real: output_asset_validator.SpendRedeemer = ct.Continue(
     output_asset_validator.VerifyOutputAsset {
+      claim: asset_claim(f.transition, f.auxiliary),
+      yield_to_ref_input_index: 0,
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
       ledger_output_index: 3,
-      descriptor_cbor,
-      asset_index,
-      policy_id,
-      asset_name,
-      quantity,
-      asset_peaks,
-      asset_siblings,
-      mutation,
     },
   )
   let mirror: ct.StepRedeemer<OutputAssetMirrorV1> = ct.Continue(
     OutputAssetMirror {
+      claim: asset_claim(f.transition, f.auxiliary),
+      yield_to_ref_input_index: 0,
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
       ledger_output_index: 3,
-      descriptor_cbor,
-      asset_index,
-      policy_id,
-      asset_name,
-      quantity,
-      asset_peaks,
-      asset_siblings,
-      mutation,
     },
   )
   let mirror_data: Data = mirror
@@ -1229,28 +1202,24 @@ test mint_asset_wire_layout_is_pinned() {
     = f.auxiliary
   let real: mint_asset_validator.SpendRedeemer = ct.Continue(
     mint_asset_validator.VerifyMintAsset {
+      claim: asset_claim(f.transition, f.auxiliary),
+      yield_to_ref_input_index: 0,
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
       mint_index,
-      policy_id,
-      asset_name,
-      quantity,
       siblings,
-      mutation,
     },
   )
   let mirror: ct.StepRedeemer<MintAssetMirrorV1> = ct.Continue(
     MintAssetMirror {
+      claim: asset_claim(f.transition, f.auxiliary),
+      yield_to_ref_input_index: 0,
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
       mint_index,
-      policy_id,
-      asset_name,
-      quantity,
       siblings,
-      mutation,
     },
   )
   let mirror_data: Data = mirror
@@ -1481,31 +1450,32 @@ fn run_replay_asset(
         mutation,
       }
     = auxiliary
-  replay_asset_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.computation_thread_policy_id,
-    Some(semantic_datum(base)),
-    ct.Continue(
-      replay_asset_validator.VerifyReplayAsset {
-        input_index: 0,
-        output_index: 0,
-        transition,
-        source_kind,
-        key,
-        next_schedule_hash,
-        descriptor_cbor,
-        asset_index,
-        policy_id,
-        asset_name,
-        quantity,
-        asset_peaks,
-        asset_siblings,
-        mutation,
-      },
-    ),
-    fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+  let redeemer: replay_asset_validator.SpendRedeemer = ct.Continue(
+    replay_asset_validator.VerifyReplayAsset {
+      claim: asset_claim(transition, auxiliary),
+      yield_to_ref_input_index: 0,
+      input_index: 0,
+      output_index: 0,
+      transition,
+      source_kind,
+      key,
+      next_schedule_hash,
+    },
   )
+  let redeemer_data: Data = redeemer
+  let tx = asset_fold_tx(redeemer_data)
+  and {
+    replay_asset_validator.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      fold_auth_policy,
+      Some(semantic_datum(base)),
+      redeemer,
+      fixture.own_out_ref(),
+      tx,
+    ),
+    check_asset_fold(3, tx),
+  }
 }
 
 fn run_replay_finish(
@@ -1573,29 +1543,30 @@ fn run_output_asset(
         mutation,
       }
     = auxiliary
-  output_asset_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.computation_thread_policy_id,
-    Some(semantic_datum(base)),
-    ct.Continue(
-      output_asset_validator.VerifyOutputAsset {
-        input_index: 0,
-        output_index: 0,
-        transition,
-        ledger_output_index: output_index,
-        descriptor_cbor,
-        asset_index,
-        policy_id,
-        asset_name,
-        quantity,
-        asset_peaks,
-        asset_siblings,
-        mutation,
-      },
-    ),
-    fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+  let redeemer: output_asset_validator.SpendRedeemer = ct.Continue(
+    output_asset_validator.VerifyOutputAsset {
+      claim: asset_claim(transition, auxiliary),
+      yield_to_ref_input_index: 0,
+      input_index: 0,
+      output_index: 0,
+      transition,
+      ledger_output_index: output_index,
+    },
   )
+  let redeemer_data: Data = redeemer
+  let tx = asset_fold_tx(redeemer_data)
+  and {
+    output_asset_validator.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      fold_auth_policy,
+      Some(semantic_datum(base)),
+      redeemer,
+      fixture.own_out_ref(),
+      tx,
+    ),
+    check_asset_fold(6, tx),
+  }
 }
 
 fn run_output_finish(
@@ -1633,26 +1604,31 @@ fn run_mint_asset(
         mutation,
       }
     = auxiliary
-  mint_asset_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.computation_thread_policy_id,
-    Some(semantic_datum(base)),
-    ct.Continue(
-      mint_asset_validator.VerifyMintAsset {
-        input_index: 0,
-        output_index: 0,
-        transition,
-        mint_index,
-        policy_id,
-        asset_name,
-        quantity,
-        siblings,
-        mutation,
-      },
-    ),
-    fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+  let redeemer: mint_asset_validator.SpendRedeemer = ct.Continue(
+    mint_asset_validator.VerifyMintAsset {
+      claim: asset_claim(transition, auxiliary),
+      yield_to_ref_input_index: 0,
+      input_index: 0,
+      output_index: 0,
+      transition,
+      mint_index,
+      siblings,
+    },
   )
+  let redeemer_data: Data = redeemer
+  let tx = asset_fold_tx(redeemer_data)
+  and {
+    mint_asset_validator.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      fold_auth_policy,
+      Some(semantic_datum(base)),
+      redeemer,
+      fixture.own_out_ref(),
+      tx,
+    ),
+    check_asset_fold(8, tx),
+  }
 }
 
 fn run_mint_finish(
@@ -1891,25 +1867,17 @@ test begin_validator_refuses_a_foreign_evidence_commitment() fail {
 test mint_asset_validator_refuses_a_retargeted_quantity() fail {
   let f = mint_asset_fixture()
   expect ValueMintAssetWitness { mutation, .. } = f.auxiliary
-  mint_asset_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.computation_thread_policy_id,
-    Some(semantic_datum(prepared(f))),
-    ct.Continue(
-      mint_asset_validator.VerifyMintAsset {
-        input_index: 0,
-        output_index: 0,
-        transition: f.transition,
-        mint_index: 0,
-        policy_id: #"11111111111111111111111111111111111111111111111111111111",
-        asset_name: #"beef",
-        quantity: -4,
-        siblings: [],
-        mutation,
-      },
-    ),
-    fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+  run_mint_asset(
+    prepared(f),
+    f.transition,
+    ValueMintAssetWitness {
+      mint_index: 0,
+      policy_id: #"11111111111111111111111111111111111111111111111111111111",
+      asset_name: #"beef",
+      quantity: -4,
+      siblings: [],
+      mutation,
+    },
   )
 }
 
@@ -1997,4 +1965,475 @@ test every_fixture_is_an_honest_machine_step() {
     fixture_is_an_honest_step(9),
     fixture_is_an_honest_step(10),
   }
+}
+
+// Both script purposes run over one transaction in every yielding fixture.
+const fold_auth_policy =
+  #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+const fold_yield_hash =
+  #"abababababababababababababababababababababababababababab"
+
+const fold_other_hash =
+  #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+const fold_third_hash =
+  #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+
+fn asset_claim(
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> AssetFoldClaim {
+  let control = vm_witness.value_and_mint_control_from_witness(
+    transition.work_witness_cbor,
+  )
+  let (policy_id, asset_name, quantity, mutation, descriptor) = when
+    auxiliary
+  is {
+    ValueInputAssetWitness {
+      policy_id,
+      asset_name,
+      quantity,
+      mutation,
+      descriptor_cbor,
+      asset_index,
+      asset_peaks,
+      asset_siblings,
+      ..
+    } ->
+      (
+        policy_id,
+        asset_name,
+        quantity,
+        mutation,
+        Some(
+          AssetDescriptorClaim {
+            descriptor_cbor,
+            asset_index,
+            asset_peaks,
+            asset_siblings,
+            asset_count: ledger_output_commitment_v1.decode(descriptor_cbor).asset_count,
+          },
+        ),
+      )
+    ValueOutputAssetWitness {
+      policy_id,
+      asset_name,
+      quantity,
+      mutation,
+      descriptor_cbor,
+      asset_index,
+      asset_peaks,
+      asset_siblings,
+      ..
+    } ->
+      (
+        policy_id,
+        asset_name,
+        quantity,
+        mutation,
+        Some(
+          AssetDescriptorClaim {
+            descriptor_cbor,
+            asset_index,
+            asset_peaks,
+            asset_siblings,
+            asset_count: ledger_output_commitment_v1.decode(descriptor_cbor).asset_count,
+          },
+        ),
+      )
+    ValueMintAssetWitness { policy_id, asset_name, quantity, mutation, .. } ->
+      (policy_id, asset_name, quantity, mutation, None)
+    _ -> fail
+  }
+  AssetFoldClaim {
+    policy_id,
+    asset_name,
+    quantity,
+    mutation,
+    pre_value_accumulator: control.value_accumulator,
+    outcome: value_fold.apply_value_asset_mutation(
+      control.value_accumulator,
+      policy_id |> bytearray.concat(asset_name),
+      when auxiliary is {
+        ValueOutputAssetWitness { .. } -> 0 - quantity
+        _ -> quantity
+      },
+      mutation,
+    ),
+    descriptor,
+  }
+}
+
+fn asset_fold_tx(redeemer: Data) -> Transaction {
+  let tx = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
+  expect [input] = tx.inputs
+  let reference_output = Output {
+    ..input.output,
+    value: assets.from_asset(fold_auth_policy, asset_fold_role, 1),
+    reference_script: Some(fold_yield_hash),
+  }
+  Transaction {
+    ..tx,
+    reference_inputs: [
+      Input {
+        output_reference: l1_transaction.OutputReference {
+          transaction_id: zero,
+          output_index: 9,
+        },
+        output: reference_output,
+      },
+    ],
+    withdrawals: [Pair(Script(fold_yield_hash), 0)],
+    redeemers: [
+      Pair(Spend(fixture.own_out_ref()), redeemer),
+      Pair(Withdraw(Script(fold_yield_hash)), builtin.constr_data(0, [])),
+    ],
+  }
+}
+
+fn check_asset_fold(kind: Int, tx: Transaction) -> Bool {
+  asset_fold_yield.main.withdraw(
+    if kind == 3 {
+      fixture.step_script_hash
+    } else {
+      fold_other_hash
+    },
+    if kind == 6 {
+      fixture.step_script_hash
+    } else {
+      fold_third_hash
+    },
+    if kind == 8 {
+      fixture.step_script_hash
+    } else {
+      fold_yield_hash
+    },
+    builtin.constr_data(0, []),
+    Script(fold_yield_hash),
+    tx,
+  )
+}
+
+fn replay_claim_redeemer(
+  claim: AssetFoldClaim,
+) -> replay_asset_validator.SpendRedeemer {
+  let f = replay_asset_fixture()
+  expect ValueInputAssetWitness { source_kind, key, next_schedule_hash, .. } = f.auxiliary
+  ct.Continue(
+    replay_asset_validator.VerifyReplayAsset {
+      claim,
+      input_index: 0,
+      output_index: 0,
+      transition: f.transition,
+      source_kind,
+      key,
+      next_schedule_hash,
+      yield_to_ref_input_index: 0,
+    },
+  )
+}
+
+fn check_replay_dispatch(
+  redeemer: replay_asset_validator.SpendRedeemer,
+  tx: Transaction,
+) -> Bool {
+  let f = replay_asset_fixture()
+  replay_asset_validator.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fold_auth_policy,
+    Some(semantic_datum(prepared(f))),
+    redeemer,
+    fixture.own_out_ref(),
+    tx,
+  )
+}
+
+test asset_fold_role_fits_an_asset_name() {
+  bytearray.length(asset_fold_role) <= 32
+}
+
+test asset_fold_refuses_omitted_withdrawal() fail {
+  let f = replay_asset_fixture()
+  let redeemer = replay_claim_redeemer(asset_claim(f.transition, f.auxiliary))
+  let tx = asset_fold_tx(redeemer)
+  check_replay_dispatch(redeemer, Transaction { ..tx, withdrawals: [] })
+}
+
+test asset_fold_refuses_nonzero_withdrawal() fail {
+  let f = replay_asset_fixture()
+  let redeemer = replay_claim_redeemer(asset_claim(f.transition, f.auxiliary))
+  let tx = asset_fold_tx(redeemer)
+  check_replay_dispatch(
+    redeemer,
+    Transaction { ..tx, withdrawals: [Pair(Script(fold_yield_hash), 1)] },
+  )
+}
+
+test asset_fold_refuses_wrong_role() fail {
+  let f = replay_asset_fixture()
+  let redeemer = replay_claim_redeemer(asset_claim(f.transition, f.auxiliary))
+  let tx = asset_fold_tx(redeemer)
+  expect [ref] = tx.reference_inputs
+  check_replay_dispatch(
+    redeemer,
+    Transaction {
+      ..tx,
+      reference_inputs: [
+        Input {
+          ..ref,
+          output: Output {
+            ..ref.output,
+            value: assets.from_asset(fold_auth_policy, "wrong-role", 1),
+          },
+        },
+      ],
+    },
+  )
+}
+
+test asset_fold_refuses_wrong_reference_script() fail {
+  let f = replay_asset_fixture()
+  let redeemer = replay_claim_redeemer(asset_claim(f.transition, f.auxiliary))
+  let tx = asset_fold_tx(redeemer)
+  expect [ref] = tx.reference_inputs
+  check_replay_dispatch(
+    redeemer,
+    Transaction {
+      ..tx,
+      reference_inputs: [
+        Input {
+          ..ref,
+          output: Output {
+            ..ref.output,
+            reference_script: Some(fold_other_hash),
+          },
+        },
+      ],
+    },
+  )
+}
+
+test asset_fold_refuses_duplicate_dispatcher_inputs() fail {
+  let f = replay_asset_fixture()
+  let redeemer = replay_claim_redeemer(asset_claim(f.transition, f.auxiliary))
+  let tx = asset_fold_tx(redeemer)
+  expect [input] = tx.inputs
+  let other = Input {
+    ..input,
+    output_reference: l1_transaction.OutputReference {
+      transaction_id: zero,
+      output_index: 10,
+    },
+  }
+  check_asset_fold(3, Transaction { ..tx, inputs: [input, other] })
+}
+
+test asset_fold_refuses_forged_descriptor_count() {
+  let f = replay_asset_fixture()
+  let claim = asset_claim(f.transition, f.auxiliary)
+  expect Some(descriptor) = claim.descriptor
+  let wrong = AssetFoldClaim {
+    ..claim,
+    descriptor: Some(
+      AssetDescriptorClaim {
+        ..descriptor,
+        asset_count: descriptor.asset_count + 1,
+      },
+    ),
+  }
+  !check_asset_fold(3, asset_fold_tx(replay_claim_redeemer(wrong)))
+}
+
+test asset_fold_refuses_forged_outcome() {
+  let f = replay_asset_fixture()
+  let claim = asset_claim(f.transition, f.auxiliary)
+  let wrong = AssetFoldClaim {
+    ..claim,
+    outcome: ValueAccumulatorAssetLimitExceeded,
+  }
+  !check_asset_fold(3, asset_fold_tx(replay_claim_redeemer(wrong)))
+}
+
+test asset_fold_refuses_retargeted_pre_accumulator() {
+  let f = replay_asset_fixture()
+  let claim = asset_claim(f.transition, f.auxiliary)
+  let wrong = AssetFoldClaim {
+    ..claim,
+    pre_value_accumulator: ValueAccumulatorV1 {
+      ..claim.pre_value_accumulator,
+      lovelace_delta: 99,
+    },
+  }
+  let redeemer = replay_claim_redeemer(wrong)
+  !check_replay_dispatch(redeemer, asset_fold_tx(redeemer))
+}
+
+test asset_fold_refuses_mint_descriptor_substitution() {
+  let f = replay_asset_fixture()
+  let redeemer = replay_claim_redeemer(asset_claim(f.transition, f.auxiliary))
+  !check_asset_fold(8, asset_fold_tx(redeemer))
+}
+
+test replay_asset_preserves_prover_cancellation_without_yield() {
+  replay_asset_validator.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fold_auth_policy,
+    Some(semantic_datum(prepared(replay_asset_fixture()))),
+    ct.Cancel { input_index: 0, computation_thread_mint_redeemer_index: 0 },
+    fixture.own_out_ref(),
+    fixture.cancel_step_l1_tx_v1(ct_asset, ct_asset, True),
+  )
+}
+
+test output_asset_preserves_prover_cancellation_without_yield() {
+  output_asset_validator.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fold_auth_policy,
+    Some(semantic_datum(prepared(output_asset_fixture()))),
+    ct.Cancel { input_index: 0, computation_thread_mint_redeemer_index: 0 },
+    fixture.own_out_ref(),
+    fixture.cancel_step_l1_tx_v1(ct_asset, ct_asset, True),
+  )
+}
+
+test mint_asset_preserves_prover_cancellation_without_yield() {
+  mint_asset_validator.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fold_auth_policy,
+    Some(semantic_datum(prepared(mint_asset_fixture()))),
+    ct.Cancel { input_index: 0, computation_thread_mint_redeemer_index: 0 },
+    fixture.own_out_ref(),
+    fixture.cancel_step_l1_tx_v1(ct_asset, ct_asset, True),
+  )
+}
+
+fn mutated_asset_auxiliary(
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  quantity: Int,
+  old_delta: Int,
+) -> ValidationAuxiliaryWitnessV1 {
+  when auxiliary is {
+    ValueInputAssetWitness {
+      source_kind,
+      key,
+      next_schedule_hash,
+      descriptor_cbor,
+      asset_index,
+      policy_id,
+      asset_name,
+      asset_peaks,
+      asset_siblings,
+      mutation,
+      ..
+    } ->
+      ValueInputAssetWitness {
+        source_kind,
+        key,
+        next_schedule_hash,
+        descriptor_cbor,
+        asset_index,
+        policy_id,
+        asset_name,
+        asset_peaks,
+        asset_siblings,
+        quantity,
+        mutation: ValueAssetMutationWitnessV1 {
+          ..mutation,
+          old_delta,
+          delta_was_present: old_delta != 0,
+        },
+      }
+    ValueOutputAssetWitness {
+      output_index,
+      descriptor_cbor,
+      asset_index,
+      policy_id,
+      asset_name,
+      asset_peaks,
+      asset_siblings,
+      mutation,
+      ..
+    } ->
+      ValueOutputAssetWitness {
+        output_index,
+        descriptor_cbor,
+        asset_index,
+        policy_id,
+        asset_name,
+        asset_peaks,
+        asset_siblings,
+        quantity,
+        mutation: ValueAssetMutationWitnessV1 {
+          ..mutation,
+          old_delta,
+          delta_was_present: old_delta != 0,
+        },
+      }
+    ValueMintAssetWitness {
+      mint_index,
+      policy_id,
+      asset_name,
+      siblings,
+      mutation,
+      ..
+    } ->
+      ValueMintAssetWitness {
+        mint_index,
+        policy_id,
+        asset_name,
+        siblings,
+        quantity,
+        mutation: ValueAssetMutationWitnessV1 {
+          ..mutation,
+          old_delta,
+          delta_was_present: old_delta != 0,
+        },
+      }
+    _ -> fail
+  }
+}
+
+test asset_yield_split_agrees_with_aggregate_for_mutated_quantities_and_deltas(
+  values via fuzz.tuple(fuzz.int_between(-10, 10), fuzz.int_between(-10, 10)),
+) {
+  let (quantity, old_delta) = values
+  list.all(
+    [3, 6, 8],
+    fn(kind) {
+      let f = fixture_of_kind(kind)
+      let valid_quantity = if kind == 8 {
+        if quantity == 0 {
+          1
+        } else {
+          quantity
+        }
+      } else {
+        if quantity < 0 {
+          0 - quantity
+        } else {
+          quantity
+        } + 1
+      }
+      let auxiliary = mutated_asset_auxiliary(
+        f.auxiliary,
+        valid_quantity,
+        old_delta,
+      )
+      let aggregate = vm_one_step.verify_value_and_mint_one_step_v1(
+        f.pre,
+        ValidationOneStepEvidenceV1 { transition: f.transition, auxiliary },
+      )
+      let split = when kind is {
+        3 -> run_replay_asset(prepared(f), f.transition, auxiliary)
+        6 -> run_output_asset(prepared(f), f.transition, auxiliary)
+        _ -> run_mint_asset(prepared(f), f.transition, auxiliary)
+      }
+      aggregate == split
+    },
+  )
 }

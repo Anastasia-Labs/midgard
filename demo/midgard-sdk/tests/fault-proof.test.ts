@@ -1875,6 +1875,7 @@ describe("fault-proof contract builder", () => {
       ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
+      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields),
       CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     ]);
 
@@ -1884,6 +1885,7 @@ describe("fault-proof contract builder", () => {
         network: "Preprod",
         hubOraclePolicyId: h28b,
         fraudProofCataloguePolicyId: h28c,
+        referenceScriptAuthPolicyId: h28,
       }),
     );
     const fraudProofTokenAddressData = Data.from(

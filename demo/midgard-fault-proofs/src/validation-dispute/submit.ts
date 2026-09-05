@@ -37,6 +37,7 @@ import {
 import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
+  AssetFoldClaim,
   AuthenticatedCanonicalDecodeItemDatum,
   buildUnsignedValidationProofItemPublicationProgram,
   deriveCekProgramMaterialPublications,
@@ -117,6 +118,7 @@ import {
   toUnit,
   type TxSigned,
   type UTxO,
+  validatorToRewardAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -146,6 +148,7 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
+import { buildValidationAssetFoldClaim } from "./asset-fold.js";
 
 export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
 export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;
@@ -545,11 +548,13 @@ const requireValidationDisputeReferenceScript = ({
   deployedScriptHash,
   expectedScriptHash,
   authPolicyId,
+  role = VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE,
 }: {
   readonly utxo: UTxO;
   readonly deployedScriptHash: string;
   readonly expectedScriptHash: string;
   readonly authPolicyId: string;
+  readonly role?: Parameters<typeof referenceScriptAuthUnit>[1];
 }): void => {
   if (utxo.scriptRef == null) {
     throw new Error(
@@ -565,10 +570,7 @@ const requireValidationDisputeReferenceScript = ({
       `Validation-dispute reference script hash mismatch: actual=${actualScriptHash}, deployment=${deployedScriptHash}, expected=${expectedScriptHash}`,
     );
   }
-  const expectedRoleUnit = referenceScriptAuthUnit(
-    authPolicyId,
-    VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE,
-  );
+  const expectedRoleUnit = referenceScriptAuthUnit(authPolicyId, role);
   const authPolicyAssets = Object.entries(utxo.assets).filter(
     ([unit, amount]) =>
       unit.slice(0, authPolicyId.length) === authPolicyId && amount !== 0n,
@@ -3701,6 +3703,7 @@ const semanticActionFields = ({
   transition,
   auxiliary,
   materialRoute,
+  assetFoldYieldReferenceInputIndex,
 }: {
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
@@ -3714,6 +3717,7 @@ const semanticActionFields = ({
    * 11 semantic resolver 1.
    */
   readonly materialRoute?: PlutusDataValue;
+  readonly assetFoldYieldReferenceInputIndex?: bigint;
 }): readonly PlutusDataValue[] => {
   const base: readonly PlutusDataValue[] = [
     inputIndex,
@@ -3784,6 +3788,34 @@ const semanticActionFields = ({
       expected !== undefined &&
       hasValidationAuxiliaryShape(auxiliary, expected)
     ) {
+      if ([3, 6, 8].includes(semanticResolverIndex)) {
+        if (
+          assetFoldYieldReferenceInputIndex === undefined ||
+          assetFoldYieldReferenceInputIndex < 0n
+        ) {
+          throw new Error(
+            "Asset fold requires an authenticated yield reference index",
+          );
+        }
+        const claim = Data.from(
+          Data.to(
+            buildValidationAssetFoldClaim(transition, auxiliary),
+            AssetFoldClaim,
+          ),
+        );
+        const coordinates =
+          semanticResolverIndex === 3
+            ? auxiliary.fields.slice(0, 3)
+            : semanticResolverIndex === 6
+              ? auxiliary.fields.slice(0, 1)
+              : [auxiliary.fields[0]!, auxiliary.fields[4]!];
+        return [
+          claim,
+          ...base,
+          ...coordinates,
+          assetFoldYieldReferenceInputIndex,
+        ];
+      }
       return expected[0] === 0 ? base : [...base, ...auxiliary.fields];
     }
     throw new Error(
@@ -4255,12 +4287,14 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   inputIndex,
   outputIndex,
   materialRoute,
+  assetFoldYieldReferenceInputIndex,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
   /** Required by, and only by, the CEK execution-selection resolver (11/1). */
   readonly materialRoute?: ValidationCekMaterialRoute;
+  readonly assetFoldYieldReferenceInputIndex?: bigint;
 }): Buffer => {
   if (inputIndex < 0n || outputIndex < 0n) {
     throw new Error(
@@ -4279,6 +4313,9 @@ export const encodeValidationSemanticResolutionRedeemer = ({
     outputIndex,
     transition: staged.transitionData,
     auxiliary: staged.auxiliary,
+    ...(assetFoldYieldReferenceInputIndex === undefined
+      ? {}
+      : { assetFoldYieldReferenceInputIndex }),
     ...(materialRoute === undefined
       ? {}
       : { materialRoute: validationCekMaterialRouteData(materialRoute) }),
@@ -4309,6 +4346,7 @@ const makeSemanticResolutionRedeemer = ({
   auxiliary,
   materialReferenceUtxos = [],
   materialRoute,
+  assetFoldYieldReferenceUtxo,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -4321,6 +4359,7 @@ const makeSemanticResolutionRedeemer = ({
   readonly auxiliary: Constr<PlutusDataValue>;
   /** CEK program-material UTxOs the route names, in root order. */
   readonly materialReferenceUtxos?: readonly UTxO[];
+  readonly assetFoldYieldReferenceUtxo?: UTxO;
   /** Builds the CEK material route once the reference-input indices are known. */
   readonly materialRoute?: (
     layout: SemanticResolutionLayout,
@@ -4367,6 +4406,15 @@ const makeSemanticResolutionRedeemer = ({
       outputIndex: layout.outputIndex,
       transition,
       auxiliary,
+      ...(assetFoldYieldReferenceUtxo === undefined
+        ? {}
+        : {
+            assetFoldYieldReferenceInputIndex: requireReferenceInputIndex(
+              ctx,
+              assetFoldYieldReferenceUtxo,
+              "asset fold yield",
+            ),
+          }),
       ...(materialRoute === undefined
         ? {}
         : {
@@ -5990,6 +6038,7 @@ export const submitValidationDisputeSemanticResolution = async ({
 }): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
   const {
     deploymentInfo: parsedDeploymentInfo,
+    referenceScriptAuthPolicyId,
     validationTraceDisputeCategory,
     fraudProofCataloguePolicyId,
     contracts,
@@ -6104,6 +6153,31 @@ export const submitValidationDisputeSemanticResolution = async ({
     referenceScriptUtxo ??
     cekSemanticReferenceScriptUtxo ??
     valueAndMintSemanticReferenceScriptUtxo;
+  const assetFoldYield =
+    resolverIndex === 12 && [3, 6, 8].includes(staged.semanticResolverIndex)
+      ? contracts.validationTraceDispute.yields.valueAndMintAssetFold
+      : undefined;
+  let assetFoldYieldReferenceUtxo: UTxO | undefined;
+  if (assetFoldYield !== undefined) {
+    const entry =
+      parsedDeploymentInfo.validationTraceDisputeValueAndMintAssetFoldWithdraw;
+    if (entry?.refScriptUTxO == null)
+      throw new Error(
+        "Missing authenticated ValueAndMint asset-fold yield publication",
+      );
+    assetFoldYieldReferenceUtxo = await fetchUtxoByOutRef({
+      lucid,
+      outRef: entry.refScriptUTxO,
+      label: "asset fold yield",
+    });
+    requireValidationDisputeReferenceScript({
+      utxo: assetFoldYieldReferenceUtxo,
+      deployedScriptHash: entry.scriptHash,
+      expectedScriptHash: assetFoldYield.withdrawalScriptHash,
+      authPolicyId: referenceScriptAuthPolicyId,
+      role: "V1 validation-trace value-and-mint asset-fold yield",
+    });
+  }
   const isCekExecutionSelection =
     resolverIndex === 11 && staged.semanticResolverIndex === 1;
   if (
@@ -7097,6 +7171,9 @@ export const submitValidationDisputeSemanticResolution = async ({
     const referenceInputs = [
       ...(proofItemReferenceUtxo === undefined ? [] : [proofItemReferenceUtxo]),
       ...materialReferenceUtxos,
+      ...(assetFoldYieldReferenceUtxo === undefined
+        ? []
+        : [assetFoldYieldReferenceUtxo]),
       ...semanticScriptCarriage.referenceInputs,
     ];
     let tx = lucid
@@ -7115,6 +7192,9 @@ export const submitValidationDisputeSemanticResolution = async ({
           transition: staged.transitionData,
           auxiliary: staged.auxiliary,
           materialReferenceUtxos,
+          ...(assetFoldYieldReferenceUtxo === undefined
+            ? {}
+            : { assetFoldYieldReferenceUtxo }),
           ...(materialRoute === undefined ? {} : { materialRoute }),
           onLayout: (resolvedLayout) => {
             layout = resolvedLayout;
@@ -7133,6 +7213,12 @@ export const submitValidationDisputeSemanticResolution = async ({
       .validFrom(range.validFrom)
       .validTo(range.validTo)
       .addSignerKey(signer.paymentKeyHash);
+    if (assetFoldYield !== undefined)
+      tx = tx.withdraw(
+        validatorToRewardAddress(network, assetFoldYield.withdrawalScript),
+        0n,
+        Data.void(),
+      );
     const readiedTx = semanticScriptCarriage.attach(tx);
     const unsigned = await readiedTx.complete({ localUPLCEval: true });
     if (layout === undefined) {

@@ -189,3 +189,45 @@ into the yield's `descriptor`-less branch (−621 bytes) via a
 the closest of the three to the 25 KiB fee tier (fee-only consequence). The
 `claim.descriptor == None` comparison must be written as a `when` (the pinned
 compiler aborted on the `==` form during probing).
+
+
+## Group integration evidence (2026-09-05)
+
+The eight-plan ValueAndMint group is implemented together: exact library arm
+extraction, three authenticated asset dispatchers, and one shared rewarding
+validator. The three dispatchers receive the reference-script authentication
+policy; the SDK applies their hashes to the yield afterward. The deployment
+manifest, role identity, reference publication, reward registration, node
+consumers, and semantic submitter use the same applied identities. The new
+source names omit version suffixes; the wire role is `V1VtVamAssetFoldYield`.
+Evidence hashes, prepare routing, and cancellation semantics are unchanged.
+
+The normal pinned testnet blueprint
+`c9179b11f5cc12b5d2fb75fba96cacef4a58086063af1ba0e5dda94d93fa84ef`
+has all eleven semantic bodies and the shared yield below 15,000 raw bytes.
+The eight signed semantic publications are at most 14,746 bytes;
+all publish under the real protocol limits. The 581-row
+[complete lifecycle ledger](validation-trace-value-and-mint-fit-ledger.json)
+records at most 15,108 signed bytes, 7,361,187 memory units, and
+2,718,905,240 CPU units. Every recorded transaction passed local evaluation.
+
+Checks passed in the family worktree:
+
+- `MIDGARD_AIKEN_ENV=testnet node scripts/guard-focused-selector.mjs fraud_proofs/validation_trace/value_and_mint_split_v1`:
+  74/74, including authenticated yielding, substitution refusal, all three
+  cancellation paths, and a property comparing all three split asset rules to
+  the aggregate rule across positive quantities and signed mint quantities.
+- `pnpm exec vitest run tests/value-and-mint-asset-yield-lifecycle.test.ts`:
+  12/12, with three honest-block refusals and nine publication-to-removal
+  journeys. These cover all asset arms, a real 1,304-asset output whose Cardano
+  Value is exactly 5,000 bytes, and a committed one-step fixture combining
+  14 asset siblings, 16 widest MPF branches, a 16,384-asset frontier, and a
+  5,000-byte Value descriptor. The latter tests the selected one-step relation;
+  it does not claim a valid earlier history for the fabricated accumulator.
+- `tests/value-and-mint-publication-fit.test.ts`: all eight publications.
+- Semantic submit encoding: 21/21; deployment identity: 12/12; node deployment
+  descriptors: 19/19; SDK contract application: 30/30.
+
+The shared-branch blueprint and ledgers must be regenerated after integration.
+This group does not close the remaining validation-dispute workflow,
+funding-roster, other semantic-group size plans, or final program review gates.

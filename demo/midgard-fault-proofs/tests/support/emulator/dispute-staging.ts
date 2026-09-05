@@ -129,12 +129,14 @@ export const stageAuthenticatedValidationDisputePublication = async ({
   operatorLucid,
   operatorSeedPhrase,
   contracts,
+  authPolicy: suppliedAuthPolicy,
   runStage,
 }: {
   readonly emulator: Emulator;
   readonly operatorLucid: LucidEvolution;
   readonly operatorSeedPhrase: string;
   readonly contracts: MidgardValidators;
+  readonly authPolicy?: ReturnType<typeof createReferenceScriptAuthPolicy>;
   readonly runStage: <T>(
     label: string,
     operation: () => Promise<T>,
@@ -158,10 +160,12 @@ export const stageAuthenticatedValidationDisputePublication = async ({
     const validationDisputeControlPublications = await runStage(
       "reference-script.publish-authenticated",
       async () => {
-        const authPolicy = createReferenceScriptAuthPolicy(
-          referenceScriptPublisherLucid,
-          emulator.now(),
-        );
+        const authPolicy =
+          suppliedAuthPolicy ??
+          createReferenceScriptAuthPolicy(
+            referenceScriptPublisherLucid,
+            emulator.now(),
+          );
         const publications = {} as ValidationDisputeControlPublications;
         for (const target of validationDisputeControlPublicationTargets(
           contracts,

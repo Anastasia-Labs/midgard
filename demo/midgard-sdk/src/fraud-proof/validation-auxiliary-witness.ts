@@ -882,7 +882,7 @@ const LedgerDeltaOperationProofSchema = Data.Object({
   operation_siblings: ByteArrayListSchema,
 });
 
-const ValueAssetMutationWitnessSchema = Data.Object({
+export const ValueAssetMutationWitnessSchema = Data.Object({
   delta_was_present: Data.Boolean(),
   old_delta: Data.Integer(),
   delta_proof: ProofSchema,

@@ -236,6 +236,7 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofNativeScriptInvalidStep05",
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
+  "validationTraceDisputeValueAndMintAssetFoldWithdraw",
   "fraudProofMinAdaStep02TxWithdraw",
   "fraudProofMinAdaStep02UtxoWithdraw",
   "correctionLockSpend",
@@ -843,6 +844,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofNativeScriptInvalidStep05",
     "V1 fraud-proof min-ada step-01": "fraudProofMinAda",
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
+    "V1 validation-trace value-and-mint asset-fold yield":
+      "validationTraceDisputeValueAndMintAssetFoldWithdraw",
     "V1 fraud-proof min-ada step-02 tx yield":
       "fraudProofMinAdaStep02TxWithdraw",
     "V1 fraud-proof min-ada step-02 UTxO yield":
@@ -1294,6 +1297,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof native-script-invalid step-05": "V1FpNativeScriptInvalidS05",
   "V1 fraud-proof min-ada step-01": "V1FpMinAdaS01",
   "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
+  "V1 validation-trace value-and-mint asset-fold yield":
+    "V1VtVamAssetFoldYield",
   "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
   "V1 fraud-proof min-ada step-02 UTxO yield": "V1FpMinAdaS02UtxoYield",
   "correction-lock spending": "CorrectionLockSpend",

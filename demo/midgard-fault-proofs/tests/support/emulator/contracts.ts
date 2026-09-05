@@ -2205,6 +2205,12 @@ export const buildMinimalFaultProofContracts = async (
     ...(distinctAssetAccumulationLimit === undefined
       ? {}
       : { distinctAssetAccumulationLimit }),
+    ...(validationTraceDisputeContracts === undefined
+      ? {}
+      : {
+          validationTraceDispute:
+            validationTraceDisputeContracts.validationTraceDispute,
+        }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,

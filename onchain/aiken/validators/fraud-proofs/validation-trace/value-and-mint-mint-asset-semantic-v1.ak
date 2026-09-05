@@ -3,26 +3,26 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
+use midgard/state_queue_yield.{require_authenticated_zero_yield}
+use midgard/validation_asset_fold.{asset_fold_role}
 use midgard/validation_machine/machine_types.{
-  ValidationOneStepWitnessV1, ValueAssetMutationWitnessV1, ValueMintAssetWitness,
+  AssetFoldClaim, ValidationOneStepWitnessV1, ValueMintAssetWitness,
 }
 use midgard/validation_machine/value_and_mint.{
-  verify_value_and_mint_mint_asset_semantics_v1,
+  verify_value_and_mint_mint_asset_dispatch,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{ValueAndMint}
 
 pub type ActionV1 {
   VerifyMintAsset {
+    claim: AssetFoldClaim,
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     mint_index: Int,
-    policy_id: ByteArray,
-    asset_name: ByteArray,
-    quantity: Int,
     siblings: List<ByteArray>,
-    mutation: ValueAssetMutationWitnessV1,
+    yield_to_ref_input_index: Int,
   }
 }
 
@@ -32,6 +32,7 @@ pub type SpendRedeemer =
 validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
+  reference_script_auth_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -50,23 +51,29 @@ validator main(
           tx,
         )
       ct.Continue(VerifyMintAsset {
+        claim,
         input_index,
         output_index,
         transition,
         mint_index,
-        policy_id,
-        asset_name,
-        quantity,
         siblings,
-        mutation,
+        yield_to_ref_input_index,
       }) -> {
+        let yield_hash = require_authenticated_zero_yield(
+          tx.reference_inputs,
+          tx.withdrawals,
+          tx.redeemers,
+          reference_script_auth_policy_id,
+          asset_fold_role,
+          yield_to_ref_input_index,
+        )
         let auxiliary = ValueMintAssetWitness {
           mint_index,
-          policy_id,
-          asset_name,
-          quantity,
           siblings,
-          mutation,
+          policy_id: claim.policy_id,
+          asset_name: claim.asset_name,
+          quantity: claim.quantity,
+          mutation: claim.mutation,
         }
         let auxiliary_data: Data = auxiliary
         continue_winning(
@@ -78,15 +85,12 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_value_and_mint_mint_asset_semantics_v1(
+          yield_hash != #"" && verify_value_and_mint_mint_asset_dispatch(
             datum |> semantic_pre_state,
             transition,
             mint_index,
-            policy_id,
-            asset_name,
-            quantity,
             siblings,
-            mutation,
+            claim,
           ),
           own_out_ref,
           tx,

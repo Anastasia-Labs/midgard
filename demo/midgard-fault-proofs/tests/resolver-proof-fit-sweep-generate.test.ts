@@ -374,6 +374,7 @@ const runResolverScenario = async ({
         network,
         hubOraclePolicyId: contracts.hubOracle.policyId,
         fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+        referenceScriptAuthPolicyId: contracts.referenceScriptAuth.policyId,
       }),
     );
     itemSemanticContract =
@@ -895,6 +896,7 @@ describe.skipIf(!REGENERATE)(
           network,
           hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
           fraudProofCataloguePolicyId: FRAUD_PROOF_CATALOGUE_POLICY_ID,
+          referenceScriptAuthPolicyId: "33".repeat(28),
         }),
       );
       const dispute = scriptHashContracts.validationTraceDispute;

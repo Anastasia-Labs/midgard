@@ -296,3 +296,45 @@ pnpm exec vitest run tests/deployment-manifest-identity.test.ts
 - **Compiler hazard (observed):** the pinned fork aborted (SIGABRT, no diagnostic) on the first round-2 probe build; rewriting `claim.descriptor == None` as a `when`, dropping a redundant `..` spread on a fully named `Input` pattern, and binding the auxiliary to a typed `let` before the `Data` upcast fixed it. Avoid those constructs in the implementation.
 - **Discarded-binding hazard:** `let _x = require_authenticated_zero_yield(...)` deletes the call and its `expect`s; bind the hash and use it (min-ADA step-02 uses `expect _yield_hash = …`; prefer a used binding).
 - **Spec:** C49 semantics unchanged (same predicate, split across two scripts in one transaction); C22's 5,000/5,001 boundary now enforced in the yield's decode — covered by the omission argument in §4e and by the `_refuses_missing_yield_reference_input` vector; C52 unaffected (no added transactions); §3.3 byte fit is the done criterion.
+
+
+## Group integration evidence (2026-09-05)
+
+The eight-plan ValueAndMint group is implemented together: exact library arm
+extraction, three authenticated asset dispatchers, and one shared rewarding
+validator. The three dispatchers receive the reference-script authentication
+policy; the SDK applies their hashes to the yield afterward. The deployment
+manifest, role identity, reference publication, reward registration, node
+consumers, and semantic submitter use the same applied identities. The new
+source names omit version suffixes; the wire role is `V1VtVamAssetFoldYield`.
+Evidence hashes, prepare routing, and cancellation semantics are unchanged.
+
+The normal pinned testnet blueprint
+`c9179b11f5cc12b5d2fb75fba96cacef4a58086063af1ba0e5dda94d93fa84ef`
+has all eleven semantic bodies and the shared yield below 15,000 raw bytes.
+The eight signed semantic publications are at most 14,746 bytes;
+all publish under the real protocol limits. The 581-row
+[complete lifecycle ledger](validation-trace-value-and-mint-fit-ledger.json)
+records at most 15,108 signed bytes, 7,361,187 memory units, and
+2,718,905,240 CPU units. Every recorded transaction passed local evaluation.
+
+Checks passed in the family worktree:
+
+- `MIDGARD_AIKEN_ENV=testnet node scripts/guard-focused-selector.mjs fraud_proofs/validation_trace/value_and_mint_split_v1`:
+  74/74, including authenticated yielding, substitution refusal, all three
+  cancellation paths, and a property comparing all three split asset rules to
+  the aggregate rule across positive quantities and signed mint quantities.
+- `pnpm exec vitest run tests/value-and-mint-asset-yield-lifecycle.test.ts`:
+  12/12, with three honest-block refusals and nine publication-to-removal
+  journeys. These cover all asset arms, a real 1,304-asset output whose Cardano
+  Value is exactly 5,000 bytes, and a committed one-step fixture combining
+  14 asset siblings, 16 widest MPF branches, a 16,384-asset frontier, and a
+  5,000-byte Value descriptor. The latter tests the selected one-step relation;
+  it does not claim a valid earlier history for the fabricated accumulator.
+- `tests/value-and-mint-publication-fit.test.ts`: all eight publications.
+- Semantic submit encoding: 21/21; deployment identity: 12/12; node deployment
+  descriptors: 19/19; SDK contract application: 30/30.
+
+The shared-branch blueprint and ledgers must be regenerated after integration.
+This group does not close the remaining validation-dispute workflow,
+funding-roster, other semantic-group size plans, or final program review gates.

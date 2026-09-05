@@ -326,6 +326,13 @@ export const incompleteInitializationTxProgram = (
       .register.Stake(
         scriptRewardAddress(
           network,
+          midgardValidators.fraudProofContracts.validationTraceDispute.yields
+            .valueAndMintAssetFold.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
           midgardValidators.fraudProofContracts.minAda.yields.tx
             .withdrawalScript,
         ),

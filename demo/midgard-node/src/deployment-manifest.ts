@@ -247,6 +247,7 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofNativeScriptInvalidStep05",
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
+  "validationTraceDisputeValueAndMintAssetFoldWithdraw",
   "fraudProofMinAdaStep02TxWithdraw",
   "fraudProofMinAdaStep02UtxoWithdraw",
   "correctionLockSpend",
@@ -650,6 +651,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofNativeScriptInvalidStep05",
     "V1 fraud-proof min-ada step-01": "fraudProofMinAda",
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
+    "V1 validation-trace value-and-mint asset-fold yield":
+      "validationTraceDisputeValueAndMintAssetFoldWithdraw",
     "V1 fraud-proof min-ada step-02 tx yield":
       "fraudProofMinAdaStep02TxWithdraw",
     "V1 fraud-proof min-ada step-02 UTxO yield":

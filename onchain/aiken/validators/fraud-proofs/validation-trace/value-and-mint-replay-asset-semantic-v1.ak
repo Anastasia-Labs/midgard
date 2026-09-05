@@ -3,33 +3,27 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
+use midgard/state_queue_yield.{require_authenticated_zero_yield}
+use midgard/validation_asset_fold.{asset_fold_role}
 use midgard/validation_machine/machine_types.{
-  ValidationOneStepWitnessV1, ValueAssetMutationWitnessV1,
-  ValueInputAssetWitness,
+  AssetFoldClaim, ValidationOneStepWitnessV1, ValueInputAssetWitness,
 }
 use midgard/validation_machine/value_and_mint.{
-  verify_value_and_mint_replay_asset_semantics_v1,
+  verify_value_and_mint_replay_asset_dispatch,
 }
-use midgard/validation_merkle_v1.{FrontierPeak}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{ValueAndMint}
 
 pub type ActionV1 {
   VerifyReplayAsset {
+    claim: AssetFoldClaim,
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     source_kind: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
-    descriptor_cbor: ByteArray,
-    asset_index: Int,
-    policy_id: ByteArray,
-    asset_name: ByteArray,
-    quantity: Int,
-    asset_peaks: List<FrontierPeak>,
-    asset_siblings: List<ByteArray>,
-    mutation: ValueAssetMutationWitnessV1,
+    yield_to_ref_input_index: Int,
   }
 }
 
@@ -39,6 +33,7 @@ pub type SpendRedeemer =
 validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
+  reference_script_auth_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -57,33 +52,36 @@ validator main(
           tx,
         )
       ct.Continue(VerifyReplayAsset {
+        claim,
         input_index,
         output_index,
         transition,
         source_kind,
         key,
         next_schedule_hash,
-        descriptor_cbor,
-        asset_index,
-        policy_id,
-        asset_name,
-        quantity,
-        asset_peaks,
-        asset_siblings,
-        mutation,
+        yield_to_ref_input_index,
       }) -> {
+        let yield_hash = require_authenticated_zero_yield(
+          tx.reference_inputs,
+          tx.withdrawals,
+          tx.redeemers,
+          reference_script_auth_policy_id,
+          asset_fold_role,
+          yield_to_ref_input_index,
+        )
+        expect Some(d) = claim.descriptor
         let auxiliary = ValueInputAssetWitness {
           source_kind,
           key,
           next_schedule_hash,
-          descriptor_cbor,
-          asset_index,
-          policy_id,
-          asset_name,
-          quantity,
-          asset_peaks,
-          asset_siblings,
-          mutation,
+          policy_id: claim.policy_id,
+          asset_name: claim.asset_name,
+          quantity: claim.quantity,
+          mutation: claim.mutation,
+          descriptor_cbor: d.descriptor_cbor,
+          asset_index: d.asset_index,
+          asset_peaks: d.asset_peaks,
+          asset_siblings: d.asset_siblings,
         }
         let auxiliary_data: Data = auxiliary
         continue_winning(
@@ -95,20 +93,13 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_value_and_mint_replay_asset_semantics_v1(
+          yield_hash != #"" && verify_value_and_mint_replay_asset_dispatch(
             datum |> semantic_pre_state,
             transition,
             source_kind,
             key,
             next_schedule_hash,
-            descriptor_cbor,
-            asset_index,
-            policy_id,
-            asset_name,
-            quantity,
-            asset_peaks,
-            asset_siblings,
-            mutation,
+            claim,
           ),
           own_out_ref,
           tx,

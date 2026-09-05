@@ -1048,6 +1048,12 @@ const collectScriptDescriptors = (
   ),
   ...legacyFaultProofMissingStepDescriptors(contracts),
   withdrawalDescriptor(
+    "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .valueAndMintAssetFold,
+    "V1 validation-trace value-and-mint asset-fold yield",
+  ),
+  withdrawalDescriptor(
     "fraudProofMinAdaStep02TxWithdraw",
     contracts.fraudProofContracts.minAda.yields.tx,
     "V1 fraud-proof min-ada step-02 tx yield",

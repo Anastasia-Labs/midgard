@@ -178,13 +178,13 @@ describe("DeploymentManifestV1 shared identity", () => {
       "scriptIntegrityHashMismatch",
       "distinctAssetAccumulationLimit",
     ]);
-    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(294);
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(308);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
-    ).toHaveLength(287);
+    ).toHaveLength(301);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES),
-    ).toHaveLength(288);
+    ).toHaveLength(302);
     expect(
       DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof min-ada step-02 tx yield"

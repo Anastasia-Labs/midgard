@@ -84,6 +84,9 @@ type SetupLucid = Awaited<ReturnType<typeof Lucid>>;
 type SetupContracts = MidgardValidators & {
   readonly operatorLifecycleReferenceScripts?: OperatorLifecycleReferenceScripts;
   readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScripts;
+  readonly validationTraceDispute?: {
+    readonly yields: MidgardValidators["fraudProofContracts"]["validationTraceDispute"]["yields"];
+  };
   readonly minAda?: {
     readonly yields: MidgardValidators["fraudProofContracts"]["minAda"]["yields"];
   };
@@ -352,6 +355,15 @@ const submitInitialMintTx = async ({
       },
       { [units.fraudProofCatalogue]: 1n },
     );
+  if (contracts.validationTraceDispute !== undefined) {
+    builder = builder.register.Stake(
+      scriptRewardAddress(
+        network,
+        contracts.validationTraceDispute.yields.valueAndMintAssetFold
+          .withdrawalScript,
+      ),
+    );
+  }
   if (contracts.minAda !== undefined) {
     for (const { withdrawalScript } of Object.values(contracts.minAda.yields)) {
       builder = builder.register.Stake(

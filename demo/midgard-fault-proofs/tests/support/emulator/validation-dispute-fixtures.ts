@@ -3,13 +3,17 @@ import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   encodeCbor,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardNativeScript,
   encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
+  encodeMidgardVersionedScriptListPreimage,
   hashMidgardValidationLedgerDelta,
   hashMidgardValidationMachineState,
   hashMidgardValidationRejectionCode,
   hashMidgardValidationWorkWitness,
+  hashMidgardVersionedScript,
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
@@ -29,6 +33,7 @@ import {
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
+  buildCanonicalMidgardLedgerOutputMaterial,
   buildDeterministicValidationMachineTrace,
   buildValidationDisputeEvidenceBundle,
   buildValidationMachineLedgerInsertOp,
@@ -36,6 +41,8 @@ import {
   type DeterministicValidationMachineTrace,
   outputCborMeetsMinAda,
   RejectCodes,
+  valueAndMintKind,
+  type ValueAndMintStepKind,
 } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -52,6 +59,7 @@ import {
   transitionTraceOutRef,
 } from "./header-fixtures.js";
 import { makeNativeTx } from "./native-tx.js";
+import { withMaximumValueAssetProof } from "./value-asset-maximum.js";
 
 export type ForcedValidationSourceEntry = NonNullable<
   ValidationClaimWitness["source_membership"] extends infer Source
@@ -702,9 +710,13 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
 const buildHonestAcceptedNativeTransactionTrace = async ({
   now,
   txOrderSeed,
+  assetCount = 0,
+  mintAsset = false,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
+  readonly assetCount?: number;
+  readonly mintAsset?: boolean;
 }) => {
   const txOrderId = transitionTraceOutRef(txOrderSeed);
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -718,21 +730,77 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
       .to_raw_bytes(),
   );
   const spentOutRef = outRefCbor(0x8a);
+  const nativeScript = { type: "all" as const, scripts: [] };
+  const script = {
+    language: "NativeCardano" as const,
+    scriptBytes: encodeMidgardNativeScript(nativeScript),
+    nativeScript,
+  };
+  const policyId = mintAsset
+    ? hashMidgardVersionedScript(script)
+    : "aa".repeat(28);
+  const assetEntries = Array.from({ length: assetCount }, (_, i) => {
+    const name =
+      assetCount === 1304
+        ? i === 0
+          ? ""
+          : i <= 256
+            ? (i - 1).toString(16).padStart(2, "0")
+            : (i - 257).toString(16).padStart(4, "0")
+        : i.toString(16).padStart(4, "0");
+    return [name, assetCount === 1304 ? (i === 1303 ? 256n : 1n) : 7n] as const;
+  });
+  const txAssets = new Map([[policyId, new Map(assetEntries)]]);
+  const mintFields = mintAsset
+    ? {
+        scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
+          script,
+        ]),
+        mintPreimageCbor: encodeMidgardFieldPreimageForField({
+          fieldIndex: 5,
+          items: [
+            {
+              policyId: Buffer.from(policyId, "hex"),
+              assets: assetEntries.map(([name, quantity]) => ({
+                assetName: Buffer.from(name, "hex"),
+                quantity,
+              })),
+            },
+          ],
+        }),
+      }
+    : {};
   const spentOutput = encodeMidgardTxOutput({
     address: spendingAddress,
-    value: { lovelace: 10_000_000n, assets: new Map() },
+    value: {
+      lovelace: assetCount > 100 ? 100_000_000n : 10_000_000n,
+      assets: assetCount === 0 || mintAsset ? new Map() : txAssets,
+    },
   });
   const producedOutput = encodeMidgardTxOutput({
     address: spendingAddress,
-    value: { lovelace: 10_000_000n, assets: new Map() },
+    value: {
+      lovelace: assetCount > 100 ? 100_000_000n : 10_000_000n,
+      assets: assetCount === 0 ? new Map() : txAssets,
+    },
   });
+  if (assetCount === 1304) {
+    expect(
+      buildCanonicalMidgardLedgerOutputMaterial({
+        outputIndex: 0,
+        outputCbor: producedOutput,
+      }).descriptor.cardanoValueSize,
+    ).toBe(5000);
+  }
   const unsignedTx = makeNativeTx({
+    ...mintFields,
     spendInputCbors: [spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
   });
   const transactionId = computeMidgardNativeTxId(unsignedTx);
   const forcedNativeTx = makeNativeTx({
+    ...mintFields,
     spendInputCbors: [spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
@@ -932,10 +1000,18 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   operatorVkey,
   now,
   disputedPhase,
+  disputedValueKind,
+  assetCount = 0,
+  dishonestChallenger = false,
+  maximumAssetProof = false,
 }: {
   readonly operatorVkey: string;
   readonly now: number;
   readonly disputedPhase: "cek" | "valueAndMint";
+  readonly disputedValueKind?: ValueAndMintStepKind;
+  readonly assetCount?: number;
+  readonly dishonestChallenger?: boolean;
+  readonly maximumAssetProof?: boolean;
 }): Promise<
   ForcedValidationDisputeFixture & {
     readonly disputedPhase: "cek" | "valueAndMint";
@@ -946,21 +1022,33 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     txOrderId,
     eventKey,
     forcedTransaction,
-    honestTrace: challengerTrace,
+    honestTrace: originalTrace,
     preUtxosRoot,
     postUtxosRoot,
   } = await buildHonestAcceptedNativeTransactionTrace({
     now,
     txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
+    assetCount,
+    mintAsset: disputedValueKind === "mintAsset",
   });
+  let challengerTrace = originalTrace;
   const disputedLowIndex = challengerTrace.states.findIndex(
-    (state) => state.phase === disputedPhase,
+    (state, index) =>
+      state.phase === disputedPhase &&
+      (disputedValueKind === undefined ||
+        valueAndMintKind(challengerTrace.witnesses[index]!) ===
+          disputedValueKind),
   );
   if (disputedLowIndex < 0) {
     throw new Error(
       `honest accepted validation trace is missing its ${disputedPhase} phase`,
     );
   }
+  if (maximumAssetProof)
+    challengerTrace = withMaximumValueAssetProof(
+      challengerTrace,
+      disputedLowIndex,
+    );
   const honestTerminal = challengerTrace.states.at(-1)!;
   if (honestTerminal.phase !== "terminal") {
     throw new Error(
@@ -977,7 +1065,11 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     workRoot: Buffer.alloc(32, 0x7e),
   };
   const operatorStates = challengerTrace.states.map((state, index) =>
-    index <= disputedLowIndex ? state : forgedTerminal,
+    index <= disputedLowIndex
+      ? state
+      : dishonestChallenger
+        ? { ...state, workRoot: Buffer.alloc(32, 0x7e) }
+        : forgedTerminal,
   );
   const operatorTrace: DeterministicValidationMachineTrace = {
     ...challengerTrace,
@@ -988,9 +1080,15 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
     ),
   };
+  const claimedOperatorTrace = dishonestChallenger
+    ? challengerTrace
+    : operatorTrace;
+  const claimedChallengerTrace = dishonestChallenger
+    ? operatorTrace
+    : challengerTrace;
   const evidence = buildValidationDisputeEvidenceBundle({
-    operatorTrace,
-    challengerTrace,
+    operatorTrace: claimedOperatorTrace,
+    challengerTrace: claimedChallengerTrace,
     currentTime: now + 2_000,
   });
   const { header, claim } = await buildForcedValidationDisputeCommitments({
@@ -999,17 +1097,17 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     txOrderId,
     eventKey,
     forcedTransaction,
-    operatorTrace,
+    operatorTrace: claimedOperatorTrace,
     preUtxosRoot,
     postUtxosRoot,
   });
   return {
     header,
     claim,
-    operatorTrace,
-    challengerTrace,
+    operatorTrace: claimedOperatorTrace,
+    challengerTrace: claimedChallengerTrace,
     challengerDescriptor: validationTraceDescriptorDataFromCore(
-      challengerTrace.tree.descriptor,
+      claimedChallengerTrace.tree.descriptor,
     ),
     evidence,
     claimedLedgerDeltaRoot: operatorTrace.states[0]!.ledgerDeltaRoot,

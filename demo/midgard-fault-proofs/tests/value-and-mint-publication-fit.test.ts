@@ -21,6 +21,9 @@ import {
 
 const SPECIALIZED_BRANCHES = [
   [2, "replay-input"],
+  [3, "replay-asset"],
+  [6, "output-asset"],
+  [8, "mint-asset"],
   [4, "replay-finish"],
   [5, "output-descriptor"],
   [7, "output-finish"],
@@ -28,7 +31,7 @@ const SPECIALIZED_BRANCHES = [
 ] as const;
 
 describe("ValueAndMint specialized branch publication", () => {
-  it("publishes all five extracted branches with the release reserve", async () => {
+  it("publishes all eight specialized branches with the release reserve", async () => {
     const harness = await makeFaultProofEmulatorHarness();
     const family = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({

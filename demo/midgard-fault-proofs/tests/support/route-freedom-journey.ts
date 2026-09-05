@@ -359,6 +359,7 @@ export const prepareRouteFreedomJourney = async ({
       network,
       hubOraclePolicyId: contracts.hubOracle.policyId,
       fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      referenceScriptAuthPolicyId: contracts.referenceScriptAuth.policyId,
     }),
   );
   const itemSemanticContract =

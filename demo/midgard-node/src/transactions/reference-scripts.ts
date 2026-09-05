@@ -1736,6 +1736,11 @@ export const nodeRuntimeReferenceScriptTargets = (
   ...legacyFraudProofReferenceScriptTargets(contracts),
   ...registeredFraudProofReferenceScriptTargets(contracts),
   manifestReferenceScriptTarget(
+    "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .valueAndMintAssetFold.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
     "fraudProofMinAdaStep02TxWithdraw",
     contracts.fraudProofContracts.minAda.yields.tx.withdrawalScript,
   ),

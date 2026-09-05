@@ -22,7 +22,43 @@ import {
   ValidationTraceDescriptorSchema,
 } from "../ledger-state.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
-import { ValidationAuxiliaryWitnessSchema } from "./validation-auxiliary-witness.js";
+import {
+  FrontierPeakSchema,
+  ValidationAuxiliaryWitnessSchema,
+  ValueAssetMutationWitnessSchema,
+} from "./validation-auxiliary-witness.js";
+
+export const ValueAccumulatorSchema = Data.Object({
+  lovelace_delta: Data.Integer(),
+  asset_root: Data.Bytes(),
+  seen_asset_count: Data.Integer(),
+  nonzero_asset_count: Data.Integer(),
+});
+export const ValueAccumulatorUpdateSchema = Data.Enum([
+  Data.Object({
+    ValueAccumulatorUpdated: Data.Tuple([ValueAccumulatorSchema]),
+  }),
+  Data.Literal("ValueAccumulatorAssetLimitExceeded"),
+  Data.Literal("ValueAccumulatorMutationInvalid"),
+]);
+export const AssetDescriptorClaimSchema = Data.Object({
+  descriptor_cbor: Data.Bytes(),
+  asset_index: Data.Integer(),
+  asset_peaks: Data.Array(FrontierPeakSchema),
+  asset_siblings: Data.Array(Data.Bytes()),
+  asset_count: Data.Integer(),
+});
+export const AssetFoldClaimSchema = Data.Object({
+  policy_id: Data.Bytes(),
+  asset_name: Data.Bytes(),
+  quantity: Data.Integer(),
+  mutation: ValueAssetMutationWitnessSchema,
+  pre_value_accumulator: ValueAccumulatorSchema,
+  outcome: ValueAccumulatorUpdateSchema,
+  descriptor: Data.Nullable(AssetDescriptorClaimSchema),
+});
+export type AssetFoldClaim = Data.Static<typeof AssetFoldClaimSchema>;
+export const AssetFoldClaim = asDataType<AssetFoldClaim>(AssetFoldClaimSchema);
 
 export const ValidationMachinePhaseSchema = Data.Enum([
   Data.Literal("CanonicalDecode"),

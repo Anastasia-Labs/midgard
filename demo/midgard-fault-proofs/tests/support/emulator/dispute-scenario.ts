@@ -49,9 +49,11 @@ import {
 import {
   attributeTransactionBytes,
   captureEmulatorSubmission,
+  measureCompleteSignedTransaction,
   midgardScriptHashNames,
 } from "./measurement.js";
 import {
+  publishAuthenticatedValidationDisputeControl,
   publishFaultProofWitnessReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
   publishPlainReferenceScriptUtxo,
@@ -89,12 +91,16 @@ export const runForcedValidationDisputeScenario = async (
   {
     stopAfter,
     onRemovalReferenceScriptPublicationAttempt,
+    onSubmittedTransaction,
   }: {
     readonly stopAfter?:
       | "prepare-resolution"
       | "prepare-selected"
       | "semantic-resolution";
     readonly onRemovalReferenceScriptPublicationAttempt?: () => void;
+    readonly onSubmittedTransaction?: (
+      measurement: ReturnType<typeof measureCompleteSignedTransaction>,
+    ) => void;
   } = {},
 ) => {
   const realBlueprint = readBlueprint(realBlueprintPath);
@@ -110,6 +116,14 @@ export const runForcedValidationDisputeScenario = async (
     validityRange,
   } = await createValidationDisputeParties();
 
+  if (onSubmittedTransaction !== undefined) {
+    const submit = emulator.submitTx.bind(emulator);
+    emulator.submitTx = async (transaction) => {
+      const hash = await submit(transaction);
+      onSubmittedTransaction(measureCompleteSignedTransaction(transaction));
+      return hash;
+    };
+  }
   await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
   const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
   if (nonceUtxo === undefined) {
@@ -185,8 +199,9 @@ export const runForcedValidationDisputeScenario = async (
   } = await stageAuthenticatedValidationDisputePublication({
     emulator,
     operatorLucid,
-    operatorSeedPhrase: operator.seedPhrase,
+    operatorSeedPhrase: challenger.seedPhrase,
     contracts,
+    authPolicy: referenceScriptAuth,
     runStage: runEmulatorLifecycleStage,
   });
   const prepareResolverContract =
@@ -424,7 +439,24 @@ export const runForcedValidationDisputeScenario = async (
     valueAndMintSemanticContract !== undefined
       ? semanticPublication
       : undefined;
-  const semanticDeploymentInfo =
+  const assetFoldYield =
+    stagedResolverIndex === 12 && [3, 6, 8].includes(stagedSemanticIndex)
+      ? contracts.fraudProofContracts.validationTraceDispute.yields
+          .valueAndMintAssetFold
+      : undefined;
+  const assetFoldPublication =
+    assetFoldYield === undefined
+      ? undefined
+      : await publishAuthenticatedValidationDisputeControl({
+          lucid: challengerLucid,
+          authPolicy: referenceScriptAuth,
+          target: {
+            control: "value-and-mint asset-fold",
+            name: "V1 validation-trace value-and-mint asset-fold yield",
+            script: assetFoldYield.withdrawalScript,
+          },
+        });
+  const baseSemanticDeploymentInfo =
     valueAndMintSemanticPublication === undefined
       ? deploymentInfo
       : buildRemovalDeploymentInfo(contracts, catalogue, {
@@ -437,6 +469,22 @@ export const runForcedValidationDisputeScenario = async (
             },
           ],
         });
+  const semanticDeploymentInfo =
+    assetFoldPublication === undefined || assetFoldYield === undefined
+      ? baseSemanticDeploymentInfo
+      : {
+          ...baseSemanticDeploymentInfo,
+          contracts: {
+            ...baseSemanticDeploymentInfo.contracts,
+            validationTraceDisputeValueAndMintAssetFoldWithdraw: {
+              scriptHash: assetFoldYield.withdrawalScriptHash,
+              refScriptUTxO: {
+                txHash: assetFoldPublication.utxo.txHash,
+                outputIndex: assetFoldPublication.utxo.outputIndex,
+              },
+            },
+          },
+        };
   const semanticCapture = await captureEmulatorSubmission(emulator, () =>
     runEmulatorLifecycleStage("semantic-resolution", () =>
       submitValidationDisputeSemanticResolution({

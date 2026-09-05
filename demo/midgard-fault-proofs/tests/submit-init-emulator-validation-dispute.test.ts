@@ -173,6 +173,7 @@ describe("fault-proof emulator integration", () => {
         network,
         hubOraclePolicyId: "11".repeat(28),
         fraudProofCataloguePolicyId: "22".repeat(28),
+        referenceScriptAuthPolicyId: "33".repeat(28),
       }),
     );
     const cekOffset = validationSemanticResolverGlobalIndex(11, 0);
@@ -352,6 +353,7 @@ describe("fault-proof emulator integration", () => {
           network,
           hubOraclePolicyId: contracts.hubOracle.policyId,
           fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+          referenceScriptAuthPolicyId: contracts.referenceScriptAuth.policyId,
         }),
       );
       const itemSemanticContract =
