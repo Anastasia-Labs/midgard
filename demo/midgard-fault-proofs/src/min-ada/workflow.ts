@@ -77,14 +77,13 @@ import {
 } from "../workflow/proof-chunk-prerequisite.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
+import { submitMinAdaStep01Forced } from "./submit-step-01-forced.js";
 import {
-  admitMinAdaArtifact,
-  type AdmittedMinAdaArtifact,
-  type MinAdaTxArtifact,
-  prepareMinAdaArtifact,
-} from "./artifact.js";
+  admitMinAdaWorkflowArtifact as admitMinAdaArtifact,
+  prepareMinAdaWorkflowArtifact as prepareMinAdaArtifact,
+} from "./workflow-artifact.js";
+type AdmittedMinAdaArtifact = Awaited<ReturnType<typeof admitMinAdaArtifact>>;
 import type { MinAdaContracts } from "./contracts.js";
-import type { PreparedMinAdaTx } from "./prepare.js";
 import { submitMinAdaInit } from "./submit-init.js";
 import {
   submitMinAdaTxStep01,
@@ -116,12 +115,16 @@ type BoundConfig = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-type AdmittedTx = Readonly<{
-  artifact: MinAdaTxArtifact;
-  prepared: PreparedMinAdaTx;
-}>;
+type AdmittedTx = Exclude<
+  AdmittedMinAdaArtifact,
+  { prepared: { kind: "min-ada-utxo" } }
+>;
 const isTx = (admitted: AdmittedMinAdaArtifact): admitted is AdmittedTx =>
-  admitted.artifact.kind === "min-ada-tx";
+  admitted.prepared.kind !== "min-ada-utxo";
+const isForced = (
+  admitted: AdmittedMinAdaArtifact,
+): admitted is Extract<AdmittedMinAdaArtifact, { forcedSource: unknown }> =>
+  "forcedSource" in admitted;
 
 const witnessSet = (admitted: AdmittedTx) => {
   const compact = deriveMidgardNativeTxWitnessSetCompact(
@@ -192,7 +195,7 @@ const transactionPort = (
       classification,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = admitMinAdaArtifact(artifact);
+    const admitted = await admitMinAdaArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
       throw new Error("min-ada artifact changed the bound header");
     }
@@ -226,13 +229,14 @@ const transactionPort = (
       });
     }
     if (input.stage === "step_01") {
-      const chunks = isTx(admitted)
-        ? await resolvePublishedProofChunks({
-            lucid: config.lucid,
-            address: config.signer.address,
-            proofCbor: admitted.prepared.txInclusion.txMembershipProofCbor,
-          })
-        : [];
+      const chunks =
+        isTx(admitted) && !isForced(admitted)
+          ? await resolvePublishedProofChunks({
+              lucid: config.lucid,
+              address: config.signer.address,
+              proofCbor: admitted.prepared.txInclusion.txMembershipProofCbor,
+            })
+          : [];
       if (chunks === undefined) {
         throw new Error("min-ada transaction proof disappeared");
       }
@@ -255,7 +259,13 @@ const transactionPort = (
               preSubmitBoundary,
               awaitConfirmation: false,
             } as const;
-            if (isTx(admitted)) {
+            if (isForced(admitted)) {
+              await submitMinAdaStep01Forced({
+                ...shared,
+                state: admitted.prepared.state,
+                forcedSource: admitted.forcedSource,
+              });
+            } else if (isTx(admitted)) {
               await submitMinAdaTxStep01({
                 ...shared,
                 blueprint: config.binding.blueprint,
@@ -340,6 +350,9 @@ const transactionPort = (
               categoryId,
               signer: config.signer,
               threadOutRef: threadOutRef(),
+              ...(isTx(admitted)
+                ? { outputItemCbors: admitted.prepared.outputItemCbors }
+                : {}),
               coinsPerUtxoByte: BigInt(
                 config.binding.cardanoProtocolParameters.coinsPerUtxoByte,
               ),
@@ -614,9 +627,9 @@ export const createManifestBoundMinAdaWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    requirementForAction: ({ action, artifact }) => {
+    requirementForAction: async ({ action, artifact }) => {
       if (action.input.stage !== "step_02") return null;
-      const admitted = admitMinAdaArtifact(artifact);
+      const admitted = await admitMinAdaArtifact(artifact);
       if (!isTx(admitted)) return null;
       return {
         planned: txFieldPlan(admitted, config.signer.paymentKeyHash),
@@ -642,9 +655,11 @@ export const createManifestBoundMinAdaWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    proofCborForAction: ({ action, artifact }) => {
-      const admitted = admitMinAdaArtifact(artifact);
-      return action.input.stage === "step_01" && isTx(admitted)
+    proofCborForAction: async ({ action, artifact }) => {
+      const admitted = await admitMinAdaArtifact(artifact);
+      return action.input.stage === "step_01" &&
+        isTx(admitted) &&
+        !isForced(admitted)
         ? admitted.prepared.txInclusion.txMembershipProofCbor
         : action.input.stage === "step_02" && !isTx(admitted)
           ? admitted.prepared.postMembershipProofCbor

@@ -71,6 +71,7 @@ import {
 } from "../input-set-uniqueness/scan.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
 import { detectInvalidSignatureWrongfulRejections } from "../invalid-signature/wrongful-rejection.js";
+import { detectMinAdaForcedReplay } from "../min-ada/forced.js";
 import { detectMinFeeForcedReplay } from "../min-fee-forced.js";
 import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset-limit/replay.js";
 import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
@@ -1547,7 +1548,10 @@ export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 /** Complete transaction-output and introducing post-state min-Ada scan. */
 export const MIN_ADA_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["minAda"],
-  detectMinAda,
+  async (evidence) => [
+    ...(await detectMinAda(evidence, undefined)),
+    ...detectMinAdaForcedReplay(evidence),
+  ],
 );
 
 /** Complete Q27 replay backed by the same checkpointed predecessor authority as Q33. */
@@ -1559,6 +1563,7 @@ export const createMinAdaCompleteCanonicalReplayFromHistoricalCorpus = (
       (detection) => detection.violationId === MIN_ADA_VIOLATION_ID,
     ),
     ...detectMinAdaUtxoFromHistoricalCorpus({ evidence, corpus }),
+    ...detectMinAdaForcedReplay(evidence),
   ]);
 
 /** Complete same-block input/producer output-count scan. */
