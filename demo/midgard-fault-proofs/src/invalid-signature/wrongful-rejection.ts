@@ -1,7 +1,9 @@
 import {
+  adjudicateMidgardNativeTxFullValidity,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxFaultEvidenceMaterial,
   deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
 import {
   decodeAddressWitnessPreimage,
@@ -43,8 +45,16 @@ export const invalidSignatureEvidenceFromForcedSource = (
     !("AddressWitnessSignatureInvalid" in reason)
   )
     return null;
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+  const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
     forced.fullTransactionCbor,
+  );
+  // Retained DA preserves the submitted validity scalar; the forced leaf
+  // commits the operator-adjudicated rejected source. Reproduce that source
+  // without replacing the retained transaction bytes.
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    encodeMidgardNativeTxCanonical(
+      adjudicateMidgardNativeTxFullValidity(decoded, "TxIsInvalid"),
+    ),
   );
   if (
     material.transactionId.toString("hex") !== forced.value.tx_id ||
@@ -58,9 +68,6 @@ export const invalidSignatureEvidenceFromForcedSource = (
     throw new Error(
       "invalidSignature: forced preimage differs from authenticated leaf",
     );
-  const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
-    forced.fullTransactionCbor,
-  );
   const compact = deriveMidgardNativeTxWitnessSetCompact(decoded.witnessSet);
   return Object.freeze({
     subject: forcedVerdictSubject({

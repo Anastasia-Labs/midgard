@@ -236,8 +236,9 @@ describe("invalidSignature wrongful-rejection real lifecycle", () => {
           { header, membership, direction: 1n } as never,
           SDK.InvalidSignatureForcedSourcePayloadSchema as never,
         ),
-        fullTransactionCbor:
-          encodeMidgardNativeTxCanonical(invalid).toString("hex"),
+        fullTransactionCbor: encodeMidgardNativeTxCanonical(
+          signedSubject.nativeTx,
+        ).toString("hex"),
       };
       if (accused === "honest")
         expect(

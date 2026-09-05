@@ -97,59 +97,67 @@ describe("invalidSignature exact wrongful rejection", () => {
         }),
       ).toBe(result);
   });
-  it("derives evidence from exact retained source and rejects source mutations", async () => {
-    const signed = await buildInvalidSignatureSubject({ accused: "honest" });
-    const invalid = adjudicateMidgardNativeTxFullValidity(
-      signed.nativeTx,
-      "TxIsInvalid",
-    );
-    const source = deriveMidgardNativeTxProofSource(invalid);
-    const forced = {
-      key: { transactionId: "22".repeat(32), outputIndex: 0n },
-      value: {
-        tx_id: signed.nativeTxId,
-        source: {
-          compact_cbor: source.compactCbor.toString("hex"),
-          witness_set_compact_cbor:
-            source.witnessSetCompactCbor.toString("hex"),
-          field_preimage_lengths_cbor:
-            source.fieldPreimageLengthsCbor.toString("hex"),
-        },
-        verdict: {
-          ForcedTxInvalid: {
-            reason: { AddressWitnessSignatureInvalid: { witness_index: 0n } },
+  it.each(["TxIsValid", "TxIsInvalid"] as const)(
+    "derives evidence from retained %s source and rejects source mutations",
+    async (submittedValidity) => {
+      const signed = await buildInvalidSignatureSubject({ accused: "honest" });
+      const invalid = adjudicateMidgardNativeTxFullValidity(
+        signed.nativeTx,
+        "TxIsInvalid",
+      );
+      const source = deriveMidgardNativeTxProofSource(invalid);
+      const forced = {
+        key: { transactionId: "22".repeat(32), outputIndex: 0n },
+        value: {
+          tx_id: signed.nativeTxId,
+          source: {
+            compact_cbor: source.compactCbor.toString("hex"),
+            witness_set_compact_cbor:
+              source.witnessSetCompactCbor.toString("hex"),
+            field_preimage_lengths_cbor:
+              source.fieldPreimageLengthsCbor.toString("hex"),
+          },
+          verdict: {
+            ForcedTxInvalid: {
+              reason: { AddressWitnessSignatureInvalid: { witness_index: 0n } },
+            },
           },
         },
-      },
-      fullTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
-    } as const;
-    await expect(
-      INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay({
-        headerHash: "33".repeat(28),
-        transactions: [],
-        reconstruction: { forcedTransactions: [forced] },
-      } as never),
-    ).resolves.toMatchObject({
-      detections: [
-        { violationId: "invalid-signature-wrongful-rejection", position: 0n },
-      ],
-    });
-    const evidence = invalidSignatureEvidenceFromForcedSource(forced);
-    expect(evidence).not.toBeNull();
-    expect(invalidSignatureWrongfulRejectionCloses(evidence!)).toBe(true);
-    for (const field of [
-      "compact_cbor",
-      "witness_set_compact_cbor",
-      "field_preimage_lengths_cbor",
-    ] as const)
-      expect(() =>
-        invalidSignatureEvidenceFromForcedSource({
-          ...forced,
-          value: {
-            ...forced.value,
-            source: { ...forced.value.source, [field]: "00" },
-          },
-        }),
-      ).toThrow(/authenticated leaf/);
-  });
+        fullTransactionCbor: encodeMidgardNativeTxCanonical(
+          adjudicateMidgardNativeTxFullValidity(
+            signed.nativeTx,
+            submittedValidity,
+          ),
+        ),
+      } as const;
+      await expect(
+        INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay({
+          headerHash: "33".repeat(28),
+          transactions: [],
+          reconstruction: { forcedTransactions: [forced] },
+        } as never),
+      ).resolves.toMatchObject({
+        detections: [
+          { violationId: "invalid-signature-wrongful-rejection", position: 0n },
+        ],
+      });
+      const evidence = invalidSignatureEvidenceFromForcedSource(forced);
+      expect(evidence).not.toBeNull();
+      expect(invalidSignatureWrongfulRejectionCloses(evidence!)).toBe(true);
+      for (const field of [
+        "compact_cbor",
+        "witness_set_compact_cbor",
+        "field_preimage_lengths_cbor",
+      ] as const)
+        expect(() =>
+          invalidSignatureEvidenceFromForcedSource({
+            ...forced,
+            value: {
+              ...forced.value,
+              source: { ...forced.value.source, [field]: "00" },
+            },
+          }),
+        ).toThrow(/authenticated leaf/);
+    },
+  );
 });
