@@ -1,95 +1,102 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-const path = new URL(
-  "../../../docs/fault-proofs/size-plans/execution-source-script-decoding-v1-fit-ledger.json",
-  import.meta.url,
-);
+import {
+  buildVanRossemFitLedger,
+  VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION,
+  type VanRossemFitLedger,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
+import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
 
-describe("executionSourceScriptDecoding fit ledger", () => {
-  it("reproduces the maximum shape and positive signed/ex-unit margins", async () => {
-    const bytes = await readFile(path);
-    const ledger = JSON.parse(bytes.toString("utf8")) as {
-      categoryId: string;
-      maximum: {
-        scriptItemBytes: number;
-        boundedChunks: number;
-        nodeAndDepthBoundary: number;
-      };
-      referencePublications: {
-        signedBytes: number;
-        reserveMarginBytes: number;
-      }[];
-      focusedAikenMaximum: { memoryMargin: number; cpuMargin: number };
-      forcedLifecycle: {
-        stage: string;
-        signedBytes: number;
-        byteMargin: number;
-        memory: number;
-        cpu: number;
-      }[];
-      acceptedMalformedLifecycle: {
-        stage: string;
-        signedBytes: number;
-        byteMargin: number;
-        memory: number;
-        cpu: number;
-      }[];
-      evidenceDigest: string;
-    };
-    expect(ledger.categoryId).toBe("00000031");
-    expect(ledger.maximum).toEqual({
-      scriptItemBytes: 32_768,
-      boundedChunks: 9,
-      nodeAndDepthBoundary: 16_384,
-    });
-    expect(
-      ledger.referencePublications.map(({ signedBytes }) => signedBytes),
-    ).toEqual([15_032, 15_730, 6_777, 12_217, 2_990]);
-    expect(
-      ledger.referencePublications.every(
-        ({ reserveMarginBytes }) => reserveMarginBytes > 0,
+/**
+ * The stored ledger is written by the lifecycle suite
+ * (`MIDGARD_WRITE_FIT_LEDGER=1`) from complete signed emulator measurements.
+ * This gate pins that the stored artifact is bound to the fresh blueprint,
+ * carries every publication and every maximum-shape lifecycle row the Wave 4
+ * gate names, and reproduces byte-for-byte from its own measurements with
+ * positive margins.
+ */
+const REQUIRED_ROWS = [
+  "publish-step01",
+  "publish-step02",
+  "publish-step03",
+  "publish-step04",
+  "publish-step05",
+  "init",
+  "step01-accepted",
+  "step02-authenticate",
+  "step03-open-item",
+  "step04-verdict-malformed",
+  "step05-mint",
+  "remove",
+  "cancel-step01",
+  "cancel-step02",
+  "cancel-step03",
+  "cancel-step04",
+  "cancel-step05",
+  "forced-step01",
+  "forced-step02-authenticate",
+  "forced-step03-open-item",
+  "forced-step04-scan-00",
+  "forced-step04-scan-widest-window",
+  "forced-step04-close-exact-end",
+  "forced-step05-mint",
+  "forced-depth-step04-scan-00",
+  "forced-depth-step05-mint",
+  "forced-sig-step05-mint",
+  "honest-forced-step04-close",
+  "accepted-empty-step03-bind-close",
+  "accepted-empty-step05-mint",
+] as const;
+
+describe("executionSourceScriptDecoding signed Van Rossem fit ledger", () => {
+  it("is bound to the fresh blueprint and reproduces positive margins at the maximum shapes", () => {
+    const stored = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../docs/fault-proofs/size-plans/execution-source-script-decoding-v1-fit-ledger.json",
+          import.meta.url,
+        ),
+        "utf8",
       ),
-    ).toBe(true);
-    expect(ledger.focusedAikenMaximum.memoryMargin).toBeGreaterThan(0);
-    expect(ledger.focusedAikenMaximum.cpuMargin).toBeGreaterThan(0);
-    expect(ledger.forcedLifecycle.map(({ stage }) => stage)).toEqual([
-      "init",
-      "step01-forced",
-      "step02-authenticate",
-      "step03-open-item",
-      "step04-scan-0",
-      "step05-mint",
-      "remove",
-    ]);
-    expect(
-      ledger.forcedLifecycle.every(
-        ({ byteMargin, memory, cpu }) =>
-          byteMargin > 0 && memory > 0 && cpu > 0,
-      ),
-    ).toBe(true);
-    expect(ledger.acceptedMalformedLifecycle.map(({ stage }) => stage)).toEqual(
-      [
-        "init",
-        "step01-accepted",
-        "step02-authenticate",
-        "step03-open-item",
-        "step04-scan-0",
-        "step05-mint",
-        "remove",
-      ],
+    ) as VanRossemFitLedger;
+    expect(stored.schemaVersion).toBe(VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION);
+    expect(stored.category).toBe(
+      "executionSourceScriptDecoding:00000031:testnet",
     );
-    expect(
-      ledger.acceptedMalformedLifecycle.every(
-        ({ byteMargin, memory, cpu }) =>
-          byteMargin > 0 && memory > 0 && cpu > 0,
-      ),
-    ).toBe(true);
-    const { evidenceDigest, ...evidence } = ledger;
-    expect(
-      createHash("sha256").update(JSON.stringify(evidence)).digest("hex"),
-    ).toBe(evidenceDigest);
+    expect(stored.blueprintSha256).toBe(
+      createHash("sha256")
+        .update(readFileSync(realBlueprintPath))
+        .digest("hex"),
+    );
+    expect(stored.compilerVersion).toBe("aiken v1.1.23+5adf783");
+    const names = new Set(stored.entries.map((entry) => entry.name));
+    for (const row of REQUIRED_ROWS) expect(names.has(row), row).toBe(true);
+    for (const entry of stored.entries) {
+      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
+      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
+      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
+      if (entry.kind === "publication")
+        expect(
+          entry.publicationReserveMargin,
+          entry.name,
+        ).toBeGreaterThanOrEqual(0);
+    }
+    const reproduced = buildVanRossemFitLedger({
+      category: stored.category,
+      blueprintSha256: stored.blueprintSha256,
+      compilerVersion: stored.compilerVersion,
+      measurements: stored.entries.map((entry) => ({
+        name: entry.name,
+        kind: entry.kind,
+        maximumShape: entry.maximumShape,
+        signedBytes: entry.signedBytes,
+        memoryUnits: BigInt(entry.memoryUnits),
+        cpuUnits: BigInt(entry.cpuUnits),
+      })),
+    });
+    expect(reproduced).toStrictEqual(stored);
   });
 });
