@@ -1,5 +1,6 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
+  createReferenceScriptAuthPolicy,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
@@ -114,15 +115,23 @@ export const runForcedValidationDisputeScenario = async (
   if (nonceUtxo === undefined) {
     throw new Error("Expected operator wallet to expose a nonce UTxO");
   }
-  const baseContracts = await buildMinimalFaultProofContracts(
-    realBlueprint,
-    alwaysBlueprint,
-    nonceUtxo,
-    {
-      realValidationTraceDispute: true,
-      alwaysFraudProofCatalogue: true,
-    },
+  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    challengerLucid,
+    emulator.now(),
   );
+  const baseContracts = {
+    ...(await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      {
+        referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
+        realValidationTraceDispute: true,
+        alwaysFraudProofCatalogue: true,
+      },
+    )),
+    referenceScriptAuth,
+  };
   // Operator registration and activation source their four directory
   // validators from published reference scripts, so the roster has to exist
   // before the setup transaction samples the header clock.
