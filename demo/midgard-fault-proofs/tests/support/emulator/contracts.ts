@@ -9,6 +9,7 @@ import {
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildDoubleWithdrawFaultProofContracts,
+  buildExecutionSourceScriptDecodingFaultProofContracts,
   buildFabricatedDepositFaultProofContracts,
   buildFabricatedWithdrawalFaultProofContracts,
   buildFieldItemWidthIllegalFaultProofContracts,
@@ -1004,6 +1005,7 @@ export const buildMinimalFaultProofContracts = async (
     realProtectedOutputSignerMissing = false,
     realObserversForbiddenOnUntaggedNetwork = false,
     realOutputReferenceScriptDecoding = false,
+    realExecutionSourceScriptDecoding = false,
     alwaysFraudProofCatalogue = false,
     alwaysStateQueue = false,
     referenceScriptAuthPolicyId,
@@ -1051,6 +1053,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realProtectedOutputSignerMissing?: boolean;
     readonly realObserversForbiddenOnUntaggedNetwork?: boolean;
     readonly realOutputReferenceScriptDecoding?: boolean;
+    readonly realExecutionSourceScriptDecoding?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
     /**
      * Test-only admission bypass for faults whose malformed header is rejected
@@ -1416,6 +1419,10 @@ export const buildMinimalFaultProofContracts = async (
   const outputReferenceScriptDecodingContracts = await buildFamilyContracts(
     realOutputReferenceScriptDecoding,
     buildOutputReferenceScriptDecodingFaultProofContracts,
+  );
+  const executionSourceScriptDecodingContracts = await buildFamilyContracts(
+    realExecutionSourceScriptDecoding,
+    buildExecutionSourceScriptDecodingFaultProofContracts,
   );
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
@@ -1971,6 +1978,9 @@ export const buildMinimalFaultProofContracts = async (
     outputReferenceScriptDecoding:
       outputReferenceScriptDecodingContracts?.outputReferenceScriptDecoding ??
       withActiveOperators.fraudProofContracts.outputReferenceScriptDecoding,
+    executionSourceScriptDecoding:
+      executionSourceScriptDecodingContracts?.executionSourceScriptDecoding ??
+      withActiveOperators.fraudProofContracts.executionSourceScriptDecoding,
   };
 
   return {
