@@ -521,11 +521,29 @@ describe("fault-proof ABI", () => {
     // below, not into these arguments.
     expect(
       roundTrip(
-        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
+        {
+          Continue: [
+            {
+              source: {
+                AcceptedSource: {
+                  inclusion: { RedeemerCarriedInclusion: [txInclusionArgs] },
+                },
+              },
+            },
+          ],
+        },
         SDK.InvalidSignatureStep01SpendRedeemer,
       ),
     ).toMatchObject({
-      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+      Continue: [
+        {
+          source: {
+            AcceptedSource: {
+              inclusion: { RedeemerCarriedInclusion: [{ native_tx_id: h32 }] },
+            },
+          },
+        },
+      ],
     });
     // The retired two-field wrapper must not encode any more. Left as an
     // explicit negative because emitting it produced a redeemer the validator
@@ -551,7 +569,10 @@ describe("fault-proof ABI", () => {
 
     const step02Datum = {
       fraud_prover: h28,
-      data: { bad_tx_id: h32, bad_tx_witness_set_hash: h32b },
+      data: {
+        subject: SDK.acceptedVerdictSubject(h32),
+        bad_tx_witness_set_hash: h32b,
+      },
     };
     expect(roundTrip(step02Datum, SDK.InvalidSignatureStep02Datum)).toEqual(
       step02Datum,
