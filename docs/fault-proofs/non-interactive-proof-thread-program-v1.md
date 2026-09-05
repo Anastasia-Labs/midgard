@@ -392,7 +392,7 @@ regression against its final central diff.
 
 ### Current execution checkpoint (2026-09-05)
 
-The shared integration checkpoint is `d4db73a6`. The 22 new categories are
+The shared integration checkpoint is `81fff435`. The 22 new categories are
 registered; registration alone does not establish the vertical-slice gates.
 The three Wave 4 structural decoding families are integrated, including the
 maximum-depth `witnessScriptDecoding` lifecycle and regenerated fit evidence.
@@ -428,11 +428,19 @@ Its 95-row ledger was regenerated there; 28 combined input/signature tests,
 The signature regression preserves original submitted-valid bytes while
 reproducing the committed rejected source. TypeScript passed.
 
-The remaining extensions are `nativeScriptInvalid`, `noReferenceInput`,
-`minAda`, and `valueNotPreserved`.
-The active worktrees own `nativeScriptInvalid`, `noReferenceInput`,
-and the earlier Wave 7 `distinctAssetAccumulationLimit` lifecycle evidence
-repair. Central integration remains serial.
+`nativeScriptInvalid` and `noReferenceInput` are integrated. The native
+family's five physical stages are now all registered in the manifest, node
+publication roster, and watcher indexer. The combined testnet blueprint has
+813 entries with digest
+`4293d71d2cd435f44021530aa4a60e0ddfee42839f0cc6fac09aca14bdfed728`.
+The two maximum ledgers contain 372 and 95 signed rows. Against this build,
+33 lifecycle/replay tests, two ledger verifiers, 12 core identity tests,
+22 deployment tests, and 18 watcher indexer tests passed; TypeScript passed.
+
+The remaining direction extensions are `minAda` and `valueNotPreserved`.
+Active worktrees own `minAda`, the missing `nativeScriptDecoding` production
+workflow, and the earlier Wave 7 `distinctAssetAccumulationLimit` lifecycle
+and recovery evidence repair. Central integration remains serial.
 
 The baseline full Aiken check passed 3,687/3,687. The full fault-proof suite
 passed 1,513 tests with 29 failures: four stale ledger digests, legacy reference

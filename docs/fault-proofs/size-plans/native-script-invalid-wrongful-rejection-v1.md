@@ -84,3 +84,22 @@ indexer/identity 41/41. SDK, core, fault-proofs, node and watcher typechecks pas
 The node tests use `MIDGARD_SKIP_DB_TESTS=1` because the selected manifest tests
 do not use Postgres. Aiken build/check use pinned testnet via
 `flock --close /tmp/midgard-nip-aiken.lock`.
+
+## Shared build evidence
+
+Both direction and five-step deployment commits are integrated. The shared
+testnet blueprint digest is
+`4293d71d2cd435f44021530aa4a60e0ddfee42839f0cc6fac09aca14bdfed728`.
+The shared Van Rossem writer records 372 signed transactions across eight
+shapes, and the verifier requires the current blueprint and reproducible
+ledger digest. Regenerate from the repository root after the pinned build:
+
+```bash
+MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/native-script-invalid-wrongful-rejection-lifecycle.test.ts
+pnpm --dir demo/midgard-fault-proofs exec vitest run tests/native-script-invalid-wrongful-rejection-fit-ledger.test.ts
+```
+
+The combined native-script/reference-input regression passed 33 tests;
+12 core identity, 22 deployment, and 18 watcher indexer tests also passed.
+The manifest counts include both the missing-signature forced scripts and
+all five native-script-invalid stages. Final combined-tree closure remains open.

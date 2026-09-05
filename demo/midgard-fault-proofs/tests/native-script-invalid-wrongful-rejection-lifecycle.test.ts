@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
@@ -39,6 +40,10 @@ import {
   admitNativeScriptInvalidWorkflowArtifact,
   prepareNativeScriptInvalidWorkflowArtifact,
 } from "../src/native-script-invalid/workflow-artifact.js";
+import {
+  buildVanRossemFitLedger,
+  writeVanRossemFitLedger,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
   buildCountedRoot,
@@ -46,6 +51,7 @@ import {
 } from "../src/transition-trace/phas.js";
 import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
 import { NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import {
@@ -63,35 +69,48 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
-const fitRows: unknown[] = [];
+type FitMeasurement = ReturnType<
+  typeof import("./support/emulator/measurement.js").measureCompleteSignedTransaction
+>;
+const fitRows: {
+  shape: string;
+  stages: readonly FitMeasurement[];
+  scriptIndex?: bigint;
+  scriptFieldBytes?: number;
+  signerFieldBytes?: number;
+}[] = [];
 afterAll(async () => {
-  if (process.env.NATIVE_SCRIPT_INVALID_FIT_LEDGER_PATH) {
-    const blueprintSha256 = createHash("sha256")
-      .update(await readFile(process.env.MIDGARD_REAL_BLUEPRINT_PATH!))
-      .digest("hex");
-    await writeFile(
-      process.env.NATIVE_SCRIPT_INVALID_FIT_LEDGER_PATH,
-      JSON.stringify(
-        {
-          schemaVersion:
-            "midgard-native-script-invalid-wrongful-rejection-fit-ledger-v1",
-          category: "nativeScriptInvalid",
-          compiler: "aiken v1.1.23+5adf783",
-          environment: "testnet",
-          blueprintSha256,
-          limits: {
-            signedBytes: 16384,
-            publicationBytes: 15872,
-            memory: "13200000",
-            cpu: "8000000000",
-          },
-          shapes: fitRows,
-        },
-        (_, v) => (typeof v === "bigint" ? v.toString() : v),
-        2,
-      ) + "\n",
-    );
-  }
+  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
+  expect(fitRows).toHaveLength(8);
+  const blueprint = await readFile(realBlueprintPath);
+  const ledger = buildVanRossemFitLedger({
+    category: "nativeScriptInvalid",
+    blueprintSha256: createHash("sha256").update(blueprint).digest("hex"),
+    compilerVersion: JSON.parse(blueprint.toString("utf8")).preamble.compiler
+      .version,
+    measurements: fitRows.flatMap(({ shape, stages }) =>
+      stages.map((row, index) => ({
+        name: `${shape}/${index.toString().padStart(3, "0")}`,
+        kind:
+          row.executionMemory === 0n && row.executionSteps === 0n
+            ? ("publication" as const)
+            : ("lifecycle" as const),
+        maximumShape: shape,
+        signedBytes: row.completeSignedBytes,
+        memoryUnits: row.executionMemory,
+        cpuUnits: row.executionSteps,
+      })),
+    ),
+  });
+  await writeVanRossemFitLedger(
+    fileURLToPath(
+      new URL(
+        "../../../docs/fault-proofs/size-plans/native-script-invalid-wrongful-rejection-v1-fit-ledger.json",
+        import.meta.url,
+      ),
+    ),
+    ledger,
+  );
 });
 
 const setup = async ({
