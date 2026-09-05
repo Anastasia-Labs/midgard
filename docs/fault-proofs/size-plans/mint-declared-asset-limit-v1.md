@@ -41,12 +41,25 @@ this family refuses it.
 3. `fraud_proofs/mint_declared_asset_limit/step_03.main.spend`
    parameters: step-04 hash, computation-thread policy id, field-certificate
    policy id. It resumes an authenticated field-5 walk. Its rule state is
-   constant size: policy cursor, next byte offset, previous policy key,
-   accumulated completed-asset count, and a domain-separated checkpoint hash.
-   Each transaction consumes at most 24 complete policy items. It stops only
-   at the bound policy's begin header:
-   either the exact first crossing is recorded, or that policy is fully
-   consumed and a complete non-crossing result is recorded.
+   constant size: the walk checkpoint hash, the accumulated consumed-asset
+   count, the previous policy key, and the machine's `MintFoldControlV1`
+   cursor over the open item (active policy key, item byte cursor, assets
+   remaining, per-policy asset ordinal, previous asset name). Each
+   transaction spends a work budget of at most 192 units: opening a policy
+   item costs 8 units, every consumed asset entry costs one. The walk
+   checkpoint advances only when an item closes, so a policy item wider than
+   one budget is re-read from the same authenticated walk position and
+   consumed across as many transactions as it needs. The fold stops at the
+   bound policy's begin header when it crosses (the exact first crossing is
+   recorded) or when the bound policy is fully consumed (a complete
+   non-crossing result is recorded).
+
+   The intra-item cursor is what makes every field shape reachable: a prior
+   policy inside the 32,768-byte field bound can carry roughly 8,000 asset
+   entries, and one consumed entry costs about 36K memory and 11M CPU, so a
+   fold that had to complete a policy item inside one transaction could not
+   reach the bound coordinate past roughly 400 assets in any earlier policy.
+
 4. `fraud_proofs/mint_declared_asset_limit/step_04.main.spend`
    parameters: permanent fraud-proof policy id, permanent token address, and
    computation-thread policy id. It imports only the family decision rule and
@@ -55,28 +68,50 @@ this family refuses it.
 
 Item bytes and checkpoint bytes remain in redeemers; datums contain only
 fixed-size identity/cursor/accumulator commitments. The target item is bound
-by transaction id, field-5 positional commitment, policy index, item length,
-item commitment, policy id, and declared count. A checkpoint from another
-field, transaction, item, cursor, or carriage cannot resume the thread.
+by transaction id, field-5 positional commitment, policy index, policy id and
+declared count. A checkpoint from another field, transaction, item, cursor,
+or carriage cannot resume the thread, and a fold transaction that would
+re-commit the identical state is refused.
+
+The policy item's array head is read with the machine's own
+`decode_definite_array_header_at`, so the twin admits exactly the two-element
+heads `script_sources_begin_mint_policy` admits (a `98 02` spelling included)
+rather than a stricter subset the machine would still count.
 
 ## Maximum mint frontier
 
-The maximum authenticated field-5 preimage is 32,768 bytes. The adversarial
-frontier combines the greatest number of minimum-width completed canonical
-policies that fit before a final target whose canonical map header declares
-the first over-limit count. The adjacent honest frontier uses the identical
-prefix and target coordinate with a declaration that leaves the total exactly
-16,384. Tier-3 carriage is at most three 15,148-byte certified chunks plus one
-certificate. The fold budget starts at 24 entries per transaction and may be
-reduced only if an ordinary Van Rossem measurement requires it; protocol
-limits and transaction-size settings are never raised.
+The maximum authenticated field-5 preimage is 32,768 bytes. The measured
+adversarial frontier is an exact 32,768-byte certified field holding a
+1,000-asset first policy, sixty singleton policies, and a bound target whose
+canonical map header declares exactly one asset more than the bound admits
+(1,060 + 15,325 = 16,385): the smallest crossing. It exercises every fold
+shape the budget admits — a full 192-asset budget spent inside one open
+policy, a policy closing mid-transaction with singleton policies and the
+crossing header following in the same budget — and it resumes the fold from
+committed checkpoints both inside and between policy items. Tier-3 carriage
+is three certified chunks plus one certificate.
 
-The maximum lifecycle must exercise at least one field-grammar self-loop and
-one declared-count fold self-loop, restart from both committed checkpoints, and
-reach permanent mint and mutation-leased target/descendant removal. It must
-also reject policy-index, item, previous-key, checkpoint, decision-digest, and
-transaction substitutions, plus a declared-count mutation on otherwise
-identical authenticated bytes.
+Because a well-formed policy item carries at most about 8,200 asset entries
+in 32,768 bytes, no well-formed transaction reaches an _actual_ total of
+16,384 assets; the bound is only ever crossed by a declaration. The exact
+boundary is therefore exercised as the machine decides it: a field whose
+prior policy and bound header declare exactly 16,384 in total opens the bound
+item as a non-crossing fold (the crossing claim is refused on chain, the
+opened-item state is accepted), while the declaration one greater crosses.
+The fold budget is 192 work units per transaction (one consumed asset entry
+measures about 45K memory and 14M CPU; 256 units left a pure-entry
+transaction within 2M memory of the limit) and may be reduced only if an
+ordinary Van Rossem measurement requires it; protocol limits and
+transaction-size settings are never raised.
+
+The lifecycle exercises field-grammar self-loops, fold self-loops inside and
+between policy items, restart from committed checkpoints, permanent mint and
+mutation-leased target/descendant removal, cancellation from every physical
+step, the honest accepted block and the honest forced rejection at their
+terminal steps, and on-chain refusal of transaction-membership, forced-leaf,
+carriage, transaction-anchor, grammar-checkpoint, walk-checkpoint, budget,
+successor, reason-coordinate, subject-coordinate, direction and
+out-of-range-coordinate substitutions.
 
 ## Publication, lifecycle, and reproducible ledger gate
 
@@ -96,15 +131,20 @@ The deterministic artifact is
 Its focused test reconstructs every row from the fresh blueprint and asserts
 deep equality, including the blueprint digest and ledger digest.
 
-The final ledger contains 28 deterministic rows and digest
-`96545b49f17d0f836a7b988a1151f4a3cada70a82816ab581a7a3b95ff21d89f`.
-The applied step-01 publication is the tightest script publication at 14,712
-signed bytes (1,160 bytes inside the reliability reserve). The maximum field's
-first two certified chunks land exactly at the 15,872-byte publication target;
-all lifecycle transactions retain at least 14,324 signed bytes of hard-limit
-margin. The largest measured execution is the second 24-policy fold at
-8,516,927 memory and 3,866,869,067 CPU, leaving 7,983,073 memory and
-6,133,130,933 CPU.
+The final ledger contains 51 deterministic rows and digest
+`a2215fa01414f7dbd2e73480d1a7051641f549f4aa4add3163742c050af4e7d2`, bound to
+blueprint `d1ac61daef73a015ee617382b52bfa5cd0ca806e99ef10a0d1e99353c69f353c`
+(aiken `v1.1.23+5adf783`). The applied step-01 publication is the tightest
+script publication at 14,712 signed bytes (1,160 bytes inside the reliability
+reserve); step 02 publishes at 11,664, step 03 at 11,231 and step 04 at
+2,214. The maximum field's first two certified chunks land exactly at the
+15,872-byte publication target; all lifecycle transactions retain at least
+14,120 signed bytes of hard-limit margin. The heaviest execution by memory is
+the fold that closes the 1,000-asset policy and opens fourteen singleton
+policies in the same budget, at 9,367,944 memory (7,132,056 left); a full
+192-entry fold inside one open policy costs 9,156,183 memory and
+2,907,515,829 CPU; the heaviest execution by CPU is the terminal grammar
+certification at 4,063,315,651 CPU (5,936,684,349 left).
 
 ## Package-owned production surface
 

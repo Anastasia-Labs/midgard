@@ -66,6 +66,10 @@ export type MintDeclaredAssetLimitStep02WireAction =
     }
   | { readonly kind: "grammar_finish"; readonly checkpointBytesHex: string };
 
+export type MintDeclaredAssetLimitStep02Successor =
+  | Readonly<{ kind: "grammar"; checkpointHash: string }>
+  | Readonly<{ kind: "fold"; checkpointHash: string }>;
+
 /** Resolves the published carriage (and certificate) for a planned opening. */
 export const resolveMintDeclaredFieldCarriage = async ({
   lucid,
@@ -127,11 +131,11 @@ export const planMintDeclaredFieldOpening = ({
   });
 
 /**
- * Builds one step-02 transaction from explicit wire inputs: the planned
- * opening and the carriage it resolves to, the action with its checkpoint
- * bytes, the successor state and the successor script. The plan-driven
- * builder below derives all of them; this form lets a lifecycle present a
- * substituted carriage, certificate, checkpoint, state or successor on chain.
+ * Builds one step-02 transaction from explicit wire inputs: the opening and
+ * the carriage it references, the action with its checkpoint bytes, the
+ * successor state and the successor script. The plan-driven builder below
+ * derives all of them; this form lets a lifecycle present a substituted
+ * carriage, transaction, checkpoint, state or successor on chain.
  */
 export const submitMintDeclaredAssetLimitStep02Raw = async ({
   lucid,
@@ -140,7 +144,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   signer,
   threadOutRef,
   evidence,
-  planned,
+  opening,
   carriageUtxos,
   certificateUtxo,
   action,
@@ -156,13 +160,11 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly evidence: MintDeclaredAssetLimitEvidence;
-  readonly planned: PlannedMintDeclaredFieldOpening;
+  readonly opening: FieldOpening;
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo: UTxO | undefined;
   readonly action: MintDeclaredAssetLimitStep02WireAction;
-  readonly next:
-    | Readonly<{ kind: "grammar"; checkpointHash: string }>
-    | Readonly<{ kind: "fold"; checkpointHash: string }>;
+  readonly next: MintDeclaredAssetLimitStep02Successor;
   readonly nextStepIndex?: 0 | 1 | 2 | 3;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -203,16 +205,6 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "mint-declared-asset-limit",
     stepIndex,
-  });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "mintDeclaredAssetLimit field 5",
   });
   const nextData =
     next.kind === "fold"
@@ -320,9 +312,7 @@ export const mintDeclaredStep02WirePlan = ({
   readonly action: MintDeclaredAssetLimitStep02Action;
 }): {
   readonly action: MintDeclaredAssetLimitStep02WireAction;
-  readonly next:
-    | Readonly<{ kind: "grammar"; checkpointHash: string }>
-    | Readonly<{ kind: "fold"; checkpointHash: string }>;
+  readonly next: MintDeclaredAssetLimitStep02Successor;
 } => {
   const itemBudget = 24n;
   const fold = {
@@ -406,6 +396,24 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     signer,
     planned,
   });
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[1].spendingScriptHash,
+    family: "mint-declared-asset-limit",
+    stepIndex: 1,
+  });
+  const opening: FieldOpening = faultProofFieldOpening({
+    planned,
+    referenceInputs: [
+      ...carriage.carriageUtxos,
+      stepReference,
+      ...(carriage.certificateUtxo === undefined
+        ? []
+        : [carriage.certificateUtxo]),
+    ],
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    label: "mintDeclaredAssetLimit field 5",
+  });
   return await submitMintDeclaredAssetLimitStep02Raw({
     lucid,
     contracts,
@@ -413,7 +421,7 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     signer,
     threadOutRef,
     evidence,
-    planned,
+    opening,
     ...carriage,
     ...mintDeclaredStep02WirePlan({ staged, action }),
     referenceScriptUtxo,

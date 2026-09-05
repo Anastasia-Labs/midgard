@@ -20,8 +20,10 @@ pub const max_distinct_asset_count: Int = 16384
 pub const staged_policy_budget: Int = 24
 
 /// Work units one step-03 fold transaction may spend. Opening a policy item
-/// costs `fold_policy_cost`; every consumed asset entry costs one unit.
-pub const staged_fold_budget: Int = 256
+/// costs `fold_policy_cost`; every consumed asset entry costs one unit. One
+/// consumed entry measures about 45K memory and 14M CPU, so 192 units keep a
+/// pure-entry transaction near 12M memory under the 16.5M limit.
+pub const staged_fold_budget: Int = 192
 
 pub const fold_policy_cost: Int = 8
 
@@ -182,73 +184,23 @@ fn open_policy(state: FoldStateV1, header: PolicyHeaderV1) -> FoldStateV1 {
 }
 
 /// Consumes one asset entry of the open policy item: the machine's
-/// `script_sources_fold_mint_asset`. Closing the bound item records the
-/// complete non-crossing result.
+/// `script_sources_fold_mint_asset`.
 pub fn consume_asset_v1(
   state: FoldStateV1,
   item_index: Int,
   item: ByteArray,
 ) -> FoldStateV1 {
-  expect and {
-      state.outcome == outcome_scanning,
-      bytearray.length(state.active_policy) == 28,
-      state.assets_remaining > 0,
-      state.policy_asset_cursor >= 0,
-    }
-  let Pair(quantity_offset, asset_name) = decode_canonical_bytes_at(
-    item,
-    state.item_cursor,
-  )
-  let Pair(next_cursor, quantity) = decode_canonical_int_at(
-    item,
-    quantity_offset,
-  )
-  let next_count = state.accumulated_count + 1
-  let item_length = bytearray.length(item)
-  expect and {
-      bytearray.length(asset_name) <= 32,
-      quantity != 0,
-      next_count <= max_distinct_asset_count,
-      or {
-        state.policy_asset_cursor == 0,
-        canonical_bytes_key_precedes(state.previous_asset, asset_name),
-      },
-      if state.assets_remaining == 1 {
-        next_cursor == item_length
-      } else {
-        next_cursor < item_length
-      },
-    }
-  if state.assets_remaining == 1 {
-    FoldStateV1 {
-      ..state,
-      accumulated_count: next_count,
-      previous_policy: state.active_policy,
-      active_policy: #"",
-      item_cursor: 0,
-      assets_remaining: 0,
-      policy_asset_cursor: 0,
-      previous_asset: #"",
-      outcome: if item_index == state.policy_index {
-        outcome_non_crossing
-      } else {
-        outcome_scanning
-      },
-    }
-  } else {
-    FoldStateV1 {
-      ..state,
-      accumulated_count: next_count,
-      item_cursor: next_cursor,
-      assets_remaining: state.assets_remaining - 1,
-      policy_asset_cursor: state.policy_asset_cursor + 1,
-      previous_asset: asset_name,
-    }
-  }
+  let Pair(consumed, _) = consume_assets_v1(state, item_index, item, 1)
+  consumed
 }
 
 /// Consumes asset entries of the open item until it closes or `budget` units
-/// are spent. Returns the state and the unspent budget.
+/// are spent. Returns the state and the unspent budget. Closing the bound
+/// item records the complete non-crossing result.
+///
+/// The per-entry loop carries scalars only and rebuilds the carried record
+/// once: reading and rewriting a wide record per entry costs more than the
+/// entry itself.
 pub fn consume_assets_v1(
   state: FoldStateV1,
   item_index: Int,
@@ -261,10 +213,104 @@ pub fn consume_assets_v1(
   } {
     Pair(state, budget)
   } else {
-    consume_assets_v1(
-      consume_asset_v1(state, item_index, item),
-      item_index,
+    expect and {
+        state.outcome == outcome_scanning,
+        bytearray.length(state.active_policy) == 28,
+        state.assets_remaining > 0,
+        state.policy_asset_cursor >= 0,
+      }
+    let (cursor, remaining, asset_cursor, previous, count, left) = consume_entries(
       item,
+      bytearray.length(item),
+      state.item_cursor,
+      state.assets_remaining,
+      state.policy_asset_cursor,
+      state.previous_asset,
+      state.accumulated_count,
+      budget,
+    )
+    if remaining == 0 {
+      Pair(
+        FoldStateV1 {
+          ..state,
+          accumulated_count: count,
+          previous_policy: state.active_policy,
+          active_policy: #"",
+          item_cursor: 0,
+          assets_remaining: 0,
+          policy_asset_cursor: 0,
+          previous_asset: #"",
+          outcome: if item_index == state.policy_index {
+            outcome_non_crossing
+          } else {
+            outcome_scanning
+          },
+        },
+        left,
+      )
+    } else {
+      Pair(
+        FoldStateV1 {
+          ..state,
+          accumulated_count: count,
+          item_cursor: cursor,
+          assets_remaining: remaining,
+          policy_asset_cursor: asset_cursor,
+          previous_asset: previous,
+        },
+        left,
+      )
+    }
+  }
+}
+
+fn consume_entries(
+  item: ByteArray,
+  item_length: Int,
+  cursor: Int,
+  remaining: Int,
+  asset_cursor: Int,
+  previous: ByteArray,
+  count: Int,
+  budget: Int,
+) -> (Int, Int, Int, ByteArray, Int, Int) {
+  if or {
+    budget == 0,
+    remaining == 0,
+  } {
+    (cursor, remaining, asset_cursor, previous, count, budget)
+  } else {
+    let Pair(quantity_offset, asset_name) = decode_canonical_bytes_at(
+      item,
+      cursor,
+    )
+    let Pair(next_cursor, quantity) = decode_canonical_int_at(
+      item,
+      quantity_offset,
+    )
+    let next_count = count + 1
+    expect and {
+        bytearray.length(asset_name) <= 32,
+        quantity != 0,
+        next_count <= max_distinct_asset_count,
+        or {
+          asset_cursor == 0,
+          canonical_bytes_key_precedes(previous, asset_name),
+        },
+        if remaining == 1 {
+          next_cursor == item_length
+        } else {
+          next_cursor < item_length
+        },
+      }
+    consume_entries(
+      item,
+      item_length,
+      next_cursor,
+      remaining - 1,
+      asset_cursor + 1,
+      asset_name,
+      next_count,
       budget - 1,
     )
   }

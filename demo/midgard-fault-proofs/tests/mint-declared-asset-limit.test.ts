@@ -177,15 +177,15 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     const restarted = planMintDeclaredAssetLimitStagedWalk(input);
     expect(first).toEqual(restarted);
     expect(first.grammar).toHaveLength(3);
-    // 256 units: 28 singleton policies (9 units each) per fold transaction,
-    // then 20 more and the target header.
-    expect(first.walk).toHaveLength(2);
-    expect(first.walk[0]!.checkpoint.nextItemIndex).toBe(28);
-    expect(first.walk[0]!.cursor.accumulatedCount).toBe(28);
+    // 192 units: 21 singleton policies (9 units each) per fold transaction,
+    // twice, then the last seven including the bound singleton.
+    expect(first.walk).toHaveLength(3);
+    expect(first.walk[0]!.checkpoint.nextItemIndex).toBe(21);
+    expect(first.walk[0]!.cursor.accumulatedCount).toBe(21);
     expect(first.walk[0]!.cursor.activePolicy).toBe("");
     // The bound item is itself a singleton: a complete non-crossing fold.
-    expect(first.walk[1]!.cursor.outcome).toBe(2);
-    expect(first.walk[1]!.cursor.accumulatedCount).toBe(49);
+    expect(first.walk[2]!.cursor.outcome).toBe(2);
+    expect(first.walk[2]!.cursor.accumulatedCount).toBe(49);
     expect(first.crossing).toBe(false);
     const grammarBytes = encodeMintDeclaredGrammarCheckpoint(first.grammar[0]!);
     const walkBytes = encodeMintDeclaredWalkCheckpoint(
@@ -218,15 +218,16 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
       fieldPreimageCbor: field.toString("hex"),
       policyIndex: 2,
     });
-    // 8 + 248 assets, 256 assets, 96 assets + singleton + target header.
+    // 8 + 184 assets, 192, 192, then 32 assets close the wide policy and the
+    // singleton and the target header follow in the same budget.
     expect(
       plan.walk.map((snapshot) => snapshot.cursor.accumulatedCount),
-    ).toEqual([248, 504, 601]);
+    ).toEqual([184, 376, 568, 601]);
     expect(plan.walk[0]!.checkpoint).toEqual(plan.initialWalk);
     expect(plan.walk[0]!.cursor.activePolicy).toBe("00".repeat(28));
-    expect(plan.walk[0]!.cursor.assetsRemaining).toBe(352);
-    expect(plan.walk[1]!.checkpoint).toEqual(plan.initialWalk);
-    expect(plan.walk[2]!.cursor.outcome).toBe(1);
+    expect(plan.walk[0]!.cursor.assetsRemaining).toBe(416);
+    expect(plan.walk[2]!.checkpoint).toEqual(plan.initialWalk);
+    expect(plan.walk[3]!.cursor.outcome).toBe(1);
     expect(plan.crossing).toBe(true);
     // Straight fold and staged fold agree.
     expect(foldMintDeclaredAssetLimit(items, 2)).toEqual({
@@ -243,7 +244,7 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
       target: plan.target,
       budget: 17,
     });
-    expect(resumed.cursor.accumulatedCount).toBe(265);
+    expect(resumed.cursor.accumulatedCount).toBe(201);
     expect(resumed.nextItemIndex).toBe(0);
     expect(() =>
       advanceMintDeclaredFold({

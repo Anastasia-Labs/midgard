@@ -230,7 +230,9 @@ export const planMintDeclaredAssetLimitStagedWalk = ({
     foldBudget <= 0 ||
     foldBudget > MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET
   )
-    throw new Error("mintDeclaredAssetLimit fold budget must be in 1..256");
+    throw new Error(
+      `mintDeclaredAssetLimit fold budget must be in 1..${MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET.toString()}`,
+    );
   const field = planMintDeclaredAssetLimitField({
     transactionId,
     fieldPreimageCbor,

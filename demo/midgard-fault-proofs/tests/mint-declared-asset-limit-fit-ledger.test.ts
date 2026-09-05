@@ -2,9 +2,26 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger.js";
+import {
+  buildVanRossemFitLedger,
+  writeVanRossemFitLedger,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
+
+/**
+ * Every row is transcribed from `mint-declared-asset-limit-lifecycle.test.ts`
+ * and `submit-init-emulator-mint-declared-asset-limit-publication.test.ts`
+ * run with `MIDGARD_PRINT_FIT=1` against the pinned blueprint below. A
+ * regeneration that moves the blueprint digest re-measures both suites and
+ * rewrites the JSON with `MIDGARD_UPDATE_MINT_DECLARED_ASSET_LIMIT_LEDGER=1`.
+ */
+const PINNED_BLUEPRINT_SHA256 =
+  "d1ac61daef73a015ee617382b52bfa5cd0ca806e99ef10a0d1e99353c69f353c";
+
+const ACCEPTED_MAXIMUM =
+  "62 policies (1000-asset first policy, 60 singletons, header crossing at 16,385); exact 32768-byte certified field; 192-unit fold budget";
 
 export const mintDeclaredAssetLimitFitMeasurements = [
+  // Reference publications of the four applied scripts.
   [
     "reference-step-01",
     "publication",
@@ -17,7 +34,7 @@ export const mintDeclaredAssetLimitFitMeasurements = [
     "reference-step-02",
     "publication",
     "fully applied production script",
-    11443,
+    11664,
     0n,
     0n,
   ],
@@ -25,7 +42,7 @@ export const mintDeclaredAssetLimitFitMeasurements = [
     "reference-step-03",
     "publication",
     "fully applied production script",
-    10219,
+    11231,
     0n,
     0n,
   ],
@@ -37,14 +54,7 @@ export const mintDeclaredAssetLimitFitMeasurements = [
     0n,
     0n,
   ],
-  [
-    "raw-carriage-publication",
-    "publication",
-    "complete forced field-5 preimage",
-    286,
-    0n,
-    0n,
-  ],
+  // Carriage of every field the lifecycles open.
   [
     "certified-carriage-chunk-00",
     "publication",
@@ -74,97 +84,254 @@ export const mintDeclaredAssetLimitFitMeasurements = [
     "publication",
     "field-5 certificate over three chunks",
     1317,
-    514679n,
-    228504595n,
+    508943n,
+    226720101n,
   ],
   [
-    "init",
-    "lifecycle",
-    "49 policies; exact 32768-byte certified field; 24-policy batches",
-    1497,
-    676000n,
-    231986817n,
+    "raw-carriage-honest",
+    "publication",
+    "two-singleton honest field-5 preimage",
+    325,
+    0n,
+    0n,
   ],
+  [
+    "raw-carriage-boundary",
+    "publication",
+    "singleton plus a header declaring exactly the bound in total",
+    329,
+    0n,
+    0n,
+  ],
+  [
+    "raw-carriage-forced",
+    "publication",
+    "300-asset forced field-5 preimage",
+    1527,
+    0n,
+    0n,
+  ],
+  [
+    "raw-carriage-honest-rejection",
+    "publication",
+    "forced field-5 preimage whose header crosses at policy 0",
+    290,
+    0n,
+    0n,
+  ],
+  // The maximum accepted crossing through the production actuator.
+  ["init", "lifecycle", ACCEPTED_MAXIMUM, 1497, 676000n, 231986817n],
   [
     "step-01-accepted",
     "lifecycle",
-    "49 policies; exact 32768-byte certified field; 24-policy batches",
-    1986,
-    1312005n,
-    445637538n,
+    ACCEPTED_MAXIMUM,
+    2264,
+    1352941n,
+    458550430n,
   ],
   [
     "grammar-start",
     "lifecycle",
-    "first 24 of 49 field items",
+    "first 24 of 62 field items",
     1180,
-    3781651n,
-    1978182887n,
+    3792665n,
+    1981578793n,
   ],
   [
     "grammar-resume-01",
     "lifecycle",
-    "second 24 of 49 field items",
+    "second 24 of 62 field items",
     1272,
-    4062560n,
-    2120810698n,
+    4071164n,
+    2123487439n,
   ],
   [
     "grammar-resume-02",
     "lifecycle",
-    "last of 49 field items",
+    "last 14 of 62 field items",
     1272,
-    1192806n,
-    485002548n,
+    2829915n,
+    1414795032n,
   ],
   [
     "grammar-finish",
     "lifecycle",
     "terminal grammar checkpoint and target header",
-    1303,
-    5587786n,
-    3301442768n,
+    1308,
+    6772282n,
+    4063315651n,
   ],
   [
     "fold-00",
     "lifecycle",
-    "first 24 complete policies",
-    1298,
-    8502040n,
-    3861450993n,
+    "open the 1000-asset policy and consume 184 entries",
+    1310,
+    8903506n,
+    2833524169n,
   ],
   [
     "fold-01",
     "lifecycle",
-    "second 24 complete policies",
-    1298,
-    8516927n,
-    3866869067n,
+    "192 entries inside the open policy (full entry budget)",
+    1312,
+    9156183n,
+    2907515829n,
   ],
   [
-    "fold-02-first-crossing",
+    "fold-02",
     "lifecycle",
-    "target policy declares 16385 before body completion",
-    1200,
-    1333411n,
-    553904398n,
+    "192 entries inside the open policy (full entry budget)",
+    1312,
+    9156183n,
+    2907515829n,
+  ],
+  [
+    "fold-03",
+    "lifecycle",
+    "192 entries inside the open policy (full entry budget)",
+    1311,
+    9156183n,
+    2907515829n,
+  ],
+  [
+    "fold-04",
+    "lifecycle",
+    "192 entries inside the open policy (full entry budget)",
+    1311,
+    9156183n,
+    2907515829n,
+  ],
+  [
+    "fold-05",
+    "lifecycle",
+    "64 entries close the wide policy; 14 singleton policies follow",
+    1304,
+    9367944n,
+    3917228044n,
+  ],
+  [
+    "fold-06",
+    "lifecycle",
+    "21 singleton policies (full policy budget)",
+    1304,
+    9044832n,
+    4059268248n,
+  ],
+  [
+    "fold-07",
+    "lifecycle",
+    "21 singleton policies (full policy budget)",
+    1304,
+    9044832n,
+    4059268248n,
+  ],
+  [
+    "fold-08",
+    "lifecycle",
+    "four singleton policies and the target header crossing at 16,385",
+    1201,
+    2122381n,
+    912566005n,
   ],
   [
     "permanent-proof-mint",
     "lifecycle",
     "terminal accepted contradiction",
     916,
-    264663n,
-    96311833n,
+    260039n,
+    94942988n,
   ],
   [
     "mutation-leased-removal",
     "lifecycle",
     "target plus descendant removal with proof token by reference",
     2060,
-    3051824n,
-    1036600810n,
+    3007744n,
+    1022837034n,
   ],
+  // The honest accepted transaction reaches the terminal step and is refused.
+  [
+    "init-honest",
+    "lifecycle",
+    "honest two-singleton transaction",
+    1497,
+    676000n,
+    231986817n,
+  ],
+  [
+    "step-01-honest",
+    "lifecycle",
+    "honest two-singleton transaction",
+    2260,
+    1350426n,
+    457612676n,
+  ],
+  [
+    "honest-direct-field",
+    "lifecycle",
+    "complete two-singleton field opening",
+    1101,
+    728359n,
+    234910198n,
+  ],
+  [
+    "honest-complete-fold",
+    "lifecycle",
+    "complete non-crossing fold the terminal step refuses",
+    1088,
+    1294055n,
+    448625033n,
+  ],
+  [
+    "init-outside-coordinate",
+    "lifecycle",
+    "policy index past the field's item count",
+    1497,
+    676000n,
+    231986817n,
+  ],
+  [
+    "step-01-outside-coordinate",
+    "lifecycle",
+    "policy index past the field's item count, refused at step 02",
+    2260,
+    1350426n,
+    457612676n,
+  ],
+  // The exact boundary opens the bound item instead of crossing.
+  [
+    "init-boundary",
+    "lifecycle",
+    "singleton plus a header declaring exactly the bound in total",
+    1497,
+    676000n,
+    231986817n,
+  ],
+  [
+    "step-01-boundary",
+    "lifecycle",
+    "singleton plus a header declaring exactly the bound in total",
+    2260,
+    1350426n,
+    457612676n,
+  ],
+  [
+    "boundary-direct-field",
+    "lifecycle",
+    "complete boundary field opening",
+    1103,
+    733179n,
+    236376008n,
+  ],
+  [
+    "boundary-open-target",
+    "lifecycle",
+    "16,384 declared in total opens the bound item as a non-crossing fold",
+    1220,
+    1243254n,
+    441653318n,
+  ],
+  // Cancellation from every physical step.
   [
     "cancel-step-01",
     "lifecycle",
@@ -186,8 +353,8 @@ export const mintDeclaredAssetLimitFitMeasurements = [
     "lifecycle",
     "cancel declared-count fold",
     611,
-    112408n,
-    40468566n,
+    112608n,
+    40500566n,
   ],
   [
     "cancel-step-04",
@@ -197,45 +364,78 @@ export const mintDeclaredAssetLimitFitMeasurements = [
     111876n,
     40368424n,
   ],
+  // The exact forced wrongful rejection, resumed inside the policy item.
   [
     "step-01-forced",
     "lifecycle",
     "exact MintDeclaredAssetLimit wrongful rejection",
-    1721,
-    721561n,
-    324394866n,
+    1794,
+    802892n,
+    349665285n,
   ],
   [
     "forced-direct-field",
     "lifecycle",
-    "complete singleton forced field opening",
-    1141,
-    650371n,
-    211513770n,
+    "complete 300-asset forced field opening",
+    1148,
+    668635n,
+    219064234n,
   ],
   [
-    "forced-complete-fold",
+    "forced-fold-00",
     "lifecycle",
-    "complete non-crossing singleton fold",
-    1132,
-    911225n,
-    311648905n,
+    "open the 300-asset target and consume 184 entries",
+    1241,
+    8540986n,
+    2630802738n,
+  ],
+  [
+    "forced-fold-01",
+    "lifecycle",
+    "116 entries close the target: complete non-crossing result",
+    1133,
+    5631172n,
+    1740063956n,
   ],
   [
     "forced-permanent-proof-mint",
     "lifecycle",
     "terminal forced contradiction",
     916,
-    291074n,
-    105264756n,
+    295698n,
+    106633601n,
+  ],
+  // The honest forced rejection reaches its crossing and is refused.
+  [
+    "step-01-honest-rejection",
+    "lifecycle",
+    "rightly rejected crossing at policy 0",
+    1793,
+    800579n,
+    348862192n,
+  ],
+  [
+    "honest-rejection-direct-field",
+    "lifecycle",
+    "complete crossing-header field opening",
+    1148,
+    663815n,
+    216379965n,
+  ],
+  [
+    "honest-rejection-crossing",
+    "lifecycle",
+    "the crossing decision the terminal step refuses",
+    1133,
+    880156n,
+    306089162n,
   ],
 ] as const;
 
 export const buildMintDeclaredAssetLimitFitLedger = () =>
   buildVanRossemFitLedger({
     category: "mintDeclaredAssetLimit",
-    blueprintSha256:
-      "179c65539806f39a85008527e3572eb31bcd792d0a701aaa6bc04c60938c021f",
+    blueprintSha256: PINNED_BLUEPRINT_SHA256,
     compilerVersion: "v1.1.23+5adf783",
     measurements: mintDeclaredAssetLimitFitMeasurements.map(
       ([name, kind, maximumShape, signedBytes, memoryUnits, cpuUnits]) => ({
@@ -252,6 +452,12 @@ export const buildMintDeclaredAssetLimitFitLedger = () =>
 describe("mintDeclaredAssetLimit signed Van Rossem fit ledger", () => {
   it("reproduces every publication and maximum lifecycle row", async () => {
     const ledger = buildMintDeclaredAssetLimitFitLedger();
+    const url = new URL(
+      "../../../docs/fault-proofs/size-plans/mint-declared-asset-limit-v1-fit-ledger.json",
+      import.meta.url,
+    );
+    if (process.env.MIDGARD_UPDATE_MINT_DECLARED_ASSET_LIMIT_LEDGER === "1")
+      await writeVanRossemFitLedger(url.pathname, ledger);
     expect(ledger.entries).toHaveLength(
       mintDeclaredAssetLimitFitMeasurements.length,
     );
@@ -271,15 +477,21 @@ describe("mintDeclaredAssetLimit signed Van Rossem fit ledger", () => {
             publicationReserveMargin !== null && publicationReserveMargin >= 0,
         ),
     ).toBe(true);
-    const stored: unknown = JSON.parse(
-      await readFile(
-        new URL(
-          "../../../docs/fault-proofs/size-plans/mint-declared-asset-limit-v1-fit-ledger.json",
-          import.meta.url,
-        ),
-        "utf8",
-      ),
+    // The heaviest fold transaction and the full-entry-budget transactions
+    // keep more than a third of the memory limit and half of the CPU limit.
+    const folds = ledger.entries.filter(({ name }) =>
+      /^(forced-)?fold-/u.test(name),
     );
+    expect(folds.length).toBeGreaterThanOrEqual(11);
+    for (const fold of folds) {
+      expect(BigInt(fold.memoryUnitMargin), fold.name).toBeGreaterThan(
+        5_500_000n,
+      );
+      expect(BigInt(fold.cpuUnitMargin), fold.name).toBeGreaterThan(
+        5_000_000_000n,
+      );
+    }
+    const stored: unknown = JSON.parse(await readFile(url, "utf8"));
     expect(stored).toStrictEqual(ledger);
   });
 });

@@ -22,7 +22,7 @@ export const MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS = 16_384 as const;
 /** Field items one step-02 grammar transaction certifies. */
 export const MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET = 24 as const;
 /** Work units one step-03 fold transaction spends (`staged_fold_budget`). */
-export const MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET = 256 as const;
+export const MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET = 192 as const;
 /** Work units opening one policy item costs (`fold_policy_cost`). */
 export const MINT_DECLARED_ASSET_LIMIT_FOLD_POLICY_COST = 8 as const;
 
