@@ -201,8 +201,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // the family's applied step-01 hash and the fold move. Derived under the
 // working-tree testnet blueprint (sha256 6236b3f8…). `53211786…` ->
 // `085027d4…`.
+// Re-pinned 2026-09-04 (Wave 1, `scriptIntegrityHashMissing`): step 03 and
+// the script-grammar step dropped the routing expects that left small
+// field-6 shapes unprovable, re-parameterizing steps 01–03, so the family's
+// applied step-01 hash and the fold move. Derived under the working-tree
+// testnet blueprint (sha256 137e608c…). `085027d4…` -> `b3474673…`.
 const Q13_CATALOGUE_ROOT =
-  "085027d494940213bb1fdbf94657c7fc36d711737ae82b3508f24914df64a032";
+  "b3474673abc758dda35582f015dd8702a0461ec4d141fb4bc22ca20ec604eab8";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
