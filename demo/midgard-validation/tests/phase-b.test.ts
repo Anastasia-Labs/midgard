@@ -189,6 +189,21 @@ describe("phase B validation", () => {
     ).toBe(true);
   });
 
+  it("rejects a wrong integrity hash on the plain-transaction path", async () => {
+    const spent = outRefFromByte(0x21);
+    const candidate = makePhaseBCandidate({ spent: [spent] });
+    candidate.ledgerTx.scriptIntegrityHash.fill(0xff);
+    const result = await runPhaseB(
+      [candidate],
+      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
+    );
+    const rejected = expectSinglePhaseBRejection(
+      result,
+      RejectCodes.InvalidFieldType,
+    );
+    expect(rejected.detail).toContain("script_integrity_hash mismatch");
+  });
+
   it("accepts a balanced candidate and returns a deterministic UTxO patch", async () => {
     const spent = outRefFromByte(0x21);
     const inputOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);

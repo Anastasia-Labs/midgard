@@ -1229,6 +1229,21 @@ const validatePlainCandidateAgainstState = (
     }
   }
 
+  // The plain route has no script executions, but its body still commits the
+  // canonical empty language view. Keep the same ScriptIntegrity rejection
+  // as the full executor and the validation machine before value checks.
+  const expectedIntegrityHash = computeScriptIntegrityHashForLanguages(
+    candidate.derived.redeemerWitnessHash,
+    [],
+  );
+  if (!ledgerTx.scriptIntegrityHash.equals(expectedIntegrityHash)) {
+    return fail(
+      RejectCodes.InvalidFieldType,
+      `script_integrity_hash mismatch: expected ${expectedIntegrityHash.toString("hex")} actual ${ledgerTx.scriptIntegrityHash.toString("hex")} required_languages=`,
+      "scriptIntegrity",
+    );
+  }
+
   const underFundedOutput = minAdaViolation(candidate);
   if (underFundedOutput !== null) {
     return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");

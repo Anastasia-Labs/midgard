@@ -37,6 +37,7 @@ import {
   buildRedeemerCanonicityFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
   buildResolvedOutputNonCanonicalFaultProofContracts,
+  buildScriptIntegrityHashMismatchFaultProofContracts,
   buildScriptIntegrityHashMissingFaultProofContracts,
   buildSpendInputSignerMissingFaultProofContracts,
   buildTransactionOutputNonCanonicalFaultProofContracts,
@@ -988,6 +989,7 @@ export const buildMinimalFaultProofContracts = async (
     realFieldPreimageLengthMismatch = false,
     realWitnessScriptDecoding = false,
     realScriptIntegrityHashMissing = false,
+    realScriptIntegrityHashMismatch = false,
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
@@ -1037,6 +1039,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realFieldPreimageLengthMismatch?: boolean;
     readonly realWitnessScriptDecoding?: boolean;
     readonly realScriptIntegrityHashMissing?: boolean;
+    readonly realScriptIntegrityHashMismatch?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
@@ -1430,6 +1433,10 @@ export const buildMinimalFaultProofContracts = async (
   const executionSourceScriptDecodingContracts = await buildFamilyContracts(
     realExecutionSourceScriptDecoding,
     buildExecutionSourceScriptDecodingFaultProofContracts,
+  );
+  const scriptIntegrityHashMismatchContracts = await buildFamilyContracts(
+    realScriptIntegrityHashMismatch,
+    buildScriptIntegrityHashMismatchFaultProofContracts,
   );
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
@@ -1991,6 +1998,9 @@ export const buildMinimalFaultProofContracts = async (
     executionSourceScriptDecoding:
       executionSourceScriptDecodingContracts?.executionSourceScriptDecoding ??
       withActiveOperators.fraudProofContracts.executionSourceScriptDecoding,
+    scriptIntegrityHashMismatch:
+      scriptIntegrityHashMismatchContracts?.scriptIntegrityHashMismatch ??
+      withActiveOperators.fraudProofContracts.scriptIntegrityHashMismatch,
   };
 
   return {

@@ -4,8 +4,18 @@ import type {
   OutputReference,
   RootMembershipProof,
 } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress,
+  type LucidEvolution,
+  type Network,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
+import { VAN_ROSSEM_MAX_SIGNED_TX_BYTES } from "../proof-fit/van-rossem-fit-ledger.js";
+import {
+  publishProofChunks,
+  resolvePublishedProofChunks,
+} from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
@@ -67,6 +77,7 @@ export type ScriptIntegrityHashMismatchLucidAction =
     }>;
 export type ScriptIntegrityHashMismatchCapturedLucidAction = Readonly<{
   transaction: LocallyEvaluatedTransaction;
+  prerequisite?: "proof_chunks";
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
@@ -141,34 +152,85 @@ export const createScriptIntegrityHashMismatchLucidActuator = (
             awaitConfirmation: false,
           });
         });
-      if (action.stage === "step_01")
-        return await captured(async (preSubmitBoundary) => {
-          const args = {
-            ...common,
-            threadOutRef: action.threadOutRef,
-            header: artifact.header,
-            referenceScriptUtxo: config.references.steps[0],
-            preSubmitBoundary,
-          } as const;
-          if (artifact.acceptedInclusion !== undefined)
-            await submitScriptIntegrityHashMismatchStep01Accepted({
-              ...args,
-              blueprint: config.binding.blueprint,
-              network: config.binding.network,
-              stateQueueBlockOutRef: action.stateQueueBlockOutRef,
-              txInclusion: artifact.acceptedInclusion,
-              witnessReferenceScripts: config.references.witnesses,
+      if (action.stage === "step_01") {
+        const args = {
+          ...common,
+          threadOutRef: action.threadOutRef,
+          header: artifact.header,
+          referenceScriptUtxo: config.references.steps[0],
+        } as const;
+        const inclusion = artifact.acceptedInclusion;
+        if (inclusion !== undefined) {
+          const acceptedArgs = {
+            ...args,
+            blueprint: config.binding.blueprint,
+            network: config.binding.network,
+            stateQueueBlockOutRef: action.stateQueueBlockOutRef,
+            txInclusion: inclusion,
+            witnessReferenceScripts: config.references.witnesses,
+          };
+          try {
+            return await captured(async (preSubmitBoundary) => {
+              await submitScriptIntegrityHashMismatchStep01Accepted({
+                ...acceptedArgs,
+                preSubmitBoundary,
+              });
             });
-          else if (artifact.forcedMembership !== undefined)
+          } catch (cause) {
+            const message =
+              cause instanceof Error ? cause.message : String(cause);
+            const capacity =
+              /Max transaction size of (\d+) exceeded\. Found: (\d+)/u.exec(
+                message,
+              );
+            if (
+              capacity === null ||
+              Number(capacity[1]) !== VAN_ROSSEM_MAX_SIGNED_TX_BYTES ||
+              Number(capacity[2]) <= VAN_ROSSEM_MAX_SIGNED_TX_BYTES
+            )
+              throw cause;
+          }
+          const chunks = await resolvePublishedProofChunks({
+            lucid: config.lucid,
+            address: credentialToAddress(config.binding.network, {
+              type: "Key",
+              hash: config.signer.paymentKeyHash,
+            }),
+            proofCbor: inclusion.txMembershipProofCbor,
+          });
+          if (chunks === undefined) {
+            const publication = await captured(async (preSubmitBoundary) => {
+              await publishProofChunks({
+                lucid: config.lucid,
+                network: config.binding.network,
+                signer: config.signer,
+                proofCbor: inclusion.txMembershipProofCbor,
+                preSubmitBoundary,
+                awaitConfirmation: false,
+              });
+            });
+            return { ...publication, prerequisite: "proof_chunks" };
+          }
+          return await captured(async (preSubmitBoundary) => {
+            await submitScriptIntegrityHashMismatchStep01Accepted({
+              ...acceptedArgs,
+              publishedProofChunks: chunks,
+              preSubmitBoundary,
+            });
+          });
+        }
+        if (artifact.forcedMembership !== undefined)
+          return await captured(async (preSubmitBoundary) => {
             await submitScriptIntegrityHashMismatchStep01Forced({
               ...args,
-              membership: artifact.forcedMembership,
+              membership: artifact.forcedMembership!,
+              preSubmitBoundary,
             });
-          else
-            throw new Error(
-              "scriptIntegrityHashMismatch artifact omitted exact source",
-            );
-        });
+          });
+        throw new Error(
+          "scriptIntegrityHashMismatch artifact omitted exact source",
+        );
+      }
       if (action.stage === "cancel")
         return await captured(async (preSubmitBoundary) => {
           await submitScriptIntegrityHashMismatchCancel({

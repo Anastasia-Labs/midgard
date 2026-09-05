@@ -1,10 +1,10 @@
 import {
   HUB_ORACLE_ASSET_NAME,
+  type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  requireWithdrawalRedeemerIndex,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -18,32 +18,30 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { prepareNativeTxInclusionCarriage } from "../native-inclusion-carriage.js";
+import {
+  type PublishedProofChunk,
+  walletInputsExcludingChunks,
+} from "../proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
-  encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
-  getCompiledScript,
   parseOutRef,
-  phasMembershipRewardAddress,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
 import {
-  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  type FaultProofWitnessReferenceScripts,
-  witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts.js";
+import { type FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
-  workflowReferenceScript,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import {
   type MissingNativeScriptTxStepIndex,
@@ -76,6 +74,8 @@ export const submitMissingNativeScriptTxBinding = async ({
   nextDatum,
   spendRedeemerSchema,
   wrapInclusionArgs,
+  wrapInclusionCarriage,
+  publishedProofChunks = [],
   referenceScriptUtxo,
   witnessReferenceScripts,
   preSubmitBoundary,
@@ -108,6 +108,10 @@ export const submitMissingNativeScriptTxBinding = async ({
   readonly wrapInclusionArgs?: (
     args: Readonly<Record<string, unknown>>,
   ) => unknown;
+  readonly wrapInclusionCarriage?: (
+    carriage: NativeTxInclusionCarriage,
+  ) => unknown;
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
@@ -146,12 +150,30 @@ export const submitMissingNativeScriptTxBinding = async ({
   requireNativeTxMatchesCompactCbor(txInclusion);
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const phasScript: Script = {
-    type: "PlutusV3",
-    script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
-  };
-  const phasAddress = phasMembershipRewardAddress(network, phasScript);
+  if (publishedProofChunks.length > 0 && wrapInclusionCarriage === undefined)
+    throw missingNativeScriptTxSubmitError(
+      "published proof chunks require a carriage-aware family",
+    );
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks: publishedProofChunks,
+    }),
+  );
+  const stepReference = requireMissingNativeScriptTxReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
+    stepIndex,
+  });
+  const carriage = prepareNativeTxInclusionCarriage({
+    blueprint,
+    network,
+    txInclusion,
+    publishedProofChunks,
+    witnessReferenceScripts,
+    label,
+    baseReferenceInputs: [hubOracleUtxo, stateQueueBlockUtxo, stepReference],
+  });
   const nextStep = contracts.steps[stepIndex + 1];
   if (nextStep === undefined) {
     throw missingNativeScriptTxSubmitError(`${label} has no successor step.`);
@@ -190,64 +212,37 @@ export const submitMissingNativeScriptTxBinding = async ({
       ),
     };
     layout = resolved;
-    const inclusionArgs = {
+    const inclusion = carriage.redeemer(ctx, {
       input_index: resolved.inputIndex,
       output_index: resolved.outputIndex,
       hub_ref_input_index: resolved.hubOracleRefInputIndex,
       state_queue_node_ref_input_index: resolved.stateQueueNodeRefInputIndex,
-      native_tx_id: txInclusion.nativeTxId,
-      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
-      transactions_phas_root: txInclusion.transactionsPhasRoot,
-      tx_membership_proof: txInclusion.txMembershipProof,
-      inclusion_proof_script_withdraw_redeemer_index:
-        requireWithdrawalRedeemerIndex(
-          ctx,
-          phasAddress,
-          `${label} PHAS membership`,
-        ),
-    };
+    });
+    const args =
+      wrapInclusionCarriage !== undefined
+        ? wrapInclusionCarriage(inclusion)
+        : (() => {
+            if (!("RedeemerCarriedInclusion" in inclusion))
+              throw missingNativeScriptTxSubmitError(
+                "bare inclusion cannot carry chunks",
+              );
+            const bare = inclusion.RedeemerCarriedInclusion[0];
+            return wrapInclusionArgs === undefined
+              ? bare
+              : wrapInclusionArgs(bare);
+          })();
     return Data.to(
       {
-        Continue: [
-          wrapInclusionArgs === undefined
-            ? inclusionArgs
-            : wrapInclusionArgs(inclusionArgs),
-        ],
+        Continue: [args],
       },
       spendRedeemerSchema,
     );
   }) satisfies BuildTxWithRedeemer;
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
-    script: phasScript,
-    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
-    label: `${label} PHAS membership`,
-  });
-  const stepReference = requireMissingNativeScriptTxReferenceScript({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
-    stepIndex,
-  });
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    stepReference,
-    ...phasMembershipCarriage.referenceInputs,
-  ];
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasAddress,
-      0n,
-      encodeRawPhasMembershipProofRedeemer({
-        root: txInclusion.transactionsPhasRoot,
-        keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.l2TransactionSourceCbor,
-        membershipProofCbor: txInclusion.txMembershipProofCbor,
-      }),
-    )
+    .readFrom(carriage.referenceInputs)
     .pay.ToContract(
       nextStep.spendingScriptAddress,
       { kind: "inline", value: nextDatum },
@@ -257,7 +252,7 @@ export const submitMissingNativeScriptTxBinding = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx = phasMembershipCarriage.attach(base);
+  const tx = carriage.attachWithdrawal(base);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw missingNativeScriptTxSubmitError(
@@ -267,18 +262,17 @@ export const submitMissingNativeScriptTxBinding = async ({
   const signed = await unsigned.sign.withWallet().complete();
   const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: [
-      workflowReferenceScript({
-        role: `${label}-spend`,
-        utxo: stepReference,
-        expectedScript: contracts.steps[stepIndex].spendingScript,
-      }),
-      workflowReferenceScript({
-        role: `${label}-phas-membership`,
-        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-        expectedScript: phasScript,
-      }),
-    ],
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
+      signed,
+      candidates: [
+        {
+          role: `${label}-spend`,
+          utxo: stepReference,
+          expectedScript: contracts.steps[stepIndex].spendingScript,
+        },
+        ...carriage.referenceScriptCandidates,
+      ],
+    }),
     boundary: preSubmitBoundary,
   });
   const txHash = await signed.submit();

@@ -80,19 +80,44 @@ authentication evidence plus all four bitmaps. Signed bytes must be
 `<= 16,384`, memory `<= 16,500,000`, CPU `<= 10,000,000,000`, and target
 reference publication bytes `<= 15,872`; every ledger margin must be positive.
 
-Fresh testnet blueprint SHA-256:
-`ff06bdfca25e8b5f2ec71ff32c599d89c4bf737a93f4e6826992f5af8762e78f`.
-Fully applied script bytes are `14,692`, `11,817`, `1,603`, `5,401`, and
-`1,957`; ordinary signed reference-publication transactions are `14,968`,
-`12,093`, `1,879`, `5,677`, and `2,271` bytes. The tightest publication
-reserve margin is therefore `904` bytes. The largest exact semantic vector
-uses `221,775` memory units and `79,009,581` CPU units.
+The 2026-09-05 consolidated baseline blueprint is
+`db03f84b0157ac51bd26b69dc2d548bb7186847697db607c5c8699479bfb9094`.
+The executable lifecycle now covers all four language bitmaps in both
+accepted and forced directions, with a positive contradiction and an honest
+claim refusal for each combination (16 cases). Honest claims are submitted
+through the raw finalizer as well as the guarded SDK, so refusal is checked
+by the real terminal validator. Every positive path cancels all five steps,
+reopens each successor by out-ref, mints the permanent proof and removes the
+registered block under a mutation lease.
 
-The concrete Lucid lifecycle gate signs and submits all five cancellation
-paths, re-acquires every successor by its out-ref (the restart boundary), runs
-the two physical step-04 folds, permanently mints the proof at step 05, and
-performs canonical registered-family removal under a mutation lease. Its
-largest row is leased removal at `2,060` signed bytes, `3,022,261` memory, and
-`1,030,518,609` CPU; the tightest lifecycle transaction margin is `13,841`
-bytes at step 02. Exact per-transaction rows are retained in the adjacent fit
-ledger JSON.
+Both dual-language positive cases carry a synthetic, library-verified
+64-branch transaction-source MPF, a 64-branch descriptor MPF and a 32-level validation-state proof, the maximum
+consensus trace depth (`maxValidationMachineStepCount = 0xffffffff`). The
+challenged header commits the reconstructed root; synthetic neighbors avoid
+an infeasible hash-prefix search while exercising the actual verifier. The
+same cases refuse altered transaction identity, event identity, work root,
+trace sibling, and descriptor membership key before proceeding successfully.
+
+The adjacent ledger records 241 signed publication and lifecycle transactions.
+Maximum publication size is 14,968 bytes (904 bytes of publication reserve).
+Maximum lifecycle size is 12,280 bytes (4,104 bytes of L1 headroom), using
+4,162,186 memory units and 1,416,781,205 CPU units. The ledger verifier binds
+all rows to the blueprint and reconstructs every margin and digest.
+Regenerate it with `MIDGARD_WRITE_FIT_LEDGER=1` while running the complete
+`script-integrity-hash-mismatch-lifecycle.test.ts` file against the final
+blueprint, then run `script-integrity-hash-mismatch-fit-ledger.test.ts`.
+
+The empty-language accepted case also caught a missing integrity comparison
+in the TypeScript plain-transaction optimization. That path now checks the
+same canonical empty-language hash as the full validator and Aiken machine;
+`phase-b.test.ts` includes a direct regression.
+
+The accepted source's 64-branch proof would make the direct transaction
+19,752 bytes because both the spending and rewarding redeemers carry it.
+The existing published-chunk contract arm now has an SDK path. The installed
+actuator tries direct completion first, captures a chunk publication only for
+an exact 16,384-byte capacity failure, and resolves the exact published chunks
+on restart. Publication goes through the same preflight, journal intent and
+submission path as family transitions. Each intent is identified by its signed
+transaction hash, and confirmation is matched to that hash, including the two
+successive language-fold transactions. Non-capacity failures never publish.

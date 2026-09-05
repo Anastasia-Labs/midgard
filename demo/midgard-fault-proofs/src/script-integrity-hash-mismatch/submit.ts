@@ -27,6 +27,7 @@ import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts.js";
 import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding.js";
+import type { PublishedProofChunk } from "../proof-chunk-carriage.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -85,6 +86,7 @@ export const submitScriptIntegrityHashMismatchStep01Accepted = async (
     >[0]["network"];
     stateQueueBlockOutRef: string;
     txInclusion: SubmitStep01TxInclusion;
+    publishedProofChunks?: readonly PublishedProofChunk[];
     header: Header;
     evidence: ScriptIntegrityHashMismatchEvidence;
     witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
@@ -126,10 +128,11 @@ export const submitScriptIntegrityHashMismatchStep01Accepted = async (
     txInclusion: args.txInclusion,
     nextDatum,
     spendRedeemerSchema: IntegrityStep01RedeemerSchema,
-    wrapInclusionArgs: (sourceArgs) => ({
+    publishedProofChunks: args.publishedProofChunks,
+    wrapInclusionCarriage: (inclusion) => ({
       source: {
         AcceptedSource: {
-          inclusion: { RedeemerCarriedInclusion: [sourceArgs] },
+          inclusion,
         },
       },
     }),

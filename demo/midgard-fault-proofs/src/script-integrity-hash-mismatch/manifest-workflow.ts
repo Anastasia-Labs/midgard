@@ -331,7 +331,9 @@ export const executeManifestBoundScriptIntegrityHashMismatchWorkflow = async ({
     intent !== undefined &&
     !entries.some(
       ({ event }) =>
-        event.kind === "confirmed" && event.actionId === intent.actionId,
+        event.kind === "confirmed" &&
+        event.actionId === intent.actionId &&
+        event.txHash === intent.txHash,
     )
   ) {
     if (
@@ -350,7 +352,8 @@ export const executeManifestBoundScriptIntegrityHashMismatchWorkflow = async ({
   const action = await actionFor(workflow);
   if (action === "removed") return { kind: "completed" as const, workflowId };
   const captured = await workflow.actuator.capture({ action, artifact });
-  const actionId = `scriptIntegrityHashMismatch:${action.stage}`;
+  const stage = captured.prerequisite ?? action.stage;
+  const actionId = `scriptIntegrityHashMismatch:${stage}:${captured.transaction.txHash}`;
   await append(journal, workflowId, identity, {
     kind: "preflight_passed",
     actionId,
@@ -364,7 +367,7 @@ export const executeManifestBoundScriptIntegrityHashMismatchWorkflow = async ({
     actionInput: {
       schemaVersion: "midgard-production-cursor-family-action-v1",
       category: "scriptIntegrityHashMismatch",
-      stage: action.stage,
+      stage,
     },
     attempt: 1,
     txHash: captured.transaction.txHash,
