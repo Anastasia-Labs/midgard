@@ -77,31 +77,52 @@ than taken here.
 ## Measured fit and lifecycle evidence
 
 The testnet blueprint (`sha256
-61ec67157434a1904ddac0a355337a1656d1ef62448744fa2856d0a1aa1602cb`) was
+137e608cbbcccffb002b4ed638eb5cc4bdda212de8b40f18313d414f8803c461`) was
 built with `aiken v1.1.23+5adf783`. Complete signed reference-script
 publication measured 14,827, 9,239, 7,488, 9,119 and 2,214 bytes for steps
 01–05. The tightest reserved publication margin is 1,045 bytes (step 01), and
 the tightest hard-ledger margin is 1,557 bytes.
 
-The applied Lucid lifecycle used the maximum 318 address witnesses and an
-actual three-transaction Certified field-7 publication (15,872, 15,872 and
-2,789 signed bytes), followed by its 1,317-byte certificate transaction. It
-executed Init, cancel/re-init, accepted source binding, field-2 credential
-opening, field-7 opening, ten exact-predecessor step-04 scans across fresh
+The accepted-direction Lucid lifecycle used the maximum 318 address witnesses
+and an actual three-transaction Certified field-7 publication (15,872, 15,872
+and 2,789 signed bytes), followed by its 1,317-byte certificate transaction.
+It executed Init, cancel/re-init, accepted source binding, field-2 credential
+opening, field-7 opening, the certificate-slot and checkpoint substitutions
+refused at the scan door, ten exact-predecessor step-04 scans across fresh
 isolated evaluators, terminal contradiction, proof mint, and leased fraudulent
 block removal. Fresh evaluator processes preserve the emulator's exact
 authenticated UTxO state and predecessor transactions while avoiding the
 known cumulative WASM UPLC arena ceiling.
 
-All lifecycle rows fit beneath 16,384 signed bytes, 16,500,000 memory units and
-10,000,000,000 CPU units. The worst applied script margins were 8,040,990
-memory units and 5,820,076,868 CPU units; the smallest lifecycle byte margin
-was 14,023 bytes. The machine-readable measured rows are in
-`protected-output-signer-missing-v1-fit-ledger.json`; its canonical ledger
-digest is `7b418d3ca2bda2e656cc5c258c8f4930823ad48d31ab1bfcbdaa57367b69d72b`.
+The forced direction was measured at its own maximum: the forced door's cost
+is the header, the counted forced-root membership and the leaf's proof
+source, none of which grows with the witness field, so the 1,757-byte forced
+step-01 row (1,058,186 memory, 443,761,399 CPU) is the ledger's forced
+maximum, and the scan and terminal rows are shared with the accepted
+direction. The forced lifecycle proves an exact
+`ProtectedOutputSignerMissing { 0 }` rejection wrong by finding the valid
+witness behind four unverifiable decoys, and refuses the substituted reason
+coordinate, the wrong direction, a re-verdicted leaf and a re-counted header
+at the door. The honest suites walk both polarities to the terminal and are
+refused at step 05, mutate every authentication seam (transaction membership,
+forced leaf, compact bytes, witness-set anchor, field preimage, certificate
+slot, checkpoint), cancel from every physical step, and drive a committed
+319-witness transaction through step 02 before its 32,860-byte field is
+refused on chain at the certificate mint (the production planner refuses it
+earlier, before any transaction).
 
-Focused semantics cover both successful directions, honest accepted and
-forced refusal, invalid signatures excluded from the frontier, wrong
-credential, reason/output-coordinate/source/item substitution, malformed or
-replayed checkpoint, wrong successor, adjacent-over-bound refusal, restart
-identity reconciliation, and maximum-carriage execution.
+All lifecycle rows fit beneath 16,384 signed bytes, 16,500,000 memory units and
+10,000,000,000 CPU units. The worst applied script margins were 8,038,122
+memory units and 5,819,184,621 CPU units (scan resume 05); the smallest
+lifecycle byte margin was 14,023 bytes (removal), and the carriage chunks sit
+exactly on the 15,872-byte publication target. The machine-readable measured
+rows are in `protected-output-signer-missing-v1-fit-ledger.json`; its
+canonical ledger digest is
+`155cbb2d4db415b9ce86f62b32a2d2b42171521d540090d079529d746bfcadba`.
+
+Focused Aiken selectors (68 across `rule` and the five step validators) cover
+both successful directions, honest accepted and forced refusal, invalid
+signatures excluded from the frontier, wrong credential, reason/output-
+coordinate/source/item substitution, malformed or replayed checkpoint, wrong
+successor at every step, and the adjacent 319-witness over-bound refusal at
+the field door.
