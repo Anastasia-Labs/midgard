@@ -142,3 +142,57 @@ test observer_order_invalid_refuses_skipped_coordinate() fail {
 test observer_order_invalid_refuses_earlier_violation() fail {
   scan(accepted(), 2, [observer_b, observer_a, observer_c]).seen == 3
 }
+
+// --- ordinals the walk never reaches -------------------------------------
+
+test observer_order_invalid_exhausted_field_contradicts_rejection() {
+  // The leaf names ordinal 5 of a three-item field: the walk ends strictly
+  // ordered without ever reaching it, so no offending later item exists.
+  let walked = scan(rejected(5), 5, [observer_a, observer_b, observer_c])
+  let terminal = rule.exhaust_scan_v1(walked)
+  and {
+    walked.outcome == rule.outcome_scanning,
+    walked.seen == 3,
+    terminal.outcome == rule.outcome_ordered,
+    rule.terminal_contradiction_v1(rule.decision_v1(terminal)),
+  }
+}
+
+test observer_order_invalid_empty_field_contradicts_rejection() {
+  let terminal = rule.exhaust_scan_v1(scan(rejected(1), 1, []))
+  and {
+    terminal.seen == 0,
+    rule.terminal_contradiction_v1(rule.decision_v1(terminal)),
+  }
+}
+
+test observer_order_invalid_zero_ordinal_contradicts_rejection() {
+  // Ordinal 0 is never the later member of an adjacent pair.
+  let terminal = scan(rejected(0), 0, [observer_b])
+  and {
+    terminal.outcome == rule.outcome_ordered,
+    rule.terminal_contradiction_v1(rule.decision_v1(terminal)),
+  }
+}
+
+test observer_order_invalid_exhausted_field_refuses_acceptance() fail {
+  // An accepted transaction whose field ends before the cited ordinal has no
+  // offending item there: the exhausted walk closes as ordered and the
+  // terminal refuses to convict.
+  rule.terminal_contradiction_v1(
+    rule.decision_v1(
+      rule.exhaust_scan_v1(scan(accepted(), 4, [observer_a, observer_b])),
+    ),
+  )
+}
+
+test observer_order_invalid_exhaustion_refuses_earlier_violation() fail {
+  // The prefix walk itself refuses the earlier pair; exhaustion is never
+  // reached over a field with an offending item before the cited ordinal.
+  rule.exhaust_scan_v1(scan(rejected(4), 4, [observer_b, observer_a])).seen == 2
+}
+
+test observer_order_invalid_exhaustion_refuses_decided_scan() fail {
+  // A walk that reached its ordinal has decided; it cannot be exhausted.
+  rule.exhaust_scan_v1(scan(rejected(1), 1, [observer_a, observer_b])).seen == 2
+}

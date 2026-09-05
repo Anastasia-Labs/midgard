@@ -130,11 +130,75 @@ describe("observerOrderInvalid V1 semantics", () => {
       scanObserverOrderInvalid([observer(1), Buffer.alloc(27)], 1),
     ).toThrow(/28 bytes/u);
     expect(() =>
-      scanObserverOrderInvalid([observer(1), observer(2)], 2),
-    ).toThrow(/outside/u);
-    expect(() =>
       scanObserverOrderInvalid([observer(2), observer(1), observer(3)], 2),
     ).toThrow(/earlier/u);
+    expect(() =>
+      scanObserverOrderInvalid([observer(2), observer(1), observer(3)], 5),
+    ).toThrow(/earlier/u);
+    expect(() =>
+      classifyObserverOrderInvalidFinding({
+        subject: accepted,
+        observerIndex: 0,
+      }),
+    ).toThrow(/later item/u);
+  });
+  it("contradicts a rejection naming an ordinal the strictly ordered walk never reaches", () => {
+    // Past the end: the walk exhausts the field ordered, so nothing offends.
+    const exhausted = evidence(
+      rejected(5),
+      [observer(1), observer(2), observer(3)],
+      5,
+    );
+    expect(exhausted).toMatchObject({
+      violation: false,
+      previousObserverHex: observer(3).toString("hex"),
+      observerHex: "",
+    });
+    expect(observerOrderInvalidEvidenceCloses(exhausted)).toBe(true);
+    // The empty field: no walk at all.
+    const empty = evidence(rejected(1), [], 1);
+    expect(empty).toMatchObject({
+      violation: false,
+      previousObserverHex: "",
+      observerHex: "",
+    });
+    expect(observerOrderInvalidEvidenceCloses(empty)).toBe(true);
+    // Ordinal 0 is never the later member of an adjacent pair.
+    const zero = evidence(rejected(0), [observer(7)], 0);
+    expect(zero.violation).toBe(false);
+    expect(observerOrderInvalidEvidenceCloses(zero)).toBe(true);
+    // The same shapes never convict an accepted transaction.
+    expect(
+      observerOrderInvalidEvidenceCloses(
+        evidence(accepted, [observer(1), observer(2)], 4),
+      ),
+    ).toBe(false);
+  });
+  it("plans an exhausted walk to the engine's end and an empty field to one scan", () => {
+    const shortField = encodeMidgardFieldPreimage([observer(1), observer(2)]);
+    const short = planObserverOrderInvalidStagedWalk({
+      transactionId: txId,
+      fieldPreimageCbor: shortField.toString("hex"),
+      observerIndex: 9,
+    });
+    expect(short.walk.map(({ nextItemIndex }) => nextItemIndex)).toEqual([2]);
+    expect(short.violation).toBe(false);
+    const empty = planObserverOrderInvalidStagedWalk({
+      transactionId: txId,
+      fieldPreimageCbor: encodeMidgardFieldPreimage([]).toString("hex"),
+      observerIndex: 1,
+    });
+    expect(empty.walk).toHaveLength(1);
+    expect(empty.walk[0]).toEqual(empty.initialWalk);
+    const exact = Array.from({ length: 48 }, (_, index) => observer(index + 1));
+    const boundary = planObserverOrderInvalidStagedWalk({
+      transactionId: txId,
+      fieldPreimageCbor: encodeMidgardFieldPreimage(exact).toString("hex"),
+      observerIndex: 60,
+    });
+    expect(boundary.walk.map(({ nextItemIndex }) => nextItemIndex)).toEqual([
+      24, 48,
+    ]);
   });
   it("derives deterministic resumable scan checkpoints", () => {
     const values = Array.from({ length: 49 }, (_, index) =>

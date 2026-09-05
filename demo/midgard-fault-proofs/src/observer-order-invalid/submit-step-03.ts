@@ -214,8 +214,13 @@ export const submitObserverOrderInvalidStep03 = async ({
               encodeObserverOrderWalkCheckpoint(priorCheckpoint).toString(
                 "hex",
               ),
+            // An exhausted walk over an empty field advances nothing; the
+            // validator still requires a positive budget to reach its end.
             item_budget: BigInt(
-              nextCheckpoint.nextItemIndex - priorCheckpoint.nextItemIndex,
+              Math.max(
+                1,
+                nextCheckpoint.nextItemIndex - priorCheckpoint.nextItemIndex,
+              ),
             ),
           },
         ],

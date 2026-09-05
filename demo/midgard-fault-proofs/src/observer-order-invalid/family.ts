@@ -46,9 +46,10 @@ export const classifyObserverOrderInvalidFinding = (
   if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
   const observerIndex = natural(finding.observerIndex, "observer index");
-  if (observerIndex === 0)
-    return fail("observer index must name the later item of an adjacent pair");
   if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
+    // Every ordinal a forced leaf can name is admissible: ordinal 0, or one
+    // past the field's end, names no offending later item and is contradicted
+    // by a walk that exhausts the field strictly ordered.
     if (finding.subject.rejection_reason === null)
       return fail("wrongful rejection has no typed reason");
     if (reasonIndex(finding.subject.rejection_reason) !== observerIndex)
@@ -58,40 +59,51 @@ export const classifyObserverOrderInvalidFinding = (
     finding.subject.rejection_reason !== null
   ) {
     return fail("direction/rejection-reason polarity is invalid");
+  } else if (observerIndex === 0) {
+    return fail("observer index must name the later item of an adjacent pair");
   }
   return Object.freeze({ subject: finding.subject, observerIndex });
 };
 
 export type ObserverOrderInvalidScanResult = Readonly<{
   violation: boolean;
+  /** The item before the cited ordinal; empty at ordinal 0 or an empty field. */
   previousObserverHex: string;
+  /** The item at the cited ordinal; empty when the walk exhausts the field first. */
   observerHex: string;
 }>;
-/** Exact first-offending-adjacent-pair twin of PhaseAScriptPreconditions. */
+/**
+ * Exact twin of the phase-A observer walk: every adjacent pair before the
+ * cited ordinal must be strictly ascending, the pair at the ordinal decides,
+ * and a walk that exhausts the field before reaching the ordinal decides
+ * `false` because no offending later item exists there (`exhaust_scan_v1`).
+ */
 export const scanObserverOrderInvalid = (
   items: readonly Uint8Array[],
   observerIndex: number,
 ): ObserverOrderInvalidScanResult => {
   natural(observerIndex, "observer index");
-  if (observerIndex === 0 || observerIndex >= items.length)
-    return fail("observer coordinate is outside an adjacent field-3 pair");
-  let previous = Buffer.from(items[0]!);
-  if (previous.length !== 28) return fail("observer item is not 28 bytes");
-  for (let index = 1; index <= observerIndex; index += 1) {
+  let previous = Buffer.alloc(0);
+  const scanned = Math.min(observerIndex, items.length - 1);
+  for (let index = 0; index <= scanned; index += 1) {
     const current = Buffer.from(items[index]!);
     if (current.length !== 28) return fail("observer item is not 28 bytes");
-    const violation = Buffer.compare(previous, current) >= 0;
-    if (index < observerIndex && violation)
-      return fail("an earlier observer pair is already noncanonical");
+    const violation = index > 0 && Buffer.compare(previous, current) >= 0;
     if (index === observerIndex)
       return Object.freeze({
         violation,
         previousObserverHex: previous.toString("hex"),
         observerHex: current.toString("hex"),
       });
+    if (violation)
+      return fail("an earlier observer pair is already noncanonical");
     previous = current;
   }
-  return fail("unreachable observer scan state");
+  return Object.freeze({
+    violation: false,
+    previousObserverHex: previous.toString("hex"),
+    observerHex: "",
+  });
 };
 
 export type ObserverOrderInvalidEvidence = ObserverOrderInvalidFinding &

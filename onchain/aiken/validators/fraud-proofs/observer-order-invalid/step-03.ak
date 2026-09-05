@@ -5,8 +5,8 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{BodyAnchor, resume_opened_field_walk}
 use midgard/fraud_proofs/observer_order_invalid/rule.{
-  ScanStateV1, decision_v1, observer_field_index, outcome_scanning, scan_item_v1,
-  staged_observer_budget,
+  ScanStateV1, decision_v1, exhaust_scan_v1, observer_field_index,
+  outcome_scanning, scan_item_v1, staged_observer_budget,
 }
 use midgard/fraud_proofs/observer_order_invalid/step_03.{
   Args, Datum, SpendRedeemer,
@@ -103,10 +103,13 @@ fn advance(
   state: ScanStateV1,
   budget: Int,
 ) -> Pair<ScanStateV1, FieldWalkCheckpointV1> {
-  if or {
-    budget == 0,
-    state.outcome != outcome_scanning,
-  } {
+  if state.outcome != outcome_scanning {
+    Pair(state, checkpoint)
+  } else if walk_is_complete(checkpoint) {
+    // The engine's own end: the whole field was walked strictly ordered
+    // without reaching the cited ordinal, so no offending later item exists.
+    Pair(exhaust_scan_v1(state), checkpoint)
+  } else if budget == 0 {
     Pair(state, checkpoint)
   } else {
     let index = walk_next_item_index(checkpoint)

@@ -40,18 +40,23 @@ pub fn bind_observer_v1(
   observer_index: Int,
 ) -> BoundObserverV1 {
   expect substrate.subject_is_canonical_v1(subject)
-  // An offending item is necessarily the later member of an adjacent pair.
-  expect observer_index > 0
-  expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
-    Some(
-      substrate.bind_exact_rejection_reason_v1(
+  expect observer_index >= 0
+  expect
+    if subject.direction == substrate.direction_wrongful_rejection {
+      // The forced leaf's typed reason is bound exactly. Every ordinal it
+      // can name is admissible here: a rejection naming ordinal 0, or an
+      // ordinal the field never reaches, names no offending later item, and
+      // the walk contradicts it by exhausting the field strictly ordered.
+      expect _reason = substrate.bind_exact_rejection_reason_v1(
         subject,
         ObserverOrderInvalid { observer_index },
-      ),
-    )
-  } else {
-    None
-  }
+      )
+      True
+    } else {
+      // An offending item is necessarily the later member of an adjacent
+      // pair.
+      observer_index > 0
+    }
   BoundObserverV1 { subject, observer_index }
 }
 
@@ -105,6 +110,22 @@ pub fn scan_item_v1(
       }
     ScanStateV1 { ..state, seen: state.seen + 1, previous_observer: observer }
   }
+}
+
+/// The authenticated walk ended before it reached the cited ordinal, every
+/// visited adjacent pair strictly ascending. The canonical machine walks the
+/// whole field and rejects at the first later item that is not greater than
+/// its predecessor, so a field it exhausts has no offending item at any
+/// ordinal: an `ObserverOrderInvalid` rejection naming one is wrong, and an
+/// acceptance is honest. Only reachable when the cited ordinal is at or past
+/// the field's item count, because `scan_item_v1` decides at the ordinal
+/// itself whenever the walk reaches it.
+pub fn exhaust_scan_v1(state: ScanStateV1) -> ScanStateV1 {
+  expect and {
+      state.outcome == outcome_scanning,
+      state.seen <= state.observer_index,
+    }
+  ScanStateV1 { ..state, outcome: outcome_ordered }
 }
 
 pub fn decision_v1(state: ScanStateV1) -> DecisionStateV1 {

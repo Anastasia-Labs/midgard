@@ -98,10 +98,14 @@ export const planObserverOrderInvalidStagedWalk = ({
       items,
     }),
   );
+  // The walk stops at the cited ordinal, or at the engine's own end when the
+  // field is shorter: the validator then exhausts the scan as ordered. An
+  // empty field still needs one scan transaction to reach that decision.
+  const target = Math.min(observerIndex + 1, items.length);
   const walk: ObserverOrderWalkCheckpoint[] = [];
   let walkCursor = initialWalk;
-  while (walkCursor.nextItemIndex <= observerIndex) {
-    const remaining = observerIndex + 1 - walkCursor.nextItemIndex;
+  while (walkCursor.nextItemIndex < target) {
+    const remaining = target - walkCursor.nextItemIndex;
     walkCursor = walk3(
       advanceMissingNativeScriptTxSemanticCheckpoint({
         checkpoint: walk6(walkCursor),
@@ -112,6 +116,7 @@ export const planObserverOrderInvalidStagedWalk = ({
     );
     walk.push(walkCursor);
   }
+  if (walk.length === 0) walk.push(initialWalk);
   return Object.freeze({
     items: Object.freeze(items),
     initialWalk,
