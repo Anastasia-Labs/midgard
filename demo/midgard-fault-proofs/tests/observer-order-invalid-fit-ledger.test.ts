@@ -2,252 +2,141 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
+import { OBSERVER_ORDER_INVALID_ITEM_BUDGET } from "../src/observer-order-invalid/family.js";
 import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
+  VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION,
+  VAN_ROSSEM_MAX_CPU_UNITS,
+  VAN_ROSSEM_MAX_MEMORY_UNITS,
+  VAN_ROSSEM_MAX_SIGNED_TX_BYTES,
+  VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
+  type VanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 
-export const observerOrderInvalidFitMeasurements = [
-  [
-    "reference-step-01",
-    "publication",
-    "fully applied production script",
-    14712,
-    0n,
-    0n,
-  ],
-  [
-    "reference-step-02",
-    "publication",
-    "fully applied production script",
-    7644,
-    0n,
-    0n,
-  ],
-  [
-    "reference-step-03",
-    "publication",
-    "fully applied production script",
-    9058,
-    0n,
-    0n,
-  ],
-  [
-    "reference-step-04",
-    "publication",
-    "fully applied production script",
-    2214,
-    0n,
-    0n,
-  ],
-  [
-    "certified-carriage-chunk-00",
-    "publication",
-    "first maximum 15153-byte field chunk",
-    15872,
-    0n,
-    0n,
-  ],
-  [
-    "certified-carriage-chunk-01",
-    "publication",
-    "terminal maximum field chunk",
-    252,
-    0n,
-    0n,
-  ],
-  [
-    "certified-carriage-certificate",
-    "publication",
-    "field-3 certificate over two chunks",
-    1246,
-    454768n,
-    173519777n,
-  ],
-  [
-    "init",
-    "lifecycle",
-    "505 observers; 15153-byte certified field",
-    1641,
-    772501n,
-    262305899n,
-  ],
-  [
-    "step-01-accepted",
-    "lifecycle",
-    "accepted source and exact index binding",
-    1986,
-    1306269n,
-    443854497n,
-  ],
-  [
-    "authenticate-certified-field",
-    "lifecycle",
-    "fixed-stride certified field-3 opening",
-    1141,
-    654486n,
-    215794866n,
-  ],
-  [
-    "scan-00",
-    "lifecycle",
-    "first maximum 24-observer batch",
-    1228,
-    5721036n,
-    3010839985n,
-  ],
-  [
-    "scan-01",
-    "lifecycle",
-    "second maximum 24-observer batch",
-    1228,
-    5728062n,
-    3014260074n,
-  ],
-  [
-    "scan-02-first-violation",
-    "lifecycle",
-    "duplicate at authenticated index 48",
-    1163,
-    1001734n,
-    388810511n,
-  ],
-  [
-    "permanent-proof-mint",
-    "lifecycle",
-    "terminal accepted contradiction",
-    916,
-    264663n,
-    96311833n,
-  ],
-  [
-    "mutation-leased-removal",
-    "lifecycle",
-    "target plus descendant removal",
-    2060,
-    3044851n,
-    1042105253n,
-  ],
-  [
-    "raw-carriage-publication",
-    "publication",
-    "complete two-observer forced field",
-    310,
-    0n,
-    0n,
-  ],
-  [
-    "cancel-step-01",
-    "lifecycle",
-    "cancel bound Init output",
-    611,
-    124408n,
-    42388566n,
-  ],
-  [
-    "cancel-step-02",
-    "lifecycle",
-    "cancel authenticated observer coordinate",
-    611,
-    112408n,
-    40468566n,
-  ],
-  [
-    "cancel-step-03",
-    "lifecycle",
-    "cancel observer scan",
-    611,
-    112408n,
-    40468566n,
-  ],
-  [
-    "cancel-step-04",
-    "lifecycle",
-    "cancel finalized contradiction",
-    611,
-    111876n,
-    40368424n,
-  ],
-  [
-    "step-01-forced",
-    "lifecycle",
-    "exact ObserverOrderInvalid wrongful rejection",
-    1721,
-    706333n,
-    320166971n,
-  ],
-  [
-    "forced-direct-field",
-    "lifecycle",
-    "complete fixed-stride forced field opening",
-    1110,
-    492065n,
-    165627638n,
-  ],
-  [
-    "forced-complete-scan",
-    "lifecycle",
-    "ordered adjacent pair contradiction",
-    1132,
-    868053n,
-    304029044n,
-  ],
-  [
-    "forced-permanent-proof-mint",
-    "lifecycle",
-    "terminal forced contradiction",
-    916,
-    291074n,
-    105264756n,
-  ],
-] as const;
+const path = new URL(
+  "../../../docs/fault-proofs/size-plans/observer-order-invalid-v1-fit-ledger.json",
+  import.meta.url,
+);
 
-export const buildObserverOrderInvalidFitLedger = () =>
-  buildVanRossemFitLedger({
-    category: "observerOrderInvalid",
-    blueprintSha256:
-      "dd9cde6da423a5082a743e21020912fabc74848c32f52b496d9251d3dfa33b2a",
-    compilerVersion: "v1.1.23+5adf783",
-    measurements: observerOrderInvalidFitMeasurements.map(
-      ([name, kind, maximumShape, signedBytes, memoryUnits, cpuUnits]) => ({
-        name,
-        kind,
-        maximumShape,
-        signedBytes,
-        memoryUnits,
-        cpuUnits,
-      }),
-    ),
-  });
+/**
+ * The locked testnet blueprint the ledger was measured against
+ * (`aiken build --env testnet` with the pinned fork). A regeneration that
+ * moves this digest re-measures the ledger through
+ * `observer-order-invalid-lifecycle.test.ts` with `MIDGARD_WRITE_FIT_LEDGER=1`.
+ */
+const PINNED_BLUEPRINT_SHA256 =
+  "569daa74f2f35c97fcfa3f541a123ca4c7dde3ff113b8fa8dd1bfba8c5499182";
+const PINNED_COMPILER = "aiken v1.1.23+5adf783";
 
-describe("observerOrderInvalid signed Van Rossem fit ledger", () => {
-  it("reproduces every publication and maximum lifecycle row", async () => {
-    const ledger = buildObserverOrderInvalidFitLedger();
-    const url = new URL(
-      "../../../docs/fault-proofs/size-plans/observer-order-invalid-v1-fit-ledger.json",
-      import.meta.url,
+/** The §5.4 aggregate-bound field: 1,092 observers over three chunks. */
+const MAXIMUM_OBSERVERS = 1092;
+const MAXIMUM_SCANS = Math.ceil(
+  MAXIMUM_OBSERVERS / OBSERVER_ORDER_INVALID_ITEM_BUDGET,
+);
+
+const scans = (prefix: string, count: number) =>
+  Array.from(
+    { length: count },
+    (_, ordinal) =>
+      `${prefix}-step03-scan${(ordinal + 1).toString().padStart(2, "0")}`,
+  );
+const chain = (prefix: string, scanCount: number) => [
+  `${prefix}-init`,
+  `${prefix}-step01`,
+  `${prefix}-step02`,
+  ...scans(prefix, scanCount),
+  `${prefix}-step04-proof-mint`,
+  `${prefix}-remove`,
+];
+const carriage = (prefix: string) => [
+  `${prefix}-carriage-chunk01`,
+  `${prefix}-carriage-chunk02`,
+  `${prefix}-carriage-chunk03`,
+  `${prefix}-carriage-certificate`,
+];
+
+/**
+ * Both directions at the maximum certified field (accepted with its last
+ * pair descending, forced strictly ascending and cited at its last ordinal),
+ * every cancel, and the inline shapes: first-pair and middle-duplicate
+ * convictions, and the forced contradictions at a middle ordinal, past the
+ * field's end, over the empty field, and at ordinal 0.
+ */
+const EXPECTED_ENTRIES = [
+  "publish-step01",
+  "publish-step02",
+  "publish-step03",
+  "publish-step04",
+  ...carriage("accepted"),
+  "accepted-cancel-step01",
+  "accepted-cancel-step02",
+  "accepted-cancel-step03",
+  "accepted-cancel-step04",
+  ...chain("accepted", MAXIMUM_SCANS),
+  ...chain("accepted-first", 1),
+  ...chain("accepted-duplicate", 1),
+  ...carriage("forced-maximum"),
+  ...chain("forced-maximum", MAXIMUM_SCANS),
+  ...chain("forced-middle", 1),
+  ...chain("forced-past-end", 1),
+  ...chain("forced-empty", 1),
+  ...chain("forced-zero", 1),
+];
+
+describe("observerOrderInvalid Van Rossem fit ledger", () => {
+  it("pins the locked testnet blueprint and a positive margin for every publication and maximum-shape lifecycle transaction", async () => {
+    const ledger = JSON.parse(
+      await readFile(path, "utf8"),
+    ) as VanRossemFitLedger;
+    expect(ledger.schemaVersion).toBe(VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION);
+    expect(ledger.category).toBe("observerOrderInvalid:00000025:testnet");
+    expect(ledger.blueprintSha256).toBe(PINNED_BLUEPRINT_SHA256);
+    expect(ledger.compilerVersion).toBe(PINNED_COMPILER);
+    expect([...ledger.entries.map((entry) => entry.name)].sort()).toEqual(
+      [...EXPECTED_ENTRIES].sort(),
     );
-    if (process.env.MIDGARD_UPDATE_OBSERVER_ORDER_LEDGER === "1")
-      await writeVanRossemFitLedger(url.pathname, ledger);
-    expect(ledger.entries).toHaveLength(
-      observerOrderInvalidFitMeasurements.length,
-    );
-    expect(
-      ledger.entries.every(
-        ({ signedByteMargin, memoryUnitMargin, cpuUnitMargin }) =>
-          signedByteMargin > 0 &&
-          BigInt(memoryUnitMargin) > 0n &&
-          BigInt(cpuUnitMargin) > 0n,
-      ),
-    ).toBe(true);
+    for (const entry of ledger.entries) {
+      expect(entry.signedByteMargin, entry.name).toBe(
+        VAN_ROSSEM_MAX_SIGNED_TX_BYTES - entry.signedBytes,
+      );
+      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
+      expect(BigInt(entry.memoryUnitMargin), entry.name).toBe(
+        VAN_ROSSEM_MAX_MEMORY_UNITS - BigInt(entry.memoryUnits),
+      );
+      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
+      expect(BigInt(entry.cpuUnitMargin), entry.name).toBe(
+        VAN_ROSSEM_MAX_CPU_UNITS - BigInt(entry.cpuUnits),
+      );
+      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
+      if (entry.kind === "publication") {
+        expect(entry.publicationReserveMargin, entry.name).toBe(
+          VAN_ROSSEM_PUBLICATION_TARGET_BYTES - entry.signedBytes,
+        );
+        expect(
+          entry.publicationReserveMargin,
+          entry.name,
+        ).toBeGreaterThanOrEqual(0);
+      } else {
+        expect(entry.publicationReserveMargin, entry.name).toBeNull();
+      }
+    }
+    // Every scripted lifecycle transaction was evaluated locally; only the
+    // chunk publications carry no redeemer.
+    for (const entry of ledger.entries) {
+      if (entry.kind === "lifecycle" && !/carriage-chunk/u.test(entry.name)) {
+        expect(BigInt(entry.memoryUnits), entry.name).toBeGreaterThan(0n);
+        expect(BigInt(entry.cpuUnits), entry.name).toBeGreaterThan(0n);
+      }
+    }
+    // The maximum field is three certified chunks: the first two sit exactly
+    // at the reliable publication target in both directions.
     expect(
       ledger.entries
-        .filter(({ kind }) => kind === "publication")
-        .every(
-          ({ publicationReserveMargin }) =>
-            publicationReserveMargin !== null && publicationReserveMargin >= 0,
-        ),
-    ).toBe(true);
-    expect(JSON.parse(await readFile(url, "utf8"))).toStrictEqual(ledger);
+        .filter((entry) =>
+          /^(accepted|forced-maximum)-carriage-chunk0[12]$/u.test(entry.name),
+        )
+        .map((entry) => entry.signedBytes),
+    ).toEqual(
+      Array.from({ length: 4 }, () => VAN_ROSSEM_PUBLICATION_TARGET_BYTES),
+    );
   });
 });
