@@ -392,7 +392,7 @@ regression against its final central diff.
 
 ### Current execution checkpoint (2026-09-05)
 
-The shared integration checkpoint is `f159253b`. The 22 new categories are
+The shared integration checkpoint is `d4db73a6`. The 22 new categories are
 registered; registration alone does not establish the vertical-slice gates.
 The three Wave 4 structural decoding families are integrated, including the
 maximum-depth `witnessScriptDecoding` lifecycle and regenerated fit evidence.
@@ -418,9 +418,19 @@ Against it, 64 family/regression tests and 22 deployment tests passed; the
 144-row maximum ledger was regenerated. Earlier family ledgers require
 regeneration against the final combined blueprint.
 
-The remaining extensions are `nativeScriptInvalid`, `nonExistentInput`,
-`noReferenceInput`, `minAda`, and `valueNotPreserved`.
-The active worktrees own `nativeScriptInvalid`, `nonExistentInput`,
+`nonExistentInput` is integrated in both directions. Its forced proof binds
+the challenged event's transition pre-state, including effects of earlier
+forced events, and proves input presence using the committed value hash. The
+combined testnet blueprint digest is
+`17e7fb2109bdddd031d2d5fb477d2cdb35963e981712ef04f4ec4bccdcba5b91`.
+Its 95-row ledger was regenerated there; 28 combined input/signature tests,
+13 input evidence/ledger tests, and one accepted input/removal journey passed.
+The signature regression preserves original submitted-valid bytes while
+reproducing the committed rejected source. TypeScript passed.
+
+The remaining extensions are `nativeScriptInvalid`, `noReferenceInput`,
+`minAda`, and `valueNotPreserved`.
+The active worktrees own `nativeScriptInvalid`, `noReferenceInput`,
 and the earlier Wave 7 `distinctAssetAccumulationLimit` lifecycle evidence
 repair. Central integration remains serial.
 
@@ -428,8 +438,11 @@ The baseline full Aiken check passed 3,687/3,687. The full fault-proof suite
 passed 1,513 tests with 29 failures: four stale ledger digests, legacy reference
 authentication fixtures, and oversized transition-trace publication. Repairing
 the authentication fixtures exposes additional existing oversized validation
-resolvers; those publication blockers remain open. All evidence still needs
-the consolidated final-tree closure gate.
+resolvers; those publication blockers remain open. The four earlier stale ledgers were regenerated on the preceding shared
+813-entry build: 27 lifecycle tests and four ledger checks passed. Five
+ValueAndMint resolver branch extractions are verified in an isolated worktree;
+that group awaits its three asset-fold yields before integration. All evidence
+still needs the consolidated final-tree closure gate.
 
 Production installs 47 of 54 watcher categories. The seven explicit omissions
 are `transitionTrace`, `validationTraceDispute`, `nativeScriptDecoding`,

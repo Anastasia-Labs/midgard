@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "nonExistentInput",
-  "blueprintSha256": "1967c61f8ad6e68f8287ad39549188f6958cae672fba583c77ec448f1cb9703f",
+  "blueprintSha256": "17e7fb2109bdddd031d2d5fb477d2cdb35963e981712ef04f4ec4bccdcba5b91",
   "compilerVersion": "aiken v1.1.23+5adf783",
   "entries": [
     {
@@ -9,11 +9,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "686012",
-      "cpuUnits": "235292390",
+      "memoryUnits": "676808",
+      "cpuUnits": "232519649",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15813988",
-      "cpuUnitMargin": "9764707610",
+      "memoryUnitMargin": "15823192",
+      "cpuUnitMargin": "9767480351",
       "publicationReserveMargin": null
     },
     {
@@ -33,11 +33,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "686012",
-      "cpuUnits": "235292390",
+      "memoryUnits": "676808",
+      "cpuUnits": "232519649",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15813988",
-      "cpuUnitMargin": "9764707610",
+      "memoryUnitMargin": "15823192",
+      "cpuUnitMargin": "9767480351",
       "publicationReserveMargin": null
     },
     {
@@ -69,11 +69,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "686012",
-      "cpuUnits": "235292390",
+      "memoryUnits": "676808",
+      "cpuUnits": "232519649",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15813988",
-      "cpuUnitMargin": "9764707610",
+      "memoryUnitMargin": "15823192",
+      "cpuUnitMargin": "9767480351",
       "publicationReserveMargin": null
     },
     {
@@ -117,11 +117,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "686012",
-      "cpuUnits": "235292390",
+      "memoryUnits": "676808",
+      "cpuUnits": "232519649",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15813988",
-      "cpuUnitMargin": "9764707610",
+      "memoryUnitMargin": "15823192",
+      "cpuUnitMargin": "9767480351",
       "publicationReserveMargin": null
     },
     {
@@ -177,11 +177,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "686012",
-      "cpuUnits": "235292390",
+      "memoryUnits": "676808",
+      "cpuUnits": "232519649",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15813988",
-      "cpuUnitMargin": "9764707610",
+      "memoryUnitMargin": "15823192",
+      "cpuUnitMargin": "9767480351",
       "publicationReserveMargin": null
     },
     {
@@ -189,11 +189,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 2060,
-      "memoryUnits": "3053265",
-      "cpuUnits": "1043619932",
+      "memoryUnits": "3047116",
+      "cpuUnits": "1040610772",
       "signedByteMargin": 14324,
-      "memoryUnitMargin": "13446735",
-      "cpuUnitMargin": "8956380068",
+      "memoryUnitMargin": "13452884",
+      "cpuUnitMargin": "8959389228",
       "publicationReserveMargin": null
     },
     {
@@ -249,11 +249,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "670672",
-      "cpuUnits": "230671155",
+      "memoryUnits": "667604",
+      "cpuUnits": "229746908",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15829328",
-      "cpuUnitMargin": "9769328845",
+      "memoryUnitMargin": "15832396",
+      "cpuUnitMargin": "9770253092",
       "publicationReserveMargin": null
     },
     {
@@ -273,11 +273,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "670672",
-      "cpuUnits": "230671155",
+      "memoryUnits": "667604",
+      "cpuUnits": "229746908",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15829328",
-      "cpuUnitMargin": "9769328845",
+      "memoryUnitMargin": "15832396",
+      "cpuUnitMargin": "9770253092",
       "publicationReserveMargin": null
     },
     {
@@ -309,11 +309,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "670672",
-      "cpuUnits": "230671155",
+      "memoryUnits": "667604",
+      "cpuUnits": "229746908",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15829328",
-      "cpuUnitMargin": "9769328845",
+      "memoryUnitMargin": "15832396",
+      "cpuUnitMargin": "9770253092",
       "publicationReserveMargin": null
     },
     {
@@ -357,11 +357,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "670672",
-      "cpuUnits": "230671155",
+      "memoryUnits": "667604",
+      "cpuUnits": "229746908",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15829328",
-      "cpuUnitMargin": "9769328845",
+      "memoryUnitMargin": "15832396",
+      "cpuUnitMargin": "9770253092",
       "publicationReserveMargin": null
     },
     {
@@ -417,11 +417,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "670672",
-      "cpuUnits": "230671155",
+      "memoryUnits": "667604",
+      "cpuUnits": "229746908",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15829328",
-      "cpuUnitMargin": "9769328845",
+      "memoryUnitMargin": "15832396",
+      "cpuUnitMargin": "9770253092",
       "publicationReserveMargin": null
     },
     {
@@ -429,11 +429,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 2060,
-      "memoryUnits": "3000166",
-      "cpuUnits": "1020950152",
+      "memoryUnits": "3041430",
+      "cpuUnits": "1037232052",
       "signedByteMargin": 14324,
-      "memoryUnitMargin": "13499834",
-      "cpuUnitMargin": "8979049848",
+      "memoryUnitMargin": "13458570",
+      "cpuUnitMargin": "8962767948",
       "publicationReserveMargin": null
     },
     {
@@ -477,11 +477,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 957,
-      "memoryUnits": "302504",
-      "cpuUnits": "106653355",
+      "memoryUnits": "307328",
+      "cpuUnits": "108054200",
       "signedByteMargin": 15427,
-      "memoryUnitMargin": "16197496",
-      "cpuUnitMargin": "9893346645",
+      "memoryUnitMargin": "16192672",
+      "cpuUnitMargin": "9891945800",
       "publicationReserveMargin": null
     },
     {
@@ -501,11 +501,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "676808",
-      "cpuUnits": "232519649",
+      "memoryUnits": "682944",
+      "cpuUnits": "234368143",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15823192",
-      "cpuUnitMargin": "9767480351",
+      "memoryUnitMargin": "15817056",
+      "cpuUnitMargin": "9765631857",
       "publicationReserveMargin": null
     },
     {
@@ -729,11 +729,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 inputs; 0 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 2060,
-      "memoryUnits": "2972554",
-      "cpuUnits": "1012631929",
+      "memoryUnits": "2980329",
+      "cpuUnits": "1016411494",
       "signedByteMargin": 14324,
-      "memoryUnitMargin": "13527446",
-      "cpuUnitMargin": "8987368071",
+      "memoryUnitMargin": "13519671",
+      "cpuUnitMargin": "8983588506",
       "publicationReserveMargin": null
     },
     {
@@ -801,11 +801,11 @@
       "kind": "lifecycle",
       "maximumShape": "819 inputs; 64 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 1497,
-      "memoryUnits": "673740",
-      "cpuUnits": "231595402",
+      "memoryUnits": "670672",
+      "cpuUnits": "230671155",
       "signedByteMargin": 14887,
-      "memoryUnitMargin": "15826260",
-      "cpuUnitMargin": "9768404598",
+      "memoryUnitMargin": "15829328",
+      "cpuUnitMargin": "9769328845",
       "publicationReserveMargin": null
     },
     {
@@ -813,11 +813,11 @@
       "kind": "lifecycle",
       "maximumShape": "819 inputs; 64 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 2060,
-      "memoryUnits": "3048014",
-      "cpuUnits": "1039304418",
+      "memoryUnits": "2992919",
+      "cpuUnits": "1019324407",
       "signedByteMargin": 14324,
-      "memoryUnitMargin": "13451986",
-      "cpuUnitMargin": "8960695582",
+      "memoryUnitMargin": "13507081",
+      "cpuUnitMargin": "8980675593",
       "publicationReserveMargin": null
     },
     {
@@ -837,11 +837,11 @@
       "kind": "lifecycle",
       "maximumShape": "819 inputs; 64 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 10172,
-      "memoryUnits": "3546953",
-      "cpuUnits": "1083028234",
+      "memoryUnits": "3538349",
+      "cpuUnits": "1080351493",
       "signedByteMargin": 6212,
-      "memoryUnitMargin": "12953047",
-      "cpuUnitMargin": "8916971766",
+      "memoryUnitMargin": "12961651",
+      "cpuUnitMargin": "8919648507",
       "publicationReserveMargin": null
     },
     {
@@ -861,11 +861,11 @@
       "kind": "lifecycle",
       "maximumShape": "819 inputs; 64 MPF branch levels per source/event/transition/ledger proof",
       "signedBytes": 9790,
-      "memoryUnits": "3814759",
-      "cpuUnits": "1148767225",
+      "memoryUnits": "3819583",
+      "cpuUnits": "1150168070",
       "signedByteMargin": 6594,
-      "memoryUnitMargin": "12685241",
-      "cpuUnitMargin": "8851232775",
+      "memoryUnitMargin": "12680417",
+      "cpuUnitMargin": "8849831930",
       "publicationReserveMargin": null
     },
     {
@@ -1145,5 +1145,5 @@
       "publicationReserveMargin": 9675
     }
   ],
-  "ledgerSha256": "9a7f0d070399bc92ffcb2f787a702c2cb57f794e20ea5041b3faca24f1dc5706"
+  "ledgerSha256": "c75235bc1347b762e2050f8cfa65fe03b5802466e25823cd74d115cb996b7c87"
 }

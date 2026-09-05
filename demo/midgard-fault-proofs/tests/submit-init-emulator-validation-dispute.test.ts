@@ -16,7 +16,6 @@ import {
 import {
   buildValidationTraceDisputeFaultProofContracts,
   createReferenceScriptAuthPolicy,
-  createReferenceScriptAuthPolicy,
   parseFaultProofBlueprint,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
