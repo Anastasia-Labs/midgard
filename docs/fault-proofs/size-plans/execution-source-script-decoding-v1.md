@@ -124,22 +124,50 @@ refusal behavior.
 
 ## Measured implementation evidence
 
-The reproducible `execution-source-script-decoding-v1-fit-ledger.json` records
-the isolated testnet build and complete signed Lucid reference publications.
-The five signed sizes are 15,032, 15,730, 6,777, 12,217, and 2,990 bytes;
-the narrowest publication reserve is therefore 142 bytes at step 02. The
-largest focused scan/resume vector consumes 2,105,421 memory and 860,868,927
-CPU, leaving 14,394,579 memory and 9,139,131,073 CPU under the ordinary Van
-Rossem limits. The maximum item remains 32,768 bytes / nine bounded chunks.
+The reproducible `execution-source-script-decoding-v1-fit-ledger.json`
+(shared `midgard-van-rossem-fit-ledger-v1` schema, bound to the SHA-256 of the
+isolated `aiken v1.1.23+5adf783` testnet blueprint) is written by the
+registered-chain lifecycle suite from complete signed Lucid Evolution
+measurements on the ordinary Van Rossem parameters with local UPLC evaluation.
+It records the five reference publications (15,032, 15,730, 6,868, 12,194 and
+2,990 signed bytes; the narrowest publication reserve is 142 bytes at step 02)
+and every lifecycle row at the maximum supported shapes:
+
+- the accepted direction at the exact 32,768-byte field-6 cap: a zero-payload
+  item spanning all nine bounded chunks, refused at its first token by one
+  step-04 verdict transaction that authenticates the two-chunk window
+  (9,735 signed bytes, 1,561,868 memory, 619,384,540 CPU);
+- the forced NodeLimit direction over the widest `any [all [], sig × n,
+all [] × k]` script that fits the cap, folded through 16-step resumable
+  segments across all nine chunk windows; the widest window transaction is
+  9,960 signed bytes, 7,064,276 memory and 2,771,469,944 CPU, the tightest
+  lifecycle margins in the ledger (6,424 bytes, 9,435,724 memory,
+  7,228,530,056 CPU), and the exact-end close is 1,130 bytes;
+- the forced DepthLimit direction over forty nested containers, whose
+  frame-stage segments consume frame witnesses through the stack
+  (6,955,825 memory at the first segment);
+- the empty-payload bind close, the honest forced and honest accepted
+  refusals, cancellation from every one of the five physical steps, the
+  permanent mint and the leased removal.
+
+Two on-chain defects were closed while measuring: the bind now goes through
+the frozen engine's `bind_machine_v1`, so a tag-0 empty payload closes
+malformed instead of aborting, and step 04 authenticates the chunk window at
+every stage, so a planned segment that opens on a frame step no longer stalls
+(any container with roughly eight or more children was unreachable before).
+
+The lifecycle declares its coverage honestly: the wrongful-ACCEPTANCE
+directions of NodeLimit and DepthLimit and the adjacent-over-bound refusal are
+not realisable on chain, because the frozen scan bounds both frontiers at
+16,384 and a node costs at least three bytes, so no item inside the 32,768-byte
+field cap can reach either limit; the exact and adjacent node/depth edges are
+pinned by the rule selectors instead. The byte cap on the field-6 preimage is
+not a bound of this chain: no applied step carries a byte limit of its own,
+and the deterministic machine still emits a native execution descriptor for a
+32,769-byte preimage, so there is no on-chain refusal of an over-cap item to
+exhibit in this family.
+
 The family durable state records the exact source and target stage, out-ref,
 structural control, checkpoint, and locally evaluated transaction hash before
 submission. Restart accepts only the exact authenticated target cursor, and
-the four nonterminal stages share the same intent-first cancellation path.
-The measured forced real chain (generic Init through permanent mint and
-canonical removal) records signed sizes of 1,221, 1,758, 2,666, 981, 999, 916,
-and 2,060 bytes respectively. The accepted-malformed raw field-6 chain records
-1,221, 2,023, 2,616, 936, 954, 916, and 2,060 bytes. Both retain positive byte
-and ExUnit margins; the four real cancellation fixtures burn the thread from
-physical step 01, step 02, step 03, and scan outputs. Every full-chain step-02
-also refuses a substituted script hash before the authenticated transaction is
-submitted.
+the nonterminal stages share the same intent-first cancellation path.

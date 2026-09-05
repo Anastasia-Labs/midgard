@@ -1,133 +1,369 @@
 {
-  "schemaVersion": "midgard-execution-source-script-decoding-fit-ledger-v1",
-  "category": "executionSourceScriptDecoding",
-  "categoryId": "00000031",
-  "limits": {
-    "publicationReserveBytes": 15872,
-    "transactionBytes": 16384,
-    "memory": 16500000,
-    "cpu": 10000000000
-  },
-  "maximum": {
-    "scriptItemBytes": 32768,
-    "boundedChunks": 9,
-    "nodeAndDepthBoundary": 16384
-  },
-  "referencePublications": [
-    { "step": 1, "signedBytes": 15032, "reserveMarginBytes": 840 },
-    { "step": 2, "signedBytes": 15730, "reserveMarginBytes": 142 },
-    { "step": 3, "signedBytes": 6777, "reserveMarginBytes": 9095 },
-    { "step": 4, "signedBytes": 12217, "reserveMarginBytes": 3655 },
-    { "step": 5, "signedBytes": 2990, "reserveMarginBytes": 12882 }
-  ],
-  "focusedAikenMaximum": {
-    "test": "scan_resume_changes_checkpoint_and_reaches_exact_terminal",
-    "memory": 2105421,
-    "cpu": 860868927,
-    "memoryMargin": 14394579,
-    "cpuMargin": 9139131073
-  },
-  "forcedLifecycle": [
+  "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
+  "category": "executionSourceScriptDecoding:00000031:testnet",
+  "blueprintSha256": "9af7bc1979cff2825cf11791f59083a4fd9786a5dfa7ea86b47689246c02769f",
+  "compilerVersion": "aiken v1.1.23+5adf783",
+  "entries": [
     {
-      "stage": "init",
-      "signedBytes": 1221,
-      "byteMargin": 15163,
-      "memory": 622323,
-      "cpu": 215528475
+      "name": "accepted-empty-step03-bind-close",
+      "kind": "lifecycle",
+      "maximumShape": "empty native payload, one chunk",
+      "signedBytes": 924,
+      "memoryUnits": "537535",
+      "cpuUnits": "220772548",
+      "signedByteMargin": 15460,
+      "memoryUnitMargin": "15962465",
+      "cpuUnitMargin": "9779227452",
+      "publicationReserveMargin": null
     },
     {
-      "stage": "step01-forced",
-      "signedBytes": 1758,
-      "byteMargin": 14626,
-      "memory": 1086840,
-      "cpu": 446459704
+      "name": "accepted-empty-step05-mint",
+      "kind": "lifecycle",
+      "maximumShape": "empty native payload, one chunk",
+      "signedBytes": 916,
+      "memoryUnits": "369904",
+      "cpuUnits": "151109355",
+      "signedByteMargin": 15468,
+      "memoryUnitMargin": "16130096",
+      "cpuUnitMargin": "9848890645",
+      "publicationReserveMargin": null
     },
     {
-      "stage": "step02-authenticate",
-      "signedBytes": 2666,
-      "byteMargin": 13718,
-      "memory": 1479385,
-      "cpu": 654415424
+      "name": "cancel-step01",
+      "kind": "lifecycle",
+      "maximumShape": "single-node native script, one-chunk item",
+      "signedBytes": 611,
+      "memoryUnits": "124808",
+      "cpuUnits": "42452566",
+      "signedByteMargin": 15773,
+      "memoryUnitMargin": "16375192",
+      "cpuUnitMargin": "9957547434",
+      "publicationReserveMargin": null
     },
     {
-      "stage": "step03-open-item",
-      "signedBytes": 981,
-      "byteMargin": 15403,
-      "memory": 680753,
-      "cpu": 289029584
+      "name": "cancel-step02",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 611,
+      "memoryUnits": "116576",
+      "cpuUnits": "41120424",
+      "signedByteMargin": 15773,
+      "memoryUnitMargin": "16383424",
+      "cpuUnitMargin": "9958879576",
+      "publicationReserveMargin": null
     },
     {
-      "stage": "step04-scan-0",
+      "name": "cancel-step03",
+      "kind": "lifecycle",
+      "maximumShape": "single-node native script, one-chunk item",
+      "signedBytes": 611,
+      "memoryUnits": "111576",
+      "cpuUnits": "40320424",
+      "signedByteMargin": 15773,
+      "memoryUnitMargin": "16388424",
+      "cpuUnitMargin": "9959679576",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "cancel-step04",
+      "kind": "lifecycle",
+      "maximumShape": "single-node native script, one-chunk item",
+      "signedBytes": 611,
+      "memoryUnits": "111876",
+      "cpuUnits": "40368424",
+      "signedByteMargin": 15773,
+      "memoryUnitMargin": "16388124",
+      "cpuUnitMargin": "9959631576",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "cancel-step05",
+      "kind": "lifecycle",
+      "maximumShape": "single-node native script, one-chunk item",
+      "signedBytes": 611,
+      "memoryUnits": "111876",
+      "cpuUnits": "40368424",
+      "signedByteMargin": 15773,
+      "memoryUnitMargin": "16388124",
+      "cpuUnitMargin": "9959631576",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-depth-step04-scan-00",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 1164,
+      "memoryUnits": "6955825",
+      "cpuUnits": "2722290210",
+      "signedByteMargin": 15220,
+      "memoryUnitMargin": "9544175",
+      "cpuUnitMargin": "7277709790",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-depth-step05-mint",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 916,
+      "memoryUnits": "359207",
+      "cpuUnits": "150517123",
+      "signedByteMargin": 15468,
+      "memoryUnitMargin": "16140793",
+      "cpuUnitMargin": "9849482877",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-sig-step05-mint",
+      "kind": "lifecycle",
+      "maximumShape": "single-node native script, one-chunk item",
+      "signedBytes": 916,
+      "memoryUnits": "357691",
+      "cpuUnits": "148969666",
+      "signedByteMargin": 15468,
+      "memoryUnitMargin": "16142309",
+      "cpuUnitMargin": "9851030334",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step01",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 1760,
+      "memoryUnits": "1099488",
+      "cpuUnits": "450338860",
+      "signedByteMargin": 14624,
+      "memoryUnitMargin": "15400512",
+      "cpuUnitMargin": "9549661140",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step02-authenticate",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 2913,
+      "memoryUnits": "1596641",
+      "cpuUnits": "689775637",
+      "signedByteMargin": 13471,
+      "memoryUnitMargin": "14903359",
+      "cpuUnitMargin": "9310224363",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step03-open-item",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 5345,
+      "memoryUnits": "853310",
+      "cpuUnits": "351291804",
+      "signedByteMargin": 11039,
+      "memoryUnitMargin": "15646690",
+      "cpuUnitMargin": "9648708196",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step04-close-exact-end",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 1130,
+      "memoryUnits": "1924262",
+      "cpuUnits": "754835625",
+      "signedByteMargin": 15254,
+      "memoryUnitMargin": "14575738",
+      "cpuUnitMargin": "9245164375",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step04-scan-00",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 9906,
+      "memoryUnits": "7062175",
+      "cpuUnits": "2755884728",
+      "signedByteMargin": 6478,
+      "memoryUnitMargin": "9437825",
+      "cpuUnitMargin": "7244115272",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step04-scan-widest-window",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 9960,
+      "memoryUnits": "7064276",
+      "cpuUnits": "2771469944",
+      "signedByteMargin": 6424,
+      "memoryUnitMargin": "9435724",
+      "cpuUnitMargin": "7228530056",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "forced-step05-mint",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 916,
+      "memoryUnits": "359209",
+      "cpuUnits": "150525825",
+      "signedByteMargin": 15468,
+      "memoryUnitMargin": "16140791",
+      "cpuUnitMargin": "9849474175",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "honest-forced-step04-close",
+      "kind": "lifecycle",
+      "maximumShape": "malformed payload item, one chunk",
       "signedBytes": 999,
-      "byteMargin": 15385,
-      "memory": 1461810,
-      "cpu": 575231945
+      "memoryUnits": "1088115",
+      "cpuUnits": "437233599",
+      "signedByteMargin": 15385,
+      "memoryUnitMargin": "15411885",
+      "cpuUnitMargin": "9562766401",
+      "publicationReserveMargin": null
     },
     {
-      "stage": "step05-mint",
-      "signedBytes": 916,
-      "byteMargin": 15468,
-      "memory": 357691,
-      "cpu": 148969666
-    },
-    {
-      "stage": "remove",
-      "signedBytes": 2060,
-      "byteMargin": 14324,
-      "memory": 3051446,
-      "cpu": 1035916306
-    }
-  ],
-  "acceptedMalformedLifecycle": [
-    {
-      "stage": "init",
+      "name": "init",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 1221,
-      "byteMargin": 15163,
-      "memory": 628459,
-      "cpu": 217376969
+      "memoryUnits": "628459",
+      "cpuUnits": "217376969",
+      "signedByteMargin": 15163,
+      "memoryUnitMargin": "15871541",
+      "cpuUnitMargin": "9782623031",
+      "publicationReserveMargin": null
     },
     {
-      "stage": "step01-accepted",
-      "signedBytes": 2023,
-      "byteMargin": 14361,
-      "memory": 1325466,
-      "cpu": 450736395
-    },
-    {
-      "stage": "step02-authenticate",
-      "signedBytes": 2616,
-      "byteMargin": 13768,
-      "memory": 1403396,
-      "cpu": 620652930
-    },
-    {
-      "stage": "step03-open-item",
-      "signedBytes": 936,
-      "byteMargin": 15448,
-      "memory": 673428,
-      "cpu": 283176695
-    },
-    {
-      "stage": "step04-scan-0",
-      "signedBytes": 954,
-      "byteMargin": 15430,
-      "memory": 1075327,
-      "cpu": 426634967
-    },
-    {
-      "stage": "step05-mint",
-      "signedBytes": 916,
-      "byteMargin": 15468,
-      "memory": 365283,
-      "cpu": 149749390
-    },
-    {
-      "stage": "remove",
+      "name": "remove",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
       "signedBytes": 2060,
-      "byteMargin": 14324,
-      "memory": 3020900,
-      "cpu": 1032659768
+      "memoryUnits": "3013777",
+      "cpuUnits": "1030683016",
+      "signedByteMargin": 14324,
+      "memoryUnitMargin": "13486223",
+      "cpuUnitMargin": "8969316984",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "step01-accepted",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 2027,
+      "memoryUnits": "1330688",
+      "cpuUnits": "452367413",
+      "signedByteMargin": 14357,
+      "memoryUnitMargin": "15169312",
+      "cpuUnitMargin": "9547632587",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "step02-authenticate",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 2795,
+      "memoryUnits": "1486365",
+      "cpuUnits": "645695518",
+      "signedByteMargin": 13589,
+      "memoryUnitMargin": "15013635",
+      "cpuUnitMargin": "9354304482",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "step03-open-item",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 5300,
+      "memoryUnits": "845985",
+      "cpuUnits": "345438915",
+      "signedByteMargin": 11084,
+      "memoryUnitMargin": "15654015",
+      "cpuUnitMargin": "9654561085",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "step04-verdict-malformed",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 9735,
+      "memoryUnits": "1561868",
+      "cpuUnits": "619384540",
+      "signedByteMargin": 6649,
+      "memoryUnitMargin": "14938132",
+      "cpuUnitMargin": "9380615460",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "step05-mint",
+      "kind": "lifecycle",
+      "maximumShape": "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal",
+      "signedBytes": 916,
+      "memoryUnits": "365284",
+      "cpuUnits": "149749563",
+      "signedByteMargin": 15468,
+      "memoryUnitMargin": "16134716",
+      "cpuUnitMargin": "9850250437",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "publish-step01",
+      "kind": "publication",
+      "maximumShape": "fully applied testnet validator",
+      "signedBytes": 15032,
+      "memoryUnits": "0",
+      "cpuUnits": "0",
+      "signedByteMargin": 1352,
+      "memoryUnitMargin": "16500000",
+      "cpuUnitMargin": "10000000000",
+      "publicationReserveMargin": 840
+    },
+    {
+      "name": "publish-step02",
+      "kind": "publication",
+      "maximumShape": "fully applied testnet validator",
+      "signedBytes": 15730,
+      "memoryUnits": "0",
+      "cpuUnits": "0",
+      "signedByteMargin": 654,
+      "memoryUnitMargin": "16500000",
+      "cpuUnitMargin": "10000000000",
+      "publicationReserveMargin": 142
+    },
+    {
+      "name": "publish-step03",
+      "kind": "publication",
+      "maximumShape": "fully applied testnet validator",
+      "signedBytes": 6868,
+      "memoryUnits": "0",
+      "cpuUnits": "0",
+      "signedByteMargin": 9516,
+      "memoryUnitMargin": "16500000",
+      "cpuUnitMargin": "10000000000",
+      "publicationReserveMargin": 9004
+    },
+    {
+      "name": "publish-step04",
+      "kind": "publication",
+      "maximumShape": "fully applied testnet validator",
+      "signedBytes": 12194,
+      "memoryUnits": "0",
+      "cpuUnits": "0",
+      "signedByteMargin": 4190,
+      "memoryUnitMargin": "16500000",
+      "cpuUnitMargin": "10000000000",
+      "publicationReserveMargin": 3678
+    },
+    {
+      "name": "publish-step05",
+      "kind": "publication",
+      "maximumShape": "fully applied testnet validator",
+      "signedBytes": 2990,
+      "memoryUnits": "0",
+      "cpuUnits": "0",
+      "signedByteMargin": 13394,
+      "memoryUnitMargin": "16500000",
+      "cpuUnitMargin": "10000000000",
+      "publicationReserveMargin": 12882
     }
   ],
-  "evidenceDigest": "07865ef2b7d0af259ec90d161e166dbe36855d554e95851437ff29fe5617da1d"
+  "ledgerSha256": "51c0028f02cf4ced703f8881092c325f30729d59d91c1977db996054efb0433e"
 }
