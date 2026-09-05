@@ -392,7 +392,7 @@ regression against its final central diff.
 
 ### Current execution checkpoint (2026-09-05)
 
-The shared integration checkpoint is `81fff435`. The 22 new categories are
+The shared integration checkpoint is `bbf4df07`. The 22 new categories are
 registered; registration alone does not establish the vertical-slice gates.
 The three Wave 4 structural decoding families are integrated, including the
 maximum-depth `witnessScriptDecoding` lifecycle and regenerated fit evidence.
@@ -438,9 +438,13 @@ The two maximum ledgers contain 372 and 95 signed rows. Against this build,
 22 deployment tests, and 18 watcher indexer tests passed; TypeScript passed.
 
 The remaining direction extensions are `minAda` and `valueNotPreserved`.
-Active worktrees own `minAda`, the missing `nativeScriptDecoding` production
-workflow, and the earlier Wave 7 `distinctAssetAccumulationLimit` lifecycle
-and recovery evidence repair. Central integration remains serial.
+Active worktrees own `minAda`, `valueNotPreserved`, and the missing
+`nativeScriptDecoding` production workflow. Central integration remains serial.
+The Wave 7 `distinctAssetAccumulationLimit` lifecycle and recovery repair is
+integrated at `bbf4df07`: all 18 coordinate/direction/maximum/honest lifecycle
+cases pass, along with ten recovery cases and nine family/publication/ledger
+checks. Its 255 signed measurements were regenerated against the combined
+testnet blueprint; maximum signed size is 15,204 bytes.
 
 The baseline full Aiken check passed 3,687/3,687. The full fault-proof suite
 passed 1,513 tests with 29 failures: four stale ledger digests, legacy reference
