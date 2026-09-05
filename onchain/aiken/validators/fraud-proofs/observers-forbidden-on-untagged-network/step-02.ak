@@ -73,7 +73,14 @@ validator main(
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        terminal_contradiction_v1(state, field_item_count(view))
+        // The integrity hash is read from the compact body authenticated
+        // against the bound transaction id above: the observer arm of the
+        // machine is reachable only past a present hash.
+        terminal_contradiction_v1(
+          state,
+          field_item_count(view),
+          verified.tx_compact.body.script_integrity_hash,
+        )
       }
     }
   }
