@@ -377,6 +377,7 @@ const foldExcludingFrame = (
   if (isTerminalFrame && frame.step.kind === "fork") {
     return combine(
       Buffer.concat([
+        pathNibbles(path, frame.cursor, frame.nextCursor - 1),
         Buffer.from([frame.step.neighbor.nibble]),
         frame.step.neighbor.prefix,
       ]),

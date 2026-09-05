@@ -78,8 +78,14 @@ fn test_excluding_root(
         neighbors,
       )
     }
-    [mpf.Fork { neighbor, .. }] ->
-      combine(bytearray.push(neighbor.prefix, neighbor.nibble), neighbor.root)
+    [mpf.Fork { skip, neighbor }] ->
+      combine(
+        bytearray.concat(
+          nibbles(path, cursor, cursor + skip),
+          bytearray.push(neighbor.prefix, neighbor.nibble),
+        ),
+        neighbor.root,
+      )
     [mpf.Fork { skip, neighbor }, ..steps] -> {
       let next_cursor = cursor + 1 + skip
       test_fork(
@@ -100,7 +106,7 @@ fn test_excluding_root(
         test_excluding_root(path, next_cursor, steps),
         mpf.Neighbor {
           prefix: suffix(key, next_cursor),
-          nibble: nibble(key, cursor),
+          nibble: nibble(key, next_cursor - 1),
           root: value,
         },
       )

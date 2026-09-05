@@ -228,7 +228,13 @@ fn fold_excluding_frame(
       do_branch(path, frame, child_root, neighbors)
     mpf.Fork { neighbor, .. } ->
       if is_terminal_frame {
-        combine(bytearray.push(neighbor.prefix, neighbor.nibble), neighbor.root)
+        combine(
+          bytearray.concat(
+            nibbles(path, frame.cursor, frame.next_cursor - 1),
+            bytearray.push(neighbor.prefix, neighbor.nibble),
+          ),
+          neighbor.root,
+        )
       } else {
         do_fork(
           path,

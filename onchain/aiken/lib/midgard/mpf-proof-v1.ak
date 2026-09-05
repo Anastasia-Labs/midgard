@@ -158,7 +158,7 @@ fn non_membership_proof_is_well_formed(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         bytearray.length(key) == digest_byte_count,
         bytearray.length(value) == digest_byte_count,
-        nibble(path, next_cursor - 1) != nibble(key, cursor),
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
         non_membership_proof_is_well_formed(
           path,
           next_cursor,
@@ -168,6 +168,24 @@ fn non_membership_proof_is_well_formed(
       }
     }
   }
+}
+
+// Removing the final fork compresses its shared path into the surviving
+// neighbor. The skipped nibbles are part of that path, even when the neighbor
+// itself has an empty prefix.
+fn excluding_terminal_fork(
+  path: ByteArray,
+  cursor: Int,
+  skip: Int,
+  neighbor: mpf.Neighbor,
+) -> ByteArray {
+  combine(
+    bytearray.concat(
+      nibbles(path, cursor, cursor + skip),
+      bytearray.push(neighbor.prefix, neighbor.nibble),
+    ),
+    neighbor.root,
+  )
 }
 
 fn do_branch(
@@ -262,8 +280,7 @@ fn do_excluding_strict(
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
       } {
-        let prefix = bytearray.push(neighbor.prefix, neighbor.nibble)
-        Some(combine(prefix, neighbor.root))
+        Some(excluding_terminal_fork(path, cursor, skip, neighbor))
       } else {
         None
       }
@@ -309,7 +326,7 @@ fn do_excluding_strict(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         bytearray.length(key) == digest_byte_count,
         bytearray.length(value) == digest_byte_count,
-        nibble(path, next_cursor - 1) != nibble(key, cursor),
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
       } {
         when
           do_excluding_strict(
@@ -322,7 +339,7 @@ fn do_excluding_strict(
           Some(root) -> {
             let neighbor = mpf.Neighbor {
               prefix: suffix(key, next_cursor),
-              nibble: nibble(key, cursor),
+              nibble: nibble(key, next_cursor - 1),
               root: value,
             }
             Some(do_fork(path, cursor, next_cursor, root, neighbor))
@@ -491,10 +508,7 @@ fn do_insert_pair_strict(
         neighbor_is_well_formed(neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
       } {
-        let predecessor = combine(
-          bytearray.push(neighbor.prefix, neighbor.nibble),
-          neighbor.root,
-        )
+        let predecessor = excluding_terminal_fork(path, cursor, skip, neighbor)
         let inserted = combine(suffix(path, next_cursor), new_value_hash)
         Some(
           (predecessor, do_fork(path, cursor, next_cursor, inserted, neighbor)),
@@ -560,7 +574,7 @@ fn do_insert_pair_strict(
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         bytearray.length(key) == digest_byte_count,
         bytearray.length(value) == digest_byte_count,
-        nibble(path, next_cursor - 1) != nibble(key, cursor),
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
       } {
         when
           do_insert_pair_strict(
@@ -574,7 +588,7 @@ fn do_insert_pair_strict(
           Some((predecessor, successor)) -> {
             let predecessor_neighbor = mpf.Neighbor {
               prefix: suffix(key, next_cursor),
-              nibble: nibble(key, cursor),
+              nibble: nibble(key, next_cursor - 1),
               root: value,
             }
             let successor_neighbor = mpf.Neighbor {
@@ -788,10 +802,7 @@ fn do_delete_pair_strict(
         Some(
           (
             do_fork(path, cursor, next_cursor, included, neighbor),
-            combine(
-              bytearray.push(neighbor.prefix, neighbor.nibble),
-              neighbor.root,
-            ),
+            excluding_terminal_fork(path, cursor, skip, neighbor),
           ),
         )
       } else {
@@ -876,7 +887,7 @@ fn do_delete_pair_strict(
             }
             let successor_neighbor = mpf.Neighbor {
               prefix: suffix(key, next_cursor),
-              nibble: nibble(key, cursor),
+              nibble: nibble(key, next_cursor - 1),
               root: value,
             }
             Some(
@@ -915,10 +926,8 @@ fn do_excluding(path: ByteArray, cursor: Int, proof: mpf.Proof) -> ByteArray {
       let root = do_excluding(path, next_cursor, steps)
       do_branch(path, cursor, next_cursor, root, neighbors)
     }
-    [mpf.Fork { neighbor, .. }] -> {
-      let prefix = bytearray.push(neighbor.prefix, neighbor.nibble)
-      combine(prefix, neighbor.root)
-    }
+    [mpf.Fork { skip, neighbor }] ->
+      excluding_terminal_fork(path, cursor, skip, neighbor)
     [mpf.Fork { skip, neighbor }, ..steps] -> {
       let next_cursor = cursor + 1 + skip
       let root = do_excluding(path, next_cursor, steps)
@@ -930,7 +939,7 @@ fn do_excluding(path: ByteArray, cursor: Int, proof: mpf.Proof) -> ByteArray {
       let root = do_excluding(path, next_cursor, steps)
       let neighbor = mpf.Neighbor {
         prefix: suffix(key, next_cursor),
-        nibble: nibble(key, cursor),
+        nibble: nibble(key, next_cursor - 1),
         root: value,
       }
       do_fork(path, cursor, next_cursor, root, neighbor)
@@ -1080,18 +1089,9 @@ pub fn does_not_have(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Bool 
   }
 }
 
-/// Returns a new root only after a total non-membership check has made the
-/// library's partial `insert` precondition true.
-///
-/// The sentinel translation is folded in here as well (#625). `does_not_have`
-/// is the gate, so the moment it accepts `env.empty_merkle_tree_root` this
-/// function is handed a root the library does not recognise as its empty trie
-/// and `mpf.insert`'s own `excluding(key, proof) == self.root` precondition
-/// aborts script evaluation on exactly the inputs the gate has just admitted.
-/// The two translations move together or neither does.
-///
-/// The returned root is the library's, untranslated: an insert never yields an
-/// empty trie, so a successor root is never the sentinel.
+/// Authenticate exact non-membership, including the Midgard empty sentinel,
+/// then derive the canonical insertion successor. Both folds preserve the
+/// shared prefix of a terminal fork when its skip is nonzero.
 pub fn insert_root(
   root: ByteArray,
   key: ByteArray,
@@ -1099,10 +1099,7 @@ pub fn insert_root(
   proof: mpf.Proof,
 ) -> Option<ByteArray> {
   if does_not_have(root, key, proof) {
-    Some(
-      mpf.insert(mpf.from_root(library_root(root)), key, value, proof)
-        |> mpf.root,
-    )
+    Some(do_including(blake2b_256(key), blake2b_256(value), 0, proof))
   } else {
     None
   }
@@ -1130,8 +1127,7 @@ pub fn update_root(
   }
 }
 
-/// Returns a new root only after a total membership check has made the
-/// library's partial `delete` precondition true.
+/// Authenticate exact membership, then derive the canonical deletion root.
 /// `root` must be a non-empty trie root: membership of `key` cannot hold in
 /// an empty trie, so the `env.empty_merkle_tree_root` sentinel translation of
 /// `library_root` is deliberately not applied here (#625).
@@ -1142,10 +1138,7 @@ pub fn delete_root(
   proof: mpf.Proof,
 ) -> Option<ByteArray> {
   if has(root, key, value, proof) {
-    Some(
-      mpf.delete(mpf.from_root(root), key, value, proof)
-        |> mpf.root,
-    )
+    Some(do_excluding(blake2b_256(key), 0, proof))
   } else {
     None
   }
@@ -1253,17 +1246,10 @@ pub fn delete_root_paired_fold(
 }
 
 //
-// The compatibility helpers above first run a total predicate and then invoke
-// the forestry library's partial mutation. That is deliberately safe, but the
-// library repeats the predecessor fold internally before computing the
-// successor: three complete proof walks. A registry transition at the
-// protocol-wide 64-step ceiling cannot afford that repetition once published
-// proof chunks are decoded from reference inputs.
-//
-// These helpers preserve the exact fail-closed preconditions while deriving
-// the predecessor and successor directly with this module's already strict,
-// total folds. They perform exactly two walks and never enter a partial
-// forestry mutation.
+// These helpers derive the predecessor and successor using strict, total folds.
+// They perform exactly two walks, avoiding repeated predecessor verification
+// in the forestry library's partial mutations. Keeping both roots here also
+// preserves canonical compressed prefixes across insertion and deletion.
 
 pub fn insert_root_two_fold(
   root: ByteArray,
