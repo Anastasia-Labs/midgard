@@ -1821,8 +1821,8 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
         Number(tip.blockNo) - Number(expectedInclusionPoint.blockNo) + 1;
       const ogmios: FraudProofRawL1Transaction = {
         txHash,
-        bodyCbor: body.to_canonical_cbor_hex(),
-        witnessSetCbor: witnessSet.to_canonical_cbor_hex(),
+        bodyCbor: body.to_cbor_hex(),
+        witnessSetCbor: witnessSet.to_cbor_hex(),
         redeemersCbor: redeemers?.to_canonical_cbor_hex() ?? null,
         isValid: true,
         inclusionPoint: expectedInclusionPoint,

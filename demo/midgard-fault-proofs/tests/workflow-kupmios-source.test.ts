@@ -411,117 +411,123 @@ describe("production local Kupmios raw source V1", () => {
     ).rejects.toThrow(/requires the admitted local Kupo\/Ogmios source/u);
   });
 
-  it("re-admits exact resolved transaction bytes only from the concrete source", async () => {
-    const address = credentialToAddress(
-      "Preview",
-      scriptHashToCredential("31".repeat(28)),
-    );
-    const outputs = CML.TransactionOutputList.new();
-    outputs.add(
-      CML.TransactionOutput.new(
-        CML.Address.from_bech32(address),
-        CML.Value.from_coin(3_000_000n),
-      ),
-    );
-    const body = CML.TransactionBody.new(
-      CML.TransactionInputList.new(),
-      outputs,
-      200_000n,
-    );
-    const transaction = CML.Transaction.new(
-      body,
-      CML.TransactionWitnessSet.new(),
-      true,
-    );
-    const txHash = CML.hash_transaction(body).to_hex();
-    const transactionCbor = transaction.to_canonical_cbor_hex();
-    const kupoMatch = {
-      transaction_index: 0,
-      transaction_id: txHash,
-      output_index: 0,
-      address,
-      value: { coins: "3000000", assets: {} },
-      datum_hash: null,
-      script_hash: null,
-      created_at: { slot_no: 400, header_hash: TARGET },
-      spent_at: null,
-      datum: null,
-      script: null,
-    };
-    const fixture = sourceFixture({
-      blockTransactions: [{ id: txHash, cbor: transactionCbor }],
-      kupoMatches: [kupoMatch],
-    });
-    const boundary = (await fixture.source.readBoundary()) as {
-      readonly kupoCheckpoint: {
-        readonly slot: string;
-        readonly blockHash: string;
-        readonly blockNo: string;
-        readonly pointId: string;
-      };
-    };
-    await expect(
-      readAdmittedLocalKupmiosRawTransaction({
-        source: fixture.source,
-        txHash,
-        expectedInclusionPoint: boundary.kupoCheckpoint,
-        minimumConfirmationDepth: 30,
-      }),
-    ).resolves.toMatchObject({
-      txHash,
-      inclusionPoint: boundary.kupoCheckpoint,
-      confirmationDepth: 30,
-      resolvedInputs: [],
-      resolvedReferenceInputs: [],
-    });
-    await expect(
-      readAdmittedLocalKupmiosAddressUtxosAtPoint({
-        source: fixture.source,
+  it.each([false, true])(
+    "re-admits exact resolved transaction bytes from the concrete source (indefinite: %s)",
+    async (indefinite) => {
+      const address = credentialToAddress(
+        "Preview",
+        scriptHashToCredential("31".repeat(28)),
+      );
+      const outputs = CML.TransactionOutputList.new();
+      outputs.add(
+        CML.TransactionOutput.new(
+          CML.Address.from_bech32(address),
+          CML.Value.from_coin(3_000_000n),
+        ),
+      );
+      const body = CML.TransactionBody.new(
+        CML.TransactionInputList.new(),
+        outputs,
+        200_000n,
+      );
+      const bodyCbor = indefinite
+        ? `bf${body.to_canonical_cbor_hex().slice(2)}ff`
+        : body.to_canonical_cbor_hex();
+      const witnessSetCbor = indefinite ? "bfff" : "a0";
+      const transactionCbor = `84${bodyCbor}${witnessSetCbor}f5f6`;
+      const txHash = CML.hash_transaction(
+        CML.TransactionBody.from_cbor_hex(bodyCbor),
+      ).to_hex();
+      const kupoMatch = {
+        transaction_index: 0,
+        transaction_id: txHash,
+        output_index: 0,
         address,
-        point: boundary.kupoCheckpoint,
-      }),
-    ).resolves.toEqual([
-      {
-        outRef: `${txHash}#0`,
-        outputCbor: outputs.get(0).to_canonical_cbor_hex(),
-        datumCbor: null,
-        referenceScriptCbor: null,
-      },
-    ]);
-    await expect(
-      readAdmittedLocalKupmiosUnitHistoryAtPoint({
-        source: fixture.source,
-        unit: `${"12".repeat(28)}aa`,
-        point: boundary.kupoCheckpoint,
-      }),
-    ).resolves.toEqual({
-      checkpoint: boundary.kupoCheckpoint,
-      transactions: [{ txHash, inclusionPoint: boundary.kupoCheckpoint }],
-    });
-    await expect(
-      readAdmittedLocalKupmiosUnitHistoryAtPoint({
-        source: { ...fixture.source },
-        unit: `${"12".repeat(28)}aa`,
-        point: boundary.kupoCheckpoint,
-      }),
-    ).rejects.toThrow(/requires the admitted local Kupo\/Ogmios source/u);
-    await expect(
-      readAdmittedLocalKupmiosRawTransaction({
-        source: { ...fixture.source },
+        value: { coins: "3000000", assets: {} },
+        datum_hash: null,
+        script_hash: null,
+        created_at: { slot_no: 400, header_hash: TARGET },
+        spent_at: null,
+        datum: null,
+        script: null,
+      };
+      const fixture = sourceFixture({
+        blockTransactions: [{ id: txHash, cbor: transactionCbor }],
+        kupoMatches: [kupoMatch],
+      });
+      const boundary = (await fixture.source.readBoundary()) as {
+        readonly kupoCheckpoint: {
+          readonly slot: string;
+          readonly blockHash: string;
+          readonly blockNo: string;
+          readonly pointId: string;
+        };
+      };
+      await expect(
+        readAdmittedLocalKupmiosRawTransaction({
+          source: fixture.source,
+          txHash,
+          expectedInclusionPoint: boundary.kupoCheckpoint,
+          minimumConfirmationDepth: 30,
+        }),
+      ).resolves.toMatchObject({
         txHash,
-        expectedInclusionPoint: boundary.kupoCheckpoint,
-        minimumConfirmationDepth: 30,
-      }),
-    ).rejects.toThrow(/requires the admitted local Kupo\/Ogmios source/u);
-    await expect(
-      readAdmittedLocalKupmiosRawTransaction({
-        source: fixture.source,
-        txHash,
-        expectedInclusionPoint: boundary.kupoCheckpoint,
-        minimumConfirmationDepth: 31,
-      }),
-    ).rejects.toThrow(/below release finality/u);
-  });
+        bodyCbor,
+        witnessSetCbor,
+        inclusionPoint: boundary.kupoCheckpoint,
+        confirmationDepth: 30,
+        resolvedInputs: [],
+        resolvedReferenceInputs: [],
+      });
+      await expect(
+        readAdmittedLocalKupmiosAddressUtxosAtPoint({
+          source: fixture.source,
+          address,
+          point: boundary.kupoCheckpoint,
+        }),
+      ).resolves.toEqual([
+        {
+          outRef: `${txHash}#0`,
+          outputCbor: outputs.get(0).to_canonical_cbor_hex(),
+          datumCbor: null,
+          referenceScriptCbor: null,
+        },
+      ]);
+      await expect(
+        readAdmittedLocalKupmiosUnitHistoryAtPoint({
+          source: fixture.source,
+          unit: `${"12".repeat(28)}aa`,
+          point: boundary.kupoCheckpoint,
+        }),
+      ).resolves.toEqual({
+        checkpoint: boundary.kupoCheckpoint,
+        transactions: [{ txHash, inclusionPoint: boundary.kupoCheckpoint }],
+      });
+      await expect(
+        readAdmittedLocalKupmiosUnitHistoryAtPoint({
+          source: { ...fixture.source },
+          unit: `${"12".repeat(28)}aa`,
+          point: boundary.kupoCheckpoint,
+        }),
+      ).rejects.toThrow(/requires the admitted local Kupo\/Ogmios source/u);
+      await expect(
+        readAdmittedLocalKupmiosRawTransaction({
+          source: { ...fixture.source },
+          txHash,
+          expectedInclusionPoint: boundary.kupoCheckpoint,
+          minimumConfirmationDepth: 30,
+        }),
+      ).rejects.toThrow(/requires the admitted local Kupo\/Ogmios source/u);
+      await expect(
+        readAdmittedLocalKupmiosRawTransaction({
+          source: fixture.source,
+          txHash,
+          expectedInclusionPoint: boundary.kupoCheckpoint,
+          minimumConfirmationDepth: 31,
+        }),
+      ).rejects.toThrow(/below release finality/u);
+    },
+  );
 
   it("keeps raw transaction CBOR enabled in every checked-in Ogmios launch path", async () => {
     const repository = resolve(process.cwd(), "../..");

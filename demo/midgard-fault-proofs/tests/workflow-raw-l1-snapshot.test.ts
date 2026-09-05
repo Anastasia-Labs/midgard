@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   admitFraudProofRawL1Snapshot,
+  admitFraudProofRawL1Transaction,
   computeFraudProofRawL1PointId,
   computeFraudProofRawL1RollbackCursor,
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -247,6 +248,44 @@ describe("raw L1 snapshot V1 admission", () => {
   it("admits canonical address-scoped bytes and complete unit history", () => {
     const value = fixture();
     expect(admit(value.snapshot, value.request)).toEqual(value.snapshot);
+  });
+
+  it("preserves legal noncanonical transaction encoding under its exact signed body hash", () => {
+    const row = mutable(fixture().snapshot.transactions[0]!);
+    row.bodyCbor = `bf${row.bodyCbor.slice(2)}ff`;
+    row.witnessSetCbor = "bfff";
+    row.txHash = CML.hash_transaction(
+      CML.TransactionBody.from_cbor_hex(row.bodyCbor),
+    ).to_hex();
+    expect(
+      CML.TransactionBody.from_cbor_hex(row.bodyCbor).to_canonical_cbor_hex(),
+    ).not.toBe(row.bodyCbor);
+    expect(admitFraudProofRawL1Transaction(row, "recorded", 1)).toEqual(row);
+    const normalized = {
+      ...row,
+      bodyCbor: CML.TransactionBody.from_cbor_hex(
+        row.bodyCbor,
+      ).to_canonical_cbor_hex(),
+    };
+    expect(() =>
+      admitFraudProofRawL1Transaction(normalized, "substituted", 1),
+    ).toThrow(/hash-mismatched/u);
+    for (const key of ["bodyCbor", "witnessSetCbor"] as const) {
+      expect(() =>
+        admitFraudProofRawL1Transaction(
+          { ...row, [key]: row[key] + "00" },
+          "trailing",
+          1,
+        ),
+      ).toThrow();
+      expect(() =>
+        admitFraudProofRawL1Transaction(
+          { ...row, [key]: "ff" },
+          "malformed",
+          1,
+        ),
+      ).toThrow();
+    }
   });
 
   it("rejects an output from an address outside its requested scope", () => {

@@ -414,13 +414,15 @@ export const admitFraudProofRawL1Transaction = (
   } catch {
     throw new Error(`${label} contains invalid transaction CBOR`);
   }
+  // Cardano hashes the original body encoding. Normalizing legal CBOR
+  // (including indefinite datum containers) would change the signed tx id.
   if (
-    body.to_canonical_cbor_hex() !== bodyCbor ||
-    witnesses.to_canonical_cbor_hex() !== witnessSetCbor ||
+    body.to_cbor_hex() !== bodyCbor ||
+    witnesses.to_cbor_hex() !== witnessSetCbor ||
     CML.hash_transaction(body).to_hex() !== txHash
   ) {
     throw new Error(
-      `${label} transaction bytes are non-canonical or hash-mismatched`,
+      `${label} transaction bytes do not round-trip exactly or are hash-mismatched`,
     );
   }
   const actualRedeemers =
