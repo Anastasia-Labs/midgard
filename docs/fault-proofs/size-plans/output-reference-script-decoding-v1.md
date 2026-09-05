@@ -38,7 +38,21 @@ fraud-proof token.
   frontier, with current and adjacent authenticated chunks supplied to each
   structural scan transaction.
 - A canonical structural control at the protocol node/depth bound of 16,384.
-  The exact bound is supported; 16,385 is refused before submission.
+  The exact bound is admitted and 16,385 refused at the rule level
+  (`exact_node_boundary_is_admitted`, `adjacent_node_over_bound_is_refused`,
+  `exact_and_adjacent_depth_boundary`). Neither limit is reachable through a
+  committed output: `ledger_output_v1.max_output_canonical_cbor_bytes` is
+  16,384 and a canonical node costs at least three bytes, so 16,385 nodes or
+  nesting levels need at least 49,155 bytes. The wrongful-acceptance direction
+  of the NodeLimit and DepthLimit arms therefore has no realisable subject; the
+  wrongful-rejection direction of both arms is exercised end to end.
+- The consensus output bound itself: a 16,384-byte output is the maximum
+  accepted shape; a 16,385-byte committed output is refused off chain by the
+  evidence preparer and on chain at step 02 (`initial_output_scan_v1`).
+- The widest decodable native script that fits the bound: `all` of 510
+  signature nodes (16,372-byte output, four bounded-item chunks), scanned in
+  64 sixteen-step transactions with the adjacent chunk window supplied at
+  every chunk crossing.
 
 ## Reachability and isolation
 
@@ -66,10 +80,32 @@ fit ledger must retain positive byte, memory, and CPU margins without an
 oversized route, raised parameter, or disabled local evaluation.
 
 The reproducible signed-publication ledger is
-`output-reference-script-decoding-v1-fit-ledger.json`. The post-split measured
-transaction sizes for steps 01–06 are respectively 14,800, 7,417, 11,523,
-12,836, 11,710, and 2,930 bytes, leaving 1,584 bytes of headroom at the tightest
-step. The same ledger records every maximum accepted lifecycle transaction,
-all five nonterminal cancellations, permanent mint, and leased removal. Its
-canonical digest is
-`d1479fb3a8907376755007aa7cfc473a9ab53fffb5dc040cb2ce2efd04efbb7d`.
+`output-reference-script-decoding-v1-fit-ledger.json`, written by the
+lifecycle suite (`MIDGARD_WRITE_FIT_LEDGER=1`) from complete signed emulator
+measurements and pinned by `output-reference-script-decoding-fit-ledger.test.ts`
+against the fresh blueprint. The measured publication sizes for steps 01–06
+are respectively 14,800, 7,417, 11,523, 12,924, 11,686, and 2,930 bytes,
+leaving 1,584 bytes of headroom at the tightest step. The same ledger records
+the 16,384-byte accepted lifecycle (nine descriptor windows, the malformed
+verdict at token 0), the empty-payload bind close, the widest all-of forced
+lifecycle (every chunk-crossing scan window and the exact-end close), the
+nested-container and signature-script forced lifecycles, all six
+cancellations, permanent mint, and leased removal. The tightest lifecycle
+rows are the 16-step scan transactions at 9,707 signed bytes and 6,894,649
+memory units (margins 6,677 bytes / 9,605,351 units / 7,297,492,423 CPU) and
+the certified field carriage chunk at exactly the 15,872-byte publication
+target.
+
+Two on-chain defects were closed while completing this gate:
+
+- `rule.bind_reference_script_v1` parsed the versioned header itself and
+  aborted on a tag-0 empty payload (`initial_structure_control_v1` requires a
+  non-empty region), although canonical validation classes that output
+  `InvalidReferenceScript`; the coordinate was unprovable in both directions.
+  The bind now routes through the frozen engine's `bind_machine_v1`.
+- Step 05 authenticated the chunk window only when the resumed control was at
+  the token stage, so any planned scan segment that opens on a frame step and
+  continues into token steps was unsubmittable (every container with eight or
+  more children stalled after its first segment). The window is now
+  authenticated whenever it is supplied, as in the reference family's
+  `step_03_advance_or_close`.
