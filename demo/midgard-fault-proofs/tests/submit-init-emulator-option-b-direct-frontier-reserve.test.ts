@@ -262,8 +262,8 @@ describe.skipIf(!optionB)(
         journey,
         "prepare-selected",
       );
-      expect(prepareSelected.executionMemory).toBe(601_666n);
-      expect(prepareSelected.executionSteps).toBe(311_092_640n);
+      expect(prepareSelected.executionMemory).toBe(595_300n);
+      expect(prepareSelected.executionSteps).toBe(309_207_534n);
 
       const award = await journey.submitAward(result.nextThreadOutRef);
       expectWholeJourneyProofFit(

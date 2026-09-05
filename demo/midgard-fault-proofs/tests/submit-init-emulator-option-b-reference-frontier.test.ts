@@ -304,7 +304,7 @@ describe.skipIf(!optionB)(
       expect(award.measurement.completeSignedBytes).toBe(889);
       expect(
         totalJourneyBytes(journey, semantic.measurements, award.measurement),
-      ).toBe(125_474);
+      ).toBe(125_419);
       expectWholeJourneyProofFit(
         "#622 reference-frontier item 14,336",
         journey,
@@ -417,8 +417,8 @@ describe.skipIf(!optionB)(
         authenticateMeasurement.executionSteps <
           PRE_CHANGE_SWEEP_ROWS.authenticate.cpu,
       ).toBe(true);
-      expect(prepareSelected.executionMemory).toBe(601_666n);
-      expect(prepareSelected.executionSteps).toBe(311_092_640n);
+      expect(prepareSelected.executionMemory).toBe(595_300n);
+      expect(prepareSelected.executionSteps).toBe(309_207_534n);
       expect(
         prepareSelected.executionMemory < PRE_CHANGE_SWEEP_ROWS.prepare.mem,
       ).toBe(true);
