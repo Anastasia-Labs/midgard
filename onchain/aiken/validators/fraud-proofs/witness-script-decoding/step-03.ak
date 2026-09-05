@@ -41,7 +41,7 @@ validator main(
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        let
+        let  
             own_script_hash,
             _thread_asset_name,
             _fraud_prover,
@@ -80,22 +80,27 @@ validator main(
           let control = native_script_scan_v1.decode_structure_control_v1(
             control_cbor,
           )
-          let window = if control.stage == native_script_scan_v1.structure_stage_token {
-            expect Some(proof) = chunk_proof
-            Some(
-              rule.authenticated_window_v1(
-                state,
-                control,
-                proof,
-                next_chunk_proof,
-              ),
-            )
-          } else {
-            expect and {
-                chunk_proof == None,
-                next_chunk_proof == None,
-              }
-            None
+          // The window is authenticated once per transaction whenever the
+          // prover supplies it, at whatever stage the segment starts: a
+          // planned segment that opens on a frame step and continues into
+          // token steps needs its window too (mirrors the reference family's
+          // `step_03_advance_or_close`). Gating it on the token stage left
+          // every such segment unsubmittable, stalling any container with
+          // eight or more children after its first sixteen-step segment.
+          let window = when chunk_proof is {
+            None -> {
+              expect None = next_chunk_proof
+              None
+            }
+            Some(proof) ->
+              Some(
+                rule.authenticated_window_v1(
+                  state,
+                  control,
+                  proof,
+                  next_chunk_proof,
+                ),
+              )
           }
           when
             scan_engine.budgeted_scan_v1(control, window, frames, step_budget)

@@ -148,33 +148,24 @@ pub fn authenticate_item_v1(
     bound.script_index,
     item,
   )
-  when native_script_scan_v1.versioned_script_header_v1(item, total_length) is {
-    None ->
-      state_with(
-        bound,
-        total_length,
-        item_commitment,
-        #"",
-        scan_script_hash,
-        result_header_malformed,
-      )
-    Some(header) ->
-      if header.language_tag != 0 {
+  // The frozen engine's bind is the canonical decoder's twin
+  // (`phase_a_native_scripts` refuses the header on an undecodable wrapper
+  // and opens the token scan at the item end on a tag-0 empty payload, which
+  // `token_at_v1` refuses as the structural class). A bare header parse
+  // would initialise the control over a zero-length region and abort, so
+  // every class is fixed by the engine rather than parsed here.
+  when scan_engine.bind_machine_v1(item, total_length) is {
+    scan_engine.MachineBindMalformedV1 ->
+      if native_script_scan_v1.versioned_script_header_v1(item, total_length) == None {
         state_with(
           bound,
           total_length,
           item_commitment,
           #"",
           scan_script_hash,
-          result_no_fault,
+          result_header_malformed,
         )
-      } else if header.payload_length == 0 {
-        // The wrapper decodes, so this is not a header fault. Canonical
-        // validation (`phase_a_native_scripts`) opens the token scan at the
-        // payload offset, which is already the item end, and `token_at_v1`
-        // refuses there: the empty tag-0 payload is the structural (body)
-        // rejection. The frozen scan control cannot be initialised over an
-        // empty region, so the class is fixed here rather than at step 03.
+      } else {
         state_with(
           bound,
           total_length,
@@ -183,20 +174,25 @@ pub fn authenticate_item_v1(
           scan_script_hash,
           result_native_malformed,
         )
-      } else {
-        let control = native_script_scan_v1.initial_structure_control_v1(
-          header.payload_offset,
-          header.payload_length,
-        )
-        state_with(
-          bound,
-          total_length,
-          item_commitment,
-          native_script_scan_v1.encode_structure_control_v1(control),
-          scan_script_hash,
-          result_pending,
-        )
       }
+    scan_engine.MachineBindNonNativeV1 { .. } ->
+      state_with(
+        bound,
+        total_length,
+        item_commitment,
+        #"",
+        scan_script_hash,
+        result_no_fault,
+      )
+    scan_engine.MachineBoundV1 { control } ->
+      state_with(
+        bound,
+        total_length,
+        item_commitment,
+        native_script_scan_v1.encode_structure_control_v1(control),
+        scan_script_hash,
+        result_pending,
+      )
   }
 }
 
