@@ -48,8 +48,17 @@ fixture is a 16,384-byte output item with the longest
 admissible address/value/datum/reference-script structure and the most
 expensive successful scan frontier. The malformed twin changes one canonical
 header/order byte without changing the authenticated coordinate. The adjacent
-16,385-byte item is refused before thread construction and routed to the width
-family instead.
+16,385-byte item is refused before thread construction by the detector and,
+when a prover authenticates it anyway, by the step-02 scan initializer on
+chain; it belongs to the width family.
+
+The ledger measures both maximum shapes: the 16,384-byte malformed item inside
+a 32,768-byte Certified field (rejected at the first window, so its scan is a
+single 8,190-byte transition) and the 16,384-byte canonical item (a
+42-byte address/value head and a 16,339-byte inline datum, the rule's own
+maximum selector shape) scanned to its exact terminal, whose first transition
+carries the widest window and is the most expensive scan step in both
+directions.
 
 ## Unrelated-adapter exclusion
 
@@ -99,5 +108,8 @@ The frozen applied parameter order is:
    script hash.
 
 The machine-readable ledger is
-`transaction-output-non-canonical-v1-fit-ledger.json`, digest
-`0f8c241554d49f3ef48993036eca07398cc4d425d1a9b64f763a1333e163172e`.
+`transaction-output-non-canonical-v1-fit-ledger.json`, ledger digest
+`8e285ee6cbc82741594a0b7c6f890ac965cac322e32582d672b68b10ed64060e`, bound to
+the testnet blueprint with SHA-256
+`6236b3f8d2bbf663d184018e3281934370745ecdf078edf4cbaa34e06a4f2a6b` built by
+`aiken v1.1.23+5adf783`.
