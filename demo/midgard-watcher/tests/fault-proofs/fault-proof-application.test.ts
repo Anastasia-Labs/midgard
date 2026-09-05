@@ -1201,7 +1201,7 @@ describe("watcher production fault-proof application V1", () => {
       expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).not.toContain(
         "nativeScriptDecoding",
       );
-      expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toContain(
+      expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).not.toContain(
         "valueNotPreserved",
       );
       const readiness = await application.assertStartupReady(
