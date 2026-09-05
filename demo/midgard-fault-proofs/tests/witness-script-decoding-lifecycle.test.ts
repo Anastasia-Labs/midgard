@@ -47,6 +47,7 @@ import {
   WitnessScriptDecodingResultClasses,
 } from "../src/witness-script-decoding/index.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   captureEmulatorSubmission,
@@ -354,6 +355,9 @@ const makeHarness = async () => {
   const categoryId = category.categoryId;
   const references: UTxO[] = [];
   let certificateReference: UTxO | undefined;
+  let removalReferenceScripts:
+    | Awaited<ReturnType<typeof publishRemovalReferenceScripts>>
+    | undefined;
   const publishReferences = async () => {
     if (references.length > 0) return;
     for (const [index, step] of steps.entries()) {
@@ -382,6 +386,12 @@ const makeHarness = async () => {
         label: "witness-script-decoding field certificate",
       })
     ).utxo;
+    // Deploy removal references before the journey: the maximum depth scan
+    // advances emulator time beyond Lucid's default publication expiry.
+    removalReferenceScripts = await publishRemovalReferenceScripts({
+      lucid,
+      contracts: harness.contracts,
+    });
   };
   const ref = (index: 0 | 1 | 2 | 3): UTxO => {
     const utxo = references[index];
@@ -950,10 +960,9 @@ const makeHarness = async () => {
     name: string | null,
     shape: string,
   ) => {
-    const removalReferenceScripts = await publishRemovalReferenceScripts({
-      lucid,
-      contracts: harness.contracts,
-    });
+    if (removalReferenceScripts === undefined)
+      throw new Error("removal references not published");
+    const publishedRemovalReferences = removalReferenceScripts.published;
     const removeNow = BigInt(harness.emulator.now());
     const { result } = await measured(name, shape, () =>
       submitRemoveFraudulentBlock({
@@ -962,7 +971,7 @@ const makeHarness = async () => {
         deploymentInfo: buildRemovalDeploymentInfo(
           harness.contracts,
           harness.catalogue,
-          { removalReferenceScripts: removalReferenceScripts.published },
+          { removalReferenceScripts: publishedRemovalReferences },
         ),
         network,
         signer,
@@ -1843,10 +1852,12 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     coverage.scenario("wrongful_forced_rejection_success");
     if (DEEP_DEPTH === DEEP_MAXIMUM_DEPTH)
       coverage.scenario("maximum_supported_evidence");
-    await h.remove(
-      forced.setup.headerHash,
-      "forced-depth-deep-remove",
-      shape.label,
+    await runEmulatorLifecycleStage("witness-depth.remove", () =>
+      h.remove(
+        forced.setup.headerHash,
+        "forced-depth-deep-remove",
+        shape.label,
+      ),
     );
   }, 1_800_000);
 
@@ -1916,6 +1927,22 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
   }, 600_000);
 
   it("closes the coverage gate and the Van Rossem fit ledger", async () => {
+    // A successful proof mint is not a completed journey. Refuse to write
+    // partial evidence if any preceding lifecycle failed during removal.
+    expect(
+      measurements
+        .map((entry) => entry.name)
+        .filter((name) => name.endsWith("-remove"))
+        .sort(),
+    ).toEqual([
+      "accepted-empty-remove",
+      "accepted-header-remove",
+      "accepted-native-remove",
+      "forced-depth-deep-remove",
+      "forced-header-remove",
+      "forced-native-remove",
+      "forced-node-wide-remove",
+    ]);
     // Recorded honestly: every arm, seam, cancel, resume and the adjacent
     // refusal at the aggregate field bound are reached. The two omissions
     // the gate reports are the wrongful-acceptance directions of the

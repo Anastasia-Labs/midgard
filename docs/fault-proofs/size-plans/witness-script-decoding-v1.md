@@ -99,35 +99,57 @@ Acceptance requires publication size `<= 15,872`, hard size `<= 16,384`, memory
 `<= 16,500,000`, and CPU `<= 10,000,000,000`, with no oversized route, raised
 parameter, or disabled local evaluation.
 
-## Local implementation evidence
+## Integrated verification
 
-- Compiler: `aiken v1.1.23+5adf783`.
-- Isolated `testnet` build: green.
-- Focused semantic selectors: 14 collected, 14 passed. The maximum measured
-  selector used 1,632,504 memory and 633,407,680 CPU.
-- Raw applied-script bodies from the fresh blueprint (diagnostic only): step
-  01 = 14,540 bytes, step 02 = 10,159 bytes, step 03 = 11,345 bytes, step 04 =
-  2,539 bytes. Every raw body is below the 15,872-byte publication target; this
-  is not substituted for a signed publication measurement.
-- TypeScript evidence, parity, exact classifier identities, mutation,
-  checkpoint, durable restart, journal, and workflow tests: 21/21. The fit
-  ledger reproduction test is 1/1 and the real accepted and forced Lucid
-  lifecycle tests are 2/2, for a 24/24 family gate. The maximum retained field
-  is 32,768 bytes and produces nine authenticated bounded-item chunks.
+The family is integrated on the shared branch and measured against the complete
+807-validator testnet blueprint compiled with `aiken v1.1.23+5adf783`.
+The blueprint SHA-256 is
+`db03f84b0157ac51bd26b69dc2d548bb7186847697db607c5c8699479bfb9094`.
+The family has four physical spending validators; the blueprint also emits
+an `else` entry for each. Their raw bodies are 14,540, 10,293, 11,321, and
+2,539 bytes. Signed publication measurements, rather than these raw sizes,
+are the publication gate.
 
-The signed machine-readable ledger is
-`witness-script-decoding-v1-fit-ledger.json`. All four validators publish in
-ordinary complete signed transactions: 14,922, 10,542, 11,693, and 2,932
-bytes, leaving 1,462, 5,842, 4,691, and 13,452 bytes of Van Rossem headroom.
-The real wrongful-acceptance journey executes Init, accepted bind, Certified
-field-6 publication/certification, one resumable scan, refusal close, final
-burn/mint, and target removal. Cancellation is executed from all four physical
-states, including the closed step-04 checkpoint. The real forced journey binds
-an exact typed rejection to a decodable script, executes all four steps, mints
-the permanent proof, and removes the target. The largest lifecycle transaction
-is the 9,732-byte scan close; the most expensive execution is the resumable
-scan at 2,592,603 memory and 1,022,630,443 CPU. The reproducible ledger digest
-is `6a9480090a685beed8f63f5d10bec605a5be948f2c6c5db774731b0010a2f9f5`.
-Every measured
-margin is positive under 16,384 bytes, 16,500,000 memory, and 10,000,000,000
-CPU, without an oversized publication route or raised parameter.
+The registered-chain lifecycle covers accepted malformed headers, malformed
+native payloads, and empty tag-0 payloads; all four forced-rejection reason
+arms; cancellation at all four steps; authenticated source, carriage, item,
+scan-control and checkpoint mutations; permanent proof minting; and target
+removal. The maximum-width script uses 133 resumes. The maximum-depth script
+uses 1,368 resumes and one close, all as locally evaluated transactions.
+Removal reference scripts are published before the journey, so the long scan
+does not leave deployment publications beyond Lucid's default expiry. The
+ledger writer requires all seven successful removal measurements before it
+can write evidence.
+
+The aggregate field bound is 32,768 bytes. Maximum field carriage uses three
+certified publication chunks; the selected script item uses up to nine
+4,095-byte authenticated scan chunks. Accepted node-limit and depth-limit
+violations cannot fit this aggregate bound, so the lifecycle coverage gate
+explicitly records those two unreachable directions. Exact 16,384 and adjacent
+16,385 node/depth boundaries remain semantic engine tests. The reachable
+maximum-width and maximum-depth forced contradictions use 1,059 nodes and
+depth 10,909 respectively.
+
+Reproduce the family gates from `onchain/aiken` with `aiken build --env testnet`
+and `scripts/run-focused-check.mjs`, selecting all 21 test names from
+`midgard/fraud_proofs/witness_script_decoding/rule.test`. Run the fault-proof
+package's `witness-script-decoding` Vitest files with
+`MIDGARD_REAL_BLUEPRINT_PATH` set to the absolute integrated blueprint path.
+Set `MIDGARD_WRITE_FIT_LEDGER=1` only for the full lifecycle file to regenerate
+`witness-script-decoding-v1-fit-ledger.json`; leave `MIDGARD_WSD_DEEP_DEPTH`
+unset so the maximum-depth evidence is measured. Then update the fit-ledger
+test's blueprint pin and run it against the regenerated ledger.
+
+Verification passed: 21/21 focused Aiken semantic tests, 21/21 fault-proof
+workflow and journal tests, 10/10 real lifecycle tests, 1/1 fit-ledger test,
+3/3 SDK ABI tests, 2/2 SDK catalogue-registration tests, and 12/12
+contract-inspection tests. The fault-proof package typecheck, touched
+TypeScript lint, and changed Aiken file formatting checks also passed.
+
+The integrated ledger contains 71 measurements. Signed family publications
+are 14,922, 10,676, 11,669, and 2,932 bytes. The largest measured transaction
+is a 15,872-byte certified carriage publication. The maximum measured scan
+resume uses 7,515,101 memory and 2,932,991,712 CPU units. Every measured hard
+size, memory, CPU, and family publication-reserve margin is positive under
+the shared Van Rossem parameters. The ledger SHA-256 is
+`559963ce72b63f1bbb5c7da6276abaa7675ce0ce92063f1e105c9034cfd4ca1b`.

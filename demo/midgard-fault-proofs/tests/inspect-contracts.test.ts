@@ -248,8 +248,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // field), re-parameterizing steps 01–03, so the applied step-01 hash and the
 // fold move. Derived under the working-tree testnet blueprint (sha256
 // a38795db…). `48100d04…` -> `a2be2b02…`.
+// Re-pinned 2026-09-05 (`witnessScriptDecoding` integration): step 02's
+// empty-payload classification and step 03's authenticated scan change the
+// successor chain and applied step-01 hash. Derived by this suite's
+// q13AppliedIdentities producer under testnet blueprint db03f84b…;
+// the four Q13 step hashes above remain unchanged.
 const Q13_CATALOGUE_ROOT =
-  "a2be2b02187dd9b991e716fdfc05637a03e651e2266a50d3b75c62c735f4ba6b";
+  "64c917bb4d4445f91ad4dbd9802112cb5411b53140ebb9500aee950797dc0a9f";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
