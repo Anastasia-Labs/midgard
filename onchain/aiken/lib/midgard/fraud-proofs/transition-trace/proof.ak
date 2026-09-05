@@ -23,6 +23,8 @@ use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/hub_oracle as hub
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
+use midgard/mpf_prefix_fixture as prefix_fixture
+use midgard/mpf_proof_v1 as canonical_mpf
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/transition_trace
@@ -692,7 +694,7 @@ fn verify_ledger_non_membership(
   key: ByteArray,
   proof: Proof,
 ) -> Bool {
-  expect _inserted = mpf.insert(ledger_trie(root), key, env.empty, proof)
+  expect canonical_mpf.does_not_have(mpf.root(ledger_trie(root)), key, proof)
   True
 }
 
@@ -2151,7 +2153,13 @@ pub fn insert_root(
   } else {
     mpf.from_root(root)
   }
-  mpf.root(mpf.insert(trie, key, value, proof))
+  expect Some(next_root) = canonical_mpf.insert_root_paired_fold(
+    mpf.root(trie),
+    key,
+    value,
+    proof,
+  )
+  next_root
 }
 
 pub fn delete_root(
@@ -2165,5 +2173,75 @@ pub fn delete_root(
   } else {
     mpf.from_root(root)
   }
-  mpf.root(mpf.delete(trie, key, value, proof))
+  expect Some(next_root) = canonical_mpf.delete_root_paired_fold(
+    mpf.root(trie),
+    key,
+    value,
+    proof,
+  )
+  next_root
+}
+
+test canonical_fork_exclusion() {
+  let v = prefix_fixture.fork()
+  verify_ledger_non_membership(v.after, v.key, v.proof)
+}
+
+test canonical_fork_insertion() {
+  let v = prefix_fixture.fork()
+  insert_root(v.after, v.key, v.value, v.proof) == v.before
+}
+
+test canonical_fork_deletion() {
+  let v = prefix_fixture.fork()
+  delete_root(v.before, v.key, v.value, v.proof) == v.after
+}
+
+test canonical_fork_membership() {
+  let v = prefix_fixture.fork()
+  verify_ledger_membership(v.before, v.key, v.value, v.proof) && !verify_ledger_membership(
+    v.after,
+    v.key,
+    v.value,
+    v.proof,
+  )
+}
+
+test canonical_leaf_exclusion() {
+  let v = prefix_fixture.leaf()
+  verify_ledger_non_membership(v.after, v.key, v.proof)
+}
+
+test canonical_leaf_insertion() {
+  let v = prefix_fixture.leaf()
+  insert_root(v.after, v.key, v.value, v.proof) == v.before
+}
+
+test canonical_leaf_deletion() {
+  let v = prefix_fixture.leaf()
+  delete_root(v.before, v.key, v.value, v.proof) == v.after
+}
+
+test canonical_leaf_membership() {
+  let v = prefix_fixture.leaf()
+  verify_ledger_membership(v.before, v.key, v.value, v.proof) && !verify_ledger_membership(
+    v.after,
+    v.key,
+    v.value,
+    v.proof,
+  )
+}
+
+test canonical_fork_rejects_dropped_prefix_root() fail {
+  let v = prefix_fixture.fork()
+  verify_ledger_non_membership(
+    prefix_fixture.dropped_fork_prefix_root,
+    v.key,
+    v.proof,
+  )
+}
+
+test canonical_insertion_rejects_dropped_prefix_root() fail {
+  let v = prefix_fixture.fork()
+  insert_root(prefix_fixture.dropped_fork_prefix_root, v.key, v.value, v.proof) == v.before
 }

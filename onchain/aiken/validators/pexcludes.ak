@@ -7,16 +7,17 @@ use cardano/transaction.{Transaction}
 use env
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
+use midgard/mpf_prefix_fixture as prefix_fixture
+use midgard/mpf_proof_v1 as canonical_mpf
 
 /// Merkelized validator backing `midgard/common/utils.plutarch_pexcludes` and
 /// `plutarch_pexcludes_raw`.
 ///
 /// The exclusion redeemer is `[root, key, proof]` (no value, unlike the
 /// membership counterpart in `phas.ak`). It proves the `key` is absent from the
-/// trie rooted at `root`: `mpf.insert` asserts `excluding(key, proof) == root`,
-/// failing if the key is already present or the proof is invalid. The resulting
-/// root is irrelevant — a successful insert is itself the non-membership
-/// witness, so the inserted value is left empty.
+/// trie rooted at `root`: the canonical verifier reconstructs the exclusion
+/// root and compares it with the committed root, preserving compressed prefixes.
+/// An existing key or an invalid proof cannot satisfy this comparison.
 ///
 /// The root is translated through the Midgard empty-trie sentinel before it
 /// reaches the MPF library (#606, from #608's classification). Midgard commits
@@ -40,7 +41,7 @@ validator exclusion {
     } else {
       mpf.from_root(root)
     }
-    expect _excluded = mpf.insert(trie, key, "", proof)
+    expect canonical_mpf.does_not_have(mpf.root(trie), key, proof)
 
     True
   }
@@ -52,12 +53,9 @@ validator exclusion {
 
 // ## Selectors
 //
-// The proof walk itself is the mpf library's, and is covered there. What is
-// exercised here is this validator's own surface: that a redeemer of the right
-// *shape* is not by itself a non-membership witness. The assertion carrying
-// that property lives inside `mpf.insert`, so it only reaches the compiled
-// script if the call is bound with `expect` — `let` discards it and Aiken
-// removes the call entirely.
+// The canonical total helper verifies non-membership. Its result is guarded
+// by `expect`: ignoring a Boolean result would let optimization erase the check.
+// Compressed-path vectors below pin agreement with the off-chain trie.
 //
 // Since #606 the surface has two arms, and **both** carry a positive, because
 // a positive on only one of them leaves the other free to be mutated silently:
@@ -75,7 +73,7 @@ const test_key =
   #"3131313131313131313131313131313131313131313131313131313131313131"
 
 /// A root the prover offers no proof for. `excluding(key, [])` is the empty
-/// trie's root, which is not this, so `mpf.insert` must reject it.
+/// trie's root, which is not this, so non-membership verification must reject it.
 const unproven_root =
   #"1111111111111111111111111111111111111111111111111111111111111111"
 
@@ -242,6 +240,27 @@ test exclusion_rejects_the_retired_empty_proof_fixture_shape() fail {
       block.transactions_phas_root,
       fixture.absent_native_tx_id,
       [],
+    ),
+  )
+}
+
+test canonical_fork_exclusion() {
+  let v = prefix_fixture.fork()
+  run_entry(fixture.pexcludes_withdraw_redeemer_entry(v.after, v.key, v.proof))
+}
+
+test canonical_leaf_exclusion() {
+  let v = prefix_fixture.leaf()
+  run_entry(fixture.pexcludes_withdraw_redeemer_entry(v.after, v.key, v.proof))
+}
+
+test canonical_fork_rejects_dropped_prefix_root() fail {
+  let v = prefix_fixture.fork()
+  run_entry(
+    fixture.pexcludes_withdraw_redeemer_entry(
+      prefix_fixture.dropped_fork_prefix_root,
+      v.key,
+      v.proof,
     ),
   )
 }
