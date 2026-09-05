@@ -13,6 +13,10 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  retainedLedgerDescriptorCandidates,
+  retainedUndecodableOutputDescriptor,
+} from "../evidence/retained-ledger-output.js";
 import { transitionTraceError } from "./errors.js";
 import {
   buildCountedRoot,
@@ -836,6 +840,9 @@ export const reconstructDaPayload = async ({
 
   const rawTransactions = rawEntries("transactions", body.transactions);
   const rawUtxos = rawEntries("utxos", body.utxos);
+  const retainedDescriptors = retainedLedgerDescriptorCandidates(
+    body.validation_trace_witnesses,
+  );
   const descriptorUtxos = rawUtxos.map((entry) => {
     try {
       return {
@@ -846,6 +853,18 @@ export const reconstructDaPayload = async ({
         }).descriptorCbor,
       };
     } catch (cause) {
+      try {
+        return {
+          key: Buffer.from(entry.key),
+          value: retainedUndecodableOutputDescriptor({
+            key: entry.key,
+            output: entry.value,
+            candidates: retainedDescriptors,
+          }),
+        };
+      } catch {
+        /* The exact root check below remains the only authority. */
+      }
       throw transitionTraceError(
         "invalidPayloadEntries",
         `UTxO ${entry.key.toString("hex")} cannot produce an exact canonical V1 descriptor.`,

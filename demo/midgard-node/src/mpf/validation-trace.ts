@@ -115,6 +115,12 @@ export const buildDeterministicValidationTraceMembers = (
             (decodedControl.length === 30 || decodedControl.length === 31)
               ? BigInt(decodedControl[9] as bigint | number)
               : null;
+          const retainedLedgerDescriptor =
+            (witness.phase === "resolveInputs" &&
+              witness.auxiliary?.kind === "scheduledLedgerLookup" &&
+              witness.auxiliary.value !== null) ||
+            (witness.phase === "ledgerDelta" &&
+              witness.auxiliary?.kind === "ledgerDeltaOutput");
           const retainedNativeExecution =
             witness.phase === "nativeScripts" &&
             witness.auxiliary?.kind === "nativeExecutionDescriptor";
@@ -144,6 +150,7 @@ export const buildDeterministicValidationTraceMembers = (
               (witness.auxiliary.kind === "valueMintAsset" &&
                 BigInt(decodedControl[1] as bigint | number) === 4n));
           if (
+            !retainedLedgerDescriptor &&
             !retainedNativeExecution &&
             !retainedScriptSources &&
             !retainedScriptIntegrityTerminal &&
@@ -179,13 +186,17 @@ export const buildDeterministicValidationTraceMembers = (
               trace.tree.proofs[stateIndex]!,
             ),
             phase: BigInt(
-              witness.phase === "scriptSources"
-                ? MidgardValidationPhase.scriptSources
-                : witness.phase === "nativeScripts"
-                  ? MidgardValidationPhase.nativeScripts
-                  : witness.phase === "scriptIntegrity"
-                    ? MidgardValidationPhase.scriptIntegrity
-                    : MidgardValidationPhase.valueAndMint,
+              witness.phase === "resolveInputs"
+                ? MidgardValidationPhase.resolveInputs
+                : witness.phase === "ledgerDelta"
+                  ? MidgardValidationPhase.ledgerDelta
+                  : witness.phase === "scriptSources"
+                    ? MidgardValidationPhase.scriptSources
+                    : witness.phase === "nativeScripts"
+                      ? MidgardValidationPhase.nativeScripts
+                      : witness.phase === "scriptIntegrity"
+                        ? MidgardValidationPhase.scriptIntegrity
+                        : MidgardValidationPhase.valueAndMint,
             ),
             program_counter: BigInt(witness.programCounter),
             witness_cbor: witness.cbor.toString("hex"),

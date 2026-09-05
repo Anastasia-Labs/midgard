@@ -76,6 +76,7 @@ import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset
 import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
 import { detectMissingScriptSourceCanonicalViolations } from "../missing-script-source/authenticated-replay.js";
 import { detectMissingSignatureWrongfulRejections } from "../missing-signature/wrongful-rejection.js";
+import { detectNativeScriptDecodingReplay } from "../native-script-decoding/replay.js";
 import { detectNativeScriptInvalidForcedReplay } from "../native-script-invalid/forced.js";
 import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
@@ -1522,6 +1523,19 @@ export const createFabricatedWithdrawalCompleteCanonicalReplay = ({
 };
 
 /** Complete evaluation of all accepted native script witnesses. */
+export const NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["nativeScriptDecoding"],
+    async (evidence, context) =>
+      await detectNativeScriptDecodingReplay({
+        block: evidence,
+        predecessor: completeCanonicalReplayPredecessorEvidence({
+          evidence,
+          context,
+        }),
+      }),
+  );
+
 export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nativeScriptInvalid"],
   async (evidence) => [

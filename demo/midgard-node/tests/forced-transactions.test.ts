@@ -711,6 +711,29 @@ describe("V1 forced transaction material", () => {
       key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex")),
       value: SDK.decodeRetainedValidationWitness(Buffer.from(valueHex, "hex")),
     }));
+    const resolvedMemberships = retainedEntries.filter(
+      ({ value }) =>
+        value.phase === 7n &&
+        typeof value.auxiliary === "object" &&
+        "ScheduledLedgerMembershipWitness" in value.auxiliary,
+    );
+    expect(resolvedMemberships.length).toBeGreaterThan(0);
+    expect(
+      resolvedMemberships.every(({ key }) => key.execution_index < 0n),
+    ).toBe(true);
+    for (const { value } of resolvedMemberships) {
+      if (
+        typeof value.auxiliary !== "object" ||
+        !("ScheduledLedgerMembershipWitness" in value.auxiliary)
+      )
+        throw new Error("missing membership");
+      expect(value.auxiliary.ScheduledLedgerMembershipWitness.key).toBe(
+        spent.toString("hex"),
+      );
+      expect(value.auxiliary.ScheduledLedgerMembershipWitness.value).not.toBe(
+        "",
+      );
+    }
     const scriptSources = retainedEntries.filter(
       ({ value }) => value.phase === 8n,
     );
@@ -893,6 +916,14 @@ describe("V1 forced transaction material", () => {
           Buffer.from(valueHex, "hex"),
         ),
       }));
+      const outputDescriptors = retained.filter(
+        ({ value }) =>
+          value.phase === 13n &&
+          typeof value.auxiliary === "object" &&
+          "LedgerDeltaOutputWitness" in value.auxiliary,
+      );
+      expect(outputDescriptors).toHaveLength(1);
+      expect(outputDescriptors[0]!.key.execution_index).toBeLessThan(0n);
       const terminal = retained.find(({ value }) => value.phase === 10n);
       expect(terminal).toMatchObject({
         value: {
