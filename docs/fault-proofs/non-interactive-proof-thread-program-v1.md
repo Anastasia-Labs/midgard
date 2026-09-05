@@ -392,7 +392,7 @@ regression against its final central diff.
 
 ### Current execution checkpoint (2026-09-05)
 
-The shared integration checkpoint is `bbf4df07`. The 22 new categories are
+The shared integration checkpoint is `15787b19`. The 22 new categories are
 registered; registration alone does not establish the vertical-slice gates.
 The three Wave 4 structural decoding families are integrated, including the
 maximum-depth `witnessScriptDecoding` lifecycle and regenerated fit evidence.
@@ -775,3 +775,8 @@ The work is complete only when all of the following are simultaneously true:
 - catalogue, blueprint, manifest, watcher, SDK, and documentation identities
   agree; and
 - the single final on-chain review pass is closed.
+
+Shared native decoding integration at `15787b19`: rebuilt the complete testnet
+blueprint; 35 retained/installed/emulator cases, 10 producer cases, three watcher
+application cases, 14 runtime cases, and seven typed-disposition/ledger cases
+passed. Its 45-row installed ledger was regenerated on that shared build.

@@ -599,6 +599,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       "networkId",
       "missingNativeScriptUtxo",
       "nativeScriptInvalid",
+      "nativeScriptDecoding",
       "minAda",
       "fieldPreimageLengthMismatch",
       "fieldItemWidthIllegal",
