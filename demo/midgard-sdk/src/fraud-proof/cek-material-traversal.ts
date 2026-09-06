@@ -138,8 +138,9 @@ export const cekMaterialChildren = (
             task(0n, node.scrutinee),
             ...(node.count === 0n ? [] : [task(2n, node.sequence, node.count)]),
           ];
+        default:
+          return node satisfies never;
       }
-      return node satisfies never;
     }
     case "value": {
       const node = decodeMidgardCekProgramValuePreimage(entry.preimage);
@@ -188,8 +189,9 @@ export const cekMaterialChildren = (
           return [task(3n, node.cborRoot)];
         case "bytes":
           return [task(3n, node.bytesRoot)];
+        default:
+          return node satisfies never;
       }
-      return node satisfies never;
     }
     case "dataList": {
       const node = decodeMidgardCekDataListNode(entry.preimage);
