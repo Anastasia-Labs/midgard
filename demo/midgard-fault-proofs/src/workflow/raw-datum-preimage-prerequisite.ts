@@ -7,6 +7,7 @@ import {
 import type { RawDatumPreimageRequirement } from "./raw-datum-preimage.js";
 export {
   createRawDatumPreimageRequirement,
+  createStructuredDataPreimageRequirement,
   rawDatumPreimagePublicationPlan,
   type RawDatumPreimageRequirement,
 } from "./raw-datum-preimage.js";
