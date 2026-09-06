@@ -212,3 +212,22 @@ fixtures. The three complete-item suites pass 12 scenarios together; the
 65-node native scan deployment probe passes its one scenario. The latter
 probe reports memory above the 20% reserve and is parameter wiring evidence
 only, not closure evidence for native scan execution fit.
+
+### Shared integration verification
+
+The combined normal testnet blueprint
+`f9e3afeb905b5de2f6299ed091d41d77f5ad12d20cb1a3e9b834214908d0e24c`
+passes the 12 preconditions, seven ResolveInputs boundary and 14 canonical
+integrity-absence lifecycle scenarios together (33/33). A separate complete
+12-case preconditions run regenerates its 725-row ledger with 371 publications,
+maximum 15,872 signed bytes, 3,106,492 memory and 1,057,191,985 CPU.
+Both execution reserves pass. The deployment identity test passes 12 cases;
+node manifest/reference publication tests pass 28. Fault-proof typecheck passes.
+The combined roster contains 382 contracts, 375 roles and 376 auth token names.
+Commands use the named files
+`submit-init-emulator-validation-dispute-phase-a-preconditions.test.ts`,
+`submit-init-emulator-validation-dispute-resolve-inputs.test.ts`,
+`script-integrity-hash-missing-lifecycle.test.ts`, and
+`observers-forbidden-on-untagged-network-lifecycle.test.ts`; the ledger run sets
+`MIDGARD_WRITE_FIT_LEDGER=1`. These results do not close the still-open maximum
+ResolveInputs continuation or installed validation-dispute replay surfaces.
