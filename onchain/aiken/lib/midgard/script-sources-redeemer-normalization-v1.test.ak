@@ -2521,3 +2521,72 @@ test cek_item_carrier_wire_preserves_opaque_stage_and_exact_control_order() {
     verified != builtin.constr_data(0, [staged, current_data]),
   }
 }
+
+fn raw_item_witness(action: Data, first: Data, second: Data) -> Data {
+  builtin.constr_data(0, [action, first, second])
+}
+
+test extended_item_identity_binds_source_proofs_and_both_carriers() {
+  let current: Data = outer_control(fold_control())
+  let none = builtin.constr_data(1, [])
+  let first = builtin.constr_data(0, [builtin.i_data(11)])
+  let changed = builtin.constr_data(0, [builtin.i_data(12)])
+  let action = builtin.constr_data(0, [])
+  let witness = raw_item_witness(action, first, none)
+  let identity = normalization.canonical_item_action_hash(
+    current,
+    witness,
+    normalization.open_header_family,
+  )
+  let auxiliary = builtin.constr_data(18, [none, current, witness])
+  and {
+    normalization.canonical_action_hash_v1(
+      auxiliary,
+      normalization.open_header_family,
+    ) == identity,
+    normalization.canonical_item_action_hash(
+      current,
+      raw_item_witness(action, changed, none),
+      normalization.open_header_family,
+    ) != identity,
+    normalization.canonical_item_action_hash(
+      current,
+      raw_item_witness(action, first, changed),
+      normalization.open_header_family,
+    ) != identity,
+    normalization.canonical_item_action_hash(
+      builtin.i_data(99),
+      witness,
+      normalization.open_header_family,
+    ) != identity,
+  }
+}
+
+test extended_item_identity_refuses_cross_action_family() fail {
+  let none = builtin.constr_data(1, [])
+  normalization.canonical_item_action_hash(
+    builtin.i_data(0),
+    raw_item_witness(builtin.constr_data(0, []), none, none),
+    normalization.open_tail_family,
+  ) == hash_a
+}
+
+test extended_finish_identity_refuses_extra_source_proof() fail {
+  let none = builtin.constr_data(1, [])
+  let proof = builtin.constr_data(0, [builtin.i_data(11)])
+  normalization.canonical_item_action_hash(
+    builtin.i_data(0),
+    raw_item_witness(builtin.constr_data(3, []), proof, none),
+    normalization.finish_data_family,
+  ) == hash_a
+}
+
+test extended_invalid_identity_refuses_traversal_failure_as_invalid_item() fail {
+  let none = builtin.constr_data(1, [])
+  let action = builtin.constr_data(2, [builtin.constr_data(0, [])])
+  normalization.canonical_item_action_hash(
+    builtin.i_data(0),
+    raw_item_witness(action, none, none),
+    normalization.invalid_family,
+  ) == hash_a
+}

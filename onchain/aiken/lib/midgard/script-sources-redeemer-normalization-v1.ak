@@ -32,6 +32,22 @@ pub const fold_map_family: Int = 0
 
 pub const finalize_frame_family: Int = 1
 
+pub const open_header_family: Int = 2
+
+pub const open_tail_family: Int = 3
+
+pub const head_family: Int = 4
+
+pub const attach_scalar_family: Int = 5
+
+pub const fold_list_family: Int = 6
+
+pub const advance_family: Int = 7
+
+pub const finish_data_family: Int = 8
+
+pub const invalid_family: Int = 9
+
 pub const envelope_domain: ByteArray =
   #"4d696467617264536372697074536f757263657352656465656d6572456e76656c6f70655631"
 
@@ -248,56 +264,92 @@ pub fn canonical_auxiliary_hash_v1(auxiliary: Data) -> ByteArray {
     |> blake2b_256
 }
 
+/// Authenticate the exact item witness grammar without decoding unrelated
+/// validation-machine auxiliary constructors. Both carriers use this identity.
+pub fn canonical_item_action_hash(
+  current_item_control_data: Data,
+  item_witness_data: Data,
+  action_family: Int,
+) -> ByteArray {
+  let Pair(witness_tag, witness_fields) = builtin.un_constr_data(
+    item_witness_data,
+  )
+  expect [item_action_data,
+        chunk_proof_data, next_chunk_proof_data] = witness_fields
+  expect witness_tag == 0
+  let Pair(item_tag, item_fields) = builtin.un_constr_data(item_action_data)
+  if action_family == fold_map_family || action_family == finalize_frame_family {
+    expect [traversal_action_data] = item_fields
+    let Pair(tag, fields) = builtin.un_constr_data(traversal_action_data)
+    expect and {
+        item_tag == 2,
+        data_is_none(chunk_proof_data),
+        data_is_none(next_chunk_proof_data),
+        if action_family == fold_map_family {
+          tag == 7 && list.length(fields) == 6
+        } else {
+          tag == 8 && list.length(fields) == 2
+        },
+      }
+    narrow_preimage_hash_v1(current_item_control_data, traversal_action_data)
+  } else {
+    let shape_is_exact = if action_family == open_header_family {
+      item_tag == 0 && item_fields == []
+    } else if action_family == open_tail_family {
+      item_tag == 1 && item_fields == []
+    } else if action_family == finish_data_family {
+      item_tag == 3 && item_fields == [] && data_is_none(chunk_proof_data) && data_is_none(
+        next_chunk_proof_data,
+      )
+    } else if action_family == invalid_family {
+      ( item_tag == 0 || item_tag == 1 ) && item_fields == []
+    } else {
+      expect [traversal_action_data] = item_fields
+      let Pair(tag, fields) = builtin.un_constr_data(traversal_action_data)
+      item_tag == 2 && if action_family == head_family {
+        or {
+          tag == 1 && list.length(fields) == 1,
+          tag == 2 && list.length(fields) == 1,
+          tag == 3 && fields == [],
+          tag == 4 && list.length(fields) == 2,
+        }
+      } else if action_family == attach_scalar_family {
+        tag == 5 && list.length(fields) == 1 && data_is_none(chunk_proof_data) && data_is_none(
+          next_chunk_proof_data,
+        )
+      } else if action_family == fold_list_family {
+        tag == 6 && list.length(fields) == 4 && data_is_none(chunk_proof_data) && data_is_none(
+          next_chunk_proof_data,
+        )
+      } else {
+        action_family == advance_family && tag == 0 && fields == []
+      }
+    }
+    expect shape_is_exact
+    let preimage: Data = [
+      current_item_control_data, item_action_data, chunk_proof_data,
+      next_chunk_proof_data,
+    ]
+    action_identity_domain
+      |> bytearray.concat(cbor.serialise(preimage))
+      |> blake2b_256
+  }
+}
+
 pub fn canonical_action_hash_v1(
   auxiliary: Data,
   action_family: Int,
 ) -> ByteArray {
-  let Pair(auxiliary_tag, auxiliary_fields) = builtin.un_constr_data(auxiliary)
+  let Pair(tag, fields) = builtin.un_constr_data(auxiliary)
   expect [redeemer_control_data,
-        current_item_control_data, item_witness_data] = auxiliary_fields
-  let Pair(item_witness_tag, item_witness_fields) = builtin.un_constr_data(
+        current_item_control_data, item_witness_data] = fields
+  // RedeemerItemStepWitness is constructor 18 in the canonical machine.
+  expect tag == 18 && data_is_none(redeemer_control_data)
+  canonical_item_action_hash(
+    current_item_control_data,
     item_witness_data,
+    action_family,
   )
-  expect [item_action_data,
-        chunk_proof_data, next_chunk_proof_data] = item_witness_fields
-  let Pair(item_action_tag, item_action_fields) = builtin.un_constr_data(
-    item_action_data,
-  )
-  expect [traversal_action_data] = item_action_fields
-  let Pair(traversal_action_tag, traversal_action_fields) = builtin.un_constr_data(
-    traversal_action_data,
-  )
-  let action_shape_is_exact = if action_family == fold_map_family {
-    and {
-      traversal_action_tag == 7,
-      list.length(traversal_action_fields) == 6,
-    }
-  } else {
-    and {
-      action_family == finalize_frame_family,
-      traversal_action_tag == 8,
-      list.length(traversal_action_fields) == 2,
-    }
-  }
-  expect and {
-      // `vm_machine_types.RedeemerItemStepWitness` -- the only
-      // `ValidationAuxiliaryWitnessV1` constructor carrying
-      // `(Option<CekRedeemerContextControlV1>, RedeemerItemProofControlV1,
-      // RedeemerItemProofWitnessV1)`, and the one the machine itself matches for
-      // this step (validation-machine-v1.ak:8613, :11150). It is declared 19th
-      // in that enum (validation-machine-v1.ak:210), so its constructor index is
-      // 18. The literal here was 22, which no genuine auxiliary can ever carry;
-      // it was masked by the raw-envelope route trapping earlier. Pinned by
-      // `raw_envelope_auxiliary_constructor_index_is_the_machine_witness`.
-      auxiliary_tag == 18,
-      item_witness_tag == 0,
-      item_action_tag == 2,
-      data_is_none(redeemer_control_data),
-      data_is_none(chunk_proof_data),
-      data_is_none(next_chunk_proof_data),
-      action_shape_is_exact,
-    }
-  narrow_preimage_hash_v1(current_item_control_data, traversal_action_data)
 }
 
 pub fn action_matches_family_v1(
@@ -308,7 +360,15 @@ pub fn action_matches_family_v1(
     cek_data_traverse_v1.FoldMap { .. } -> action_family == fold_map_family
     cek_data_traverse_v1.FinalizeFrame { .. } ->
       action_family == finalize_frame_family
-    _ -> False
+    cek_data_traverse_v1.HeadScalar { .. } -> action_family == head_family
+    cek_data_traverse_v1.HeadSequence { .. } -> action_family == head_family
+    cek_data_traverse_v1.HeadMap -> action_family == head_family
+    cek_data_traverse_v1.HeadLargeConstructor { .. } ->
+      action_family == head_family
+    cek_data_traverse_v1.AttachScalar { .. } ->
+      action_family == attach_scalar_family
+    cek_data_traverse_v1.FoldList { .. } -> action_family == fold_list_family
+    cek_data_traverse_v1.NoAction -> action_family == advance_family
   }
 }
 
