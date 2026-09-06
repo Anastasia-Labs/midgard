@@ -10,7 +10,6 @@ import {
   nextMidgardRedeemerItemProofSpan,
   readMidgardRedeemerItemProofSource,
 } from "@al-ft/midgard-core";
-import { asLucidDataValue } from "@al-ft/midgard-core/lucid-data";
 import type {
   SharedRedeemerItemStages,
   SpendingValidator,
@@ -181,7 +180,9 @@ export const deriveScriptSourcesRedeemerItemPlan = ({
       "ScriptSources item action is not a canonical Advanced or Invalid result",
     );
   const claimedNext =
-    next === null ? none : asLucidDataValue(redeemerItemControlData(next));
+    next === null
+      ? none
+      : Data.from(Data.to<unknown>(redeemerItemControlData(next)));
   const plan = {
     control,
     next: next ?? control,

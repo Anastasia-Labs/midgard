@@ -300,3 +300,10 @@ reserves pass. Maximum observer frontier/carriage remains separate closure work.
 Full machine parity passed 197/197, including field-hash/count substitution
 and forged successor checks for the two-part predicate. FP typecheck and node
 deployment-manifest tests (13/13) passed; touched formatting/lint passed.
+
+Shared integration at `6005116a` rebuilt all contracts together with blueprint
+`d9431bdbbe7488900e589fa8348c6540d2593ef217ee0700f450c95f1623cd45`.
+Observer lifecycle plus source-admission tests passed 5/5; the observer ledger
+was remeasured (173 rows). Core registry 12/12 and node registry, manifest and
+contract-info tests 47/47 passed. Shared item source/codec tests passed 10/10,
+and FP typecheck passed after canonicalizing the raw descriptor encoder value.
