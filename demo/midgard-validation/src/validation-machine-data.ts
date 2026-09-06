@@ -588,7 +588,7 @@ const txInfoAssemblyControlData = (
     summaryData(control.scriptInfo),
   ]);
 
-const redeemerItemControlData = (
+export const redeemerItemControlData = (
   control: MidgardRedeemerItemProofControl,
 ): ConstructorData => {
   const blake2b256ControlData = (
@@ -677,7 +677,7 @@ const redeemerItemControlData = (
   ]);
 };
 
-const redeemerItemProofWitnessData = (
+export const redeemerItemProofWitnessData = (
   witness: MidgardRedeemerItemProofWitness,
 ): ConstructorData => {
   const action =
