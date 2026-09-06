@@ -1,3 +1,10 @@
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  WithdrawalMistagStep01PayloadSchema,
+  WithdrawalMistagStep02PayloadSchema,
+  WithdrawalMistagStep03PayloadSchema,
+  WithdrawalMistagStep04PayloadSchema,
+} from "@al-ft/midgard-sdk";
 /** Resume-safe step submitters shared by the four non-terminal handoffs. */
 import {
   requireInputIndex,
@@ -29,6 +36,10 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  structuredDataPublicationPlan,
+  structuredDataTreeData,
+} from "../workflow/structured-data-preimage.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -94,7 +105,10 @@ export const withdrawalMistagStates = (
     withdrawal_body_hash: prepared.withdrawalBodyHash,
     claimed_valid: claimedValid,
     output_present: prepared.outputPresent,
-    core_valid: prepared.coreValid,
+    owner_signature_valid: prepared.ownerSignatureValid,
+    output_lovelace: prepared.outputLovelace,
+    output_asset_count: prepared.outputAssetCount,
+    output_asset_frontier_commitment: prepared.outputAssetFrontierCommitment,
     cardano_value_size: prepared.cardanoValueSize,
   };
   const step05 = {
@@ -150,7 +164,7 @@ const requireLiveDatum = ({
   }
 };
 
-const stepArgs = ({
+const inlineStepArgs = ({
   stepIndex,
   prepared,
   inputIndex,
@@ -166,7 +180,7 @@ const stepArgs = ({
   readonly ctx: Parameters<BuildTxWithRedeemer>[0];
   readonly hubOracleUtxo?: UTxO;
   readonly stateQueueBlockUtxo?: UTxO;
-}): unknown => {
+}) => {
   const common = { input_index: inputIndex, output_index: outputIndex };
   switch (stepIndex) {
     case 0:
@@ -210,6 +224,101 @@ const stepArgs = ({
   }
 };
 
+const payloadSchemas = [
+  WithdrawalMistagStep01PayloadSchema,
+  WithdrawalMistagStep02PayloadSchema,
+  WithdrawalMistagStep03PayloadSchema,
+  WithdrawalMistagStep04PayloadSchema,
+] as const;
+export const withdrawalMistagStepPayloadCbor = (
+  prepared: WithdrawalMistagPreparedEvidence,
+  stepIndex: IntermediateStepIndex,
+): string => {
+  const payload = [
+    { committed_withdrawal: prepared.committedWithdrawal },
+    {
+      withdrawal_info: prepared.committedWithdrawal.value,
+      event_to_step: prepared.eventToStep,
+      transition_step: prepared.transitionStep,
+    },
+    {
+      withdrawal_info: prepared.committedWithdrawal.value,
+      evidence: prepared.ledgerEvidence,
+    },
+    { withdrawal_body: prepared.committedWithdrawal.value.body },
+  ][stepIndex];
+  return aikenSerialisedPlutusDataCborPreservingMapOrder(
+    Data.to(payload as never, payloadSchemas[stepIndex] as never),
+  );
+};
+const stepArgs = (
+  args: Parameters<typeof inlineStepArgs>[0] & {
+    evidenceReferences?: readonly UTxO[];
+  },
+) => {
+  const inline = inlineStepArgs(args);
+  const { input_index, output_index, ...rest } = inline;
+  const indexes = { input_index, output_index };
+  const payload = { ...rest };
+  if (args.stepIndex === 0 && "hub_ref_input_index" in payload) {
+    const {
+      hub_ref_input_index,
+      state_queue_node_ref_input_index,
+      committed_withdrawal,
+    } = payload;
+    return {
+      ...indexes,
+      hub_ref_input_index,
+      state_queue_node_ref_input_index,
+      payload:
+        args.evidenceReferences === undefined
+          ? { InlineEvidence: { value: { committed_withdrawal } } }
+          : {
+              StructuredEvidence: {
+                tree: structuredDataTreeData(
+                  structuredDataPublicationPlan(
+                    withdrawalMistagStepPayloadCbor(
+                      args.prepared,
+                      args.stepIndex,
+                    ),
+                  ).tree,
+                  (index) =>
+                    requireReferenceInputIndex(
+                      args.ctx,
+                      args.evidenceReferences![index]!,
+                      "withdrawal evidence",
+                    ),
+                ),
+              },
+            },
+    };
+  }
+  return {
+    ...indexes,
+    payload:
+      args.evidenceReferences === undefined
+        ? { InlineEvidence: { value: payload } }
+        : {
+            StructuredEvidence: {
+              tree: structuredDataTreeData(
+                structuredDataPublicationPlan(
+                  withdrawalMistagStepPayloadCbor(
+                    args.prepared,
+                    args.stepIndex,
+                  ),
+                ).tree,
+                (index) =>
+                  requireReferenceInputIndex(
+                    args.ctx,
+                    args.evidenceReferences![index]!,
+                    "withdrawal evidence",
+                  ),
+              ),
+            },
+          },
+  };
+};
+
 export type SubmitWithdrawalMistagStepResult = {
   readonly txHash: string;
   readonly threadOutRef: string;
@@ -231,6 +340,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   hubOracleUtxo,
   stateQueueBlockUtxo,
   referenceScriptUtxo,
+  evidenceReferences,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -244,6 +354,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   readonly stateQueueBlockUtxo?: UTxO;
   /** Production reference script used by this proof step. */
   readonly referenceScriptUtxo: UTxO;
+  readonly evidenceReferences?: readonly UTxO[];
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawalMistagStepResult> => {
@@ -270,7 +381,22 @@ export const submitWithdrawalMistagIntermediateStep = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
+  if (evidenceReferences !== undefined) {
+    const planned = structuredDataPublicationPlan(
+      withdrawalMistagStepPayloadCbor(prepared, stepIndex),
+    );
+    if (
+      evidenceReferences.length !== planned.publicationDatums.length ||
+      evidenceReferences.some(
+        (ref, index) => ref.datum !== planned.publicationDatums[index],
+      )
+    )
+      throw withdrawalMistagError(
+        "published evidence changed retained payload",
+      );
+  }
   const references = [
+    ...(evidenceReferences ?? []),
     ...(hubOracleUtxo === undefined ? [] : [hubOracleUtxo]),
     ...(stateQueueBlockUtxo === undefined ? [] : [stateQueueBlockUtxo]),
     requireWithdrawalMistagReferenceScript({
@@ -310,6 +436,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
             ctx,
             hubOracleUtxo,
             stateQueueBlockUtxo,
+            evidenceReferences,
           }),
         ],
       } as never,

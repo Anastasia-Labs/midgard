@@ -2,6 +2,7 @@ use aiken/cbor
 use aiken/merkle_patricia_forestry as mpf
 use cardano/transaction.{OutputReference}
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/structured_data_carriage as carriage
 use midgard/fraud_proofs/withdrawal_mistag/step_01
 use midgard/ledger_state
 use midgard/transition_trace
@@ -14,15 +15,19 @@ pub type State {
   pre_utxos_root: ledger_state.MidgardLedgerRoot,
 }
 
-pub type Args {
-  input_index: Int,
-  output_index: Int,
+pub type Payload {
   withdrawal_info: ledger_state.WithdrawalInfo,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
     ledger_state.EventToStepValue,
   >,
   transition_step: transition_trace.IndexedTraceProof,
+}
+
+pub type Args {
+  input_index: Int,
+  output_index: Int,
+  payload: carriage.Evidence,
 }
 
 pub type Datum =

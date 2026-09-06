@@ -176,7 +176,10 @@ describe("withdrawal-mistag V1", () => {
         withdrawal_body_hash: "33".repeat(32),
         claimed_valid: true,
         output_present: true,
-        core_valid: true,
+        owner_signature_valid: true,
+        output_lovelace: 1_000_000n,
+        output_asset_count: 0n,
+        output_asset_frontier_commitment: "44".repeat(32),
         cardano_value_size: 5n,
       },
     };

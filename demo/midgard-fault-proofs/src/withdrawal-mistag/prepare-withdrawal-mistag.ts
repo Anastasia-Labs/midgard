@@ -245,6 +245,10 @@ export const prepareWithdrawalMistag = async ({
   const info = committedWithdrawal.value;
   let outputPresent = false;
   let coreValid = false;
+  let ownerSignatureValid = false;
+  let outputLovelace = 0n;
+  let outputAssetCount = 0n;
+  let outputAssetFrontierCommitment = "";
   let cardanoValueSize = 0n;
   let authenticatedLedgerEvidence: SDK.WithdrawalMistagLedgerEvidence;
   const outrefKey = encodeMidgardSpendInputItem({
@@ -276,6 +280,15 @@ export const prepareWithdrawalMistag = async ({
       (total, assets) => total + assets.size,
       0,
     );
+    outputLovelace = output.value.lovelace;
+    outputAssetCount = BigInt(material.descriptor.assetCount);
+    outputAssetFrontierCommitment =
+      material.descriptor.assetFrontierCommitment.toString("hex");
+    ownerSignatureValid =
+      address.paymentCredential.kind === "PubKey" &&
+      address.paymentCredential.hash.toString("hex") === info.body.l2_owner &&
+      assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT &&
+      signatureIsValid(info);
     outputPresent = true;
     cardanoValueSize = BigInt(material.descriptor.cardanoValueSize);
     coreValid =
@@ -286,7 +299,6 @@ export const prepareWithdrawalMistag = async ({
       signatureIsValid(info);
     authenticatedLedgerEvidence = {
       PresentLedgerOutput: {
-        output_cbor: ledgerEvidence.PresentLedgerOutput.output_cbor,
         descriptor_cbor: material.descriptorCbor.toString("hex"),
         membership_proof: ledgerEvidence.PresentLedgerOutput.membership_proof,
       },
@@ -324,6 +336,10 @@ export const prepareWithdrawalMistag = async ({
     cardanoValueSize,
     outputPresent,
     coreValid,
+    ownerSignatureValid,
+    outputLovelace,
+    outputAssetCount,
+    outputAssetFrontierCommitment,
     payable,
     actualValid,
     exactOutputBytes,

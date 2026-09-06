@@ -5,6 +5,7 @@ use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/fabricated_withdrawal/step_01 as source
+use midgard/fraud_proofs/structured_data_carriage as carriage
 use midgard/fraud_proofs/withdrawal_mistag/step_01
 use midgard/hub_oracle as hub
 use midgard/ledger_state
@@ -32,6 +33,10 @@ validator main(
           tx,
         )
       ct.Continue(args) -> {
+        expect payload: step_01.Payload = carriage.resolve(
+          args.payload,
+          tx.reference_inputs,
+        )
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
         let _, asset_name, _, _, output_script_hash, output_state_data <- continue(
@@ -58,16 +63,16 @@ validator main(
         expect
           source.verify_committed_withdrawal_membership_v1(
             header,
-            args.committed_withdrawal,
+            payload.committed_withdrawal,
           )
         expect output_script_hash == step_02_validator_script_hash
         let expected: Data = step_01.State {
           challenged_header_hash: header_hash,
-          withdrawal_id: args.committed_withdrawal.key,
+          withdrawal_id: payload.committed_withdrawal.key,
           withdrawal_info_hash: utils.serialise_and_hash_32(
-            args.committed_withdrawal.value,
+            payload.committed_withdrawal.value,
           ),
-          claimed_valid: args.committed_withdrawal.value.validity == ledger_state.WithdrawalIsValid,
+          claimed_valid: payload.committed_withdrawal.value.validity == ledger_state.WithdrawalIsValid,
           event_to_step_root: header.event_to_step_root,
           total_event_count: header.total_event_count,
           transition_trace_root: header.transition_trace_root,

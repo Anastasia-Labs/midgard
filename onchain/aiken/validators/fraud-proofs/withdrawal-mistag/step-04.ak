@@ -3,6 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/structured_data_carriage as carriage
 use midgard/fraud_proofs/withdrawal_mistag/step_04
 
 validator main(
@@ -26,6 +27,10 @@ validator main(
           tx,
         )
       ct.Continue(args) -> {
+        expect payload: step_04.Payload = carriage.resolve(
+          args.payload,
+          tx.reference_inputs,
+        )
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
         let _, _, _, input_state_data, output_script_hash, output_state_data <- continue(
@@ -40,7 +45,7 @@ validator main(
         expect Some(input_state) = input_state_data
         let expected_state = step_04.establish_mistag_v1(
           input_state,
-          args.withdrawal_body,
+          payload.withdrawal_body,
         )
         expect output_script_hash == step_05_validator_script_hash
         let expected: Data = expected_state

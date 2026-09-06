@@ -4,6 +4,7 @@ use cardano/assets.{AssetName}
 use midgard/common/types.{H32}
 use midgard/computation_thread as ct
 use midgard/fraud_proof_catalogue
+use midgard/fraud_proofs/structured_data_carriage as carriage
 use midgard/ledger_state
 use midgard/transition_trace
 
@@ -45,15 +46,19 @@ pub type State {
   transition_step_count: Int,
 }
 
+pub type Payload {
+  committed_withdrawal: transition_trace.RootMembershipProof<
+    ledger_state.WithdrawalId,
+    ledger_state.WithdrawalInfo,
+  >,
+}
+
 pub type Args {
   input_index: Int,
   output_index: Int,
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
-  committed_withdrawal: transition_trace.RootMembershipProof<
-    ledger_state.WithdrawalId,
-    ledger_state.WithdrawalInfo,
-  >,
+  payload: carriage.Evidence,
 }
 
 pub type Datum =

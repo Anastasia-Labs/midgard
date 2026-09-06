@@ -7,10 +7,12 @@ use cardano/transaction.{DatumHash, InlineDatum, NoDatum, OutputReference}
 use env
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/structured_data_carriage as carriage
 use midgard/fraud_proofs/withdrawal_mistag/step_03
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_state
 use midgard/validation_machine/shared as vm_shared
+use midgard/validation_merkle_v1
 
 pub type State {
   challenged_header_hash: ledger_state.HeaderHash,
@@ -21,10 +23,14 @@ pub type State {
   required_lovelace: Int,
 }
 
+pub type Payload {
+  withdrawal_body: ledger_state.WithdrawalBody,
+}
+
 pub type Args {
   input_index: Int,
   output_index: Int,
-  withdrawal_body: ledger_state.WithdrawalBody,
+  payload: carriage.Evidence,
 }
 
 pub type Datum =
@@ -130,20 +136,32 @@ pub fn establish_mistag_v1(
   expect
     utils.serialise_and_hash_32(withdrawal_body) == input_state.withdrawal_body_hash
   let claimed_valid = input_state.claimed_valid
-  let payable = payout_is_exactly_payable_v1(
-    withdrawal_body,
-    input_state.cardano_value_size,
-  )
-  let actual_valid = and {
-    input_state.output_present,
-    input_state.core_valid,
-    payable,
-  }
-  expect claimed_valid != actual_valid
   let exact_output_bytes = exact_payout_output_bytes_v1(
     withdrawal_body,
     input_state.cardano_value_size,
   )
+  let actual_valid = if !input_state.output_present || !input_state.owner_signature_valid {
+    False
+  } else {
+    let value = assets.from_asset_list(withdrawal_body.l2_value)
+    and {
+      step_03.output_value_matches_v1(
+        withdrawal_body,
+        value,
+        input_state.output_lovelace,
+        input_state.output_asset_count,
+        input_state.output_asset_frontier_commitment,
+      ),
+      input_state.cardano_value_size > 0,
+      input_state.cardano_value_size <= ledger_output_commitment_v1.max_cardano_value_cbor_bytes,
+      vm_shared.output_meets_min_ada_v1(
+        env.coins_per_utxo_byte,
+        exact_output_bytes,
+        assets.lovelace_of(value),
+      ),
+    }
+  }
+  expect claimed_valid != actual_valid
   State {
     challenged_header_hash: input_state.challenged_header_hash,
     withdrawal_id: input_state.withdrawal_id,
@@ -267,7 +285,7 @@ fn fixture_step_03_state(
   body: ledger_state.WithdrawalBody,
   claimed_valid: Bool,
   output_present: Bool,
-  core_valid: Bool,
+  owner_signature_valid: Bool,
   cardano_value_size: Int,
 ) -> step_03.State {
   step_03.State {
@@ -276,8 +294,14 @@ fn fixture_step_03_state(
     withdrawal_body_hash: utils.serialise_and_hash_32(body),
     claimed_valid,
     output_present,
-    core_valid,
+    owner_signature_valid,
     cardano_value_size,
+    output_lovelace: assets.lovelace_of(assets.from_asset_list(body.l2_value)),
+    output_asset_count: 0,
+    output_asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
+      0,
+      [],
+    ),
   }
 }
 

@@ -65,12 +65,27 @@ export type WithdrawalMistagStep01Datum = Data.Static<
 >;
 export const WithdrawalMistagStep01Datum =
   asDataType<WithdrawalMistagStep01Datum>(WithdrawalMistagStep01DatumSchema);
+export const withdrawalMistagCarriedEvidenceSchema = <
+  T extends ReturnType<typeof Data.Object>,
+>(
+  schema: T,
+) =>
+  Data.Enum([
+    Data.Object({ InlineEvidence: Data.Object({ value: schema }) }),
+    Data.Object({ StructuredEvidence: Data.Object({ tree: Data.Any() }) }),
+  ]);
+
+export const WithdrawalMistagStep01PayloadSchema = Data.Object({
+  committed_withdrawal: WithdrawalSourceMembershipProofSchema,
+});
 export const WithdrawalMistagStep01ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   hub_ref_input_index: Data.Integer(),
   state_queue_node_ref_input_index: Data.Integer(),
-  committed_withdrawal: WithdrawalSourceMembershipProofSchema,
+  payload: withdrawalMistagCarriedEvidenceSchema(
+    WithdrawalMistagStep01PayloadSchema,
+  ),
 });
 export type WithdrawalMistagStep01Args = Data.Static<
   typeof WithdrawalMistagStep01ArgsSchema
@@ -110,12 +125,17 @@ export type WithdrawalMistagStep02Datum = Data.Static<
 >;
 export const WithdrawalMistagStep02Datum =
   asDataType<WithdrawalMistagStep02Datum>(WithdrawalMistagStep02DatumSchema);
-export const WithdrawalMistagStep02ArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
+export const WithdrawalMistagStep02PayloadSchema = Data.Object({
   withdrawal_info: WithdrawalInfoSchema,
   event_to_step: EventToStepMembershipProofSchema,
   transition_step: TransitionTraceMembershipProofSchema,
+});
+export const WithdrawalMistagStep02ArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  payload: withdrawalMistagCarriedEvidenceSchema(
+    WithdrawalMistagStep02PayloadSchema,
+  ),
 });
 export type WithdrawalMistagStep02Args = Data.Static<
   typeof WithdrawalMistagStep02ArgsSchema
@@ -155,7 +175,6 @@ export const WithdrawalMistagStep03Datum =
 export const WithdrawalMistagLedgerEvidenceSchema = Data.Enum([
   Data.Object({
     PresentLedgerOutput: Data.Object({
-      output_cbor: Data.Bytes(),
       descriptor_cbor: Data.Bytes(),
       membership_proof: ProofSchema,
     }),
@@ -173,11 +192,16 @@ export const WithdrawalMistagLedgerEvidence =
   asDataType<WithdrawalMistagLedgerEvidence>(
     WithdrawalMistagLedgerEvidenceSchema,
   );
+export const WithdrawalMistagStep03PayloadSchema = Data.Object({
+  withdrawal_info: WithdrawalInfoSchema,
+  evidence: WithdrawalMistagLedgerEvidenceSchema,
+});
 export const WithdrawalMistagStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  withdrawal_info: WithdrawalInfoSchema,
-  evidence: WithdrawalMistagLedgerEvidenceSchema,
+  payload: withdrawalMistagCarriedEvidenceSchema(
+    WithdrawalMistagStep03PayloadSchema,
+  ),
 });
 export type WithdrawalMistagStep03Args = Data.Static<
   typeof WithdrawalMistagStep03ArgsSchema
@@ -200,8 +224,11 @@ export const WithdrawalMistagStep04StateSchema = Data.Object({
   withdrawal_body_hash: H32Schema,
   claimed_valid: Data.Boolean(),
   output_present: Data.Boolean(),
-  core_valid: Data.Boolean(),
+  owner_signature_valid: Data.Boolean(),
   cardano_value_size: Data.Integer(),
+  output_lovelace: Data.Integer(),
+  output_asset_count: Data.Integer(),
+  output_asset_frontier_commitment: Data.Bytes(),
 });
 export type WithdrawalMistagStep04State = Data.Static<
   typeof WithdrawalMistagStep04StateSchema
@@ -216,10 +243,15 @@ export type WithdrawalMistagStep04Datum = Data.Static<
 >;
 export const WithdrawalMistagStep04Datum =
   asDataType<WithdrawalMistagStep04Datum>(WithdrawalMistagStep04DatumSchema);
+export const WithdrawalMistagStep04PayloadSchema = Data.Object({
+  withdrawal_body: WithdrawalBodySchema,
+});
 export const WithdrawalMistagStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  withdrawal_body: WithdrawalBodySchema,
+  payload: withdrawalMistagCarriedEvidenceSchema(
+    WithdrawalMistagStep04PayloadSchema,
+  ),
 });
 export type WithdrawalMistagStep04Args = Data.Static<
   typeof WithdrawalMistagStep04ArgsSchema
@@ -303,6 +335,10 @@ export type WithdrawalMistagPreparedEvidence = {
   readonly cardanoValueSize: bigint;
   readonly outputPresent: boolean;
   readonly coreValid: boolean;
+  readonly ownerSignatureValid: boolean;
+  readonly outputLovelace: bigint;
+  readonly outputAssetCount: bigint;
+  readonly outputAssetFrontierCommitment: string;
   readonly actualValid: boolean;
   readonly payable: boolean;
   readonly exactOutputBytes: bigint;

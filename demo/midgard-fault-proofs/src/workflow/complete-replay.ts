@@ -112,6 +112,7 @@ import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transactio
 import { detectUnusedRedeemerCanonicalViolations } from "../unused-redeemer/replay.js";
 import { detectUnusedScriptWitnessCanonicalViolations } from "../unused-script-witness/replay.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
+import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { detectZeroInputForcedReplay } from "../zero-input/replay.js";
 import {
@@ -1976,6 +1977,18 @@ export const VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["valueNotPreserved"],
   async (evidence, context) =>
     detectValueConservationFaults({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence,
+        context,
+      }),
+    }),
+);
+
+export const WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["withdrawalMistag"],
+  async (evidence, context) =>
+    await detectWithdrawalMistagReplay({
       block: evidence,
       predecessor: completeCanonicalReplayPredecessorEvidence({
         evidence,

@@ -27,10 +27,10 @@ describe("withdrawal-mistag cancel and resume", () => {
     const published = await publishWithdrawalMistagScripts({ harness });
     const refs = published.refs;
     const blockUtxo = await withdrawalMistagBlockUtxo({ harness, scenario });
-    const advanceTo = async (targetStep: 0 | 2 | 3) => {
+    const advanceTo = async (targetStep: 0 | 1 | 2 | 3 | 4) => {
       const init = await initWithdrawalMistagThread({ harness, scenario });
       let threadOutRef = init.nextThreadOutRef;
-      if (targetStep >= 2) {
+      if (targetStep >= 1) {
         threadOutRef = (
           await submitWithdrawalMistagStep01({
             lucid: harness.proverLucid,
@@ -43,6 +43,8 @@ describe("withdrawal-mistag cancel and resume", () => {
             referenceScriptUtxo: refs[0],
           })
         ).nextThreadOutRef;
+      }
+      if (targetStep >= 2) {
         threadOutRef = (
           await submitWithdrawalMistagStep02({
             lucid: harness.proverLucid,
@@ -66,10 +68,22 @@ describe("withdrawal-mistag cancel and resume", () => {
           })
         ).nextThreadOutRef;
       }
+      if (targetStep >= 4) {
+        threadOutRef = (
+          await submitWithdrawalMistagStep04({
+            lucid: harness.proverLucid,
+            contracts: harness.withdrawalMistag,
+            signer: harness.proverSigner,
+            prepared: scenario.prepared,
+            threadOutRef,
+            referenceScriptUtxo: refs[3],
+          })
+        ).nextThreadOutRef;
+      }
       return threadOutRef;
     };
 
-    for (const targetStep of [0, 2, 3] as const) {
+    for (const targetStep of [0, 1, 2, 3, 4] as const) {
       const cancelled = await submitWithdrawalMistagCancel({
         lucid: harness.proverLucid,
         contracts: harness.withdrawalMistag,

@@ -8,18 +8,20 @@ use cardano/address
 use cardano/assets
 use cardano/transaction.{NoDatum, OutputReference}
 use env
-use midgard/bounded_item_v1
 use midgard/common/types.{H32, Proof}
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/types as native_tx_types
+use midgard/fraud_proofs/structured_data_carriage as carriage
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/fraud_proofs/withdrawal_mistag/step_02
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
 use midgard/mpf_proof_v1
+use midgard/validation_merkle_v1
 
 const withdrawal_signature_domain_v1 = #"4d6964676172645769746864726177616c5631"
 
@@ -29,11 +31,7 @@ pub type WithdrawalBodyHash =
   H32<ledger_state.WithdrawalBody>
 
 pub type LedgerEvidenceV1 {
-  PresentLedgerOutput {
-    output_cbor: ByteArray,
-    descriptor_cbor: ByteArray,
-    membership_proof: Proof,
-  }
+  PresentLedgerOutput { descriptor_cbor: ByteArray, membership_proof: Proof }
   AbsentLedgerOutput { non_membership_proof: Proof }
 }
 
@@ -43,15 +41,22 @@ pub type State {
   withdrawal_body_hash: WithdrawalBodyHash,
   claimed_valid: Bool,
   output_present: Bool,
-  core_valid: Bool,
+  owner_signature_valid: Bool,
   cardano_value_size: Int,
+  output_lovelace: Int,
+  output_asset_count: Int,
+  output_asset_frontier_commitment: ByteArray,
+}
+
+pub type Payload {
+  withdrawal_info: ledger_state.WithdrawalInfo,
+  evidence: LedgerEvidenceV1,
 }
 
 pub type Args {
   input_index: Int,
   output_index: Int,
-  withdrawal_info: ledger_state.WithdrawalInfo,
-  evidence: LedgerEvidenceV1,
+  payload: carriage.Evidence,
 }
 
 pub type Datum =
@@ -65,11 +70,10 @@ type AuthenticatedOutputProjectionV1 {
   total_length: Int,
   item_commitment: ByteArray,
   cardano_value_size: Int,
-}
-
-type WithdrawalOutputCoreV1 {
-  payment_owner: Option<ByteArray>,
-  value: native_tx_types.MidgardValue,
+  asset_count: Int,
+  address_bytes: ByteArray,
+  lovelace: Int,
+  asset_frontier_commitment: ByteArray,
 }
 
 /// Decode only the descriptor facts this proof consumes. The descriptor bytes
@@ -83,7 +87,8 @@ fn authenticated_output_projection_v1(
   expect
       [
         version_data, output_index_data, total_length_data, item_commitment_data,
-        _, _, _, _, cardano_value_size_data, _, _, _, _, _, _, _,
+        address_data, lovelace_data, asset_count_data, asset_frontier_data,
+        cardano_value_size_data, _, _, _, _, _, _, _,
       ]
     = builtin.un_list_data(data)
   expect builtin.un_i_data(version_data) == ledger_output_commitment_v1.version
@@ -92,76 +97,23 @@ fn authenticated_output_projection_v1(
     total_length: builtin.un_i_data(total_length_data),
     item_commitment: builtin.un_b_data(item_commitment_data),
     cardano_value_size: builtin.un_i_data(cardano_value_size_data),
+    asset_count: builtin.un_i_data(asset_count_data),
+    address_bytes: builtin.un_b_data(address_data),
+    lovelace: builtin.un_i_data(lovelace_data),
+    asset_frontier_commitment: builtin.un_b_data(asset_frontier_data),
   }
   expect projection.output_index >= 0
   expect projection.output_index <= ledger_output_commitment_v1.max_output_index
   expect projection.total_length >= 0
   expect bytearray.length(projection.item_commitment) == 32
+  expect projection.asset_count >= 0
   expect projection.cardano_value_size >= 0
   expect
     projection.cardano_value_size <= ledger_output_commitment_v1.max_cardano_value_cbor_bytes
   projection
 }
 
-fn optional_output_fields_are_shaped_v1(fields: List<Pair<Data, Data>>) -> Bool {
-  when fields is {
-    [] -> True
-    [Pair(key, _)] -> {
-      let field = builtin.un_i_data(key)
-      field == 2 || field == 3
-    }
-    [Pair(datum_key, _), Pair(script_key, _)] ->
-      builtin.un_i_data(datum_key) == 2 && builtin.un_i_data(script_key) == 3
-    _ -> False
-  }
-}
-
-fn flatten_output_assets_v1(
-  policies: List<Pair<Data, Data>>,
-) -> List<Pair<ByteArray, Int>> {
-  when policies is {
-    [] -> []
-    [Pair(policy_data, assets_data), ..rest] -> {
-      let policy_id = builtin.un_b_data(policy_data)
-      let assets = builtin.un_map_data(assets_data)
-      flatten_policy_assets_v1(policy_id, assets)
-        |> list.concat(flatten_output_assets_v1(rest))
-    }
-  }
-}
-
-fn flatten_policy_assets_v1(
-  policy_id: ByteArray,
-  entries: List<Pair<Data, Data>>,
-) -> List<Pair<ByteArray, Int>> {
-  when entries is {
-    [] -> []
-    [Pair(name_data, quantity_data), ..rest] ->
-      [
-        Pair(
-          policy_id |> bytearray.concat(builtin.un_b_data(name_data)),
-          builtin.un_i_data(quantity_data),
-        ),
-        ..flatten_policy_assets_v1(policy_id, rest)
-      ]
-  }
-}
-
-/// The descriptor's item commitment authenticates these as the exact output
-/// bytes admitted by the ledger-output machine. This local decoder therefore
-/// projects only the address and value needed by withdrawal classification,
-/// and the descriptor admission path has already enforced canonical CBOR.
-fn decode_withdrawal_output_core_v1(
-  output_cbor: ByteArray,
-) -> WithdrawalOutputCoreV1 {
-  expect Some(output_data) = cbor.deserialise(output_cbor)
-  expect
-      [Pair(address_key, address_data), Pair(value_key, value_data), ..optional]
-    = builtin.un_map_data(output_data)
-  expect builtin.un_i_data(address_key) == 0
-  expect builtin.un_i_data(value_key) == 1
-  expect optional_output_fields_are_shaped_v1(optional)
-  let address_bytes = builtin.un_b_data(address_data)
+fn payment_owner(address_bytes: ByteArray) -> Option<ByteArray> {
   let address_length = bytearray.length(address_bytes)
   let address_type = bytearray.at(address_bytes, 0) / 16
   expect
@@ -170,56 +122,84 @@ fn decode_withdrawal_output_core_v1(
     } else {
       address_length == 57 && address_type >= 0 && address_type <= 3
     }
-  let payment_owner = if or {
-    address_type == 1,
-    address_type == 3,
-    address_type == 7,
-  } {
+  if address_type == 1 || address_type == 3 || address_type == 7 {
     None
   } else {
     Some(bytearray.slice(address_bytes, 1, 28))
   }
-  expect [lovelace_data, assets_data] = builtin.un_list_data(value_data)
-  let lovelace = builtin.un_i_data(lovelace_data)
-  expect lovelace >= 0
-  WithdrawalOutputCoreV1 {
-    payment_owner,
-    value: native_tx_types.MidgardValue {
-      lovelace,
-      assets: flatten_output_assets_v1(builtin.un_map_data(assets_data)),
-    },
+}
+
+// Native CBOR orders keys by encoded length; Cardano Value Data uses byte order.
+// Merge runs keep mixed-width names bounded instead of quadratic insertion.
+fn merge_asset_pairs(
+  left: List<Pair<ByteArray, a>>,
+  right: List<Pair<ByteArray, a>>,
+) -> List<Pair<ByteArray, a>> {
+  when left is {
+    [] -> right
+    [a, ..rest_left] ->
+      when right is {
+        [] -> left
+        [b, ..rest_right] ->
+          if bytearray.compare(a.1st, b.1st) == Less {
+            [a, ..merge_asset_pairs(rest_left, right)]
+          } else {
+            [b, ..merge_asset_pairs(left, rest_right)]
+          }
+      }
   }
 }
 
-fn add_native_assets(
-  value: assets.Value,
-  native_assets: List<Pair<ByteArray, Int>>,
-) -> assets.Value {
-  when native_assets is {
-    [] -> value
-    [Pair(unit, quantity), ..rest] ->
-      add_native_assets(
-        assets.add(
-          value,
-          bytearray.take(unit, 28),
-          bytearray.drop(unit, 28),
-          quantity,
-        ),
-        rest,
+fn merge_asset_runs(
+  runs: List<List<Pair<ByteArray, a>>>,
+) -> List<List<Pair<ByteArray, a>>> {
+  when runs is {
+    [a, b, ..rest] -> [merge_asset_pairs(a, b), ..merge_asset_runs(rest)]
+    _ -> runs
+  }
+}
+
+fn sorted_asset_runs(
+  runs: List<List<Pair<ByteArray, a>>>,
+) -> List<Pair<ByteArray, a>> {
+  when runs is {
+    [] -> []
+    [one] -> one
+    _ -> sorted_asset_runs(merge_asset_runs(runs))
+  }
+}
+
+fn asset_pairs_are_sorted(pairs: List<Pair<ByteArray, a>>) -> Bool {
+  when pairs is {
+    [a, b, ..rest] ->
+      bytearray.compare(a.1st, b.1st) == Less && asset_pairs_are_sorted(
+        [b, ..rest],
       )
+    _ -> True
   }
 }
 
-fn native_value_to_cardano(value: native_tx_types.MidgardValue) -> assets.Value {
-  add_native_assets(assets.from_lovelace(value.lovelace), value.assets)
+fn sort_asset_pairs(pairs: List<Pair<ByteArray, a>>) -> List<Pair<ByteArray, a>> {
+  if asset_pairs_are_sorted(pairs) {
+    pairs
+  } else {
+    sorted_asset_runs(list.map(pairs, fn(pair) { [pair] }))
+  }
 }
 
 pub fn withdrawal_signature_is_valid_v1(
   info: ledger_state.WithdrawalInfo,
 ) -> Bool {
+  signature_matches_body_bytes(info, cbor.serialise(info.body))
+}
+
+fn signature_matches_body_bytes(
+  info: ledger_state.WithdrawalInfo,
+  body_cbor: ByteArray,
+) -> Bool {
   let Pair(verification_key, signature) = info.signature
   let message = withdrawal_signature_domain_v1
-    |> bytearray.concat(cbor.serialise(info.body))
+    |> bytearray.concat(body_cbor)
     |> blake2b_256
   and {
     bytearray.length(verification_key) == 32,
@@ -229,33 +209,84 @@ pub fn withdrawal_signature_is_valid_v1(
   }
 }
 
-fn output_core_matches_with_signature_v1(
-  info: ledger_state.WithdrawalInfo,
-  output: WithdrawalOutputCoreV1,
-  signature_is_valid: Bool,
+// The admitted descriptor commits address, lovelace and the complete canonical
+// asset frontier. Reconstruct that frontier from the validated withdrawal Value
+// instead of reparsing the full output (which may include a maximum script).
+pub fn output_value_matches_v1(
+  body: ledger_state.WithdrawalBody,
+  value: assets.Value,
+  output_lovelace: Int,
+  output_asset_count: Int,
+  output_asset_frontier_commitment: ByteArray,
 ) -> Bool {
-  let owner_matches = when output.payment_owner is {
-    Some(owner) -> owner == info.body.l2_owner
-    None -> False
-  }
-  and {
-    owner_matches,
-    native_value_to_cardano(output.value) == assets.from_asset_list(
-      info.body.l2_value,
-    ),
-    list.length(output.value.assets) <= maximum_withdrawal_asset_count_v1,
-    signature_is_valid,
+  let valid_domains = list.all(
+    body.l2_value,
+    fn(policy) {
+      if policy.1st == #"" {
+        when policy.2nd is {
+          [Pair(name, quantity)] -> name == #"" && quantity > 0
+          _ -> False
+        }
+      } else {
+        bytearray.length(policy.1st) == 28 && list.all(
+          policy.2nd,
+          fn(token) { bytearray.length(token.1st) <= 32 && token.2nd > 0 },
+        )
+      }
+    },
+  )
+  if !valid_domains {
+    False
+  } else {
+    let named = assets.flatten_with(
+      value,
+      fn(policy, name, quantity, keep, skip) {
+        if policy == #"" {
+          skip()
+        } else {
+          keep(
+            Pair(
+              bytearray.concat(policy, encode_definite_bytes(name)),
+              ledger_output_commitment_v1.asset_leaf_hash(
+                policy,
+                name,
+                quantity,
+              ),
+            ),
+          )
+        }
+      },
+    )
+      |> sort_asset_pairs
+    if list.length(named) != output_asset_count {
+      False
+    } else {
+      let frontier = validation_merkle_v1.build_frontier(
+        list.map(named, fn(pair) { pair.2nd }),
+      )
+      and {
+        assets.lovelace_of(value) == output_lovelace,
+        validation_merkle_v1.frontier_commitment(
+          output_asset_count,
+          frontier.peaks,
+        ) == output_asset_frontier_commitment,
+        output_asset_count <= maximum_withdrawal_asset_count_v1,
+      }
+    }
   }
 }
 
-fn output_core_matches_v1(
+fn output_core_matches_with_signature_v1(
   info: ledger_state.WithdrawalInfo,
-  output: WithdrawalOutputCoreV1,
+  output: AuthenticatedOutputProjectionV1,
+  signature_is_valid: Bool,
 ) -> Bool {
-  output_core_matches_with_signature_v1(
-    info,
-    output,
-    withdrawal_signature_is_valid_v1(info),
+  payment_owner(output.address_bytes) == Some(info.body.l2_owner) && signature_is_valid && output_value_matches_v1(
+    info.body,
+    assets.from_asset_list(info.body.l2_value),
+    output.lovelace,
+    output.asset_count,
+    output.asset_frontier_commitment,
   )
 }
 
@@ -267,6 +298,8 @@ pub fn classify_ledger_evidence_v1(
   expect
     utils.serialise_and_hash_32(withdrawal_info) == input_state.withdrawal_info_hash
   let key = ledger_outref_key(withdrawal_info.body.l2_outref)
+  let body_cbor = cbor.serialise(withdrawal_info.body)
+  let withdrawal_body_hash = blake2b_256(body_cbor)
   when evidence is {
     AbsentLedgerOutput { non_membership_proof } -> {
       expect
@@ -278,14 +311,17 @@ pub fn classify_ledger_evidence_v1(
       State {
         challenged_header_hash: input_state.challenged_header_hash,
         withdrawal_id: input_state.withdrawal_id,
-        withdrawal_body_hash: utils.serialise_and_hash_32(withdrawal_info.body),
+        withdrawal_body_hash,
         claimed_valid: input_state.claimed_valid,
         output_present: False,
-        core_valid: False,
+        owner_signature_valid: False,
         cardano_value_size: 0,
+        output_lovelace: 0,
+        output_asset_count: 0,
+        output_asset_frontier_commitment: #"",
       }
     }
-    PresentLedgerOutput { output_cbor, descriptor_cbor, membership_proof } -> {
+    PresentLedgerOutput { descriptor_cbor, membership_proof } -> {
       expect
         mpf_proof_v1.has(
           input_state.pre_utxos_root,
@@ -296,22 +332,26 @@ pub fn classify_ledger_evidence_v1(
       let descriptor = authenticated_output_projection_v1(descriptor_cbor)
       expect
         descriptor.output_index == withdrawal_info.body.l2_outref.output_index
-      expect descriptor.total_length == bytearray.length(output_cbor)
-      expect
-        descriptor.item_commitment == bounded_item_v1.from_bytes(
-          ledger_output_commitment_v1.output_field_index,
-          descriptor.output_index,
-          output_cbor,
-        )
-      let output = decode_withdrawal_output_core_v1(output_cbor)
+      // The authenticated ledger descriptor already commits the exact admitted
+      // asset count. An over-limit output cannot satisfy the withdrawal rule.
+      let owner_signature_valid = if descriptor.asset_count > maximum_withdrawal_asset_count_v1 {
+        False
+      } else {
+        payment_owner(descriptor.address_bytes) == Some(
+          withdrawal_info.body.l2_owner,
+        ) && signature_matches_body_bytes(withdrawal_info, body_cbor)
+      }
       State {
         challenged_header_hash: input_state.challenged_header_hash,
         withdrawal_id: input_state.withdrawal_id,
-        withdrawal_body_hash: utils.serialise_and_hash_32(withdrawal_info.body),
+        withdrawal_body_hash,
         claimed_valid: input_state.claimed_valid,
         output_present: True,
-        core_valid: output_core_matches_v1(withdrawal_info, output),
+        owner_signature_valid,
         cardano_value_size: descriptor.cardano_value_size,
+        output_lovelace: descriptor.lovelace,
+        output_asset_count: descriptor.asset_count,
+        output_asset_frontier_commitment: descriptor.asset_frontier_commitment,
       }
     }
   }
@@ -358,12 +398,16 @@ fn fixture_output(lovelace: Int) -> native_tx_types.MidgardTxOutput {
   }
 }
 
-fn fixture_output_core(lovelace: Int) -> WithdrawalOutputCoreV1 {
-  WithdrawalOutputCoreV1 {
-    payment_owner: Some(
-      #"11111111111111111111111111111111111111111111111111111111",
-    ),
-    value: native_tx_types.MidgardValue { lovelace, assets: [] },
+fn fixture_output_core(lovelace: Int) -> AuthenticatedOutputProjectionV1 {
+  AuthenticatedOutputProjectionV1 {
+    output_index: 0,
+    total_length: 0,
+    item_commitment: #"",
+    cardano_value_size: 0,
+    address_bytes: #"6011111111111111111111111111111111111111111111111111111111",
+    lovelace,
+    asset_count: 0,
+    asset_frontier_commitment: validation_merkle_v1.frontier_commitment(0, []),
   }
 }
 
@@ -392,11 +436,9 @@ test rejects_wrong_owner() {
   let output = fixture_output_core(1_000_000)
   !output_core_matches_with_signature_v1(
     fixture_info(1_000_000),
-    WithdrawalOutputCoreV1 {
+    AuthenticatedOutputProjectionV1 {
       ..output,
-      payment_owner: Some(
-        #"22222222222222222222222222222222222222222222222222222222",
-      ),
+      address_bytes: #"6022222222222222222222222222222222222222222222222222222222",
     },
     True,
   )
@@ -422,15 +464,11 @@ test classifies_authenticated_output_membership() {
   let state = classify_ledger_evidence_v1(
     fixture_state(info, root),
     info,
-    PresentLedgerOutput {
-      output_cbor,
-      descriptor_cbor: value,
-      membership_proof: [],
-    },
+    PresentLedgerOutput { descriptor_cbor: value, membership_proof: [] },
   )
   and {
     state.output_present,
-    !state.core_valid,
+    !state.owner_signature_valid,
     state.cardano_value_size == descriptor.cardano_value_size,
     state.withdrawal_body_hash == utils.serialise_and_hash_32(info.body),
   }
@@ -445,7 +483,7 @@ test accepts_authenticated_empty_ledger_nonmembership() {
   )
   and {
     !state.output_present,
-    !state.core_valid,
+    !state.owner_signature_valid,
     state.cardano_value_size == 0,
   }
 }
@@ -484,7 +522,6 @@ test rejects_substituted_authenticated_descriptor() fail {
     fixture_state(info, root),
     info,
     PresentLedgerOutput {
-      output_cbor,
       descriptor_cbor: substituted_value,
       membership_proof: [],
     },
@@ -505,7 +542,7 @@ test rejects_descriptor_authenticated_under_wrong_key() fail {
   classify_ledger_evidence_v1(
     fixture_state(info, root),
     info,
-    PresentLedgerOutput { output_cbor, descriptor_cbor, membership_proof: [] },
+    PresentLedgerOutput { descriptor_cbor, membership_proof: [] },
   ).output_present
 }
 
@@ -521,11 +558,11 @@ test rejects_authenticated_descriptor_with_wrong_output_index() fail {
   classify_ledger_evidence_v1(
     fixture_state(info, root),
     info,
-    PresentLedgerOutput { output_cbor, descriptor_cbor, membership_proof: [] },
+    PresentLedgerOutput { descriptor_cbor, membership_proof: [] },
   ).output_present
 }
 
-test rejects_authenticated_descriptor_with_wrong_total_length() fail {
+test rejects_substituted_descriptor_with_wrong_total_length() fail {
   let info = fixture_info(1_000_000)
   let output_cbor = native_components.encode_midgard_tx_output(
     fixture_output(1_000_000),
@@ -538,15 +575,22 @@ test rejects_authenticated_descriptor_with_wrong_total_length() fail {
     },
   )
   let key = ledger_outref_key(info.body.l2_outref)
-  let root = mpf.root(mpf.insert(mpf.empty, key, descriptor_cbor, []))
+  let root = mpf.root(
+    mpf.insert(
+      mpf.empty,
+      key,
+      ledger_output_commitment_v1.encode(descriptor),
+      [],
+    ),
+  )
   classify_ledger_evidence_v1(
     fixture_state(info, root),
     info,
-    PresentLedgerOutput { output_cbor, descriptor_cbor, membership_proof: [] },
+    PresentLedgerOutput { descriptor_cbor, membership_proof: [] },
   ).output_present
 }
 
-test rejects_authenticated_descriptor_with_wrong_item_commitment() fail {
+test rejects_substituted_descriptor_with_wrong_item_commitment() fail {
   let info = fixture_info(1_000_000)
   let output_cbor = native_components.encode_midgard_tx_output(
     fixture_output(1_000_000),
@@ -559,11 +603,18 @@ test rejects_authenticated_descriptor_with_wrong_item_commitment() fail {
     },
   )
   let key = ledger_outref_key(info.body.l2_outref)
-  let root = mpf.root(mpf.insert(mpf.empty, key, descriptor_cbor, []))
+  let root = mpf.root(
+    mpf.insert(
+      mpf.empty,
+      key,
+      ledger_output_commitment_v1.encode(descriptor),
+      [],
+    ),
+  )
   classify_ledger_evidence_v1(
     fixture_state(info, root),
     info,
-    PresentLedgerOutput { output_cbor, descriptor_cbor, membership_proof: [] },
+    PresentLedgerOutput { descriptor_cbor, membership_proof: [] },
   ).output_present
 }
 
@@ -586,8 +637,13 @@ test rejects_output_substitution_against_authenticated_commitment() fail {
     fixture_state(info, root),
     info,
     PresentLedgerOutput {
-      output_cbor: substituted_output_cbor,
-      descriptor_cbor,
+      descriptor_cbor: {
+        expect Some(substituted) = ledger_output_descriptor_v1.build_v1(
+          0,
+          substituted_output_cbor,
+        )
+        ledger_output_commitment_v1.encode(substituted)
+      },
       membership_proof: [],
     },
   ).output_present
@@ -619,9 +675,88 @@ test rejects_presence_branch_for_absent_output() fail {
     fixture_state(info, env.empty_merkle_tree_root),
     info,
     PresentLedgerOutput {
-      output_cbor,
       descriptor_cbor: ledger_output_commitment_v1.encode(descriptor),
       membership_proof: [],
     },
   ).output_present
+}
+
+test rejects_extra_asset_name_under_ada_policy() {
+  let body = ledger_state.WithdrawalBody {
+    ..fixture_info(1_000_000).body,
+    l2_value: [Pair(#"", [Pair(#"", 1_000_000), Pair(#"01", 1)])],
+  }
+  !output_value_matches_v1(
+    body,
+    assets.from_asset_list(body.l2_value),
+    1_000_000,
+    0,
+    validation_merkle_v1.frontier_commitment(0, []),
+  )
+}
+
+test rejects_negative_non_ada_asset_as_value_mismatch() {
+  let body = ledger_state.WithdrawalBody {
+    ..fixture_info(1_000_000).body,
+    l2_value: [
+      Pair(#"", [Pair(#"", 1_000_000)]),
+      Pair(
+        #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        [Pair(#"01", -1)],
+      ),
+    ],
+  }
+  !output_value_matches_v1(
+    body,
+    assets.from_asset_list(body.l2_value),
+    1_000_000,
+    1,
+    #"00",
+  )
+}
+
+test descriptor_frontier_matches_mixed_width_value_and_refuses_quantity_change() {
+  let policy = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  let info = ledger_state.WithdrawalInfo {
+    ..fixture_info(1_000_000),
+    body: ledger_state.WithdrawalBody {
+      ..fixture_info(1_000_000).body,
+      l2_value: [
+        Pair(#"", [Pair(#"", 1_000_000)]),
+        Pair(policy, [Pair(#"0000", 2), Pair(#"ff", 1)]),
+      ],
+    },
+  }
+  let output = native_tx_types.MidgardTxOutput {
+    ..fixture_output(1_000_000),
+    value: native_tx_types.MidgardValue {
+      lovelace: 1_000_000,
+      assets: [
+        Pair(bytearray.concat(policy, #"ff"), 1),
+        Pair(bytearray.concat(policy, #"0000"), 2),
+      ],
+    },
+  }
+  expect Some(descriptor) = ledger_output_descriptor_v1.build_v1(
+    0,
+    native_components.encode_midgard_tx_output(output),
+  )
+  let projection = authenticated_output_projection_v1(
+    ledger_output_commitment_v1.encode(descriptor),
+  )
+  let changed = ledger_state.WithdrawalInfo {
+    ..info,
+    body: ledger_state.WithdrawalBody {
+      ..info.body,
+      l2_value: [
+        Pair(#"", [Pair(#"", 1_000_000)]),
+        Pair(policy, [Pair(#"0000", 3), Pair(#"ff", 1)]),
+      ],
+    },
+  }
+  output_core_matches_with_signature_v1(info, projection, True) && !output_core_matches_with_signature_v1(
+    changed,
+    projection,
+    True,
+  )
 }
