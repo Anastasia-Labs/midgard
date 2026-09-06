@@ -437,11 +437,11 @@ fn settlement_envelope(
   state: normalization.OuterNormalizedScriptSourcesRedeemerActionV1,
 ) -> normalization.PreparedScriptSourcesRedeemerEnvelopeV1 {
   let base = settlement_prepared_resolution()
-  let resolution_identity = normalization.resolution_identity_v1(base)
+  let carrier_identity = normalization.carrier_identity(base)
   let envelope_commitment = normalization.envelope_commitment_v1(
     state.deployment_id,
-    base.evidence_hash,
-    resolution_identity,
+    normalization.script_sources_carrier,
+    carrier_identity,
     state.action_family,
     hash_b,
     state.canonical_action_hash,
@@ -454,15 +454,16 @@ fn settlement_envelope(
     state.outer_normalizer_script_hash,
     state.semantic_executor_script_hash,
     state.settlement_script_hash,
-    base.resolution.pre_state.transaction_commitment,
-    base.resolution.pre_state.validation_context_hash,
+    #"",
   )
   normalization.PreparedScriptSourcesRedeemerEnvelopeV1 {
     version: normalization.version,
     domain: normalization.envelope_domain,
     deployment_id: state.deployment_id,
+    carrier: normalization.script_sources_carrier,
     base,
-    resolution_identity,
+    carrier_identity,
+    expected_next_control_data_hash: #"",
     action_family: state.action_family,
     canonical_auxiliary_hash: hash_b,
     canonical_action_hash: state.canonical_action_hash,
@@ -1976,13 +1977,14 @@ test execution_attestation_settlement_accepts_both_bound_families() {
   let finalize_envelope = settlement_envelope(finalize_outer)
   let finalize_state = settlement_attestation(finalize_outer)
   let winning_output: Data = validation_resolution_v1.winning_resolution()
+  expect fold_base: validation_resolution_v1.PreparedValidationResolutionStateV1
+    = fold_envelope.base
+  expect
+      finalize_base: validation_resolution_v1.PreparedValidationResolutionStateV1
+    = finalize_envelope.base
   and {
-    validation_resolution_v1.prepared_resolution_is_well_formed(
-      fold_envelope.base,
-    ),
-    validation_resolution_v1.prepared_resolution_is_well_formed(
-      finalize_envelope.base,
-    ),
+    validation_resolution_v1.prepared_resolution_is_well_formed(fold_base),
+    validation_resolution_v1.prepared_resolution_is_well_formed(finalize_base),
     settlement_is_exact(fold_state, fold_envelope, script_g, winning_output),
     settlement_is_exact(
       finalize_state,
@@ -2004,7 +2006,7 @@ test execution_attestation_settlement_rejects_envelope_provenance_and_domain_mut
   let wrong_base = normalization.PreparedScriptSourcesRedeemerEnvelopeV1 {
     ..envelope,
     base: validation_resolution_v1.PreparedValidationResolutionStateV1 {
-      ..envelope.base,
+      ..settlement_prepared_resolution(),
       evidence_hash: hash_b,
     },
   }

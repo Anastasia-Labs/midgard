@@ -94,13 +94,11 @@ validator main(
             is {
               None -> False
               Some(facts) -> {
-                let resolution_identity = normalization.resolution_identity_v1(
-                  base,
-                )
+                let carrier_identity = normalization.carrier_identity(base)
                 let envelope_commitment = normalization.envelope_commitment_v1(
                   deployment_id,
-                  base.evidence_hash,
-                  resolution_identity,
+                  normalization.script_sources_carrier,
+                  carrier_identity,
                   action_family,
                   facts.canonical_auxiliary_hash,
                   facts.canonical_action_hash,
@@ -113,15 +111,16 @@ validator main(
                   outer_normalizer_script_hash,
                   semantic_executor_script_hash,
                   settlement_script_hash,
-                  base.resolution.pre_state.transaction_commitment,
-                  base.resolution.pre_state.validation_context_hash,
+                  #"",
                 )
                 let expected_output_state: Data = normalization.PreparedScriptSourcesRedeemerEnvelopeV1 {
                   version: normalization.version,
                   domain: normalization.envelope_domain,
                   deployment_id,
+                  carrier: normalization.script_sources_carrier,
                   base,
-                  resolution_identity,
+                  carrier_identity,
+                  expected_next_control_data_hash: #"",
                   action_family,
                   canonical_auxiliary_hash: facts.canonical_auxiliary_hash,
                   canonical_action_hash: facts.canonical_action_hash,

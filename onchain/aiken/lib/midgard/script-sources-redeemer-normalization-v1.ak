@@ -32,6 +32,10 @@ pub const fold_map_family: Int = 0
 
 pub const finalize_frame_family: Int = 1
 
+pub const script_sources_carrier: Int = 0
+
+pub const cek_context_carrier: Int = 1
+
 pub const open_header_family: Int = 2
 
 pub const open_tail_family: Int = 3
@@ -90,8 +94,10 @@ pub type PreparedScriptSourcesRedeemerEnvelopeV1 {
   version: Int,
   domain: ByteArray,
   deployment_id: ByteArray,
-  base: validation_resolution_v1.PreparedValidationResolutionStateV1,
-  resolution_identity: ByteArray,
+  carrier: Int,
+  base: Data,
+  carrier_identity: ByteArray,
+  expected_next_control_data_hash: ByteArray,
   action_family: Int,
   canonical_auxiliary_hash: ByteArray,
   canonical_action_hash: ByteArray,
@@ -571,19 +577,16 @@ pub fn verify_raw_envelope_v1(
   }
 }
 
-pub fn resolution_identity_v1(
-  base: validation_resolution_v1.PreparedValidationResolutionStateV1,
-) -> ByteArray {
-  let resolution_data: Data = base.resolution
+pub fn carrier_identity(base: Data) -> ByteArray {
   resolution_identity_domain
-    |> bytearray.concat(cbor.serialise(resolution_data))
+    |> bytearray.concat(cbor.serialise(base))
     |> blake2b_256
 }
 
 pub fn envelope_commitment_v1(
   deployment_id: ByteArray,
-  base_evidence_hash: ByteArray,
-  resolution_identity: ByteArray,
+  carrier: Int,
+  carrier_identity: ByteArray,
   action_family: Int,
   canonical_auxiliary_hash: ByteArray,
   canonical_action_hash: ByteArray,
@@ -596,15 +599,14 @@ pub fn envelope_commitment_v1(
   outer_normalizer_script_hash: ScriptHash,
   semantic_executor_script_hash: ScriptHash,
   settlement_script_hash: ScriptHash,
-  transaction_commitment: ByteArray,
-  validation_context_hash: ByteArray,
+  expected_next_control_data_hash: ByteArray,
 ) -> ByteArray {
   envelope_commitment_domain
-    |> bytearray.concat(encode_definite_array_header(18))
+    |> bytearray.concat(encode_definite_array_header(17))
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(encode_definite_bytes(deployment_id))
-    |> bytearray.concat(encode_definite_bytes(base_evidence_hash))
-    |> bytearray.concat(encode_definite_bytes(resolution_identity))
+    |> bytearray.concat(cbor.serialise(carrier))
+    |> bytearray.concat(encode_definite_bytes(carrier_identity))
     |> bytearray.concat(cbor.serialise(action_family))
     |> bytearray.concat(encode_definite_bytes(canonical_auxiliary_hash))
     |> bytearray.concat(encode_definite_bytes(canonical_action_hash))
@@ -619,8 +621,7 @@ pub fn envelope_commitment_v1(
     |> bytearray.concat(encode_definite_bytes(outer_normalizer_script_hash))
     |> bytearray.concat(encode_definite_bytes(semantic_executor_script_hash))
     |> bytearray.concat(encode_definite_bytes(settlement_script_hash))
-    |> bytearray.concat(encode_definite_bytes(transaction_commitment))
-    |> bytearray.concat(encode_definite_bytes(validation_context_hash))
+    |> bytearray.concat(encode_definite_bytes(expected_next_control_data_hash))
     |> blake2b_256
 }
 
@@ -634,9 +635,14 @@ pub fn envelope_state_is_bound_v1(
     state.domain == envelope_domain,
     bytearray.length(state.deployment_id) == 32,
     state.deployment_id == expected_deployment_id,
-    state.base.version == validation_resolution_v1.prepared_resolution_version,
-    bytearray.length(state.base.evidence_hash) == 32,
-    state.resolution_identity == resolution_identity_v1(state.base),
+    state.carrier_identity == carrier_identity(state.base),
+    if state.carrier == script_sources_carrier {
+      state.expected_next_control_data_hash == #""
+    } else {
+      state.carrier == cek_context_carrier && bytearray.length(
+        state.expected_next_control_data_hash,
+      ) == 32
+    },
     state.action_family == fold_map_family || state.action_family == finalize_frame_family,
     bytearray.length(state.canonical_auxiliary_hash) == 32,
     bytearray.length(state.canonical_action_hash) == 32,
@@ -654,8 +660,8 @@ pub fn envelope_state_is_bound_v1(
     bytearray.length(state.envelope_commitment) == 32,
     state.envelope_commitment == envelope_commitment_v1(
       state.deployment_id,
-      state.base.evidence_hash,
-      state.resolution_identity,
+      state.carrier,
+      state.carrier_identity,
       state.action_family,
       state.canonical_auxiliary_hash,
       state.canonical_action_hash,
@@ -668,8 +674,7 @@ pub fn envelope_state_is_bound_v1(
       state.outer_normalizer_script_hash,
       state.semantic_executor_script_hash,
       state.settlement_script_hash,
-      state.base.resolution.pre_state.transaction_commitment,
-      state.base.resolution.pre_state.validation_context_hash,
+      state.expected_next_control_data_hash,
     ),
   }
 }
@@ -679,8 +684,8 @@ pub fn base_provenance_identity_v1(
 ) -> ByteArray {
   base_provenance_identity_domain
     |> bytearray.concat(encode_definite_array_header(3))
-    |> bytearray.concat(encode_definite_bytes(state.base.evidence_hash))
-    |> bytearray.concat(encode_definite_bytes(state.resolution_identity))
+    |> bytearray.concat(cbor.serialise(state.carrier))
+    |> bytearray.concat(encode_definite_bytes(state.carrier_identity))
     |> bytearray.concat(encode_definite_bytes(state.envelope_commitment))
     |> blake2b_256
 }
@@ -828,7 +833,6 @@ pub fn execution_attestation_is_bound_to_envelope_v1(
     bytearray.length(state.deployment_id) == 32,
     state.deployment_id == expected_deployment_id,
     envelope.deployment_id == expected_deployment_id,
-    validation_resolution_v1.prepared_resolution_is_well_formed(envelope.base),
     envelope_state_is_bound_v1(
       envelope,
       expected_deployment_id,
@@ -879,8 +883,11 @@ pub fn execution_attestation_settlement_is_exact_v1(
   observed_output_script_hash: ScriptHash,
   output_state: Data,
 ) -> Bool {
+  expect base: validation_resolution_v1.PreparedValidationResolutionStateV1 = envelope.base
   let expected_output_state: Data = validation_resolution_v1.winning_resolution()
   and {
+    envelope.carrier == script_sources_carrier,
+    validation_resolution_v1.prepared_resolution_is_well_formed(base),
     execution_attestation_is_bound_to_envelope_v1(
       state,
       envelope,

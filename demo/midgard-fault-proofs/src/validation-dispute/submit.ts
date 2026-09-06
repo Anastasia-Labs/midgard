@@ -15,8 +15,6 @@ import {
   type MidgardCekDataFrame,
   type MidgardCekDataSummary,
   type MidgardCekDataTraverseAction,
-  type MidgardCekDataTraverseControl,
-  type MidgardRedeemerItemProofControl,
   type MidgardValidationTraceProof,
   openMidgardValidationDispute,
   revealMidgardValidationChallengerMidpoint,
@@ -135,6 +133,7 @@ import { Effect } from "effect";
 
 import { type ContractDeploymentInfo } from "../inspect-contracts.js";
 import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
+import { decodeRedeemerItemControlData } from "../redeemer-item-data.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -5686,121 +5685,7 @@ const stageOneActionCore = ({
   };
 };
 
-const stageOneControlCore = (
-  value: PlutusDataValue,
-): MidgardRedeemerItemProofControl => {
-  const control = requireConstr({
-    value,
-    index: 0,
-    fields: 16,
-    label: "ScriptSources stage-one item control",
-  });
-  const integer = (index: number, label: string): number =>
-    exactSafeCborInteger(control.fields[index], `ScriptSources item ${label}`);
-  const bytes = (index: number, label: string): Buffer => {
-    const selected = control.fields[index];
-    if (typeof selected !== "string") {
-      throw new Error(`ScriptSources item ${label} must be bytes`);
-    }
-    return Buffer.from(selected, "hex");
-  };
-  const traversalData = requireOptionData(
-    control.fields[15]!,
-    "ScriptSources item traversal",
-  );
-  if (traversalData === null) {
-    throw new Error("ScriptSources stage-one item traversal must be present");
-  }
-  const traversal = requireConstr({
-    value: traversalData,
-    index: 0,
-    fields: 10,
-    label: "ScriptSources item traversal control",
-  });
-  for (const [index, label] of [
-    [6, "pending large constructor"],
-    [7, "integer"],
-    [8, "bytes"],
-  ] as const) {
-    if (
-      requireOptionData(
-        traversal.fields[index]!,
-        `ScriptSources traversal ${label}`,
-      ) !== null
-    ) {
-      throw new Error(
-        `ScriptSources fold-stage traversal ${label} must be absent`,
-      );
-    }
-  }
-  const resultData = requireOptionData(
-    traversal.fields[9]!,
-    "ScriptSources traversal result",
-  );
-  const traversalCore: MidgardCekDataTraverseControl = {
-    version: integerFromData(
-      traversal.fields[0],
-      "ScriptSources traversal version",
-    ) as 1,
-    stage: integerFromData(
-      traversal.fields[1],
-      "ScriptSources traversal stage",
-    ) as MidgardCekDataTraverseControl["stage"],
-    sourceStart: integerFromData(
-      traversal.fields[2],
-      "ScriptSources traversal source start",
-    ),
-    sourceLength: integerFromData(
-      traversal.fields[3],
-      "ScriptSources traversal source length",
-    ),
-    offset: integerFromData(
-      traversal.fields[4],
-      "ScriptSources traversal offset",
-    ),
-    frameRoot: (() => {
-      if (typeof traversal.fields[5] !== "string")
-        throw new Error("ScriptSources traversal frame root must be bytes");
-      return Buffer.from(traversal.fields[5], "hex");
-    })(),
-    pendingLargeExpectedChildren: null,
-    integer: null,
-    bytes: null,
-    result:
-      resultData === null
-        ? null
-        : dataSummaryCore(resultData, "ScriptSources traversal result"),
-  };
-  return {
-    version: integer(0, "version") as 1,
-    mode: integer(1, "mode") as MidgardRedeemerItemProofControl["mode"],
-    stage: integer(2, "stage") as MidgardRedeemerItemProofControl["stage"],
-    itemIndex: integer(3, "index"),
-    itemCount: integer(4, "count"),
-    totalLength: integer(5, "total length"),
-    itemCommitment: bytes(6, "commitment"),
-    expectedPurposeTag: integer(7, "expected purpose tag"),
-    expectedPointerIndex: integer(8, "expected pointer index"),
-    purposeTag: integer(9, "purpose tag"),
-    pointerIndex: integer(10, "pointer index"),
-    dataOffset: integer(11, "data offset"),
-    dataLength: integer(12, "data length"),
-    executionMemory: exactCborBigInt(
-      control.fields[13],
-      "ScriptSources item execution memory",
-    ),
-    executionSteps: exactCborBigInt(
-      control.fields[14],
-      "ScriptSources item execution steps",
-    ),
-    traversal: traversalCore,
-  };
-};
-
-const integerFromData = (
-  value: PlutusDataValue | undefined,
-  label: string,
-): number => exactSafeCborInteger(value, label);
+const stageOneControlCore = decodeRedeemerItemControlData;
 
 const deriveScriptSourcesStageOneRouteData = ({
   preparedResolution,
@@ -5926,15 +5811,9 @@ const deriveScriptSourcesStageOneRouteData = ({
     ),
     "ScriptSources prepared resolution state",
   );
-  const baseRecord = requireConstr({
-    value: baseData,
-    index: 0,
-    fields: 3,
-    label: "ScriptSources prepared resolution state",
-  });
   const resolutionIdentity = hashDomainData(
     SCRIPT_SOURCES_REDEEMER_DOMAINS.resolutionIdentity,
-    baseRecord.fields[1]!,
+    baseData,
   );
   const canonicalAuxiliaryHash = hashDomainData(
     SCRIPT_SOURCES_REDEEMER_DOMAINS.auxiliaryIdentity,
@@ -5949,7 +5828,7 @@ const deriveScriptSourcesStageOneRouteData = ({
   const commitmentItems = [
     encodeCbor(1n),
     encodeCbor(Buffer.from(deploymentId, "hex")),
-    encodeCbor(Buffer.from(preparedResolution.evidence_hash, "hex")),
+    encodeCbor(0n),
     encodeCbor(Buffer.from(resolutionIdentity, "hex")),
     encodeCbor(BigInt(family)),
     encodeCbor(Buffer.from(canonicalAuxiliaryHash, "hex")),
@@ -5963,18 +5842,7 @@ const deriveScriptSourcesStageOneRouteData = ({
     encodeCbor(Buffer.from(outerScriptHash, "hex")),
     encodeCbor(Buffer.from(semanticExecutorScriptHash, "hex")),
     encodeCbor(Buffer.from(settlementScriptHash, "hex")),
-    encodeCbor(
-      Buffer.from(
-        preparedResolution.resolution.pre_state.transaction_commitment,
-        "hex",
-      ),
-    ),
-    encodeCbor(
-      Buffer.from(
-        preparedResolution.resolution.pre_state.validation_context_hash,
-        "hex",
-      ),
-    ),
+    encodeCbor(Buffer.alloc(0)),
   ];
   const envelopeCommitment = computeHash32(
     Buffer.concat([
@@ -5986,8 +5854,10 @@ const deriveScriptSourcesStageOneRouteData = ({
     1n,
     SCRIPT_SOURCES_REDEEMER_DOMAINS.envelope.toString("hex"),
     deploymentId,
+    0n,
     baseData,
     resolutionIdentity,
+    "",
     BigInt(family),
     canonicalAuxiliaryHash,
     canonicalActionHash,
@@ -6006,7 +5876,7 @@ const deriveScriptSourcesStageOneRouteData = ({
     Buffer.concat([
       SCRIPT_SOURCES_REDEEMER_DOMAINS.baseProvenanceIdentity,
       encodeCborArrayRaw([
-        encodeCbor(Buffer.from(preparedResolution.evidence_hash, "hex")),
+        encodeCbor(0n),
         encodeCbor(Buffer.from(resolutionIdentity, "hex")),
         encodeCbor(Buffer.from(envelopeCommitment, "hex")),
       ]),
