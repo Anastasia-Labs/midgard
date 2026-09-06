@@ -29,14 +29,14 @@
  * `cbor.serialise(membership.key/value)`, both in this family's step-01 and in
  * `transition_trace/proof`'s `WithdrawalSourceMembership` arm), so the bytes that
  * bind are the `serialiseData` ones. Every helper here therefore passes its Lucid
- * output through `aikenSerialisedPlutusDataCbor`, exactly as
- * `midgard-node`'s withdrawal MPF insertion and `reserve-payout`'s withdrawal
- * override already do. Dropping that normalisation would silently produce
+ * output through `aikenSerialisedPlutusDataCborPreservingMapOrder`, exactly as
+ * the withdrawal MPF producer and reserve-payout override do. Map pair order
+ * from Lucid is retained, including mixed-length asset names. Dropping that normalisation would silently produce
  * commitments and leaf bytes no on-chain step can reproduce; the twin test pins
  * both forms so the difference cannot regress unnoticed.
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -457,17 +457,23 @@ export const fabricatedWithdrawalStepDatumSchema = (
 export const committedWithdrawalKeyBytes = (
   withdrawalId: OutputReference,
 ): string =>
-  aikenSerialisedPlutusDataCbor(Data.to(withdrawalId, OutputReference));
+  aikenSerialisedPlutusDataCborPreservingMapOrder(
+    Data.to(withdrawalId, OutputReference),
+  );
 
 /** The canonical bytes of a committed withdrawal leaf's MPF value. */
 export const committedWithdrawalValueBytes = (info: WithdrawalInfo): string =>
-  aikenSerialisedPlutusDataCbor(Data.to(info, WithdrawalInfo));
+  aikenSerialisedPlutusDataCborPreservingMapOrder(
+    Data.to(info, WithdrawalInfo),
+  );
 
 /** The canonical bytes of a withdrawal event's datum. */
 export const withdrawalEventDatumBytes = (
   datum: WithdrawalOrderDatum,
 ): string =>
-  aikenSerialisedPlutusDataCbor(Data.to(datum, WithdrawalOrderDatum));
+  aikenSerialisedPlutusDataCborPreservingMapOrder(
+    Data.to(datum, WithdrawalOrderDatum),
+  );
 
 /**
  * Blake2b-256 of a `WithdrawalInfo`'s canonical bytes — the commitment the thread

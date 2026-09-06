@@ -2,8 +2,11 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID } from "../src/fraud-proof/catalogue.js";
+import { committedWithdrawalValueBytes } from "../src/fraud-proof/fabricated-withdrawal.js";
 import {
+  withdrawalBodyBytes,
   withdrawalClaimsValid,
+  withdrawalInfoBytes,
   withdrawalMistagDirection,
   withdrawalMistagExactPayoutOutputBytes,
   withdrawalMistagMinimumLovelace,
@@ -37,6 +40,27 @@ const info = (
 });
 
 describe("withdrawal-mistag V1", () => {
+  it("retains serialiseData map order for mixed-length asset names", () => {
+    const withdrawal = info(100_000_000n, "WithdrawalIsValid");
+    withdrawal.body.l2_value.set(
+      "aa".repeat(28),
+      new Map([
+        ["ff", 1n],
+        ["0000", 2n],
+      ]),
+    );
+    // Lucid constructs the Data map in bytewise key order. Plutus serialiseData
+    // retains that order; generic canonical CBOR would reverse these two keys.
+    for (const encoded of [
+      withdrawalBodyBytes(withdrawal.body),
+      withdrawalInfoBytes(withdrawal),
+      committedWithdrawalValueBytes(withdrawal),
+    ]) {
+      expect(encoded).toContain("a24200000241ff01");
+      expect(encoded).not.toContain("a241ff0142000002");
+    }
+  });
+
   it("pins the production category and token name", () => {
     expect(WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID).toBe("00000014");
     expect(withdrawalMistagThreadTokenAssetName(HEADER_HASH)).toBe(

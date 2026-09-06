@@ -3,7 +3,10 @@ import {
   asLucidSchema,
 } from "@al-ft/midgard-core/lucid-data";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
-import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  aikenSerialisedPlutusDataCbor,
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -1443,7 +1446,7 @@ export const buildRefundInvalidWithdrawalTxProgram = (
     };
     const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
       config.withdrawal.idCbor.toString("hex"),
-      aikenSerialisedPlutusDataCbor(
+      aikenSerialisedPlutusDataCborPreservingMapOrder(
         Data.to(overriddenWithdrawalInfo, SDK.WithdrawalInfo),
       ),
       config.membershipProof,

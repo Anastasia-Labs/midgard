@@ -10,7 +10,6 @@ import {
   encodeMidgardAddressText,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
-import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
 import { Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
@@ -150,15 +149,10 @@ export const encodeWithdrawalSettlementInfo = (
     return yield* Effect.try({
       try: () =>
         Buffer.from(
-          aikenSerialisedPlutusDataCbor(
-            LucidData.to(
-              {
-                ...rawInfo,
-                validity: withdrawalValidityToSdk(validity, validityDetail),
-              } satisfies SDK.WithdrawalInfo,
-              SDK.WithdrawalInfo,
-            ),
-          ),
+          SDK.committedWithdrawalValueBytes({
+            ...rawInfo,
+            validity: withdrawalValidityToSdk(validity, validityDetail),
+          }),
           "hex",
         ),
       catch: (cause) =>

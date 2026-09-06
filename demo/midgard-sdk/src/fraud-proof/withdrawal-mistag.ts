@@ -5,7 +5,7 @@
  * mirror `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-0*.ak`.
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -311,10 +311,14 @@ export type WithdrawalMistagPreparedEvidence = {
 };
 
 export const withdrawalInfoBytes = (info: WithdrawalInfo): string =>
-  aikenSerialisedPlutusDataCbor(Data.to(info, WithdrawalInfo));
+  aikenSerialisedPlutusDataCborPreservingMapOrder(
+    Data.to(info, WithdrawalInfo),
+  );
 
 export const withdrawalBodyBytes = (body: WithdrawalBody): string =>
-  aikenSerialisedPlutusDataCbor(Data.to(body, WithdrawalBody));
+  aikenSerialisedPlutusDataCborPreservingMapOrder(
+    Data.to(body, WithdrawalBody),
+  );
 
 export const withdrawalMistagInfoCommitment = (
   info: WithdrawalInfo,
@@ -365,7 +369,7 @@ const datumOptionBytes = (datum: CardanoDatum): bigint => {
   }
   // Aiken's `cbor.serialise(Data)` uses canonical definite maps. Lucid may
   // emit an equivalent indefinite map, whose byte length is different.
-  const encoded = aikenSerialisedPlutusDataCbor(
+  const encoded = aikenSerialisedPlutusDataCborPreservingMapOrder(
     Data.to(datum.InlineDatum.data),
   );
   const dataLength = BigInt(encoded.length / 2);
