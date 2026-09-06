@@ -36,6 +36,7 @@ import {
 } from "@al-ft/midgard-core/consensus-profile";
 import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 import {
   AssetFoldClaim,
   AuthenticatedCanonicalDecodeItemDatum,
@@ -1230,9 +1231,12 @@ export type ValidationOneStepSubmissionArgument = {
   readonly cekRouteMaterial?: CekRouteMaterial;
   /** Presence selects the receipt-justified incremental route. */
   readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSet;
+  /** Exact adjacent canonical replay bytes; include in durable evidence identity. */
+  readonly cekContextSuccessorWorkWitnessCbor?: Uint8Array;
 };
 
 export type ValidatedCekSubmissionEvidence = {
+  readonly cekContextSuccessorWorkWitnessCbor?: Uint8Array;
   readonly cekRouteMaterial?: CekRouteMaterial;
   readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSet;
 };
@@ -1390,6 +1394,45 @@ export const validateCekSubmissionEvidence = (
     "NativeExecutionScanWitness" in auxiliaryWitness
       ? auxiliaryWitness.NativeExecutionScanWitness
       : undefined;
+  const contextSuccessor = argument.cekContextSuccessorWorkWitnessCbor;
+  if (contextSuccessor !== undefined) {
+    if (argument.resolverIndex !== 11 || argument.semanticResolverIndex !== 2) {
+      throw new Error(
+        "CEK context successor bytes require the context semantic resolver",
+      );
+    }
+    exactPlutusDataFromCbor(argument.transitionCbor, "validation transition");
+    const transition = Data.from(
+      Buffer.from(argument.transitionCbor).toString("hex"),
+      ValidationOneStepWitness,
+    );
+    const successor = transition.claimed_successor;
+    const programCounter = Number(successor.program_counter);
+    if (
+      successor.phase !== "Cek" ||
+      !Number.isSafeInteger(programCounter) ||
+      programCounter < 0 ||
+      hashMidgardValidationWorkWitness({
+        phase: "cek",
+        programCounter,
+        witnessCbor: contextSuccessor,
+      }).toString("hex") !== successor.work_root
+    ) {
+      throw new Error(
+        "CEK context successor witness does not match frozen successor work root",
+      );
+    }
+    if (
+      asArray(
+        decodeSingleCbor(contextSuccessor),
+        "CEK context successor witness",
+      ).length !== 9
+    ) {
+      throw new Error(
+        "CEK context successor witness must have exactly nine fields",
+      );
+    }
+  }
   const isProgramSelection =
     argument.resolverIndex === 11 &&
     argument.semanticResolverIndex === 1 &&
@@ -1404,7 +1447,11 @@ export const validateCekSubmissionEvidence = (
         "CEK route material and necessity receipts are permitted only for an exact program-selection witness",
       );
     }
-    return Object.freeze({});
+    return Object.freeze(
+      contextSuccessor === undefined
+        ? {}
+        : { cekContextSuccessorWorkWitnessCbor: Buffer.from(contextSuccessor) },
+    );
   }
   if (argument.cekRouteMaterial === undefined) {
     throw new Error(
@@ -1857,6 +1904,7 @@ const requireStagedOneStepArgument = (
   readonly semanticResolverIndex: number;
   readonly semanticResolverGlobalIndex: number;
   readonly evidenceHash: string;
+  readonly cekContextSuccessorWorkWitnessCbor?: Uint8Array;
   readonly cekRouteMaterial?: CekRouteMaterial;
   readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSet;
 } => {

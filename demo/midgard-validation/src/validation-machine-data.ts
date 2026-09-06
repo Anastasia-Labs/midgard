@@ -44,6 +44,7 @@ import {
   type MidgardFieldCarriage,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import type {
@@ -1500,6 +1501,8 @@ export type ValidationOneStepArgument = {
   readonly transitionCbor: Buffer;
   readonly auxiliaryCbor: Buffer;
   readonly evidenceCbor: Buffer;
+  /** Exact adjacent witness from fresh canonical replay for context settlement. */
+  readonly cekContextSuccessorWorkWitnessCbor?: Buffer;
   readonly cekRouteMaterial?: CekRouteMaterial;
 };
 
@@ -2103,12 +2106,36 @@ export const buildValidationOneStepArgument = ({
     );
   }
   const cekRouteMaterial = buildCekRouteMaterial({ trace, witness });
+  const resolverIndex = resolverPhaseIndex(pre.phase);
+  const semanticResolverIndex = validationSemanticResolverIndex(witness);
+  let cekContextSuccessorWorkWitnessCbor: Buffer | undefined;
+  if (resolverIndex === 11 && semanticResolverIndex === 2) {
+    const adjacent = trace.witnesses[stateIndex + 1];
+    if (
+      adjacent === undefined ||
+      adjacent.phase !== claimedSuccessor.phase ||
+      adjacent.programCounter !== claimedSuccessor.programCounter ||
+      !hashMidgardValidationWorkWitness({
+        phase: adjacent.phase,
+        programCounter: adjacent.programCounter,
+        witnessCbor: adjacent.cbor,
+      }).equals(claimedSuccessor.workRoot)
+    ) {
+      throw new Error(
+        "CEK context requires the exact adjacent successor work witness",
+      );
+    }
+    cekContextSuccessorWorkWitnessCbor = Buffer.from(adjacent.cbor);
+  }
   return {
-    resolverIndex: resolverPhaseIndex(pre.phase),
-    semanticResolverIndex: validationSemanticResolverIndex(witness),
+    resolverIndex,
+    semanticResolverIndex,
     transitionCbor,
     auxiliaryCbor,
     evidenceCbor,
     ...(cekRouteMaterial === undefined ? {} : { cekRouteMaterial }),
+    ...(cekContextSuccessorWorkWitnessCbor === undefined
+      ? {}
+      : { cekContextSuccessorWorkWitnessCbor }),
   };
 };

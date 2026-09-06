@@ -22,6 +22,7 @@ import {
 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
+  decodeCekContextCborArray,
   EMPTY_MERKLE_TREE_ROOT,
   EventKeySchema,
   EventToStepValueSchema,
@@ -1164,6 +1165,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   disputedValueKind,
   cekSelection = false,
   cekCoreArm,
+  cekContextStage,
   plutusSelection = false,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
@@ -1196,6 +1198,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly disputedValueKind?: ValueAndMintStepKind;
   readonly cekSelection?: boolean;
   readonly cekCoreArm?: string;
+  readonly cekContextStage?: number;
   readonly plutusSelection?: boolean;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
@@ -1285,6 +1288,20 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   let challengerTrace = originalTrace;
   const disputedLowIndex = challengerTrace.states.findIndex((state, index) => {
     const auxiliary = challengerTrace.witnesses[index]?.auxiliary;
+    const contextStage = (() => {
+      if (cekContextStage === undefined || state.phase !== "cek")
+        return undefined;
+      const work = decodeCekContextCborArray(
+        Buffer.from(challengerTrace.witnesses[index]!.cbor).toString("hex"),
+        9,
+      );
+      if (!Array.isArray(work) || typeof work[1] !== "string" || work[1] === "")
+        return undefined;
+      const context = decodeCekContextCborArray(work[1], 25);
+      return Array.isArray(context) && typeof context[0] === "bigint"
+        ? Number(context[0])
+        : undefined;
+    })();
     return (
       state.phase === disputedPhase &&
       (scriptSourcesSemanticIndex === undefined ||
@@ -1329,6 +1346,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
               preconditionsItemIndex)) &&
       (!lateNativeItem ||
         challengerTrace.states[index - 1]?.phase === "nativeScripts") &&
+      (cekContextStage === undefined || contextStage === cekContextStage) &&
       (cekCoreArm === undefined ||
         (auxiliary?.kind === "cekCoreStep" &&
           auxiliary.step.witness.kind === cekCoreArm)) &&
