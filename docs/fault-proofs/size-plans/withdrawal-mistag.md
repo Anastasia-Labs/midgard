@@ -58,5 +58,12 @@ predecessor, coordinate, commitment and reference substitutions must refuse.
 All fit assertions retain the actual Van Rossem limits and required reserves;
 no evaluator or size exemptions apply.
 
-Final shared-branch ledger, build digest and verification results are recorded
-after copying the family commits and rerunning the checks there.
+Shared integration at `3ed50277` rebuilt all 841 contracts together. The normal
+testnet blueprint SHA-256 is
+`5df0c0afd31b059c0c65d952f8c1d5c5e4e150283aee52466535f111e3b28998`.
+The eight-case suite and ledger verifier pass on that build: 192 transactions,
+136 publications, maximum 13,627 signed bytes / 12,187,629 memory /
+7,542,173,847 CPU, and minimum publication reserve 2,245 bytes. Shared
+regression 7/7, SDK 7/7, runtime/replay 16/16, watcher 3/3, fault-proofs tsc,
+and 49 nonzero collected Aiken checks pass. The committed ledger records each
+measurement and its margin.

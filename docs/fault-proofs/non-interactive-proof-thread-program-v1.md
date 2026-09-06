@@ -805,10 +805,33 @@ All six installed/maximum cross-block lifecycle cases passed on this blueprint,
 including authenticated settlement creation, raw L1 recovery, permanent proof,
 and removal. The regenerated 77-row ledger passes its current-blueprint verifier:
 maximum signed size 12,300 bytes, memory 4,141,688, CPU 1,268,248,489.
-Classifier/runtime/preparation checks collected 18 passing cases, and the watcher
+Runtime/preparation checks collected 18 passing cases, and the watcher
 application collected three passing cases with 50 installed categories.
 
 The independent descriptor map-order correction (`18722129`) passed 14 focused
 shared-tree tests; five-publication 64 KiB raw evidence recovery (`342c07e6`)
 passed seven shared-tree tests. These checks do not close the remaining
 withdrawal, mint authorization, transition trace, or validation-dispute work.
+
+
+### Withdrawal mistag shared integration — 2026-09-05
+
+Copied the completed family and installed actuator onto the shared branch in
+`f5c6e20e` and `3ed50277`, after the structured Data carriage and frontier
+prerequisites. Recompiled all 841 blueprint entries together with
+`aiken v1.1.23+5adf783`, normal `testnet` build. Blueprint SHA-256:
+`5df0c0afd31b059c0c65d952f8c1d5c5e4e150283aee52466535f111e3b28998`.
+
+The shared eight-case installed/maximum suite passed, and its digest-bound
+ledger verifier passed: 192 measured transactions, including 136 publications.
+Maximum signed size is 13,627 bytes, memory 12,187,629 and CPU 7,542,173,847;
+minimum publication reserve is 2,245 bytes. Both combined 64-branch proof
+shapes mint permanent evidence and remove the challenged queue suffix.
+Installed cases additionally exercise raw-L1 observation and durable recovery.
+
+Shared checks: withdrawal regression 7/7 (both directions and cancellation at
+all five stages), SDK codec/preparation 7/7, runtime/replay 16/16, watcher
+application 3/3, fault-proofs TypeScript check, and 49 collected Aiken checks
+(carriage 4, steps 01–04: 4/4/18/14, frontier 5). The installed registry now
+contains 51 of 54 families. Transition trace, validation-trace dispute and mint
+authorization remain open; this receipt does not close the whole program.
