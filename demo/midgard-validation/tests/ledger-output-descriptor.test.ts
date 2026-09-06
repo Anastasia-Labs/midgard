@@ -28,6 +28,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   buildCanonicalMidgardLedgerOutputMaterial,
+  createCanonicalMidgardLedgerDescriptorResolver,
 } from "../src/ledger-output-descriptor.js";
 
 const protectedScriptAddress = Buffer.concat([
@@ -487,4 +488,45 @@ describe("authenticated ledger output map order", () => {
       ).toBe(true);
     },
   );
+});
+
+it("memoizes exact output bytes and index only within one reconstruction", () => {
+  const resolve = createCanonicalMidgardLedgerDescriptorResolver();
+  const { output, cbor } = outputFixture();
+  const key = (index: number, txByte = 1) =>
+    encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, txByte),
+      outputIndex: index,
+    });
+  const first = resolve({ outRef: key(0), outputCbor: cbor });
+  expect(resolve({ outRef: key(0, 2), outputCbor: cbor })).toEqual(first);
+  const differentIndex = resolve({ outRef: key(1), outputCbor: cbor });
+  expect(differentIndex).toEqual(
+    buildCanonicalMidgardLedgerEntryOutputMaterial({
+      outRef: key(1),
+      outputCbor: cbor,
+    }).descriptorCbor,
+  );
+  expect(differentIndex).not.toEqual(first);
+  const changed = encodeMidgardTxOutput({
+    ...output,
+    value: { ...output.value, lovelace: output.value.lovelace + 1n },
+  });
+  expect(resolve({ outRef: key(0), outputCbor: changed })).toEqual(
+    buildCanonicalMidgardLedgerEntryOutputMaterial({
+      outRef: key(0),
+      outputCbor: changed,
+    }).descriptorCbor,
+  );
+  expect(resolve({ outRef: key(0), outputCbor: changed })).not.toEqual(first);
+  first.fill(0);
+  expect(resolve({ outRef: key(0), outputCbor: cbor })).toEqual(
+    buildCanonicalMidgardLedgerEntryOutputMaterial({
+      outRef: key(0),
+      outputCbor: cbor,
+    }).descriptorCbor,
+  );
+  expect(() =>
+    resolve({ outRef: Buffer.from([0]), outputCbor: cbor }),
+  ).toThrow();
 });

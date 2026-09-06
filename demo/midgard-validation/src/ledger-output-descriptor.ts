@@ -173,3 +173,27 @@ export const buildCanonicalMidgardLedgerEntryOutputMaterial = ({
     outputCbor,
   });
 };
+
+/** Reuse pure descriptor construction only within one retained-ledger reconstruction. */
+export const createCanonicalMidgardLedgerDescriptorResolver = () => {
+  const descriptors = new Map<string, Buffer>();
+  return ({
+    outRef,
+    outputCbor,
+  }: {
+    readonly outRef: Uint8Array;
+    readonly outputCbor: Uint8Array;
+  }): Buffer => {
+    const outputIndex = Number(decodeMidgardOutRefBytes(outRef).index);
+    const key = `${outputIndex}:${Buffer.from(outputCbor).toString("hex")}`;
+    let descriptor = descriptors.get(key);
+    if (descriptor === undefined) {
+      descriptor = buildCanonicalMidgardLedgerOutputMaterial({
+        outputIndex,
+        outputCbor,
+      }).descriptorCbor;
+      descriptors.set(key, descriptor);
+    }
+    return Buffer.from(descriptor);
+  };
+};

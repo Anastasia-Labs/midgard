@@ -9,7 +9,7 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -850,14 +850,15 @@ export const reconstructDaPayload = async ({
   const retainedDescriptors = retainedLedgerDescriptorCandidates(
     body.validation_trace_witnesses,
   );
+  const resolveDescriptor = createCanonicalMidgardLedgerDescriptorResolver();
   const descriptorUtxos = rawUtxos.map((entry) => {
     try {
       return {
         key: Buffer.from(entry.key),
-        value: buildCanonicalMidgardLedgerEntryOutputMaterial({
+        value: resolveDescriptor({
           outRef: entry.key,
           outputCbor: entry.value,
-        }).descriptorCbor,
+        }),
       };
     } catch (cause) {
       try {

@@ -13,7 +13,7 @@ import {
   MidgardNativeScriptDecodingTraceOutcomeKinds,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -58,12 +58,13 @@ export const nativeScriptDecodingPriorLedger = async (
     ...(predecessor?.payload.block_body.validation_trace_witnesses ?? []),
     ...current.payload.block_body.validation_trace_witnesses,
   ]);
+  const resolveDescriptor = createCanonicalMidgardLedgerDescriptorResolver();
   const descriptorFor = (key: Buffer, value: Buffer) => {
     try {
-      return buildCanonicalMidgardLedgerEntryOutputMaterial({
+      return resolveDescriptor({
         outRef: key,
         outputCbor: value,
-      }).descriptorCbor;
+      });
     } catch {
       return retainedUndecodableOutputDescriptor({
         key,
