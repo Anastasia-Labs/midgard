@@ -59,21 +59,32 @@ const datumTraverseStage = (control: readonly Data[]): bigint => {
 };
 
 /**
- * Published role index for one datum-traversal step. Attach (action 5) and
- * advance (action 0) each split across an integer and a bytes validator; every
- * other action has a single physical role.
+ * Published role index for one datum-traversal step. Attach (action 5) splits
+ * across an integer and a bytes validator; advance (action 0) splits across
+ * the integer, bytes, large-constructor, large-fields and close validators —
+ * all pinned against the datum traversal sub-control stage the validators
+ * read. Every other action has a single physical role.
  */
 export const ledgerOutputProofDatumRoleIndex = (
   control: readonly Data[],
   action: Constr<Data>,
 ): number => {
-  const scalarRole = (integerRole: number, bytesRole: number): number => {
+  const attachRole = (integerRole: number, bytesRole: number): number => {
     const traverseStage = datumTraverseStage(control);
     if (traverseStage === 1n) return integerRole;
     if (traverseStage === 2n) return bytesRole;
     throw new Error(
       "Scalar datum action requires the integer or bytes traversal stage",
     );
+  };
+  const advanceRole = (): number => {
+    const traverseStage = datumTraverseStage(control);
+    if (traverseStage === 1n) return 7;
+    if (traverseStage === 2n) return 18;
+    if (traverseStage === 3n) return 20;
+    if (traverseStage === 4n) return 21;
+    if (traverseStage === 5n) return 22;
+    throw new Error("NoAction datum step requires an active traversal stage");
   };
   switch (action.index) {
     case 7:
@@ -91,9 +102,9 @@ export const ledgerOutputProofDatumRoleIndex = (
     case 6:
       return 6;
     case 5:
-      return scalarRole(5, 17);
+      return attachRole(5, 17);
     case 0:
-      return scalarRole(7, 18);
+      return advanceRole();
     default:
       throw new Error("Unknown datum action");
   }
@@ -162,7 +173,9 @@ export const deriveLedgerOutputProofStepPlan = ({
     roleIndex = finished ? 13 : scanStage <= 1n ? 0 : scanStage <= 3n ? 11 : 12;
   } else if (stage === 1n) roleIndex = 1;
   else if (stage === 2n) {
-    if (witness.index === 0 && witness.fields.length === 0) roleIndex = 7;
+    // `NoWitness` at the datum stage is the terminal finish hand-off
+    // (`ledger_output_proof_datum.finish`, role 19).
+    if (witness.index === 0 && witness.fields.length === 0) roleIndex = 19;
     else {
       if (
         witness.index !== 3 ||

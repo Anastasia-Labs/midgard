@@ -68,18 +68,30 @@ describe("ledger output proof datum role selection", () => {
       ).toBe(role);
   });
 
+  it("splits the attach action by the scalar traversal stage", () => {
+    expect(
+      ledgerOutputProofDatumRoleIndex(integerControl, new Constr(5, [])),
+    ).toBe(5);
+    expect(
+      ledgerOutputProofDatumRoleIndex(bytesControl, new Constr(5, [])),
+    ).toBe(17);
+  });
+
   it.each([
-    [5, 5, 17],
-    [0, 7, 18],
+    [1n, 7],
+    [2n, 18],
+    [3n, 20],
+    [4n, 21],
+    [5n, 22],
   ])(
-    "splits scalar action %i by the traversal stage",
-    (action, integerRole, bytesRole) => {
+    "routes the advance action at traversal stage %i to role %i",
+    (stage, role) => {
       expect(
-        ledgerOutputProofDatumRoleIndex(integerControl, new Constr(action, [])),
-      ).toBe(integerRole);
-      expect(
-        ledgerOutputProofDatumRoleIndex(bytesControl, new Constr(action, [])),
-      ).toBe(bytesRole);
+        ledgerOutputProofDatumRoleIndex(
+          controlAtTraverseStage(stage),
+          new Constr(0, []),
+        ),
+      ).toBe(role);
     },
   );
 
@@ -91,6 +103,16 @@ describe("ledger output proof datum role selection", () => {
           new Constr(5, []),
         ),
       ).toThrow(/integer or bytes traversal stage/);
+  });
+
+  it("refuses the advance action outside an active traversal stage", () => {
+    for (const stage of [0n, 6n, 7n])
+      expect(() =>
+        ledgerOutputProofDatumRoleIndex(
+          controlAtTraverseStage(stage),
+          new Constr(0, []),
+        ),
+      ).toThrow(/active traversal stage/);
   });
 
   it("refuses an unknown datum action", () => {
