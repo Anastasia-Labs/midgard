@@ -542,7 +542,7 @@ fn exact_pair_summary_for_node_v1(
   }
 }
 
-fn verify_semantic_choose_data_v1(
+pub fn verify_semantic_choose_data_v1(
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
   witness: SemanticBuiltinWitnessV1,
@@ -1790,7 +1790,7 @@ fn semantic_pair_components_v1(
   )
 }
 
-fn verify_semantic_pair_v1(
+pub fn verify_semantic_pair_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
@@ -2814,7 +2814,7 @@ fn runtime_arguments_match_kinds_v1(
   }
 }
 
-fn revealed_runtime_payload_bytes_v1(
+pub fn revealed_runtime_payload_bytes_v1(
   arguments: List<RuntimeValueWitnessV1>,
 ) -> Int {
   when arguments is {
@@ -2959,7 +2959,7 @@ fn builtin_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
   }
 }
 
-fn builtin_arguments_are_well_typed_v1(
+pub fn builtin_arguments_are_well_typed_v1(
   tag: Int,
   arguments: List<RuntimeValueWitnessV1>,
 ) -> Bool {
@@ -3486,4 +3486,467 @@ pub fn direct_builtin_failure_budget_v1(
 
 pub fn result_root_v1(result: ValueWitnessV1) -> ByteArray {
   value_root_v1(result)
+}
+
+pub fn verify_direct_scalar_semantics(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+) -> Bool {
+  expect
+    revealed_argument_payload_bytes_v1(arguments) + revealed_constant_payload_bytes_v1(
+      result,
+    ) <= max_direct_builtin_revealed_payload_bytes
+  if tag >= 0 && tag <= 9 {
+    verify_integer_binary_v1(tag, arguments, result)
+  } else if tag >= 10 && tag <= 20 {
+    verify_bytes_v1(tag, arguments, result)
+  } else if tag == 21 || tag == 52 || tag == 53 {
+    verify_signature_v1(tag, arguments, result)
+  } else if tag >= 22 && tag <= 25 {
+    verify_strings_v1(tag, arguments, result)
+  } else if tag >= 26 && tag <= 28 {
+    verify_control_v1(tag, arguments, result)
+  } else if tag >= 71 && tag <= 86 {
+    verify_v3_bytes_v1(tag, arguments, result)
+  } else {
+    False
+  }
+}
+
+pub fn verify_direct_structured_semantics(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+) -> Bool {
+  expect
+    revealed_argument_payload_bytes_v1(arguments) + revealed_constant_payload_bytes_v1(
+      result,
+    ) <= max_direct_builtin_revealed_payload_bytes
+  if tag >= 29 && tag <= 35 {
+    verify_pair_and_list_v1(tag, arguments, result)
+  } else if tag == 36 {
+    verify_choose_data_v1(arguments, result)
+  } else if tag >= 37 && tag <= 51 {
+    verify_data_v1(tag, arguments, result)
+  } else if tag >= 54 && tag <= 60 {
+    verify_bls_g1_v1(tag, arguments, result)
+  } else if tag >= 61 && tag <= 67 {
+    verify_bls_g2_v1(tag, arguments, result)
+  } else if tag == 68 || tag == 69 {
+    verify_bls_expression_v1(tag, arguments, result)
+  } else {
+    False
+  }
+}
+
+pub fn verify_semantic_data_construct(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
+  if tag == 37 {
+    expect [index, fields] = arguments
+    verify_semantic_mkconstr_data_v1(index, fields, result, witness)
+  } else if tag == 42 {
+    expect [source] = arguments
+    verify_semantic_unconstr_data_v1(source, result, witness)
+  } else {
+    False
+  }
+}
+
+pub fn verify_semantic_data_scalar(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
+  if tag == 39 {
+    expect [items] = arguments
+    verify_semantic_mklist_data_v1(items, result, witness)
+  } else if tag == 40 {
+    expect [integer] = arguments
+    verify_semantic_idata_v1(integer, result, witness)
+  } else if tag == 41 {
+    expect [bytes] = arguments
+    verify_semantic_bdata_v1(bytes, result, witness)
+  } else if tag == 44 {
+    expect [source] = arguments
+    verify_semantic_unlist_data_v1(source, result, witness)
+  } else if tag == 45 {
+    expect [source] = arguments
+    verify_semantic_uninteger_data_v1(source, result, witness)
+  } else if tag == 46 {
+    expect [source] = arguments
+    verify_semantic_unbytes_data_v1(source, result, witness)
+  } else {
+    False
+  }
+}
+
+pub fn verify_semantic_data_misc(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
+  if tag == 47 {
+    expect [left, right] = arguments
+    expect empty_semantic_material_v1(witness)
+    result_is_semantic_constant_v1(
+      result,
+      cek_constant_v1.BooleanConstant,
+      cek_data_v1.semantic_data_summary_v1(
+        bool_data(
+          data_constant_summary_v1(left) == data_constant_summary_v1(right),
+        ),
+      ),
+      1,
+    )
+  } else if tag == 48 {
+    expect [first, second] = arguments
+    expect empty_semantic_material_v1(witness)
+    let first_summary = data_constant_summary_v1(first)
+    let second_summary = data_constant_summary_v1(second)
+    result_is_semantic_constant_v1(
+      result,
+      cek_constant_v1.PairConstant {
+        first: cek_constant_v1.DataConstant,
+        second: cek_constant_v1.DataConstant,
+      },
+      cek_data_v1.small_constr_data_summary_v1(
+        0,
+        cek_data_v1.prepend_data_list_summary_v1(
+          first_summary,
+          cek_data_v1.prepend_data_list_summary_v1(
+            second_summary,
+            cek_data_v1.empty_data_list_summary_v1(),
+          ),
+        ),
+      ),
+      first_summary.memory + second_summary.memory,
+    )
+  } else if tag == 49 {
+    expect [unit] = arguments
+    expect empty_semantic_material_v1(witness)
+    let Void = unit_v1(unit)
+    let empty = cek_data_v1.empty_data_list_summary_v1()
+    result_is_semantic_constant_v1(
+      result,
+      cek_constant_v1.ListConstant { element: cek_constant_v1.DataConstant },
+      cek_data_v1.list_data_summary_v1(empty),
+      0,
+    )
+  } else if tag == 50 {
+    expect [unit] = arguments
+    expect empty_semantic_material_v1(witness)
+    let Void = unit_v1(unit)
+    let empty = cek_data_v1.empty_data_list_summary_v1()
+    result_is_semantic_constant_v1(
+      result,
+      cek_constant_v1.ListConstant {
+        element: cek_constant_v1.PairConstant {
+          first: cek_constant_v1.DataConstant,
+          second: cek_constant_v1.DataConstant,
+        },
+      },
+      cek_data_v1.list_data_summary_v1(empty),
+      0,
+    )
+  } else if tag == 51 {
+    expect [source] = arguments
+    expect witness.data_nodes == []
+    expect witness.list_nodes == []
+    expect witness.pair_nodes == []
+    expect [raw_data] = witness.scalar_preimages
+    expect bytearray.length(raw_data) > 0
+    expect
+      bytearray.length(raw_data) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
+    expect Some(data) = cbor.deserialise(raw_data)
+    expect cbor.serialise(data) == raw_data
+    expect
+      cek_data_v1.semantic_data_summary_v1(data) == data_constant_summary_v1(
+        source,
+      )
+    let payload = builtin.b_data(raw_data)
+    result_is_semantic_constant_v1(
+      result,
+      cek_constant_v1.ByteStringConstant,
+      cek_data_v1.semantic_data_summary_v1(payload),
+      cek_constant_v1.bytearray_memory_size_v1(raw_data),
+    )
+  } else {
+    False
+  }
+}
+
+pub fn verify_semantic_list_construct(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
+  if tag == 31 || tag == 35 {
+    expect [source, ..branches] = arguments
+    expect [node] = witness.data_nodes
+    expect witness.pair_nodes == []
+    expect witness.scalar_preimages == []
+    let first = exact_list_summary_for_node_v1(node, witness.list_nodes)
+    let Pair(_, parts) = semantic_list_source_v1(source, node, first)
+    if tag == 31 {
+      expect [when_empty, when_nonempty] = branches
+      result_is_selected_v1(
+        result,
+        if parts.1st.length == 0 {
+          when_empty
+        } else {
+          when_nonempty
+        },
+      )
+    } else {
+      expect branches == []
+      result_is_semantic_constant_v1(
+        result,
+        cek_constant_v1.BooleanConstant,
+        cek_data_v1.semantic_data_summary_v1(bool_data(parts.1st.length == 0)),
+        1,
+      )
+    }
+  } else if tag == 32 {
+    expect [item, source] = arguments
+    expect [node] = witness.data_nodes
+    expect witness.pair_nodes == []
+    expect witness.scalar_preimages == []
+    let first = exact_list_summary_for_node_v1(node, witness.list_nodes)
+    let Pair(element, parts) = semantic_list_source_v1(source, node, first)
+    let item_parts = semantic_constant_parts_v1(item)
+    expect item_parts.constant_type == element
+    let sequence = cek_data_v1.prepend_data_list_summary_v1(
+      item_parts.payload,
+      parts.1st,
+    )
+    result_is_semantic_constant_v1(
+      result,
+      cek_constant_v1.ListConstant { element },
+      cek_data_v1.list_data_summary_v1(sequence),
+      item_parts.memory + parts.2nd,
+    )
+  } else {
+    False
+  }
+}
+
+pub fn verify_semantic_list_select(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  result: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
+  if tag == 33 || tag == 34 {
+    expect [source] = arguments
+    let Pair(element, values) = semantic_list_head_and_tail_v1(source, witness)
+    if tag == 33 {
+      result_is_semantic_constant_v1(
+        result,
+        element,
+        values.1st.1st,
+        values.1st.2nd,
+      )
+    } else {
+      result_is_semantic_constant_v1(
+        result,
+        cek_constant_v1.ListConstant { element },
+        cek_data_v1.list_data_summary_v1(values.2nd.1st),
+        values.2nd.2nd,
+      )
+    }
+  } else {
+    False
+  }
+}
+
+pub fn authenticated_builtin_failure_budget(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+) -> cek_cost_v1.BuiltinBudgetV1 {
+  let bls_uncompress_is_paid = if tag == 60 {
+    expect [source] = arguments
+    bytearray.length(bytes_v1(source)) == 48
+  } else if tag == 67 {
+    expect [source] = arguments
+    bytearray.length(bytes_v1(source)) == 96
+  } else {
+    False
+  }
+  if or {
+    tag == 4,
+    tag == 5,
+    tag == 6,
+    tag == 52,
+    tag == 53,
+    tag == 58,
+    tag == 65,
+    tag == 73,
+    bls_uncompress_is_paid,
+  } {
+    direct_builtin_budget_v1(tag, arguments)
+  } else {
+    cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 }
+  }
+}
+
+pub fn verify_semantic_failure_material(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
+  expect [source] = arguments
+  expect [node] = witness.data_nodes
+  expect witness.scalar_preimages == []
+  let list_summary = exact_list_summary_for_node_v1(node, witness.list_nodes)
+  let pair_summary = exact_pair_summary_for_node_v1(node, witness.pair_nodes)
+  if tag == 33 || tag == 34 {
+    expect witness.pair_nodes == []
+    let Pair(_, parts) = semantic_list_source_v1(source, node, list_summary)
+    parts.1st.length == 0
+  } else if tag >= 42 && tag <= 46 {
+    let summary = data_constant_summary_v1(source)
+    expect top_node_matches_v1(summary, node, list_summary, pair_summary)
+    if tag == 42 {
+      when node is {
+        cek_data_v1.ConstrSmallData { .. } -> False
+        cek_data_v1.ConstrLargeData { .. } -> False
+        _ -> True
+      }
+    } else if tag == 43 {
+      when node is {
+        cek_data_v1.MapData { .. } -> False
+        _ -> True
+      }
+    } else if tag == 44 {
+      when node is {
+        cek_data_v1.ListData { .. } -> False
+        _ -> True
+      }
+    } else if tag == 45 {
+      when node is {
+        cek_data_v1.IntegerData { .. } -> False
+        _ -> True
+      }
+    } else {
+      expect tag == 46
+      when node is {
+        cek_data_v1.BytesData { .. } -> False
+        _ -> True
+      }
+    }
+  } else {
+    False
+  }
+}
+
+/// Preserves the exact consensus value root while avoiding repeated whole-value
+/// decoding in a later authenticated semantic hop.
+pub fn compact_semantic_value(value: ValueWitnessV1) -> ValueWitnessV1 {
+  when value is {
+    ConstantValue(witness) -> {
+      let Pair(payload, memory) = cek_constant_v1.constant_semantic_projection(
+        witness,
+      )
+      SemanticConstantValue { type_cbor: witness.type_cbor, payload, memory }
+    }
+    _ -> value
+  }
+}
+
+fn authenticated_bls_expression_root(
+  expression: BlsExpressionWitnessV1,
+) -> ByteArray {
+  when expression is {
+    BlsMillerLoopExpression { g1, g2 } ->
+      cek_proof_v1.hash_bls_miller_loop_expression_v1(
+        cek_constant_v1.constant_root_v1(g1),
+        cek_constant_v1.constant_root_v1(g2),
+      )
+    BlsMultiplyExpression { left, right } ->
+      cek_proof_v1.hash_bls_multiply_expression_v1(
+        authenticated_bls_expression_root(left),
+        authenticated_bls_expression_root(right),
+      )
+  }
+}
+
+/// Authenticates exact expression topology and canonical leaf commitments;
+/// the next pinned hop performs both nonserializable cryptographic evaluations.
+pub fn verify_bls_expression_roots(
+  left: BlsExpressionWitnessV1,
+  right: BlsExpressionWitnessV1,
+  left_root: ByteArray,
+  right_root: ByteArray,
+) -> Bool {
+  let Pair(left_leaves, left_depth) = bls_expression_metrics_v1(left)
+  let Pair(right_leaves, right_depth) = bls_expression_metrics_v1(right)
+  and {
+    left_leaves + right_leaves <= max_direct_bls_miller_loop_leaves,
+    left_depth <= max_direct_bls_miller_loop_leaves,
+    right_depth <= max_direct_bls_miller_loop_leaves,
+    authenticated_bls_expression_root(left) == left_root,
+    authenticated_bls_expression_root(right) == right_root,
+  }
+}
+
+fn with_authenticated_bls_evaluation(
+  expression: BlsExpressionWitnessV1,
+  then: fn(MillerLoopResult) -> result,
+) -> result {
+  when expression is {
+    BlsMillerLoopExpression { g1, g2 } ->
+      then(
+        builtin.bls12_381_miller_loop(
+          builtin.bls12_381_g1_uncompress(g1_bytes_v1(ConstantValue(g1))),
+          builtin.bls12_381_g2_uncompress(g2_bytes_v1(ConstantValue(g2))),
+        ),
+      )
+    BlsMultiplyExpression { left, right } ->
+      with_authenticated_bls_evaluation(
+        left,
+        fn(left_result) {
+          with_authenticated_bls_evaluation(
+            right,
+            fn(right_result) {
+              then(
+                builtin.bls12_381_mul_miller_loop_result(
+                  left_result,
+                  right_result,
+                ),
+              )
+            },
+          )
+        },
+      )
+  }
+}
+
+pub fn verify_authenticated_bls_final(
+  left: BlsExpressionWitnessV1,
+  right: BlsExpressionWitnessV1,
+  result: ValueWitnessV1,
+) -> Bool {
+  with_authenticated_bls_evaluation(
+    left,
+    fn(left_result) {
+      with_authenticated_bls_evaluation(
+        right,
+        fn(right_result) {
+          result_is_constant_v1(
+            result,
+            cek_constant_v1.BooleanConstant,
+            bool_data(builtin.bls12_381_final_verify(left_result, right_result)),
+          )
+        },
+      )
+    },
+  )
 }

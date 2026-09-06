@@ -199,6 +199,19 @@ pub fn verify_constant_witness_v1(
   root == constant_root_v1(witness)
 }
 
+/// Exact compact opening of an authenticated canonical constant.
+pub fn constant_semantic_projection(
+  witness: ConstantWitnessV1,
+) -> Pair<cek_data_v1.DataSummaryV1, Int> {
+  let constant_type = decode_constant_type_v1(witness.type_cbor)
+  let payload = decode_constant_payload_v1(witness.payload_cbor)
+  expect payload_matches_type(constant_type, payload)
+  Pair(
+    cek_data_v1.semantic_data_summary_v1(payload),
+    semantic_memory_size_v1(constant_type, payload),
+  )
+}
+
 pub fn constant_root_v1(witness: ConstantWitnessV1) -> ByteArray {
   let constant_type = decode_constant_type_v1(witness.type_cbor)
   let payload = decode_constant_payload_v1(witness.payload_cbor)

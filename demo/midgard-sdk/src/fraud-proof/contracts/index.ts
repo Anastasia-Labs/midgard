@@ -11,6 +11,12 @@ export {
   fraudProofContractsToFirstSteps,
 } from "./build.js";
 export {
+  CEK_CORE_ARM_HOP_COUNTS,
+  CEK_CORE_STAGE_REFERENCES,
+  CEK_CORE_STAGE_TITLES,
+  type CekCoreStages,
+} from "./cek-core.js";
+export {
   buildCanonicalDecodabilityFaultProofContracts,
   type BuildCanonicalDecodabilityFaultProofContractsParams,
   CANONICAL_DECODABILITY_FAULT_PROOF_TITLES,

@@ -308,3 +308,52 @@ pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-cek
   bit-exactly; cross-language goldens are mandatory.
 - **Spec.** C48 "bounded microsteps": the chain does not change the step
   grammar or budgets; the equality tests in §8 are the proof obligation.
+
+## Implemented chain refinement
+
+The physical binder retains the existing blueprint title and original step wire,
+but opens the step as `Data`. It pins the raw witness hash, exact machine frame,
+prepared resolution, arm, group and progress. Every arm authenticates that same
+witness and emits the exact next datum to its configured successor. Settle checks
+the group-specific hop count and the original successor predicate before award.
+The original aggregate verifier remains available as the parity oracle.
+
+Compute and machine controls take one arm hop. Direct builtins take roots,
+budget, then scalar or structured semantics. Semantic builtins take argument
+roots, result root, budget, then one of seven semantic leaves. The two root hops
+replace whole canonical constants with compact semantic openings having exactly
+the same consensus value root; this avoids reopening a full context-derived
+constant in every semantic predicate. The original raw evidence remains pinned
+and is reconstructed unchanged at settle. Map conversion starts in three hops
+(roots, budget, nodes); its subsequent controls use one hop. Failure, semantic
+failure and type failure each use two hops. BLS final uses budget, expression
+roots, then the atomic cryptographic final predicate.
+
+The planned split between left and right BLS Miller-loop evaluations is not a
+valid Plutus continuation: `MlResult` has no serializable representation. Both
+expressions therefore remain in one narrow final predicate after separate
+budget/frame and canonical expression-root hops. The actual ten-leaf source program has passed the published
+chain through proof mint and block removal under the normal L1 parameters.
+This preserves the ten-leaf domain rather than substituting serialized claims
+for cryptographic evaluation.
+
+`MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run
+tests/cek-core-lifecycle.test.ts` records the standard fixed-path core fit ledger.
+Before final fit assertions, every measured submission is also checkpointed to
+`/tmp/midgard-cek-core-fit-raw-<blueprint-sha256>.jsonl` with its exact blueprint
+digest, so a later failing maximum does not erase the measured evidence.
+
+Measured normal blueprint `08a2be743216422962999525a4e76a257c82e00b2bffb2e0bb028d3158898c85`
+(pinned `v1.1.23+5adf783`, testnet): 18 real lifecycle checks pass. The standard
+ledger contains 1,636 publication/lifecycle rows across 17 successful shapes,
+with maxima 15,108 signed bytes, 11,937,828 memory and 6,258,356,746 CPU.
+Both the writer test and current-blueprint verifier explicitly require each
+row to stay at or below 13,200,000 memory and 8,000,000,000 CPU. Honest refusal
+is a separate negative case and does not contribute a successful shape.
+
+Registered lifecycle coverage includes the exact seven semantic leaf routes,
+map conversion start/control/finish, application, direct integer builtin,
+terminal return, JSON-restored checkpoint recovery and cancellation, ten-leaf
+BLS final and the full 9,215-byte direct payload. The original aggregate core
+and builtin verifiers remain covered by 103 focused Aiken checks, including
+projection parity, changed expression-root refusal and twelve-leaf refusal.

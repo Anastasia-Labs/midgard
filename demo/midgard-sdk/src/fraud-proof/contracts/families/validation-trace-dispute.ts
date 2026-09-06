@@ -19,6 +19,11 @@ import {
   makeWithdrawalValidator,
   tryBuild,
 } from "../blueprint.js";
+import {
+  buildCekCoreStages,
+  cekCoreEntryHashes,
+  type CekCoreStages,
+} from "../cek-core.js";
 import { buildSharedFaultProofContracts } from "../shared.js";
 import {
   CEK_PROGRAM_MATERIAL_SPEND_TITLE,
@@ -316,6 +321,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
   readonly validationTraceDispute: FraudProofChain & {
     readonly cekProgramMaterial: SpendingValidator;
     readonly cekMaterialTraversal: SpendingValidator;
+    readonly cekCoreStages: CekCoreStages;
     readonly opener: SpendingValidator;
     readonly source: SpendingValidator;
     readonly game: SpendingValidator;
@@ -531,6 +537,16 @@ export const buildValidationTraceDisputeChain = ({
         ),
     );
 
+    const cekCoreStages = yield* tryBuild(
+      "Failed to build bounded CEK core stages",
+      () =>
+        buildCekCoreStages(
+          blueprint,
+          network,
+          award.spendingScriptHash,
+          computationThread.policyId,
+        ),
+    );
     const cekMaterialTraversal = yield* tryBuild(
       "Failed to build CEK material traversal",
       () =>
@@ -777,6 +793,7 @@ export const buildValidationTraceDisputeChain = ({
      */
     const semanticResolverParameterValues = new Map<string, Data>([
       ["award_script_hash", award.spendingScriptHash],
+      ["arm_script_hashes", cekCoreEntryHashes(cekCoreStages)],
       [
         "cek_material_traversal_script_hash",
         cekMaterialTraversal.spendingScriptHash,
@@ -1385,6 +1402,7 @@ export const buildValidationTraceDisputeChain = ({
       proofItem,
       cekProgramMaterial,
       cekMaterialTraversal,
+      cekCoreStages,
       canonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages,
       prepareResolvers,

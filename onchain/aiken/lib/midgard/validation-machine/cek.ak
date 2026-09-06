@@ -49,6 +49,122 @@ use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
+pub fn verify_cek_core_frame(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  machine_pre: cek_machine_v1.MachineStateV1,
+  machine_post: cek_machine_v1.MachineStateV1,
+  cek: CekWitnessControlV1,
+) -> Bool {
+  and {
+    bytearray.length(cek.active_state_hash) == 32,
+    bytearray.length(cek.program_envelope_hash) == 32,
+    cek.execution_cursor >= 0,
+    cek.execution_cursor < cek.control.execution_count,
+    cek.execution_cpu_limit > 0,
+    cek.execution_memory_limit > 0,
+    machine_pre.execution_index == cek.execution_cursor,
+    cek_machine_state_hash(machine_pre) == cek.active_state_hash,
+    pre.execution_cpu == cek.completed_cpu + machine_pre.cpu,
+    pre.execution_memory == cek.completed_memory + machine_pre.memory,
+    cek_machine_v1.state_is_well_formed(machine_pre),
+    cek_machine_v1.state_is_well_formed(machine_post),
+    machine_pre.execution_index == machine_post.execution_index,
+  }
+}
+
+pub fn verify_cek_core_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  post: cek_machine_v1.MachineStateV1,
+  cek: CekWitnessControlV1,
+) -> Bool {
+  let control = cek.control
+  let execution_cursor = cek.execution_cursor
+  let completed_cpu = cek.completed_cpu
+  let completed_memory = cek.completed_memory
+  let execution_cpu_limit = cek.execution_cpu_limit
+  let execution_memory_limit = cek.execution_memory_limit
+  let program_envelope_hash = cek.program_envelope_hash
+  let next_cpu = completed_cpu + post.cpu
+  let next_memory = completed_memory + post.memory
+  let budget_exceeded = or {
+    post.cpu > execution_cpu_limit,
+    post.memory > execution_memory_limit,
+  }
+  if or {
+    budget_exceeded,
+    post.mode == cek_machine_v1.mode_halt_error,
+  } {
+    and {
+      witness.claimed_successor.execution_cpu == next_cpu,
+      witness.claimed_successor.execution_memory == next_memory,
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_plutus_script_invalid,
+      ),
+    }
+  } else if post.mode == cek_machine_v1.mode_halt_success {
+    let next_cursor = execution_cursor + 1
+    and {
+      post.cpu <= execution_cpu_limit,
+      post.memory <= execution_memory_limit,
+      witness.claimed_successor.execution_cpu == next_cpu,
+      witness.claimed_successor.execution_memory == next_memory,
+      if next_cursor == control.execution_count {
+        and {
+          witness.claimed_successor.phase == validation_trace_v1.ValueAndMint,
+          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+            validation_trace_v1.ValueAndMint,
+            pre.program_counter + 1,
+            encode_value_and_mint_witness_v1(control),
+          ),
+        }
+      } else {
+        and {
+          witness.claimed_successor.phase == validation_trace_v1.Cek,
+          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+            validation_trace_v1.Cek,
+            pre.program_counter + 1,
+            encode_cek_witness_v1(
+              control,
+              #"",
+              next_cursor,
+              next_cpu,
+              next_memory,
+              #"",
+              0,
+              0,
+              #"",
+            ),
+          ),
+        }
+      },
+    }
+  } else {
+    and {
+      witness.claimed_successor.phase == validation_trace_v1.Cek,
+      witness.claimed_successor.execution_cpu == next_cpu,
+      witness.claimed_successor.execution_memory == next_memory,
+      witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+        validation_trace_v1.Cek,
+        pre.program_counter + 1,
+        encode_cek_witness_v1(
+          control,
+          #"",
+          execution_cursor,
+          completed_cpu,
+          completed_memory,
+          cek_machine_state_hash(post),
+          execution_cpu_limit,
+          execution_memory_limit,
+          program_envelope_hash,
+        ),
+      ),
+    }
+  }
+}
+
 fn verify_cek_core_step(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,

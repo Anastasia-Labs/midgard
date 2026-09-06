@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
+use midgard/cek_cost_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/codec.{
@@ -520,7 +521,7 @@ fn environment_summary_length(summary: EnvironmentSummaryV1) -> Int {
   }
 }
 
-fn exact_state(
+pub fn exact_state(
   pre: MachineStateV1,
   mode: Int,
   focus_root: ByteArray,
@@ -697,7 +698,7 @@ fn error_successor(pre: MachineStateV1, reason: Int) -> MachineStateV1 {
   )
 }
 
-fn verify_compute_step(
+pub fn verify_compute_step(
   pre: MachineStateV1,
   post: MachineStateV1,
   witness: CoreStepWitnessV1,
@@ -917,7 +918,7 @@ fn verify_compute_step(
   }
 }
 
-fn verify_lookup_step(
+pub fn verify_lookup_step(
   pre: MachineStateV1,
   post: MachineStateV1,
   witness: CoreStepWitnessV1,
@@ -1501,7 +1502,7 @@ fn verify_return_case_invalid(
   }
 }
 
-fn verify_return_step(
+pub fn verify_return_step(
   pre: MachineStateV1,
   post: MachineStateV1,
   witness: CoreStepWitnessV1,
@@ -1677,7 +1678,7 @@ fn verify_return_step(
   }
 }
 
-fn verify_case_select_step(
+pub fn verify_case_select_step(
   pre: MachineStateV1,
   post: MachineStateV1,
   witness: CoreStepWitnessV1,
@@ -1752,7 +1753,7 @@ fn verify_case_select_step(
   }
 }
 
-fn verify_case_apply_step(
+pub fn verify_case_apply_step(
   pre: MachineStateV1,
   post: MachineStateV1,
   witness: CoreStepWitnessV1,
@@ -2307,7 +2308,7 @@ fn verify_builtin_map_conversion_finish_v1(
   }
 }
 
-fn verify_semantic_builtin_control_step_v1(
+pub fn verify_semantic_builtin_control_step_v1(
   pre: MachineStateV1,
   post: MachineStateV1,
   witness: CoreStepWitnessV1,
@@ -2429,4 +2430,96 @@ pub fn verify_core_step_v1(
       False
     },
   }
+}
+
+pub fn verify_authenticated_map_conversion_nodes(
+  pre: MachineStateV1,
+  post: MachineStateV1,
+  tag: Int,
+  arguments: List<cek_builtin_v1.ValueWitnessV1>,
+  result: cek_builtin_v1.ValueWitnessV1,
+  material: MapConversionStartWitnessV1,
+  budget: cek_cost_v1.BuiltinBudgetV1,
+) -> Bool {
+  expect [source] = arguments
+  expect or {
+      tag == 38,
+      tag == 43,
+    }
+  let source_payload = cek_builtin_v1.semantic_constant_payload_v1(source)
+  let result_payload = cek_builtin_v1.semantic_constant_payload_v1(result)
+  expect source_payload == data_summary_from_node_v1(material.source_node)
+  expect result_payload == data_summary_from_node_v1(material.result_node)
+  expect
+    cek_data_v1.verify_data_node_v1(
+      material.source_node,
+      material.source_list,
+      material.source_pairs,
+    )
+  expect
+    cek_data_v1.verify_data_node_v1(
+      material.result_node,
+      material.result_list,
+      material.result_pairs,
+    )
+  let Pair(source_sequence, destination_sequence) = if tag == 38 {
+    expect
+      cek_builtin_v1.semantic_constant_type_v1(source) == cek_constant_v1.ListConstant {
+        element: cek_constant_v1.PairConstant {
+          first: cek_constant_v1.DataConstant,
+          second: cek_constant_v1.DataConstant,
+        },
+      }
+    expect
+      cek_builtin_v1.semantic_constant_type_v1(result) == cek_constant_v1.DataConstant
+    let source_sequence = list_sequence_from_node_v1(material.source_node)
+    let destination_sequence = map_sequence_from_node_v1(material.result_node)
+    expect
+      cek_builtin_v1.semantic_constant_memory_v1(source) == source_sequence.memory - source_sequence.length * 4
+    expect
+      cek_builtin_v1.semantic_constant_memory_v1(result) == destination_sequence.memory + 4
+    Pair(source_sequence, destination_sequence)
+  } else {
+    expect
+      cek_builtin_v1.semantic_constant_type_v1(source) == cek_constant_v1.DataConstant
+    expect
+      cek_builtin_v1.semantic_constant_type_v1(result) == cek_constant_v1.ListConstant {
+        element: cek_constant_v1.PairConstant {
+          first: cek_constant_v1.DataConstant,
+          second: cek_constant_v1.DataConstant,
+        },
+      }
+    let source_sequence = map_sequence_from_node_v1(material.source_node)
+    let destination_sequence = list_sequence_from_node_v1(material.result_node)
+    expect
+      cek_builtin_v1.semantic_constant_memory_v1(source) == source_sequence.memory + 4
+    expect
+      cek_builtin_v1.semantic_constant_memory_v1(result) == destination_sequence.memory - destination_sequence.length * 4
+    Pair(source_sequence, destination_sequence)
+  }
+  expect source_sequence.length == destination_sequence.length
+  let control = MapConversionControlV1 {
+    tag,
+    result_root: cek_builtin_v1.result_root_v1(result),
+    source_root: source_sequence.root,
+    source_remaining: source_sequence.length,
+    source_payload_cbor_length: source_sequence.payload_cbor_length,
+    source_memory: source_sequence.memory,
+    destination_root: destination_sequence.root,
+    destination_remaining: destination_sequence.length,
+    destination_payload_cbor_length: destination_sequence.payload_cbor_length,
+    destination_memory: destination_sequence.memory,
+    budget_cpu: budget.cpu,
+    budget_memory: budget.memory,
+  }
+  post == exact_state(
+    pre,
+    mode_semantic_builtin,
+    hash_map_conversion_control_v1(control),
+    cek_proof_v1.empty_environment_root_v1,
+    pre.continuation_root,
+    0,
+    0,
+    0,
+  )
 }

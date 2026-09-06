@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
@@ -107,7 +108,7 @@ fn six_miller_loop_expression() -> cek_builtin_v1.BlsExpressionWitnessV1 {
 
 test add_integer_direct_step_is_authenticated() {
   let arguments = [integer(#"1829"), integer(#"01")]
-  cek_builtin_v1.verify_direct_builtin_v1(
+  verify_direct_with_split_parity(
     0,
     builtin_root(0, arguments),
     arguments,
@@ -118,7 +119,7 @@ test add_integer_direct_step_is_authenticated() {
 test add_integer_direct_budget_matches_reference_cek() {
   let arguments = [integer(#"01"), integer(#"1880")]
   and {
-    cek_builtin_v1.verify_direct_builtin_v1(
+    verify_direct_with_split_parity(
       0,
       builtin_root(0, arguments),
       arguments,
@@ -351,7 +352,7 @@ test valid_ecdsa_public_key_with_invalid_signature_returns_false() {
       #"584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
     ),
   ]
-  cek_builtin_v1.verify_direct_builtin_v1(
+  verify_direct_with_split_parity(
     52,
     builtin_root(52, arguments),
     arguments,
@@ -449,7 +450,7 @@ test arbitrary_control_branch_values_are_not_type_failures() {
 
 test append_bytearray_direct_step_is_authenticated() {
   let arguments = [bytes(#"42aabb"), bytes(#"41cc")]
-  cek_builtin_v1.verify_direct_builtin_v1(
+  verify_direct_with_split_parity(
     10,
     builtin_root(10, arguments),
     arguments,
@@ -465,7 +466,7 @@ test if_then_else_selects_an_opaque_value_without_interpreting_it() {
     #"2222222222222222222222222222222222222222222222222222222222222222",
   )
   let arguments = [boolean(#"d87a80"), selected, rejected]
-  cek_builtin_v1.verify_direct_builtin_v1(
+  verify_direct_with_split_parity(
     26,
     builtin_root(26, arguments),
     arguments,
@@ -476,7 +477,7 @@ test if_then_else_selects_an_opaque_value_without_interpreting_it() {
 test list_head_preserves_the_authenticated_element_type() {
   let source = constant(#"9f0500ff", #"9f0102ff")
   let arguments = [source]
-  cek_builtin_v1.verify_direct_builtin_v1(
+  verify_direct_with_split_parity(
     33,
     builtin_root(33, arguments),
     arguments,
@@ -488,13 +489,13 @@ test i_data_and_un_i_data_round_trip_semantically() {
   let to_data_arguments = [integer(#"182a")]
   let data_value = constant(#"9f08ff", #"182a")
   and {
-    cek_builtin_v1.verify_direct_builtin_v1(
+    verify_direct_with_split_parity(
       40,
       builtin_root(40, to_data_arguments),
       to_data_arguments,
       data_value,
     ),
-    cek_builtin_v1.verify_direct_builtin_v1(
+    verify_direct_with_split_parity(
       45,
       builtin_root(45, [data_value]),
       [data_value],
@@ -515,7 +516,7 @@ test miller_loop_expression_and_final_verify_are_authenticated() {
     cek_builtin_v1.BlsMillerLoopValue(expression_root),
   ]
   and {
-    cek_builtin_v1.verify_direct_builtin_v1(
+    verify_direct_with_split_parity(
       68,
       builtin_root(
         68,
@@ -607,6 +608,26 @@ test ten_leaf_root_bound_final_proof_fits_the_l1_execution_reserve() {
     cek_builtin_v1.BlsMillerLoopValue(expression_root),
     cek_builtin_v1.BlsMillerLoopValue(expression_root),
   ]
+  expect
+    cek_builtin_v1.verify_bls_expression_roots(
+      expression,
+      expression,
+      expression_root,
+      expression_root,
+    )
+  expect
+    cek_builtin_v1.verify_authenticated_bls_final(
+      expression,
+      expression,
+      boolean(#"d87a80"),
+    )
+  expect
+    !cek_builtin_v1.verify_bls_expression_roots(
+      expression,
+      expression,
+      #"00",
+      expression_root,
+    )
   cek_builtin_v1.verify_direct_bls_final_roots_v1(
     builtin_root(70, arguments),
     expression_root,
@@ -644,7 +665,7 @@ test twelve_leaf_miller_loop_proof_exceeding_the_reserve_fails_closed() fail {
 }
 
 test unsupported_direct_builtin_stays_closed() fail {
-  cek_builtin_v1.verify_direct_builtin_v1(
+  verify_direct_with_split_parity(
     70,
     builtin_root(70, []),
     [],
@@ -654,7 +675,7 @@ test unsupported_direct_builtin_stays_closed() fail {
 
 test wrong_builtin_result_fails_closed() fail {
   let arguments = [integer(#"1829"), integer(#"01")]
-  cek_builtin_v1.verify_direct_builtin_v1(
+  verify_direct_with_split_parity(
     0,
     builtin_root(0, arguments),
     arguments,
@@ -730,7 +751,7 @@ test semantic_choose_data_inspects_a_large_context_root_locally() {
     integer(#"03"),
     integer(#"04"),
   ]
-  cek_builtin_v1.verify_semantic_builtin_v1(
+  verify_semantic_with_split_parity(
     36,
     builtin_root(36, arguments),
     arguments,
@@ -768,7 +789,7 @@ test semantic_unconstr_data_returns_the_exact_large_typed_pair() {
     memory: constructor.memory - 4 + fixture.fields.memory,
   }
   let arguments = [fixture.source]
-  cek_builtin_v1.verify_semantic_builtin_v1(
+  verify_semantic_with_split_parity(
     42,
     builtin_root(42, arguments),
     arguments,
@@ -847,7 +868,7 @@ test semantic_fst_pair_extracts_the_constructor_without_the_large_field() {
     memory: constructor.memory - 4,
   }
   let arguments = [source]
-  cek_builtin_v1.verify_semantic_builtin_v1(
+  verify_semantic_with_split_parity(
     29,
     builtin_root(29, arguments),
     arguments,
@@ -886,7 +907,7 @@ test semantic_head_list_extracts_a_9000_byte_data_child_by_root() {
     memory: child.memory,
   }
   let arguments = [source]
-  cek_builtin_v1.verify_semantic_builtin_v1(
+  verify_semantic_with_split_parity(
     33,
     builtin_root(33, arguments),
     arguments,
@@ -926,4 +947,96 @@ test semantic_wrong_data_variant_failure_is_authenticated_locally() {
       scalar_preimages: [],
     },
   )
+}
+
+// The old aggregate remains the oracle while physical core hops are introduced.
+fn verify_direct_with_split_parity(
+  tag: Int,
+  root: ByteArray,
+  arguments: List<cek_builtin_v1.ValueWitnessV1>,
+  result: cek_builtin_v1.ValueWitnessV1,
+) -> Bool {
+  let aggregate = cek_builtin_v1.verify_direct_builtin_v1(
+    tag,
+    root,
+    arguments,
+    result,
+  )
+  let semantics = if tag >= 29 && tag <= 69 && tag != 52 && tag != 53 {
+    cek_builtin_v1.verify_direct_structured_semantics(tag, arguments, result)
+  } else {
+    cek_builtin_v1.verify_direct_scalar_semantics(tag, arguments, result)
+  }
+  let split = root == builtin_root(tag, arguments) && semantics
+  expect split == aggregate
+  aggregate
+}
+
+fn verify_semantic_with_split_parity(
+  tag: Int,
+  root: ByteArray,
+  arguments: List<cek_builtin_v1.ValueWitnessV1>,
+  result: cek_builtin_v1.ValueWitnessV1,
+  material: cek_builtin_v1.SemanticBuiltinWitnessV1,
+) -> Bool {
+  let aggregate = cek_builtin_v1.verify_semantic_builtin_v1(
+    tag,
+    root,
+    arguments,
+    result,
+    material,
+  )
+  let compact_arguments = list.map(
+    arguments,
+    cek_builtin_v1.compact_semantic_value,
+  )
+  let compact_result = cek_builtin_v1.compact_semantic_value(result)
+  expect
+    cek_builtin_v1.arguments_root_v1(arguments) == cek_builtin_v1.arguments_root_v1(
+      compact_arguments,
+    )
+  expect
+    cek_builtin_v1.result_root_v1(result) == cek_builtin_v1.result_root_v1(
+      compact_result,
+    )
+  expect
+    cek_builtin_v1.verify_semantic_builtin_v1(
+      tag,
+      root,
+      compact_arguments,
+      compact_result,
+      material,
+    ) == aggregate
+  let semantics = if tag == 29 || tag == 30 {
+    cek_builtin_v1.verify_semantic_pair_v1(tag, arguments, result, material)
+  } else if tag == 31 || tag == 32 || tag == 35 {
+    cek_builtin_v1.verify_semantic_list_construct(
+      tag,
+      arguments,
+      result,
+      material,
+    )
+  } else if tag == 33 || tag == 34 {
+    cek_builtin_v1.verify_semantic_list_select(tag, arguments, result, material)
+  } else if tag == 36 {
+    cek_builtin_v1.verify_semantic_choose_data_v1(arguments, result, material)
+  } else if tag == 37 || tag == 42 {
+    cek_builtin_v1.verify_semantic_data_construct(
+      tag,
+      arguments,
+      result,
+      material,
+    )
+  } else if tag >= 47 && tag <= 51 {
+    cek_builtin_v1.verify_semantic_data_misc(tag, arguments, result, material)
+  } else {
+    cek_builtin_v1.verify_semantic_data_scalar(tag, arguments, result, material)
+  }
+  expect ( root == builtin_root(tag, arguments) && semantics ) == aggregate
+  aggregate
+}
+
+test bls_root_hop_refuses_twelve_leaves() {
+  let expression = six_miller_loop_expression()
+  !cek_builtin_v1.verify_bls_expression_roots(expression, expression, #"", #"")
 }

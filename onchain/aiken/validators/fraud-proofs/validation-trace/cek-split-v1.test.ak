@@ -21,13 +21,17 @@
 //// the right arguments, commit to the right evidence hash, and route the
 //// material through `verify_cek_route_v1`.
 
+use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
+use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use cardano/address
 use cardano/assets
 use cardano/transaction as l1
 use fraud_proofs/validation_trace/cek_context_step_semantic_v1 as context_validator
+use fraud_proofs/validation_trace/cek_core_arm_compute as core_compute
+use fraud_proofs/validation_trace/cek_core_settle as core_settle
 use fraud_proofs/validation_trace/cek_core_step_semantic_v1 as core_validator
 use fraud_proofs/validation_trace/cek_execution_selection_semantic_v1 as selection_validator
 use fraud_proofs/validation_trace/cek_execution_selection_yields as selection_yields
@@ -38,6 +42,7 @@ use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
 use midgard/cek_selection_yield as selection_yield
+use midgard/cek_semantic_chain as core_chain
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
@@ -55,6 +60,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/script_context_v1
 use midgard/script_proof_v1
+use midgard/validation_machine/cek as cek_semantics
 use midgard/validation_machine/machine_types.{
   CekContextControlV1, CekCoreStepWitness, NativeExecutionScanWitness,
   NativeScriptsControlV1, NoAuxiliaryWitness, ValidationAuxiliaryWitnessV1,
@@ -1075,12 +1081,13 @@ test context_step_wire_layout_is_pinned() {
 test core_step_wire_layout_is_pinned() {
   let f = core_step_fixture()
   expect CekCoreStepWitness { step } = f.auxiliary
+  let step_data: Data = step
   let real: core_validator.SpendRedeemer = ct.Continue(
     core_validator.VerifyCoreStep {
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
-      step,
+      step: step_data,
     },
   )
   let mirror: ct.StepRedeemer<CoreWireMirrorV1> = ct.Continue(
@@ -1461,21 +1468,59 @@ fn run_core_step(
   transition: ValidationOneStepWitnessV1,
   step: cek_machine_v1.CoreStepEvidenceV1,
 ) -> Bool {
-  core_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.computation_thread_policy_id,
-    Some(semantic_datum(base)),
-    ct.Continue(
-      core_validator.VerifyCoreStep {
-        input_index: 0,
-        output_index: 0,
-        transition,
-        step,
-      },
+  let step_data: Data = step
+  let witness_data: Data = step.witness
+  let prepared_data: Data = base
+  let bound = core_chain.CoreBound {
+    prepared: prepared_data,
+    pre: step.pre,
+    post: step.post,
+    witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    arm: builtin.un_constr_data(witness_data).1st,
+    group: core_chain.core_group(step.pre.mode, witness_data),
+    progress: 0,
+    facts: builtin.constr_data(0, []),
+  }
+  let next: Data = bound
+  and {
+    core_validator.main.spend(
+      [fixture.next_step_script_hash],
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(base)),
+      ct.Continue(
+        core_validator.VerifyCoreStep {
+          input_index: 0,
+          output_index: 0,
+          transition,
+          step: step_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
     ),
-    fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
-  )
+    run_core_compute_chain(bound, witness_data),
+    core_settle.main.spend(
+      fixture.next_step_script_hash,
+      [1],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(core_chain.CoreBound { ..bound, progress: 1 }),
+        },
+      ),
+      ct.Continue(
+        core_settle.Settle {
+          input_index: 0,
+          output_index: 0,
+          transition,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    ),
+  }
 }
 
 /// Runs the semantic validator of kind `kind` over the prepared state and
@@ -1884,4 +1929,132 @@ test every_fixture_is_an_honest_machine_step() {
       door,
     ),
   }
+}
+
+fn core_chain_bound(f: CekStepFixtureV1) -> core_chain.CoreBound {
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let prepared_data: Data = prepared(f)
+  let witness_data: Data = step.witness
+  core_chain.CoreBound {
+    prepared: prepared_data,
+    pre: step.pre,
+    post: step.post,
+    witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    arm: builtin.un_constr_data(witness_data).1st,
+    group: 0,
+    progress: 0,
+    facts: builtin.constr_data(0, []),
+  }
+}
+
+fn run_core_compute_chain(
+  bound: core_chain.CoreBound,
+  witness_data: Data,
+) -> Bool {
+  let next: Data = core_chain.CoreBound { ..bound, progress: 1 }
+  core_compute.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    ct.Continue(
+      core_chain.VerifyArm {
+        input_index: 0,
+        output_index: 0,
+        witness: witness_data,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+  )
+}
+
+test bounded_core_compute_chain_agrees_with_the_original() {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let step_data: Data = step
+  let witness_data: Data = step.witness
+  let bound = core_chain_bound(f)
+  let next: Data = bound
+  and {
+    cek_semantics.verify_cek_core_step_semantics_v1(
+      prepared(f).resolution.pre_state,
+      f.transition,
+      step,
+    ),
+    core_validator.main.spend(
+      [fixture.next_step_script_hash],
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      ct.Continue(
+        core_validator.VerifyCoreStep {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          step: step_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+    ),
+    run_core_compute_chain(bound, witness_data),
+    core_settle.main.spend(
+      fixture.next_step_script_hash,
+      [1],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(core_chain.CoreBound { ..bound, progress: 1 }),
+        },
+      ),
+      ct.Continue(
+        core_settle.Settle {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    ),
+  }
+}
+
+test bounded_core_compute_refuses_substituted_witness() fail {
+  let f = core_step_fixture()
+  expect run_core_compute_chain(core_chain_bound(f), builtin.constr_data(6, []))
+}
+
+test bounded_core_settle_refuses_omitted_arm() fail {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let witness_data: Data = step.witness
+  expect
+    core_settle.main.spend(
+      fixture.next_step_script_hash,
+      [1],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(core_chain_bound(f)),
+        },
+      ),
+      ct.Continue(
+        core_settle.Settle {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    )
 }

@@ -1,5 +1,6 @@
 export * from "./canonical-decodability.js";
 export * from "./catalogue.js";
+export * from "./cek-core.js";
 export * from "./cek-material-traversal.js";
 export * from "./cek-selection.js";
 export * from "./committed-field-shape.js";
