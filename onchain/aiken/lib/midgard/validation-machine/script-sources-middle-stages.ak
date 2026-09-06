@@ -386,7 +386,7 @@ pub fn script_sources_stage_four_with_successor(
   }
 }
 
-fn protected_output_authorization(
+pub fn protected_output_authorization(
   address: MidgardAddress,
   signer_count: Int,
   signer_frontier_commitment: ByteArray,
@@ -406,7 +406,7 @@ fn protected_output_authorization(
   }
 }
 
-fn receive_source_successor(
+pub fn receive_source_successor(
   scan: ReceivePurposeScanControlV1,
   address: MidgardAddress,
 ) -> ReceivePurposeScanControlV1 {
