@@ -1726,12 +1726,31 @@ fn validate_out_of_window_source_event(
         event_ref_input_index,
       )
       let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
+      // The order retains submitted bytes. The committed forced source changes
+      // only its adjudicated validity bit; authenticate every other source byte.
+      let verified = native_compact.verify_native_tx_compact_cbor_v1(
+        event.tx.tx_id,
+        event.tx.source.compact_cbor,
+      )
+      let adjudicated_compact = native_types.NativeTxCompact {
+        ..verified.tx_compact,
+        validity_code: if validity_override == rejection_reason_v1.ForcedTxValid {
+          0
+        } else {
+          1
+        },
+      }
       let expected_source_value = ledger_state.ForcedInclusionTxV1 {
         tx_id: event.tx.tx_id,
-        source: event.tx.source,
+        source: ledger_state.NativeTxProofSourceV1 {
+          ..event.tx.source,
+          compact_cbor: native_compact.encode_native_tx_compact_v1(
+            adjudicated_compact,
+          ),
+        },
         verdict: validity_override,
       }
-      let compact_body = tx_order_compact_body(event.tx)
+      let compact_body = verified.tx_compact.body
       and {
         !forced_event_is_due(header, inclusion_time, compact_body),
         source_membership.key == event.id,

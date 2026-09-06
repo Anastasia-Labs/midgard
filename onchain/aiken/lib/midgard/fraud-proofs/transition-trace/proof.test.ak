@@ -2724,6 +2724,76 @@ test accepts_late_forced_order_as_out_of_window_source_event() {
   )
 }
 
+fn late_rejected_forced_source_is_valid(
+  mutate_witness: Bool,
+  mutate_reason: Bool,
+) -> Bool {
+  let original = authenticated_forced_tx(verdict_plutus_failed())
+  let invalid_tx = native_types.MidgardTransaction {
+    ..empty_native_transaction(),
+    validity: native_types.TxIsInvalid,
+  }
+  let rejected = native_transaction.midgard_transaction_proof_source_v1(
+    invalid_tx,
+  )
+  let source_membership = forced_source_membership(
+    out_ref(0),
+    ledger_state.ForcedInclusionTxV1 {
+      ..original,
+      source: ledger_state.NativeTxProofSourceV1 {
+        ..original.source,
+        compact_cbor: rejected.compact_cbor,
+        witness_set_compact_cbor: if mutate_witness {
+          #"80"
+        } else {
+          rejected.witness_set_compact_cbor
+        },
+      },
+    },
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    forced_transactions_root: source_membership.root,
+    forced_transaction_count: 1,
+  }
+  proof.validate_l1_event_fault_proof(
+    prove(
+      header,
+      proof.OutOfWindowSourceEvent {
+        witness: proof.OutOfWindowForcedTransaction {
+          event_ref_input_index: 0,
+          event_asset_name: #"01",
+          validity_override: if mutate_reason {
+            rejection_reason_v1.ForcedTxInvalid {
+              reason: rejection_reason_v1.PlutusExecutionFailed {
+                execution_index: 1,
+              },
+            }
+          } else {
+            verdict_plutus_failed()
+          },
+          source_membership,
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    [tx_order_reference_input(header.end_time + 1, #"01")],
+  )
+}
+
+test accepts_late_rejected_forced_order_from_submitted_valid_bytes() {
+  late_rejected_forced_source_is_valid(False, False)
+}
+
+test rejects_late_rejected_forced_order_with_changed_witness_source() {
+  !late_rejected_forced_source_is_valid(True, False)
+}
+
+test rejects_late_rejected_forced_order_with_changed_verdict() {
+  !late_rejected_forced_source_is_valid(False, True)
+}
+
 test accepts_late_withdrawal_as_out_of_window_source_event() {
   out_of_window_withdrawal_is_valid(
     base_header().end_time + 1,
