@@ -12,7 +12,7 @@ import {
   FraudProofComputationThreadStepDatum,
   MIDGARD_FIELD_INDEX,
   MintAuthorizationEvaluateDatum,
-  MintAuthorizationStep02Datum,
+  MintAuthorizationStep02ThreadDatum,
   MintAuthorizationStep03Datum,
   MintAuthorizationStep04Datum,
   MintAuthorizationStep05Datum,
@@ -565,7 +565,7 @@ export const createManifestBoundMintAuthorizationWorkflow = async (
     proverCredential: config.signer.paymentKeyHash,
     stepDatumSchemas: [
       FraudProofComputationThreadStepDatum,
-      MintAuthorizationStep02Datum,
+      MintAuthorizationStep02ThreadDatum,
       MintAuthorizationStep03Datum,
       MintAuthorizationStep04Datum,
       MintAuthorizationStep05Datum,

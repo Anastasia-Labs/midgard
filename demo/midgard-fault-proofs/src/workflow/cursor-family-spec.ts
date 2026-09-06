@@ -49,7 +49,7 @@ export const MINT_AUTHORIZATION_CURSOR_SPEC = Object.freeze({
   stepCount: 7,
   successors: Object.freeze({
     1: Object.freeze([2] as const),
-    2: Object.freeze([3] as const),
+    2: Object.freeze([2, 3] as const),
     3: Object.freeze([4, 5, 6, 7] as const),
     4: Object.freeze([4, 5] as const),
     5: Object.freeze(["proof_token"] as const),

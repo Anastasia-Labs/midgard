@@ -21,11 +21,13 @@ use midgard/computation_thread as ct
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, mint_field_index, opened_whole_field_view,
+  BodyAnchor, FieldOpeningV1, mint_field_index, opened_committed_preimage,
 }
 use midgard/fraud_proofs/mint_authorization/engine
+use midgard/fraud_proofs/mint_authorization/mint_scan
 use midgard/fraud_proofs/mint_authorization/step_02.{
-  Args, ClaimEvidence, Datum, PublishedArgs, SpendRedeemer, State,
+  AdvanceScan, Args, ClaimEvidence, Datum, PublishedArgs, Scan, SpendRedeemer,
+  State,
 }
 use midgard/fraud_proofs/mint_authorization/step_03
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -35,8 +37,13 @@ use midgard/fraud_proofs/native_tx/preimages
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/structured_data_carriage
 use midgard/ledger_state
-use midgard/native_tx_field_access_v1.{
-  encode_field_preimage, field_item_at, field_item_count,
+use midgard/native_tx_field_access_v1.{encode_field_preimage, field_commitment}
+
+type PreparedArgs {
+  input_index: Int,
+  output_index: Int,
+  mint_opening: FieldOpeningV1,
+  claim: Option<ClaimEvidence>,
 }
 
 validator main(
@@ -61,138 +68,174 @@ validator main(
           tx,
         )
       ct.Continue(args) -> {
-        expect
-            Args {
+        let prepared = when args is {
+          Args {
+            input_index,
+            output_index,
+            header,
+            event_to_step_membership,
+            transition_step_membership,
+            policy_index,
+            direction,
+            mint_opening,
+          } ->
+            PreparedArgs {
               input_index,
               output_index,
-              header,
-              event_to_step_membership,
-              transition_step_membership,
-              policy_index,
-              direction,
               mint_opening,
-            }
-          = when args is {
-          Args { .. } -> args
-          PublishedArgs { input_index, output_index, evidence, mint_opening } -> {
-            expect
+              claim: Some(
                 ClaimEvidence {
                   header,
                   event_to_step_membership,
                   transition_step_membership,
                   policy_index,
                   direction,
-                }: ClaimEvidence
-              = structured_data_carriage.resolve(evidence, tx.reference_inputs)
-            Args {
+                },
+              ),
+            }
+          PublishedArgs { input_index, output_index, evidence, mint_opening } -> {
+            expect claim: ClaimEvidence = structured_data_carriage.resolve(
+              evidence,
+              tx.reference_inputs,
+            )
+            PreparedArgs {
               input_index,
               output_index,
-              header,
-              event_to_step_membership,
-              transition_step_membership,
-              policy_index,
-              direction,
               mint_opening,
+              claim: Some(claim),
             }
           }
+          AdvanceScan { input_index, output_index, mint_opening } ->
+            PreparedArgs {
+              input_index,
+              output_index,
+              mint_opening,
+              claim: None,
+            }
         }
-        let Transaction { inputs, outputs, reference_inputs, .. } = tx
-
         expect Some(step_datum) = datum
-
-        // 1. Generic thread-advancement validations must pass.
         let
-            _own_script_hash,
-            computation_thread_token_asset_name,
-            _fraud_prover,
-            m_input_state_data,
+            own_script_hash,
+            token_name,
+            _prover,
+            maybe_state,
             output_script_hash,
-            output_state_data
+            output_state
           <- continue(
           computation_thread_token_policy_id,
           step_datum,
-          input_index,
-          output_index,
+          prepared.input_index,
+          prepared.output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx.inputs,
+          tx.outputs,
         )
-
-        expect
-            Some(State {
+        expect Some(input_state) = maybe_state
+        let bad_tx_id = when input_state is {
+          State { bad_tx_id, .. } -> bad_tx_id
+          Scan { bad_tx_id, .. } -> bad_tx_id
+        }
+        let bytes = opened_committed_preimage(
+          prepared.mint_opening,
+          BodyAnchor { tx_id: bad_tx_id },
+          mint_field_index,
+          tx.reference_inputs,
+          field_preimage_certificate_policy_id,
+        )
+        let frozen = when prepared.claim is {
+          None -> {
+            expect Scan { .. } = input_state
+            input_state
+          }
+          Some(claim) -> {
+            expect
+                State {
+                  bad_tx_id,
+                  bad_tx_witness_set_hash,
+                  validity_interval_start,
+                  validity_interval_end,
+                }
+              = input_state
+            let header_data: Data = claim.header
+            expect
+              utils.serialise_and_hash_28(header_data) == bytearray.drop(
+                token_name,
+                fraud_proof_catalogue.id_byte_count,
+              )
+            expect
+              claim.direction == engine.direction_script_absent || claim.direction == engine.direction_script_unsatisfied
+            let prior_ledger_root = decoding_engine.verify_committed_pre_state_v1(
+              claim.header,
+              ledger_state.L2TransactionEventKey { tx_id: bad_tx_id },
+              claim.event_to_step_membership,
+              claim.transition_step_membership,
+            )
+            Scan {
               bad_tx_id,
               bad_tx_witness_set_hash,
               validity_interval_start,
               validity_interval_end,
-            })
-          = m_input_state_data
-
-        // 2. The header is the thread's: the NFT asset name is
-        //    `category_id ‖ header_hash`, so nothing but the disputed
-        //    block's header can pass. Every root opened below is this
-        //    header's.
-        let header_data: Data = header
-        expect
-          utils.serialise_and_hash_28(header_data) == bytearray.drop(
-            computation_thread_token_asset_name,
-            fraud_proof_catalogue.id_byte_count,
-          )
-
-        // 3. Open the committed claim: the transition step for this very
-        //    transaction event, cross-checked under the header's counted
-        //    roots. Its `pre_utxos_root` is the ledger the machine resolved
-        //    this transaction's reference inputs against — direction A's
-        //    step-04 consumes it.
-        let event_key = ledger_state.L2TransactionEventKey { tx_id: bad_tx_id }
-        let prior_ledger_root = decoding_engine.verify_committed_pre_state_v1(
-          header,
-          event_key,
-          event_to_step_membership,
-          transition_step_membership,
-        )
-
-        // 4. The claimed policy id is read off the committed field-5 item at
-        //    the accused ordinal, through the §8.8 door. The §5.6 walk
-        //    enforces canonicality — including non-zero quantities, so a
-        //    zero-net entry can never seed a claim, while a burn (negative
-        //    quantity) is a mint purpose like any other.
-        let mint_view = opened_whole_field_view(
-          mint_opening,
-          BodyAnchor { tx_id: bad_tx_id },
-          mint_field_index,
-          reference_inputs,
-          field_preimage_certificate_policy_id,
-        )
-        expect and {
-            policy_index >= 0,
-            policy_index < field_item_count(mint_view),
+              prior_ledger_root,
+              policy_index: claim.policy_index,
+              direction: claim.direction,
+              field_hash: field_commitment(bytes),
+              control: mint_scan.initial(bytes, claim.policy_index),
+            }
           }
-        let policy_id = engine.policy_id_of_mint_item_v1(
-          field_item_at(mint_view, policy_index),
-        )
-
-        // 5. The direction is fixed now, in this family's two-value domain.
-        expect or {
-            direction == engine.direction_script_absent,
-            direction == engine.direction_script_unsatisfied,
-          }
-
-        // 6. The UTxO must be produced at next step's script hash with the
-        //    bound claim.
-        expect output_script_hash == step_03_validator_script_hash
-        let expected_output_state: Data = step_03.State {
-          policy_id,
-          direction,
-          bad_tx_id,
-          bad_tx_witness_set_hash,
-          validity_interval_start,
-          validity_interval_end,
-          prior_ledger_root,
         }
-        expect output_state_data == expected_output_state
-
-        // Done.
-        True
+        expect
+            Scan {
+              bad_tx_id,
+              bad_tx_witness_set_hash,
+              validity_interval_start,
+              validity_interval_end,
+              prior_ledger_root,
+              policy_index,
+              direction,
+              field_hash,
+              control,
+            }
+          = frozen
+        expect field_commitment(bytes) == field_hash
+        let next = mint_scan.advance(
+          control,
+          bytes,
+          policy_index,
+          mint_scan.batch_size,
+        )
+        let expected: Data = if mint_scan.complete(
+          next,
+          bytearray.length(bytes),
+        ) {
+          expect output_script_hash == step_03_validator_script_hash
+          let result: Data = step_03.State {
+            policy_id: next.policy_id,
+            direction,
+            bad_tx_id,
+            bad_tx_witness_set_hash,
+            validity_interval_start,
+            validity_interval_end,
+            prior_ledger_root,
+          }
+          result
+        } else {
+          expect next != control
+          expect next.item_index < next.item_count
+          expect output_script_hash == own_script_hash
+          let result: Data = Scan {
+            bad_tx_id,
+            bad_tx_witness_set_hash,
+            validity_interval_start,
+            validity_interval_end,
+            prior_ledger_root,
+            policy_index,
+            direction,
+            field_hash,
+            control: next,
+          }
+          result
+        }
+        output_state == expected
       }
     }
   }

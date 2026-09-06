@@ -177,6 +177,56 @@ export type MintAuthorizationStep02Datum = Data.Static<
 export const MintAuthorizationStep02Datum =
   asDataType<MintAuthorizationStep02Datum>(MintAuthorizationStep02DatumSchema);
 
+export const MintAuthorizationMintScanControlSchema = Data.Object({
+  item_count: Data.Integer(),
+  item_index: Data.Integer(),
+  cursor: Data.Integer(),
+  item_end: Data.Integer(),
+  remaining_assets: Data.Integer(),
+  previous_asset_name: Data.Nullable(Data.Bytes()),
+  policy_id: Data.Bytes(),
+  selected_complete: Data.Boolean(),
+});
+export type MintAuthorizationMintScanControl = Data.Static<
+  typeof MintAuthorizationMintScanControlSchema
+>;
+export const MintAuthorizationMintScanControl =
+  asDataType<MintAuthorizationMintScanControl>(
+    MintAuthorizationMintScanControlSchema,
+  );
+export const MintAuthorizationMintScanStateSchema = Data.Object({
+  bad_tx_id: Data.Bytes(),
+  bad_tx_witness_set_hash: Data.Bytes(),
+  validity_interval_start: Data.Integer(),
+  validity_interval_end: Data.Integer(),
+  prior_ledger_root: Data.Bytes(),
+  policy_index: Data.Integer(),
+  direction: Data.Integer(),
+  field_hash: Data.Bytes(),
+  control: MintAuthorizationMintScanControlSchema,
+});
+export type MintAuthorizationMintScanState = Data.Static<
+  typeof MintAuthorizationMintScanStateSchema
+>;
+export const MintAuthorizationMintScanState =
+  asDataType<MintAuthorizationMintScanState>(
+    MintAuthorizationMintScanStateSchema,
+  );
+export const MintAuthorizationStep02ThreadDatumSchema =
+  faultProofStepDatumSchema(
+    Data.Enum([
+      Data.Object({ Bound: MintAuthorizationStep02StateSchema }),
+      Data.Object({ Scan: MintAuthorizationMintScanStateSchema }),
+    ]),
+  );
+export type MintAuthorizationStep02ThreadDatum = Data.Static<
+  typeof MintAuthorizationStep02ThreadDatumSchema
+>;
+export const MintAuthorizationStep02ThreadDatum =
+  asDataType<MintAuthorizationStep02ThreadDatum>(
+    MintAuthorizationStep02ThreadDatumSchema,
+  );
+
 export const MintAuthorizationEventToStepMembershipSchema =
   rootMembershipProofSchema(EventKeySchema, EventToStepValueSchema);
 export const MintAuthorizationTransitionStepMembershipSchema =
@@ -238,6 +288,13 @@ export const MintAuthorizationStep02PublishedSpendRedeemerSchema =
           input_index: Data.Integer(),
           output_index: Data.Integer(),
           evidence: Data.Any(),
+          mint_opening: FieldOpeningSchema,
+        }),
+      }),
+      Data.Object({
+        AdvanceScan: Data.Object({
+          input_index: Data.Integer(),
+          output_index: Data.Integer(),
           mint_opening: FieldOpeningSchema,
         }),
       }),
@@ -548,7 +605,7 @@ export const mintAuthorizationStepDatumSchema = (
     case "step_01":
       return MintAuthorizationStep01DatumSchema;
     case "step_02":
-      return MintAuthorizationStep02DatumSchema;
+      return MintAuthorizationStep02ThreadDatumSchema;
     case "step_03":
       return MintAuthorizationStep03DatumSchema;
     case "step_04":

@@ -12,7 +12,8 @@ import {
   encodeMidgardFieldPreimage,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
+import { MintAuthorizationStep02ThreadDatum } from "@al-ft/midgard-sdk";
+import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
@@ -168,6 +169,7 @@ describe("mintAuthorization installed cursor actuator", () => {
     "reference-unsatisfied",
     "maximum-reference-tail",
     "cancel-witness-scan",
+    "cancel-mint-scan",
     "maximum-proofs",
   ])(
     "captures and restarts %s through mint and removal",
@@ -211,7 +213,7 @@ describe("mintAuthorization installed cursor actuator", () => {
         scriptBytes: Buffer.from(policy.scriptBytesHex, "hex"),
       });
       const maximumMint =
-        name === "maximum-mint-tail"
+        name === "maximum-mint-tail" || name === "cancel-mint-scan"
           ? mintAuthorizationMaximumMintField()
           : undefined;
       const maximumWitnesses =
@@ -647,12 +649,26 @@ describe("mintAuthorization installed cursor actuator", () => {
           ).rejects.toThrow();
         }
         if (action.input.stage === "remove") break;
+        let cancelMintScan = false;
+        if (name === "cancel-mint-scan" && action.input.stage === "step_02") {
+          const [current] = await h.proverLucid.utxosAtWithUnit(
+            h.family.steps[1].spendingScriptAddress,
+            threadUnit,
+          );
+          const datum = Data.from(
+            current!.datum!,
+            MintAuthorizationStep02ThreadDatum,
+          );
+          cancelMintScan = datum.data !== null && "Scan" in datum.data;
+        }
         if (
-          name === "cancel-witness-scan" &&
-          action.input.stage === "step_07"
+          (name === "cancel-witness-scan" &&
+            action.input.stage === "step_07") ||
+          cancelMintScan
         ) {
+          const cancelStep = cancelMintScan ? 1 : 6;
           const [thread] = await h.proverLucid.utxosAtWithUnit(
-            h.family.steps[6].spendingScriptAddress,
+            h.family.steps[cancelStep].spendingScriptAddress,
             threadUnit,
           );
           expect(thread).toBeDefined();
@@ -663,14 +679,14 @@ describe("mintAuthorization installed cursor actuator", () => {
               categoryId: h.category.categoryId,
               signer: h.proverSigner,
               threadOutRef: `${thread!.txHash}#${thread!.outputIndex}`,
-              referenceScriptUtxo: steps[6],
+              referenceScriptUtxo: steps[cancelStep],
               witnessReferenceScripts: witnesses,
             }),
           );
-          expect(cancelled.result.cancelledStepIndex).toBe(6);
+          expect(cancelled.result.cancelledStepIndex).toBe(cancelStep);
           expect(
             await h.proverLucid.utxosAtWithUnit(
-              h.family.steps[6].spendingScriptAddress,
+              h.family.steps[cancelStep].spendingScriptAddress,
               threadUnit,
             ),
           ).toHaveLength(0);
@@ -684,7 +700,9 @@ describe("mintAuthorization installed cursor actuator", () => {
             measurements.push({
               name: `${name}/cancel/${index}`,
               kind: "lifecycle",
-              maximumShape: "authenticated staged witness scan cancellation",
+              maximumShape: cancelMintScan
+                ? "authenticated bounded mint scan cancellation"
+                : "authenticated staged witness scan cancellation",
               signedBytes: m.completeSignedBytes,
               memoryUnits: m.executionMemory,
               cpuUnits: m.executionSteps,

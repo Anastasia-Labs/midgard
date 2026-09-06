@@ -126,6 +126,13 @@ describe("mintAuthorization installed workflow fit ledger", () => {
         [...names].some((name) => name.startsWith(`maximum-proofs/${stage}/`)),
       ).toBe(true);
     expect(names.has("cancel-witness-scan/cancel/0")).toBe(true);
+    expect(names.has("cancel-mint-scan/cancel/0")).toBe(true);
+    for (const scenario of ["maximum-mint-tail", "maximum-proofs"])
+      expect(
+        ledger.entries.filter((row) =>
+          row.name.startsWith(`${scenario}/step_02/`),
+        ).length,
+      ).toBe(29);
     expect(
       ledger.entries.filter((row) =>
         row.name.startsWith("maximum-witnesses/step_07/"),

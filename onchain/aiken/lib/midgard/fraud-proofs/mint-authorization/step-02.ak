@@ -5,21 +5,29 @@
 
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
+use midgard/fraud_proofs/mint_authorization/mint_scan
 use midgard/fraud_proofs/structured_data_carriage
 use midgard/ledger_state
 use midgard/transition_trace
 
 pub type State {
-  /// §2.5 anchor of the disputed transaction, read off the block-committed
-  /// compact structure by step-01.
-  bad_tx_id: ByteArray,
-  /// The witness-set half of the anchor — only step-01 can supply it (§3's
-  /// id preimage is the body alone).
-  bad_tx_witness_set_hash: ByteArray,
-  /// The committed body's validity interval, for the direction-B timelock
-  /// predicates. Root-committed values, not prover assertions.
-  validity_interval_start: Int,
-  validity_interval_end: Int,
+  State {
+    bad_tx_id: ByteArray,
+    bad_tx_witness_set_hash: ByteArray,
+    validity_interval_start: Int,
+    validity_interval_end: Int,
+  }
+  Scan {
+    bad_tx_id: ByteArray,
+    bad_tx_witness_set_hash: ByteArray,
+    validity_interval_start: Int,
+    validity_interval_end: Int,
+    prior_ledger_root: ByteArray,
+    policy_index: Int,
+    direction: Int,
+    field_hash: ByteArray,
+    control: mint_scan.Control,
+  }
 }
 
 pub type Datum =
@@ -52,6 +60,11 @@ pub type Args {
     input_index: Int,
     output_index: Int,
     evidence: structured_data_carriage.Evidence,
+    mint_opening: FieldOpeningV1,
+  }
+  AdvanceScan {
+    input_index: Int,
+    output_index: Int,
     mint_opening: FieldOpeningV1,
   }
 }

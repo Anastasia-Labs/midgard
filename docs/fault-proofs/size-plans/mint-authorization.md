@@ -138,3 +138,28 @@ the combined evaluator maximum used 11,798,200 memory units and 3,935,085,279
 CPU units. Its tightest publication was 15,872 bytes, preserving the full
 512-byte reserve. These targeted rows do not replace the complete roster:
 a fresh full shared-blueprint regeneration remains required.
+
+## Bounded mint-field claim scan
+
+Step02 authenticates the accepted transition and freezes its mint coordinate,
+prior ledger root, direction and field commitment before scanning. Its existing
+address now resumes at most 32 operations per transaction: one canonical field
+envelope or one selected-policy asset per operation. Completion requires the
+exact declared field count and byte end, plus the entire selected policy's
+canonical nonempty, ordered, nonzero asset map. Both mint and burn quantities
+retain the original predicate. No partial policy can enter Step03.
+
+The 910-item maximum tail takes 29 Step02 transactions. A near-32KiB selected
+policy with 8,100 assets takes 254 bounded batches in the scanner vector; the
+asset dimension is bounded independently of the number of policy envelopes.
+The installed journal admits Step02 selfloops, reauthenticates the field on each
+restart, and can cancel an intermediate scan. Small policies still complete
+in the initial Step02 transaction. Deployment parameters and the seven-stage
+physical roster remain unchanged.
+
+The repaired raw Step02 is 13,536 bytes. Fresh targeted lifecycle measurements
+for the maximum tail and combined 64-branch proof frontiers passed the strict
+shared writer: initial Step02 used 2,162,665 and 7,379,719 memory units,
+respectively. These are targeted diagnostic evidence; the complete 16-case
+installed lifecycle roster must be regenerated against the final shared
+blueprint before the independent fit-ledger verifier can pass.

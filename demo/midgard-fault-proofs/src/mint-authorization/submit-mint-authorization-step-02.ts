@@ -31,9 +31,11 @@ import {
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
   MintAuthorizationClaimEvidence,
-  MintAuthorizationStep02Datum,
+  MintAuthorizationMintScanControl,
+  type MintAuthorizationMintScanState,
   MintAuthorizationStep02PublishedSpendRedeemer,
   MintAuthorizationStep02SpendRedeemer,
+  MintAuthorizationStep02ThreadDatum,
   MintAuthorizationStep03Datum,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -75,6 +77,11 @@ import {
 } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import { buildMintAuthorizationStep02Evidence } from "./evidence.js";
+import {
+  advanceMintScan,
+  initialMintScan,
+  mintScanComplete,
+} from "./mint-scan.js";
 import {
   mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
@@ -161,12 +168,15 @@ export const submitMintAuthorizationStep02 = async ({
     stepIndex: 1,
     threadOutRef,
   });
-  const anchorState = requireMintAuthorizationStepState({
+  const threadState = requireMintAuthorizationStepState({
     threadUtxo,
     signer,
-    schema: MintAuthorizationStep02Datum,
+    schema: MintAuthorizationStep02ThreadDatum,
     stepIndex: 1,
   });
+  const scanState = "Scan" in threadState ? threadState.Scan : null;
+  const anchorState =
+    "Bound" in threadState ? threadState.Bound : threadState.Scan;
 
   // The header must be the thread NFT's: category id ‖ blake2b-224(header).
   const headerHash = await Effect.runPromise(
@@ -239,6 +249,43 @@ export const submitMintAuthorizationStep02 = async ({
   const priorLedgerRoot =
     evidence.transitionStepMembership.value.pre_utxos_root;
 
+  if (
+    scanState !== null &&
+    (scanState.policy_index !== policyIndex ||
+      scanState.direction !== direction ||
+      scanState.prior_ledger_root !== priorLedgerRoot ||
+      scanState.field_hash !== planned.commitment)
+  )
+    throw mintAuthorizationSubmitError("mint scan claim or source changed");
+  let control = initialMintScan(planned.preimage, policyIndex);
+  if (scanState !== null) {
+    if (mintScanComplete(scanState.control, planned.preimage.length))
+      throw mintAuthorizationSubmitError(
+        "completed mint scan is not a resumable checkpoint",
+      );
+    const wanted = Data.to(scanState.control, MintAuthorizationMintScanControl);
+    while (Data.to(control, MintAuthorizationMintScanControl) !== wanted) {
+      if (mintScanComplete(control, planned.preimage.length))
+        throw mintAuthorizationSubmitError(
+          "mint scan checkpoint is not reachable from retained field",
+        );
+      control = advanceMintScan(control, planned.preimage, policyIndex);
+    }
+  }
+  const nextControl = advanceMintScan(control, planned.preimage, policyIndex);
+  const complete = mintScanComplete(nextControl, planned.preimage.length);
+  const nextScanState: MintAuthorizationMintScanState = {
+    bad_tx_id: anchorState.bad_tx_id,
+    bad_tx_witness_set_hash: anchorState.bad_tx_witness_set_hash,
+    validity_interval_start: anchorState.validity_interval_start,
+    validity_interval_end: anchorState.validity_interval_end,
+    prior_ledger_root: priorLedgerRoot,
+    policy_index: policyIndex,
+    direction,
+    field_hash: planned.commitment,
+    control: nextControl,
+  };
+
   const step03State: MintAuthorizationStep03State = {
     policy_id: accusedPolicyId,
     direction,
@@ -294,12 +341,20 @@ export const submitMintAuthorizationStep02 = async ({
     walletUtxos,
   );
   const feeInput = selectFeeInput(walletUtxosSansCarriage);
-  const step03Datum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: step03State },
-    MintAuthorizationStep03Datum,
-  );
+  const nextAddress = complete
+    ? contracts.steps[2].spendingScriptAddress
+    : contracts.steps[1].spendingScriptAddress;
+  const step03Datum = complete
+    ? Data.to(
+        { fraud_prover: signer.paymentKeyHash, data: step03State },
+        MintAuthorizationStep03Datum,
+      )
+    : Data.to(
+        { fraud_prover: signer.paymentKeyHash, data: { Scan: nextScanState } },
+        MintAuthorizationStep02ThreadDatum,
+      );
   const step03OutputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[2].spendingScriptAddress,
+    address: nextAddress,
     datum: step03Datum,
     unit: threadToken.unit,
   });
@@ -317,6 +372,21 @@ export const submitMintAuthorizationStep02 = async ({
       ),
     };
     resolvedLayout = layout;
+    if (scanState !== null)
+      return Data.to(
+        {
+          Continue: [
+            {
+              AdvanceScan: {
+                input_index: layout.inputIndex,
+                output_index: layout.outputIndex,
+                mint_opening: mintOpening,
+              },
+            },
+          ],
+        },
+        MintAuthorizationStep02PublishedSpendRedeemer,
+      );
     if (evidenceReferences !== undefined)
       return Data.to(
         {
@@ -376,7 +446,7 @@ export const submitMintAuthorizationStep02 = async ({
       : withInputs.readFrom(referenceInputs);
   const paid = withReferences.pay
     .ToContract(
-      contracts.steps[2].spendingScriptAddress,
+      nextAddress,
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
@@ -415,9 +485,30 @@ export const submitMintAuthorizationStep02 = async ({
       `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
     );
   }
-  if (awaitConfirmation) {
+  if (awaitConfirmation || !complete) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
+
+  if (!complete)
+    return submitMintAuthorizationStep02({
+      lucid,
+      contracts,
+      categoryId,
+      signer,
+      threadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+      reconstruction,
+      policyIndex,
+      direction,
+      nativeTxCompactCbor,
+      mintItemCbors,
+      certificateUtxo,
+      publishedCarriageUtxos: carriageUtxos,
+      claimEvidence: evidence,
+      evidenceReferences,
+      referenceScriptUtxo,
+      preSubmitBoundary,
+      awaitConfirmation,
+    });
 
   return {
     txHash,
