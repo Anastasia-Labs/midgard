@@ -1373,6 +1373,12 @@ const collectScriptDescriptors = (
       .scriptSourcesObserverBound,
     "V1 validation-trace script-sources observer bound yield",
   ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesRedeemerDescriptorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesRedeemerDescriptor,
+    "V1 validation-trace script-sources redeemer descriptor yield",
+  ),
   spendDescriptor(
     "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10],

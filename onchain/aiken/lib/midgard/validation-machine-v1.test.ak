@@ -56,6 +56,7 @@ use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
+use midgard/script_sources_descriptor as descriptor_claim
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
 use midgard/validation_machine/cek as vm_cek
 use midgard/validation_machine/input_sets as vm_input_sets
@@ -8233,12 +8234,12 @@ test script_sources_stage_ten_redeemer_family_guards() {
       stage_ten_transition,
       scan_begin_auxiliary,
     ),
-    vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    verify_descriptor_ten_mismatch_parity(
       stage_ten,
       stage_ten_transition,
       scan_begin_auxiliary,
     ),
-    !vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
+    !verify_descriptor_ten_match_parity(
       stage_ten,
       stage_ten_transition,
       scan_begin_auxiliary,
@@ -8248,12 +8249,12 @@ test script_sources_stage_ten_redeemer_family_guards() {
       stage_ten_item_transition,
       header_auxiliary,
     ),
-    vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    verify_descriptor_ten_mismatch_parity(
       stage_ten_item,
       stage_ten_item_transition,
       header_auxiliary,
     ),
-    !vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
+    !verify_descriptor_ten_match_parity(
       stage_ten_item,
       stage_ten_item_transition,
       header_auxiliary,
@@ -8263,12 +8264,12 @@ test script_sources_stage_ten_redeemer_family_guards() {
       stage_ten_tail_transition,
       tail_auxiliary,
     ),
-    vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
+    verify_descriptor_ten_match_parity(
       stage_ten_tail,
       stage_ten_tail_transition,
       tail_auxiliary,
     ),
-    !vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    !verify_descriptor_ten_mismatch_parity(
       stage_ten_tail,
       stage_ten_tail_transition,
       tail_auxiliary,
@@ -8915,7 +8916,7 @@ test script_sources_stage_twelve_redeemer_family_guard() {
     claimed_successor: finish_post,
   }
   and {
-    vm_script_sources.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+    verify_descriptor_twelve_redeemer_parity(
       pre,
       begin_transition,
       vm_machine_types.RedeemerScanBeginWitness {
@@ -8926,7 +8927,7 @@ test script_sources_stage_twelve_redeemer_family_guard() {
         siblings: [],
       },
     ),
-    vm_script_sources.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+    verify_descriptor_twelve_redeemer_parity(
       begin_post,
       item_transition,
       vm_machine_types.RedeemerItemStepWitness {
@@ -8935,7 +8936,7 @@ test script_sources_stage_twelve_redeemer_family_guard() {
         witness: header_witness,
       },
     ),
-    !vm_script_sources.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+    !verify_descriptor_twelve_redeemer_parity(
       finish_pre,
       finish_transition,
       vm_machine_types.NoAuxiliaryWitness,
@@ -16891,12 +16892,12 @@ test stage_differential_ten_missing_routes_agree() {
     ),
   }
   and {
-    !vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
+    !verify_descriptor_ten_match_parity(
       pre,
       accepting,
       vm_machine_types.NoAuxiliaryWitness,
     ),
-    !vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    !verify_descriptor_ten_mismatch_parity(
       pre,
       accepting,
       vm_machine_types.NoAuxiliaryWitness,
@@ -18656,5 +18657,220 @@ fn verify_bounded_context_parity(
       pre.program_counter + 1,
       next_work,
     )
+  }
+}
+
+fn verify_descriptor_ten_match_parity(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: vm_machine_types.ValidationOneStepWitnessV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let original = vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
+    pre,
+    witness,
+    auxiliary,
+  )
+  if original {
+    let split = when auxiliary is {
+      vm_machine_types.RedeemerItemStepWitness {
+        control,
+        witness: item_witness,
+        ..
+      } -> {
+        expect
+            Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
+              control: next,
+            })
+          = redeemer_item_proof_v1.step_v1(control, item_witness)
+        expect Some(chunk_proof) = item_witness.chunk_proof
+        let claim = descriptor_claim.DescriptorStepClaim {
+          control: descriptor_claim.narrow_control(control),
+          open_tail: item_witness.action == redeemer_item_proof_v1.RedeemerItemOpenTail,
+          chunk_proof,
+          next_chunk_proof: item_witness.next_chunk_proof,
+          claimed_next: descriptor_claim.narrow_control(next),
+        }
+        and {
+          vm_script_sources_late_stages.verify_descriptor_step_claim(
+            witness,
+            claim,
+          ),
+          vm_script_sources_late_stages.verify_descriptor_match(
+            pre,
+            witness,
+            claim,
+          ),
+          !vm_script_sources_late_stages.verify_descriptor_step_claim(
+            witness,
+            descriptor_claim.DescriptorStepClaim {
+              ..claim,
+              claimed_next: descriptor_claim.DescriptorControl {
+                ..claim.claimed_next,
+                execution_steps: claim.claimed_next.execution_steps + 1,
+              },
+            },
+          ),
+        }
+      }
+      _ -> False
+    }
+    expect split
+    original
+  } else {
+    False
+  }
+}
+
+fn verify_descriptor_ten_mismatch_parity(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: vm_machine_types.ValidationOneStepWitnessV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let original = vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    pre,
+    witness,
+    auxiliary,
+  )
+  if original {
+    let split = when auxiliary is {
+      vm_machine_types.RedeemerScanBeginWitness {
+        item_index,
+        item_count,
+        total_length,
+        item_commitment,
+        siblings,
+      } ->
+        vm_script_sources_late_stages.verify_descriptor_begin_ten(
+          pre,
+          witness,
+          item_index,
+          item_count,
+          total_length,
+          item_commitment,
+          siblings,
+        )
+      vm_machine_types.RedeemerItemStepWitness {
+        control,
+        witness: item_witness,
+        ..
+      } -> {
+        expect
+            Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
+              control: next,
+            })
+          = redeemer_item_proof_v1.step_v1(control, item_witness)
+        expect Some(chunk_proof) = item_witness.chunk_proof
+        let claim = descriptor_claim.DescriptorStepClaim {
+          control: descriptor_claim.narrow_control(control),
+          open_tail: item_witness.action == redeemer_item_proof_v1.RedeemerItemOpenTail,
+          chunk_proof,
+          next_chunk_proof: item_witness.next_chunk_proof,
+          claimed_next: descriptor_claim.narrow_control(next),
+        }
+        and {
+          vm_script_sources_late_stages.verify_descriptor_step_claim(
+            witness,
+            claim,
+          ),
+          vm_script_sources_late_stages.verify_descriptor_mismatch(
+            pre,
+            witness,
+            claim,
+          ),
+          !vm_script_sources_late_stages.verify_descriptor_step_claim(
+            witness,
+            descriptor_claim.DescriptorStepClaim {
+              ..claim,
+              claimed_next: descriptor_claim.DescriptorControl {
+                ..claim.claimed_next,
+                execution_steps: claim.claimed_next.execution_steps + 1,
+              },
+            },
+          ),
+        }
+      }
+      _ -> False
+    }
+    expect split
+    original
+  } else {
+    False
+  }
+}
+
+fn verify_descriptor_twelve_redeemer_parity(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: vm_machine_types.ValidationOneStepWitnessV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let original = vm_script_sources.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+    pre,
+    witness,
+    auxiliary,
+  )
+  if original {
+    let split = when auxiliary is {
+      vm_machine_types.RedeemerScanBeginWitness {
+        item_index,
+        item_count,
+        total_length,
+        item_commitment,
+        siblings,
+      } ->
+        vm_script_sources_late_stages.verify_descriptor_begin_twelve(
+          pre,
+          witness,
+          item_index,
+          item_count,
+          total_length,
+          item_commitment,
+          siblings,
+        )
+      vm_machine_types.RedeemerItemStepWitness {
+        control,
+        witness: item_witness,
+        ..
+      } -> {
+        expect
+            Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
+              control: next,
+            })
+          = redeemer_item_proof_v1.step_v1(control, item_witness)
+        expect Some(chunk_proof) = item_witness.chunk_proof
+        let claim = descriptor_claim.DescriptorStepClaim {
+          control: descriptor_claim.narrow_control(control),
+          open_tail: item_witness.action == redeemer_item_proof_v1.RedeemerItemOpenTail,
+          chunk_proof,
+          next_chunk_proof: item_witness.next_chunk_proof,
+          claimed_next: descriptor_claim.narrow_control(next),
+        }
+        and {
+          vm_script_sources_late_stages.verify_descriptor_step_claim(
+            witness,
+            claim,
+          ),
+          vm_script_sources_late_stages.verify_descriptor_used(
+            pre,
+            witness,
+            claim,
+          ),
+          !vm_script_sources_late_stages.verify_descriptor_step_claim(
+            witness,
+            descriptor_claim.DescriptorStepClaim {
+              ..claim,
+              claimed_next: descriptor_claim.DescriptorControl {
+                ..claim.claimed_next,
+                execution_steps: claim.claimed_next.execution_steps + 1,
+              },
+            },
+          ),
+        }
+      }
+      _ -> False
+    }
+    expect split
+    original
+  } else {
+    False
   }
 }

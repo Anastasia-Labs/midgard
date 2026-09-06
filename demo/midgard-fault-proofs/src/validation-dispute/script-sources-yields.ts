@@ -86,3 +86,9 @@ export const SCRIPT_SOURCES_OBSERVER_YIELD_ROLES = [
     role: "V1 validation-trace script-sources observer bound yield",
   },
 ] as const;
+
+export const SCRIPT_SOURCES_DESCRIPTOR_YIELD_ROLE = {
+  contract: "scriptSourcesRedeemerDescriptor",
+  deployment: "validationTraceDisputeScriptSourcesRedeemerDescriptorWithdraw",
+  role: "V1 validation-trace script-sources redeemer descriptor yield",
+} as const;

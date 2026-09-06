@@ -1,3 +1,4 @@
+use aiken/fuzz
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/cek_data_traverse_v1
@@ -77,6 +78,15 @@ test redeemer_item_descriptor_authenticates_header_tail_and_exact_metadata() {
   )
   expect Some(descriptor) = redeemer_item_proof_v1.descriptor_v1(terminal)
   and {
+    redeemer_item_proof_v1.hash_descriptor_control_v1(tail) == redeemer_item_proof_v1.hash_control_v1(
+      tail,
+    ),
+    redeemer_item_proof_v1.hash_descriptor_control_v1(terminal) == redeemer_item_proof_v1.hash_control_v1(
+      terminal,
+    ),
+    redeemer_item_proof_v1.descriptor_step_v1(tail, True, proof, None) == Some(
+      redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: terminal },
+    ),
     normalized_hash_is_exact(initial),
     normalized_hash_is_exact(tail),
     normalized_hash_is_exact(terminal),
@@ -297,5 +307,30 @@ test initial_hash_matches_canonical_hash_for_both_modes_and_maximum_coordinates(
         -1,
       ),
     ),
+  }
+}
+
+test descriptor_narrow_header_equals_generic(
+  bytes via fuzz.bytearray_between(1, 128),
+) {
+  let proof = singleton_chunk_proof(bytes, 0)
+  let initial = redeemer_item_proof_v1.initial_control_v1(
+    0,
+    0,
+    1,
+    bytearray.length(bytes),
+    bounded_item_v1.from_bytes(8, 0, bytes),
+    -1,
+    -1,
+  )
+  and {
+    redeemer_item_proof_v1.hash_descriptor_control_v1(initial) == redeemer_item_proof_v1.hash_control_v1(
+      initial,
+    ),
+    redeemer_item_proof_v1.descriptor_step_v1(initial, False, proof, None) == redeemer_item_proof_v1.step_v1(
+      initial,
+      source_witness(redeemer_item_proof_v1.RedeemerItemOpenHeader, proof),
+    ),
+    redeemer_item_proof_v1.descriptor_step_v1(initial, True, proof, None) == None,
   }
 }

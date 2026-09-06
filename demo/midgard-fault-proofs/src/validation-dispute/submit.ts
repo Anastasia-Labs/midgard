@@ -164,7 +164,9 @@ import {
   initialCekMaterialTraversal,
   submitCekMaterialTraversal,
 } from "./cek-material-traversal.js";
+import { scriptSourcesDescriptorClaim } from "./script-sources-descriptor.js";
 import {
+  SCRIPT_SOURCES_DESCRIPTOR_YIELD_ROLE,
   SCRIPT_SOURCES_MIDDLE_YIELD_ROLES,
   SCRIPT_SOURCES_OBSERVER_YIELD_ROLES,
   scriptSourcesMiddleYieldIndex,
@@ -3924,6 +3926,7 @@ const semanticActionFields = ({
   phaseANativeItemInvocation,
   scriptSourcesMiddleInvocation,
   scriptSourcesObserverInvocation,
+  scriptSourcesDescriptorInvocation,
   cekSelectionInvocation,
 }: {
   readonly resolverIndex: number;
@@ -3939,6 +3942,10 @@ const semanticActionFields = ({
    */
   readonly materialRoute?: PlutusDataValue;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly scriptSourcesDescriptorInvocation?: {
+    readonly claim: Constr<Data>;
+    readonly referenceInputIndex: bigint;
+  };
   readonly scriptSourcesObserverInvocation?: ScriptSourcesObserverInvocation;
   readonly scriptSourcesMiddleInvocation?: ScriptSourcesMiddleInvocation;
   readonly phaseANativeItemInvocation?: {
@@ -3958,6 +3965,20 @@ const semanticActionFields = ({
         "CEK material route is permitted only for the CEK execution-selection semantic resolver",
       );
     }
+  }
+  if (resolverIndex === 8 && [19, 21, 22].includes(semanticResolverIndex)) {
+    if (auxiliary.index === 10 && semanticResolverIndex !== 22)
+      return [...base, ...auxiliary.fields];
+    if (
+      scriptSourcesDescriptorInvocation === undefined ||
+      scriptSourcesDescriptorInvocation.referenceInputIndex < 0n
+    )
+      throw new Error("Descriptor scan requires its authenticated yield");
+    return [
+      ...base,
+      scriptSourcesDescriptorInvocation.claim,
+      scriptSourcesDescriptorInvocation.referenceInputIndex,
+    ];
   }
   if (resolverIndex === 8 && semanticResolverIndex === 25) {
     if (
@@ -4593,6 +4614,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   phaseANativeItemInvocation,
   scriptSourcesMiddleInvocation,
   scriptSourcesObserverInvocation,
+  scriptSourcesDescriptorInvocation,
   cekSelectionYieldReferenceInputIndices,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
@@ -4601,6 +4623,10 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   /** Required by, and only by, the CEK execution-selection resolver (11/1). */
   readonly materialRoute?: ValidationCekMaterialRoute;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly scriptSourcesDescriptorInvocation?: {
+    readonly claim: Constr<Data>;
+    readonly referenceInputIndex: bigint;
+  };
   readonly scriptSourcesObserverInvocation?: ScriptSourcesObserverInvocation;
   readonly scriptSourcesMiddleInvocation?: ScriptSourcesMiddleInvocation;
   readonly phaseANativeItemInvocation?: {
@@ -4646,12 +4672,26 @@ export const encodeValidationSemanticResolutionRedeemer = ({
     ...(scriptSourcesObserverInvocation === undefined
       ? {}
       : { scriptSourcesObserverInvocation }),
+    ...(scriptSourcesDescriptorInvocation === undefined
+      ? {}
+      : { scriptSourcesDescriptorInvocation }),
     ...(materialRoute === undefined
       ? {}
       : { materialRoute: validationCekMaterialRouteData(materialRoute) }),
   });
   return Buffer.from(
-    Data.to(new Constr(1, [new Constr(0, [...fields])])),
+    Data.to(
+      new Constr(1, [
+        new Constr(
+          oneStepArgument.resolverIndex === 8 &&
+          [19, 21].includes(staged.semanticResolverIndex) &&
+          staged.auxiliary.index === 10
+            ? 1
+            : 0,
+          [...fields],
+        ),
+      ]),
+    ),
     "hex",
   );
 };
@@ -4680,6 +4720,7 @@ const makeSemanticResolutionRedeemer = ({
   phaseANativeItemYield,
   scriptSourcesMiddleYield,
   scriptSourcesObserverYields,
+  scriptSourcesDescriptorYield,
   cekSelection,
   onLayout,
 }: {
@@ -4694,6 +4735,10 @@ const makeSemanticResolutionRedeemer = ({
   /** CEK program-material UTxOs the route names, in root order. */
   readonly materialReferenceUtxos?: readonly UTxO[];
   readonly assetFoldYieldReferenceUtxo?: UTxO;
+  readonly scriptSourcesDescriptorYield?: {
+    readonly utxo: UTxO;
+    readonly claim: Constr<Data>;
+  };
   readonly scriptSourcesObserverYields?: {
     readonly utxos: readonly UTxO[];
     readonly observerHash: string;
@@ -4781,6 +4826,18 @@ const makeSemanticResolutionRedeemer = ({
               ),
             },
           }),
+      ...(scriptSourcesDescriptorYield === undefined
+        ? {}
+        : {
+            scriptSourcesDescriptorInvocation: {
+              claim: scriptSourcesDescriptorYield.claim,
+              referenceInputIndex: requireReferenceInputIndex(
+                ctx,
+                scriptSourcesDescriptorYield.utxo,
+                "descriptor yield",
+              ),
+            },
+          }),
       ...(scriptSourcesObserverYields === undefined
         ? {}
         : {
@@ -4821,7 +4878,18 @@ const makeSemanticResolutionRedeemer = ({
             ),
           }),
     });
-    return Data.to(new Constr(1, [new Constr(0, [...fields])]));
+    return Data.to(
+      new Constr(1, [
+        new Constr(
+          resolverIndex === 8 &&
+          [19, 21].includes(semanticResolverIndex) &&
+          auxiliary.index === 10
+            ? 1
+            : 0,
+          [...fields],
+        ),
+      ]),
+    );
   }) satisfies BuildTxWithRedeemer;
 
 const makeIndexedValidationStageRedeemer = ({
@@ -5956,6 +6024,36 @@ export const submitValidationDisputeSemanticResolution = async ({
       role: "V1 validation-trace value-and-mint asset-fold yield",
     });
   }
+  const scriptSourcesDescriptorYield = await (async () => {
+    if (
+      resolverIndex !== 8 ||
+      ![19, 21, 22].includes(staged.semanticResolverIndex) ||
+      staged.auxiliary.index !== 18
+    )
+      return undefined;
+    const spec = SCRIPT_SOURCES_DESCRIPTOR_YIELD_ROLE;
+    const contract = contracts.validationTraceDispute.yields[spec.contract];
+    const entry = parsedDeploymentInfo[spec.deployment];
+    if (entry?.refScriptUTxO == null)
+      throw new Error("Missing authenticated redeemer descriptor yield");
+    const utxo = await fetchUtxoByOutRef({
+      lucid,
+      outRef: entry.refScriptUTxO,
+      label: spec.role,
+    });
+    requireValidationDisputeReferenceScript({
+      utxo,
+      deployedScriptHash: entry.scriptHash,
+      expectedScriptHash: contract.withdrawalScriptHash,
+      authPolicyId: referenceScriptAuthPolicyId,
+      role: spec.role,
+    });
+    return {
+      contract,
+      utxo,
+      claim: scriptSourcesDescriptorClaim(staged.auxiliary),
+    };
+  })();
   const scriptSourcesObserver = await (async () => {
     if (resolverIndex !== 8 || staged.semanticResolverIndex !== 25)
       return undefined;
@@ -7178,6 +7276,9 @@ export const submitValidationDisputeSemanticResolution = async ({
         ? []
         : [scriptSourcesMiddleYield.utxo]),
       ...(scriptSourcesObserver?.yields.map((y) => y.utxo) ?? []),
+      ...(scriptSourcesDescriptorYield === undefined
+        ? []
+        : [scriptSourcesDescriptorYield.utxo]),
       ...(semanticFieldCarriageMaterial?.referenceUtxos ?? []),
     ];
     if (semanticFieldCarriageMaterial !== undefined) {
@@ -7234,6 +7335,9 @@ export const submitValidationDisputeSemanticResolution = async ({
           ...(scriptSourcesMiddleYield === undefined
             ? {}
             : { scriptSourcesMiddleYield }),
+          ...(scriptSourcesDescriptorYield === undefined
+            ? {}
+            : { scriptSourcesDescriptorYield }),
           ...(scriptSourcesObserver === undefined
             ? {}
             : {
@@ -7264,6 +7368,15 @@ export const submitValidationDisputeSemanticResolution = async ({
       .validFrom(range.validFrom)
       .validTo(range.validTo)
       .addSignerKey(signer.paymentKeyHash);
+    if (scriptSourcesDescriptorYield !== undefined)
+      tx = tx.withdraw(
+        validatorToRewardAddress(
+          network,
+          scriptSourcesDescriptorYield.contract.withdrawalScript,
+        ),
+        0n,
+        Data.void(),
+      );
     for (const observerYield of scriptSourcesObserver?.yields ?? [])
       tx = tx.withdraw(
         validatorToRewardAddress(

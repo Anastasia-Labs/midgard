@@ -135,6 +135,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1VtSsS07ObserverItemYield",
   "V1 validation-trace script-sources observer bound yield":
     "V1VtSsS07ObserverBoundYield",
+  "V1 validation-trace script-sources redeemer descriptor yield":
+    "V1VtSsRedeemerItemStepYield",
   "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
   "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
   "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",

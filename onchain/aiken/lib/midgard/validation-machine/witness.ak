@@ -2470,6 +2470,27 @@ pub fn script_sources_stage_nine_control_from_witness(
   }
 }
 
+pub fn script_sources_redeemer_scan_control_from_witness(
+  work_witness_cbor: ByteArray,
+) -> ScriptSourcesControlV1 {
+  expect Some(data) = cbor.deserialise(work_witness_cbor)
+  let items = builtin.un_list_data(data)
+  expect list.length(items) == 31
+  let Pair(base_items, extension_data) = split_last_data(items)
+  let base_control = script_sources_control_from_data_items(
+    base_items,
+    empty_script_discovery_control(),
+    None,
+  )
+  expect base_control.stage == 10 || base_control.stage == 12
+  ScriptSourcesControlV1 {
+    ..base_control,
+    discovery: extension_data
+      |> builtin.un_b_data
+      |> script_discovery_control_from_cbor,
+  }
+}
+
 pub fn script_sources_stage_ten_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {

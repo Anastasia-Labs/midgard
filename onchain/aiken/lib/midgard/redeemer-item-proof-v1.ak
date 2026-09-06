@@ -286,7 +286,7 @@ pub fn initial_control_v1(
     expected_purpose_tag,
     expected_pointer_index,
   )
-  expect control_is_well_formed(control)
+  expect outer_fields_are_well_formed(control)
   control
 }
 
@@ -623,6 +623,14 @@ pub fn prevalidated_open_header(
   control: RedeemerItemProofControlV1,
   source_bytes: ByteArray,
 ) -> RedeemerItemProofStepResultV1 {
+  open_header_with_validation(control, source_bytes, control_is_well_formed)
+}
+
+fn open_header_with_validation(
+  control: RedeemerItemProofControlV1,
+  source_bytes: ByteArray,
+  validate: fn(RedeemerItemProofControlV1) -> Bool,
+) -> RedeemerItemProofStepResultV1 {
   when canonical_cbor_scan_v1.head_at_v1(source_bytes, 0, 4) is {
     None -> RedeemerItemProofInvalid
     Some(outer) ->
@@ -660,7 +668,7 @@ pub fn prevalidated_open_header(
                       data_offset: data.next_offset,
                       data_length: data.value,
                     }
-                    if control_is_well_formed(next) {
+                    if validate(next) {
                       RedeemerItemProofAdvanced { control: next }
                     } else {
                       RedeemerItemProofInvalid
@@ -676,6 +684,42 @@ pub fn prevalidated_open_header(
 pub fn prevalidated_open_tail(
   control: RedeemerItemProofControlV1,
   source_bytes: ByteArray,
+) -> RedeemerItemProofStepResultV1 {
+  open_tail_with_successor(
+    source_bytes,
+    fn(memory, steps) {
+      let next = RedeemerItemProofControlV1 {
+        ..control,
+        stage: if control.mode == mode_data {
+          stage_data
+        } else {
+          stage_terminal
+        },
+        execution_memory: memory,
+        execution_steps: steps,
+        traversal: if control.mode == mode_data {
+          Some(
+            cek_data_traverse_v1.initial_control_v1(
+              control.data_offset,
+              control.data_length,
+            ),
+          )
+        } else {
+          None
+        },
+      }
+      if control_is_well_formed(next) {
+        RedeemerItemProofAdvanced { control: next }
+      } else {
+        RedeemerItemProofInvalid
+      }
+    },
+  )
+}
+
+fn open_tail_with_successor(
+  source_bytes: ByteArray,
+  next: fn(Int, Int) -> RedeemerItemProofStepResultV1,
 ) -> RedeemerItemProofStepResultV1 {
   when canonical_cbor_scan_v1.head_at_v1(source_bytes, 0, 4) is {
     None -> RedeemerItemProofInvalid
@@ -700,31 +744,7 @@ pub fn prevalidated_open_tail(
                 if steps.next_offset != bytearray.length(source_bytes) {
                   RedeemerItemProofInvalid
                 } else {
-                  let next = RedeemerItemProofControlV1 {
-                    ..control,
-                    stage: if control.mode == mode_data {
-                      stage_data
-                    } else {
-                      stage_terminal
-                    },
-                    execution_memory: memory.value,
-                    execution_steps: steps.value,
-                    traversal: if control.mode == mode_data {
-                      Some(
-                        cek_data_traverse_v1.initial_control_v1(
-                          control.data_offset,
-                          control.data_length,
-                        ),
-                      )
-                    } else {
-                      None
-                    },
-                  }
-                  if control_is_well_formed(next) {
-                    RedeemerItemProofAdvanced { control: next }
-                  } else {
-                    RedeemerItemProofInvalid
-                  }
+                  next(memory.value, steps.value)
                 }
             }
         }
@@ -852,6 +872,88 @@ pub fn step_v1(
     when authenticated is {
       None -> None
       Some(source_bytes) -> apply_step(control, source_bytes, witness.action)
+    }
+  }
+}
+
+/// Descriptor mode never opens a nested Data traversal. Its hash remains the
+/// original control hash with the canonical None suffix.
+pub fn descriptor_control_is_well_formed_v1(
+  control: RedeemerItemProofControlV1,
+) -> Bool {
+  and {
+    control.mode == mode_descriptor,
+    control.traversal == None,
+    control.stage == stage_header || control.stage == stage_tail || control.stage == stage_terminal,
+    outer_fields_are_well_formed(control),
+  }
+}
+
+pub fn hash_descriptor_control_v1(
+  control: RedeemerItemProofControlV1,
+) -> ByteArray {
+  expect descriptor_control_is_well_formed_v1(control)
+  control_hash_prefix_v1(control) |> bytearray.concat(#"d87a80") |> blake2b_256
+}
+
+pub fn descriptor_step_v1(
+  control: RedeemerItemProofControlV1,
+  open_tail: Bool,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<RedeemerItemProofStepResultV1> {
+  if !descriptor_control_is_well_formed_v1(control) || control.stage != if open_tail {
+    stage_tail
+  } else {
+    stage_header
+  } {
+    None
+  } else {
+    let span = if open_tail {
+      RedeemerItemSourceSpanV1 {
+        absolute_start: control.data_offset + control.data_length,
+        length: control.total_length - control.data_offset - control.data_length,
+      }
+    } else {
+      RedeemerItemSourceSpanV1 {
+        absolute_start: 0,
+        length: if control.total_length < max_header_span {
+          control.total_length
+        } else {
+          max_header_span
+        },
+      }
+    }
+    when authenticated_span(control, span, chunk_proof, next_chunk_proof) is {
+      None -> None
+      Some(bytes) ->
+        Some(
+          if open_tail {
+            open_tail_with_successor(
+              bytes,
+              fn(memory, steps) {
+                let next = RedeemerItemProofControlV1 {
+                  ..control,
+                  stage: stage_terminal,
+                  execution_memory: memory,
+                  execution_steps: steps,
+                  traversal: None,
+                }
+                if descriptor_control_is_well_formed_v1(next) {
+                  RedeemerItemProofAdvanced { control: next }
+                } else {
+                  RedeemerItemProofInvalid
+                }
+              },
+            )
+          } else {
+            open_header_with_validation(
+              control,
+              bytes,
+              descriptor_control_is_well_formed_v1,
+            )
+          },
+        )
     }
   }
 }

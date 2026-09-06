@@ -40,6 +40,7 @@ import {
   validationValueAndMintSemanticReferenceScriptDeploymentEntry,
 } from "../../../src/index.js";
 import {
+  SCRIPT_SOURCES_DESCRIPTOR_YIELD_ROLE,
   SCRIPT_SOURCES_MIDDLE_YIELD_ROLES,
   SCRIPT_SOURCES_OBSERVER_YIELD_ROLES,
 } from "../../../src/validation-dispute/script-sources-yields.js";
@@ -702,8 +703,8 @@ export const runForcedValidationDisputeScenario = async (
       };
     }
   }
-  if (stagedResolverIndex === 8 && stagedSemanticIndex === 25) {
-    for (const spec of SCRIPT_SOURCES_OBSERVER_YIELD_ROLES) {
+  if (stagedResolverIndex === 8 && [19, 21, 22].includes(stagedSemanticIndex)) {
+    for (const spec of [SCRIPT_SOURCES_DESCRIPTOR_YIELD_ROLE]) {
       const contract =
         contracts.fraudProofContracts.validationTraceDispute.yields[
           spec.contract
@@ -717,6 +718,40 @@ export const runForcedValidationDisputeScenario = async (
           script: contract.withdrawalScript,
         },
       });
+      semanticDeploymentInfo = {
+        ...semanticDeploymentInfo,
+        contracts: {
+          ...semanticDeploymentInfo.contracts,
+          [spec.deployment]: {
+            scriptHash: contract.withdrawalScriptHash,
+            refScriptUTxO: {
+              txHash: publication.utxo.txHash,
+              outputIndex: publication.utxo.outputIndex,
+            },
+          },
+        },
+      };
+    }
+  }
+  if (stagedResolverIndex === 8 && stagedSemanticIndex === 25) {
+    for (const spec of SCRIPT_SOURCES_OBSERVER_YIELD_ROLES) {
+      const contract =
+        contracts.fraudProofContracts.validationTraceDispute.yields[
+          spec.contract
+        ];
+      const publication =
+        phaseAItemCarriage?.yields.find(
+          (entry) => entry.spec.contract === spec.contract,
+        )?.publication ??
+        (await publishAuthenticatedValidationDisputeControl({
+          lucid: challengerLucid,
+          authPolicy: referenceScriptAuth,
+          target: {
+            control: spec.contract,
+            name: spec.role,
+            script: contract.withdrawalScript,
+          },
+        }));
       semanticDeploymentInfo = {
         ...semanticDeploymentInfo,
         contracts: {

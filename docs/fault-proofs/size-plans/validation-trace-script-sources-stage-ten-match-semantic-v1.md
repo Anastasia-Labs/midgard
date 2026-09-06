@@ -610,3 +610,29 @@ for each. The ledger has 1,014 transactions and 522 publications, maximum
 15,108 signed bytes, 3,731,076 memory and 1,445,994,848 CPU. All execution
 reserves pass. Slots 20/26 and maximum discovery shapes still need their
 specific fixtures; these results do not claim their lifecycle closure.
+
+## Shared descriptor implementation checkpoint (2026-09-06)
+
+The three existing dispatchers now use a shared authenticated descriptor-step
+yield. Begin remains in the mismatch and stage-twelve dispatchers. The original
+auxiliary is reconstructed exactly from the scalar claim; the semantic slot
+roster and evidence hash do not change. The shared yield authenticates the
+current item hash, source chunk proof and exact claimed successor. Header/tail
+parsing is shared with the original engine through narrow validation/successor
+callbacks; initial controls have fixed None traversal and use the equivalent
+outer-field validation without linking nested traversal grammar.
+
+Normal testnet blueprint `b652b33d4c9d13722b695ff1d2aad0b766c9ba922d6266f73f74e0dfa4fa3f47`
+(pinned `v1.1.23+5adf783`) has raw bytes 12,212 / 14,441 / 14,456 for
+match / mismatch / stage twelve and 11,353 for the common yield. Full real
+lifecycles passed 18/18 across six begin/header/tail frontiers, each with
+permanent proof/removal, honest refusal and cancellation/fresh restart. The
+descriptor ledger contains 1026 signed rows (534 publications), maxima
+15108 bytes / 7302448 memory / 2556240596 CPU,
+with all reserves preserved.
+
+Machine parity passed 197/197 and item parser parity 5/5, including randomized
+source bytes and exact descriptor hashes. Eight host tests cover two-chunk
+source boundaries, 32 KiB-scale items, source substitution and missing proofs.
+Maximum physical-carriage and mismatching-terminal frontier cases remain
+separate closure work.

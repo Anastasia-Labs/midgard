@@ -249,6 +249,7 @@ export const makeAlwaysSucceedsContracts = (
         scriptSourcesStageSixFinish: reserve,
         scriptSourcesObserverItem: reserve,
         scriptSourcesObserverBound: reserve,
+        scriptSourcesRedeemerDescriptor: reserve,
         phaseANativeItemNative: reserve,
         phaseANativeItemForeign: reserve,
         cekMaterialProgramTask: reserve,

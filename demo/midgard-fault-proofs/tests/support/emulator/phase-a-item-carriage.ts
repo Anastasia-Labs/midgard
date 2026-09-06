@@ -16,6 +16,7 @@ import {
 import { Effect } from "effect";
 
 import { type ResolvedProverSigner } from "../../../src/runtime.js";
+import { SCRIPT_SOURCES_OBSERVER_YIELD_ROLES } from "../../../src/validation-dispute/script-sources-yields.js";
 import {
   publishAuthenticatedValidationDisputeControl,
   publishPlainReferenceScriptUtxo,
@@ -60,6 +61,8 @@ export const preparePhaseAItemCarriage = async ({
   source: { compact_cbor: string; witness_set_compact_cbor: string };
   kind: "native" | "foreign" | "observer" | "redeemer";
 }) => {
+  const scriptSourcesObserver =
+    kind === "observer" && trace.states[stateIndex]!.phase === "scriptSources";
   const fieldIndex = kind === "redeemer" ? 8 : kind === "observer" ? 3 : 6;
   const auxiliary = trace.witnesses[stateIndex]!.auxiliary;
   if (
@@ -87,14 +90,22 @@ export const preparePhaseAItemCarriage = async ({
     lucid,
     script:
       chain.semanticResolvers[
-        kind === "redeemer" ? 47 : kind === "observer" ? 25 : 11
+        scriptSourcesObserver
+          ? 57
+          : kind === "redeemer"
+            ? 47
+            : kind === "observer"
+              ? 25
+              : 11
       ].spendingScript,
     label: "phase-A item semantic",
   });
   const yields = [];
-  for (const spec of kind === "observer" || kind === "redeemer"
-    ? []
-    : PHASE_A_ITEM_YIELD_SPECS) {
+  for (const spec of scriptSourcesObserver
+    ? SCRIPT_SOURCES_OBSERVER_YIELD_ROLES
+    : kind === "observer" || kind === "redeemer"
+      ? []
+      : PHASE_A_ITEM_YIELD_SPECS) {
     const contract = chain.yields[spec.contract];
     const publication = await publishAuthenticatedValidationDisputeControl({
       lucid,
@@ -166,9 +177,11 @@ export const preparePhaseAItemCarriage = async ({
   const referenceInputs = [
     ...material.referenceUtxos,
     semanticPublication.utxo,
-    ...(kind === "observer" || kind === "redeemer"
-      ? []
-      : [yields[kind === "native" ? 0 : 1]!.publication.utxo]),
+    ...(scriptSourcesObserver
+      ? yields.map((y) => y.publication.utxo)
+      : kind === "observer" || kind === "redeemer"
+        ? []
+        : [yields[kind === "native" ? 0 : 1]!.publication.utxo]),
   ];
   const carriage = resolveMidgardFieldCarriageAgainstReferenceInputs({
     plan,

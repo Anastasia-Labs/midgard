@@ -16,6 +16,7 @@ use midgard/rejection_reason_v1.{
   reject_invalid_field_type, reject_missing_required_witness,
 }
 use midgard/script_proof_v1
+use midgard/script_sources_descriptor as descriptor_claim
 use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ObserverPurposeScanControlV1, ReceivePurposeScanControlV1,
   RedeemerItemStepWitness, RedeemerScanBeginWitness, ScriptDiscoveryControlV1,
@@ -40,6 +41,7 @@ use midgard/validation_machine/witness.{
   encode_script_discovery_control, encode_script_sources_discovery_witness,
   encode_script_sources_witness, mint_fold_active_state_is_empty,
   reset_script_discovery_current,
+  script_sources_redeemer_scan_control_from_witness,
   script_sources_stage_eight_control_from_witness,
   script_sources_stage_eleven_control_from_witness,
   script_sources_stage_nine_control_from_witness,
@@ -2157,6 +2159,269 @@ pub fn verify_script_sources_stage_twelve_finish_semantics_v1(
       validation_trace_v1.NativeScripts,
       pre.program_counter + 1,
       next_control,
+    ),
+  }
+}
+
+pub fn verify_descriptor_step_claim(
+  witness: ValidationOneStepWitnessV1,
+  claim: descriptor_claim.DescriptorStepClaim,
+) -> Bool {
+  let control = script_sources_redeemer_scan_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let current = descriptor_claim.full_control(claim.control)
+  and {
+    control.discovery.redeemer_cursor < control.redeemer_count,
+    control.discovery.redeemer_item_control_hash != #"",
+    current.item_index == control.discovery.redeemer_cursor,
+    current.item_count == control.redeemer_count,
+    redeemer_item_proof_v1.hash_descriptor_control_v1(current) == control.discovery.redeemer_item_control_hash,
+    redeemer_item_proof_v1.descriptor_step_v1(
+      current,
+      claim.open_tail,
+      claim.chunk_proof,
+      claim.next_chunk_proof,
+    ) == Some(
+      redeemer_item_proof_v1.RedeemerItemProofAdvanced {
+        control: descriptor_claim.full_control(claim.claimed_next),
+      },
+    ),
+  }
+}
+
+pub fn verify_descriptor_match(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  claim: descriptor_claim.DescriptorStepClaim,
+) -> Bool {
+  let control = script_sources_stage_ten_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let discovery = control.discovery
+  let next = descriptor_claim.full_control(claim.claimed_next)
+  let terminal = next.stage == redeemer_item_proof_v1.stage_terminal
+  let matches = terminal && redeemer_pointer_matches_purpose_v1(
+    discovery.current_purpose_kind,
+    discovery.current_purpose_index,
+    next.purpose_tag,
+    next.pointer_index,
+  )
+  and {
+    script_sources_stage_ten_control_is_bound(pre, witness, control),
+    discovery.redeemer_cursor < control.redeemer_count,
+    discovery.redeemer_item_control_hash != #"",
+    matches,
+    {
+      let execution = append_script_execution(
+        discovery,
+        current_script_purpose_leaf(discovery),
+        discovery.matched_source_leaf,
+        discovery.matched_language_tag,
+        script_proof_v1.redeemer_item_leaf_hash(
+          next.item_index,
+          next.item_commitment,
+        ),
+      )
+      script_discovery_successor_is_exact(
+        pre,
+        witness,
+        control,
+        8,
+        reset_script_discovery_current(
+          ScriptDiscoveryControlV1 {
+            ..discovery,
+            purpose_cursor: discovery.purpose_cursor + 1,
+            used_redeemer_bitmap: script_discovery_bitmap_insert(
+              discovery.used_redeemer_bitmap,
+              next.item_index,
+            ),
+            execution_count: execution.count,
+            execution_peaks: execution.peaks,
+          },
+        ),
+      )
+    },
+  }
+}
+
+pub fn verify_descriptor_mismatch(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  claim: descriptor_claim.DescriptorStepClaim,
+) -> Bool {
+  let control = script_sources_stage_ten_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let discovery = control.discovery
+  let next = descriptor_claim.full_control(claim.claimed_next)
+  let terminal = next.stage == redeemer_item_proof_v1.stage_terminal
+  let matches = terminal && redeemer_pointer_matches_purpose_v1(
+    discovery.current_purpose_kind,
+    discovery.current_purpose_index,
+    next.purpose_tag,
+    next.pointer_index,
+  )
+  and {
+    script_sources_stage_ten_control_is_bound(pre, witness, control),
+    discovery.redeemer_cursor < control.redeemer_count,
+    discovery.redeemer_item_control_hash != #"",
+    !matches,
+    {
+      let after = if terminal {
+        ScriptDiscoveryControlV1 {
+          ..discovery,
+          redeemer_cursor: next.item_index + 1,
+          redeemer_item_control_hash: #"",
+        }
+      } else {
+        ScriptDiscoveryControlV1 {
+          ..discovery,
+          redeemer_item_control_hash: redeemer_item_proof_v1.hash_descriptor_control_v1(
+            next,
+          ),
+        }
+      }
+      script_discovery_successor_is_exact(pre, witness, control, 10, after)
+    },
+  }
+}
+
+pub fn verify_descriptor_used(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  claim: descriptor_claim.DescriptorStepClaim,
+) -> Bool {
+  let control = script_sources_stage_twelve_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let discovery = control.discovery
+  let next = descriptor_claim.full_control(claim.claimed_next)
+  let terminal = next.stage == redeemer_item_proof_v1.stage_terminal
+  and {
+    script_sources_stage_twelve_control_is_bound(pre, witness, control),
+    discovery.redeemer_cursor < control.redeemer_count,
+    discovery.redeemer_item_control_hash != #"",
+    if terminal && !script_discovery_bitmap_has(
+      discovery.used_redeemer_bitmap,
+      next.item_index,
+    ) {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_invalid_field_type,
+      )
+    } else {
+      let after = if terminal {
+        ScriptDiscoveryControlV1 {
+          ..discovery,
+          redeemer_cursor: next.item_index + 1,
+          redeemer_item_control_hash: #"",
+        }
+      } else {
+        ScriptDiscoveryControlV1 {
+          ..discovery,
+          redeemer_item_control_hash: redeemer_item_proof_v1.hash_descriptor_control_v1(
+            next,
+          ),
+        }
+      }
+      script_discovery_successor_is_exact(pre, witness, control, 12, after)
+    },
+  }
+}
+
+pub fn verify_descriptor_begin_ten(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  item_index: Int,
+  item_count: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = script_sources_stage_ten_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  script_sources_stage_ten_control_is_bound(pre, witness, control) && descriptor_begin_successor(
+    pre,
+    witness,
+    control,
+    item_index,
+    item_count,
+    total_length,
+    item_commitment,
+    siblings,
+  )
+}
+
+pub fn verify_descriptor_begin_twelve(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  item_index: Int,
+  item_count: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = script_sources_stage_twelve_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  script_sources_stage_twelve_control_is_bound(pre, witness, control) && descriptor_begin_successor(
+    pre,
+    witness,
+    control,
+    item_index,
+    item_count,
+    total_length,
+    item_commitment,
+    siblings,
+  )
+}
+
+fn descriptor_begin_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  item_index: Int,
+  item_count: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let discovery = control.discovery
+  let initial = redeemer_item_proof_v1.initial_control_v1(
+    redeemer_item_proof_v1.mode_descriptor,
+    item_index,
+    item_count,
+    total_length,
+    item_commitment,
+    -1,
+    -1,
+  )
+  and {
+    discovery.redeemer_cursor < control.redeemer_count,
+    discovery.redeemer_item_control_hash == #"",
+    item_index == discovery.redeemer_cursor,
+    item_count == control.redeemer_count,
+    validation_merkle_v1.verify_membership(
+      control.redeemer_count,
+      control.redeemer_peaks,
+      item_index,
+      script_proof_v1.redeemer_item_leaf_hash(item_index, item_commitment),
+      siblings,
+    ),
+    script_discovery_successor_is_exact(
+      pre,
+      witness,
+      control,
+      control.stage,
+      ScriptDiscoveryControlV1 {
+        ..discovery,
+        redeemer_item_control_hash: redeemer_item_proof_v1.hash_descriptor_control_v1(
+          initial,
+        ),
+      },
     ),
   }
 }

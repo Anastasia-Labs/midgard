@@ -425,6 +425,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         scriptSourcesStageSixFinish: stateQueueYield,
         scriptSourcesObserverItem: stateQueueYield,
         scriptSourcesObserverBound: stateQueueYield,
+        scriptSourcesRedeemerDescriptor: stateQueueYield,
         phaseANativeItemNative: stateQueueYield,
         phaseANativeItemForeign: stateQueueYield,
       },

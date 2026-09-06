@@ -311,6 +311,7 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeScriptSourcesStageSixFinishWithdraw",
   "validationTraceDisputeScriptSourcesObserverItemWithdraw",
   "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
+  "validationTraceDisputeScriptSourcesRedeemerDescriptorWithdraw",
   "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
   "validationTraceDisputePhaseANativeScriptsItemSemantic",
   "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
@@ -981,6 +982,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeScriptSourcesObserverItemWithdraw",
     "V1 validation-trace script-sources observer bound yield":
       "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
+    "V1 validation-trace script-sources redeemer descriptor yield":
+      "validationTraceDisputeScriptSourcesRedeemerDescriptorWithdraw",
     "V1 validation-trace phase-A native Advance semantic":
       "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     "V1 validation-trace phase-A native Item semantic":

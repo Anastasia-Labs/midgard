@@ -735,6 +735,8 @@ const buildNativeTransactionTrace = async ({
   preconditionsRejection,
   rejectAfterPreconditions = false,
   resolveMissingInput = false,
+  scriptSourcesRejection,
+  descriptorMaximum = false,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
@@ -752,6 +754,12 @@ const buildNativeTransactionTrace = async ({
   readonly observerCount?: number;
   readonly rejectAfterPreconditions?: boolean;
   readonly resolveMissingInput?: boolean;
+  readonly descriptorMaximum?: boolean;
+  readonly scriptSourcesRejection?:
+    | "missingRedeemer"
+    | "missingObserver"
+    | "missingReceive"
+    | "unusedRedeemer";
   readonly preconditionsRejection?:
     | "missingIntegrity"
     | "untaggedObservers"
@@ -831,18 +839,39 @@ const buildNativeTransactionTrace = async ({
       : { language: "PlutusV3" as const, scriptBytes: program.envelopeCbor };
   const redeemerTxWitsPreimageCbor = encodeMidgardFieldPreimageForField({
     fieldIndex: 8,
-    items: [
-      {
-        purpose: "Spend",
-        index: 0n,
-        redeemerCbor: redeemerDataCbor ?? Buffer.from(Data.void(), "hex"),
-        executionUnits: {
-          memory: 1_000_000_000n,
-          steps: cekBlsFinal ? 10_000_000_000n : 1_000_000_000n,
-        },
-      },
-    ],
+    items:
+      scriptSourcesRejection === "missingRedeemer"
+        ? []
+        : [
+            ...(scriptSourcesRejection === "unusedRedeemer"
+              ? [
+                  {
+                    purpose: "Mint" as const,
+                    index: 0n,
+                    redeemerCbor: descriptorMaximum
+                      ? encodeCbor(Buffer.alloc(32744))
+                      : Buffer.from(Data.void(), "hex"),
+                    executionUnits: {
+                      memory: 1_000_000_000n,
+                      steps: 1_000_000_000n,
+                    },
+                  },
+                ]
+              : []),
+            {
+              purpose: "Spend",
+              index: 0n,
+              redeemerCbor: descriptorMaximum
+                ? encodeCbor(Buffer.alloc(32744))
+                : (redeemerDataCbor ?? Buffer.from(Data.void(), "hex")),
+              executionUnits: {
+                memory: 1_000_000_000n,
+                steps: cekBlsFinal ? 10_000_000_000n : 1_000_000_000n,
+              },
+            },
+          ],
   });
+  if (descriptorMaximum) expect(redeemerTxWitsPreimageCbor.length).toBe(32768);
   const observerScripts = Array.from({ length: observerCount }, (_, i) => {
     const nativeScript = {
       type: "before" as const,
@@ -865,7 +894,9 @@ const buildNativeTransactionTrace = async ({
           scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
             ...(mintAsset ? [script] : []),
             ...(plutusScript === undefined ? [] : [plutusScript]),
-            ...observerScripts,
+            ...(scriptSourcesRejection === "missingObserver"
+              ? []
+              : observerScripts),
           ]),
           validityIntervalEnd: BigInt(now + 1_000_000),
         };
@@ -903,7 +934,10 @@ const buildNativeTransactionTrace = async ({
     },
   });
   const producedOutput = encodeMidgardTxOutput({
-    address: spendingAddress,
+    address:
+      scriptSourcesRejection === "missingReceive"
+        ? Buffer.concat([Buffer.from([0x78]), Buffer.alloc(28, 0xaa)])
+        : spendingAddress,
     value: {
       lovelace: assetCount > 100 ? 100_000_000n : 10_000_000n,
       assets: assetCount === 0 ? new Map() : txAssets,
@@ -975,7 +1009,8 @@ const buildNativeTransactionTrace = async ({
   const postUtxosRoot =
     preconditionsRejection === undefined &&
     !rejectAfterPreconditions &&
-    !resolveMissingInput
+    !resolveMissingInput &&
+    scriptSourcesRejection === undefined
       ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
       : preUtxosRoot;
   const honestTrace = await Effect.runPromise(
@@ -1003,33 +1038,42 @@ const buildNativeTransactionTrace = async ({
       expectedLedgerOps:
         preconditionsRejection === undefined &&
         !rejectAfterPreconditions &&
-        !resolveMissingInput
+        !resolveMissingInput &&
+        scriptSourcesRejection === undefined
           ? expectedLedgerOps
           : [],
       ledgerMutationSteps:
         preconditionsRejection === undefined &&
         !rejectAfterPreconditions &&
-        !resolveMissingInput
+        !resolveMissingInput &&
+        scriptSourcesRejection === undefined
           ? ledgerMutationSteps
           : [],
       ...(preconditionsRejection === undefined &&
       !rejectAfterPreconditions &&
-      !resolveMissingInput
+      !resolveMissingInput &&
+      scriptSourcesRejection === undefined
         ? {}
         : { committedForcedVerdict: "accepted" as const }),
       expectedVerdict:
         preconditionsRejection === undefined &&
         !rejectAfterPreconditions &&
-        !resolveMissingInput
+        !resolveMissingInput &&
+        scriptSourcesRejection === undefined
           ? "accepted"
           : "rejected",
-      expectedRejectionCode: resolveMissingInput
-        ? RejectCodes.InputNotFound
-        : rejectAfterPreconditions
-          ? RejectCodes.ValidityIntervalMismatch
-          : preconditionsRejection === undefined
-            ? null
-            : RejectCodes.InvalidFieldType,
+      expectedRejectionCode:
+        scriptSourcesRejection !== undefined
+          ? scriptSourcesRejection === "unusedRedeemer"
+            ? RejectCodes.InvalidFieldType
+            : RejectCodes.MissingRequiredWitness
+          : resolveMissingInput
+            ? RejectCodes.InputNotFound
+            : rejectAfterPreconditions
+              ? RejectCodes.ValidityIntervalMismatch
+              : preconditionsRejection === undefined
+                ? null
+                : RejectCodes.InvalidFieldType,
     }),
   );
   return {
@@ -1192,6 +1236,10 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   scriptSourcesSemanticIndex,
   scriptSourcesItemExecutor,
   scriptSourcesMiddleKind,
+  scriptSourcesDescriptorAction,
+  scriptSourcesRejection,
+  descriptorMaximum = false,
+  scriptSourcesItemIndex,
   prepareFieldCarriage,
 }: {
   readonly operatorVkey: string;
@@ -1237,6 +1285,14 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly scriptSourcesSemanticIndex?: number;
   readonly scriptSourcesItemExecutor?: number;
   readonly scriptSourcesMiddleKind?: number;
+  readonly descriptorMaximum?: boolean;
+  readonly scriptSourcesRejection?:
+    | "missingRedeemer"
+    | "missingObserver"
+    | "missingReceive"
+    | "unusedRedeemer";
+  readonly scriptSourcesItemIndex?: number;
+  readonly scriptSourcesDescriptorAction?: "begin" | "header" | "tail";
   readonly prepareFieldCarriage?: (input: {
     trace: DeterministicValidationMachineTrace;
     stateIndex: number;
@@ -1299,6 +1355,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     preconditionsRejection,
     rejectAfterPreconditions,
     resolveMissingInput: resolveInputsKind === "nonMembership",
+    scriptSourcesRejection,
+    descriptorMaximum,
   });
   let challengerTrace = originalTrace;
   const disputedLowIndex = challengerTrace.states.findIndex((state, index) => {
@@ -1330,6 +1388,27 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
               ).toString("hex"),
             ),
           ) === scriptSourcesMiddleKind)) &&
+      (scriptSourcesItemIndex === undefined ||
+        (() => {
+          const auxiliary = challengerTrace.witnesses[index]!.auxiliary;
+          return (
+            auxiliary?.kind === "transactionFieldChunk" &&
+            auxiliary.itemIndex === scriptSourcesItemIndex
+          );
+        })()) &&
+      (scriptSourcesDescriptorAction === undefined ||
+        (() => {
+          const auxiliary = challengerTrace.witnesses[index]!.auxiliary;
+          if (scriptSourcesDescriptorAction === "begin")
+            return auxiliary?.kind === "redeemerScanBegin";
+          return (
+            auxiliary?.kind === "redeemerItemStep" &&
+            auxiliary.witness.action.kind ===
+              (scriptSourcesDescriptorAction === "header"
+                ? "openHeader"
+                : "openTail")
+          );
+        })()) &&
       (scriptSourcesSemanticIndex === undefined ||
         validationSemanticResolverIndex(challengerTrace.witnesses[index]!) ===
           scriptSourcesSemanticIndex) &&
@@ -1425,7 +1504,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   const operatorStates = challengerTrace.states.map((state, index) =>
     index <= disputedLowIndex
       ? state
-      : dishonestChallenger
+      : dishonestChallenger && scriptSourcesRejection === undefined
         ? { ...state, workRoot: Buffer.alloc(32, 0x7e) }
         : forgedTerminal,
   );
@@ -1440,11 +1519,31 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
     ),
   };
-  const claimedOperatorTrace = dishonestChallenger
-    ? challengerTrace
-    : operatorTrace;
+  // Invalid accepted forced sources cannot have an honest accepted operator
+  // trace. For these semantic refusal cases, keep that operator claim and
+  // forge only the challenger's successor, preserving its rejected endpoint.
+  const rejectionForgeryStates = challengerTrace.states.map((state, index) =>
+    index <= disputedLowIndex
+      ? state
+      : { ...state, workRoot: Buffer.alloc(32, 0x7d) },
+  );
+  const rejectionForgery = {
+    ...challengerTrace,
+    states: rejectionForgeryStates,
+    tree: buildMidgardValidationTraceTree(
+      rejectionForgeryStates.map(hashMidgardValidationMachineState),
+      challengerTrace.verdict,
+      honestTerminal.rejectionCodeHash,
+    ),
+  };
+  const claimedOperatorTrace =
+    dishonestChallenger && scriptSourcesRejection === undefined
+      ? challengerTrace
+      : operatorTrace;
   const claimedChallengerTrace = dishonestChallenger
-    ? operatorTrace
+    ? scriptSourcesRejection === undefined
+      ? operatorTrace
+      : rejectionForgery
     : challengerTrace;
   const resolveFieldCarriage = await prepareFieldCarriage?.({
     trace: claimedChallengerTrace,

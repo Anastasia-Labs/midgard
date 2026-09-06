@@ -355,6 +355,8 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_sources_stage_seven_observer_item_yield_v1.main.withdraw",
     scriptSourcesObserverBound:
       "fraud_proofs/validation_trace/script_sources_stage_seven_observer_bound_yield_v1.main.withdraw",
+    scriptSourcesRedeemerDescriptor:
+      "fraud_proofs/validation_trace/script_sources_redeemer_item_step_yield_v1.main.withdraw",
     phaseANativeItemNative:
       "fraud_proofs/validation_trace/phase_a_native_scripts_item_yields_v1.native.withdraw",
     phaseANativeItemForeign:
@@ -429,6 +431,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       readonly scriptSourcesStageSixFinish: WithdrawalValidator;
       readonly scriptSourcesObserverItem: WithdrawalValidator;
       readonly scriptSourcesObserverBound: WithdrawalValidator;
+      readonly scriptSourcesRedeemerDescriptor: WithdrawalValidator;
       readonly phaseANativeItemNative: WithdrawalValidator;
       readonly phaseANativeItemForeign: WithdrawalValidator;
       readonly cekMaterialProgramTask: WithdrawalValidator;
@@ -1145,6 +1148,39 @@ export const buildValidationTraceDisputeChain = ({
           ),
         ),
     );
+    const scriptSourcesRedeemerDescriptor = yield* tryBuild(
+      "Failed to build redeemer descriptor yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesRedeemerDescriptor,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesStageTenMatch,
+                  )
+                ]!.spendingScriptHash,
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesStageTenMismatch,
+                  )
+                ]!.spendingScriptHash,
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesStageTwelveRedeemer,
+                  )
+                ]!.spendingScriptHash,
+              ],
+            ],
+          ),
+        ),
+    );
     const phaseANativeItemNative = yield* tryBuild(
       "Failed to build phase-A item native yield",
       () =>
@@ -1616,6 +1652,7 @@ export const buildValidationTraceDisputeChain = ({
         scriptSourcesStageSixFinish,
         scriptSourcesObserverItem,
         scriptSourcesObserverBound,
+        scriptSourcesRedeemerDescriptor,
         phaseANativeItemNative,
         phaseANativeItemForeign,
         cekMaterialProgramTask,
