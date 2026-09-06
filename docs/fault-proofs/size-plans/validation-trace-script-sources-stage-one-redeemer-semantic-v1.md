@@ -70,6 +70,34 @@ Dominators: the generic redeemer-item step (40 KB, of which the generic data
 traversal is 33 KB), the generic ScriptSources parse/encode (~20 KB each),
 the auxiliary decoder (13 KB), the redeemer-item control codec (~9 KB).
 
+### Narrow item-step probes (2026-09-05)
+
+Isolated `/tmp/script-sources-item-probes`, pinned fork `v1.1.23+5adf783`,
+`--env testnet`, based on `e44ea393` plus the discovery bitmap wire repair.
+These probes decode typed current/action/expected values and compare the
+computed next control. They exclude the computation-thread shell and are
+**diagnostic sizes, not publication or lifecycle fit evidence**.
+
+| Reachable transition | Raw bytes |
+| --- | ---: |
+| Entire integer stage, typed-next equality / next hash | 17,291 / 17,785 |
+| Entire bytes stage, typed-next equality / next hash | 18,682 / 19,140 |
+| All head actions, typed-next equality / next hash | 12,139 / 13,164 |
+| HeadScalar / HeadSequence / HeadMap / HeadLargeConstructor | 6,414 / 8,253 / 8,169 / 6,245 |
+| Attach integer / attach bytes | 10,316 / 10,499 |
+| Advance integer / advance bytes, including next traversal well-formedness | 11,604 / 12,577 |
+| Advance integer / advance bytes, claimed successor normalized separately | 9,402 / 10,585 |
+
+The full scalar-stage calls cannot fit even before the thread shell. Head
+subarms and scalar attachment/advancement therefore use narrow entry points
+in the existing traversal module. The generic machine calls those same
+helpers. For advancement, the generic machine still checks the resulting
+traversal control's well-formedness; split execution must compare the result
+with a claimed successor whose canonical hash and well-formedness were
+already authenticated by normalization. A raw narrow result alone is never
+an attestation of a valid successor. Existing FoldMap and FinalizeFrame
+serialization-template paths remain applicable.
+
 ## 3. Options considered
 
 - **Shrink the monolith (prune) — rejected.** Even with the raw frame and no

@@ -188,3 +188,67 @@ test redeemer_item_terminal_data_summary_agrees_with_typescript() {
     ),
   }
 }
+
+test data_item_narrow_header_tail_use_exact_authenticated_windows() {
+  let proof = singleton_chunk_proof(small_redeemer, 0)
+  let initial = redeemer_item_proof_v1.initial_control_v1(
+    redeemer_item_proof_v1.mode_data,
+    0,
+    1,
+    bytearray.length(small_redeemer),
+    bounded_item_v1.from_bytes(8, 0, small_redeemer),
+    -1,
+    -1,
+  )
+  let header_witness = source_witness(
+    redeemer_item_proof_v1.RedeemerItemOpenHeader,
+    proof,
+  )
+  expect Some(Some(header_bytes)) = redeemer_item_proof_v1.authenticate_source_window(
+    initial,
+    redeemer_item_proof_v1.next_source_span_v1(initial),
+    header_witness,
+  )
+  let header_result = redeemer_item_proof_v1.prevalidated_open_header(
+    initial,
+    header_bytes,
+  )
+  expect
+    Some(header_result) == redeemer_item_proof_v1.step_v1(
+      initial,
+      header_witness,
+    )
+  expect redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: tail } = header_result
+  let tail_witness = source_witness(
+    redeemer_item_proof_v1.RedeemerItemOpenTail,
+    proof,
+  )
+  expect Some(Some(tail_bytes)) = redeemer_item_proof_v1.authenticate_source_window(
+    tail,
+    redeemer_item_proof_v1.next_source_span_v1(tail),
+    tail_witness,
+  )
+  let tail_result = redeemer_item_proof_v1.prevalidated_open_tail(
+    tail,
+    tail_bytes,
+  )
+  and {
+    Some(tail_result) == redeemer_item_proof_v1.step_v1(tail, tail_witness),
+    redeemer_item_proof_v1.authenticate_source_window(
+      initial,
+      redeemer_item_proof_v1.next_source_span_v1(initial),
+      redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+        ..header_witness,
+        next_chunk_proof: Some(proof),
+      },
+    ) == None,
+    redeemer_item_proof_v1.authenticate_source_window(
+      initial,
+      redeemer_item_proof_v1.next_source_span_v1(initial),
+      redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+        ..header_witness,
+        chunk_proof: None,
+      },
+    ) == None,
+  }
+}

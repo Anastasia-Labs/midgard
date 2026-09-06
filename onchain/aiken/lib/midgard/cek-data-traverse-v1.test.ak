@@ -66,6 +66,18 @@ fn finish_scalar(
       source_for_control(control, source, source_start),
       cek_data_traverse_v1.NoAction,
     )
+    let narrowed = if control.stage == cek_data_traverse_v1.stage_integer {
+      cek_data_traverse_v1.prevalidated_advance_integer(
+        control,
+        source_for_control(control, source, source_start),
+      )
+    } else {
+      cek_data_traverse_v1.prevalidated_advance_bytes(
+        control,
+        source_for_control(control, source, source_start),
+      )
+    }
+    expect narrowed == Some(next)
     finish_scalar(next, source, source_start)
   }
 }
@@ -292,5 +304,56 @@ test malformed_counts_trailing_bytes_and_small_large_constructor_fail_closed() {
       cek_data_traverse_v1.NoAction,
     ) == None,
     child_summary.cbor_length == 1,
+  }
+}
+
+fn scalar_narrow_transition_is_exact(source: ByteArray) -> Bool {
+  let initial = cek_data_traverse_v1.initial_control_v1(
+    17,
+    bytearray.length(source),
+  )
+  expect Some(window) = source_for_control(initial, source, 17)
+  let opened = cek_data_traverse_v1.prevalidated_head_scalar(
+    initial,
+    window,
+    bytearray.length(source),
+  )
+  expect
+    opened == cek_data_traverse_v1.step_v1(
+      initial,
+      Some(window),
+      cek_data_traverse_v1.HeadScalar { item_length: bytearray.length(source) },
+    )
+  expect Some(control) = opened
+  let terminal = finish_scalar(control, source, 17)
+  let narrowed = if terminal.stage == cek_data_traverse_v1.stage_integer {
+    cek_data_traverse_v1.prevalidated_attach_integer(terminal, None)
+  } else {
+    cek_data_traverse_v1.prevalidated_attach_bytes(terminal, None)
+  }
+  expect Some(next) = narrowed
+  and {
+    next.stage == cek_data_traverse_v1.stage_terminal,
+    narrowed == cek_data_traverse_v1.step_v1(
+      terminal,
+      None,
+      cek_data_traverse_v1.AttachScalar { parent: None },
+    ),
+    cek_data_traverse_v1.step_v1(
+      terminal,
+      Some(#""),
+      cek_data_traverse_v1.AttachScalar { parent: None },
+    ) == None,
+  }
+}
+
+test narrow_integer_and_bytes_steps_match_the_shared_machine() {
+  and {
+    scalar_narrow_transition_is_exact(#"01"),
+    scalar_narrow_transition_is_exact(#"c249010000000000000000"),
+    scalar_narrow_transition_is_exact(#"4101"),
+    scalar_narrow_transition_is_exact(
+      #"5840" |> bytearray.concat(builtin.replicate_byte(64, 106)),
+    ),
   }
 }

@@ -560,7 +560,7 @@ fn authenticated_span(
   }
 }
 
-fn header_step(
+pub fn prevalidated_open_header(
   control: RedeemerItemProofControlV1,
   source_bytes: ByteArray,
 ) -> RedeemerItemProofStepResultV1 {
@@ -614,7 +614,7 @@ fn header_step(
   }
 }
 
-fn tail_step(
+pub fn prevalidated_open_tail(
   control: RedeemerItemProofControlV1,
   source_bytes: ByteArray,
 ) -> RedeemerItemProofStepResultV1 {
@@ -692,7 +692,7 @@ fn apply_step(
     when action is {
       RedeemerItemOpenHeader -> {
         expect Some(bytes) = source_bytes
-        Some(header_step(control, bytes))
+        Some(prevalidated_open_header(control, bytes))
       }
       _ -> None
     }
@@ -700,7 +700,7 @@ fn apply_step(
     when action is {
       RedeemerItemOpenTail -> {
         expect Some(bytes) = source_bytes
-        Some(tail_step(control, bytes))
+        Some(prevalidated_open_tail(control, bytes))
       }
       _ -> None
     }
@@ -745,6 +745,39 @@ fn apply_step(
   }
 }
 
+/// Authenticate precisely the source span derived from the current control.
+/// Callers must derive `span` using the same canonical machine's span logic;
+/// it is not a prover-selected window. Missing and extra proofs remain distinct
+/// from a successfully authenticated step whose semantic result is Invalid.
+pub fn authenticate_source_window(
+  control: RedeemerItemProofControlV1,
+  span: Option<RedeemerItemSourceSpanV1>,
+  witness: RedeemerItemProofWitnessV1,
+) -> Option<Option<ByteArray>> {
+  when span is {
+    None ->
+      if and {
+        witness.chunk_proof == None,
+        witness.next_chunk_proof == None,
+      } {
+        Some(None)
+      } else {
+        None
+      }
+    Some(exact) ->
+      when witness.chunk_proof is {
+        None -> None
+        Some(first) ->
+          when
+            authenticated_span(control, exact, first, witness.next_chunk_proof)
+          is {
+            None -> None
+            Some(bytes) -> Some(Some(bytes))
+          }
+      }
+  }
+}
+
 pub fn step_v1(
   control: RedeemerItemProofControlV1,
   witness: RedeemerItemProofWitnessV1,
@@ -752,30 +785,11 @@ pub fn step_v1(
   if !control_is_well_formed(control) {
     None
   } else {
-    let authenticated: Option<Option<ByteArray>> = when
-      next_source_span_v1(control)
-    is {
-      None ->
-        if and {
-          witness.chunk_proof == None,
-          witness.next_chunk_proof == None,
-        } {
-          Some(None)
-        } else {
-          None
-        }
-      Some(span) ->
-        when witness.chunk_proof is {
-          None -> None
-          Some(first) ->
-            when
-              authenticated_span(control, span, first, witness.next_chunk_proof)
-            is {
-              None -> None
-              Some(bytes) -> Some(Some(bytes))
-            }
-        }
-    }
+    let authenticated = authenticate_source_window(
+      control,
+      next_source_span_v1(control),
+      witness,
+    )
     when authenticated is {
       None -> None
       Some(source_bytes) -> apply_step(control, source_bytes, witness.action)

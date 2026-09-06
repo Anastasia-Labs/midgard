@@ -762,7 +762,7 @@ fn attach_summary(
   }
 }
 
-fn step_head_scalar(
+pub fn prevalidated_head_scalar(
   control: DataTraverseControlV1,
   bytes: ByteArray,
   item_length: Int,
@@ -830,7 +830,7 @@ fn opened_frame_control(
   )
 }
 
-fn step_head_sequence(
+pub fn prevalidated_head_sequence(
   control: DataTraverseControlV1,
   bytes: ByteArray,
   expected_children: Int,
@@ -872,7 +872,7 @@ fn step_head_sequence(
   }
 }
 
-fn step_head_map(
+pub fn prevalidated_head_map(
   control: DataTraverseControlV1,
   bytes: ByteArray,
 ) -> Option<DataTraverseControlV1> {
@@ -894,7 +894,7 @@ fn step_head_map(
   }
 }
 
-fn step_head_large_constructor(
+pub fn prevalidated_head_large_constructor(
   control: DataTraverseControlV1,
   bytes: ByteArray,
   constructor_cbor_length: Int,
@@ -938,12 +938,12 @@ fn step_head(
     Some(bytes) ->
       when action is {
         HeadScalar { item_length } ->
-          step_head_scalar(control, bytes, item_length)
+          prevalidated_head_scalar(control, bytes, item_length)
         HeadSequence { expected_children } ->
-          step_head_sequence(control, bytes, expected_children)
-        HeadMap -> step_head_map(control, bytes)
+          prevalidated_head_sequence(control, bytes, expected_children)
+        HeadMap -> prevalidated_head_map(control, bytes)
         HeadLargeConstructor { constructor_cbor_length, expected_children } ->
-          step_head_large_constructor(
+          prevalidated_head_large_constructor(
             control,
             bytes,
             constructor_cbor_length,
@@ -951,6 +951,72 @@ fn step_head(
           )
         _ -> None
       }
+  }
+}
+
+/// The caller authenticates a well-formed traversal control and its stage.
+/// This is the same scalar-attachment transition used by `step_v1`.
+pub fn prevalidated_attach_integer(
+  control: DataTraverseControlV1,
+  parent: Option<cek_data_frame_v1.DataFrameV1>,
+) -> Option<DataTraverseControlV1> {
+  expect Some(integer) = control.integer
+  when cek_data_integer_v1.finalize_v1(integer) is {
+    None -> None
+    Some(summary) ->
+      attach_summary(
+        control,
+        summary,
+        parent,
+        control.offset + integer.source_length,
+      )
+  }
+}
+
+pub fn prevalidated_attach_bytes(
+  control: DataTraverseControlV1,
+  parent: Option<cek_data_frame_v1.DataFrameV1>,
+) -> Option<DataTraverseControlV1> {
+  expect Some(bytes_control) = control.bytes
+  when cek_data_bytes_v1.finalize_v1(bytes_control) is {
+    None -> None
+    Some(summary) ->
+      attach_summary(
+        control,
+        summary,
+        parent,
+        control.offset + bytes_control.source_length,
+      )
+  }
+}
+
+/// The caller authenticates a well-formed, nonterminal integer-stage control.
+/// The result still requires traversal-control well-formedness. Split callers
+/// compare it with an independently normalized, well-formed claimed successor.
+pub fn prevalidated_advance_integer(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Option<DataTraverseControlV1> {
+  expect Some(integer) = control.integer
+  when cek_data_integer_v1.step_v1(integer, source_bytes) is {
+    None -> None
+    Some(next_integer) ->
+      Some(DataTraverseControlV1 { ..control, integer: Some(next_integer) })
+  }
+}
+
+/// The caller authenticates a well-formed, nonterminal bytes-stage control.
+/// The result still requires traversal-control well-formedness. Split callers
+/// compare it with an independently normalized, well-formed claimed successor.
+pub fn prevalidated_advance_bytes(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Option<DataTraverseControlV1> {
+  expect Some(bytes_control) = control.bytes
+  when cek_data_bytes_v1.step_v1(bytes_control, source_bytes) is {
+    None -> None
+    Some(next_bytes) ->
+      Some(DataTraverseControlV1 { ..control, bytes: Some(next_bytes) })
   }
 }
 
@@ -965,29 +1031,16 @@ fn step_integer(
       None
     } else {
       when action is {
-        AttachScalar { parent } ->
-          when cek_data_integer_v1.finalize_v1(integer) is {
-            None -> None
-            Some(summary) ->
-              attach_summary(
-                control,
-                summary,
-                parent,
-                control.offset + integer.source_length,
-              )
-          }
+        AttachScalar { parent } -> prevalidated_attach_integer(control, parent)
         _ -> None
       }
     }
   } else if action != NoAction {
     None
   } else {
-    when cek_data_integer_v1.step_v1(integer, source_bytes) is {
+    when prevalidated_advance_integer(control, source_bytes) is {
       None -> None
-      Some(next_integer) ->
-        checked_control(
-          DataTraverseControlV1 { ..control, integer: Some(next_integer) },
-        )
+      Some(next) -> checked_control(next)
     }
   }
 }
@@ -1003,29 +1056,16 @@ fn step_bytes(
       None
     } else {
       when action is {
-        AttachScalar { parent } ->
-          when cek_data_bytes_v1.finalize_v1(bytes_control) is {
-            None -> None
-            Some(summary) ->
-              attach_summary(
-                control,
-                summary,
-                parent,
-                control.offset + bytes_control.source_length,
-              )
-          }
+        AttachScalar { parent } -> prevalidated_attach_bytes(control, parent)
         _ -> None
       }
     }
   } else if action != NoAction {
     None
   } else {
-    when cek_data_bytes_v1.step_v1(bytes_control, source_bytes) is {
+    when prevalidated_advance_bytes(control, source_bytes) is {
       None -> None
-      Some(next_bytes) ->
-        checked_control(
-          DataTraverseControlV1 { ..control, bytes: Some(next_bytes) },
-        )
+      Some(next) -> checked_control(next)
     }
   }
 }
