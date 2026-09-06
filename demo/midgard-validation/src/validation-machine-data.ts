@@ -1358,13 +1358,12 @@ export const validationSemanticResolverIndex = (
       }
       if (stage === 1) {
         if (auxiliary === null) return 14;
+        if (auxiliary.kind === "transactionRedeemerItemBegin") return 15;
         if (
-          auxiliary.kind === "transactionRedeemerItemBegin" ||
-          (auxiliary.kind === "redeemerItemStep" &&
-            auxiliary.redeemerControl === null)
-        ) {
-          return 15;
-        }
+          auxiliary.kind === "redeemerItemStep" &&
+          auxiliary.redeemerControl === null
+        )
+          return 28;
         break;
       }
       if (stage === 11) {

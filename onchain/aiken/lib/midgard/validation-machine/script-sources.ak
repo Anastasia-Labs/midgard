@@ -526,33 +526,6 @@ pub fn verify_script_sources_stage_twelve_semantics_v1(
   )
 }
 
-fn script_sources_stage_one_redeemer_auxiliary_is_family(
-  auxiliary: ValidationAuxiliaryWitnessV1,
-) -> Bool {
-  when auxiliary is {
-    TransactionRedeemerItemBeginWitness { .. } -> True
-    RedeemerItemStepWitness { redeemer_control, .. } ->
-      when redeemer_control is {
-        None -> True
-        Some(_) -> False
-      }
-    _ -> False
-  }
-}
-
-pub fn verify_script_sources_stage_one_redeemer_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
-  if script_sources_stage_one_redeemer_auxiliary_is_family(auxiliary) {
-    verify_script_sources_stage_one_semantics_v1(pre, witness, auxiliary, door)
-  } else {
-    False
-  }
-}
-
 fn script_sources_stage_ten_item_matches_current_purpose(
   control: ScriptSourcesControlV1,
   auxiliary: ValidationAuxiliaryWitnessV1,

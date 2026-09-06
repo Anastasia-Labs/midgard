@@ -90,8 +90,18 @@ export const redeemerItemExecutor = (
   }
 };
 
+export type RedeemerItemStageKey =
+  | "entry"
+  | "normalize_current_traversal"
+  | "normalize_current_outer"
+  | "normalize_next_traversal"
+  | "normalize_next_outer"
+  | "authenticate_source"
+  | "execute"
+  | "settle";
+
 export type RedeemerItemPlannedStage = {
-  readonly key: string;
+  readonly key: RedeemerItemStageKey;
   readonly validator: SpendingValidator;
   readonly inputState: Data;
   readonly outputState: Data;
@@ -395,7 +405,7 @@ const deriveItemPlan = ({
   const verified =
     carrier === 1n ? c([record(base, 4)[0]!, claimedNext]) : c([1n]);
   const stage = (
-    key: string,
+    key: RedeemerItemStageKey,
     validator: SpendingValidator,
     inputState: Data,
     outputState: Data,

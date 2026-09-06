@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import {
+  buildMidgardRedeemerItemProofTrace,
   buildMidgardValidationTraceTree,
   encodeCbor,
   encodeMidgardCekProgramMaterialSidecar,
@@ -14,6 +15,9 @@ import {
   MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
+  buildScriptSourcesRedeemerItemStages,
+  parseFaultProofBlueprint,
+  PreparedValidationResolutionDatum,
   Proof,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   ValidationAuxiliaryWitness,
@@ -26,6 +30,8 @@ import {
 import {
   buildMidgardCanonicalCekProgram,
   type CekProgramMaterialNecessityReceiptSet,
+  redeemerItemControlData,
+  redeemerItemProofWitnessData,
 } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -37,7 +43,7 @@ import {
   validationOneStepArgumentFromFiles,
 } from "../src/validation-dispute/from-files.js";
 import {
-  encodeScriptSourcesStageOneSpendRedeemer,
+  deriveScriptSourcesItemSubmissionPlan,
   encodeValidationSemanticResolutionRedeemer,
   openValidationDisputeAfterSourceVerification,
   refreshExpiredValidationDisputeValidityRange,
@@ -46,6 +52,7 @@ import {
   requireValidationItemObserveReferenceScriptOutRef,
   requireValidationItemSemanticReferenceScriptOutRef,
   requireValidationValueAndMintSemanticReferenceScriptOutRef,
+  scriptSourcesItemResumeIndex,
   selectValidationCompleteItemCarriage,
   validateCekSubmissionEvidence,
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
@@ -1686,13 +1693,9 @@ describe("validation-dispute transaction validity", () => {
     );
   });
 
-  it("maps and encodes the split ScriptSources stage-one route without replacing the legacy route", () => {
-    // The stage-one redeemer envelope is the last semantic resolver, after
-    // the fourteen indices' 90 kind resolvers (75 before R5 item 1 added the
-    // four cek and eleven ValueAndMint kinds).
+  it("routes item steps exclusively to the shared chain and gives begin its exact carriage wire", () => {
     expect(validationSemanticResolverGlobalIndex(8, 28)).toBe(90);
     expect(validationSemanticResolverGlobalIndex(8, 15)).toBe(47);
-
     const state: ValidationMachineState = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
@@ -1719,170 +1722,140 @@ describe("validation-dispute transaction validity", () => {
         ValidationOneStepWitness,
       ),
     );
-    const none = new Constr(1, []);
-    const summary = new Constr(0, ["11".repeat(32), 1n, 1n]);
-    const sequence = new Constr(0, ["12".repeat(32), 0n, 0n, 0n]);
-    const frame = new Constr(0, [
-      3n,
-      0n,
-      "",
-      0n,
-      0n,
-      "",
-      1n,
-      0n,
-      [],
-      0n,
-      sequence,
+    const begin = new Constr(29, [new Constr(0, ["00"])]);
+    const stepProof = buildMidgardRedeemerItemProofTrace({
+      itemIndex: 0,
+      itemCount: 1,
+      itemBytes: encodeCbor([0n, 0n, Buffer.from("00", "hex"), [10n, 20n]]),
+      mode: 1,
+    }).steps[0]!;
+    const step = new Constr(18, [
+      new Constr(1, []),
+      Data.from(Data.to<unknown>(redeemerItemControlData(stepProof.control))),
+      Data.from(
+        Data.to<unknown>(redeemerItemProofWitnessData(stepProof.witness)),
+      ),
     ]);
-    const traversalControl = new Constr(0, [
-      1n,
-      6n,
-      0n,
-      1n,
-      1n,
-      "13".repeat(32),
-      none,
-      none,
-      none,
-      none,
-    ]);
-    const itemControl = new Constr(0, [
-      1n,
-      0n,
-      2n,
-      0n,
-      1n,
-      1n,
-      "14".repeat(32),
-      0n,
-      0n,
-      0n,
-      0n,
-      0n,
-      1n,
-      0n,
-      0n,
-      new Constr(0, [traversalControl]),
-    ]);
-    const foldMapAction = new Constr(7, [frame, 0n, summary, summary, [], []]);
-    const auxiliary = new Constr(18, [
-      none,
-      itemControl,
-      new Constr(0, [new Constr(2, [foldMapAction]), none, none]),
-    ]);
-    if (!(transitionData instanceof Constr)) {
-      throw new Error("test transition must be a constructor");
-    }
-    const resolution = new Constr(0, [
-      1n,
-      transitionData.fields[1]!,
-      "24".repeat(32),
-      "25".repeat(32),
-    ]);
-    const envelope = new Constr(0, [
-      1n,
-      "15",
-      "16".repeat(32),
-      0n,
-      new Constr(0, [1n, resolution, "17".repeat(32)]),
-      "18".repeat(32),
-      "",
-      0n,
-      "19".repeat(32),
-      "1a".repeat(32),
-      "1b".repeat(32),
-      "1c".repeat(32),
-      0n,
-      1n,
-      "1d".repeat(28),
-      "1e".repeat(28),
-      "1f".repeat(28),
-      "20".repeat(28),
-      "21".repeat(28),
-      "22".repeat(32),
-    ]);
-    const redeemers = [
-      {
-        definition:
-          "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1/SpendRedeemer",
-        cbor: encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "envelope",
-          inputIndex: 0n,
-          outputIndex: 0n,
-          transition: transitionData,
-          auxiliary,
-          expectedNextItemControlHash: "23".repeat(32),
-          family: 0,
-        }),
-      },
-      {
-        definition:
-          "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_traversal_normalizer_v1/SpendRedeemer",
-        cbor: encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "traversal",
-          inputIndex: 0n,
-          outputIndex: 0n,
-          auxiliary,
-          currentItemControl: itemControl,
-          traversalAction: foldMapAction,
-        }),
-      },
-      {
-        definition:
-          "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_outer_normalizer_v1/SpendRedeemer",
-        cbor: encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "outer",
-          inputIndex: 0n,
-          outputIndex: 0n,
-        }),
-      },
-      ...[
-        "script_sources_stage_one_redeemer_fold_map_executor_v1",
-        "script_sources_stage_one_redeemer_finalize_frame_executor_v1",
-      ].map((module) => ({
-        definition: `fraud_proofs/validation_trace/${module}/SpendRedeemer`,
-        cbor: encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "executor",
-          inputIndex: 0n,
-          outputIndex: 0n,
-          traversalAction: module.includes("fold_map")
-            ? foldMapAction
-            : new Constr(8, [frame, none]),
-        }),
-      })),
-      {
-        definition:
-          "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_execution_settlement_v1/SpendRedeemer",
-        cbor: encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "settlement",
-          inputIndex: 0n,
-          outputIndex: 0n,
-          envelope,
-        }),
-      },
-    ];
-    for (const redeemer of redeemers) {
-      expect(
-        parseExactAikenDataCbor({
-          blueprint,
-          definitionName: redeemer.definition,
-          cbor: redeemer.cbor,
-          maxBytes: 16 * 1024 - 1,
-        }),
-      ).toBeInstanceOf(Constr);
-    }
+    const argument = (auxiliary: Data) => ({
+      resolverIndex: 8,
+      semanticResolverIndex: 15,
+      transitionCbor: Buffer.from(Data.to(transitionData), "hex"),
+      auxiliaryCbor: Buffer.from(Data.to(auxiliary), "hex"),
+    });
     expect(() =>
-      encodeScriptSourcesStageOneSpendRedeemer({
-        stage: "envelope",
+      encodeValidationSemanticResolutionRedeemer({
+        oneStepArgument: argument(step),
         inputIndex: 0n,
         outputIndex: 0n,
-        transition: transitionData,
-        auxiliary,
-        expectedNextItemControlHash: "23".repeat(32),
-        family: 2,
       }),
-    ).toThrow(/FoldMap or FinalizeFrame/u);
+    ).toThrow(/redeemer-ingestion/);
+    const encoded = encodeValidationSemanticResolutionRedeemer({
+      oneStepArgument: argument(begin),
+      inputIndex: 0n,
+      outputIndex: 0n,
+    });
+    const decoded = Data.from(Buffer.from(encoded).toString("hex"));
+    expect(decoded).toEqual(
+      new Constr(1, [
+        new Constr(0, [0n, 0n, transitionData, begin.fields[0]!]),
+      ]),
+    );
+    const itemArgument = { ...argument(step), semanticResolverIndex: 28 };
+    const preparedCbor = Data.to(
+      {
+        fraud_prover: "11".repeat(28),
+        data: {
+          version: 1n,
+          resolution: {
+            version: 1n,
+            pre_state: state,
+            operator_successor_hash: "22".repeat(32),
+            challenger_successor_hash: "33".repeat(32),
+          },
+          evidence_hash: validationOneStepEvidenceHash(itemArgument),
+        },
+      },
+      PreparedValidationResolutionDatum,
+    );
+    const stages = buildScriptSourcesRedeemerItemStages({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network: "Custom",
+      computationThreadPolicyId: "44".repeat(28),
+      deploymentId: "55".repeat(32),
+      awardScriptHash: "66".repeat(28),
+    });
+    const plan = deriveScriptSourcesItemSubmissionPlan({
+      preparedCbor,
+      oneStepArgument: itemArgument,
+      stages,
+      deploymentId: "55".repeat(32),
+    });
+    expect(plan.bindings).toHaveLength(8);
+    const retained = JSON.parse(
+      JSON.stringify({
+        preparedCbor,
+        transitionCbor: Buffer.from(itemArgument.transitionCbor).toString(
+          "hex",
+        ),
+        auxiliaryCbor: Buffer.from(itemArgument.auxiliaryCbor).toString("hex"),
+      }),
+    );
+    const restarted = deriveScriptSourcesItemSubmissionPlan({
+      preparedCbor: retained.preparedCbor,
+      oneStepArgument: {
+        ...itemArgument,
+        transitionCbor: Buffer.from(retained.transitionCbor, "hex"),
+        auxiliaryCbor: Buffer.from(retained.auxiliaryCbor, "hex"),
+      },
+      stages,
+      deploymentId: "55".repeat(32),
+    });
+    expect(restarted.identity).toBe(plan.identity);
+    for (const [index, binding] of plan.bindings.entries()) {
+      expect(
+        scriptSourcesItemResumeIndex({
+          plan: restarted,
+          thread: {
+            address: binding.validator.spendingScriptAddress,
+            datum: binding.inputDatumCbor,
+          },
+        }),
+      ).toBe(index);
+      expect(() =>
+        scriptSourcesItemResumeIndex({
+          plan,
+          thread: {
+            address: binding.validator.spendingScriptAddress,
+            datum: Data.void(),
+          },
+        }),
+      ).toThrow(/canonical stage/);
+      expect(() =>
+        scriptSourcesItemResumeIndex({
+          plan,
+          thread: { address: "wrong-address", datum: binding.inputDatumCbor },
+        }),
+      ).toThrow(/canonical stage/);
+    }
+    expect(() =>
+      deriveScriptSourcesItemSubmissionPlan({
+        preparedCbor: preparedCbor + "00",
+        oneStepArgument: itemArgument,
+        stages,
+        deploymentId: "55".repeat(32),
+      }),
+    ).toThrow();
+    expect(() =>
+      deriveScriptSourcesItemSubmissionPlan({
+        preparedCbor,
+        oneStepArgument: {
+          ...itemArgument,
+          auxiliaryCbor: Buffer.from(Data.to(begin), "hex"),
+        },
+        stages,
+        deploymentId: "55".repeat(32),
+      }),
+    ).toThrow();
   });
 
   it("emits the transition-only 3-field complete-item Verify redeemer", () => {

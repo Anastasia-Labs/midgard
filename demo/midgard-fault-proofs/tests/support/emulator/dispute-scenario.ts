@@ -4,6 +4,7 @@ import {
   CEK_MATERIAL_TASK_YIELD_ROLES,
   CEK_SELECTION_YIELD_ROLES,
   createReferenceScriptAuthPolicy,
+  sharedRedeemerItemReferenceScripts,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
@@ -608,6 +609,44 @@ export const runForcedValidationDisputeScenario = async (
         },
       },
     };
+  }
+  if (stagedResolverIndex === 8 && stagedSemanticIndex === 28) {
+    const stages =
+      contracts.fraudProofContracts.validationTraceDispute
+        .scriptSourcesStageOneRedeemerStages;
+    const publications = [
+      ...sharedRedeemerItemReferenceScripts(stages),
+      {
+        deploymentEntry:
+          "validationTraceDisputeRedeemerItemSettlement" as const,
+        role: "V1 validation-trace redeemer item settlement" as const,
+        validator: stages.settlement,
+      },
+    ];
+    for (const { deploymentEntry, role, validator } of publications) {
+      const publication = await publishAuthenticatedValidationDisputeControl({
+        lucid: challengerLucid,
+        authPolicy: referenceScriptAuth,
+        target: {
+          control: deploymentEntry,
+          name: role,
+          script: validator.spendingScript,
+        },
+      });
+      semanticDeploymentInfo = {
+        ...semanticDeploymentInfo,
+        contracts: {
+          ...semanticDeploymentInfo.contracts,
+          [deploymentEntry]: {
+            scriptHash: validator.spendingScriptHash,
+            refScriptUTxO: {
+              txHash: publication.utxo.txHash,
+              outputIndex: publication.utxo.outputIndex,
+            },
+          },
+        },
+      };
+    }
   }
   if (stagedResolverIndex === 5 && stagedSemanticIndex === 1) {
     for (const spec of PHASE_A_ITEM_YIELD_SPECS) {

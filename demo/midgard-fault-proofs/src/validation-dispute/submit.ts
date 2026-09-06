@@ -1,5 +1,5 @@
 import {
-  advanceMidgardRedeemerItemProof,
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
   asArray,
   asBytes,
   canOpenMidgardValidationDisputeBeforeMaturity,
@@ -8,13 +8,6 @@ import {
   decodeMidgardNativeTxProofFieldLengths,
   decodeSingleCbor,
   encodeCbor,
-  encodeCborArrayRaw,
-  encodeMidgardCekDataTraverseControl,
-  encodeMidgardRedeemerItemProofControl,
-  hashMidgardRedeemerItemProofControl,
-  type MidgardCekDataFrame,
-  type MidgardCekDataSummary,
-  type MidgardCekDataTraverseAction,
   type MidgardValidationTraceProof,
   openMidgardValidationDispute,
   revealMidgardValidationChallengerMidpoint,
@@ -35,6 +28,10 @@ import {
 import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
+import {
+  sharedRedeemerItemReferenceScripts,
+  type SharedRedeemerItemStages,
+} from "@al-ft/midgard-sdk";
 import {
   AssetFoldClaim,
   AuthenticatedCanonicalDecodeItemDatum,
@@ -133,7 +130,10 @@ import { Effect } from "effect";
 
 import { type ContractDeploymentInfo } from "../inspect-contracts.js";
 import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
-import { decodeRedeemerItemControlData } from "../redeemer-item-data.js";
+import {
+  deriveScriptSourcesRedeemerItemPlan,
+  type RedeemerItemStageKey,
+} from "../redeemer-item-plan.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -1734,11 +1734,9 @@ const auxiliaryShape = ({
     }
     if (
       semanticResolverIndex === 15 &&
-      !(
-        hasValidationAuxiliaryShape(
-          auxiliary,
-          VALIDATION_AUXILIARY_SHAPES.transactionRedeemerItemBegin,
-        ) || isRedeemerItemStage
+      !hasValidationAuxiliaryShape(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES.transactionRedeemerItemBegin,
       )
     ) {
       throw new Error(
@@ -1979,6 +1977,97 @@ const requireStagedOneStepArgument = (
   };
 };
 
+/** Reconstruct immutable output bindings from the exact retained preparation and claim. */
+export const deriveScriptSourcesItemSubmissionPlan = ({
+  preparedCbor,
+  oneStepArgument,
+  stages,
+  deploymentId,
+}: {
+  readonly preparedCbor: string;
+  readonly oneStepArgument: ValidationOneStepSubmissionArgument;
+  readonly stages: SharedRedeemerItemStages;
+  readonly deploymentId: string;
+}) => {
+  if (!/^(?:[0-9a-f]{2})+$/.test(preparedCbor))
+    throw new Error(
+      "ScriptSources prepared datum is not exact hexadecimal CBOR",
+    );
+  aikenSerialisedPlutusDataCborPreservingMapOrder(preparedCbor);
+  const prepared = Data.from(preparedCbor, PreparedValidationResolutionDatum);
+  const staged = requireStagedOneStepArgument(oneStepArgument);
+  if (
+    prepared.data === null ||
+    prepared.data.resolution.pre_state.phase !== "ScriptSources" ||
+    oneStepArgument.resolverIndex !== 8 ||
+    staged.semanticResolverIndex !== 28 ||
+    staged.evidenceHash !== prepared.data.evidence_hash
+  )
+    throw new Error(
+      "Retained ScriptSources item evidence differs from its authenticated preparation",
+    );
+  const bindings = deriveScriptSourcesRedeemerItemPlan({
+    preparedResolution: Data.from(
+      Data.to(prepared.data, PreparedValidationResolutionState),
+    ),
+    transition: staged.transitionData,
+    auxiliary: staged.auxiliary,
+    stages,
+    deploymentId,
+  });
+  const datum = (state: PlutusDataValue) =>
+    Data.to(new Constr(0, [prepared.fraud_prover, new Constr(0, [state])]));
+  const identity = computeHash32(
+    Buffer.concat([
+      Buffer.from("MidgardScriptSourcesItemSubmissionV1", "ascii"),
+      encodeCbor([
+        Buffer.from(preparedCbor, "hex"),
+        Buffer.from(oneStepArgument.transitionCbor),
+        Buffer.from(oneStepArgument.auxiliaryCbor),
+        Buffer.from(deploymentId, "hex"),
+        bindings.map((binding) =>
+          Buffer.from(binding.validator.spendingScriptHash, "hex"),
+        ),
+      ]),
+    ]),
+  ).toString("hex");
+  return {
+    identity,
+    preparedCbor,
+    fraudProver: prepared.fraud_prover,
+    bindings: bindings.map((binding) => ({
+      ...binding,
+      inputDatumCbor: datum(binding.inputState),
+      outputDatumCbor: datum(binding.outputState),
+    })),
+  };
+};
+
+/** A checkpoint is resumable only at one exact canonical address-and-datum pair. */
+export const scriptSourcesItemResumeIndex = ({
+  plan,
+  thread,
+}: {
+  readonly plan: ReturnType<typeof deriveScriptSourcesItemSubmissionPlan>;
+  readonly thread: Pick<UTxO, "address" | "datum">;
+}): number => {
+  if (thread.datum == null)
+    throw new Error("ScriptSources item checkpoint has no inline datum");
+  const actual = aikenSerialisedPlutusDataCborPreservingMapOrder(thread.datum);
+  const matching = plan.bindings.flatMap((binding, index) =>
+    binding.validator.spendingScriptAddress === thread.address &&
+    aikenSerialisedPlutusDataCborPreservingMapOrder(binding.inputDatumCbor) ===
+      actual
+      ? [index]
+      : [],
+  );
+  if (matching.length !== 1)
+    throw new Error(
+      "ScriptSources item checkpoint is not an exact canonical stage",
+    );
+  return matching[0]!;
+};
+
 export const validationSemanticResolverGlobalIndex = (
   resolverIndex: number,
   semanticResolverIndex: number,
@@ -1987,83 +2076,6 @@ export const validationSemanticResolverGlobalIndex = (
     ? 90
     : VALIDATION_SEMANTIC_RESOLVER_OFFSETS[resolverIndex]! +
       semanticResolverIndex;
-
-export const encodeScriptSourcesStageOneSpendRedeemer = ({
-  stage,
-  inputIndex,
-  outputIndex,
-  transition,
-  auxiliary,
-  expectedNextItemControlHash,
-  family,
-  currentItemControl,
-  traversalAction,
-  envelope,
-}: {
-  readonly stage:
-    | "envelope"
-    | "traversal"
-    | "outer"
-    | "executor"
-    | "settlement";
-  readonly inputIndex: bigint;
-  readonly outputIndex: bigint;
-  readonly transition?: PlutusDataValue;
-  readonly auxiliary?: PlutusDataValue;
-  readonly expectedNextItemControlHash?: string;
-  readonly family?: number;
-  readonly currentItemControl?: PlutusDataValue;
-  readonly traversalAction?: PlutusDataValue;
-  readonly envelope?: PlutusDataValue;
-}): string => {
-  const required = <T>(value: T | undefined, label: string): T => {
-    if (value === undefined) throw new Error(`${label} is required`);
-    return value;
-  };
-  let fields: readonly PlutusDataValue[];
-  if (stage === "envelope") {
-    const selectedFamily = required(family, "ScriptSources action family");
-    if (selectedFamily !== 0 && selectedFamily !== 1) {
-      throw new Error(
-        "ScriptSources action family must be FoldMap or FinalizeFrame",
-      );
-    }
-    fields = [
-      inputIndex,
-      outputIndex,
-      required(transition, "ScriptSources transition"),
-      required(auxiliary, "ScriptSources auxiliary witness"),
-      required(
-        expectedNextItemControlHash,
-        "ScriptSources expected next item-control hash",
-      ),
-      BigInt(selectedFamily),
-    ];
-  } else if (stage === "traversal") {
-    fields = [
-      inputIndex,
-      outputIndex,
-      required(auxiliary, "ScriptSources auxiliary witness"),
-      required(currentItemControl, "ScriptSources current item control"),
-      required(traversalAction, "ScriptSources traversal action"),
-    ];
-  } else if (stage === "outer") {
-    fields = [inputIndex, outputIndex];
-  } else if (stage === "executor") {
-    fields = [
-      inputIndex,
-      outputIndex,
-      required(traversalAction, "ScriptSources traversal action"),
-    ];
-  } else {
-    fields = [
-      inputIndex,
-      outputIndex,
-      required(envelope, "ScriptSources prepared envelope"),
-    ];
-  }
-  return Data.to(new Constr(1, [new Constr(0, [...fields])]));
-};
 
 type ContinueLayout = {
   readonly inputIndex: bigint;
@@ -4329,16 +4341,12 @@ const semanticActionFields = ({
     }
     if (
       semanticResolverIndex === 15 &&
-      (hasValidationAuxiliaryShape(
+      hasValidationAuxiliaryShape(
         auxiliary,
         VALIDATION_AUXILIARY_SHAPES.transactionRedeemerItemBegin,
-      ) ||
-        hasValidationAuxiliaryShape(
-          auxiliary,
-          VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
-        ))
+      )
     ) {
-      return [...base, auxiliary];
+      return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 16 &&
@@ -5352,6 +5360,7 @@ export type ValidationCekProgramMaterialReferenceOutRefs = {
  * stage selected by a route must have a published entry.
  */
 export type ValidationDisputeStageReferenceScriptUtxos = {
+  readonly sharedRedeemerItem?: ReadonlyMap<string, UTxO>;
   readonly scriptSourcesEnvelope?: UTxO;
   readonly scriptSourcesTraversalNormalizer?: UTxO;
   readonly scriptSourcesOuterNormalizer?: UTxO;
@@ -5450,6 +5459,7 @@ export type SubmitValidationDisputeSemanticResolutionResult = {
   readonly awaitedConfirmation: boolean;
   readonly stageTransactions?: readonly {
     readonly kind:
+      | RedeemerItemStageKey
       | "authenticate"
       | "source"
       | "observe"
@@ -5505,555 +5515,6 @@ const exactSafeCborInteger = (value: unknown, label: string): number => {
     throw new Error(`${label} must be an exact safe CBOR integer`);
   }
   return Number(integer);
-};
-
-const SCRIPT_SOURCES_REDEEMER_DOMAINS = {
-  envelope: Buffer.from("MidgardScriptSourcesRedeemerEnvelopeV1", "ascii"),
-  traversal: Buffer.from("MidgardScriptSourcesTraversalNormalizedV1", "ascii"),
-  outer: Buffer.from("MidgardScriptSourcesOuterNormalizedV1", "ascii"),
-  attested: Buffer.from(
-    "MidgardScriptSourcesRedeemerExecutionAttestedV1",
-    "ascii",
-  ),
-  resolutionIdentity: Buffer.from(
-    "MidgardScriptSourcesResolutionIdentityV1",
-    "ascii",
-  ),
-  auxiliaryIdentity: Buffer.from(
-    "MidgardScriptSourcesAuxiliaryIdentityV1",
-    "ascii",
-  ),
-  narrowActionIdentity: Buffer.from(
-    "MidgardScriptSourcesNarrowActionIdentityV1",
-    "ascii",
-  ),
-  traversalActionIdentity: Buffer.from(
-    "MidgardScriptSourcesTraversalActionIdentityV1",
-    "ascii",
-  ),
-  envelopeCommitment: Buffer.from(
-    "MidgardScriptSourcesRedeemerEnvelopeCommitmentV1",
-    "ascii",
-  ),
-  baseProvenanceIdentity: Buffer.from(
-    "MidgardScriptSourcesBaseProvenanceIdentityV1",
-    "ascii",
-  ),
-  itemControl: Buffer.from("MidgardRedeemerItemProofControlV1", "ascii"),
-} as const;
-
-const plutusDataCbor = (value: PlutusDataValue): Buffer =>
-  Buffer.from(Data.to(value as never), "hex");
-
-const exactCborBigInt = (
-  value: PlutusDataValue | undefined,
-  label: string,
-): bigint => {
-  if (typeof value !== "bigint") {
-    throw new Error(`${label} must be an exact CBOR integer`);
-  }
-  return value;
-};
-
-const hashDomainData = (domain: Uint8Array, value: PlutusDataValue): string =>
-  computeHash32(
-    Buffer.concat([Buffer.from(domain), plutusDataCbor(value)]),
-  ).toString("hex");
-
-const requireOptionData = (
-  value: PlutusDataValue,
-  label: string,
-): PlutusDataValue | null => {
-  if (!(value instanceof Constr)) {
-    throw new Error(`${label} must be an option constructor`);
-  }
-  if (value.index === 1 && value.fields.length === 0) return null;
-  if (value.index === 0 && value.fields.length === 1) return value.fields[0]!;
-  throw new Error(`${label} must be an exact Some or None`);
-};
-
-const dataSummaryCore = (
-  value: PlutusDataValue,
-  label: string,
-): MidgardCekDataSummary => {
-  const summary = requireConstr({ value, index: 0, fields: 3, label });
-  if (typeof summary.fields[0] !== "string") {
-    throw new Error(`${label}.root must be bytes`);
-  }
-  return {
-    root: Buffer.from(summary.fields[0], "hex"),
-    cborLength: exactCborBigInt(summary.fields[1], `${label}.cbor_length`),
-    memory: exactCborBigInt(summary.fields[2], `${label}.memory`),
-  };
-};
-
-const dataFrameCore = (
-  value: PlutusDataValue,
-  label: string,
-): MidgardCekDataFrame => {
-  const frame = requireConstr({ value, index: 0, fields: 11, label });
-  const bytes = (index: number, field: string): Buffer => {
-    const selected = frame.fields[index];
-    if (typeof selected !== "string") {
-      throw new Error(`${label}.${field} must be bytes`);
-    }
-    return Buffer.from(selected, "hex");
-  };
-  const integer = (index: number, field: string): bigint =>
-    exactCborBigInt(frame.fields[index], `${label}.${field}`);
-  const frontier = frame.fields[8];
-  if (!Array.isArray(frontier)) {
-    throw new Error(`${label}.child_peaks must be a frontier`);
-  }
-  const childPeaks = frontier.map((peak, index) => {
-    const fields = requireConstr({
-      value: peak,
-      index: 0,
-      fields: 2,
-      label: `${label}.child_peaks[${index.toString()}]`,
-    }).fields;
-    if (typeof fields[1] !== "string") {
-      throw new Error(`${label}.child_peaks hash must be bytes`);
-    }
-    return {
-      height: exactSafeCborInteger(fields[0], `${label}.child_peaks height`),
-      hash: Buffer.from(fields[1], "hex"),
-    };
-  });
-  const sequence = requireConstr({
-    value: frame.fields[10]!,
-    index: 0,
-    fields: 4,
-    label: `${label}.sequence`,
-  });
-  if (typeof sequence.fields[0] !== "string") {
-    throw new Error(`${label}.sequence.root must be bytes`);
-  }
-  const common = {
-    tail: bytes(5, "tail"),
-    expectedChildren: exactSafeCborInteger(
-      frame.fields[6],
-      `${label}.expected_children`,
-    ),
-    childCount: exactSafeCborInteger(frame.fields[7], `${label}.child_count`),
-    childFrontier: {
-      count: exactSafeCborInteger(frame.fields[7], `${label}.child_count`),
-      peaks: childPeaks,
-    },
-    foldCursor: exactSafeCborInteger(frame.fields[9], `${label}.fold_cursor`),
-    sequence: {
-      root: Buffer.from(sequence.fields[0], "hex"),
-      length: exactCborBigInt(sequence.fields[1], `${label}.sequence.length`),
-      payloadCborLength: exactCborBigInt(
-        sequence.fields[2],
-        `${label}.sequence.payload_cbor_length`,
-      ),
-      memory: exactCborBigInt(sequence.fields[3], `${label}.sequence.memory`),
-    },
-  } as const;
-  const kind = exactSafeCborInteger(frame.fields[0], `${label}.kind`);
-  if (kind === 0)
-    return {
-      ...common,
-      kind: "constrSmall",
-      constructor: integer(1, "constructor"),
-    };
-  if (kind === 1) {
-    return {
-      ...common,
-      kind: "constrLarge",
-      constructorCborRoot: bytes(2, "constructor_cbor_root"),
-      constructorCborLength: integer(3, "constructor_cbor_length"),
-      constructorMemory: integer(4, "constructor_memory"),
-    };
-  }
-  if (kind === 2) return { ...common, kind: "list" };
-  if (kind === 3) return { ...common, kind: "map" };
-  throw new Error(`${label}.kind is not a supported data frame`);
-};
-
-const stageOneActionCore = ({
-  value,
-  family,
-}: {
-  readonly value: PlutusDataValue;
-  readonly family: number;
-}): MidgardCekDataTraverseAction => {
-  const action = requireConstr({
-    value,
-    index: family === 0 ? 7 : 8,
-    fields: family === 0 ? 6 : 2,
-    label: "ScriptSources stage-one traversal action",
-  });
-  if (family === 0) {
-    const keySiblings = action.fields[4];
-    const valueSiblings = action.fields[5];
-    if (
-      !Array.isArray(keySiblings) ||
-      !Array.isArray(valueSiblings) ||
-      !keySiblings.every((sibling) => typeof sibling === "string") ||
-      !valueSiblings.every((sibling) => typeof sibling === "string")
-    ) {
-      throw new Error("ScriptSources FoldMap siblings must be byte strings");
-    }
-    return {
-      kind: "foldMap",
-      frame: dataFrameCore(action.fields[0]!, "ScriptSources FoldMap frame"),
-      pairIndex: exactSafeCborInteger(
-        action.fields[1],
-        "ScriptSources FoldMap pair index",
-      ),
-      key: dataSummaryCore(action.fields[2]!, "ScriptSources FoldMap key"),
-      value: dataSummaryCore(action.fields[3]!, "ScriptSources FoldMap value"),
-      keySiblings: keySiblings.map((sibling) =>
-        Buffer.from(sibling as string, "hex"),
-      ),
-      valueSiblings: valueSiblings.map((sibling) =>
-        Buffer.from(sibling as string, "hex"),
-      ),
-    };
-  }
-  const parent = requireOptionData(
-    action.fields[1]!,
-    "ScriptSources FinalizeFrame parent",
-  );
-  return {
-    kind: "finalizeFrame",
-    frame: dataFrameCore(
-      action.fields[0]!,
-      "ScriptSources FinalizeFrame frame",
-    ),
-    parent:
-      parent === null
-        ? null
-        : dataFrameCore(parent, "ScriptSources FinalizeFrame parent frame"),
-  };
-};
-
-const stageOneControlCore = decodeRedeemerItemControlData;
-
-const deriveScriptSourcesStageOneRouteData = ({
-  preparedResolution,
-  fraudProver,
-  auxiliary,
-  deploymentId,
-  envelopeScriptHash,
-  traversalScriptHash,
-  outerScriptHash,
-  foldMapScriptHash,
-  finalizeFrameScriptHash,
-  settlementScriptHash,
-}: {
-  readonly preparedResolution: NonNullable<
-    PreparedValidationResolutionDatumData["data"]
-  >;
-  readonly fraudProver: string;
-  readonly auxiliary: Constr<PlutusDataValue>;
-  readonly deploymentId: string;
-  readonly envelopeScriptHash: string;
-  readonly traversalScriptHash: string;
-  readonly outerScriptHash: string;
-  readonly foldMapScriptHash: string;
-  readonly finalizeFrameScriptHash: string;
-  readonly settlementScriptHash: string;
-}) => {
-  const exactAuxiliary = requireConstr({
-    value: auxiliary,
-    index: VALIDATION_AUXILIARY_SHAPES.redeemerItemStep[0],
-    fields: VALIDATION_AUXILIARY_SHAPES.redeemerItemStep[1],
-    label: "ScriptSources split stage-one auxiliary witness",
-  });
-  if (
-    requireOptionData(
-      exactAuxiliary.fields[0]!,
-      "ScriptSources stage-one redeemer control",
-    ) !== null
-  ) {
-    throw new Error(
-      "ScriptSources split stage-one route requires an absent CEK redeemer control",
-    );
-  }
-  const currentControlData = exactAuxiliary.fields[1]!;
-  const itemWitness = requireConstr({
-    value: exactAuxiliary.fields[2]!,
-    index: 0,
-    fields: 3,
-    label: "ScriptSources stage-one item witness",
-  });
-  const itemAction = requireConstr({
-    value: itemWitness.fields[0]!,
-    index: 2,
-    fields: 1,
-    label: "ScriptSources stage-one item action",
-  });
-  if (
-    requireOptionData(
-      itemWitness.fields[1]!,
-      "ScriptSources stage-one chunk proof",
-    ) !== null ||
-    requireOptionData(
-      itemWitness.fields[2]!,
-      "ScriptSources stage-one next chunk proof",
-    ) !== null
-  ) {
-    throw new Error(
-      "ScriptSources split stage-one route forbids chunk proofs during a fold-stage action",
-    );
-  }
-  const traversalActionData = itemAction.fields[0]!;
-  if (!(traversalActionData instanceof Constr)) {
-    throw new Error(
-      "ScriptSources stage-one traversal action must be a constructor",
-    );
-  }
-  const family =
-    traversalActionData.index === 7
-      ? 0
-      : traversalActionData.index === 8
-        ? 1
-        : -1;
-  if (family < 0) {
-    throw new Error(
-      "ScriptSources split stage-one route only accepts FoldMap or FinalizeFrame",
-    );
-  }
-  const currentControl = stageOneControlCore(currentControlData);
-  const traversalAction = stageOneActionCore({
-    value: traversalActionData,
-    family,
-  });
-  const nextControl = advanceMidgardRedeemerItemProof({
-    control: currentControl,
-    witness: {
-      action: { kind: "traverseData", action: traversalAction },
-      chunkProof: null,
-      nextChunkProof: null,
-    },
-  });
-  if (
-    nextControl === null ||
-    currentControl.traversal === null ||
-    nextControl.traversal === null
-  ) {
-    throw new Error(
-      "ScriptSources split stage-one traversal action has no valid canonical successor",
-    );
-  }
-  const currentPendingItemControlHash =
-    hashMidgardRedeemerItemProofControl(currentControl).toString("hex");
-  const expectedNextItemControlHash =
-    hashMidgardRedeemerItemProofControl(nextControl).toString("hex");
-  const checkedTraversalControlCbor = encodeMidgardCekDataTraverseControl(
-    currentControl.traversal,
-  );
-  const checkedNextTraversalControlCbor = encodeMidgardCekDataTraverseControl(
-    nextControl.traversal,
-  );
-  const baseData = exactPlutusDataFromCbor(
-    Buffer.from(
-      Data.to(preparedResolution, PreparedValidationResolutionState),
-      "hex",
-    ),
-    "ScriptSources prepared resolution state",
-  );
-  const resolutionIdentity = hashDomainData(
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.resolutionIdentity,
-    baseData,
-  );
-  const canonicalAuxiliaryHash = hashDomainData(
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.auxiliaryIdentity,
-    exactAuxiliary,
-  );
-  const canonicalActionHash = hashDomainData(
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.narrowActionIdentity,
-    [currentControlData, traversalActionData],
-  );
-  const semanticExecutorScriptHash =
-    family === 0 ? foldMapScriptHash : finalizeFrameScriptHash;
-  const commitmentItems = [
-    encodeCbor(1n),
-    encodeCbor(Buffer.from(deploymentId, "hex")),
-    encodeCbor(0n),
-    encodeCbor(Buffer.from(resolutionIdentity, "hex")),
-    encodeCbor(BigInt(family)),
-    encodeCbor(Buffer.from(canonicalAuxiliaryHash, "hex")),
-    encodeCbor(Buffer.from(canonicalActionHash, "hex")),
-    encodeCbor(Buffer.from(currentPendingItemControlHash, "hex")),
-    encodeCbor(Buffer.from(expectedNextItemControlHash, "hex")),
-    encodeCbor(BigInt(currentControl.itemIndex)),
-    encodeCbor(BigInt(currentControl.itemCount)),
-    encodeCbor(Buffer.from(envelopeScriptHash, "hex")),
-    encodeCbor(Buffer.from(traversalScriptHash, "hex")),
-    encodeCbor(Buffer.from(outerScriptHash, "hex")),
-    encodeCbor(Buffer.from(semanticExecutorScriptHash, "hex")),
-    encodeCbor(Buffer.from(settlementScriptHash, "hex")),
-    encodeCbor(Buffer.alloc(0)),
-  ];
-  const envelopeCommitment = computeHash32(
-    Buffer.concat([
-      SCRIPT_SOURCES_REDEEMER_DOMAINS.envelopeCommitment,
-      encodeCborArrayRaw(commitmentItems),
-    ]),
-  ).toString("hex");
-  const envelopeData = new Constr(0, [
-    1n,
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.envelope.toString("hex"),
-    deploymentId,
-    0n,
-    baseData,
-    resolutionIdentity,
-    "",
-    BigInt(family),
-    canonicalAuxiliaryHash,
-    canonicalActionHash,
-    currentPendingItemControlHash,
-    expectedNextItemControlHash,
-    BigInt(currentControl.itemIndex),
-    BigInt(currentControl.itemCount),
-    envelopeScriptHash,
-    traversalScriptHash,
-    outerScriptHash,
-    semanticExecutorScriptHash,
-    settlementScriptHash,
-    envelopeCommitment,
-  ]);
-  const baseProvenanceIdentity = computeHash32(
-    Buffer.concat([
-      SCRIPT_SOURCES_REDEEMER_DOMAINS.baseProvenanceIdentity,
-      encodeCborArrayRaw([
-        encodeCbor(0n),
-        encodeCbor(Buffer.from(resolutionIdentity, "hex")),
-        encodeCbor(Buffer.from(envelopeCommitment, "hex")),
-      ]),
-    ]),
-  ).toString("hex");
-  const traversalActionIdentity = hashDomainData(
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.traversalActionIdentity,
-    traversalActionData,
-  );
-  const currentControlRecord = requireConstr({
-    value: currentControlData,
-    index: 0,
-    fields: 16,
-    label: "ScriptSources stage-one item control",
-  });
-  const traversalOption = requireConstr({
-    value: currentControlRecord.fields[15]!,
-    index: 0,
-    fields: 1,
-    label: "ScriptSources stage-one traversal option",
-  });
-  const traversalControlData = traversalOption.fields[0]!;
-  const outerFieldsData = new Constr(
-    0,
-    currentControlRecord.fields.slice(0, 15),
-  );
-  const traversalData = new Constr(0, [
-    1n,
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.traversal.toString("hex"),
-    deploymentId,
-    baseProvenanceIdentity,
-    envelopeScriptHash,
-    traversalScriptHash,
-    outerScriptHash,
-    semanticExecutorScriptHash,
-    settlementScriptHash,
-    BigInt(family),
-    canonicalActionHash,
-    traversalActionIdentity,
-    currentPendingItemControlHash,
-    expectedNextItemControlHash,
-    BigInt(currentControl.itemIndex),
-    BigInt(currentControl.itemCount),
-    outerFieldsData,
-    traversalControlData,
-    checkedTraversalControlCbor.toString("hex"),
-  ]);
-  const encodedCurrentControl =
-    encodeMidgardRedeemerItemProofControl(currentControl);
-  const nextItemControlHashPrefix = Buffer.concat([
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.itemControl,
-    encodedCurrentControl.subarray(
-      0,
-      encodedCurrentControl.length - checkedTraversalControlCbor.length - 1,
-    ),
-  ]);
-  const traversalTemplate =
-    family === 0
-      ? new Constr(0, [
-          Buffer.concat([
-            Buffer.from([0x8a]),
-            encodeCbor(1n),
-            encodeCbor(BigInt(currentControl.traversal.stage)),
-            encodeCbor(BigInt(currentControl.traversal.sourceStart)),
-            encodeCbor(BigInt(currentControl.traversal.sourceLength)),
-            encodeCbor(BigInt(currentControl.traversal.offset)),
-          ]).toString("hex"),
-          "d87a80d87a80d87a80d87a80",
-        ])
-      : new Constr(1, [
-          Buffer.concat([Buffer.from([0x8a]), encodeCbor(1n)]).toString("hex"),
-          Buffer.concat([
-            encodeCbor(BigInt(currentControl.traversal.sourceStart)),
-            encodeCbor(BigInt(currentControl.traversal.sourceLength)),
-            encodeCbor(BigInt(currentControl.traversal.offset)),
-          ]).toString("hex"),
-          "d87a80d87a80d87a80",
-        ]);
-  const outerData = new Constr(0, [
-    1n,
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.outer.toString("hex"),
-    deploymentId,
-    baseProvenanceIdentity,
-    envelopeScriptHash,
-    traversalScriptHash,
-    outerScriptHash,
-    semanticExecutorScriptHash,
-    settlementScriptHash,
-    BigInt(family),
-    canonicalActionHash,
-    traversalActionIdentity,
-    currentPendingItemControlHash,
-    expectedNextItemControlHash,
-    BigInt(currentControl.itemIndex),
-    BigInt(currentControl.itemCount),
-    nextItemControlHashPrefix.toString("hex"),
-    traversalControlData,
-    traversalTemplate,
-  ]);
-  const attestedData = new Constr(0, [
-    1n,
-    SCRIPT_SOURCES_REDEEMER_DOMAINS.attested.toString("hex"),
-    deploymentId,
-    baseProvenanceIdentity,
-    envelopeScriptHash,
-    traversalScriptHash,
-    outerScriptHash,
-    semanticExecutorScriptHash,
-    settlementScriptHash,
-    BigInt(family),
-    canonicalActionHash,
-    traversalActionIdentity,
-    currentPendingItemControlHash,
-    expectedNextItemControlHash,
-    expectedNextItemControlHash,
-    BigInt(currentControl.itemIndex),
-    BigInt(currentControl.itemCount),
-  ]);
-  const stageDatum = (data: PlutusDataValue): string =>
-    Data.to(new Constr(0, [fraudProver, new Constr(0, [data])]));
-  return {
-    family,
-    traversalActionData,
-    currentControlData,
-    envelopeData,
-    traversalDatum: stageDatum(envelopeData),
-    outerDatum: stageDatum(traversalData),
-    executorDatum: stageDatum(outerData),
-    settlementDatum: stageDatum(attestedData),
-    expectedNextItemControlHash,
-    checkedNextTraversalControlCbor,
-  } as const;
 };
 
 const canonicalCborArgumentHeaderSize = (value: number): number => {
@@ -7002,20 +6463,17 @@ export const submitValidationDisputeSemanticResolution = async ({
         "ScriptSources split stage-one semantic resolver is not the deployed envelope validator",
       );
     }
-    const route = deriveScriptSourcesStageOneRouteData({
-      preparedResolution: inputDatum.data,
-      fraudProver: inputDatum.fraud_prover,
-      auxiliary: staged.auxiliary,
+    const submissionPlan = deriveScriptSourcesItemSubmissionPlan({
+      preparedCbor: threadUtxo.datum!,
+      oneStepArgument,
       deploymentId: deriveValidationTraceDeploymentId(
         fraudProofCataloguePolicyId,
       ),
-      envelopeScriptHash: stages.envelope.spendingScriptHash,
-      traversalScriptHash: stages.traversalNormalizer.spendingScriptHash,
-      outerScriptHash: stages.outerNormalizer.spendingScriptHash,
-      foldMapScriptHash: stages.foldMapExecutor.spendingScriptHash,
-      finalizeFrameScriptHash: stages.finalizeFrameExecutor.spendingScriptHash,
-      settlementScriptHash: stages.settlement.spendingScriptHash,
+      stages: { ...stages, entry: stages.envelope },
     });
+    scriptSourcesItemResumeIndex({ plan: submissionPlan, thread: threadUtxo });
+    const plannedStages = submissionPlan.bindings;
+    const sharedReferences = sharedRedeemerItemReferenceScripts(stages);
     type SplitStageContract = {
       readonly spendingScriptAddress: string;
       readonly spendingScript: Script;
@@ -7133,122 +6591,83 @@ export const submitValidationDisputeSemanticResolution = async ({
         ...(nextThreadUtxo === undefined ? {} : { nextThreadUtxo }),
       };
     };
-    const envelope = await submitSplitStage({
-      inputUtxo: threadUtxo,
-      inputContract: stages.envelope,
-      outputContract: stages.traversalNormalizer,
-      stageOutputDatum: route.traversalDatum,
-      label: "Validation ScriptSources redeemer envelope binding",
-      scriptReference:
-        referenceScriptUtxo ?? stageReferenceScriptUtxos?.scriptSourcesEnvelope,
-      awaitStage: true,
-      encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "envelope",
-          inputIndex,
-          outputIndex,
-          transition: staged.transitionData,
-          auxiliary: staged.auxiliary,
-          expectedNextItemControlHash: route.expectedNextItemControlHash,
-          family: route.family,
-        }),
-    });
-    const traversal = await submitSplitStage({
-      inputUtxo: envelope.nextThreadUtxo!,
-      inputContract: stages.traversalNormalizer,
-      outputContract: stages.outerNormalizer,
-      stageOutputDatum: route.outerDatum,
-      label: "Validation ScriptSources redeemer traversal normalization",
-      scriptReference:
-        stageReferenceScriptUtxos?.scriptSourcesTraversalNormalizer,
-      awaitStage: true,
-      encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "traversal",
-          inputIndex,
-          outputIndex,
-          auxiliary: staged.auxiliary,
-          currentItemControl: route.currentControlData,
-          traversalAction: route.traversalActionData,
-        }),
-    });
-    const outer = await submitSplitStage({
-      inputUtxo: traversal.nextThreadUtxo!,
-      inputContract: stages.outerNormalizer,
-      outputContract:
-        route.family === 0
-          ? stages.foldMapExecutor
-          : stages.finalizeFrameExecutor,
-      stageOutputDatum: route.executorDatum,
-      label: "Validation ScriptSources redeemer outer normalization",
-      scriptReference: stageReferenceScriptUtxos?.scriptSourcesOuterNormalizer,
-      awaitStage: true,
-      encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "outer",
-          inputIndex,
-          outputIndex,
-        }),
-    });
-    const execute = await submitSplitStage({
-      inputUtxo: outer.nextThreadUtxo!,
-      inputContract:
-        route.family === 0
-          ? stages.foldMapExecutor
-          : stages.finalizeFrameExecutor,
-      outputContract: stages.settlement,
-      stageOutputDatum: route.settlementDatum,
-      label:
-        route.family === 0
-          ? "Validation ScriptSources FoldMap execution"
-          : "Validation ScriptSources FinalizeFrame execution",
-      scriptReference:
-        route.family === 0
-          ? stageReferenceScriptUtxos?.scriptSourcesFoldMapExecutor
-          : stageReferenceScriptUtxos?.scriptSourcesFinalizeFrameExecutor,
-      awaitStage: true,
-      encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "executor",
-          inputIndex,
-          outputIndex,
-          traversalAction: route.traversalActionData,
-        }),
-    });
-    const settle = await submitSplitStage({
-      inputUtxo: execute.nextThreadUtxo!,
-      inputContract: stages.settlement,
-      outputContract: contracts.validationTraceDispute.award,
-      stageOutputDatum: outputDatum,
-      label: "Validation ScriptSources redeemer execution settlement",
-      scriptReference: stageReferenceScriptUtxos?.scriptSourcesSettlement,
-      awaitStage: awaitConfirmation,
-      encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemer({
-          stage: "settlement",
-          inputIndex,
-          outputIndex,
-          envelope: route.envelopeData,
-        }),
-    });
-    const stageTransactions = [
-      { kind: "envelope" as const, ...envelope },
-      { kind: "traversal" as const, ...traversal },
-      { kind: "outer" as const, ...outer },
-      {
-        kind:
-          route.family === 0
-            ? ("execute-fold-map" as const)
-            : ("execute-finalize-frame" as const),
-        ...execute,
-      },
-      { kind: "settle" as const, ...settle },
-    ].map(({ kind, txHash, nextThreadOutRef, completeSignedBytes }) => ({
-      kind,
-      txHash,
-      nextThreadOutRef,
-      completeSignedBytes,
-    }));
+    const stageTransactions: {
+      kind: RedeemerItemStageKey;
+      txHash: string;
+      nextThreadOutRef: string;
+      completeSignedBytes: number;
+    }[] = [];
+    let currentThread = threadUtxo;
+    let settle: SplitStageResult | undefined;
+    for (let index = 0; index < plannedStages.length; index++) {
+      const binding = plannedStages[index]!;
+      const outputContract =
+        plannedStages[index + 1]?.validator ??
+        contracts.validationTraceDispute.award;
+      const metadata = sharedReferences.find(
+        (reference) =>
+          reference.validator.spendingScriptHash ===
+          binding.validator.spendingScriptHash,
+      );
+      const explicit =
+        binding.key === "entry"
+          ? (referenceScriptUtxo ??
+            stageReferenceScriptUtxos?.scriptSourcesEnvelope)
+          : binding.key === "settle"
+            ? stageReferenceScriptUtxos?.scriptSourcesSettlement
+            : stageReferenceScriptUtxos?.sharedRedeemerItem?.get(
+                binding.validator.spendingScriptHash,
+              );
+      const entryName =
+        metadata?.deploymentEntry ??
+        (binding.key === "entry"
+          ? "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic"
+          : "validationTraceDisputeRedeemerItemSettlement");
+      const reference =
+        explicit ??
+        (await requirePublishedValidationSemanticReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: parsedDeploymentInfo,
+          entryName,
+          expectedScriptHash: binding.validator.spendingScriptHash,
+        }));
+      if (explicit === undefined && metadata !== undefined)
+        requireValidationDisputeReferenceScript({
+          utxo: reference,
+          deployedScriptHash: binding.validator.spendingScriptHash,
+          expectedScriptHash: binding.validator.spendingScriptHash,
+          authPolicyId: referenceScriptAuthPolicyId,
+          role: metadata.role,
+        });
+      const stageOutputDatum = Data.to(
+        new Constr(0, [
+          inputDatum.fraud_prover,
+          new Constr(0, [binding.outputState]),
+        ]),
+      );
+      settle = await submitSplitStage({
+        inputUtxo: currentThread,
+        inputContract: binding.validator,
+        outputContract,
+        stageOutputDatum,
+        label: `Validation ScriptSources item ${binding.key}`,
+        scriptReference: reference,
+        awaitStage: index < plannedStages.length - 1 || awaitConfirmation,
+        encode: ({ inputIndex, outputIndex }) =>
+          Data.to(binding.spendRedeemer(inputIndex, outputIndex)),
+      });
+      stageTransactions.push({
+        kind: binding.key,
+        txHash: settle.txHash,
+        nextThreadOutRef: settle.nextThreadOutRef,
+        completeSignedBytes: settle.completeSignedBytes,
+      });
+      if (settle.nextThreadUtxo !== undefined)
+        currentThread = settle.nextThreadUtxo;
+    }
+    if (settle === undefined)
+      throw new Error("ScriptSources item plan has no stages");
+
     return {
       txHash: settle.txHash,
       threadOutRef,

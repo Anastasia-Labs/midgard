@@ -238,7 +238,7 @@ pub fn control_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
   }
 }
 
-pub fn initial_control_v1(
+fn initial_control_fields(
   mode: Int,
   item_index: Int,
   item_count: Int,
@@ -265,8 +265,51 @@ pub fn initial_control_v1(
     execution_steps: -1,
     traversal: None,
   }
+  control
+}
+
+pub fn initial_control_v1(
+  mode: Int,
+  item_index: Int,
+  item_count: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
+  expected_purpose_tag: Int,
+  expected_pointer_index: Int,
+) -> RedeemerItemProofControlV1 {
+  let control = initial_control_fields(
+    mode,
+    item_index,
+    item_count,
+    total_length,
+    item_commitment,
+    expected_purpose_tag,
+    expected_pointer_index,
+  )
   expect control_is_well_formed(control)
   control
+}
+
+/// Canonical initial control hash without importing nested traversal grammar.
+pub fn initial_control_hash(
+  mode: Int,
+  item_index: Int,
+  item_count: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
+  expected_purpose_tag: Int,
+  expected_pointer_index: Int,
+) -> ByteArray {
+  let control = initial_control_fields(
+    mode,
+    item_index,
+    item_count,
+    total_length,
+    item_commitment,
+    expected_purpose_tag,
+    expected_pointer_index,
+  )
+  hash_outer_with_checked_optional_traversal(control, #"d87a80")
 }
 
 fn encode_optional_traversal(

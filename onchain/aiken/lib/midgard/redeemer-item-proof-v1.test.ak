@@ -271,3 +271,31 @@ test data_item_narrow_header_tail_use_exact_authenticated_windows() {
     ) == None,
   }
 }
+
+test initial_hash_matches_canonical_hash_for_both_modes_and_maximum_coordinates() {
+  let commitment = #"1111111111111111111111111111111111111111111111111111111111111111"
+  and {
+    redeemer_item_proof_v1.initial_control_hash(0, 0, 1, 8, commitment, -1, -1) == redeemer_item_proof_v1.hash_control_v1(
+      redeemer_item_proof_v1.initial_control_v1(0, 0, 1, 8, commitment, -1, -1),
+    ),
+    redeemer_item_proof_v1.initial_control_hash(
+      1,
+      16383,
+      16384,
+      32768,
+      commitment,
+      -1,
+      -1,
+    ) == redeemer_item_proof_v1.hash_control_v1(
+      redeemer_item_proof_v1.initial_control_v1(
+        1,
+        16383,
+        16384,
+        32768,
+        commitment,
+        -1,
+        -1,
+      ),
+    ),
+  }
+}

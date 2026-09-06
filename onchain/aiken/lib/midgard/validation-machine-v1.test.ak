@@ -4957,7 +4957,7 @@ test script_sources_commits_unique_supported_redeemers() {
   }
 }
 
-test script_sources_stage_one_redeemer_family_guard() {
+test script_sources_stage_one_begin_matches_canonical_transition() {
   let base = empty_v1_transaction()
   let redeemer = MidgardRedeemerWitness {
     purpose: SpendRedeemer,
@@ -5077,13 +5077,13 @@ test script_sources_stage_one_redeemer_family_guard() {
     witness: header_witness,
   }
   and {
-    vm_script_sources.verify_script_sources_stage_one_redeemer_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_one_semantics_v1(
       pre,
       begin_transition,
       begin_auxiliary,
       inline_field_door(),
     ),
-    vm_script_sources.verify_script_sources_stage_one_redeemer_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_one_semantics_v1(
       begin_post,
       header_transition,
       header_auxiliary,
@@ -5095,10 +5095,10 @@ test script_sources_stage_one_redeemer_family_guard() {
       vm_machine_types.NoAuxiliaryWitness,
       inline_field_door(),
     ),
-    !vm_script_sources.verify_script_sources_stage_one_redeemer_semantics_v1(
-      item_post,
-      final_transition,
-      vm_machine_types.NoAuxiliaryWitness,
+    vm_script_sources_early_stages.verify_script_sources_stage_one_begin_raw_semantics(
+      pre,
+      begin_transition,
+      carriage,
       inline_field_door(),
     ),
   }

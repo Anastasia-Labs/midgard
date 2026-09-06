@@ -60,6 +60,7 @@ import {
   encodeData,
   keyValuePhasProof,
 } from "../../../src/index.js";
+import { redeemerItemExecutor } from "../../../src/redeemer-item-plan.js";
 import { scriptSourcesMiddleYieldIndex } from "../../../src/validation-dispute/script-sources-yields.js";
 import { cekSelectionProgram } from "./cek-selection-program.js";
 import {
@@ -724,6 +725,7 @@ const buildNativeTransactionTrace = async ({
   plutusSelection = false,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
+  redeemerDataCbor,
   nativeItemWidth = 0,
   cekDirectBuiltin = false,
   cekBlsFinal = false,
@@ -741,6 +743,7 @@ const buildNativeTransactionTrace = async ({
   readonly plutusSelection?: boolean;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
+  readonly redeemerDataCbor?: Uint8Array;
   readonly nativeItemWidth?: number;
   readonly cekDirectBuiltin?: boolean;
   readonly cekBlsFinal?: boolean;
@@ -832,7 +835,7 @@ const buildNativeTransactionTrace = async ({
       {
         purpose: "Spend",
         index: 0n,
-        redeemerCbor: Buffer.from(Data.void(), "hex"),
+        redeemerCbor: redeemerDataCbor ?? Buffer.from(Data.void(), "hex"),
         executionUnits: {
           memory: 1_000_000_000n,
           steps: cekBlsFinal ? 10_000_000_000n : 1_000_000_000n,
@@ -1171,6 +1174,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   plutusSelection = false,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
+  redeemerDataCbor,
   cekDirectBuiltin = false,
   cekBlsFinal = false,
   cekMaximumDirect = false,
@@ -1186,6 +1190,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   preconditionsItemIndex,
   resolveInputsKind,
   scriptSourcesSemanticIndex,
+  scriptSourcesItemExecutor,
   scriptSourcesMiddleKind,
   prepareFieldCarriage,
 }: {
@@ -1205,6 +1210,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly plutusSelection?: boolean;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
+  readonly redeemerDataCbor?: Uint8Array;
   readonly cekDirectBuiltin?: boolean;
   readonly cekBlsFinal?: boolean;
   readonly cekMaximumDirect?: boolean;
@@ -1229,6 +1235,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     | "membershipFinalize"
     | "nonMembership";
   readonly scriptSourcesSemanticIndex?: number;
+  readonly scriptSourcesItemExecutor?: number;
   readonly scriptSourcesMiddleKind?: number;
   readonly prepareFieldCarriage?: (input: {
     trace: DeterministicValidationMachineTrace;
@@ -1282,6 +1289,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       preconditionsRejection === "untaggedObservers",
     cekProgramLambdaCount,
     cekDataGraph,
+    redeemerDataCbor,
     nativeItemWidth,
     cekDirectBuiltin,
     cekBlsFinal,
@@ -1325,6 +1333,15 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       (scriptSourcesSemanticIndex === undefined ||
         validationSemanticResolverIndex(challengerTrace.witnesses[index]!) ===
           scriptSourcesSemanticIndex) &&
+      (scriptSourcesItemExecutor === undefined ||
+        (() => {
+          const auxiliary = challengerTrace.witnesses[index]!.auxiliary;
+          return (
+            auxiliary?.kind === "redeemerItemStep" &&
+            redeemerItemExecutor(auxiliary.control, auxiliary.witness).index ===
+              scriptSourcesItemExecutor
+          );
+        })()) &&
       (resolveInputsKind === undefined ||
         (() => {
           const auxiliary = challengerTrace.witnesses[index]!.auxiliary;

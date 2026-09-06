@@ -3,11 +3,12 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
+use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 use midgard/validation_machine/machine_types.{
-  ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
+  TransactionRedeemerItemBeginWitness, ValidationOneStepWitnessV1,
 }
-use midgard/validation_machine/script_sources.{
-  verify_script_sources_stage_one_redeemer_semantics_v1,
+use midgard/validation_machine/script_sources_early_stages.{
+  verify_script_sources_stage_one_begin_raw_semantics,
 }
 use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
@@ -18,7 +19,7 @@ pub type ActionV1 {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    auxiliary: ValidationAuxiliaryWitnessV1,
+    carriage: FieldCarriageV1,
   }
 }
 
@@ -50,9 +51,11 @@ validator main(
         input_index,
         output_index,
         transition,
-        auxiliary,
+        carriage,
       }) -> {
-        let auxiliary_data: Data = auxiliary
+        let auxiliary_data: Data = TransactionRedeemerItemBeginWitness {
+          carriage,
+        }
         let door = MachineFieldDoorV1 {
           reference_inputs: tx.reference_inputs,
           certificate_policy_id: field_preimage_certificate_policy_id,
@@ -66,10 +69,10 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_script_sources_stage_one_redeemer_semantics_v1(
+          verify_script_sources_stage_one_begin_raw_semantics(
             datum |> semantic_pre_state,
             transition,
-            auxiliary,
+            carriage,
             door,
           ),
           own_out_ref,

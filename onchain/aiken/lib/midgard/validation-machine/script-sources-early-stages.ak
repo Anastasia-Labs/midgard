@@ -988,6 +988,86 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
   }
 }
 
+/// Stage-one begin authenticates one field item and freezes its canonical initial
+/// item control; every subsequent item transition is handled by the shared chain.
+pub fn verify_script_sources_stage_one_begin_raw_semantics(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
+  door: field_door.MachineFieldDoorV1,
+) -> Bool {
+  let frame = raw_frame.open_frame_v1(pre, witness, 30, 1)
+  expect
+      [
+        _, _, _, _, _, _, _, _, resolved_item_peaks_data, _, source_count_data,
+        _, redeemer_count_data, _, replay_cursor_data, _, _, spend_index_data,
+        purpose_count_data, _, output_cursor_data, output_count_data, _, _,
+        receive_scan_data, source_total_count_data, redeemer_total_count_data, _,
+        _, resolution_schedule_hash_data,
+      ]
+    = frame.items
+  expect
+    script_sources_stage_one_raw_common_control_is_initial(
+      resolved_item_peaks_data,
+      source_count_data,
+      replay_cursor_data,
+      spend_index_data,
+      purpose_count_data,
+      output_cursor_data,
+      output_count_data,
+      receive_scan_data,
+      source_total_count_data,
+    )
+  expect
+    bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    frame.compact_cbor,
+    frame.witness_set_compact_cbor,
+    frame.field_preimage_lengths_cbor,
+  )
+  let count = builtin.un_i_data(redeemer_count_data)
+  let total = builtin.un_i_data(redeemer_total_count_data)
+  let opened = field_door.open_machine_field_item_by_commitment(
+    door,
+    verified.tx_id,
+    witness_set.redeemer_tx_wits_hash,
+    8,
+    count,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(opened)
+  let active_total = if total == 0 {
+    item_count
+  } else {
+    total
+  }
+  expect
+    item_count == active_total && active_total > 0 && active_total <= max_tx_size_derived_collection_item_count
+  let pending_hash = redeemer_item_proof_v1.initial_control_hash(
+    redeemer_item_proof_v1.mode_data,
+    count,
+    active_total,
+    field_door.machine_field_item_length(opened),
+    field_door.machine_field_item_commitment(opened),
+    -1,
+    -1,
+  )
+  let next_total = raw_frame.replace_items_v1(
+    frame,
+    witness.work_witness_cbor,
+    26,
+    1,
+    cbor.serialise(active_total),
+  )
+  let next = #"981f"
+    |> bytearray.concat(
+        bytearray.slice(next_total, 2, bytearray.length(next_total) - 1),
+      )
+    |> bytearray.concat(encode_definite_bytes(pending_hash))
+  raw_frame.successor_is_exact_v1(pre, witness, next)
+}
+
 pub fn script_sources_stage_one(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
