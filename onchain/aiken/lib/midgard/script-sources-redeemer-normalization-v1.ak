@@ -10,8 +10,12 @@ use midgard/fraud_proofs/native_tx/codec.{
 use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
 use midgard/redeemer_item_proof_v1.{RedeemerItemProofControlV1}
 use midgard/rejection_reason_v1.{reject_invalid_field_type}
+use midgard/script_proof_v1
+use midgard/script_sources_raw_frame_v1 as raw_frame
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
 use midgard/validation_machine/shared.{rejected_successor_is_exact}
+use midgard/validation_machine/witness.{decode_frontier_peaks}
+use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
@@ -510,9 +514,35 @@ pub fn verify_raw_envelope_v1(
     |> bytearray.concat(
         encode_definite_bytes(current_pending_item_control_hash),
       )
-  let next_work_witness_cbor = pending_prefix
-    |> bytearray.concat(encode_definite_bytes(expected_next_item_control_hash))
   let redeemer_count = builtin.un_i_data(redeemer_count_data)
+  let next_work_witness_cbor = if action_family == finish_data_family {
+    let Pair(_, auxiliary_fields) = builtin.un_constr_data(auxiliary)
+    expect [_, current_data, _] = auxiliary_fields
+    expect current: RedeemerItemProofControlV1 = current_data
+    let frame = raw_frame.open_frame_v1(pre, transition, 31, 1)
+    let next_peaks = validation_merkle_v1.append_leaf(
+      redeemer_count,
+      decode_frontier_peaks(redeemer_peaks_data),
+      script_proof_v1.redeemer_item_leaf_hash(
+        redeemer_count,
+        current.item_commitment,
+      ),
+    )
+    let folded = raw_frame.replace_items_v1(
+      frame,
+      work_witness_cbor,
+      12,
+      2,
+      cbor.serialise(redeemer_count + 1)
+        |> bytearray.concat(validation_merkle_v1.encode_frontier(next_peaks)),
+    )
+    raw_frame.drop_extension_v1(folded, current_pending_item_control_hash)
+  } else {
+    pending_prefix
+      |> bytearray.concat(
+          encode_definite_bytes(expected_next_item_control_hash),
+        )
+  }
   let redeemer_total_count = builtin.un_i_data(redeemer_total_count_data)
   let canonical_auxiliary_hash = canonical_auxiliary_hash_v1(auxiliary)
   let canonical_action_hash = canonical_action_hash_v1(auxiliary, action_family)

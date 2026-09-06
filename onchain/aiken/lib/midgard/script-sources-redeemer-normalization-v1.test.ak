@@ -10,9 +10,11 @@ use midgard/fraud_proofs/native_tx/codec.{
 }
 use midgard/fraud_proofs/native_tx/compact
 use midgard/redeemer_item_proof_v1
+use midgard/script_proof_v1
 use midgard/script_sources_redeemer_normalization_v1 as normalization
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/witness as vm_witness
+use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
@@ -2577,4 +2579,54 @@ test extended_invalid_identity_refuses_traversal_failure_as_invalid_item() fail 
     raw_item_witness(action, none, none),
     normalization.invalid_family,
   ) == hash_a
+}
+
+test finish_item_envelope_matches_canonical_frontier_fold_and_refuses_pending_successor() {
+  let control = raw_envelope_control()
+  let current = raw_envelope_item_control()
+  let auxiliary: Data = vm_machine_types.RedeemerItemStepWitness {
+    redeemer_control: None,
+    control: current,
+    witness: redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+      action: redeemer_item_proof_v1.RedeemerItemFinishData,
+      chunk_proof: None,
+      next_chunk_proof: None,
+    },
+  }
+  let successor = vm_witness.exact_script_sources_control(
+    vm_machine_types.ScriptSourcesControlV1 {
+      ..control,
+      redeemer_count: 1,
+      redeemer_peaks: validation_merkle_v1.append_leaf(
+        0,
+        [],
+        script_proof_v1.redeemer_item_leaf_hash(0, current.item_commitment),
+      ),
+      pending_source_cbor: #"",
+    },
+  )
+  let witness_cbor = raw_envelope_witness_cbor(hash_a)
+  and {
+    normalization.verify_raw_envelope_v1(
+      raw_envelope_pre_state(),
+      raw_envelope_transition(witness_cbor, successor),
+      auxiliary,
+      hash_b,
+      normalization.finish_data_family,
+    ) != None,
+    normalization.verify_raw_envelope_v1(
+      raw_envelope_pre_state(),
+      raw_envelope_transition(witness_cbor, raw_envelope_witness_cbor(hash_b)),
+      auxiliary,
+      hash_b,
+      normalization.finish_data_family,
+    ) == None,
+    normalization.verify_raw_envelope_v1(
+      raw_envelope_pre_state(),
+      raw_envelope_transition(witness_cbor, successor),
+      auxiliary,
+      hash_b,
+      normalization.open_header_family,
+    ) == None,
+  }
 }
