@@ -148,6 +148,21 @@ describe("node-runtime reference-script registry", () => {
       "V1 fraud-proof transition-trace final-5",
       "V1 fraud-proof transition-trace final-6",
       "V1 fraud-proof transition-trace final-7",
+      "V1 fraud-proof transition-trace final-4 L2 open yield",
+      "V1 fraud-proof transition-trace final-4 L2 summaries yield",
+      "V1 fraud-proof transition-trace final-4 L2 replay yield",
+      "V1 fraud-proof transition-trace final-4 claim structure yield",
+      "V1 fraud-proof transition-trace final-4 claim source yield",
+      "V1 fraud-proof transition-trace final-4 claim endpoints yield",
+      "V1 fraud-proof transition-trace final-5 projection yield",
+      "V1 fraud-proof transition-trace final-5 summaries yield",
+      "V1 fraud-proof transition-trace final-4 L2 assembly yield",
+      "V1 fraud-proof transition-trace final-4 L2 scan yield",
+      "V1 fraud-proof transition-trace final-4 L2 value yield",
+      "V1 fraud-proof transition-trace final-5 assembly yield",
+      "V1 fraud-proof transition-trace final-5 scan yield",
+      "V1 fraud-proof transition-trace final-5 value yield",
+      "V1 fraud-proof transition-trace final-5 replay yield",
     ]);
   });
 

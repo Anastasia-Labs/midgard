@@ -855,3 +855,26 @@ The lifecycle includes accepted-checkpoint process loss, JSON reconstruction,
 public out-ref resume, cancellation, honest refusals, permanent proof minting
 and removal. CEK core/context and the installed validation workflow remain
 open; selection closure alone does not close validation-trace dispute.
+
+
+### CEK core shared integration — 2026-09-05
+
+Copied the complete core implementation and recovery wiring in `545fc600`
+and `80b5f220`, together with the transition-trace and retained-authority
+prerequisites. All contracts compiled together with the pinned compiler in
+normal testnet mode. Blueprint SHA-256:
+`f9019fbcd111cb6ff960abc08809550ac6cb7b124ec73a959c3d5e4910f86a43`.
+
+All 18 shared CEK core lifecycle cases and the current-blueprint ledger
+verifier passed. The 1,636 recorded transactions have maxima of 15,108 signed
+bytes, 11,937,828 memory and 6,258,356,746 CPU, preserving the required 20%
+execution reserve. Cases include exact semantic-leaf selection, maximum BLS
+and direct payloads, JSON restart, cancellation, honest refusal, permanent
+proof and removal. Shared fault-proofs TypeScript checking passed; deployment
+identity passed 12 tests, and node manifest, ABI and reference publication
+checks passed 36 tests after updating the complete transition-trace roster.
+
+This closes core execution only. CEK context, installed validation dispute,
+and final program review remain open. The shared mint-authorization suite
+executed all 15 cases successfully but its closure ledger rejected two
+Step02 maximum-mint-field transactions over budget; that work is not closed.
