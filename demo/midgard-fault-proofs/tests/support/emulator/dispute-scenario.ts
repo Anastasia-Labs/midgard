@@ -13,6 +13,7 @@ import {
   getAddressDetails,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 
 import {
@@ -120,9 +121,12 @@ export const runForcedValidationDisputeScenario = async (
     phaseANativeItemYieldKind,
     phaseANativeItemMaximum = false,
     phaseAObserverItemMaximum = false,
+    scriptSourcesItemMaximum = false,
     cancelPreparedSemantic = false,
     restartCekMaterialTraversal = false,
     restartCekCore = false,
+    scriptSourcesItemCheckpoint,
+    cancelScriptSourcesItem = false,
     cancelCekCore = false,
     cancelCekMaterialTraversal = false,
     onRemovalReferenceScriptPublicationAttempt,
@@ -132,9 +136,12 @@ export const runForcedValidationDisputeScenario = async (
     readonly phaseANativeItemYieldKind?: "native" | "foreign";
     readonly phaseANativeItemMaximum?: boolean;
     readonly phaseAObserverItemMaximum?: boolean;
+    readonly scriptSourcesItemMaximum?: boolean;
     readonly cancelPreparedSemantic?: boolean;
     readonly restartCekMaterialTraversal?: boolean;
     readonly restartCekCore?: boolean;
+    readonly scriptSourcesItemCheckpoint?: number;
+    readonly cancelScriptSourcesItem?: boolean;
     readonly cancelCekCore?: boolean;
     readonly cancelCekMaterialTraversal?: boolean;
     readonly stopAfter?:
@@ -227,13 +234,19 @@ export const runForcedValidationDisputeScenario = async (
       operatorLucid,
       emulator.now() +
         120_000 +
-        (phaseANativeItemMaximum || phaseAObserverItemMaximum ? 8 * 20_000 : 0),
+        (phaseANativeItemMaximum ||
+        phaseAObserverItemMaximum ||
+        scriptSourcesItemMaximum
+          ? 8 * 20_000
+          : 0),
     ) - 1;
   let phaseAItemCarriage:
     | Awaited<ReturnType<typeof preparePhaseAItemCarriage>>
     | undefined;
   const fixture = await buildFixture({
-    ...(phaseANativeItemMaximum || phaseAObserverItemMaximum
+    ...(phaseANativeItemMaximum ||
+    phaseAObserverItemMaximum ||
+    scriptSourcesItemMaximum
       ? {
           prepareFieldCarriage: async (
             input: Pick<
@@ -248,9 +261,11 @@ export const runForcedValidationDisputeScenario = async (
               chain: contracts.fraudProofContracts.validationTraceDispute,
               certificate: contracts.fieldPreimageCertificate,
               authPolicy: referenceScriptAuth,
-              kind: phaseAObserverItemMaximum
-                ? "observer"
-                : (phaseANativeItemYieldKind ?? "native"),
+              kind: scriptSourcesItemMaximum
+                ? "redeemer"
+                : phaseAObserverItemMaximum
+                  ? "observer"
+                  : (phaseANativeItemYieldKind ?? "native"),
             });
             return phaseAItemCarriage.resolveFieldCarriage;
           },
@@ -610,6 +625,7 @@ export const runForcedValidationDisputeScenario = async (
       },
     };
   }
+  const sharedItemReferences = new Map<string, UTxO>();
   if (stagedResolverIndex === 8 && stagedSemanticIndex === 28) {
     const stages =
       contracts.fraudProofContracts.validationTraceDispute
@@ -633,6 +649,10 @@ export const runForcedValidationDisputeScenario = async (
           script: validator.spendingScript,
         },
       });
+      sharedItemReferences.set(
+        validator.spendingScriptAddress,
+        publication.utxo,
+      );
       semanticDeploymentInfo = {
         ...semanticDeploymentInfo,
         contracts: {
@@ -897,6 +917,41 @@ export const runForcedValidationDisputeScenario = async (
       return hash;
     };
   }
+  let itemCheckpointJson: string | undefined;
+  if (scriptSourcesItemCheckpoint !== undefined) {
+    const [txHash, outputIndex] = selectedResult.nextThreadOutRef.split("#");
+    const prepared = (
+      await targetChallengerLucid.utxosByOutRef([
+        { txHash: txHash!, outputIndex: Number(outputIndex) },
+      ])
+    )[0]!;
+    let itemOutputs = 0;
+    emulator.submitTx = async (cbor) => {
+      const hash = await submitBeforeRestart(cbor);
+      const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
+      for (let index = 0; index < outputs.len(); index++) {
+        if (!sharedItemReferences.has(outputs.get(index).address().to_bech32()))
+          continue;
+        itemOutputs++;
+        if (itemOutputs !== scriptSourcesItemCheckpoint) continue;
+        itemCheckpointJson = JSON.stringify({
+          threadOutRef: `${hash}#${index}`,
+          preparedCbor: prepared.datum,
+          deploymentInfo: semanticDeploymentInfo,
+          transitionCborHex: Buffer.from(
+            fixture.evidence.oneStepArgument.transitionCbor,
+          ).toString("hex"),
+          auxiliaryCborHex: Buffer.from(
+            fixture.evidence.oneStepArgument.auxiliaryCbor,
+          ).toString("hex"),
+        });
+        throw new Error(
+          "simulated process loss after accepted ScriptSources item checkpoint",
+        );
+      }
+      return hash;
+    };
+  }
   const semanticCapture = await captureEmulatorSubmission(emulator, () =>
     runEmulatorLifecycleStage(
       "semantic-resolution",
@@ -929,6 +984,58 @@ export const runForcedValidationDisputeScenario = async (
             awaitConfirmation: true,
           });
         } catch (cause) {
+          if (itemCheckpointJson !== undefined) {
+            emulator.submitTx = submitBeforeRestart;
+            const checkpoint: {
+              threadOutRef: string;
+              preparedCbor: string;
+              deploymentInfo: unknown;
+              transitionCborHex: string;
+              auxiliaryCborHex: string;
+            } = JSON.parse(itemCheckpointJson);
+            const [txHash, outputIndex] = checkpoint.threadOutRef.split("#");
+            await targetChallengerLucid.awaitTx(txHash!);
+            const thread = (
+              await targetChallengerLucid.utxosByOutRef([
+                { txHash: txHash!, outputIndex: Number(outputIndex) },
+              ])
+            )[0]!;
+            if (cancelScriptSourcesItem)
+              return {
+                cancellation: await cancelValidationSemanticResolution({
+                  lucid: targetChallengerLucid,
+                  blueprint: realBlueprint,
+                  deploymentInfo: checkpoint.deploymentInfo,
+                  network,
+                  signer: challengerSigner,
+                  threadOutRef: checkpoint.threadOutRef,
+                  referenceScriptUtxo: sharedItemReferences.get(
+                    thread.address,
+                  )!,
+                  witnessReferenceScripts,
+                }),
+              };
+            return await submitValidationDisputeSemanticResolution({
+              lucid: targetChallengerLucid,
+              blueprint: realBlueprint,
+              deploymentInfo: checkpoint.deploymentInfo,
+              network,
+              signer: challengerSigner,
+              threadOutRef: checkpoint.threadOutRef,
+              scriptSourcesItemPreparedCbor: checkpoint.preparedCbor,
+              oneStepArgument: {
+                resolverIndex: 8,
+                semanticResolverIndex: 28,
+                transitionCbor: Buffer.from(
+                  checkpoint.transitionCborHex,
+                  "hex",
+                ),
+                auxiliaryCbor: Buffer.from(checkpoint.auxiliaryCborHex, "hex"),
+              },
+              validityRange: validityRange(),
+              awaitConfirmation: true,
+            });
+          }
           if (coreCheckpointJson !== undefined) {
             emulator.submitTx = submitBeforeRestart;
             const checkpoint: {

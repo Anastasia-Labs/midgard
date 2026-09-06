@@ -58,12 +58,13 @@ export const preparePhaseAItemCarriage = async ({
   trace: DeterministicValidationMachineTrace;
   stateIndex: number;
   source: { compact_cbor: string; witness_set_compact_cbor: string };
-  kind: "native" | "foreign" | "observer";
+  kind: "native" | "foreign" | "observer" | "redeemer";
 }) => {
-  const fieldIndex = kind === "observer" ? 3 : 6;
+  const fieldIndex = kind === "redeemer" ? 8 : kind === "observer" ? 3 : 6;
   const auxiliary = trace.witnesses[stateIndex]!.auxiliary;
   if (
-    auxiliary?.kind !== "transactionFieldChunk" ||
+    (auxiliary?.kind !== "transactionFieldChunk" &&
+      auxiliary?.kind !== "transactionRedeemerItemBegin") ||
     auxiliary.fieldIndex !== fieldIndex
   )
     throw new Error(
@@ -85,11 +86,15 @@ export const preparePhaseAItemCarriage = async ({
   const semanticPublication = await publishPlainReferenceScriptUtxo({
     lucid,
     script:
-      chain.semanticResolvers[kind === "observer" ? 25 : 11].spendingScript,
+      chain.semanticResolvers[
+        kind === "redeemer" ? 47 : kind === "observer" ? 25 : 11
+      ].spendingScript,
     label: "phase-A item semantic",
   });
   const yields = [];
-  for (const spec of kind === "observer" ? [] : PHASE_A_ITEM_YIELD_SPECS) {
+  for (const spec of kind === "observer" || kind === "redeemer"
+    ? []
+    : PHASE_A_ITEM_YIELD_SPECS) {
     const contract = chain.yields[spec.contract];
     const publication = await publishAuthenticatedValidationDisputeControl({
       lucid,
@@ -161,7 +166,7 @@ export const preparePhaseAItemCarriage = async ({
   const referenceInputs = [
     ...material.referenceUtxos,
     semanticPublication.utxo,
-    ...(kind === "observer"
+    ...(kind === "observer" || kind === "redeemer"
       ? []
       : [yields[kind === "native" ? 0 : 1]!.publication.utxo]),
   ];

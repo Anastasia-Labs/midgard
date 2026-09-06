@@ -5717,6 +5717,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   signer,
   threadOutRef,
   oneStepArgument,
+  scriptSourcesItemPreparedCbor,
   proofItemReferenceOutRef,
   proofItemDelivery,
   carriageMaterial,
@@ -5735,6 +5736,8 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
+  /** Exact retained preparation for resuming a shared ScriptSources item checkpoint. */
+  readonly scriptSourcesItemPreparedCbor?: string;
   /**
    * Already-confirmed CEK program-material publications for the
    * execution-selection route ladder (resolver 11, semantic resolver 1):
@@ -5787,7 +5790,19 @@ export const submitValidationDisputeSemanticResolution = async ({
     categoryId: validationTraceDisputeCategory.categoryId,
     categoryLabel: "validation-trace-dispute",
   });
-  const inputDatum = requirePreparedResolutionDatum(threadUtxo);
+  if (
+    scriptSourcesItemPreparedCbor !== undefined &&
+    (oneStepArgument.resolverIndex !== 8 ||
+      oneStepArgument.semanticResolverIndex !== 28)
+  )
+    throw new Error(
+      "Retained ScriptSources item preparation is only valid for its shared item route",
+    );
+  const inputDatum = requirePreparedResolutionDatum(
+    scriptSourcesItemPreparedCbor === undefined
+      ? threadUtxo
+      : { ...threadUtxo, datum: scriptSourcesItemPreparedCbor },
+  );
   if (inputDatum.fraud_prover !== signer.paymentKeyHash) {
     throw new Error(
       `Validation semantic resolution requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
@@ -5814,7 +5829,10 @@ export const submitValidationDisputeSemanticResolution = async ({
   if (semanticContract === undefined) {
     throw new Error("Validation semantic resolver deployment is incomplete");
   }
-  if (threadUtxo.address !== semanticContract.spendingScriptAddress) {
+  if (
+    scriptSourcesItemPreparedCbor === undefined &&
+    threadUtxo.address !== semanticContract.spendingScriptAddress
+  ) {
     throw new Error(
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at semantic resolver ${staged.semanticResolverGlobalIndex.toString()}`,
     );
@@ -6053,27 +6071,33 @@ export const submitValidationDisputeSemanticResolution = async ({
     });
     return { contract, utxo, kind: native ? (0 as const) : (1 as const) };
   })();
-  const phaseAItemCarriage = !(
-    ((resolverIndex === 5 || resolverIndex === 6) &&
-      staged.semanticResolverIndex === 1) ||
-    (resolverIndex === 8 && staged.auxiliary.index === 1)
-  )
-    ? undefined
-    : midgardFieldCarriageFromData(
-        staged.auxiliary.fields[2]!,
-        "phase-A item carriage",
-      );
-  const phaseAItemCarriageMaterial =
-    phaseAItemCarriage === undefined || phaseAItemCarriage.carriage === "Inline"
+  const semanticFieldCarriageData =
+    resolverIndex === 8 && staged.semanticResolverIndex === 15
+      ? staged.auxiliary.fields[0]!
+      : ((resolverIndex === 5 || resolverIndex === 6) &&
+            staged.semanticResolverIndex === 1) ||
+          (resolverIndex === 8 && staged.auxiliary.index === 1)
+        ? staged.auxiliary.fields[2]!
+        : undefined;
+  const semanticFieldCarriage =
+    semanticFieldCarriageData === undefined
+      ? undefined
+      : midgardFieldCarriageFromData(
+          semanticFieldCarriageData,
+          "semantic field item carriage",
+        );
+  const semanticFieldCarriageMaterial =
+    semanticFieldCarriage === undefined ||
+    semanticFieldCarriage.carriage === "Inline"
       ? undefined
       : carriageMaterial;
   if (
-    phaseAItemCarriage !== undefined &&
-    phaseAItemCarriage.carriage !== "Inline" &&
-    phaseAItemCarriageMaterial === undefined
+    semanticFieldCarriage !== undefined &&
+    semanticFieldCarriage.carriage !== "Inline" &&
+    semanticFieldCarriageMaterial === undefined
   )
     throw new Error(
-      "Phase-A item reference carriage requires its authenticated publication material",
+      "Semantic field item reference carriage requires its authenticated publication material",
     );
   const isCekExecutionSelection =
     resolverIndex === 11 && staged.semanticResolverIndex === 1;
@@ -6464,14 +6488,17 @@ export const submitValidationDisputeSemanticResolution = async ({
       );
     }
     const submissionPlan = deriveScriptSourcesItemSubmissionPlan({
-      preparedCbor: threadUtxo.datum!,
+      preparedCbor: scriptSourcesItemPreparedCbor ?? threadUtxo.datum!,
       oneStepArgument,
       deploymentId: deriveValidationTraceDeploymentId(
         fraudProofCataloguePolicyId,
       ),
       stages: { ...stages, entry: stages.envelope },
     });
-    scriptSourcesItemResumeIndex({ plan: submissionPlan, thread: threadUtxo });
+    const firstStageIndex = scriptSourcesItemResumeIndex({
+      plan: submissionPlan,
+      thread: threadUtxo,
+    });
     const plannedStages = submissionPlan.bindings;
     const sharedReferences = sharedRedeemerItemReferenceScripts(stages);
     type SplitStageContract = {
@@ -6599,7 +6626,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     }[] = [];
     let currentThread = threadUtxo;
     let settle: SplitStageResult | undefined;
-    for (let index = 0; index < plannedStages.length; index++) {
+    for (let index = firstStageIndex; index < plannedStages.length; index++) {
       const binding = plannedStages[index]!;
       const outputContract =
         plannedStages[index + 1]?.validator ??
@@ -7151,25 +7178,25 @@ export const submitValidationDisputeSemanticResolution = async ({
         ? []
         : [scriptSourcesMiddleYield.utxo]),
       ...(scriptSourcesObserver?.yields.map((y) => y.utxo) ?? []),
-      ...(phaseAItemCarriageMaterial?.referenceUtxos ?? []),
+      ...(semanticFieldCarriageMaterial?.referenceUtxos ?? []),
     ];
-    if (phaseAItemCarriageMaterial !== undefined) {
+    if (semanticFieldCarriageMaterial !== undefined) {
       const resolved = resolveMidgardFieldCarriageAgainstReferenceInputs({
-        plan: phaseAItemCarriageMaterial.plan,
+        plan: semanticFieldCarriageMaterial.plan,
         referenceInputs,
-        ...(phaseAItemCarriageMaterial.certificatePolicyId === undefined
+        ...(semanticFieldCarriageMaterial.certificatePolicyId === undefined
           ? {}
           : {
               certificatePolicyId:
-                phaseAItemCarriageMaterial.certificatePolicyId,
+                semanticFieldCarriageMaterial.certificatePolicyId,
             }),
       });
       if (
         Data.to(midgardFieldCarriageToData(resolved)) !==
-        Data.to(staged.auxiliary.fields[2]!)
+        Data.to(semanticFieldCarriageData!)
       )
         throw new Error(
-          "Phase-A item carriage indices differ from the committed evidence",
+          "Semantic field item carriage indices differ from the committed evidence",
         );
     }
     let tx = lucid
@@ -8141,7 +8168,14 @@ export const cancelValidationSemanticResolution = async ({
   return await submitLinearFaultCancel({
     lucid,
     family: "validation semantic resolution",
-    steps: contracts.validationTraceDispute.semanticResolvers,
+    steps: [
+      ...contracts.validationTraceDispute.semanticResolvers,
+      ...sharedRedeemerItemReferenceScripts(
+        contracts.validationTraceDispute.scriptSourcesStageOneRedeemerStages,
+      ).map(({ validator }) => validator),
+      contracts.validationTraceDispute.scriptSourcesStageOneRedeemerStages
+        .settlement,
+    ],
     computationThread: contracts.computationThread,
     categoryId: validationTraceDisputeCategory.categoryId,
     signer,
