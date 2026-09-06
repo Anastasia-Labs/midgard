@@ -132,6 +132,12 @@ import {
 import { Effect } from "effect";
 
 import { type ContractDeploymentInfo } from "../inspect-contracts.js";
+import {
+  deriveLedgerOutputProofFinalizePlan,
+  deriveLedgerOutputProofStepPlan,
+  type LedgerOutputProofFinalizePlan,
+  type LedgerOutputProofStepPlan,
+} from "../ledger-output-proof-plan.js";
 import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
 import {
   deriveScriptSourcesRedeemerItemPlan,
@@ -168,6 +174,11 @@ import {
   initialCekMaterialTraversal,
   submitCekMaterialTraversal,
 } from "./cek-material-traversal.js";
+import {
+  LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES,
+  LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES,
+  LEDGER_OUTPUT_PROOF_STAGE_YIELD_ROLES,
+} from "./ledger-output-proof-yields.js";
 import { scriptSourcesDescriptorClaim } from "./script-sources-descriptor.js";
 import {
   SCRIPT_SOURCES_DESCRIPTOR_YIELD_ROLE,
@@ -3941,6 +3952,34 @@ type CekSelectionInvocation = {
   readonly facts: ReturnType<typeof deriveCekSelectionFacts>;
 };
 
+type LedgerOutputProofStepInvocation = {
+  readonly plan: LedgerOutputProofStepPlan;
+  /** Stage yield first, then the plan's attestation roles, in order. */
+  readonly indices: readonly bigint[];
+};
+
+type LedgerOutputProofFinalizeInvocation = {
+  readonly plan: LedgerOutputProofFinalizePlan;
+  /** The four descriptor yields, in `descriptor_roles` order. */
+  readonly indices: readonly bigint[];
+};
+
+/** The two shared-LOP step dispatchers (ResolveInputs 7/3, ScriptSources 8/2). */
+const isLedgerOutputProofStepResolver = (
+  resolverIndex: number,
+  semanticResolverIndex: number,
+): boolean =>
+  (resolverIndex === 7 && semanticResolverIndex === 3) ||
+  (resolverIndex === 8 && semanticResolverIndex === 2);
+
+/** The two shared-LOP finalize dispatchers (ResolveInputs 7/4, ScriptSources 8/3). */
+const isLedgerOutputProofFinalizeResolver = (
+  resolverIndex: number,
+  semanticResolverIndex: number,
+): boolean =>
+  (resolverIndex === 7 && semanticResolverIndex === 4) ||
+  (resolverIndex === 8 && semanticResolverIndex === 3);
+
 const semanticActionFields = ({
   resolverIndex,
   semanticResolverIndex,
@@ -3955,6 +3994,8 @@ const semanticActionFields = ({
   scriptSourcesObserverInvocation,
   scriptSourcesDescriptorInvocation,
   cekSelectionInvocation,
+  ledgerOutputProofStepInvocation,
+  ledgerOutputProofFinalizeInvocation,
 }: {
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
@@ -3980,6 +4021,8 @@ const semanticActionFields = ({
     readonly kind: 0 | 1;
   };
   readonly cekSelectionInvocation?: CekSelectionInvocation;
+  readonly ledgerOutputProofStepInvocation?: LedgerOutputProofStepInvocation;
+  readonly ledgerOutputProofFinalizeInvocation?: LedgerOutputProofFinalizeInvocation;
 }): readonly PlutusDataValue[] => {
   const base: readonly PlutusDataValue[] = [
     inputIndex,
@@ -4038,6 +4081,74 @@ const semanticActionFields = ({
       auxiliary,
       BigInt(scriptSourcesMiddleInvocation.kind),
       scriptSourcesMiddleInvocation.referenceInputIndex,
+    ];
+  }
+  if (isLedgerOutputProofStepResolver(resolverIndex, semanticResolverIndex)) {
+    if (
+      !hasValidationAuxiliaryShape(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofStep,
+      )
+    )
+      throw new Error(
+        "Ledger output proof step auxiliary witness cannot construct the selected semantic redeemer",
+      );
+    if (
+      ledgerOutputProofStepInvocation === undefined ||
+      ledgerOutputProofStepInvocation.indices.length !==
+        1 + ledgerOutputProofStepInvocation.plan.attestationRoles.length ||
+      ledgerOutputProofStepInvocation.indices.some((index) => index < 0n)
+    )
+      throw new Error(
+        "Ledger output proof step requires its exact authenticated yields",
+      );
+    // `VerifyOutputProofStep` field order: the auxiliary's `proof_witness`,
+    // then control, successor control, claimed scalar, claimed span, the
+    // stage role and the yield reference-input indices (stage yield first,
+    // then `stage_attestation_roles` order).
+    return [
+      ...base,
+      ...auxiliary.fields,
+      ledgerOutputProofStepInvocation.plan.controlCbor,
+      ledgerOutputProofStepInvocation.plan.nextControlCbor,
+      ledgerOutputProofStepInvocation.plan.claimedScalar,
+      ledgerOutputProofStepInvocation.plan.claimedSpan,
+      BigInt(ledgerOutputProofStepInvocation.plan.roleIndex),
+      [...ledgerOutputProofStepInvocation.indices],
+    ];
+  }
+  if (
+    isLedgerOutputProofFinalizeResolver(resolverIndex, semanticResolverIndex)
+  ) {
+    if (
+      !hasValidationAuxiliaryShape(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofFinalize,
+      )
+    )
+      throw new Error(
+        "Ledger output proof finalize auxiliary witness cannot construct the selected semantic redeemer",
+      );
+    if (
+      ledgerOutputProofFinalizeInvocation === undefined ||
+      ledgerOutputProofFinalizeInvocation.indices.length !==
+        LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES.length ||
+      ledgerOutputProofFinalizeInvocation.indices.some((index) => index < 0n)
+    )
+      throw new Error(
+        "Ledger output proof finalize requires its four authenticated descriptor yields",
+      );
+    // `VerifyOutputProofFinalize` field order: the auxiliary's
+    // `descriptor_cbor` and `signer_proof`, then control, the two claimed
+    // leaf summaries and the descriptor yield reference-input indices in
+    // `descriptor_roles` order.
+    return [
+      ...base,
+      ...auxiliary.fields,
+      ledgerOutputProofFinalizeInvocation.plan.controlCbor,
+      ledgerOutputProofFinalizeInvocation.plan.claimedValueSummary,
+      ledgerOutputProofFinalizeInvocation.plan.claimedDatumSummary,
+      [...ledgerOutputProofFinalizeInvocation.indices],
     ];
   }
   if (resolverIndex === 5 && semanticResolverIndex === 1) {
@@ -4248,21 +4359,13 @@ const semanticActionFields = ({
     ) {
       return base;
     }
+    // The step (3) and finalize (4) dispatchers are handled by the shared-LOP
+    // arms above, which append the yield claims and indices.
     if (
       (semanticResolverIndex === 2 &&
         hasValidationAuxiliaryShape(
           auxiliary,
           VALIDATION_AUXILIARY_SHAPES.scheduledLedgerMembership,
-        )) ||
-      (semanticResolverIndex === 3 &&
-        hasValidationAuxiliaryShape(
-          auxiliary,
-          VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofStep,
-        )) ||
-      (semanticResolverIndex === 4 &&
-        hasValidationAuxiliaryShape(
-          auxiliary,
-          VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofFinalize,
         )) ||
       (semanticResolverIndex === 5 &&
         hasValidationAuxiliaryShape(
@@ -4289,24 +4392,8 @@ const semanticActionFields = ({
     ) {
       return [...base, ...auxiliary.fields];
     }
-    if (
-      semanticResolverIndex === 2 &&
-      hasValidationAuxiliaryShape(
-        auxiliary,
-        VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofStep,
-      )
-    ) {
-      return [...base, ...auxiliary.fields];
-    }
-    if (
-      semanticResolverIndex === 3 &&
-      hasValidationAuxiliaryShape(
-        auxiliary,
-        VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofFinalize,
-      )
-    ) {
-      return [...base, ...auxiliary.fields];
-    }
+    // The step (2) and finalize (3) dispatchers are handled by the shared-LOP
+    // arms above, which append the yield claims and indices.
     if (
       semanticResolverIndex === 4 &&
       auxiliary.index === 0 &&
@@ -4643,6 +4730,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   scriptSourcesObserverInvocation,
   scriptSourcesDescriptorInvocation,
   cekSelectionYieldReferenceInputIndices,
+  ledgerOutputProofYieldReferenceInputIndices,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
   readonly inputIndex: bigint;
@@ -4661,6 +4749,13 @@ export const encodeValidationSemanticResolutionRedeemer = ({
     readonly kind: 0 | 1;
   };
   readonly cekSelectionYieldReferenceInputIndices?: readonly bigint[];
+  /**
+   * The yield reference-input indices of a shared-LOP step (stage yield
+   * first, then its attestation roles) or finalize (the four descriptor
+   * yields in `descriptor_roles` order) resolution; the claims themselves are
+   * re-derived from the argument's own evidence.
+   */
+  readonly ledgerOutputProofYieldReferenceInputIndices?: readonly bigint[];
 }): Buffer => {
   if (inputIndex < 0n || outputIndex < 0n) {
     throw new Error(
@@ -4702,6 +4797,40 @@ export const encodeValidationSemanticResolutionRedeemer = ({
     ...(scriptSourcesDescriptorInvocation === undefined
       ? {}
       : { scriptSourcesDescriptorInvocation }),
+    ...(ledgerOutputProofYieldReferenceInputIndices === undefined
+      ? {}
+      : isLedgerOutputProofStepResolver(
+            oneStepArgument.resolverIndex,
+            staged.semanticResolverIndex,
+          )
+        ? {
+            ledgerOutputProofStepInvocation: {
+              plan: deriveLedgerOutputProofStepPlan({
+                resolverIndex: oneStepArgument.resolverIndex,
+                semanticResolverIndex: staged.semanticResolverIndex,
+                transitionCbor: oneStepArgument.transitionCbor,
+                auxiliaryCbor: oneStepArgument.auxiliaryCbor,
+                ...(oneStepArgument.ledgerOutputProofSuccessorWorkWitnessCbor ===
+                undefined
+                  ? {}
+                  : {
+                      ledgerOutputProofSuccessorWorkWitnessCbor:
+                        oneStepArgument.ledgerOutputProofSuccessorWorkWitnessCbor,
+                    }),
+              }),
+              indices: ledgerOutputProofYieldReferenceInputIndices,
+            },
+          }
+        : {
+            ledgerOutputProofFinalizeInvocation: {
+              plan: deriveLedgerOutputProofFinalizePlan({
+                resolverIndex: oneStepArgument.resolverIndex,
+                semanticResolverIndex: staged.semanticResolverIndex,
+                transitionCbor: oneStepArgument.transitionCbor,
+              }),
+              indices: ledgerOutputProofYieldReferenceInputIndices,
+            },
+          }),
     ...(materialRoute === undefined
       ? {}
       : { materialRoute: validationCekMaterialRouteData(materialRoute) }),
@@ -4748,6 +4877,8 @@ const makeSemanticResolutionRedeemer = ({
   scriptSourcesMiddleYield,
   scriptSourcesObserverYields,
   scriptSourcesDescriptorYield,
+  ledgerOutputProofStepYield,
+  ledgerOutputProofFinalizeYield,
   cekSelection,
   onLayout,
 }: {
@@ -4778,6 +4909,16 @@ const makeSemanticResolutionRedeemer = ({
   readonly phaseANativeItemYield?: {
     readonly utxo: UTxO;
     readonly kind: 0 | 1;
+  };
+  /** Stage yield first, then the plan's attestation roles, in order. */
+  readonly ledgerOutputProofStepYield?: {
+    readonly plan: LedgerOutputProofStepPlan;
+    readonly utxos: readonly UTxO[];
+  };
+  /** The four descriptor yields, in `descriptor_roles` order. */
+  readonly ledgerOutputProofFinalizeYield?: {
+    readonly plan: LedgerOutputProofFinalizePlan;
+    readonly utxos: readonly UTxO[];
   };
   readonly cekSelection?: {
     readonly referenceUtxos: readonly UTxO[];
@@ -4885,6 +5026,34 @@ const makeSemanticResolutionRedeemer = ({
                 ctx,
                 scriptSourcesMiddleYield.utxo,
                 "ScriptSources middle yield",
+              ),
+            },
+          }),
+      ...(ledgerOutputProofStepYield === undefined
+        ? {}
+        : {
+            ledgerOutputProofStepInvocation: {
+              plan: ledgerOutputProofStepYield.plan,
+              indices: ledgerOutputProofStepYield.utxos.map((utxo) =>
+                requireReferenceInputIndex(
+                  ctx,
+                  utxo,
+                  "ledger output proof yield",
+                ),
+              ),
+            },
+          }),
+      ...(ledgerOutputProofFinalizeYield === undefined
+        ? {}
+        : {
+            ledgerOutputProofFinalizeInvocation: {
+              plan: ledgerOutputProofFinalizeYield.plan,
+              indices: ledgerOutputProofFinalizeYield.utxos.map((utxo) =>
+                requireReferenceInputIndex(
+                  ctx,
+                  utxo,
+                  "ledger output descriptor yield",
+                ),
               ),
             },
           }),
@@ -6168,6 +6337,85 @@ export const submitValidationDisputeSemanticResolution = async ({
     });
     return { contract, utxo, kind };
   })();
+  const fetchLedgerOutputProofYield = async (spec: {
+    readonly contract: keyof typeof contracts.validationTraceDispute.yields;
+    readonly deployment: keyof ContractDeploymentInfo;
+    readonly role: string;
+  }) => {
+    const contract = contracts.validationTraceDispute.yields[spec.contract];
+    const entry = parsedDeploymentInfo[spec.deployment];
+    if (entry?.refScriptUTxO == null)
+      throw new Error(
+        `Missing authenticated ledger-output-proof yield ${spec.deployment}`,
+      );
+    const utxo = await fetchUtxoByOutRef({
+      lucid,
+      outRef: entry.refScriptUTxO,
+      label: spec.role,
+    });
+    requireValidationDisputeReferenceScript({
+      utxo,
+      deployedScriptHash: entry.scriptHash,
+      expectedScriptHash: contract.withdrawalScriptHash,
+      authPolicyId: referenceScriptAuthPolicyId,
+      role: spec.role,
+    });
+    return { contract, utxo };
+  };
+  const ledgerOutputProofStepYields = await (async () => {
+    if (
+      !isLedgerOutputProofStepResolver(
+        resolverIndex,
+        staged.semanticResolverIndex,
+      )
+    )
+      return undefined;
+    const plan = deriveLedgerOutputProofStepPlan({
+      resolverIndex,
+      semanticResolverIndex: staged.semanticResolverIndex,
+      transitionCbor: oneStepArgument.transitionCbor,
+      auxiliaryCbor: oneStepArgument.auxiliaryCbor,
+      ...(oneStepArgument.ledgerOutputProofSuccessorWorkWitnessCbor ===
+      undefined
+        ? {}
+        : {
+            ledgerOutputProofSuccessorWorkWitnessCbor:
+              oneStepArgument.ledgerOutputProofSuccessorWorkWitnessCbor,
+          }),
+    });
+    const stageSpec = LEDGER_OUTPUT_PROOF_STAGE_YIELD_ROLES[plan.roleIndex];
+    if (stageSpec === undefined)
+      throw new Error(
+        "Ledger output proof stage role is outside the roles table",
+      );
+    const yields = await Promise.all(
+      [
+        stageSpec,
+        ...plan.attestationRoles.map(
+          (role) => LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES[role],
+        ),
+      ].map(fetchLedgerOutputProofYield),
+    );
+    return { plan, yields };
+  })();
+  const ledgerOutputProofFinalizeYields = await (async () => {
+    if (
+      !isLedgerOutputProofFinalizeResolver(
+        resolverIndex,
+        staged.semanticResolverIndex,
+      )
+    )
+      return undefined;
+    const plan = deriveLedgerOutputProofFinalizePlan({
+      resolverIndex,
+      semanticResolverIndex: staged.semanticResolverIndex,
+      transitionCbor: oneStepArgument.transitionCbor,
+    });
+    const yields = await Promise.all(
+      LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES.map(fetchLedgerOutputProofYield),
+    );
+    return { plan, yields };
+  })();
   const phaseANativeItemYield = await (async () => {
     if (resolverIndex !== 5 || staged.semanticResolverIndex !== 1)
       return undefined;
@@ -7400,6 +7648,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       ...(scriptSourcesDescriptorYield === undefined
         ? []
         : [scriptSourcesDescriptorYield.utxo]),
+      ...(ledgerOutputProofStepYields?.yields.map((y) => y.utxo) ?? []),
+      ...(ledgerOutputProofFinalizeYields?.yields.map((y) => y.utxo) ?? []),
       ...(semanticFieldCarriageMaterial?.referenceUtxos ?? []),
     ];
     if (semanticFieldCarriageMaterial !== undefined) {
@@ -7459,6 +7709,24 @@ export const submitValidationDisputeSemanticResolution = async ({
           ...(scriptSourcesDescriptorYield === undefined
             ? {}
             : { scriptSourcesDescriptorYield }),
+          ...(ledgerOutputProofStepYields === undefined
+            ? {}
+            : {
+                ledgerOutputProofStepYield: {
+                  plan: ledgerOutputProofStepYields.plan,
+                  utxos: ledgerOutputProofStepYields.yields.map((y) => y.utxo),
+                },
+              }),
+          ...(ledgerOutputProofFinalizeYields === undefined
+            ? {}
+            : {
+                ledgerOutputProofFinalizeYield: {
+                  plan: ledgerOutputProofFinalizeYields.plan,
+                  utxos: ledgerOutputProofFinalizeYields.yields.map(
+                    (y) => y.utxo,
+                  ),
+                },
+              }),
           ...(scriptSourcesObserver === undefined
             ? {}
             : {
@@ -7513,6 +7781,15 @@ export const submitValidationDisputeSemanticResolution = async ({
           network,
           scriptSourcesMiddleYield.contract.withdrawalScript,
         ),
+        0n,
+        Data.void(),
+      );
+    for (const proofYield of [
+      ...(ledgerOutputProofStepYields?.yields ?? []),
+      ...(ledgerOutputProofFinalizeYields?.yields ?? []),
+    ])
+      tx = tx.withdraw(
+        validatorToRewardAddress(network, proofYield.contract.withdrawalScript),
         0n,
         Data.void(),
       );
