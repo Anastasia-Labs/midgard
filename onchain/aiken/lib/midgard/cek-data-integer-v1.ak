@@ -332,9 +332,19 @@ pub fn decode_control_v1(control_cbor: ByteArray) -> CekDataIntegerControlV1 {
 pub fn next_source_span_v1(
   control: CekDataIntegerControlV1,
 ) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
-  if !control_is_well_formed(control) {
+  if control_is_well_formed(control) {
+    prevalidated_next_source_span(control)
+  } else {
     None
-  } else if control.stage == stage_syntax {
+  }
+}
+
+/// Same span selection after an earlier gate authenticated the complete
+/// canonical control, including every nested scalar/blob/hash state.
+pub fn prevalidated_next_source_span(
+  control: CekDataIntegerControlV1,
+) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
+  if control.stage == stage_syntax {
     Some(
       cek_source_blob_v1.CekSourceBlobSpanV1 {
         absolute_start: control.source_start,
@@ -343,7 +353,7 @@ pub fn next_source_span_v1(
     )
   } else if control.stage == stage_blob {
     expect Some(blob_control) = control.blob
-    cek_source_blob_v1.next_source_span_v1(blob_control)
+    cek_source_blob_v1.prevalidated_next_source_span(blob_control)
   } else {
     None
   }

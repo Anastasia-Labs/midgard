@@ -309,12 +309,14 @@ fn mapped_raw_length(
   }
 }
 
-fn content_plan(control: CekDataBytesControlV1) -> Option<ContentPlanV1> {
+fn prevalidated_content_plan(
+  control: CekDataBytesControlV1,
+) -> Option<ContentPlanV1> {
   if control.stage != stage_blob {
     None
   } else {
     expect Some(blob_control) = control.blob
-    when cek_source_blob_v1.next_source_span_v1(blob_control) is {
+    when cek_source_blob_v1.prevalidated_next_source_span(blob_control) is {
       None -> None
       Some(virtual_span) -> {
         let content_start = virtual_span.absolute_start
@@ -440,9 +442,19 @@ fn extract_content(
 pub fn next_source_span_v1(
   control: CekDataBytesControlV1,
 ) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
-  if !control_is_well_formed(control) {
+  if control_is_well_formed(control) {
+    prevalidated_next_source_span(control)
+  } else {
     None
-  } else if control.stage == stage_syntax {
+  }
+}
+
+/// Same span selection after an earlier gate authenticated the complete
+/// canonical control, including every nested scalar/blob/hash state.
+pub fn prevalidated_next_source_span(
+  control: CekDataBytesControlV1,
+) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
+  if control.stage == stage_syntax {
     Some(
       cek_source_blob_v1.CekSourceBlobSpanV1 {
         absolute_start: control.source_start,
@@ -457,7 +469,7 @@ pub fn next_source_span_v1(
       },
     )
   } else {
-    when content_plan(control) is {
+    when prevalidated_content_plan(control) is {
       None -> None
       Some(plan) -> Some(plan.span)
     }
@@ -540,7 +552,7 @@ fn step_blob(
       None
     }
   } else {
-    when content_plan(control) is {
+    when prevalidated_content_plan(control) is {
       None ->
         if source_bytes == None {
           when cek_source_blob_v1.step_v1(blob_control, None) is {

@@ -58,12 +58,12 @@ validator main(
               normalized.execution_output_is_exact(
                 state.output,
                 deployment_id,
-                1,
+                4,
                 input_script_hash,
                 output_script_hash,
                 output_state,
               ),
-              semantics.finalize_frame(state),
+              semantics.head_scalar(state),
             }
           },
         )

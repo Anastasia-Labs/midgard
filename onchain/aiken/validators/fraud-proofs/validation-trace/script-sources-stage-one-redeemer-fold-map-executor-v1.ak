@@ -1,26 +1,19 @@
-use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/cek_data_traverse_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
-use midgard/redeemer_item_proof_v1
-use midgard/script_sources_redeemer_normalization_v1 as normalization
+use midgard/script_sources_item_normalization as normalized
+use midgard/script_sources_item_semantics as semantics
 
 pub type Datum =
-  ct.StepDatum<normalization.OuterNormalizedScriptSourcesRedeemerActionV1>
+  ct.StepDatum<normalized.TraversalExecution>
 
-pub type ActionV1 {
-  ExecuteFoldMap {
-    input_index: Int,
-    output_index: Int,
-    traversal_action: cek_data_traverse_v1.DataTraverseActionV1,
-  }
+pub type Action {
+  Execute { input_index: Int, output_index: Int }
 }
 
 pub type SpendRedeemer =
-  ct.StepRedeemer<ActionV1>
+  ct.StepRedeemer<Action>
 
 validator main(
   deployment_id: ByteArray,
@@ -42,94 +35,35 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(ExecuteFoldMap { input_index, output_index, traversal_action }) -> {
-        let Transaction { inputs, outputs, .. } = tx
+      ct.Continue(Execute { input_index, output_index }) -> {
         expect Some(step_datum) = datum
-        expect
-            cek_data_traverse_v1.FoldMap {
-              frame,
-              pair_index,
-              key,
-              value,
-              key_siblings,
-              value_siblings,
-            }
-          = traversal_action
         continue(
           computation_thread_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx.inputs,
+          tx.outputs,
           fn(
             input_script_hash,
-            _computation_thread_token_asset_name,
-            _fraud_prover,
+            _token_name,
+            _prover,
             input_state,
             output_script_hash,
             output_state,
           ) {
             expect Some(state) = input_state
-            when
-              cek_data_traverse_v1.prevalidated_fold_map_next_frame_root_v1(
-                state.validated_traversal_control.frame_root,
-                frame,
-                pair_index,
-                key,
-                value,
-                key_siblings,
-                value_siblings,
-              )
-            is {
-              None -> False
-              Some(next_frame_root) -> {
-                expect
-                    normalization.FoldMapFrameRootTemplate {
-                      prefix_before_frame_root_cbor,
-                      suffix_after_frame_root_cbor,
-                    }
-                  = state.traversal_serialization_template
-                let checked_next_traversal_control_cbor = prefix_before_frame_root_cbor
-                  |> bytearray.concat(encode_definite_bytes(next_frame_root))
-                  |> bytearray.concat(suffix_after_frame_root_cbor)
-                let actual_next_item_control_hash = redeemer_item_proof_v1.hash_stage_data_from_authenticated_prefix_v1(
-                  state.next_item_control_hash_prefix_cbor,
-                  checked_next_traversal_control_cbor,
-                )
-                let expected_output_state: Data = normalization.execution_attested_state_v1(
-                  state,
-                  actual_next_item_control_hash,
-                )
-                and {
-                  normalization.outer_normalized_state_is_bound_v1(
-                    state,
-                    normalization.fold_map_family,
-                    deployment_id,
-                    state.envelope_binder_script_hash,
-                    state.traversal_normalizer_script_hash,
-                    state.outer_normalizer_script_hash,
-                    input_script_hash,
-                    state.settlement_script_hash,
-                  ),
-                  normalization.semantic_executor_route_is_exact_v1(
-                    state,
-                    normalization.fold_map_family,
-                    input_script_hash,
-                    output_script_hash,
-                    state.settlement_script_hash,
-                  ),
-                  normalization.traversal_action_identity_is_bound_v1(
-                    traversal_action,
-                    normalization.fold_map_family,
-                    state.authenticated_traversal_action_identity,
-                  ),
-                  state.validated_traversal_control.stage == cek_data_traverse_v1.stage_fold,
-                  actual_next_item_control_hash == state.expected_next_item_control_hash,
-                  output_state == expected_output_state,
-                }
-              }
+            and {
+              normalized.execution_output_is_exact(
+                state.output,
+                deployment_id,
+                0,
+                input_script_hash,
+                output_script_hash,
+                output_state,
+              ),
+              semantics.fold_map(state),
             }
           },
         )

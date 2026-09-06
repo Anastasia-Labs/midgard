@@ -3,6 +3,7 @@ use midgard/bounded_item_v1
 use midgard/cek_data_traverse_v1
 use midgard/cek_data_v1
 use midgard/redeemer_item_proof_v1
+use midgard/script_sources_item_normalization as normalized
 use midgard/validation_merkle_v1
 
 const small_redeemer = #"8400004100820a14"
@@ -35,6 +36,20 @@ fn source_witness(
   }
 }
 
+fn normalized_hash_is_exact(control_data: Data) -> Bool {
+  expect control: redeemer_item_proof_v1.RedeemerItemProofControlV1 = control_data
+  and {
+    redeemer_item_proof_v1.control_is_well_formed(control),
+    redeemer_item_proof_v1.hash_outer_with_checked_optional_traversal(
+      control,
+      normalized.checked_optional_traversal_cbor(control),
+    ) == redeemer_item_proof_v1.hash_control_v1(control),
+    redeemer_item_proof_v1.prevalidated_next_source_span(control) == redeemer_item_proof_v1.next_source_span_v1(
+      control,
+    ),
+  }
+}
+
 test redeemer_item_descriptor_authenticates_header_tail_and_exact_metadata() {
   let proof = singleton_chunk_proof(small_redeemer, 0)
   let initial = redeemer_item_proof_v1.initial_control_v1(
@@ -62,6 +77,9 @@ test redeemer_item_descriptor_authenticates_header_tail_and_exact_metadata() {
   )
   expect Some(descriptor) = redeemer_item_proof_v1.descriptor_v1(terminal)
   and {
+    normalized_hash_is_exact(initial),
+    normalized_hash_is_exact(tail),
+    normalized_hash_is_exact(terminal),
     terminal.stage == redeemer_item_proof_v1.stage_terminal,
     descriptor.item_index == 0,
     descriptor.item_count == 1,
@@ -175,6 +193,7 @@ test redeemer_item_terminal_data_summary_agrees_with_typescript() {
     ),
   }
   and {
+    normalized_hash_is_exact(terminal),
     terminal.mode == redeemer_item_proof_v1.mode_data,
     terminal.stage == redeemer_item_proof_v1.stage_terminal,
     terminal.data_offset == 4,

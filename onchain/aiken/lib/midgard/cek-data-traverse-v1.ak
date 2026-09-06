@@ -484,9 +484,19 @@ pub fn hash_control_v1(control: DataTraverseControlV1) -> ByteArray {
 pub fn next_source_span_v1(
   control: DataTraverseControlV1,
 ) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
-  if !control_is_well_formed(control) {
+  if control_is_well_formed(control) {
+    prevalidated_next_source_span(control)
+  } else {
     None
-  } else if control.stage == stage_head {
+  }
+}
+
+/// Same span selection after an earlier gate authenticated the complete
+/// canonical control, including every nested scalar/blob/hash state.
+pub fn prevalidated_next_source_span(
+  control: DataTraverseControlV1,
+) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
+  if control.stage == stage_head {
     Some(
       cek_source_blob_v1.CekSourceBlobSpanV1 {
         absolute_start: control.source_start + control.offset,
@@ -498,10 +508,10 @@ pub fn next_source_span_v1(
     control.stage == stage_large_constructor,
   } {
     expect Some(integer) = control.integer
-    cek_data_integer_v1.next_source_span_v1(integer)
+    cek_data_integer_v1.prevalidated_next_source_span(integer)
   } else if control.stage == stage_bytes {
     expect Some(bytes_control) = control.bytes
-    cek_data_bytes_v1.next_source_span_v1(bytes_control)
+    cek_data_bytes_v1.prevalidated_next_source_span(bytes_control)
   } else if or {
     control.stage == stage_large_fields,
     control.stage == stage_close,
@@ -1070,7 +1080,7 @@ fn step_bytes(
   }
 }
 
-fn step_large_constructor(
+pub fn prevalidated_advance_large_constructor(
   control: DataTraverseControlV1,
   source_bytes: Option<ByteArray>,
   action: DataTraverseActionV1,
@@ -1120,7 +1130,7 @@ fn step_large_constructor(
   }
 }
 
-fn step_large_fields(
+pub fn prevalidated_advance_large_fields(
   control: DataTraverseControlV1,
   source_bytes: Option<ByteArray>,
   action: DataTraverseActionV1,
@@ -1173,7 +1183,7 @@ fn step_large_fields(
   }
 }
 
-fn step_close(
+pub fn prevalidated_close(
   control: DataTraverseControlV1,
   source_bytes: Option<ByteArray>,
   action: DataTraverseActionV1,
@@ -1297,6 +1307,28 @@ pub fn prevalidated_fold_map_next_frame_root_v1(
   }
 }
 
+pub fn prevalidated_fold_list_next_frame_root(
+  current_frame_root: ByteArray,
+  frame: cek_data_frame_v1.DataFrameV1,
+  child_index: Int,
+  child: cek_data_v1.DataSummaryV1,
+  siblings: List<ByteArray>,
+) -> Option<ByteArray> {
+  if and {
+    cek_data_frame_v1.frame_is_well_formed(frame),
+    cek_data_frame_v1.hash_frame_v1(frame) == current_frame_root,
+  } {
+    when
+      cek_data_frame_v1.fold_list_child_v1(frame, child_index, child, siblings)
+    is {
+      None -> None
+      Some(next_frame) -> Some(cek_data_frame_v1.hash_frame_v1(next_frame))
+    }
+  } else {
+    None
+  }
+}
+
 fn step_fold(
   control: DataTraverseControlV1,
   source_bytes: Option<ByteArray>,
@@ -1307,30 +1339,22 @@ fn step_fold(
   } else {
     when action is {
       FoldList { frame, child_index, child, siblings } ->
-        if and {
-          cek_data_frame_v1.frame_is_well_formed(frame),
-          cek_data_frame_v1.hash_frame_v1(frame) == control.frame_root,
-        } {
-          when
-            cek_data_frame_v1.fold_list_child_v1(
-              frame,
-              child_index,
-              child,
-              siblings,
+        when
+          prevalidated_fold_list_next_frame_root(
+            control.frame_root,
+            frame,
+            child_index,
+            child,
+            siblings,
+          )
+        is {
+          None -> None
+          Some(next_frame_root) ->
+            checked_control(
+              DataTraverseControlV1 { ..control, frame_root: next_frame_root },
             )
-          is {
-            None -> None
-            Some(next_frame) ->
-              checked_control(
-                DataTraverseControlV1 {
-                  ..control,
-                  frame_root: cek_data_frame_v1.hash_frame_v1(next_frame),
-                },
-              )
-          }
-        } else {
-          None
         }
+
       FoldMap { frame, pair_index, key, value, key_siblings, value_siblings } ->
         when
           prevalidated_fold_map_next_frame_root_v1(
@@ -1370,11 +1394,11 @@ pub fn step_v1(
   } else if control.stage == stage_bytes {
     step_bytes(control, source_bytes, action)
   } else if control.stage == stage_large_constructor {
-    step_large_constructor(control, source_bytes, action)
+    prevalidated_advance_large_constructor(control, source_bytes, action)
   } else if control.stage == stage_large_fields {
-    step_large_fields(control, source_bytes, action)
+    prevalidated_advance_large_fields(control, source_bytes, action)
   } else if control.stage == stage_close {
-    step_close(control, source_bytes, action)
+    prevalidated_close(control, source_bytes, action)
   } else if control.stage == stage_fold {
     step_fold(control, source_bytes, action)
   } else {

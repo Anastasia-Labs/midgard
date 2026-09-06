@@ -97,19 +97,6 @@ fn supported_purpose_tag(tag: Int) -> Bool {
   }
 }
 
-fn optional_traversal_is_well_formed(
-  control: RedeemerItemProofControlV1,
-) -> Bool {
-  when control.traversal is {
-    None -> False
-    Some(traversal) -> and {
-        cek_data_traverse_v1.control_is_well_formed(traversal),
-        traversal.source_start == control.data_offset,
-        traversal.source_length == control.data_length,
-      }
-  }
-}
-
 fn descriptor_fields_are_empty(control: RedeemerItemProofControlV1) -> Bool {
   and {
     control.purpose_tag == -1,
@@ -180,7 +167,9 @@ pub fn stage_data_outer_fields_are_well_formed_v1(
   }
 }
 
-pub fn control_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
+/// Outer grammar only. Split consumers must independently authenticate that
+/// every present traversal passed its canonical well-formedness/encoding gate.
+pub fn outer_fields_are_well_formed(control: RedeemerItemProofControlV1) -> Bool {
   let expected_is_absent = and {
     control.expected_purpose_tag == -1,
     control.expected_pointer_index == -1,
@@ -214,14 +203,7 @@ pub fn control_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
         control.traversal == None,
       }
     } else if control.stage == stage_data {
-      and {
-        stage_data_outer_fields_are_well_formed_v1(control),
-        when control.traversal is {
-          None -> False
-          Some(traversal) ->
-            cek_data_traverse_v1.control_is_well_formed(traversal)
-        },
-      }
+      stage_data_outer_fields_are_well_formed_v1(control)
     } else if control.mode == mode_descriptor {
       and {
         descriptor_is_open,
@@ -232,15 +214,26 @@ pub fn control_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
       and {
         descriptor_is_open,
         ex_units_are_open,
-        optional_traversal_is_well_formed(control),
         when control.traversal is {
           None -> False
           Some(traversal) -> and {
               traversal.stage == cek_data_traverse_v1.stage_terminal,
-              cek_data_traverse_v1.finalize_v1(traversal) != None,
+              traversal.source_start == control.data_offset,
+              traversal.source_length == control.data_length,
+              traversal.result != None,
             }
         },
       }
+    },
+  }
+}
+
+pub fn control_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
+  and {
+    outer_fields_are_well_formed(control),
+    when control.traversal is {
+      None -> True
+      Some(traversal) -> cek_data_traverse_v1.control_is_well_formed(traversal)
     },
   }
 }
@@ -316,6 +309,19 @@ fn encode_control_prefix_v1(control: RedeemerItemProofControlV1) -> ByteArray {
 fn control_hash_prefix_v1(control: RedeemerItemProofControlV1) -> ByteArray {
   control_domain
     |> bytearray.concat(encode_control_prefix_v1(control))
+}
+
+/// The traversal normalizer supplies the exact encoded Option<traversal> of
+/// this same control, after checking its inner grammar. This gate checks every
+/// remaining field and produces the canonical item-control hash.
+pub fn hash_outer_with_checked_optional_traversal(
+  control: RedeemerItemProofControlV1,
+  checked_optional_traversal_cbor: ByteArray,
+) -> ByteArray {
+  expect outer_fields_are_well_formed(control)
+  control_hash_prefix_v1(control)
+    |> bytearray.concat(checked_optional_traversal_cbor)
+    |> blake2b_256
 }
 
 pub fn stage_data_outer_control_prefix_v1(
@@ -462,14 +468,24 @@ pub fn finalize_v1(
 pub fn next_source_span_v1(
   control: RedeemerItemProofControlV1,
 ) -> Option<RedeemerItemSourceSpanV1> {
+  if control_is_well_formed(control) {
+    prevalidated_next_source_span(control)
+  } else {
+    None
+  }
+}
+
+/// Same span selection after an earlier gate authenticated the complete
+/// canonical control, including every nested scalar/blob/hash state.
+pub fn prevalidated_next_source_span(
+  control: RedeemerItemProofControlV1,
+) -> Option<RedeemerItemSourceSpanV1> {
   let header_length = if control.total_length < max_header_span {
     control.total_length
   } else {
     max_header_span
   }
-  if !control_is_well_formed(control) {
-    None
-  } else if control.stage == stage_header {
+  if control.stage == stage_header {
     Some(RedeemerItemSourceSpanV1 { absolute_start: 0, length: header_length })
   } else if control.stage == stage_tail {
     Some(
@@ -482,7 +498,7 @@ pub fn next_source_span_v1(
     when control.traversal is {
       None -> None
       Some(traversal) ->
-        when cek_data_traverse_v1.next_source_span_v1(traversal) is {
+        when cek_data_traverse_v1.prevalidated_next_source_span(traversal) is {
           None -> None
           Some(span) ->
             Some(

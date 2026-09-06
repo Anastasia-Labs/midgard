@@ -83,6 +83,7 @@ export * from "./publish-proof-chunks.js";
 export * from "./receive-purpose-language/index.js";
 export * from "./redeemer-canonicity/index.js";
 export * from "./redeemer-item-data.js";
+export * from "./redeemer-item-plan.js";
 export * from "./remove-fraudulent-block.js";
 export * from "./remove-unattested-block.js";
 export * from "./resolved-output-non-canonical/index.js";

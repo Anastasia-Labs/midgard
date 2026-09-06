@@ -9,7 +9,9 @@ use midgard/fraud_proofs/native_tx/codec.{
 }
 use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
 use midgard/redeemer_item_proof_v1.{RedeemerItemProofControlV1}
+use midgard/rejection_reason_v1.{reject_invalid_field_type}
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
+use midgard/validation_machine/shared.{rejected_successor_is_exact}
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
@@ -284,7 +286,7 @@ pub fn canonical_item_action_hash(
         chunk_proof_data, next_chunk_proof_data] = witness_fields
   expect witness_tag == 0
   let Pair(item_tag, item_fields) = builtin.un_constr_data(item_action_data)
-  if action_family == fold_map_family || action_family == finalize_frame_family {
+  if action_family >= fold_map_family && action_family <= finalize_frame_family {
     expect [traversal_action_data] = item_fields
     let Pair(tag, fields) = builtin.un_constr_data(traversal_action_data)
     expect and {
@@ -523,7 +525,7 @@ pub fn verify_raw_envelope_v1(
       pending_prefix,
     ) == canonical_prefix_head,
     work_witness_cbor == expected_work_witness_cbor,
-    action_family == fold_map_family || action_family == finalize_frame_family,
+    action_family >= fold_map_family && action_family <= invalid_family,
     builtin.un_i_data(stage_data) == 1,
     native_tx_proof_commitment_v1(
       compact_cbor,
@@ -555,12 +557,25 @@ pub fn verify_raw_envelope_v1(
     redeemer_count >= 0,
     redeemer_total_count > redeemer_count,
     redeemer_total_count <= 16_384,
-    transition.claimed_successor.phase == validation_trace_v1.ScriptSources,
-    transition.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-      validation_trace_v1.ScriptSources,
-      pre.program_counter + 1,
-      next_work_witness_cbor,
-    ),
+    if action_family == invalid_family {
+      and {
+        expected_next_item_control_hash == #"0000000000000000000000000000000000000000000000000000000000000000",
+        rejected_successor_is_exact(
+          pre,
+          transition.claimed_successor,
+          reject_invalid_field_type,
+        ),
+      }
+    } else {
+      and {
+        transition.claimed_successor.phase == validation_trace_v1.ScriptSources,
+        transition.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+          validation_trace_v1.ScriptSources,
+          pre.program_counter + 1,
+          next_work_witness_cbor,
+        ),
+      }
+    },
   }
   if valid {
     Some(
@@ -643,7 +658,7 @@ pub fn envelope_state_is_bound_v1(
         state.expected_next_control_data_hash,
       ) == 32
     },
-    state.action_family == fold_map_family || state.action_family == finalize_frame_family,
+    state.action_family >= fold_map_family && state.action_family <= invalid_family,
     bytearray.length(state.canonical_auxiliary_hash) == 32,
     bytearray.length(state.canonical_action_hash) == 32,
     bytearray.length(state.current_pending_item_control_hash) == 32,
@@ -810,22 +825,28 @@ pub fn execution_attestation_is_bound_to_envelope_v1(
   expected_envelope_binder_script_hash: ScriptHash,
   expected_traversal_normalizer_script_hash: ScriptHash,
   expected_outer_normalizer_script_hash: ScriptHash,
-  expected_fold_map_executor_script_hash: ScriptHash,
-  expected_finalize_frame_executor_script_hash: ScriptHash,
+  expected_executor_script_hashes: List<ScriptHash>,
   observed_settlement_script_hash: ScriptHash,
 ) -> Bool {
-  let selected_executor_is_exact = if state.action_family == fold_map_family {
-    and {
-      state.semantic_executor_script_hash == expected_fold_map_executor_script_hash,
-      envelope.semantic_executor_script_hash == expected_fold_map_executor_script_hash,
-    }
-  } else if state.action_family == finalize_frame_family {
-    and {
-      state.semantic_executor_script_hash == expected_finalize_frame_executor_script_hash,
-      envelope.semantic_executor_script_hash == expected_finalize_frame_executor_script_hash,
-    }
-  } else {
-    False
+  let Pair(first, last) = when state.action_family is {
+    0 -> Pair(0, 0)
+    1 -> Pair(1, 1)
+    2 -> Pair(2, 2)
+    3 -> Pair(3, 3)
+    4 -> Pair(4, 7)
+    5 -> Pair(8, 9)
+    6 -> Pair(10, 10)
+    7 -> Pair(11, 15)
+    8 -> Pair(16, 16)
+    9 -> Pair(17, 18)
+    _ -> fail
+  }
+  let selected_executor_is_exact = and {
+    state.semantic_executor_script_hash == envelope.semantic_executor_script_hash,
+    list.has(
+      list.slice(expected_executor_script_hashes, first, last),
+      state.semantic_executor_script_hash,
+    ),
   }
   and {
     state.version == version,
@@ -876,8 +897,7 @@ pub fn execution_attestation_settlement_is_exact_v1(
   expected_envelope_binder_script_hash: ScriptHash,
   expected_traversal_normalizer_script_hash: ScriptHash,
   expected_outer_normalizer_script_hash: ScriptHash,
-  expected_fold_map_executor_script_hash: ScriptHash,
-  expected_finalize_frame_executor_script_hash: ScriptHash,
+  expected_executor_script_hashes: List<ScriptHash>,
   observed_settlement_script_hash: ScriptHash,
   expected_award_script_hash: ScriptHash,
   observed_output_script_hash: ScriptHash,
@@ -895,8 +915,7 @@ pub fn execution_attestation_settlement_is_exact_v1(
       expected_envelope_binder_script_hash,
       expected_traversal_normalizer_script_hash,
       expected_outer_normalizer_script_hash,
-      expected_fold_map_executor_script_hash,
-      expected_finalize_frame_executor_script_hash,
+      expected_executor_script_hashes,
       observed_settlement_script_hash,
     ),
     observed_output_script_hash == expected_award_script_hash,

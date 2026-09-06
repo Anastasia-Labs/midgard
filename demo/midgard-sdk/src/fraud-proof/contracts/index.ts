@@ -270,6 +270,7 @@ export {
   SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES,
   type ScriptIntegrityHashMissingFaultProofContracts,
 } from "./families/script-integrity-hash-missing.js";
+export * from "./families/shared-redeemer-item.js";
 export {
   buildSpendInputSignerMissingFaultProofContracts,
   type BuildSpendInputSignerMissingFaultProofContractsParams,

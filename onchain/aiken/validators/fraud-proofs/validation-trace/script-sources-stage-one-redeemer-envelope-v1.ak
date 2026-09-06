@@ -1,9 +1,11 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/script_sources_item_normalization as normalized
 use midgard/script_sources_redeemer_normalization_v1 as normalization
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
 use midgard/validation_machine/shared.{structural_transition_is_valid}
@@ -29,8 +31,7 @@ validator main(
   deployment_id: ByteArray,
   traversal_normalizer_script_hash: ScriptHash,
   outer_normalizer_script_hash: ScriptHash,
-  fold_map_executor_script_hash: ScriptHash,
-  finalize_frame_executor_script_hash: ScriptHash,
+  semantic_executor_script_hashes: List<ScriptHash>,
   settlement_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
 ) {
@@ -78,11 +79,18 @@ validator main(
             output_state,
           ) {
             expect Some(base) = input_state
-            let semantic_executor_script_hash = if action_family == normalization.fold_map_family {
-              fold_map_executor_script_hash
-            } else {
-              finalize_frame_executor_script_hash
-            }
+            let Pair(current_data, witness_data) = normalized.auxiliary_item_fields(
+              auxiliary,
+            )
+            expect Some(semantic_executor_script_hash) = list.at(
+              semantic_executor_script_hashes,
+              normalized.executor_index(
+                current_data,
+                witness_data,
+                action_family,
+              ),
+            )
+
             when
               normalization.verify_raw_envelope_v1(
                 base.resolution.pre_state,

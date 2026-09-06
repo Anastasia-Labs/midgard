@@ -356,3 +356,28 @@ separate encoder.
 - **Spec conflict:** GOAL_SPEC §8.3 C45 ("Every … retained redeemer …") is
   unaffected; RF-021's "monolith remains available" statement in
   `GOAL_REVIEW_REMEDIATION.md` must be amended when the monolith is retired.
+
+### Shared CEK carrier implementation checkpoint
+
+The measured implementation uses eight transactions: entry; current traversal
+normalization; current outer normalization; next traversal normalization; next
+outer normalization; exact source-window authentication; one narrow executor;
+and fixed-return settlement. Both complete controls pass the canonical grammar
+before the executor compares the exact canonical transition. This replaces the
+original four-to-five-hop estimate and prevents duplicate nested grammar checks
+from exceeding the publication envelope. No alternate item traversal is added.
+
+The first complete CEK wire probe publishes 22 applied scripts and executes all
+17 successful semantic arms through Pending to Verified (136 spends), with a
+wrong-output on-chain refusal at each hop (136 refusals). Signed spends enforce
+512-byte and 20-percent execution reserves. Raw executor bodies range from 1,777
+to 12,253 bytes; the source authenticator is 10,258 bytes and fixed CEK settlement
+is 6,187 bytes. This checkpoint proves the shared carrier wire, not the complete
+registered ScriptSources lifecycle or maximum-domain ledger; those gates remain
+required before this plan is closed.
+
+Reproduce the shared carrier probe with a fresh testnet blueprint:
+
+```sh
+MIDGARD_REAL_BLUEPRINT_PATH=/absolute/fresh-blueprint.json pnpm exec vitest run tests/shared-redeemer-item-lifecycle.test.ts --reporter verbose
+```

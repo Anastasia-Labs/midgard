@@ -20,6 +20,10 @@ fn source_for_control(
   source: ByteArray,
   source_start: Int,
 ) -> Option<ByteArray> {
+  expect
+    cek_data_traverse_v1.prevalidated_next_source_span(control) == cek_data_traverse_v1.next_source_span_v1(
+      control,
+    )
   when cek_data_traverse_v1.next_source_span_v1(control) is {
     None -> None
     Some(span) ->

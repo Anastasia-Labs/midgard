@@ -13,6 +13,10 @@ fn finish_trace(
   if control.stage == cek_source_blob_v1.stage_terminal {
     control
   } else {
+    expect
+      cek_source_blob_v1.prevalidated_next_source_span(control) == cek_source_blob_v1.next_source_span_v1(
+        control,
+      )
     when cek_source_blob_v1.next_source_span_v1(control) is {
       None -> {
         expect Some(next) = cek_source_blob_v1.step_v1(control, None)

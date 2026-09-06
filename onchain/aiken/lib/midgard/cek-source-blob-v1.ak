@@ -258,38 +258,46 @@ fn expected_block_length(
 pub fn next_source_span_v1(
   control: CekSourceBlobControlV1,
 ) -> Option<CekSourceBlobSpanV1> {
-  if !control_is_well_formed(control) {
-    None
+  if control_is_well_formed(control) {
+    prevalidated_next_source_span(control)
   } else {
-    when control.active_hash is {
-      None -> None
-      Some(hash_control) ->
-        if and {
-          control.stage == stage_active,
-          hash_control.stage == blake2b_256_trace_v1.stage_ready,
-        } {
-          let prefix = chunk_prefix(active_chunk_length(control))
-          let prefix_length = bytearray.length(prefix)
-          let block_length = expected_block_length(hash_control)
-          let prefix_start = minimum(hash_control.cursor, prefix_length)
-          let prefix_end = minimum(
-            hash_control.cursor + block_length,
-            prefix_length,
-          )
-          Some(
-            CekSourceBlobSpanV1 {
-              absolute_start: control.source_start + control.frontier.byte_length + if hash_control.cursor > prefix_length {
-                hash_control.cursor - prefix_length
-              } else {
-                0
-              },
-              length: block_length - ( prefix_end - prefix_start ),
+    None
+  }
+}
+
+/// Same span selection after an earlier gate authenticated the complete
+/// canonical control, including every nested scalar/blob/hash state.
+pub fn prevalidated_next_source_span(
+  control: CekSourceBlobControlV1,
+) -> Option<CekSourceBlobSpanV1> {
+  when control.active_hash is {
+    None -> None
+    Some(hash_control) ->
+      if and {
+        control.stage == stage_active,
+        hash_control.stage == blake2b_256_trace_v1.stage_ready,
+      } {
+        let prefix = chunk_prefix(active_chunk_length(control))
+        let prefix_length = bytearray.length(prefix)
+        let block_length = expected_block_length(hash_control)
+        let prefix_start = minimum(hash_control.cursor, prefix_length)
+        let prefix_end = minimum(
+          hash_control.cursor + block_length,
+          prefix_length,
+        )
+        Some(
+          CekSourceBlobSpanV1 {
+            absolute_start: control.source_start + control.frontier.byte_length + if hash_control.cursor > prefix_length {
+              hash_control.cursor - prefix_length
+            } else {
+              0
             },
-          )
-        } else {
-          None
-        }
-    }
+            length: block_length - ( prefix_end - prefix_start ),
+          },
+        )
+      } else {
+        None
+      }
   }
 }
 
