@@ -73,3 +73,16 @@ export const scriptSourcesMiddleYieldIndex = (
   if (stage === 6n && auxiliary.index === 0) return 7;
   throw new Error("ScriptSources middle auxiliary does not match its stage");
 };
+
+export const SCRIPT_SOURCES_OBSERVER_YIELD_ROLES = [
+  {
+    contract: "scriptSourcesObserverItem",
+    deployment: "validationTraceDisputeScriptSourcesObserverItemWithdraw",
+    role: "V1 validation-trace script-sources observer item yield",
+  },
+  {
+    contract: "scriptSourcesObserverBound",
+    deployment: "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
+    role: "V1 validation-trace script-sources observer bound yield",
+  },
+] as const;

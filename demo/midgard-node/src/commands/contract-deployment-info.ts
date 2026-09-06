@@ -1223,6 +1223,18 @@ const collectScriptDescriptors = (
       .scriptSourcesStageSixFinish,
     "V1 validation-trace script-sources StageSixFinish yield",
   ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesObserverItemWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesObserverItem,
+    "V1 validation-trace script-sources observer item yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesObserverBound,
+    "V1 validation-trace script-sources observer bound yield",
+  ),
   spendDescriptor(
     "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10],

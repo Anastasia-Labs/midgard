@@ -423,6 +423,8 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         scriptSourcesStageSixBeginPolicy: stateQueueYield,
         scriptSourcesStageSixFoldAsset: stateQueueYield,
         scriptSourcesStageSixFinish: stateQueueYield,
+        scriptSourcesObserverItem: stateQueueYield,
+        scriptSourcesObserverBound: stateQueueYield,
         phaseANativeItemNative: stateQueueYield,
         phaseANativeItemForeign: stateQueueYield,
       },

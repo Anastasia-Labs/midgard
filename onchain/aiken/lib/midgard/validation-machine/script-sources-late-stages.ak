@@ -691,6 +691,103 @@ pub fn verify_script_sources_stage_seven_observer_semantics_v1(
   }
 }
 
+pub fn verify_script_sources_stage_seven_observer_item_facts_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
+  claimed_observer_hash: ByteArray,
+  claimed_active_count: Int,
+) -> Bool {
+  let control = script_sources_stage_seven_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let observer_commitment = verified.tx_compact.body.required_observers_hash
+  let observer_scan = control.observer_scan
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    3,
+    observer_scan.seen,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
+  let active_count = if observer_scan.total_count == 0 {
+    item_count
+  } else {
+    observer_scan.total_count
+  }
+  let observer_hash = field_door.machine_field_item_bytes(item)
+  and {
+    observer_commitment != native_tx_field_access_v1.empty_field_commitment,
+    !script_sources_stage_seven_observer_scan_is_complete(
+      control,
+      observer_commitment,
+    ),
+    active_count > 0,
+    active_count <= max_tx_size_derived_collection_item_count,
+    field_index == 3,
+    item_index == observer_scan.seen,
+    item_count == active_count,
+    field_door.machine_field_item_length(item) == 28,
+    claimed_observer_hash == observer_hash,
+    claimed_active_count == active_count,
+  }
+}
+
+pub fn verify_script_sources_stage_seven_observer_bound_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  observer_hash: ByteArray,
+  active_count: Int,
+) -> Bool {
+  let control = script_sources_stage_seven_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let observer_scan = control.observer_scan
+  let common_is_valid = and {
+    script_sources_stage_seven_control_is_bound(pre, witness, control),
+    control.output_cursor == 0,
+    control.receive_scan.receive_count == 0,
+    control.receive_scan.previous_hash == #"",
+    control.receive_scan.candidate_hash == #"",
+    bytearray.length(observer_hash) == 28,
+    active_count > 0,
+    observer_scan.seen < active_count,
+  }
+  if and {
+    common_is_valid,
+    observer_scan.seen > 0,
+    bytearray.compare(observer_scan.previous_hash, observer_hash) != Less,
+  } {
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      reject_invalid_field_type,
+    )
+  } else {
+    and {
+      common_is_valid,
+      script_sources_stage_seven_observer_successor_is_exact(
+        pre,
+        witness,
+        control,
+        observer_hash,
+        active_count,
+      ),
+    }
+  }
+}
+
 pub fn verify_script_sources_stage_seven_receive_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,

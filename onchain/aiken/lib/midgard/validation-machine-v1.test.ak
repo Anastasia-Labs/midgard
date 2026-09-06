@@ -7376,7 +7376,57 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
     19,
   )
   let carriage = inline_field_carriage([h_28_a])
+  let honest_witness = vm_machine_types.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: after_observer,
+  }
+  let forged_witness = vm_machine_types.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: mutated_after_observer,
+  }
   and {
+    vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_item_facts_v1(
+      pre,
+      honest_witness,
+      inline_field_door(),
+      3,
+      0,
+      carriage,
+      h_28_a,
+      1,
+    ),
+    vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_bound_semantics_v1(
+      pre,
+      honest_witness,
+      h_28_a,
+      1,
+    ),
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_item_facts_v1(
+      pre,
+      honest_witness,
+      inline_field_door(),
+      3,
+      0,
+      carriage,
+      h_28_b,
+      1,
+    ),
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_item_facts_v1(
+      pre,
+      honest_witness,
+      inline_field_door(),
+      3,
+      0,
+      carriage,
+      h_28_a,
+      2,
+    ),
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_bound_semantics_v1(
+      pre,
+      forged_witness,
+      h_28_a,
+      1,
+    ),
     vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_semantics_v1(
       pre,
       vm_machine_types.ValidationOneStepWitnessV1 {

@@ -96,6 +96,10 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1VtSsStage6FoldAssetYield",
   "V1 validation-trace script-sources StageSixFinish yield":
     "V1VtSsStage6FinishYield",
+  "V1 validation-trace script-sources observer item yield":
+    "V1VtSsS07ObserverItemYield",
+  "V1 validation-trace script-sources observer bound yield":
+    "V1VtSsS07ObserverBoundYield",
   "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
   "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
   "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",

@@ -2081,6 +2081,16 @@ export const nodeRuntimeReferenceScriptTargets = (
       .scriptSourcesStageSixFinish.withdrawalScript,
   ),
   manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesObserverItemWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesObserverItem.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesObserverBound.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
     "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10]
       .spendingScript,

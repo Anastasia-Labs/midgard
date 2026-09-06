@@ -7,18 +7,18 @@ module). This plan defines the **two stage-seven observer yields**.
 
 ## 1. Identity
 
-| Field | Value |
-| --- | --- |
-| Blueprint title | `fraud_proofs/validation_trace/script_sources_stage_seven_observer_semantic_v1.main.spend` |
-| File | `onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-seven-observer-semantic-v1.ak` |
-| Raw size | 33,961 bytes |
-| Applied parameters | `award_script_hash: ScriptHash`, `computation_thread_policy_id: PolicyId`, `field_preimage_certificate_policy_id: PolicyId` (3) |
-| Phase / resolver index | `ScriptSources`, resolver 8 |
-| Semantic index (arm) | 25 of 29; global slot `validationSemanticResolverGlobalIndexV1(8, 25) = 57` |
-| Library entry point | `verify_script_sources_stage_seven_observer_semantics_v1` → `script_sources_stage_seven_control_from_witness`, `verify_native_tx_proof_source_v1`, `field_door.open_machine_field_item(door, verified, witness_set, 3, seen, carriage)`, `script_sources_stage_seven_control_is_bound` (**`exact_script_sources_control`**), `script_sources_stage_seven_observer_successor_is_exact` (**`script_sources_control_successor_is_exact` → `exact_script_sources_control`**), `rejected_successor_is_exact(reject_invalid_field_type)` |
-| Redeemer action | `VerifyObserver { input_index, output_index, transition, field_index, item_index, carriage: FieldCarriageV1 }`; auxiliary rebuilt as `TransactionFieldChunkWitness { field_index, item_index, carriage }` (constructor 1, 3 fields) |
-| Rejection reached | `reject_invalid_field_type` (`E_INVALID_FIELD_TYPE`, `ObserverOrderInvalid` in `rejection-reason.ts:298`) |
-| Role / deployment entry today | none (anchor §1) |
+| Field                         | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Blueprint title               | `fraud_proofs/validation_trace/script_sources_stage_seven_observer_semantic_v1.main.spend`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| File                          | `onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-seven-observer-semantic-v1.ak`                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Raw size                      | 33,961 bytes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Applied parameters            | `award_script_hash: ScriptHash`, `computation_thread_policy_id: PolicyId`, `field_preimage_certificate_policy_id: PolicyId` (3)                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Phase / resolver index        | `ScriptSources`, resolver 8                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Semantic index (arm)          | 25 of 29; global slot `validationSemanticResolverGlobalIndexV1(8, 25) = 57`                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Library entry point           | `verify_script_sources_stage_seven_observer_semantics_v1` → `script_sources_stage_seven_control_from_witness`, `verify_native_tx_proof_source_v1`, `field_door.open_machine_field_item(door, verified, witness_set, 3, seen, carriage)`, `script_sources_stage_seven_control_is_bound` (**`exact_script_sources_control`**), `script_sources_stage_seven_observer_successor_is_exact` (**`script_sources_control_successor_is_exact` → `exact_script_sources_control`**), `rejected_successor_is_exact(reject_invalid_field_type)` |
+| Redeemer action               | `VerifyObserver { input_index, output_index, transition, field_index, item_index, carriage: FieldCarriageV1 }`; auxiliary rebuilt as `TransactionFieldChunkWitness { field_index, item_index, carriage }` (constructor 1, 3 fields)                                                                                                                                                                                                                                                                                                |
+| Rejection reached             | `reject_invalid_field_type` (`E_INVALID_FIELD_TYPE`, `ObserverOrderInvalid` in `rejection-reason.ts:298`)                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Role / deployment entry today | none (anchor §1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 What the step proves (C45/C50): with a non-empty `required_observers_hash`
 (field 3) and the receive scan not started, item `observer_scan.seen` of the
@@ -31,21 +31,21 @@ order is enforced (`previous_hash < observer_hash`, else the exact
 
 ## 2. Why it is this size
 
-| Probe | Reachable code | Raw bytes | Δ |
-| --- | --- | ---: | ---: |
-| p00 | floor | 1,005 | — |
-| p27 | `script_sources_stage_seven_control_from_witness` + `decode_native_tx_compact_v1(compact).body.required_observers_hash` | 4,309 | +3,304 |
-| p26 | control decode + `verify_native_tx_proof_source_v1` (pair) | 5,030 | +4,025 |
-| p28 | p26 + `field_door.open_machine_field_item` + `machine_field_item_{count,length,bytes}` (`authenticated_whole_field_view`, `field_item_extent`, `field_read_range`) | 8,666 | +3,636 over p26 |
-| p21 | control decode + `script_sources_stage_seven_control_is_bound` via **`exact_script_sources_control`** | 23,124 | +19,505 |
-| p22 | same with the **narrow stage-seven encoder** (anchor §4a.2) | 7,846 | +4,227 |
-| p25 | whole observer predicate, narrow encoder for binding **and** successor (no shell) | 15,781 | — |
-| **q24** | **resolver-shaped monolith after the prune** (`cancel` + `continue_winning` + p25, 3 params) | **18,097** | **over** |
-| q40 | p25 as one yield (`withdraw`, `unique_dispatch`) | 16,447 | over |
-| q15 | **door half** only: control decode, `verify_native_tx_proof_source_v1`, door open, item facts vs. claimed `(observer_hash, active_count)` | 9,016 | — |
-| q16 | **binding half** only: narrow stage-seven binding + receive-scan pins + order check/rejection + narrow successor given the claimed facts | 9,725 | — |
-| **q41 / q42** | **the two halves as yields** (`withdraw`, `unique_dispatch`; item yield has the certificate-policy parameter) | **9,665 / 10,203** | fits |
-| q57 | **pure dispatcher**: typed redeemer, two `require_authenticated_zero_yield`, `continue_winning(True)` (3 params) | 4,116 | fits |
+| Probe         | Reachable code                                                                                                                                                     |          Raw bytes |               Δ |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -----------------: | --------------: |
+| p00           | floor                                                                                                                                                              |              1,005 |               — |
+| p27           | `script_sources_stage_seven_control_from_witness` + `decode_native_tx_compact_v1(compact).body.required_observers_hash`                                            |              4,309 |          +3,304 |
+| p26           | control decode + `verify_native_tx_proof_source_v1` (pair)                                                                                                         |              5,030 |          +4,025 |
+| p28           | p26 + `field_door.open_machine_field_item` + `machine_field_item_{count,length,bytes}` (`authenticated_whole_field_view`, `field_item_extent`, `field_read_range`) |              8,666 | +3,636 over p26 |
+| p21           | control decode + `script_sources_stage_seven_control_is_bound` via **`exact_script_sources_control`**                                                              |             23,124 |         +19,505 |
+| p22           | same with the **narrow stage-seven encoder** (anchor §4a.2)                                                                                                        |              7,846 |          +4,227 |
+| p25           | whole observer predicate, narrow encoder for binding **and** successor (no shell)                                                                                  |             15,781 |               — |
+| **q24**       | **resolver-shaped monolith after the prune** (`cancel` + `continue_winning` + p25, 3 params)                                                                       |         **18,097** |        **over** |
+| q40           | p25 as one yield (`withdraw`, `unique_dispatch`)                                                                                                                   |             16,447 |            over |
+| q15           | **door half** only: control decode, `verify_native_tx_proof_source_v1`, door open, item facts vs. claimed `(observer_hash, active_count)`                          |              9,016 |               — |
+| q16           | **binding half** only: narrow stage-seven binding + receive-scan pins + order check/rejection + narrow successor given the claimed facts                           |              9,725 |               — |
+| **q41 / q42** | **the two halves as yields** (`withdraw`, `unique_dispatch`; item yield has the certificate-policy parameter)                                                      | **9,665 / 10,203** |            fits |
+| q57           | **pure dispatcher**: typed redeemer, two `require_authenticated_zero_yield`, `continue_winning(True)` (3 params)                                                   |              4,116 |            fits |
 
 Reading: `exact_script_sources_control` is 60 % of the body (23,124 → 7,846
 when replaced by the narrow encoder that only knows stage 7 and its stage-8
@@ -56,14 +56,14 @@ resolver shell, so the observer cannot be a monolith or a single yield.
 
 ## 3. Options considered
 
-| Option | Verdict | Reason |
-| --- | --- | --- |
-| 1. Prune (narrow encoder for binding and successor) | rejected as sufficient, **kept as prerequisite** | 18,097 measured (q24) |
-| 2a. One yield with the whole predicate | rejected | 16,447 (q40) |
-| 2b. **Two yields by fact — door half (item facts) and binding half (control binding + successor) — pure dispatcher** | **chosen** | 9,665 + 10,203 + 4,116; both halves read the same dispatcher redeemer, exchanging `(observer_hash, active_count)` as claimed facts |
-| 2c. One yield for the door half only, binding in the dispatcher | rejected | dispatcher would be ≈ 4.1 + 9.7 − 1.6 ≈ 12.2 KB — fits, but the binding half is *exactly* what `seven-receive`/`seven-finish` also compute, and keeping it in a yield leaves the door free to grow (tier-3 carriage changes) without touching the resolver |
-| 3. Chain (door step then binding step) | rejected | two transactions per observer item against C52 for a size problem two yields solve in one transaction |
-| 4. Redesign | rejected | the observer/receive/finish partition is right (R5) |
+| Option                                                                                                               | Verdict                                          | Reason                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Prune (narrow encoder for binding and successor)                                                                  | rejected as sufficient, **kept as prerequisite** | 18,097 measured (q24)                                                                                                                                                                                                                                      |
+| 2a. One yield with the whole predicate                                                                               | rejected                                         | 16,447 (q40)                                                                                                                                                                                                                                               |
+| 2b. **Two yields by fact — door half (item facts) and binding half (control binding + successor) — pure dispatcher** | **chosen**                                       | 9,665 + 10,203 + 4,116; both halves read the same dispatcher redeemer, exchanging `(observer_hash, active_count)` as claimed facts                                                                                                                         |
+| 2c. One yield for the door half only, binding in the dispatcher                                                      | rejected                                         | dispatcher would be ≈ 4.1 + 9.7 − 1.6 ≈ 12.2 KB — fits, but the binding half is _exactly_ what `seven-receive`/`seven-finish` also compute, and keeping it in a yield leaves the door free to grow (tier-3 carriage changes) without touching the resolver |
+| 3. Chain (door step then binding step)                                                                               | rejected                                         | two transactions per observer item against C52 for a size problem two yields solve in one transaction                                                                                                                                                      |
+| 4. Redesign                                                                                                          | rejected                                         | the observer/receive/finish partition is right (R5)                                                                                                                                                                                                        |
 
 ## 4. Chosen design
 
@@ -84,11 +84,11 @@ Both must agree with `verify_script_sources_stage_seven_observer_semantics_v1`:
 
 ### 4b. New validator list
 
-| Validator | Purpose | File | Params |
-| --- | --- | --- | --- |
-| `script_sources_stage_seven_observer_semantic_v1.main.spend` (**dispatcher**, same title) | narrow redeemer, two yield handshakes, `continue_winning(…, True, …)` | existing file | `award_script_hash`, `computation_thread_policy_id`, **`reference_script_auth_policy_id`** (the certificate policy **moves to yield A**; count stays 3) |
-| `script_sources_stage_seven_observer_item_yield_v1.main.withdraw` (**yield A**, new) | §8 door: field-3 item facts | `validators/fraud-proofs/validation-trace/script-sources-stage-seven-observer-item-yield-v1.ak` | `observer_dispatcher_script_hash: ScriptHash`, `field_preimage_certificate_policy_id: PolicyId` |
-| `script_sources_stage_seven_observer_bound_yield_v1.main.withdraw` (**yield B**, new) | stage-seven binding, order check, successor | `…/script-sources-stage-seven-observer-bound-yield-v1.ak` | `observer_dispatcher_script_hash: ScriptHash` |
+| Validator                                                                                 | Purpose                                                               | File                                                                                            | Params                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `script_sources_stage_seven_observer_semantic_v1.main.spend` (**dispatcher**, same title) | narrow redeemer, two yield handshakes, `continue_winning(…, True, …)` | existing file                                                                                   | `award_script_hash`, `computation_thread_policy_id`, **`reference_script_auth_policy_id`** (the certificate policy **moves to yield A**; count stays 3) |
+| `script_sources_stage_seven_observer_item_yield_v1.main.withdraw` (**yield A**, new)      | §8 door: field-3 item facts                                           | `validators/fraud-proofs/validation-trace/script-sources-stage-seven-observer-item-yield-v1.ak` | `observer_dispatcher_script_hash: ScriptHash`, `field_preimage_certificate_policy_id: PolicyId`                                                         |
+| `script_sources_stage_seven_observer_bound_yield_v1.main.withdraw` (**yield B**, new)     | stage-seven binding, order check, successor                           | `…/script-sources-stage-seven-observer-bound-yield-v1.ak`                                       | `observer_dispatcher_script_hash: ScriptHash`                                                                                                           |
 
 Roles (`validation-script-sources-yield-v1.ak`, anchor §4c):
 `stage_seven_observer_item_role = "V1VtSsS07ObserverItemYield"`,
@@ -152,7 +152,7 @@ if `common && observer_scan.seen > 0 && compare(observer_scan.previous_hash, cla
   observer dispatcher's credential.
 - **Output-state re-derivation.** The dispatcher checks the continuation
   (`continue_winning`); yield B re-derives the machine successor from
-  `control` (bound to `pre.work_root` by the narrow binding of the *same*
+  `control` (bound to `pre.work_root` by the narrow binding of the _same_
   `transition`) and the claimed facts; yield A binds the claimed facts to the
   authenticated field preimage (`verified` is bound to
   `pre.transaction_id`/`transaction_commitment` through
@@ -171,11 +171,11 @@ if `common && observer_scan.seen > 0 && compare(observer_scan.previous_hash, cla
 
 ## 5. Size and budget projection
 
-| Script | Raw (measured) | Applied (≈ +110 / +73 / +37) | Signed publication (≈ +276; yields mint one role NFT each) |
-| --- | ---: | ---: | ---: |
-| observer dispatcher (q57, 3 params) | 4,116 | ≈ 4,226 | ≈ 4,500 |
-| observer item yield A (q41, 2 params) | 9,665 | ≈ 9,740 | ≈ 10,020 — fits |
-| observer bound yield B (q42, 1 param) | 10,203 | ≈ 10,240 | ≈ 10,520 — fits |
+| Script                                | Raw (measured) | Applied (≈ +110 / +73 / +37) | Signed publication (≈ +276; yields mint one role NFT each) |
+| ------------------------------------- | -------------: | ---------------------------: | ---------------------------------------------------------: |
+| observer dispatcher (q57, 3 params)   |          4,116 |                      ≈ 4,226 |                                                    ≈ 4,500 |
+| observer item yield A (q41, 2 params) |          9,665 |                      ≈ 9,740 |                                            ≈ 10,020 — fits |
+| observer bound yield B (q42, 1 param) |         10,203 |                     ≈ 10,240 |                                            ≈ 10,520 — fits |
 
 Referenced bytes per semantic-resolution transaction ≈ 24,200 (plus the tier-2/3
 carriage reference inputs the door already reads, which are data UTxOs, not
@@ -279,3 +279,24 @@ Anchor §9 (dispatcher ≈ 4,116, yields ≈ 9,665 / 10,203 in the 15-line sweep
 - **ABI churn:** parameter swap on the resolver, three new redeemer fields, two
   new withdraw validators, two roles, three deployment entries.
 - **Discarded-binding hazard** (anchor §11) applies twice here.
+
+## Implementation checkpoint (2026-09-06)
+
+The observer dispatcher authenticates both field-item and successor-binding
+yields. Each reads the exact unique dispatcher transition and the same claimed
+observer hash/count. Two explicit reference indices replace the planned adjacent
+pair: transaction reference ordering is canonical and may place other references
+between the yields. Each index independently authenticates its fixed role, so
+this changes delivery only and never permits either check to be omitted.
+
+Normal testnet blueprint `deb072df945f8a829c35d12f43a3f147ec0c5d7fdab90bfc3f56502c6a6ef1a4`
+(pinned compiler `v1.1.23+5adf783`) has raw bodies of 4,103 / 9,588 / 10,308 bytes
+for dispatcher / item / binding. The full happy, honest-refusal and cancel/restart
+scenarios passed 3/3. The observer fit ledger records 173 signed transactions,
+including 91 publications, with maxima of 15108 bytes,
+6304833 memory and 2199484476 CPU; all publication and execution
+reserves pass. Maximum observer frontier/carriage remains separate closure work.
+
+Full machine parity passed 197/197, including field-hash/count substitution
+and forged successor checks for the two-part predicate. FP typecheck and node
+deployment-manifest tests (13/13) passed; touched formatting/lint passed.

@@ -275,6 +275,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeScriptSourcesStageSixBeginPolicyWithdraw",
   "validationTraceDisputeScriptSourcesStageSixFoldAssetWithdraw",
   "validationTraceDisputeScriptSourcesStageSixFinishWithdraw",
+  "validationTraceDisputeScriptSourcesObserverItemWithdraw",
+  "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
   "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
   "validationTraceDisputePhaseANativeScriptsItemSemantic",
   "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
@@ -1037,6 +1039,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeScriptSourcesStageSixFoldAssetWithdraw",
     "V1 validation-trace script-sources StageSixFinish yield":
       "validationTraceDisputeScriptSourcesStageSixFinishWithdraw",
+    "V1 validation-trace script-sources observer item yield":
+      "validationTraceDisputeScriptSourcesObserverItemWithdraw",
+    "V1 validation-trace script-sources observer bound yield":
+      "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
     "V1 validation-trace phase-A native Advance semantic":
       "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     "V1 validation-trace phase-A native Item semantic":
@@ -1496,6 +1502,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtSsStage6FoldAssetYield",
   "V1 validation-trace script-sources StageSixFinish yield":
     "V1VtSsStage6FinishYield",
+  "V1 validation-trace script-sources observer item yield":
+    "V1VtSsS07ObserverItemYield",
+  "V1 validation-trace script-sources observer bound yield":
+    "V1VtSsS07ObserverBoundYield",
   "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
   "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
   "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",

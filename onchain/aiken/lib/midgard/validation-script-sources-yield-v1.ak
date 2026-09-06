@@ -45,3 +45,7 @@ pub fn middle_dispatch(
   expect tag == auxiliary_tag
   (state.resolution.pre_state, transition, fields)
 }
+
+pub const observer_item_role = "V1VtSsS07ObserverItemYield"
+
+pub const observer_bound_role = "V1VtSsS07ObserverBoundYield"

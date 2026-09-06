@@ -351,6 +351,10 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_six_fold_asset.withdraw",
     scriptSourcesStageSixFinish:
       "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_six_finish.withdraw",
+    scriptSourcesObserverItem:
+      "fraud_proofs/validation_trace/script_sources_stage_seven_observer_item_yield_v1.main.withdraw",
+    scriptSourcesObserverBound:
+      "fraud_proofs/validation_trace/script_sources_stage_seven_observer_bound_yield_v1.main.withdraw",
     phaseANativeItemNative:
       "fraud_proofs/validation_trace/phase_a_native_scripts_item_yields_v1.native.withdraw",
     phaseANativeItemForeign:
@@ -423,6 +427,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
       readonly scriptSourcesStageSixBeginPolicy: WithdrawalValidator;
       readonly scriptSourcesStageSixFoldAsset: WithdrawalValidator;
       readonly scriptSourcesStageSixFinish: WithdrawalValidator;
+      readonly scriptSourcesObserverItem: WithdrawalValidator;
+      readonly scriptSourcesObserverBound: WithdrawalValidator;
       readonly phaseANativeItemNative: WithdrawalValidator;
       readonly phaseANativeItemForeign: WithdrawalValidator;
       readonly cekMaterialProgramTask: WithdrawalValidator;
@@ -1100,6 +1106,45 @@ export const buildValidationTraceDisputeChain = ({
           ),
         ),
     );
+    const scriptSourcesObserverItem = yield* tryBuild(
+      "Failed to build observer yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesObserverItem,
+            [
+              builtSemanticResolvers[
+                semanticTitles.indexOf(
+                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    .scriptSourcesStageSevenObserver,
+                )
+              ]!.spendingScriptHash,
+              fieldPreimageCertificatePolicyId,
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesObserverBound = yield* tryBuild(
+      "Failed to build observer yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesObserverBound,
+            [
+              builtSemanticResolvers[
+                semanticTitles.indexOf(
+                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    .scriptSourcesStageSevenObserver,
+                )
+              ]!.spendingScriptHash,
+            ],
+          ),
+        ),
+    );
     const phaseANativeItemNative = yield* tryBuild(
       "Failed to build phase-A item native yield",
       () =>
@@ -1569,6 +1614,8 @@ export const buildValidationTraceDisputeChain = ({
         scriptSourcesStageSixBeginPolicy,
         scriptSourcesStageSixFoldAsset,
         scriptSourcesStageSixFinish,
+        scriptSourcesObserverItem,
+        scriptSourcesObserverBound,
         phaseANativeItemNative,
         phaseANativeItemForeign,
         cekMaterialProgramTask,

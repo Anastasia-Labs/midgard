@@ -37,7 +37,10 @@ import {
   validationSemanticResolverGlobalIndex,
   validationValueAndMintSemanticReferenceScriptDeploymentEntry,
 } from "../../../src/index.js";
-import { SCRIPT_SOURCES_MIDDLE_YIELD_ROLES } from "../../../src/validation-dispute/script-sources-yields.js";
+import {
+  SCRIPT_SOURCES_MIDDLE_YIELD_ROLES,
+  SCRIPT_SOURCES_OBSERVER_YIELD_ROLES,
+} from "../../../src/validation-dispute/script-sources-yields.js";
 import { submitInit } from "../legacy-submit-emulator.js";
 import {
   alwaysSucceedsBlueprintPath,
@@ -625,6 +628,36 @@ export const runForcedValidationDisputeScenario = async (
             script: contract.withdrawalScript,
           },
         }));
+      semanticDeploymentInfo = {
+        ...semanticDeploymentInfo,
+        contracts: {
+          ...semanticDeploymentInfo.contracts,
+          [spec.deployment]: {
+            scriptHash: contract.withdrawalScriptHash,
+            refScriptUTxO: {
+              txHash: publication.utxo.txHash,
+              outputIndex: publication.utxo.outputIndex,
+            },
+          },
+        },
+      };
+    }
+  }
+  if (stagedResolverIndex === 8 && stagedSemanticIndex === 25) {
+    for (const spec of SCRIPT_SOURCES_OBSERVER_YIELD_ROLES) {
+      const contract =
+        contracts.fraudProofContracts.validationTraceDispute.yields[
+          spec.contract
+        ];
+      const publication = await publishAuthenticatedValidationDisputeControl({
+        lucid: challengerLucid,
+        authPolicy: referenceScriptAuth,
+        target: {
+          control: spec.contract,
+          name: spec.role,
+          script: contract.withdrawalScript,
+        },
+      });
       semanticDeploymentInfo = {
         ...semanticDeploymentInfo,
         contracts: {

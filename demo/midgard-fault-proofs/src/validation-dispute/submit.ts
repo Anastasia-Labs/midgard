@@ -166,6 +166,7 @@ import {
 } from "./cek-material-traversal.js";
 import {
   SCRIPT_SOURCES_MIDDLE_YIELD_ROLES,
+  SCRIPT_SOURCES_OBSERVER_YIELD_ROLES,
   scriptSourcesMiddleYieldIndex,
 } from "./script-sources-yields.js";
 
@@ -3883,6 +3884,11 @@ const makePrepareSelectedRedeemer = ({
         );
   }) satisfies BuildTxWithRedeemer;
 
+type ScriptSourcesObserverInvocation = {
+  readonly observerHash: string;
+  readonly activeCount: bigint;
+  readonly indices: readonly bigint[];
+};
 type ScriptSourcesMiddleInvocation = {
   readonly kind: number;
   readonly referenceInputIndex: bigint;
@@ -3905,6 +3911,7 @@ const semanticActionFields = ({
   assetFoldYieldReferenceInputIndex,
   phaseANativeItemInvocation,
   scriptSourcesMiddleInvocation,
+  scriptSourcesObserverInvocation,
   cekSelectionInvocation,
 }: {
   readonly resolverIndex: number;
@@ -3920,6 +3927,7 @@ const semanticActionFields = ({
    */
   readonly materialRoute?: PlutusDataValue;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly scriptSourcesObserverInvocation?: ScriptSourcesObserverInvocation;
   readonly scriptSourcesMiddleInvocation?: ScriptSourcesMiddleInvocation;
   readonly phaseANativeItemInvocation?: {
     readonly referenceInputIndex: bigint;
@@ -3938,6 +3946,21 @@ const semanticActionFields = ({
         "CEK material route is permitted only for the CEK execution-selection semantic resolver",
       );
     }
+  }
+  if (resolverIndex === 8 && semanticResolverIndex === 25) {
+    if (
+      scriptSourcesObserverInvocation === undefined ||
+      scriptSourcesObserverInvocation.indices.length !== 2 ||
+      scriptSourcesObserverInvocation.indices.some((index) => index < 0n)
+    )
+      throw new Error("Observer resolution requires both authenticated yields");
+    return [
+      ...base,
+      ...auxiliary.fields,
+      scriptSourcesObserverInvocation.observerHash,
+      scriptSourcesObserverInvocation.activeCount,
+      ...scriptSourcesObserverInvocation.indices,
+    ];
   }
   if (resolverIndex === 8 && semanticResolverIndex === 0) {
     if (
@@ -4561,6 +4584,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   assetFoldYieldReferenceInputIndex,
   phaseANativeItemInvocation,
   scriptSourcesMiddleInvocation,
+  scriptSourcesObserverInvocation,
   cekSelectionYieldReferenceInputIndices,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
@@ -4569,6 +4593,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   /** Required by, and only by, the CEK execution-selection resolver (11/1). */
   readonly materialRoute?: ValidationCekMaterialRoute;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly scriptSourcesObserverInvocation?: ScriptSourcesObserverInvocation;
   readonly scriptSourcesMiddleInvocation?: ScriptSourcesMiddleInvocation;
   readonly phaseANativeItemInvocation?: {
     readonly referenceInputIndex: bigint;
@@ -4610,6 +4635,9 @@ export const encodeValidationSemanticResolutionRedeemer = ({
     ...(scriptSourcesMiddleInvocation === undefined
       ? {}
       : { scriptSourcesMiddleInvocation }),
+    ...(scriptSourcesObserverInvocation === undefined
+      ? {}
+      : { scriptSourcesObserverInvocation }),
     ...(materialRoute === undefined
       ? {}
       : { materialRoute: validationCekMaterialRouteData(materialRoute) }),
@@ -4643,6 +4671,7 @@ const makeSemanticResolutionRedeemer = ({
   assetFoldYieldReferenceUtxo,
   phaseANativeItemYield,
   scriptSourcesMiddleYield,
+  scriptSourcesObserverYields,
   cekSelection,
   onLayout,
 }: {
@@ -4657,6 +4686,11 @@ const makeSemanticResolutionRedeemer = ({
   /** CEK program-material UTxOs the route names, in root order. */
   readonly materialReferenceUtxos?: readonly UTxO[];
   readonly assetFoldYieldReferenceUtxo?: UTxO;
+  readonly scriptSourcesObserverYields?: {
+    readonly utxos: readonly UTxO[];
+    readonly observerHash: string;
+    readonly activeCount: bigint;
+  };
   readonly scriptSourcesMiddleYield?: {
     readonly utxo: UTxO;
     readonly kind: number;
@@ -4736,6 +4770,17 @@ const makeSemanticResolutionRedeemer = ({
                 ctx,
                 phaseANativeItemYield.utxo,
                 "phase-A item yield",
+              ),
+            },
+          }),
+      ...(scriptSourcesObserverYields === undefined
+        ? {}
+        : {
+            scriptSourcesObserverInvocation: {
+              observerHash: scriptSourcesObserverYields.observerHash,
+              activeCount: scriptSourcesObserverYields.activeCount,
+              indices: scriptSourcesObserverYields.utxos.map((utxo) =>
+                requireReferenceInputIndex(ctx, utxo, "observer yield"),
               ),
             },
           }),
@@ -6432,6 +6477,61 @@ export const submitValidationDisputeSemanticResolution = async ({
       role: "V1 validation-trace value-and-mint asset-fold yield",
     });
   }
+  const scriptSourcesObserver = await (async () => {
+    if (resolverIndex !== 8 || staged.semanticResolverIndex !== 25)
+      return undefined;
+    const carriage = midgardFieldCarriageFromData(
+      staged.auxiliary.fields[2]!,
+      "observer field carriage",
+    );
+    const bytes =
+      carriage.carriage === "Inline"
+        ? carriage.preimage
+        : carriageMaterial === undefined
+          ? undefined
+          : Buffer.concat(
+              carriageMaterial.plan.publications.map((p) => p.bytes),
+            );
+    if (bytes === undefined)
+      throw new Error(
+        "Observer reference carriage requires its publication material",
+      );
+    const items = decodeMidgardFieldPreimage(bytes);
+    const itemIndex = staged.auxiliary.fields[1];
+    if (
+      typeof itemIndex !== "bigint" ||
+      itemIndex < 0n ||
+      itemIndex >= BigInt(items.length)
+    )
+      throw new Error("Observer item index is outside its field");
+    const observerHash = Buffer.from(items[Number(itemIndex)]!).toString("hex");
+    if (observerHash.length !== 56)
+      throw new Error("Observer field item must be a 28-byte hash");
+    const yields = await Promise.all(
+      SCRIPT_SOURCES_OBSERVER_YIELD_ROLES.map(async (spec) => {
+        const contract = contracts.validationTraceDispute.yields[spec.contract];
+        const entry = parsedDeploymentInfo[spec.deployment];
+        if (entry?.refScriptUTxO == null)
+          throw new Error(
+            `Missing authenticated observer yield ${spec.deployment}`,
+          );
+        const utxo = await fetchUtxoByOutRef({
+          lucid,
+          outRef: entry.refScriptUTxO,
+          label: spec.role,
+        });
+        requireValidationDisputeReferenceScript({
+          utxo,
+          deployedScriptHash: entry.scriptHash,
+          expectedScriptHash: contract.withdrawalScriptHash,
+          authPolicyId: referenceScriptAuthPolicyId,
+          role: spec.role,
+        });
+        return { contract, utxo };
+      }),
+    );
+    return { yields, observerHash, activeCount: BigInt(items.length) };
+  })();
   const scriptSourcesMiddleYield = await (async () => {
     if (resolverIndex !== 8 || staged.semanticResolverIndex !== 0)
       return undefined;
@@ -6493,8 +6593,9 @@ export const submitValidationDisputeSemanticResolution = async ({
     return { contract, utxo, kind: native ? (0 as const) : (1 as const) };
   })();
   const phaseAItemCarriage = !(
-    (resolverIndex === 5 || resolverIndex === 6) &&
-    staged.semanticResolverIndex === 1
+    ((resolverIndex === 5 || resolverIndex === 6) &&
+      staged.semanticResolverIndex === 1) ||
+    (resolverIndex === 8 && staged.auxiliary.index === 1)
   )
     ? undefined
     : midgardFieldCarriageFromData(
@@ -7630,6 +7731,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       ...(scriptSourcesMiddleYield === undefined
         ? []
         : [scriptSourcesMiddleYield.utxo]),
+      ...(scriptSourcesObserver?.yields.map((y) => y.utxo) ?? []),
       ...(phaseAItemCarriageMaterial?.referenceUtxos ?? []),
     ];
     if (phaseAItemCarriageMaterial !== undefined) {
@@ -7686,6 +7788,15 @@ export const submitValidationDisputeSemanticResolution = async ({
           ...(scriptSourcesMiddleYield === undefined
             ? {}
             : { scriptSourcesMiddleYield }),
+          ...(scriptSourcesObserver === undefined
+            ? {}
+            : {
+                scriptSourcesObserverYields: {
+                  utxos: scriptSourcesObserver.yields.map((y) => y.utxo),
+                  observerHash: scriptSourcesObserver.observerHash,
+                  activeCount: scriptSourcesObserver.activeCount,
+                },
+              }),
           ...(assetFoldYieldReferenceUtxo === undefined
             ? {}
             : { assetFoldYieldReferenceUtxo }),
@@ -7707,6 +7818,15 @@ export const submitValidationDisputeSemanticResolution = async ({
       .validFrom(range.validFrom)
       .validTo(range.validTo)
       .addSignerKey(signer.paymentKeyHash);
+    for (const observerYield of scriptSourcesObserver?.yields ?? [])
+      tx = tx.withdraw(
+        validatorToRewardAddress(
+          network,
+          observerYield.contract.withdrawalScript,
+        ),
+        0n,
+        Data.void(),
+      );
     if (scriptSourcesMiddleYield !== undefined)
       tx = tx.withdraw(
         validatorToRewardAddress(
