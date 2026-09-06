@@ -46,7 +46,6 @@ import {
   publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
   submitSetupTx,
-  TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES,
   transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
@@ -162,7 +161,6 @@ const makeHarness = async ({
       steps: harness.contracts.fraudProofContracts.transitionTrace.steps,
       entryNames: FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY.transitionTrace,
       familyLabel: "transition-trace",
-      oversizedEntryNames: TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES,
     });
   return { harness, publications, transitionTraceReferenceScripts };
 };

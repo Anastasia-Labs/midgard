@@ -1,9 +1,12 @@
+import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   hashBlockHeader,
   HUB_ORACLE_ASSET_NAME,
+  HubOracleDatum,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -12,11 +15,14 @@ import {
   requireUniqueOutputIndex,
   TransitionFaultProof,
   TransitionTraceFinalSpendRedeemer,
+  TransitionTraceProofCommitmentDatum,
   TransitionTraceRouteSpendRedeemer,
   TransitionTraceStepDatum,
+  TransitionTraceYieldFinalSpendRedeemer,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
+  Constr,
   credentialToAddress,
   Data,
   type LucidEvolution,
@@ -24,6 +30,7 @@ import {
   scriptHashToCredential,
   toUnit,
   type UTxO,
+  validatorToRewardAddress,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -52,11 +59,32 @@ import {
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
 import {
+  structuredDataPublicationPlan,
+  structuredDataTreeData,
+} from "../workflow/structured-data-preimage.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import { transitionTraceError } from "./errors.js";
+import {
+  initialTransitionTraceState,
+  nextTransitionTracePhase,
+  transitionTracePhaseIsTerminal,
+  transitionTracePhaseYield,
+} from "./phases.js";
+import {
+  resolveTransitionTraceByteCarriage,
+  resolveTransitionTraceDataCarriage,
+  transitionTraceByteChunks,
+} from "./proof-carriage.js";
+import {
+  resolveTransitionTraceProofCarriage,
+  transitionTraceProofChunks,
+} from "./proof-carriage.js";
+import { transitionTraceYieldData } from "./yield-data.js";
+import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 export type SubmitTransitionTraceProofConfig = {
   readonly lucid: LucidEvolution;
@@ -119,6 +147,11 @@ export type SubmitTransitionTraceRouteResult = Readonly<{
 }>;
 
 export type SubmitTransitionTraceFinalResult = Readonly<{
+  inputIndex: number;
+  outputIndex: number;
+  hubOracleRefInputIndex: number;
+  computationThreadMintRedeemerIndex: number;
+  fraudProofMintRedeemerIndex: number;
   txHash: string;
   fraudProofOutRef: string;
   fraudulentHeaderHash: string;
@@ -176,6 +209,7 @@ const makeTransitionTraceRouteSpendRedeemer = ({
   routeDatum,
   computationThreadUnit,
   proof,
+  proofReferences,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -183,6 +217,7 @@ const makeTransitionTraceRouteSpendRedeemer = ({
   readonly routeDatum: string;
   readonly computationThreadUnit: string;
   readonly proof: TransitionFaultProof;
+  readonly proofReferences: readonly UTxO[];
   readonly onLayout: (layout: TransitionTraceRouteSpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -206,7 +241,14 @@ const makeTransitionTraceRouteSpendRedeemer = ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            proof,
+            proof: proofReferences.length === 0 ? proof : null,
+            proof_ref_indices: proofReferences.map((utxo) =>
+              requireReferenceInputIndex(
+                ctx,
+                utxo,
+                "transition-trace proof chunk",
+              ),
+            ),
           },
         ],
       },
@@ -221,6 +263,8 @@ const makeTransitionTraceFinalSpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
+  yieldReferences = [],
+  proofReferences = [],
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -229,6 +273,8 @@ const makeTransitionTraceFinalSpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
+  readonly yieldReferences?: readonly UTxO[];
+  readonly proofReferences?: readonly UTxO[];
   readonly onLayout: (layout: TransitionTraceFinalSpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -260,19 +306,40 @@ const makeTransitionTraceFinalSpendRedeemer = ({
       ),
     };
     onLayout(layout);
-    return Data.to(
-      {
-        Continue: [
+    const args = {
+      input_index: layout.inputIndex,
+      output_index: layout.outputIndex,
+      hub_ref_input_index: layout.hubOracleRefInputIndex,
+      fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+    };
+    return proofReferences.length === 0
+      ? Data.to({ Continue: [args] }, TransitionTraceFinalSpendRedeemer)
+      : Data.to(
           {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+            Continue: [
+              {
+                ...args,
+                output_ref_indices: [],
+                deposit_event_ref_index: 0n,
+                yield_ref_input_indices: yieldReferences.map((utxo) =>
+                  requireReferenceInputIndex(
+                    ctx,
+                    utxo,
+                    "transition-trace semantic yield",
+                  ),
+                ),
+                proof_ref_indices: proofReferences.map((utxo) =>
+                  requireReferenceInputIndex(
+                    ctx,
+                    utxo,
+                    "transition-trace proof chunk",
+                  ),
+                ),
+              },
+            ],
           },
-        ],
-      },
-      TransitionTraceFinalSpendRedeemer,
-    );
+          TransitionTraceYieldFinalSpendRedeemer,
+        );
   }) satisfies BuildTxWithRedeemer;
 
 const unreachableTransitionVariant = (value: never): never => {
@@ -478,13 +545,15 @@ export const submitTransitionTraceProof = async ({
 
   signer.selectWallet(lucid);
   const finalValidator = contracts.transitionTrace.finals[finalIndex]!;
-  const routeDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: proof,
-    },
-    TransitionTraceStepDatum,
-  );
+  const proofReferences =
+    finalIndex === 4 || finalIndex === 5
+      ? await resolveTransitionTraceProofCarriage({
+          lucid,
+          proof,
+          publish: true,
+        })
+      : [];
+  const routeDatum = transitionTraceRouteDatum(proof, signer.paymentKeyHash);
   const routeAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [threadToken.unit]: 1n,
@@ -501,13 +570,14 @@ export const submitTransitionTraceProof = async ({
         routeAddress: finalValidator.spendingScriptAddress,
         routeDatum,
         computationThreadUnit: threadToken.unit,
+        proofReferences,
         proof,
         onLayout: (layout) => {
           routeLayout = layout;
         },
       }),
     )
-    .readFrom([routeReferenceScript])
+    .readFrom([routeReferenceScript, ...proofReferences])
     .pay.ToContract(
       finalValidator.spendingScriptAddress,
       { kind: "inline", value: routeDatum },
@@ -540,6 +610,35 @@ export const submitTransitionTraceProof = async ({
     );
   }
 
+  if (finalIndex === 4 || finalIndex === 5) {
+    const result = await submitTransitionTraceFinal({
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network,
+      signer,
+      threadOutRef: routeOutRef,
+      proof,
+      additionalReferenceInputs,
+      witnessReferenceScripts,
+      awaitConfirmation,
+    });
+    return {
+      ...result,
+      routeTxHash,
+      routeOutRef,
+      walletSource: signer.source,
+      proverAddress: signer.address,
+      fraudProver: signer.paymentKeyHash,
+      threadOutRef,
+      computationThreadPolicyId: contracts.computationThread.policyId,
+      computationThreadAssetName: threadToken.assetName,
+      fraudProofPolicyId: contracts.fraudProof.policyId,
+      fraudProofAssetName: threadToken.assetName,
+      fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+      transitionTraceProofAddress: finalValidator.spendingScriptAddress,
+    };
+  }
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
@@ -553,6 +652,24 @@ export const submitTransitionTraceProof = async ({
     lovelace: routedThreadUtxo.assets.lovelace ?? 0n,
     [fraudProofUnit]: 1n,
   };
+  if (hubOracleUtxo.datum == null)
+    throw new Error("transition-trace hub oracle omitted datum");
+  const semanticYields = await Promise.all(
+    transitionTraceYieldData({
+      proof,
+      network,
+      additionalReferenceInputs,
+      depositPolicyId: Data.from(hubOracleUtxo.datum, HubOracleDatum).deposit,
+    }).map(async (item) => ({
+      ...item,
+      reference: await requireDeploymentReferenceScript({
+        lucid,
+        deploymentInfo: parsedDeploymentInfo,
+        name: TRANSITION_TRACE_YIELD_REFERENCES[item.key].entry,
+      }),
+      validator: contracts.transitionTrace.yields[item.key],
+    })),
+  );
   let spendLayout: TransitionTraceFinalSpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
   const computationThreadMintCarriage = witnessMintingPolicyCarriage({
@@ -569,6 +686,8 @@ export const submitTransitionTraceProof = async ({
     hubOracleUtxo,
     finalReferenceScript,
     ...additionalReferenceInputs,
+    ...semanticYields.map((item) => item.reference),
+    ...proofReferences,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
@@ -585,6 +704,8 @@ export const submitTransitionTraceProof = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
+        yieldReferences: semanticYields.map((item) => item.reference),
+        proofReferences,
         onLayout: (layout) => {
           spendLayout = layout;
         },
@@ -615,6 +736,12 @@ export const submitTransitionTraceProof = async ({
       fraudProofAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
+  for (const item of semanticYields)
+    base.withdraw(
+      validatorToRewardAddress(network, item.validator.withdrawalScript),
+      0n,
+      item.redeemer,
+    );
   const tx = fraudProofMintCarriage.attach(
     computationThreadMintCarriage.attach(base),
   );
@@ -745,10 +872,15 @@ export const submitTransitionTraceRoute = async ({
   }
   signer.selectWallet(lucid);
   const finalValidator = contracts.transitionTrace.finals[finalIndex]!;
-  const routeDatum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: proof },
-    TransitionTraceStepDatum,
-  );
+  const proofReferences =
+    finalIndex === 4 || finalIndex === 5
+      ? await resolveTransitionTraceProofCarriage({
+          lucid,
+          proof,
+          publish: preSubmitBoundary === undefined,
+        })
+      : [];
+  const routeDatum = transitionTraceRouteDatum(proof, signer.paymentKeyHash);
   let layout: TransitionTraceRouteSpendLayout | undefined;
   const unsigned = await lucid
     .newTx()
@@ -760,13 +892,14 @@ export const submitTransitionTraceRoute = async ({
         routeAddress: finalValidator.spendingScriptAddress,
         routeDatum,
         computationThreadUnit: threadToken.unit,
+        proofReferences,
         proof,
         onLayout: (resolved) => {
           layout = resolved;
         },
       }),
     )
-    .readFrom([routeReferenceScript])
+    .readFrom([routeReferenceScript, ...proofReferences])
     .pay.ToContract(
       finalValidator.spendingScriptAddress,
       { kind: "inline", value: routeDatum },
@@ -888,18 +1021,34 @@ export const submitTransitionTraceFinal = async ({
       "Transition-trace routed thread omitted its inline proof datum.",
     );
   }
-  const routed = Data.from(threadUtxo.datum, TransitionTraceStepDatum);
+  const checkpoint =
+    finalIndex === 4 || finalIndex === 5
+      ? Data.from(threadUtxo.datum, TransitionTraceProofCommitmentDatum)
+      : null;
   if (
-    routed.fraud_prover !== signer.paymentKeyHash ||
-    routed.data === null ||
-    Data.to(routed.data, TransitionFaultProof) !==
-      Data.to(proof, TransitionFaultProof)
+    checkpoint === null
+      ? threadUtxo.datum !==
+        transitionTraceRouteDatum(proof, signer.paymentKeyHash)
+      : checkpoint.fraud_prover !== signer.paymentKeyHash ||
+        checkpoint.data === null ||
+        checkpoint.data.proof_commitment.hash !==
+          transitionTraceProofChunks(proof).hash ||
+        checkpoint.data.kind !== initialTransitionTraceState(proof).kind
   ) {
     throw transitionTraceError(
       "submissionRejected",
-      "Transition-trace routed thread changed its prover or proof.",
+      "Transition-trace routed thread changed its prover or proof commitment.",
     );
   }
+  signer.selectWallet(lucid);
+  const proofReferences =
+    finalIndex === 4 || finalIndex === 5
+      ? await resolveTransitionTraceProofCarriage({
+          lucid,
+          proof,
+          publish: false,
+        })
+      : [];
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -921,6 +1070,265 @@ export const submitTransitionTraceFinal = async ({
     { fraud_prover: signer.paymentKeyHash },
     FraudProofTokenDatum,
   );
+  if (hubOracleUtxo.datum == null)
+    throw new Error("transition-trace hub oracle omitted datum");
+  const allYieldData = transitionTraceYieldData({
+    proof,
+    network,
+    additionalReferenceInputs,
+    depositPolicyId: Data.from(hubOracleUtxo.datum, HubOracleDatum).deposit,
+  });
+  const depositWitness =
+    "InvalidOneStepTransition" in proof.fault &&
+    "ValidDepositTransition" in proof.fault.InvalidOneStepTransition.witness
+      ? proof.fault.InvalidOneStepTransition.witness.ValidDepositTransition
+      : null;
+  const depositUnit =
+    depositWitness === null
+      ? null
+      : Data.from(hubOracleUtxo.datum, HubOracleDatum).deposit +
+        depositWitness.event_asset_name;
+  const depositReference =
+    depositUnit === null
+      ? undefined
+      : additionalReferenceInputs.find(
+          (utxo) => utxo.assets[depositUnit] === 1n,
+        );
+  const continuationReferences =
+    checkpoint?.data?.kind === 1n &&
+    ![0n, 7n, 8n, 10n].includes(checkpoint.data.phase)
+      ? []
+      : additionalReferenceInputs;
+  const selectedOutput =
+    checkpoint?.data == null
+      ? undefined
+      : allYieldData.find((item) => item.outputCbors !== undefined)
+          ?.outputCbors?.[Number(checkpoint.data.output_index)];
+  const outputReferences =
+    selectedOutput === undefined
+      ? []
+      : await resolveTransitionTraceByteCarriage({
+          lucid,
+          chunks: transitionTraceByteChunks(selectedOutput),
+          publish: preSubmitBoundary === undefined,
+        });
+  const selected =
+    checkpoint?.data == null
+      ? null
+      : transitionTracePhaseYield(checkpoint.data);
+  const inlineDatum =
+    selected === "l2Summaries" && selectedOutput !== undefined
+      ? decodeMidgardTxOutput(Buffer.from(selectedOutput, "hex")).datum
+      : undefined;
+  const datumPlan =
+    inlineDatum?.kind === "inline"
+      ? structuredDataPublicationPlan(
+          Buffer.from(inlineDatum.cbor).toString("hex"),
+        )
+      : undefined;
+  const datumReferences =
+    datumPlan === undefined
+      ? []
+      : await resolveTransitionTraceDataCarriage({
+          lucid,
+          datums: datumPlan.publicationDatums,
+          publish: preSubmitBoundary === undefined,
+        });
+  const selectedData =
+    selected === null
+      ? []
+      : [
+          allYieldData.find((item) => item.key === selected) ?? {
+            key: selected,
+            redeemer: Data.void(),
+          },
+        ];
+  const semanticYields = await Promise.all(
+    selectedData.map(async (item) => ({
+      ...item,
+      reference: await requireDeploymentReferenceScript({
+        lucid,
+        deploymentInfo: parsedDeploymentInfo,
+        name: TRANSITION_TRACE_YIELD_REFERENCES[item.key].entry,
+      }),
+      validator: contracts.transitionTrace.yields[item.key],
+    })),
+  );
+  if (
+    checkpoint?.data != null &&
+    !transitionTracePhaseIsTerminal(checkpoint.data)
+  ) {
+    const planned = nextTransitionTracePhase({
+      state: checkpoint.data,
+      proof,
+      yields: allYieldData,
+    });
+    const semantic = semanticYields[0];
+    const nextDatum = Data.to(
+      { fraud_prover: signer.paymentKeyHash, data: planned.state },
+      TransitionTraceProofCommitmentDatum,
+    );
+    let nextIndex: bigint | undefined;
+    const redeemer = ((ctx) => {
+      nextIndex = requireUniqueOutputIndex(
+        ctx.outputs,
+        outputWithDatumAndUnitPredicate({
+          address: threadUtxo.address,
+          datum: nextDatum,
+          unit: threadToken.unit,
+        }),
+        "transition checkpoint output",
+      );
+      return Data.to(
+        {
+          Continue: [
+            {
+              input_index: requireInputIndex(
+                ctx,
+                threadUtxo,
+                "transition checkpoint",
+              ),
+              output_index: nextIndex,
+              hub_ref_input_index: requireReferenceInputIndex(
+                ctx,
+                hubOracleUtxo,
+                "transition hub",
+              ),
+              fraud_proof_mint_redeemer_index: 0n,
+              deposit_event_ref_index:
+                depositReference === undefined ||
+                continuationReferences.length === 0
+                  ? 0n
+                  : requireReferenceInputIndex(
+                      ctx,
+                      depositReference,
+                      "transition deposit event",
+                    ),
+              output_ref_indices: outputReferences.map((utxo) =>
+                requireReferenceInputIndex(
+                  ctx,
+                  utxo,
+                  "transition output chunk",
+                ),
+              ),
+              yield_ref_input_indices:
+                semantic === undefined
+                  ? []
+                  : [
+                      requireReferenceInputIndex(
+                        ctx,
+                        semantic.reference,
+                        "transition yield",
+                      ),
+                    ],
+              proof_ref_indices: proofReferences.map((utxo) =>
+                requireReferenceInputIndex(ctx, utxo, "transition proof chunk"),
+              ),
+            },
+          ],
+        },
+        TransitionTraceYieldFinalSpendRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    let checkpointBuilder = lucid
+      .newTx()
+      .collectFrom([selectFeeInput(await lucid.wallet().getUtxos())])
+      .collectFrom([threadUtxo], redeemer)
+      .readFrom([
+        hubOracleUtxo,
+        finalReferenceScript,
+        ...(semantic === undefined ? [] : [semantic.reference]),
+        ...continuationReferences,
+        ...datumReferences,
+        ...proofReferences,
+        ...outputReferences,
+      ]);
+    if (semantic !== undefined)
+      checkpointBuilder = checkpointBuilder.withdraw(
+        validatorToRewardAddress(network, semantic.validator.withdrawalScript),
+        0n,
+        selected === "l2Summaries"
+          ? (((ctx) =>
+              Data.to([
+                Data.from(planned.redeemer),
+                datumPlan === undefined
+                  ? new Constr(0, [new Constr(0, [])])
+                  : new Constr(1, [
+                      structuredDataTreeData(datumPlan.tree, (index) =>
+                        requireReferenceInputIndex(
+                          ctx,
+                          datumReferences[index]!,
+                          "transition output datum",
+                        ),
+                      ),
+                    ]),
+              ])) satisfies BuildTxWithRedeemer)
+          : planned.redeemer,
+      );
+    const completed = await checkpointBuilder.pay
+      .ToContract(
+        threadUtxo.address,
+        { kind: "inline", value: nextDatum },
+        { lovelace: threadUtxo.assets.lovelace ?? 0n, [threadToken.unit]: 1n },
+      )
+      .addSignerKey(signer.paymentKeyHash)
+      .complete({ localUPLCEval: true })
+      .catch((cause: unknown) => {
+        throw transitionTraceError(
+          "submissionRejected",
+          `Transition checkpoint ${checkpoint.data?.kind}/${checkpoint.data?.phase} failed: ${formatUnknownError(cause)}`,
+          cause,
+        );
+      });
+    const signed = await completed.sign.withWallet().complete();
+    await reachFraudProofPreSubmitBoundary({
+      signed,
+      referenceScripts: workflowReferenceScriptsUsedByTransaction({
+        signed,
+        candidates: [
+          {
+            role: `V1 fraud-proof transition-trace final-${finalIndex.toString()}`,
+            utxo: finalReferenceScript,
+            expectedScript: finalValidator.spendingScript,
+          },
+          ...(semantic === undefined
+            ? []
+            : [
+                {
+                  role: TRANSITION_TRACE_YIELD_REFERENCES[semantic.key].role,
+                  utxo: semantic.reference,
+                  expectedScript: semantic.validator.withdrawalScript,
+                },
+              ]),
+        ],
+      }),
+      boundary: preSubmitBoundary,
+    });
+    const txHash = await signed.submit().catch((cause: unknown) => {
+      throw transitionTraceError(
+        "submissionRejected",
+        `Transition checkpoint ${checkpoint.data?.kind}/${checkpoint.data?.phase} submission failed: ${formatUnknownError(cause)}`,
+        cause,
+      );
+    });
+    await lucid.awaitTx(txHash);
+    if (nextIndex === undefined)
+      throw new Error("transition checkpoint layout unresolved");
+    return await submitTransitionTraceFinal({
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network,
+      signer,
+      threadOutRef: `${txHash}#${nextIndex.toString()}`,
+      proof,
+      additionalReferenceInputs,
+      witnessReferenceScripts,
+      preSubmitBoundary,
+      awaitConfirmation,
+    });
+  }
+
   let spendLayout: TransitionTraceFinalSpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
   const computationThreadMintCarriage = witnessMintingPolicyCarriage({
@@ -946,6 +1354,8 @@ export const submitTransitionTraceFinal = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
+        yieldReferences: semanticYields.map((item) => item.reference),
+        proofReferences,
         onLayout: (resolved) => {
           spendLayout = resolved;
         },
@@ -955,6 +1365,8 @@ export const submitTransitionTraceFinal = async ({
       hubOracleUtxo,
       finalReferenceScript,
       ...additionalReferenceInputs,
+      ...semanticYields.map((item) => item.reference),
+      ...proofReferences,
       ...computationThreadMintCarriage.referenceInputs,
       ...fraudProofMintCarriage.referenceInputs,
     ])
@@ -985,6 +1397,12 @@ export const submitTransitionTraceFinal = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
+  for (const item of semanticYields)
+    base.withdraw(
+      validatorToRewardAddress(network, item.validator.withdrawalScript),
+      0n,
+      item.redeemer,
+    );
   const unsigned = await fraudProofMintCarriage
     .attach(computationThreadMintCarriage.attach(base))
     .complete({ localUPLCEval: true });
@@ -1003,6 +1421,11 @@ export const submitTransitionTraceFinal = async ({
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
+        ...semanticYields.map((item) => ({
+          role: TRANSITION_TRACE_YIELD_REFERENCES[item.key].role,
+          utxo: item.reference,
+          expectedScript: item.validator.withdrawalScript,
+        })),
         {
           role: `V1 fraud-proof transition-trace final-${finalIndex.toString()}`,
           utxo: finalReferenceScript,
@@ -1034,6 +1457,15 @@ export const submitTransitionTraceFinal = async ({
   }
   return Object.freeze({
     txHash,
+    inputIndex: Number(spendLayout.inputIndex),
+    outputIndex: Number(spendLayout.outputIndex),
+    hubOracleRefInputIndex: Number(spendLayout.hubOracleRefInputIndex),
+    computationThreadMintRedeemerIndex: Number(
+      computationThreadMintRedeemerIndex,
+    ),
+    fraudProofMintRedeemerIndex: Number(
+      spendLayout.fraudProofMintRedeemerIndex,
+    ),
     fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: proof.challenged_header_hash,
     computationThreadUnit: threadToken.unit,
@@ -1061,4 +1493,17 @@ export const submitTransitionTraceProofFromFiles = async (
     proof: config.proof,
     awaitConfirmation: config.awaitConfirmation,
   });
+};
+
+const transitionTraceRouteDatum = (
+  proof: TransitionFaultProof,
+  prover: string,
+): string => {
+  const index = transitionTraceFinalIndex(proof);
+  return index === 4 || index === 5
+    ? Data.to(
+        { fraud_prover: prover, data: initialTransitionTraceState(proof) },
+        TransitionTraceProofCommitmentDatum,
+      )
+    : Data.to({ fraud_prover: prover, data: proof }, TransitionTraceStepDatum);
 };

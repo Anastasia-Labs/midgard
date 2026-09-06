@@ -646,12 +646,14 @@ export const TransitionTraceStepDatum = asDataType<TransitionTraceStepDatum>(
 export const TransitionTraceRouteArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  proof: TransitionFaultProofSchema,
+  proof: Data.Nullable(TransitionFaultProofSchema),
+  proof_ref_indices: Data.Array(Data.Integer()),
 });
 export type TransitionTraceRouteArgs = {
   readonly input_index: bigint;
   readonly output_index: bigint;
-  readonly proof: TransitionFaultProof;
+  readonly proof: TransitionFaultProof | null;
+  readonly proof_ref_indices: bigint[];
 };
 export const TransitionTraceRouteArgs = asDataType<TransitionTraceRouteArgs>(
   TransitionTraceRouteArgsSchema,
@@ -688,6 +690,92 @@ export type TransitionTraceFinalSpendRedeemer =
 export const TransitionTraceFinalSpendRedeemer =
   asDataType<TransitionTraceFinalSpendRedeemer>(
     TransitionTraceFinalSpendRedeemerSchema,
+  );
+
+export const TransitionTraceYieldFinalArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+  yield_ref_input_indices: Data.Array(Data.Integer()),
+  proof_ref_indices: Data.Array(Data.Integer()),
+  output_ref_indices: Data.Array(Data.Integer()),
+  deposit_event_ref_index: Data.Integer(),
+});
+export type TransitionTraceYieldFinalArgs = Data.Static<
+  typeof TransitionTraceYieldFinalArgsSchema
+>;
+export const TransitionTraceYieldFinalSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(TransitionTraceYieldFinalArgsSchema);
+export type TransitionTraceYieldFinalSpendRedeemer = Data.Static<
+  typeof TransitionTraceYieldFinalSpendRedeemerSchema
+>;
+export const TransitionTraceYieldFinalSpendRedeemer =
+  asDataType<TransitionTraceYieldFinalSpendRedeemer>(
+    TransitionTraceYieldFinalSpendRedeemerSchema,
+  );
+
+export const TransitionTraceOpenedOutputsSchema = Data.Object({
+  spend_input_keys: Data.Array(Data.Bytes()),
+  output_hashes: Data.Array(Data.Bytes()),
+});
+export type TransitionTraceOpenedOutputs = Data.Static<
+  typeof TransitionTraceOpenedOutputsSchema
+>;
+export const TransitionTraceOpenedOutputs =
+  asDataType<TransitionTraceOpenedOutputs>(TransitionTraceOpenedOutputsSchema);
+const TransitionTraceDataSummarySchema = Data.Object({
+  root: Data.Bytes(),
+  cbor_length: Data.Integer(),
+  memory: Data.Integer(),
+});
+export const TransitionTraceOutputSummariesSchema = Data.Object({
+  summaries: Data.Array(
+    Data.Tuple([
+      TransitionTraceDataSummarySchema,
+      TransitionTraceDataSummarySchema,
+      TransitionTraceDataSummarySchema,
+    ]),
+  ),
+});
+export type TransitionTraceOutputSummaries = Data.Static<
+  typeof TransitionTraceOutputSummariesSchema
+>;
+export const TransitionTraceOutputSummaries =
+  asDataType<TransitionTraceOutputSummaries>(
+    TransitionTraceOutputSummariesSchema,
+  );
+
+export const TransitionTraceFinalStateSchema = Data.Object({
+  kind: Data.Integer(),
+  phase: Data.Integer(),
+  proof_commitment: Data.Object({ hash: Data.Bytes() }),
+  opened: TransitionTraceOpenedOutputsSchema,
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  current_root: Data.Bytes(),
+  summaries: TransitionTraceOutputSummariesSchema,
+  scan_cbor: Data.Bytes(),
+  value_cbor: Data.Bytes(),
+  value_start: Data.Integer(),
+  value_end: Data.Integer(),
+  value_summary: Data.Nullable(TransitionTraceDataSummarySchema),
+  descriptor_cbor: Data.Bytes(),
+  deposit_index: Data.Integer(),
+  deposit_source_cbor: Data.Bytes(),
+  deposit_asset_count: Data.Integer(),
+});
+export type TransitionTraceFinalState = Data.Static<
+  typeof TransitionTraceFinalStateSchema
+>;
+export const TransitionTraceProofCommitmentDatumSchema =
+  faultProofStepDatumSchema(TransitionTraceFinalStateSchema);
+export type TransitionTraceProofCommitmentDatum = Data.Static<
+  typeof TransitionTraceProofCommitmentDatumSchema
+>;
+export const TransitionTraceProofCommitmentDatum =
+  asDataType<TransitionTraceProofCommitmentDatum>(
+    TransitionTraceProofCommitmentDatumSchema,
   );
 
 export const makeTransitionFaultProof = ({

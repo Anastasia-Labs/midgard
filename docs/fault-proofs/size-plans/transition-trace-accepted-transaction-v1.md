@@ -539,3 +539,167 @@ the copy with `aiken check --env testnet -m 'proof_exunits_frontier.{..}'`,
 - **Spec**: GOAL_SPEC §9.1 outputs 4, 6, 9 require the yields to have tests,
   catalogue/deployment records and emulator lifecycle; C52 is unaffected (still
   three transactions per proof).
+
+
+## Implementation checkpoint — 2026-09-05
+
+The isolated implementation starts at shared `5249c6ce`. First implement the
+predicate-preserving authenticated yielding split above, together with deposit
+final 5. New code names omit version suffixes; pinned existing proof and plan
+names remain. The initial graph remains route plus eight finals, with eight
+applied rewarding scripts. Reference roles, zero withdrawals, unique dispatcher
+input and exact redeemer purpose bind each delegated check. Existing monolithic
+predicates remain available for equivalence tests.
+
+The old prototype measurements are hypotheses, not closure evidence. Rebuild
+with pinned testnet Aiken and measure all signed publications and aggregate
+execution using the standard Van Rossem ledger. In particular, test exact
+5,000-byte Cardano Value, wide output lists, and maximum authenticated evidence
+carriage. If the unchanged whole-proof datum or aggregate computation exceeds
+limits, introduce authenticated resumable stages and record the measured reason
+before claiming completion. Preserve cancellation and durable replay at every
+new stage. The scope excludes validationTraceDispute, ValueAndMint, and
+crossBlockDuplicateEvent. Installed transitionTrace detection/recovery and every
+consumer of changed deployment parameters are included.
+
+### Maximum-carriage correction
+
+The initial planned yielding split compiled every body below 15 KB and passed a
+real accepted-L2 mint/removal journey. Its maximum fixtures failed standard CML
+completion: 49,234 bytes for an exact 5,000-byte value with 1,304 assets, and
+23,700 bytes for sixteen outputs. Structured output Data repeats each asset's
+28-byte policy; inline proof carriage also repeats the proof in the route
+redeemer and continuation datum. These are signed-transaction failures, not
+reference-script publication failures.
+
+Accepted/deposit routes therefore use canonical proof CBOR published in 4,096-byte
+reference-data chunks. The route decodes the exact full proof, authenticates its
+header against the thread token, fixes final 4 or 5, and freezes its whole-byte
+hash. Those finals and their uniquely bound yields reopen that same commitment.
+The other six finals retain their inline proof route. Structured output lists
+are removed from the opening redeemer; two applied output-assembly yields derive
+the descriptors from committed output bytes and exact summaries. The updated
+maximum execution measurements still govern whether vertical continuation is
+also required. No transaction or evaluator limit is relaxed.
+
+### Measured continuation refinement (2026-09-05)
+
+The same-transaction split did not close the ledger envelope: the original
+maximum 5000-byte Value/1304-asset proof serialized to 49,234 signed bytes;
+16 outputs serialized to 23,700 bytes. Referenced proof bytes fixed that
+carriage limit, but repeated source decoding and descriptor derivation still
+exceeded aggregate execution memory. Accepted/deposit finals therefore retain
+one authenticated computation-thread NFT and advance through bounded self-loops.
+There is no operator response or timeout introduced by these continuations.
+
+The route authenticates the exact header envelope and fault variant, freezes
+the canonical proof-byte hash, and sends the thread to final 4 or 5. It does
+not decode unrelated nested MPF witnesses. Each consuming phase checks the
+exact typed fields it uses. Proof bytes and output bytes use 4096-byte reference
+chunks; output opening freezes their independent Blake2b-256 hashes, so large
+output preimages are never repeated in the thread datum or redeemer.
+
+Accepted L2 phases are: 6 (trace/event/source binding), 0 (field opening),
+1 (one spend deletion, or close the spend list), 2 (four canonical output
+scan tokens), 7 (up to eight authenticated asset-summary folds), 8 (canonical
+datum/reference-script semantics and exact TxOut summaries), 3 (descriptor
+derivation), 9 (bind that descriptor and ledger key to the committed insert),
+4 (one insertion), and 5 (post-root mismatch and proof-token mint). Phases
+2/7 self-loop; 4 returns to 2 for another output. Deposit uses the same output
+phases, begins with its authenticated L1 projection, and has no spend phase.
+Accepted validation-claim mismatch uses independent structure/source/endpoint
+phases, followed by the original terminal work-root and post-root checks.
+
+The output scanner proves canonical field boundaries and the asset frontier.
+The existing ledger-output-value machine proves the exact semantic Value map.
+A derived skeleton removes the already-proven Value and datum from the
+original output. The canonical scanner and typed summary phase authenticate
+those source parts before assembly; the assembly decoder validates the retained
+address and reference script. Descriptor assembly restores the scanned lovelace, asset
+frontier, Cardano Value size, original output length and item commitment.
+A separate phase binds the derived descriptor to the source proof, avoiding
+aggregate decoding of a maximum source proof and maximum output in one step.
+
+Dense testing exposed an existing host descriptor bug: Lucid `Data.to` sorts
+mixed-width map keys lexicographically, while authenticated output CBOR and
+both on-chain descriptor derivations retain length-then-bytes order. Commit
+`8c03c053` preserves the source map order in TxOut/TxInInfo and spend-datum
+summaries. New host regressions compare against the existing staged output
+proof, and the Aiken maximum-value golden fixes the semantic root.
+
+Measured intermediate gates: exact 5000-byte Value/1304 assets, exact
+16384-byte output, exact 32768-byte aggregate output field, and 16 outputs
+all complete real registered-chain proof minting and removal under the standard
+Van Rossem evaluator. Combined 64-level source membership and final-tree
+positive ledger regeneration remain mandatory; intermediate generated ledgers
+are diagnostic only until their blueprint digest is frozen for the entire run.
+
+The outer proof transport uses definite byte strings with map order preserved.
+Its hash commits the exact transport bytes; embedded consensus source preimages
+remain unchanged and are checked at the native authentication doors. The route
+checks the header envelope and fault/witness constructor shape; each subsequent
+phase validates the exact witness fields it consumes. This avoids repeatedly
+materializing a maximum native field in the generic route.
+
+An intermediate normal-build run passed all 11 registered-chain cases,
+including exact 32,768-byte aggregate output field plus 64-level source proof:
+1,533 measured transactions (506 publications), maximum signed size 15,302
+bytes, memory 11,727,203, CPU 3,615,263,563, minimum publication reserve 570
+bytes. Accepted validation-claim positive/removal and honest refusal also pass;
+all three honest variants now assert an evaluator failure and absent fraud NFT.
+These measurements precede the dense-deposit projection refinement and must be
+regenerated against the final blueprint. The focused Aiken suite passed 101
+checks before that refinement.
+
+### Maximum inline datum refinement
+
+A 12,000-byte accepted inline datum exceeded actual memory when phase 8
+materialized its CBOR. The summary redeemer now carries an independently
+published structured Data value. The authenticated scanner supplies the exact
+datum offset/length; serialiseData equality binds the reconstructed value to
+those source bytes. A recursive typed predicate preserves the prior decoder's
+integer range and constructor alternatives, avoiding a second byte scan.
+Address and reference-script metadata come from the frozen scan facts. Phase 3
+omits the already-authenticated datum when assembling metadata and retains the
+original output length, item commitment and three semantic summaries.
+
+The first structured implementation compiled to 16,491 bytes and was rejected
+by real publication. Constructing the metadata view directly from scan facts
+removed the repeated output decoder. Both the 12,000-byte datum combined with a
+reference script in an exact 16,384-byte output, and the 15,841-byte datum that
+alone fills an exact 16,384-byte output now pass full mint/removal with reserve.
+Their standard ledger has 187 transactions, 92 publications, maximum signed
+size 14,903 bytes and maximum memory 5,776,374 units. This is evidence for these
+two paths only; the consolidated final ledger still requires all family paths.
+
+### Final body-size checkpoint
+
+The normal pinned testnet build measures accepted dispatcher 14,502 bytes,
+deposit dispatcher 10,570 bytes, route 12,559 bytes, and all rewarding bodies
+7,797–13,593 bytes. There are fifteen authenticated applied yield roles, with
+shared scan/value/assembly bodies applied separately where their dispatcher
+identity differs. Every role is published and registered by the lifecycle
+harness before the long continuation chain begins. The physical family remains
+route plus eight finals. Maximum signed publication and continuation measurements
+are recorded separately in the final ledger; body sizes alone are not closure.
+
+### Verified direct-family ledger
+
+Normal pinned testnet blueprint SHA-256
+`81f0f32db3f0eb6b145237132902870de217fa970e317cbb136fd40fc1866a75`
+passes all 21 final-family emulator cases (20 non-dense plus the combined
+1,295-asset deposit maximum). Every positive journey mints its proof and removes
+the registered fraudulent block; honest and substituted-data cases refuse on
+chain, and both continuation families cancel and restart. The same blueprint
+passes six existing lifecycle/subvariant/summary cases and 106 selected Aiken
+checks. SDK parameter and manifest resolver fixtures, node ABI and watcher graph
+checks pass.
+
+The standard writer's [combined ledger](transition-trace-fit-ledger.json) has
+3,020 measured transactions, including 966 publications. Maxima are 14,903 signed
+bytes, 12,076,027 memory units and 3,694,601,174 CPU units; minimum publication
+reserve is 969 bytes. Memory also remains below the plan's 13,200,000 target.
+The ledger digest is
+`33af2c7d1ea78c76e30b93b7c280a2e2cf9e9882423dd0495d660785156a7546`.
+These are direct-family gates. Installed retained-history admission and durable
+workflow gates are tracked separately and are not asserted complete here.

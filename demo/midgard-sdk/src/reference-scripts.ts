@@ -256,7 +256,35 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 validation-trace CEK selection material data yield":
     "V1VtCekSelMatDataYield",
 
+  "V1 fraud-proof transition-trace final-5 replay yield": "V1FpTtF5ReplayYield",
   "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
+  "V1 fraud-proof transition-trace final-4 L2 assembly yield":
+    "V1FpTtF4L2AssemblyYield",
+  "V1 fraud-proof transition-trace final-4 L2 scan yield": "V1FpTtF4ScanYield",
+  "V1 fraud-proof transition-trace final-4 L2 value yield":
+    "V1FpTtF4ValueYield",
+  "V1 fraud-proof transition-trace final-5 assembly yield":
+    "V1FpTtF5AssemblyYield",
+  "V1 fraud-proof transition-trace final-5 scan yield": "V1FpTtF5ScanYield",
+  "V1 fraud-proof transition-trace final-5 value yield": "V1FpTtF5ValueYield",
+
+  "V1 fraud-proof transition-trace final-4 L2 open yield":
+    "V1FpTtF4L2OpenYield",
+  "V1 fraud-proof transition-trace final-4 L2 summaries yield":
+    "V1FpTtF4L2SummariesYield",
+  "V1 fraud-proof transition-trace final-4 L2 replay yield":
+    "V1FpTtF4L2ReplayYield",
+  "V1 fraud-proof transition-trace final-4 claim structure yield":
+    "V1FpTtF4ClaimStructYield",
+  "V1 fraud-proof transition-trace final-4 claim source yield":
+    "V1FpTtF4ClaimSourceYield",
+  "V1 fraud-proof transition-trace final-4 claim endpoints yield":
+    "V1FpTtF4ClaimEndsYield",
+  "V1 fraud-proof transition-trace final-5 projection yield":
+    "V1FpTtF5ProjectionYield",
+  "V1 fraud-proof transition-trace final-5 summaries yield":
+    "V1FpTtF5SummariesYield",
+
   "V1 fraud-proof min-ada step-02 UTxO yield": "V1FpMinAdaS02UtxoYield",
   "correction-lock spending": "CorrectionLockSpend",
   "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",

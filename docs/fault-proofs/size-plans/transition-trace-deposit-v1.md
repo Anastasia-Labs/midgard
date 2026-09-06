@@ -398,3 +398,89 @@ because `validate_valid_deposit_transition` is kept as the reference predicate.
   decoded, typed redeemer decoded).
 - **Spec**: GOAL_SPEC §9.1 outputs 4, 6, 9 for the new yields; Q47/Q39
   deposit-fidelity rows unaffected; C52 unchanged (three transactions).
+
+### Shared bounded descriptor implementation
+
+The accepted-transaction plan's 2026-09-05 measured continuation refinement is
+also the deposit descriptor engine. Deposit source projection freezes the exact
+L1-authenticated output hash and source output index, then canonical scanning,
+asset summaries, remaining output semantics, descriptor derivation, source
+binding and insertion advance in separately authenticated transactions. The
+L1 reference index is resolved in the final transaction layout; the source
+identity, event NFT and deposit information remain authenticated on chain.
+
+### Maximum L1 deposit source refinement
+
+The exact 5,000-byte L1 Value includes the deposit event NFT. The maximum
+fixture therefore uses 1,295 projected assets, a separate NFT policy and a
+65,536 quantity at the last two-byte asset name; its projected Value is 4,966
+bytes. A 1,304-asset projected Value would require an inadmissible 5,034-byte
+L1 source. The depositor uses a separate wallet so reference-script publication
+transactions do not carry unrelated dense token change.
+
+The combined source-authentication and projection yield exceeded actual ledger
+memory at that bound. Whole-Value deserialization and canonical map conversion
+also exceeded the limit after source authentication was separated. The final
+bounded design freezes the exact authenticated L1 output reference, its NFT
+identifiers, and its non-NFT asset count in phase 0. The existing source-id and
+DepositInfo checks run before this state is created. An L1 output is immutable:
+checking that same output reference and NFT on each source-consuming hop binds
+the original Value and DepositInfo without repeatedly hashing the dense map.
+The Value fold verifies at most four native assets per transaction against the
+original reference Value. Canonical scanning proves unique native keys; matching
+cardinality, each positive quantity, lovelace and NFT exclusion proves exact
+Value equality without materializing a second 1,295-entry map. Each fold
+re-authenticates the frozen output reference and NFT. This also avoids depending on the
+ledger's bytewise map order when native CBOR requires length-then-bytes order.
+
+Phase 10 compares the independently scanned output skeleton against the exact
+source address and datum with an empty Value. The dedicated deposit summaries
+consume the authenticated raw L1 datum directly, avoiding large Data CBOR
+deserialization; the shared Value summary remains independently authenticated.
+Descriptor assembly uses the already-checked address without rematerializing
+the datum, whose summaries are already frozen. Every transition is an
+NFT-custodied self-loop with one exact authenticated zero-withdrawal role.
+The phase uses existing roles; no catalogue successor or operator action is
+added. These new maximum gates must pass before completion is recorded.
+
+The combined 5,000-byte source Value, 256-byte datum and 64-level source MPF
+fixture exceeded memory when membership authentication and projection shared
+phase 0. Deposit now starts in phase 6, which authenticates the committed
+source/trace/event binding and advances exactly to phase 0 without a semantic
+withdrawal. Phase 0 then freezes the L1 projection source. This is the same
+source-authentication boundary used for accepted transactions. The source L1
+reference is carried only in phases that consume it (0, 7, 8 and 10).
+
+Each deposit Value witness supplies an index into its source policy's existing
+asset list. The validator sorts only the bounded four requested indices and walks each
+source policy once, checking the exact name and quantity at every selected
+index. It then checks canonical native frontier membership in the original
+witness order. Duplicate and backward indices are rejected. It does not sort or rebuild
+the complete source map. A real emulator case deliberately substitutes -1 for
+asset indices and must fail during script evaluation without minting a proof.
+
+The host caches one complete output derivation by exact proof and reference
+input content and returns detached results. This avoids recomputing complete
+semantic commitments at every continuation; it changes no on-chain predicate
+or ledger/evaluator limit. Combined maximum evidence is still being gathered.
+
+### Verified direct-family ledger
+
+Normal pinned testnet blueprint SHA-256
+`81f0f32db3f0eb6b145237132902870de217fa970e317cbb136fd40fc1866a75`
+passes all 21 final-family emulator cases (20 non-dense plus the combined
+1,295-asset deposit maximum). Every positive journey mints its proof and removes
+the registered fraudulent block; honest and substituted-data cases refuse on
+chain, and both continuation families cancel and restart. The same blueprint
+passes six existing lifecycle/subvariant/summary cases and 106 selected Aiken
+checks. SDK parameter and manifest resolver fixtures, node ABI and watcher graph
+checks pass.
+
+The standard writer's [combined ledger](transition-trace-fit-ledger.json) has
+3,020 measured transactions, including 966 publications. Maxima are 14,903 signed
+bytes, 12,076,027 memory units and 3,694,601,174 CPU units; minimum publication
+reserve is 969 bytes. Memory also remains below the plan's 13,200,000 target.
+The ledger digest is
+`33af2c7d1ea78c76e30b93b7c280a2e2cf9e9882423dd0495d660785156a7546`.
+These are direct-family gates. Installed retained-history admission and durable
+workflow gates are tracked separately and are not asserted complete here.

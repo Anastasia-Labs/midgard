@@ -280,6 +280,7 @@ export {
   type BuildTransitionTraceFaultProofContractsParams,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   TRANSITION_TRACE_ROUTE_FINAL_COUNT,
+  TRANSITION_TRACE_YIELD_TITLES,
   type TransitionTraceFaultProofContracts,
 } from "./families/transition-trace.js";
 export {

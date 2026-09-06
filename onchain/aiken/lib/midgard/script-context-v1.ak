@@ -248,6 +248,21 @@ pub fn ledger_output_summaries_v1(
     cek_data_v1.DataSummaryV1,
   ),
 > {
+  ledger_output_summaries_with_value_v1(output_cbor, None)
+}
+
+/// A caller may substitute an independently authenticated exact Value summary.
+/// The output still supplies canonical address, datum and reference-script data.
+pub fn ledger_output_summaries_with_value_v1(
+  output_cbor: ByteArray,
+  value_summary: Option<cek_data_v1.DataSummaryV1>,
+) -> Option<
+  (
+    cek_data_v1.DataSummaryV1,
+    cek_data_v1.DataSummaryV1,
+    cek_data_v1.DataSummaryV1,
+  ),
+> {
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
@@ -260,26 +275,20 @@ pub fn ledger_output_summaries_v1(
               when datum_data(output) is {
                 None -> None
                 Some(datum_field) -> {
-                  let value = script_value_data(value_data)
-                  let reference_script = reference_script_data(output)
-                  let tx_out_summary = fn(midgard_encoding: Bool) {
-                    cek_data_v1.semantic_data_summary_v1(
-                      builtin.constr_data(
-                        0,
-                        [
-                          address_data(output, midgard_encoding),
-                          value,
-                          datum_field,
-                          reference_script,
-                        ],
-                      ),
-                    )
+                  // Both language views share these exact subtrees. Summarize
+                  // them once; the address encoding is the only difference.
+                  let value = when value_summary is {
+                    Some(summary) -> summary
+                    None ->
+                      cek_data_v1.semantic_data_summary_v1(
+                        script_value_data(value_data),
+                      )
                   }
                   Some(
-                    (
-                      tx_out_summary(False),
-                      tx_out_summary(True),
-                      spend_datum_summary_of_field(datum_field),
+                    ledger_output_summaries_of_authenticated_parts_v1(
+                      output,
+                      value,
+                      datum_field,
                     ),
                   )
                 }
@@ -287,6 +296,40 @@ pub fn ledger_output_summaries_v1(
           }
       }
   }
+}
+
+/// The caller authenticates all three parts independently before composing them.
+pub fn ledger_output_summaries_of_authenticated_parts_v1(
+  output: MidgardTxOutput,
+  value: cek_data_v1.DataSummaryV1,
+  datum_field: Data,
+) -> (
+  cek_data_v1.DataSummaryV1,
+  cek_data_v1.DataSummaryV1,
+  cek_data_v1.DataSummaryV1,
+) {
+  let datum = cek_data_v1.semantic_data_summary_v1(datum_field)
+  let reference_script = cek_data_v1.semantic_data_summary_v1(
+    reference_script_data(output),
+  )
+  let tx_out_summary = fn(midgard_encoding: Bool) {
+    small_constr_summary(
+      0,
+      [
+        cek_data_v1.semantic_data_summary_v1(
+          address_data(output, midgard_encoding),
+        ),
+        value,
+        datum,
+        reference_script,
+      ],
+    )
+  }
+  (
+    tx_out_summary(False),
+    tx_out_summary(True),
+    spend_datum_summary_of_field(datum_field),
+  )
 }
 
 fn tx_out_ref_data(input: MidgardTxInput) -> Data {

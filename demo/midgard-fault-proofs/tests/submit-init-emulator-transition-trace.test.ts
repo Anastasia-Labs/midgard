@@ -54,7 +54,6 @@ import {
   realBlueprintPath,
   registerPhasMembershipRewardAccount,
   submitSetupTx,
-  TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES,
 } from "./support/submit-init-emulator-shared.js";
 
 describe("fault-proof emulator integration", () => {
@@ -137,8 +136,6 @@ describe("fault-proof emulator integration", () => {
         steps: contracts.fraudProofContracts.transitionTrace.steps,
         entryNames: FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY.transitionTrace,
         familyLabel: "transition-trace",
-        oversizedEntryNames:
-          TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES,
       });
     const funderPaymentCredential = getAddressDetails(
       await funderLucid.wallet().address(),

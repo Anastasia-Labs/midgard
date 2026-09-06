@@ -6,11 +6,13 @@ import {
   AuthenticatedValidator,
   MintingValidator,
   SpendingValidator,
+  WithdrawalValidator,
 } from "../../../common.js";
 import {
   applyBlueprintParams,
   type FaultProofBlueprint,
   makeSpendingValidator,
+  makeWithdrawalValidator,
   tryBuild,
 } from "../blueprint.js";
 import { buildSharedFaultProofContracts } from "../shared.js";
@@ -38,11 +40,44 @@ export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
   duplicate: "fraud_proofs/transition_trace/duplicate_v1.main.spend",
 } as const;
 
+export const TRANSITION_TRACE_YIELD_TITLES = {
+  l2Scan: "fraud_proofs/transition_trace/output_scan.scan_output.withdraw",
+  l2Value: "fraud_proofs/transition_trace/output_value.value_output.withdraw",
+  depositScan: "fraud_proofs/transition_trace/output_scan.scan_output.withdraw",
+  depositValue:
+    "fraud_proofs/transition_trace/deposit_value.value_output.withdraw",
+
+  l2Open:
+    "fraud_proofs/transition_trace/accepted_transaction_yields.l2_open.withdraw",
+  l2Summaries:
+    "fraud_proofs/transition_trace/output_summaries.summaries.withdraw",
+  l2Assembly: "fraud_proofs/transition_trace/output_assembly.assembly.withdraw",
+  depositReplay:
+    "fraud_proofs/transition_trace/accepted_transaction_yields.l2_replay.withdraw",
+  depositAssembly:
+    "fraud_proofs/transition_trace/output_assembly.assembly.withdraw",
+  l2Replay:
+    "fraud_proofs/transition_trace/accepted_transaction_yields.l2_replay.withdraw",
+  claimStructure:
+    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_structure.withdraw",
+  claimSource:
+    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_source.withdraw",
+  claimEndpoints:
+    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_endpoints.withdraw",
+  depositProjection:
+    "fraud_proofs/transition_trace/deposit_yields.projection.withdraw",
+  depositSummaries:
+    "fraud_proofs/transition_trace/deposit_summaries.summaries.withdraw",
+} as const;
+
 export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly transitionTrace: FraudProofChain & {
     readonly route: SpendingValidator;
+    readonly yields: Readonly<
+      Record<keyof typeof TRANSITION_TRACE_YIELD_TITLES, WithdrawalValidator>
+    >;
     readonly finals: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -68,12 +103,15 @@ export type TransitionTraceFaultProofContracts = {
 };
 
 export type BuildTransitionTraceFaultProofContractsParams =
-  BuildFaultProofContractsParams;
+  BuildFaultProofContractsParams & {
+    readonly referenceScriptAuthPolicyId: string;
+  };
 
 export const buildTransitionTraceChain = ({
   blueprint,
   network,
   hubOraclePolicyId,
+  referenceScriptAuthPolicyId,
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
@@ -81,6 +119,7 @@ export const buildTransitionTraceChain = ({
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
+  readonly referenceScriptAuthPolicyId: string;
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
@@ -95,7 +134,7 @@ export const buildTransitionTraceChain = ({
       ["withdrawal", false],
       ["forced", false],
       ["accepted", false],
-      ["deposit", true],
+      ["deposit", false],
       ["l1Event", true],
       ["duplicate", false],
     ] as const;
@@ -114,7 +153,11 @@ export const buildTransitionTraceChain = ({
                   computationThread.policyId,
                   fraudProof.policyId,
                   fraudProofTokenAddressData,
-                  ...(needsHub ? [hubOraclePolicyId] : []),
+                  ...(name === "accepted" || name === "deposit"
+                    ? [referenceScriptAuthPolicyId]
+                    : needsHub
+                      ? [hubOraclePolicyId]
+                      : []),
                 ],
               ),
             ),
@@ -173,8 +216,51 @@ export const buildTransitionTraceChain = ({
         ),
     );
 
+    const buildYield = (
+      name: keyof typeof TRANSITION_TRACE_YIELD_TITLES,
+      parameters: Data[],
+    ) =>
+      tryBuild(`Failed to build transition-trace ${name} yield`, () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            TRANSITION_TRACE_YIELD_TITLES[name],
+            parameters,
+          ),
+        ),
+      );
+    const acceptedHash = finals[4].spendingScriptHash;
+    const depositHash = finals[5].spendingScriptHash;
+    const l2Open = yield* buildYield("l2Open", [acceptedHash]);
+    const depositProjection = yield* buildYield("depositProjection", [
+      depositHash,
+      hubOraclePolicyId,
+    ]);
+    const l2Summaries = yield* buildYield("l2Summaries", [acceptedHash]);
+    const depositSummaries = yield* buildYield("depositSummaries", [
+      depositHash,
+    ]);
+    const yields = {
+      l2Scan: yield* buildYield("l2Scan", [acceptedHash]),
+      l2Value: yield* buildYield("l2Value", [acceptedHash]),
+      depositScan: yield* buildYield("depositScan", [depositHash]),
+      depositValue: yield* buildYield("depositValue", [depositHash]),
+
+      l2Open,
+      l2Summaries,
+      l2Assembly: yield* buildYield("l2Assembly", [acceptedHash]),
+      l2Replay: yield* buildYield("l2Replay", [acceptedHash]),
+      claimStructure: yield* buildYield("claimStructure", [acceptedHash]),
+      claimSource: yield* buildYield("claimSource", [acceptedHash]),
+      claimEndpoints: yield* buildYield("claimEndpoints", [acceptedHash]),
+      depositProjection,
+      depositSummaries,
+      depositReplay: yield* buildYield("depositReplay", [depositHash]),
+      depositAssembly: yield* buildYield("depositAssembly", [depositHash]),
+    };
     return {
       firstStep: route,
+      yields,
       route,
       finals,
       steps: [route, ...finals],

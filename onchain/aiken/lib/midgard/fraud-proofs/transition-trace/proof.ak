@@ -287,7 +287,8 @@ type TimedDepositEvent {
   inclusion_time: Int,
 }
 
-type AuthenticatedDepositReference {
+pub type AuthenticatedDepositReference {
+  out_ref: OutputReference,
   event: ledger_state.DepositEvent,
   inclusion_time: Int,
   value: Value,
@@ -698,7 +699,7 @@ fn verify_ledger_non_membership(
   True
 }
 
-fn apply_delete_witness(
+pub fn apply_delete_witness(
   root: ByteArray,
   witness: LedgerDeleteWitness,
 ) -> ByteArray {
@@ -712,7 +713,7 @@ fn apply_delete_witness(
   delete_root(root, witness.key, witness.value, witness.delete_proof)
 }
 
-fn apply_insert_witness(
+pub fn apply_insert_witness(
   root: ByteArray,
   witness: LedgerInsertWitness,
 ) -> ByteArray {
@@ -775,7 +776,7 @@ fn validate_forced_transaction_one_step_binding(
   }
 }
 
-fn validate_deposit_one_step_binding(
+pub fn validate_deposit_one_step_binding(
   header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
@@ -818,7 +819,7 @@ fn cardano_stake_credential_to_midgard(
   }
 }
 
-fn deposit_address_to_midgard(
+pub fn deposit_address_to_midgard(
   address: Address,
   network_id: Int,
 ) -> native_types.MidgardAddress {
@@ -892,6 +893,27 @@ fn deposit_datum_cbor(datum: Option<Data>) -> Option<ByteArray> {
 ///
 /// These are the bytes the descriptor is derived from, not the value inserted
 /// into `utxos_root`; see `apply_l2_outputs` for why the two differ.
+pub fn projected_deposit_output(
+  deposit_info: ledger_state.DepositInfo,
+  deposit_value: Value,
+  deposit_policy_id: ByteArray,
+  event_asset_name: AssetName,
+) -> native_types.MidgardTxOutput {
+  native_types.MidgardTxOutput {
+    address: deposit_address_to_midgard(
+      deposit_info.l2_address,
+      deposit_info.l2_network_id,
+    ),
+    value: projected_deposit_value(
+      deposit_value,
+      deposit_policy_id,
+      event_asset_name,
+    ),
+    datum_cbor: deposit_datum_cbor(deposit_info.l2_datum),
+    script_ref: None,
+  }
+}
+
 fn projected_deposit_output_cbor(
   deposit_info: ledger_state.DepositInfo,
   deposit_value: Value,
@@ -899,19 +921,12 @@ fn projected_deposit_output_cbor(
   event_asset_name: AssetName,
 ) -> ByteArray {
   native_components.encode_midgard_tx_output(
-    native_types.MidgardTxOutput {
-      address: deposit_address_to_midgard(
-        deposit_info.l2_address,
-        deposit_info.l2_network_id,
-      ),
-      value: projected_deposit_value(
-        deposit_value,
-        deposit_policy_id,
-        event_asset_name,
-      ),
-      datum_cbor: deposit_datum_cbor(deposit_info.l2_datum),
-      script_ref: None,
-    },
+    projected_deposit_output(
+      deposit_info,
+      deposit_value,
+      deposit_policy_id,
+      event_asset_name,
+    ),
   )
 }
 
@@ -929,7 +944,7 @@ fn verify_l2_source_membership(
   )
 }
 
-fn validate_l2_one_step_binding(
+pub fn validate_l2_one_step_binding(
   header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
@@ -1098,7 +1113,7 @@ fn validate_invalid_forced_transaction_no_op_transition(
   }
 }
 
-fn validate_valid_deposit_transition(
+pub fn validate_valid_deposit_transition(
   header: ledger_state.HeaderV1,
   hub_datum: hub.Datum,
   reference_inputs: List<Input>,
@@ -1208,7 +1223,7 @@ fn validate_valid_deposit_transition(
 /// list and the §8.6 certificate policy id — are provably never read. They are
 /// passed empty rather than plumbed through, which is also why this rebind adds
 /// no validator parameter and leaves the family's applied hashes to #579.
-fn door_body_field_items(
+pub fn door_body_field_items(
   anchored: AnchoredNativeTxV1,
   field_index: Int,
   preimage: ByteArray,
@@ -1228,7 +1243,7 @@ fn door_body_field_items(
   list.reverse(reversed_items)
 }
 
-fn validate_l2_transaction_transition(
+pub fn validate_l2_transaction_transition(
   header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
@@ -1394,7 +1409,7 @@ fn validate_invalid_one_step_transition(
   }
 }
 
-fn terminal_acceptance_post_root(witness_cbor: ByteArray) -> ByteArray {
+pub fn terminal_acceptance_post_root(witness_cbor: ByteArray) -> ByteArray {
   expect Some(data) = cbor.deserialise(witness_cbor)
   expect [version_data,
         tag_data, root_data, _frontier_data] = builtin.un_list_data(data)
@@ -1405,7 +1420,7 @@ fn terminal_acceptance_post_root(witness_cbor: ByteArray) -> ByteArray {
   root
 }
 
-fn validate_accepted_transaction_transition_mismatch(
+pub fn validate_accepted_transaction_transition_mismatch(
   header: ledger_state.HeaderV1,
   witness: AcceptedTransactionTransitionMismatchWitness,
 ) -> Bool {
@@ -1483,7 +1498,7 @@ fn tx_order_compact_body(
   verified.tx_compact.body
 }
 
-fn get_authenticated_deposit_reference(
+pub fn get_authenticated_deposit_reference(
   reference_inputs: List<Input>,
   deposit_policy_id: ByteArray,
   event_asset_name: AssetName,
@@ -1506,6 +1521,7 @@ fn get_authenticated_deposit_reference(
   expect deposit_info: ledger_state.DepositInfo = deposit_info_data
 
   AuthenticatedDepositReference {
+    out_ref: reference_input.output_reference,
     event: ledger_state.DepositEvent { id: deposit_id, info: deposit_info },
     inclusion_time: builtin.un_i_data(inclusion_time_data),
     value,
@@ -1863,11 +1879,23 @@ fn validate_transition_fault(
   }
 }
 
-fn validate_transition_fault_proof_envelope(
+pub fn validate_transition_fault_proof_envelope(
   proof: TransitionFaultProof,
   computation_thread_token_asset_name: AssetName,
 ) -> Bool {
   let TransitionFaultProof { challenged_header_hash, header, .. } = proof
+  validate_transition_header_envelope(
+    challenged_header_hash,
+    header,
+    computation_thread_token_asset_name,
+  )
+}
+
+pub fn validate_transition_header_envelope(
+  challenged_header_hash: ByteArray,
+  header: ledger_state.HeaderV1,
+  computation_thread_token_asset_name: AssetName,
+) -> Bool {
   let header_data: Data = header
   and {
     utils.verify_hash_28(header_data, challenged_header_hash),

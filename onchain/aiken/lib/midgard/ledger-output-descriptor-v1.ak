@@ -1,6 +1,7 @@
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/cek_data_v1.{DataSummaryV1}
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_bytes, encode_definite_map_header,
 }
@@ -185,59 +186,80 @@ pub fn build_v1(
       Some(output) ->
         when script_context_v1.ledger_output_summaries_v1(output_cbor) is {
           None -> None
-          Some((cardano_tx_out, midgard_tx_out, cardano_spend_datum)) -> {
-            let assets = fold_assets(
-              output.value.assets,
-              #"",
-              AssetFoldV1 {
-                count: 0,
-                peaks: validation_merkle_v1.empty_frontier(),
-                policy_count: 0,
-                size: 0,
-              },
-            )
-            let
-                (
-                  reference_script_language,
-                  reference_script_hash,
-                  reference_script_total_length,
-                  reference_script_item_commitment,
-                )
-              = reference_script_facts(output_index, output)
-            let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
-              version: ledger_output_commitment_v1.version,
+          Some((cardano_tx_out, midgard_tx_out, cardano_spend_datum)) ->
+            assemble(
               output_index,
-              total_length: bytearray.length(output_cbor),
-              item_commitment: ledger_output_commitment_v1.output_item_commitment(
-                output_index,
-                output_cbor,
-              ),
-              address: encode_midgard_address(output.address),
-              lovelace: output.value.lovelace,
-              asset_count: assets.count,
-              asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
-                assets.count,
-                assets.peaks,
-              ),
-              cardano_value_size: cardano_value_size(
-                output.value.lovelace,
-                assets,
-              ),
-              reference_script_language,
-              reference_script_hash,
-              reference_script_total_length,
-              reference_script_item_commitment,
+              output,
+              output_cbor,
               cardano_tx_out,
               midgard_tx_out,
               cardano_spend_datum,
-            }
-            if ledger_output_commitment_v1.descriptor_is_well_formed(descriptor) {
-              Some(descriptor)
-            } else {
-              None
-            }
-          }
+            )
         }
+    }
+  }
+}
+
+/// Assemble a descriptor after canonical output decoding and exact semantic
+/// summaries have been authenticated. Callers must prove those prerequisites;
+/// the one-shot builder above and transition-trace yielding share this fold.
+pub fn assemble(
+  output_index: Int,
+  output: MidgardTxOutput,
+  output_cbor: ByteArray,
+  cardano_tx_out: DataSummaryV1,
+  midgard_tx_out: DataSummaryV1,
+  cardano_spend_datum: DataSummaryV1,
+) -> Option<ledger_output_commitment_v1.LedgerOutputCommitmentV1> {
+  if output_index < 0 || output_index > ledger_output_commitment_v1.max_output_index {
+    None
+  } else {
+    let assets = fold_assets(
+      output.value.assets,
+      #"",
+      AssetFoldV1 {
+        count: 0,
+        peaks: validation_merkle_v1.empty_frontier(),
+        policy_count: 0,
+        size: 0,
+      },
+    )
+    let
+        (
+          reference_script_language,
+          reference_script_hash,
+          reference_script_total_length,
+          reference_script_item_commitment,
+        )
+      = reference_script_facts(output_index, output)
+    let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+      version: ledger_output_commitment_v1.version,
+      output_index,
+      total_length: bytearray.length(output_cbor),
+      item_commitment: ledger_output_commitment_v1.output_item_commitment(
+        output_index,
+        output_cbor,
+      ),
+      address: encode_midgard_address(output.address),
+      lovelace: output.value.lovelace,
+      asset_count: assets.count,
+      asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
+        assets.count,
+        assets.peaks,
+      ),
+      cardano_value_size: cardano_value_size(output.value.lovelace, assets),
+      reference_script_language,
+      reference_script_hash,
+      reference_script_total_length,
+      reference_script_item_commitment,
+      cardano_tx_out,
+      midgard_tx_out,
+      cardano_spend_datum,
+    }
+    if ledger_output_commitment_v1.descriptor_is_well_formed(descriptor) {
+      Some(descriptor)
+    } else {
+      None
     }
   }
 }
