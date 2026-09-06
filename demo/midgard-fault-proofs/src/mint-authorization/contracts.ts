@@ -28,13 +28,15 @@ import type { Script } from "@lucid-evolution/lucid";
 /** Human-readable family label used in every local failure message. */
 export const MINT_AUTHORIZATION_CATEGORY_LABEL = "mint-authorization";
 
-/** Blueprint titles of the five parameterized step validators. */
+/** Blueprint titles of the seven parameterized step validators. */
 export const MINT_AUTHORIZATION_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/mint_authorization/step_01.main.spend",
   step02: "fraud_proofs/mint_authorization/step_02.main.spend",
   step03: "fraud_proofs/mint_authorization/step_03.main.spend",
   step04: "fraud_proofs/mint_authorization/step_04.main.spend",
   step05: "fraud_proofs/mint_authorization/step_05.main.spend",
+  evaluate: "fraud_proofs/mint_authorization/evaluate.main.spend",
+  witnessScan: "fraud_proofs/mint_authorization/witness_scan.main.spend",
 } as const;
 
 /** One deployed step of the `mint-authorization` chain. */
@@ -55,6 +57,8 @@ export type MintAuthorizationStepContract = {
 export type MintAuthorizationContracts = {
   /** Steps 01..05, in order. */
   readonly steps: readonly [
+    MintAuthorizationStepContract,
+    MintAuthorizationStepContract,
     MintAuthorizationStepContract,
     MintAuthorizationStepContract,
     MintAuthorizationStepContract,

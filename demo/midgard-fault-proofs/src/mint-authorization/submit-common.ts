@@ -6,7 +6,7 @@
  * thread NFT rides — see `contracts.ts`. This module owns what all the
  * submitters share: locating and validating the thread UTxO at a given step,
  * reading the step datum fail-closed, and reference-script sourcing (all
- * five steps deploy as reference scripts in production; each submitter
+ * seven steps deploy as reference scripts in production; each submitter
  * therefore accepts the published reference-script UTxO and verifies the
  * carried script hashes to the step it is spending before building
  * anything).
@@ -40,7 +40,7 @@ export type MintAuthorizationCatalogueCategory = {
   readonly membershipProofCbor: string;
 };
 
-export type MintAuthorizationStepIndex = 0 | 1 | 2 | 3 | 4;
+export type MintAuthorizationStepIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export const mintAuthorizationSubmitError = (message: string): Error =>
   new Error(`${MINT_AUTHORIZATION_CATEGORY_LABEL}: ${message}`);

@@ -22,6 +22,7 @@
  * caller names only the ordinal, exactly like the validator.
  */
 import { decodeMidgardMintFieldPreimage } from "@al-ft/midgard-core";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import type { MintAuthorizationStep03State } from "@al-ft/midgard-sdk";
 import {
   hashHexWithBlake2b,
@@ -29,15 +30,19 @@ import {
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
+  MintAuthorizationClaimEvidence,
   MintAuthorizationStep02Datum,
+  MintAuthorizationStep02PublishedSpendRedeemer,
   MintAuthorizationStep02SpendRedeemer,
   MintAuthorizationStep03Datum,
   requireInputIndex,
   requireOwnSpendPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
+  Constr,
   Data,
   type LucidEvolution,
   type UTxO,
@@ -58,6 +63,11 @@ import { selectFeeInput } from "../submit-step-01.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
+import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage.js";
+import {
+  structuredDataPublicationPlan,
+  structuredDataTreeData,
+} from "../workflow/structured-data-preimage.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -104,6 +114,9 @@ export const submitMintAuthorizationStep02 = async ({
   nativeTxCompactCbor,
   mintItemCbors,
   certificateUtxo,
+  publishedCarriageUtxos,
+  claimEvidence,
+  evidenceReferences,
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -130,6 +143,12 @@ export const submitMintAuthorizationStep02 = async ({
   readonly mintItemCbors: readonly string[];
   /** Pre-minted §8.6 certificate when the planner selects tier 3. */
   readonly certificateUtxo?: UTxO;
+  /** Authenticated workflow publications; avoids publishing inside step capture. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly claimEvidence?: Awaited<
+    ReturnType<typeof buildMintAuthorizationStep02Evidence>
+  >;
+  readonly evidenceReferences?: readonly UTxO[];
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -187,10 +206,36 @@ export const submitMintAuthorizationStep02 = async ({
     mintItems[Number(policyIndex)].policyId,
   ).toString("hex");
 
-  const evidence = await buildMintAuthorizationStep02Evidence({
-    reconstruction,
-    eventKey: { L2TransactionEventKey: { tx_id: anchorState.bad_tx_id } },
-  });
+  const evidence =
+    claimEvidence ??
+    (await buildMintAuthorizationStep02Evidence({
+      reconstruction,
+      eventKey: { L2TransactionEventKey: { tx_id: anchorState.bad_tx_id } },
+    }));
+  const claim = {
+    header: reconstruction.header,
+    event_to_step_membership: evidence.eventToStepMembership,
+    transition_step_membership: evidence.transitionStepMembership,
+    policy_index: policyIndex,
+    direction,
+  };
+  const claimCbor = aikenSerialisedPlutusDataCborPreservingMapOrder(
+    Data.to(claim, MintAuthorizationClaimEvidence),
+  );
+  const requirement =
+    evidenceReferences === undefined
+      ? undefined
+      : createStructuredDataPreimageRequirement({ preimageHex: claimCbor });
+  if (
+    requirement !== undefined &&
+    (evidenceReferences!.length !== requirement.publicationDatums.length ||
+      evidenceReferences!.some(
+        (utxo, index) => utxo.datum !== requirement.publicationDatums[index],
+      ))
+  )
+    throw mintAuthorizationSubmitError(
+      "claim evidence publications differ from the authenticated header openings",
+    );
   const priorLedgerRoot =
     evidence.transitionStepMembership.value.pre_utxos_root;
 
@@ -209,13 +254,15 @@ export const submitMintAuthorizationStep02 = async ({
   // against the transaction's COMPLETE reference-input set — the carriage
   // publications, an optional §8.6 certificate, and the step's own reference
   // script all count into the §8.7 positional indices.
-  const carriageUtxos = await publishFaultProofFieldCarriage({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: `${STEP_LABEL} mint`,
-  });
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: `${STEP_LABEL} mint`,
+    }));
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
@@ -230,6 +277,7 @@ export const submitMintAuthorizationStep02 = async ({
     label: `${STEP_LABEL} spending validator`,
   });
   const referenceInputs = [
+    ...(evidenceReferences ?? []),
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...carriageUtxos,
     ...stepCarriage.referenceInputs,
@@ -241,7 +289,7 @@ export const submitMintAuthorizationStep02 = async ({
     label: `${STEP_LABEL} mint`,
   });
   const walletUtxos = await lucid.wallet().getUtxos();
-  const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
+  const walletUtxosSansCarriage = referenceInputs.reduce<readonly UTxO[]>(
     (candidates, utxo) => excludeUtxo(candidates, utxo),
     walletUtxos,
   );
@@ -269,6 +317,32 @@ export const submitMintAuthorizationStep02 = async ({
       ),
     };
     resolvedLayout = layout;
+    if (evidenceReferences !== undefined)
+      return Data.to(
+        {
+          Continue: [
+            {
+              Published: {
+                input_index: layout.inputIndex,
+                output_index: layout.outputIndex,
+                evidence: new Constr(1, [
+                  structuredDataTreeData(
+                    structuredDataPublicationPlan(claimCbor).tree,
+                    (index) =>
+                      requireReferenceInputIndex(
+                        ctx,
+                        evidenceReferences[index]!,
+                        "mint claim evidence",
+                      ),
+                  ),
+                ]),
+                mint_opening: mintOpening,
+              },
+            },
+          ],
+        },
+        MintAuthorizationStep02PublishedSpendRedeemer,
+      );
     return Data.to(
       {
         Continue: [
@@ -311,7 +385,7 @@ export const submitMintAuthorizationStep02 = async ({
 
   const unsigned = await tx.complete({
     localUPLCEval: true,
-    ...(carriageUtxos.length === 0
+    ...(referenceInputs.length === 0
       ? {}
       : { presetWalletInputs: walletUtxosSansCarriage as UTxO[] }),
   });

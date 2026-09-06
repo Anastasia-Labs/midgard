@@ -42,6 +42,18 @@ pub type Args {
     script_bytes: ByteArray,
     addr_tx_wits_opening: FieldOpeningV1,
   }
+  StartUnsatisfied {
+    input_index: Int,
+    output_index: Int,
+    chunk_reference_indices: List<Int>,
+    addr_tx_wits_opening: FieldOpeningV1,
+  }
+  StartAbsence {
+    input_index: Int,
+    output_index: Int,
+    chunk_reference_indices: List<Int>,
+    script_tx_wits_opening: FieldOpeningV1,
+  }
 }
 
 pub type SpendRedeemer =

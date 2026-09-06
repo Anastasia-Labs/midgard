@@ -82,7 +82,7 @@ export type SubmitMintAuthorizationCancelResult = {
   readonly awaitedConfirmation: boolean;
 };
 
-/** Finds which of the family's five step addresses holds the thread UTxO. */
+/** Finds which of the family's seven step addresses holds the thread UTxO. */
 const locateStepIndex = ({
   threadUtxo,
   contracts,
@@ -90,7 +90,7 @@ const locateStepIndex = ({
   readonly threadUtxo: UTxO;
   readonly contracts: MintAuthorizationContracts;
 }): MintAuthorizationStepIndex => {
-  for (const stepIndex of [0, 1, 2, 3, 4] as const) {
+  for (const stepIndex of [0, 1, 2, 3, 4, 5, 6] as const) {
     if (
       threadUtxo.address === contracts.steps[stepIndex].spendingScriptAddress
     ) {
@@ -98,7 +98,7 @@ const locateStepIndex = ({
     }
   }
   throw mintAuthorizationSubmitError(
-    `thread UTxO ${outRefLabel(threadUtxo)} is not locked at any of the family's five step addresses — a finished or already-cancelled thread has nothing to cancel.`,
+    `thread UTxO ${outRefLabel(threadUtxo)} is not locked at any of the family's seven step addresses — a finished or already-cancelled thread has nothing to cancel.`,
   );
 };
 

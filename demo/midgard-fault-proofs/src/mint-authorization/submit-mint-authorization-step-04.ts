@@ -110,6 +110,8 @@ type Step04Shared = {
   readonly referenceInputsItemCbors: readonly string[];
   /** Pre-minted §8.6 certificate when the planner selects tier 3. */
   readonly certificateUtxo?: UTxO;
+  /** Authenticated workflow publications; avoids publishing inside step capture. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -147,13 +149,15 @@ const prepareStep04 = async (shared: Step04Shared) => {
   });
   const referenceItems = decodeMidgardFieldPreimage(planned.preimage);
   shared.signer.selectWallet(shared.lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriage({
-    lucid: shared.lucid,
-    signer: shared.signer,
-    planned,
-    publisherAddress: shared.signer.address,
-    label: `${STEP_LABEL} reference-inputs`,
-  });
+  const carriageUtxos =
+    shared.publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      lucid: shared.lucid,
+      signer: shared.signer,
+      planned,
+      publisherAddress: shared.signer.address,
+      label: `${STEP_LABEL} reference-inputs`,
+    }));
   const fieldReferenceInputs = [
     ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
     ...carriageUtxos,

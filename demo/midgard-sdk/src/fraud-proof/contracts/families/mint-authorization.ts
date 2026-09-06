@@ -21,6 +21,8 @@ export const MINT_AUTHORIZATION_FAULT_PROOF_TITLES = {
   step03: "fraud_proofs/mint_authorization/step_03.main.spend",
   step04: "fraud_proofs/mint_authorization/step_04.main.spend",
   step05: "fraud_proofs/mint_authorization/step_05.main.spend",
+  evaluate: "fraud_proofs/mint_authorization/evaluate.main.spend",
+  witnessScan: "fraud_proofs/mint_authorization/witness_scan.main.spend",
 } as const;
 
 export type MintAuthorizationFaultProofContracts = {
@@ -28,6 +30,8 @@ export type MintAuthorizationFaultProofContracts = {
   readonly fraudProof: AuthenticatedValidator;
   readonly mintAuthorization: FraudProofChain & {
     readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -74,12 +78,26 @@ export const buildMintAuthorizationChain = ({
       ],
       "Failed to build mint-authorization step 04",
     );
+    const witnessScan = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_AUTHORIZATION_FAULT_PROOF_TITLES.witnessScan,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build mint witness scan",
+    );
+    const evaluate = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_AUTHORIZATION_FAULT_PROOF_TITLES.evaluate,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build mint authorization evaluator",
+    );
     const step03 = yield* buildFaultProofSpendingStep(
       context,
       MINT_AUTHORIZATION_FAULT_PROOF_TITLES.step03,
       [
         step04.spendingScriptHash,
         step05.spendingScriptHash,
+        evaluate.spendingScriptHash,
+        witnessScan.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
       ],
@@ -107,7 +125,7 @@ export const buildMintAuthorizationChain = ({
     );
     return {
       firstStep: step01,
-      steps: [step01, step02, step03, step04, step05],
+      steps: [step01, step02, step03, step04, step05, evaluate, witnessScan],
     };
   });
 

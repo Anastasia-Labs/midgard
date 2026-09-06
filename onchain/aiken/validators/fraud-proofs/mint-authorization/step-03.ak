@@ -30,7 +30,8 @@
 //// limit-breaking payload is the decoding family's territory, not this
 //// one's.
 
-use aiken/crypto.{ScriptHash}
+use aiken/collection/list
+use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -40,14 +41,17 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   WitnessAnchor, address_witnesses_field_index, fold_opened_field,
-  opened_field_walk, script_witnesses_field_index,
+  opened_committed_preimage, opened_field_walk, script_witnesses_field_index,
 }
 use midgard/fraud_proofs/mint_authorization/engine
+use midgard/fraud_proofs/mint_authorization/evaluate as evaluate
 use midgard/fraud_proofs/mint_authorization/step_03.{
-  Args, Datum, EvaluateUnsatisfied, SpendRedeemer, State, WitnessAbsence,
+  Args, Datum, EvaluateUnsatisfied, SpendRedeemer, StartAbsence,
+  StartUnsatisfied, State, WitnessAbsence,
 }
 use midgard/fraud_proofs/mint_authorization/step_04
 use midgard/fraud_proofs/mint_authorization/step_05
+use midgard/fraud_proofs/mint_authorization/witness_scan as witness_scan
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/components.{
@@ -58,11 +62,14 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionWitnessSet, MidgardVersionedScript,
   NativeCardanoScript, PlutusV3Script,
 }
+use midgard/native_tx_field_access_v1.{decode_field_array_header}
 use midgard/script_proof_v1
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
   step_05_validator_script_hash: ScriptHash,
+  evaluate_validator_script_hash: ScriptHash,
+  witness_scan_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
 ) {
@@ -167,6 +174,126 @@ validator main(
 
         // Done.
         True
+      }
+      ct.Continue(StartAbsence {
+        input_index,
+        output_index,
+        chunk_reference_indices,
+        script_tx_wits_opening,
+      }) -> {
+        expect Some(step_datum) = datum
+        let _, _, _, state_data, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        expect Some(state) = state_data
+        expect state.direction == engine.direction_script_absent
+        let parts = evaluate.chunks(
+          chunk_reference_indices,
+          tx.reference_inputs,
+        )
+        let bytes = evaluate.payload(parts)
+        let field_length = bytearray.length(bytes)
+        expect field_length > 0 && field_length <= 32768
+        expect
+          bytes == opened_committed_preimage(
+            script_tx_wits_opening,
+            WitnessAnchor {
+              tx_id: state.bad_tx_id,
+              witness_set_hash: state.bad_tx_witness_set_hash,
+            },
+            script_witnesses_field_index,
+            tx.reference_inputs,
+            field_preimage_certificate_policy_id,
+          )
+        let Pair(cursor, item_count) = decode_field_array_header(bytes)
+        let expected: Data = witness_scan.State {
+          policy_id: state.policy_id,
+          bad_tx_id: state.bad_tx_id,
+          prior_ledger_root: state.prior_ledger_root,
+          field_length,
+          field_chunk_hashes: list.map(parts, blake2b_256),
+          cursor,
+          item_index: 0,
+          item_count,
+        }
+        expect output_hash == witness_scan_validator_script_hash
+        output_state == expected
+      }
+      ct.Continue(StartUnsatisfied {
+        input_index,
+        output_index,
+        chunk_reference_indices,
+        addr_tx_wits_opening,
+      }) -> {
+        expect Some(step_datum) = datum
+        let _, _, _, state_data, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          tx.inputs,
+          tx.outputs,
+        )
+        expect Some(state) = state_data
+        expect state.direction == engine.direction_script_unsatisfied
+        let parts = evaluate.chunks(
+          chunk_reference_indices,
+          tx.reference_inputs,
+        )
+        let script_bytes = evaluate.payload(parts)
+        let script_length = bytearray.length(script_bytes)
+        expect script_length > 0 && script_length <= 32768
+        expect
+          script_proof_v1.versioned_script_hash(
+            MidgardVersionedScript {
+              language: NativeCardanoScript,
+              script_bytes,
+            },
+          ) == state.policy_id
+        let walk = opened_field_walk(
+          addr_tx_wits_opening,
+          WitnessAnchor {
+            tx_id: state.bad_tx_id,
+            witness_set_hash: state.bad_tx_witness_set_hash,
+          },
+          address_witnesses_field_index,
+          tx.reference_inputs,
+          field_preimage_certificate_policy_id,
+        )
+        let signer_hashes = fold_opened_field(
+          walk,
+          [],
+          fn(acc, _index, item) {
+            [
+              utils.get_verification_key_hash(
+                decode_midgard_address_witness_cbor(item).verification_key,
+              ),
+              ..acc
+            ]
+          },
+        )
+        let expected: Data = evaluate.State {
+          policy_id: state.policy_id,
+          script_length,
+          script_chunk_hashes: list.map(parts, blake2b_256),
+          signer_hashes,
+          validity_interval_start: state.validity_interval_start,
+          validity_interval_end: state.validity_interval_end,
+          cursor: 0,
+          node_count: 0,
+          stack_root: #"",
+          stack_depth: 0,
+          result: -1,
+        }
+        expect output_hash == evaluate_validator_script_hash
+        output_state == expected
       }
       ct.Continue(EvaluateUnsatisfied {
         input_index,
@@ -334,6 +461,8 @@ fn run_arm(
 ) -> Bool {
   let asset_name = fixture.ct_token_asset_name(block)
   main.spend(
+    fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
     fixture.next_step_script_hash,
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -672,6 +801,8 @@ fn run_cancel(signed_by_prover: Bool) -> Bool {
   let block = challenged_block()
   let asset_name = fixture.ct_token_asset_name(block)
   main.spend(
+    fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
     fixture.next_step_script_hash,
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,

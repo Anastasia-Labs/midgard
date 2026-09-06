@@ -22,6 +22,7 @@
  */
 import {
   decodeMidgardAddressWitnessFieldPreimage,
+  decodeMidgardFieldArrayHeader,
   decodeMidgardNativeScript,
   decodeMidgardScriptWitnessFieldPreimage,
   hashMidgardVersionedScript,
@@ -29,10 +30,12 @@ import {
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
 import type {
+  MintAuthorizationEvaluateState,
   MintAuthorizationStep03Args,
   MintAuthorizationStep03State,
   MintAuthorizationStep04State,
   MintAuthorizationStep05State,
+  MintAuthorizationWitnessScanState,
   NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 import {
@@ -40,12 +43,15 @@ import {
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
+  MintAuthorizationEvaluateDatum,
   MintAuthorizationStep03Datum,
   MintAuthorizationStep03SpendRedeemer,
   MintAuthorizationStep04Datum,
   MintAuthorizationStep05Datum,
+  MintAuthorizationWitnessScanDatum,
   requireInputIndex,
   requireOwnSpendPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
@@ -69,6 +75,7 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
+import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -112,6 +119,8 @@ type Step03Shared = {
   readonly witnessSet: NativeTxWitnessSetCompact;
   /** Pre-minted §8.6 certificate when the planner selects tier 3. */
   readonly certificateUtxo?: UTxO;
+  /** Authenticated workflow publications; avoids publishing inside step capture. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -165,7 +174,7 @@ const submitPreparedStep03 = async ({
   readonly carriageUtxos: readonly UTxO[];
   readonly fieldReferenceInputs: readonly UTxO[];
   readonly fieldIndex: number;
-  readonly nextStepIndex: 3 | 4;
+  readonly nextStepIndex: 3 | 4 | 5 | 6;
   readonly nextStepDatum: string;
   readonly argsOf: (
     layout: {
@@ -173,6 +182,7 @@ const submitPreparedStep03 = async ({
       readonly outputIndex: bigint;
     },
     fieldOpening: ReturnType<typeof faultProofFieldOpening>,
+    ctx: Parameters<BuildTxWithRedeemer>[0],
   ) => MintAuthorizationStep03Args;
 }): Promise<SubmitMintAuthorizationStep03Result> => {
   const { lucid, contracts, signer, referenceScriptUtxo } = shared;
@@ -229,7 +239,7 @@ const submitPreparedStep03 = async ({
     };
     resolvedLayout = layout;
     return Data.to(
-      { Continue: [argsOf(layout, fieldOpening)] },
+      { Continue: [argsOf(layout, fieldOpening, ctx)] },
       MintAuthorizationStep03SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -313,6 +323,7 @@ const submitPreparedStep03 = async ({
  */
 export const submitMintAuthorizationStep03WitnessAbsence = async ({
   scriptTxWitsItemCbors,
+  rawPreimageUtxos,
   ...shared
 }: Step03Shared & {
   /**
@@ -321,6 +332,7 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
    * the carriage tier from the resulting preimage's own byte length.
    */
   readonly scriptTxWitsItemCbors: readonly string[];
+  readonly rawPreimageUtxos?: readonly UTxO[];
 }): Promise<SubmitMintAuthorizationStep03Result> => {
   const { threadUtxo, threadToken, state } = await prepareThread(shared);
   if (state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT) {
@@ -353,17 +365,68 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
     }
   }
   shared.signer.selectWallet(shared.lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriage({
-    lucid: shared.lucid,
-    signer: shared.signer,
-    planned,
-    publisherAddress: shared.signer.address,
-    label: `${STEP_LABEL} script-witnesses`,
-  });
+  const carriageUtxos =
+    shared.publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      lucid: shared.lucid,
+      signer: shared.signer,
+      planned,
+      publisherAddress: shared.signer.address,
+      label: `${STEP_LABEL} script-witnesses`,
+    }));
   const fieldReferenceInputs = [
     ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
     ...carriageUtxos,
   ];
+  if (rawPreimageUtxos !== undefined) {
+    const requirement = createRawDatumPreimageRequirement({
+      preimage: planned.preimage,
+    });
+    if (
+      rawPreimageUtxos.length !== requirement.publicationDatums.length ||
+      rawPreimageUtxos.some(
+        (utxo, index) => utxo.datum !== requirement.publicationDatums[index],
+      )
+    )
+      throw mintAuthorizationSubmitError(
+        "script witness publications changed ordered preimage",
+      );
+    const header = decodeMidgardFieldArrayHeader(planned.preimage);
+    const initial: MintAuthorizationWitnessScanState = {
+      policy_id: state.policy_id,
+      bad_tx_id: state.bad_tx_id,
+      prior_ledger_root: state.prior_ledger_root,
+      field_length: BigInt(planned.preimage.length),
+      field_chunk_hashes: [...requirement.publicationDigests],
+      cursor: BigInt(header.nextOffset),
+      item_index: 0n,
+      item_count: BigInt(header.count),
+    };
+    return submitPreparedStep03({
+      shared,
+      threadUtxo,
+      threadToken,
+      planned,
+      carriageUtxos: [...carriageUtxos, ...rawPreimageUtxos],
+      fieldReferenceInputs: [...fieldReferenceInputs, ...rawPreimageUtxos],
+      fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
+      nextStepIndex: 6,
+      nextStepDatum: Data.to(
+        { fraud_prover: shared.signer.paymentKeyHash, data: initial },
+        MintAuthorizationWitnessScanDatum,
+      ),
+      argsOf: (layout, opening, ctx) => ({
+        StartAbsence: {
+          input_index: layout.inputIndex,
+          output_index: layout.outputIndex,
+          chunk_reference_indices: rawPreimageUtxos.map((utxo) =>
+            requireReferenceInputIndex(ctx, utxo, "mint witness preimage"),
+          ),
+          script_tx_wits_opening: opening,
+        },
+      }),
+    });
+  }
   const step04State: MintAuthorizationStep04State = {
     policy_id: state.policy_id,
     bad_tx_id: state.bad_tx_id,
@@ -400,11 +463,13 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
  */
 export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
   scriptBytesHex,
+  rawPreimageUtxos,
   addrTxWitsItemCbors,
   ...shared
 }: Step03Shared & {
   /** The policy's canonical native payload bytes, hex. */
   readonly scriptBytesHex: string;
+  readonly rawPreimageUtxos?: readonly UTxO[];
   /**
    * The committed field-7 items — each §5.3 address-witness item's canonical
    * bytes (fixed 101 bytes), hex, in committed order. The §8 planner
@@ -468,17 +533,83 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
     );
   }
   shared.signer.selectWallet(shared.lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriage({
-    lucid: shared.lucid,
-    signer: shared.signer,
-    planned,
-    publisherAddress: shared.signer.address,
-    label: `${STEP_LABEL} address-witnesses`,
-  });
+  const carriageUtxos =
+    shared.publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      lucid: shared.lucid,
+      signer: shared.signer,
+      planned,
+      publisherAddress: shared.signer.address,
+      label: `${STEP_LABEL} address-witnesses`,
+    }));
   const fieldReferenceInputs = [
     ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
     ...carriageUtxos,
   ];
+  if (rawPreimageUtxos !== undefined) {
+    const requirement = createRawDatumPreimageRequirement({
+      preimage: Buffer.from(scriptBytesHex, "hex"),
+    });
+    if (
+      rawPreimageUtxos.length !== requirement.publicationDatums.length ||
+      rawPreimageUtxos.some(
+        (utxo, index) => utxo.datum !== requirement.publicationDatums[index],
+      )
+    )
+      throw mintAuthorizationSubmitError(
+        "native payload publications changed ordered preimage",
+      );
+    const initial: MintAuthorizationEvaluateState = {
+      policy_id: state.policy_id,
+      script_length: BigInt(scriptBytesHex.length / 2),
+      script_chunk_hashes: [...requirement.publicationDigests],
+      signer_hashes: witnesses
+        .map((witness) =>
+          Effect.runSync(
+            hashHexWithBlake2b(
+              Buffer.from(witness.verificationKey).toString("hex"),
+              28,
+            ),
+          ),
+        )
+        .reverse(),
+      validity_interval_start: state.validity_interval_start,
+      validity_interval_end: state.validity_interval_end,
+      cursor: 0n,
+      node_count: 0n,
+      stack_root: "",
+      stack_depth: 0n,
+      result: -1n,
+    };
+    return submitPreparedStep03({
+      shared,
+      threadUtxo,
+      threadToken,
+      planned,
+      carriageUtxos: [...carriageUtxos, ...rawPreimageUtxos],
+      fieldReferenceInputs: [...fieldReferenceInputs, ...rawPreimageUtxos],
+      fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
+      nextStepIndex: 5,
+      nextStepDatum: Data.to(
+        { fraud_prover: shared.signer.paymentKeyHash, data: initial },
+        MintAuthorizationEvaluateDatum,
+      ),
+      argsOf: (layout, opening, ctx) => ({
+        StartUnsatisfied: {
+          input_index: layout.inputIndex,
+          output_index: layout.outputIndex,
+          chunk_reference_indices: rawPreimageUtxos.map((utxo) =>
+            requireReferenceInputIndex(
+              ctx,
+              utxo,
+              "mint authorization native preimage",
+            ),
+          ),
+          addr_tx_wits_opening: opening,
+        },
+      }),
+    });
+  }
   const step05State: MintAuthorizationStep05State = {
     policy_id: state.policy_id,
     direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,

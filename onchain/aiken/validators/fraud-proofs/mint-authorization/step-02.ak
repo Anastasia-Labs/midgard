@@ -21,11 +21,11 @@ use midgard/computation_thread as ct
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, mint_field_index, opened_field_view,
+  BodyAnchor, mint_field_index, opened_whole_field_view,
 }
 use midgard/fraud_proofs/mint_authorization/engine
 use midgard/fraud_proofs/mint_authorization/step_02.{
-  Args, Datum, SpendRedeemer, State,
+  Args, ClaimEvidence, Datum, PublishedArgs, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/mint_authorization/step_03
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -33,6 +33,7 @@ use midgard/fraud_proofs/native_script_decoding/engine as decoding_engine
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/preimages
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/structured_data_carriage
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1.{
   encode_field_preimage, field_item_at, field_item_count,
@@ -59,16 +60,42 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
-        input_index,
-        output_index,
-        header,
-        event_to_step_membership,
-        transition_step_membership,
-        policy_index,
-        direction,
-        mint_opening,
-      }) -> {
+      ct.Continue(args) -> {
+        expect
+            Args {
+              input_index,
+              output_index,
+              header,
+              event_to_step_membership,
+              transition_step_membership,
+              policy_index,
+              direction,
+              mint_opening,
+            }
+          = when args is {
+          Args { .. } -> args
+          PublishedArgs { input_index, output_index, evidence, mint_opening } -> {
+            expect
+                ClaimEvidence {
+                  header,
+                  event_to_step_membership,
+                  transition_step_membership,
+                  policy_index,
+                  direction,
+                }: ClaimEvidence
+              = structured_data_carriage.resolve(evidence, tx.reference_inputs)
+            Args {
+              input_index,
+              output_index,
+              header,
+              event_to_step_membership,
+              transition_step_membership,
+              policy_index,
+              direction,
+              mint_opening,
+            }
+          }
+        }
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
 
         expect Some(step_datum) = datum
@@ -129,7 +156,7 @@ validator main(
         //    enforces canonicality — including non-zero quantities, so a
         //    zero-net entry can never seed a claim, while a burn (negative
         //    quantity) is a mint purpose like any other.
-        let mint_view = opened_field_view(
+        let mint_view = opened_whole_field_view(
           mint_opening,
           BodyAnchor { tx_id: bad_tx_id },
           mint_field_index,

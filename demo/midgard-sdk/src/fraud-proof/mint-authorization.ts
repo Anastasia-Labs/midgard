@@ -214,6 +214,43 @@ export const MintAuthorizationStep02SpendRedeemer =
     MintAuthorizationStep02SpendRedeemerSchema,
   );
 
+export const MintAuthorizationClaimEvidenceSchema = Data.Object({
+  header: HeaderSchema,
+  event_to_step_membership: MintAuthorizationEventToStepMembershipSchema,
+  transition_step_membership: MintAuthorizationTransitionStepMembershipSchema,
+  policy_index: Data.Integer(),
+  direction: Data.Integer(),
+});
+export type MintAuthorizationClaimEvidence = Data.Static<
+  typeof MintAuthorizationClaimEvidenceSchema
+>;
+export const MintAuthorizationClaimEvidence =
+  asDataType<MintAuthorizationClaimEvidence>(
+    MintAuthorizationClaimEvidenceSchema,
+  );
+
+export const MintAuthorizationStep02PublishedSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(
+    Data.Enum([
+      Data.Object({ Inline: MintAuthorizationStep02ArgsSchema }),
+      Data.Object({
+        Published: Data.Object({
+          input_index: Data.Integer(),
+          output_index: Data.Integer(),
+          evidence: Data.Any(),
+          mint_opening: FieldOpeningSchema,
+        }),
+      }),
+    ]),
+  );
+export type MintAuthorizationStep02PublishedSpendRedeemer = Data.Static<
+  typeof MintAuthorizationStep02PublishedSpendRedeemerSchema
+>;
+export const MintAuthorizationStep02PublishedSpendRedeemer =
+  asDataType<MintAuthorizationStep02PublishedSpendRedeemer>(
+    MintAuthorizationStep02PublishedSpendRedeemerSchema,
+  );
+
 // ## Step 03 — direction dispatch
 
 export const MintAuthorizationStep03DatumSchema = faultProofStepDatumSchema(
@@ -245,6 +282,22 @@ export const MintAuthorizationStep03ArgsSchema = Data.Enum([
       /** The policy's native payload, pinned by hash to the policy id. */
       script_bytes: Data.Bytes(),
       addr_tx_wits_opening: FieldOpeningSchema,
+    }),
+  }),
+  Data.Object({
+    StartUnsatisfied: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      chunk_reference_indices: Data.Array(Data.Integer()),
+      addr_tx_wits_opening: FieldOpeningSchema,
+    }),
+  }),
+  Data.Object({
+    StartAbsence: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      chunk_reference_indices: Data.Array(Data.Integer()),
+      script_tx_wits_opening: FieldOpeningSchema,
     }),
   }),
 ]);
@@ -347,6 +400,123 @@ export const MintAuthorizationStep05SpendRedeemer =
     MintAuthorizationStep05SpendRedeemerSchema,
   );
 
+export const MintAuthorizationEvaluateStateSchema = Data.Object({
+  policy_id: Data.Bytes(),
+  script_length: Data.Integer(),
+  script_chunk_hashes: Data.Array(Data.Bytes()),
+  signer_hashes: Data.Array(Data.Bytes()),
+  validity_interval_start: Data.Integer(),
+  validity_interval_end: Data.Integer(),
+  cursor: Data.Integer(),
+  node_count: Data.Integer(),
+  stack_root: Data.Bytes(),
+  stack_depth: Data.Integer(),
+  result: Data.Integer(),
+});
+export type MintAuthorizationEvaluateState = Data.Static<
+  typeof MintAuthorizationEvaluateStateSchema
+>;
+export const MintAuthorizationEvaluateDatumSchema = faultProofStepDatumSchema(
+  MintAuthorizationEvaluateStateSchema,
+);
+export type MintAuthorizationEvaluateDatum = Data.Static<
+  typeof MintAuthorizationEvaluateDatumSchema
+>;
+export const MintAuthorizationEvaluateDatum =
+  asDataType<MintAuthorizationEvaluateDatum>(
+    MintAuthorizationEvaluateDatumSchema,
+  );
+export const MintAuthorizationFrameSchema = Data.Object({
+  tail: Data.Bytes(),
+  kind: Data.Integer(),
+  child_count: Data.Integer(),
+  remaining: Data.Integer(),
+  valid_count: Data.Integer(),
+  required: Data.Integer(),
+});
+export type MintAuthorizationFrame = Data.Static<
+  typeof MintAuthorizationFrameSchema
+>;
+export const MintAuthorizationEvaluateOperationSchema = Data.Enum([
+  Data.Literal("Token"),
+  Data.Object({ Frame: Data.Object({ frame: MintAuthorizationFrameSchema }) }),
+]);
+export type MintAuthorizationEvaluateOperation = Data.Static<
+  typeof MintAuthorizationEvaluateOperationSchema
+>;
+export const MintAuthorizationEvaluateArgsSchema = Data.Enum([
+  Data.Object({
+    Advance: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      chunk_reference_indices: Data.Array(Data.Integer()),
+      operations: Data.Array(MintAuthorizationEvaluateOperationSchema),
+    }),
+  }),
+  Data.Object({
+    Finalize: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+    }),
+  }),
+]);
+export const MintAuthorizationEvaluateSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(MintAuthorizationEvaluateArgsSchema);
+export type MintAuthorizationEvaluateSpendRedeemer = Data.Static<
+  typeof MintAuthorizationEvaluateSpendRedeemerSchema
+>;
+export const MintAuthorizationEvaluateSpendRedeemer =
+  asDataType<MintAuthorizationEvaluateSpendRedeemer>(
+    MintAuthorizationEvaluateSpendRedeemerSchema,
+  );
+
+export const MintAuthorizationWitnessScanStateSchema = Data.Object({
+  policy_id: Data.Bytes(),
+  bad_tx_id: Data.Bytes(),
+  prior_ledger_root: Data.Bytes(),
+  field_length: Data.Integer(),
+  field_chunk_hashes: Data.Array(Data.Bytes()),
+  cursor: Data.Integer(),
+  item_index: Data.Integer(),
+  item_count: Data.Integer(),
+});
+export type MintAuthorizationWitnessScanState = Data.Static<
+  typeof MintAuthorizationWitnessScanStateSchema
+>;
+export const MintAuthorizationWitnessScanDatumSchema =
+  faultProofStepDatumSchema(MintAuthorizationWitnessScanStateSchema);
+export type MintAuthorizationWitnessScanDatum = Data.Static<
+  typeof MintAuthorizationWitnessScanDatumSchema
+>;
+export const MintAuthorizationWitnessScanDatum =
+  asDataType<MintAuthorizationWitnessScanDatum>(
+    MintAuthorizationWitnessScanDatumSchema,
+  );
+export const MintAuthorizationWitnessScanArgsSchema = Data.Enum([
+  Data.Object({
+    Advance: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      chunk_reference_indices: Data.Array(Data.Integer()),
+    }),
+  }),
+  Data.Object({
+    Finalize: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+    }),
+  }),
+]);
+export const MintAuthorizationWitnessScanSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(MintAuthorizationWitnessScanArgsSchema);
+export type MintAuthorizationWitnessScanSpendRedeemer = Data.Static<
+  typeof MintAuthorizationWitnessScanSpendRedeemerSchema
+>;
+export const MintAuthorizationWitnessScanSpendRedeemer =
+  asDataType<MintAuthorizationWitnessScanSpendRedeemer>(
+    MintAuthorizationWitnessScanSpendRedeemerSchema,
+  );
+
 // ## Step resolver
 
 export const MINT_AUTHORIZATION_STEP_NAMES = [
@@ -355,6 +525,8 @@ export const MINT_AUTHORIZATION_STEP_NAMES = [
   "step_03",
   "step_04",
   "step_05",
+  "step_06",
+  "step_07",
 ] as const;
 export type MintAuthorizationStepName =
   (typeof MINT_AUTHORIZATION_STEP_NAMES)[number];
@@ -377,5 +549,9 @@ export const mintAuthorizationStepDatumSchema = (
       return MintAuthorizationStep04DatumSchema;
     case "step_05":
       return MintAuthorizationStep05DatumSchema;
+    case "step_07":
+      return MintAuthorizationWitnessScanDatum;
+    case "step_06":
+      return MintAuthorizationEvaluateDatumSchema;
   }
 };

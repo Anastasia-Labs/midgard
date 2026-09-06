@@ -86,7 +86,8 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
 }
 use midgard/native_tx_field_access_v1.{
-  FieldCarriageV1, FieldViewV1, authenticated_field_view, field_item_count,
+  FieldCarriageV1, FieldViewV1, authenticated_committed_preimage,
+  authenticated_field_view, authenticated_whole_field_view, field_item_count,
 }
 use midgard/native_tx_machine_walk_v1.{
   FieldGrammarCheckpointV1, FieldWalkCheckpointV1,
@@ -484,6 +485,49 @@ pub fn resume_opened_field_walk(
     anchored.witness_set,
     committed_checkpoint_hash,
     checkpoint_bytes,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// Materialize an authenticated field and certify its complete envelope before a
+/// bounded consumer selects an item. This preserves the exact count guarantee
+/// for variable-width Certified carriage; it is not a resumable semantic fold.
+pub fn opened_whole_field_view(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> FieldViewV1 {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  authenticated_whole_field_view(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// Authenticate flat field bytes for a family that certifies envelopes in its
+/// own bounded continuation before using the terminal count.
+pub fn opened_committed_preimage(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> ByteArray {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  authenticated_committed_preimage(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
     carriage_of(opening),
     reference_inputs,
     certificate_policy_id,
