@@ -253,6 +253,38 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputePhaseANativeItemNativeWithdraw",
   "validationTraceDisputePhaseANativeItemForeignWithdraw",
   "validationTraceDisputeCekMaterialTraversal",
+  "validationTraceDisputeCekCoreSettle",
+  "validationTraceDisputeCekCoreCompute",
+  "validationTraceDisputeCekCoreMachine",
+  "validationTraceDisputeCekCoreMapConversion",
+  "validationTraceDisputeCekCoreDirectScalar",
+  "validationTraceDisputeCekCoreDirectStructured",
+  "validationTraceDisputeCekCoreDirectScalarBudget",
+  "validationTraceDisputeCekCoreDirectStructuredBudget",
+  "validationTraceDisputeCekCoreDirectScalarRoots",
+  "validationTraceDisputeCekCoreDirectStructuredRoots",
+  "validationTraceDisputeCekCoreSemanticPair",
+  "validationTraceDisputeCekCoreSemanticListConstruct",
+  "validationTraceDisputeCekCoreSemanticListSelect",
+  "validationTraceDisputeCekCoreSemanticChoose",
+  "validationTraceDisputeCekCoreSemanticDataConstruct",
+  "validationTraceDisputeCekCoreSemanticDataScalar",
+  "validationTraceDisputeCekCoreSemanticDataMisc",
+  "validationTraceDisputeCekCoreSemanticBudget",
+  "validationTraceDisputeCekCoreSemanticRoots",
+  "validationTraceDisputeCekCoreSemanticResult",
+  "validationTraceDisputeCekCoreMapStartNodes",
+  "validationTraceDisputeCekCoreMapStartBudget",
+  "validationTraceDisputeCekCoreMapStartRoots",
+  "validationTraceDisputeCekCoreSemanticFailureMaterial",
+  "validationTraceDisputeCekCoreSemanticFailureRoots",
+  "validationTraceDisputeCekCoreBlsFinal",
+  "validationTraceDisputeCekCoreBlsBudget",
+  "validationTraceDisputeCekCoreBlsRoots",
+  "validationTraceDisputeCekCoreFailureBudget",
+  "validationTraceDisputeCekCoreFailureKnown",
+  "validationTraceDisputeCekCoreTypeFailureKinds",
+  "validationTraceDisputeCekCoreTypeFailureRoots",
   "validationTraceDisputeCekMaterialProgramTaskWithdraw",
   "validationTraceDisputeCekMaterialDataTaskWithdraw",
   "validationTraceDisputeCekSelectionAuthenticateWithdraw",
@@ -448,6 +480,70 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 field-preimage certificate": "fieldPreimageCertificateSpend",
     "V1 field-preimage certificate minting": "fieldPreimageCertificateMint",
     "V1 immutable CEK program-material publication": "cekProgramMaterialSpend",
+    "V1 validation-trace CEK core settle":
+      "validationTraceDisputeCekCoreSettle",
+    "V1 validation-trace CEK core compute":
+      "validationTraceDisputeCekCoreCompute",
+    "V1 validation-trace CEK core machine":
+      "validationTraceDisputeCekCoreMachine",
+    "V1 validation-trace CEK core map conversion":
+      "validationTraceDisputeCekCoreMapConversion",
+    "V1 validation-trace CEK core direct scalar":
+      "validationTraceDisputeCekCoreDirectScalar",
+    "V1 validation-trace CEK core direct structured":
+      "validationTraceDisputeCekCoreDirectStructured",
+    "V1 validation-trace CEK core direct scalar budget":
+      "validationTraceDisputeCekCoreDirectScalarBudget",
+    "V1 validation-trace CEK core direct structured budget":
+      "validationTraceDisputeCekCoreDirectStructuredBudget",
+    "V1 validation-trace CEK core direct scalar roots":
+      "validationTraceDisputeCekCoreDirectScalarRoots",
+    "V1 validation-trace CEK core direct structured roots":
+      "validationTraceDisputeCekCoreDirectStructuredRoots",
+    "V1 validation-trace CEK core semantic pair":
+      "validationTraceDisputeCekCoreSemanticPair",
+    "V1 validation-trace CEK core semantic list construct":
+      "validationTraceDisputeCekCoreSemanticListConstruct",
+    "V1 validation-trace CEK core semantic list select":
+      "validationTraceDisputeCekCoreSemanticListSelect",
+    "V1 validation-trace CEK core semantic choose":
+      "validationTraceDisputeCekCoreSemanticChoose",
+    "V1 validation-trace CEK core semantic data construct":
+      "validationTraceDisputeCekCoreSemanticDataConstruct",
+    "V1 validation-trace CEK core semantic data scalar":
+      "validationTraceDisputeCekCoreSemanticDataScalar",
+    "V1 validation-trace CEK core semantic data misc":
+      "validationTraceDisputeCekCoreSemanticDataMisc",
+    "V1 validation-trace CEK core semantic budget":
+      "validationTraceDisputeCekCoreSemanticBudget",
+    "V1 validation-trace CEK core semantic roots":
+      "validationTraceDisputeCekCoreSemanticRoots",
+    "V1 validation-trace CEK core semantic result":
+      "validationTraceDisputeCekCoreSemanticResult",
+    "V1 validation-trace CEK core map start nodes":
+      "validationTraceDisputeCekCoreMapStartNodes",
+    "V1 validation-trace CEK core map start budget":
+      "validationTraceDisputeCekCoreMapStartBudget",
+    "V1 validation-trace CEK core map start roots":
+      "validationTraceDisputeCekCoreMapStartRoots",
+    "V1 validation-trace CEK core semantic failure material":
+      "validationTraceDisputeCekCoreSemanticFailureMaterial",
+    "V1 validation-trace CEK core semantic failure roots":
+      "validationTraceDisputeCekCoreSemanticFailureRoots",
+    "V1 validation-trace CEK core bls final":
+      "validationTraceDisputeCekCoreBlsFinal",
+    "V1 validation-trace CEK core bls budget":
+      "validationTraceDisputeCekCoreBlsBudget",
+    "V1 validation-trace CEK core bls roots":
+      "validationTraceDisputeCekCoreBlsRoots",
+    "V1 validation-trace CEK core failure budget":
+      "validationTraceDisputeCekCoreFailureBudget",
+    "V1 validation-trace CEK core failure known":
+      "validationTraceDisputeCekCoreFailureKnown",
+    "V1 validation-trace CEK core type failure kinds":
+      "validationTraceDisputeCekCoreTypeFailureKinds",
+    "V1 validation-trace CEK core type failure roots":
+      "validationTraceDisputeCekCoreTypeFailureRoots",
     "V1 validation-trace dispute": "validationTraceDispute",
     "V1 validation-trace source": "validationTraceDisputeSource",
     "V1 validation-trace game": "validationTraceDisputeGame",

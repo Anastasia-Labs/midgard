@@ -1,5 +1,6 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
+  CEK_CORE_STAGE_REFERENCES,
   CEK_MATERIAL_TASK_YIELD_ROLES,
   CEK_SELECTION_YIELD_ROLES,
   createReferenceScriptAuthPolicy,
@@ -14,9 +15,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  cancelValidationCekCore,
   cancelValidationCekMaterialTraversal,
   cancelValidationSemanticResolution,
   resolveValidationTraceDisputeDeploymentContracts,
+  resumeValidationCekCore,
   resumeValidationCekMaterialTraversal,
   submitRemoveFraudulentBlock,
   submitValidationDisputeAward,
@@ -111,6 +114,8 @@ export const runForcedValidationDisputeScenario = async (
     phaseANativeItemMaximum = false,
     cancelPreparedSemantic = false,
     restartCekMaterialTraversal = false,
+    restartCekCore = false,
+    cancelCekCore = false,
     cancelCekMaterialTraversal = false,
     onRemovalReferenceScriptPublicationAttempt,
     onSubmittedTransaction,
@@ -120,6 +125,8 @@ export const runForcedValidationDisputeScenario = async (
     readonly phaseANativeItemMaximum?: boolean;
     readonly cancelPreparedSemantic?: boolean;
     readonly restartCekMaterialTraversal?: boolean;
+    readonly restartCekCore?: boolean;
+    readonly cancelCekCore?: boolean;
     readonly cancelCekMaterialTraversal?: boolean;
     readonly stopAfter?:
       | "prepare-resolution"
@@ -630,6 +637,36 @@ export const runForcedValidationDisputeScenario = async (
       };
     }
   }
+  if (stagedResolverIndex === 11 && stagedSemanticIndex === 3) {
+    for (const [key, spec] of Object.entries(CEK_CORE_STAGE_REFERENCES)) {
+      const contract =
+        contracts.fraudProofContracts.validationTraceDispute.cekCoreStages[
+          key as keyof typeof CEK_CORE_STAGE_REFERENCES
+        ];
+      const publication = await publishAuthenticatedValidationDisputeControl({
+        lucid: challengerLucid,
+        authPolicy: referenceScriptAuth,
+        target: {
+          control: `CEK core ${key}`,
+          name: spec.role,
+          script: contract.spendingScript,
+        },
+      });
+      semanticDeploymentInfo = {
+        ...semanticDeploymentInfo,
+        contracts: {
+          ...semanticDeploymentInfo.contracts,
+          [spec.deployment]: {
+            scriptHash: contract.spendingScriptHash,
+            refScriptUTxO: {
+              txHash: publication.utxo.txHash,
+              outputIndex: publication.utxo.outputIndex,
+            },
+          },
+        },
+      };
+    }
+  }
   if (stagedResolverIndex === 11 && stagedSemanticIndex === 1) {
     const contract =
       contracts.fraudProofContracts.validationTraceDispute.cekMaterialTraversal;
@@ -657,6 +694,7 @@ export const runForcedValidationDisputeScenario = async (
     };
   }
   let checkpointJson: string | undefined;
+  let coreCheckpointJson: string | undefined;
   let traversalOutputs = 0;
   const submitBeforeRestart = emulator.submitTx.bind(emulator);
   if (restartCekMaterialTraversal || cancelCekMaterialTraversal)
@@ -690,6 +728,37 @@ export const runForcedValidationDisputeScenario = async (
       }
       return hash;
     };
+  if (restartCekCore || cancelCekCore) {
+    let coreOutputs = 0;
+    const addresses = new Set(
+      Object.values(
+        contracts.fraudProofContracts.validationTraceDispute.cekCoreStages,
+      ).map((stage) => stage.spendingScriptAddress),
+    );
+    emulator.submitTx = async (cbor) => {
+      const hash = await submitBeforeRestart(cbor);
+      const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
+      for (let index = 0; index < outputs.len(); index++) {
+        if (!addresses.has(outputs.get(index).address().to_bech32())) continue;
+        coreOutputs++;
+        if (coreOutputs !== 2) continue;
+        coreCheckpointJson = JSON.stringify({
+          threadOutRef: `${hash}#${index}`,
+          deploymentInfo: semanticDeploymentInfo,
+          transitionCborHex: Buffer.from(
+            fixture.evidence.oneStepArgument.transitionCbor,
+          ).toString("hex"),
+          auxiliaryCborHex: Buffer.from(
+            fixture.evidence.oneStepArgument.auxiliaryCbor,
+          ).toString("hex"),
+        });
+        throw new Error(
+          "simulated process loss after accepted core checkpoint",
+        );
+      }
+      return hash;
+    };
+  }
   const semanticCapture = await captureEmulatorSubmission(emulator, () =>
     runEmulatorLifecycleStage(
       "semantic-resolution",
@@ -720,6 +789,68 @@ export const runForcedValidationDisputeScenario = async (
             awaitConfirmation: true,
           });
         } catch (cause) {
+          if (coreCheckpointJson !== undefined) {
+            emulator.submitTx = submitBeforeRestart;
+            const checkpoint: {
+              threadOutRef: string;
+              deploymentInfo: unknown;
+              transitionCborHex: string;
+              auxiliaryCborHex: string;
+            } = JSON.parse(coreCheckpointJson);
+            await targetChallengerLucid.awaitTx(
+              checkpoint.threadOutRef.split("#")[0]!,
+            );
+            if (cancelCekCore)
+              return {
+                cancellation: await cancelValidationCekCore({
+                  lucid: targetChallengerLucid,
+                  blueprint: realBlueprint,
+                  deploymentInfo: checkpoint.deploymentInfo,
+                  network,
+                  signer: challengerSigner,
+                  threadOutRef: checkpoint.threadOutRef,
+                  witnessReferenceScripts,
+                }),
+              };
+            const resumed = await resumeValidationCekCore({
+              lucid: targetChallengerLucid,
+              blueprint: realBlueprint,
+              deploymentInfo: checkpoint.deploymentInfo,
+              network,
+              signer: challengerSigner,
+              threadOutRef: checkpoint.threadOutRef,
+              oneStepArgument: {
+                resolverIndex: 11,
+                semanticResolverIndex: 3,
+                transitionCbor: Buffer.from(
+                  checkpoint.transitionCborHex,
+                  "hex",
+                ),
+                auxiliaryCbor: Buffer.from(checkpoint.auxiliaryCborHex, "hex"),
+              },
+              validityRange: validityRange(),
+            });
+            if (!resumed.completed)
+              throw new Error("Restart did not finish CEK core chain");
+            const last = resumed.transactions.at(-1)!;
+            return {
+              txHash: last.txHash,
+              threadOutRef: selectedResult.nextThreadOutRef,
+              nextThreadOutRef: last.nextThreadOutRef,
+              proofItemCarriage: "direct",
+              resolverIndex: stagedResolverIndex,
+              semanticResolverIndex: stagedSemanticIndex,
+              semanticResolverGlobalIndex:
+                validationSemanticResolverGlobalIndex(
+                  stagedResolverIndex,
+                  stagedSemanticIndex,
+                ),
+              inputIndex: last.inputIndex,
+              outputIndex: last.outputIndex,
+              awaitedConfirmation: true,
+              stageTransactions: resumed.transactions,
+            };
+          }
           if (checkpointJson === undefined) throw cause;
           emulator.submitTx = submitBeforeRestart;
           const checkpoint: {

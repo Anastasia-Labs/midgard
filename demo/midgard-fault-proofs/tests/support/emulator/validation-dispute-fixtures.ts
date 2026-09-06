@@ -720,6 +720,10 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
   nativeItemWidth = 0,
+  cekDirectBuiltin = false,
+  cekBlsFinal = false,
+  cekMaximumDirect = false,
+  cekSemanticTag,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
@@ -729,6 +733,10 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
   readonly nativeItemWidth?: number;
+  readonly cekDirectBuiltin?: boolean;
+  readonly cekBlsFinal?: boolean;
+  readonly cekMaximumDirect?: boolean;
+  readonly cekSemanticTag?: number;
 }) => {
   const txOrderId = transitionTraceOutRef(txOrderSeed);
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -789,7 +797,14 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
       }
     : {};
   const program = plutusSelection
-    ? cekSelectionProgram(cekProgramLambdaCount, cekDataGraph)
+    ? cekSelectionProgram(
+        cekProgramLambdaCount,
+        cekDataGraph,
+        cekDirectBuiltin,
+        cekBlsFinal,
+        cekMaximumDirect,
+        cekSemanticTag,
+      )
     : undefined;
   const plutusScript =
     program === undefined
@@ -802,7 +817,10 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
         purpose: "Spend",
         index: 0n,
         redeemerCbor: Buffer.from(Data.void(), "hex"),
-        executionUnits: { memory: 1_000_000_000n, steps: 1_000_000_000n },
+        executionUnits: {
+          memory: 1_000_000_000n,
+          steps: cekBlsFinal ? 10_000_000_000n : 1_000_000_000n,
+        },
       },
     ],
   });
@@ -1064,9 +1082,14 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   disputedPhase,
   disputedValueKind,
   cekSelection = false,
+  cekCoreArm,
   plutusSelection = false,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
+  cekDirectBuiltin = false,
+  cekBlsFinal = false,
+  cekMaximumDirect = false,
+  cekSemanticTag,
   assetCount = 0,
   dishonestChallenger = false,
   maximumAssetProof = false,
@@ -1079,9 +1102,14 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly disputedPhase: "cek" | "valueAndMint" | "phaseANativeScripts";
   readonly disputedValueKind?: ValueAndMintStepKind;
   readonly cekSelection?: boolean;
+  readonly cekCoreArm?: string;
   readonly plutusSelection?: boolean;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
+  readonly cekDirectBuiltin?: boolean;
+  readonly cekBlsFinal?: boolean;
+  readonly cekMaximumDirect?: boolean;
+  readonly cekSemanticTag?: number;
   readonly assetCount?: number;
   readonly dishonestChallenger?: boolean;
   readonly maximumAssetProof?: boolean;
@@ -1128,17 +1156,31 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     cekProgramLambdaCount,
     cekDataGraph,
     nativeItemWidth,
+    cekDirectBuiltin,
+    cekBlsFinal,
+    cekMaximumDirect,
+    cekSemanticTag,
   });
   let challengerTrace = originalTrace;
-  const disputedLowIndex = challengerTrace.states.findIndex(
-    (state, index) =>
+  const disputedLowIndex = challengerTrace.states.findIndex((state, index) => {
+    const auxiliary = challengerTrace.witnesses[index]?.auxiliary;
+    return (
       state.phase === disputedPhase &&
       (!lateNativeItem ||
         challengerTrace.states[index - 1]?.phase === "nativeScripts") &&
+      (cekCoreArm === undefined ||
+        (auxiliary?.kind === "cekCoreStep" &&
+          auxiliary.step.witness.kind === cekCoreArm)) &&
+      (cekSemanticTag === undefined ||
+        (auxiliary?.kind === "cekCoreStep" &&
+          ("tag" in auxiliary.step.witness
+            ? auxiliary.step.witness.tag === BigInt(cekSemanticTag)
+            : cekCoreArm !== undefined))) &&
       (disputedValueKind === undefined ||
         valueAndMintKind(challengerTrace.witnesses[index]!) ===
-          disputedValueKind),
-  );
+          disputedValueKind)
+    );
+  });
   if (disputedLowIndex < 0) {
     throw new Error(
       `honest accepted validation trace is missing its ${disputedPhase} phase`,

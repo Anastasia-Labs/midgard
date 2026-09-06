@@ -1048,6 +1048,194 @@ const collectScriptDescriptors = (
   ),
   ...legacyFaultProofMissingStepDescriptors(contracts),
   spendDescriptor(
+    "validationTraceDisputeCekCoreSettle",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.settle,
+    "V1 validation-trace CEK core settle",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreCompute",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.compute,
+    "V1 validation-trace CEK core compute",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreMachine",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.machine,
+    "V1 validation-trace CEK core machine",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreMapConversion",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .mapConversion,
+    "V1 validation-trace CEK core map conversion",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreDirectScalar",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directScalar,
+    "V1 validation-trace CEK core direct scalar",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreDirectStructured",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directStructured,
+    "V1 validation-trace CEK core direct structured",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreDirectScalarBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directScalarBudget,
+    "V1 validation-trace CEK core direct scalar budget",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreDirectStructuredBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directStructuredBudget,
+    "V1 validation-trace CEK core direct structured budget",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreDirectScalarRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directScalarRoots,
+    "V1 validation-trace CEK core direct scalar roots",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreDirectStructuredRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directStructuredRoots,
+    "V1 validation-trace CEK core direct structured roots",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticPair",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticPair,
+    "V1 validation-trace CEK core semantic pair",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticListConstruct",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticListConstruct,
+    "V1 validation-trace CEK core semantic list construct",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticListSelect",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticListSelect,
+    "V1 validation-trace CEK core semantic list select",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticChoose",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticChoose,
+    "V1 validation-trace CEK core semantic choose",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticDataConstruct",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticDataConstruct,
+    "V1 validation-trace CEK core semantic data construct",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticDataScalar",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticDataScalar,
+    "V1 validation-trace CEK core semantic data scalar",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticDataMisc",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticDataMisc,
+    "V1 validation-trace CEK core semantic data misc",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticBudget,
+    "V1 validation-trace CEK core semantic budget",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticRoots,
+    "V1 validation-trace CEK core semantic roots",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticResult",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticResult,
+    "V1 validation-trace CEK core semantic result",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreMapStartNodes",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .mapStartNodes,
+    "V1 validation-trace CEK core map start nodes",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreMapStartBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .mapStartBudget,
+    "V1 validation-trace CEK core map start budget",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreMapStartRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .mapStartRoots,
+    "V1 validation-trace CEK core map start roots",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticFailureMaterial",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticFailureMaterial,
+    "V1 validation-trace CEK core semantic failure material",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreSemanticFailureRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticFailureRoots,
+    "V1 validation-trace CEK core semantic failure roots",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreBlsFinal",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.blsFinal,
+    "V1 validation-trace CEK core bls final",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreBlsBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .blsBudget,
+    "V1 validation-trace CEK core bls budget",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreBlsRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.blsRoots,
+    "V1 validation-trace CEK core bls roots",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreFailureBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .failureBudget,
+    "V1 validation-trace CEK core failure budget",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreFailureKnown",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .failureKnown,
+    "V1 validation-trace CEK core failure known",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreTypeFailureKinds",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .typeFailureKinds,
+    "V1 validation-trace CEK core type failure kinds",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekCoreTypeFailureRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .typeFailureRoots,
+    "V1 validation-trace CEK core type failure roots",
+  ),
+
+  spendDescriptor(
     "validationTraceDisputeCekMaterialTraversal",
     contracts.fraudProofContracts.validationTraceDispute.cekMaterialTraversal,
     "V1 validation-trace CEK material traversal",
