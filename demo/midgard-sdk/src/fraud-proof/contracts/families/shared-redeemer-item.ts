@@ -140,3 +140,118 @@ export const buildScriptSourcesRedeemerItemStages = ({
     returnScriptHash: awardScriptHash,
     carrier: "scriptSources",
   });
+
+const REDEEMER_ITEM_EXECUTOR_REFERENCES = [
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemFoldMapExecutor",
+    role: "V1 validation-trace redeemer item fold map executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemFinalizeFrameExecutor",
+    role: "V1 validation-trace redeemer item finalize frame executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemOpenHeaderExecutor",
+    role: "V1 validation-trace redeemer item open header executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemOpenTailExecutor",
+    role: "V1 validation-trace redeemer item open tail executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemHeadScalarExecutor",
+    role: "V1 validation-trace redeemer item head scalar executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemHeadSequenceExecutor",
+    role: "V1 validation-trace redeemer item head sequence executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemHeadMapExecutor",
+    role: "V1 validation-trace redeemer item head map executor",
+  },
+  {
+    deploymentEntry:
+      "validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor",
+    role: "V1 validation-trace redeemer item head large constructor executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemAttachIntegerExecutor",
+    role: "V1 validation-trace redeemer item attach integer executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemAttachBytesExecutor",
+    role: "V1 validation-trace redeemer item attach bytes executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemFoldListExecutor",
+    role: "V1 validation-trace redeemer item fold list executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemAdvanceIntegerExecutor",
+    role: "V1 validation-trace redeemer item advance integer executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemAdvanceBytesExecutor",
+    role: "V1 validation-trace redeemer item advance bytes executor",
+  },
+  {
+    deploymentEntry:
+      "validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor",
+    role: "V1 validation-trace redeemer item advance large constructor executor",
+  },
+  {
+    deploymentEntry:
+      "validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor",
+    role: "V1 validation-trace redeemer item advance large fields executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemCloseExecutor",
+    role: "V1 validation-trace redeemer item close executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemFinishDataExecutor",
+    role: "V1 validation-trace redeemer item finish data executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
+    role: "V1 validation-trace redeemer item invalid header executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemInvalidTailExecutor",
+    role: "V1 validation-trace redeemer item invalid tail executor",
+  },
+] as const;
+
+/** Canonical publication identities shared by ScriptSources and CEK. */
+export const sharedRedeemerItemReferenceScripts = (
+  stages: Pick<
+    SharedRedeemerItemStages,
+    | "traversalNormalizer"
+    | "outerNormalizer"
+    | "sourceAuthenticator"
+    | "executors"
+  >,
+) => [
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemTraversalNormalizer",
+    role: "V1 validation-trace redeemer item traversal normalizer",
+    validator: stages.traversalNormalizer,
+  } as const,
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemOuterNormalizer",
+    role: "V1 validation-trace redeemer item outer normalizer",
+    validator: stages.outerNormalizer,
+  } as const,
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemSourceAuthenticator",
+    role: "V1 validation-trace redeemer item source authenticator",
+    validator: stages.sourceAuthenticator,
+  } as const,
+  ...stages.executors.map((validator, index) => {
+    const metadata = REDEEMER_ITEM_EXECUTOR_REFERENCES[index];
+    if (metadata === undefined)
+      throw new Error("Unknown shared redeemer item executor publication");
+    return { ...metadata, validator };
+  }),
+];

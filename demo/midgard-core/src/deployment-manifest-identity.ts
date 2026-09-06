@@ -266,6 +266,29 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeScriptSourcesStageSevenObserverSemantic",
   "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
   "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
+  "validationTraceDisputeRedeemerItemTraversalNormalizer",
+  "validationTraceDisputeRedeemerItemOuterNormalizer",
+  "validationTraceDisputeRedeemerItemSourceAuthenticator",
+  "validationTraceDisputeRedeemerItemFoldMapExecutor",
+  "validationTraceDisputeRedeemerItemFinalizeFrameExecutor",
+  "validationTraceDisputeRedeemerItemOpenHeaderExecutor",
+  "validationTraceDisputeRedeemerItemOpenTailExecutor",
+  "validationTraceDisputeRedeemerItemHeadScalarExecutor",
+  "validationTraceDisputeRedeemerItemHeadSequenceExecutor",
+  "validationTraceDisputeRedeemerItemHeadMapExecutor",
+  "validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor",
+  "validationTraceDisputeRedeemerItemAttachIntegerExecutor",
+  "validationTraceDisputeRedeemerItemAttachBytesExecutor",
+  "validationTraceDisputeRedeemerItemFoldListExecutor",
+  "validationTraceDisputeRedeemerItemAdvanceIntegerExecutor",
+  "validationTraceDisputeRedeemerItemAdvanceBytesExecutor",
+  "validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor",
+  "validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor",
+  "validationTraceDisputeRedeemerItemCloseExecutor",
+  "validationTraceDisputeRedeemerItemFinishDataExecutor",
+  "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
+  "validationTraceDisputeRedeemerItemInvalidTailExecutor",
+  "validationTraceDisputeRedeemerItemSettlement",
   "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
   "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",
   "validationTraceDisputeScriptSourcesStageThreeReplayWithdraw",
@@ -1021,6 +1044,52 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
     "V1 validation-trace script-sources StageSevenFinish semantic":
       "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
+    "V1 validation-trace redeemer item traversal normalizer":
+      "validationTraceDisputeRedeemerItemTraversalNormalizer",
+    "V1 validation-trace redeemer item outer normalizer":
+      "validationTraceDisputeRedeemerItemOuterNormalizer",
+    "V1 validation-trace redeemer item source authenticator":
+      "validationTraceDisputeRedeemerItemSourceAuthenticator",
+    "V1 validation-trace redeemer item fold map executor":
+      "validationTraceDisputeRedeemerItemFoldMapExecutor",
+    "V1 validation-trace redeemer item finalize frame executor":
+      "validationTraceDisputeRedeemerItemFinalizeFrameExecutor",
+    "V1 validation-trace redeemer item open header executor":
+      "validationTraceDisputeRedeemerItemOpenHeaderExecutor",
+    "V1 validation-trace redeemer item open tail executor":
+      "validationTraceDisputeRedeemerItemOpenTailExecutor",
+    "V1 validation-trace redeemer item head scalar executor":
+      "validationTraceDisputeRedeemerItemHeadScalarExecutor",
+    "V1 validation-trace redeemer item head sequence executor":
+      "validationTraceDisputeRedeemerItemHeadSequenceExecutor",
+    "V1 validation-trace redeemer item head map executor":
+      "validationTraceDisputeRedeemerItemHeadMapExecutor",
+    "V1 validation-trace redeemer item head large constructor executor":
+      "validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor",
+    "V1 validation-trace redeemer item attach integer executor":
+      "validationTraceDisputeRedeemerItemAttachIntegerExecutor",
+    "V1 validation-trace redeemer item attach bytes executor":
+      "validationTraceDisputeRedeemerItemAttachBytesExecutor",
+    "V1 validation-trace redeemer item fold list executor":
+      "validationTraceDisputeRedeemerItemFoldListExecutor",
+    "V1 validation-trace redeemer item advance integer executor":
+      "validationTraceDisputeRedeemerItemAdvanceIntegerExecutor",
+    "V1 validation-trace redeemer item advance bytes executor":
+      "validationTraceDisputeRedeemerItemAdvanceBytesExecutor",
+    "V1 validation-trace redeemer item advance large constructor executor":
+      "validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor",
+    "V1 validation-trace redeemer item advance large fields executor":
+      "validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor",
+    "V1 validation-trace redeemer item close executor":
+      "validationTraceDisputeRedeemerItemCloseExecutor",
+    "V1 validation-trace redeemer item finish data executor":
+      "validationTraceDisputeRedeemerItemFinishDataExecutor",
+    "V1 validation-trace redeemer item invalid header executor":
+      "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
+    "V1 validation-trace redeemer item invalid tail executor":
+      "validationTraceDisputeRedeemerItemInvalidTailExecutor",
+    "V1 validation-trace redeemer item settlement":
+      "validationTraceDisputeRedeemerItemSettlement",
     "V1 validation-trace script-sources RedeemerNormalization semantic":
       "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
     "V1 validation-trace script-sources StageTwoAdvance yield":
@@ -1484,6 +1553,41 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtSsS7Receive",
   "V1 validation-trace script-sources StageSevenFinish semantic":
     "V1VtSsS7Finish",
+  "V1 validation-trace redeemer item traversal normalizer":
+    "V1VtRiTraversalNorm",
+  "V1 validation-trace redeemer item outer normalizer": "V1VtRiOuterNorm",
+  "V1 validation-trace redeemer item source authenticator": "V1VtRiSource",
+  "V1 validation-trace redeemer item fold map executor": "V1VtRiFoldMap",
+  "V1 validation-trace redeemer item finalize frame executor":
+    "V1VtRiFinalizeFrame",
+  "V1 validation-trace redeemer item open header executor": "V1VtRiOpenHeader",
+  "V1 validation-trace redeemer item open tail executor": "V1VtRiOpenTail",
+  "V1 validation-trace redeemer item head scalar executor": "V1VtRiHeadScalar",
+  "V1 validation-trace redeemer item head sequence executor":
+    "V1VtRiHeadSequence",
+  "V1 validation-trace redeemer item head map executor": "V1VtRiHeadMap",
+  "V1 validation-trace redeemer item head large constructor executor":
+    "V1VtRiHeadLargeCtor",
+  "V1 validation-trace redeemer item attach integer executor":
+    "V1VtRiAttachInteger",
+  "V1 validation-trace redeemer item attach bytes executor":
+    "V1VtRiAttachBytes",
+  "V1 validation-trace redeemer item fold list executor": "V1VtRiFoldList",
+  "V1 validation-trace redeemer item advance integer executor":
+    "V1VtRiAdvanceInteger",
+  "V1 validation-trace redeemer item advance bytes executor":
+    "V1VtRiAdvanceBytes",
+  "V1 validation-trace redeemer item advance large constructor executor":
+    "V1VtRiAdvanceLargeCtor",
+  "V1 validation-trace redeemer item advance large fields executor":
+    "V1VtRiAdvanceLargeFields",
+  "V1 validation-trace redeemer item close executor": "V1VtRiClose",
+  "V1 validation-trace redeemer item finish data executor": "V1VtRiFinishData",
+  "V1 validation-trace redeemer item invalid header executor":
+    "V1VtRiInvalidHeader",
+  "V1 validation-trace redeemer item invalid tail executor":
+    "V1VtRiInvalidTail",
+  "V1 validation-trace redeemer item settlement": "V1VtRiSettlement",
   "V1 validation-trace script-sources RedeemerNormalization semantic":
     "V1VtSsRedeemerNorm",
   "V1 validation-trace script-sources StageTwoAdvance yield":

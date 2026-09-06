@@ -1171,6 +1171,144 @@ const collectScriptDescriptors = (
     "V1 validation-trace script-sources StageSevenFinish semantic",
   ),
   spendDescriptor(
+    "validationTraceDisputeRedeemerItemTraversalNormalizer",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
+    "V1 validation-trace redeemer item traversal normalizer",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemOuterNormalizer",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.outerNormalizer,
+    "V1 validation-trace redeemer item outer normalizer",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemSourceAuthenticator",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.sourceAuthenticator,
+    "V1 validation-trace redeemer item source authenticator",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemFoldMapExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[0],
+    "V1 validation-trace redeemer item fold map executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemFinalizeFrameExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[1],
+    "V1 validation-trace redeemer item finalize frame executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemOpenHeaderExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[2],
+    "V1 validation-trace redeemer item open header executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemOpenTailExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[3],
+    "V1 validation-trace redeemer item open tail executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemHeadScalarExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[4],
+    "V1 validation-trace redeemer item head scalar executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemHeadSequenceExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[5],
+    "V1 validation-trace redeemer item head sequence executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemHeadMapExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[6],
+    "V1 validation-trace redeemer item head map executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[7],
+    "V1 validation-trace redeemer item head large constructor executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemAttachIntegerExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[8],
+    "V1 validation-trace redeemer item attach integer executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemAttachBytesExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[9],
+    "V1 validation-trace redeemer item attach bytes executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemFoldListExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[10],
+    "V1 validation-trace redeemer item fold list executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemAdvanceIntegerExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[11],
+    "V1 validation-trace redeemer item advance integer executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemAdvanceBytesExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[12],
+    "V1 validation-trace redeemer item advance bytes executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[13],
+    "V1 validation-trace redeemer item advance large constructor executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[14],
+    "V1 validation-trace redeemer item advance large fields executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemCloseExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[15],
+    "V1 validation-trace redeemer item close executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemFinishDataExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[16],
+    "V1 validation-trace redeemer item finish data executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[17],
+    "V1 validation-trace redeemer item invalid header executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemInvalidTailExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[18],
+    "V1 validation-trace redeemer item invalid tail executor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeRedeemerItemSettlement",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.settlement,
+    "V1 validation-trace redeemer item settlement",
+  ),
+  spendDescriptor(
     "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[90],
     "V1 validation-trace script-sources RedeemerNormalization semantic",

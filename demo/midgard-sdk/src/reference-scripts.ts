@@ -78,6 +78,41 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1VtSsS7Receive",
   "V1 validation-trace script-sources StageSevenFinish semantic":
     "V1VtSsS7Finish",
+  "V1 validation-trace redeemer item traversal normalizer":
+    "V1VtRiTraversalNorm",
+  "V1 validation-trace redeemer item outer normalizer": "V1VtRiOuterNorm",
+  "V1 validation-trace redeemer item source authenticator": "V1VtRiSource",
+  "V1 validation-trace redeemer item fold map executor": "V1VtRiFoldMap",
+  "V1 validation-trace redeemer item finalize frame executor":
+    "V1VtRiFinalizeFrame",
+  "V1 validation-trace redeemer item open header executor": "V1VtRiOpenHeader",
+  "V1 validation-trace redeemer item open tail executor": "V1VtRiOpenTail",
+  "V1 validation-trace redeemer item head scalar executor": "V1VtRiHeadScalar",
+  "V1 validation-trace redeemer item head sequence executor":
+    "V1VtRiHeadSequence",
+  "V1 validation-trace redeemer item head map executor": "V1VtRiHeadMap",
+  "V1 validation-trace redeemer item head large constructor executor":
+    "V1VtRiHeadLargeCtor",
+  "V1 validation-trace redeemer item attach integer executor":
+    "V1VtRiAttachInteger",
+  "V1 validation-trace redeemer item attach bytes executor":
+    "V1VtRiAttachBytes",
+  "V1 validation-trace redeemer item fold list executor": "V1VtRiFoldList",
+  "V1 validation-trace redeemer item advance integer executor":
+    "V1VtRiAdvanceInteger",
+  "V1 validation-trace redeemer item advance bytes executor":
+    "V1VtRiAdvanceBytes",
+  "V1 validation-trace redeemer item advance large constructor executor":
+    "V1VtRiAdvanceLargeCtor",
+  "V1 validation-trace redeemer item advance large fields executor":
+    "V1VtRiAdvanceLargeFields",
+  "V1 validation-trace redeemer item close executor": "V1VtRiClose",
+  "V1 validation-trace redeemer item finish data executor": "V1VtRiFinishData",
+  "V1 validation-trace redeemer item invalid header executor":
+    "V1VtRiInvalidHeader",
+  "V1 validation-trace redeemer item invalid tail executor":
+    "V1VtRiInvalidTail",
+  "V1 validation-trace redeemer item settlement": "V1VtRiSettlement",
   "V1 validation-trace script-sources RedeemerNormalization semantic":
     "V1VtSsRedeemerNorm",
   "V1 validation-trace script-sources StageTwoAdvance yield":
