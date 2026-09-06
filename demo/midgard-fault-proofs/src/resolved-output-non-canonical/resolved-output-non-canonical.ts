@@ -2,9 +2,9 @@ import {
   advanceMidgardLedgerOutputScan,
   buildMidgardBoundedItem,
   buildMidgardLedgerOutputProofTrace,
-  decodeMidgardFieldPreimage,
   decodeMidgardInputFieldPreimage,
   decodeMidgardLedgerOutputCommitment,
+  decodeMidgardSpendInputItem,
   deriveMidgardNativeTxFaultEvidenceMaterial,
   finishMidgardLedgerOutputScan,
   initialMidgardLedgerOutputScanControl,
@@ -345,50 +345,36 @@ export const deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus =
     )
       return fail("authenticated predecessor history is absent or substituted");
 
-    const outputPreimages = new Map<string, string>();
-    const record = (
-      transactionId: string,
-      transactionCbor: Uint8Array,
-    ): void => {
-      const material =
-        deriveMidgardNativeTxFaultEvidenceMaterial(transactionCbor);
-      decodeMidgardFieldPreimage(material.fieldPreimages[2]!).forEach(
-        (output, outputIndex) =>
-          outputPreimages.set(
-            outRefKey(transactionId, outputIndex),
-            Buffer.from(output).toString("hex"),
-          ),
-      );
-    };
-    admitted.reconstructions.slice(0, -1).forEach((reconstruction) => {
-      reconstruction.transactions.forEach((transaction) =>
-        record(transaction.txId, transaction.fullTransactionCbor),
-      );
-      reconstruction.forcedTransactions.forEach((transaction) =>
-        record(transaction.value.tx_id, transaction.fullTransactionCbor),
-      );
-    });
-    const trie = await buildTrieView(predecessor.utxos);
+    // Retained UTxOs carry raw output bytes; the authenticated ledger root
+    // commits their descriptors. Use the already reconstructed descriptor view
+    // and pair it with the exact retained output by its canonical ledger key.
+    const descriptorEntries = predecessor.rootData.utxos.entries;
+    const outputPreimages = new Map(
+      predecessor.utxos.map((entry) => [
+        entry.key.toString("hex"),
+        entry.value.toString("hex"),
+      ]),
+    );
+    const trie = await buildTrieView(descriptorEntries);
     if (trie.root !== block.header.prevUtxosRoot)
       return fail("reconstructed predecessor trie root changed");
     const outputs = new Map<
       string,
       Omit<AuthenticatedPriorLedgerOutput, "priorRoot">
     >();
-    for (const entry of predecessor.utxos) {
-      if (entry.key.length !== 38)
-        return fail("predecessor ledger key is not a canonical out-ref");
-      const transactionId = entry.key.subarray(0, 32).toString("hex");
-      const outputIndex = entry.key.readUIntBE(32, 6);
+    for (const entry of descriptorEntries) {
+      const decoded = decodeMidgardSpendInputItem(entry.key);
+      const transactionId = Buffer.from(decoded.txId).toString("hex");
+      const outputIndex = decoded.outputIndex;
       const key = outRefKey(transactionId, outputIndex);
-      const outputCborHex = outputPreimages.get(key);
+      const outputCborHex = outputPreimages.get(entry.key.toString("hex"));
       if (outputCborHex === undefined)
         return fail("historical retained DA omitted a live output preimage");
       const proof = await keyValuePhasProof(
         {
           root: trie.root,
-          count: BigInt(predecessor.utxos.length),
-          entries: predecessor.utxos,
+          count: BigInt(descriptorEntries.length),
+          entries: descriptorEntries,
         },
         entry.key,
         entry.value,

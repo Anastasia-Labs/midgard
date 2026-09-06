@@ -39,6 +39,7 @@ import {
   prepareNativeScriptInvalidArtifact,
 } from "../src/native-script-invalid/artifact.js";
 import { prepareNativeScriptInvalidFromCanonicalEvidence } from "../src/native-script-invalid/prepare.js";
+import { deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 import { encodeData } from "../src/transition-trace/reconstruct.js";
@@ -471,6 +472,29 @@ describe("Q33/Q34 retained-DA evidence", () => {
         currentEvidence: challenged,
         sources: [retainedSource([previousFixture, challengedFixture])],
       });
+    const priorLedger =
+      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
+        block: challenged,
+        corpus: historicalNativeScriptCorpus,
+      });
+    expect(priorLedger.priorRoot).toBe(previousRoot.root);
+    expect([...priorLedger.outputs.keys()]).toEqual([
+      `${predecessorTxId.toString("hex")}#0`,
+    ]);
+    expect(
+      priorLedger.outputs.get(`${predecessorTxId.toString("hex")}#0`),
+    ).toMatchObject({
+      transactionId: predecessorTxId.toString("hex"),
+      outputIndex: 0,
+      descriptorCborHex: Buffer.from(descriptorCbor).toString("hex"),
+      outputCborHex: outputCbor.toString("hex"),
+    });
+    await expect(
+      deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
+        block: await evidenceFromFixture(challengedFixture),
+        corpus: historicalNativeScriptCorpus,
+      }),
+    ).rejects.toThrow(/another challenged block/u);
     const changedRosterSource = createHistoricalNativeScriptHistorySource({
       providerRoster: createHistoricalNativeScriptProviderRoster({
         deploymentFingerprint: "11".repeat(32),
