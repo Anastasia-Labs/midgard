@@ -41,6 +41,7 @@ import {
   submitValidationDisputeVerifySource,
   VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX,
   validationPhaseASemanticReferenceScriptDeploymentEntry,
+  validationResolveInputsSemanticReferenceScriptDeploymentEntry,
   validationScriptSourcesSemanticReferenceScriptDeploymentEntry,
   validationSemanticResolverGlobalIndex,
   validationValueAndMintSemanticReferenceScriptDeploymentEntry,
@@ -615,6 +616,10 @@ export const runForcedValidationDisputeScenario = async (
           },
         };
   const publishedSemanticEntry =
+    validationResolveInputsSemanticReferenceScriptDeploymentEntry(
+      stagedResolverIndex,
+      stagedSemanticIndex,
+    ) ??
     validationPhaseASemanticReferenceScriptDeploymentEntry(
       stagedResolverIndex,
       stagedSemanticIndex,

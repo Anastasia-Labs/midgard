@@ -6,6 +6,9 @@ use midgard/cek_data_frame_v1
 use midgard/cek_data_traverse_v1
 use midgard/cek_data_v1
 use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_proof_datum as narrow_datum
+use midgard/ledger_output_proof_raw as raw
+use midgard/ledger_output_proof_stages as narrow
 use midgard/ledger_output_proof_v1
 use midgard/script_context_v1
 use midgard/validation_merkle_v1
@@ -295,6 +298,18 @@ test authenticates_the_inline_datum_semantics_from_output_chunks() {
       datum(cek_data_traverse_v1.FinalizeFrame { frame, parent: None }, None),
     ),
   )
+  let raw_witness: Data = datum(
+    cek_data_traverse_v1.FinalizeFrame { frame, parent: None },
+    None,
+  )
+  expect Some(narrow.Advanced { control: raw_datum_authenticated }) = narrow_datum.finalize_frame(
+    raw.open(ledger_output_proof_v1.encode_control_v1(datum_opened)),
+    raw_witness,
+  )
+  expect
+    raw.encode(raw_datum_authenticated) == ledger_output_proof_v1.encode_control_v1(
+      datum_authenticated,
+    )
   let terminal = advanced(
     ledger_output_proof_v1.step_v1(
       datum_authenticated,

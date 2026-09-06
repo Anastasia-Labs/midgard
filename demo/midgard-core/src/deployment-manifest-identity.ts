@@ -238,6 +238,12 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofNativeScriptInvalidStep05",
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
+  "validationTraceDisputeResolveInputsInitialSemantic",
+  "validationTraceDisputeResolveInputsFinishSemantic",
+  "validationTraceDisputeResolveInputsMembershipBeginSemantic",
+  "validationTraceDisputeResolveInputsMembershipStepSemantic",
+  "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
+  "validationTraceDisputeResolveInputsNonMembershipSemantic",
   "validationTraceDisputeScriptSourcesNonOutputSemantic",
   "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
   "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
@@ -1025,6 +1031,18 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofNativeScriptInvalidStep05",
     "V1 fraud-proof min-ada step-01": "fraudProofMinAda",
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
+    "V1 validation-trace resolve-inputs Initial semantic":
+      "validationTraceDisputeResolveInputsInitialSemantic",
+    "V1 validation-trace resolve-inputs Finish semantic":
+      "validationTraceDisputeResolveInputsFinishSemantic",
+    "V1 validation-trace resolve-inputs MembershipBegin semantic":
+      "validationTraceDisputeResolveInputsMembershipBeginSemantic",
+    "V1 validation-trace resolve-inputs MembershipStep semantic":
+      "validationTraceDisputeResolveInputsMembershipStepSemantic",
+    "V1 validation-trace resolve-inputs MembershipFinalize semantic":
+      "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
+    "V1 validation-trace resolve-inputs NonMembership semantic":
+      "validationTraceDisputeResolveInputsNonMembershipSemantic",
     "V1 validation-trace script-sources NonOutput semantic":
       "validationTraceDisputeScriptSourcesNonOutputSemantic",
     "V1 validation-trace script-sources OutputProofBegin semantic":
@@ -1611,6 +1629,16 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
   } as const);
 
 export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
+  "V1 validation-trace resolve-inputs Initial semantic": "V1VtRiInitial",
+  "V1 validation-trace resolve-inputs Finish semantic": "V1VtRiFinish",
+  "V1 validation-trace resolve-inputs MembershipBegin semantic":
+    "V1VtRiMembershipBegin",
+  "V1 validation-trace resolve-inputs MembershipStep semantic":
+    "V1VtRiMembershipStep",
+  "V1 validation-trace resolve-inputs MembershipFinalize semantic":
+    "V1VtRiMembershipFinalize",
+  "V1 validation-trace resolve-inputs NonMembership semantic":
+    "V1VtRiNonMembership",
   "V1 validation-trace script-sources NonOutput semantic": "V1VtSsNonOutput",
   "V1 validation-trace script-sources OutputProofBegin semantic":
     "V1VtSsOutputProofBegin",

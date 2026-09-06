@@ -1896,6 +1896,36 @@ export const nodeRuntimeReferenceScriptTargets = (
       .typeFailureRoots.spendingScript,
   ),
   manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsInitialSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[26]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[27]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsMembershipBeginSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[28]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsMembershipStepSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[29]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[30]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsNonMembershipSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[31]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
     "validationTraceDisputeScriptSourcesNonOutputSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[32]
       .spendingScript,

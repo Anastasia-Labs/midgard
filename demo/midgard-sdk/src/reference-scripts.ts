@@ -25,6 +25,16 @@ export const REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 4 * 60 * 60 * 1000;
 export const REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS = 90 * 60 * 1000;
 
 export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
+  "V1 validation-trace resolve-inputs Initial semantic": "V1VtRiInitial",
+  "V1 validation-trace resolve-inputs Finish semantic": "V1VtRiFinish",
+  "V1 validation-trace resolve-inputs MembershipBegin semantic":
+    "V1VtRiMembershipBegin",
+  "V1 validation-trace resolve-inputs MembershipStep semantic":
+    "V1VtRiMembershipStep",
+  "V1 validation-trace resolve-inputs MembershipFinalize semantic":
+    "V1VtRiMembershipFinalize",
+  "V1 validation-trace resolve-inputs NonMembership semantic":
+    "V1VtRiNonMembership",
   "V1 validation-trace script-sources NonOutput semantic": "V1VtSsNonOutput",
   "V1 validation-trace script-sources OutputProofBegin semantic":
     "V1VtSsOutputProofBegin",

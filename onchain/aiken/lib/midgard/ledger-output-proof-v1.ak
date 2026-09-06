@@ -493,21 +493,25 @@ pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputProofControlV1 
 }
 
 fn output_chunk_proof_matches(
-  control: LedgerOutputProofControlV1,
+  output_index: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
   proof: bounded_item_v1.ChunkProofV1,
   chunk_index: Int,
 ) -> Bool {
   and {
     proof.field_index == output_field_index,
-    proof.item_index == control.output_index,
-    proof.total_length == control.total_length,
+    proof.item_index == output_index,
+    proof.total_length == total_length,
     proof.chunk_index == chunk_index,
-    bounded_item_v1.verify_chunk(control.item_commitment, proof),
+    bounded_item_v1.verify_chunk(item_commitment, proof),
   }
 }
 
-fn authenticated_chunk_window(
-  control: LedgerOutputProofControlV1,
+pub fn authenticated_chunk_window_for_output(
+  output_index: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
   cursor: Int,
   witness: LedgerOutputProofWitnessV1,
   require_following_chunk: Bool,
@@ -515,9 +519,15 @@ fn authenticated_chunk_window(
   when witness is {
     LedgerOutputProofChunks { chunk_proof, next_chunk_proof } -> {
       let chunk_index = cursor / bounded_item_v1.chunk_bytes
-      let chunk_count = bounded_item_v1.chunk_count(control.total_length)
+      let chunk_count = bounded_item_v1.chunk_count(total_length)
       let has_following_chunk = chunk_index + 1 < chunk_count
-      if !output_chunk_proof_matches(control, chunk_proof, chunk_index) {
+      if !output_chunk_proof_matches(
+        output_index,
+        total_length,
+        item_commitment,
+        chunk_proof,
+        chunk_index,
+      ) {
         None
       } else if and {
         require_following_chunk,
@@ -526,7 +536,13 @@ fn authenticated_chunk_window(
         when next_chunk_proof is {
           None -> None
           Some(next) ->
-            if output_chunk_proof_matches(control, next, chunk_index + 1) {
+            if output_chunk_proof_matches(
+              output_index,
+              total_length,
+              item_commitment,
+              next,
+              chunk_index + 1,
+            ) {
               Some(
                 Pair(
                   bytearray.concat(chunk_proof.chunk, next.chunk),
@@ -552,8 +568,26 @@ fn authenticated_chunk_window(
   }
 }
 
-fn authenticated_output_span(
+fn authenticated_chunk_window(
   control: LedgerOutputProofControlV1,
+  cursor: Int,
+  witness: LedgerOutputProofWitnessV1,
+  require_following_chunk: Bool,
+) -> Option<Pair<ByteArray, Int>> {
+  authenticated_chunk_window_for_output(
+    control.output_index,
+    control.total_length,
+    control.item_commitment,
+    cursor,
+    witness,
+    require_following_chunk,
+  )
+}
+
+pub fn authenticated_output_span_for_output(
+  output_index: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
   absolute_start: Int,
   length: Int,
   witness: LedgerOutputProofWitnessV1,
@@ -562,7 +596,7 @@ fn authenticated_output_span(
     length <= 0,
     length > bounded_item_v1.chunk_bytes,
     absolute_start < 0,
-    absolute_start + length > control.total_length,
+    absolute_start + length > total_length,
   } {
     None
   } else {
@@ -573,7 +607,13 @@ fn authenticated_output_span(
         let local_start = absolute_start - first_chunk_index * bounded_item_v1.chunk_bytes
         if or {
           last_chunk_index > first_chunk_index + 1,
-          !output_chunk_proof_matches(control, chunk_proof, first_chunk_index),
+          !output_chunk_proof_matches(
+            output_index,
+            total_length,
+            item_commitment,
+            chunk_proof,
+            first_chunk_index,
+          ),
         } {
           None
         } else if last_chunk_index == first_chunk_index {
@@ -588,7 +628,13 @@ fn authenticated_output_span(
           when next_chunk_proof is {
             None -> None
             Some(next) ->
-              if output_chunk_proof_matches(control, next, last_chunk_index) {
+              if output_chunk_proof_matches(
+                output_index,
+                total_length,
+                item_commitment,
+                next,
+                last_chunk_index,
+              ) {
                 Some(
                   chunk_proof.chunk
                     |> bytearray.concat(next.chunk)
@@ -603,6 +649,22 @@ fn authenticated_output_span(
       _ -> None
     }
   }
+}
+
+fn authenticated_output_span(
+  control: LedgerOutputProofControlV1,
+  absolute_start: Int,
+  length: Int,
+  witness: LedgerOutputProofWitnessV1,
+) -> Option<ByteArray> {
+  authenticated_output_span_for_output(
+    control.output_index,
+    control.total_length,
+    control.item_commitment,
+    absolute_start,
+    length,
+    witness,
+  )
 }
 
 fn advanced(

@@ -1031,6 +1031,36 @@ const collectScriptDescriptors = (
     "V1 validation-trace award",
   ),
   spendDescriptor(
+    "validationTraceDisputeResolveInputsInitialSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[26],
+    "V1 validation-trace resolve-inputs Initial semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeResolveInputsFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[27],
+    "V1 validation-trace resolve-inputs Finish semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeResolveInputsMembershipBeginSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[28],
+    "V1 validation-trace resolve-inputs MembershipBegin semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeResolveInputsMembershipStepSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[29],
+    "V1 validation-trace resolve-inputs MembershipStep semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[30],
+    "V1 validation-trace resolve-inputs MembershipFinalize semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeResolveInputsNonMembershipSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[31],
+    "V1 validation-trace resolve-inputs NonMembership semantic",
+  ),
+  spendDescriptor(
     "validationTraceDisputeScriptSourcesNonOutputSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[32],
     "V1 validation-trace script-sources NonOutput semantic",

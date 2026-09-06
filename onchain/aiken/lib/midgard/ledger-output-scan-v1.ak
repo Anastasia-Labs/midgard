@@ -883,3 +883,108 @@ pub fn terminal_is_exact_v1(
     },
   }
 }
+
+/// Physical LOP yields share these exact pre/post conditions with step_v1;
+/// each selected body includes only its scanner stage group.
+fn narrow_step(
+  control: LedgerOutputScanControlV1,
+  total_length: Int,
+  window: ByteArray,
+  window_offset: Int,
+  transition: fn(LedgerOutputScanControlV1, ByteArray, Int) ->
+    Option<LedgerOutputScanControlV1>,
+) -> Option<LedgerOutputScanControlV1> {
+  if and {
+    control_is_well_formed(control),
+    control.cursor >= 0,
+    control.cursor <= total_length,
+    window_offset >= 0,
+    window_offset < bytearray.length(window),
+  } {
+    when transition(control, window, window_offset) is {
+      None -> None
+      Some(next) ->
+        if and {
+          control_is_well_formed(next),
+          next.cursor >= control.cursor,
+          next.cursor <= total_length,
+          next.cursor > control.cursor || next.stage != control.stage,
+        } {
+          Some(next)
+        } else {
+          None
+        }
+    }
+  } else {
+    None
+  }
+}
+
+pub fn step_headers(
+  control: LedgerOutputScanControlV1,
+  total_length: Int,
+  window: ByteArray,
+  window_offset: Int,
+) -> Option<LedgerOutputScanControlV1> {
+  narrow_step(
+    control,
+    total_length,
+    window,
+    window_offset,
+    fn(control, window, offset) {
+      if control.stage == stage_required_fields {
+        step_required_fields(control, window, offset)
+      } else if control.stage == stage_value_header {
+        step_value_header(control, window, offset)
+      } else {
+        None
+      }
+    },
+  )
+}
+
+pub fn step_assets(
+  control: LedgerOutputScanControlV1,
+  total_length: Int,
+  window: ByteArray,
+  window_offset: Int,
+) -> Option<LedgerOutputScanControlV1> {
+  narrow_step(
+    control,
+    total_length,
+    window,
+    window_offset,
+    fn(control, window, offset) {
+      if control.stage == stage_policy_header {
+        step_policy_header(control, window, offset)
+      } else if control.stage == stage_asset {
+        step_asset(control, window, offset)
+      } else {
+        None
+      }
+    },
+  )
+}
+
+pub fn step_optional(
+  control: LedgerOutputScanControlV1,
+  total_length: Int,
+  window: ByteArray,
+  window_offset: Int,
+) -> Option<LedgerOutputScanControlV1> {
+  narrow_step(
+    control,
+    total_length,
+    window,
+    window_offset,
+    fn(control, window, offset) {
+      if control.stage == stage_optional_field {
+        step_optional_field(control, window, offset)
+      } else if control.stage == stage_datum_payload || control.stage == stage_reference_script_payload {
+        step_payload(control, total_length)
+      } else {
+        None
+      }
+    },
+  )
+}

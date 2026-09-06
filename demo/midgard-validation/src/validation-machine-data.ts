@@ -1502,6 +1502,7 @@ export type ValidationOneStepArgument = {
   readonly evidenceCbor: Buffer;
   /** Exact adjacent witness from fresh canonical replay for context settlement. */
   readonly cekContextSuccessorWorkWitnessCbor?: Buffer;
+  readonly ledgerOutputProofSuccessorWorkWitnessCbor?: Buffer;
   readonly cekRouteMaterial?: CekRouteMaterial;
 };
 
@@ -2133,6 +2134,29 @@ export const buildValidationOneStepArgument = ({
     }
     cekContextSuccessorWorkWitnessCbor = Buffer.from(adjacent.cbor);
   }
+  let ledgerOutputProofSuccessorWorkWitnessCbor: Buffer | undefined;
+  if (
+    ((resolverIndex === 7 && semanticResolverIndex === 3) ||
+      (resolverIndex === 8 && semanticResolverIndex === 2)) &&
+    claimedSuccessor.phase !== "terminal"
+  ) {
+    const adjacent = trace.witnesses[stateIndex + 1];
+    if (
+      adjacent === undefined ||
+      adjacent.phase !== claimedSuccessor.phase ||
+      adjacent.programCounter !== claimedSuccessor.programCounter ||
+      !hashMidgardValidationWorkWitness({
+        phase: adjacent.phase,
+        programCounter: adjacent.programCounter,
+        witnessCbor: adjacent.cbor,
+      }).equals(claimedSuccessor.workRoot)
+    ) {
+      throw new Error(
+        "Ledger output proof requires the exact adjacent successor work witness",
+      );
+    }
+    ledgerOutputProofSuccessorWorkWitnessCbor = Buffer.from(adjacent.cbor);
+  }
   return {
     resolverIndex,
     semanticResolverIndex,
@@ -2143,5 +2167,8 @@ export const buildValidationOneStepArgument = ({
     ...(cekContextSuccessorWorkWitnessCbor === undefined
       ? {}
       : { cekContextSuccessorWorkWitnessCbor }),
+    ...(ledgerOutputProofSuccessorWorkWitnessCbor === undefined
+      ? {}
+      : { ledgerOutputProofSuccessorWorkWitnessCbor }),
   };
 };

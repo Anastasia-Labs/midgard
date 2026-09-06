@@ -1068,6 +1068,28 @@ export const requireValidationValueAndMintSemanticReferenceScriptUtxo = async ({
 };
 
 /** Stable ScriptSources slots, including the slot-28 normalization door. */
+export const VALIDATION_RESOLVE_INPUTS_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES =
+  [
+    "validationTraceDisputeResolveInputsInitialSemantic",
+    "validationTraceDisputeResolveInputsFinishSemantic",
+    "validationTraceDisputeResolveInputsMembershipBeginSemantic",
+    "validationTraceDisputeResolveInputsMembershipStepSemantic",
+    "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
+    "validationTraceDisputeResolveInputsNonMembershipSemantic",
+  ] as const;
+
+export const validationResolveInputsSemanticReferenceScriptDeploymentEntry = (
+  resolverIndex: number,
+  semanticResolverIndex: number,
+): string | undefined =>
+  resolverIndex === 7 &&
+  Number.isInteger(semanticResolverIndex) &&
+  semanticResolverIndex >= 0
+    ? VALIDATION_RESOLVE_INPUTS_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
+        semanticResolverIndex
+      ]
+    : undefined;
+
 export const VALIDATION_SCRIPT_SOURCES_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES =
   [
     "validationTraceDisputeScriptSourcesNonOutputSemantic",
@@ -1243,6 +1265,7 @@ export type ValidationOneStepSubmissionArgument = {
   readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSet;
   /** Exact adjacent canonical replay bytes; include in durable evidence identity. */
   readonly cekContextSuccessorWorkWitnessCbor?: Uint8Array;
+  readonly ledgerOutputProofSuccessorWorkWitnessCbor?: Uint8Array;
 };
 
 export type ValidatedCekSubmissionEvidence = {
@@ -5969,6 +5992,10 @@ export const submitValidationDisputeSemanticResolution = async ({
   // At most one of the two can be set: the two rosters are keyed by disjoint
   // resolver indices (CEK 11, ValueAndMint 12).
   const publishedSemanticEntryName =
+    validationResolveInputsSemanticReferenceScriptDeploymentEntry(
+      resolverIndex,
+      staged.semanticResolverIndex,
+    ) ??
     validationPhaseASemanticReferenceScriptDeploymentEntry(
       resolverIndex,
       staged.semanticResolverIndex,
