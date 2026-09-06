@@ -131,6 +131,12 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import {
+  createManifestBoundTransitionTraceWorkflow,
+  type ManifestBoundTransitionTraceWorkflow,
+  type ManifestBoundTransitionTraceWorkflowConfig,
+  runOrResumeManifestBoundTransitionTraceWorkflow,
+} from "../transition-trace/workflow.js";
+import {
   createUnusedRedeemerWorkflowRunnerSurface,
   type LoadUnusedRedeemerWorkflow,
 } from "../unused-redeemer/v1.js";
@@ -827,6 +833,26 @@ export const createMinAdaWorkflowRunner = (
     }),
   });
 
+export const createTransitionTraceWorkflowRunner = (
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundTransitionTraceWorkflowConfig>,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner =>
+  createAdmittedWorkflowRunner({
+    category: "transitionTrace",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundWorkflowRunOrResume({
+      category: "transitionTrace",
+      loadRuntimeConfig,
+      constructWorkflow: createManifestBoundTransitionTraceWorkflow,
+      execute: async ({ workflow, sources, journal }) =>
+        await runOrResumeManifestBoundTransitionTraceWorkflow({
+          workflow: workflow as ManifestBoundTransitionTraceWorkflow,
+          sources,
+          journal,
+        }),
+    }),
+  });
+
 export const createValueConservationWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundValueConservationWorkflowConfig>,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -1403,6 +1429,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   crossBlockDuplicateEvent: createCrossBlockDuplicateEventWorkflowRunner,
   withdrawalMistag: createWithdrawalMistagWorkflowRunner,
   minAda: createMinAdaWorkflowRunner,
+  transitionTrace: createTransitionTraceWorkflowRunner,
   valueNotPreserved: createValueConservationWorkflowRunner,
   fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner,
   fieldItemWidthIllegal: createFieldItemWidthIllegalWorkflowRunner,

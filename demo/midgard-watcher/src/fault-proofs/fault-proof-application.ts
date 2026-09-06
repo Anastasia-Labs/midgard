@@ -2,9 +2,16 @@ import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
 import {
+  createManifestBoundTransitionTraceWorkflow,
   createManifestBoundValueConservationWorkflow,
+  createTransitionTraceEventAuthority,
+  createTransitionTraceWorkflowRunner,
   createValueConservationWorkflowRunner,
+  type ManifestBoundTransitionTraceWorkflowConfig,
   type ManifestBoundValueConservationWorkflowConfig,
+  TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
+  TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
+  TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
   VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -294,6 +301,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "nonExistentInput",
   "nonExistentInputNoIndex",
   "invalidRange",
+  "transitionTrace",
   "zeroInput",
   "daHashPreimage",
   "noReferenceInput",
@@ -348,7 +356,6 @@ export type WatcherInstalledWorkflowCategory =
   (typeof WATCHER_INSTALLED_WORKFLOW_CATEGORIES)[number];
 
 export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([
-  "transitionTrace",
   "validationTraceDispute",
 ] as const);
 
@@ -548,6 +555,10 @@ type TaggedWorkflowConfig =
       | {
           category: "valueNotPreserved";
           config: ManifestBoundValueConservationWorkflowConfig;
+        }
+      | {
+          category: "transitionTrace";
+          config: ManifestBoundTransitionTraceWorkflowConfig;
         }
       | {
           category: "minAda";
@@ -851,6 +862,8 @@ const constructProductionWorkflow = async (
       );
     case "valueNotPreserved":
       return await createManifestBoundValueConservationWorkflow(input.config);
+    case "transitionTrace":
+      return await createManifestBoundTransitionTraceWorkflow(input.config);
     case "minAda":
       return await createManifestBoundMinAdaWorkflow(input.config);
   }
@@ -1480,6 +1493,15 @@ const referenceContracts = (
         retiredOperatorsMint: "retiredOperatorsMint",
         schedulerSpend: "schedulerSpend",
       });
+    case "transitionTrace":
+      return Object.freeze(
+        Object.fromEntries(
+          TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES.map((name) => [
+            name,
+            name,
+          ]),
+        ),
+      );
     case "minAda":
       return Object.freeze({
         step01: "fraudProofMinAda",
@@ -2227,6 +2249,10 @@ function taggedConfig(
   category: "valueNotPreserved",
   common: CommonInfrastructure,
 ): Extract<TaggedWorkflowConfig, { readonly category: "valueNotPreserved" }>;
+function taggedConfig(
+  category: "transitionTrace",
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "transitionTrace" }>;
 function taggedConfig(
   category: "minAda",
   common: CommonInfrastructure,
@@ -3046,6 +3072,25 @@ function taggedConfig(
           }),
         }),
       });
+    case "transitionTrace":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          referenceScripts: Object.freeze(
+            Object.fromEntries(
+              TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES.map((name) => [
+                name,
+                reference(name),
+              ]),
+            ),
+          ),
+          historicalNativeScriptCheckpointStore:
+            common.historicalNativeScriptAuthority.checkpointStore,
+          historicalNativeScriptHistorySource:
+            common.historicalNativeScriptAuthority.historySource,
+        }),
+      });
     case "minAda":
       return Object.freeze({
         category,
@@ -3763,6 +3808,8 @@ const taggedReferenceOutRefs = (
           ...Object.values(tagged.config.referenceScripts.removal),
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
         ];
+      case "transitionTrace":
+        return Object.values(tagged.config.referenceScripts);
       case "minAda":
         return [
           ...tagged.config.referenceScripts.steps,
@@ -3984,6 +4031,7 @@ const WATCHER_INSTALLED_COMPLETE_REPLAY = createCompleteCanonicalReplayUnion([
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
   INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
   INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
+  TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
   DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -4205,6 +4253,9 @@ const createApplication = ({
     category: "missingNativeScriptUtxo",
   ): TaggedWorkflowLoaderFor<"missingNativeScriptUtxo">;
   function makeTaggedLoader(
+    category: "transitionTrace",
+  ): TaggedWorkflowLoaderFor<"transitionTrace">;
+  function makeTaggedLoader(
     category: "minAda",
   ): TaggedWorkflowLoaderFor<"minAda">;
   function makeTaggedLoader(
@@ -4328,6 +4379,7 @@ const createApplication = ({
     crossBlockDuplicateEvent: makeTaggedLoader("crossBlockDuplicateEvent"),
     withdrawalMistag: makeTaggedLoader("withdrawalMistag"),
     minAda: makeTaggedLoader("minAda"),
+    transitionTrace: makeTaggedLoader("transitionTrace"),
     valueNotPreserved: makeTaggedLoader("valueNotPreserved"),
     fieldPreimageLengthMismatch: makeTaggedLoader(
       "fieldPreimageLengthMismatch",
@@ -4768,6 +4820,20 @@ const createApplication = ({
   ) => {
     const loaded = await taggedLoaders.minAda(input);
     if (loaded.config.category !== "minAda") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const transitionTraceLoader = async (
+    input: Parameters<(typeof taggedLoaders)["transitionTrace"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.transitionTrace(input);
+    if (loaded.config.category !== "transitionTrace") {
       await loaded.close();
       throw new Error("workflow loader changed its fixed category");
     }
@@ -5226,6 +5292,10 @@ const createApplication = ({
       fundingProfile("crossBlockDuplicateEvent"),
     ),
     minAda: createMinAdaWorkflowRunner(minAdaLoader, fundingProfile("minAda")),
+    transitionTrace: createTransitionTraceWorkflowRunner(
+      transitionTraceLoader,
+      fundingProfile("transitionTrace"),
+    ),
     valueNotPreserved: createValueConservationWorkflowRunner(
       valueNotPreservedLoader,
       fundingProfile("valueNotPreserved"),
@@ -5392,7 +5462,33 @@ const createApplication = ({
         historySource: historicalNativeScriptAuthority.historySource,
         checkpointStore: historicalNativeScriptAuthority.checkpointStore,
       });
+      const transitionBinding = await bindFraudProofWorkflowDeployment({
+        manifest: JSON.parse(manifestJson!),
+        blueprintJson: blueprintJson!,
+        deploymentInfo: JSON.parse(deploymentInfoJson!),
+        category: "transitionTrace",
+        headerHash,
+        proverCredential: "00".repeat(28),
+        stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
+      });
+      if (
+        transitionBinding.deploymentFingerprint !==
+        deploymentIdentity.manifestId
+      )
+        throw new Error("transition trace classifier changed deployment");
+      const transitionTraceEventAuthority = createTransitionTraceEventAuthority(
+        {
+          binding: transitionBinding,
+          source: {
+            sourceId: `watcher-transition-events/${deploymentIdentity.manifestId}`,
+            kupoHttpUrl: kupo.endpoint,
+            ogmiosUrl: ogmios.endpoint,
+            timeoutMs: watcherConfig.l1.requestTimeoutMs,
+          },
+        },
+      );
       return await createHeaderClassifier({
+        transitionTraceEventAuthority,
         deploymentFingerprint: deploymentIdentity.manifestId,
         replayer: WATCHER_INSTALLED_COMPLETE_REPLAY,
         releaseFinalityAuthority:

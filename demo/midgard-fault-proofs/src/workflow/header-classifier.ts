@@ -27,6 +27,10 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import {
+  requireTransitionTraceEventAuthority,
+  type TransitionTraceEventAuthority,
+} from "../transition-trace/l1-events.js";
+import {
   type CanonicalBlockClassification,
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
@@ -224,6 +228,7 @@ const admittedClassifiers = new WeakMap<
     replayer: CompleteCanonicalReplay;
     confirmationDepth: number;
     settlementAuthority?: CrossBlockSettlementAuthority;
+    transitionTraceEventAuthority?: TransitionTraceEventAuthority;
     historicalReplayAuthority?: Readonly<{
       checkpointStore: HistoricalNativeScriptCheckpointStore;
       historySource: HistoricalNativeScriptHistorySource;
@@ -261,11 +266,13 @@ export const createHeaderClassifier = async ({
   releaseFinalityAuthority,
   historicalReplayAuthority,
   settlementAuthority,
+  transitionTraceEventAuthority,
 }: {
   readonly deploymentFingerprint: string;
   readonly replayer: CompleteCanonicalReplay;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly settlementAuthority?: CrossBlockSettlementAuthority;
+  readonly transitionTraceEventAuthority?: TransitionTraceEventAuthority;
   readonly historicalReplayAuthority?: Readonly<{
     checkpointStore: HistoricalNativeScriptCheckpointStore;
     historySource: HistoricalNativeScriptHistorySource;
@@ -282,6 +289,17 @@ export const createHeaderClassifier = async ({
     throw new Error(
       "cross-block duplicate classifier requires live settlement authority",
     );
+  if (replayer.launchScope.includes("transitionTrace")) {
+    if (
+      transitionTraceEventAuthority === undefined ||
+      transitionTraceEventAuthority.deploymentFingerprint !==
+        normalizedDeploymentFingerprint
+    )
+      throw new Error(
+        "Transition classifier requires admitted raw L1 event authority",
+      );
+    requireTransitionTraceEventAuthority(transitionTraceEventAuthority);
+  }
   if (settlementAuthority !== undefined) {
     requireCrossBlockSettlementAuthority(settlementAuthority);
     if (
@@ -291,9 +309,11 @@ export const createHeaderClassifier = async ({
       throw new Error("cross-block settlement authority changed deployment");
   }
   const requiresHistoricalReplay = replayer.launchScope.some((category) =>
-    ["resolvedOutputNonCanonical", "spendInputSignerMissing"].includes(
-      category,
-    ),
+    [
+      "resolvedOutputNonCanonical",
+      "spendInputSignerMissing",
+      "transitionTrace",
+    ].includes(category),
   );
   if (requiresHistoricalReplay && historicalReplayAuthority === undefined) {
     throw new Error(
@@ -337,6 +357,9 @@ export const createHeaderClassifier = async ({
     classifier,
     Object.freeze({
       replayer,
+      ...(transitionTraceEventAuthority === undefined
+        ? {}
+        : { transitionTraceEventAuthority }),
       confirmationDepth: releaseFinality.policy.confirmationDepth,
       ...(settlementAuthority === undefined ? {} : { settlementAuthority }),
       ...(historicalReplayAuthority === undefined
@@ -684,7 +707,10 @@ export const classifyHeader = async ({
       "production classifier accepts either an admitted replay context or a predecessor observation, never both",
     );
   }
-  if (replayContext?.historicalCorpus !== undefined) {
+  if (
+    replayContext?.historicalCorpus !== undefined ||
+    replayContext?.transitionTraceEvents !== undefined
+  ) {
     throw new Error(
       "production classifier rejects caller-supplied historical replay authority",
     );
@@ -764,9 +790,11 @@ export const classifyHeader = async ({
   }
   if (
     classifier.launchScope.some((category) =>
-      ["resolvedOutputNonCanonical", "spendInputSignerMissing"].includes(
-        category,
-      ),
+      [
+        "resolvedOutputNonCanonical",
+        "spendInputSignerMissing",
+        "transitionTrace",
+      ].includes(category),
     )
   ) {
     const historicalAuthority = authority.historicalReplayAuthority;
@@ -798,6 +826,16 @@ export const classifyHeader = async ({
     admittedReplayContext = Object.freeze({
       ...admittedReplayContext,
       settlements: await authority.settlementAuthority.capture(routed.evidence),
+    });
+  }
+  if (classifier.launchScope.includes("transitionTrace")) {
+    if (authority.transitionTraceEventAuthority === undefined)
+      throw new Error("Transition event authority was lost");
+    admittedReplayContext = Object.freeze({
+      ...admittedReplayContext,
+      transitionTraceEvents: await requireTransitionTraceEventAuthority(
+        authority.transitionTraceEventAuthority,
+      )(routed.evidence.headerHash),
     });
   }
   const replayDecision = await authority.replayer.replay(

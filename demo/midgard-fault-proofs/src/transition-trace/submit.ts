@@ -177,7 +177,7 @@ type TransitionTraceFinalResolvedLayout = TransitionTraceFinalSpendLayout & {
   readonly computationThreadMintRedeemerIndex: bigint;
 };
 
-const TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES = [
+export const TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES = [
   "fraudProofTransitionTraceControl",
   "fraudProofTransitionTraceSource",
   "fraudProofTransitionTraceWithdrawal",

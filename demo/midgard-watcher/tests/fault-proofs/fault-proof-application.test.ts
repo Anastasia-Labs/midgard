@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES } from "@al-ft/midgard-fault-proofs";
 import {
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
@@ -267,6 +268,7 @@ describe("watcher production fault-proof application V1", () => {
         "nonExistentInput",
         "nonExistentInputNoIndex",
         "invalidRange",
+        "transitionTrace",
         "zeroInput",
         "daHashPreimage",
         "noReferenceInput",
@@ -317,7 +319,6 @@ describe("watcher production fault-proof application V1", () => {
         "distinctAssetAccumulationLimit",
       ]);
       expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toEqual([
-        "transitionTrace",
         "validationTraceDispute",
       ]);
       expect(
@@ -327,9 +328,9 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: 52,
-        requestedCategoryCount: 52,
-        readyCategoryCount: 52,
+        installedCategoryCount: 53,
+        requestedCategoryCount: 53,
+        readyCategoryCount: 53,
         missingCategoryCount: 0,
       });
 
@@ -346,6 +347,12 @@ describe("watcher production fault-proof application V1", () => {
             headerHash: HEADER,
           }),
         );
+        if (category === "transitionTrace") {
+          expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual(
+            TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
+          );
+          continue;
+        }
         if (category === "valueNotPreserved") {
           expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual([
             "step01",
@@ -1222,8 +1229,8 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      expect(deps.makeLucid).toHaveBeenCalledTimes(52);
-      expect(transport.stop).toHaveBeenCalledTimes(52);
+      expect(deps.makeLucid).toHaveBeenCalledTimes(53);
+      expect(transport.stop).toHaveBeenCalledTimes(53);
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),
@@ -1373,7 +1380,7 @@ describe("watcher production fault-proof application V1", () => {
       await expect(
         admitted.assertStartupReady(
           invocation(configPath, "doubleSpend", {
-            category: "transitionTrace",
+            category: "validationTraceDispute",
           }),
         ),
       ).rejects.toThrow("no installed production workflow");

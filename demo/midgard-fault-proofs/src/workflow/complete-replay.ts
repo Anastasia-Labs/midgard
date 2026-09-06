@@ -110,6 +110,11 @@ import { detectScriptIntegrityHashMissingFromCanonicalEvidence } from "../script
 import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-signer-missing/spend-input-signer-missing.js";
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
+import type { TransitionTraceL1Events } from "../transition-trace/l1-events.js";
+import {
+  replayTransitionTraceFromRetainedHistory,
+  transitionTraceDetectionId,
+} from "../transition-trace/replay-authority.js";
 import { detectUnusedRedeemerCanonicalViolations } from "../unused-redeemer/replay.js";
 import { detectUnusedScriptWitnessCanonicalViolations } from "../unused-script-witness/replay.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
@@ -160,6 +165,7 @@ export type CompleteCanonicalReplayContext = Readonly<{
   predecessor?: CompleteCanonicalReplayPredecessor;
   /** Opaque authority for the complete retained-DA history of this header. */
   historicalCorpus?: CompleteCanonicalReplayHistoricalCorpus;
+  transitionTraceEvents?: TransitionTraceL1Events;
 }>;
 
 export type CompleteCanonicalReplayContextIdentity = Readonly<{
@@ -2008,4 +2014,45 @@ export const MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY = completeReplayer(
         context,
       }),
     }),
+);
+
+/** Complete transition replay derives every witness from freshly admitted history and raw L1. */
+export const createTransitionTraceCompleteCanonicalReplayFromRetainedHistory = (
+  corpus: HistoricalNativeScriptCorpus,
+  l1Events: TransitionTraceL1Events,
+): CompleteCanonicalReplay =>
+  completeReplayer(["transitionTrace"], async (evidence) => {
+    const replay = await replayTransitionTraceFromRetainedHistory({
+      evidence,
+      corpus,
+      l1Events,
+    });
+    return replay.detections.map((detection, index) => ({
+      violationId: "transition-trace",
+      headerHash: evidence.headerHash,
+      detectionId: transitionTraceDetectionId(index, detection.kind),
+      position: BigInt(index),
+    }));
+  });
+
+export const TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["transitionTrace"],
+  async (evidence, context) => {
+    if (context?.transitionTraceEvents === undefined)
+      throw new Error(
+        "Transition complete replay requires freshly admitted raw L1 events",
+      );
+    const corpus = requireReplayHistoricalCorpus({ evidence, context });
+    const replay = await replayTransitionTraceFromRetainedHistory({
+      evidence,
+      corpus,
+      l1Events: context.transitionTraceEvents,
+    });
+    return replay.detections.map((detection, index) => ({
+      violationId: "transition-trace",
+      headerHash: evidence.headerHash,
+      detectionId: transitionTraceDetectionId(index, detection.kind),
+      position: BigInt(index),
+    }));
+  },
 );

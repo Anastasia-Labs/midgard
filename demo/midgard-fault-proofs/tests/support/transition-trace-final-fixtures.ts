@@ -328,10 +328,14 @@ export const buildAcceptedClaimTransitionFixture = async ({
   operatorVkey,
   now,
   honest = false,
+  endTime,
+  blockSlot,
 }: {
   operatorVkey: string;
   now: number;
   honest?: boolean;
+  endTime?: bigint;
+  blockSlot?: bigint;
 }) => {
   const base = await buildAcceptedTransitionFixture({
     operatorVkey,
@@ -353,7 +357,11 @@ export const buildAcceptedClaimTransitionFixture = async ({
     SDK.L2TransactionSource,
   );
   const source = nativeSource.source;
-  const header = base.header;
+  const header = {
+    ...base.header,
+    ...(endTime === undefined ? {} : { endTime }),
+    ...(blockSlot === undefined ? {} : { blockSlot }),
+  };
   const context = Buffer.from(
     Data.to([
       1n,
