@@ -23,7 +23,9 @@ const blob_branch_domain = #"4d69646761726443656b426c6f624272616e63685631"
 
 const max_blob_chunk_bytes = 4095
 
-const max_bounded_blob_bytes = 9215
+// Source constants retain their separate 9,215-byte admission cap.
+// Ledger Data can occupy a full bounded ledger output.
+const max_ledger_data_blob_bytes = 16384
 
 fn hash_blob_chunk_v1(chunk: ByteArray) -> ByteArray {
   expect bytearray.length(chunk) <= max_blob_chunk_bytes
@@ -47,37 +49,32 @@ fn hash_blob_branch_v1(
     |> builtin.blake2b_256
 }
 
-fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
+fn blob_range_root_v1(bytes: ByteArray) -> ByteArray {
   let length = bytearray.length(bytes)
-  expect length <= max_bounded_blob_bytes
   if length <= max_blob_chunk_bytes {
     hash_blob_chunk_v1(bytes)
   } else {
-    let first = slice_len(bytes, 0, max_blob_chunk_bytes)
-    let remaining = length - max_blob_chunk_bytes
-    let second_length = if remaining <= max_blob_chunk_bytes {
-      remaining
+    // The host splits at the largest power-of-two chunk count strictly
+    // smaller than the range. At the ledger bound there are at most five
+    // 4,095-byte chunks, preserving every existing one/two/three-chunk root.
+    let left_length = if length <= 8190 {
+      4095
+    } else if length <= 16380 {
+      8190
     } else {
-      max_blob_chunk_bytes
+      16380
     }
-    let second = slice_len(bytes, max_blob_chunk_bytes, second_length)
-    let left = hash_blob_branch_v1(
-      hash_blob_chunk_v1(first),
-      hash_blob_chunk_v1(second),
-      max_blob_chunk_bytes + second_length,
+    hash_blob_branch_v1(
+      blob_range_root_v1(slice_len(bytes, 0, left_length)),
+      blob_range_root_v1(slice_len(bytes, left_length, length - left_length)),
+      length,
     )
-    if remaining <= max_blob_chunk_bytes {
-      left
-    } else {
-      let third_length = remaining - second_length
-      let third = slice_len(
-        bytes,
-        max_blob_chunk_bytes + second_length,
-        third_length,
-      )
-      hash_blob_branch_v1(left, hash_blob_chunk_v1(third), length)
-    }
   }
+}
+
+fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
+  expect bytearray.length(bytes) <= max_ledger_data_blob_bytes
+  blob_range_root_v1(bytes)
 }
 
 pub type DataNodeV1 {
