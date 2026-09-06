@@ -1,5 +1,8 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
-import { midgardFieldCommitmentFromItems } from "@al-ft/midgard-core";
+import {
+  decodeMidgardLedgerOutputCommitment,
+  midgardFieldCommitmentFromItems,
+} from "@al-ft/midgard-core";
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompact,
@@ -44,10 +47,14 @@ import {
   buildTraceBoundaryFault,
   buildTraceLinkFault,
   buildTransitionFaultProof,
+  buildValidDepositTransitionWitness,
+  buildValidWithdrawalTransitionWitness,
   type L2TransactionTransitionEvidence,
   type OmittedDueL1EventEvidence,
   type OutOfWindowSourceEventEvidence,
   rootCountProof,
+  type ValidDepositTransitionEvidence,
+  type ValidWithdrawalTransitionEvidence,
 } from "./witnesses.js";
 
 /**
@@ -90,6 +97,12 @@ export type TransitionTraceDetection =
     };
 
 export type TransitionTraceDetectionEvidence = {
+  readonly depositTransitions?: readonly (ValidDepositTransitionEvidence & {
+    readonly stepIndex: bigint;
+  })[];
+  readonly withdrawalTransitions?: readonly (ValidWithdrawalTransitionEvidence & {
+    readonly stepIndex: bigint;
+  })[];
   readonly omittedDueL1Events?: readonly OmittedDueL1EventEvidence[];
   readonly outOfWindowSourceEvents?: readonly OutOfWindowSourceEventEvidence[];
   readonly acceptedTransactionTransitionMismatches?: readonly AcceptedTransactionTransitionMismatchEvidence[];
@@ -1556,6 +1569,106 @@ const detectL2TransactionTransitions = async (
   return detections;
 };
 
+const detectSingleLedgerTransitions = async (
+  reconstruction: TransitionTraceReconstruction,
+  evidence: TransitionTraceDetectionEvidence,
+): Promise<readonly TransitionTraceDetection[]> => {
+  const results: TransitionTraceDetection[] = [];
+  for (const kind of ["deposit", "withdrawal"] as const) {
+    const items =
+      kind === "deposit"
+        ? (evidence.depositTransitions ?? [])
+        : (evidence.withdrawalTransitions ?? []);
+    for (const item of items) {
+      const inserting = "projectedUtxo" in item;
+      const witness = inserting
+        ? await buildValidDepositTransitionWitness({
+            reconstruction,
+            stepIndex: item.stepIndex,
+            evidence: item,
+          })
+        : await buildValidWithdrawalTransitionWitness({
+            reconstruction,
+            stepIndex: item.stepIndex,
+            evidence: item,
+          });
+      const source =
+        "ValidDepositTransition" in witness
+          ? witness.ValidDepositTransition
+          : "ValidWithdrawalTransition" in witness
+            ? witness.ValidWithdrawalTransition
+            : undefined;
+      if (source === undefined)
+        throw new Error(
+          "Single ledger transition witness has a different kind",
+        );
+      const mutation = inserting ? item.projectedUtxo : item.spentUtxo;
+      const outRef =
+        "ValidDepositTransition" in witness
+          ? witness.ValidDepositTransition.source_membership.key
+          : (
+              witness as Extract<
+                SDK.InvalidOneStepTransitionWitness,
+                { ValidWithdrawalTransition: unknown }
+              >
+            ).ValidWithdrawalTransition.source_membership.value.body.l2_outref;
+      const key = encodeMidgardSpendInputItem({
+        txId: Buffer.from(outRef.transactionId, "hex"),
+        outputIndex: Number(outRef.outputIndex),
+      });
+      if (mutation.key !== key.toString("hex"))
+        throw new Error(
+          "Single ledger transition key differs from authenticated source",
+        );
+      decodeMidgardLedgerOutputCommitment(Buffer.from(mutation.value, "hex"));
+      const proof = mpfProofFromWitness({
+        key,
+        value: Buffer.from(mutation.value, "hex"),
+        proof:
+          "insert_proof" in mutation
+            ? mutation.insert_proof
+            : mutation.delete_proof,
+        label: `${kind} transition mutation`,
+      });
+      const membership = mpfProofFromWitness({
+        key,
+        value: inserting ? undefined : Buffer.from(mutation.value, "hex"),
+        proof:
+          "non_membership_proof" in mutation
+            ? mutation.non_membership_proof
+            : mutation.membership_proof,
+        label: `${kind} transition membership`,
+      });
+      for (const candidate of [proof, membership]) {
+        if (
+          normalizedMpfRoot(
+            candidate.verify(!inserting),
+            "transition pre-root",
+          ) !== source.trace_proof.value.pre_utxos_root
+        )
+          throw new Error(
+            "Single ledger transition proof differs from authenticated pre-root",
+          );
+      }
+      const after = normalizedMpfRoot(
+        proof.verify(inserting),
+        "transition post-root",
+      );
+      if (after !== source.trace_proof.value.post_utxos_root)
+        results.push(
+          detection({
+            reconstruction,
+            kind: "invalidOneStepTransition",
+            invariant: `${kind}_transition_matches_authenticated_replay`,
+            diagnostic: `${kind} trace step ${item.stepIndex} differs from its authenticated ledger mutation.`,
+            fault: SDK.invalidOneStepTransitionFault(witness),
+          }),
+        );
+    }
+  }
+  return results;
+};
+
 const detectOmittedDueL1Events = async (
   reconstruction: TransitionTraceReconstruction,
   evidence: readonly OmittedDueL1EventEvidence[],
@@ -1643,6 +1756,7 @@ export const detectTransitionTraceFaults = async (
     reconstruction,
     evidence.l2TransactionTransitions ?? [],
   )),
+  ...(await detectSingleLedgerTransitions(reconstruction, evidence)),
   ...detectAcceptedTransactionTransitionMismatches(
     reconstruction,
     evidence.acceptedTransactionTransitionMismatches ?? [],

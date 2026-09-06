@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 
 import { transitionTraceError } from "./errors.js";
 import {
@@ -945,3 +946,97 @@ export const buildTransitionFaultProof = ({
     header: reconstruction.header,
     fault,
   });
+
+/** Reopens the operator's retained endpoints and exact counted memberships.
+ * The caller supplies an authenticated reconstruction, never an honest replay
+ * tree in place of the operator's committed trace. */
+export const buildRetainedValidationClaimWitness = async ({
+  reconstruction,
+  eventKey,
+}: {
+  readonly reconstruction: TransitionTraceReconstruction;
+  readonly eventKey: SDK.EventKey;
+}): Promise<{
+  readonly claim: SDK.ValidationClaimWitness;
+  readonly terminalWorkWitnessCbor: string;
+}> => {
+  const keyBytes = Buffer.from(Data.to(eventKey, SDK.EventKey), "hex");
+  const entries = reconstruction.rootData.validationTraces.entries.filter(
+    (entry) => entry.key.equals(keyBytes),
+  );
+  if (entries.length !== 1)
+    throw transitionTraceError(
+      "missingWitnessData",
+      "Selected retained validation descriptor is absent or duplicated.",
+    );
+  const descriptor = Data.from(
+    entries[0]!.value.toString("hex"),
+    SDK.ValidationTraceDescriptor,
+  );
+  const endpoints = SDK.readRetainedValidationEndpoints({
+    entries: reconstruction.payload.block_body.validation_trace_witnesses,
+    eventKey,
+    descriptor,
+  });
+  const source = sourceEventOrThrow(reconstruction, eventKey);
+  let sourceMembership: SDK.ValidationClaimWitness["source_membership"];
+  if (source.phase === "L2Transaction") {
+    sourceMembership = {
+      NormalValidationSource: {
+        membership: await membershipProof({
+          root: reconstruction.rootData.transactions,
+          entry: {
+            key: source.entry.txId,
+            keyBytes: source.entry.keyBytes,
+            value: source.entry.value,
+            valueBytes: source.entry.valueBytes,
+          },
+        }),
+      },
+    };
+  } else if (source.phase === "ForcedTransaction") {
+    sourceMembership = {
+      ForcedValidationSource: {
+        membership: await membershipProof({
+          root: reconstruction.rootData.forcedTransactions,
+          entry: source.entry,
+        }),
+      },
+    };
+  } else
+    throw transitionTraceError(
+      "missingWitnessData",
+      "Validation claims require a transaction source.",
+    );
+  const eventToStep = await buildEventToStepMembershipProof({
+    reconstruction,
+    eventKey,
+  });
+  const claim: SDK.ValidationClaimWitness = {
+    version: 1n,
+    descriptor_membership: await membershipProof({
+      root: reconstruction.rootData.validationTraces,
+      entry: {
+        key: eventKey,
+        value: descriptor,
+        keyBytes,
+        valueBytes: entries[0]!.value,
+      },
+    }),
+    transition_step_membership: await buildIndexedTraceProof({
+      reconstruction,
+      stepIndex: eventToStep.value.step_index,
+    }),
+    event_to_step_membership: eventToStep,
+    source_membership: sourceMembership,
+    validation_context_cbor: endpoints.initial.witness_cbor,
+    initial_state: endpoints.initial.machine_state,
+    terminal_state: endpoints.terminal.machine_state,
+    initial_state_proof: endpoints.initial.trace_proof,
+    terminal_state_proof: endpoints.terminal.trace_proof,
+  };
+  return Object.freeze({
+    claim,
+    terminalWorkWitnessCbor: endpoints.terminal.witness_cbor,
+  });
+};
