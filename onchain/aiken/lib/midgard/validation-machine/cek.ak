@@ -328,6 +328,25 @@ pub fn verify_cek_execution_selection(
   completed_cpu: Int,
   completed_memory: Int,
 ) -> Bool {
+  and {
+    authenticate_cek_execution_selection(auxiliary, control, execution_cursor),
+    verify_cek_execution_selection_successor(
+      pre,
+      witness,
+      auxiliary,
+      control,
+      execution_cursor,
+      completed_cpu,
+      completed_memory,
+    ),
+  }
+}
+
+pub fn authenticate_cek_execution_selection(
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: NativeScriptsControlV1,
+  execution_cursor: Int,
+) -> Bool {
   expect
       NativeExecutionScanWitness {
         execution_index,
@@ -372,7 +391,7 @@ pub fn verify_cek_execution_selection(
     first_chunk_proof.chunk,
     script_total_length,
   )
-  if and {
+  and {
     execution_index == execution_cursor,
     execution_cursor < control.execution_count,
     control.execution_count == control.purpose_count,
@@ -409,10 +428,74 @@ pub fn verify_cek_execution_selection(
       execution_leaf,
       execution_siblings,
     ),
+  }
+}
+
+pub fn verify_cek_execution_selection_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: NativeScriptsControlV1,
+  execution_cursor: Int,
+  completed_cpu: Int,
+  completed_memory: Int,
+) -> Bool {
+  expect
+      NativeExecutionScanWitness {
+        language_tag,
+        purpose_kind,
+        purpose_index,
+        script_hash,
+        subject,
+        script_total_length,
+        redeemer_leaf,
+        first_chunk_proof,
+        ..
+      }
+    = auxiliary
+  expect Some(header) = native_script_scan_v1.versioned_script_header_v1(
+    first_chunk_proof.chunk,
+    script_total_length,
+  )
+  if language_tag == 0 {
+    and {
+      redeemer_leaf == #"",
+      cek_selection_successor_is_exact(
+        pre,
+        witness,
+        control,
+        execution_cursor,
+        completed_cpu,
+        completed_memory,
+        language_tag,
+        purpose_kind,
+        purpose_index,
+        script_hash,
+        subject,
+        redeemer_leaf,
+        #"",
+        #"",
+      ),
+    }
+  } else if and {
+    or {
+      language_tag == 3,
+      language_tag == 128,
+    },
+    bytearray.length(redeemer_leaf) == 32,
+    header.payload_length <= cek_proof_v1.max_program_envelope_cbor_bytes,
+    header.payload_offset + header.payload_length <= bytearray.length(
+      first_chunk_proof.chunk,
+    ),
   } {
-    if language_tag == 0 {
-      and {
-        redeemer_leaf == #"",
+    let envelope_cbor = builtin.slice_bytearray(
+      header.payload_offset,
+      header.payload_length,
+      first_chunk_proof.chunk,
+    )
+    when cek_proof_v1.inspect_program_envelope_v1(envelope_cbor) is {
+      None -> False
+      Some(envelope) ->
         cek_selection_successor_is_exact(
           pre,
           witness,
@@ -426,55 +509,16 @@ pub fn verify_cek_execution_selection(
           script_hash,
           subject,
           redeemer_leaf,
-          #"",
-          #"",
-        ),
-      }
-    } else if and {
-      or {
-        language_tag == 3,
-        language_tag == 128,
-      },
-      bytearray.length(redeemer_leaf) == 32,
-      header.payload_length <= cek_proof_v1.max_program_envelope_cbor_bytes,
-      header.payload_offset + header.payload_length <= bytearray.length(
-        first_chunk_proof.chunk,
-      ),
-    } {
-      let envelope_cbor = builtin.slice_bytearray(
-        header.payload_offset,
-        header.payload_length,
-        first_chunk_proof.chunk,
-      )
-      when cek_proof_v1.inspect_program_envelope_v1(envelope_cbor) is {
-        None -> False
-        Some(envelope) ->
-          cek_selection_successor_is_exact(
-            pre,
-            witness,
-            control,
-            execution_cursor,
-            completed_cpu,
-            completed_memory,
-            language_tag,
-            purpose_kind,
-            purpose_index,
-            script_hash,
-            subject,
-            redeemer_leaf,
+          envelope.term_root,
+          cek_proof_v1.hash_program_envelope_v1(
+            1,
+            1,
+            0,
             envelope.term_root,
-            cek_proof_v1.hash_program_envelope_v1(
-              1,
-              1,
-              0,
-              envelope.term_root,
-              envelope.node_count,
-              envelope.material_byte_length,
-            ),
-          )
-      }
-    } else {
-      False
+            envelope.node_count,
+            envelope.material_byte_length,
+          ),
+        )
     }
   } else {
     False

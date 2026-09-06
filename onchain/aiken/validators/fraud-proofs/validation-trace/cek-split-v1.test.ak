@@ -22,16 +22,22 @@
 //// material through `verify_cek_route_v1`.
 
 use aiken/cbor
+use aiken/collection/list
 use aiken/primitive/bytearray
+use cardano/address
+use cardano/assets
+use cardano/transaction as l1
 use fraud_proofs/validation_trace/cek_context_step_semantic_v1 as context_validator
 use fraud_proofs/validation_trace/cek_core_step_semantic_v1 as core_validator
 use fraud_proofs/validation_trace/cek_execution_selection_semantic_v1 as selection_validator
+use fraud_proofs/validation_trace/cek_execution_selection_yields as selection_yields
 use fraud_proofs/validation_trace/cek_finish_semantic_v1 as finish_validator
 use fraud_proofs/validation_trace/cek_v1 as prepare_validator
 use midgard/bounded_item_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
+use midgard/cek_selection_yield as selection_yield
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
@@ -330,7 +336,7 @@ fn one_node_envelope() -> ByteArray {
 fn one_node_sidecar() -> ByteArray {
   #"820181825820"
     |> bytearray.concat(cek_proof_v1.hash_error_term_v1())
-    |> bytearray.concat(#"830100428106")
+    |> bytearray.concat(#"46830100428106")
 }
 
 fn singleton_field_item_chunk_proof(
@@ -899,6 +905,10 @@ type SelectionWireMirrorV1 {
     transition: ValidationOneStepWitnessV1,
     auxiliary: ValidationAuxiliaryWitnessV1,
     material_route: CekMaterialRouteV1,
+    yield_ref_input_indices: List<Int>,
+    envelope_facts: selection_yield.EnvelopeFacts,
+    material_facts: cek_proof_v1.CekMaterialPartitionFacts,
+    begin_traversal: Bool,
   }
 }
 
@@ -1004,12 +1014,16 @@ test finish_wire_layout_is_pinned() {
 test execution_selection_wire_layout_is_pinned() {
   let f = selection_fixture()
   let real: selection_validator.SpendRedeemer = ct.Continue(
-    selection_validator.VerifyExecutionSelection {
+    selection_yield.VerifyExecutionSelection {
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
       auxiliary: f.auxiliary,
       material_route: f.material_route,
+      yield_ref_input_indices: [0, 1, 2, 3],
+      envelope_facts: selection_envelope_facts(False),
+      material_facts: selection_material_facts(False),
+      begin_traversal: False,
     },
   )
   let mirror: ct.StepRedeemer<SelectionWireMirrorV1> = ct.Continue(
@@ -1019,6 +1033,10 @@ test execution_selection_wire_layout_is_pinned() {
       transition: golden_transition(),
       auxiliary: f.auxiliary,
       material_route: f.material_route,
+      yield_ref_input_indices: [0, 1, 2, 3],
+      envelope_facts: selection_envelope_facts(False),
+      material_facts: selection_material_facts(False),
+      begin_traversal: False,
     },
   )
   let mirror_data: Data = mirror
@@ -1238,29 +1256,181 @@ fn run_finish(
   )
 }
 
+fn selection_envelope_facts(native: Bool) -> selection_yield.EnvelopeFacts {
+  selection_yield.EnvelopeFacts {
+    term_root: if native {
+      #""
+    } else {
+      cek_proof_v1.hash_error_term_v1()
+    },
+    node_count: if native {
+      0
+    } else {
+      1
+    },
+    material_byte_length: if native {
+      0
+    } else {
+      2
+    },
+  }
+}
+
+fn selection_material_facts(
+  native: Bool,
+) -> cek_proof_v1.CekMaterialPartitionFacts {
+  cek_proof_v1.CekMaterialPartitionFacts {
+    program_node_count: if native {
+      0
+    } else {
+      1
+    },
+    program_byte_length: if native {
+      0
+    } else {
+      2
+    },
+    data_node_count: 0,
+    data_byte_length: 0,
+    data_roots: [],
+    data_blob_roots: [],
+  }
+}
+
+fn selection_roles(native: Bool) {
+  let roles = [
+    selection_yield.authenticate_role,
+    selection_yield.successor_role,
+    selection_yield.material_program_role,
+    selection_yield.material_data_role,
+  ]
+  let hashes = [
+    #"10101010101010101010101010101010101010101010101010101010",
+    #"20202020202020202020202020202020202020202020202020202020",
+    #"30303030303030303030303030303030303030303030303030303030",
+    #"40404040404040404040404040404040404040404040404040404040",
+  ]
+  let pairs = list.zip(roles, hashes)
+  if native {
+    list.take(pairs, 2)
+  } else {
+    pairs
+  }
+}
+
 fn run_selection(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   material_route: CekMaterialRouteV1,
 ) -> Bool {
-  selection_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.computation_thread_policy_id,
-    fixture.catalogue_script_hash,
-    Some(semantic_datum(base)),
-    ct.Continue(
-      selection_validator.VerifyExecutionSelection {
-        input_index: 0,
-        output_index: 0,
-        transition,
-        auxiliary,
-        material_route,
+  let raw_aux: Data = auxiliary
+  let native = selection_yield.selection_language(raw_aux) == 0
+  let action = selection_yield.VerifyExecutionSelection {
+    input_index: 0,
+    output_index: 0,
+    transition,
+    auxiliary: raw_aux,
+    material_route,
+    yield_ref_input_indices: if native {
+      [0, 1]
+    } else {
+      [0, 1, 2, 3]
+    },
+    envelope_facts: selection_envelope_facts(native),
+    material_facts: selection_material_facts(native),
+    begin_traversal: False,
+  }
+  let redeemer: selection_validator.SpendRedeemer = ct.Continue(action)
+  let raw_redeemer: Data = redeemer
+  let datum = semantic_datum(base)
+  let raw_datum: Data = datum
+  let input = fixture.ct_thread_input(ct_asset)
+  let template = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
+  let roles = selection_roles(native)
+  let reward_redeemer: Data = 0
+  let tx = l1.Transaction {
+    ..template,
+    inputs: [
+      l1.Input {
+        ..input,
+        output: l1.Output { ..input.output, datum: l1.InlineDatum(raw_datum) },
+      },
+    ],
+    reference_inputs: list.map(
+      roles,
+      fn(pair) {
+        l1.Input {
+          ..input,
+          output: l1.Output {
+            address: address.from_script(pair.2nd),
+            value: assets.from_asset(
+              fixture.test_certificate_policy_id,
+              pair.1st,
+              1,
+            ),
+            datum: l1.NoDatum,
+            reference_script: Some(pair.2nd),
+          },
+        }
       },
     ),
-    fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
-  )
+    withdrawals: list.map(roles, fn(pair) { Pair(address.Script(pair.2nd), 0) }),
+    redeemers: [
+      Pair(l1.Spend(fixture.own_out_ref()), raw_redeemer),
+      ..list.map(
+        roles,
+        fn(pair) {
+          Pair(l1.Withdraw(address.Script(pair.2nd)), reward_redeemer)
+        },
+      )
+    ],
+  }
+  and {
+    selection_validator.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      fixture.catalogue_script_hash,
+      fixture.test_certificate_policy_id,
+      fixture.catalogue_script_hash,
+      Some(datum),
+      redeemer,
+      fixture.own_out_ref(),
+      tx,
+    ),
+    selection_yields.authenticate.withdraw(
+      fixture.step_script_hash,
+      reward_redeemer,
+      address.Script(fixture.step_script_hash),
+      tx,
+    ),
+    selection_yields.successor.withdraw(
+      fixture.step_script_hash,
+      reward_redeemer,
+      address.Script(fixture.step_script_hash),
+      tx,
+    ),
+    if native {
+      True
+    } else {
+      and {
+        selection_yields.material_program.withdraw(
+          fixture.step_script_hash,
+          fixture.catalogue_script_hash,
+          reward_redeemer,
+          address.Script(fixture.step_script_hash),
+          tx,
+        ),
+        selection_yields.material_data.withdraw(
+          fixture.step_script_hash,
+          fixture.catalogue_script_hash,
+          reward_redeemer,
+          address.Script(fixture.step_script_hash),
+          tx,
+        ),
+      }
+    },
+  }
 }
 
 fn run_context_step(

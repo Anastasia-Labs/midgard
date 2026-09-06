@@ -72,7 +72,7 @@ describe("validation resolver production-builder parameter application", () => {
     // material is admitted only at the execution-selection boundary, so the
     // material identity is that resolver's third parameter; the field-access
     // door's certificate policy belongs to the context-step resolver alone.
-    expect(selectionValidator.parameters).toHaveLength(3);
+    expect(selectionValidator.parameters).toHaveLength(5);
     expect(contextStepValidator.parameters).toHaveLength(3);
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
@@ -102,6 +102,9 @@ describe("validation resolver production-builder parameter application", () => {
           awardHash,
           contracts.computationThread.policyId,
           materialHash,
+          "dd".repeat(28),
+          contracts.validationTraceDispute.cekMaterialTraversal
+            .spendingScriptHash,
         ]),
       }),
     );

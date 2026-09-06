@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
+use aiken/option
 use aiken/primitive/bytearray
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
@@ -88,7 +89,7 @@ pub type ProgramBlobMaterialV1 {
   BlobBranch { left: ByteArray, right: ByteArray, byte_length: Int }
 }
 
-type ProgramMaterialTaskV1 {
+pub type ProgramMaterialTaskV1 {
   kind: Int,
   root: ByteArray,
   expected_length: Int,
@@ -1048,14 +1049,13 @@ pub fn inspect_program_blob_material_v1(
 fn encode_program_material_entry_v1(
   entry: CekProgramMaterialDatumV1,
 ) -> ByteArray {
+  let value = #"83"
+    |> bytearray.concat(cbor.serialise(1))
+    |> bytearray.concat(cbor.serialise(entry.kind))
+    |> bytearray.concat(encode_definite_bytes(entry.preimage))
   #"82"
     |> bytearray.concat(encode_definite_bytes(expect_hash(entry.root)))
-    |> bytearray.concat(
-        #"83"
-          |> bytearray.concat(cbor.serialise(1))
-          |> bytearray.concat(cbor.serialise(entry.kind))
-          |> bytearray.concat(encode_definite_bytes(entry.preimage)),
-      )
+    |> bytearray.concat(encode_definite_bytes(value))
 }
 
 fn encode_program_material_entries_v1(
@@ -1084,8 +1084,13 @@ fn inspect_program_material_entry_data_v1(
   when list_data(data) is {
     Some([root_data, value_data]) ->
       when data_hash(root_data) is {
-        Some(root) ->
-          when list_data(value_data) is {
+        Some(root) -> {
+          let decoded_value = if data_is_bytes(value_data) {
+            cbor.deserialise(builtin.un_b_data(value_data))
+          } else {
+            None
+          }
+          when decoded_value |> option.and_then(list_data) is {
             Some([version_data, kind_data, preimage_data]) ->
               if and {
                 data_is_integer(version_data),
@@ -1105,6 +1110,7 @@ fn inspect_program_material_entry_data_v1(
               }
             _ -> None
           }
+        }
         None -> None
       }
     _ -> None
@@ -1179,7 +1185,7 @@ pub fn inspect_complete_program_material_sidecar_v1(
   }
 }
 
-fn program_material_root_matches_v1(entry: CekProgramMaterialDatumV1) -> Bool {
+pub fn program_partition_root_matches(entry: CekProgramMaterialDatumV1) -> Bool {
   if bytearray.length(entry.root) != 32 {
     False
   } else if entry.kind == 0 {
@@ -1216,6 +1222,14 @@ fn program_material_root_matches_v1(entry: CekProgramMaterialDatumV1) -> Bool {
         ) == entry.root
       None -> False
     }
+  } else {
+    False
+  }
+}
+
+pub fn data_partition_root_matches(entry: CekProgramMaterialDatumV1) -> Bool {
+  if bytearray.length(entry.root) != 32 {
+    False
   } else if entry.kind == 5 {
     when cek_data_v1.inspect_data_node_preimage_v1(entry.preimage) is {
       Some(node) -> cek_data_v1.hash_data_node_v1(node) == entry.root
@@ -1233,6 +1247,14 @@ fn program_material_root_matches_v1(entry: CekProgramMaterialDatumV1) -> Bool {
     }
   } else {
     False
+  }
+}
+
+fn program_material_root_matches_v1(entry: CekProgramMaterialDatumV1) -> Bool {
+  if entry.kind <= 4 {
+    program_partition_root_matches(entry)
+  } else {
+    data_partition_root_matches(entry)
   }
 }
 
@@ -1259,7 +1281,7 @@ fn material_task_v1(
   ProgramMaterialTaskV1 { kind, root, expected_length }
 }
 
-fn source_program_material_children_v1(
+pub fn program_partition_children(
   task: ProgramMaterialTaskV1,
   entry: CekProgramMaterialDatumV1,
 ) -> Option<List<ProgramMaterialTaskV1>> {
@@ -1339,7 +1361,23 @@ fn source_program_material_children_v1(
         }
       None -> None
     }
-  } else if task.kind == 5 && entry.kind == 5 {
+  } else if task.kind == 3 && ( entry.kind == 3 || entry.kind == 4 ) {
+    when inspect_program_blob_material_v1(entry.kind, entry.preimage) is {
+      Some(BlobChunk { .. }) -> Some([])
+      Some(BlobBranch { left, right, .. }) ->
+        Some([material_task_v1(3, left, -1), material_task_v1(3, right, -1)])
+      None -> None
+    }
+  } else {
+    None
+  }
+}
+
+pub fn data_partition_children(
+  task: ProgramMaterialTaskV1,
+  entry: CekProgramMaterialDatumV1,
+) -> Option<List<ProgramMaterialTaskV1>> {
+  if task.kind == 5 && entry.kind == 5 {
     when cek_data_v1.inspect_data_node_preimage_v1(entry.preimage) is {
       Some(cek_data_v1.ConstrSmallData { fields_count, fields_root, .. }) ->
         if fields_count == 0 {
@@ -1449,15 +1487,19 @@ fn source_program_material_children_v1(
         }
       None -> None
     }
-  } else if task.kind == 3 && ( entry.kind == 3 || entry.kind == 4 ) {
-    when inspect_program_blob_material_v1(entry.kind, entry.preimage) is {
-      Some(BlobChunk { .. }) -> Some([])
-      Some(BlobBranch { left, right, .. }) ->
-        Some([material_task_v1(3, left, -1), material_task_v1(3, right, -1)])
-      None -> None
-    }
   } else {
     None
+  }
+}
+
+fn source_program_material_children_v1(
+  task: ProgramMaterialTaskV1,
+  entry: CekProgramMaterialDatumV1,
+) -> Option<List<ProgramMaterialTaskV1>> {
+  if task.kind <= 4 {
+    program_partition_children(task, entry)
+  } else {
+    data_partition_children(task, entry)
   }
 }
 
@@ -1646,4 +1688,188 @@ pub fn hash_program_envelope_v1(
         ),
       )
     |> blake2b_256
+}
+
+/// Facts independently checked by the program and Data material rewarding arms.
+pub type CekMaterialPartitionFacts {
+  program_node_count: Int,
+  program_byte_length: Int,
+  data_node_count: Int,
+  data_byte_length: Int,
+  data_roots: List<ByteArray>,
+  data_blob_roots: List<ByteArray>,
+}
+
+type PartitionTraversal {
+  visited: ProgramMaterialTraversalV1,
+  frontier: List<ByteArray>,
+}
+
+fn insert_material_frontier(
+  root: ByteArray,
+  roots: List<ByteArray>,
+) -> List<ByteArray> {
+  when roots is {
+    [] -> [root]
+    [head, ..rest] ->
+      when bytearray.compare(root, head) is {
+        Less -> [root, ..roots]
+        Equal -> roots
+        Greater -> [head, ..insert_material_frontier(root, rest)]
+      }
+  }
+}
+
+fn walk_material_partition(
+  tasks: List<ProgramMaterialTaskV1>,
+  entries: List<CekProgramMaterialDatumV1>,
+  traversal: PartitionTraversal,
+  foreign: fn(Int) -> Bool,
+  root_matches: fn(CekProgramMaterialDatumV1) -> Bool,
+  children_of: fn(ProgramMaterialTaskV1, CekProgramMaterialDatumV1) ->
+    Option<List<ProgramMaterialTaskV1>>,
+) -> Option<PartitionTraversal> {
+  when tasks is {
+    [] -> Some(traversal)
+    [task, ..rest] ->
+      if foreign(task.kind) {
+        walk_material_partition(
+          rest,
+          entries,
+          PartitionTraversal {
+            ..traversal,
+            frontier: insert_material_frontier(task.root, traversal.frontier),
+          },
+          foreign,
+          root_matches,
+          children_of,
+        )
+      } else {
+        when find_program_material_entry_v1(task.root, entries) is {
+          None -> None
+          Some(entry) ->
+            if root_matches(entry) {
+              when children_of(task, entry) is {
+                None -> None
+                Some(children) ->
+                  if list.has(traversal.visited.seen, task.root) {
+                    walk_material_partition(
+                      rest,
+                      entries,
+                      traversal,
+                      foreign,
+                      root_matches,
+                      children_of,
+                    )
+                  } else {
+                    let next = PartitionTraversal {
+                      ..traversal,
+                      visited: ProgramMaterialTraversalV1 {
+                        seen: [task.root, ..traversal.visited.seen],
+                        node_count: traversal.visited.node_count + 1,
+                        material_byte_length: traversal.visited.material_byte_length + bytearray.length(
+                          entry.preimage,
+                        ),
+                      },
+                    }
+                    walk_material_partition(
+                      list.concat(children, rest),
+                      entries,
+                      next,
+                      foreign,
+                      root_matches,
+                      children_of,
+                    )
+                  }
+              }
+            } else {
+              None
+            }
+        }
+      }
+  }
+}
+
+fn empty_partition_traversal() -> PartitionTraversal {
+  PartitionTraversal {
+    visited: ProgramMaterialTraversalV1 {
+      seen: [],
+      node_count: 0,
+      material_byte_length: 0,
+    },
+    frontier: [],
+  }
+}
+
+/// Program nodes and every blob reached by either partition are authenticated here.
+pub fn verify_program_material_partition(
+  term_root: ByteArray,
+  entries: List<CekProgramMaterialDatumV1>,
+  facts: CekMaterialPartitionFacts,
+) -> Bool {
+  expect strictly_sorted_material_roots_v1(entries, None)
+  let tasks = [
+    material_task_v1(0, term_root, -1),
+    ..list.map(
+      facts.data_blob_roots,
+      fn(root) { material_task_v1(3, root, -1) },
+    )
+  ]
+  when
+    walk_material_partition(
+      tasks,
+      entries,
+      empty_partition_traversal(),
+      fn(kind) { kind == 5 },
+      program_partition_root_matches,
+      program_partition_children,
+    )
+  is {
+    None -> False
+    Some(result) -> and {
+        result.frontier == facts.data_roots,
+        result.visited.node_count == facts.program_node_count,
+        result.visited.material_byte_length == facts.program_byte_length,
+        list.length(result.visited.seen) == list.length(
+          list.filter(entries, fn(entry) { entry.kind >= 0 && entry.kind <= 4 }),
+        ),
+      }
+  }
+}
+
+/// Data nodes derive the exact blob frontier consumed by the program partition.
+pub fn verify_data_material_partition(
+  entries: List<CekProgramMaterialDatumV1>,
+  facts: CekMaterialPartitionFacts,
+  total_node_count: Int,
+  total_byte_length: Int,
+) -> Bool {
+  expect strictly_sorted_material_roots_v1(entries, None)
+  let tasks = list.map(
+    facts.data_roots,
+    fn(root) { material_task_v1(5, root, -1) },
+  )
+  when
+    walk_material_partition(
+      tasks,
+      entries,
+      empty_partition_traversal(),
+      fn(kind) { kind == 3 },
+      data_partition_root_matches,
+      data_partition_children,
+    )
+  is {
+    None -> False
+    Some(result) -> and {
+        result.frontier == facts.data_blob_roots,
+        result.visited.node_count == facts.data_node_count,
+        result.visited.material_byte_length == facts.data_byte_length,
+        list.length(result.visited.seen) == list.length(
+          list.filter(entries, fn(entry) { entry.kind >= 5 && entry.kind <= 7 }),
+        ),
+        facts.program_node_count + facts.data_node_count == total_node_count,
+        facts.program_byte_length + facts.data_byte_length == total_byte_length,
+        total_node_count == list.length(entries),
+      }
+  }
 }

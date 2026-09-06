@@ -93,7 +93,7 @@ test cek_direct_route_binds_the_selected_envelope() {
     |> bytearray.concat(#"82")
     |> bytearray.concat(#"5820")
     |> bytearray.concat(root)
-    |> bytearray.concat(#"83")
+    |> bytearray.concat(#"4683")
     |> bytearray.concat(#"01")
     |> bytearray.concat(#"00")
     |> bytearray.concat(#"42")
@@ -253,7 +253,7 @@ test cek_incremental_route_fails_closed_with_self_consistent_hash() {
   let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
   let sidecar = #"820181825820"
     |> bytearray.concat(root)
-    |> bytearray.concat(#"830100428106")
+    |> bytearray.concat(#"46830100428106")
   // The honest envelope commitment: exactly what `cek_envelope_hash_v1` derives
   // from `envelope`, i.e. the value the old tautology compared against itself.
   let envelope_hash = cek_proof_v1.hash_program_envelope_v1(1, 1, 0, root, 1, 2)
@@ -448,7 +448,7 @@ test cek_complete_item_carriage_survives_the_incremental_closure() {
   let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
   let sidecar = #"820181825820"
     |> bytearray.concat(root)
-    |> bytearray.concat(#"830100428106")
+    |> bytearray.concat(#"46830100428106")
   let envelope_hash = cek_proof_v1.hash_program_envelope_v1(1, 1, 0, root, 1, 2)
   let entry: Data = CekProgramMaterialDatumV1 { kind: 0, root, preimage }
   let single: Data = validation_resolver_v1.CekSinglePublicationDatumV1 {
@@ -507,7 +507,7 @@ test cek_single_and_multi_reference_routes_verify_typed_material() {
   let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
   let sidecar = #"820181825820"
     |> bytearray.concat(root)
-    |> bytearray.concat(#"830100428106")
+    |> bytearray.concat(#"46830100428106")
   let envelope_hash = cek_proof_v1.hash_program_envelope_v1(1, 1, 0, root, 1, 2)
   let single: Data = validation_resolver_v1.CekSinglePublicationDatumV1 {
     version: 1,

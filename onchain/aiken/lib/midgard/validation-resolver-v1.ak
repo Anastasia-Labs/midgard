@@ -43,7 +43,7 @@ pub type CekSinglePublicationDatumV1 {
   sidecar_cbor: ByteArray,
 }
 
-fn cek_selection_envelope_cbor_v1(
+pub fn cek_selection_envelope_cbor_v1(
   evidence: vm_machine_types.ValidationOneStepEvidenceV1,
 ) -> Option<ByteArray> {
   when evidence.auxiliary is {
@@ -475,5 +475,41 @@ pub fn prepare_selected(
         },
       )
     }
+  }
+}
+
+pub fn material_entries_for_route(
+  route: CekMaterialRouteV1,
+  reference_inputs: List<Input>,
+  material_script_hash: ScriptHash,
+) -> Option<List<CekProgramMaterialDatumV1>> {
+  when route is {
+    DirectCekMaterial { sidecar_cbor, .. } ->
+      cek_proof_v1.inspect_complete_program_material_sidecar_v1(sidecar_cbor)
+    SinglePublicationCekMaterial { envelope_cbor, reference_input_index } -> {
+      expect Some(raw) = material_reference_input_at(
+        reference_inputs,
+        reference_input_index,
+        material_script_hash,
+      )
+      expect datum: CekSinglePublicationDatumV1 = raw
+      expect datum.version == 1
+      expect Some(hash) = cek_envelope_hash_v1(envelope_cbor)
+      expect datum.program_envelope_hash == hash
+      cek_proof_v1.inspect_complete_program_material_sidecar_v1(
+        datum.sidecar_cbor,
+      )
+    }
+    MinimumMultiOutputCekMaterial { reference_input_indices, .. } -> {
+      expect list.length(reference_input_indices) > 0
+      expect
+        cek_reference_indices_unique_nonnegative_v1(reference_input_indices)
+      material_entries_from_references_v1(
+        reference_inputs,
+        reference_input_indices,
+        material_script_hash,
+      )
+    }
+    _ -> None
   }
 }

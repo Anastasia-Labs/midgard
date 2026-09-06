@@ -199,7 +199,7 @@ test complete_program_material_entries_bind_root_counts_and_no_extras() {
     |> bytearray.concat(#"82")
     |> bytearray.concat(#"5820")
     |> bytearray.concat(root)
-    |> bytearray.concat(#"83")
+    |> bytearray.concat(#"4683")
     |> bytearray.concat(#"01")
     |> bytearray.concat(#"00")
     |> bytearray.concat(#"42")

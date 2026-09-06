@@ -293,6 +293,14 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend",
   },
   yields: {
+    cekSelectionAuthenticate:
+      "fraud_proofs/validation_trace/cek_execution_selection_yields.authenticate.withdraw",
+    cekSelectionSuccessor:
+      "fraud_proofs/validation_trace/cek_execution_selection_yields.successor.withdraw",
+    cekSelectionMaterialProgram:
+      "fraud_proofs/validation_trace/cek_execution_selection_yields.material_program.withdraw",
+    cekSelectionMaterialData:
+      "fraud_proofs/validation_trace/cek_execution_selection_yields.material_data.withdraw",
     valueAndMintAssetFold:
       "fraud_proofs/validation_trace/value_and_mint_asset_fold_yield.main.withdraw",
   },
@@ -303,6 +311,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
   readonly fraudProof: AuthenticatedValidator;
   readonly validationTraceDispute: FraudProofChain & {
     readonly cekProgramMaterial: SpendingValidator;
+    readonly cekMaterialTraversal: SpendingValidator;
     readonly opener: SpendingValidator;
     readonly source: SpendingValidator;
     readonly game: SpendingValidator;
@@ -341,6 +350,12 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly yields: {
+      readonly cekMaterialProgramTask: WithdrawalValidator;
+      readonly cekMaterialDataTask: WithdrawalValidator;
+      readonly cekSelectionAuthenticate: WithdrawalValidator;
+      readonly cekSelectionSuccessor: WithdrawalValidator;
+      readonly cekSelectionMaterialProgram: WithdrawalValidator;
+      readonly cekSelectionMaterialData: WithdrawalValidator;
       readonly valueAndMintAssetFold: WithdrawalValidator;
     };
     readonly semanticResolvers: readonly [
@@ -510,6 +525,44 @@ export const buildValidationTraceDisputeChain = ({
         ),
     );
 
+    const cekMaterialTraversal = yield* tryBuild(
+      "Failed to build CEK material traversal",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            "fraud_proofs/validation_trace/cek_material_traversal_v1.main.spend",
+            [
+              award.spendingScriptHash,
+              computationThread.policyId,
+              referenceScriptAuthPolicyId,
+            ],
+          ),
+        ),
+    );
+    const cekMaterialProgramTask = yield* tryBuild(
+      "Failed to build CEK program task yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            "fraud_proofs/validation_trace/cek_material_traversal_yields.program.withdraw",
+            [cekMaterialTraversal.spendingScriptHash],
+          ),
+        ),
+    );
+    const cekMaterialDataTask = yield* tryBuild(
+      "Failed to build CEK Data task yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            "fraud_proofs/validation_trace/cek_material_traversal_yields.data.withdraw",
+            [cekMaterialTraversal.spendingScriptHash],
+          ),
+        ),
+    );
     const deploymentId = deriveValidationTraceDeploymentId(
       fraudProofCataloguePolicyId,
     );
@@ -718,6 +771,10 @@ export const buildValidationTraceDisputeChain = ({
      */
     const semanticResolverParameterValues = new Map<string, Data>([
       ["award_script_hash", award.spendingScriptHash],
+      [
+        "cek_material_traversal_script_hash",
+        cekMaterialTraversal.spendingScriptHash,
+      ],
       ["reference_script_auth_policy_id", referenceScriptAuthPolicyId],
       ["computation_thread_policy_id", computationThread.policyId],
       [
@@ -867,6 +924,61 @@ export const buildValidationTraceDisputeChain = ({
       ...baseSemanticResolvers,
       stageOneRedeemerEnvelope,
     ] as const;
+    const selectionDispatcherHash =
+      builtSemanticResolvers[
+        semanticTitles.indexOf(
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+            .cekExecutionSelection,
+        )
+      ]!.spendingScriptHash;
+    const cekSelectionAuthenticate = yield* tryBuild(
+      "Failed to build CEK selection authenticate yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .cekSelectionAuthenticate,
+            [selectionDispatcherHash],
+          ),
+        ),
+    );
+    const cekSelectionSuccessor = yield* tryBuild(
+      "Failed to build CEK selection successor yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .cekSelectionSuccessor,
+            [selectionDispatcherHash],
+          ),
+        ),
+    );
+    const cekSelectionMaterialProgram = yield* tryBuild(
+      "Failed to build CEK selection material_program yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .cekSelectionMaterialProgram,
+            [selectionDispatcherHash, cekProgramMaterial.spendingScriptHash],
+          ),
+        ),
+    );
+    const cekSelectionMaterialData = yield* tryBuild(
+      "Failed to build CEK selection material_data yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .cekSelectionMaterialData,
+            [selectionDispatcherHash, cekProgramMaterial.spendingScriptHash],
+          ),
+        ),
+    );
     const valueAndMintAssetFold = yield* tryBuild(
       "Failed to build validation-trace asset-fold yield",
       () =>
@@ -1224,11 +1336,20 @@ export const buildValidationTraceDisputeChain = ({
       award,
       proofItem,
       cekProgramMaterial,
+      cekMaterialTraversal,
       canonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages,
       prepareResolvers,
       semanticResolvers,
-      yields: { valueAndMintAssetFold },
+      yields: {
+        cekMaterialProgramTask,
+        cekMaterialDataTask,
+        valueAndMintAssetFold,
+        cekSelectionAuthenticate,
+        cekSelectionSuccessor,
+        cekSelectionMaterialProgram,
+        cekSelectionMaterialData,
+      },
       resolvers,
     };
   });

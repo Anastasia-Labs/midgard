@@ -1,34 +1,92 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/cek_material_traversal as material
+use midgard/cek_selection_yield as selection
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel}
-use midgard/validation_machine/cek.{verify_cek_execution_selection_semantics_v1}
-use midgard/validation_machine/machine_types.{
-  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1,
+use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/state_queue_yield.{require_authenticated_zero_yield}
+use midgard/validation_machine/witness.{
+  cek_control_is_execution_selection_v1, cek_witness_control_v1,
+  cek_witness_is_well_formed_v1,
 }
-use midgard/validation_resolver_v1.{CekMaterialRouteV1, verify_cek_route_v1}
-use midgard/validation_semantic_v1.{Datum, continue_winning}
+use midgard/validation_resolution_v1 as resolution
+use midgard/validation_resolver_v1.{NoCekMaterial}
+use midgard/validation_semantic_v1.{Datum}
 use midgard/validation_trace_v1.{Cek}
 
-pub type ActionV1 {
-  VerifyExecutionSelection {
-    input_index: Int,
-    output_index: Int,
-    transition: ValidationOneStepWitnessV1,
-    auxiliary: ValidationAuxiliaryWitnessV1,
-    material_route: CekMaterialRouteV1,
-  }
-}
+pub type ActionV1 =
+  selection.Action
 
 pub type SpendRedeemer =
-  ct.StepRedeemer<ActionV1>
+  selection.SpendRedeemer
+
+fn invoke(
+  policy: PolicyId,
+  role: ByteArray,
+  index: Int,
+  tx: Transaction,
+) -> Bool {
+  expect _hash = require_authenticated_zero_yield(
+    tx.reference_inputs,
+    tx.withdrawals,
+    tx.redeemers,
+    policy,
+    role,
+    index,
+  )
+  True
+}
+
+fn required_yields(
+  action: selection.Action,
+  policy: PolicyId,
+  tx: Transaction,
+) -> Bool {
+  let language = selection.selection_language(action.auxiliary)
+  if language == 0 {
+    expect [authenticate, successor] = action.yield_ref_input_indices
+    and {
+      !action.begin_traversal,
+      action.material_route == NoCekMaterial,
+      action.envelope_facts.term_root == #"",
+      action.envelope_facts.node_count == 0,
+      action.envelope_facts.material_byte_length == 0,
+      action.material_facts.program_node_count == 0,
+      action.material_facts.program_byte_length == 0,
+      action.material_facts.data_node_count == 0,
+      action.material_facts.data_byte_length == 0,
+      action.material_facts.data_roots == [],
+      action.material_facts.data_blob_roots == [],
+      invoke(policy, selection.authenticate_role, authenticate, tx),
+      invoke(policy, selection.successor_role, successor, tx),
+    }
+  } else if action.begin_traversal {
+    expect [authenticate, successor] = action.yield_ref_input_indices
+    and {
+      language == 3 || language == 128,
+      invoke(policy, selection.authenticate_role, authenticate, tx),
+      invoke(policy, selection.successor_role, successor, tx),
+    }
+  } else {
+    expect [authenticate,
+          successor, program, data] = action.yield_ref_input_indices
+    and {
+      language == 3 || language == 128,
+      invoke(policy, selection.authenticate_role, authenticate, tx),
+      invoke(policy, selection.successor_role, successor, tx),
+      invoke(policy, selection.material_program_role, program, tx),
+      invoke(policy, selection.material_data_role, data, tx),
+    }
+  }
+}
 
 validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
   cek_program_material_script_hash: ScriptHash,
+  reference_script_auth_policy_id: PolicyId,
+  cek_material_traversal_script_hash: ScriptHash,
 ) {
   spend(
     datum: Option<Datum>,
@@ -46,39 +104,50 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(VerifyExecutionSelection {
-        input_index,
-        output_index,
-        transition,
-        auxiliary,
-        material_route,
-      }) -> {
-        let auxiliary_data: Data = auxiliary
-        let evidence = ValidationOneStepEvidenceV1 { transition, auxiliary }
-        continue_winning(
-          Cek,
-          award_script_hash,
+      ct.Continue(action) -> {
+        expect Some(ct.StepDatum { data: Some(state), .. }) = datum
+        let cek = cek_witness_control_v1(action.transition)
+        expect Some(step_datum) = datum
+        let transition_data: Data = action.transition
+        continue(
           computation_thread_policy_id,
-          datum,
-          input_index,
-          output_index,
-          transition,
-          auxiliary_data,
-          and {
-            verify_cek_route_v1(
-              evidence,
-              material_route,
-              tx.reference_inputs,
-              cek_program_material_script_hash,
-            ),
-            verify_cek_execution_selection_semantics_v1(
-              datum |> semantic_pre_state,
-              transition,
-              auxiliary,
-            ),
-          },
+          step_datum,
+          action.input_index,
+          action.output_index,
           own_out_ref,
-          tx,
+          tx.inputs,
+          tx.outputs,
+          fn(_, _, _, _, output_hash, output_state) {
+            and {
+              resolution.prepared_resolution_is_well_formed(state),
+              state.resolution.pre_state.phase == Cek,
+              resolution.hash_one_step_evidence(
+                transition_data,
+                action.auxiliary,
+              ) == state.evidence_hash,
+              cek_witness_is_well_formed_v1(
+                state.resolution.pre_state,
+                action.transition,
+                cek,
+              ),
+              cek_control_is_execution_selection_v1(cek),
+              cek.execution_cpu_limit == 0,
+              cek.execution_memory_limit == 0,
+              cek.program_envelope_hash == #"",
+              required_yields(action, reference_script_auth_policy_id, tx),
+              if action.begin_traversal {
+                let expected: Data = material.initial(
+                  action.envelope_facts.term_root,
+                  action.envelope_facts.node_count,
+                  action.envelope_facts.material_byte_length,
+                )
+                output_hash == cek_material_traversal_script_hash && output_state == expected
+              } else {
+                let expected: Data = resolution.winning_resolution()
+                output_hash == award_script_hash && output_state == expected
+              },
+            }
+          },
         )
       }
     }
@@ -87,9 +156,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-fn semantic_pre_state(datum: Option<Datum>) {
-  expect Some(ct.StepDatum { data: Some(state), .. }) = datum
-  state.resolution.pre_state
 }
