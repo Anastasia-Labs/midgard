@@ -591,3 +591,22 @@ pnpm exec vitest run tests/deployment-manifest-identity.test.ts
   transaction); C52 unaffected (no added transactions); C53/§3.3 byte fit is
   the done criterion; the resolver count stays 29 so `select_semantic_resolver`
   is untouched.
+
+### Shared discovery and stage-seven encoder pruning
+
+The narrow stage-seven encoder and canonical discovery prefix/stage/suffix
+binding are implemented without the generic output-proof codec. All 197
+machine tests pass. Normal testnet blueprint
+`434f52d8cf569df2487bc5256bba111ae5b8f57eaf75b0aac68025a8e5b83194`
+measures stage-eight finish/purpose at 9,238/10,467 bytes, eleven finish/source
+at 9,179/11,210, twelve finish at 9,604, ten missing at 9,153, and seven
+finish/receive at 13,939/14,133. Seven observer remains 18,421 and needs its
+planned split. Descriptor item dispatchers remain separate unfinished work.
+
+`submit-init-emulator-validation-dispute-script-sources-discovery.test.ts`
+passes 18 lifecycle scenarios for slots 16,17,18,23,24,27: proof/removal,
+honest-successor refusal, and cancellation followed by a fresh proof/removal
+for each. The ledger has 1,014 transactions and 522 publications, maximum
+15,108 signed bytes, 3,731,076 memory and 1,445,994,848 CPU. All execution
+reserves pass. Slots 20/26 and maximum discovery shapes still need their
+specific fixtures; these results do not claim their lifecycle closure.

@@ -37,8 +37,9 @@ use midgard/validation_machine/shared.{
 use midgard/validation_machine/witness.{
   empty_observer_purpose_scan_control, empty_receive_purpose_scan_control,
   empty_script_discovery_control, encode_native_scripts_witness_v1,
-  encode_script_discovery_control, exact_script_sources_control,
-  mint_fold_active_state_is_empty, reset_script_discovery_current,
+  encode_script_discovery_control, encode_script_sources_discovery_witness,
+  encode_script_sources_witness, mint_fold_active_state_is_empty,
+  reset_script_discovery_current,
   script_sources_stage_eight_control_from_witness,
   script_sources_stage_eleven_control_from_witness,
   script_sources_stage_nine_control_from_witness,
@@ -293,6 +294,98 @@ pub fn script_sources_stage_seven(
   )
 }
 
+// Stage seven can produce only base or discovery controls. It never reaches
+// the unrelated pending source, item traversal or output-proof codecs.
+fn script_sources_stage_seven_exact_control(
+  control: ScriptSourcesControlV1,
+) -> ByteArray {
+  expect control.pending_source_cbor == #""
+  if control.stage < 8 {
+    expect control.output_proof == None
+    encode_script_sources_witness(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+      control.context_cbor,
+      control.resolved_input_count,
+      control.resolved_inputs_accumulator,
+      control.signer_count,
+      control.signer_frontier_commitment,
+      control.resolved_item_peaks,
+      control.stage,
+      control.source_count,
+      control.source_peaks,
+      control.redeemer_count,
+      control.redeemer_peaks,
+      control.replay_cursor,
+      control.replay_accumulator,
+      control.replay_remaining_schedule_hash,
+      control.spend_index,
+      control.purpose_count,
+      control.purpose_peaks,
+      control.output_cursor,
+      control.output_count,
+      control.output_peaks,
+      control.output_total_count,
+      control.receive_scan,
+      control.source_total_count,
+      control.redeemer_total_count,
+      control.observer_scan,
+      control.mint_fold,
+      control.resolution_schedule_hash,
+    )
+  } else {
+    expect control.output_proof == None
+    encode_script_sources_discovery_witness(
+      control,
+      control.stage,
+      control.discovery,
+    )
+  }
+}
+
+fn script_sources_stage_seven_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  script_sources_stage_zero_successor_work_is_exact(
+    pre,
+    witness,
+    script_sources_stage_seven_exact_control(control),
+  )
+}
+
+// Prepared evidence authenticates the canonical predecessor. Every discovery
+// transition copies its middle and re-encodes only this prefix/stage/suffix.
+fn script_sources_discovery_frame_is_exact(
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 31)
+  let stage_offset = bytearray.length(prefix)
+  let encoded_discovery = encode_definite_bytes(
+    encode_script_discovery_control(control.discovery),
+  )
+  let discovery_offset = bytearray.length(witness.work_witness_cbor) - bytearray.length(
+    encoded_discovery,
+  )
+  and {
+    control.pending_source_cbor == #"",
+    control.output_proof == None,
+    discovery_offset >= stage_offset + 1,
+    builtin.slice_bytearray(0, stage_offset, witness.work_witness_cbor) == prefix,
+    builtin.slice_bytearray(stage_offset, 1, witness.work_witness_cbor) == cbor.serialise(
+      control.stage,
+    ),
+    builtin.slice_bytearray(
+      discovery_offset,
+      bytearray.length(encoded_discovery),
+      witness.work_witness_cbor,
+    ) == encoded_discovery,
+  }
+}
+
 fn script_sources_stage_seven_control_is_bound(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -302,7 +395,7 @@ fn script_sources_stage_seven_control_is_bound(
   let observer_scan = control.observer_scan
   let mint_fold = control.mint_fold
   and {
-    exact_script_sources_control(control) == witness.work_witness_cbor,
+    script_sources_stage_seven_exact_control(control) == witness.work_witness_cbor,
     control.stage == 7,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -422,7 +515,7 @@ fn script_sources_stage_seven_observer_successor_is_exact(
   observer_hash: ByteArray,
   active_count: Int,
 ) -> Bool {
-  script_sources_control_successor_is_exact(
+  script_sources_stage_seven_successor_is_exact(
     pre,
     witness,
     ScriptSourcesControlV1 {
@@ -453,7 +546,7 @@ fn script_sources_stage_seven_receive_successor_is_exact(
   control: ScriptSourcesControlV1,
   candidate_hash: ByteArray,
 ) -> Bool {
-  script_sources_control_successor_is_exact(
+  script_sources_stage_seven_successor_is_exact(
     pre,
     witness,
     ScriptSourcesControlV1 {
@@ -474,7 +567,7 @@ fn script_sources_stage_seven_finish_successor_is_exact(
 ) -> Bool {
   let scan = control.receive_scan
   if scan.candidate_hash == #"" {
-    script_sources_control_successor_is_exact(
+    script_sources_stage_seven_successor_is_exact(
       pre,
       witness,
       ScriptSourcesControlV1 {
@@ -491,7 +584,7 @@ fn script_sources_stage_seven_finish_successor_is_exact(
     )
   } else {
     let script_hash = scan.candidate_hash
-    script_sources_control_successor_is_exact(
+    script_sources_stage_seven_successor_is_exact(
       pre,
       witness,
       ScriptSourcesControlV1 {
@@ -784,7 +877,7 @@ fn script_sources_stage_eight_control_is_bound(
 ) -> Bool {
   let discovery = control.discovery
   and {
-    exact_script_sources_control(control) == witness.work_witness_cbor,
+    script_sources_discovery_frame_is_exact(witness, control),
     control.stage == 8,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -1487,7 +1580,7 @@ fn script_sources_stage_ten_control_is_bound(
 ) -> Bool {
   let discovery = control.discovery
   and {
-    exact_script_sources_control(control) == witness.work_witness_cbor,
+    script_sources_discovery_frame_is_exact(witness, control),
     control.stage == 10,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -1641,7 +1734,7 @@ fn script_sources_stage_eleven_control_is_bound(
 ) -> Bool {
   let discovery = control.discovery
   and {
-    exact_script_sources_control(control) == witness.work_witness_cbor,
+    script_sources_discovery_frame_is_exact(witness, control),
     control.stage == 11,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -1904,7 +1997,7 @@ fn script_sources_stage_twelve_control_is_bound(
 ) -> Bool {
   let discovery = control.discovery
   and {
-    exact_script_sources_control(control) == witness.work_witness_cbor,
+    script_sources_discovery_frame_is_exact(witness, control),
     control.stage == 12,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
