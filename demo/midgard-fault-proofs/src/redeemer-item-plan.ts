@@ -1,19 +1,25 @@
 import {
+  advanceMidgardRedeemerItemProof,
   computeHash32,
   encodeCbor,
   encodeMidgardCekDataTraverseControl,
+  hashMidgardRedeemerItemProofControl,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   type MidgardRedeemerItemProofControl,
   type MidgardRedeemerItemProofWitness,
   nextMidgardRedeemerItemProofSpan,
+  readMidgardRedeemerItemProofSource,
 } from "@al-ft/midgard-core";
+import { asLucidDataValue } from "@al-ft/midgard-core/lucid-data";
 import type {
   SharedRedeemerItemStages,
   SpendingValidator,
 } from "@al-ft/midgard-sdk";
+import { redeemerItemControlData } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {
+  decodeRedeemerItemControlData,
   decodeRedeemerItemWitnessData,
   deriveRedeemerItemStepPlan,
 } from "./redeemer-item-data.js";
@@ -114,8 +120,122 @@ export const deriveCekRedeemerItemPlan = ({
       "shared item witness differs from authenticated CEK handoff",
     );
   const plan = deriveRedeemerItemStepPlan({ current, witness, claimedNext });
+  return deriveItemPlan({
+    carrier: 1n,
+    base: pending,
+    current,
+    witness,
+    claimedNext,
+    plan,
+    stages,
+    deploymentId,
+    transition: null,
+  });
+};
+
+/** The canonical item result determines Advanced versus Invalid before constructing outputs. */
+export const deriveScriptSourcesRedeemerItemPlan = ({
+  preparedResolution,
+  transition,
+  auxiliary,
+  stages,
+  deploymentId,
+}: {
+  readonly preparedResolution: Data;
+  readonly transition: Data;
+  readonly auxiliary: Data;
+  readonly stages: SharedRedeemerItemStages;
+  readonly deploymentId: string;
+}): readonly RedeemerItemPlannedStage[] => {
+  if (
+    !(auxiliary instanceof Constr) ||
+    auxiliary.index !== 18 ||
+    auxiliary.fields.length !== 3 ||
+    Data.to(auxiliary.fields[0]!) !== Data.to(none)
+  )
+    throw new Error("ScriptSources item auxiliary has the wrong exact shape");
+  const current = auxiliary.fields[1]!,
+    witness = auxiliary.fields[2]!;
+  const control = decodeRedeemerItemControlData(current),
+    coreWitness = decodeRedeemerItemWitnessData(witness);
+  if (control.mode !== 1)
+    throw new Error("ScriptSources item carrier requires mode_data");
+  const source = readMidgardRedeemerItemProofSource({
+    control,
+    witness: coreWitness,
+  });
+  if (source === null)
+    throw new Error("ScriptSources item source evidence does not authenticate");
+  const next = advanceMidgardRedeemerItemProof({
+    control,
+    witness: coreWitness,
+  });
+  if (
+    next === null &&
+    !(
+      (control.stage === 0 && coreWitness.action.kind === "openHeader") ||
+      (control.stage === 1 && coreWitness.action.kind === "openTail")
+    )
+  )
+    throw new Error(
+      "ScriptSources item action is not a canonical Advanced or Invalid result",
+    );
+  const claimedNext =
+    next === null ? none : asLucidDataValue(redeemerItemControlData(next));
+  const plan = {
+    control,
+    next: next ?? control,
+    currentControlHash: hashMidgardRedeemerItemProofControl(control),
+    nextControlHash:
+      next === null
+        ? Buffer.alloc(32)
+        : hashMidgardRedeemerItemProofControl(next),
+  };
+  return deriveItemPlan({
+    carrier: 0n,
+    base: preparedResolution,
+    current,
+    witness,
+    claimedNext,
+    plan,
+    stages,
+    deploymentId,
+    transition,
+    invalid: next === null,
+  });
+};
+
+const deriveItemPlan = ({
+  carrier,
+  base,
+  current,
+  witness,
+  claimedNext,
+  plan,
+  stages,
+  deploymentId,
+  transition,
+  invalid = false,
+}: {
+  readonly carrier: bigint;
+  readonly base: Data;
+  readonly current: Data;
+  readonly witness: Data;
+  readonly claimedNext: Data;
+  readonly plan: Pick<
+    ReturnType<typeof deriveRedeemerItemStepPlan>,
+    "control" | "next" | "currentControlHash" | "nextControlHash"
+  >;
+  readonly stages: SharedRedeemerItemStages;
+  readonly deploymentId: string;
+  readonly transition: Data | null;
+  readonly invalid?: boolean;
+}): readonly RedeemerItemPlannedStage[] => {
+  const witnessHash = rawHash(witness);
   const coreWitness = decodeRedeemerItemWitnessData(witness);
-  const { family, index } = redeemerItemExecutor(plan.control, coreWitness);
+  const { family, index } = invalid
+    ? { family: 9, index: plan.control.stage === 0 ? 17 : 18 }
+    : redeemerItemExecutor(plan.control, coreWitness);
   const executor = stages.executors[index];
   if (executor === undefined)
     throw new Error("shared item executor roster is incomplete");
@@ -129,10 +249,10 @@ export const deriveCekRedeemerItemPlan = ({
       : [current, ...record(witness, 3)];
   const actionHash = domainDataHash("NarrowActionIdentity", actionPreimage);
   const auxiliaryHash = domainDataHash("AuxiliaryIdentity", auxiliary);
-  const carrierIdentity = domainDataHash("ResolutionIdentity", pending);
+  const carrierIdentity = domainDataHash("ResolutionIdentity", base);
   const currentHash = plan.currentControlHash.toString("hex"),
     nextHash = plan.nextControlHash.toString("hex"),
-    nextDataHash = rawHash(claimedNext);
+    nextDataHash = carrier === 1n ? rawHash(claimedNext) : "";
   const entryHash = stages.entry.spendingScriptHash,
     traversalHash = stages.traversalNormalizer.spendingScriptHash,
     outerHash = stages.outerNormalizer.spendingScriptHash,
@@ -143,7 +263,7 @@ export const deriveCekRedeemerItemPlan = ({
   const commitment = domainCborHash("RedeemerEnvelopeCommitment", [
     1n,
     b(deploymentId),
-    1n,
+    carrier,
     b(carrierIdentity),
     BigInt(family),
     b(auxiliaryHash),
@@ -163,8 +283,8 @@ export const deriveCekRedeemerItemPlan = ({
     1n,
     domain("RedeemerEnvelope").toString("hex"),
     deploymentId,
-    1n,
-    pending,
+    carrier,
+    base,
     carrierIdentity,
     nextDataHash,
     BigInt(family),
@@ -208,9 +328,14 @@ export const deriveCekRedeemerItemPlan = ({
     witnessHash,
     checkedTraversal(plan.next),
   ]);
-  const controlsChecked = c([envelope, current, claimedNext, witnessHash]);
+  const controlsChecked = c([
+    envelope,
+    current,
+    invalid ? current : claimedNext,
+    witnessHash,
+  ]);
   const provenance = domainCborHash("BaseProvenanceIdentity", [
-    1n,
+    carrier,
     b(carrierIdentity),
     b(commitment),
   ]);
@@ -258,7 +383,7 @@ export const deriveCekRedeemerItemPlan = ({
   }
   const execution =
     traversalAction === null
-      ? c([output, current, claimedNext, action, source])
+      ? c([output, current, invalid ? current : claimedNext, action, source])
       : c([
           output,
           optionValue(record(current, 16)[15]!),
@@ -266,7 +391,8 @@ export const deriveCekRedeemerItemPlan = ({
           traversalAction,
           source,
         ]);
-  const verified = c([pendingFields[0]!, claimedNext]);
+  const verified =
+    carrier === 1n ? c([record(base, 4)[0]!, claimedNext]) : c([1n]);
   const stage = (
     key: string,
     validator: SpendingValidator,
@@ -282,15 +408,19 @@ export const deriveCekRedeemerItemPlan = ({
     spendRedeemer: (input, output) =>
       new Constr(1, [new Constr(tag, args(input, output))]),
   });
-  return [
-    stage("entry", stages.entry, pending, envelope, 0, (i, o) => [
-      i,
-      o,
-      witness,
-      currentHash,
-      nextHash,
-      BigInt(family),
-    ]),
+  const stagesPlan = [
+    stage("entry", stages.entry, base, envelope, 0, (i, o) =>
+      carrier === 1n
+        ? [
+            i,
+            o,
+            witness,
+            plan.currentControlHash.toString("hex"),
+            nextHash,
+            BigInt(family),
+          ]
+        : [i, o, transition!, auxiliary, nextHash, BigInt(family)],
+    ),
     stage(
       "normalize_current_traversal",
       stages.traversalNormalizer,
@@ -303,7 +433,7 @@ export const deriveCekRedeemerItemPlan = ({
       "normalize_current_outer",
       stages.outerNormalizer,
       currentTraversal,
-      currentChecked,
+      invalid ? controlsChecked : currentChecked,
       0,
       (i, o) => [i, o],
     ),
@@ -338,6 +468,13 @@ export const deriveCekRedeemerItemPlan = ({
       envelope,
     ]),
   ];
+  return invalid
+    ? stagesPlan.filter(
+        (stage) =>
+          stage.key !== "normalize_next_traversal" &&
+          stage.key !== "normalize_next_outer",
+      )
+    : stagesPlan;
 };
 
 const recordAction = (value: Data): Data => {

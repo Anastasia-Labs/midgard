@@ -465,13 +465,14 @@ const authenticatedSpan = ({
     : null;
 };
 
-export const advanceMidgardRedeemerItemProof = ({
+/** Authenticate the canonical next source window, distinguishing no window from invalid evidence. */
+export const readMidgardRedeemerItemProofSource = ({
   control,
   witness,
 }: {
   readonly control: MidgardRedeemerItemProofControl;
   readonly witness: MidgardRedeemerItemProofWitness;
-}): MidgardRedeemerItemProofControl | null => {
+}): { readonly sourceBytes: Buffer | null } | null => {
   if (!isWellFormedMidgardRedeemerItemProofControl(control)) return null;
   const span = nextMidgardRedeemerItemProofSpan(control);
   let sourceBytes: Buffer | null = null;
@@ -489,6 +490,19 @@ export const advanceMidgardRedeemerItemProof = ({
     });
     if (sourceBytes === null) return null;
   }
+  return { sourceBytes };
+};
+
+export const advanceMidgardRedeemerItemProof = ({
+  control,
+  witness,
+}: {
+  readonly control: MidgardRedeemerItemProofControl;
+  readonly witness: MidgardRedeemerItemProofWitness;
+}): MidgardRedeemerItemProofControl | null => {
+  const source = readMidgardRedeemerItemProofSource({ control, witness });
+  if (source === null) return null;
+  const { sourceBytes } = source;
   try {
     if (
       control.stage === MidgardRedeemerItemProofStages.Header &&
