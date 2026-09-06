@@ -440,3 +440,51 @@ describe("cross-language ledger output descriptor V1 vectors", () => {
     },
   );
 });
+
+describe("authenticated ledger output map order", () => {
+  it.each([false, true])(
+    "preserves mixed-width asset and datum keys through descriptor summaries datum=%s",
+    (withDatum) => {
+      const outputCbor = encodeMidgardTxOutput({
+        address: Buffer.from("60" + "11".repeat(28), "hex"),
+        value: {
+          lovelace: 2_000_000n,
+          assets: new Map([
+            [
+              "22".repeat(28),
+              new Map([
+                ["ff", 1n],
+                ["0000", 2n],
+              ]),
+            ],
+          ]),
+        },
+        ...(withDatum
+          ? {
+              datum: decodeMidgardDatum(Buffer.from("a241ff0142000002", "hex")),
+            }
+          : {}),
+      });
+      const descriptor = buildCanonicalMidgardLedgerOutputMaterial({
+        outputIndex: 0,
+        outputCbor,
+      }).descriptor;
+      const terminal = buildMidgardLedgerOutputProofTrace({
+        outputIndex: 0,
+        outputCbor,
+      }).terminal;
+      expect(descriptor.cardanoTxOut).toStrictEqual(
+        summarizeMidgardLedgerOutputCardanoTxOut(terminal),
+      );
+      expect(descriptor.midgardTxOut).toStrictEqual(
+        summarizeMidgardLedgerOutputMidgardTxOut(terminal),
+      );
+      expect(descriptor.cardanoSpendDatum).toStrictEqual(
+        summarizeMidgardLedgerOutputCardanoSpendDatum(terminal),
+      );
+      expect(
+        verifyMidgardLedgerOutputDescriptor({ control: terminal, descriptor }),
+      ).toBe(true);
+    },
+  );
+});

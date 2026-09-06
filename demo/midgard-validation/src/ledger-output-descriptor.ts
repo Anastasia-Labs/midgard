@@ -18,9 +18,9 @@ import {
   midgardValueToCmlValue,
   MidgardVersionedScriptTags,
 } from "@al-ft/midgard-core/codec";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import { DataConstr, dataFromCbor } from "@harmoniclabs/plutus-data";
 
-import { summarizeMidgardCekLucidData } from "./cek-context.js";
+import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
 import { commitMidgardScriptContextTxOut } from "./script-context-proof.js";
 
@@ -62,10 +62,10 @@ const cardanoSpendDatumSummary = (
 ): MidgardLedgerOutputDataSummary => {
   const datum = output.datum;
   return exactSummary(
-    summarizeMidgardCekLucidData(
+    commitMidgardCekDataTree(
       datum === undefined
-        ? new Constr(1, [])
-        : new Constr(0, [Data.from(datum.cbor.toString("hex")) as never]),
+        ? new DataConstr(1n, [])
+        : new DataConstr(0n, [dataFromCbor(datum.cbor)]),
     ),
   );
 };
