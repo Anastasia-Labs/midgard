@@ -61,12 +61,19 @@ fn phase_successor_is_valid(
           post.phase == validation_trace_v1.StaticLedgerRules
         validation_trace_v1.StaticLedgerRules ->
           post.phase == validation_trace_v1.InputSets
-        validation_trace_v1.InputSets ->
-          post.phase == validation_trace_v1.Signatures
-        validation_trace_v1.Signatures ->
-          post.phase == validation_trace_v1.PhaseANativeScripts
-        validation_trace_v1.PhaseANativeScripts ->
-          post.phase == validation_trace_v1.PhaseAScriptPreconditions
+        validation_trace_v1.InputSets -> or {
+            post.phase == validation_trace_v1.InputSets,
+            post.phase == validation_trace_v1.Signatures,
+          }
+        validation_trace_v1.Signatures -> or {
+            post.phase == validation_trace_v1.Signatures,
+            post.phase == validation_trace_v1.PhaseANativeScripts,
+          }
+        validation_trace_v1.PhaseANativeScripts -> or {
+            post.phase == validation_trace_v1.PhaseANativeScripts,
+            post.phase == validation_trace_v1.PhaseAScriptPreconditions,
+            post.phase == validation_trace_v1.NativeScripts,
+          }
         validation_trace_v1.PhaseAScriptPreconditions -> or {
             post.phase == validation_trace_v1.PhaseAScriptPreconditions,
             post.phase == validation_trace_v1.ResolveInputs,
@@ -80,6 +87,7 @@ fn phase_successor_is_valid(
             post.phase == validation_trace_v1.NativeScripts,
           }
         validation_trace_v1.NativeScripts -> or {
+            post.phase == validation_trace_v1.PhaseANativeScripts,
             post.phase == validation_trace_v1.NativeScripts,
             post.phase == validation_trace_v1.ScriptIntegrity,
           }

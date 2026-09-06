@@ -262,6 +262,156 @@ fn verify_phase_a_native_item_scan(
   }
 }
 
+/// The dispatcher retains full binding, including late continuation semantics.
+pub fn verify_phase_a_native_item_dispatch_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  field_index: Int,
+  item_index: Int,
+) -> Bool {
+  let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    phase_a_native_control_is_bound(
+      pre,
+      witness,
+      control,
+      verified,
+      witness_set,
+    ),
+    control.stage == 0,
+    control.script_count != 0,
+    field_index == 6,
+    item_index == control.script_seen,
+  }
+}
+
+pub fn verify_phase_a_native_item_native_payload_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
+) -> Bool {
+  let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    6,
+    control.script_seen,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
+  let item_length = field_door.machine_field_item_length(item)
+  let active_count = if control.script_count == -1 {
+    item_count
+  } else {
+    control.script_count
+  }
+  let header = native_script_scan_v1.versioned_script_header_v1(
+    field_door.machine_field_item_chunk(item, 0),
+    item_length,
+  )
+  and {
+    control.script_count == -1 || control.script_count == item_count,
+    active_count > 0,
+    active_count <= max_tx_size_derived_collection_item_count,
+    item_count == active_count,
+    item_length > 0,
+    item_length <= max_aggregate_field_preimage_bytes,
+    when header is {
+      None ->
+        rejected_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          reject_invalid_field_type,
+        )
+      Some(item_header) -> and {
+          item_header.language_tag == 0,
+          phase_a_native_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            PhaseANativeScriptsControlV1 {
+              ..control,
+              stage: 1,
+              script_count: active_count,
+              item_length,
+              item_commitment: field_door.machine_field_item_commitment(item),
+              cursor: item_header.payload_offset,
+            },
+          ),
+        }
+    },
+  }
+}
+
+pub fn verify_phase_a_native_item_foreign_payload_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
+) -> Bool {
+  let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    6,
+    control.script_seen,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
+  let item_length = field_door.machine_field_item_length(item)
+  let active_count = if control.script_count == -1 {
+    item_count
+  } else {
+    control.script_count
+  }
+  let header = native_script_scan_v1.versioned_script_header_v1(
+    field_door.machine_field_item_chunk(item, 0),
+    item_length,
+  )
+  and {
+    control.script_count == -1 || control.script_count == item_count,
+    active_count > 0,
+    active_count <= max_tx_size_derived_collection_item_count,
+    item_count == active_count,
+    item_length > 0,
+    item_length <= max_aggregate_field_preimage_bytes,
+    when header is {
+      None -> False
+      Some(item_header) -> and {
+          item_header.language_tag != 0,
+          phase_a_native_complete_script_is_exact(
+            pre,
+            witness.claimed_successor,
+            control,
+            active_count,
+            control.script_seen + 1,
+            1,
+          ),
+        }
+    },
+  }
+}
+
 fn phase_a_native_chunk_window(
   control: PhaseANativeScriptsControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,

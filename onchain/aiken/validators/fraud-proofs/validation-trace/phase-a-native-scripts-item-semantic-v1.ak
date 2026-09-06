@@ -3,35 +3,22 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
-use midgard/native_tx_field_access_v1.{FieldCarriageV1}
-use midgard/validation_machine/machine_types.{
-  TransactionFieldChunkWitness, ValidationOneStepWitnessV1,
+use midgard/fraud_proofs/validation_trace/phase_a_native_item_yield_v1.{
+  SpendRedeemer, VerifyItem,
 }
+use midgard/fraud_proofs/validation_trace/phase_a_native_item_yield_v1 as item_yield
+use midgard/state_queue_yield.{require_authenticated_zero_yield}
+use midgard/validation_machine/machine_types.{TransactionFieldChunkWitness}
 use midgard/validation_machine/phase_a_native_scripts.{
-  verify_phase_a_native_item_semantics_v1,
+  verify_phase_a_native_item_dispatch_v1,
 }
-use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{PhaseANativeScripts}
-
-pub type ActionV1 {
-  VerifyItem {
-    input_index: Int,
-    output_index: Int,
-    transition: ValidationOneStepWitnessV1,
-    field_index: Int,
-    item_index: Int,
-    carriage: FieldCarriageV1,
-  }
-}
-
-pub type SpendRedeemer =
-  ct.StepRedeemer<ActionV1>
 
 validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
-  field_preimage_certificate_policy_id: PolicyId,
+  reference_script_auth_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -56,6 +43,8 @@ validator main(
         field_index,
         item_index,
         carriage,
+        yield_to_ref_input_index,
+        yield_kind,
       }) -> {
         let auxiliary = TransactionFieldChunkWitness {
           field_index,
@@ -63,10 +52,19 @@ validator main(
           carriage,
         }
         let auxiliary_data: Data = auxiliary
-        let door = MachineFieldDoorV1 {
-          reference_inputs: tx.reference_inputs,
-          certificate_policy_id: field_preimage_certificate_policy_id,
-        }
+        expect yield_kind == 0 || yield_kind == 1
+        expect _yield_hash = require_authenticated_zero_yield(
+          tx.reference_inputs,
+          tx.withdrawals,
+          tx.redeemers,
+          reference_script_auth_policy_id,
+          if yield_kind == 0 {
+            item_yield.native_role
+          } else {
+            item_yield.foreign_role
+          },
+          yield_to_ref_input_index,
+        )
         continue_winning(
           PhaseANativeScripts,
           award_script_hash,
@@ -76,13 +74,11 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_phase_a_native_item_semantics_v1(
+          verify_phase_a_native_item_dispatch_v1(
             datum |> semantic_pre_state,
             transition,
-            door,
             field_index,
             item_index,
-            carriage,
           ),
           own_out_ref,
           tx,

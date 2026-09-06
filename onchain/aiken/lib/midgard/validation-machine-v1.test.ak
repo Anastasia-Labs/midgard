@@ -18254,3 +18254,149 @@ test phase_a_payload_binding_matches_full_binding(
     ),
   }
 }
+
+/// The split proves the original item predicate over honest and substituted
+/// successor roots and coordinates; neither yield alone supplies binding.
+test phase_a_item_split_equals_original(choice via fuzz.int_between(0, 7)) {
+  let base = empty_v1_transaction()
+  let script = MidgardVersionedScript {
+    language: NativeCardanoScript,
+    script_bytes: #"82041864",
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
+      validity_interval_start: 100,
+    },
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [script],
+    },
+  }
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let item_cbor = encode_midgard_versioned_script(script)
+  let next_work = phase_a_native_scan_witness(
+    tx,
+    1,
+    1,
+    0,
+    0,
+    bytearray.length(item_cbor),
+    bounded_item_v1.from_bytes(6, 0, item_cbor),
+    3,
+    #"",
+    0,
+    0,
+    -1,
+  )
+  let expected_post = next_phase_a_native_state(pre, next_work)
+  let post = if choice % 2 == 0 {
+    expected_post
+  } else {
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..expected_post,
+      work_root: h_a,
+    }
+  }
+  let witness = vm_machine_types.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  let field_index = if choice < 4 {
+    6
+  } else {
+    5
+  }
+  let item_index = if choice < 6 {
+    0
+  } else {
+    1
+  }
+  let carriage = inline_field_carriage([item_cbor])
+  let original = vm_phase_a_native_scripts.verify_phase_a_native_item_semantics_v1(
+    pre,
+    witness,
+    inline_field_door(),
+    field_index,
+    item_index,
+    carriage,
+  )
+  let split = and {
+    vm_phase_a_native_scripts.verify_phase_a_native_item_dispatch_v1(
+      pre,
+      witness,
+      field_index,
+      item_index,
+    ),
+    vm_phase_a_native_scripts.verify_phase_a_native_item_native_payload_v1(
+      pre,
+      witness,
+      inline_field_door(),
+      carriage,
+    ) || vm_phase_a_native_scripts.verify_phase_a_native_item_foreign_payload_v1(
+      pre,
+      witness,
+      inline_field_door(),
+      carriage,
+    ),
+  }
+  and {
+    original == split,
+    original == ( choice == 0 || choice == 2 ),
+  }
+}
+
+/// Structural routing permits bounded self steps and the native continuation
+/// round trip; semantic predicates still authenticate the exact controls.
+test structural_bounded_phase_routes(choice via fuzz.int_between(0, 7)) {
+  let Pair(base, work_witness_cbor) = phase_a_native_step_fixture(
+    empty_v1_transaction(),
+    h_a,
+  )
+  let Pair(before, after) = when choice is {
+    0 -> Pair(validation_trace_v1.InputSets, validation_trace_v1.InputSets)
+    1 -> Pair(validation_trace_v1.Signatures, validation_trace_v1.Signatures)
+    2 ->
+      Pair(
+        validation_trace_v1.PhaseANativeScripts,
+        validation_trace_v1.PhaseANativeScripts,
+      )
+    3 ->
+      Pair(
+        validation_trace_v1.NativeScripts,
+        validation_trace_v1.PhaseANativeScripts,
+      )
+    4 ->
+      Pair(
+        validation_trace_v1.PhaseANativeScripts,
+        validation_trace_v1.NativeScripts,
+      )
+    5 -> Pair(validation_trace_v1.InputSets, validation_trace_v1.NativeScripts)
+    6 ->
+      Pair(validation_trace_v1.Signatures, validation_trace_v1.ScriptIntegrity)
+    _ -> Pair(validation_trace_v1.PhaseANativeScripts, validation_trace_v1.Cek)
+  }
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..base,
+    phase: before,
+    work_root: validation_trace_v1.hash_work_witness(
+      before,
+      base.program_counter,
+      work_witness_cbor,
+    ),
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: after,
+    program_counter: pre.program_counter + 1,
+  }
+  vm_shared.structural_transition_is_valid(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+  ) == ( choice < 5 )
+}
