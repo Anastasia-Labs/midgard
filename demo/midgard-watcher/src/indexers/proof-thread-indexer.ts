@@ -336,13 +336,15 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY = Object.freeze({
   },
   mintAuthorization: {
     familyId: "mint-authorization",
-    stepCount: 5,
+    stepCount: 7,
     deployedStepContractNames: [
       "fraudProofMintAuthorization",
       "fraudProofMintAuthorizationStep02",
       "fraudProofMintAuthorizationStep03",
       "fraudProofMintAuthorizationStep04",
       "fraudProofMintAuthorizationStep05",
+      "fraudProofMintAuthorizationStep06",
+      "fraudProofMintAuthorizationStep07",
     ],
   },
   networkId: {

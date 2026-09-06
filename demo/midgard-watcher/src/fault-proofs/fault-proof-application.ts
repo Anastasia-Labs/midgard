@@ -57,6 +57,7 @@ import {
   createManifestBoundL2TxMistagWorkflow,
   createManifestBoundMinAdaWorkflow,
   createManifestBoundMinFeeWorkflow,
+  createManifestBoundMintAuthorizationWorkflow,
   createManifestBoundMintDeclaredAssetLimitWorkflow,
   createManifestBoundMissingNativeScriptTxWorkflow,
   createManifestBoundMissingNativeScriptUtxoWorkflow,
@@ -89,6 +90,7 @@ import {
   createManifestBoundZeroInputWorkflow,
   createMinAdaWorkflowRunner,
   createMinFeeWorkflowRunner,
+  createMintAuthorizationWorkflowRunner,
   createMintDeclaredAssetLimitWorkflowRunner,
   createMissingNativeScriptTxWorkflowRunner,
   createMissingNativeScriptUtxoWorkflowRunner,
@@ -161,6 +163,7 @@ import {
   type ManifestBoundL2TxMistagWorkflowConfig,
   type ManifestBoundMinAdaWorkflowConfig,
   type ManifestBoundMinFeeWorkflowConfig,
+  type ManifestBoundMintAuthorizationWorkflowConfig,
   type ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
   type ManifestBoundMissingNativeScriptTxWorkflowConfig,
   type ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
@@ -312,6 +315,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "withdrawnInput",
   "valueNotPreserved",
   "inputSetUniqueness",
+  "mintAuthorization",
   "networkId",
   "missingNativeScriptUtxo",
   "nativeScriptInvalid",
@@ -346,7 +350,6 @@ export type WatcherInstalledWorkflowCategory =
 export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([
   "transitionTrace",
   "validationTraceDispute",
-  "mintAuthorization",
 ] as const);
 
 const watcherWorkflowCoverage = new Set<string>([
@@ -516,6 +519,10 @@ type TaggedWorkflowConfig =
   | Readonly<{
       category: "networkId";
       config: ManifestBoundNetworkIdWorkflowConfig;
+    }>
+  | Readonly<{
+      category: "mintAuthorization";
+      config: ManifestBoundMintAuthorizationWorkflowConfig;
     }>
   | Readonly<{
       category: "nativeScriptInvalid";
@@ -824,6 +831,8 @@ const constructProductionWorkflow = async (
       return await createManifestBoundInputSetUniquenessWorkflow(input.config);
     case "networkId":
       return await createManifestBoundNetworkIdWorkflow(input.config);
+    case "mintAuthorization":
+      return await createManifestBoundMintAuthorizationWorkflow(input.config);
     case "nativeScriptInvalid":
       return await createManifestBoundNativeScriptInvalidWorkflow(input.config);
     case "nativeScriptDecoding":
@@ -1363,6 +1372,20 @@ const referenceContracts = (
         step02: "fraudProofNetworkIdStep02",
         forcedStep: "fraudProofNetworkIdForcedStep",
         forcedScan: "fraudProofNetworkIdForcedScan",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "mintAuthorization":
+      return Object.freeze({
+        step01: "fraudProofMintAuthorization",
+        step02: "fraudProofMintAuthorizationStep02",
+        step03: "fraudProofMintAuthorizationStep03",
+        step04: "fraudProofMintAuthorizationStep04",
+        step05: "fraudProofMintAuthorizationStep05",
+        step06: "fraudProofMintAuthorizationStep06",
+        step07: "fraudProofMintAuthorizationStep07",
         ...base,
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         pexcludesWithdraw: "pexcludesWithdraw",
@@ -1983,7 +2006,8 @@ const buildCommonInfrastructure = async ({
     (category === "nonExistentInput" ||
       category === "noReferenceInput" ||
       category === "nativeScriptDecoding" ||
-      category === "withdrawalMistag") &&
+      category === "withdrawalMistag" ||
+      category === "mintAuthorization") &&
     replayContext === undefined
   ) {
     throw new Error(
@@ -2169,6 +2193,10 @@ function taggedConfig(
   category: "networkId",
   common: CommonInfrastructure,
 ): Extract<TaggedWorkflowConfig, { readonly category: "networkId" }>;
+function taggedConfig(
+  category: "mintAuthorization",
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "mintAuthorization" }>;
 function taggedConfig(
   category: "nativeScriptInvalid",
   common: CommonInfrastructure,
@@ -2809,6 +2837,35 @@ function taggedConfig(
           removal: Object.freeze({
             stateQueueMutationLeaseCoordinator:
               common.stateQueueMutationLeaseCoordinator,
+          }),
+        }),
+      });
+    case "mintAuthorization":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          ...(common.replayContext === undefined
+            ? {}
+            : { replayContext: common.replayContext }),
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+              reference("step06"),
+              reference("step07"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
           }),
         }),
       });
@@ -3689,6 +3746,7 @@ const taggedReferenceOutRefs = (
           ...tagged.config.referenceScripts.steps,
           ...Object.values(tagged.config.referenceScripts.witnesses),
         ];
+      case "mintAuthorization":
       case "nativeScriptInvalid":
       case "nativeScriptDecoding":
       case "missingNativeScriptUtxo":
@@ -4129,6 +4187,9 @@ const createApplication = ({
     category: "networkId",
   ): TaggedWorkflowLoaderFor<"networkId">;
   function makeTaggedLoader(
+    category: "mintAuthorization",
+  ): TaggedWorkflowLoaderFor<"mintAuthorization">;
+  function makeTaggedLoader(
     category: "nativeScriptInvalid",
   ): TaggedWorkflowLoaderFor<"nativeScriptInvalid">;
   function makeTaggedLoader(
@@ -4261,6 +4322,7 @@ const createApplication = ({
     inputSetUniqueness: makeTaggedLoader("inputSetUniqueness"),
     networkId: makeTaggedLoader("networkId"),
     missingNativeScriptUtxo: makeTaggedLoader("missingNativeScriptUtxo"),
+    mintAuthorization: makeTaggedLoader("mintAuthorization"),
     nativeScriptInvalid: makeTaggedLoader("nativeScriptInvalid"),
     nativeScriptDecoding: makeTaggedLoader("nativeScriptDecoding"),
     crossBlockDuplicateEvent: makeTaggedLoader("crossBlockDuplicateEvent"),
@@ -4608,6 +4670,20 @@ const createApplication = ({
   ) => {
     const loaded = await taggedLoaders.networkId(input);
     if (loaded.config.category !== "networkId") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const mintAuthorizationLoader = async (
+    input: Parameters<(typeof taggedLoaders)["mintAuthorization"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.mintAuthorization(input);
+    if (loaded.config.category !== "mintAuthorization") {
       await loaded.close();
       throw new Error("workflow loader changed its fixed category");
     }
@@ -5128,6 +5204,10 @@ const createApplication = ({
     missingNativeScriptUtxo: createMissingNativeScriptUtxoWorkflowRunner(
       missingNativeScriptUtxoLoader,
       fundingProfile("missingNativeScriptUtxo"),
+    ),
+    mintAuthorization: createMintAuthorizationWorkflowRunner(
+      mintAuthorizationLoader,
+      fundingProfile("mintAuthorization"),
     ),
     nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner(
       nativeScriptInvalidLoader,

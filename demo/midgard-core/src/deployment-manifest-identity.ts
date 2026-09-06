@@ -188,6 +188,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofMintAuthorizationStep03",
   "fraudProofMintAuthorizationStep04",
   "fraudProofMintAuthorizationStep05",
+  "fraudProofMintAuthorizationStep06",
+  "fraudProofMintAuthorizationStep07",
   "fraudProofTransitionTraceControl",
   "fraudProofTransitionTraceSource",
   "fraudProofTransitionTraceWithdrawal",
@@ -758,6 +760,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofMintAuthorizationStep04",
     "V1 fraud-proof mint-authorization step-05":
       "fraudProofMintAuthorizationStep05",
+    "V1 fraud-proof mint-authorization step-06":
+      "fraudProofMintAuthorizationStep06",
+    "V1 fraud-proof mint-authorization step-07":
+      "fraudProofMintAuthorizationStep07",
     "V1 fraud-proof transition-trace route": "fraudProofTransitionTrace",
     "V1 fraud-proof transition-trace final-0":
       "fraudProofTransitionTraceControl",
@@ -1250,6 +1256,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
   "V1 fraud-proof mint-authorization step-04": "V1FpMintAuthorizationS04",
   "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
+  "V1 fraud-proof mint-authorization step-06": "V1FpMintAuthorizationS06",
+  "V1 fraud-proof mint-authorization step-07": "V1FpMintAuthorizationS07",
   "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
   "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
   "V1 fraud-proof transition-trace final-1": "V1FpTransitionTraceFinal1",

@@ -1085,6 +1085,20 @@ export const buildMintAuthorizationChain = ({
       ],
     ),
   );
+  const witnessScan = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MINT_AUTHORIZATION_BLUEPRINT_TITLES.witnessScan,
+      [step04.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const evaluate = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MINT_AUTHORIZATION_BLUEPRINT_TITLES.evaluate,
+      [step05.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
@@ -1092,6 +1106,8 @@ export const buildMintAuthorizationChain = ({
       [
         step04.spendingScriptHash,
         step05.spendingScriptHash,
+        evaluate.spendingScriptHash,
+        witnessScan.spendingScriptHash,
         computationThreadPolicyId,
         fieldPreimageCertificatePolicyId,
       ],
@@ -1115,7 +1131,7 @@ export const buildMintAuthorizationChain = ({
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
-  return [step01, step02, step03, step04, step05];
+  return [step01, step02, step03, step04, step05, evaluate, witnessScan];
 };
 
 export const buildMinimalFaultProofContracts = async (

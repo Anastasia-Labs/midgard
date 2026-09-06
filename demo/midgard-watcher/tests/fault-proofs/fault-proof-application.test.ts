@@ -288,6 +288,7 @@ describe("watcher production fault-proof application V1", () => {
         "withdrawnInput",
         "valueNotPreserved",
         "inputSetUniqueness",
+        "mintAuthorization",
         "networkId",
         "missingNativeScriptUtxo",
         "nativeScriptInvalid",
@@ -318,7 +319,6 @@ describe("watcher production fault-proof application V1", () => {
       expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toEqual([
         "transitionTrace",
         "validationTraceDispute",
-        "mintAuthorization",
       ]);
       expect(
         workflowReadinessReport(
@@ -327,9 +327,9 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: 51,
-        requestedCategoryCount: 51,
-        readyCategoryCount: 51,
+        installedCategoryCount: 52,
+        requestedCategoryCount: 52,
+        readyCategoryCount: 52,
         missingCategoryCount: 0,
       });
 
@@ -449,7 +449,8 @@ describe("watcher production fault-proof application V1", () => {
                           pexcludesWithdraw: true,
                           fieldPreimageCertificateMint: true,
                         }
-                      : category === "nativeScriptDecoding"
+                      : category === "nativeScriptDecoding" ||
+                          category === "mintAuthorization"
                         ? {
                             step01: true,
                             step02: true,
@@ -457,6 +458,9 @@ describe("watcher production fault-proof application V1", () => {
                             step04: true,
                             step05: true,
                             step06: true,
+                            ...(category === "mintAuthorization"
+                              ? { step07: true }
+                              : {}),
                             computationThreadMint: true,
                             fraudProofMint: true,
                             phasMembershipWithdraw: true,
@@ -1218,8 +1222,8 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      expect(deps.makeLucid).toHaveBeenCalledTimes(51);
-      expect(transport.stop).toHaveBeenCalledTimes(51);
+      expect(deps.makeLucid).toHaveBeenCalledTimes(52);
+      expect(transport.stop).toHaveBeenCalledTimes(52);
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),

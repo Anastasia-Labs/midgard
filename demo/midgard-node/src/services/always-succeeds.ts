@@ -443,7 +443,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         unionTerminal: zeroInput,
       },
       inputSetUniqueness: repeatedFaultProofChain(doubleSpend, 4),
-      mintAuthorization: repeatedFaultProofChain(zeroInput, 5),
+      mintAuthorization: repeatedFaultProofChain(zeroInput, 7),
       // `steps` holds the two linear steps; the forced (wrongful-rejection)
       // door and the resumable output scan it hands off to hang off the chain
       // by name, exactly as `buildNetworkIdChain` returns them.

@@ -598,6 +598,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       "inputSetUniqueness",
       "networkId",
       "missingNativeScriptUtxo",
+      "mintAuthorization",
       "nativeScriptInvalid",
       "nativeScriptDecoding",
       "crossBlockDuplicateEvent",

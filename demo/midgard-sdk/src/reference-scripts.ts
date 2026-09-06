@@ -171,6 +171,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
   "V1 fraud-proof mint-authorization step-04": "V1FpMintAuthorizationS04",
   "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
+  "V1 fraud-proof mint-authorization step-06": "V1FpMintAuthorizationS06",
+  "V1 fraud-proof mint-authorization step-07": "V1FpMintAuthorizationS07",
   "V1 fraud-proof network-id step-01": "V1FpNetworkIdS01",
   "V1 fraud-proof network-id step-02": "V1FpNetworkIdS02",
   "V1 fraud-proof missing-signature forced step": "V1FpMissingSigForcedStep",

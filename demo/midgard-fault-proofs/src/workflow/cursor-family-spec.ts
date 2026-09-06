@@ -46,13 +46,15 @@ export const VALUE_NOT_PRESERVED_CURSOR_SPEC = Object.freeze({
 
 export const MINT_AUTHORIZATION_CURSOR_SPEC = Object.freeze({
   category: "mintAuthorization",
-  stepCount: 5,
+  stepCount: 7,
   successors: Object.freeze({
     1: Object.freeze([2] as const),
     2: Object.freeze([3] as const),
-    3: Object.freeze([4] as const),
+    3: Object.freeze([4, 5, 6, 7] as const),
     4: Object.freeze([4, 5] as const),
     5: Object.freeze(["proof_token"] as const),
+    6: Object.freeze([6, 5] as const),
+    7: Object.freeze([7, 4] as const),
   }),
 }) satisfies CursorFamilySpec<"mintAuthorization">;
 

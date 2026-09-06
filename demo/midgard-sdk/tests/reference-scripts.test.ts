@@ -86,7 +86,7 @@ describe("reference-script SDK boundary", () => {
     );
     const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
 
-    expect(fraudProofEntries).toHaveLength(254);
+    expect(fraudProofEntries).toHaveLength(256);
     expect(new Set(tokenNames).size).toBe(tokenNames.length);
     expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
       true,
@@ -120,6 +120,8 @@ describe("reference-script SDK boundary", () => {
       "V1 fraud-proof input-set-uniqueness step-02":
         "V1FpInputSetUniquenessS02",
       "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
+      "V1 fraud-proof mint-authorization step-06": "V1FpMintAuthorizationS06",
+      "V1 fraud-proof mint-authorization step-07": "V1FpMintAuthorizationS07",
     });
   });
 

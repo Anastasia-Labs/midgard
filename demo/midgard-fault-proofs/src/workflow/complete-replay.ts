@@ -78,6 +78,7 @@ import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
 import { detectInvalidSignatureWrongfulRejections } from "../invalid-signature/wrongful-rejection.js";
 import { detectMinAdaForcedReplay } from "../min-ada/forced.js";
 import { detectMinFeeForcedReplay } from "../min-fee-forced.js";
+import { detectMintAuthorizationReplay } from "../mint-authorization/replay.js";
 import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset-limit/replay.js";
 import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
 import { detectMissingScriptSourceCanonicalViolations } from "../missing-script-source/authenticated-replay.js";
@@ -1989,6 +1990,18 @@ export const WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["withdrawalMistag"],
   async (evidence, context) =>
     await detectWithdrawalMistagReplay({
+      block: evidence,
+      predecessor: completeCanonicalReplayPredecessorEvidence({
+        evidence,
+        context,
+      }),
+    }),
+);
+
+export const MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY = completeReplayer(
+  ["mintAuthorization"],
+  async (evidence, context) =>
+    await detectMintAuthorizationReplay({
       block: evidence,
       predecessor: completeCanonicalReplayPredecessorEvidence({
         evidence,

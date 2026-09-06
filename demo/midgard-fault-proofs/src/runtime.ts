@@ -686,6 +686,8 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofMintAuthorizationStep03",
     "fraudProofMintAuthorizationStep04",
     "fraudProofMintAuthorizationStep05",
+    "fraudProofMintAuthorizationStep06",
+    "fraudProofMintAuthorizationStep07",
   ],
   networkId: ["fraudProofNetworkId", "fraudProofNetworkIdStep02"],
   missingNativeScriptUtxo: [

@@ -267,7 +267,7 @@ export const makeAlwaysSucceedsContracts = (
       unionTerminal: appendedFamilyFallback,
     },
     inputSetUniqueness: scaffoldChain(appendedFamilyFallback, 4),
-    mintAuthorization: scaffoldChain(appendedFamilyFallback, 5),
+    mintAuthorization: scaffoldChain(appendedFamilyFallback, 7),
     networkId: {
       ...scaffoldChain(appendedFamilyFallback, 2),
       forcedStep: appendedFamilyFallback,

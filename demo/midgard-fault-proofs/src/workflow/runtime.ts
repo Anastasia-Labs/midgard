@@ -35,6 +35,12 @@ import {
   runOrResumeManifestBoundMinAdaWorkflow,
 } from "../min-ada/workflow.js";
 import {
+  createManifestBoundMintAuthorizationWorkflow,
+  type ManifestBoundMintAuthorizationWorkflow,
+  type ManifestBoundMintAuthorizationWorkflowConfig,
+  runOrResumeManifestBoundMintAuthorizationWorkflow,
+} from "../mint-authorization/workflow.js";
+import {
   createMintDeclaredAssetLimitWorkflowRunnerSurface,
   type LoadMintDeclaredAssetLimitWorkflow,
 } from "../mint-declared-asset-limit/v1.js";
@@ -841,6 +847,26 @@ export const createValueConservationWorkflowRunner = (
     }),
   });
 
+export const createMintAuthorizationWorkflowRunner = (
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMintAuthorizationWorkflowConfig>,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner =>
+  createAdmittedWorkflowRunner({
+    category: "mintAuthorization",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundWorkflowRunOrResume({
+      category: "mintAuthorization",
+      loadRuntimeConfig,
+      constructWorkflow: createManifestBoundMintAuthorizationWorkflow,
+      execute: async ({ workflow, sources, journal }) =>
+        await runOrResumeManifestBoundMintAuthorizationWorkflow({
+          workflow: workflow as ManifestBoundMintAuthorizationWorkflow,
+          sources,
+          journal,
+        }),
+    }),
+  });
+
 export const createNativeScriptInvalidWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundNativeScriptInvalidWorkflowConfig>,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -1371,6 +1397,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   inputSetUniqueness: createInputSetUniquenessWorkflowRunner,
   networkId: createNetworkIdWorkflowRunner,
   missingNativeScriptUtxo: createMissingNativeScriptUtxoWorkflowRunner,
+  mintAuthorization: createMintAuthorizationWorkflowRunner,
   nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner,
   nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner,
   crossBlockDuplicateEvent: createCrossBlockDuplicateEventWorkflowRunner,
