@@ -6,6 +6,7 @@ import {
 } from "./field-carriage-prerequisite.js";
 import type { RawDatumPreimageRequirement } from "./raw-datum-preimage.js";
 export {
+  createChunkedRawDatumPreimageRequirement,
   createRawDatumPreimageRequirement,
   createStructuredDataPreimageRequirement,
   rawDatumPreimagePublicationPlan,
