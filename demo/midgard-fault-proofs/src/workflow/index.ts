@@ -45,6 +45,7 @@ export * from "./no-reference-input.js";
 export * from "./non-existent-input.js";
 export * from "./orchestrator.js";
 export * from "./proof-chunk-prerequisite.js";
+export * from "./raw-datum-preimage-prerequisite.js";
 export * from "./raw-l1-family-derivation.js";
 export * from "./raw-l1-publication-observation.js";
 export * from "./raw-l1-snapshot.js";

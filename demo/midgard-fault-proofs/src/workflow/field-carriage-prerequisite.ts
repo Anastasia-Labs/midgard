@@ -46,6 +46,10 @@ import {
   type FraudProofWorkflowReconcileResult,
 } from "./orchestrator.js";
 import {
+  rawDatumPreimagePublicationPlan,
+  type RawDatumPreimageRequirement,
+} from "./raw-datum-preimage.js";
+import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
@@ -60,6 +64,8 @@ import {
 
 export const FIELD_CARRIAGE_PREREQUISITE =
   "midgard-production-field-carriage-prerequisite-v1" as const;
+export const RAW_DATUM_PREIMAGE_PREREQUISITE =
+  "midgard-raw-datum-preimage-prerequisite-v1" as const;
 export const FIELD_CARRIAGE_RECOVERY =
   "midgard-production-field-carriage-recovery-v1" as const;
 
@@ -119,7 +125,12 @@ export type FieldCarriageRequirement = Readonly<{
   }>;
 }>;
 
-type Requirement = FieldCarriageRequirement &
+type RawRequirement = RawDatumPreimageRequirement &
+  Readonly<{ planned: ReturnType<typeof rawDatumPreimagePublicationPlan> }>;
+export type PreimageCarriageRequirement =
+  | FieldCarriageRequirement
+  | RawDatumPreimageRequirement;
+type Requirement = (FieldCarriageRequirement | RawRequirement) &
   Readonly<{
     identitySha256: string;
     publicationDatums: readonly string[];
@@ -150,7 +161,7 @@ export interface FieldCarriagePrerequisitePort<
     Readonly<{
       publications: readonly UTxO[];
       certificate?: UTxO;
-      requirement: FieldCarriageRequirement | null;
+      requirement: FieldCarriageRequirement | RawRequirement | null;
     }>
   >;
   inspect(input: {
@@ -223,8 +234,27 @@ const outRef = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 const requirementIdentity = (
-  requirement: FieldCarriageRequirement,
+  requirement: PreimageCarriageRequirement,
 ): Requirement => {
+  if ("kind" in requirement) {
+    const planned = rawDatumPreimagePublicationPlan(requirement);
+    return Object.freeze({
+      ...requirement,
+      planned,
+      identitySha256: sha256(
+        JSON.stringify({
+          kind: requirement.kind,
+          preimageHex: requirement.preimageHex,
+          publicationDatums: planned.publicationDatums,
+          publicationDigests: planned.publicationDigests,
+        }),
+      ),
+      publicationDatums: planned.publicationDatums,
+      publicationDigests: planned.publicationDigests,
+      certificateDatumCbor: null,
+      certificateUnit: null,
+    });
+  }
   const { planned } = requirement;
   const normalizedCompactCbor = requirement.compactCbor.toLowerCase();
   let decodedCompact: ReturnType<typeof decodeMidgardNativeTxCompact>;
@@ -325,6 +355,16 @@ const requirementIdentity = (
   });
 };
 
+const certifiedRequirement = (
+  requirement: Requirement,
+): FieldCarriageRequirement => {
+  if ("kind" in requirement || requirement.planned.plan.tier !== "Certified")
+    throw new Error(
+      "raw preimage publication cannot request field certification",
+    );
+  return requirement;
+};
+
 const frozenBaseAction = (
   action: FraudProofWorkflowAction,
 ): FraudProofWorkflowAction =>
@@ -345,9 +385,12 @@ const publicationAction = <Category extends FraudProofCatalogueCategoryName>({
   readonly publicationIndex: number;
 }): FraudProofWorkflowAction =>
   Object.freeze({
-    actionId: `publish-field-carriage:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}`,
+    actionId: `publish-${"kind" in requirement ? "raw-datum-preimage" : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}`,
     input: Object.freeze({
-      schemaVersion: FIELD_CARRIAGE_PREREQUISITE,
+      schemaVersion:
+        "kind" in requirement
+          ? RAW_DATUM_PREIMAGE_PREREQUISITE
+          : FIELD_CARRIAGE_PREREQUISITE,
       category,
       stage: "publish_field_carriage",
       forAction: frozenBaseAction(baseAction),
@@ -380,8 +423,14 @@ const certificateAction = <Category extends FraudProofCatalogueCategoryName>({
     }),
   });
 
-const isPrerequisiteAction = (action: FraudProofWorkflowAction): boolean =>
-  action.input.schemaVersion === FIELD_CARRIAGE_PREREQUISITE &&
+const isCarriagePrerequisiteAction = (
+  action: FraudProofWorkflowAction,
+  rawDatum: boolean,
+): boolean =>
+  action.input.schemaVersion ===
+    (rawDatum
+      ? RAW_DATUM_PREIMAGE_PREREQUISITE
+      : FIELD_CARRIAGE_PREREQUISITE) &&
   (action.input.stage === "publish_field_carriage" ||
     action.input.stage === "certify_field_carriage");
 
@@ -527,9 +576,9 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
   }) =>
-    | FieldCarriageRequirement
+    | PreimageCarriageRequirement
     | null
-    | Promise<FieldCarriageRequirement | null>;
+    | Promise<PreimageCarriageRequirement | null>;
   readonly transactionConfirmed: (input: {
     readonly headerHash: string;
     readonly txHash: string;
@@ -644,7 +693,8 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       kind: "field_certificate",
       address: fieldPreimageCertificateAddress({
         network,
-        certificatePolicyId: required.certificate.policyId,
+        certificatePolicyId:
+          certifiedRequirement(required).certificate.policyId,
       }),
       datumCbor: required.certificateDatumCbor!,
       unit: required.certificateUnit!,
@@ -704,7 +754,8 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           ];
     const input = exact(action.input, keys, `${category} field action`);
     if (
-      input.schemaVersion !== FIELD_CARRIAGE_PREREQUISITE ||
+      (input.schemaVersion !== FIELD_CARRIAGE_PREREQUISITE &&
+        input.schemaVersion !== RAW_DATUM_PREIMAGE_PREREQUISITE) ||
       input.category !== category ||
       (input.stage !== "publish_field_carriage" &&
         input.stage !== "certify_field_carriage")
@@ -798,7 +849,8 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         kind: "field_certificate",
         address: fieldPreimageCertificateAddress({
           network,
-          certificatePolicyId: required.certificate.policyId,
+          certificatePolicyId:
+            certifiedRequirement(required).certificate.policyId,
         }),
         datumCbor: required.certificateDatumCbor!,
         unit: required.certificateUnit!,
@@ -874,19 +926,23 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
             lucid,
             network,
             signer,
-            planned: parsed.requirement.planned,
-            certificatePolicyId: parsed.requirement.certificate.policyId,
-            certificateMintingScript:
-              parsed.requirement.certificate.mintingScript,
-            certificateReferenceScriptUtxo:
-              parsed.requirement.certificate.referenceScriptUtxo,
+            planned: certifiedRequirement(parsed.requirement).planned,
+            certificatePolicyId: certifiedRequirement(parsed.requirement)
+              .certificate.policyId,
+            certificateMintingScript: certifiedRequirement(parsed.requirement)
+              .certificate.mintingScript,
+            certificateReferenceScriptUtxo: certifiedRequirement(
+              parsed.requirement,
+            ).certificate.referenceScriptUtxo,
             chunkUtxos,
-            compactCbor: parsed.requirement.compactCbor,
-            ...(parsed.requirement.witnessSetCompactCbor === undefined
+            compactCbor: certifiedRequirement(parsed.requirement).compactCbor,
+            ...(certifiedRequirement(parsed.requirement)
+              .witnessSetCompactCbor === undefined
               ? {}
               : {
-                  witnessSetCompactCbor:
-                    parsed.requirement.witnessSetCompactCbor,
+                  witnessSetCompactCbor: certifiedRequirement(
+                    parsed.requirement,
+                  ).witnessSetCompactCbor,
                 }),
             preSubmitBoundary,
             awaitConfirmation: false,
@@ -895,7 +951,8 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       );
       const address = fieldPreimageCertificateAddress({
         network,
-        certificatePolicyId: parsed.requirement.certificate.policyId,
+        certificatePolicyId: certifiedRequirement(parsed.requirement)
+          .certificate.policyId,
       });
       return {
         transaction,
@@ -956,7 +1013,8 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           ? signer.address
           : fieldPreimageCertificateAddress({
               network,
-              certificatePolicyId: parsed.requirement.certificate.policyId,
+              certificatePolicyId: certifiedRequirement(parsed.requirement)
+                .certificate.policyId,
             });
       const observation = await publications.observeExact({
         headerHash,
@@ -993,10 +1051,12 @@ export const withFieldCarriagePrerequisite = <
   category,
   base,
   prerequisite,
+  rawDatum = false,
 }: {
   readonly category: Category;
   readonly base: FraudProofFamilyWorkflowAdapter;
   readonly prerequisite: FieldCarriagePrerequisitePort<Category>;
+  readonly rawDatum?: boolean;
 }): FraudProofFamilyWorkflowAdapter => {
   if (
     base.adapterVersion !== FRAUD_PROOF_WORKFLOW_ADAPTER ||
@@ -1007,6 +1067,8 @@ export const withFieldCarriagePrerequisite = <
   ) {
     throw new Error(`${category} field prerequisite ports changed identity`);
   }
+  const isPrerequisiteAction = (action: FraudProofWorkflowAction) =>
+    isCarriagePrerequisiteAction(action, rawDatum);
   const prepared = new Map<
     string,
     Readonly<{

@@ -12,6 +12,7 @@ import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
 } from "../src/workflow/orchestrator.js";
+import { withRawDatumPreimagePrerequisite } from "../src/workflow/raw-datum-preimage-prerequisite.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 
 const txHash = "11".repeat(32);
@@ -161,6 +162,55 @@ const prerequisite = ({
 });
 
 describe("production field-carriage prerequisite V1", () => {
+  it("keeps nested raw and field publication namespaces distinct", async () => {
+    const fieldPort = prerequisite();
+    const rawPort = prerequisite({ phase: "satisfied" });
+    const adapter = withRawDatumPreimagePrerequisite({
+      category: "nonExistentInput",
+      base: withFieldCarriagePrerequisite({
+        category: "nonExistentInput",
+        base: base(),
+        prerequisite: fieldPort,
+      }),
+      prerequisite: rawPort,
+    });
+    await expect(adapter.observe(context)).resolves.toEqual({
+      kind: "action_required",
+      action: publicationAction,
+    });
+    const preflight = await adapter.preflight({
+      ...context,
+      action: publicationAction,
+    });
+    expect(fieldPort.capture).toHaveBeenCalledOnce();
+    expect(rawPort.capture).not.toHaveBeenCalled();
+    await expect(
+      adapter.submit({ ...context, action: publicationAction, preflight }),
+    ).resolves.toEqual({ kind: "submitted", txHash });
+    const reconcile = vi.fn(async () => ({
+      kind: "confirmed" as const,
+      txHash,
+    }));
+    const restarted = withRawDatumPreimagePrerequisite({
+      category: "nonExistentInput",
+      base: withFieldCarriagePrerequisite({
+        category: "nonExistentInput",
+        base: base(),
+        prerequisite: prerequisite({ reconcile }),
+      }),
+      prerequisite: prerequisite({ phase: "satisfied" }),
+    });
+    await expect(
+      restarted.reconcile({
+        ...context,
+        action: publicationAction,
+        txHash,
+        durableRecovery: preflight.durableRecovery,
+      }),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    expect(reconcile).toHaveBeenCalledOnce();
+  });
+
   it("journals the first raw publication and forbids direct step bypass", async () => {
     const underlying = base();
     const port = prerequisite();
