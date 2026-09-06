@@ -14,7 +14,10 @@ import {
   createStructuredDataPreimageRequirement,
 } from "../src/workflow/raw-datum-preimage-prerequisite.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
-import { structuredDataPublicationPlan } from "../src/workflow/structured-data-preimage.js";
+import {
+  structuredDataPublicationPlan,
+  structuredDataTreeData,
+} from "../src/workflow/structured-data-preimage.js";
 import {
   captureEmulatorSubmission,
   EMULATOR_PROTOCOL_PARAMETERS,
@@ -155,6 +158,31 @@ it("groups wide constructor fields into bounded publications", () => {
   const plan = structuredDataPublicationPlan(preimageHex);
   expect(plan.tree.kind).toBe("constructor");
   expect(plan.publicationDatums.length).toBeLessThanOrEqual(8);
+  expect(plan.publicationDatums.every((datum) => datum.length <= 28000)).toBe(
+    true,
+  );
+});
+
+it("encodes oversized map entries as the Aiken List<Pair> wire map", () => {
+  const tree = structuredDataTreeData(
+    {
+      kind: "map",
+      items: [
+        [
+          { kind: "reference", index: 0 },
+          { kind: "reference", index: 1 },
+        ],
+      ],
+    },
+    BigInt,
+  );
+  expect(Data.to(tree)).toBe("d87c9fbfd8799f00ffd8799f01ffffff");
+  const plan = structuredDataPublicationPlan(
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      Data.to(new Map([["ab", "cd".repeat(16384)]])),
+    ),
+  );
+  expect(plan.tree.kind).toBe("map_parts");
   expect(plan.publicationDatums.every((datum) => datum.length <= 28000)).toBe(
     true,
   );

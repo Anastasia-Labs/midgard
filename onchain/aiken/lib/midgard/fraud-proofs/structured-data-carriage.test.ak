@@ -1,4 +1,5 @@
 use aiken/builtin
+use aiken/cbor
 use cardano/address
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
@@ -115,4 +116,13 @@ test refuses_reordered_or_substituted_publication_against_committed_data() fail 
   )
   expect actual == carriage.resolve(fixture(), refs())
   True
+}
+
+/// Shared golden emitted by structuredDataTreeData, not an Aiken-only fixture.
+test typescript_map_tree_wire_decodes_and_reconstructs() {
+  expect Some(data) = cbor.deserialise(#"d87c9fbfd8799f00ffd8799f01ffffff")
+  expect tree: carriage.EvidenceTree = data
+  carriage.resolve(carriage.StructuredEvidence { tree }, refs()) == builtin.map_data(
+    [Pair(builtin.b_data(#"aa"), builtin.b_data(#"bb"))],
+  )
 }

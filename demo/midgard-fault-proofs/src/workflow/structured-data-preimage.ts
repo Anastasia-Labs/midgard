@@ -127,7 +127,7 @@ export const structuredDataTreeData = (
       return new Constr(2, [tree.items.map(recur)]);
     case "map":
       return new Constr(3, [
-        tree.items.map(([key, value]) => [recur(key), recur(value)]),
+        new Map(tree.items.map(([key, value]) => [recur(key), recur(value)])),
       ]);
     case "bytes_parts":
       return new Constr(4, [tree.items.map(recur)]);
