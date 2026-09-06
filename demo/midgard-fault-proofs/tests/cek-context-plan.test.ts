@@ -1,4 +1,5 @@
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
+import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -137,6 +138,44 @@ describe("CEK context retained successor planning", () => {
         .cekContextSuccessorWorkWitnessCbor,
     ).toBeUndefined();
   });
+  it.each(["80", "ff", "8900000000000000000000"])(
+    "refuses malformed or trailing successor CBOR %s even when its hash is claimed",
+    async (hex) => {
+      const input = await contextInput(6);
+      const transition = Data.from(
+        Data.to(input.transition),
+        SDK.ValidationOneStepWitness,
+      );
+      const successor = transition.claimed_successor;
+      const bytes = Buffer.from(hex, "hex");
+      const transitionCbor = Buffer.from(
+        Data.to(
+          {
+            ...transition,
+            claimed_successor: {
+              ...successor,
+              work_root: hashMidgardValidationWorkWitness({
+                phase: "cek",
+                programCounter: Number(successor.program_counter),
+                witnessCbor: bytes,
+              }).toString("hex"),
+            },
+          },
+          SDK.ValidationOneStepWitness,
+        ),
+        "hex",
+      );
+      expect(() =>
+        validateCekSubmissionEvidence({
+          resolverIndex: 11,
+          semanticResolverIndex: 2,
+          transitionCbor,
+          auxiliaryCbor: Buffer.from(Data.to(input.auxiliary), "hex"),
+          cekContextSuccessorWorkWitnessCbor: bytes,
+        }),
+      ).toThrow();
+    },
+  );
   it("refuses a substituted adjacent replay witness", async () => {
     const input = await contextInput(6);
     const unrelated = await contextInput(12);
