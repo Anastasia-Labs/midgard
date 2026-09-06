@@ -482,3 +482,10 @@ auxiliary refusal, malformed width and trailing bytes. Core deployment tests
 Shared handshake tests: 6/6 and authenticated zero-yield substitution tests: 4/4.
 The ledger contains 1,450 rows (824 publications); maximum signed size 15,108
 bytes, memory 6,475,165 and CPU 2,207,557,998.
+
+Shared integration at `bf885075` rebuilt every contract together and passed
+39/39 tests: 24 middle lifecycles, 13 role-selection tests and two real shared
+item executor/composition scenarios. The remeasured middle ledger identifies
+blueprint `2ee59aefe75cbc4907228e07af02ce578b884bc3fa38f4ac5711799e83954cbd`;
+all 1450 rows preserve the required reserves. FP typecheck passed after an
+explicit raw-Data type argument corrected the shared test encoder.
