@@ -30,7 +30,7 @@ const action: FraudProofWorkflowAction = {
 };
 
 describe("raw datum preimage publication prerequisite", () => {
-  it("publishes all three maximum chunks, re-admits recovery after restart and refuses mutations", async () => {
+  it("publishes all five maximum chunks, re-admits recovery after restart and refuses mutations", async () => {
     const account = generateEmulatorAccount({ lovelace: 1_000_000_000n });
     const emulator = new Emulator([account], EMULATOR_PROTOCOL_PARAMETERS);
     const lucid = await Lucid(emulator, network);
@@ -44,17 +44,17 @@ describe("raw datum preimage publication prerequisite", () => {
     };
     signer.selectWallet(lucid);
     const bytes = Buffer.from(
-      Array.from({ length: 32_768 }, (_, index) => index % 251),
+      Array.from({ length: 65_536 }, (_, index) => index % 251),
     );
     const requirement = createRawDatumPreimageRequirement({ preimage: bytes });
     bytes.fill(0);
-    expect(requirement.publicationDatums).toHaveLength(3);
+    expect(requirement.publicationDatums).toHaveLength(5);
     expect(Object.isFrozen(requirement.publicationDatums)).toBe(true);
     expect(
       rawDatumPreimagePublicationPlan(requirement).plan.publications.map(
         (item) => item.bytes.length,
       ),
-    ).toEqual([15_000, 15_000, 2_768]);
+    ).toEqual([15_000, 15_000, 15_000, 15_000, 5_536]);
     let confirm = true;
     const publications: FraudProofAuthenticatedPublicationObserver = {
       observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
@@ -83,7 +83,7 @@ describe("raw datum preimage publication prerequisite", () => {
           candidate.actionId === action.actionId ? requirement : null,
         transactionConfirmed: async () => false,
       });
-    for (let index = 0; index < 3; index++) {
+    for (let index = 0; index < 5; index++) {
       const inspection = await port().inspect({
         headerHash,
         baseAction: action,
@@ -181,7 +181,7 @@ describe("raw datum preimage publication prerequisite", () => {
       createRawDatumPreimageRequirement({ preimage: Buffer.alloc(0) }),
     ).toThrow();
     expect(() =>
-      createRawDatumPreimageRequirement({ preimage: Buffer.alloc(32_769) }),
+      createRawDatumPreimageRequirement({ preimage: Buffer.alloc(65_537) }),
     ).toThrow();
     const requirement = createRawDatumPreimageRequirement({
       preimage: Buffer.from("abc"),

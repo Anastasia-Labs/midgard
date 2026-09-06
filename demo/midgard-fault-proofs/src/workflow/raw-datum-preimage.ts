@@ -9,8 +9,8 @@ export type RawDatumPreimageRequirement = Readonly<{
 }>;
 
 const publicationsFor = (preimage: Buffer) => {
-  if (preimage.length === 0 || preimage.length > 32_768)
-    throw new Error("raw datum preimage must contain 1..32768 bytes");
+  if (preimage.length === 0 || preimage.length > 65_536)
+    throw new Error("raw datum preimage must contain 1..65536 bytes");
   const publications = [];
   for (let offset = 0; offset < preimage.length; offset += 15_000) {
     const bytes = preimage.subarray(offset, offset + 15_000);
