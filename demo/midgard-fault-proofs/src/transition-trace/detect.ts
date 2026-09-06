@@ -678,7 +678,7 @@ const exactProofInteger = (
   return Number(value);
 };
 
-const mpfProofFromWitness = ({
+export const mpfProofFromWitness = ({
   key,
   value,
   proof,
@@ -778,7 +778,10 @@ const mpfProofFromWitness = ({
   }
 };
 
-const normalizedMpfRoot = (root: Buffer | null, label: string): string => {
+export const normalizedMpfRoot = (
+  root: Buffer | null,
+  label: string,
+): string => {
   if (root === null) {
     return SDK.EMPTY_MERKLE_TREE_ROOT;
   }
