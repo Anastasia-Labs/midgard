@@ -37,6 +37,7 @@ import type {
   FraudProofWorkflowJournalEntry,
   JournalJsonObject,
 } from "./journal.js";
+import { journalJsonDigest, normalizeJournalJson } from "./journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -195,7 +196,10 @@ const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
 const sameJson = (left: unknown, right: unknown): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
+  left === undefined || right === undefined
+    ? left === right
+    : journalJsonDigest(normalizeJournalJson(left)) ===
+      journalJsonDigest(normalizeJournalJson(right));
 
 const record = (
   value: unknown,

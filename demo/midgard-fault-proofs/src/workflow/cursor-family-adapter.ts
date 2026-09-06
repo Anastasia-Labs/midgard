@@ -16,6 +16,7 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
 import type { JournalJsonObject } from "./journal.js";
+import { journalJsonDigest, normalizeJournalJson } from "./journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -64,7 +65,10 @@ const SCRIPT_HASH = /^[0-9a-f]{56}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
 const sameJson = (left: unknown, right: unknown): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
+  left === undefined || right === undefined
+    ? left === right
+    : journalJsonDigest(normalizeJournalJson(left)) ===
+      journalJsonDigest(normalizeJournalJson(right));
 
 const admitReferenceScripts = ({
   category,

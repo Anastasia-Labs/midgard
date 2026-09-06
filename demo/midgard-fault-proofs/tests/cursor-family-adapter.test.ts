@@ -16,6 +16,10 @@ import type {
   FraudProofWorkflowIdentity,
   FraudProofWorkflowTerminal,
 } from "../src/workflow/journal.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "../src/workflow/journal.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 
@@ -182,6 +186,41 @@ const terminal = ({
 });
 
 describe("production cursor family adapter V1", () => {
+  it("admits canonically ordered journal actions and rejects a changed field", async () => {
+    const stage = {
+      value: {
+        kind: "not_started",
+        stateQueueBlockOutRef: outRef("10"),
+      } as FraudProofRawL1FamilyStage,
+    };
+    const capture = vi.fn(async () => ({ transaction: transaction() }));
+    const adapter = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
+    });
+    const original = required(stage.value);
+    const action = {
+      ...original,
+      input: normalizeJournalJson(original.input) as JournalJsonObject,
+    };
+    expect(JSON.stringify(action)).not.toBe(JSON.stringify(original));
+    await expect(
+      adapter.preflight({
+        ...context,
+        action: {
+          ...action,
+          input: { ...action.input, stateQueueBlockOutRef: outRef("99") },
+        },
+      }),
+    ).rejects.toThrow("differs from authenticated current L1 state");
+    await expect(
+      adapter.preflight({ ...context, action }),
+    ).resolves.toMatchObject({ actionId: action.actionId });
+    expect(capture).toHaveBeenCalledOnce();
+  });
+
   it("captures one exact locally evaluated reference-only body and refuses overwrite", async () => {
     const stage = {
       value: {
