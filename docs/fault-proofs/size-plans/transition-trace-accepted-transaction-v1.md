@@ -729,3 +729,16 @@ pnpm --dir demo/midgard-fault-proofs exec tsc --noEmit
 pnpm --dir demo/midgard-node exec tsc --noEmit
 pnpm --dir demo/midgard-watcher exec tsc --noEmit
 ```
+
+### Shared-branch combined-contract verification
+
+At shared source `fcb2ca79`, the normal testnet blueprint
+`f9019fbcd111cb6ff960abc08809550ac6cb7b124ec73a959c3d5e4910f86a43`
+passes all 21 direct TransitionTrace lifecycle scenarios, including maximum
+accepted and deposit shapes, honest refusals, cancellation and fresh recovery.
+The standard ledger contains 3,020 transactions and 966 publications: maximum
+14,903 signed bytes, 12,078,425 memory and 3,699,062,409 CPU; minimum publication
+reserve is 969 bytes. Every row passes the 20% execution reserve.
+Command: `pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-transition-trace-final.test.ts --reporter verbose`,
+with `TRANSITION_TRACE_FIT_LEDGER_PATH` pointing at the committed ledger.
+Installed retained-data detector/recovery closure remains a separate open step.
