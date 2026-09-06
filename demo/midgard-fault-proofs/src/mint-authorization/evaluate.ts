@@ -1,4 +1,5 @@
 import {
+  computeHash28,
   decodeMidgardNativeScript,
   hashMidgardNativeScriptScanFrame,
   MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH,
@@ -12,6 +13,22 @@ import type {
   MintAuthorizationEvaluateState,
   MintAuthorizationFrame,
 } from "@al-ft/midgard-sdk";
+
+export const mintAuthorizationEvaluationPreimage = (
+  script: Buffer,
+  signerField: Buffer,
+) => {
+  if (
+    script.length === 0 ||
+    script.length > 32768 ||
+    signerField.length === 0 ||
+    signerField.length > 32768
+  )
+    throw new Error(
+      "mint evaluator script or signer field exceeds its canonical 32768-byte domain",
+    );
+  return Buffer.concat([script, signerField]);
+};
 
 const frameWire = (
   frame: MidgardNativeScriptScanFrame,
@@ -27,12 +44,14 @@ const frameWire = (
 /** Reconstructs only canonical batches from retained policy bytes; no journal supplies evaluator state. */
 export function* mintAuthorizationEvaluationBatches(
   initial: MintAuthorizationEvaluateState,
-  bytes: Buffer,
+  raw: Buffer,
 ) {
+  const bytes = raw.subarray(0, Number(initial.script_length));
   let state = initial;
   const frames: MidgardNativeScriptScanFrame[] = [];
   const signerHashes = new Set(initial.signer_hashes);
   while (
+    state.signer_index !== state.signer_count ||
     state.cursor !== state.script_length ||
     state.stack_depth !== 0n ||
     state.result === -1n
@@ -40,7 +59,19 @@ export function* mintAuthorizationEvaluationBatches(
     const before = state;
     const operations: MintAuthorizationEvaluateOperation[] = [];
     for (let count = 0; count < 16; count++) {
-      if (state.result === -1n) {
+      if (state.signer_index < state.signer_count) {
+        const offset = Number(state.signer_start + state.signer_index * 103n);
+        const signerHash = computeHash28(
+          raw.subarray(offset + 5, offset + 37),
+        ).toString("hex");
+        operations.push("Signer");
+        signerHashes.add(signerHash);
+        state = {
+          ...state,
+          signer_index: state.signer_index + 1n,
+          signer_hashes: [signerHash, ...state.signer_hashes],
+        };
+      } else if (state.result === -1n) {
         const cursor = Number(state.cursor);
         const token = readMidgardNativeScriptStructureToken({
           control: {

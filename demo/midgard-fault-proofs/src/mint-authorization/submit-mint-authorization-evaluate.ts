@@ -1,3 +1,4 @@
+import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
   MintAuthorizationEvaluateDatum,
   type MintAuthorizationEvaluateSpendRedeemer as EvaluateRedeemer,
@@ -27,7 +28,10 @@ import {
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
-import { mintAuthorizationEvaluationBatches } from "./evaluate.js";
+import {
+  mintAuthorizationEvaluationBatches,
+  mintAuthorizationEvaluationPreimage,
+} from "./evaluate.js";
 import {
   requireMintAuthorizationReferenceScript,
   requireMintAuthorizationStepState,
@@ -41,6 +45,7 @@ export const submitMintAuthorizationEvaluate = async ({
   signer,
   threadOutRef,
   scriptBytesHex,
+  addrWitnessItemCbors,
   rawPreimageUtxos,
   referenceScriptUtxo,
   preSubmitBoundary,
@@ -52,6 +57,7 @@ export const submitMintAuthorizationEvaluate = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly scriptBytesHex: string;
+  readonly addrWitnessItemCbors: readonly string[];
   readonly rawPreimageUtxos: readonly UTxO[];
   readonly referenceScriptUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -71,12 +77,18 @@ export const submitMintAuthorizationEvaluate = async ({
       schema: MintAuthorizationEvaluateDatum,
       stepIndex: 5,
     });
-  const bytes = Buffer.from(scriptBytesHex, "hex");
+  const bytes = mintAuthorizationEvaluationPreimage(
+    Buffer.from(scriptBytesHex, "hex"),
+    encodeMidgardFieldPreimage(
+      addrWitnessItemCbors.map((item) => Buffer.from(item, "hex")),
+    ),
+  );
   const requirement = createRawDatumPreimageRequirement({ preimage: bytes });
   if (
-    BigInt(bytes.length) !== state.script_length ||
+    BigInt(bytes.length) !== state.raw_length ||
+    BigInt(scriptBytesHex.length / 2) !== state.script_length ||
     JSON.stringify(requirement.publicationDigests) !==
-      JSON.stringify(state.script_chunk_hashes) ||
+      JSON.stringify(state.preimage_chunk_hashes) ||
     rawPreimageUtxos.length !== requirement.publicationDatums.length ||
     rawPreimageUtxos.some(
       (utxo, index) => utxo.datum !== requirement.publicationDatums[index],
@@ -86,12 +98,15 @@ export const submitMintAuthorizationEvaluate = async ({
       "mint native preimage differs from authenticated evaluator state",
     );
   const terminal =
+    state.signer_index === state.signer_count &&
     state.cursor === state.script_length &&
     state.stack_depth === 0n &&
     state.stack_root === "" &&
     state.result === 0n;
   const initial = {
     ...state,
+    signer_index: 0n,
+    signer_hashes: [],
     cursor: 0n,
     node_count: 0n,
     stack_root: "",

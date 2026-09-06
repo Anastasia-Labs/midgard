@@ -286,6 +286,7 @@ export const MintAuthorizationStep03ArgsSchema = Data.Enum([
   }),
   Data.Object({
     StartUnsatisfied: Data.Object({
+      script_length: Data.Integer(),
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       chunk_reference_indices: Data.Array(Data.Integer()),
@@ -403,7 +404,11 @@ export const MintAuthorizationStep05SpendRedeemer =
 export const MintAuthorizationEvaluateStateSchema = Data.Object({
   policy_id: Data.Bytes(),
   script_length: Data.Integer(),
-  script_chunk_hashes: Data.Array(Data.Bytes()),
+  raw_length: Data.Integer(),
+  signer_start: Data.Integer(),
+  signer_count: Data.Integer(),
+  signer_index: Data.Integer(),
+  preimage_chunk_hashes: Data.Array(Data.Bytes()),
   signer_hashes: Data.Array(Data.Bytes()),
   validity_interval_start: Data.Integer(),
   validity_interval_end: Data.Integer(),
@@ -440,6 +445,7 @@ export type MintAuthorizationFrame = Data.Static<
 export const MintAuthorizationEvaluateOperationSchema = Data.Enum([
   Data.Literal("Token"),
   Data.Object({ Frame: Data.Object({ frame: MintAuthorizationFrameSchema }) }),
+  Data.Literal("Signer"),
 ]);
 export type MintAuthorizationEvaluateOperation = Data.Static<
   typeof MintAuthorizationEvaluateOperationSchema

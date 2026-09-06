@@ -82,6 +82,7 @@ import {
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
+import { mintAuthorizationEvaluationPreimage } from "./evaluate.js";
 import {
   mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
@@ -548,7 +549,10 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
   ];
   if (rawPreimageUtxos !== undefined) {
     const requirement = createRawDatumPreimageRequirement({
-      preimage: Buffer.from(scriptBytesHex, "hex"),
+      preimage: mintAuthorizationEvaluationPreimage(
+        Buffer.from(scriptBytesHex, "hex"),
+        planned.preimage,
+      ),
     });
     if (
       rawPreimageUtxos.length !== requirement.publicationDatums.length ||
@@ -562,17 +566,16 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
     const initial: MintAuthorizationEvaluateState = {
       policy_id: state.policy_id,
       script_length: BigInt(scriptBytesHex.length / 2),
-      script_chunk_hashes: [...requirement.publicationDigests],
-      signer_hashes: witnesses
-        .map((witness) =>
-          Effect.runSync(
-            hashHexWithBlake2b(
-              Buffer.from(witness.verificationKey).toString("hex"),
-              28,
-            ),
-          ),
-        )
-        .reverse(),
+      preimage_chunk_hashes: [...requirement.publicationDigests],
+      raw_length: BigInt(requirement.preimageHex.length / 2),
+      signer_start: BigInt(
+        scriptBytesHex.length / 2 +
+          planned.preimage.length -
+          103 * witnesses.length,
+      ),
+      signer_count: BigInt(witnesses.length),
+      signer_index: 0n,
+      signer_hashes: [],
       validity_interval_start: state.validity_interval_start,
       validity_interval_end: state.validity_interval_end,
       cursor: 0n,
@@ -596,6 +599,7 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
       ),
       argsOf: (layout, opening, ctx) => ({
         StartUnsatisfied: {
+          script_length: BigInt(scriptBytesHex.length / 2),
           input_index: layout.inputIndex,
           output_index: layout.outputIndex,
           chunk_reference_indices: rawPreimageUtxos.map((utxo) =>

@@ -30,6 +30,7 @@
 //// limit-breaking payload is the decoding family's territory, not this
 //// one's.
 
+use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken/primitive/bytearray
@@ -226,6 +227,7 @@ validator main(
         output_state == expected
       }
       ct.Continue(StartUnsatisfied {
+        script_length,
         input_index,
         output_index,
         chunk_reference_indices,
@@ -243,13 +245,15 @@ validator main(
         )
         expect Some(state) = state_data
         expect state.direction == engine.direction_script_unsatisfied
-        let parts = evaluate.chunks(
+        let parts = evaluate.raw_chunks(
           chunk_reference_indices,
           tx.reference_inputs,
         )
-        let script_bytes = evaluate.payload(parts)
-        let script_length = bytearray.length(script_bytes)
+        let raw = evaluate.payload(parts)
+        let raw_length = bytearray.length(raw)
         expect script_length > 0 && script_length <= 32768
+        expect raw_length > script_length && raw_length - script_length <= 32768
+        let script_bytes = builtin.slice_bytearray(0, script_length, raw)
         expect
           script_proof_v1.versioned_script_hash(
             MidgardVersionedScript {
@@ -257,33 +261,36 @@ validator main(
               script_bytes,
             },
           ) == state.policy_id
-        let walk = opened_field_walk(
-          addr_tx_wits_opening,
-          WitnessAnchor {
-            tx_id: state.bad_tx_id,
-            witness_set_hash: state.bad_tx_witness_set_hash,
-          },
-          address_witnesses_field_index,
-          tx.reference_inputs,
-          field_preimage_certificate_policy_id,
+        let signer_bytes = builtin.slice_bytearray(
+          script_length,
+          raw_length - script_length,
+          raw,
         )
-        let signer_hashes = fold_opened_field(
-          walk,
-          [],
-          fn(acc, _index, item) {
-            [
-              utils.get_verification_key_hash(
-                decode_midgard_address_witness_cbor(item).verification_key,
-              ),
-              ..acc
-            ]
-          },
+        expect
+          signer_bytes == opened_committed_preimage(
+            addr_tx_wits_opening,
+            WitnessAnchor {
+              tx_id: state.bad_tx_id,
+              witness_set_hash: state.bad_tx_witness_set_hash,
+            },
+            address_witnesses_field_index,
+            tx.reference_inputs,
+            field_preimage_certificate_policy_id,
+          )
+        let Pair(header_length, signer_count) = decode_field_array_header(
+          signer_bytes,
         )
+        expect
+          bytearray.length(signer_bytes) == header_length + 103 * signer_count
         let expected: Data = evaluate.State {
           policy_id: state.policy_id,
           script_length,
-          script_chunk_hashes: list.map(parts, blake2b_256),
-          signer_hashes,
+          raw_length,
+          signer_start: script_length + header_length,
+          signer_count,
+          signer_index: 0,
+          preimage_chunk_hashes: list.map(parts, blake2b_256),
+          signer_hashes: [],
           validity_interval_start: state.validity_interval_start,
           validity_interval_end: state.validity_interval_end,
           cursor: 0,

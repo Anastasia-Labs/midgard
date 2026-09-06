@@ -3,13 +3,21 @@ use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use cardano/transaction.{InlineDatum, Input}
+use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/native_tx/components.{
+  decode_midgard_address_witness_cbor,
+}
 use midgard/native_script_scan_v1 as scan
 
 pub type State {
   policy_id: ByteArray,
   script_length: Int,
-  script_chunk_hashes: List<ByteArray>,
+  raw_length: Int,
+  signer_start: Int,
+  signer_count: Int,
+  signer_index: Int,
+  preimage_chunk_hashes: List<ByteArray>,
   signer_hashes: List<ByteArray>,
   validity_interval_start: Int,
   validity_interval_end: Int,
@@ -26,6 +34,7 @@ pub type Datum =
 pub type Operation {
   Token
   Frame { frame: scan.NativeScriptFrameV1 }
+  Signer
 }
 
 pub type Action {
@@ -45,8 +54,23 @@ pub fn chunks(
   indices: List<Int>,
   reference_inputs: List<Input>,
 ) -> List<ByteArray> {
+  chunks_bounded(indices, reference_inputs, 3)
+}
+
+pub fn raw_chunks(
+  indices: List<Int>,
+  reference_inputs: List<Input>,
+) -> List<ByteArray> {
+  chunks_bounded(indices, reference_inputs, 5)
+}
+
+fn chunks_bounded(
+  indices: List<Int>,
+  reference_inputs: List<Input>,
+  maximum: Int,
+) -> List<ByteArray> {
   expect list.length(indices) > 0
-  expect list.length(indices) <= 3
+  expect list.length(indices) <= maximum
   list.map(
     indices,
     fn(index) {
@@ -65,13 +89,14 @@ pub fn payload(parts: List<ByteArray>) -> ByteArray {
 }
 
 pub fn authenticate_payload(state: State, parts: List<ByteArray>) -> ByteArray {
-  expect list.map(parts, blake2b_256) == state.script_chunk_hashes
+  expect list.map(parts, blake2b_256) == state.preimage_chunk_hashes
   let bytes = payload(parts)
-  expect bytearray.length(bytes) == state.script_length
+  expect bytearray.length(bytes) == state.raw_length
   bytes
 }
 
 pub fn token(state: State, bytes: ByteArray) -> State {
+  expect state.signer_index == state.signer_count
   expect state.result == -1
   expect state.cursor < state.script_length
   expect Some(token) = scan.token_at_v1(bytes, state.cursor, state.cursor)
@@ -115,6 +140,7 @@ pub fn token(state: State, bytes: ByteArray) -> State {
 }
 
 pub fn frame(state: State, frame: scan.NativeScriptFrameV1) -> State {
+  expect state.signer_index == state.signer_count
   expect state.result == 0 || state.result == 1
   expect state.stack_depth > 0
   expect scan.hash_frame_v1(frame) == state.stack_root
@@ -136,6 +162,24 @@ pub fn frame(state: State, frame: scan.NativeScriptFrameV1) -> State {
   }
 }
 
+pub fn signer(state: State, bytes: ByteArray) -> State {
+  expect state.signer_index < state.signer_count
+  expect state.cursor == 0 && state.node_count == 0 && state.result == -1
+  let offset = state.signer_start + state.signer_index * 103
+  expect builtin.slice_bytearray(offset, 2, bytes) == #"5865"
+  let witness = decode_midgard_address_witness_cbor(
+    builtin.slice_bytearray(offset + 2, 101, bytes),
+  )
+  State {
+    ..state,
+    signer_index: state.signer_index + 1,
+    signer_hashes: [
+      utils.get_verification_key_hash(witness.verification_key),
+      ..state.signer_hashes
+    ],
+  }
+}
+
 pub fn advance(
   state: State,
   bytes: ByteArray,
@@ -148,6 +192,7 @@ pub fn advance(
     state,
     fn(operation, current) {
       when operation is {
+        Signer -> signer(current, bytes)
         Token -> token(current, bytes)
         Frame { frame: parent } -> frame(current, parent)
       }
@@ -159,7 +204,11 @@ fn fixture(bytes: ByteArray) -> State {
   State {
     policy_id: #"00",
     script_length: bytearray.length(bytes),
-    script_chunk_hashes: [blake2b_256(bytes)],
+    raw_length: bytearray.length(bytes),
+    signer_start: 0,
+    signer_count: 0,
+    signer_index: 0,
+    preimage_chunk_hashes: [blake2b_256(bytes)],
     signer_hashes: [],
     validity_interval_start: -1,
     validity_interval_end: -1,
@@ -239,7 +288,7 @@ test token_noncanonical_refused() fail {
 test payload_reordered_refused() fail {
   let state = State {
     ..fixture(#"0102"),
-    script_chunk_hashes: [blake2b_256(#"01"), blake2b_256(#"02")],
+    preimage_chunk_hashes: [blake2b_256(#"01"), blake2b_256(#"02")],
   }
   expect _ = authenticate_payload(state, [#"02", #"01"])
   True
@@ -265,4 +314,49 @@ test timelock_end_exact_and_adjacent() {
     token(State { ..initial, validity_interval_end: 101 }, bytes).result == 0,
     token(initial, bytes).result == 0,
   }
+}
+
+fn signer_fixture() -> Pair<State, ByteArray> {
+  let key_hash = utils.get_verification_key_hash(
+    #"0000000000000000000000000000000000000000000000000000000000000000",
+  )
+  let script = #"8200581c" |> bytearray.concat(key_hash)
+  let raw = script
+    |> bytearray.concat(
+        #"8158658258200000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      )
+  Pair(
+    State {
+      ..fixture(script),
+      raw_length: bytearray.length(raw),
+      signer_start: bytearray.length(script) + 1,
+      signer_count: 1,
+      preimage_chunk_hashes: [blake2b_256(raw)],
+    },
+    raw,
+  )
+}
+
+test collected_signer_makes_matching_signature_honest() {
+  let Pair(state, raw) = signer_fixture()
+  let next = advance(state, raw, [Signer, Token])
+  next.signer_index == 1 && list.length(next.signer_hashes) == 1 && next.result == 1
+}
+
+test native_token_before_signer_completion_refused() fail {
+  let Pair(state, raw) = signer_fixture()
+  expect _ = advance(state, raw, [Token])
+  True
+}
+
+test signer_past_exact_count_refused() fail {
+  let Pair(state, raw) = signer_fixture()
+  expect _ = advance(state, raw, [Signer, Signer])
+  True
+}
+
+test changed_signer_carriage_refused() fail {
+  let Pair(state, raw) = signer_fixture()
+  expect _ = authenticate_payload(state, [raw |> bytearray.concat(#"00")])
+  True
 }

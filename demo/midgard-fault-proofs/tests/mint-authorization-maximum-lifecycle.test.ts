@@ -20,6 +20,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
+import { mintAuthorizationEvaluationPreimage } from "../src/mint-authorization/evaluate.js";
 import {
   submitMintAuthorizationCancel,
   submitMintAuthorizationEvaluate,
@@ -181,7 +182,12 @@ it.each(["signers", "native", "cancel"])(
       const rawPreimageUtxos: UTxO[] = [];
       if (shape !== "signers") {
         for (const datum of createRawDatumPreimageRequirement({
-          preimage: Buffer.from(policy.scriptBytesHex, "hex"),
+          preimage: mintAuthorizationEvaluationPreimage(
+            Buffer.from(policy.scriptBytesHex, "hex"),
+            encodeMidgardFieldPreimage(
+              witnesses.map((item) => Buffer.from(item, "hex")),
+            ),
+          ),
         }).publicationDatums) {
           const unsigned = await h.proverLucid
             .newTx()
@@ -269,6 +275,7 @@ it.each(["signers", "native", "cancel"])(
             ...common,
             threadOutRef: three.nextThreadOutRef,
             scriptBytesHex: "820280",
+            addrWitnessItemCbors: witnesses,
             rawPreimageUtxos,
             referenceScriptUtxo: refs[5],
           }),
@@ -303,6 +310,7 @@ it.each(["signers", "native", "cancel"])(
             ...common,
             threadOutRef: nextThreadOutRef,
             scriptBytesHex: policy.scriptBytesHex,
+            addrWitnessItemCbors: witnesses,
             rawPreimageUtxos,
             referenceScriptUtxo: refs[5],
           });

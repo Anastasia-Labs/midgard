@@ -43,6 +43,7 @@ pub type Args {
     addr_tx_wits_opening: FieldOpeningV1,
   }
   StartUnsatisfied {
+    script_length: Int,
     input_index: Int,
     output_index: Int,
     chunk_reference_indices: List<Int>,

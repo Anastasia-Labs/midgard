@@ -47,13 +47,14 @@ validator main(
           evaluate.Advance { chunk_reference_indices, operations, .. } -> {
             let bytes = evaluate.authenticate_payload(
               state,
-              evaluate.chunks(chunk_reference_indices, tx.reference_inputs),
+              evaluate.raw_chunks(chunk_reference_indices, tx.reference_inputs),
             )
             let expected: Data = evaluate.advance(state, bytes, operations)
             expect output_hash == own_hash
             output_state == expected
           }
           evaluate.Finalize { .. } -> {
+            expect state.signer_index == state.signer_count
             expect state.cursor == state.script_length
             expect state.stack_root == #""
             expect state.stack_depth == 0

@@ -90,6 +90,7 @@ import {
   prepareMintAuthorizationWorkflowArtifact,
 } from "./artifact.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
+import { mintAuthorizationEvaluationPreimage } from "./evaluate.js";
 import { buildMintAuthorizationStep02Evidence } from "./evidence.js";
 import {
   requireMintAuthorizationStepState,
@@ -236,8 +237,18 @@ export const mintAuthorizationWorkflowRawRequirement = async (
             Buffer.from(item, "hex"),
           ),
         )
-      : Buffer.from(admitted.finding.scriptBytesHex!, "hex");
-  if (preimage.length === 0 || preimage.length > 32_768)
+      : mintAuthorizationEvaluationPreimage(
+          Buffer.from(admitted.finding.scriptBytesHex!, "hex"),
+          encodeMidgardFieldPreimage(
+            admitted.addrWitnessItemCbors.map((item) =>
+              Buffer.from(item, "hex"),
+            ),
+          ),
+        );
+  if (
+    preimage.length === 0 ||
+    preimage.length > (admitted.finding.direction === 0n ? 32_768 : 65_536)
+  )
     throw new Error(
       "mint authorization preimage exceeds the canonical 32768-byte domain",
     );
@@ -491,6 +502,7 @@ export const createMintAuthorizationTransactionPort = (
               ...common,
               threadOutRef,
               scriptBytesHex: admitted.finding.scriptBytesHex,
+              addrWitnessItemCbors: admitted.addrWitnessItemCbors,
               rawPreimageUtxos,
               referenceScriptUtxo: config.references.steps[5],
               preSubmitBoundary,

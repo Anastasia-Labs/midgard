@@ -17,8 +17,10 @@ The installed absence path freezes the authenticated field-6 preimage in a
 seventh physical validator. It checks at most 16 canonical versioned witness
 items per transaction, then enters the existing ordered reference-input scan.
 The installed unsatisfied-policy path freezes the exact policy payload and
-signer frontier in a sixth physical validator. It evaluates at most 16 native
-structure tokens or authenticated parent frames per transaction. The terminal
+signer field in a sixth physical validator. It first collects at most 16
+canonical signer witnesses per transaction, then evaluates at most 16 native
+structure tokens or authenticated parent frames per transaction. Native
+evaluation cannot begin until the exact authenticated signer count is reached. The terminal
 transition requires exact byte exhaustion, an empty stack and a false result.
 Both new stages self-loop and retain the existing cancellation mechanism.
 The original direct dispatch arms remain available with identical predicates.
@@ -30,8 +32,11 @@ the reconstructed typed Data. The installed runner automatically publishes
 this evidence when it exceeds 6,000 bytes. No asserted root or journal record
 replaces either membership check.
 
-Raw preimages use at most three ordered reference chunks and remain bounded by
-32,768 bytes. Their exact length and chunk commitments are frozen at dispatch.
+The absence preimage uses at most three ordered reference chunks and remains
+bounded by 32,768 bytes. Native evaluation carries the policy bytes followed by
+the exact signer-field preimage: each component remains bounded by 32,768 bytes,
+with at most five ordered chunks and 65,536 aggregate bytes. Dispatch freezes
+the exact component boundary, signer count, total length and chunk commitments.
 Automatic field grammar certification supports the maximum mint, witness,
 signer and reference fields. Whole-field mint selection preserves the compact
 transaction/anchor authentication and certified field grammar.
@@ -103,3 +108,33 @@ to let Vitest process its worker IPC; no chain validation or journal event is
 skipped. All authenticated reference scripts, including removal scripts, are
 published during deployment before the native authorization policy expires.
 Long proof execution does not extend that four-hour minting window.
+
+Run the lifecycle generator from `demo/midgard-fault-proofs` using the declared
+Node 22 / pnpm 9 toolchain and a fresh pinned testnet blueprint:
+
+```sh
+NODE_OPTIONS=--max-old-space-size=8192 MIDGARD_WRITE_FIT_LEDGER=1 \
+  pnpm exec vitest run tests/mint-authorization-installed-lifecycle.test.ts --reporter verbose
+pnpm exec vitest run tests/mint-authorization-workflow-fit-ledger.test.ts --reporter verbose
+```
+
+The long native/reference cases deliberately execute every bounded continuation;
+the per-case timeout is 30 minutes. No result from an interrupted run counts as
+a completed scenario. The writer may preserve other complete scenario rows only
+when their blueprint digest is identical, and the verifier still requires the
+whole named roster.
+
+Regeneration also writes a diagnostic-only raw-measurement checkpoint before
+the fit guards execute. `MIDGARD_FIT_MEASUREMENT_CHECKPOINT` overrides its
+temporary-file path. These captured values are not an accepted ledger; changing
+the blueprint requires fresh execution measurements. Automatic `publish_*`
+actions are classified as publications and must satisfy the publication reserve.
+
+The bounded signer repair passed four targeted installed lifecycles (absence,
+unsatisfied policy, 318 signers, and combined 318 signers/native maximum),
+recording 305 transactions under the shared writer: 201 lifecycle and 104
+publication rows. Maximum Step03 signer binding used 895,228 memory units;
+the combined evaluator maximum used 11,798,200 memory units and 3,935,085,279
+CPU units. Its tightest publication was 15,872 bytes, preserving the full
+512-byte reserve. These targeted rows do not replace the complete roster:
+a fresh full shared-blueprint regeneration remains required.
