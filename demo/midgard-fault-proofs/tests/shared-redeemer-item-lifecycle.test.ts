@@ -1,12 +1,14 @@
 import {
-  asLucidDataValue,
   buildMidgardRedeemerItemProofTrace,
   computeHash32,
   encodeCbor,
   MidgardRedeemerItemProofModes,
 } from "@al-ft/midgard-core";
+import { asLucidDataValue } from "@al-ft/midgard-core/lucid-data";
 import {
   buildCekRedeemerItemStages,
+  buildValidationTraceDisputeFaultProofContracts,
+  deriveValidationTraceDeploymentId,
   parseFaultProofBlueprint,
   requireInputIndex,
 } from "@al-ft/midgard-sdk";
@@ -25,6 +27,7 @@ import {
   Lucid,
   type UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { expect, it } from "vitest";
 
 import {
@@ -196,3 +199,45 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
     }
   }
 }, 1_800_000);
+
+it("builds registered ScriptSources and CEK carriers with one identical shared executor roster", async () => {
+  const blueprint = parseFaultProofBlueprint(readBlueprint(realBlueprintPath));
+  const catalogue = "81".repeat(28);
+  const contracts = await Effect.runPromise(
+    buildValidationTraceDisputeFaultProofContracts({
+      blueprint,
+      network,
+      hubOraclePolicyId: "82".repeat(28),
+      fraudProofCataloguePolicyId: catalogue,
+      referenceScriptAuthPolicyId: "83".repeat(28),
+    }),
+  );
+  const registered =
+    contracts.validationTraceDispute.scriptSourcesStageOneRedeemerStages;
+  const cek = buildCekRedeemerItemStages({
+    blueprint,
+    network,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    deploymentId: deriveValidationTraceDeploymentId(catalogue),
+    returnScriptHash: contracts.validationTraceDispute.award.spendingScriptHash,
+  });
+  expect(registered.executors).toHaveLength(19);
+  expect(
+    new Set(registered.executors.map((role) => role.spendingScriptHash)).size,
+  ).toBe(19);
+  expect(registered.executors.slice(0, 17)).toEqual(cek.executors);
+  expect(registered.outerNormalizer).toEqual(cek.outerNormalizer);
+  expect(registered.traversalNormalizer).toEqual(cek.traversalNormalizer);
+  expect(registered.sourceAuthenticator).toEqual(cek.sourceAuthenticator);
+  expect(registered.envelope.spendingScriptHash).not.toBe(
+    cek.entry.spendingScriptHash,
+  );
+  expect(registered.settlement.spendingScriptHash).not.toBe(
+    cek.settlement.spendingScriptHash,
+  );
+  expect(contracts.validationTraceDispute.semanticResolvers[90]).toEqual(
+    registered.envelope,
+  );
+  for (const role of [registered.sourceAuthenticator, ...registered.executors])
+    expect(contracts.validationTraceDispute.steps).toContainEqual(role);
+}, 60_000);

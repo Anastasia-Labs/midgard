@@ -1352,7 +1352,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(121);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(139);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT,
     );
@@ -1878,6 +1878,9 @@ describe("fault-proof contract builder", () => {
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields),
+      "fraud_proofs/validation_trace/cek_material_traversal_v1.main.spend",
+      "fraud_proofs/validation_trace/cek_material_traversal_yields.program.withdraw",
+      "fraud_proofs/validation_trace/cek_material_traversal_yields.data.withdraw",
       CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     ]);
 
@@ -1926,13 +1929,51 @@ describe("fault-proof contract builder", () => {
       ),
       [deploymentId, contracts.computationThread.policyId],
     );
+    const sharedTitles =
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.scriptSourcesStageOneRedeemerStages;
+    const expectedStageOneRedeemerSourceAuthenticator = applyParamsToScript(
+      compiledScript(blueprint, sharedTitles.sourceAuthenticator),
+      [deploymentId, contracts.computationThread.policyId],
+    );
+    const expectedExecutorTitles = [
+      sharedTitles.foldMapExecutor,
+      sharedTitles.finalizeFrameExecutor,
+      sharedTitles.openHeaderExecutor,
+      sharedTitles.openTailExecutor,
+      sharedTitles.headScalarExecutor,
+      sharedTitles.headSequenceExecutor,
+      sharedTitles.headMapExecutor,
+      sharedTitles.headLargeConstructorExecutor,
+      sharedTitles.attachIntegerExecutor,
+      sharedTitles.attachBytesExecutor,
+      sharedTitles.foldListExecutor,
+      sharedTitles.advanceIntegerExecutor,
+      sharedTitles.advanceBytesExecutor,
+      sharedTitles.advanceLargeConstructorExecutor,
+      sharedTitles.advanceLargeFieldsExecutor,
+      sharedTitles.closeExecutor,
+      sharedTitles.finishDataExecutor,
+      sharedTitles.invalidHeaderExecutor,
+      sharedTitles.invalidTailExecutor,
+    ];
+    const expectedExecutors = expectedExecutorTitles.map((title) =>
+      applyParamsToScript(compiledScript(blueprint, title), [
+        deploymentId,
+        contracts.computationThread.policyId,
+      ]),
+    );
+    const expectedExecutorHashes = expectedExecutors.map(spendingScriptHash);
     const expectedStageOneRedeemerOuterNormalizer = applyParamsToScript(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
           .scriptSourcesStageOneRedeemerStages.outerNormalizer,
       ),
-      [deploymentId, contracts.computationThread.policyId],
+      [
+        deploymentId,
+        contracts.computationThread.policyId,
+        spendingScriptHash(expectedStageOneRedeemerSourceAuthenticator),
+      ],
     );
     const expectedStageOneRedeemerTraversalNormalizer = applyParamsToScript(
       compiledScript(
@@ -1952,8 +1993,7 @@ describe("fault-proof contract builder", () => {
         deploymentId,
         spendingScriptHash(expectedStageOneRedeemerTraversalNormalizer),
         spendingScriptHash(expectedStageOneRedeemerOuterNormalizer),
-        spendingScriptHash(expectedStageOneRedeemerFoldMapExecutor),
-        spendingScriptHash(expectedStageOneRedeemerFinalizeFrameExecutor),
+        expectedExecutorHashes,
         spendingScriptHash(expectedAward),
         contracts.computationThread.policyId,
       ],
@@ -1968,8 +2008,7 @@ describe("fault-proof contract builder", () => {
         deploymentId,
         spendingScriptHash(expectedStageOneRedeemerTraversalNormalizer),
         spendingScriptHash(expectedStageOneRedeemerOuterNormalizer),
-        spendingScriptHash(expectedStageOneRedeemerFoldMapExecutor),
-        spendingScriptHash(expectedStageOneRedeemerFinalizeFrameExecutor),
+        expectedExecutorHashes,
         spendingScriptHash(expectedStageOneRedeemerSettlement),
         contracts.computationThread.policyId,
       ],
@@ -2218,7 +2257,7 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(121);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(139);
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );
@@ -2228,13 +2267,27 @@ describe("fault-proof contract builder", () => {
       ),
     ).toEqual(expectedSemanticResolvers);
     expect(
-      Object.values(
-        contracts.validationTraceDispute.scriptSourcesStageOneRedeemerStages,
-      ).map(({ spendingScriptCBOR }) => spendingScriptCBOR),
+      contracts.validationTraceDispute.scriptSourcesStageOneRedeemerStages.executors.map(
+        ({ spendingScriptCBOR }) => spendingScriptCBOR,
+      ),
+    ).toEqual(expectedExecutors);
+    const actualSharedStages =
+      contracts.validationTraceDispute.scriptSourcesStageOneRedeemerStages;
+    expect(
+      [
+        actualSharedStages.envelope,
+        actualSharedStages.traversalNormalizer,
+        actualSharedStages.outerNormalizer,
+        actualSharedStages.sourceAuthenticator,
+        actualSharedStages.foldMapExecutor,
+        actualSharedStages.finalizeFrameExecutor,
+        actualSharedStages.settlement,
+      ].map(({ spendingScriptCBOR }) => spendingScriptCBOR),
     ).toEqual([
       expectedStageOneRedeemerEnvelope,
       expectedStageOneRedeemerTraversalNormalizer,
       expectedStageOneRedeemerOuterNormalizer,
+      expectedStageOneRedeemerSourceAuthenticator,
       expectedStageOneRedeemerFoldMapExecutor,
       expectedStageOneRedeemerFinalizeFrameExecutor,
       expectedStageOneRedeemerSettlement,

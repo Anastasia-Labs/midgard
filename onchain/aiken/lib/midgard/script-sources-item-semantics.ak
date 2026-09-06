@@ -211,3 +211,23 @@ pub fn finish_data(state: normalized.OuterExecution) -> Bool {
     stage: item.stage_terminal,
   }
 }
+
+// Invalid is a canonical machine result, never a missing source witness.
+pub fn invalid_header(state: normalized.OuterExecution) -> Bool {
+  expect state.current.mode == item.mode_data
+  expect state.current.stage == item.stage_header
+  expect state.action == item.RedeemerItemOpenHeader
+  expect state.next == state.current
+  expect Some(bytes) = state.source_bytes
+  item.prevalidated_open_header(state.current, bytes) == item.RedeemerItemProofInvalid
+}
+
+// Invalid is a canonical machine result, never a missing source witness.
+pub fn invalid_tail(state: normalized.OuterExecution) -> Bool {
+  expect state.current.mode == item.mode_data
+  expect state.current.stage == item.stage_tail
+  expect state.action == item.RedeemerItemOpenTail
+  expect state.next == state.current
+  expect Some(bytes) = state.source_bytes
+  item.prevalidated_open_tail(state.current, bytes) == item.RedeemerItemProofInvalid
+}

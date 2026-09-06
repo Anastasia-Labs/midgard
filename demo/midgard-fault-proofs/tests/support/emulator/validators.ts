@@ -310,6 +310,11 @@ export const makeAlwaysSucceedsContracts = (
         envelope: alwaysValidationTraceDispute,
         traversalNormalizer: alwaysValidationTraceDispute,
         outerNormalizer: alwaysValidationTraceDispute,
+        sourceAuthenticator: alwaysValidationTraceDispute,
+        executors: Array.from(
+          { length: 19 },
+          () => alwaysValidationTraceDispute,
+        ),
         foldMapExecutor: alwaysValidationTraceDispute,
         finalizeFrameExecutor: alwaysValidationTraceDispute,
         settlement: alwaysValidationTraceDispute,

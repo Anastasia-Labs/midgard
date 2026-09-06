@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -88,15 +89,28 @@ validator main(
                   state.current_control,
                   state.checked_optional_traversal_cbor,
                 ) == state.envelope.current_pending_item_control_hash
-              expect
-                output_script_hash == state.envelope.traversal_normalizer_script_hash
-              let result: Data = normalized.CurrentChecked {
-                envelope: state.envelope,
-                current_control: state.current_control,
-                claimed_next: state.claimed_next,
-                witness_hash: state.witness_hash,
+              if state.envelope.action_family == envelope.invalid_family {
+                expect state.envelope.carrier == envelope.script_sources_carrier
+                expect state.claimed_next == builtin.constr_data(1, [])
+                expect output_script_hash == source_authenticator_script_hash
+                let result: Data = normalized.ControlsChecked {
+                  envelope: state.envelope,
+                  current_control: state.current_control,
+                  next_control: state.current_control,
+                  witness_hash: state.witness_hash,
+                }
+                result
+              } else {
+                expect
+                  output_script_hash == state.envelope.traversal_normalizer_script_hash
+                let result: Data = normalized.CurrentChecked {
+                  envelope: state.envelope,
+                  current_control: state.current_control,
+                  claimed_next: state.claimed_next,
+                  witness_hash: state.witness_hash,
+                }
+                result
               }
-              result
             }
             output_state == expected
           },

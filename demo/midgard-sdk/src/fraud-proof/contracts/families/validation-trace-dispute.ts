@@ -33,6 +33,7 @@ import {
   type BuildFaultProofContractsParams,
   type FraudProofChain,
 } from "../types.js";
+import { buildScriptSourcesRedeemerItemStages } from "./shared-redeemer-item.js";
 
 /**
  * The semantic-resolver group each prepare validator routes into, in
@@ -80,6 +81,42 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/canonical_decode_item_settlement_v1.main.spend",
   },
   scriptSourcesStageOneRedeemerStages: {
+    sourceAuthenticator:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_source_authenticator.main.spend",
+    openHeaderExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_open_header_executor.main.spend",
+    openTailExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_open_tail_executor.main.spend",
+    headScalarExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_scalar_executor.main.spend",
+    headSequenceExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_sequence_executor.main.spend",
+    headMapExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_map_executor.main.spend",
+    headLargeConstructorExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_large_constructor_executor.main.spend",
+    attachIntegerExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_attach_integer_executor.main.spend",
+    attachBytesExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_attach_bytes_executor.main.spend",
+    foldListExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_fold_list_executor.main.spend",
+    advanceIntegerExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_integer_executor.main.spend",
+    advanceBytesExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_bytes_executor.main.spend",
+    advanceLargeConstructorExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_large_constructor_executor.main.spend",
+    advanceLargeFieldsExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_large_fields_executor.main.spend",
+    closeExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_close_executor.main.spend",
+    finishDataExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_finish_data_executor.main.spend",
+    invalidHeaderExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_header_executor.main.spend",
+    invalidTailExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_tail_executor.main.spend",
     envelope:
       "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main.spend",
     traversalNormalizer:
@@ -355,6 +392,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
       readonly envelope: SpendingValidator;
       readonly traversalNormalizer: SpendingValidator;
       readonly outerNormalizer: SpendingValidator;
+      readonly sourceAuthenticator: SpendingValidator;
+      readonly executors: readonly SpendingValidator[];
       readonly foldMapExecutor: SpendingValidator;
       readonly finalizeFrameExecutor: SpendingValidator;
       readonly settlement: SpendingValidator;
@@ -612,106 +651,26 @@ export const buildValidationTraceDisputeChain = ({
     const deploymentId = deriveValidationTraceDeploymentId(
       fraudProofCataloguePolicyId,
     );
-    const buildStageOneRedeemerExecutor = (
-      title: string,
-      label: string,
-    ): Effect.Effect<SpendingValidator, Error> =>
-      tryBuild(`Failed to build stage-one redeemer ${label} validator`, () =>
-        makeSpendingValidator(
-          network,
-          applyBlueprintParams(blueprint, title, [
-            deploymentId,
-            computationThread.policyId,
-          ]),
-        ),
-      );
-    const stageOneRedeemerFoldMapExecutor =
-      yield* buildStageOneRedeemerExecutor(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-          .scriptSourcesStageOneRedeemerStages.foldMapExecutor,
-        "fold-map executor",
-      );
-    const stageOneRedeemerFinalizeFrameExecutor =
-      yield* buildStageOneRedeemerExecutor(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-          .scriptSourcesStageOneRedeemerStages.finalizeFrameExecutor,
-        "finalize-frame executor",
-      );
-    const stageOneRedeemerOuterNormalizer = yield* tryBuild(
-      "Failed to build stage-one redeemer outer normalizer validator",
+    const sharedItem = yield* tryBuild(
+      "Failed to build shared ScriptSources redeemer item chain",
       () =>
-        makeSpendingValidator(
+        buildScriptSourcesRedeemerItemStages({
+          blueprint,
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .scriptSourcesStageOneRedeemerStages.outerNormalizer,
-            [deploymentId, computationThread.policyId],
-          ),
-        ),
-    );
-    const stageOneRedeemerTraversalNormalizer = yield* tryBuild(
-      "Failed to build stage-one redeemer traversal normalizer validator",
-      () =>
-        makeSpendingValidator(
-          network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
-            [deploymentId, computationThread.policyId],
-          ),
-        ),
-    );
-    const stageOneRedeemerSettlement = yield* tryBuild(
-      "Failed to build stage-one redeemer settlement validator",
-      () =>
-        makeSpendingValidator(
-          network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .scriptSourcesStageOneRedeemerStages.settlement,
-            [
-              deploymentId,
-              stageOneRedeemerTraversalNormalizer.spendingScriptHash,
-              stageOneRedeemerOuterNormalizer.spendingScriptHash,
-              stageOneRedeemerFoldMapExecutor.spendingScriptHash,
-              stageOneRedeemerFinalizeFrameExecutor.spendingScriptHash,
-              award.spendingScriptHash,
-              computationThread.policyId,
-            ],
-          ),
-        ),
-    );
-    const stageOneRedeemerEnvelope = yield* tryBuild(
-      "Failed to build stage-one redeemer envelope validator",
-      () =>
-        makeSpendingValidator(
-          network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .scriptSourcesStageOneRedeemerStages.envelope,
-            [
-              deploymentId,
-              stageOneRedeemerTraversalNormalizer.spendingScriptHash,
-              stageOneRedeemerOuterNormalizer.spendingScriptHash,
-              stageOneRedeemerFoldMapExecutor.spendingScriptHash,
-              stageOneRedeemerFinalizeFrameExecutor.spendingScriptHash,
-              stageOneRedeemerSettlement.spendingScriptHash,
-              computationThread.policyId,
-            ],
-          ),
-        ),
+          computationThreadPolicyId: computationThread.policyId,
+          deploymentId,
+          awardScriptHash: award.spendingScriptHash,
+        }),
     );
     const scriptSourcesStageOneRedeemerStages = {
-      envelope: stageOneRedeemerEnvelope,
-      traversalNormalizer: stageOneRedeemerTraversalNormalizer,
-      outerNormalizer: stageOneRedeemerOuterNormalizer,
-      foldMapExecutor: stageOneRedeemerFoldMapExecutor,
-      finalizeFrameExecutor: stageOneRedeemerFinalizeFrameExecutor,
-      settlement: stageOneRedeemerSettlement,
+      envelope: sharedItem.entry,
+      traversalNormalizer: sharedItem.traversalNormalizer,
+      outerNormalizer: sharedItem.outerNormalizer,
+      sourceAuthenticator: sharedItem.sourceAuthenticator,
+      executors: sharedItem.executors,
+      foldMapExecutor: sharedItem.executors[0]!,
+      finalizeFrameExecutor: sharedItem.executors[1]!,
+      settlement: sharedItem.settlement,
     } as const;
 
     const semanticTitles = Object.values(
@@ -969,7 +928,7 @@ export const buildValidationTraceDisputeChain = ({
     ] as const;
     const semanticResolvers = [
       ...baseSemanticResolvers,
-      stageOneRedeemerEnvelope,
+      sharedItem.entry,
     ] as const;
     const scriptSourcesStageTwoAdvance = yield* tryBuild(
       "Failed to build ScriptSources stage_two_advance yield",
@@ -1579,11 +1538,11 @@ export const buildValidationTraceDisputeChain = ({
         award,
         proofItem,
         ...semanticResolvers,
-        stageOneRedeemerTraversalNormalizer,
-        stageOneRedeemerOuterNormalizer,
-        stageOneRedeemerFoldMapExecutor,
-        stageOneRedeemerFinalizeFrameExecutor,
-        stageOneRedeemerSettlement,
+        sharedItem.traversalNormalizer,
+        sharedItem.outerNormalizer,
+        sharedItem.sourceAuthenticator,
+        ...sharedItem.executors,
+        sharedItem.settlement,
         ...Object.values(canonicalDecodeItemStages),
         ...prepareResolvers,
       ],
