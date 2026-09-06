@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
   bindExactVerdictSubjectReason,
   encodeVerdictSubject,
@@ -21,7 +22,8 @@ export const SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY =
 export const SCRIPT_INTEGRITY_HASH_MISSING_PROPOSED_ID = "00000023";
 export const SCRIPT_INTEGRITY_HASH_MISSING_REASON =
   "ScriptIntegrityHashMissing" as const;
-export const SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH = "00".repeat(32);
+export const SCRIPT_INTEGRITY_HASH_MISSING_ABSENT_HASH =
+  EMPTY_NULL_ROOT.toString("hex");
 
 const exactReason = (reason: RejectionReason): boolean =>
   reason === SCRIPT_INTEGRITY_HASH_MISSING_REASON;
@@ -101,10 +103,10 @@ export const scriptIntegrityHashMissingFaultHolds = ({
   const requiresPlutus =
     containsNonNative ||
     redeemerCount > 0 ||
-    scriptIntegrityHash !== SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH;
+    scriptIntegrityHash !== SCRIPT_INTEGRITY_HASH_MISSING_ABSENT_HASH;
   return (
     requiresPlutus &&
-    scriptIntegrityHash === SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH
+    scriptIntegrityHash === SCRIPT_INTEGRITY_HASH_MISSING_ABSENT_HASH
   );
 };
 

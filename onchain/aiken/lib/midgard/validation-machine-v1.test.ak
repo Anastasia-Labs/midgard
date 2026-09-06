@@ -61,6 +61,7 @@ use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/native_scripts as vm_native_scripts
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/phase_a_native_scripts as vm_phase_a_native_scripts
+use midgard/validation_machine/phase_a_script_preconditions as vm_preconditions
 use midgard/validation_machine/resolve_inputs as vm_resolve_inputs
 use midgard/validation_machine/script_sources as vm_script_sources
 use midgard/validation_machine/script_sources_early_stages as vm_script_sources_early_stages
@@ -240,7 +241,7 @@ fn empty_v1_transaction() -> MidgardTransaction {
       required_observers: [],
       required_signers: [],
       mint: empty_mint,
-      script_integrity_hash: zero,
+      script_integrity_hash: blake2b_256(#"f6"),
       auxiliary_data_hash: zero,
       network_id: 255,
     },
@@ -4052,17 +4053,24 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
       ),
     ),
   }
-  vm_one_step.verify_one_step_evidence(
-    pre,
-    vm_machine_types.ValidationOneStepEvidenceV1 {
-      transition: vm_machine_types.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
+  let witness = vm_machine_types.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  and {
+    vm_preconditions.verify_phase_a_script_preconditions_finalize_semantics_v1(
+      pre,
+      witness,
+    ),
+    vm_one_step.verify_one_step_evidence(
+      pre,
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: witness,
+        auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
-      auxiliary: vm_machine_types.NoAuxiliaryWitness,
-    },
-    inline_field_door(),
-  )
+      inline_field_door(),
+    ),
+  }
 }
 
 test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
@@ -4139,6 +4147,26 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
     },
   }
   and {
+    vm_preconditions.verify_phase_a_script_preconditions_item_semantics_v1(
+      pre,
+      first_evidence.transition,
+      inline_field_door(),
+      3,
+      0,
+      observers_carriage,
+    ),
+    vm_preconditions.verify_phase_a_script_preconditions_item_semantics_v1(
+      next,
+      second_evidence.transition,
+      inline_field_door(),
+      3,
+      1,
+      observers_carriage,
+    ),
+    !vm_preconditions.verify_phase_a_script_preconditions_finalize_semantics_v1(
+      pre,
+      first_evidence.transition,
+    ),
     vm_one_step.verify_one_step_evidence(
       pre,
       first_evidence,
@@ -9161,7 +9189,10 @@ test script_integrity_is_recomputed_before_cek() {
     work_witness_cbor: finalize_witness_cbor,
     claimed_successor: valid_post,
   }
-  let invalid_tx = base
+  let invalid_tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, script_integrity_hash: zero },
+  }
   let invalid_control = empty_native_control_fixture(invalid_tx)
   let invalid_source = midgard_transaction_proof_source_v1(invalid_tx)
   let invalid_witness_set = decode_native_tx_witness_set_compact(
@@ -18399,4 +18430,41 @@ test structural_bounded_phase_routes(choice via fuzz.int_between(0, 7)) {
       claimed_successor: post,
     },
   ) == ( choice < 5 )
+}
+
+test encode_resolve_inputs_initial_equals_generic_none(
+  args via fuzz.tuple3(
+    fuzz.list_between(fuzz.bytearray(), 4, 4),
+    fuzz.list_between(fuzz.bytearray_fixed(32), 4, 4),
+    fuzz.tuple(fuzz.int_at_least(0), fuzz.int_at_least(0)),
+  ),
+) {
+  let (sources, hashes, counters) = args
+  expect [compact, witnesses, lengths, context] = sources
+  expect [accumulator, remaining, frontier, schedule] = hashes
+  let (cursor, signers) = counters
+  vm_witness.encode_resolve_inputs_initial_witness(
+    compact,
+    witnesses,
+    lengths,
+    context,
+    cursor,
+    accumulator,
+    remaining,
+    signers,
+    frontier,
+    schedule,
+  ) == vm_witness.encode_resolve_inputs_witness(
+    compact,
+    witnesses,
+    lengths,
+    context,
+    cursor,
+    accumulator,
+    remaining,
+    signers,
+    frontier,
+    None,
+    schedule,
+  )
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "observersForbiddenOnUntaggedNetwork:00000024:testnet",
-  "blueprintSha256": "fab48c7b0744e90b8f39e56a3b94a6b562bb911619a9480b6e15e32cbe404175",
+  "blueprintSha256": "314b1134813eb745b7f8df611d5643257df64774e2a199461271fb7f479062f8",
   "compilerVersion": "aiken v1.1.23+5adf783",
   "entries": [
     {
@@ -33,11 +33,11 @@
       "kind": "lifecycle",
       "maximumShape": "505 observers on scalar 255 under a present integrity hash (15153-byte certified field)",
       "signedBytes": 1247,
-      "memoryUnits": "459181",
-      "cpuUnits": "174767137",
+      "memoryUnits": "456313",
+      "cpuUnits": "173874890",
       "signedByteMargin": 15137,
-      "memoryUnitMargin": "16040819",
-      "cpuUnitMargin": "9825232863",
+      "memoryUnitMargin": "16043687",
+      "cpuUnitMargin": "9826125110",
       "publicationReserveMargin": null
     },
     {
@@ -81,11 +81,11 @@
       "kind": "lifecycle",
       "maximumShape": "505 observers on scalar 255 under a present integrity hash (15153-byte certified field)",
       "signedBytes": 2048,
-      "memoryUnits": "1937991",
-      "cpuUnits": "662035886",
+      "memoryUnits": "2007852",
+      "cpuUnits": "684545362",
       "signedByteMargin": 14336,
-      "memoryUnitMargin": "14562009",
-      "cpuUnitMargin": "9337964114",
+      "memoryUnitMargin": "14492148",
+      "cpuUnitMargin": "9315454638",
       "publicationReserveMargin": null
     },
     {
@@ -105,11 +105,11 @@
       "kind": "lifecycle",
       "maximumShape": "505 observers on scalar 255 under a present integrity hash (15153-byte certified field)",
       "signedBytes": 1361,
-      "memoryUnits": "932452",
-      "cpuUnits": "296933004",
+      "memoryUnits": "951616",
+      "cpuUnits": "302795084",
       "signedByteMargin": 15023,
-      "memoryUnitMargin": "15567548",
-      "cpuUnitMargin": "9703066996",
+      "memoryUnitMargin": "15548384",
+      "cpuUnitMargin": "9697204916",
       "publicationReserveMargin": null
     },
     {
@@ -117,11 +117,11 @@
       "kind": "lifecycle",
       "maximumShape": "0 observers on scalar 255 under a present integrity hash (inline field)",
       "signedBytes": 1221,
-      "memoryUnits": "625795",
-      "cpuUnits": "216719138",
+      "memoryUnits": "631931",
+      "cpuUnits": "218567632",
       "signedByteMargin": 15163,
-      "memoryUnitMargin": "15874205",
-      "cpuUnitMargin": "9783280862",
+      "memoryUnitMargin": "15868069",
+      "cpuUnitMargin": "9781432368",
       "publicationReserveMargin": null
     },
     {
@@ -129,11 +129,11 @@
       "kind": "lifecycle",
       "maximumShape": "0 observers on scalar 255 under a present integrity hash (inline field)",
       "signedBytes": 2048,
-      "memoryUnits": "1971435",
-      "cpuUnits": "671993102",
+      "memoryUnits": "2024268",
+      "cpuUnits": "696368706",
       "signedByteMargin": 14336,
-      "memoryUnitMargin": "14528565",
-      "cpuUnitMargin": "9328006898",
+      "memoryUnitMargin": "14475732",
+      "cpuUnitMargin": "9303631294",
       "publicationReserveMargin": null
     },
     {
@@ -153,11 +153,11 @@
       "kind": "lifecycle",
       "maximumShape": "0 observers on scalar 255 under a present integrity hash (inline field)",
       "signedBytes": 1286,
-      "memoryUnits": "810306",
-      "cpuUnits": "259523284",
+      "memoryUnits": "815130",
+      "cpuUnits": "260924129",
       "signedByteMargin": 15098,
-      "memoryUnitMargin": "15689694",
-      "cpuUnitMargin": "9740476716",
+      "memoryUnitMargin": "15684870",
+      "cpuUnitMargin": "9739075871",
       "publicationReserveMargin": null
     },
     {
@@ -165,11 +165,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 observer on scalar 255 under the absent integrity hash (native-only, inline field)",
       "signedBytes": 1221,
-      "memoryUnits": "631931",
-      "cpuUnits": "218567632",
+      "memoryUnits": "638067",
+      "cpuUnits": "220416126",
       "signedByteMargin": 15163,
-      "memoryUnitMargin": "15868069",
-      "cpuUnitMargin": "9781432368",
+      "memoryUnitMargin": "15861933",
+      "cpuUnitMargin": "9779583874",
       "publicationReserveMargin": null
     },
     {
@@ -177,11 +177,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 observer on scalar 255 under the absent integrity hash (native-only, inline field)",
       "signedBytes": 2048,
-      "memoryUnits": "1967444",
-      "cpuUnits": "672248235",
+      "memoryUnits": "1991613",
+      "cpuUnits": "685315015",
       "signedByteMargin": 14336,
-      "memoryUnitMargin": "14532556",
-      "cpuUnitMargin": "9327751765",
+      "memoryUnitMargin": "14508387",
+      "cpuUnitMargin": "9314684985",
       "publicationReserveMargin": null
     },
     {
@@ -201,11 +201,11 @@
       "kind": "lifecycle",
       "maximumShape": "1 observer on scalar 255 under the absent integrity hash (native-only, inline field)",
       "signedBytes": 1286,
-      "memoryUnits": "814228",
-      "cpuUnits": "260683858",
+      "memoryUnits": "811360",
+      "cpuUnits": "259791611",
       "signedByteMargin": 15098,
-      "memoryUnitMargin": "15685772",
-      "cpuUnitMargin": "9739316142",
+      "memoryUnitMargin": "15688640",
+      "cpuUnitMargin": "9740208389",
       "publicationReserveMargin": null
     },
     {
@@ -213,11 +213,11 @@
       "kind": "lifecycle",
       "maximumShape": "505 observers on scalar 1 under a present integrity hash (15153-byte certified field)",
       "signedBytes": 1246,
-      "memoryUnits": "452802",
-      "cpuUnits": "172899912",
+      "memoryUnits": "458538",
+      "cpuUnits": "174684406",
       "signedByteMargin": 15138,
-      "memoryUnitMargin": "16047198",
-      "cpuUnitMargin": "9827100088",
+      "memoryUnitMargin": "16041462",
+      "cpuUnitMargin": "9825315594",
       "publicationReserveMargin": null
     },
     {
@@ -249,11 +249,11 @@
       "kind": "lifecycle",
       "maximumShape": "505 observers on scalar 1 under a present integrity hash (15153-byte certified field)",
       "signedBytes": 1221,
-      "memoryUnits": "641135",
-      "cpuUnits": "221340373",
+      "memoryUnits": "622727",
+      "cpuUnits": "215794891",
       "signedByteMargin": 15163,
-      "memoryUnitMargin": "15858865",
-      "cpuUnitMargin": "9778659627",
+      "memoryUnitMargin": "15877273",
+      "cpuUnitMargin": "9784205109",
       "publicationReserveMargin": null
     },
     {
@@ -261,11 +261,11 @@
       "kind": "lifecycle",
       "maximumShape": "505 observers on scalar 1 under a present integrity hash (15153-byte certified field)",
       "signedBytes": 2048,
-      "memoryUnits": "2002720",
-      "cpuUnits": "682740338",
+      "memoryUnits": "1988111",
+      "cpuUnits": "676292543",
       "signedByteMargin": 14336,
-      "memoryUnitMargin": "14497280",
-      "cpuUnitMargin": "9317259662",
+      "memoryUnitMargin": "14511889",
+      "cpuUnitMargin": "9323707457",
       "publicationReserveMargin": null
     },
     {
@@ -285,11 +285,11 @@
       "kind": "lifecycle",
       "maximumShape": "505 observers on scalar 1 under a present integrity hash (15153-byte certified field)",
       "signedBytes": 1360,
-      "memoryUnits": "965169",
-      "cpuUnits": "307997557",
+      "memoryUnits": "955653",
+      "cpuUnits": "304937167",
       "signedByteMargin": 15024,
-      "memoryUnitMargin": "15534831",
-      "cpuUnitMargin": "9692002443",
+      "memoryUnitMargin": "15544347",
+      "cpuUnitMargin": "9695062833",
       "publicationReserveMargin": null
     },
     {
@@ -317,5 +317,5 @@
       "publicationReserveMargin": 8437
     }
   ],
-  "ledgerSha256": "36c8f2e2019b2b7f1426f919ece77b1aade5930204a9d7986c39637c4ca74641"
+  "ledgerSha256": "ee809df9488522e094a77b4ac3f2dd0175517e7e60b70a6cc5a89a85fcc24697"
 }

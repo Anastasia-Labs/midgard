@@ -1056,6 +1056,82 @@ export const requireValidationValueAndMintSemanticReferenceScriptUtxo = async ({
   return utxo;
 };
 
+/** Applied phase-A resolvers published by the canonical deployment roster. */
+export const VALIDATION_PHASE_A_NATIVE_SCRIPTS_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES =
+  [
+    "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
+    "validationTraceDisputePhaseANativeScriptsItemSemantic",
+    "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
+    "validationTraceDisputePhaseANativeScriptsAllOrAnyContainerFramePayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsAllOrAnyEmptyContainerPayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsAtLeastContainerFramePayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsAtLeastEmptyContainerPayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsTimelockPayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsSignatureMembershipPayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsSignatureEmptyPayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsSignatureBelowFirstPayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsSignatureAboveLastPayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsSignatureBetweenPayloadSemantic",
+    "validationTraceDisputePhaseANativeScriptsFrameSemantic",
+  ] as const;
+export const VALIDATION_PHASE_A_SCRIPT_PRECONDITIONS_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES =
+  [
+    "validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic",
+    "validationTraceDisputePhaseAScriptPreconditionsItemSemantic",
+  ] as const;
+
+export const validationPhaseASemanticReferenceScriptDeploymentEntry = (
+  resolverIndex: number,
+  semanticResolverIndex: number,
+): string | undefined => {
+  if (!Number.isInteger(semanticResolverIndex) || semanticResolverIndex < 0)
+    return undefined;
+  return resolverIndex === 5
+    ? VALIDATION_PHASE_A_NATIVE_SCRIPTS_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
+        semanticResolverIndex
+      ]
+    : resolverIndex === 6
+      ? VALIDATION_PHASE_A_SCRIPT_PRECONDITIONS_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
+          semanticResolverIndex
+        ]
+      : undefined;
+};
+
+const requireValidationPhaseASemanticReferenceScriptUtxo = async ({
+  lucid,
+  deploymentInfo,
+  entryName,
+  expectedScriptHash,
+}: {
+  lucid: LucidEvolution;
+  deploymentInfo: ContractDeploymentInfo;
+  entryName: string;
+  expectedScriptHash: string;
+}): Promise<UTxO> => {
+  const entry = deploymentInfo[entryName];
+  if (entry?.refScriptUTxO == null)
+    throw new Error(
+      `Publish the phase-A semantic resolver as "${entryName}" before submitting`,
+    );
+  if (entry.scriptHash !== expectedScriptHash)
+    throw new Error(
+      `Phase-A semantic deployment hash mismatch for "${entryName}"`,
+    );
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: entry.refScriptUTxO,
+    label: entryName,
+  });
+  if (
+    utxo.scriptRef == null ||
+    validatorToScriptHash(utxo.scriptRef) !== expectedScriptHash
+  )
+    throw new Error(
+      `Phase-A semantic reference script mismatch for "${entryName}"`,
+    );
+  return utxo;
+};
+
 const VALIDATION_ONE_STEP_EVIDENCE_DOMAIN = Buffer.from(
   "MidgardValidationOneStepEvidenceV1",
   "ascii",
@@ -6281,10 +6357,37 @@ export const submitValidationDisputeSemanticResolution = async ({
       : undefined;
   // At most one of the two can be set: the two rosters are keyed by disjoint
   // resolver indices (CEK 11, ValueAndMint 12).
+  const phaseASemanticEntryName =
+    validationPhaseASemanticReferenceScriptDeploymentEntry(
+      resolverIndex,
+      staged.semanticResolverIndex,
+    );
+  const phaseASemanticReferenceScriptUtxo =
+    referenceScriptUtxo === undefined &&
+    phaseASemanticEntryName !== undefined &&
+    parsedDeploymentInfo[phaseASemanticEntryName] !== undefined
+      ? await requireValidationPhaseASemanticReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: parsedDeploymentInfo,
+          entryName: phaseASemanticEntryName,
+          expectedScriptHash: semanticContract.spendingScriptHash,
+        })
+      : undefined;
+  if (
+    referenceScriptUtxo === undefined &&
+    phaseASemanticEntryName !== undefined &&
+    phaseASemanticReferenceScriptUtxo === undefined &&
+    semanticContract.spendingScript.script.length / 2 >
+      MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES
+  )
+    throw new Error(
+      `Publish the phase-A semantic resolver as "${phaseASemanticEntryName}" before submitting`,
+    );
   const semanticValidatorReferenceScriptUtxo =
     referenceScriptUtxo ??
     cekSemanticReferenceScriptUtxo ??
-    valueAndMintSemanticReferenceScriptUtxo;
+    valueAndMintSemanticReferenceScriptUtxo ??
+    phaseASemanticReferenceScriptUtxo;
   const assetFoldYield =
     resolverIndex === 12 && [3, 6, 8].includes(staged.semanticResolverIndex)
       ? contracts.validationTraceDispute.yields.valueAndMintAssetFold
@@ -6342,22 +6445,23 @@ export const submitValidationDisputeSemanticResolution = async ({
     });
     return { contract, utxo, kind: native ? (0 as const) : (1 as const) };
   })();
-  const phaseANativeItemCarriage =
-    phaseANativeItemYield === undefined
-      ? undefined
-      : midgardFieldCarriageFromData(
-          staged.auxiliary.fields[2]!,
-          "phase-A item carriage",
-        );
-  const phaseANativeItemCarriageMaterial =
-    phaseANativeItemCarriage === undefined ||
-    phaseANativeItemCarriage.carriage === "Inline"
+  const phaseAItemCarriage = !(
+    (resolverIndex === 5 || resolverIndex === 6) &&
+    staged.semanticResolverIndex === 1
+  )
+    ? undefined
+    : midgardFieldCarriageFromData(
+        staged.auxiliary.fields[2]!,
+        "phase-A item carriage",
+      );
+  const phaseAItemCarriageMaterial =
+    phaseAItemCarriage === undefined || phaseAItemCarriage.carriage === "Inline"
       ? undefined
       : carriageMaterial;
   if (
-    phaseANativeItemCarriage !== undefined &&
-    phaseANativeItemCarriage.carriage !== "Inline" &&
-    phaseANativeItemCarriageMaterial === undefined
+    phaseAItemCarriage !== undefined &&
+    phaseAItemCarriage.carriage !== "Inline" &&
+    phaseAItemCarriageMaterial === undefined
   )
     throw new Error(
       "Phase-A item reference carriage requires its authenticated publication material",
@@ -7476,17 +7580,17 @@ export const submitValidationDisputeSemanticResolution = async ({
       ...(phaseANativeItemYield === undefined
         ? []
         : [phaseANativeItemYield.utxo]),
-      ...(phaseANativeItemCarriageMaterial?.referenceUtxos ?? []),
+      ...(phaseAItemCarriageMaterial?.referenceUtxos ?? []),
     ];
-    if (phaseANativeItemCarriageMaterial !== undefined) {
+    if (phaseAItemCarriageMaterial !== undefined) {
       const resolved = resolveMidgardFieldCarriageAgainstReferenceInputs({
-        plan: phaseANativeItemCarriageMaterial.plan,
+        plan: phaseAItemCarriageMaterial.plan,
         referenceInputs,
-        ...(phaseANativeItemCarriageMaterial.certificatePolicyId === undefined
+        ...(phaseAItemCarriageMaterial.certificatePolicyId === undefined
           ? {}
           : {
               certificatePolicyId:
-                phaseANativeItemCarriageMaterial.certificatePolicyId,
+                phaseAItemCarriageMaterial.certificatePolicyId,
             }),
       });
       if (

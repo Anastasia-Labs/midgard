@@ -249,6 +249,22 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofNativeScriptInvalidStep05",
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
+  "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
+  "validationTraceDisputePhaseANativeScriptsItemSemantic",
+  "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
+  "validationTraceDisputePhaseANativeScriptsAllOrAnyContainerFramePayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsAllOrAnyEmptyContainerPayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsAtLeastContainerFramePayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsAtLeastEmptyContainerPayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsTimelockPayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsSignatureMembershipPayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsSignatureEmptyPayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsSignatureBelowFirstPayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsSignatureAboveLastPayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsSignatureBetweenPayloadSemantic",
+  "validationTraceDisputePhaseANativeScriptsFrameSemantic",
+  "validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic",
+  "validationTraceDisputePhaseAScriptPreconditionsItemSemantic",
   "validationTraceDisputeValueAndMintAssetFoldWithdraw",
   "validationTraceDisputePhaseANativeItemNativeWithdraw",
   "validationTraceDisputePhaseANativeItemForeignWithdraw",
@@ -779,6 +795,38 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofNativeScriptInvalidStep05",
     "V1 fraud-proof min-ada step-01": "fraudProofMinAda",
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
+    "V1 validation-trace phase-A native Advance semantic":
+      "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
+    "V1 validation-trace phase-A native Item semantic":
+      "validationTraceDisputePhaseANativeScriptsItemSemantic",
+    "V1 validation-trace phase-A native TokenHead semantic":
+      "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
+    "V1 validation-trace phase-A native AllOrAnyContainerFramePayload semantic":
+      "validationTraceDisputePhaseANativeScriptsAllOrAnyContainerFramePayloadSemantic",
+    "V1 validation-trace phase-A native AllOrAnyEmptyContainerPayload semantic":
+      "validationTraceDisputePhaseANativeScriptsAllOrAnyEmptyContainerPayloadSemantic",
+    "V1 validation-trace phase-A native AtLeastContainerFramePayload semantic":
+      "validationTraceDisputePhaseANativeScriptsAtLeastContainerFramePayloadSemantic",
+    "V1 validation-trace phase-A native AtLeastEmptyContainerPayload semantic":
+      "validationTraceDisputePhaseANativeScriptsAtLeastEmptyContainerPayloadSemantic",
+    "V1 validation-trace phase-A native TimelockPayload semantic":
+      "validationTraceDisputePhaseANativeScriptsTimelockPayloadSemantic",
+    "V1 validation-trace phase-A native SignatureMembershipPayload semantic":
+      "validationTraceDisputePhaseANativeScriptsSignatureMembershipPayloadSemantic",
+    "V1 validation-trace phase-A native SignatureEmptyPayload semantic":
+      "validationTraceDisputePhaseANativeScriptsSignatureEmptyPayloadSemantic",
+    "V1 validation-trace phase-A native SignatureBelowFirstPayload semantic":
+      "validationTraceDisputePhaseANativeScriptsSignatureBelowFirstPayloadSemantic",
+    "V1 validation-trace phase-A native SignatureAboveLastPayload semantic":
+      "validationTraceDisputePhaseANativeScriptsSignatureAboveLastPayloadSemantic",
+    "V1 validation-trace phase-A native SignatureBetweenPayload semantic":
+      "validationTraceDisputePhaseANativeScriptsSignatureBetweenPayloadSemantic",
+    "V1 validation-trace phase-A native Frame semantic":
+      "validationTraceDisputePhaseANativeScriptsFrameSemantic",
+    "V1 validation-trace phase-A preconditions Finalize semantic":
+      "validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic",
+    "V1 validation-trace phase-A preconditions Item semantic":
+      "validationTraceDisputePhaseAScriptPreconditionsItemSemantic",
     "V1 validation-trace value-and-mint asset-fold yield":
       "validationTraceDisputeValueAndMintAssetFoldWithdraw",
     "V1 validation-trace phase-A native item native yield":

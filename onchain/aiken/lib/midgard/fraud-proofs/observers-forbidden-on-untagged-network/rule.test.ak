@@ -3,6 +3,7 @@ use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/rejection_reason_v1.{
   NetworkIdMismatch, ObserversForbiddenOnUntaggedNetwork, OutputNonCanonical,
 }
+use midgard/script_language_views_v1.{empty_script_integrity_hash}
 
 const tx_id =
   #"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
@@ -12,7 +13,7 @@ const tx_id =
 const present_hash =
   #"abababababababababababababababababababababababababababababababab"
 
-const zero_hash = rule.zero_script_integrity_hash
+const zero_hash = empty_script_integrity_hash
 
 fn accepted() -> substrate.VerdictSubjectV1 {
   substrate.VerdictSubjectV1 {
@@ -182,4 +183,12 @@ test observers_forbidden_binds_every_canonical_network_scalar() {
     rule.bind_state_v1(accepted(), 1).network_id == 1,
     rule.bind_state_v1(rejected(), 255).network_id == 255,
   }
+}
+
+test zero_hash_is_present_and_reaches_the_observer_guard() {
+  rule.forbidden_observers_hold_v1(
+    1,
+    255,
+    #"0000000000000000000000000000000000000000000000000000000000000000",
+  )
 }

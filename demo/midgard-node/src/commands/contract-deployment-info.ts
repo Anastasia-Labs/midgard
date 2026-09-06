@@ -1030,6 +1030,86 @@ const collectScriptDescriptors = (
     contracts.fraudProofs.validationTraceDispute.award,
     "V1 validation-trace award",
   ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10],
+    "V1 validation-trace phase-A native Advance semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsItemSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[11],
+    "V1 validation-trace phase-A native Item semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[12],
+    "V1 validation-trace phase-A native TokenHead semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsAllOrAnyContainerFramePayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[13],
+    "V1 validation-trace phase-A native AllOrAnyContainerFramePayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsAllOrAnyEmptyContainerPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[14],
+    "V1 validation-trace phase-A native AllOrAnyEmptyContainerPayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsAtLeastContainerFramePayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[15],
+    "V1 validation-trace phase-A native AtLeastContainerFramePayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsAtLeastEmptyContainerPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[16],
+    "V1 validation-trace phase-A native AtLeastEmptyContainerPayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsTimelockPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[17],
+    "V1 validation-trace phase-A native TimelockPayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsSignatureMembershipPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[18],
+    "V1 validation-trace phase-A native SignatureMembershipPayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsSignatureEmptyPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[19],
+    "V1 validation-trace phase-A native SignatureEmptyPayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsSignatureBelowFirstPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[20],
+    "V1 validation-trace phase-A native SignatureBelowFirstPayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsSignatureAboveLastPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[21],
+    "V1 validation-trace phase-A native SignatureAboveLastPayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsSignatureBetweenPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[22],
+    "V1 validation-trace phase-A native SignatureBetweenPayload semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseANativeScriptsFrameSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[23],
+    "V1 validation-trace phase-A native Frame semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[24],
+    "V1 validation-trace phase-A preconditions Finalize semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputePhaseAScriptPreconditionsItemSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[25],
+    "V1 validation-trace phase-A preconditions Item semantic",
+  ),
   ...registeredFaultProofScriptDescriptors(contracts),
   mintDescriptor(
     "computationThreadMint",

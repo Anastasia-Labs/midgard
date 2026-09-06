@@ -1,3 +1,4 @@
+import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -38,7 +39,7 @@ const acceptedEvidence = (
   fieldPreimageLengthsCbor: "80",
   scriptWitnessesPreimageCbor: "80",
   redeemersPreimageCbor: "81",
-  scriptIntegrityHash: "00".repeat(32),
+  scriptIntegrityHash: EMPTY_NULL_ROOT.toString("hex"),
   scriptLanguages: [3],
   redeemerCount: 0,
   ...overrides,
@@ -86,7 +87,9 @@ describe("scriptIntegrityHashMissing V1", () => {
       encodeScriptIntegrityHashMissingDecisionState(
         acceptedEvidence(),
       ).toString("hex"),
-    ).toBe(`845828860100005820${TX_ID}40805820${"00".repeat(32)}d87a80d87980`);
+    ).toBe(
+      `845828860100005820${TX_ID}40805820${EMPTY_NULL_ROOT.toString("hex")}d87a80d87980`,
+    );
   });
 
   it("refuses one-coordinate and source mutations before submission", () => {

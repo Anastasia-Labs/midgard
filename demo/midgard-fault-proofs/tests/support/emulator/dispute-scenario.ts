@@ -32,6 +32,7 @@ import {
   type SubmitValidationDisputeSemanticResolutionResult,
   submitValidationDisputeVerifySource,
   VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX,
+  validationPhaseASemanticReferenceScriptDeploymentEntry,
   validationSemanticResolverGlobalIndex,
   validationValueAndMintSemanticReferenceScriptDeploymentEntry,
 } from "../../../src/index.js";
@@ -112,6 +113,7 @@ export const runForcedValidationDisputeScenario = async (
     cekMaterialTraversalBatchSize,
     phaseANativeItemYieldKind,
     phaseANativeItemMaximum = false,
+    phaseAObserverItemMaximum = false,
     cancelPreparedSemantic = false,
     restartCekMaterialTraversal = false,
     restartCekCore = false,
@@ -123,6 +125,7 @@ export const runForcedValidationDisputeScenario = async (
     readonly cekMaterialTraversalBatchSize?: number;
     readonly phaseANativeItemYieldKind?: "native" | "foreign";
     readonly phaseANativeItemMaximum?: boolean;
+    readonly phaseAObserverItemMaximum?: boolean;
     readonly cancelPreparedSemantic?: boolean;
     readonly restartCekMaterialTraversal?: boolean;
     readonly restartCekCore?: boolean;
@@ -216,13 +219,15 @@ export const runForcedValidationDisputeScenario = async (
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(
       operatorLucid,
-      emulator.now() + 120_000 + (phaseANativeItemMaximum ? 8 * 20_000 : 0),
+      emulator.now() +
+        120_000 +
+        (phaseANativeItemMaximum || phaseAObserverItemMaximum ? 8 * 20_000 : 0),
     ) - 1;
   let phaseAItemCarriage:
     | Awaited<ReturnType<typeof preparePhaseAItemCarriage>>
     | undefined;
   const fixture = await buildFixture({
-    ...(phaseANativeItemMaximum
+    ...(phaseANativeItemMaximum || phaseAObserverItemMaximum
       ? {
           prepareFieldCarriage: async (
             input: Pick<
@@ -237,7 +242,9 @@ export const runForcedValidationDisputeScenario = async (
               chain: contracts.fraudProofContracts.validationTraceDispute,
               certificate: contracts.fieldPreimageCertificate,
               authPolicy: referenceScriptAuth,
-              kind: phaseANativeItemYieldKind ?? "native",
+              kind: phaseAObserverItemMaximum
+                ? "observer"
+                : (phaseANativeItemYieldKind ?? "native"),
             });
             return phaseAItemCarriage.resolveFieldCarriage;
           },
@@ -246,6 +253,9 @@ export const runForcedValidationDisputeScenario = async (
     operatorVkey: operatorPaymentCredential.hash,
     now: headerStartTime,
   });
+  emulator.awaitSlot(
+    Math.max(0, Math.ceil((headerStartTime - 120_000 - emulator.now()) / 1000)),
+  );
   const setup = await runEmulatorLifecycleStage("setup", () =>
     submitSetupTx({
       lucid: operatorLucid,
@@ -570,6 +580,26 @@ export const runForcedValidationDisputeScenario = async (
             },
           },
         };
+  const phaseASemanticEntry =
+    validationPhaseASemanticReferenceScriptDeploymentEntry(
+      stagedResolverIndex,
+      stagedSemanticIndex,
+    );
+  if (phaseASemanticEntry !== undefined) {
+    semanticDeploymentInfo = {
+      ...semanticDeploymentInfo,
+      contracts: {
+        ...semanticDeploymentInfo.contracts,
+        [phaseASemanticEntry]: {
+          scriptHash: semanticContract.spendingScriptHash,
+          refScriptUTxO: {
+            txHash: semanticPublication.utxo.txHash,
+            outputIndex: semanticPublication.utxo.outputIndex,
+          },
+        },
+      },
+    };
+  }
   if (stagedResolverIndex === 5 && stagedSemanticIndex === 1) {
     for (const spec of PHASE_A_ITEM_YIELD_SPECS) {
       const contract =
@@ -784,7 +814,9 @@ export const runForcedValidationDisputeScenario = async (
             signer: challengerSigner,
             threadOutRef: selectedResult.nextThreadOutRef,
             oneStepArgument: fixture.evidence.oneStepArgument,
-            referenceScriptUtxo: semanticPublication.utxo,
+            ...(phaseASemanticEntry === undefined
+              ? { referenceScriptUtxo: semanticPublication.utxo }
+              : {}),
             validityRange: validityRange(),
             awaitConfirmation: true,
           });

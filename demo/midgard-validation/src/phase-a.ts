@@ -368,16 +368,20 @@ const validateRequiredObservers = (tx: MidgardLedgerTx): RejectedTx | null => {
   if (tx.requiredObserverHashes.length < 2) {
     return null;
   }
-  const duplicateObserver = firstDuplicate(
-    hashHexes(tx.requiredObserverHashes),
-  );
-  if (duplicateObserver !== undefined) {
-    return reject(
-      tx.txId,
-      RejectCodes.InvalidFieldType,
-      `duplicate required observer ${duplicateObserver}`,
-      "phaseAScriptPreconditions",
-    );
+  for (let index = 1; index < tx.requiredObserverHashes.length; index += 1) {
+    if (
+      Buffer.compare(
+        tx.requiredObserverHashes[index - 1]!,
+        tx.requiredObserverHashes[index]!,
+      ) >= 0
+    ) {
+      return reject(
+        tx.txId,
+        RejectCodes.InvalidFieldType,
+        `required observers must be strictly ordered and unique at index ${index}`,
+        "phaseAScriptPreconditions",
+      );
+    }
   }
   return null;
 };

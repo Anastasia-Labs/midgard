@@ -25,6 +25,33 @@ export const REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 4 * 60 * 60 * 1000;
 export const REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS = 90 * 60 * 1000;
 
 export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
+  "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
+  "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
+  "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",
+  "V1 validation-trace phase-A native AllOrAnyContainerFramePayload semantic":
+    "V1VtPaNsAllAnyFrame",
+  "V1 validation-trace phase-A native AllOrAnyEmptyContainerPayload semantic":
+    "V1VtPaNsAllAnyEmpty",
+  "V1 validation-trace phase-A native AtLeastContainerFramePayload semantic":
+    "V1VtPaNsAtLeastFrame",
+  "V1 validation-trace phase-A native AtLeastEmptyContainerPayload semantic":
+    "V1VtPaNsAtLeastEmpty",
+  "V1 validation-trace phase-A native TimelockPayload semantic": "V1VtPaNsTime",
+  "V1 validation-trace phase-A native SignatureMembershipPayload semantic":
+    "V1VtPaNsSigMember",
+  "V1 validation-trace phase-A native SignatureEmptyPayload semantic":
+    "V1VtPaNsSigEmpty",
+  "V1 validation-trace phase-A native SignatureBelowFirstPayload semantic":
+    "V1VtPaNsSigBelow",
+  "V1 validation-trace phase-A native SignatureAboveLastPayload semantic":
+    "V1VtPaNsSigAbove",
+  "V1 validation-trace phase-A native SignatureBetweenPayload semantic":
+    "V1VtPaNsSigBetween",
+  "V1 validation-trace phase-A native Frame semantic": "V1VtPaNsFrame",
+  "V1 validation-trace phase-A preconditions Finalize semantic":
+    "V1VtPaSpFinalize",
+  "V1 validation-trace phase-A preconditions Item semantic": "V1VtPaSpItem",
+
   "reference-script-auth minting": "ReferenceScriptAuthMint",
   "hub-oracle minting": "HubOracleMint",
   "da-params-governor spending": "DaParamsGovernorSpend",

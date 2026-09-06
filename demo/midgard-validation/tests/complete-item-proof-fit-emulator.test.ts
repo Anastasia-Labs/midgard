@@ -460,6 +460,7 @@ const loadContracts =
         network: "Custom",
         hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         fraudProofCataloguePolicyId: FRAUD_PROOF_CATALOGUE_POLICY_ID,
+        referenceScriptAuthPolicyId: "33".repeat(28),
       }),
     );
     return cachedContracts;

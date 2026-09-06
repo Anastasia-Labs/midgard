@@ -5,11 +5,10 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 use midgard/validation_machine/machine_types.{
-  TransactionFieldChunkWitness, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1,
+  TransactionFieldChunkWitness, ValidationOneStepWitnessV1,
 }
-use midgard/validation_machine/one_step.{
-  verify_phase_a_script_preconditions_semantics_v1,
+use midgard/validation_machine/phase_a_script_preconditions.{
+  verify_phase_a_script_preconditions_item_semantics_v1,
 }
 use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
@@ -64,7 +63,6 @@ validator main(
           carriage,
         }
         let auxiliary_data: Data = auxiliary
-        let evidence = ValidationOneStepEvidenceV1 { transition, auxiliary }
         let door = MachineFieldDoorV1 {
           reference_inputs: tx.reference_inputs,
           certificate_policy_id: field_preimage_certificate_policy_id,
@@ -78,10 +76,13 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_phase_a_script_preconditions_semantics_v1(
+          verify_phase_a_script_preconditions_item_semantics_v1(
             datum |> semantic_pre_state,
-            evidence,
+            transition,
             door,
+            field_index,
+            item_index,
+            carriage,
           ),
           own_out_ref,
           tx,

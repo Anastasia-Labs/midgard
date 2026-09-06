@@ -3,6 +3,7 @@ import {
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardFieldPreimageForField,
   encodeMidgardNativeScript,
@@ -711,7 +712,7 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
  * of its steps. `txOrderSeed` keeps the forced-event keys of the fixtures
  * distinct.
  */
-const buildHonestAcceptedNativeTransactionTrace = async ({
+const buildNativeTransactionTrace = async ({
   now,
   txOrderSeed,
   assetCount = 0,
@@ -724,6 +725,10 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   cekBlsFinal = false,
   cekMaximumDirect = false,
   cekSemanticTag,
+  observerCount = 0,
+  preconditionsRejection,
+  rejectAfterPreconditions = false,
+  resolveMissingInput = false,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
@@ -737,6 +742,13 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   readonly cekBlsFinal?: boolean;
   readonly cekMaximumDirect?: boolean;
   readonly cekSemanticTag?: number;
+  readonly observerCount?: number;
+  readonly rejectAfterPreconditions?: boolean;
+  readonly resolveMissingInput?: boolean;
+  readonly preconditionsRejection?:
+    | "missingIntegrity"
+    | "untaggedObservers"
+    | "observerOrder";
 }) => {
   const txOrderId = transitionTraceOutRef(txOrderSeed);
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -824,6 +836,32 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
       },
     ],
   });
+  const observerScripts = Array.from({ length: observerCount }, (_, i) => {
+    const nativeScript = {
+      type: "before" as const,
+      slot: BigInt(now + 2_000_000 + i),
+    };
+    return {
+      language: "NativeCardano" as const,
+      scriptBytes: encodeMidgardNativeScript(nativeScript),
+      nativeScript,
+    };
+  });
+  const observerFields =
+    observerCount === 0
+      ? {}
+      : {
+          requiredObserverHashes:
+            preconditionsRejection === "observerOrder"
+              ? observerScripts.map(hashMidgardVersionedScript).sort().reverse()
+              : observerScripts.map(hashMidgardVersionedScript).sort(),
+          scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
+            ...(mintAsset ? [script] : []),
+            ...(plutusScript === undefined ? [] : [plutusScript]),
+            ...observerScripts,
+          ]),
+          validityIntervalEnd: BigInt(now + 1_000_000),
+        };
   const scriptFields =
     plutusScript === undefined
       ? mintFields
@@ -837,6 +875,13 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
             ["PlutusV3"],
           ),
         };
+  const rejectionFields = rejectAfterPreconditions
+    ? { validityIntervalStart: 1n }
+    : preconditionsRejection === "missingIntegrity"
+      ? { scriptIntegrityHash: EMPTY_NULL_ROOT }
+      : preconditionsRejection === "untaggedObservers"
+        ? { networkId: 255n }
+        : {};
   const spentOutput = encodeMidgardTxOutput({
     address:
       plutusScript === undefined
@@ -867,14 +912,18 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   }
   const unsignedTx = makeNativeTx({
     ...scriptFields,
-    spendInputCbors: [spentOutRef],
+    ...observerFields,
+    ...rejectionFields,
+    spendInputCbors: [resolveMissingInput ? outRefCbor(0x8b) : spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
   });
   const transactionId = computeMidgardNativeTxId(unsignedTx);
   const forcedNativeTx = makeNativeTx({
     ...scriptFields,
-    spendInputCbors: [spentOutRef],
+    ...observerFields,
+    ...rejectionFields,
+    spendInputCbors: [resolveMissingInput ? outRefCbor(0x8b) : spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
     addrTxWitsPreimageCbor: encodeCbor([
@@ -916,7 +965,12 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
     operations: expectedLedgerOps,
   });
   const preUtxosRoot = ledgerMutationSteps[0]!.preRoot.toString("hex");
-  const postUtxosRoot = ledgerMutationSteps.at(-1)!.postRoot.toString("hex");
+  const postUtxosRoot =
+    preconditionsRejection === undefined &&
+    !rejectAfterPreconditions &&
+    !resolveMissingInput
+      ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
+      : preUtxosRoot;
   const honestTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       ...(program === undefined
@@ -939,10 +993,36 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
       priorUtxosRoot: preUtxosRoot,
       postUtxosRoot,
       ledgerWitnessEntries: [{ outRef: spentOutRef, output: spentOutput }],
-      expectedLedgerOps,
-      ledgerMutationSteps,
-      expectedVerdict: "accepted",
-      expectedRejectionCode: null,
+      expectedLedgerOps:
+        preconditionsRejection === undefined &&
+        !rejectAfterPreconditions &&
+        !resolveMissingInput
+          ? expectedLedgerOps
+          : [],
+      ledgerMutationSteps:
+        preconditionsRejection === undefined &&
+        !rejectAfterPreconditions &&
+        !resolveMissingInput
+          ? ledgerMutationSteps
+          : [],
+      ...(preconditionsRejection === undefined &&
+      !rejectAfterPreconditions &&
+      !resolveMissingInput
+        ? {}
+        : { committedForcedVerdict: "accepted" as const }),
+      expectedVerdict:
+        preconditionsRejection === undefined &&
+        !rejectAfterPreconditions &&
+        !resolveMissingInput
+          ? "accepted"
+          : "rejected",
+      expectedRejectionCode: resolveMissingInput
+        ? RejectCodes.InputNotFound
+        : rejectAfterPreconditions
+          ? RejectCodes.ValidityIntervalMismatch
+          : preconditionsRejection === undefined
+            ? null
+            : RejectCodes.InvalidFieldType,
     }),
   );
   return {
@@ -987,7 +1067,7 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
     honestTrace: operatorTrace,
     preUtxosRoot,
     postUtxosRoot,
-  } = await buildHonestAcceptedNativeTransactionTrace({
+  } = await buildNativeTransactionTrace({
     now,
     txOrderSeed: "e3",
   });
@@ -1095,11 +1175,21 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   maximumAssetProof = false,
   lateNativeItem = false,
   nativeItemWidth = 0,
+  observerCount = 0,
+  preconditionsRejection,
+  rejectAfterPreconditions = false,
+  preconditionsItemIndex,
+  resolveInputsKind,
   prepareFieldCarriage,
 }: {
   readonly operatorVkey: string;
   readonly now: number;
-  readonly disputedPhase: "cek" | "valueAndMint" | "phaseANativeScripts";
+  readonly disputedPhase:
+    | "cek"
+    | "valueAndMint"
+    | "phaseANativeScripts"
+    | "phaseAScriptPreconditions"
+    | "resolveInputs";
   readonly disputedValueKind?: ValueAndMintStepKind;
   readonly cekSelection?: boolean;
   readonly cekCoreArm?: string;
@@ -1115,6 +1205,20 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly maximumAssetProof?: boolean;
   readonly lateNativeItem?: boolean;
   readonly nativeItemWidth?: number;
+  readonly observerCount?: number;
+  readonly rejectAfterPreconditions?: boolean;
+  readonly preconditionsRejection?:
+    | "missingIntegrity"
+    | "untaggedObservers"
+    | "observerOrder";
+  readonly preconditionsItemIndex?: number;
+  readonly resolveInputsKind?:
+    | "initial"
+    | "finish"
+    | "membershipBegin"
+    | "membershipStep"
+    | "membershipFinalize"
+    | "nonMembership";
   readonly prepareFieldCarriage?: (input: {
     trace: DeterministicValidationMachineTrace;
     stateIndex: number;
@@ -1130,7 +1234,12 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   >;
 }): Promise<
   ForcedValidationDisputeFixture & {
-    readonly disputedPhase: "cek" | "valueAndMint" | "phaseANativeScripts";
+    readonly disputedPhase:
+      | "cek"
+      | "valueAndMint"
+      | "phaseANativeScripts"
+      | "phaseAScriptPreconditions"
+      | "resolveInputs";
     readonly disputedLowIndex: number;
   }
 > => {
@@ -1141,7 +1250,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     honestTrace: originalTrace,
     preUtxosRoot,
     postUtxosRoot,
-  } = await buildHonestAcceptedNativeTransactionTrace({
+  } = await buildNativeTransactionTrace({
     now,
     txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
     assetCount:
@@ -1152,7 +1261,10 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       cekSelection ||
       disputedValueKind === "mintAsset" ||
       (disputedPhase === "phaseANativeScripts" && !plutusSelection),
-    plutusSelection,
+    plutusSelection:
+      plutusSelection ||
+      preconditionsRejection === "missingIntegrity" ||
+      preconditionsRejection === "untaggedObservers",
     cekProgramLambdaCount,
     cekDataGraph,
     nativeItemWidth,
@@ -1160,12 +1272,53 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     cekBlsFinal,
     cekMaximumDirect,
     cekSemanticTag,
+    observerCount,
+    preconditionsRejection,
+    rejectAfterPreconditions,
+    resolveMissingInput: resolveInputsKind === "nonMembership",
   });
   let challengerTrace = originalTrace;
   const disputedLowIndex = challengerTrace.states.findIndex((state, index) => {
     const auxiliary = challengerTrace.witnesses[index]?.auxiliary;
     return (
       state.phase === disputedPhase &&
+      (resolveInputsKind === undefined ||
+        (() => {
+          const auxiliary = challengerTrace.witnesses[index]!.auxiliary;
+          switch (resolveInputsKind) {
+            case "initial":
+              return (
+                auxiliary === null &&
+                challengerTrace.states[index - 1]?.phase !== "resolveInputs"
+              );
+            case "finish":
+              return (
+                auxiliary === null &&
+                challengerTrace.states[index - 1]?.phase === "resolveInputs"
+              );
+            case "membershipBegin":
+              return (
+                auxiliary?.kind === "scheduledLedgerLookup" &&
+                auxiliary.value !== null
+              );
+            case "nonMembership":
+              return (
+                auxiliary?.kind === "scheduledLedgerLookup" &&
+                auxiliary.value === null
+              );
+            case "membershipStep":
+              return auxiliary?.kind === "ledgerOutputProofStep";
+            case "membershipFinalize":
+              return auxiliary?.kind === "ledgerOutputProofFinalize";
+          }
+        })()) &&
+      (disputedPhase !== "phaseAScriptPreconditions" ||
+        (preconditionsItemIndex === undefined
+          ? challengerTrace.witnesses[index]!.auxiliary === null
+          : challengerTrace.witnesses[index]!.auxiliary?.kind ===
+              "transactionFieldChunk" &&
+            challengerTrace.witnesses[index]!.auxiliary.itemIndex ===
+              preconditionsItemIndex)) &&
       (!lateNativeItem ||
         challengerTrace.states[index - 1]?.phase === "nativeScripts") &&
       (cekCoreArm === undefined ||
@@ -1204,6 +1357,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   // bisection -- not the source stage -- is what exposes the forgery.
   const forgedTerminal = {
     ...honestTerminal,
+    verdict: "accepted" as const,
+    rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
     workRoot: Buffer.alloc(32, 0x7e),
   };
   const operatorStates = challengerTrace.states.map((state, index) =>
@@ -1215,6 +1370,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   );
   const operatorTrace: DeterministicValidationMachineTrace = {
     ...challengerTrace,
+    verdict: "accepted",
+    rejectionCode: null,
     states: operatorStates,
     tree: buildMidgardValidationTraceTree(
       operatorStates.map(hashMidgardValidationMachineState),

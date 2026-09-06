@@ -1,3 +1,4 @@
+import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
   decodeMidgardFieldPreimage,
   midgardFieldCommitment,
@@ -22,10 +23,11 @@ export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_ID =
 export const MIDGARD_UNTAGGED_NETWORK_ID = 255 as const;
 /**
  * The canonical absent `script_integrity_hash`. Phase-A script preconditions
- * reach the observer arm only past this value: a zero hash either needs no
+ * reach the observer arm only past this value: the absent hash either needs no
  * Plutus evaluation or is rejected first as `ScriptIntegrityHashMissing`.
  */
-export const MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH = "00".repeat(32);
+export const MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH =
+  EMPTY_NULL_ROOT.toString("hex");
 
 export type ObserversForbiddenFinding = Readonly<{
   subject: VerdictSubject;
@@ -95,7 +97,7 @@ export const prepareObserversForbiddenEvidence = ({
 /**
  * Twin of `forbidden_observers_hold_v1`: the phase-A observer arm holds only
  * when Plutus evaluation is required and the integrity hash is present, which
- * collapses to a non-zero hash; then observers present on scalar 255.
+ * collapses to a present hash; then observers present on scalar 255.
  */
 export const observersForbiddenFaultHolds = (
   evidence: Pick<

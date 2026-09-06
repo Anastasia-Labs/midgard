@@ -460,6 +460,39 @@ pub fn encode_resolve_inputs_witness(
     |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
 }
 
+/// Byte-identical initial handoff without the unreachable pending-proof encoder.
+pub fn encode_resolve_inputs_initial_witness(
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  context_cbor: ByteArray,
+  cursor: Int,
+  accumulator: ByteArray,
+  remaining_schedule_hash: ByteArray,
+  signer_count: Int,
+  signer_frontier_commitment: ByteArray,
+  resolution_schedule_hash: ByteArray,
+) -> ByteArray {
+  expect cursor >= 0
+  expect bytearray.length(accumulator) == 32
+  expect bytearray.length(remaining_schedule_hash) == 32
+  expect signer_count >= 0
+  expect bytearray.length(signer_frontier_commitment) == 32
+  expect bytearray.length(resolution_schedule_hash) == 32
+  #"8b"
+    |> bytearray.concat(encode_definite_bytes(compact_cbor))
+    |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
+    |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
+    |> bytearray.concat(encode_definite_bytes(context_cbor))
+    |> bytearray.concat(cbor.serialise(cursor))
+    |> bytearray.concat(encode_definite_bytes(accumulator))
+    |> bytearray.concat(encode_definite_bytes(remaining_schedule_hash))
+    |> bytearray.concat(cbor.serialise(signer_count))
+    |> bytearray.concat(encode_definite_bytes(signer_frontier_commitment))
+    |> bytearray.concat(encode_definite_bytes(#"00"))
+    |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
+}
+
 pub fn empty_observer_purpose_scan_control() -> ObserverPurposeScanControlV1 {
   ObserverPurposeScanControlV1 { total_count: 0, seen: 0, previous_hash: #"" }
 }

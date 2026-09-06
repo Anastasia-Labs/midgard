@@ -163,3 +163,52 @@ encode_resolve_inputs_initial_witness` passes the byte-equality property.
 - The declared-parameter change (3 → 2) is a blueprint ABI change that the
   #605/#609 gates are designed to catch; deployment tooling that hand-writes
   parameter lists would break loudly, which is the intended behaviour.
+
+
+### Canonical absence correction — 2026-09-05
+
+Execution against the real host replay exposed an error in the original
+plan's all-zero integrity-hash sentinel. The canonical codec and
+`script_language_views_v1` both encode absence as Blake2b-256 of CBOR null
+(`f6`), namely
+`01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53`.
+The Phase-A predicate, both dedicated family predicates and their host
+classifiers now use that same commitment. An all-zero hash is a present,
+incorrect integrity hash; it must not be reclassified as absence. This
+replaces the zero-sentinel assumption above without a compatibility branch.
+
+
+### Implemented preconditions and publication closure — 2026-09-05
+
+Finalize and item now use separate predicates; finalize constructs only the
+initial no-pending ResolveInputs encoding. The unchanged generic predicate
+remains the differential reference. Public submission resolves the two
+precondition contracts and all fourteen native Phase-A semantic contracts
+through canonical deployment entries. Those publication entries have roles
+in the current strict manifest registry; this updates the older plan's
+assumption that published semantic entries needed no registered role.
+
+Normal testnet blueprint
+`314b1134813eb745b7f8df611d5643257df64774e2a199461271fb7f479062f8`:
+12 lifecycle scenarios pass, including maximum 1,092-entry/32,763-byte
+observer carriage and finalization, both honest-successor refusals, three
+real rejection paths, cancellation and fresh out-ref recovery for both
+resolvers. Every success mints permanent proof and removes the bad block.
+The complete 725-row ledger records 371 publications, maximum 15,872 signed
+bytes, 3,094,426 memory and 1,055,289,369 CPU. Both 20% execution reserves
+and the publication reserve pass. The maximum observer fixture replays a
+real interval rejection in the following ResolveInputs phase, avoiding
+irrelevant quadratic ScriptSources replay while retaining every observer
+transition under dispute.
+
+Host Phase A additionally rejects descending observer hashes, matching its
+on-chain strictly-increasing scan; 46 host tests pass. The two canonical
+absence family lifecycle suites and ledger verifiers pass after the fix.
+This worktree evidence does not replace the final shared-branch rerun or
+close installed validation-dispute replay.
+
+Parameter application was also updated in all four validation emulator
+fixtures. The three complete-item suites pass 12 scenarios together; the
+65-node native scan deployment probe passes its one scenario. The latter
+probe reports memory above the 20% reserve and is parameter wiring evidence
+only, not closure evidence for native scan execution fit.

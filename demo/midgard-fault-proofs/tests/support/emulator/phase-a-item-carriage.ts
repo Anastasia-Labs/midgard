@@ -58,17 +58,25 @@ export const preparePhaseAItemCarriage = async ({
   trace: DeterministicValidationMachineTrace;
   stateIndex: number;
   source: { compact_cbor: string; witness_set_compact_cbor: string };
-  kind: "native" | "foreign";
+  kind: "native" | "foreign" | "observer";
 }) => {
+  const fieldIndex = kind === "observer" ? 3 : 6;
   const auxiliary = trace.witnesses[stateIndex]!.auxiliary;
-  if (auxiliary?.kind !== "transactionFieldChunk" || auxiliary.fieldIndex !== 6)
-    throw new Error("phase-A item fixture requires a field-six item witness");
-  if (auxiliary.fieldPreimage.length !== 32768)
-    throw new Error("maximum fixture must reach exactly 32768 field bytes");
+  if (
+    auxiliary?.kind !== "transactionFieldChunk" ||
+    auxiliary.fieldIndex !== fieldIndex
+  )
+    throw new Error(
+      "phase-A item fixture requires a matching field item witness",
+    );
+  if (auxiliary.fieldPreimage.length !== (kind === "observer" ? 32763 : 32768))
+    throw new Error(
+      "maximum fixture must reach the exact field-specific byte bound",
+    );
   const plan = planMidgardFieldCarriage({
     owner: Buffer.from(signer.paymentKeyHash, "hex"),
     txId: trace.states[stateIndex]!.transactionId,
-    fieldIndex: 6,
+    fieldIndex,
     preimage: auxiliary.fieldPreimage,
   });
   if (plan.tier !== "Certified")
@@ -76,11 +84,12 @@ export const preparePhaseAItemCarriage = async ({
   signer.selectWallet(lucid);
   const semanticPublication = await publishPlainReferenceScriptUtxo({
     lucid,
-    script: chain.semanticResolvers[11].spendingScript,
+    script:
+      chain.semanticResolvers[kind === "observer" ? 25 : 11].spendingScript,
     label: "phase-A item semantic",
   });
   const yields = [];
-  for (const spec of PHASE_A_ITEM_YIELD_SPECS) {
+  for (const spec of kind === "observer" ? [] : PHASE_A_ITEM_YIELD_SPECS) {
     const contract = chain.yields[spec.contract];
     const publication = await publishAuthenticatedValidationDisputeControl({
       lucid,
@@ -152,7 +161,9 @@ export const preparePhaseAItemCarriage = async ({
   const referenceInputs = [
     ...material.referenceUtxos,
     semanticPublication.utxo,
-    yields[kind === "native" ? 0 : 1]!.publication.utxo,
+    ...(kind === "observer"
+      ? []
+      : [yields[kind === "native" ? 0 : 1]!.publication.utxo]),
   ];
   const carriage = resolveMidgardFieldCarriageAgainstReferenceInputs({
     plan,
@@ -168,7 +179,7 @@ export const preparePhaseAItemCarriage = async ({
       fieldPreimage: Buffer;
     }) => {
       if (
-        input.fieldIndex !== 6 ||
+        input.fieldIndex !== fieldIndex ||
         !input.fieldPreimage.equals(auxiliary.fieldPreimage)
       )
         throw new Error("phase-A field source changed");

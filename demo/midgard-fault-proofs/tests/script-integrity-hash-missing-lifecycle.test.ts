@@ -1,3 +1,4 @@
+import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
   computeHash32,
   deriveMidgardNativeTxWitnessSetCompact,
@@ -137,7 +138,7 @@ const hashField8 = (checkpoint: ReturnType<typeof field8Checkpoint>): string =>
   ).toString("hex");
 
 const REASON = "ScriptIntegrityHashMissing";
-const ZERO_HASH = "00".repeat(32);
+const ABSENT_HASH = EMPTY_NULL_ROOT.toString("hex");
 /** Every seam a step authenticates before it reads or commits anything. */
 const AUTHENTICATION_SEAMS = [
   "tx_membership",
@@ -488,7 +489,7 @@ const makeScenario = async ({
 };
 
 describe("script-integrity-hash-missing real lifecycle", () => {
-  it("publishes, proves accepted zero integrity hash, mints, and removes", async () => {
+  it("publishes, proves accepted absent integrity hash, mints, and removes", async () => {
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
     });
@@ -508,7 +509,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
         requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
         mintPreimageCbor: EMPTY_CBOR_LIST,
-        scriptIntegrityHash: Buffer.alloc(32),
+        scriptIntegrityHash: EMPTY_NULL_ROOT,
         auxiliaryDataHash: Buffer.alloc(32),
         fee: 1_000n,
         validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
@@ -558,7 +559,9 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       transactionId: block.nativeTxId,
       direction: "wrongfulAcceptance",
     });
-    expect(replayEvidence.scriptIntegrityHash).toBe("00".repeat(32));
+    expect(replayEvidence.scriptIntegrityHash).toBe(
+      EMPTY_NULL_ROOT.toString("hex"),
+    );
     const setup = await submitSetupTx({
       lucid: harness.funderLucid,
       contracts: harness.contracts,
@@ -614,7 +617,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       fieldPreimageLengthsCbor: "80",
       scriptWitnessesPreimageCbor: scriptPreimage.toString("hex"),
       redeemersPreimageCbor: EMPTY_CBOR_LIST.toString("hex"),
-      scriptIntegrityHash: "00".repeat(32),
+      scriptIntegrityHash: EMPTY_NULL_ROOT.toString("hex"),
       scriptLanguages: [3],
       redeemerCount: 0,
     });
@@ -1242,7 +1245,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
         requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
         mintPreimageCbor: EMPTY_CBOR_LIST,
-        scriptIntegrityHash: Buffer.alloc(32),
+        scriptIntegrityHash: EMPTY_NULL_ROOT,
         auxiliaryDataHash: Buffer.alloc(32),
         fee: 3_000n,
         validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
@@ -1411,7 +1414,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       fieldPreimageLengthsCbor: "80",
       scriptWitnessesPreimageCbor: scriptPreimage.toString("hex"),
       redeemersPreimageCbor: redeemerPreimage.toString("hex"),
-      scriptIntegrityHash: "00".repeat(32),
+      scriptIntegrityHash: EMPTY_NULL_ROOT.toString("hex"),
       scriptLanguages: Array.from({ length: 224 }, () => 3 as const),
       redeemerCount: 224,
     });
@@ -1567,7 +1570,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       subject,
       witness_set_hash:
         nativeTx.compact.transactionWitnessSetHash.toString("hex"),
-      script_integrity_hash: "00".repeat(32),
+      script_integrity_hash: ABSENT_HASH,
       phase: {
         ScriptGrammar: {
           checkpoint_hash: hashMissingNativeScriptTxGrammarCheckpoint(grammar),
@@ -1870,7 +1873,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     }
     const decision = {
       subject,
-      script_integrity_hash: "00".repeat(32),
+      script_integrity_hash: ABSENT_HASH,
       contains_non_native_script: true,
       has_redeemers: true,
     };
@@ -2071,7 +2074,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
   }, 600_000);
 
   it("refuses an honest forced rejection, a mutated forced reason, and a substituted forced leaf on chain", async () => {
-    // Effectful with a zero integrity hash: the operator's rejection is
+    // Effectful with a absent integrity hash: the operator's rejection is
     // exactly right, so no wrongful-rejection thread may close.
     const plutus = plutusScript(9);
     const scriptPreimage = encodeCbor([plutus]);
@@ -2080,7 +2083,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       nativeTx: nativeTxOf({
         scriptItems: [plutus],
         redeemerItems: [],
-        scriptIntegrityHash: Buffer.alloc(32),
+        scriptIntegrityHash: EMPTY_NULL_ROOT,
         fee: 5_000n,
       }),
       forcedReason: REASON,
@@ -2128,7 +2131,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const decided = await s.direct03(anchored, {
       decision: {
         subject,
-        script_integrity_hash: ZERO_HASH,
+        script_integrity_hash: ABSENT_HASH,
         contains_non_native_script: true,
         has_redeemers: false,
       },
@@ -2151,7 +2154,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       nativeTx: nativeTxOf({
         scriptItems: [],
         redeemerItems,
-        scriptIntegrityHash: Buffer.alloc(32),
+        scriptIntegrityHash: EMPTY_NULL_ROOT,
         fee: 6_000n,
       }),
     });
@@ -2171,7 +2174,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       fieldPreimageLengthsCbor: "80",
       scriptWitnessesPreimageCbor: scriptPreimage.toString("hex"),
       redeemersPreimageCbor: redeemerPreimage.toString("hex"),
-      scriptIntegrityHash: ZERO_HASH,
+      scriptIntegrityHash: ABSENT_HASH,
       scriptLanguages: [],
       redeemerCount: 65,
     });
@@ -2290,7 +2293,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       s.direct03(anchored, {
         decision: {
           subject,
-          script_integrity_hash: ZERO_HASH,
+          script_integrity_hash: ABSENT_HASH,
           contains_non_native_script: false,
           has_redeemers: true,
         },
@@ -2325,7 +2328,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         nextDatum: s.datum(5, {
           subject,
           witness_set_hash: s.witnessSetHash,
-          script_integrity_hash: ZERO_HASH,
+          script_integrity_hash: ABSENT_HASH,
           phase: {
             RedeemerGrammar: {
               checkpoint_hash: hashScriptIntegrityField8Checkpoint(second!),

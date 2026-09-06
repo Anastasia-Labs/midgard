@@ -353,6 +353,24 @@ describe("phase A validation", () => {
     await expectSinglePhaseARejection(fixture, RejectCodes.AuxDataForbidden);
   });
 
+  it.each([
+    [1, 1],
+    [2, 1],
+  ])("rejects non-increasing required observer hashes %j", async (...bytes) => {
+    const fixture = makeNativeTx({
+      requiredObserverItems: bytes.map((byte) => Buffer.alloc(28, byte)),
+    });
+    await expectSinglePhaseARejection(fixture, RejectCodes.InvalidFieldType);
+  });
+
+  it("accepts strictly increasing required observer hashes", async () => {
+    await expectSinglePhaseAAcceptance(
+      makeNativeTx({
+        requiredObserverItems: [Buffer.alloc(28, 1), Buffer.alloc(28, 2)],
+      }),
+    );
+  });
+
   it("rejects explicit Cardano network ids that do not match configuration", async () => {
     const fixture = makeNativeTx({ networkId: 1n });
     await expectSinglePhaseARejection(fixture, RejectCodes.NetworkIdMismatch);

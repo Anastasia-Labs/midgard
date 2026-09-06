@@ -9,9 +9,7 @@ use midgard/fraud_proofs/native_tx/types.{NativeCardanoScript}
 use midgard/native_tx_field_access_v1.{
   FieldViewV1, field_item_at, field_item_count,
 }
-
-pub const zero_hash32: ByteArray =
-  #"0000000000000000000000000000000000000000000000000000000000000000"
+use midgard/script_language_views_v1.{empty_script_integrity_hash}
 
 pub fn contains_non_native_script_items_v1(items: List<ByteArray>) -> Bool {
   when items is {
@@ -56,10 +54,10 @@ pub fn fault_holds_v1(
   let requires_plutus_evaluation = or {
     contains_non_native_script,
     has_redeemers,
-    script_integrity_hash != zero_hash32,
+    script_integrity_hash != empty_script_integrity_hash,
   }
   and {
     requires_plutus_evaluation,
-    script_integrity_hash == zero_hash32,
+    script_integrity_hash == empty_script_integrity_hash,
   }
 }

@@ -1,3 +1,4 @@
+import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
   encodeMidgardFieldPreimage,
   midgardFieldCommitment,
@@ -72,7 +73,9 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
       "00000024",
     );
     expect(MIDGARD_UNTAGGED_NETWORK_ID).toBe(255);
-    expect(MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH).toBe("00".repeat(32));
+    expect(MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH).toBe(
+      EMPTY_NULL_ROOT.toString("hex"),
+    );
   });
 
   it("holds exactly on the phase-A observer arm: present hash, observers, scalar 255", () => {

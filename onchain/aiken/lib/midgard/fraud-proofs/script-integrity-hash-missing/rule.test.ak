@@ -3,15 +3,16 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardV1Script, MidgardVersionedScript, NativeCardanoScript, PlutusV3Script,
 }
 use midgard/fraud_proofs/script_integrity_hash_missing/rule
+use midgard/script_language_views_v1.{empty_script_integrity_hash}
 
 const nonzero =
   #"0101010101010101010101010101010101010101010101010101010101010101"
 
 test wrongful_acceptance_requires_an_effectful_zero_hash() {
   and {
-    rule.fault_holds_v1(rule.zero_hash32, True, False),
-    rule.fault_holds_v1(rule.zero_hash32, False, True),
-    !rule.fault_holds_v1(rule.zero_hash32, False, False),
+    rule.fault_holds_v1(empty_script_integrity_hash, True, False),
+    rule.fault_holds_v1(empty_script_integrity_hash, False, True),
+    !rule.fault_holds_v1(empty_script_integrity_hash, False, False),
   }
 }
 
@@ -45,4 +46,12 @@ test script_language_scan_distinguishes_native_from_effectful_scripts() {
 
 test short_integrity_hash_refuses_closed() fail {
   rule.fault_holds_v1(#"00", True, False)
+}
+
+test zero_hash_is_present_not_the_canonical_absence_commitment() {
+  !rule.fault_holds_v1(
+    #"0000000000000000000000000000000000000000000000000000000000000000",
+    True,
+    True,
+  )
 }

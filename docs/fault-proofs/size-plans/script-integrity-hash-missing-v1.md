@@ -182,3 +182,16 @@ through the package-owned production transaction port. Production watcher
 installation is now only the serial central registration step; no
 installation-supplied evidence, stage resolver, submit authority, or journal
 authority remains in the family API.
+
+
+### Canonical absence correction — 2026-09-05
+
+Execution against the real host replay exposed an error in the original
+plan's all-zero integrity-hash sentinel. The canonical codec and
+`script_language_views_v1` both encode absence as Blake2b-256 of CBOR null
+(`f6`), namely
+`01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53`.
+The Phase-A predicate, both dedicated family predicates and their host
+classifiers now use that same commitment. An all-zero hash is a present,
+incorrect integrity hash; it must not be reclassified as absence. This
+replaces the zero-sentinel assumption above without a compatibility branch.
