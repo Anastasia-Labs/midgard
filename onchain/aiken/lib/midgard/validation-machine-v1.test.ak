@@ -21,6 +21,7 @@ use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
   encode_native_tx_field_preimage_lengths_v1, native_tx_canonical_size_v1,
   native_tx_id_for_version, native_tx_proof_commitment_v1,
+  verify_native_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_address_witness, encode_midgard_redeemer_witness,
@@ -18144,4 +18145,112 @@ test value_and_mint_kinds_partition_the_value_and_mint_step_space() {
       )
     },
   )
+}
+
+// Payload pruning preserves the full binding on reachable positive-stage
+// controls; the source/context and canonical carried bytes remain bound.
+test phase_a_payload_binding_matches_full_binding(
+  stage via fuzz.int_between(3, 6),
+) {
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [
+        MidgardVersionedScript {
+          language: NativeCardanoScript,
+          script_bytes: #"8200581c11111111111111111111111111111111111111111111111111111111",
+        },
+      ],
+    },
+  }
+  let Pair(pre, _) = phase_a_native_step_fixture(tx, h_a)
+  let work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    stage,
+    1,
+    0,
+    0,
+    40,
+    zero,
+    6,
+    #"",
+    0,
+    1,
+    -1,
+  )
+  let control = vm_witness.phase_a_native_control_from_witness(
+    work_witness_cbor,
+  )
+  let witness = vm_machine_types.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: pre,
+  }
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    vm_witness.phase_a_native_payload_control_is_bound(
+      pre,
+      witness,
+      control,
+      3,
+      6,
+    ),
+    vm_witness.phase_a_native_control_is_bound(
+      pre,
+      witness,
+      control,
+      verified,
+      witness_set,
+    ),
+    !vm_witness.phase_a_native_payload_control_is_bound(
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..pre,
+        transaction_commitment: h_b,
+      },
+      witness,
+      control,
+      3,
+      6,
+    ),
+    !vm_witness.phase_a_native_payload_control_is_bound(
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..pre,
+        validation_context_hash: h_b,
+      },
+      witness,
+      control,
+      3,
+      6,
+    ),
+    !vm_witness.phase_a_native_payload_control_is_bound(
+      pre,
+      witness,
+      vm_machine_types.PhaseANativeScriptsControlV1 {
+        ..control,
+        continuation_cbor: #"00",
+      },
+      3,
+      6,
+    ),
+    !vm_witness.phase_a_native_payload_control_is_bound(
+      pre,
+      witness,
+      vm_machine_types.PhaseANativeScriptsControlV1 { ..control, result: 1 },
+      3,
+      6,
+    ),
+    !vm_witness.phase_a_native_payload_control_is_bound(
+      pre,
+      witness,
+      control,
+      7,
+      8,
+    ),
+  }
 }

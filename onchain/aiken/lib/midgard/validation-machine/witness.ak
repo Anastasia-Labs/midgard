@@ -1112,6 +1112,196 @@ pub fn phase_a_native_control_is_bound(
   }
 }
 
+// Payload steps carry the already authenticated late-continuation bytes unchanged.
+// The return-to-NativeScripts step retains the complete continuation validation.
+pub fn phase_a_native_control_is_bound_carried(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+) -> Bool {
+  let scripts_are_empty = witness_set.script_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment
+  let is_late_continuation = control.continuation_cbor != #""
+  and {
+    verified.version == 1,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    bytearray.length(control.resolution_schedule_hash) == 32,
+    control.stage >= 0,
+    control.stage <= 8,
+    control.script_count >= -1,
+    control.script_count <= max_tx_size_derived_collection_item_count,
+    control.script_seen >= 0,
+    if is_late_continuation {
+      and {
+        control.stage > 0,
+        control.script_count == 1,
+        control.script_seen == 0,
+        control.contains_non_native_script == 0,
+      }
+    } else if scripts_are_empty {
+      control.script_count == 0 && control.script_seen == 0
+    } else if control.script_count == -1 {
+      control.script_seen == 0
+    } else {
+      control.script_count > 0 && control.script_seen <= control.script_count
+    },
+    control.contains_non_native_script == 0 || control.contains_non_native_script == 1,
+    control.signer_count >= 0,
+    control.signer_count <= max_tx_size_derived_collection_item_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.signer_count,
+      control.signer_peaks,
+    ),
+    control.item_length >= 0,
+    control.item_length <= max_aggregate_field_preimage_bytes,
+    control.cursor >= 0,
+    control.cursor <= control.item_length,
+    control.stack_depth >= 0,
+    control.stack_depth <= native_script_scan_v1.max_native_script_depth,
+    control.node_count >= 0,
+    control.node_count <= native_script_scan_v1.max_native_script_nodes,
+    control.result >= -1,
+    control.result <= 1,
+    if control.stage == 0 {
+      and {
+        !is_late_continuation,
+        control.item_length == 0,
+        control.item_commitment == #"",
+        control.cursor == 0,
+        control.stack_root == #"",
+        control.stack_depth == 0,
+        control.node_count == 0,
+        control.result == -1,
+      }
+    } else {
+      and {
+        control.script_count > 0,
+        control.script_seen < control.script_count,
+        control.item_length > 0,
+        bytearray.length(control.item_commitment) == 32,
+        if control.stack_root == #"" {
+          control.stack_depth == 0
+        } else {
+          and {
+            bytearray.length(control.stack_root) == 32,
+            control.stack_depth > 0,
+          }
+        },
+        if control.stage == 2 {
+          control.result >= 0
+        } else {
+          control.result == -1
+        },
+      }
+    },
+    witness.work_witness_cbor == encode_phase_a_native_scripts_scan_witness(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+      control.context_cbor,
+      control.resolution_schedule_hash,
+      control.stage,
+      control.script_count,
+      control.script_seen,
+      control.contains_non_native_script,
+      control.item_length,
+      control.item_commitment,
+      control.cursor,
+      control.stack_root,
+      control.stack_depth,
+      control.node_count,
+      control.result,
+      control.signer_count,
+      control.signer_peaks,
+      control.continuation_cbor,
+    ),
+  }
+}
+
+pub fn phase_a_native_payload_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  min_stage: Int,
+  max_stage: Int,
+) -> Bool {
+  let is_late_continuation = control.continuation_cbor != #""
+  and {
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    bytearray.length(control.resolution_schedule_hash) == 32,
+    control.stage >= min_stage,
+    control.stage <= max_stage,
+    control.script_count > 0,
+    control.script_count <= max_tx_size_derived_collection_item_count,
+    control.script_seen >= 0,
+    control.script_seen < control.script_count,
+    if is_late_continuation {
+      and {
+        control.stage > 0,
+        control.script_count == 1,
+        control.script_seen == 0,
+        control.contains_non_native_script == 0,
+      }
+    } else {
+      True
+    },
+    control.contains_non_native_script == 0 || control.contains_non_native_script == 1,
+    control.signer_count >= 0,
+    control.signer_count <= max_tx_size_derived_collection_item_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.signer_count,
+      control.signer_peaks,
+    ),
+    control.item_length > 0,
+    bytearray.length(control.item_commitment) == 32,
+    control.item_length <= max_aggregate_field_preimage_bytes,
+    control.cursor >= 0,
+    control.cursor <= control.item_length,
+    control.stack_depth >= 0,
+    control.stack_depth <= native_script_scan_v1.max_native_script_depth,
+    control.node_count >= 0,
+    control.node_count <= native_script_scan_v1.max_native_script_nodes,
+    control.result == -1,
+    if control.stack_root == #"" {
+      control.stack_depth == 0
+    } else {
+      bytearray.length(control.stack_root) == 32 && control.stack_depth > 0
+    },
+    witness.work_witness_cbor == encode_phase_a_native_scripts_scan_witness(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+      control.context_cbor,
+      control.resolution_schedule_hash,
+      control.stage,
+      control.script_count,
+      control.script_seen,
+      control.contains_non_native_script,
+      control.item_length,
+      control.item_commitment,
+      control.cursor,
+      control.stack_root,
+      control.stack_depth,
+      control.node_count,
+      control.result,
+      control.signer_count,
+      control.signer_peaks,
+      control.continuation_cbor,
+    ),
+  }
+}
+
 pub fn reset_phase_a_native_control(
   control: PhaseANativeScriptsControlV1,
   script_count: Int,

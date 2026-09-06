@@ -387,3 +387,24 @@ MIDGARD_PRINT_PROOF_FIT=1 pnpm test -- tests/submit-init-emulator-validation-dis
 - **Spec**: GOAL_SPEC §8.3 C44 (every node kind, thresholds, empty/invalid
   cases) is unaffected; C53 (resolver proof-fit sweep) is what this plan
   serves.
+
+## Implementation evidence (shared integration, 2026-09-05)
+
+The split source modules now implement PA-CARRY in
+`validation-machine/witness.ak` and PA-UNDECODED in that module plus
+`validation-machine/phase-a-native-scripts.ak`. Payload callers retain their
+exact stage guards; timelock still authenticates and decodes the transaction
+interval. The item and return/advance paths retain full continuation checks.
+
+Pinned normal testnet build measured signature between 12,365 bytes,
+above-last 12,226, below-first 12,190, membership 12,120, empty 12,027;
+all/any frame 11,995, at-least frame 11,971, all/any empty 11,491,
+at-least empty 11,509, token-head 11,256 and timelock 14,157.
+The fail-closed module guard collected and passed 193 machine tests, including
+`phase_a_payload_binding_matches_full_binding` and existing nested signature,
+empty signer and timelock transitions. The property compares full and payload
+bindings on positive-stage controls and refuses changed source/context,
+carried bytes, verdict and stage window.
+
+This records the payload pruning prerequisite. The item yield, deployed
+semantic-reference publication/lifecycle and family closure gates remain open.

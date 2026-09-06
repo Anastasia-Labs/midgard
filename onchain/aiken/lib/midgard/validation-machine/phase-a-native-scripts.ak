@@ -24,7 +24,8 @@ use midgard/validation_machine/witness.{
   encode_native_scripts_control_v1, encode_phase_a_native_scripts_scan_witness,
   encode_phase_a_script_preconditions_witness,
   native_scripts_control_from_witness, phase_a_native_control_from_witness,
-  phase_a_native_control_is_bound, reset_phase_a_native_control,
+  phase_a_native_control_is_bound, phase_a_native_control_is_bound_carried,
+  phase_a_native_payload_control_is_bound, reset_phase_a_native_control,
 }
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
@@ -774,6 +775,28 @@ pub fn verify_phase_a_native_token_semantics_v1(
   )
 }
 
+fn authenticated_phase_a_native_payload_window_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  min_stage: Int,
+  max_stage: Int,
+) -> Option<NativeChunkWindowV1> {
+  if phase_a_native_payload_control_is_bound(
+    pre,
+    witness,
+    control,
+    min_stage,
+    max_stage,
+  ) {
+    phase_a_native_chunk_window(control, chunk_proof, next_chunk_proof)
+  } else {
+    None
+  }
+}
+
 fn authenticated_phase_a_native_window_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -787,7 +810,7 @@ fn authenticated_phase_a_native_window_v1(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  if phase_a_native_control_is_bound(
+  if phase_a_native_control_is_bound_carried(
     pre,
     witness,
     control,
@@ -851,17 +874,24 @@ fn verify_phase_a_native_token_head_scan_v1(
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Bool {
   when
-    authenticated_phase_a_native_token_head_v1(
+    authenticated_phase_a_native_payload_window_v1(
       pre,
       witness,
       control,
       chunk_proof,
       next_chunk_proof,
+      1,
+      1,
     )
   is {
     None -> False
     Some(authenticated) ->
-      when authenticated.head is {
+      when
+        native_script_scan_v1.token_head_at_v1(
+          authenticated.bytes,
+          authenticated.offset,
+        )
+      is {
         None ->
           rejected_successor_is_exact(
             pre,
@@ -877,7 +907,7 @@ fn verify_phase_a_native_token_head_scan_v1(
             )
           } else {
             let next_node_count = control.node_count + 1
-            let next_offset = control.cursor + head.next_offset - authenticated.window.offset
+            let next_offset = control.cursor + head.next_offset - authenticated.offset
             if next_node_count > native_script_scan_v1.max_native_script_nodes {
               rejected_successor_is_exact(
                 pre,
@@ -986,12 +1016,14 @@ fn authenticated_phase_a_native_all_or_any_payload_v1(
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Option<Option<native_script_scan_v1.NativeScriptTokenV1>> {
   when
-    authenticated_phase_a_native_window_v1(
+    authenticated_phase_a_native_payload_window_v1(
       pre,
       witness,
       control,
       chunk_proof,
       next_chunk_proof,
+      4,
+      5,
     )
   is {
     None -> None
@@ -1004,8 +1036,8 @@ fn authenticated_phase_a_native_all_or_any_payload_v1(
       } else {
         Some(
           native_script_scan_v1.all_or_any_payload_at_v1(
-            authenticated.window.bytes,
-            authenticated.window.offset,
+            authenticated.bytes,
+            authenticated.offset,
             control.cursor,
             control.stage - 3,
           ),
@@ -1022,12 +1054,14 @@ fn authenticated_phase_a_native_at_least_payload_v1(
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Option<Option<native_script_scan_v1.NativeScriptTokenV1>> {
   when
-    authenticated_phase_a_native_window_v1(
+    authenticated_phase_a_native_payload_window_v1(
       pre,
       witness,
       control,
       chunk_proof,
       next_chunk_proof,
+      6,
+      6,
     )
   is {
     None -> None
@@ -1037,8 +1071,8 @@ fn authenticated_phase_a_native_at_least_payload_v1(
       } else {
         Some(
           native_script_scan_v1.at_least_payload_at_v1(
-            authenticated.window.bytes,
-            authenticated.window.offset,
+            authenticated.bytes,
+            authenticated.offset,
             control.cursor,
           ),
         )
@@ -1685,12 +1719,14 @@ fn verify_phase_a_native_signature_payload_with_v1(
   signer_result: fn(ByteArray, PhaseANativeScriptsControlV1) -> Option<Bool>,
 ) -> Bool {
   when
-    authenticated_phase_a_native_window_v1(
+    authenticated_phase_a_native_payload_window_v1(
       pre,
       witness,
       control,
       chunk_proof,
       next_chunk_proof,
+      3,
+      3,
     )
   is {
     None -> False
@@ -1700,8 +1736,8 @@ fn verify_phase_a_native_signature_payload_with_v1(
       } else {
         when
           native_script_scan_v1.signature_payload_at_v1(
-            authenticated.window.bytes,
-            authenticated.window.offset,
+            authenticated.bytes,
+            authenticated.offset,
             control.cursor,
           )
         is {
