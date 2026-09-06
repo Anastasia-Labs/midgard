@@ -327,9 +327,9 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: 49,
-        requestedCategoryCount: 49,
-        readyCategoryCount: 49,
+        installedCategoryCount: 50,
+        requestedCategoryCount: 50,
+        readyCategoryCount: 50,
         missingCategoryCount: 0,
       });
 
@@ -1188,8 +1188,8 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      expect(deps.makeLucid).toHaveBeenCalledTimes(49);
-      expect(transport.stop).toHaveBeenCalledTimes(49);
+      expect(deps.makeLucid).toHaveBeenCalledTimes(50);
+      expect(transport.stop).toHaveBeenCalledTimes(50);
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),

@@ -794,3 +794,21 @@ identity cases, three watcher cases, two published MPF prefix cases, 26 exact
 raw-L1/source-admission cases, and 45 withdrawal canonical-reconstruction cases.
 This evidence closes these integrations, not the remaining category/workflow,
 maximum-carriage, all-category frozen-tree, or final-review gates.
+
+### Shared cross-block integration evidence (2026-09-05)
+
+Integrated the cross-block installed family and digest opening in `8ab83dce`,
+`684ec0e2`, and `d30dbad3`. The consolidated pinned testnet blueprint contains
+841 entries and has SHA-256
+`65cb52282cdc718d803c6ac0eed90e5d30268122c435a6ab850acc355c717231`.
+All six installed/maximum cross-block lifecycle cases passed on this blueprint,
+including authenticated settlement creation, raw L1 recovery, permanent proof,
+and removal. The regenerated 77-row ledger passes its current-blueprint verifier:
+maximum signed size 12,300 bytes, memory 4,141,688, CPU 1,268,248,489.
+Classifier/runtime/preparation checks collected 18 passing cases, and the watcher
+application collected three passing cases with 50 installed categories.
+
+The independent descriptor map-order correction (`18722129`) passed 14 focused
+shared-tree tests; five-publication 64 KiB raw evidence recovery (`342c07e6`)
+passed seven shared-tree tests. These checks do not close the remaining
+withdrawal, mint authorization, transition trace, or validation-dispute work.
