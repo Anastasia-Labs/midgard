@@ -29,7 +29,7 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 describe("missing-native-script-tx emulator lifecycle", () => {
-  it.skip("proves the absent script through six reference-script steps, cancels explicitly, and removes the fraudulent commitment", async () => {
+  it("proves the absent script through six reference-script steps, cancels explicitly, and removes the fraudulent commitment", async () => {
     const harness = await makeMissingNativeScriptTxEmulatorHarness();
     const fixture = await setupMissingNativeScriptTxFixture({ harness });
     const refs = await publishMissingNativeScriptTxReferenceScripts({
