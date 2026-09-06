@@ -46,6 +46,12 @@ import {
   validationSemanticResolverGlobalIndex,
   validationValueAndMintSemanticReferenceScriptDeploymentEntry,
 } from "../../../src/index.js";
+import { deriveLedgerOutputProofStepPlan } from "../../../src/ledger-output-proof-plan.js";
+import {
+  LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES,
+  LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES,
+  LEDGER_OUTPUT_PROOF_STAGE_YIELD_ROLES,
+} from "../../../src/validation-dispute/ledger-output-proof-yields.js";
 import {
   SCRIPT_SOURCES_DESCRIPTOR_YIELD_ROLE,
   SCRIPT_SOURCES_MIDDLE_YIELD_ROLES,
@@ -786,6 +792,70 @@ export const runForcedValidationDisputeScenario = async (
   }
   if (stagedResolverIndex === 8 && stagedSemanticIndex === 0) {
     for (const spec of SCRIPT_SOURCES_MIDDLE_YIELD_ROLES) {
+      const contract =
+        contracts.fraudProofContracts.validationTraceDispute.yields[
+          spec.contract
+        ];
+      const publication = await publishAuthenticatedValidationDisputeControl({
+        lucid: challengerLucid,
+        authPolicy: referenceScriptAuth,
+        target: {
+          control: spec.contract,
+          name: spec.role,
+          script: contract.withdrawalScript,
+        },
+      });
+      semanticDeploymentInfo = {
+        ...semanticDeploymentInfo,
+        contracts: {
+          ...semanticDeploymentInfo.contracts,
+          [spec.deployment]: {
+            scriptHash: contract.withdrawalScriptHash,
+            refScriptUTxO: {
+              txHash: publication.utxo.txHash,
+              outputIndex: publication.utxo.outputIndex,
+            },
+          },
+        },
+      };
+    }
+  }
+  if (
+    (stagedResolverIndex === 7 && [3, 4].includes(stagedSemanticIndex)) ||
+    (stagedResolverIndex === 8 && [2, 3].includes(stagedSemanticIndex))
+  ) {
+    const argument = fixture.evidence.oneStepArgument;
+    const finalize =
+      stagedSemanticIndex === (stagedResolverIndex === 7 ? 4 : 3);
+    const specs = finalize
+      ? [...LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES]
+      : (() => {
+          const plan = deriveLedgerOutputProofStepPlan({
+            resolverIndex: argument.resolverIndex,
+            semanticResolverIndex: argument.semanticResolverIndex,
+            transitionCbor: argument.transitionCbor,
+            auxiliaryCbor: argument.auxiliaryCbor,
+            ...(argument.ledgerOutputProofSuccessorWorkWitnessCbor === undefined
+              ? {}
+              : {
+                  ledgerOutputProofSuccessorWorkWitnessCbor:
+                    argument.ledgerOutputProofSuccessorWorkWitnessCbor,
+                }),
+          });
+          const stageSpec =
+            LEDGER_OUTPUT_PROOF_STAGE_YIELD_ROLES[plan.roleIndex];
+          if (stageSpec === undefined)
+            throw new Error(
+              "Ledger output proof stage role is outside the roles table",
+            );
+          return [
+            stageSpec,
+            ...plan.attestationRoles.map(
+              (role) => LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES[role],
+            ),
+          ];
+        })();
+    for (const spec of specs) {
       const contract =
         contracts.fraudProofContracts.validationTraceDispute.yields[
           spec.contract
