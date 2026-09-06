@@ -8,6 +8,7 @@ import {
   VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import {
+  bindFraudProofWorkflowDeployment,
   CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   classifyHeader as classifyProductionHeaderV1,
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
@@ -15,6 +16,8 @@ import {
   createCanonicalDecodabilityWorkflowRunner,
   createCommittedFieldShapeWorkflowRunner,
   createCompleteCanonicalReplayUnion,
+  createCrossBlockDuplicateEventWorkflowRunner,
+  createCrossBlockSettlementAuthority,
   createDaHashPreimageWorkflowRunner,
   createDistinctAssetAccumulationWorkflowRunner,
   createDoubleSpendWorkflowRunner,
@@ -37,6 +40,7 @@ import {
   createL2TxMistagWorkflowRunner,
   createManifestBoundCanonicalDecodabilityWorkflow,
   createManifestBoundCommittedFieldShapeWorkflow,
+  createManifestBoundCrossBlockDuplicateEventWorkflow,
   createManifestBoundDaHashPreimageWorkflow,
   createManifestBoundDistinctAssetAccumulationWorkflow,
   createManifestBoundDoubleSpendWorkflow,
@@ -113,6 +117,7 @@ import {
   createWithdrawnReferenceInputWorkflowRunner,
   createWitnessScriptDecodingWorkflowRunner,
   createZeroInputWorkflowRunner,
+  CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
   DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
@@ -137,6 +142,7 @@ import {
   makeLucidForSubmit,
   type ManifestBoundCanonicalDecodabilityWorkflowConfig,
   type ManifestBoundCommittedFieldShapeWorkflowConfig,
+  type ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
   type ManifestBoundDaHashPreimageWorkflowConfig,
   type ManifestBoundDistinctAssetAccumulationWorkflowConfig,
   type ManifestBoundDoubleSpendWorkflowConfig,
@@ -226,6 +232,10 @@ import {
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import {
+  CrossBlockDuplicateEventStep02DatumSchema,
+  FraudProofComputationThreadStepDatum,
+} from "@al-ft/midgard-sdk";
+import {
   type AuthenticatedStateQueueHeaderObservation,
   CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -246,6 +256,7 @@ import type {
   WatcherConfig,
   WatcherWalletKeySource,
 } from "../runtime/config.js";
+import { parseWatcherConfig } from "../runtime/config.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
@@ -292,6 +303,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "committedFieldShape",
   "minFee",
   "doubleWithdraw",
+  "crossBlockDuplicateEvent",
   "l2TxMistag",
   "withdrawnInput",
   "valueNotPreserved",
@@ -331,7 +343,6 @@ export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([
   "transitionTrace",
   "validationTraceDispute",
   "withdrawalMistag",
-  "crossBlockDuplicateEvent",
   "mintAuthorization",
 ] as const);
 
@@ -510,6 +521,10 @@ type TaggedWorkflowConfig =
   | Readonly<{
       category: "nativeScriptDecoding";
       config: ManifestBoundNativeScriptDecodingWorkflowConfig;
+    }>
+  | Readonly<{
+      category: "crossBlockDuplicateEvent";
+      config: ManifestBoundCrossBlockDuplicateEventWorkflowConfig;
     }>
   | Readonly<{
       category: "missingNativeScriptUtxo";
@@ -806,6 +821,10 @@ const constructProductionWorkflow = async (
       return await createManifestBoundNativeScriptInvalidWorkflow(input.config);
     case "nativeScriptDecoding":
       return await createManifestBoundNativeScriptDecodingWorkflow(
+        input.config,
+      );
+    case "crossBlockDuplicateEvent":
+      return await createManifestBoundCrossBlockDuplicateEventWorkflow(
         input.config,
       );
     case "missingNativeScriptUtxo":
@@ -1351,6 +1370,14 @@ const referenceContracts = (
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         pexcludesWithdraw: "pexcludesWithdraw",
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "crossBlockDuplicateEvent":
+      return Object.freeze({
+        phasMembershipWithdraw: "phasMembershipWithdraw",
+        step01: "fraudProofCrossBlockDuplicateEvent",
+        step02: "fraudProofCrossBlockDuplicateEventStep02",
+        computationThreadMint: "computationThreadMint",
+        fraudProofMint: "fraudProofMint",
       });
     case "nativeScriptDecoding":
       return Object.freeze({
@@ -2132,6 +2159,13 @@ function taggedConfig(
   common: CommonInfrastructure,
 ): Extract<TaggedWorkflowConfig, { readonly category: "nativeScriptDecoding" }>;
 function taggedConfig(
+  category: "crossBlockDuplicateEvent",
+  common: CommonInfrastructure,
+): Extract<
+  TaggedWorkflowConfig,
+  { readonly category: "crossBlockDuplicateEvent" }
+>;
+function taggedConfig(
   category: "missingNativeScriptUtxo",
   common: CommonInfrastructure,
 ): Extract<
@@ -2776,6 +2810,27 @@ function taggedConfig(
             fieldPreimageCertificateMint: reference(
               "fieldPreimageCertificateMint",
             ),
+          }),
+        }),
+      });
+    case "crossBlockDuplicateEvent":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          historySource: common.historicalNativeScriptAuthority.historySource,
+          checkpointStore:
+            common.historicalNativeScriptAuthority.checkpointStore,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+            ] as const),
+            witnesses: Object.freeze({
+              phasMembershipWithdraw: reference("phasMembershipWithdraw"),
+              computationThreadMint: reference("computationThreadMint"),
+              fraudProofMint: reference("fraudProofMint"),
+            }),
           }),
         }),
       });
@@ -3581,6 +3636,11 @@ const taggedReferenceOutRefs = (
           ...Object.values(tagged.config.referenceScripts.witnesses),
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
         ];
+      case "crossBlockDuplicateEvent":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+        ];
       case "nativeScriptInvalid":
       case "nativeScriptDecoding":
       case "missingNativeScriptUtxo":
@@ -3831,6 +3891,7 @@ const WATCHER_INSTALLED_COMPLETE_REPLAY = createCompleteCanonicalReplayUnion([
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
   MIN_FEE_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+  CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
   L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
   VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
@@ -4026,6 +4087,9 @@ const createApplication = ({
     category: "nativeScriptDecoding",
   ): TaggedWorkflowLoaderFor<"nativeScriptDecoding">;
   function makeTaggedLoader(
+    category: "crossBlockDuplicateEvent",
+  ): TaggedWorkflowLoaderFor<"crossBlockDuplicateEvent">;
+  function makeTaggedLoader(
     category: "missingNativeScriptUtxo",
   ): TaggedWorkflowLoaderFor<"missingNativeScriptUtxo">;
   function makeTaggedLoader(
@@ -4148,6 +4212,7 @@ const createApplication = ({
     missingNativeScriptUtxo: makeTaggedLoader("missingNativeScriptUtxo"),
     nativeScriptInvalid: makeTaggedLoader("nativeScriptInvalid"),
     nativeScriptDecoding: makeTaggedLoader("nativeScriptDecoding"),
+    crossBlockDuplicateEvent: makeTaggedLoader("crossBlockDuplicateEvent"),
     minAda: makeTaggedLoader("minAda"),
     valueNotPreserved: makeTaggedLoader("valueNotPreserved"),
     fieldPreimageLengthMismatch: makeTaggedLoader(
@@ -4519,6 +4584,20 @@ const createApplication = ({
   ) => {
     const loaded = await taggedLoaders.nativeScriptDecoding(input);
     if (loaded.config.category !== "nativeScriptDecoding") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const crossBlockDuplicateEventLoader = async (
+    input: Parameters<(typeof taggedLoaders)["crossBlockDuplicateEvent"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.crossBlockDuplicateEvent(input);
+    if (loaded.config.category !== "crossBlockDuplicateEvent") {
       await loaded.close();
       throw new Error("workflow loader changed its fixed category");
     }
@@ -4992,6 +5071,10 @@ const createApplication = ({
       nativeScriptDecodingLoader,
       fundingProfile("nativeScriptDecoding"),
     ),
+    crossBlockDuplicateEvent: createCrossBlockDuplicateEventWorkflowRunner(
+      crossBlockDuplicateEventLoader,
+      fundingProfile("crossBlockDuplicateEvent"),
+    ),
     minAda: createMinAdaWorkflowRunner(minAdaLoader, fundingProfile("minAda")),
     valueNotPreserved: createValueConservationWorkflowRunner(
       valueNotPreservedLoader,
@@ -5104,17 +5187,73 @@ const createApplication = ({
     })),
   });
   let classifierPromise: ReturnType<typeof createHeaderClassifier> | undefined;
-  const loadClassifier = () => {
-    classifierPromise ??= createHeaderClassifier({
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      replayer: WATCHER_INSTALLED_COMPLETE_REPLAY,
-      releaseFinalityAuthority:
-        watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
-      historicalReplayAuthority: Object.freeze({
-        checkpointStore: historicalNativeScriptAuthority.checkpointStore,
+  const loadClassifier = (watcherConfigValue: unknown, headerHash: string) => {
+    classifierPromise ??= (async () => {
+      const watcherConfig = parseWatcherConfig(watcherConfigValue);
+      if (watcherConfig.l1.source.sourceMode !== "local_node")
+        throw new Error(
+          "cross-block settlement authority requires local-node source",
+        );
+      const kupo = watcherConfig.l1.source.queryServices.find(
+        (service) => service.kind === "kupo",
+      );
+      const ogmios = watcherConfig.l1.source.queryServices.find(
+        (service) => service.kind === "ogmios",
+      );
+      if (kupo === undefined || ogmios === undefined)
+        throw new Error(
+          "cross-block settlement authority requires Kupo and Ogmios",
+        );
+      const [manifestJson, blueprintJson, deploymentInfoJson] =
+        await Promise.all(
+          [
+            infrastructure.manifestPath,
+            infrastructure.blueprintPath,
+            infrastructure.deploymentInfoPath,
+          ].map(
+            async (path) =>
+              await dependencies.readText(
+                await requireCanonicalFile(path, dependencies),
+              ),
+          ),
+        );
+      const binding = await bindFraudProofWorkflowDeployment({
+        manifest: JSON.parse(manifestJson!),
+        blueprintJson: blueprintJson!,
+        deploymentInfo: JSON.parse(deploymentInfoJson!),
+        category: "crossBlockDuplicateEvent",
+        headerHash,
+        proverCredential: "00".repeat(28),
+        stepDatumSchemas: [
+          FraudProofComputationThreadStepDatum,
+          CrossBlockDuplicateEventStep02DatumSchema,
+        ],
+      });
+      if (binding.deploymentFingerprint !== deploymentIdentity.manifestId)
+        throw new Error("cross-block settlement classifier changed deployment");
+      const settlementAuthority = createCrossBlockSettlementAuthority({
+        binding,
+        source: {
+          sourceId: `watcher-settlement-history/${deploymentIdentity.manifestId}`,
+          kupoHttpUrl: kupo.endpoint,
+          ogmiosUrl: ogmios.endpoint,
+          timeoutMs: watcherConfig.l1.requestTimeoutMs,
+        },
         historySource: historicalNativeScriptAuthority.historySource,
-      }),
-    });
+        checkpointStore: historicalNativeScriptAuthority.checkpointStore,
+      });
+      return await createHeaderClassifier({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        replayer: WATCHER_INSTALLED_COMPLETE_REPLAY,
+        releaseFinalityAuthority:
+          watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
+        settlementAuthority,
+        historicalReplayAuthority: Object.freeze({
+          checkpointStore: historicalNativeScriptAuthority.checkpointStore,
+          historySource: historicalNativeScriptAuthority.historySource,
+        }),
+      });
+    })();
     return classifierPromise;
   };
   const application: WatcherFaultProofApplication = Object.freeze({
@@ -5153,7 +5292,10 @@ const createApplication = ({
           );
         }
         const decision = await classifyProductionHeaderV1({
-          classifier: await loadClassifier(),
+          classifier: await loadClassifier(
+            watcherConfig,
+            input.observation.headerHash,
+          ),
           observation: input.observation,
           authenticatedObservationDigest: input.authenticatedObservationDigest,
           sources: retainedDa.sources,

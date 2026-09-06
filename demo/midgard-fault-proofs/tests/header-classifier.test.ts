@@ -12,6 +12,7 @@ import {
   COMPLETE_CANONICAL_REPLAY,
   type CompleteCanonicalReplay,
   createCompleteCanonicalReplayUnion,
+  CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
   FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
@@ -88,6 +89,28 @@ const retainedDaSource = ({
 });
 
 describe("production authenticated-header classifier V1", () => {
+  it("requires admitted settlement authority for cross-block duplicate replay", async () => {
+    const config = {
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      replayer: CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
+      releaseFinalityAuthority: finalityAuthority(),
+    };
+    await expect(createHeaderClassifier(config)).rejects.toThrow(
+      /requires live settlement authority/u,
+    );
+    await expect(
+      createHeaderClassifier({
+        ...config,
+        settlementAuthority: {
+          deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+          capture: async () => {
+            throw new Error("untrusted provider must not run");
+          },
+        },
+      }),
+    ).rejects.toThrow(/was not admitted/u);
+  });
+
   it("admits only closed replay unions in canonical catalogue order", async () => {
     expect(() =>
       createCompleteCanonicalReplayUnion([

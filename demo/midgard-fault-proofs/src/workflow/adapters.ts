@@ -398,14 +398,14 @@ const workflowAdapterRegistrationRows = [
   {
     category: "crossBlockDuplicateEvent",
     status: "missing",
-    reason: "partial_resume_surface_has_no_complete_driver",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
-      "cross-block-duplicate-event/prepare.ts",
-      "cross-block-duplicate-event/resume.ts",
-      "cross-block-duplicate-event/submit-cross-block-duplicate-event-init.ts",
+      "cross-block-duplicate-event/workflow.ts",
+      "cross-block-duplicate-event/settlement-authority.ts",
+      "remove-fraudulent-block.ts",
     ],
     requiredClosure:
-      "wrap init and both resume positions in one per-transaction intent/evaluate/submit/reconcile state machine",
+      "install and exercise the manifest-bound cross-block runner with authenticated live settlement NFT history and retained public DA",
   },
   {
     category: "l2TxMistag",

@@ -55,6 +55,11 @@ import {
 } from "@al-ft/midgard-validation";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
+import { detectCrossBlockDuplicateEvents } from "../cross-block-duplicate-event/replay.js";
+import {
+  type CrossBlockSettlementContext,
+  crossBlockSettlementRecords,
+} from "../cross-block-duplicate-event/settlement-authority.js";
 import { detectDistinctAssetAccumulationCanonicalViolations } from "../distinct-asset-accumulation-limit/authenticated-replay.js";
 import {
   type CanonicalBlockEvidence,
@@ -145,6 +150,7 @@ export type CompleteCanonicalReplayPredecessor = Readonly<{
 }>;
 
 export type CompleteCanonicalReplayContext = Readonly<{
+  settlements?: CrossBlockSettlementContext;
   /**
    * Exact public-DA/L1-authenticated predecessor. Required by ledger-relative
    * detectors unless the current header commits the empty genesis ledger.
@@ -155,6 +161,7 @@ export type CompleteCanonicalReplayContext = Readonly<{
 }>;
 
 export type CompleteCanonicalReplayContextIdentity = Readonly<{
+  settlementContextDigest?: string;
   predecessorHeaderHash?: string;
   predecessorPayloadEnvelopeSha256?: string;
   predecessorPayloadSha256?: string;
@@ -270,11 +277,22 @@ const replayContextIdentity = ({
 }): CompleteCanonicalReplayContextIdentity | null => {
   const predecessor = requireReplayPredecessorEvidence({ evidence, context });
   const historical = context?.historicalCorpus;
-  if (predecessor === undefined && historical === undefined) return null;
+  const settlements = context?.settlements;
+  if (settlements !== undefined)
+    crossBlockSettlementRecords(evidence, settlements);
+  if (
+    predecessor === undefined &&
+    historical === undefined &&
+    settlements === undefined
+  )
+    return null;
   if (historical !== undefined) {
     requireReplayHistoricalCorpus({ evidence, context });
   }
   return Object.freeze({
+    ...(settlements === undefined
+      ? {}
+      : { settlementContextDigest: settlements.contextDigest }),
     ...(predecessor === undefined
       ? {}
       : {
@@ -1525,6 +1543,18 @@ export const createFabricatedWithdrawalCompleteCanonicalReplay = ({
 };
 
 /** Complete evaluation of all accepted native script witnesses. */
+export const CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(["crossBlockDuplicateEvent"], async (evidence, context) => {
+    if (context?.settlements === undefined)
+      throw new Error(
+        "cross-block duplicate replay requires authenticated live settlement context",
+      );
+    return detectCrossBlockDuplicateEvents({
+      evidence,
+      context: context.settlements,
+    });
+  });
+
 export const NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(
     ["nativeScriptDecoding"],

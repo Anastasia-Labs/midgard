@@ -14,6 +14,10 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import {
+  type CrossBlockSettlementAuthority,
+  requireCrossBlockSettlementAuthority,
+} from "../cross-block-duplicate-event/settlement-authority.js";
+import {
   fetchFraudProofEvidence,
   FRAUD_PROOF_EVIDENCE_ROUTE,
 } from "../evidence/fraud-proof-evidence.js";
@@ -219,6 +223,7 @@ const admittedClassifiers = new WeakMap<
   Readonly<{
     replayer: CompleteCanonicalReplay;
     confirmationDepth: number;
+    settlementAuthority?: CrossBlockSettlementAuthority;
     historicalReplayAuthority?: Readonly<{
       checkpointStore: HistoricalNativeScriptCheckpointStore;
       historySource: HistoricalNativeScriptHistorySource;
@@ -255,10 +260,12 @@ export const createHeaderClassifier = async ({
   replayer,
   releaseFinalityAuthority,
   historicalReplayAuthority,
+  settlementAuthority,
 }: {
   readonly deploymentFingerprint: string;
   readonly replayer: CompleteCanonicalReplay;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
+  readonly settlementAuthority?: CrossBlockSettlementAuthority;
   readonly historicalReplayAuthority?: Readonly<{
     checkpointStore: HistoricalNativeScriptCheckpointStore;
     historySource: HistoricalNativeScriptHistorySource;
@@ -268,6 +275,21 @@ export const createHeaderClassifier = async ({
     deploymentFingerprint,
   );
   requireCompleteCanonicalReplayBundle(replayer);
+  if (
+    replayer.launchScope.includes("crossBlockDuplicateEvent") &&
+    settlementAuthority === undefined
+  )
+    throw new Error(
+      "cross-block duplicate classifier requires live settlement authority",
+    );
+  if (settlementAuthority !== undefined) {
+    requireCrossBlockSettlementAuthority(settlementAuthority);
+    if (
+      settlementAuthority.deploymentFingerprint !==
+      normalizedDeploymentFingerprint
+    )
+      throw new Error("cross-block settlement authority changed deployment");
+  }
   const requiresHistoricalReplay = replayer.launchScope.some((category) =>
     ["resolvedOutputNonCanonical", "spendInputSignerMissing"].includes(
       category,
@@ -316,6 +338,7 @@ export const createHeaderClassifier = async ({
     Object.freeze({
       replayer,
       confirmationDepth: releaseFinality.policy.confirmationDepth,
+      ...(settlementAuthority === undefined ? {} : { settlementAuthority }),
       ...(historicalReplayAuthority === undefined
         ? {}
         : { historicalReplayAuthority }),
@@ -767,6 +790,14 @@ export const classifyHeader = async ({
         evidence: routed.evidence,
         corpus,
       }),
+    });
+  }
+  if (classifier.launchScope.includes("crossBlockDuplicateEvent")) {
+    if (authority.settlementAuthority === undefined)
+      throw new Error("cross-block settlement authority was lost");
+    admittedReplayContext = Object.freeze({
+      ...admittedReplayContext,
+      settlements: await authority.settlementAuthority.capture(routed.evidence),
     });
   }
   const replayDecision = await authority.replayer.replay(

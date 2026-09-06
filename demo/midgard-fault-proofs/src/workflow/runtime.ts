@@ -1,6 +1,12 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import {
+  createManifestBoundCrossBlockDuplicateEventWorkflow,
+  type ManifestBoundCrossBlockDuplicateEventWorkflow,
+  type ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
+  runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
+} from "../cross-block-duplicate-event/workflow.js";
+import {
   createDistinctAssetAccumulationWorkflowRunnerSurface,
   type LoadDistinctAssetAccumulationWorkflow,
 } from "../distinct-asset-accumulation-limit/v1.js";
@@ -869,6 +875,26 @@ export const createNativeScriptDecodingWorkflowRunner = (
     }),
   });
 
+export const createCrossBlockDuplicateEventWorkflowRunner = (
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundCrossBlockDuplicateEventWorkflowConfig>,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner =>
+  createAdmittedWorkflowRunner({
+    category: "crossBlockDuplicateEvent",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundWorkflowRunOrResume({
+      category: "crossBlockDuplicateEvent",
+      loadRuntimeConfig,
+      constructWorkflow: createManifestBoundCrossBlockDuplicateEventWorkflow,
+      execute: async ({ workflow, sources, journal }) =>
+        await runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow({
+          workflow: workflow as ManifestBoundCrossBlockDuplicateEventWorkflow,
+          sources,
+          journal,
+        }),
+    }),
+  });
+
 export const createMissingNativeScriptUtxoWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMissingNativeScriptUtxoWorkflowConfig>,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -1321,6 +1347,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   missingNativeScriptUtxo: createMissingNativeScriptUtxoWorkflowRunner,
   nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner,
   nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner,
+  crossBlockDuplicateEvent: createCrossBlockDuplicateEventWorkflowRunner,
   minAda: createMinAdaWorkflowRunner,
   valueNotPreserved: createValueConservationWorkflowRunner,
   fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner,

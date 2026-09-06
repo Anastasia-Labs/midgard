@@ -30,6 +30,8 @@ export type FraudProofRawL1ComputationStepRole =
   | "computation_thread_step_17";
 
 export type FraudProofRawL1ScopeRole =
+  | "hub_oracle"
+  | "settlement"
   | "state_queue"
   | FraudProofRawL1ComputationStepRole
   | "permanent_proof_token"
@@ -134,6 +136,8 @@ const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;
 const UNIT = /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u;
 const MAX_COLLECTION_SIZE = 100_000;
 const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRole>([
+  "hub_oracle",
+  "settlement",
   "state_queue",
   "computation_thread_step_01",
   "computation_thread_step_02",

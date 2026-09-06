@@ -600,6 +600,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       "missingNativeScriptUtxo",
       "nativeScriptInvalid",
       "nativeScriptDecoding",
+      "crossBlockDuplicateEvent",
       "minAda",
       "valueNotPreserved",
       "fieldPreimageLengthMismatch",
