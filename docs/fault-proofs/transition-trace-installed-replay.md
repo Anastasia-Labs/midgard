@@ -84,3 +84,9 @@ The forced timing ledger separately records 116 transactions and 94 publications
 The accepted/deposit direct-family maximum fixtures remain in
 `size-plans/transition-trace-fit-ledger.json`; this installed receipt measures
 its own stated shapes rather than claiming every direct maximum was rerun here.
+
+Shared integration checkpoint: normal testnet all-contract build at `f5ea519a`
+produced blueprint `4247d99fd581a54edf952f93b6c9d4dcf9e6eaa66e52592dae71a7dfb73523e5`. FP typecheck passed.
+Shared combined suite passed 68/68: ScriptSources boundaries 25, discovery 18,
+TransitionTrace forced-source subvariants 6, and CEK context planner 19. The
+forced-window fit ledger was remeasured against this combined blueprint.
