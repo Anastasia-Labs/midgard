@@ -17,7 +17,10 @@
  * `@lucid-evolution/uplc` never reclaims wasm linear memory and vitest
  * isolates per FILE.
  */
-import { outRefLabel } from "@al-ft/midgard-core";
+import {
+  decodeMidgardLedgerOutputCommitment,
+  outRefLabel,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -37,6 +40,7 @@ import {
   buildMintAuthorizationLedgerFixture,
   buildMintAuthorizationSubject,
   makeMintAuthorizationEmulatorHarness,
+  mintItemCborV1,
   publishMintAuthorizationReferenceScripts,
   referenceInputItemCbor,
   setupMintAuthorizationScenario,
@@ -288,146 +292,165 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
     ).rejects.toThrow(/State queue does not contain block/);
   }, 600_000);
 
-  it("scans one reference input through the step-04 ResolveNext self-loop, then finalizes", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarness();
-    const {
-      realBlueprint,
-      funderLucid,
-      proverLucid,
-      proverSigner,
-      catalogue,
-      family,
-      category,
-    } = harness;
+  it.each([false, true])(
+    "checks the final reference source with matching policy %s",
+    async (matching) => {
+      const harness = await makeMintAuthorizationEmulatorHarness();
+      const {
+        realBlueprint,
+        funderLucid,
+        proverLucid,
+        proverSigner,
+        catalogue,
+        family,
+        category,
+      } = harness;
 
-    // One committed reference input; the pre-state ledger trie holds its
-    // descriptor, whose reference script hashes to something OTHER than the
-    // accused policy so the absence claim holds.
-    const refTxId = "cd".repeat(32);
-    const refOutputIndex = 2;
-    const ledger = await buildMintAuthorizationLedgerFixture({
-      txIdHex: refTxId,
-      outputIndex: refOutputIndex,
-    });
-    const subject = buildMintAuthorizationSubject({
-      mintItemCbors: smallMintItemCbors(),
-      referenceInputItemCbors: [
-        referenceInputItemCbor({
-          txIdHex: refTxId,
-          outputIndex: refOutputIndex,
-        }),
-      ],
-    });
-    const scenario = await setupMintAuthorizationScenario({
-      harness,
-      subject,
-      priorLedgerRoot: ledger.rootHex,
-    });
-    const { block, setup } = scenario;
-    if (block.txInclusion === null) {
-      throw new Error("normal mint-authorization fixture has no inclusion");
-    }
-    const [step01Ref, step02Ref, step03Ref, step04Ref, step05Ref] =
-      await publishMintAuthorizationReferenceScripts({
-        lucid: funderLucid,
-        contracts: family,
+      // One committed reference input; the pre-state ledger trie holds its
+      // descriptor, whose reference script hashes to something OTHER than the
+      // accused policy so the absence claim holds.
+      const refTxId = "cd".repeat(32);
+      const refOutputIndex = 2;
+      const ledger = await buildMintAuthorizationLedgerFixture({
+        txIdHex: refTxId,
+        outputIndex: refOutputIndex,
       });
+      const subject = buildMintAuthorizationSubject({
+        mintItemCbors: matching
+          ? [
+              mintItemCborV1({
+                policyId: decodeMidgardLedgerOutputCommitment(
+                  Buffer.from(ledger.descriptorCbor, "hex"),
+                ).referenceScriptHash,
+                assetName: Buffer.from("beef", "hex"),
+              }),
+            ]
+          : smallMintItemCbors(),
+        referenceInputItemCbors: [
+          referenceInputItemCbor({
+            txIdHex: refTxId,
+            outputIndex: refOutputIndex,
+          }),
+        ],
+      });
+      const scenario = await setupMintAuthorizationScenario({
+        harness,
+        subject,
+        priorLedgerRoot: ledger.rootHex,
+      });
+      const { block, setup } = scenario;
+      if (block.txInclusion === null) {
+        throw new Error("normal mint-authorization fixture has no inclusion");
+      }
+      const [step01Ref, step02Ref, step03Ref, step04Ref, step05Ref] =
+        await publishMintAuthorizationReferenceScripts({
+          lucid: funderLucid,
+          contracts: family,
+        });
 
-    const initResult = await submitMintAuthorizationInit({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      network,
-      contracts: family,
-      category,
-      catalogue: {
-        policyId: harness.contracts.fraudProofCatalogue.policyId,
-        spendingScriptAddress:
-          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-        root: catalogue.root,
-      },
-      signer: proverSigner,
-      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-      witnessReferenceScripts: setup.witnessReferenceScripts,
-    });
-    const step01 = await submitMintAuthorizationStep01({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      contracts: family,
-      categoryId: category.categoryId,
-      network,
-      signer: proverSigner,
-      threadOutRef: initResult.nextThreadOutRef,
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: block.txInclusion,
-      referenceScriptUtxo: step01Ref,
-      witnessReferenceScripts: setup.witnessReferenceScripts,
-    });
-    const step02 = await submitMintAuthorizationStep02({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: step01.nextThreadOutRef,
-      reconstruction: block.reconstruction,
-      policyIndex: ACCUSED_POLICY_INDEX,
-      direction: DIRECTION_SCRIPT_ABSENT,
-      nativeTxCompactCbor: block.nativeTxCompactCbor,
-      mintItemCbors: subject.mintItemCbors,
-      referenceScriptUtxo: step02Ref,
-    });
-    const step03 = await submitMintAuthorizationStep03WitnessAbsence({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: step02.nextThreadOutRef,
-      nativeTxCompactCbor: block.nativeTxCompactCbor,
-      witnessSet: subject.witnessSetCompact,
-      scriptTxWitsItemCbors: subject.scriptWitnessItemCbors,
-      referenceScriptUtxo: step03Ref,
-    });
-    const resolveNext = await submitMintAuthorizationStep04ResolveNext({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: step03.nextThreadOutRef,
-      nativeTxCompactCbor: block.nativeTxCompactCbor,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
-      trie: ledger.trie,
-      descriptorCborHex: ledger.descriptorCbor,
-      referenceScriptUtxo: step04Ref,
-    });
-    expect(resolveNext.nextRefCursor).toBe(1n);
-    expect(resolveNext.nextStepAddress).toBe(
-      family.steps[3].spendingScriptAddress,
-    );
-    const advance = await submitMintAuthorizationStep04AdvanceComplete({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: resolveNext.nextThreadOutRef,
-      nativeTxCompactCbor: block.nativeTxCompactCbor,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
-      referenceScriptUtxo: step04Ref,
-    });
-    const step05 = await submitMintAuthorizationStep05({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: advance.nextThreadOutRef,
-      referenceScriptUtxo: step05Ref,
-      witnessReferenceScripts: setup.witnessReferenceScripts,
-    });
-    const [fraudProofUtxo] = await proverLucid.utxosAtWithUnit(
-      step05.fraudProofAddress,
-      step05.fraudProofUnit,
-    );
-    if (fraudProofUtxo === undefined) {
-      throw new Error("step-05 did not mint the fraud-proof token");
-    }
-    expect(fraudProofUtxo.assets[step05.fraudProofUnit]).toBe(1n);
-  }, 600_000);
+      const initResult = await submitMintAuthorizationInit({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        network,
+        contracts: family,
+        category,
+        catalogue: {
+          policyId: harness.contracts.fraudProofCatalogue.policyId,
+          spendingScriptAddress:
+            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+          root: catalogue.root,
+        },
+        signer: proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      });
+      const step01 = await submitMintAuthorizationStep01({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        contracts: family,
+        categoryId: category.categoryId,
+        network,
+        signer: proverSigner,
+        threadOutRef: initResult.nextThreadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: block.txInclusion,
+        referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      });
+      const step02 = await submitMintAuthorizationStep02({
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef: step01.nextThreadOutRef,
+        reconstruction: block.reconstruction,
+        policyIndex: ACCUSED_POLICY_INDEX,
+        direction: DIRECTION_SCRIPT_ABSENT,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        mintItemCbors: subject.mintItemCbors,
+        referenceScriptUtxo: step02Ref,
+      });
+      const step03 = await submitMintAuthorizationStep03WitnessAbsence({
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef: step02.nextThreadOutRef,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        witnessSet: subject.witnessSetCompact,
+        scriptTxWitsItemCbors: subject.scriptWitnessItemCbors,
+        referenceScriptUtxo: step03Ref,
+      });
+      const resolve = () =>
+        submitMintAuthorizationStep04ResolveNext({
+          lucid: proverLucid,
+          contracts: family,
+          categoryId: category.categoryId,
+          signer: proverSigner,
+          threadOutRef: step03.nextThreadOutRef,
+          nativeTxCompactCbor: block.nativeTxCompactCbor,
+          referenceInputsItemCbors: subject.referenceInputItemCbors,
+          trie: ledger.trie,
+          descriptorCborHex: ledger.descriptorCbor,
+          referenceScriptUtxo: step04Ref,
+        });
+      if (matching) {
+        await expect(resolve()).rejects.toThrow();
+        return;
+      }
+      const resolveNext = await resolve();
+      expect(resolveNext.nextRefCursor).toBe(1n);
+      expect(resolveNext.nextStepAddress).toBe(
+        family.steps[3].spendingScriptAddress,
+      );
+      const advance = await submitMintAuthorizationStep04AdvanceComplete({
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef: resolveNext.nextThreadOutRef,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        referenceInputsItemCbors: subject.referenceInputItemCbors,
+        referenceScriptUtxo: step04Ref,
+      });
+      const step05 = await submitMintAuthorizationStep05({
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef: advance.nextThreadOutRef,
+        referenceScriptUtxo: step05Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      });
+      const [fraudProofUtxo] = await proverLucid.utxosAtWithUnit(
+        step05.fraudProofAddress,
+        step05.fraudProofUnit,
+      );
+      if (fraudProofUtxo === undefined) {
+        throw new Error("step-05 did not mint the fraud-proof token");
+      }
+      expect(fraudProofUtxo.assets[step05.fraudProofUnit]).toBe(1n);
+    },
+    600_000,
+  );
 });

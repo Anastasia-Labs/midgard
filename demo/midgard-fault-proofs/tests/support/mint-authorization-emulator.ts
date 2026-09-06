@@ -64,6 +64,7 @@ import {
 import { selectFeeInput } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
+import { registerChunkedVerifyRewardAccount } from "./emulator/emulator-context.js";
 import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
 import {
   buildDecodingBlockFixture,
@@ -421,9 +422,10 @@ export const makeMintAuthorizationEmulatorHarness = async ({
   readonly useScalusEvaluator?: boolean;
 } = {}) => {
   const harness = await makeFaultProofEmulatorHarness({
+    registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
     contractOptions: {
       realMintAuthorization: true,
-      alwaysFraudProofCatalogue: true,
+      alwaysFraudProofCatalogue: false,
     },
     ...(useScalusEvaluator
       ? { lucidOptions: { evaluator: createScalusEvaluator() } }
@@ -465,11 +467,15 @@ export const setupMintAuthorizationScenario = async ({
   harness,
   subject,
   priorLedgerRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
+  transformBlock,
 }: {
   readonly harness: MintAuthorizationHarness;
   readonly subject: MintAuthorizationSubject;
   /** The block's pre-state ledger root; the step-04 ResolveNext trie root. */
   readonly priorLedgerRoot?: string;
+  readonly transformBlock?: (
+    block: DecodingBlockFixture,
+  ) => Promise<DecodingBlockFixture>;
 }): Promise<MintAuthorizationScenario> => {
   const witnessReferenceScripts =
     await publishFaultProofWitnessReferenceScripts({
@@ -486,12 +492,13 @@ export const setupMintAuthorizationScenario = async ({
       harness.emulator.now() + 120_000,
     ) - 1,
   );
-  const block = await buildDecodingBlockFixture({
+  let block = await buildDecodingBlockFixture({
     operatorVkey,
     startTime,
     priorLedgerRoot,
     subject: { kind: "normal", nativeTx: subject.nativeTx },
   });
+  if (transformBlock !== undefined) block = await transformBlock(block);
   const setup = await submitSetupTx({
     lucid: harness.funderLucid,
     contracts: harness.contracts,
@@ -515,7 +522,7 @@ export const publishMintAuthorizationReferenceScripts = async ({
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
   readonly contracts: MintAuthorizationContracts;
-}): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO]> => {
+}): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
     const script: Script = step.spendingScript;
@@ -526,7 +533,15 @@ export const publishMintAuthorizationReferenceScripts = async ({
     });
     published.push(utxo);
   }
-  return published as unknown as readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
+  return published as unknown as readonly [
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+  ];
 };
 
 // ---------------------------------------------------------------------------
