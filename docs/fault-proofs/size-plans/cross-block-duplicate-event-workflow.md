@@ -36,14 +36,32 @@ cancellation positions, substituted key/proof/settlement witnesses, missing live
 NFTs, honest distinct events and domains are exercised. The required witness
 and family publications are measured alongside lifecycle transactions.
 
-The initial 77-row ledger measures the maximum 64-branch MPF path with compact
-source leaves. Its largest signed transaction is 11,407 bytes; peak execution
-is 3,208,126 memory and 1,048,086,341 CPU. It does not establish maximum leaf
-carriage: a withdrawal with a 12,000-byte inline datum and the same 64-branch
-proof requires 22,373 transaction bytes and is refused by the 16,384-byte
-transaction limit. The follow-up replaces whole-value carriage with an MPF
-value-digest opening for this key-only duplicate predicate. The admitted raw DA
-artifacts continue retaining both complete original values and counted roots.
+The complete-leaf carriage failed the maximum gate: a withdrawal with a
+12,000-byte inline datum and 64-branch proof required 22,373 transaction bytes,
+above the 16,384-byte limit. The fourth proof constructor therefore opens the
+same MPF leaf using its Blake2b-256 value digest. Existing full-value constructors
+retain their behavior. Both physical steps bind the domain, counted root,
+positive count, exact key and strict MPF digest membership; step 02 additionally
+binds the live settlement NFT and frozen key/domain. A substituted value digest
+cannot satisfy the authenticated root. No value-semantic claim is needed by the
+duplicate-identity predicate.
+
+The installed preparation constructs digest openings from canonical retained
+values. Artifacts retain complete original values and counted roots through JSON
+restart. The SDK preserves Plutus Data map order while deriving the digest,
+matching on-chain serialiseData. Real deposit and withdrawal installed scenarios
+retain 16,384-byte datum payloads. Maximum direct openings cover 16,947–17,173-byte
+source values plus 64 widest MPF branches in each domain; value size no longer
+contributes to the transaction envelope. The final 77-row ledger's largest
+signed transaction is 12,300 bytes (reference publication), leaving 3,572 bytes
+below the reserved publication ceiling. Peak execution is 4,138,820 memory and
+1,267,356,242 CPU. The normal testnet blueprint SHA-256 is
+`8094a2fe8bff9945cb933e46849ec8401de1883f6d2c9babfa6a32880562d2d1`.
+
+Verification includes four Aiken digest binding/refusal checks, seven SDK wire
+checks, all six real installed/maximum lifecycle scenarios, and unchanged
+full-value constructor emulator regressions. The publication and manifest
+factories apply the rebuilt two-validator ABI and all required witness scripts.
 
 Regenerate the checked-in ledger against the normal testnet blueprint:
 

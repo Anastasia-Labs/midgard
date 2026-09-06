@@ -81,6 +81,7 @@ use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/mpf_proof_v1
 use midgard/rejection_reason_v1
 use midgard/state_queue
 use midgard/transition_trace
@@ -231,6 +232,10 @@ pub type CommittedDuplicateEventProofV1 {
   CommittedDuplicateForcedTransactionV1 {
     membership: CommittedForcedTransactionSourceProofV1,
   }
+  CommittedDuplicateEventDigestV1 {
+    event_kind: DuplicateEventKindV1,
+    membership: transition_trace.RootMembershipProof<OutputReference, ByteArray>,
+  }
 }
 
 /// Verifies that the challenged header commits `(membership.key,
@@ -248,6 +253,29 @@ pub fn verify_committed_event_membership_v1(
   committed_event: CommittedDuplicateEventProofV1,
 ) -> Bool {
   when committed_event is {
+    CommittedDuplicateEventDigestV1 { event_kind, membership } -> {
+      let (domain, root, count) = when event_kind is {
+        DuplicateDepositV1 ->
+          (
+            transition_trace.DepositsRootDomain,
+            header.deposits_root,
+            header.deposit_count,
+          )
+        DuplicateWithdrawalV1 ->
+          (
+            transition_trace.WithdrawalsRootDomain,
+            header.withdrawals_root,
+            header.withdrawal_count,
+          )
+        DuplicateForcedTransactionV1 ->
+          (
+            transition_trace.ForcedTransactionsV1RootDomain,
+            header.forced_transactions_root,
+            header.forced_transaction_count,
+          )
+      }
+      verify_digest_membership(membership, domain, root, count)
+    }
     CommittedDuplicateDepositV1 { membership } ->
       transition_trace.verify_root_membership_with_bytes(
         membership,
@@ -278,11 +306,45 @@ pub fn verify_committed_event_membership_v1(
   }
 }
 
+/// Duplicate identity depends only on the exact source-domain key. The digest
+/// opens the same MPF leaf without placing its potentially large value on L1.
+pub fn verify_digest_membership(
+  membership: transition_trace.RootMembershipProof<OutputReference, ByteArray>,
+  domain: transition_trace.RootDomain,
+  root: ByteArray,
+  count: Int,
+) -> Bool {
+  and {
+    membership.domain == domain,
+    membership.root == root,
+    membership.count == count,
+    count > 0,
+    transition_trace.verify_root_count_proof(
+      transition_trace.RootCountProof {
+        domain: membership.domain,
+        root: membership.root,
+        phas_root: membership.phas_root,
+        count: membership.count,
+      },
+      domain,
+      root,
+      count,
+    ),
+    mpf_proof_v1.has_value_hash(
+      membership.phas_root,
+      cbor.serialise(membership.key),
+      membership.value,
+      membership.proof,
+    ),
+  }
+}
+
 /// The challenged leaf's domain, as step-02 state.
 pub fn committed_event_kind_v1(
   committed_event: CommittedDuplicateEventProofV1,
 ) -> DuplicateEventKindV1 {
   when committed_event is {
+    CommittedDuplicateEventDigestV1 { event_kind, .. } -> event_kind
     CommittedDuplicateDepositV1 { .. } -> DuplicateDepositV1
     CommittedDuplicateWithdrawalV1 { .. } -> DuplicateWithdrawalV1
     CommittedDuplicateForcedTransactionV1 { .. } -> DuplicateForcedTransactionV1
@@ -294,6 +356,7 @@ pub fn committed_event_key_v1(
   committed_event: CommittedDuplicateEventProofV1,
 ) -> OutputReference {
   when committed_event is {
+    CommittedDuplicateEventDigestV1 { membership, .. } -> membership.key
     CommittedDuplicateDepositV1 { membership } -> membership.key
     CommittedDuplicateWithdrawalV1 { membership } -> membership.key
     CommittedDuplicateForcedTransactionV1 { membership } -> membership.key

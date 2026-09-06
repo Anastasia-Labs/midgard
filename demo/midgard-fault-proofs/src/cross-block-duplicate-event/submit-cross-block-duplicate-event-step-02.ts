@@ -127,24 +127,43 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   }
   const settlementDatum = Data.from(settlementUtxo.datum, SettlementDatum);
   const opening =
-    "CommittedDuplicateDepositV1" in settledEvent
+    "CommittedDuplicateEventDigestV1" in settledEvent
       ? {
-          membership: settledEvent.CommittedDuplicateDepositV1.membership,
-          domain: ROOT_DOMAINS.deposits,
-          settlementRoot: settlementDatum.deposits_root,
+          membership: settledEvent.CommittedDuplicateEventDigestV1.membership,
+          ...{
+            DuplicateDepositV1: {
+              domain: ROOT_DOMAINS.deposits,
+              settlementRoot: settlementDatum.deposits_root,
+            },
+            DuplicateWithdrawalV1: {
+              domain: ROOT_DOMAINS.withdrawals,
+              settlementRoot: settlementDatum.withdrawals_root,
+            },
+            DuplicateForcedTransactionV1: {
+              domain: ROOT_DOMAINS.forcedTransactionsV1,
+              settlementRoot: settlementDatum.forced_transactions_root,
+            },
+          }[settledEvent.CommittedDuplicateEventDigestV1.event_kind],
         }
-      : "CommittedDuplicateWithdrawalV1" in settledEvent
+      : "CommittedDuplicateDepositV1" in settledEvent
         ? {
-            membership: settledEvent.CommittedDuplicateWithdrawalV1.membership,
-            domain: ROOT_DOMAINS.withdrawals,
-            settlementRoot: settlementDatum.withdrawals_root,
+            membership: settledEvent.CommittedDuplicateDepositV1.membership,
+            domain: ROOT_DOMAINS.deposits,
+            settlementRoot: settlementDatum.deposits_root,
           }
-        : {
-            membership:
-              settledEvent.CommittedDuplicateForcedTransactionV1.membership,
-            domain: ROOT_DOMAINS.forcedTransactionsV1,
-            settlementRoot: settlementDatum.forced_transactions_root,
-          };
+        : "CommittedDuplicateWithdrawalV1" in settledEvent
+          ? {
+              membership:
+                settledEvent.CommittedDuplicateWithdrawalV1.membership,
+              domain: ROOT_DOMAINS.withdrawals,
+              settlementRoot: settlementDatum.withdrawals_root,
+            }
+          : {
+              membership:
+                settledEvent.CommittedDuplicateForcedTransactionV1.membership,
+              domain: ROOT_DOMAINS.forcedTransactionsV1,
+              settlementRoot: settlementDatum.forced_transactions_root,
+            };
   const { membership, domain, settlementRoot } = opening;
   const derived = await Effect.runPromise(
     commitCountedRootProgram({

@@ -5,7 +5,9 @@
  * challenged block and by a different confirmed settlement header. The family
  * Production catalogue category `crossBlockDuplicateEvent` (`00000016`).
  */
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -14,10 +16,17 @@ import {
   ScriptHashSchema,
 } from "../common.js";
 import {
+  DepositInfo,
+  ForcedInclusionTxV1,
+  WithdrawalInfo,
+} from "../ledger-state.js";
+import {
   type DepositSourceMembershipProof,
   DepositSourceMembershipProofSchema,
   type ForcedTransactionSourceMembershipProof,
   ForcedTransactionSourceMembershipProofSchema,
+  type RootMembershipProof,
+  rootMembershipProofSchema,
   type WithdrawalSourceMembershipProof,
   WithdrawalSourceMembershipProofSchema,
 } from "../transition-trace.js";
@@ -79,8 +88,23 @@ export const CommittedDuplicateEventProofSchema = Data.Enum([
       membership: ForcedTransactionSourceMembershipProofSchema,
     }),
   }),
+  Data.Object({
+    CommittedDuplicateEventDigestV1: Data.Object({
+      event_kind: CrossBlockDuplicateEventKindSchema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        Data.Bytes({ minLength: 32, maxLength: 32 }),
+      ),
+    }),
+  }),
 ]);
 export type CommittedDuplicateEventProof =
+  | {
+      readonly CommittedDuplicateEventDigestV1: {
+        readonly event_kind: CrossBlockDuplicateEventKind;
+        readonly membership: RootMembershipProof<OutputReference, string>;
+      };
+    }
   | {
       readonly CommittedDuplicateDepositV1: {
         readonly membership: DepositSourceMembershipProof;
@@ -207,6 +231,12 @@ export const duplicateEventKindAndKey = (
   readonly eventKind: CrossBlockDuplicateEventKind;
   readonly eventKey: OutputReference;
 } => {
+  if ("CommittedDuplicateEventDigestV1" in proof) {
+    return {
+      eventKind: proof.CommittedDuplicateEventDigestV1.event_kind,
+      eventKey: proof.CommittedDuplicateEventDigestV1.membership.key,
+    };
+  }
   if ("CommittedDuplicateDepositV1" in proof) {
     return {
       eventKind: "DuplicateDepositV1",
@@ -273,4 +303,50 @@ export const assertConfirmedDuplicateEvent = ({
       "cross-block-duplicate-event challenged and settlement event identities differ",
     );
   }
+};
+
+/** Bind the identical MPF leaf using its value digest; duplicate identity is key-only. */
+export const compactDuplicateEventProof = (
+  proof: CommittedDuplicateEventProof,
+): CommittedDuplicateEventProof => {
+  if ("CommittedDuplicateEventDigestV1" in proof) return proof;
+  const { eventKind } = duplicateEventKindAndKey(proof);
+  const opening =
+    "CommittedDuplicateDepositV1" in proof
+      ? {
+          membership: proof.CommittedDuplicateDepositV1.membership,
+          bytes: Data.to(
+            proof.CommittedDuplicateDepositV1.membership.value,
+            DepositInfo,
+          ),
+        }
+      : "CommittedDuplicateWithdrawalV1" in proof
+        ? {
+            membership: proof.CommittedDuplicateWithdrawalV1.membership,
+            bytes: Data.to(
+              proof.CommittedDuplicateWithdrawalV1.membership.value,
+              WithdrawalInfo,
+            ),
+          }
+        : {
+            membership: proof.CommittedDuplicateForcedTransactionV1.membership,
+            bytes: Data.to(
+              proof.CommittedDuplicateForcedTransactionV1.membership.value,
+              ForcedInclusionTxV1,
+            ),
+          };
+  return {
+    CommittedDuplicateEventDigestV1: {
+      event_kind: eventKind,
+      membership: {
+        ...opening.membership,
+        value: computeHash32(
+          Buffer.from(
+            aikenSerialisedPlutusDataCborPreservingMapOrder(opening.bytes),
+            "hex",
+          ),
+        ).toString("hex"),
+      },
+    },
+  };
 };

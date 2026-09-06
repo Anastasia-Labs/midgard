@@ -164,11 +164,13 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
         const settled = await crossBlockRetainedFixture({
           operatorVkey: operator.hash,
           now: start,
+          largeDatum: true,
           kind,
         });
         const fixture = await crossBlockRetainedFixture({
           operatorVkey: operator.hash,
           now: Number(settled.header.endTime),
+          largeDatum: true,
           kind,
           prevHeaderHash: settled.headerHash,
           prevUtxosRoot: settled.header.utxosRoot,
@@ -699,7 +701,7 @@ it.each(["deposit", "withdrawal", "forced-transaction"] as const)(
         measurements.push({
           name: `maximum64/${kind}/${stage}/${index}`,
           kind: type,
-          maximumShape: "64 widest MPF branches; authenticated claimed count 1",
+          maximumShape: `64 widest MPF branches; authenticated claimed count 1; ${maximum.fullValueBytes} source bytes authenticated by value digest`,
           signedBytes: m.completeSignedBytes,
           memoryUnits: m.executionMemory,
           cpuUnits: m.executionSteps,
@@ -792,11 +794,13 @@ it.each(["deposit", "withdrawal", "forced-transaction"] as const)(
       thread = await measure("reinit-02", init);
     }
     const membershipOf = (event: SDK.CommittedDuplicateEventProof) =>
-      "CommittedDuplicateDepositV1" in event
-        ? event.CommittedDuplicateDepositV1.membership
-        : "CommittedDuplicateWithdrawalV1" in event
-          ? event.CommittedDuplicateWithdrawalV1.membership
-          : event.CommittedDuplicateForcedTransactionV1.membership;
+      "CommittedDuplicateEventDigestV1" in event
+        ? event.CommittedDuplicateEventDigestV1.membership
+        : "CommittedDuplicateDepositV1" in event
+          ? event.CommittedDuplicateDepositV1.membership
+          : "CommittedDuplicateWithdrawalV1" in event
+            ? event.CommittedDuplicateWithdrawalV1.membership
+            : event.CommittedDuplicateForcedTransactionV1.membership;
     const forged = structuredClone(maximum.committedEvent);
     const branch = membershipOf(forged).proof[0]!;
     if (!("Branch" in branch))
@@ -806,7 +810,18 @@ it.each(["deposit", "withdrawal", "forced-transaction"] as const)(
       branch.Branch.neighbors.slice(2);
     const absent = structuredClone(maximum.committedEvent);
     membershipOf(absent).key.transactionId = "16".repeat(32);
-    for (const committedEvent of [forged, absent])
+    if (!("CommittedDuplicateEventDigestV1" in maximum.committedEvent))
+      throw new Error("expected digest opening");
+    const wrongDigest: SDK.CommittedDuplicateEventProof = {
+      CommittedDuplicateEventDigestV1: {
+        ...maximum.committedEvent.CommittedDuplicateEventDigestV1,
+        membership: {
+          ...maximum.committedEvent.CommittedDuplicateEventDigestV1.membership,
+          value: "11".repeat(32),
+        },
+      },
+    };
+    for (const committedEvent of [forged, absent, wrongDigest])
       await expect(
         submitCrossBlockDuplicateEventStep01({
           lucid: h.proverLucid,

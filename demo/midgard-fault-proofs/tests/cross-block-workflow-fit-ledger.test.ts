@@ -65,8 +65,12 @@ describe("crossBlockDuplicateEvent installed workflow fit ledger", () => {
     expect(
       ledger.entries.some(
         (row) =>
-          row.maximumShape ===
-          "64 widest MPF branches; authenticated claimed count 1",
+          row.maximumShape.includes(
+            "64 widest MPF branches; authenticated claimed count 1;",
+          ) &&
+          row.maximumShape.includes(
+            "source bytes authenticated by value digest",
+          ),
       ),
     ).toBe(true);
   });

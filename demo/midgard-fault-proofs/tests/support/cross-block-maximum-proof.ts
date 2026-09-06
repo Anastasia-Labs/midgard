@@ -35,12 +35,26 @@ export const makeMaximumCrossBlockProof = async (variant: Variant) => {
       : variant === "withdrawal"
         ? WITHDRAWAL_KEY_CBOR
         : FORCED_KEY_CBOR;
-  const valueCbor =
+  let valueCbor =
     variant === "deposit"
       ? DEPOSIT_VALUE_CBOR
       : variant === "withdrawal"
         ? WITHDRAWAL_VALUE_CBOR
         : FORCED_VALUE_CBOR;
+  const largeDatum = Array.from({ length: 256 }, () => "ab".repeat(64));
+  if (variant === "deposit") {
+    const value = Data.from(valueCbor, SDK.DepositInfo);
+    value.l2_datum = largeDatum;
+    valueCbor = Data.to(value, SDK.DepositInfo);
+  } else if (variant === "withdrawal") {
+    const value = Data.from(valueCbor, SDK.WithdrawalInfo);
+    value.body.l1_datum = { InlineDatum: { data: largeDatum } };
+    valueCbor = SDK.committedWithdrawalValueBytes(value);
+  } else {
+    const value = Data.from(valueCbor, SDK.ForcedInclusionTxV1);
+    value.source.compact_cbor = "ab".repeat(16_384);
+    valueCbor = Data.to(value, SDK.ForcedInclusionTxV1);
+  }
   const domain =
     variant === "deposit"
       ? SDK.ROOT_DOMAINS.deposits
@@ -114,5 +128,9 @@ export const makeMaximumCrossBlockProof = async (variant: Variant) => {
               },
             },
           };
-  return { counted, committedEvent };
+  return {
+    counted,
+    committedEvent: SDK.compactDuplicateEventProof(committedEvent),
+    fullValueBytes: valueCbor.length / 2,
+  };
 };

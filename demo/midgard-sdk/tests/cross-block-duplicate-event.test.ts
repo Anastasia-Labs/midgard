@@ -5,11 +5,13 @@ import {
   assertConfirmedDuplicateEvent,
   type CommittedDuplicateEventProof,
   CommittedDuplicateEventProof as CommittedDuplicateEventProofType,
+  compactDuplicateEventProof,
   CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
   type CrossBlockDuplicateEventStep02State,
   CrossBlockDuplicateEventStep02State as CrossBlockDuplicateEventStep02StateType,
   crossBlockDuplicateEventStep02State,
   crossBlockDuplicateEventThreadTokenAssetName,
+  duplicateEventKindAndKey,
 } from "../src/fraud-proof/cross-block-duplicate-event.js";
 
 const HEADER_HASH = "31".repeat(28);
@@ -200,4 +202,29 @@ describe("cross-block-duplicate-event V1 wire types", () => {
       }),
     ).toThrow(/event identities differ/u);
   });
+});
+
+describe("compact duplicate-event leaf carriage", () => {
+  it.each([depositProof, withdrawalProof, forcedTransactionProof])(
+    "retains identity and counted commitments through a digest wire round-trip",
+    (makeProof) => {
+      const full = makeProof();
+      const compact = compactDuplicateEventProof(full);
+      expect(duplicateEventKindAndKey(compact)).toEqual(
+        duplicateEventKindAndKey(full),
+      );
+      expect(compactDuplicateEventProof(compact)).toBe(compact);
+      expect(
+        Data.from(
+          Data.to(compact, CommittedDuplicateEventProofType),
+          CommittedDuplicateEventProofType,
+        ),
+      ).toEqual(compact);
+      if (!("CommittedDuplicateEventDigestV1" in compact))
+        throw new Error("expected digest");
+      expect(compact.CommittedDuplicateEventDigestV1.membership.value).toMatch(
+        /^[0-9a-f]{64}$/u,
+      );
+    },
+  );
 });

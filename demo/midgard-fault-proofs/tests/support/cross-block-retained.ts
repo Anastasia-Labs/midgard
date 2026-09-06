@@ -14,12 +14,14 @@ import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator
 export const crossBlockRetainedFixture = async ({
   operatorVkey,
   now,
+  largeDatum = false,
   kind = "forced-transaction",
   prevHeaderHash = SDK.GENESIS_HEADER_HASH,
   prevUtxosRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
 }: {
   operatorVkey: string;
   now: number;
+  largeDatum?: boolean;
   kind?: "deposit" | "withdrawal" | "forced-transaction";
   prevHeaderHash?: string;
   prevUtxosRoot?: string;
@@ -64,6 +66,21 @@ export const crossBlockRetainedFixture = async ({
                 ),
           ],
         ];
+  if (largeDatum && kind !== "forced-transaction") {
+    const datum = Array.from({ length: 256 }, () => "ab".repeat(64));
+    const value =
+      kind === "deposit"
+        ? Data.to(
+            { ...Data.from(entries[0]![1], SDK.DepositInfo), l2_datum: datum },
+            SDK.DepositInfo,
+          )
+        : (() => {
+            const withdrawal = Data.from(entries[0]![1], SDK.WithdrawalInfo);
+            withdrawal.body.l1_datum = { InlineDatum: { data: datum } };
+            return SDK.committedWithdrawalValueBytes(withdrawal);
+          })();
+    entries[0] = [entries[0]![0], value];
+  }
   const priorStep = Data.from(
     body.transition_trace[0]![1],
     SDK.TransitionStepSchema,

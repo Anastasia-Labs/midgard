@@ -69,6 +69,32 @@ pub fn verify_confirmed_duplicate_v1(
       expect settled: settlement.Datum = settlement_datum_data
       when (state.event_kind, settled_event) is {
         (
+          kind,
+          step_01.CommittedDuplicateEventDigestV1 { event_kind, membership },
+        ) -> {
+          expect event_kind == kind
+          expect membership.key == state.event_key
+          let (domain, root) = when kind is {
+            step_01.DuplicateDepositV1 ->
+              (transition_trace.DepositsRootDomain, settled.deposits_root)
+            step_01.DuplicateWithdrawalV1 ->
+              (transition_trace.WithdrawalsRootDomain, settled.withdrawals_root)
+            step_01.DuplicateForcedTransactionV1 ->
+              (
+                transition_trace.ForcedTransactionsV1RootDomain,
+                settled.forced_transactions_root,
+              )
+          }
+          expect
+            step_01.verify_digest_membership(
+              membership,
+              domain,
+              root,
+              membership.count,
+            )
+        }
+
+        (
           step_01.DuplicateDepositV1,
           step_01.CommittedDuplicateDepositV1 { membership },
         ) -> {

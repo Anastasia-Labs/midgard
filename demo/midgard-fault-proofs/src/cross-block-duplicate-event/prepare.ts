@@ -227,8 +227,8 @@ export const prepareCrossBlockDuplicateEventRootOpenings = async ({
   return {
     challengedHeaderHash: challenged.headerHash,
     settledHeaderHash: settled.headerHash,
-    challengedEvent,
-    settledEvent,
+    challengedEvent: SDK.compactDuplicateEventProof(challengedEvent),
+    settledEvent: SDK.compactDuplicateEventProof(settledEvent),
     step02State,
   };
 };

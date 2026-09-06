@@ -67,28 +67,49 @@ const requireOpeningMatchesHeader = async ({
   readonly forcedTransactionCount: bigint;
 }): Promise<void> => {
   const opening =
-    "CommittedDuplicateDepositV1" in committedEvent
+    "CommittedDuplicateEventDigestV1" in committedEvent
       ? {
-          membership: committedEvent.CommittedDuplicateDepositV1.membership,
-          expectedDomain: ROOT_DOMAINS.deposits,
-          expectedCount: depositCount,
-          expectedRoot: depositsRoot,
+          membership: committedEvent.CommittedDuplicateEventDigestV1.membership,
+          ...{
+            DuplicateDepositV1: {
+              expectedDomain: ROOT_DOMAINS.deposits,
+              expectedCount: depositCount,
+              expectedRoot: depositsRoot,
+            },
+            DuplicateWithdrawalV1: {
+              expectedDomain: ROOT_DOMAINS.withdrawals,
+              expectedCount: withdrawalCount,
+              expectedRoot: withdrawalsRoot,
+            },
+            DuplicateForcedTransactionV1: {
+              expectedDomain: ROOT_DOMAINS.forcedTransactionsV1,
+              expectedCount: forcedTransactionCount,
+              expectedRoot: forcedTransactionsRoot,
+            },
+          }[committedEvent.CommittedDuplicateEventDigestV1.event_kind],
         }
-      : "CommittedDuplicateWithdrawalV1" in committedEvent
+      : "CommittedDuplicateDepositV1" in committedEvent
         ? {
-            membership:
-              committedEvent.CommittedDuplicateWithdrawalV1.membership,
-            expectedDomain: ROOT_DOMAINS.withdrawals,
-            expectedCount: withdrawalCount,
-            expectedRoot: withdrawalsRoot,
+            membership: committedEvent.CommittedDuplicateDepositV1.membership,
+            expectedDomain: ROOT_DOMAINS.deposits,
+            expectedCount: depositCount,
+            expectedRoot: depositsRoot,
           }
-        : {
-            membership:
-              committedEvent.CommittedDuplicateForcedTransactionV1.membership,
-            expectedDomain: ROOT_DOMAINS.forcedTransactionsV1,
-            expectedCount: forcedTransactionCount,
-            expectedRoot: forcedTransactionsRoot,
-          };
+        : "CommittedDuplicateWithdrawalV1" in committedEvent
+          ? {
+              membership:
+                committedEvent.CommittedDuplicateWithdrawalV1.membership,
+              expectedDomain: ROOT_DOMAINS.withdrawals,
+              expectedCount: withdrawalCount,
+              expectedRoot: withdrawalsRoot,
+            }
+          : {
+              membership:
+                committedEvent.CommittedDuplicateForcedTransactionV1.membership,
+              expectedDomain: ROOT_DOMAINS.forcedTransactionsV1,
+              expectedCount: forcedTransactionCount,
+              expectedRoot: forcedTransactionsRoot,
+            };
   const { membership, expectedDomain, expectedCount, expectedRoot } = opening;
   const derived = await Effect.runPromise(
     commitCountedRootProgram({
