@@ -311,3 +311,12 @@ reference lookup passes 7 tests, validation evidence passes 3, and submit plus
 contract inspection passes 33. These are worktree results; shared-branch rebuild
 and repetitions, full phase-A deployment roster, and installed validation-dispute
 workflow closure are still required by the parent program.
+
+
+Shared integration evidence: commits `38bf6147` / `53a9338f`, rebuilt with the
+bounded mint signer repair `e44ea393`. Normal testnet blueprint
+`58d8f14425a2b1f2f7e5e6347a7433504e2e560daeae399c5c79eb41bff96db4` passes the same nine
+lifecycle/refusal scenarios and rewrites the ledger with 382 measured
+transactions. Shared node deployment/manifest/reference checks pass 47 tests,
+and the core exact registry passes 12 (319 contracts, 312 roles, 313 tokens).
+The remaining cases and installed workflow listed above remain open.

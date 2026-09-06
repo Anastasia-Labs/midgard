@@ -254,7 +254,7 @@ const Q13_APPLIED_STEP_HASHES = [
 // q13AppliedIdentities producer under testnet blueprint db03f84b…;
 // the four Q13 step hashes above remain unchanged.
 const Q13_CATALOGUE_ROOT =
-  "a858337cec6de7e1f4fd9564a42f15a3fac14e2118d6e3afd620c7ceae353f74";
+  "aa457dc2c537e06561d640fcd11161867b8ebdbccd54371a6fb4e77a9025c83b";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
