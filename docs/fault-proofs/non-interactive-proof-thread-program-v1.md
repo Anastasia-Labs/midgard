@@ -878,3 +878,38 @@ This closes core execution only. CEK context, installed validation dispute,
 and final program review remain open. The shared mint-authorization suite
 executed all 15 cases successfully but its closure ledger rejected two
 Step02 maximum-mint-field transactions over budget; that work is not closed.
+
+### Mint authorization and TransitionTrace integration — 2026-09-06
+
+The maximum-mint-field failures recorded above are fixed by bounded Step02
+processing. The shared installed suite passed all 17 cases and its current-build
+ledger verifier passed. Commit `a0007362` records 4,995 signed rows (429
+publications), with maxima 15,872 bytes / 11,801,068 memory / 3,935,977,526 CPU.
+The exact 32 KiB mint field, maximum selected policy and native/reference-script
+shapes preserve the required reserves. See the mint-authorization receipt.
+
+TransitionTrace installed replay is integrated in `9b495450` / `f5ea519a`,
+including fresh authenticated retained history and durable recovery. Its five
+installed lifecycles, six forced-source subvariants and 21 direct/maximal
+lifecycles passed on the recorded builds. The installed ledger has 497 rows,
+including 337 publications, with maxima 14,903 bytes / 5,249,103 memory /
+2,367,328,446 CPU. Shared integration rebuilt all contracts together and passed
+68 context/TransitionTrace/ScriptSources tests (`d87859ee`). This brings the
+installed registry to 53 of 54; validation-trace dispute is the remaining family.
+
+### Validation semantic integration progress — 2026-09-06
+
+Preconditions, four bounded ResolveInputs arms, ScriptSources output/source
+boundaries and discovery prunes are integrated with real positive, honest
+negative and recovery tests. Middle stages now use eight authenticated yields;
+all 24 lifecycle cases passed both in their worktree and on the shared build.
+The shared 39-test run also covered all 17 item executor arms and their exact
+carrier composition. Observer item and successor facts now require two
+separately authenticated yields; all three observer lifecycles passed on the
+shared normal build. Exact compiler/blueprint fingerprints and remeasured fit
+ledgers are recorded in the corresponding size-plan receipts.
+
+These checkpoints do not close validation-trace dispute or the program. The
+remaining work includes descriptor scans, shared ledger-output continuations,
+CEK context and mixed-width mint ordering, additional maximum-shape coverage,
+the installed validation workflow, and the final combined verification/review.
