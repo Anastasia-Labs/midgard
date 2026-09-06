@@ -9,6 +9,7 @@ import {
 import {
   aikenSerialisedPlutusDataCbor,
   aikenSerialisedPlutusDataCborPreservingMapOrder,
+  compactPlutusDataCarriageCbor,
 } from "../src/plutus-data-cbor.js";
 
 const payload = Buffer.alloc(96, 0xab);
@@ -80,5 +81,21 @@ describe("Aiken PlutusData serialization", () => {
     expect(() => aikenSerialisedPlutusDataCbor("bf00ff")).toThrow(
       /missing a value/u,
     );
+  });
+});
+
+describe("referenced Plutus Data transport", () => {
+  it("uses one definite byte string without changing nested map order", () => {
+    const bytes = Buffer.alloc(32768, 0xab).toString("hex");
+    const source = `d8799fa241ff01420000025f${Array.from({ length: 512 }, () => "5840" + "ab".repeat(64)).join("")}ffff`;
+    const compact = compactPlutusDataCarriageCbor(source);
+    expect(compact).toBe(`d8799fa241ff0142000002598000${bytes}ff`);
+    expect(aikenSerialisedPlutusDataCborPreservingMapOrder(compact)).toBe(
+      source,
+    );
+    expect(compactPlutusDataCarriageCbor(compact)).toBe(compact);
+  });
+  it("rejects a trailing item instead of dropping it", () => {
+    expect(() => compactPlutusDataCarriageCbor("0000")).toThrow(/Trailing/);
   });
 });

@@ -375,6 +375,7 @@ const encodeCborHeader = (major: number, value: bigint | null): Buffer => {
 const encodeCborNodeWithDefiniteMaps = (
   node: CborNode,
   sortMaps: boolean,
+  chunkByteStrings = true,
 ): Buffer => {
   type EncodeVisit = {
     readonly node: CborNode;
@@ -415,7 +416,7 @@ const encodeCborNodeWithDefiniteMaps = (
         encoded.set(current, encodeCborHeader(1, current.value));
         break;
       case "bytes": {
-        if (current.value.length <= 64) {
+        if (!chunkByteStrings || current.value.length <= 64) {
           encoded.set(
             current,
             Buffer.concat([
@@ -849,4 +850,20 @@ export const assertMidgardPlutusDataWellFormed = (bytes: Uint8Array): void => {
   if (cursor !== bytes.length) {
     throw new Error("Trailing bytes after PlutusData value");
   }
+};
+
+/**
+ * Transport spelling for a proof carried in reference byte chunks. Definite
+ * byte strings avoid quadratic concatenation in a Data decoder. Map order
+ * and every contained byte string remain unchanged. This is not a ledger
+ * serialiseData encoding and must never replace a consensus preimage.
+ */
+export const compactPlutusDataCarriageCbor = (cbor: string): string => {
+  const input = Buffer.from(cbor, "hex");
+  const parsed = parseCborNode(input, 0);
+  if (parsed.offset !== input.length)
+    throw new Error("Trailing proof carriage CBOR");
+  return encodeCborNodeWithDefiniteMaps(parsed.node, false, false).toString(
+    "hex",
+  );
 };
