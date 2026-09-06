@@ -1409,6 +1409,186 @@ const collectScriptDescriptors = (
       .scriptSourcesRedeemerDescriptor,
     "V1 validation-trace script-sources redeemer descriptor yield",
   ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofStructureWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofStructure,
+    "V1 validation-trace ledger-output-proof structure yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofValueWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofValue,
+    "V1 validation-trace ledger-output-proof value yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumFoldMapWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumFoldMap,
+    "V1 validation-trace ledger-output-proof datum fold-map yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumFinalizeFrameWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumFinalizeFrame,
+    "V1 validation-trace ledger-output-proof datum finalize-frame yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumHeadScalarWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumHeadScalar,
+    "V1 validation-trace ledger-output-proof datum head-scalar yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumAttachIntegerWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumAttachInteger,
+    "V1 validation-trace ledger-output-proof datum attach-integer yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumFoldListWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumFoldList,
+    "V1 validation-trace ledger-output-proof datum fold-list yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumAdvanceIntegerWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumAdvanceInteger,
+    "V1 validation-trace ledger-output-proof datum advance-integer yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofReferenceScriptWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofReferenceScript,
+    "V1 validation-trace ledger-output-proof reference-script yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofScriptHashWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofScriptHash,
+    "V1 validation-trace ledger-output-proof script-hash yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofNativeScriptWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofNativeScript,
+    "V1 validation-trace ledger-output-proof native-script yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofStructureAssetsWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofStructureAssets,
+    "V1 validation-trace ledger-output-proof structure assets yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofStructureOptionalWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofStructureOptional,
+    "V1 validation-trace ledger-output-proof structure optional yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofStructureFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofStructureFinish,
+    "V1 validation-trace ledger-output-proof structure finish yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumHeadSequenceWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumHeadSequence,
+    "V1 validation-trace ledger-output-proof datum head-sequence yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumHeadMapWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumHeadMap,
+    "V1 validation-trace ledger-output-proof datum head-map yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumHeadLargeConstructorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumHeadLargeConstructor,
+    "V1 validation-trace ledger-output-proof datum head-large-constructor yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumAttachBytesWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumAttachBytes,
+    "V1 validation-trace ledger-output-proof datum attach-bytes yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumAdvanceBytesWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumAdvanceBytes,
+    "V1 validation-trace ledger-output-proof datum advance-bytes yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumFinish,
+    "V1 validation-trace ledger-output-proof datum finish yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumLargeConstructorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumLargeConstructor,
+    "V1 validation-trace ledger-output-proof datum large-constructor yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumLargeFieldsWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumLargeFields,
+    "V1 validation-trace ledger-output-proof datum large-fields yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofDatumCloseWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumClose,
+    "V1 validation-trace ledger-output-proof datum close yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofSpanWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofSpan,
+    "V1 validation-trace ledger-output-proof span yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofScalarIntegerWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofScalarInteger,
+    "V1 validation-trace ledger-output-proof scalar-integer yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputProofScalarBytesWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofScalarBytes,
+    "V1 validation-trace ledger-output-proof scalar-bytes yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputDescriptorScanFactsWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputDescriptorScanFacts,
+    "V1 validation-trace ledger-output-descriptor scan-facts yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputDescriptorReferenceScriptWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputDescriptorReferenceScript,
+    "V1 validation-trace ledger-output-descriptor reference-script yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputDescriptorDatumSummaryWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputDescriptorDatumSummary,
+    "V1 validation-trace ledger-output-descriptor datum-summary yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeLedgerOutputDescriptorValueSummaryWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputDescriptorValueSummary,
+    "V1 validation-trace ledger-output-descriptor value-summary yield",
+  ),
   spendDescriptor(
     "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10],

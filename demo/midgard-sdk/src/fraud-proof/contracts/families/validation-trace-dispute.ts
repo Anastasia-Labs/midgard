@@ -366,6 +366,66 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_sources_stage_seven_observer_bound_yield_v1.main.withdraw",
     scriptSourcesRedeemerDescriptor:
       "fraud_proofs/validation_trace/script_sources_redeemer_item_step_yield_v1.main.withdraw",
+    ledgerOutputProofStructure:
+      "fraud_proofs/validation_trace/ledger_output_proof_structure_yield.main.withdraw",
+    ledgerOutputProofValue:
+      "fraud_proofs/validation_trace/ledger_output_proof_value_yield.main.withdraw",
+    ledgerOutputProofDatumFoldMap:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_fold_map_yield.main.withdraw",
+    ledgerOutputProofDatumFinalizeFrame:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_finalize_frame_yield.main.withdraw",
+    ledgerOutputProofDatumHeadScalar:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_head_scalar_yield.main.withdraw",
+    ledgerOutputProofDatumAttachInteger:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_attach_integer_yield.main.withdraw",
+    ledgerOutputProofDatumFoldList:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_fold_list_yield.main.withdraw",
+    ledgerOutputProofDatumAdvanceInteger:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_advance_integer_yield.main.withdraw",
+    ledgerOutputProofReferenceScript:
+      "fraud_proofs/validation_trace/ledger_output_proof_reference_script_yield.main.withdraw",
+    ledgerOutputProofScriptHash:
+      "fraud_proofs/validation_trace/ledger_output_proof_script_hash_yield.main.withdraw",
+    ledgerOutputProofNativeScript:
+      "fraud_proofs/validation_trace/ledger_output_proof_native_script_yield.main.withdraw",
+    ledgerOutputProofStructureAssets:
+      "fraud_proofs/validation_trace/ledger_output_proof_structure_assets_yield.main.withdraw",
+    ledgerOutputProofStructureOptional:
+      "fraud_proofs/validation_trace/ledger_output_proof_structure_optional_yield.main.withdraw",
+    ledgerOutputProofStructureFinish:
+      "fraud_proofs/validation_trace/ledger_output_proof_structure_finish_yield.main.withdraw",
+    ledgerOutputProofDatumHeadSequence:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_head_sequence_yield.main.withdraw",
+    ledgerOutputProofDatumHeadMap:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_head_map_yield.main.withdraw",
+    ledgerOutputProofDatumHeadLargeConstructor:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_head_large_constructor_yield.main.withdraw",
+    ledgerOutputProofDatumAttachBytes:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_attach_bytes_yield.main.withdraw",
+    ledgerOutputProofDatumAdvanceBytes:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_advance_bytes_yield.main.withdraw",
+    ledgerOutputProofDatumFinish:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_finish_yield.main.withdraw",
+    ledgerOutputProofDatumLargeConstructor:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_large_constructor_yield.main.withdraw",
+    ledgerOutputProofDatumLargeFields:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_large_fields_yield.main.withdraw",
+    ledgerOutputProofDatumClose:
+      "fraud_proofs/validation_trace/ledger_output_proof_datum_close_yield.main.withdraw",
+    ledgerOutputProofSpan:
+      "fraud_proofs/validation_trace/ledger_output_proof_span_yield.main.withdraw",
+    ledgerOutputProofScalarInteger:
+      "fraud_proofs/validation_trace/ledger_output_proof_scalar_integer_yield.main.withdraw",
+    ledgerOutputProofScalarBytes:
+      "fraud_proofs/validation_trace/ledger_output_proof_scalar_bytes_yield.main.withdraw",
+    ledgerOutputDescriptorScanFacts:
+      "fraud_proofs/validation_trace/ledger_output_descriptor_scan_facts_yield.main.withdraw",
+    ledgerOutputDescriptorReferenceScript:
+      "fraud_proofs/validation_trace/ledger_output_descriptor_reference_script_yield.main.withdraw",
+    ledgerOutputDescriptorDatumSummary:
+      "fraud_proofs/validation_trace/ledger_output_descriptor_datum_summary_yield.main.withdraw",
+    ledgerOutputDescriptorValueSummary:
+      "fraud_proofs/validation_trace/ledger_output_descriptor_value_summary_yield.main.withdraw",
     phaseANativeItemNative:
       "fraud_proofs/validation_trace/phase_a_native_scripts_item_yields_v1.native.withdraw",
     phaseANativeItemForeign:
@@ -443,6 +503,36 @@ export type ValidationTraceDisputeFaultProofContracts = {
       readonly scriptSourcesObserverItem: WithdrawalValidator;
       readonly scriptSourcesObserverBound: WithdrawalValidator;
       readonly scriptSourcesRedeemerDescriptor: WithdrawalValidator;
+      readonly ledgerOutputProofStructure: WithdrawalValidator;
+      readonly ledgerOutputProofValue: WithdrawalValidator;
+      readonly ledgerOutputProofDatumFoldMap: WithdrawalValidator;
+      readonly ledgerOutputProofDatumFinalizeFrame: WithdrawalValidator;
+      readonly ledgerOutputProofDatumHeadScalar: WithdrawalValidator;
+      readonly ledgerOutputProofDatumAttachInteger: WithdrawalValidator;
+      readonly ledgerOutputProofDatumFoldList: WithdrawalValidator;
+      readonly ledgerOutputProofDatumAdvanceInteger: WithdrawalValidator;
+      readonly ledgerOutputProofReferenceScript: WithdrawalValidator;
+      readonly ledgerOutputProofScriptHash: WithdrawalValidator;
+      readonly ledgerOutputProofNativeScript: WithdrawalValidator;
+      readonly ledgerOutputProofStructureAssets: WithdrawalValidator;
+      readonly ledgerOutputProofStructureOptional: WithdrawalValidator;
+      readonly ledgerOutputProofStructureFinish: WithdrawalValidator;
+      readonly ledgerOutputProofDatumHeadSequence: WithdrawalValidator;
+      readonly ledgerOutputProofDatumHeadMap: WithdrawalValidator;
+      readonly ledgerOutputProofDatumHeadLargeConstructor: WithdrawalValidator;
+      readonly ledgerOutputProofDatumAttachBytes: WithdrawalValidator;
+      readonly ledgerOutputProofDatumAdvanceBytes: WithdrawalValidator;
+      readonly ledgerOutputProofDatumFinish: WithdrawalValidator;
+      readonly ledgerOutputProofDatumLargeConstructor: WithdrawalValidator;
+      readonly ledgerOutputProofDatumLargeFields: WithdrawalValidator;
+      readonly ledgerOutputProofDatumClose: WithdrawalValidator;
+      readonly ledgerOutputProofSpan: WithdrawalValidator;
+      readonly ledgerOutputProofScalarInteger: WithdrawalValidator;
+      readonly ledgerOutputProofScalarBytes: WithdrawalValidator;
+      readonly ledgerOutputDescriptorScanFacts: WithdrawalValidator;
+      readonly ledgerOutputDescriptorReferenceScript: WithdrawalValidator;
+      readonly ledgerOutputDescriptorDatumSummary: WithdrawalValidator;
+      readonly ledgerOutputDescriptorValueSummary: WithdrawalValidator;
       readonly phaseANativeItemNative: WithdrawalValidator;
       readonly phaseANativeItemForeign: WithdrawalValidator;
       readonly cekMaterialProgramTask: WithdrawalValidator;
@@ -1229,6 +1319,394 @@ export const buildValidationTraceDisputeChain = ({
           ),
         ),
     );
+    const stepDispatcherHashes = [
+      builtSemanticResolvers[
+        semanticTitles.indexOf(
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+            .scriptSourcesOutputProofStep,
+        )
+      ]!.spendingScriptHash,
+      builtSemanticResolvers[
+        semanticTitles.indexOf(
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+            .resolveInputsMembershipStep,
+        )
+      ]!.spendingScriptHash,
+    ];
+    const finalizeDispatcherHashes = [
+      builtSemanticResolvers[
+        semanticTitles.indexOf(
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+            .scriptSourcesOutputProofFinalize,
+        )
+      ]!.spendingScriptHash,
+      builtSemanticResolvers[
+        semanticTitles.indexOf(
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+            .resolveInputsMembershipFinalize,
+        )
+      ]!.spendingScriptHash,
+    ];
+    const ledgerOutputProofStructure = yield* tryBuild(
+      "Failed to build ledger-output-proof structure yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofStructure,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofValue = yield* tryBuild(
+      "Failed to build ledger-output-proof value yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofValue,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumFoldMap = yield* tryBuild(
+      "Failed to build ledger-output-proof datum fold-map yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumFoldMap,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumFinalizeFrame = yield* tryBuild(
+      "Failed to build ledger-output-proof datum finalize-frame yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumFinalizeFrame,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumHeadScalar = yield* tryBuild(
+      "Failed to build ledger-output-proof datum head-scalar yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumHeadScalar,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumAttachInteger = yield* tryBuild(
+      "Failed to build ledger-output-proof datum attach-integer yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumAttachInteger,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumFoldList = yield* tryBuild(
+      "Failed to build ledger-output-proof datum fold-list yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumFoldList,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumAdvanceInteger = yield* tryBuild(
+      "Failed to build ledger-output-proof datum advance-integer yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumAdvanceInteger,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofReferenceScript = yield* tryBuild(
+      "Failed to build ledger-output-proof reference-script yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofReferenceScript,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofScriptHash = yield* tryBuild(
+      "Failed to build ledger-output-proof script-hash yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofScriptHash,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofNativeScript = yield* tryBuild(
+      "Failed to build ledger-output-proof native-script yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofNativeScript,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofStructureAssets = yield* tryBuild(
+      "Failed to build ledger-output-proof structure assets yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofStructureAssets,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofStructureOptional = yield* tryBuild(
+      "Failed to build ledger-output-proof structure optional yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofStructureOptional,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofStructureFinish = yield* tryBuild(
+      "Failed to build ledger-output-proof structure finish yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofStructureFinish,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumHeadSequence = yield* tryBuild(
+      "Failed to build ledger-output-proof datum head-sequence yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumHeadSequence,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumHeadMap = yield* tryBuild(
+      "Failed to build ledger-output-proof datum head-map yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumHeadMap,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumHeadLargeConstructor = yield* tryBuild(
+      "Failed to build ledger-output-proof datum head-large-constructor yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumHeadLargeConstructor,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumAttachBytes = yield* tryBuild(
+      "Failed to build ledger-output-proof datum attach-bytes yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumAttachBytes,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumAdvanceBytes = yield* tryBuild(
+      "Failed to build ledger-output-proof datum advance-bytes yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumAdvanceBytes,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumFinish = yield* tryBuild(
+      "Failed to build ledger-output-proof datum finish yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumFinish,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumLargeConstructor = yield* tryBuild(
+      "Failed to build ledger-output-proof datum large-constructor yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumLargeConstructor,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumLargeFields = yield* tryBuild(
+      "Failed to build ledger-output-proof datum large-fields yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumLargeFields,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofDatumClose = yield* tryBuild(
+      "Failed to build ledger-output-proof datum close yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofDatumClose,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofSpan = yield* tryBuild(
+      "Failed to build ledger-output-proof span yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofSpan,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofScalarInteger = yield* tryBuild(
+      "Failed to build ledger-output-proof scalar-integer yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofScalarInteger,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputProofScalarBytes = yield* tryBuild(
+      "Failed to build ledger-output-proof scalar-bytes yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputProofScalarBytes,
+            [stepDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputDescriptorScanFacts = yield* tryBuild(
+      "Failed to build ledger-output-descriptor scan-facts yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputDescriptorScanFacts,
+            [finalizeDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputDescriptorReferenceScript = yield* tryBuild(
+      "Failed to build ledger-output-descriptor reference-script yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputDescriptorReferenceScript,
+            [finalizeDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputDescriptorDatumSummary = yield* tryBuild(
+      "Failed to build ledger-output-descriptor datum-summary yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputDescriptorDatumSummary,
+            [finalizeDispatcherHashes],
+          ),
+        ),
+    );
+    const ledgerOutputDescriptorValueSummary = yield* tryBuild(
+      "Failed to build ledger-output-descriptor value-summary yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .ledgerOutputDescriptorValueSummary,
+            [finalizeDispatcherHashes],
+          ),
+        ),
+    );
     const phaseANativeItemNative = yield* tryBuild(
       "Failed to build phase-A item native yield",
       () =>
@@ -1706,6 +2184,36 @@ export const buildValidationTraceDisputeChain = ({
         scriptSourcesObserverItem,
         scriptSourcesObserverBound,
         scriptSourcesRedeemerDescriptor,
+        ledgerOutputProofStructure,
+        ledgerOutputProofValue,
+        ledgerOutputProofDatumFoldMap,
+        ledgerOutputProofDatumFinalizeFrame,
+        ledgerOutputProofDatumHeadScalar,
+        ledgerOutputProofDatumAttachInteger,
+        ledgerOutputProofDatumFoldList,
+        ledgerOutputProofDatumAdvanceInteger,
+        ledgerOutputProofReferenceScript,
+        ledgerOutputProofScriptHash,
+        ledgerOutputProofNativeScript,
+        ledgerOutputProofStructureAssets,
+        ledgerOutputProofStructureOptional,
+        ledgerOutputProofStructureFinish,
+        ledgerOutputProofDatumHeadSequence,
+        ledgerOutputProofDatumHeadMap,
+        ledgerOutputProofDatumHeadLargeConstructor,
+        ledgerOutputProofDatumAttachBytes,
+        ledgerOutputProofDatumAdvanceBytes,
+        ledgerOutputProofDatumFinish,
+        ledgerOutputProofDatumLargeConstructor,
+        ledgerOutputProofDatumLargeFields,
+        ledgerOutputProofDatumClose,
+        ledgerOutputProofSpan,
+        ledgerOutputProofScalarInteger,
+        ledgerOutputProofScalarBytes,
+        ledgerOutputDescriptorScanFacts,
+        ledgerOutputDescriptorReferenceScript,
+        ledgerOutputDescriptorDatumSummary,
+        ledgerOutputDescriptorValueSummary,
         phaseANativeItemNative,
         phaseANativeItemForeign,
         cekMaterialProgramTask,

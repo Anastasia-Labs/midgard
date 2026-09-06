@@ -307,6 +307,36 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeScriptSourcesObserverItemWithdraw",
   "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
   "validationTraceDisputeScriptSourcesRedeemerDescriptorWithdraw",
+  "validationTraceDisputeLedgerOutputProofStructureWithdraw",
+  "validationTraceDisputeLedgerOutputProofValueWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumFoldMapWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumFinalizeFrameWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumHeadScalarWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumAttachIntegerWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumFoldListWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumAdvanceIntegerWithdraw",
+  "validationTraceDisputeLedgerOutputProofReferenceScriptWithdraw",
+  "validationTraceDisputeLedgerOutputProofScriptHashWithdraw",
+  "validationTraceDisputeLedgerOutputProofNativeScriptWithdraw",
+  "validationTraceDisputeLedgerOutputProofStructureAssetsWithdraw",
+  "validationTraceDisputeLedgerOutputProofStructureOptionalWithdraw",
+  "validationTraceDisputeLedgerOutputProofStructureFinishWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumHeadSequenceWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumHeadMapWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumHeadLargeConstructorWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumAttachBytesWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumAdvanceBytesWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumFinishWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumLargeConstructorWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumLargeFieldsWithdraw",
+  "validationTraceDisputeLedgerOutputProofDatumCloseWithdraw",
+  "validationTraceDisputeLedgerOutputProofSpanWithdraw",
+  "validationTraceDisputeLedgerOutputProofScalarIntegerWithdraw",
+  "validationTraceDisputeLedgerOutputProofScalarBytesWithdraw",
+  "validationTraceDisputeLedgerOutputDescriptorScanFactsWithdraw",
+  "validationTraceDisputeLedgerOutputDescriptorReferenceScriptWithdraw",
+  "validationTraceDisputeLedgerOutputDescriptorDatumSummaryWithdraw",
+  "validationTraceDisputeLedgerOutputDescriptorValueSummaryWithdraw",
   "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
   "validationTraceDisputePhaseANativeScriptsItemSemantic",
   "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
@@ -1169,6 +1199,66 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
     "V1 validation-trace script-sources redeemer descriptor yield":
       "validationTraceDisputeScriptSourcesRedeemerDescriptorWithdraw",
+    "V1 validation-trace ledger-output-proof structure yield":
+      "validationTraceDisputeLedgerOutputProofStructureWithdraw",
+    "V1 validation-trace ledger-output-proof value yield":
+      "validationTraceDisputeLedgerOutputProofValueWithdraw",
+    "V1 validation-trace ledger-output-proof datum fold-map yield":
+      "validationTraceDisputeLedgerOutputProofDatumFoldMapWithdraw",
+    "V1 validation-trace ledger-output-proof datum finalize-frame yield":
+      "validationTraceDisputeLedgerOutputProofDatumFinalizeFrameWithdraw",
+    "V1 validation-trace ledger-output-proof datum head-scalar yield":
+      "validationTraceDisputeLedgerOutputProofDatumHeadScalarWithdraw",
+    "V1 validation-trace ledger-output-proof datum attach-integer yield":
+      "validationTraceDisputeLedgerOutputProofDatumAttachIntegerWithdraw",
+    "V1 validation-trace ledger-output-proof datum fold-list yield":
+      "validationTraceDisputeLedgerOutputProofDatumFoldListWithdraw",
+    "V1 validation-trace ledger-output-proof datum advance-integer yield":
+      "validationTraceDisputeLedgerOutputProofDatumAdvanceIntegerWithdraw",
+    "V1 validation-trace ledger-output-proof reference-script yield":
+      "validationTraceDisputeLedgerOutputProofReferenceScriptWithdraw",
+    "V1 validation-trace ledger-output-proof script-hash yield":
+      "validationTraceDisputeLedgerOutputProofScriptHashWithdraw",
+    "V1 validation-trace ledger-output-proof native-script yield":
+      "validationTraceDisputeLedgerOutputProofNativeScriptWithdraw",
+    "V1 validation-trace ledger-output-proof structure assets yield":
+      "validationTraceDisputeLedgerOutputProofStructureAssetsWithdraw",
+    "V1 validation-trace ledger-output-proof structure optional yield":
+      "validationTraceDisputeLedgerOutputProofStructureOptionalWithdraw",
+    "V1 validation-trace ledger-output-proof structure finish yield":
+      "validationTraceDisputeLedgerOutputProofStructureFinishWithdraw",
+    "V1 validation-trace ledger-output-proof datum head-sequence yield":
+      "validationTraceDisputeLedgerOutputProofDatumHeadSequenceWithdraw",
+    "V1 validation-trace ledger-output-proof datum head-map yield":
+      "validationTraceDisputeLedgerOutputProofDatumHeadMapWithdraw",
+    "V1 validation-trace ledger-output-proof datum head-large-constructor yield":
+      "validationTraceDisputeLedgerOutputProofDatumHeadLargeConstructorWithdraw",
+    "V1 validation-trace ledger-output-proof datum attach-bytes yield":
+      "validationTraceDisputeLedgerOutputProofDatumAttachBytesWithdraw",
+    "V1 validation-trace ledger-output-proof datum advance-bytes yield":
+      "validationTraceDisputeLedgerOutputProofDatumAdvanceBytesWithdraw",
+    "V1 validation-trace ledger-output-proof datum finish yield":
+      "validationTraceDisputeLedgerOutputProofDatumFinishWithdraw",
+    "V1 validation-trace ledger-output-proof datum large-constructor yield":
+      "validationTraceDisputeLedgerOutputProofDatumLargeConstructorWithdraw",
+    "V1 validation-trace ledger-output-proof datum large-fields yield":
+      "validationTraceDisputeLedgerOutputProofDatumLargeFieldsWithdraw",
+    "V1 validation-trace ledger-output-proof datum close yield":
+      "validationTraceDisputeLedgerOutputProofDatumCloseWithdraw",
+    "V1 validation-trace ledger-output-proof span yield":
+      "validationTraceDisputeLedgerOutputProofSpanWithdraw",
+    "V1 validation-trace ledger-output-proof scalar-integer yield":
+      "validationTraceDisputeLedgerOutputProofScalarIntegerWithdraw",
+    "V1 validation-trace ledger-output-proof scalar-bytes yield":
+      "validationTraceDisputeLedgerOutputProofScalarBytesWithdraw",
+    "V1 validation-trace ledger-output-descriptor scan-facts yield":
+      "validationTraceDisputeLedgerOutputDescriptorScanFactsWithdraw",
+    "V1 validation-trace ledger-output-descriptor reference-script yield":
+      "validationTraceDisputeLedgerOutputDescriptorReferenceScriptWithdraw",
+    "V1 validation-trace ledger-output-descriptor datum-summary yield":
+      "validationTraceDisputeLedgerOutputDescriptorDatumSummaryWithdraw",
+    "V1 validation-trace ledger-output-descriptor value-summary yield":
+      "validationTraceDisputeLedgerOutputDescriptorValueSummaryWithdraw",
     "V1 validation-trace phase-A native Advance semantic":
       "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     "V1 validation-trace phase-A native Item semantic":
@@ -1751,6 +1841,64 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtSsS07ObserverBoundYield",
   "V1 validation-trace script-sources redeemer descriptor yield":
     "V1VtSsRedeemerItemStepYield",
+  "V1 validation-trace ledger-output-proof structure yield":
+    "V1VtLopStructureYield",
+  "V1 validation-trace ledger-output-proof value yield": "V1VtLopValueYield",
+  "V1 validation-trace ledger-output-proof datum fold-map yield":
+    "V1VtLopDatumFoldMapYield",
+  "V1 validation-trace ledger-output-proof datum finalize-frame yield":
+    "V1VtLopDatumFinalizeFrameYield",
+  "V1 validation-trace ledger-output-proof datum head-scalar yield":
+    "V1VtLopDatumHeadScalarYield",
+  "V1 validation-trace ledger-output-proof datum attach-integer yield":
+    "V1VtLopDatumAttachIntegerYield",
+  "V1 validation-trace ledger-output-proof datum fold-list yield":
+    "V1VtLopDatumFoldListYield",
+  "V1 validation-trace ledger-output-proof datum advance-integer yield":
+    "V1VtLopDatumAdvanceIntegerYield",
+  "V1 validation-trace ledger-output-proof reference-script yield":
+    "V1VtLopRefScriptYield",
+  "V1 validation-trace ledger-output-proof script-hash yield":
+    "V1VtLopScriptHashYield",
+  "V1 validation-trace ledger-output-proof native-script yield":
+    "V1VtLopNativeScriptYield",
+  "V1 validation-trace ledger-output-proof structure assets yield":
+    "V1VtLopStructureAssetsYield",
+  "V1 validation-trace ledger-output-proof structure optional yield":
+    "V1VtLopStructureOptionalYield",
+  "V1 validation-trace ledger-output-proof structure finish yield":
+    "V1VtLopStructureFinishYield",
+  "V1 validation-trace ledger-output-proof datum head-sequence yield":
+    "V1VtLopDatumHeadSequenceYield",
+  "V1 validation-trace ledger-output-proof datum head-map yield":
+    "V1VtLopDatumHeadMapYield",
+  "V1 validation-trace ledger-output-proof datum head-large-constructor yield":
+    "V1VtLopDatumHeadLargeCtorYield",
+  "V1 validation-trace ledger-output-proof datum attach-bytes yield":
+    "V1VtLopDatumAttachBytesYield",
+  "V1 validation-trace ledger-output-proof datum advance-bytes yield":
+    "V1VtLopDatumAdvanceBytesYield",
+  "V1 validation-trace ledger-output-proof datum finish yield":
+    "V1VtLopDatumFinishYield",
+  "V1 validation-trace ledger-output-proof datum large-constructor yield":
+    "V1VtLopDatumLargeCtorYield",
+  "V1 validation-trace ledger-output-proof datum large-fields yield":
+    "V1VtLopDatumLargeFieldsYield",
+  "V1 validation-trace ledger-output-proof datum close yield":
+    "V1VtLopDatumCloseYield",
+  "V1 validation-trace ledger-output-proof span yield": "V1VtLopSpanYield",
+  "V1 validation-trace ledger-output-proof scalar-integer yield":
+    "V1VtLopScalarIntegerYield",
+  "V1 validation-trace ledger-output-proof scalar-bytes yield":
+    "V1VtLopScalarBytesYield",
+  "V1 validation-trace ledger-output-descriptor scan-facts yield":
+    "V1VtLopDescScanFactsYield",
+  "V1 validation-trace ledger-output-descriptor reference-script yield":
+    "V1VtLopDescRefScriptYield",
+  "V1 validation-trace ledger-output-descriptor datum-summary yield":
+    "V1VtLopDescDatumSummaryYield",
+  "V1 validation-trace ledger-output-descriptor value-summary yield":
+    "V1VtLopDescValueSummaryYield",
   "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
   "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
   "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",

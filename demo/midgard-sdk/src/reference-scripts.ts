@@ -147,6 +147,64 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1VtSsS07ObserverBoundYield",
   "V1 validation-trace script-sources redeemer descriptor yield":
     "V1VtSsRedeemerItemStepYield",
+  "V1 validation-trace ledger-output-proof structure yield":
+    "V1VtLopStructureYield",
+  "V1 validation-trace ledger-output-proof value yield": "V1VtLopValueYield",
+  "V1 validation-trace ledger-output-proof datum fold-map yield":
+    "V1VtLopDatumFoldMapYield",
+  "V1 validation-trace ledger-output-proof datum finalize-frame yield":
+    "V1VtLopDatumFinalizeFrameYield",
+  "V1 validation-trace ledger-output-proof datum head-scalar yield":
+    "V1VtLopDatumHeadScalarYield",
+  "V1 validation-trace ledger-output-proof datum attach-integer yield":
+    "V1VtLopDatumAttachIntegerYield",
+  "V1 validation-trace ledger-output-proof datum fold-list yield":
+    "V1VtLopDatumFoldListYield",
+  "V1 validation-trace ledger-output-proof datum advance-integer yield":
+    "V1VtLopDatumAdvanceIntegerYield",
+  "V1 validation-trace ledger-output-proof reference-script yield":
+    "V1VtLopRefScriptYield",
+  "V1 validation-trace ledger-output-proof script-hash yield":
+    "V1VtLopScriptHashYield",
+  "V1 validation-trace ledger-output-proof native-script yield":
+    "V1VtLopNativeScriptYield",
+  "V1 validation-trace ledger-output-proof structure assets yield":
+    "V1VtLopStructureAssetsYield",
+  "V1 validation-trace ledger-output-proof structure optional yield":
+    "V1VtLopStructureOptionalYield",
+  "V1 validation-trace ledger-output-proof structure finish yield":
+    "V1VtLopStructureFinishYield",
+  "V1 validation-trace ledger-output-proof datum head-sequence yield":
+    "V1VtLopDatumHeadSequenceYield",
+  "V1 validation-trace ledger-output-proof datum head-map yield":
+    "V1VtLopDatumHeadMapYield",
+  "V1 validation-trace ledger-output-proof datum head-large-constructor yield":
+    "V1VtLopDatumHeadLargeCtorYield",
+  "V1 validation-trace ledger-output-proof datum attach-bytes yield":
+    "V1VtLopDatumAttachBytesYield",
+  "V1 validation-trace ledger-output-proof datum advance-bytes yield":
+    "V1VtLopDatumAdvanceBytesYield",
+  "V1 validation-trace ledger-output-proof datum finish yield":
+    "V1VtLopDatumFinishYield",
+  "V1 validation-trace ledger-output-proof datum large-constructor yield":
+    "V1VtLopDatumLargeCtorYield",
+  "V1 validation-trace ledger-output-proof datum large-fields yield":
+    "V1VtLopDatumLargeFieldsYield",
+  "V1 validation-trace ledger-output-proof datum close yield":
+    "V1VtLopDatumCloseYield",
+  "V1 validation-trace ledger-output-proof span yield": "V1VtLopSpanYield",
+  "V1 validation-trace ledger-output-proof scalar-integer yield":
+    "V1VtLopScalarIntegerYield",
+  "V1 validation-trace ledger-output-proof scalar-bytes yield":
+    "V1VtLopScalarBytesYield",
+  "V1 validation-trace ledger-output-descriptor scan-facts yield":
+    "V1VtLopDescScanFactsYield",
+  "V1 validation-trace ledger-output-descriptor reference-script yield":
+    "V1VtLopDescRefScriptYield",
+  "V1 validation-trace ledger-output-descriptor datum-summary yield":
+    "V1VtLopDescDatumSummaryYield",
+  "V1 validation-trace ledger-output-descriptor value-summary yield":
+    "V1VtLopDescValueSummaryYield",
   "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
   "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
   "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",
