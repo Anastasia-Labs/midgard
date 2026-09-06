@@ -1,6 +1,9 @@
+use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/ledger_output_proof_v1
 use midgard/redeemer_item_proof_v1
+use midgard/script_proof_v1
+use midgard/script_sources_raw_frame_v1 as raw_frame
 use midgard/validation_machine/machine_types.{
   RedeemerItemStepWitness, RedeemerScanBeginWitness, ScriptSourcesControlV1,
   SignerSetProofV1, TransactionRedeemerItemBeginWitness,
@@ -29,6 +32,7 @@ use midgard/validation_machine/witness.{
   script_sources_stage_ten_control_from_witness,
 }
 use midgard/validation_machine_field_door_v1 as field_door
+use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
 pub fn verify_script_sources_stage_three_finish_semantics_v1(
@@ -140,48 +144,13 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let control = script_sources_control_from_witness(witness.work_witness_cbor)
-  let next_control = encode_script_sources_witness(
-    control.compact_cbor,
-    control.witness_set_compact_cbor,
-    control.field_preimage_lengths_cbor,
-    control.context_cbor,
-    control.resolved_input_count,
-    control.resolved_inputs_accumulator,
-    control.signer_count,
-    control.signer_frontier_commitment,
-    control.resolved_item_peaks,
-    6,
-    control.source_count,
-    control.source_peaks,
-    control.redeemer_count,
-    control.redeemer_peaks,
-    control.replay_cursor,
-    control.replay_accumulator,
-    control.replay_remaining_schedule_hash,
-    control.spend_index,
-    control.purpose_count,
-    control.purpose_peaks,
-    control.output_cursor,
-    control.output_count,
-    control.output_peaks,
-    control.output_total_count,
-    control.receive_scan,
-    control.source_total_count,
-    control.redeemer_total_count,
-    control.observer_scan,
-    control.mint_fold,
-    control.resolution_schedule_hash,
-  )
+  let frame = raw_frame.open_frame_v1(pre, witness, 30, 5)
   and {
-    script_sources_control_is_bound(pre, witness, control),
-    control.stage == 5,
-    control.output_cursor == control.output_count,
-    witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-      validation_trace_v1.ScriptSources,
-      pre.program_counter + 1,
-      next_control,
+    raw_frame.item_int_v1(frame, 20) == raw_frame.item_int_v1(frame, 21),
+    raw_frame.successor_is_exact_v1(
+      pre,
+      witness,
+      raw_frame.replace_stage_v1(frame, witness.work_witness_cbor, 6),
     ),
   }
 }
@@ -194,19 +163,31 @@ pub fn verify_script_sources_output_proof_begin_semantics_v1(
   item_commitment: ByteArray,
   siblings: List<ByteArray>,
 ) -> Bool {
-  let control = script_sources_control_from_witness(witness.work_witness_cbor)
+  let frame = raw_frame.open_frame_v1(pre, witness, 30, 5)
+  let output_count = raw_frame.item_int_v1(frame, 21)
   and {
-    script_sources_control_is_bound(pre, witness, control),
-    control.stage == 5,
-    control.output_cursor < control.output_count,
-    script_sources_output_proof_begin(
+    output_index == raw_frame.item_int_v1(frame, 20),
+    output_index < output_count,
+    total_length > 0,
+    bytearray.length(item_commitment) == 32,
+    validation_merkle_v1.verify_membership(
+      output_count,
+      raw_frame.item_frontier_v1(frame, 22),
+      output_index,
+      script_proof_v1.output_item_leaf_hash(output_index, item_commitment),
+      siblings,
+    ),
+    raw_frame.successor_is_exact_v1(
       pre,
       witness,
-      control,
-      output_index,
-      total_length,
-      item_commitment,
-      siblings,
+      raw_frame.append_extension_v1(
+        witness.work_witness_cbor,
+        ledger_output_proof_v1.encode_initial_control_v1(
+          output_index,
+          total_length,
+          item_commitment,
+        ),
+      ),
     ),
   }
 }
