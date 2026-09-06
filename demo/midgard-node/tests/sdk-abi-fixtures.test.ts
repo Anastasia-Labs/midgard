@@ -643,6 +643,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     input_index: 0n,
     output_index: 1n,
     proof: proofFor(fault),
+    proof_ref_indices: [],
   });
   const validationState: SDK.ValidationMachineState = {
     machine_version: 1n,
@@ -930,7 +931,7 @@ describe("SDK canonical ABI fixtures", () => {
       fields(
         constructor("fraud_proofs/transition_trace/route_v1/Args", "Args"),
       ),
-    ).toEqual(["input_index", "output_index", "proof"]);
+    ).toEqual(["input_index", "output_index", "proof", "proof_ref_indices"]);
     expect(
       fields(
         constructor(
@@ -1439,6 +1440,7 @@ describe("SDK canonical ABI fixtures", () => {
             input_index: 0n,
             output_index: 1n,
             proof: transitionFaultProof,
+            proof_ref_indices: [],
           },
         ],
       },

@@ -1043,6 +1043,83 @@ export const midgardContractsFromDeploymentManifest = (
     route: transitionTraceRoute,
     finals: transitionTraceFinals,
     steps: [transitionTraceRoute, ...transitionTraceFinals],
+    yields: {
+      l2Open: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+      ),
+      l2Summaries: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+      ),
+      l2Replay: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+      ),
+      claimStructure: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
+      ),
+      claimSource: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
+      ),
+      claimEndpoints: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
+      ),
+      depositProjection: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceDepositProjectionWithdraw",
+      ),
+      depositSummaries: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceDepositSummariesWithdraw",
+      ),
+      l2Assembly: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+      ),
+      l2Scan: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+      ),
+      l2Value: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+      ),
+      depositAssembly: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceDepositAssemblyWithdraw",
+      ),
+      depositScan: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceDepositScanWithdraw",
+      ),
+      depositValue: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceDepositValueWithdraw",
+      ),
+      depositReplay: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceDepositReplayWithdraw",
+      ),
+    },
   };
   const validationTraceOpener = spendingValidatorFromManifest(
     network,
@@ -2269,6 +2346,7 @@ export const buildRealTransitionTraceProofValidator = (
         blueprint,
         network,
         hubOraclePolicyId: contracts.hubOracle.policyId,
+        referenceScriptAuthPolicyId: contracts.referenceScriptAuth.policyId,
         fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
       });
 

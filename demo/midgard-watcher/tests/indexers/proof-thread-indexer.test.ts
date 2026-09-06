@@ -189,8 +189,14 @@ const makeDeploymentAuthority = () => {
                       (_, index) => (index + 1).toString(),
                     ),
                   ),
-                  ...Array.from({ length: familyAuthority.stepCount - 1 }, () =>
-                    Object.freeze([] as string[]),
+                  ...Array.from(
+                    { length: familyAuthority.stepCount - 1 },
+                    (_, index) =>
+                      Object.freeze(
+                        index === 4 || index === 5
+                          ? [(index + 1).toString()]
+                          : ([] as string[]),
+                      ),
                   ),
                 ])
               : linearNextStepIndexes(familyAuthority.stepCount),
@@ -2377,8 +2383,8 @@ describe("W17 public proof/computation-thread indexer", () => {
       [],
       [],
       [],
-      [],
-      [],
+      ["5"],
+      ["6"],
       [],
       [],
     ]);

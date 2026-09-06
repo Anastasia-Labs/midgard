@@ -647,11 +647,6 @@ export const publishFaultProofWitnessReferenceScripts = async ({
   return published;
 };
 
-export const TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES = new Set([
-  "fraudProofTransitionTraceAcceptedTransaction",
-  "fraudProofTransitionTraceDeposit",
-]);
-
 export const publishCrossBlockDuplicateEventReferenceScripts = async ({
   lucid,
   contracts,

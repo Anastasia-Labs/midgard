@@ -187,6 +187,53 @@ export const makeAlwaysSucceedsContracts = (
       ...scaffoldChain(transitionTraceFirstStep, 9),
       route: transitionTraceFirstStep,
       finals: repeatValidator(transitionTraceFirstStep, 8),
+      yields: {
+        l2Assembly: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Scan: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Value: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositReplay: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositAssembly: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositScan: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositValue: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Open: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Summaries: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Replay: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        claimStructure: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        claimSource: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        claimEndpoints: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositProjection: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositSummaries: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+      },
     },
     zeroInput: scaffoldChain(zeroInputFirstStep, 2),
     validationTraceDispute: {

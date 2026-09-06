@@ -259,7 +259,24 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeCekSelectionSuccessorWithdraw",
   "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
   "validationTraceDisputeCekSelectionMaterialDataWithdraw",
+  "fraudProofTransitionTraceDepositReplayWithdraw",
   "fraudProofMinAdaStep02TxWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+  "fraudProofTransitionTraceDepositAssemblyWithdraw",
+  "fraudProofTransitionTraceDepositScanWithdraw",
+  "fraudProofTransitionTraceDepositValueWithdraw",
+
+  "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
+  "fraudProofTransitionTraceDepositProjectionWithdraw",
+  "fraudProofTransitionTraceDepositSummariesWithdraw",
+
   "fraudProofMinAdaStep02UtxoWithdraw",
   "correctionLockSpend",
   "fraudProofMinAdaStep03",
@@ -686,8 +703,40 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
     "V1 validation-trace CEK selection material data yield":
       "validationTraceDisputeCekSelectionMaterialDataWithdraw",
+    "V1 fraud-proof transition-trace final-5 replay yield":
+      "fraudProofTransitionTraceDepositReplayWithdraw",
     "V1 fraud-proof min-ada step-02 tx yield":
       "fraudProofMinAdaStep02TxWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 assembly yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 scan yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 value yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+    "V1 fraud-proof transition-trace final-5 assembly yield":
+      "fraudProofTransitionTraceDepositAssemblyWithdraw",
+    "V1 fraud-proof transition-trace final-5 scan yield":
+      "fraudProofTransitionTraceDepositScanWithdraw",
+    "V1 fraud-proof transition-trace final-5 value yield":
+      "fraudProofTransitionTraceDepositValueWithdraw",
+
+    "V1 fraud-proof transition-trace final-4 L2 open yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 summaries yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 replay yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+    "V1 fraud-proof transition-trace final-4 claim structure yield":
+      "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
+    "V1 fraud-proof transition-trace final-4 claim source yield":
+      "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
+    "V1 fraud-proof transition-trace final-4 claim endpoints yield":
+      "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
+    "V1 fraud-proof transition-trace final-5 projection yield":
+      "fraudProofTransitionTraceDepositProjectionWithdraw",
+    "V1 fraud-proof transition-trace final-5 summaries yield":
+      "fraudProofTransitionTraceDepositSummariesWithdraw",
+
     "V1 fraud-proof min-ada step-02 UTxO yield":
       "fraudProofMinAdaStep02UtxoWithdraw",
     "correction-lock spending": "correctionLockSpend",

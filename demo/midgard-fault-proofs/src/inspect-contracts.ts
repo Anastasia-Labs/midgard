@@ -209,6 +209,12 @@ export type InspectContractsOutput = {
     ];
   };
   readonly transitionTrace: {
+    readonly semanticYields: readonly {
+      readonly name: string;
+      readonly scriptHash: string;
+      readonly standaloneScriptBytes: number;
+      readonly withinL1TransactionByteEnvelopeNecessaryCondition: boolean;
+    }[];
     readonly categoryFirstStepHash: string;
     readonly deploymentTransitionTraceScriptHash: string | null;
     readonly deploymentTransitionTraceMatchesFirstStep: boolean | null;
@@ -1515,6 +1521,22 @@ export const inspectContracts = ({
         steps: invalidSignatureSteps,
       },
       transitionTrace: {
+        semanticYields: Object.entries(contracts.transitionTrace.yields).map(
+          ([name, validator]) => {
+            const standaloneScriptBytes = Buffer.from(
+              validator.withdrawalScriptCBOR,
+              "hex",
+            ).byteLength;
+            return {
+              name,
+              scriptHash: validator.withdrawalScriptHash,
+              standaloneScriptBytes,
+              withinL1TransactionByteEnvelopeNecessaryCondition:
+                standaloneScriptBytes <
+                MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
+            };
+          },
+        ),
         categoryFirstStepHash: transitionTraceCategoryFirstStepHash,
         deploymentTransitionTraceScriptHash,
         deploymentTransitionTraceMatchesFirstStep,

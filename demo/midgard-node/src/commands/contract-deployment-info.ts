@@ -1107,6 +1107,81 @@ const collectScriptDescriptors = (
     "V1 validation-trace value-and-mint asset-fold yield",
   ),
   withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Open,
+    "V1 fraud-proof transition-trace final-4 L2 open yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Summaries,
+    "V1 fraud-proof transition-trace final-4 L2 summaries yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Replay,
+    "V1 fraud-proof transition-trace final-4 L2 replay yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.claimStructure,
+    "V1 fraud-proof transition-trace final-4 claim structure yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.claimSource,
+    "V1 fraud-proof transition-trace final-4 claim source yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.claimEndpoints,
+    "V1 fraud-proof transition-trace final-4 claim endpoints yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceDepositProjectionWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositProjection,
+    "V1 fraud-proof transition-trace final-5 projection yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceDepositSummariesWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositSummaries,
+    "V1 fraud-proof transition-trace final-5 summaries yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Assembly,
+    "V1 fraud-proof transition-trace final-4 L2 assembly yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Scan,
+    "V1 fraud-proof transition-trace final-4 L2 scan yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Value,
+    "V1 fraud-proof transition-trace final-4 L2 value yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceDepositAssemblyWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositAssembly,
+    "V1 fraud-proof transition-trace final-5 assembly yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceDepositScanWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositScan,
+    "V1 fraud-proof transition-trace final-5 scan yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceDepositValueWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositValue,
+    "V1 fraud-proof transition-trace final-5 value yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofTransitionTraceDepositReplayWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositReplay,
+    "V1 fraud-proof transition-trace final-5 replay yield",
+  ),
+  withdrawalDescriptor(
     "fraudProofMinAdaStep02TxWithdraw",
     contracts.fraudProofContracts.minAda.yields.tx,
     "V1 fraud-proof min-ada step-02 tx yield",

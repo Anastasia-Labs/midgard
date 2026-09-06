@@ -25,6 +25,7 @@ import { type MintAuthorizationContracts } from "../../../src/mint-authorization
 import { type MissingNativeScriptTxContracts } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/index.js";
+import { TRANSITION_TRACE_YIELD_REFERENCES } from "../../../src/transition-trace/yield-references.js";
 import { type ValueNotPreservedContracts } from "../../../src/value-not-preserved/index.js";
 import { type WithdrawalMistagContracts } from "../../../src/withdrawal-mistag/index.js";
 import { type WithdrawnInputContracts } from "../../../src/withdrawn-input/index.js";
@@ -280,6 +281,27 @@ export const buildRemovalDeploymentInfo = (
       // categories.
       ...fraudProofChainEntries,
       ...valueAndMintSemanticEntries,
+      ...Object.fromEntries(
+        Object.values(TRANSITION_TRACE_YIELD_REFERENCES).flatMap(
+          ({ entry }) => {
+            const published = fraudProofReferenceScripts?.[entry];
+            return published === undefined
+              ? []
+              : [
+                  [
+                    entry,
+                    {
+                      scriptHash: published.scriptHash,
+                      refScriptUTxO: {
+                        txHash: published.utxo.txHash,
+                        outputIndex: published.utxo.outputIndex,
+                      },
+                    },
+                  ],
+                ];
+          },
+        ),
+      ),
       ...(validationItemSemanticReference === undefined
         ? {}
         : {

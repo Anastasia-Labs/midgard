@@ -249,7 +249,24 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
   "validationTraceDisputeCekSelectionMaterialDataWithdraw",
 
+  "fraudProofTransitionTraceDepositReplayWithdraw",
   "fraudProofMinAdaStep02TxWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+  "fraudProofTransitionTraceDepositAssemblyWithdraw",
+  "fraudProofTransitionTraceDepositScanWithdraw",
+  "fraudProofTransitionTraceDepositValueWithdraw",
+
+  "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
+  "fraudProofTransitionTraceDepositProjectionWithdraw",
+  "fraudProofTransitionTraceDepositSummariesWithdraw",
+
   "fraudProofMinAdaStep02UtxoWithdraw",
   "correctionLockSpend",
   "fraudProofMinAdaStep03",
@@ -881,8 +898,40 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 validation-trace CEK selection material data yield":
       "validationTraceDisputeCekSelectionMaterialDataWithdraw",
 
+    "V1 fraud-proof transition-trace final-5 replay yield":
+      "fraudProofTransitionTraceDepositReplayWithdraw",
     "V1 fraud-proof min-ada step-02 tx yield":
       "fraudProofMinAdaStep02TxWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 assembly yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 scan yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 value yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+    "V1 fraud-proof transition-trace final-5 assembly yield":
+      "fraudProofTransitionTraceDepositAssemblyWithdraw",
+    "V1 fraud-proof transition-trace final-5 scan yield":
+      "fraudProofTransitionTraceDepositScanWithdraw",
+    "V1 fraud-proof transition-trace final-5 value yield":
+      "fraudProofTransitionTraceDepositValueWithdraw",
+
+    "V1 fraud-proof transition-trace final-4 L2 open yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 summaries yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 replay yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+    "V1 fraud-proof transition-trace final-4 claim structure yield":
+      "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
+    "V1 fraud-proof transition-trace final-4 claim source yield":
+      "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
+    "V1 fraud-proof transition-trace final-4 claim endpoints yield":
+      "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
+    "V1 fraud-proof transition-trace final-5 projection yield":
+      "fraudProofTransitionTraceDepositProjectionWithdraw",
+    "V1 fraud-proof transition-trace final-5 summaries yield":
+      "fraudProofTransitionTraceDepositSummariesWithdraw",
+
     "V1 fraud-proof min-ada step-02 UTxO yield":
       "fraudProofMinAdaStep02UtxoWithdraw",
     "correction-lock spending": "correctionLockSpend",
@@ -1351,7 +1400,35 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace CEK selection material data yield":
     "V1VtCekSelMatDataYield",
 
+  "V1 fraud-proof transition-trace final-5 replay yield": "V1FpTtF5ReplayYield",
   "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
+  "V1 fraud-proof transition-trace final-4 L2 assembly yield":
+    "V1FpTtF4L2AssemblyYield",
+  "V1 fraud-proof transition-trace final-4 L2 scan yield": "V1FpTtF4ScanYield",
+  "V1 fraud-proof transition-trace final-4 L2 value yield":
+    "V1FpTtF4ValueYield",
+  "V1 fraud-proof transition-trace final-5 assembly yield":
+    "V1FpTtF5AssemblyYield",
+  "V1 fraud-proof transition-trace final-5 scan yield": "V1FpTtF5ScanYield",
+  "V1 fraud-proof transition-trace final-5 value yield": "V1FpTtF5ValueYield",
+
+  "V1 fraud-proof transition-trace final-4 L2 open yield":
+    "V1FpTtF4L2OpenYield",
+  "V1 fraud-proof transition-trace final-4 L2 summaries yield":
+    "V1FpTtF4L2SummariesYield",
+  "V1 fraud-proof transition-trace final-4 L2 replay yield":
+    "V1FpTtF4L2ReplayYield",
+  "V1 fraud-proof transition-trace final-4 claim structure yield":
+    "V1FpTtF4ClaimStructYield",
+  "V1 fraud-proof transition-trace final-4 claim source yield":
+    "V1FpTtF4ClaimSourceYield",
+  "V1 fraud-proof transition-trace final-4 claim endpoints yield":
+    "V1FpTtF4ClaimEndsYield",
+  "V1 fraud-proof transition-trace final-5 projection yield":
+    "V1FpTtF5ProjectionYield",
+  "V1 fraud-proof transition-trace final-5 summaries yield":
+    "V1FpTtF5SummariesYield",
+
   "V1 fraud-proof min-ada step-02 UTxO yield": "V1FpMinAdaS02UtxoYield",
   "correction-lock spending": "CorrectionLockSpend",
   "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",

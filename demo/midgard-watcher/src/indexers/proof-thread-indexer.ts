@@ -1165,7 +1165,12 @@ const parseFamily = (value: unknown): WatcherProofThreadFamily | null => {
         next.some(
           (nextIndex) =>
             !isNatural(nextIndex) ||
-            BigInt(nextIndex) <= BigInt(currentIndex) ||
+            (BigInt(nextIndex) <= BigInt(currentIndex) &&
+              !(
+                record.catalogueCategory === "transitionTrace" &&
+                (currentIndex === 5 || currentIndex === 6) &&
+                BigInt(nextIndex) === BigInt(currentIndex)
+              )) ||
             BigInt(nextIndex) >= BigInt(steps.length),
         ) ||
         next.some(
@@ -1236,7 +1241,9 @@ const familyMatchesRegisteredAuthority = (
             (nextIndex, nextIndexOffset) =>
               nextIndex === (nextIndexOffset + 1).toString(),
           )
-        : next.length === 0,
+        : index === 5 || index === 6
+          ? next.length === 1 && next[0] === index.toString()
+          : next.length === 0,
     );
   }
   return family.nextStepIndexes.every((next, index) =>
@@ -3570,7 +3577,11 @@ const verifySuccessTransaction = (
       fraudProofMintRedeemerGlobalIndex:
         layout.fraudProofMintRedeemerGlobalIndex,
     }) ||
-    family.nextStepIndexes[Number(source.stepIndex!)]?.length !== 0
+    (family.nextStepIndexes[Number(source.stepIndex!)]?.length !== 0 &&
+      !(
+        family.catalogueCategory === "transitionTrace" &&
+        (source.stepIndex === "5" || source.stepIndex === "6")
+      ))
   ) {
     return false;
   }

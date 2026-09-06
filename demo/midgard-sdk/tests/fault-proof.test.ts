@@ -1779,6 +1779,7 @@ describe("fault-proof contract builder", () => {
         network: "Preprod",
         hubOraclePolicyId: h28b,
         fraudProofCataloguePolicyId: h28c,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
 
@@ -1812,7 +1813,8 @@ describe("fault-proof contract builder", () => {
           contracts.computationThread.policyId,
           contracts.fraudProof.policyId,
           fraudProofTokenAddressData,
-          ...(name === "deposit" || name === "l1Event" ? [h28b] : []),
+          ...(name === "accepted" || name === "deposit" ? [h28b] : []),
+          ...(name === "l1Event" ? [h28b] : []),
         ],
       ),
     );

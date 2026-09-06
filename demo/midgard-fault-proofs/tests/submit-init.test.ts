@@ -24,6 +24,7 @@ import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   ScriptHashSchema,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
+  TRANSITION_TRACE_YIELD_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
 import {
@@ -590,6 +591,7 @@ describe("fault-proof deployment contract resolution", () => {
     const blueprint = filterBlueprint(readBlueprint(), [
       ...Object.values(FAULT_PROOF_SHARED_TITLES),
       ...Object.values(TRANSITION_TRACE_FAULT_PROOF_TITLES),
+      ...Object.values(TRANSITION_TRACE_YIELD_TITLES),
     ]);
     const contracts = await Effect.runPromise(
       buildTransitionTraceFaultProofContracts({
@@ -597,7 +599,10 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
-        referenceScriptAuthPolicyId: h28b,
+        referenceScriptAuthPolicyId: validatorToScriptHash({
+          type: "Native",
+          script: referenceScriptAuthNativeScript,
+        }),
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
