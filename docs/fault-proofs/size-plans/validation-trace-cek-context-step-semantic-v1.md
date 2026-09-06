@@ -525,10 +525,14 @@ updating the outer context. This keeps each independently published body below
 is the item binder at 12,708 bytes; the 32 already parameterized tail instances
 publish in at most 12,205 signed bytes on the normal ledger.
 
-The durable context submission field is `successorWorkWitnessCbor`. Its exact
-bytes come from the adjacent fresh canonical replay witness, are retained with
-one-step evidence, and must participate in journal serialization and evidence
-identity. The host checks the frozen successor work hash before building any
+The producer and submission field is
+`cekContextSuccessorWorkWitnessCbor`; the context planner receives its exact hex
+encoding as `successorWorkWitnessCbor`. The producer populates it only for CEK
+context resolver 11/2, clones the adjacent fresh canonical replay bytes, and
+checks their phase, program counter, and successor work root. Submission admission
+refuses this field on other routes and rejects malformed or trailing CBOR even
+when its hash is claimed. The exact bytes must participate in durable journal
+serialization and evidence identity. The host checks the frozen successor work hash before building any
 output; the final on-chain settlement reconstructs that work independently.
 An operator-retained witness is never substituted for this canonical replay
 material. Generic item successors are computed with the shared canonical item
