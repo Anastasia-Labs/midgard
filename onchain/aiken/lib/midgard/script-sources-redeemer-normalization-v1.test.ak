@@ -2498,3 +2498,26 @@ test raw_envelope_rejects_serialise_data_witness_and_mutated_successor() {
     ) != None,
   }
 }
+
+test cek_item_carrier_wire_preserves_opaque_stage_and_exact_control_order() {
+  let current = outer_control(fold_control())
+  let next = outer_control(finalize_control())
+  let staged: Data = builtin.constr_data(37, [builtin.b_data(hash_a)])
+  let current_data: Data = current
+  let next_data: Data = next
+  let pending: Data = normalization.CekContextItemStepPending {
+    staged,
+    item_control: current,
+    item_witness_hash: hash_b,
+    claimed_next: next,
+  }
+  let verified: Data = normalization.CekContextItemStepVerified { staged, next }
+  and {
+    pending == builtin.constr_data(
+      0,
+      [staged, current_data, builtin.b_data(hash_b), next_data],
+    ),
+    verified == builtin.constr_data(0, [staged, next_data]),
+    verified != builtin.constr_data(0, [staged, current_data]),
+  }
+}

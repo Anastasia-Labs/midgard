@@ -8,9 +8,23 @@ use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
 use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/redeemer_item_proof_v1.{RedeemerItemProofControlV1}
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
+
+/// CEK owns the opaque staged value; the shared item machine preserves it exactly.
+pub type CekContextItemStepPending {
+  staged: Data,
+  item_control: RedeemerItemProofControlV1,
+  item_witness_hash: ByteArray,
+  claimed_next: RedeemerItemProofControlV1,
+}
+
+pub type CekContextItemStepVerified {
+  staged: Data,
+  next: RedeemerItemProofControlV1,
+}
 
 pub const version: Int = 1
 
