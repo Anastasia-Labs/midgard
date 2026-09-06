@@ -1369,6 +1369,7 @@ describe("validation-dispute transaction validity", () => {
       },
       inputIndex: 0n,
       outputIndex: 0n,
+      scriptSourcesMiddleInvocation: { kind: 3, referenceInputIndex: 2n },
     });
     expect(
       parseExactAikenDataCbor({
@@ -1542,6 +1543,15 @@ describe("validation-dispute transaction validity", () => {
         },
         inputIndex: 0n,
         outputIndex: 0n,
+        ...(selected.index === 25
+          ? {
+              scriptSourcesObserverInvocation: {
+                observerHash: "11".repeat(28),
+                activeCount: 1n,
+                indices: [2n, 3n],
+              },
+            }
+          : {}),
       });
       expect(
         parseExactAikenDataCbor({
