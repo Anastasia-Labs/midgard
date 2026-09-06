@@ -10,6 +10,7 @@ export {
   buildFaultProofContracts,
   fraudProofContractsToFirstSteps,
 } from "./build.js";
+export * from "./cek-context.js";
 export {
   CEK_CORE_ARM_HOP_COUNTS,
   CEK_CORE_STAGE_REFERENCES,

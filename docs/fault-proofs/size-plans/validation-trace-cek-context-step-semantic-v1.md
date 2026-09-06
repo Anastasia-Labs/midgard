@@ -8,17 +8,17 @@ and
 
 ## 1. Identity
 
-| Field                  | Value                                                                                                                                                                                                                                                                                                                                                           |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Blueprint title        | `fraud_proofs/validation_trace/cek_context_step_semantic_v1.main.spend` (and `.else`)                                                                                                                                                                                                                                                                           |
-| File                   | `onchain/aiken/validators/fraud-proofs/validation-trace/cek-context-step-semantic-v1.ak` (88 lines)                                                                                                                                                                                                                                                             |
-| Raw size               | 94,268 bytes (measured 2026-09-01, pinned fork `v1.1.23+5adf783`, fresh copy build)                                                                                                                                                                                                                                                                             |
-| Applied parameters     | `award_script_hash: ScriptHash`, `computation_thread_policy_id: PolicyId`, `field_preimage_certificate_policy_id: PolicyId` (3)                                                                                                                                                                                                                                 |
-| Phase / index          | phase `Cek`, resolver index 11 (`cek_v1.main`, a `prepare_selected` over 4 semantic hashes), semantic resolver index 2                                                                                                                                                                                                                                          |
-| Library entry point    | `validation_machine_v1.verify_cek_context_step_semantics_v1(pre, transition, auxiliary, door)` wrapped by `validation_semantic_v1.continue_winning`                                                                                                                                                                                                             |
-| Role name today        | none (published hash-checked, no auth-role token; the only CEK role in the roster is the retired `V1ValidationTraceCekResolver0`)                                                                                                                                                                                                                               |
-| Deployment entry today | `validationTraceDisputeCekContextStepSemantic` (`VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[2]`, `demo/midgard-fault-proofs/src/validation-dispute/submit.ts:815`)                                                                                                                                                                          |
-| SDK title key          | `VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics.cekContextStep` (`demo/midgard-sdk/src/fraud-proof/contracts.ts:458`)                                                                                                                                                                                                                                    |
+| Field                  | Value                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Blueprint title        | `fraud_proofs/validation_trace/cek_context_step_semantic_v1.main.spend` (and `.else`)                                                                                                                                                                                                                                                                        |
+| File                   | `onchain/aiken/validators/fraud-proofs/validation-trace/cek-context-step-semantic-v1.ak` (88 lines)                                                                                                                                                                                                                                                          |
+| Raw size               | 94,268 bytes (measured 2026-09-01, pinned fork `v1.1.23+5adf783`, fresh copy build)                                                                                                                                                                                                                                                                          |
+| Applied parameters     | `award_script_hash: ScriptHash`, `computation_thread_policy_id: PolicyId`, `field_preimage_certificate_policy_id: PolicyId` (3)                                                                                                                                                                                                                              |
+| Phase / index          | phase `Cek`, resolver index 11 (`cek_v1.main`, a `prepare_selected` over 4 semantic hashes), semantic resolver index 2                                                                                                                                                                                                                                       |
+| Library entry point    | `validation_machine_v1.verify_cek_context_step_semantics_v1(pre, transition, auxiliary, door)` wrapped by `validation_semantic_v1.continue_winning`                                                                                                                                                                                                          |
+| Role name today        | none (published hash-checked, no auth-role token; the only CEK role in the roster is the retired `V1ValidationTraceCekResolver0`)                                                                                                                                                                                                                            |
+| Deployment entry today | `validationTraceDisputeCekContextStepSemantic` (`VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[2]`, `demo/midgard-fault-proofs/src/validation-dispute/submit.ts:815`)                                                                                                                                                                       |
+| SDK title key          | `VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics.cekContextStep` (`demo/midgard-sdk/src/fraud-proof/contracts.ts:458`)                                                                                                                                                                                                                                 |
 | Emulator today         | published only in `submit-init-emulator-validation-dispute.test.ts` ("publishes and verifies the generated-blueprint CEK semantic-resolver reference scripts") with `oversized: true` under `maxTxSize: 262_144`; never driven through a dispute journey (the only CEK journey, `submit-init-emulator-cek-value-and-mint.test.ts`, disputes the finish kind) |
 
 The step this resolver proves is one of fourteen context-build stages
@@ -493,3 +493,55 @@ aggregate on every existing fixture (`cek_context_chain_agrees_with_the_aggregat
 - **Count.** ≈ 21 validators plus the shared item-proof hops; deployment
   info, node targets and inspection fixtures grow accordingly. The
   alternative (yields) was rejected for budget, not for count.
+
+## Implementation transition sketch
+
+The context implementation follows the same acyclic, authenticated continuation
+model as the completed core chain. B0 keeps the original semantic blueprint
+entry and raw auxiliary wire, checks the prepared evidence hash and CEK prefix,
+and forwards an opaque prepared resolution plus authenticated control. B1
+checks the canonical context-control encoding and its admitted domain, then
+emits the typed context and only the native fields consumed by context stages.
+Each narrow stage opens only its own auxiliary constructor and verifies its
+entire next-control update. Settle checks the original continuation or execution
+seed successor against the prepared dispute before awarding the proof.
+
+Stage0/9 item advances use the shared `CekContextItemStepPending` and
+`CekContextItemStepVerified` carriers from
+`script_sources_redeemer_normalization_v1`. Their opaque staged field is returned
+unchanged; the shared executor authenticates the exact raw item witness and
+Advanced next control. CEK's fixed return validator checks the enclosing context
+update before settle. There is no caller-provided truth result or alternate
+admission path. Measurement uses the normal testnet blueprint, complete signed
+transactions, the standard ledger writer and explicit 13.2M/8B execution
+reserve assertions before accepting a maximum shape.
+
+The measured implementation uses 34 CEK stage instances plus the existing
+semantic entry and shared item chain. Redeemer selection separates membership,
+purpose summary, initial-control hash, and context update. The shared-item return
+routes to separate continuation hashing and terminal-value summarization before
+updating the outer context. This keeps each independently published body below
+15,000 bytes without restricting item shapes. The largest current raw CEK body
+is the item binder at 12,708 bytes; the 32 already parameterized tail instances
+publish in at most 12,205 signed bytes on the normal ledger.
+
+The durable context submission field is `successorWorkWitnessCbor`. Its exact
+bytes come from the adjacent fresh canonical replay witness, are retained with
+one-step evidence, and must participate in journal serialization and evidence
+identity. The host checks the frozen successor work hash before building any
+output; the final on-chain settlement reconstructs that work independently.
+An operator-retained witness is never substituted for this canonical replay
+material. Generic item successors are computed with the shared canonical item
+machine and the shared raw-data codec.
+
+Publication evidence regeneration (Node 22 / pnpm 9, normal pinned testnet
+blueprint):
+
+```bash
+MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cek-context-publication.test.ts
+pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cek-context-fit-ledger.test.ts tests/cek-context-plan.test.ts
+```
+
+The publication ledger is preliminary tail evidence. Completion also requires
+the shared item entry, full registered dispute lifecycles, and the separate
+maximum lifecycle measurements against the final consolidated blueprint.

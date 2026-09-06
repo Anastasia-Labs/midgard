@@ -12,6 +12,9 @@ use midgard/blake2b_224_trace_v1
 use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
 use midgard/cek_constant_v1
+use midgard/cek_context_chain as context_chain
+use midgard/cek_context_observer as bounded_observer
+use midgard/cek_context_step as bounded_context
 use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
@@ -1957,7 +1960,7 @@ fn verify_cek_context_source_transition_fixture(
     transaction_id,
     transaction_commitment,
   }
-  vm_cek.verify_cek_observer_context_step(
+  let original = vm_cek.verify_cek_observer_context_step(
     pre,
     vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
@@ -1971,6 +1974,37 @@ fn verify_cek_context_source_transition_fixture(
     0,
     inline_field_door(),
   )
+  if !original {
+    False
+  } else {
+    let empty: Data = builtin.constr_data(0, [])
+    let staged = context_chain.ContextStaged {
+      bound: context_chain.ContextBound {
+        prepared: empty,
+        control: empty,
+        auxiliary_hash: #"",
+        transaction_id,
+      },
+      context: context_control,
+      native: bounded_context.native_facts(native_control),
+      execution_cursor: 0,
+    }
+    let opening = if successor_control.stage == 6 {
+      if context_control.observer_count == 0 {
+        bounded_observer.EmptyObservers
+      } else {
+        bounded_observer.FinishedObservers
+      }
+    } else {
+      bounded_observer.ObserverItem {
+        count: successor_control.observer_count,
+        hash: successor_control.previous_observer,
+      }
+    }
+    bounded_observer.next_observer(staged, opening) == context_chain.ContinueContext {
+      next: successor_control,
+    }
+  }
 }
 
 fn cek_context_native_control_fixture(
@@ -11177,7 +11211,7 @@ test cek_context_signer_item_uses_authenticated_signer_frontier() {
     0,
     44,
   )
-  vm_one_step.verify_one_step_evidence(
+  verify_bounded_context_parity(
     pre,
     vm_machine_types.ValidationOneStepEvidenceV1 {
       transition: vm_machine_types.ValidationOneStepWitnessV1 {
@@ -12300,7 +12334,7 @@ test cek_context_seed_fits_one_step() {
       post_work,
     ),
   }
-  vm_one_step.verify_one_step_evidence(
+  verify_bounded_context_parity(
     pre,
     vm_machine_types.ValidationOneStepEvidenceV1 {
       transition: vm_machine_types.ValidationOneStepWitnessV1 {
@@ -12379,7 +12413,7 @@ test cek_context_assemble_fits_one_step() {
     0,
     56,
   )
-  vm_one_step.verify_one_step_evidence(
+  verify_bounded_context_parity(
     pre,
     vm_machine_types.ValidationOneStepEvidenceV1 {
       transition: vm_machine_types.ValidationOneStepWitnessV1 {
@@ -12472,7 +12506,7 @@ test cek_context_tx_info_finalize_fits_one_step() {
     0,
     56,
   )
-  vm_one_step.verify_one_step_evidence(
+  verify_bounded_context_parity(
     pre,
     vm_machine_types.ValidationOneStepEvidenceV1 {
       transition: vm_machine_types.ValidationOneStepWitnessV1 {
@@ -15969,8 +16003,7 @@ test inline_source_hash_block_fails_closed_when_boundary_data_is_withheld() {
   ) == None
 }
 
-// ===========================================================================
-// VM-STAGE-DIFFERENTIAL -- per-stage route agreement controls.
+// ====================================================================// VM-STAGE-DIFFERENTIAL -- per-stage route agreement controls.
 //
 // Every ScriptSources stage is implemented twice.
 //
@@ -16001,8 +16034,7 @@ test inline_source_hash_block_fails_closed_when_boundary_data_is_withheld() {
 // Each test is deliberately built from the smallest fixture that reaches the
 // stage -- this module is under aiken#1389, so every extra fixture costs
 // compile minutes.
-// ===========================================================================
-
+// ====================================================================
 /// The deployed narrow route and the generic route must return the same
 /// verdict, and that verdict must be `expected`. Both arguments are evaluated
 /// before the comparison, so neither route can hide behind `and` short
@@ -17190,8 +17222,7 @@ test stage_twelve_finish_pending_redeemer_hash_divergence_is_unreachable() {
   )
 }
 
-// ===========================================================================
-// R5 item 1 (#617) -- cek and ValueAndMint per-kind route agreement controls.
+// ====================================================================// R5 item 1 (#617) -- cek and ValueAndMint per-kind route agreement controls.
 //
 // Indices 11 (`cek`) and 12 (`valueAndMint`) used to be served by one
 // aggregate resolver each. They are now `prepare_selected` plus one semantic
@@ -17212,8 +17243,7 @@ test stage_twelve_finish_pending_redeemer_hash_divergence_is_unreachable() {
 //
 // Kind numbering follows the deployed semantic-resolver group order
 // (`VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics` in the SDK).
-// ===========================================================================
-
+// ====================================================================
 fn work_root_mutated(
   witness: vm_machine_types.ValidationOneStepWitnessV1,
 ) -> vm_machine_types.ValidationOneStepWitnessV1 {
@@ -18479,4 +18509,64 @@ test encode_resolve_inputs_initial_equals_generic_none(
     None,
     schedule,
   )
+}
+
+/// Compare the decomposed context leaf with the original admitted transition.
+fn verify_bounded_context_parity(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
+) -> Bool {
+  if !vm_one_step.verify_one_step_evidence(pre, evidence, door) {
+    False
+  } else {
+    let cek = vm_witness.cek_witness_control_v1(evidence.transition)
+    let context = vm_witness.cek_context_control_from_cbor(
+      cek.context_control_cbor,
+    )
+    let native = bounded_context.native_facts(cek.control)
+    let auxiliary: Data = evidence.auxiliary
+    let next_work = if context.stage == 13 {
+      vm_witness.encode_cek_witness_v1(
+        cek.control,
+        #"",
+        cek.execution_cursor,
+        cek.completed_cpu,
+        cek.completed_memory,
+        bounded_context.seed_hash(context, cek.execution_cursor, auxiliary),
+        context.execution_cpu_limit,
+        context.execution_memory_limit,
+        cek.program_envelope_hash,
+      )
+    } else {
+      let next = when context.stage is {
+        1 -> bounded_context.next_resolved(context, native, auxiliary, 1)
+        2 -> bounded_context.next_resolved(context, native, auxiliary, 0)
+        3 -> bounded_context.next_output(context, native, auxiliary)
+        4 -> bounded_context.next_signer(context, native, auxiliary)
+        6 -> bounded_context.next_mint_init(context, native, auxiliary)
+        8 -> bounded_context.next_mint_item(context, native, auxiliary)
+        11 ->
+          bounded_context.next_assemble(context, pre.transaction_id, auxiliary)
+        12 -> bounded_context.next_tx_info(context, native, auxiliary)
+        _ -> fail
+      }
+      vm_witness.encode_cek_witness_v1(
+        cek.control,
+        vm_witness.encode_cek_context_control_v1(next),
+        cek.execution_cursor,
+        cek.completed_cpu,
+        cek.completed_memory,
+        #"",
+        0,
+        0,
+        next.program_envelope_hash,
+      )
+    }
+    evidence.transition.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      pre.program_counter + 1,
+      next_work,
+    )
+  }
 }

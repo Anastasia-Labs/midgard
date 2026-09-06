@@ -29,6 +29,16 @@ use aiken/primitive/bytearray
 use cardano/address
 use cardano/assets
 use cardano/transaction as l1
+use fraud_proofs/validation_trace/cek_context_bind as context_bind
+use fraud_proofs/validation_trace/cek_context_control as context_control
+use fraud_proofs/validation_trace/cek_context_mint_init as context_mint_init
+use fraud_proofs/validation_trace/cek_context_observer_authenticate as context_observer_authenticate
+use fraud_proofs/validation_trace/cek_context_observer_fold as context_observer_fold
+use fraud_proofs/validation_trace/cek_context_output as context_output
+use fraud_proofs/validation_trace/cek_context_reference as context_reference
+use fraud_proofs/validation_trace/cek_context_settle as context_settle
+use fraud_proofs/validation_trace/cek_context_signer as context_signer
+use fraud_proofs/validation_trace/cek_context_spend as context_spend
 use fraud_proofs/validation_trace/cek_context_step_semantic_v1 as context_validator
 use fraud_proofs/validation_trace/cek_core_arm_compute as core_compute
 use fraud_proofs/validation_trace/cek_core_settle as core_settle
@@ -38,6 +48,9 @@ use fraud_proofs/validation_trace/cek_execution_selection_yields as selection_yi
 use fraud_proofs/validation_trace/cek_finish_semantic_v1 as finish_validator
 use fraud_proofs/validation_trace/cek_v1 as prepare_validator
 use midgard/bounded_item_v1
+use midgard/cek_context_chain as context_chain
+use midgard/cek_context_observer as context_observer
+use midgard/cek_context_step as context_step
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -62,9 +75,10 @@ use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/cek as cek_semantics
 use midgard/validation_machine/machine_types.{
-  CekContextControlV1, CekCoreStepWitness, NativeExecutionScanWitness,
-  NativeScriptsControlV1, NoAuxiliaryWitness, ValidationAuxiliaryWitnessV1,
-  ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
+  CekContextControlV1, CekCoreStepWitness, CekWitnessControlV1,
+  NativeExecutionScanWitness, NativeScriptsControlV1, NoAuxiliaryWitness,
+  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
+  ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/witness as vm_witness
@@ -2057,4 +2071,408 @@ test bounded_core_settle_refuses_omitted_arm() fail {
       fixture.own_out_ref(),
       fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
     )
+}
+
+fn context_staged_fixture(f: CekStepFixtureV1) -> context_chain.ContextStaged {
+  let cek = vm_witness.cek_witness_control_v1(f.transition)
+  let auxiliary: Data = f.auxiliary
+  let prepared_data: Data = prepared(f)
+  let control_data: Data = cek
+  context_chain.ContextStaged {
+    bound: context_chain.ContextBound {
+      prepared: prepared_data,
+      control: control_data,
+      auxiliary_hash: blake2b_256(cbor.serialise(auxiliary)),
+      transaction_id: f.pre.transaction_id,
+    },
+    context: vm_witness.cek_context_control_from_cbor(cek.context_control_cbor),
+    native: context_step.native_facts(cek.control),
+    execution_cursor: cek.execution_cursor,
+  }
+}
+
+fn context_chain_action(f: CekStepFixtureV1) -> context_chain.ContextAction {
+  let auxiliary: Data = f.auxiliary
+  context_chain.VerifyContext {
+    input_index: 0,
+    output_index: 0,
+    transition: f.transition,
+    auxiliary,
+  }
+}
+
+test bounded_context_mint_chain_agrees_with_original() {
+  let f = context_step_fixture()
+  let staged = context_staged_fixture(f)
+  let bound_data: Data = staged.bound
+  let staged_data: Data = staged
+  let auxiliary: Data = f.auxiliary
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: context_step.next_mint_init(
+        staged.context,
+        staged.native,
+        auxiliary,
+      ),
+    },
+  }
+  let verified_data: Data = verified
+  let action = ct.Continue(context_chain_action(f))
+  let next_hash = fixture.next_step_script_hash
+  and {
+    run_kind(2, f),
+    context_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+    ),
+    context_control.main.spend(
+      [
+        next_hash, next_hash, next_hash, next_hash, next_hash, next_hash,
+        next_hash, next_hash,
+      ],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged.bound),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+    ),
+    context_mint_init.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data),
+    ),
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    ),
+  }
+}
+
+test bounded_context_mint_refuses_substituted_auxiliary() fail {
+  let f = context_step_fixture()
+  let staged = context_staged_fixture(f)
+  let action = context_chain.VerifyContext {
+    ..context_chain_action(f),
+    auxiliary: builtin.constr_data(0, [builtin.i_data(1)]),
+  }
+  expect
+    context_mint_init.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged),
+        },
+      ),
+      ct.Continue(action),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    )
+}
+
+test bounded_context_refuses_an_honest_operator_successor() fail {
+  let honest = context_step_fixture()
+  let dishonest_post = validation_trace_v1.ValidationMachineStateV1 {
+    ..honest.transition.claimed_successor,
+    work_root: h_c,
+  }
+  let f = CekStepFixtureV1 {
+    ..honest,
+    transition: ValidationOneStepWitnessV1 {
+      ..honest.transition,
+      claimed_successor: dishonest_post,
+    },
+  }
+  let original_staged = context_staged_fixture(f)
+  let original_prepared = prepared(f)
+  let honest_operator_prepared: Data = PreparedValidationResolutionStateV1 {
+    ..original_prepared,
+    resolution: ValidationResolutionStateV1 {
+      ..original_prepared.resolution,
+      operator_successor_hash: validation_trace_v1.hash_machine_state(
+        honest.transition.claimed_successor,
+      ),
+    },
+  }
+  let staged = context_chain.ContextStaged {
+    ..original_staged,
+    bound: context_chain.ContextBound {
+      ..original_staged.bound,
+      prepared: honest_operator_prepared,
+    },
+  }
+  let staged_data: Data = staged
+  let auxiliary: Data = f.auxiliary
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: context_step.next_mint_init(
+        staged.context,
+        staged.native,
+        auxiliary,
+      ),
+    },
+  }
+  expect
+    context_settle.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      ct.Continue(context_chain_action(f)),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    )
+}
+
+test bounded_context_refuses_substituted_source_transaction() fail {
+  let original = context_step_fixture()
+  let f = CekStepFixtureV1 {
+    ..original,
+    pre: validation_trace_v1.ValidationMachineStateV1 {
+      ..original.pre,
+      transaction_id: h_c,
+    },
+  }
+  let bound_data: Data = context_staged_fixture(f).bound
+  expect
+    context_bind.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      ct.Continue(context_chain_action(f)),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+    )
+}
+
+fn run_empty_context_chain(stage: Int) -> Bool {
+  let tx = empty_v1_transaction()
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let context = CekContextControlV1 {
+    ..original.context,
+    stage,
+    observer_summary: vm_witness.empty_data_summary_v1(),
+  }
+  let next_context = if stage < 5 {
+    CekContextControlV1 { ..context, stage: stage + 1 }
+  } else {
+    expect context_chain.ContinueContext { next } = context_observer.next_observer(
+      context_chain.ContextStaged { ..original, context },
+      context_observer.EmptyObservers,
+    )
+    next
+  }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    cek.control,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_b,
+    47,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    cek.control,
+    vm_witness.encode_cek_context_control_v1(next_context),
+    0,
+    #"",
+    0,
+    0,
+    h_b,
+    48,
+    0,
+    0,
+  )
+  let f = step_fixture(
+    2,
+    pre,
+    work_witness_cbor,
+    post,
+    NoAuxiliaryWitness,
+    NoCekMaterial,
+  )
+  let staged = context_staged_fixture(f)
+  let bound_data: Data = staged.bound
+  let staged_data: Data = staged
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext { next: next_context },
+  }
+  let verified_data: Data = verified
+  let action = ct.Continue(context_chain_action(f))
+  let next_hash = fixture.next_step_script_hash
+  let datum = Some(
+    ct.StepDatum {
+      fraud_prover: fixture.fraud_prover_key_hash,
+      data: Some(staged),
+    },
+  )
+  let tx_leaf = fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data)
+  let leaf = when stage is {
+    1 ->
+      context_reference.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        datum,
+        action,
+        fixture.own_out_ref(),
+        tx_leaf,
+      )
+    2 ->
+      context_spend.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        datum,
+        action,
+        fixture.own_out_ref(),
+        tx_leaf,
+      )
+    3 ->
+      context_output.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        datum,
+        action,
+        fixture.own_out_ref(),
+        tx_leaf,
+      )
+    4 ->
+      context_signer.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        datum,
+        action,
+        fixture.own_out_ref(),
+        tx_leaf,
+      )
+    5 -> {
+      let pending = context_observer.ObserverPending {
+        staged: staged_data,
+        opening: context_observer.EmptyObservers,
+      }
+      let pending_data: Data = pending
+      and {
+        context_observer_authenticate.main.spend(
+          next_hash,
+          fixture.computation_thread_policy_id,
+          fixture.test_certificate_policy_id,
+          datum,
+          action,
+          fixture.own_out_ref(),
+          fixture.continue_mid_step_l1_tx_v1(ct_asset, pending_data),
+        ),
+        context_observer_fold.main.spend(
+          next_hash,
+          fixture.computation_thread_policy_id,
+          Some(
+            ct.StepDatum {
+              fraud_prover: fixture.fraud_prover_key_hash,
+              data: Some(pending),
+            },
+          ),
+          action,
+          fixture.own_out_ref(),
+          tx_leaf,
+        ),
+      }
+    }
+    _ -> fail
+  }
+  and {
+    run_kind(2, f),
+    context_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+    ),
+    context_control.main.spend(
+      list.repeat(next_hash, 14),
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged.bound),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+    ),
+    leaf,
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    ),
+  }
+}
+
+test bounded_context_reference_empty_chain() {
+  run_empty_context_chain(1)
+}
+
+test bounded_context_spend_empty_chain() {
+  run_empty_context_chain(2)
+}
+
+test bounded_context_output_empty_chain() {
+  run_empty_context_chain(3)
+}
+
+test bounded_context_signer_empty_chain() {
+  run_empty_context_chain(4)
+}
+
+test bounded_context_observer_empty_chain() {
+  run_empty_context_chain(5)
 }
