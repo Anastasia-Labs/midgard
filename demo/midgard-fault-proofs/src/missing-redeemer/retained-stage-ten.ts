@@ -22,6 +22,7 @@ import {
   ValidationTraceDescriptorSchema,
   validationTraceProofCoreFromData,
 } from "@al-ft/midgard-sdk";
+import { decodeScriptDiscoveryBitmap } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -105,8 +106,8 @@ const decodeDiscovery = (value: unknown): Control["discovery"] => {
     matched_source_leaf: bytes(fields[9], "matched source leaf").toString(
       "hex",
     ),
-    used_inline_bitmap: integer(fields[10], "used inline bitmap"),
-    used_redeemer_bitmap: integer(fields[11], "used redeemer bitmap"),
+    used_inline_bitmap: decodeScriptDiscoveryBitmap(fields[10]),
+    used_redeemer_bitmap: decodeScriptDiscoveryBitmap(fields[11]),
     redeemer_item_control_hash: bytes(
       fields[12],
       "redeemer control hash",

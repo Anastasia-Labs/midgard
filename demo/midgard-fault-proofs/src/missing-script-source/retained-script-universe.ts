@@ -22,6 +22,7 @@ import {
   ValidationTraceDescriptorSchema,
   validationTraceProofCoreFromData,
 } from "@al-ft/midgard-sdk";
+import { decodeScriptDiscoveryBitmap } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -185,8 +186,8 @@ export const parseRetainedScriptSourcesStageNineControl = (
       matched_source_index: integer(discovery[7], "matched source index"),
       matched_language_tag: integer(discovery[8], "matched language tag"),
       matched_source_leaf: bytes(discovery[9], "matched source leaf"),
-      used_inline_bitmap: integer(discovery[10], "used inline bitmap"),
-      used_redeemer_bitmap: integer(discovery[11], "used redeemer bitmap"),
+      used_inline_bitmap: decodeScriptDiscoveryBitmap(discovery[10]),
+      used_redeemer_bitmap: decodeScriptDiscoveryBitmap(discovery[11]),
       redeemer_item_control_hash: bytes(discovery[12], "redeemer control hash"),
       execution_count: integer(discovery[13], "execution count"),
       execution_peaks: frontier(discovery[14], "execution peaks"),

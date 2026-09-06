@@ -62,6 +62,31 @@ export type ScriptDiscoveryTraceControl = {
   readonly executionFrontier: MidgardValidationMerkleFrontier;
 };
 
+/** Minimal big-endian unsigned bytes; zero is empty, at most 16,384 bits. */
+export const encodeScriptDiscoveryBitmap = (value: bigint): Buffer => {
+  if (value < 0n || value >= 1n << 16_384n) {
+    throw new Error(
+      "script discovery bitmap exceeds the unsigned 16384-bit domain",
+    );
+  }
+  if (value === 0n) return Buffer.alloc(0);
+  const hex = value.toString(16);
+  return Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
+};
+
+export const decodeScriptDiscoveryBitmap = (value: unknown): bigint => {
+  if (
+    !(value instanceof Uint8Array) ||
+    value.length > 2048 ||
+    (value.length > 0 && value[0] === 0)
+  ) {
+    throw new Error("script discovery bitmap must be canonical unsigned bytes");
+  }
+  return value.length === 0
+    ? 0n
+    : BigInt(`0x${Buffer.from(value).toString("hex")}`);
+};
+
 export const encodeScriptDiscoveryControlCbor = (
   discovery: ScriptDiscoveryTraceControl,
 ): Buffer =>
@@ -76,8 +101,8 @@ export const encodeScriptDiscoveryControlCbor = (
     BigInt(discovery.matchedSourceIndex),
     BigInt(discovery.matchedLanguageTag),
     discovery.matchedSourceLeaf,
-    discovery.usedInlineBitmap,
-    discovery.usedRedeemerBitmap,
+    encodeScriptDiscoveryBitmap(discovery.usedInlineBitmap),
+    encodeScriptDiscoveryBitmap(discovery.usedRedeemerBitmap),
     discovery.redeemerItemControlHash,
     BigInt(discovery.executionFrontier.count),
     encodeValidationFrontierPeaks(discovery.executionFrontier),

@@ -46,7 +46,7 @@ const retired_item_evidence_hash =
   #"3a22e3cdb0beaabf7a5f3c9516168215aa18dd1a282746db72a5876ebd2b6cef"
 
 const script_discovery_control_cbor =
-  #"8f010203000441aa41bb050341cc060741dd0881820941ee"
+  #"8f010203000441aa41bb050341cc4106410741dd0881820941ee"
 
 test typescript_generated_one_step_boundary_is_authenticated() {
   expect Some(dispute_data) = cbor.deserialise(dispute_cbor)

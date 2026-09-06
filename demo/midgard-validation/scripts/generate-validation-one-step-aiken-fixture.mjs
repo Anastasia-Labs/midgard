@@ -549,7 +549,7 @@ const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCbor({
   },
 });
 const expectedScriptDiscoveryControlCborHex =
-  "8f010203000441aa41bb050341cc060741dd0881820941ee";
+  "8f010203000441aa41bb050341cc4106410741dd0881820941ee";
 if (
   scriptDiscoveryControlCbor.toString("hex") !==
   expectedScriptDiscoveryControlCborHex

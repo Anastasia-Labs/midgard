@@ -1,4 +1,6 @@
 export {
+  decodeScriptDiscoveryBitmap,
+  encodeScriptDiscoveryBitmap,
   encodeScriptDiscoveryControlCbor,
   type ScriptDiscoveryTraceControl,
 } from "./control-encoding.js";

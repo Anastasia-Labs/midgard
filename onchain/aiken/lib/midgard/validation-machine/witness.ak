@@ -1575,6 +1575,24 @@ pub fn empty_script_discovery_control() -> ScriptDiscoveryControlV1 {
   }
 }
 
+pub fn encode_script_discovery_bitmap(value: Int) -> ByteArray {
+  expect value >= 0
+  let bytes = if value == 0 {
+    #""
+  } else {
+    builtin.integer_to_bytearray(True, 0, value)
+  }
+  expect bytearray.length(bytes) <= 2048
+  bytes
+}
+
+pub fn decode_script_discovery_bitmap(bytes: ByteArray) -> Int {
+  let length = bytearray.length(bytes)
+  expect length <= 2048
+  expect length == 0 || builtin.index_bytearray(bytes, 0) != 0
+  builtin.bytearray_to_integer(True, bytes)
+}
+
 pub fn encode_script_discovery_control(
   control: ScriptDiscoveryControlV1,
 ) -> ByteArray {
@@ -1589,8 +1607,16 @@ pub fn encode_script_discovery_control(
     |> bytearray.concat(cbor.serialise(control.matched_source_index))
     |> bytearray.concat(cbor.serialise(control.matched_language_tag))
     |> bytearray.concat(encode_definite_bytes(control.matched_source_leaf))
-    |> bytearray.concat(cbor.serialise(control.used_inline_bitmap))
-    |> bytearray.concat(cbor.serialise(control.used_redeemer_bitmap))
+    |> bytearray.concat(
+        encode_definite_bytes(
+          encode_script_discovery_bitmap(control.used_inline_bitmap),
+        ),
+      )
+    |> bytearray.concat(
+        encode_definite_bytes(
+          encode_script_discovery_bitmap(control.used_redeemer_bitmap),
+        ),
+      )
     |> bytearray.concat(
         encode_definite_bytes(control.redeemer_item_control_hash),
       )
@@ -1626,8 +1652,12 @@ fn script_discovery_control_from_cbor(
     matched_source_index: builtin.un_i_data(matched_source_index_data),
     matched_language_tag: builtin.un_i_data(matched_language_tag_data),
     matched_source_leaf: builtin.un_b_data(matched_source_leaf_data),
-    used_inline_bitmap: builtin.un_i_data(used_inline_bitmap_data),
-    used_redeemer_bitmap: builtin.un_i_data(used_redeemer_bitmap_data),
+    used_inline_bitmap: decode_script_discovery_bitmap(
+      builtin.un_b_data(used_inline_bitmap_data),
+    ),
+    used_redeemer_bitmap: decode_script_discovery_bitmap(
+      builtin.un_b_data(used_redeemer_bitmap_data),
+    ),
     redeemer_item_control_hash: builtin.un_b_data(
       redeemer_item_control_hash_data,
     ),
