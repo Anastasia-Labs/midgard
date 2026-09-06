@@ -45,6 +45,7 @@ import {
   type DeterministicValidationMachineTrace,
   outputCborMeetsMinAda,
   RejectCodes,
+  validationSemanticResolverIndex,
   valueAndMintKind,
   type ValueAndMintStepKind,
 } from "@al-ft/midgard-validation";
@@ -1180,6 +1181,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   rejectAfterPreconditions = false,
   preconditionsItemIndex,
   resolveInputsKind,
+  scriptSourcesSemanticIndex,
   prepareFieldCarriage,
 }: {
   readonly operatorVkey: string;
@@ -1189,7 +1191,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     | "valueAndMint"
     | "phaseANativeScripts"
     | "phaseAScriptPreconditions"
-    | "resolveInputs";
+    | "resolveInputs"
+    | "scriptSources";
   readonly disputedValueKind?: ValueAndMintStepKind;
   readonly cekSelection?: boolean;
   readonly cekCoreArm?: string;
@@ -1219,6 +1222,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     | "membershipStep"
     | "membershipFinalize"
     | "nonMembership";
+  readonly scriptSourcesSemanticIndex?: number;
   readonly prepareFieldCarriage?: (input: {
     trace: DeterministicValidationMachineTrace;
     stateIndex: number;
@@ -1239,7 +1243,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       | "valueAndMint"
       | "phaseANativeScripts"
       | "phaseAScriptPreconditions"
-      | "resolveInputs";
+      | "resolveInputs"
+      | "scriptSources";
     readonly disputedLowIndex: number;
   }
 > => {
@@ -1282,6 +1287,9 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     const auxiliary = challengerTrace.witnesses[index]?.auxiliary;
     return (
       state.phase === disputedPhase &&
+      (scriptSourcesSemanticIndex === undefined ||
+        validationSemanticResolverIndex(challengerTrace.witnesses[index]!) ===
+          scriptSourcesSemanticIndex) &&
       (resolveInputsKind === undefined ||
         (() => {
           const auxiliary = challengerTrace.witnesses[index]!.auxiliary;

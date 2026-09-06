@@ -794,11 +794,34 @@ pub fn authenticated_whole_field_view(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> FieldViewV1 {
-  let Pair(expected_hash, stride) = field_door_prologue(
+  let Pair(expected_hash, _stride) = field_door_prologue(
     verified,
     witness_set,
     field_index,
   )
+  authenticated_whole_field_view_by_commitment(
+    verified.tx_id,
+    field_index,
+    expected_hash,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// The caller must extract this commitment from a proof-source-bound compact
+/// field. This preserves the same carriage, certificate and envelope checks
+/// without decoding the unrelated transaction body again.
+pub fn authenticated_whole_field_view_by_commitment(
+  tx_id: ByteArray,
+  field_index: Int,
+  expected_hash: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> FieldViewV1 {
+  expect _field_index = expect_field_index(field_index)
+  let stride = field_stride(field_index)
   when carriage is {
     Inline { preimage } -> whole_view(preimage, expected_hash, stride)
     RawUtxo { ref_input_index } ->
@@ -809,7 +832,7 @@ pub fn authenticated_whole_field_view(
       )
     Certified { cert_ref_input_index, chunk_ref_input_indices } -> {
       let CertifiedChunksV1 { chunks, .. } = certified_chunks(
-        verified.tx_id,
+        tx_id,
         field_index,
         expected_hash,
         reference_inputs,

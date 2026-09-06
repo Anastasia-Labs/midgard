@@ -321,7 +321,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const invalidSignature = invalidRange;
 
     const validationTraceSemanticResolvers = Array.from(
-      { length: 90 },
+      { length: 91 },
       () => transitionTrace,
     );
     const validationTracePrepareResolvers = Array.from(

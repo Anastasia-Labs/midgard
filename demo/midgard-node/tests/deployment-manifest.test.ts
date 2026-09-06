@@ -271,9 +271,9 @@ describe("V1 deployment manifest", () => {
     // Re-derived from the wave-current `midgard-core` roster. The shared test
     // pins the same three numbers and this package fails closed against the
     // complete ordered copies above.
-    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(382);
-    expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES).toHaveLength(375);
-    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(376);
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(411);
+    expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES).toHaveLength(404);
+    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(405);
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(54);
   });
 

@@ -249,6 +249,35 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofNativeScriptInvalidStep05",
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
+  "validationTraceDisputeScriptSourcesNonOutputSemantic",
+  "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
+  "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
+  "validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic",
+  "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
+  "validationTraceDisputeScriptSourcesStageZeroBeginSemantic",
+  "validationTraceDisputeScriptSourcesStageZeroFinishSemantic",
+  "validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic",
+  "validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic",
+  "validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic",
+  "validationTraceDisputeScriptSourcesStageNineMismatchSemantic",
+  "validationTraceDisputeScriptSourcesStageNineNativeMatchSemantic",
+  "validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic",
+  "validationTraceDisputeScriptSourcesStageNineMissingSemantic",
+  "validationTraceDisputeScriptSourcesStageOneFinishSemantic",
+  "validationTraceDisputeScriptSourcesStageOneRedeemerSemantic",
+  "validationTraceDisputeScriptSourcesStageElevenFinishSemantic",
+  "validationTraceDisputeScriptSourcesStageElevenSourceSemantic",
+  "validationTraceDisputeScriptSourcesStageTwelveFinishSemantic",
+  "validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic",
+  "validationTraceDisputeScriptSourcesStageTenMissingSemantic",
+  "validationTraceDisputeScriptSourcesStageTenMismatchSemantic",
+  "validationTraceDisputeScriptSourcesStageTenMatchSemantic",
+  "validationTraceDisputeScriptSourcesStageEightFinishSemantic",
+  "validationTraceDisputeScriptSourcesStageEightPurposeSemantic",
+  "validationTraceDisputeScriptSourcesStageSevenObserverSemantic",
+  "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
+  "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
+  "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
   "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
   "validationTraceDisputePhaseANativeScriptsItemSemantic",
   "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
@@ -795,6 +824,64 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofNativeScriptInvalidStep05",
     "V1 fraud-proof min-ada step-01": "fraudProofMinAda",
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
+    "V1 validation-trace script-sources NonOutput semantic":
+      "validationTraceDisputeScriptSourcesNonOutputSemantic",
+    "V1 validation-trace script-sources OutputProofBegin semantic":
+      "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
+    "V1 validation-trace script-sources OutputProofStep semantic":
+      "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
+    "V1 validation-trace script-sources OutputProofFinalize semantic":
+      "validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic",
+    "V1 validation-trace script-sources OutputProofFinish semantic":
+      "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
+    "V1 validation-trace script-sources StageZeroBegin semantic":
+      "validationTraceDisputeScriptSourcesStageZeroBeginSemantic",
+    "V1 validation-trace script-sources StageZeroFinish semantic":
+      "validationTraceDisputeScriptSourcesStageZeroFinishSemantic",
+    "V1 validation-trace script-sources StageZeroHashBlock semantic":
+      "validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic",
+    "V1 validation-trace script-sources StageZeroHashAdvance semantic":
+      "validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic",
+    "V1 validation-trace script-sources StageZeroHashTerminal semantic":
+      "validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic",
+    "V1 validation-trace script-sources StageNineMismatch semantic":
+      "validationTraceDisputeScriptSourcesStageNineMismatchSemantic",
+    "V1 validation-trace script-sources StageNineNativeMatch semantic":
+      "validationTraceDisputeScriptSourcesStageNineNativeMatchSemantic",
+    "V1 validation-trace script-sources StageNineEffectfulMatch semantic":
+      "validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic",
+    "V1 validation-trace script-sources StageNineMissing semantic":
+      "validationTraceDisputeScriptSourcesStageNineMissingSemantic",
+    "V1 validation-trace script-sources StageOneFinish semantic":
+      "validationTraceDisputeScriptSourcesStageOneFinishSemantic",
+    "V1 validation-trace script-sources StageOneRedeemer semantic":
+      "validationTraceDisputeScriptSourcesStageOneRedeemerSemantic",
+    "V1 validation-trace script-sources StageElevenFinish semantic":
+      "validationTraceDisputeScriptSourcesStageElevenFinishSemantic",
+    "V1 validation-trace script-sources StageElevenSource semantic":
+      "validationTraceDisputeScriptSourcesStageElevenSourceSemantic",
+    "V1 validation-trace script-sources StageTwelveFinish semantic":
+      "validationTraceDisputeScriptSourcesStageTwelveFinishSemantic",
+    "V1 validation-trace script-sources StageTwelveRedeemer semantic":
+      "validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic",
+    "V1 validation-trace script-sources StageTenMissing semantic":
+      "validationTraceDisputeScriptSourcesStageTenMissingSemantic",
+    "V1 validation-trace script-sources StageTenMismatch semantic":
+      "validationTraceDisputeScriptSourcesStageTenMismatchSemantic",
+    "V1 validation-trace script-sources StageTenMatch semantic":
+      "validationTraceDisputeScriptSourcesStageTenMatchSemantic",
+    "V1 validation-trace script-sources StageEightFinish semantic":
+      "validationTraceDisputeScriptSourcesStageEightFinishSemantic",
+    "V1 validation-trace script-sources StageEightPurpose semantic":
+      "validationTraceDisputeScriptSourcesStageEightPurposeSemantic",
+    "V1 validation-trace script-sources StageSevenObserver semantic":
+      "validationTraceDisputeScriptSourcesStageSevenObserverSemantic",
+    "V1 validation-trace script-sources StageSevenReceive semantic":
+      "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
+    "V1 validation-trace script-sources StageSevenFinish semantic":
+      "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
+    "V1 validation-trace script-sources RedeemerNormalization semantic":
+      "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
     "V1 validation-trace phase-A native Advance semantic":
       "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     "V1 validation-trace phase-A native Item semantic":

@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1
 use midgard/bounded_item_v1
@@ -16,6 +17,7 @@ use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
 use midgard/rejection_reason_v1.{reject_invalid_field_type}
 use midgard/script_proof_v1
+use midgard/script_sources_raw_frame_v1 as raw_frame
 use midgard/validation_machine/machine_types.{
   InlineSourceHashControlV1, NoAuxiliaryWitness, RedeemerItemStepWitness,
   ScriptSourceHashBlockWitness, ScriptSourcesControlV1,
@@ -472,48 +474,60 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
-  let control = script_sources_stage_zero_control_from_witness(
-    witness.work_witness_cbor,
+  let frame = raw_frame.open_frame_v1(pre, witness, 30, 0)
+  expect Some(receive_scan) = list.at(frame.items, 24)
+  expect
+    receive_scan == builtin.list_data(
+      [
+        builtin.i_data(0),
+        builtin.list_data([]),
+        builtin.i_data(0),
+        builtin.b_data(#""),
+        builtin.b_data(#""),
+        builtin.list_data([]),
+      ],
+    )
+  let source_count = raw_frame.item_int_v1(frame, 10)
+  let source_total_count = raw_frame.item_int_v1(frame, 25)
+  let witness_set = decode_native_tx_witness_set_compact(
+    frame.witness_set_compact_cbor,
   )
-  // The door takes tx-id-verified compact structures, never a free-standing
-  // field hash, so this entry point re-derives them from the control's own
-  // bytes. `script_sources_stage_zero_control_is_bound` has already pinned those
-  // bytes to `pre.transaction_commitment`; what the re-derivation adds is §3's
-  // id, which is what the door authenticates a tier-3 certificate against.
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
-    pre.transaction_id,
-    control.compact_cbor,
-    control.witness_set_compact_cbor,
-    control.field_preimage_lengths_cbor,
-  )
-  let item = field_door.open_machine_field_item(
+  let item = field_door.open_machine_field_item_by_commitment(
     door,
-    verified,
-    witness_set,
+    pre.transaction_id,
+    witness_set.script_tx_wits_hash,
     6,
-    control.source_count,
+    source_count,
     carriage,
   )
   let item_count = field_door.machine_field_item_count(item)
   let item_length = field_door.machine_field_item_length(item)
-  let active_total_count = if control.source_total_count == 0 {
+  let active_total_count = if source_total_count == 0 {
     item_count
   } else {
-    control.source_total_count
+    source_total_count
   }
   let header = native_script_scan_v1.versioned_script_header_v1(
     field_door.machine_field_item_chunk(item, 0),
     item_length,
   )
   and {
-    script_sources_stage_zero_control_is_bound(pre, witness, control),
-    control.pending_source_cbor == #"",
+    raw_frame.item_frontier_v1(frame, 8) == [],
+    raw_frame.item_int_v1(frame, 12) == 0,
+    raw_frame.item_frontier_v1(frame, 13) == [],
+    raw_frame.item_int_v1(frame, 26) == 0,
+    raw_frame.item_int_v1(frame, 18) == 0,
+    raw_frame.item_frontier_v1(frame, 19) == [],
+    raw_frame.item_int_v1(frame, 20) == 0,
+    raw_frame.item_int_v1(frame, 21) == 0,
+    raw_frame.item_frontier_v1(frame, 22) == [],
+    raw_frame.item_int_v1(frame, 23) == 0,
     active_total_count > 0,
     active_total_count <= max_tx_size_derived_collection_item_count,
     item_length > 0,
     item_length <= max_aggregate_field_preimage_bytes,
     field_index == 6,
-    item_index == control.source_count,
+    item_index == source_count,
     item_count == active_total_count,
     when header is {
       None ->
@@ -526,7 +540,7 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
         let pending_source_cbor = encode_inline_source_hash_control_v1(
           InlineSourceHashControlV1 {
             version: 1,
-            source_index: control.source_count,
+            source_index: source_count,
             source_total_count: active_total_count,
             language_tag: item_header.language_tag,
             payload_offset: item_header.payload_offset,
@@ -538,13 +552,30 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
             ),
           },
         )
-        script_sources_stage_zero_begin_successor_is_exact(
-          pre,
-          witness,
-          control,
-          active_total_count,
-          pending_source_cbor,
+        let old_suffix = cbor.serialise(source_total_count)
+          |> bytearray.concat(#"00")
+          |> bytearray.concat(raw_frame.empty_observer_scan_cbor)
+          |> bytearray.concat(raw_frame.empty_mint_fold_cbor)
+          |> bytearray.concat(
+              encode_definite_bytes(raw_frame.item_bytes_v1(frame, 29)),
+            )
+        let new_suffix = cbor.serialise(active_total_count)
+          |> bytearray.concat(#"00")
+          |> bytearray.concat(raw_frame.empty_observer_scan_cbor)
+          |> bytearray.concat(raw_frame.empty_mint_fold_cbor)
+          |> bytearray.concat(
+              encode_definite_bytes(raw_frame.item_bytes_v1(frame, 29)),
+            )
+        let next_cbor = raw_frame.splice_v1(
+          witness.work_witness_cbor,
+          bytearray.length(witness.work_witness_cbor) - bytearray.length(
+            old_suffix,
+          ),
+          old_suffix,
+          new_suffix,
         )
+          |> raw_frame.append_extension_v1(pending_source_cbor)
+        raw_frame.successor_is_exact_v1(pre, witness, next_cbor)
       }
     },
   }
@@ -556,13 +587,11 @@ pub fn verify_script_sources_stage_zero_hash_block_semantics_v1(
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Bool {
-  let control = script_sources_stage_zero_control_from_witness(
-    witness.work_witness_cbor,
-  )
-  expect control.pending_source_cbor != #""
-  let pending = inline_source_hash_control_from_cbor(
-    control.pending_source_cbor,
-  )
+  let frame = raw_frame.open_frame_v1(pre, witness, 31, 0)
+  let pending_cbor = raw_frame.item_bytes_v1(frame, 30)
+  let pending = inline_source_hash_control_from_cbor(pending_cbor)
+  expect pending.source_index == raw_frame.item_int_v1(frame, 10)
+  expect pending.source_total_count == raw_frame.item_int_v1(frame, 25)
   when inline_source_hash_block_v1(pending, chunk_proof, next_chunk_proof) is {
     None -> False
     Some(block) -> {
@@ -570,12 +599,12 @@ pub fn verify_script_sources_stage_zero_hash_block_semantics_v1(
         pending.hash_control,
         Some(block),
       )
-      and {
-        script_sources_stage_zero_control_is_bound(pre, witness, control),
-        script_sources_stage_zero_pending_successor_is_exact(
-          pre,
-          witness,
-          control,
+      raw_frame.successor_is_exact_v1(
+        pre,
+        witness,
+        raw_frame.replace_extension_v1(
+          witness.work_witness_cbor,
+          pending_cbor,
           encode_inline_source_hash_control_v1(
             InlineSourceHashControlV1 {
               ..pending,
@@ -583,7 +612,7 @@ pub fn verify_script_sources_stage_zero_hash_block_semantics_v1(
             },
           ),
         ),
-      }
+      )
     }
   }
 }
@@ -901,28 +930,18 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
+  let frame = raw_frame.open_frame_v1(pre, witness, 30, 1)
   expect
       [
-        compact_cbor_data, witness_set_compact_cbor_data,
-        field_preimage_lengths_cbor_data, _, _, _, _, _,
-        resolved_item_peaks_data, stage_data, source_count_data, _,
-        redeemer_count_data, redeemer_peaks_data, replay_cursor_data, _, _,
+        _, _, _, _, _, _, _, _, resolved_item_peaks_data, _, source_count_data,
+        _, redeemer_count_data, redeemer_peaks_data, replay_cursor_data, _, _,
         spend_index_data, purpose_count_data, _, output_cursor_data,
         output_count_data, _, _, receive_scan_data, source_total_count_data,
         redeemer_total_count_data, _, _, resolution_schedule_hash_data,
       ]
-    = builtin.un_list_data(control_data)
-  let control = script_sources_control_from_witness(witness.work_witness_cbor)
-  let compact_cbor = builtin.un_b_data(compact_cbor_data)
-  let witness_set_compact_cbor = builtin.un_b_data(
-    witness_set_compact_cbor_data,
-  )
-  let field_preimage_lengths_cbor = builtin.un_b_data(
-    field_preimage_lengths_cbor_data,
-  )
+    = frame.items
   let witness_set = decode_native_tx_witness_set_compact(
-    witness_set_compact_cbor,
+    frame.witness_set_compact_cbor,
   )
   let redeemer_count = builtin.un_i_data(redeemer_count_data)
   let redeemer_peaks = decode_frontier_peaks(redeemer_peaks_data)
@@ -945,32 +964,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
       ),
     }
   }
-  // The witness slice this prefix is compared against is the *canonical*
-  // ScriptSources encoding (`encode_script_sources_witness:1062`), which uses
-  // definite-length headers throughout. `cbor.serialise` on the decoded `Data`
-  // items is Plutus `serialiseData`, which chunks any bytestring longer than 64
-  // bytes into an indefinite `5f..ff` run and would never match. Rebuild the
-  // prefix from the canonical encoder instead; the control is proven canonical
-  // by the `exact_script_sources_control` conjunct below.
-  let stage_prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
-  let stage_offset = bytearray.length(stage_prefix)
-  let next_work_witness_cbor = stage_prefix
-    |> bytearray.concat(#"02")
-    |> bytearray.concat(
-        builtin.slice_bytearray(
-          stage_offset + 1,
-          bytearray.length(witness.work_witness_cbor) - stage_offset - 1,
-          witness.work_witness_cbor,
-        ),
-      )
   and {
-    exact_script_sources_control(control) == witness.work_witness_cbor,
-    builtin.un_i_data(stage_data) == 1,
-    native_tx_proof_commitment_v1(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-    ) == pre.transaction_commitment,
     script_sources_stage_one_raw_common_control_is_initial(
       resolved_item_peaks_data,
       source_count_data,
@@ -986,12 +980,10 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
     bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32,
     redeemer_total_count <= max_tx_size_derived_collection_item_count,
     scan_is_complete,
-    builtin.slice_bytearray(0, stage_offset, witness.work_witness_cbor) == stage_prefix,
-    builtin.slice_bytearray(stage_offset, 1, witness.work_witness_cbor) == #"01",
-    script_sources_stage_zero_successor_work_is_exact(
+    raw_frame.successor_is_exact_v1(
       pre,
       witness,
-      next_work_witness_cbor,
+      raw_frame.replace_stage_v1(frame, witness.work_witness_cbor, 2),
     ),
   }
 }

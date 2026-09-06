@@ -15632,7 +15632,7 @@ test script_sources_stage_zero_finish_advances_a_complete_source_frontier() {
   )
 }
 
-test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
+fn stage_zero_hash_block_checks_binding(wrong_commitment: Bool) -> Bool {
   let base = empty_v1_transaction()
   let payload = v1_program_envelope()
   let script = MidgardVersionedScript {
@@ -15706,16 +15706,28 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
       chunk_proof,
       None,
     ),
-    !vm_script_sources_early_stages.verify_script_sources_stage_zero_hash_block_semantics_v1(
-      validation_trace_v1.ValidationMachineStateV1 {
-        ..pre,
-        transaction_commitment: h_b,
-      },
-      transition,
-      chunk_proof,
-      None,
-    ),
+    if wrong_commitment {
+      vm_script_sources_early_stages.verify_script_sources_stage_zero_hash_block_semantics_v1(
+        validation_trace_v1.ValidationMachineStateV1 {
+          ..pre,
+          transaction_commitment: h_b,
+        },
+        transition,
+        chunk_proof,
+        None,
+      )
+    } else {
+      True
+    },
   }
+}
+
+test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
+  stage_zero_hash_block_checks_binding(False)
+}
+
+test script_sources_stage_zero_hash_block_refuses_a_substituted_source() fail {
+  stage_zero_hash_block_checks_binding(True)
 }
 
 test script_sources_stage_zero_advances_an_inline_hash_round() {

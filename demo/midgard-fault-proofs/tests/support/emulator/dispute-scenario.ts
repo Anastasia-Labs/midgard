@@ -33,6 +33,7 @@ import {
   submitValidationDisputeVerifySource,
   VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX,
   validationPhaseASemanticReferenceScriptDeploymentEntry,
+  validationScriptSourcesSemanticReferenceScriptDeploymentEntry,
   validationSemanticResolverGlobalIndex,
   validationValueAndMintSemanticReferenceScriptDeploymentEntry,
 } from "../../../src/index.js";
@@ -580,17 +581,21 @@ export const runForcedValidationDisputeScenario = async (
             },
           },
         };
-  const phaseASemanticEntry =
+  const publishedSemanticEntry =
     validationPhaseASemanticReferenceScriptDeploymentEntry(
       stagedResolverIndex,
       stagedSemanticIndex,
+    ) ??
+    validationScriptSourcesSemanticReferenceScriptDeploymentEntry(
+      stagedResolverIndex,
+      stagedSemanticIndex,
     );
-  if (phaseASemanticEntry !== undefined) {
+  if (publishedSemanticEntry !== undefined) {
     semanticDeploymentInfo = {
       ...semanticDeploymentInfo,
       contracts: {
         ...semanticDeploymentInfo.contracts,
-        [phaseASemanticEntry]: {
+        [publishedSemanticEntry]: {
           scriptHash: semanticContract.spendingScriptHash,
           refScriptUTxO: {
             txHash: semanticPublication.utxo.txHash,
@@ -814,7 +819,7 @@ export const runForcedValidationDisputeScenario = async (
             signer: challengerSigner,
             threadOutRef: selectedResult.nextThreadOutRef,
             oneStepArgument: fixture.evidence.oneStepArgument,
-            ...(phaseASemanticEntry === undefined
+            ...(publishedSemanticEntry === undefined
               ? { referenceScriptUtxo: semanticPublication.utxo }
               : {}),
             validityRange: validityRange(),

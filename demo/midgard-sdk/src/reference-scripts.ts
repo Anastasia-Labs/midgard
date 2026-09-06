@@ -25,6 +25,61 @@ export const REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 4 * 60 * 60 * 1000;
 export const REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS = 90 * 60 * 1000;
 
 export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
+  "V1 validation-trace script-sources NonOutput semantic": "V1VtSsNonOutput",
+  "V1 validation-trace script-sources OutputProofBegin semantic":
+    "V1VtSsOutputProofBegin",
+  "V1 validation-trace script-sources OutputProofStep semantic":
+    "V1VtSsOutputProofStep",
+  "V1 validation-trace script-sources OutputProofFinalize semantic":
+    "V1VtSsOutputProofFinalize",
+  "V1 validation-trace script-sources OutputProofFinish semantic":
+    "V1VtSsOutputProofFinish",
+  "V1 validation-trace script-sources StageZeroBegin semantic": "V1VtSsS0Begin",
+  "V1 validation-trace script-sources StageZeroFinish semantic":
+    "V1VtSsS0Finish",
+  "V1 validation-trace script-sources StageZeroHashBlock semantic":
+    "V1VtSsS0HashBlock",
+  "V1 validation-trace script-sources StageZeroHashAdvance semantic":
+    "V1VtSsS0HashAdvance",
+  "V1 validation-trace script-sources StageZeroHashTerminal semantic":
+    "V1VtSsS0HashTerminal",
+  "V1 validation-trace script-sources StageNineMismatch semantic":
+    "V1VtSsS9Mismatch",
+  "V1 validation-trace script-sources StageNineNativeMatch semantic":
+    "V1VtSsS9NativeMatch",
+  "V1 validation-trace script-sources StageNineEffectfulMatch semantic":
+    "V1VtSsS9EffectfulMatch",
+  "V1 validation-trace script-sources StageNineMissing semantic":
+    "V1VtSsS9Missing",
+  "V1 validation-trace script-sources StageOneFinish semantic":
+    "V1VtSsS1Finish",
+  "V1 validation-trace script-sources StageOneRedeemer semantic":
+    "V1VtSsS1Redeemer",
+  "V1 validation-trace script-sources StageElevenFinish semantic":
+    "V1VtSsS11Finish",
+  "V1 validation-trace script-sources StageElevenSource semantic":
+    "V1VtSsS11Source",
+  "V1 validation-trace script-sources StageTwelveFinish semantic":
+    "V1VtSsS12Finish",
+  "V1 validation-trace script-sources StageTwelveRedeemer semantic":
+    "V1VtSsS12Redeemer",
+  "V1 validation-trace script-sources StageTenMissing semantic":
+    "V1VtSsS10Missing",
+  "V1 validation-trace script-sources StageTenMismatch semantic":
+    "V1VtSsS10Mismatch",
+  "V1 validation-trace script-sources StageTenMatch semantic": "V1VtSsS10Match",
+  "V1 validation-trace script-sources StageEightFinish semantic":
+    "V1VtSsS8Finish",
+  "V1 validation-trace script-sources StageEightPurpose semantic":
+    "V1VtSsS8Purpose",
+  "V1 validation-trace script-sources StageSevenObserver semantic":
+    "V1VtSsS7Observer",
+  "V1 validation-trace script-sources StageSevenReceive semantic":
+    "V1VtSsS7Receive",
+  "V1 validation-trace script-sources StageSevenFinish semantic":
+    "V1VtSsS7Finish",
+  "V1 validation-trace script-sources RedeemerNormalization semantic":
+    "V1VtSsRedeemerNorm",
   "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
   "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
   "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",

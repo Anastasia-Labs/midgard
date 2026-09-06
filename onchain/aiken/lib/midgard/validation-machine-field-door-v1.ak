@@ -135,7 +135,8 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
 }
 use midgard/native_tx_field_access_v1.{
-  FieldCarriageV1, FieldViewV1, authenticated_whole_field_view, field_item_count,
+  FieldCarriageV1, FieldViewV1, authenticated_whole_field_view,
+  authenticated_whole_field_view_by_commitment, field_item_count,
   field_item_extent, field_item_header_at, field_read_range,
 }
 
@@ -191,6 +192,28 @@ pub fn open_machine_field_item(
     verified,
     witness_set,
     field_index,
+    carriage,
+    door.reference_inputs,
+    door.certificate_policy_id,
+  )
+  let Pair(item_offset, item_length) = field_item_extent(view, item_index)
+  MachineFieldItemV1 { view, field_index, item_index, item_offset, item_length }
+}
+
+/// Open a commitment extracted from an already authenticated machine control.
+/// The caller still pins the field index to the selected semantic arm.
+pub fn open_machine_field_item_by_commitment(
+  door: MachineFieldDoorV1,
+  tx_id: ByteArray,
+  field_commitment: ByteArray,
+  field_index: Int,
+  item_index: Int,
+  carriage: FieldCarriageV1,
+) -> MachineFieldItemV1 {
+  let view = authenticated_whole_field_view_by_commitment(
+    tx_id,
+    field_index,
+    field_commitment,
     carriage,
     door.reference_inputs,
     door.certificate_policy_id,

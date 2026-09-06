@@ -1056,6 +1056,52 @@ export const requireValidationValueAndMintSemanticReferenceScriptUtxo = async ({
   return utxo;
 };
 
+/** Stable ScriptSources slots, including the slot-28 normalization door. */
+export const VALIDATION_SCRIPT_SOURCES_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES =
+  [
+    "validationTraceDisputeScriptSourcesNonOutputSemantic",
+    "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
+    "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
+    "validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic",
+    "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
+    "validationTraceDisputeScriptSourcesStageZeroBeginSemantic",
+    "validationTraceDisputeScriptSourcesStageZeroFinishSemantic",
+    "validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic",
+    "validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic",
+    "validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic",
+    "validationTraceDisputeScriptSourcesStageNineMismatchSemantic",
+    "validationTraceDisputeScriptSourcesStageNineNativeMatchSemantic",
+    "validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic",
+    "validationTraceDisputeScriptSourcesStageNineMissingSemantic",
+    "validationTraceDisputeScriptSourcesStageOneFinishSemantic",
+    "validationTraceDisputeScriptSourcesStageOneRedeemerSemantic",
+    "validationTraceDisputeScriptSourcesStageElevenFinishSemantic",
+    "validationTraceDisputeScriptSourcesStageElevenSourceSemantic",
+    "validationTraceDisputeScriptSourcesStageTwelveFinishSemantic",
+    "validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic",
+    "validationTraceDisputeScriptSourcesStageTenMissingSemantic",
+    "validationTraceDisputeScriptSourcesStageTenMismatchSemantic",
+    "validationTraceDisputeScriptSourcesStageTenMatchSemantic",
+    "validationTraceDisputeScriptSourcesStageEightFinishSemantic",
+    "validationTraceDisputeScriptSourcesStageEightPurposeSemantic",
+    "validationTraceDisputeScriptSourcesStageSevenObserverSemantic",
+    "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
+    "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
+    "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
+  ] as const;
+
+export const validationScriptSourcesSemanticReferenceScriptDeploymentEntry = (
+  resolverIndex: number,
+  semanticResolverIndex: number,
+): string | undefined =>
+  resolverIndex === 8 &&
+  Number.isInteger(semanticResolverIndex) &&
+  semanticResolverIndex >= 0
+    ? VALIDATION_SCRIPT_SOURCES_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
+        semanticResolverIndex
+      ]
+    : undefined;
+
 /** Applied phase-A resolvers published by the canonical deployment roster. */
 export const VALIDATION_PHASE_A_NATIVE_SCRIPTS_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES =
   [
@@ -1097,7 +1143,7 @@ export const validationPhaseASemanticReferenceScriptDeploymentEntry = (
       : undefined;
 };
 
-const requireValidationPhaseASemanticReferenceScriptUtxo = async ({
+const requirePublishedValidationSemanticReferenceScriptUtxo = async ({
   lucid,
   deploymentInfo,
   entryName,
@@ -1111,11 +1157,11 @@ const requireValidationPhaseASemanticReferenceScriptUtxo = async ({
   const entry = deploymentInfo[entryName];
   if (entry?.refScriptUTxO == null)
     throw new Error(
-      `Publish the phase-A semantic resolver as "${entryName}" before submitting`,
+      `Publish the validation semantic resolver as "${entryName}" before submitting`,
     );
   if (entry.scriptHash !== expectedScriptHash)
     throw new Error(
-      `Phase-A semantic deployment hash mismatch for "${entryName}"`,
+      `Validation semantic deployment hash mismatch for "${entryName}"`,
     );
   const utxo = await fetchUtxoByOutRef({
     lucid,
@@ -1127,7 +1173,7 @@ const requireValidationPhaseASemanticReferenceScriptUtxo = async ({
     validatorToScriptHash(utxo.scriptRef) !== expectedScriptHash
   )
     throw new Error(
-      `Phase-A semantic reference script mismatch for "${entryName}"`,
+      `Validation semantic reference script mismatch for "${entryName}"`,
     );
   return utxo;
 };
@@ -6357,37 +6403,41 @@ export const submitValidationDisputeSemanticResolution = async ({
       : undefined;
   // At most one of the two can be set: the two rosters are keyed by disjoint
   // resolver indices (CEK 11, ValueAndMint 12).
-  const phaseASemanticEntryName =
+  const publishedSemanticEntryName =
     validationPhaseASemanticReferenceScriptDeploymentEntry(
       resolverIndex,
       staged.semanticResolverIndex,
+    ) ??
+    validationScriptSourcesSemanticReferenceScriptDeploymentEntry(
+      resolverIndex,
+      staged.semanticResolverIndex,
     );
-  const phaseASemanticReferenceScriptUtxo =
+  const publishedSemanticReferenceScriptUtxo =
     referenceScriptUtxo === undefined &&
-    phaseASemanticEntryName !== undefined &&
-    parsedDeploymentInfo[phaseASemanticEntryName] !== undefined
-      ? await requireValidationPhaseASemanticReferenceScriptUtxo({
+    publishedSemanticEntryName !== undefined &&
+    parsedDeploymentInfo[publishedSemanticEntryName] !== undefined
+      ? await requirePublishedValidationSemanticReferenceScriptUtxo({
           lucid,
           deploymentInfo: parsedDeploymentInfo,
-          entryName: phaseASemanticEntryName,
+          entryName: publishedSemanticEntryName,
           expectedScriptHash: semanticContract.spendingScriptHash,
         })
       : undefined;
   if (
     referenceScriptUtxo === undefined &&
-    phaseASemanticEntryName !== undefined &&
-    phaseASemanticReferenceScriptUtxo === undefined &&
+    publishedSemanticEntryName !== undefined &&
+    publishedSemanticReferenceScriptUtxo === undefined &&
     semanticContract.spendingScript.script.length / 2 >
       MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES
   )
     throw new Error(
-      `Publish the phase-A semantic resolver as "${phaseASemanticEntryName}" before submitting`,
+      `Publish the validation semantic resolver as "${publishedSemanticEntryName}" before submitting`,
     );
   const semanticValidatorReferenceScriptUtxo =
     referenceScriptUtxo ??
     cekSemanticReferenceScriptUtxo ??
     valueAndMintSemanticReferenceScriptUtxo ??
-    phaseASemanticReferenceScriptUtxo;
+    publishedSemanticReferenceScriptUtxo;
   const assetFoldYield =
     resolverIndex === 12 && [3, 6, 8].includes(staged.semanticResolverIndex)
       ? contracts.validationTraceDispute.yields.valueAndMintAssetFold

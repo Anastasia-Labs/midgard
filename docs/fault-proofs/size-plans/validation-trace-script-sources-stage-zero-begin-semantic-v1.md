@@ -172,3 +172,29 @@ the raw stage-frame library.
   golden tests `native-tx-field-access-v1-golden.test.ak`); the by-commitment
   view must be proven equal to the verified view for all three tiers.
 - ABI unchanged for both scripts.
+
+### Implemented narrow boundary and publication verification
+
+Normal testnet blueprint
+`503956f1a05b415e5cb14b98f41ec7a1202d2eb6b1e52e5a0cad6d5a78865ce1`
+measures stage-zero begin at 13,674 raw bytes, hash block at 12,647 and
+stage-one finish at 6,660. The commitment-based field door preserves all
+129 existing carriage tests. The machine suite passes 197 tests, including
+explicit refusal of a source substituted into an authenticated hash block.
+
+The public lifecycle suite
+`submit-init-emulator-validation-dispute-script-sources-boundaries.test.ts`
+passes 25 scenarios: eight slots (output begin/finish, all five stage-zero
+arms, stage-one finish), every honest-successor refusal, cancellation and
+fresh proof/removal for each slot, and the empty redeemer frontier. Its
+1,416-row ledger includes 728 publications; maxima are 15,108 signed bytes,
+5,814,857 memory and 2,358,186,808 CPU. Both 20% execution reserves pass.
+
+All 29 ScriptSources semantic slots now have canonical publication entries
+and strict manifest roles, preserving slot 28 at global index 90. Public
+submission resolves these entries by exact applied hash and live reference
+script; the emulator exercises named lookup. The development contract fixture
+now supplies the existing 91st normalization slot. Node registry tests pass
+28 cases, shared identity tests 12, and fault-proof/validation typechecks pass.
+This is boundary and recovery evidence; maximum carriage and the remaining
+middle/discovery/item stage work are still separate closure requirements.

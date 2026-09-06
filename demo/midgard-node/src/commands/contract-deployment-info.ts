@@ -1031,6 +1031,151 @@ const collectScriptDescriptors = (
     "V1 validation-trace award",
   ),
   spendDescriptor(
+    "validationTraceDisputeScriptSourcesNonOutputSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[32],
+    "V1 validation-trace script-sources NonOutput semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[33],
+    "V1 validation-trace script-sources OutputProofBegin semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[34],
+    "V1 validation-trace script-sources OutputProofStep semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[35],
+    "V1 validation-trace script-sources OutputProofFinalize semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[36],
+    "V1 validation-trace script-sources OutputProofFinish semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageZeroBeginSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[37],
+    "V1 validation-trace script-sources StageZeroBegin semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageZeroFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[38],
+    "V1 validation-trace script-sources StageZeroFinish semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[39],
+    "V1 validation-trace script-sources StageZeroHashBlock semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[40],
+    "V1 validation-trace script-sources StageZeroHashAdvance semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[41],
+    "V1 validation-trace script-sources StageZeroHashTerminal semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageNineMismatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[42],
+    "V1 validation-trace script-sources StageNineMismatch semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageNineNativeMatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[43],
+    "V1 validation-trace script-sources StageNineNativeMatch semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[44],
+    "V1 validation-trace script-sources StageNineEffectfulMatch semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageNineMissingSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[45],
+    "V1 validation-trace script-sources StageNineMissing semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageOneFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[46],
+    "V1 validation-trace script-sources StageOneFinish semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageOneRedeemerSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[47],
+    "V1 validation-trace script-sources StageOneRedeemer semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageElevenFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[48],
+    "V1 validation-trace script-sources StageElevenFinish semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageElevenSourceSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[49],
+    "V1 validation-trace script-sources StageElevenSource semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageTwelveFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[50],
+    "V1 validation-trace script-sources StageTwelveFinish semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[51],
+    "V1 validation-trace script-sources StageTwelveRedeemer semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageTenMissingSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[52],
+    "V1 validation-trace script-sources StageTenMissing semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageTenMismatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[53],
+    "V1 validation-trace script-sources StageTenMismatch semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageTenMatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[54],
+    "V1 validation-trace script-sources StageTenMatch semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageEightFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[55],
+    "V1 validation-trace script-sources StageEightFinish semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageEightPurposeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[56],
+    "V1 validation-trace script-sources StageEightPurpose semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageSevenObserverSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[57],
+    "V1 validation-trace script-sources StageSevenObserver semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[58],
+    "V1 validation-trace script-sources StageSevenReceive semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[59],
+    "V1 validation-trace script-sources StageSevenFinish semantic",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[90],
+    "V1 validation-trace script-sources RedeemerNormalization semantic",
+  ),
+  spendDescriptor(
     "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10],
     "V1 validation-trace phase-A native Advance semantic",
