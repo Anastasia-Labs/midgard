@@ -780,3 +780,17 @@ Shared native decoding integration at `15787b19`: rebuilt the complete testnet
 blueprint; 35 retained/installed/emulator cases, 10 producer cases, three watcher
 application cases, 14 runtime cases, and seven typed-disposition/ledger cases
 passed. Its 45-row installed ledger was regenerated on that shared build.
+
+Shared conservation integration at `61d029eb`: all contracts rebuilt together
+with pinned Aiken/testnet, yielding 841 blueprint entries and SHA-256
+`c6abaac8345661dfe8d5d5e69c18ba36a52dec37e9cf1a929a8e027ee55d3428`.
+The shared branch passed 16 value-conservation lifecycle cases (13,538 measured
+transactions), 12 minimum-Ada lifecycle cases (649 ledger rows), and 12
+ValueAndMint asset-yield lifecycle cases (581 ledger rows). All three ledgers
+were regenerated and independently verified against that blueprint. Additional
+shared checks: 74 ValueAndMint Aiken cases, 22 value/replay/runtime cases, eight
+semantic publications, the legacy minimum-Ada dispute/removal, 12 deployment
+identity cases, three watcher cases, two published MPF prefix cases, 26 exact
+raw-L1/source-admission cases, and 45 withdrawal canonical-reconstruction cases.
+This evidence closes these integrations, not the remaining category/workflow,
+maximum-carriage, all-category frozen-tree, or final-review gates.
