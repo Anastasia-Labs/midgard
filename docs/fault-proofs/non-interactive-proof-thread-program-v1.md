@@ -913,3 +913,14 @@ These checkpoints do not close validation-trace dispute or the program. The
 remaining work includes descriptor scans, shared ledger-output continuations,
 CEK context and mixed-width mint ordering, additional maximum-shape coverage,
 the installed validation workflow, and the final combined verification/review.
+
+### Shared ScriptSources item route — 2026-09-06
+
+Commit `fe6c7370` installs the eight-hop common item continuation and exact
+prepared-byte recovery route in place of the former five-hop path. Rebuilt all
+contracts with the pinned normal testnet compiler. The combined semantic ABI
+and registered ScriptSources begin/item lifecycle suite passed 23/23 on that
+build, including permanent proof and suffix removal. Carrier-mode validation
+is further corrected by `b82e0626`; its shared rebuild remains part of the
+next combined verification. Maximum executor coverage and final validation
+workflow closure are still in progress.
