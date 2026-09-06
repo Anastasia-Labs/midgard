@@ -79,7 +79,14 @@ validator main(
               }
               result
             } else {
-              expect state.current_control.mode == item.mode_data
+              expect
+                if state.envelope.carrier == envelope.script_sources_carrier {
+                  state.current_control.mode == item.mode_data
+                } else {
+                  state.envelope.carrier == envelope.cek_context_carrier && (
+                    state.current_control.mode == item.mode_descriptor || state.current_control.mode == item.mode_data
+                  )
+                }
               expect
                 state.current_control.item_index == state.envelope.redeemer_count
               expect
