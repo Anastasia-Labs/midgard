@@ -4,7 +4,6 @@ import {
   encodeCbor,
   MidgardRedeemerItemProofModes,
 } from "@al-ft/midgard-core";
-import { asLucidDataValue } from "@al-ft/midgard-core/lucid-data";
 import {
   buildCekRedeemerItemStages,
   buildValidationTraceDisputeFaultProofContracts,
@@ -86,15 +85,13 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
     Data.to(new Constr(0, [prover, new Constr(0, [state])]));
   const cases = [...selected].map(([index, step]) => {
     const witness = Data.from(
-      Data.to(asLucidDataValue(redeemerItemProofWitnessData(step.witness))),
+      Data.to<unknown>(redeemerItemProofWitnessData(step.witness)),
     );
     const pending = new Constr(0, [
       new Constr(0, [BigInt(index)]),
-      Data.from(
-        Data.to(asLucidDataValue(redeemerItemControlData(step.control))),
-      ),
+      Data.from(Data.to<unknown>(redeemerItemControlData(step.control))),
       computeHash32(Buffer.from(Data.to(witness), "hex")).toString("hex"),
-      Data.from(Data.to(asLucidDataValue(redeemerItemControlData(step.next)))),
+      Data.from(Data.to<unknown>(redeemerItemControlData(step.next))),
     ]);
     return {
       index,
