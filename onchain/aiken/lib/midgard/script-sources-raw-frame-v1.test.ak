@@ -1,5 +1,7 @@
 use aiken/builtin
+use aiken/cbor
 use aiken/fuzz
+use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
 use midgard/ledger_output_scan_v1
 use midgard/script_sources_raw_frame_v1 as raw
@@ -174,4 +176,25 @@ test pinned_initial_subcontrols_equal_canonical_encoders() {
       ledger_output_scan_v1.initial_control_v1(),
     ),
   }
+}
+
+test derived_field_offset_preserves_all_other_canonical_items(
+  compact via fuzz.bytearray(),
+) {
+  let w = transition(compact)
+  let frame = raw.open_frame_v1(pre(compact), w, 30, 5)
+  and {
+    raw.item_offset_v1(frame, 9) == frame.stage_offset,
+    raw.item_offset_v1(frame, 30) == bytearray.length(w.work_witness_cbor),
+    raw.replace_items_v1(frame, w.work_witness_cbor, 9, 1, cbor.serialise(6)) == control(
+      6,
+      compact,
+    ),
+  }
+}
+
+test derived_field_splice_rejects_an_out_of_range_field() fail {
+  let w = transition(#"80")
+  let frame = raw.open_frame_v1(pre(#"80"), w, 30, 5)
+  expect _ = raw.replace_items_v1(frame, w.work_witness_cbor, 30, 1, #"00")
 }

@@ -282,6 +282,24 @@ pub fn script_sources_stage_four(
   control: ScriptSourcesControlV1,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
+  script_sources_stage_four_with_successor(
+    pre,
+    witness,
+    auxiliary,
+    control,
+    door,
+    fn(next) { script_sources_control_successor_is_exact(pre, witness, next) },
+  )
+}
+
+pub fn script_sources_stage_four_with_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ScriptSourcesControlV1,
+  door: field_door.MachineFieldDoorV1,
+  successor_is_exact: fn(ScriptSourcesControlV1) -> Bool,
+) -> Bool {
   let Pair(verified_source, stage_four_witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
@@ -298,11 +316,7 @@ pub fn script_sources_stage_four(
       control.output_total_count == 0,
       control.output_peaks == [],
       control.receive_scan == empty_receive_purpose_scan_control(),
-      script_sources_control_successor_is_exact(
-        pre,
-        witness,
-        ScriptSourcesControlV1 { ..control, stage: 5 },
-      ),
+      successor_is_exact(ScriptSourcesControlV1 { ..control, stage: 5 }),
     }
   } else if and {
     control.output_total_count > 0,
@@ -312,11 +326,7 @@ pub fn script_sources_stage_four(
       auxiliary == NoAuxiliaryWitness,
       control.output_cursor == 0,
       control.receive_scan == empty_receive_purpose_scan_control(),
-      script_sources_control_successor_is_exact(
-        pre,
-        witness,
-        ScriptSourcesControlV1 { ..control, stage: 5 },
-      ),
+      successor_is_exact(ScriptSourcesControlV1 { ..control, stage: 5 }),
     }
   } else {
     // The fold consumes only the authenticated
@@ -357,9 +367,7 @@ pub fn script_sources_stage_four(
       active_total_count <= max_tx_size_derived_collection_item_count,
       item_count == active_total_count,
       field_door.machine_field_item_length(item) <= max_serialized_output_preimage_bytes,
-      script_sources_control_successor_is_exact(
-        pre,
-        witness,
+      successor_is_exact(
         ScriptSourcesControlV1 {
           ..control,
           output_count: control.output_count + 1,
@@ -711,6 +719,32 @@ fn script_sources_begin_mint_policy(
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
+  script_sources_begin_mint_policy_with_successor(
+    pre,
+    witness,
+    control,
+    verified,
+    witness_set,
+    door,
+    field_index,
+    item_index,
+    carriage,
+    fn(next) { script_sources_control_successor_is_exact(pre, witness, next) },
+  )
+}
+
+pub fn script_sources_begin_mint_policy_with_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
+  successor_is_exact: fn(ScriptSourcesControlV1) -> Bool,
+) -> Bool {
   let fold = control.mint_fold
   let item = field_door.open_machine_field_item(
     door,
@@ -769,9 +803,7 @@ fn script_sources_begin_mint_policy(
   } else {
     and {
       common_is_valid,
-      script_sources_control_successor_is_exact(
-        pre,
-        witness,
+      successor_is_exact(
         ScriptSourcesControlV1 {
           ..control,
           purpose_count: control.purpose_count + 1,
@@ -808,6 +840,24 @@ fn script_sources_fold_mint_asset(
   control: ScriptSourcesControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  script_sources_fold_mint_asset_with_successor(
+    pre,
+    witness,
+    control,
+    chunk_proof,
+    next_chunk_proof,
+    fn(next) { script_sources_control_successor_is_exact(pre, witness, next) },
+  )
+}
+
+pub fn script_sources_fold_mint_asset_with_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  successor_is_exact: fn(ScriptSourcesControlV1) -> Bool,
 ) -> Bool {
   let fold = control.mint_fold
   expect Some(window) = mint_fold_chunk_window(
@@ -878,9 +928,7 @@ fn script_sources_fold_mint_asset(
   }
   and {
     common_is_valid,
-    script_sources_control_successor_is_exact(
-      pre,
-      witness,
+    successor_is_exact(
       ScriptSourcesControlV1 { ..control, mint_fold: next_fold },
     ),
   }

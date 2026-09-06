@@ -44,6 +44,7 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
+  encodeValidationAuxiliaryWitnessCbor,
   outputCborMeetsMinAda,
   RejectCodes,
   validationSemanticResolverIndex,
@@ -59,6 +60,7 @@ import {
   encodeData,
   keyValuePhasProof,
 } from "../../../src/index.js";
+import { scriptSourcesMiddleYieldIndex } from "../../../src/validation-dispute/script-sources-yields.js";
 import { cekSelectionProgram } from "./cek-selection-program.js";
 import {
   makeHeader,
@@ -1184,6 +1186,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   preconditionsItemIndex,
   resolveInputsKind,
   scriptSourcesSemanticIndex,
+  scriptSourcesMiddleKind,
   prepareFieldCarriage,
 }: {
   readonly operatorVkey: string;
@@ -1226,6 +1229,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     | "membershipFinalize"
     | "nonMembership";
   readonly scriptSourcesSemanticIndex?: number;
+  readonly scriptSourcesMiddleKind?: number;
   readonly prepareFieldCarriage?: (input: {
     trace: DeterministicValidationMachineTrace;
     stateIndex: number;
@@ -1262,13 +1266,16 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     now,
     txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
     assetCount:
-      cekSelection || disputedPhase === "phaseANativeScripts"
+      cekSelection ||
+      disputedPhase === "phaseANativeScripts" ||
+      (scriptSourcesMiddleKind !== undefined && scriptSourcesMiddleKind >= 5)
         ? Math.max(1, assetCount)
         : assetCount,
     mintAsset:
       cekSelection ||
       disputedValueKind === "mintAsset" ||
-      (disputedPhase === "phaseANativeScripts" && !plutusSelection),
+      (disputedPhase === "phaseANativeScripts" && !plutusSelection) ||
+      (scriptSourcesMiddleKind !== undefined && scriptSourcesMiddleKind >= 5),
     plutusSelection:
       plutusSelection ||
       preconditionsRejection === "missingIntegrity" ||
@@ -1304,6 +1311,17 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     })();
     return (
       state.phase === disputedPhase &&
+      (scriptSourcesMiddleKind === undefined ||
+        (validationSemanticResolverIndex(challengerTrace.witnesses[index]!) ===
+          0 &&
+          scriptSourcesMiddleYieldIndex(
+            challengerTrace.witnesses[index]!.cbor.toString("hex"),
+            Data.from(
+              encodeValidationAuxiliaryWitnessCbor(
+                challengerTrace.witnesses[index]!.auxiliary,
+              ).toString("hex"),
+            ),
+          ) === scriptSourcesMiddleKind)) &&
       (scriptSourcesSemanticIndex === undefined ||
         validationSemanticResolverIndex(challengerTrace.witnesses[index]!) ===
           scriptSourcesSemanticIndex) &&

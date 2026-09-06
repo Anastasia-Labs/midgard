@@ -1175,6 +1175,54 @@ const collectScriptDescriptors = (
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[90],
     "V1 validation-trace script-sources RedeemerNormalization semantic",
   ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageTwoAdvance,
+    "V1 validation-trace script-sources StageTwoAdvance yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesStageThreeReplayWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageThreeReplay,
+    "V1 validation-trace script-sources StageThreeReplay yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesStageThreeFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageThreeFinish,
+    "V1 validation-trace script-sources StageThreeFinish yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesStageFourBeginWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageFourBegin,
+    "V1 validation-trace script-sources StageFourBegin yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesStageFourFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageFourFinish,
+    "V1 validation-trace script-sources StageFourFinish yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesStageSixBeginPolicyWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixBeginPolicy,
+    "V1 validation-trace script-sources StageSixBeginPolicy yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesStageSixFoldAssetWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixFoldAsset,
+    "V1 validation-trace script-sources StageSixFoldAsset yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeScriptSourcesStageSixFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixFinish,
+    "V1 validation-trace script-sources StageSixFinish yield",
+  ),
   spendDescriptor(
     "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10],

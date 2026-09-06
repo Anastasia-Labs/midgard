@@ -1,17 +1,14 @@
 use aiken/crypto.{ScriptHash}
+use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
-use midgard/validation_machine/machine_types.{
-  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1,
-}
-use midgard/validation_machine/script_sources.{
-  verify_script_sources_non_output_semantics_v1,
-}
-use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
+use midgard/script_sources_raw_frame_v1 as raw
+use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
+use midgard/validation_script_sources_yield_v1 as source_yield
 use midgard/validation_semantic_v1.{Datum, continue_winning}
+use midgard/validation_semantic_yield_v1
 use midgard/validation_trace_v1.{ScriptSources}
 
 pub type ActionV1 {
@@ -19,7 +16,9 @@ pub type ActionV1 {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    auxiliary: ValidationAuxiliaryWitnessV1,
+    auxiliary: Data,
+    yield_role_index: Int,
+    yield_ref_input_index: Int,
   }
 }
 
@@ -29,7 +28,7 @@ pub type SpendRedeemer =
 validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
-  field_preimage_certificate_policy_id: PolicyId,
+  reference_script_auth_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -52,12 +51,21 @@ validator main(
         output_index,
         transition,
         auxiliary,
+        yield_role_index,
+        yield_ref_input_index,
       }) -> {
-        let auxiliary_data: Data = auxiliary
-        let door = MachineFieldDoorV1 {
-          reference_inputs: tx.reference_inputs,
-          certificate_policy_id: field_preimage_certificate_policy_id,
-        }
+        let frame = raw.open_frame_v1(
+          datum |> semantic_pre_state,
+          transition,
+          30,
+          source_yield.middle_stage(yield_role_index),
+        )
+        let yield_hash = validation_semantic_yield_v1.require_semantic_yield_v1(
+          tx,
+          reference_script_auth_policy_id,
+          source_yield.middle_role(yield_role_index),
+          yield_ref_input_index,
+        )
         continue_winning(
           ScriptSources,
           award_script_hash,
@@ -66,12 +74,8 @@ validator main(
           input_index,
           output_index,
           transition,
-          auxiliary_data,
-          verify_script_sources_non_output_semantics_v1(
-            datum |> semantic_pre_state,
-            ValidationOneStepEvidenceV1 { transition, auxiliary },
-            door,
-          ),
+          auxiliary,
+          frame.item_count == 30 && bytearray.length(yield_hash) == 28,
           own_out_ref,
           tx,
         )

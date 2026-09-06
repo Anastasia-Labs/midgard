@@ -298,6 +298,22 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend",
   },
   yields: {
+    scriptSourcesStageTwoAdvance:
+      "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_two_advance.withdraw",
+    scriptSourcesStageThreeReplay:
+      "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_three_replay.withdraw",
+    scriptSourcesStageThreeFinish:
+      "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_three_finish.withdraw",
+    scriptSourcesStageFourBegin:
+      "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_four_begin.withdraw",
+    scriptSourcesStageFourFinish:
+      "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_four_finish.withdraw",
+    scriptSourcesStageSixBeginPolicy:
+      "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_six_begin_policy.withdraw",
+    scriptSourcesStageSixFoldAsset:
+      "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_six_fold_asset.withdraw",
+    scriptSourcesStageSixFinish:
+      "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_six_finish.withdraw",
     phaseANativeItemNative:
       "fraud_proofs/validation_trace/phase_a_native_scripts_item_yields_v1.native.withdraw",
     phaseANativeItemForeign:
@@ -360,6 +376,14 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly yields: {
+      readonly scriptSourcesStageTwoAdvance: WithdrawalValidator;
+      readonly scriptSourcesStageThreeReplay: WithdrawalValidator;
+      readonly scriptSourcesStageThreeFinish: WithdrawalValidator;
+      readonly scriptSourcesStageFourBegin: WithdrawalValidator;
+      readonly scriptSourcesStageFourFinish: WithdrawalValidator;
+      readonly scriptSourcesStageSixBeginPolicy: WithdrawalValidator;
+      readonly scriptSourcesStageSixFoldAsset: WithdrawalValidator;
+      readonly scriptSourcesStageSixFinish: WithdrawalValidator;
       readonly phaseANativeItemNative: WithdrawalValidator;
       readonly phaseANativeItemForeign: WithdrawalValidator;
       readonly cekMaterialProgramTask: WithdrawalValidator;
@@ -947,6 +971,176 @@ export const buildValidationTraceDisputeChain = ({
       ...baseSemanticResolvers,
       stageOneRedeemerEnvelope,
     ] as const;
+    const scriptSourcesStageTwoAdvance = yield* tryBuild(
+      "Failed to build ScriptSources stage_two_advance yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesStageTwoAdvance,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesNonOutput,
+                  )
+                ]!.spendingScriptHash,
+              ],
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesStageThreeReplay = yield* tryBuild(
+      "Failed to build ScriptSources stage_three_replay yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesStageThreeReplay,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesNonOutput,
+                  )
+                ]!.spendingScriptHash,
+              ],
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesStageThreeFinish = yield* tryBuild(
+      "Failed to build ScriptSources stage_three_finish yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesStageThreeFinish,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesNonOutput,
+                  )
+                ]!.spendingScriptHash,
+              ],
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesStageFourBegin = yield* tryBuild(
+      "Failed to build ScriptSources stage_four_begin yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesStageFourBegin,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesNonOutput,
+                  )
+                ]!.spendingScriptHash,
+              ],
+              fieldPreimageCertificatePolicyId,
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesStageFourFinish = yield* tryBuild(
+      "Failed to build ScriptSources stage_four_finish yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesStageFourFinish,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesNonOutput,
+                  )
+                ]!.spendingScriptHash,
+              ],
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesStageSixBeginPolicy = yield* tryBuild(
+      "Failed to build ScriptSources stage_six_begin_policy yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesStageSixBeginPolicy,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesNonOutput,
+                  )
+                ]!.spendingScriptHash,
+              ],
+              fieldPreimageCertificatePolicyId,
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesStageSixFoldAsset = yield* tryBuild(
+      "Failed to build ScriptSources stage_six_fold_asset yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesStageSixFoldAsset,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesNonOutput,
+                  )
+                ]!.spendingScriptHash,
+              ],
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesStageSixFinish = yield* tryBuild(
+      "Failed to build ScriptSources stage_six_finish yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .scriptSourcesStageSixFinish,
+            [
+              [
+                builtSemanticResolvers[
+                  semanticTitles.indexOf(
+                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                      .scriptSourcesNonOutput,
+                  )
+                ]!.spendingScriptHash,
+              ],
+            ],
+          ),
+        ),
+    );
     const phaseANativeItemNative = yield* tryBuild(
       "Failed to build phase-A item native yield",
       () =>
@@ -1408,6 +1602,14 @@ export const buildValidationTraceDisputeChain = ({
       prepareResolvers,
       semanticResolvers,
       yields: {
+        scriptSourcesStageTwoAdvance,
+        scriptSourcesStageThreeReplay,
+        scriptSourcesStageThreeFinish,
+        scriptSourcesStageFourBegin,
+        scriptSourcesStageFourFinish,
+        scriptSourcesStageSixBeginPolicy,
+        scriptSourcesStageSixFoldAsset,
+        scriptSourcesStageSixFinish,
         phaseANativeItemNative,
         phaseANativeItemForeign,
         cekMaterialProgramTask,

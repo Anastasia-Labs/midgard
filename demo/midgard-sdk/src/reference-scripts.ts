@@ -80,6 +80,22 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1VtSsS7Finish",
   "V1 validation-trace script-sources RedeemerNormalization semantic":
     "V1VtSsRedeemerNorm",
+  "V1 validation-trace script-sources StageTwoAdvance yield":
+    "V1VtSsStage2AdvanceYield",
+  "V1 validation-trace script-sources StageThreeReplay yield":
+    "V1VtSsStage3ReplayYield",
+  "V1 validation-trace script-sources StageThreeFinish yield":
+    "V1VtSsStage3FinishYield",
+  "V1 validation-trace script-sources StageFourBegin yield":
+    "V1VtSsStage4BeginYield",
+  "V1 validation-trace script-sources StageFourFinish yield":
+    "V1VtSsStage4FinishYield",
+  "V1 validation-trace script-sources StageSixBeginPolicy yield":
+    "V1VtSsStage6BeginPolicyYield",
+  "V1 validation-trace script-sources StageSixFoldAsset yield":
+    "V1VtSsStage6FoldAssetYield",
+  "V1 validation-trace script-sources StageSixFinish yield":
+    "V1VtSsStage6FinishYield",
   "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
   "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
   "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",

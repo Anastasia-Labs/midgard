@@ -2041,6 +2041,46 @@ export const nodeRuntimeReferenceScriptTargets = (
       .spendingScript,
   ),
   manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageTwoAdvance.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageThreeReplayWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageThreeReplay.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageThreeFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageThreeFinish.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageFourBeginWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageFourBegin.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageFourFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageFourFinish.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSixBeginPolicyWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixBeginPolicy.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSixFoldAssetWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixFoldAsset.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSixFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixFinish.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
     "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10]
       .spendingScript,

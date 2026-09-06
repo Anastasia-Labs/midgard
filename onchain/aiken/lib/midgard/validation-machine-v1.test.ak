@@ -69,6 +69,7 @@ use midgard/validation_machine/resolve_inputs as vm_resolve_inputs
 use midgard/validation_machine/script_sources as vm_script_sources
 use midgard/validation_machine/script_sources_early_stages as vm_script_sources_early_stages
 use midgard/validation_machine/script_sources_late_stages as vm_script_sources_late_stages
+use midgard/validation_machine/script_sources_middle_semantics as vm_middle_semantics
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/signatures as vm_signatures
 use midgard/validation_machine/value_and_mint as vm_value_and_mint
@@ -5549,12 +5550,22 @@ fn verify_maximum_input_schedule_terminal_vector(
       stage_two_transition,
       vm_machine_types.NoAuxiliaryWitness,
     ),
+    vm_middle_semantics.stage_two_advance(stage_two, stage_two_transition),
+    !vm_middle_semantics.stage_two_advance(stage_two, altered_head_transition),
     !vm_script_sources.verify_script_sources_stage_two_semantics_v1(
       stage_two,
       altered_head_transition,
       vm_machine_types.NoAuxiliaryWitness,
     ),
     vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
+      pre,
+      replay_transition,
+      vector.last_source_kind,
+      vector.last_key,
+      vm_witness.empty_resolution_schedule_hash(),
+      vector.last_value,
+    ),
+    vm_middle_semantics.stage_three_replay(
       pre,
       replay_transition,
       vector.last_source_kind,
@@ -6831,6 +6842,33 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
     ).body.mint_hash,
     asset_step,
     finish_step,
+    vm_middle_semantics.stage_six_begin(
+      begin_pre,
+      vm_machine_types.ValidationOneStepWitnessV1 {
+        work_witness_cbor: begin_work_witness_cbor,
+        claimed_successor: begin_post,
+      },
+      inline_field_door(),
+      5,
+      0,
+      carriage,
+    ),
+    vm_middle_semantics.stage_six_asset(
+      asset_pre,
+      vm_machine_types.ValidationOneStepWitnessV1 {
+        work_witness_cbor: asset_work_witness_cbor,
+        claimed_successor: asset_post,
+      },
+      chunk_proof,
+      None,
+    ),
+    vm_middle_semantics.stage_six_finish(
+      finish_pre,
+      vm_machine_types.ValidationOneStepWitnessV1 {
+        work_witness_cbor: finish_work_witness_cbor,
+        claimed_successor: finish_post,
+      },
+    ),
   }
 }
 

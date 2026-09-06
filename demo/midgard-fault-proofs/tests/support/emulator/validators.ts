@@ -239,6 +239,14 @@ export const makeAlwaysSucceedsContracts = (
     validationTraceDispute: {
       ...scaffoldChain(alwaysValidationTraceDispute, 1),
       yields: {
+        scriptSourcesStageTwoAdvance: reserve,
+        scriptSourcesStageThreeReplay: reserve,
+        scriptSourcesStageThreeFinish: reserve,
+        scriptSourcesStageFourBegin: reserve,
+        scriptSourcesStageFourFinish: reserve,
+        scriptSourcesStageSixBeginPolicy: reserve,
+        scriptSourcesStageSixFoldAsset: reserve,
+        scriptSourcesStageSixFinish: reserve,
         phaseANativeItemNative: reserve,
         phaseANativeItemForeign: reserve,
         cekMaterialProgramTask: reserve,

@@ -267,6 +267,14 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
   "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
   "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
+  "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",
+  "validationTraceDisputeScriptSourcesStageThreeReplayWithdraw",
+  "validationTraceDisputeScriptSourcesStageThreeFinishWithdraw",
+  "validationTraceDisputeScriptSourcesStageFourBeginWithdraw",
+  "validationTraceDisputeScriptSourcesStageFourFinishWithdraw",
+  "validationTraceDisputeScriptSourcesStageSixBeginPolicyWithdraw",
+  "validationTraceDisputeScriptSourcesStageSixFoldAssetWithdraw",
+  "validationTraceDisputeScriptSourcesStageSixFinishWithdraw",
   "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
   "validationTraceDisputePhaseANativeScriptsItemSemantic",
   "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
@@ -1013,6 +1021,22 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
     "V1 validation-trace script-sources RedeemerNormalization semantic":
       "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
+    "V1 validation-trace script-sources StageTwoAdvance yield":
+      "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",
+    "V1 validation-trace script-sources StageThreeReplay yield":
+      "validationTraceDisputeScriptSourcesStageThreeReplayWithdraw",
+    "V1 validation-trace script-sources StageThreeFinish yield":
+      "validationTraceDisputeScriptSourcesStageThreeFinishWithdraw",
+    "V1 validation-trace script-sources StageFourBegin yield":
+      "validationTraceDisputeScriptSourcesStageFourBeginWithdraw",
+    "V1 validation-trace script-sources StageFourFinish yield":
+      "validationTraceDisputeScriptSourcesStageFourFinishWithdraw",
+    "V1 validation-trace script-sources StageSixBeginPolicy yield":
+      "validationTraceDisputeScriptSourcesStageSixBeginPolicyWithdraw",
+    "V1 validation-trace script-sources StageSixFoldAsset yield":
+      "validationTraceDisputeScriptSourcesStageSixFoldAssetWithdraw",
+    "V1 validation-trace script-sources StageSixFinish yield":
+      "validationTraceDisputeScriptSourcesStageSixFinishWithdraw",
     "V1 validation-trace phase-A native Advance semantic":
       "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     "V1 validation-trace phase-A native Item semantic":
@@ -1456,6 +1480,22 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtSsS7Finish",
   "V1 validation-trace script-sources RedeemerNormalization semantic":
     "V1VtSsRedeemerNorm",
+  "V1 validation-trace script-sources StageTwoAdvance yield":
+    "V1VtSsStage2AdvanceYield",
+  "V1 validation-trace script-sources StageThreeReplay yield":
+    "V1VtSsStage3ReplayYield",
+  "V1 validation-trace script-sources StageThreeFinish yield":
+    "V1VtSsStage3FinishYield",
+  "V1 validation-trace script-sources StageFourBegin yield":
+    "V1VtSsStage4BeginYield",
+  "V1 validation-trace script-sources StageFourFinish yield":
+    "V1VtSsStage4FinishYield",
+  "V1 validation-trace script-sources StageSixBeginPolicy yield":
+    "V1VtSsStage6BeginPolicyYield",
+  "V1 validation-trace script-sources StageSixFoldAsset yield":
+    "V1VtSsStage6FoldAssetYield",
+  "V1 validation-trace script-sources StageSixFinish yield":
+    "V1VtSsStage6FinishYield",
   "V1 validation-trace phase-A native Advance semantic": "V1VtPaNsAdvance",
   "V1 validation-trace phase-A native Item semantic": "V1VtPaNsItem",
   "V1 validation-trace phase-A native TokenHead semantic": "V1VtPaNsHead",

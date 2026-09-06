@@ -165,6 +165,10 @@ import {
   initialCekMaterialTraversal,
   submitCekMaterialTraversal,
 } from "./cek-material-traversal.js";
+import {
+  SCRIPT_SOURCES_MIDDLE_YIELD_ROLES,
+  scriptSourcesMiddleYieldIndex,
+} from "./script-sources-yields.js";
 
 export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
 export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;
@@ -3880,6 +3884,11 @@ const makePrepareSelectedRedeemer = ({
         );
   }) satisfies BuildTxWithRedeemer;
 
+type ScriptSourcesMiddleInvocation = {
+  readonly kind: number;
+  readonly referenceInputIndex: bigint;
+};
+
 type CekSelectionInvocation = {
   readonly beginTraversal?: boolean;
   readonly indices: readonly bigint[];
@@ -3896,6 +3905,7 @@ const semanticActionFields = ({
   materialRoute,
   assetFoldYieldReferenceInputIndex,
   phaseANativeItemInvocation,
+  scriptSourcesMiddleInvocation,
   cekSelectionInvocation,
 }: {
   readonly resolverIndex: number;
@@ -3911,6 +3921,7 @@ const semanticActionFields = ({
    */
   readonly materialRoute?: PlutusDataValue;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly scriptSourcesMiddleInvocation?: ScriptSourcesMiddleInvocation;
   readonly phaseANativeItemInvocation?: {
     readonly referenceInputIndex: bigint;
     readonly kind: 0 | 1;
@@ -3928,6 +3939,24 @@ const semanticActionFields = ({
         "CEK material route is permitted only for the CEK execution-selection semantic resolver",
       );
     }
+  }
+  if (resolverIndex === 8 && semanticResolverIndex === 0) {
+    if (
+      scriptSourcesMiddleInvocation === undefined ||
+      scriptSourcesMiddleInvocation.referenceInputIndex < 0n ||
+      !Number.isInteger(scriptSourcesMiddleInvocation.kind) ||
+      scriptSourcesMiddleInvocation.kind < 0 ||
+      scriptSourcesMiddleInvocation.kind > 7
+    )
+      throw new Error(
+        "ScriptSources middle resolution requires its exact authenticated yield",
+      );
+    return [
+      ...base,
+      auxiliary,
+      BigInt(scriptSourcesMiddleInvocation.kind),
+      scriptSourcesMiddleInvocation.referenceInputIndex,
+    ];
   }
   if (resolverIndex === 5 && semanticResolverIndex === 1) {
     if (
@@ -4532,6 +4561,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   materialRoute,
   assetFoldYieldReferenceInputIndex,
   phaseANativeItemInvocation,
+  scriptSourcesMiddleInvocation,
   cekSelectionYieldReferenceInputIndices,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
@@ -4540,6 +4570,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   /** Required by, and only by, the CEK execution-selection resolver (11/1). */
   readonly materialRoute?: ValidationCekMaterialRoute;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly scriptSourcesMiddleInvocation?: ScriptSourcesMiddleInvocation;
   readonly phaseANativeItemInvocation?: {
     readonly referenceInputIndex: bigint;
     readonly kind: 0 | 1;
@@ -4577,6 +4608,9 @@ export const encodeValidationSemanticResolutionRedeemer = ({
     ...(phaseANativeItemInvocation === undefined
       ? {}
       : { phaseANativeItemInvocation }),
+    ...(scriptSourcesMiddleInvocation === undefined
+      ? {}
+      : { scriptSourcesMiddleInvocation }),
     ...(materialRoute === undefined
       ? {}
       : { materialRoute: validationCekMaterialRouteData(materialRoute) }),
@@ -4609,6 +4643,7 @@ const makeSemanticResolutionRedeemer = ({
   materialRoute,
   assetFoldYieldReferenceUtxo,
   phaseANativeItemYield,
+  scriptSourcesMiddleYield,
   cekSelection,
   onLayout,
 }: {
@@ -4623,6 +4658,10 @@ const makeSemanticResolutionRedeemer = ({
   /** CEK program-material UTxOs the route names, in root order. */
   readonly materialReferenceUtxos?: readonly UTxO[];
   readonly assetFoldYieldReferenceUtxo?: UTxO;
+  readonly scriptSourcesMiddleYield?: {
+    readonly utxo: UTxO;
+    readonly kind: number;
+  };
   readonly phaseANativeItemYield?: {
     readonly utxo: UTxO;
     readonly kind: 0 | 1;
@@ -4698,6 +4737,18 @@ const makeSemanticResolutionRedeemer = ({
                 ctx,
                 phaseANativeItemYield.utxo,
                 "phase-A item yield",
+              ),
+            },
+          }),
+      ...(scriptSourcesMiddleYield === undefined
+        ? {}
+        : {
+            scriptSourcesMiddleInvocation: {
+              kind: scriptSourcesMiddleYield.kind,
+              referenceInputIndex: requireReferenceInputIndex(
+                ctx,
+                scriptSourcesMiddleYield.utxo,
+                "ScriptSources middle yield",
               ),
             },
           }),
@@ -6511,6 +6562,34 @@ export const submitValidationDisputeSemanticResolution = async ({
       role: "V1 validation-trace value-and-mint asset-fold yield",
     });
   }
+  const scriptSourcesMiddleYield = await (async () => {
+    if (resolverIndex !== 8 || staged.semanticResolverIndex !== 0)
+      return undefined;
+    const kind = scriptSourcesMiddleYieldIndex(
+      staged.transition.work_witness_cbor,
+      staged.auxiliary,
+    );
+    const spec = SCRIPT_SOURCES_MIDDLE_YIELD_ROLES[kind]!;
+    const contract = contracts.validationTraceDispute.yields[spec.contract];
+    const entry = parsedDeploymentInfo[spec.deployment];
+    if (entry?.refScriptUTxO == null)
+      throw new Error(
+        `Missing authenticated ScriptSources yield ${spec.deployment}`,
+      );
+    const utxo = await fetchUtxoByOutRef({
+      lucid,
+      outRef: entry.refScriptUTxO,
+      label: spec.role,
+    });
+    requireValidationDisputeReferenceScript({
+      utxo,
+      deployedScriptHash: entry.scriptHash,
+      expectedScriptHash: contract.withdrawalScriptHash,
+      authPolicyId: referenceScriptAuthPolicyId,
+      role: spec.role,
+    });
+    return { contract, utxo, kind };
+  })();
   const phaseANativeItemYield = await (async () => {
     if (resolverIndex !== 5 || staged.semanticResolverIndex !== 1)
       return undefined;
@@ -7678,6 +7757,9 @@ export const submitValidationDisputeSemanticResolution = async ({
       ...(phaseANativeItemYield === undefined
         ? []
         : [phaseANativeItemYield.utxo]),
+      ...(scriptSourcesMiddleYield === undefined
+        ? []
+        : [scriptSourcesMiddleYield.utxo]),
       ...(phaseAItemCarriageMaterial?.referenceUtxos ?? []),
     ];
     if (phaseAItemCarriageMaterial !== undefined) {
@@ -7731,6 +7813,9 @@ export const submitValidationDisputeSemanticResolution = async ({
           ...(phaseANativeItemYield === undefined
             ? {}
             : { phaseANativeItemYield }),
+          ...(scriptSourcesMiddleYield === undefined
+            ? {}
+            : { scriptSourcesMiddleYield }),
           ...(assetFoldYieldReferenceUtxo === undefined
             ? {}
             : { assetFoldYieldReferenceUtxo }),
@@ -7752,6 +7837,15 @@ export const submitValidationDisputeSemanticResolution = async ({
       .validFrom(range.validFrom)
       .validTo(range.validTo)
       .addSignerKey(signer.paymentKeyHash);
+    if (scriptSourcesMiddleYield !== undefined)
+      tx = tx.withdraw(
+        validatorToRewardAddress(
+          network,
+          scriptSourcesMiddleYield.contract.withdrawalScript,
+        ),
+        0n,
+        Data.void(),
+      );
     if (phaseANativeItemYield !== undefined)
       tx = tx.withdraw(
         validatorToRewardAddress(

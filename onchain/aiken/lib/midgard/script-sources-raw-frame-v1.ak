@@ -135,6 +135,58 @@ pub fn splice_v1(
       )
 }
 
+// Work-control fields contain integers, definite bytes and definite arrays.
+// Count their canonical encodings, so a splice targets a derived field boundary
+// rather than any equal byte sequence elsewhere in the authenticated witness.
+fn encoded_item_length_v1(item: Data) -> Int {
+  builtin.choose_data(
+    item,
+    fail,
+    fail,
+    {
+      let items = builtin.un_list_data(item)
+      bytearray.length(encode_definite_array_header(list.length(items))) + list.foldl(
+        items,
+        0,
+        fn(value, size) { size + encoded_item_length_v1(value) },
+      )
+    },
+    bytearray.length(cbor.serialise(builtin.un_i_data(item))),
+    {
+      let length = bytearray.length(builtin.un_b_data(item))
+      bytearray.length(encode_definite_array_header(length)) + length
+    },
+  )
+}
+
+pub fn item_offset_v1(frame: RawScriptSourcesFrameV1, index: Int) -> Int {
+  expect index >= 0 && index <= frame.item_count
+  bytearray.length(encode_definite_array_header(frame.item_count)) + list.foldl(
+    list.take(frame.items, index),
+    0,
+    fn(value, size) { size + encoded_item_length_v1(value) },
+  )
+}
+
+pub fn replace_items_v1(
+  frame: RawScriptSourcesFrameV1,
+  witness_cbor: ByteArray,
+  first_index: Int,
+  item_count: Int,
+  next_encoding: ByteArray,
+) -> ByteArray {
+  expect item_count > 0
+  let start = item_offset_v1(frame, first_index)
+  let end = item_offset_v1(frame, first_index + item_count)
+  expect end <= bytearray.length(witness_cbor)
+  splice_v1(
+    witness_cbor,
+    start,
+    builtin.slice_bytearray(start, end - start, witness_cbor),
+    next_encoding,
+  )
+}
+
 pub fn replace_stage_v1(
   frame: RawScriptSourcesFrameV1,
   witness_cbor: ByteArray,

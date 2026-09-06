@@ -1759,7 +1759,7 @@ fn mint_fold_control_from_data(data: Data) -> MintFoldControlV1 {
   }
 }
 
-fn script_sources_control_from_data_items(
+pub fn script_sources_control_from_data_items(
   items: List<Data>,
   discovery: ScriptDiscoveryControlV1,
   output_proof: Option<ledger_output_proof_v1.LedgerOutputProofControlV1>,

@@ -454,3 +454,31 @@ pnpm --filter @al-ft/midgard-sdk test -- tests/reference-scripts.test.ts
 - **Spec conflict check:** GOAL_SPEC §8.3 C45 requires every script-sources
   transition to remain one-step provable; the yield split keeps one machine
   step per transaction, so C52's transaction count is unchanged.
+
+## Implementation checkpoint (2026-09-06)
+
+The dispatcher now authenticates exactly one of eight fixed rewarding roles for
+stages 2/3/4/6. Each rewarding validator proves the existing semantic arm; the
+shared handshake requires exactly one matching dispatcher input and its exact
+spend redeemer. The successor splice derives offsets from the canonical decoded
+control fields on chain. No prover-supplied offset hints are needed, and repeated
+identical field encodings cannot redirect a replacement. Original machine
+semantics remain the parity oracle.
+
+Normal testnet blueprint `bf7ae613d3b7a0020e21bd4097e1f2675eb4eb6d7a8680d66d76a097f1727236`
+(pinned compiler `v1.1.23+5adf783`) passed all 24 real emulator scenarios in
+`submit-init-emulator-validation-dispute-script-sources-middle.test.ts`: each of
+the eight arms reaches permanent proof/removal, refuses a forged step against
+an honest trace, and cancels before a fresh successful restart. The associated
+`validation-trace-script-sources-middle-yields-fit-ledger.json` records every
+signed transaction and enforces the 512-byte publication and 20% execution
+reserves. Maximum-carriage and boundary vectors remain separate closure work.
+
+Machine parity: 197/197; raw-frame tests: 11/11; host role selection: 13/13,
+including canonical definite byte strings longer than 64 bytes, cross-arm
+auxiliary refusal, malformed width and trailing bytes. Core deployment tests
+12/12 and node deployment tests 28/28 passed; FP typecheck passed.
+
+Shared handshake tests: 6/6 and authenticated zero-yield substitution tests: 4/4.
+The ledger contains 1,450 rows (824 publications); maximum signed size 15,108
+bytes, memory 6,475,165 and CPU 2,207,557,998.
