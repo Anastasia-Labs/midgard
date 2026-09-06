@@ -1047,6 +1047,47 @@ const collectScriptDescriptors = (
     "V1 MPF pexcludes withdrawal",
   ),
   ...legacyFaultProofMissingStepDescriptors(contracts),
+  spendDescriptor(
+    "validationTraceDisputeCekMaterialTraversal",
+    contracts.fraudProofContracts.validationTraceDispute.cekMaterialTraversal,
+    "V1 validation-trace CEK material traversal",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeCekMaterialProgramTaskWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekMaterialProgramTask,
+    "V1 validation-trace CEK material program task yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeCekMaterialDataTaskWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekMaterialDataTask,
+    "V1 validation-trace CEK material Data task yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeCekSelectionAuthenticateWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionAuthenticate,
+    "V1 validation-trace CEK selection authenticate yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeCekSelectionSuccessorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionSuccessor,
+    "V1 validation-trace CEK selection successor yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionMaterialProgram,
+    "V1 validation-trace CEK selection material program yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputeCekSelectionMaterialDataWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionMaterialData,
+    "V1 validation-trace CEK selection material data yield",
+  ),
   withdrawalDescriptor(
     "validationTraceDisputeValueAndMintAssetFoldWithdraw",
     contracts.fraudProofContracts.validationTraceDispute.yields

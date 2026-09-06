@@ -1,17 +1,22 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
+  CEK_MATERIAL_TASK_YIELD_ROLES,
+  CEK_SELECTION_YIELD_ROLES,
   createReferenceScriptAuthPolicy,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
+  CML,
   getAddressDetails,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
 } from "@lucid-evolution/lucid";
 
 import {
+  cancelValidationCekMaterialTraversal,
   resolveValidationTraceDisputeDeploymentContracts,
+  resumeValidationCekMaterialTraversal,
   submitRemoveFraudulentBlock,
   submitValidationDisputeAward,
   submitValidationDisputeEnterResolution,
@@ -20,6 +25,7 @@ import {
   submitValidationDisputePrepareSelected,
   submitValidationDisputeReveal,
   submitValidationDisputeSemanticResolution,
+  type SubmitValidationDisputeSemanticResolutionResult,
   submitValidationDisputeVerifySource,
   VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX,
   validationSemanticResolverGlobalIndex,
@@ -90,9 +96,15 @@ export const runForcedValidationDisputeScenario = async (
   }) => Promise<ForcedValidationDisputeFixture>,
   {
     stopAfter,
+    cekMaterialTraversalBatchSize,
+    restartCekMaterialTraversal = false,
+    cancelCekMaterialTraversal = false,
     onRemovalReferenceScriptPublicationAttempt,
     onSubmittedTransaction,
   }: {
+    readonly cekMaterialTraversalBatchSize?: number;
+    readonly restartCekMaterialTraversal?: boolean;
+    readonly cancelCekMaterialTraversal?: boolean;
     readonly stopAfter?:
       | "prepare-resolution"
       | "prepare-selected"
@@ -469,7 +481,7 @@ export const runForcedValidationDisputeScenario = async (
             },
           ],
         });
-  const semanticDeploymentInfo =
+  let semanticDeploymentInfo =
     assetFoldPublication === undefined || assetFoldYield === undefined
       ? baseSemanticDeploymentInfo
       : {
@@ -485,22 +497,193 @@ export const runForcedValidationDisputeScenario = async (
             },
           },
         };
+  if (stagedResolverIndex === 11 && stagedSemanticIndex === 1) {
+    for (const spec of [
+      ...CEK_SELECTION_YIELD_ROLES,
+      ...CEK_MATERIAL_TASK_YIELD_ROLES,
+    ]) {
+      const contract =
+        contracts.fraudProofContracts.validationTraceDispute.yields[
+          spec.contract
+        ];
+      const publication = await publishAuthenticatedValidationDisputeControl({
+        lucid: challengerLucid,
+        authPolicy: referenceScriptAuth,
+        target: {
+          control: spec.contract,
+          name: spec.role,
+          script: contract.withdrawalScript,
+        },
+      });
+      semanticDeploymentInfo = {
+        ...semanticDeploymentInfo,
+        contracts: {
+          ...semanticDeploymentInfo.contracts,
+          [spec.deployment]: {
+            scriptHash: contract.withdrawalScriptHash,
+            refScriptUTxO: {
+              txHash: publication.utxo.txHash,
+              outputIndex: publication.utxo.outputIndex,
+            },
+          },
+        },
+      };
+    }
+  }
+  if (stagedResolverIndex === 11 && stagedSemanticIndex === 1) {
+    const contract =
+      contracts.fraudProofContracts.validationTraceDispute.cekMaterialTraversal;
+    const publication = await publishAuthenticatedValidationDisputeControl({
+      lucid: challengerLucid,
+      authPolicy: referenceScriptAuth,
+      target: {
+        control: "CEK material traversal",
+        name: "V1 validation-trace CEK material traversal",
+        script: contract.spendingScript,
+      },
+    });
+    semanticDeploymentInfo = {
+      ...semanticDeploymentInfo,
+      contracts: {
+        ...semanticDeploymentInfo.contracts,
+        validationTraceDisputeCekMaterialTraversal: {
+          scriptHash: contract.spendingScriptHash,
+          refScriptUTxO: {
+            txHash: publication.utxo.txHash,
+            outputIndex: publication.utxo.outputIndex,
+          },
+        },
+      },
+    };
+  }
+  let checkpointJson: string | undefined;
+  let traversalOutputs = 0;
+  const submitBeforeRestart = emulator.submitTx.bind(emulator);
+  if (restartCekMaterialTraversal || cancelCekMaterialTraversal)
+    emulator.submitTx = async (cbor) => {
+      const hash = await submitBeforeRestart(cbor);
+      const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
+      for (let index = 0; index < outputs.len(); index++) {
+        if (
+          outputs.get(index).address().to_bech32() !==
+          contracts.fraudProofContracts.validationTraceDispute
+            .cekMaterialTraversal.spendingScriptAddress
+        )
+          continue;
+        traversalOutputs++;
+        if (traversalOutputs !== 2) continue;
+        const material = fixture.evidence.oneStepArgument.cekRouteMaterial;
+        if (material === undefined)
+          throw new Error("restart fixture has no CEK material");
+        checkpointJson = JSON.stringify({
+          threadOutRef: `${hash}#${index}`,
+          material: {
+            envelopeCborHex: material.envelopeCbor.toString("hex"),
+            programMaterialSidecarCborHex:
+              material.programMaterialSidecarCbor.toString("hex"),
+          },
+          deploymentInfo: semanticDeploymentInfo,
+        });
+        throw new Error(
+          "simulated process loss after accepted material checkpoint",
+        );
+      }
+      return hash;
+    };
   const semanticCapture = await captureEmulatorSubmission(emulator, () =>
-    runEmulatorLifecycleStage("semantic-resolution", () =>
-      submitValidationDisputeSemanticResolution({
-        lucid: targetChallengerLucid,
-        blueprint: realBlueprint,
-        deploymentInfo: semanticDeploymentInfo,
-        network,
-        signer: challengerSigner,
-        threadOutRef: selectedResult.nextThreadOutRef,
-        oneStepArgument: fixture.evidence.oneStepArgument,
-        referenceScriptUtxo: semanticPublication.utxo,
-        validityRange: validityRange(),
-        awaitConfirmation: true,
-      }),
+    runEmulatorLifecycleStage(
+      "semantic-resolution",
+      async (): Promise<
+        | SubmitValidationDisputeSemanticResolutionResult
+        | {
+            cancellation: Awaited<
+              ReturnType<typeof cancelValidationCekMaterialTraversal>
+            >;
+          }
+      > => {
+        try {
+          return await submitValidationDisputeSemanticResolution({
+            cekMaterialTraversalBatchSize,
+            lucid: targetChallengerLucid,
+            blueprint: realBlueprint,
+            deploymentInfo: semanticDeploymentInfo,
+            network,
+            signer: challengerSigner,
+            threadOutRef: selectedResult.nextThreadOutRef,
+            oneStepArgument: fixture.evidence.oneStepArgument,
+            referenceScriptUtxo: semanticPublication.utxo,
+            validityRange: validityRange(),
+            awaitConfirmation: true,
+          });
+        } catch (cause) {
+          if (checkpointJson === undefined) throw cause;
+          emulator.submitTx = submitBeforeRestart;
+          const checkpoint: {
+            threadOutRef: string;
+            material: {
+              envelopeCborHex: string;
+              programMaterialSidecarCborHex: string;
+            };
+            deploymentInfo: unknown;
+          } = JSON.parse(checkpointJson);
+          await targetChallengerLucid.awaitTx(
+            checkpoint.threadOutRef.split("#")[0]!,
+          );
+          if (cancelCekMaterialTraversal)
+            return {
+              cancellation: await cancelValidationCekMaterialTraversal({
+                lucid: targetChallengerLucid,
+                blueprint: realBlueprint,
+                deploymentInfo: checkpoint.deploymentInfo,
+                network,
+                signer: challengerSigner,
+                threadOutRef: checkpoint.threadOutRef,
+                witnessReferenceScripts,
+              }),
+            };
+          const resumed = await resumeValidationCekMaterialTraversal({
+            lucid: targetChallengerLucid,
+            blueprint: realBlueprint,
+            deploymentInfo: checkpoint.deploymentInfo,
+            network,
+            signer: challengerSigner,
+            threadOutRef: checkpoint.threadOutRef,
+            material: checkpoint.material,
+            validityRange: validityRange(),
+          });
+          if (!resumed.completed)
+            throw new Error("restart did not finish material traversal");
+          const last = resumed.transactions.at(-1)!;
+          return {
+            txHash: last.txHash,
+            threadOutRef: selectedResult.nextThreadOutRef,
+            nextThreadOutRef: last.nextThreadOutRef,
+            proofItemCarriage: "direct",
+            resolverIndex: stagedResolverIndex,
+            semanticResolverIndex: stagedSemanticIndex,
+            semanticResolverGlobalIndex: validationSemanticResolverGlobalIndex(
+              stagedResolverIndex,
+              stagedSemanticIndex,
+            ),
+            inputIndex: last.inputIndex,
+            outputIndex: last.outputIndex,
+            awaitedConfirmation: true,
+            cekRoute: "authenticatedMaterialTraversal",
+            stageTransactions: resumed.transactions,
+          };
+        }
+      },
     ),
   );
+  if ("cancellation" in semanticCapture.result)
+    return {
+      fixture,
+      contracts,
+      initResult,
+      lowIndex,
+      highIndex,
+      cancellation: semanticCapture.result.cancellation,
+    };
   const semanticResult = semanticCapture.result;
   if (stopAfter === "semantic-resolution") {
     return {

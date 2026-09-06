@@ -1736,6 +1736,41 @@ export const nodeRuntimeReferenceScriptTargets = (
   ...legacyFraudProofReferenceScriptTargets(contracts),
   ...registeredFraudProofReferenceScriptTargets(contracts),
   manifestReferenceScriptTarget(
+    "validationTraceDisputeCekMaterialTraversal",
+    contracts.fraudProofContracts.validationTraceDispute.cekMaterialTraversal
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekMaterialProgramTaskWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekMaterialProgramTask.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekMaterialDataTaskWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekMaterialDataTask.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekSelectionAuthenticateWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionAuthenticate.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekSelectionSuccessorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionSuccessor.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionMaterialProgram.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekSelectionMaterialDataWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionMaterialData.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
     "validationTraceDisputeValueAndMintAssetFoldWithdraw",
     contracts.fraudProofContracts.validationTraceDispute.yields
       .valueAndMintAssetFold.withdrawalScript,

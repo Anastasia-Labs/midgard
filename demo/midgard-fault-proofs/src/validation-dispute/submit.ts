@@ -40,7 +40,13 @@ import {
   AssetFoldClaim,
   AuthenticatedCanonicalDecodeItemDatum,
   buildUnsignedValidationProofItemPublicationProgram,
+  CEK_MATERIAL_TASK_YIELD_ROLES,
+  CEK_SELECTION_YIELD_ROLES,
+  CekMaterialTraversalDatum,
+  CekSelectionEnvelopeFacts,
+  CekSelectionMaterialFacts,
   deriveCekProgramMaterialPublications,
+  deriveCekSelectionFacts,
   deriveCekSinglePublication,
   deriveValidationProofItemPublication,
   deriveValidationTraceDeploymentId,
@@ -124,6 +130,7 @@ import {
 import { Effect } from "effect";
 
 import { type ContractDeploymentInfo } from "../inspect-contracts.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -149,6 +156,10 @@ import {
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import { buildValidationAssetFoldClaim } from "./asset-fold.js";
+import {
+  initialCekMaterialTraversal,
+  submitCekMaterialTraversal,
+} from "./cek-material-traversal.js";
 
 export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
 export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;
@@ -3695,6 +3706,12 @@ const makePrepareSelectedRedeemer = ({
         );
   }) satisfies BuildTxWithRedeemer;
 
+type CekSelectionInvocation = {
+  readonly beginTraversal?: boolean;
+  readonly indices: readonly bigint[];
+  readonly facts: ReturnType<typeof deriveCekSelectionFacts>;
+};
+
 const semanticActionFields = ({
   resolverIndex,
   semanticResolverIndex,
@@ -3704,6 +3721,7 @@ const semanticActionFields = ({
   auxiliary,
   materialRoute,
   assetFoldYieldReferenceInputIndex,
+  cekSelectionInvocation,
 }: {
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
@@ -3718,6 +3736,7 @@ const semanticActionFields = ({
    */
   readonly materialRoute?: PlutusDataValue;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly cekSelectionInvocation?: CekSelectionInvocation;
 }): readonly PlutusDataValue[] => {
   const base: readonly PlutusDataValue[] = [
     inputIndex,
@@ -3754,7 +3773,37 @@ const semanticActionFields = ({
           "CEK execution-selection semantic redeemer requires a material route",
         );
       }
-      return [...base, auxiliary, materialRoute];
+      if (
+        cekSelectionInvocation === undefined ||
+        cekSelectionInvocation.indices.length !==
+          (auxiliary.fields[1] === 0n || cekSelectionInvocation.beginTraversal
+            ? 2
+            : 4) ||
+        cekSelectionInvocation.indices.some((index) => index < 0n)
+      ) {
+        throw new Error(
+          "CEK selection requires exact authenticated yield reference indices",
+        );
+      }
+      return [
+        ...base,
+        auxiliary,
+        materialRoute,
+        [...cekSelectionInvocation.indices],
+        Data.from(
+          Data.to(
+            cekSelectionInvocation.facts.envelope,
+            CekSelectionEnvelopeFacts,
+          ),
+        ),
+        Data.from(
+          Data.to(
+            cekSelectionInvocation.facts.material,
+            CekSelectionMaterialFacts,
+          ),
+        ),
+        new Constr(cekSelectionInvocation.beginTraversal ? 1 : 0, []),
+      ];
     }
     if (
       semanticResolverIndex === 2 &&
@@ -4288,6 +4337,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   outputIndex,
   materialRoute,
   assetFoldYieldReferenceInputIndex,
+  cekSelectionYieldReferenceInputIndices,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
   readonly inputIndex: bigint;
@@ -4295,6 +4345,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   /** Required by, and only by, the CEK execution-selection resolver (11/1). */
   readonly materialRoute?: ValidationCekMaterialRoute;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly cekSelectionYieldReferenceInputIndices?: readonly bigint[];
 }): Buffer => {
   if (inputIndex < 0n || outputIndex < 0n) {
     throw new Error(
@@ -4313,6 +4364,14 @@ export const encodeValidationSemanticResolutionRedeemer = ({
     outputIndex,
     transition: staged.transitionData,
     auxiliary: staged.auxiliary,
+    ...(cekSelectionYieldReferenceInputIndices === undefined
+      ? {}
+      : {
+          cekSelectionInvocation: {
+            indices: cekSelectionYieldReferenceInputIndices,
+            facts: deriveCekSelectionFacts(staged.cekRouteMaterial),
+          },
+        }),
     ...(assetFoldYieldReferenceInputIndex === undefined
       ? {}
       : { assetFoldYieldReferenceInputIndex }),
@@ -4347,6 +4406,7 @@ const makeSemanticResolutionRedeemer = ({
   materialReferenceUtxos = [],
   materialRoute,
   assetFoldYieldReferenceUtxo,
+  cekSelection,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -4360,6 +4420,11 @@ const makeSemanticResolutionRedeemer = ({
   /** CEK program-material UTxOs the route names, in root order. */
   readonly materialReferenceUtxos?: readonly UTxO[];
   readonly assetFoldYieldReferenceUtxo?: UTxO;
+  readonly cekSelection?: {
+    readonly referenceUtxos: readonly UTxO[];
+    readonly beginTraversal?: boolean;
+    readonly facts: ReturnType<typeof deriveCekSelectionFacts>;
+  };
   /** Builds the CEK material route once the reference-input indices are known. */
   readonly materialRoute?: (
     layout: SemanticResolutionLayout,
@@ -4406,6 +4471,17 @@ const makeSemanticResolutionRedeemer = ({
       outputIndex: layout.outputIndex,
       transition,
       auxiliary,
+      ...(cekSelection === undefined
+        ? {}
+        : {
+            cekSelectionInvocation: {
+              indices: cekSelection.referenceUtxos.map((utxo) =>
+                requireReferenceInputIndex(ctx, utxo, "CEK selection yield"),
+              ),
+              facts: cekSelection.facts,
+              beginTraversal: cekSelection.beginTraversal ?? false,
+            },
+          }),
       ...(assetFoldYieldReferenceUtxo === undefined
         ? {}
         : {
@@ -4986,7 +5062,7 @@ const errorMessage = (cause: unknown): string =>
 
 const isDeterministicLocalCekFitFailure = (cause: unknown): boolean => {
   const message = errorMessage(cause);
-  return /(?:complete signed L1 proof transaction must be no larger|maximum transaction size|maxTxSize|transaction.{0,24}(?:too large|too big)|maxValueSize|maximum value size|value.{0,24}(?:too large|too big)|maximum execution|execution (?:memory|cpu|units).{0,24}(?:exceed|too (?:large|big))|ExUnitsTooBig)/iu.test(
+  return /(?:complete signed L1 proof transaction must be no larger|maximum transaction size|maxTxSize|transaction.{0,24}(?:too large|too big)|maxValueSize|maximum value size|value.{0,24}(?:too large|too big)|maximum execution|execution (?:memory|cpu|units).{0,24}(?:exceed|too (?:large|big))|execution went over budget|ExUnitsTooBig)/iu.test(
     message,
   );
 };
@@ -5095,6 +5171,7 @@ export type SubmitValidationDisputeSemanticResolutionResult = {
 
 export type ValidationCekSelectedRoute =
   | "noCekMaterial"
+  | "authenticatedMaterialTraversal"
   | "directProof"
   | "completeSinglePublicationReference"
   | "minimumMultiOutputReconstruction";
@@ -5998,6 +6075,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   proofItemDelivery,
   carriageMaterial,
   cekProgramMaterialReferenceOutRefs,
+  cekMaterialTraversalBatchSize,
   referenceScriptUtxo,
   stageReferenceScriptUtxos,
   validityRange,
@@ -6016,6 +6094,8 @@ export const submitValidationDisputeSemanticResolution = async ({
    * consulted only after the direct-proof route is refused for size.
    */
   readonly cekProgramMaterialReferenceOutRefs?: ValidationCekProgramMaterialReferenceOutRefs;
+  /** Optional bounded submission batches; each batch reconstructs the next checkpoint from retained evidence. */
+  readonly cekMaterialTraversalBatchSize?: number;
   readonly proofItemReferenceOutRef?: string;
   /**
    * Tier-1 complete-item delivery preference (#621): "inline" carries the
@@ -6180,6 +6260,39 @@ export const submitValidationDisputeSemanticResolution = async ({
   }
   const isCekExecutionSelection =
     resolverIndex === 11 && staged.semanticResolverIndex === 1;
+  const cekSelectionRoles = isCekExecutionSelection
+    ? CEK_SELECTION_YIELD_ROLES.slice(
+        0,
+        staged.auxiliary.fields[1] === 0n ? 2 : 4,
+      )
+    : [];
+  const cekSelectionYields = await Promise.all(
+    cekSelectionRoles.map(async (spec) => {
+      const contract = contracts.validationTraceDispute.yields[spec.contract];
+      const entry = parsedDeploymentInfo[spec.deployment];
+      if (entry?.refScriptUTxO == null)
+        throw new Error(
+          `Missing authenticated CEK selection yield publication: ${spec.deployment}`,
+        );
+      const utxo = await fetchUtxoByOutRef({
+        lucid,
+        outRef: entry.refScriptUTxO,
+        label: spec.role,
+      });
+      requireValidationDisputeReferenceScript({
+        utxo,
+        deployedScriptHash: entry.scriptHash,
+        expectedScriptHash: contract.withdrawalScriptHash,
+        authPolicyId: referenceScriptAuthPolicyId,
+        role: spec.role,
+      });
+      return { contract, utxo };
+    }),
+  );
+  const cekSelectionFacts = isCekExecutionSelection
+    ? deriveCekSelectionFacts(staged.cekRouteMaterial)
+    : undefined;
+
   if (
     !isCekExecutionSelection &&
     cekProgramMaterialReferenceOutRefs !== undefined
@@ -7150,8 +7263,10 @@ export const submitValidationDisputeSemanticResolution = async ({
     label,
     materialReferenceUtxos = [],
     materialRoute,
+    beginTraversal = false,
   }: {
     readonly label: string;
+    readonly beginTraversal?: boolean;
     readonly materialReferenceUtxos?: readonly UTxO[];
     readonly materialRoute?: (
       layout: SemanticResolutionLayout,
@@ -7160,6 +7275,21 @@ export const submitValidationDisputeSemanticResolution = async ({
     readonly signed: TxSigned;
     readonly layout: SemanticResolutionLayout;
   }> => {
+    const stageContract = beginTraversal
+      ? contracts.validationTraceDispute.cekMaterialTraversal
+      : contracts.validationTraceDispute.award;
+    const stageDatum = beginTraversal
+      ? Data.to(
+          {
+            fraud_prover: inputDatum.fraud_prover,
+            data: initialCekMaterialTraversal(staged.cekRouteMaterial!),
+          },
+          CekMaterialTraversalDatum,
+        )
+      : outputDatum;
+    const activeYields = beginTraversal
+      ? cekSelectionYields.slice(0, 2)
+      : cekSelectionYields;
     let layout: SemanticResolutionLayout | undefined;
     signer.selectWallet(lucid);
     const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -7175,6 +7305,7 @@ export const submitValidationDisputeSemanticResolution = async ({
         ? []
         : [assetFoldYieldReferenceUtxo]),
       ...semanticScriptCarriage.referenceInputs,
+      ...activeYields.map(({ utxo }) => utxo),
     ];
     let tx = lucid
       .newTx()
@@ -7183,15 +7314,28 @@ export const submitValidationDisputeSemanticResolution = async ({
         [threadUtxo],
         makeSemanticResolutionRedeemer({
           threadUtxo,
-          outputAddress:
-            contracts.validationTraceDispute.award.spendingScriptAddress,
-          outputDatum,
+          outputAddress: stageContract.spendingScriptAddress,
+          outputDatum: stageDatum,
           threadUnit: token.unit,
           resolverIndex,
           semanticResolverIndex: staged.semanticResolverIndex,
           transition: staged.transitionData,
           auxiliary: staged.auxiliary,
           materialReferenceUtxos,
+          ...(cekSelectionFacts === undefined
+            ? {}
+            : {
+                cekSelection: {
+                  referenceUtxos: activeYields.map(({ utxo }) => utxo),
+                  facts: beginTraversal
+                    ? {
+                        envelope: cekSelectionFacts.envelope,
+                        material: deriveCekSelectionFacts().material,
+                      }
+                    : cekSelectionFacts,
+                  beginTraversal,
+                },
+              }),
           ...(assetFoldYieldReferenceUtxo === undefined
             ? {}
             : { assetFoldYieldReferenceUtxo }),
@@ -7206,8 +7350,8 @@ export const submitValidationDisputeSemanticResolution = async ({
     }
     tx = tx.pay
       .ToContract(
-        contracts.validationTraceDispute.award.spendingScriptAddress,
-        { kind: "inline", value: outputDatum },
+        stageContract.spendingScriptAddress,
+        { kind: "inline", value: stageDatum },
         threadAssets(threadUtxo, token.unit),
       )
       .validFrom(range.validFrom)
@@ -7216,6 +7360,12 @@ export const submitValidationDisputeSemanticResolution = async ({
     if (assetFoldYield !== undefined)
       tx = tx.withdraw(
         validatorToRewardAddress(network, assetFoldYield.withdrawalScript),
+        0n,
+        Data.void(),
+      );
+    for (const { contract } of activeYields)
+      tx = tx.withdraw(
+        validatorToRewardAddress(network, contract.withdrawalScript),
         0n,
         Data.void(),
       );
@@ -7359,6 +7509,124 @@ export const submitValidationDisputeSemanticResolution = async ({
     return await submitSelectedRoute(directPrepared, "directProof", []);
   }
 
+  const traverseMaterial =
+    async (): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
+      const traversalContract =
+        contracts.validationTraceDispute.cekMaterialTraversal;
+      const traversalEntry =
+        parsedDeploymentInfo.validationTraceDisputeCekMaterialTraversal;
+      if (traversalEntry?.refScriptUTxO == null)
+        throw new Error("Missing CEK material traversal publication");
+      const traversalReference = await fetchUtxoByOutRef({
+        lucid,
+        outRef: traversalEntry.refScriptUTxO,
+        label: "CEK material traversal",
+      });
+      requireValidationDisputeReferenceScript({
+        utxo: traversalReference,
+        deployedScriptHash: traversalEntry.scriptHash,
+        expectedScriptHash: traversalContract.spendingScriptHash,
+        authPolicyId: referenceScriptAuthPolicyId,
+        role: "V1 validation-trace CEK material traversal",
+      });
+      const taskReferences = await Promise.all(
+        CEK_MATERIAL_TASK_YIELD_ROLES.map(async (spec) => {
+          const entry = parsedDeploymentInfo[spec.deployment];
+          if (entry?.refScriptUTxO == null)
+            throw new Error(`Missing ${spec.role} publication`);
+          const utxo = await fetchUtxoByOutRef({
+            lucid,
+            outRef: entry.refScriptUTxO,
+            label: spec.role,
+          });
+          requireValidationDisputeReferenceScript({
+            utxo,
+            deployedScriptHash: entry.scriptHash,
+            expectedScriptHash:
+              contracts.validationTraceDispute.yields[spec.contract]
+                .withdrawalScriptHash,
+            authPolicyId: referenceScriptAuthPolicyId,
+            role: spec.role,
+          });
+          return utxo;
+        }),
+      );
+      const prepared = await prepareSemanticResolution({
+        label: "CEK material traversal admission",
+        beginTraversal: true,
+        materialRoute: () => ({
+          DirectCekMaterial: {
+            envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
+            sidecar_cbor: "",
+          },
+        }),
+      });
+      const begun = await submitPreparedSemanticResolution(prepared);
+      await lucid.awaitTx(begun.txHash, DEFAULT_CONFIRMATION_POLL_MS);
+      const initialThread = await fetchUtxoByOutRef({
+        lucid,
+        outRef: parseOutRef(begun.nextThreadOutRef, "CEK traversal checkpoint"),
+        label: "CEK traversal checkpoint",
+      });
+      let checkpointThread = initialThread;
+      const traversalTransactions: Awaited<
+        ReturnType<typeof submitCekMaterialTraversal>
+      >["transactions"] = [];
+      for (;;) {
+        const batch = await submitCekMaterialTraversal({
+          lucid,
+          network,
+          signer,
+          contracts: contracts.validationTraceDispute,
+          threadUtxo: checkpointThread,
+          maxTransactions: cekMaterialTraversalBatchSize,
+          threadUnit: token.unit,
+          material: routeMaterial,
+          traversalReference,
+          taskReferences: [taskReferences[0]!, taskReferences[1]!],
+          awardDatum: outputDatum,
+          getValidityRange: () =>
+            refreshExpiredValidationDisputeValidityRange({
+              range,
+              currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
+            }),
+        });
+        traversalTransactions.push(...batch.transactions);
+        if (batch.completed) break;
+        checkpointThread = await fetchUtxoByOutRef({
+          lucid,
+          outRef: parseOutRef(
+            outRefLabel(batch.threadUtxo),
+            "CEK traversal restart",
+          ),
+          label: "CEK traversal restart",
+        });
+      }
+      const last = traversalTransactions.at(-1)!;
+      return {
+        ...begun,
+        txHash: last.txHash,
+        nextThreadOutRef: last.nextThreadOutRef,
+        inputIndex: last.inputIndex,
+        outputIndex: last.outputIndex,
+        cekRoute: "authenticatedMaterialTraversal",
+        cekMaterialReferenceInputOutRefs: [],
+        cekMaterialReferenceInputIndices: [],
+        cekRejectedLocalRouteAttempts: rejectedLocalRouteAttempts,
+        stageTransactions: [
+          {
+            kind: "authenticate",
+            txHash: begun.txHash,
+            nextThreadOutRef: begun.nextThreadOutRef,
+            completeSignedBytes: prepared.signed.toCBOR().length / 2,
+          },
+          ...traversalTransactions,
+        ],
+      };
+    };
+  if (cekProgramMaterialReferenceOutRefs === undefined)
+    return await traverseMaterial();
+
   const materialAddress =
     contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress;
   const singlePublication = deriveCekSinglePublication({
@@ -7457,20 +7725,194 @@ export const submitValidationDisputeSemanticResolution = async ({
       "CEK direct, single-publication, and minimum-multi routes did not fit; incremental traversal requires an exact receipt-bound necessity set",
     );
   }
-  // The incremental route fails closed on L1. `IncrementalCekMaterial` in
-  // `onchain/aiken/lib/midgard/validation-resolver-v1.ak` rejects
-  // unconditionally: its former predicate compared the redeemer's
-  // `program_envelope_hash` against a value derived from the disputer's own
-  // selected envelope, so it verified no program material at all, and the
-  // off-chain grammar it was specified against orders `proofContinuation`
-  // transactions AFTER the `proofConsumption` finalization that mints the
-  // fraud proof. Refuse here rather than construct a resolution that cannot
-  // validate. The receipt-set machinery above and the ABI variant are retained
-  // for the lease that adds the authenticated cross-transaction traversal
-  // accumulator the sound route needs.
-  throw new Error(
-    "CEK incremental traversal is not verifiable on L1: the on-chain IncrementalCekMaterial route fails closed until an authenticated cross-transaction material-traversal accumulator is deployed. Publish the complete program material and resolve through the direct, single-publication, or minimum-multi-output route.",
+  // The legacy IncrementalCekMaterial redeemer remains inadmissible. After
+  // authenticating these route receipts, use the bounded computation-thread
+  // traversal, which must finish before the award can be spent.
+  return await traverseMaterial();
+};
+
+export const cancelValidationCekMaterialTraversal = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  witnessReferenceScripts,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+}) => {
+  const {
+    deploymentInfo: deployed,
+    referenceScriptAuthPolicyId,
+    validationTraceDisputeCategory,
+    contracts,
+  } = await resolveValidationTraceDisputeDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+  });
+  const stage = contracts.validationTraceDispute.cekMaterialTraversal;
+  const entry = deployed.validationTraceDisputeCekMaterialTraversal;
+  if (entry?.refScriptUTxO == null)
+    throw new Error("Missing CEK material traversal publication");
+  const reference = await fetchUtxoByOutRef({
+    lucid,
+    outRef: entry.refScriptUTxO,
+    label: "CEK material traversal",
+  });
+  requireValidationDisputeReferenceScript({
+    utxo: reference,
+    deployedScriptHash: entry.scriptHash,
+    expectedScriptHash: stage.spendingScriptHash,
+    authPolicyId: referenceScriptAuthPolicyId,
+    role: "V1 validation-trace CEK material traversal",
+  });
+  return await submitLinearFaultCancel({
+    lucid,
+    family: "validation-trace CEK material traversal",
+    steps: [stage],
+    computationThread: contracts.computationThread,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    signer,
+    threadOutRef,
+    referenceScriptUtxo: reference,
+    witnessReferenceScripts,
+  });
+};
+
+/** Resume only an authenticated live material checkpoint from retained canonical DA. */
+export const resumeValidationCekMaterialTraversal = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  material,
+  maxTransactions,
+  validityRange,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly material: {
+    readonly envelopeCborHex: string;
+    readonly programMaterialSidecarCborHex: string;
+  };
+  readonly maxTransactions?: number;
+  readonly validityRange?: ValidationDisputeValidityRange;
+}) => {
+  if (
+    ![material.envelopeCborHex, material.programMaterialSidecarCborHex].every(
+      (hex) => /^(?:[0-9a-f]{2})+$/u.test(hex),
+    )
+  )
+    throw new Error(
+      "CEK retained material must be non-empty lowercase hex bytes",
+    );
+  const {
+    deploymentInfo: deployed,
+    referenceScriptAuthPolicyId,
+    validationTraceDisputeCategory,
+    contracts,
+  } = await resolveValidationTraceDisputeDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+  });
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "CEK material checkpoint"),
+    label: "CEK material checkpoint",
+  });
+  if (
+    threadUtxo.address !==
+    contracts.validationTraceDispute.cekMaterialTraversal.spendingScriptAddress
+  )
+    throw new Error(
+      "CEK checkpoint is not at the deployed traversal validator",
+    );
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  const specs = [
+    {
+      deployment: "validationTraceDisputeCekMaterialTraversal" as const,
+      role: "V1 validation-trace CEK material traversal" as const,
+      hash: contracts.validationTraceDispute.cekMaterialTraversal
+        .spendingScriptHash,
+    },
+    ...CEK_MATERIAL_TASK_YIELD_ROLES.map((spec) => ({
+      deployment: spec.deployment,
+      role: spec.role,
+      hash: contracts.validationTraceDispute.yields[spec.contract]
+        .withdrawalScriptHash,
+    })),
+  ];
+  const references = await Promise.all(
+    specs.map(async (spec) => {
+      const entry = deployed[spec.deployment];
+      if (entry?.refScriptUTxO == null)
+        throw new Error(`Missing ${spec.role} publication`);
+      const utxo = await fetchUtxoByOutRef({
+        lucid,
+        outRef: entry.refScriptUTxO,
+        label: spec.role,
+      });
+      requireValidationDisputeReferenceScript({
+        utxo,
+        deployedScriptHash: entry.scriptHash,
+        expectedScriptHash: spec.hash,
+        authPolicyId: referenceScriptAuthPolicyId,
+        role: spec.role,
+      });
+      return utxo;
+    }),
   );
+  const range = requireValidityRange(
+    validityRange ??
+      validationDisputeValidityRange(lucid.slotToUnixTime(lucid.currentSlot())),
+  );
+  return await submitCekMaterialTraversal({
+    lucid,
+    network,
+    signer,
+    contracts: contracts.validationTraceDispute,
+    threadUtxo,
+    threadUnit: token.unit,
+    material: {
+      envelopeCbor: Buffer.from(material.envelopeCborHex, "hex"),
+      programMaterialSidecarCbor: Buffer.from(
+        material.programMaterialSidecarCborHex,
+        "hex",
+      ),
+    },
+    traversalReference: references[0]!,
+    taskReferences: [references[1]!, references[2]!],
+    awardDatum: Data.to(
+      { fraud_prover: signer.paymentKeyHash, data: { version: 1n } },
+      WinningValidationResolutionDatum,
+    ),
+    getValidityRange: () =>
+      refreshExpiredValidationDisputeValidityRange({
+        range,
+        currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
+      }),
+    maxTransactions,
+  });
 };
 
 export type SubmitValidationDisputeAwardResult = ValidationFinalizationResult;

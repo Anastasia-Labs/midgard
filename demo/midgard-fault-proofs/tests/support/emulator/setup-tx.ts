@@ -356,13 +356,15 @@ const submitInitialMintTx = async ({
       { [units.fraudProofCatalogue]: 1n },
     );
   if (contracts.validationTraceDispute !== undefined) {
-    builder = builder.register.Stake(
-      scriptRewardAddress(
-        network,
-        contracts.validationTraceDispute.yields.valueAndMintAssetFold
-          .withdrawalScript,
+    const rewardAddresses = new Set(
+      Object.values(contracts.validationTraceDispute.yields).map(
+        ({ withdrawalScript }) =>
+          scriptRewardAddress(network, withdrawalScript),
       ),
     );
+    for (const rewardAddress of rewardAddresses) {
+      builder = builder.register.Stake(rewardAddress);
+    }
   }
   if (contracts.minAda !== undefined) {
     for (const { withdrawalScript } of Object.values(contracts.minAda.yields)) {

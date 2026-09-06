@@ -1059,6 +1059,7 @@ describe("validation-dispute transaction validity", () => {
         },
         inputIndex: 0n,
         outputIndex: 0n,
+        cekSelectionYieldReferenceInputIndices: [8n, 9n, 10n, 11n],
         materialRoute: {
           MinimumMultiOutputCekMaterial: {
             envelope_cbor: "0102",
@@ -1071,7 +1072,8 @@ describe("validation-dispute transaction validity", () => {
     const cekSelectionAction = cekSelectionRedeemer
       .fields[0] as Constr<unknown>;
     expect(cekSelectionAction.index).toBe(0);
-    expect(cekSelectionAction.fields).toHaveLength(5);
+    expect(cekSelectionAction.fields).toHaveLength(9);
+    expect(cekSelectionAction.fields[5]).toEqual([8n, 9n, 10n, 11n]);
     expect(cekSelectionAction.fields[2]).toEqual(transitionData);
     expect(cekSelectionAction.fields[3]).toEqual(cekSelectionAuxiliary);
     const cekRoute = cekSelectionAction.fields[4] as Constr<unknown>;

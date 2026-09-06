@@ -191,8 +191,17 @@ export const makeAlwaysSucceedsContracts = (
     zeroInput: scaffoldChain(zeroInputFirstStep, 2),
     validationTraceDispute: {
       ...scaffoldChain(alwaysValidationTraceDispute, 1),
-      yields: { valueAndMintAssetFold: reserve },
+      yields: {
+        cekMaterialProgramTask: reserve,
+        cekMaterialDataTask: reserve,
+        valueAndMintAssetFold: reserve,
+        cekSelectionAuthenticate: reserve,
+        cekSelectionSuccessor: reserve,
+        cekSelectionMaterialProgram: reserve,
+        cekSelectionMaterialData: reserve,
+      },
       cekProgramMaterial: alwaysValidationTraceDispute,
+      cekMaterialTraversal: alwaysValidationTraceDispute,
       opener: alwaysValidationTraceDispute,
       source: alwaysValidationTraceDispute,
       game: alwaysValidationTraceDispute,

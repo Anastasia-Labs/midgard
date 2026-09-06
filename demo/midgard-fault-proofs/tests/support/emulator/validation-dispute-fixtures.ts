@@ -1,6 +1,7 @@
 import {
   buildMidgardValidationTraceTree,
   computeMidgardNativeTxId,
+  computeScriptIntegrityHashForLanguages,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   encodeCbor,
   encodeMidgardFieldPreimageForField,
@@ -16,7 +17,9 @@ import {
   hashMidgardVersionedScript,
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   EventKeySchema,
@@ -53,6 +56,7 @@ import {
   encodeData,
   keyValuePhasProof,
 } from "../../../src/index.js";
+import { cekSelectionProgram } from "./cek-selection-program.js";
 import {
   makeHeader,
   transitionTraceDaEntry,
@@ -712,11 +716,17 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   txOrderSeed,
   assetCount = 0,
   mintAsset = false,
+  plutusSelection = false,
+  cekProgramLambdaCount = 1,
+  cekDataGraph = false,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
   readonly assetCount?: number;
   readonly mintAsset?: boolean;
+  readonly plutusSelection?: boolean;
+  readonly cekProgramLambdaCount?: number;
+  readonly cekDataGraph?: boolean;
 }) => {
   const txOrderId = transitionTraceOutRef(txOrderSeed);
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -770,8 +780,45 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
         }),
       }
     : {};
+  const program = plutusSelection
+    ? cekSelectionProgram(cekProgramLambdaCount, cekDataGraph)
+    : undefined;
+  const plutusScript =
+    program === undefined
+      ? undefined
+      : { language: "PlutusV3" as const, scriptBytes: program.envelopeCbor };
+  const redeemerTxWitsPreimageCbor = encodeMidgardFieldPreimageForField({
+    fieldIndex: 8,
+    items: [
+      {
+        purpose: "Spend",
+        index: 0n,
+        redeemerCbor: Buffer.from(Data.void(), "hex"),
+        executionUnits: { memory: 1_000_000_000n, steps: 1_000_000_000n },
+      },
+    ],
+  });
+  const scriptFields =
+    plutusScript === undefined
+      ? mintFields
+      : {
+          scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
+            plutusScript,
+          ]),
+          redeemerTxWitsPreimageCbor,
+          scriptIntegrityHash: computeScriptIntegrityHashForLanguages(
+            midgardFieldCommitment(redeemerTxWitsPreimageCbor),
+            ["PlutusV3"],
+          ),
+        };
   const spentOutput = encodeMidgardTxOutput({
-    address: spendingAddress,
+    address:
+      plutusScript === undefined
+        ? spendingAddress
+        : Buffer.concat([
+            Buffer.from([0x70]),
+            Buffer.from(hashMidgardVersionedScript(plutusScript), "hex"),
+          ]),
     value: {
       lovelace: assetCount > 100 ? 100_000_000n : 10_000_000n,
       assets: assetCount === 0 || mintAsset ? new Map() : txAssets,
@@ -793,14 +840,14 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
     ).toBe(5000);
   }
   const unsignedTx = makeNativeTx({
-    ...mintFields,
+    ...scriptFields,
     spendInputCbors: [spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
   });
   const transactionId = computeMidgardNativeTxId(unsignedTx);
   const forcedNativeTx = makeNativeTx({
-    ...mintFields,
+    ...scriptFields,
     spendInputCbors: [spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
@@ -846,6 +893,13 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   const postUtxosRoot = ledgerMutationSteps.at(-1)!.postRoot.toString("hex");
   const honestTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
+      ...(program === undefined
+        ? {}
+        : {
+            programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
+              ...program.material.values(),
+            ]),
+          }),
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeData(eventKey, EventKeySchema),
       sourceKind: "forced",
@@ -1001,6 +1055,10 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   now,
   disputedPhase,
   disputedValueKind,
+  cekSelection = false,
+  plutusSelection = false,
+  cekProgramLambdaCount = 1,
+  cekDataGraph = false,
   assetCount = 0,
   dishonestChallenger = false,
   maximumAssetProof = false,
@@ -1009,6 +1067,10 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly now: number;
   readonly disputedPhase: "cek" | "valueAndMint";
   readonly disputedValueKind?: ValueAndMintStepKind;
+  readonly cekSelection?: boolean;
+  readonly plutusSelection?: boolean;
+  readonly cekProgramLambdaCount?: number;
+  readonly cekDataGraph?: boolean;
   readonly assetCount?: number;
   readonly dishonestChallenger?: boolean;
   readonly maximumAssetProof?: boolean;
@@ -1028,8 +1090,11 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   } = await buildHonestAcceptedNativeTransactionTrace({
     now,
     txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
-    assetCount,
-    mintAsset: disputedValueKind === "mintAsset",
+    assetCount: cekSelection ? Math.max(1, assetCount) : assetCount,
+    mintAsset: cekSelection || disputedValueKind === "mintAsset",
+    plutusSelection,
+    cekProgramLambdaCount,
+    cekDataGraph,
   });
   let challengerTrace = originalTrace;
   const disputedLowIndex = challengerTrace.states.findIndex(

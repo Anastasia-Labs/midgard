@@ -237,6 +237,14 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
   "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+  "validationTraceDisputeCekMaterialTraversal",
+  "validationTraceDisputeCekMaterialProgramTaskWithdraw",
+  "validationTraceDisputeCekMaterialDataTaskWithdraw",
+  "validationTraceDisputeCekSelectionAuthenticateWithdraw",
+  "validationTraceDisputeCekSelectionSuccessorWithdraw",
+  "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
+  "validationTraceDisputeCekSelectionMaterialDataWithdraw",
+
   "fraudProofMinAdaStep02TxWithdraw",
   "fraudProofMinAdaStep02UtxoWithdraw",
   "correctionLockSpend",
@@ -846,6 +854,21 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
     "V1 validation-trace value-and-mint asset-fold yield":
       "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+    "V1 validation-trace CEK material traversal":
+      "validationTraceDisputeCekMaterialTraversal",
+    "V1 validation-trace CEK material program task yield":
+      "validationTraceDisputeCekMaterialProgramTaskWithdraw",
+    "V1 validation-trace CEK material Data task yield":
+      "validationTraceDisputeCekMaterialDataTaskWithdraw",
+    "V1 validation-trace CEK selection authenticate yield":
+      "validationTraceDisputeCekSelectionAuthenticateWithdraw",
+    "V1 validation-trace CEK selection successor yield":
+      "validationTraceDisputeCekSelectionSuccessorWithdraw",
+    "V1 validation-trace CEK selection material program yield":
+      "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
+    "V1 validation-trace CEK selection material data yield":
+      "validationTraceDisputeCekSelectionMaterialDataWithdraw",
+
     "V1 fraud-proof min-ada step-02 tx yield":
       "fraudProofMinAdaStep02TxWithdraw",
     "V1 fraud-proof min-ada step-02 UTxO yield":
@@ -1299,6 +1322,17 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
   "V1 validation-trace value-and-mint asset-fold yield":
     "V1VtVamAssetFoldYield",
+  "V1 validation-trace CEK material traversal": "V1VtCekMatTraversal",
+  "V1 validation-trace CEK material program task yield":
+    "V1VtCekMatProgramTask",
+  "V1 validation-trace CEK material Data task yield": "V1VtCekMatDataTask",
+  "V1 validation-trace CEK selection authenticate yield": "V1VtCekSelAuthYield",
+  "V1 validation-trace CEK selection successor yield": "V1VtCekSelSuccYield",
+  "V1 validation-trace CEK selection material program yield":
+    "V1VtCekSelMatProgYield",
+  "V1 validation-trace CEK selection material data yield":
+    "V1VtCekSelMatDataYield",
+
   "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
   "V1 fraud-proof min-ada step-02 UTxO yield": "V1FpMinAdaS02UtxoYield",
   "correction-lock spending": "CorrectionLockSpend",
