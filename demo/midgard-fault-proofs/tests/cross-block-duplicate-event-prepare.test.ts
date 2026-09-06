@@ -113,6 +113,7 @@ const evidence = async (
           : SDK.EMPTY_MERKLE_TREE_ROOT,
     },
     reconstruction: {
+      headerHash,
       deposits,
       withdrawals,
       forcedTransactions,

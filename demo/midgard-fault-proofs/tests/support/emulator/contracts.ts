@@ -1153,6 +1153,7 @@ export const buildMinimalFaultProofContracts = async (
     realMinFee = false,
     realDoubleWithdraw = false,
     realCrossBlockDuplicateEvent = false,
+    realSettlement = false,
     realL2TxMistag = false,
     realWithdrawnInput = false,
     realWithdrawalMistag = false,
@@ -1203,6 +1204,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
     readonly realCrossBlockDuplicateEvent?: boolean;
+    readonly realSettlement?: boolean;
     readonly realL2TxMistag?: boolean;
     readonly realWithdrawnInput?: boolean;
     readonly realWithdrawalMistag?: boolean;
@@ -1278,9 +1280,27 @@ export const buildMinimalFaultProofContracts = async (
       scriptHashToCredential(hubOracle.policyId),
     ),
   };
+  const settlementMinting = makeMintingValidator(
+    applyCompiledScript(realBlueprint, "settlement.mint.mint", [
+      hubOracle.policyId,
+    ]),
+  );
   const withHubOracle = {
     ...base,
     hubOracle: hubOracleAuth,
+    ...(realSettlement
+      ? {
+          settlement: {
+            ...settlementMinting,
+            ...makeSpendingValidator(
+              applyCompiledScript(realBlueprint, "settlement.spend.spend", [
+                hubOracle.policyId,
+                settlementMinting.policyId,
+              ]),
+            ),
+          },
+        }
+      : {}),
   };
 
   const fraudProofCatalogue = alwaysFraudProofCatalogue

@@ -14,7 +14,7 @@ export type CrossBlockDuplicateEventStepContract = {
   readonly spendingScriptAddress: string;
 };
 
-/** Explicit pre-registration deployment. Production catalogue resolution is deferred. */
+/** Registered two-stage deployment resolved from the fault-proof catalogue. */
 export type CrossBlockDuplicateEventContracts = {
   readonly steps: readonly [
     CrossBlockDuplicateEventStepContract,

@@ -116,13 +116,39 @@ export const prepareCrossBlockDuplicateEvent = async ({
       "cross-block-duplicate-event settlement datum does not preserve the historical counted root",
     );
   }
+  return await prepareCrossBlockDuplicateEventRootOpenings({
+    challenged: challenged.reconstruction,
+    settled: settled.reconstruction,
+    settlementPolicyId: settlement.policyId,
+    kind,
+    eventKey,
+  });
+};
+
+/** Pure counted-root proof construction. The caller must separately authenticate
+ * the challenged live header and the distinct live settlement NFT. */
+export const prepareCrossBlockDuplicateEventRootOpenings = async ({
+  challenged,
+  settled,
+  settlementPolicyId,
+  kind,
+  eventKey,
+}: {
+  challenged: CanonicalBlockEvidence["reconstruction"];
+  settled: CanonicalBlockEvidence["reconstruction"];
+  settlementPolicyId: string;
+  kind: CrossBlockDuplicateEventKindInput;
+  eventKey: SDK.OutputReference;
+}): Promise<PreparedCrossBlockDuplicateEvent> => {
+  if (challenged.headerHash === settled.headerHash)
+    throw new Error("duplicate event requires distinct headers");
   let challengedEvent: SDK.CommittedDuplicateEventProof;
   let settledEvent: SDK.CommittedDuplicateEventProof;
   if (kind === "deposit") {
-    const first = challenged.reconstruction.deposits.find((entry) =>
+    const first = challenged.deposits.find((entry) =>
       keyEquals(entry.key, eventKey),
     );
-    const second = settled.reconstruction.deposits.find((entry) =>
+    const second = settled.deposits.find((entry) =>
       keyEquals(entry.key, eventKey),
     );
     if (first === undefined || second === undefined) {
@@ -132,25 +158,19 @@ export const prepareCrossBlockDuplicateEvent = async ({
     }
     challengedEvent = {
       CommittedDuplicateDepositV1: {
-        membership: await proofFor(
-          challenged.reconstruction.rootData.deposits,
-          first,
-        ),
+        membership: await proofFor(challenged.rootData.deposits, first),
       },
     };
     settledEvent = {
       CommittedDuplicateDepositV1: {
-        membership: await proofFor(
-          settled.reconstruction.rootData.deposits,
-          second,
-        ),
+        membership: await proofFor(settled.rootData.deposits, second),
       },
     };
   } else if (kind === "withdrawal") {
-    const first = challenged.reconstruction.withdrawals.find((entry) =>
+    const first = challenged.withdrawals.find((entry) =>
       keyEquals(entry.key, eventKey),
     );
-    const second = settled.reconstruction.withdrawals.find((entry) =>
+    const second = settled.withdrawals.find((entry) =>
       keyEquals(entry.key, eventKey),
     );
     if (first === undefined || second === undefined) {
@@ -160,25 +180,19 @@ export const prepareCrossBlockDuplicateEvent = async ({
     }
     challengedEvent = {
       CommittedDuplicateWithdrawalV1: {
-        membership: await proofFor(
-          challenged.reconstruction.rootData.withdrawals,
-          first,
-        ),
+        membership: await proofFor(challenged.rootData.withdrawals, first),
       },
     };
     settledEvent = {
       CommittedDuplicateWithdrawalV1: {
-        membership: await proofFor(
-          settled.reconstruction.rootData.withdrawals,
-          second,
-        ),
+        membership: await proofFor(settled.rootData.withdrawals, second),
       },
     };
   } else {
-    const first = challenged.reconstruction.forcedTransactions.find((entry) =>
+    const first = challenged.forcedTransactions.find((entry) =>
       keyEquals(entry.key, eventKey),
     );
-    const second = settled.reconstruction.forcedTransactions.find((entry) =>
+    const second = settled.forcedTransactions.find((entry) =>
       keyEquals(entry.key, eventKey),
     );
     if (first === undefined || second === undefined) {
@@ -189,23 +203,20 @@ export const prepareCrossBlockDuplicateEvent = async ({
     challengedEvent = {
       CommittedDuplicateForcedTransactionV1: {
         membership: await proofFor(
-          challenged.reconstruction.rootData.forcedTransactions,
+          challenged.rootData.forcedTransactions,
           first,
         ),
       },
     };
     settledEvent = {
       CommittedDuplicateForcedTransactionV1: {
-        membership: await proofFor(
-          settled.reconstruction.rootData.forcedTransactions,
-          second,
-        ),
+        membership: await proofFor(settled.rootData.forcedTransactions, second),
       },
     };
   }
   const step02State = SDK.crossBlockDuplicateEventStep02State({
     challengedHeaderHash: challenged.headerHash,
-    settlementPolicyId: settlement.policyId,
+    settlementPolicyId: settlementPolicyId,
     committedEvent: challengedEvent,
   });
   SDK.assertConfirmedDuplicateEvent({
