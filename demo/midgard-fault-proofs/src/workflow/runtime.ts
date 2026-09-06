@@ -139,6 +139,12 @@ import {
   runOrResumeManifestBoundValueConservationWorkflow,
 } from "../value-not-preserved/workflow.js";
 import {
+  createManifestBoundWithdrawalMistagWorkflow,
+  type ManifestBoundWithdrawalMistagWorkflow,
+  type ManifestBoundWithdrawalMistagWorkflowConfig,
+  runOrResumeManifestBoundWithdrawalMistagWorkflow,
+} from "../withdrawal-mistag/workflow.js";
+import {
   createWitnessScriptDecodingWorkflowRunnerSurface,
   type LoadWitnessScriptDecodingWorkflow,
 } from "../witness-script-decoding/workflow.js";
@@ -895,6 +901,26 @@ export const createCrossBlockDuplicateEventWorkflowRunner = (
     }),
   });
 
+export const createWithdrawalMistagWorkflowRunner = (
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundWithdrawalMistagWorkflowConfig>,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner =>
+  createAdmittedWorkflowRunner({
+    category: "withdrawalMistag",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundWorkflowRunOrResume({
+      category: "withdrawalMistag",
+      loadRuntimeConfig,
+      constructWorkflow: createManifestBoundWithdrawalMistagWorkflow,
+      execute: async ({ workflow, sources, journal }) =>
+        await runOrResumeManifestBoundWithdrawalMistagWorkflow({
+          workflow: workflow as ManifestBoundWithdrawalMistagWorkflow,
+          sources,
+          journal,
+        }),
+    }),
+  });
+
 export const createMissingNativeScriptUtxoWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMissingNativeScriptUtxoWorkflowConfig>,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -1348,6 +1374,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner,
   nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner,
   crossBlockDuplicateEvent: createCrossBlockDuplicateEventWorkflowRunner,
+  withdrawalMistag: createWithdrawalMistagWorkflowRunner,
   minAda: createMinAdaWorkflowRunner,
   valueNotPreserved: createValueConservationWorkflowRunner,
   fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner,

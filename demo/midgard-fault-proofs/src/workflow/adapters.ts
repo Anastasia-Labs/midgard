@@ -376,11 +376,17 @@ const workflowAdapterRegistrationRows = [
     requiredClosure:
       "install and exercise the manifest-bound min-fee runner in a compiled application with the concrete public retained-DA runtime loader",
   },
-  manual("withdrawalMistag", [
-    "withdrawal-mistag/prepare-withdrawal-mistag.ts",
-    "withdrawal-mistag/submit-withdrawal-mistag-init.ts",
-    "withdrawal-mistag/submit-withdrawal-mistag-step-01.ts..step-05.ts",
-  ]),
+  {
+    category: "withdrawalMistag",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "withdrawal-mistag/workflow.ts",
+      "withdrawal-mistag/replay.ts",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound withdrawal-mistag runner with retained history",
+  },
   {
     category: "doubleWithdraw",
     status: "missing",

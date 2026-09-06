@@ -82,6 +82,7 @@ import {
   createManifestBoundTransactionOutputNonCanonicalWorkflow,
   createManifestBoundUnusedRedeemerWorkflow,
   createManifestBoundUnusedScriptWitnessWorkflow,
+  createManifestBoundWithdrawalMistagWorkflow,
   createManifestBoundWithdrawnInputWorkflow,
   createManifestBoundWithdrawnReferenceInputWorkflow,
   createManifestBoundWitnessScriptDecodingWorkflow,
@@ -113,6 +114,7 @@ import {
   createTransactionOutputNonCanonicalWorkflowRunner,
   createUnusedRedeemerWorkflowRunner,
   createUnusedScriptWitnessWorkflowRunner,
+  createWithdrawalMistagWorkflowRunner,
   createWithdrawnInputWorkflowRunner,
   createWithdrawnReferenceInputWorkflowRunner,
   createWitnessScriptDecodingWorkflowRunner,
@@ -184,6 +186,7 @@ import {
   type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
   type ManifestBoundUnusedRedeemerWorkflowConfig,
   type ManifestBoundUnusedScriptWitnessWorkflowConfig,
+  type ManifestBoundWithdrawalMistagWorkflowConfig,
   type ManifestBoundWithdrawnInputWorkflowConfig,
   type ManifestBoundWithdrawnReferenceInputWorkflowConfig,
   type ManifestBoundWitnessScriptDecodingWorkflowConfig,
@@ -302,6 +305,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "canonicalDecodability",
   "committedFieldShape",
   "minFee",
+  "withdrawalMistag",
   "doubleWithdraw",
   "crossBlockDuplicateEvent",
   "l2TxMistag",
@@ -342,7 +346,6 @@ export type WatcherInstalledWorkflowCategory =
 export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([
   "transitionTrace",
   "validationTraceDispute",
-  "withdrawalMistag",
   "mintAuthorization",
 ] as const);
 
@@ -525,6 +528,10 @@ type TaggedWorkflowConfig =
   | Readonly<{
       category: "crossBlockDuplicateEvent";
       config: ManifestBoundCrossBlockDuplicateEventWorkflowConfig;
+    }>
+  | Readonly<{
+      category: "withdrawalMistag";
+      config: ManifestBoundWithdrawalMistagWorkflowConfig;
     }>
   | Readonly<{
       category: "missingNativeScriptUtxo";
@@ -823,6 +830,8 @@ const constructProductionWorkflow = async (
       return await createManifestBoundNativeScriptDecodingWorkflow(
         input.config,
       );
+    case "withdrawalMistag":
+      return await createManifestBoundWithdrawalMistagWorkflow(input.config);
     case "crossBlockDuplicateEvent":
       return await createManifestBoundCrossBlockDuplicateEventWorkflow(
         input.config,
@@ -1391,6 +1400,15 @@ const referenceContracts = (
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         pexcludesWithdraw: "pexcludesWithdraw",
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "withdrawalMistag":
+      return Object.freeze({
+        step01: "fraudProofWithdrawalMistag",
+        step02: "fraudProofWithdrawalMistagStep02",
+        step03: "fraudProofWithdrawalMistagStep03",
+        step04: "fraudProofWithdrawalMistagStep04",
+        step05: "fraudProofWithdrawalMistagStep05",
+        ...base,
       });
     case "missingNativeScriptUtxo":
       return Object.freeze({
@@ -1964,7 +1982,8 @@ const buildCommonInfrastructure = async ({
     executionInvocation.decisionDigest !== undefined &&
     (category === "nonExistentInput" ||
       category === "noReferenceInput" ||
-      category === "nativeScriptDecoding") &&
+      category === "nativeScriptDecoding" ||
+      category === "withdrawalMistag") &&
     replayContext === undefined
   ) {
     throw new Error(
@@ -2158,6 +2177,10 @@ function taggedConfig(
   category: "nativeScriptDecoding",
   common: CommonInfrastructure,
 ): Extract<TaggedWorkflowConfig, { readonly category: "nativeScriptDecoding" }>;
+function taggedConfig(
+  category: "withdrawalMistag",
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "withdrawalMistag" }>;
 function taggedConfig(
   category: "crossBlockDuplicateEvent",
   common: CommonInfrastructure,
@@ -2859,6 +2882,26 @@ function taggedConfig(
             fieldPreimageCertificateMint: reference(
               "fieldPreimageCertificateMint",
             ),
+          }),
+        }),
+      });
+    case "withdrawalMistag":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          ...(common.replayContext === undefined
+            ? {}
+            : { replayContext: common.replayContext }),
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+            ] as const),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
           }),
         }),
       });
@@ -3641,6 +3684,11 @@ const taggedReferenceOutRefs = (
           ...tagged.config.referenceScripts.steps,
           ...Object.values(tagged.config.referenceScripts.witnesses),
         ];
+      case "withdrawalMistag":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+        ];
       case "nativeScriptInvalid":
       case "nativeScriptDecoding":
       case "missingNativeScriptUtxo":
@@ -4090,6 +4138,9 @@ const createApplication = ({
     category: "crossBlockDuplicateEvent",
   ): TaggedWorkflowLoaderFor<"crossBlockDuplicateEvent">;
   function makeTaggedLoader(
+    category: "withdrawalMistag",
+  ): TaggedWorkflowLoaderFor<"withdrawalMistag">;
+  function makeTaggedLoader(
     category: "missingNativeScriptUtxo",
   ): TaggedWorkflowLoaderFor<"missingNativeScriptUtxo">;
   function makeTaggedLoader(
@@ -4213,6 +4264,7 @@ const createApplication = ({
     nativeScriptInvalid: makeTaggedLoader("nativeScriptInvalid"),
     nativeScriptDecoding: makeTaggedLoader("nativeScriptDecoding"),
     crossBlockDuplicateEvent: makeTaggedLoader("crossBlockDuplicateEvent"),
+    withdrawalMistag: makeTaggedLoader("withdrawalMistag"),
     minAda: makeTaggedLoader("minAda"),
     valueNotPreserved: makeTaggedLoader("valueNotPreserved"),
     fieldPreimageLengthMismatch: makeTaggedLoader(
@@ -4584,6 +4636,20 @@ const createApplication = ({
   ) => {
     const loaded = await taggedLoaders.nativeScriptDecoding(input);
     if (loaded.config.category !== "nativeScriptDecoding") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const withdrawalMistagLoader = async (
+    input: Parameters<(typeof taggedLoaders)["withdrawalMistag"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.withdrawalMistag(input);
+    if (loaded.config.category !== "withdrawalMistag") {
       await loaded.close();
       throw new Error("workflow loader changed its fixed category");
     }
@@ -5070,6 +5136,10 @@ const createApplication = ({
     nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner(
       nativeScriptDecodingLoader,
       fundingProfile("nativeScriptDecoding"),
+    ),
+    withdrawalMistag: createWithdrawalMistagWorkflowRunner(
+      withdrawalMistagLoader,
+      fundingProfile("withdrawalMistag"),
     ),
     crossBlockDuplicateEvent: createCrossBlockDuplicateEventWorkflowRunner(
       crossBlockDuplicateEventLoader,

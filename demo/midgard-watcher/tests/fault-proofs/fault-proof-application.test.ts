@@ -281,6 +281,7 @@ describe("watcher production fault-proof application V1", () => {
         "canonicalDecodability",
         "committedFieldShape",
         "minFee",
+        "withdrawalMistag",
         "doubleWithdraw",
         "crossBlockDuplicateEvent",
         "l2TxMistag",
@@ -317,7 +318,6 @@ describe("watcher production fault-proof application V1", () => {
       expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toEqual([
         "transitionTrace",
         "validationTraceDispute",
-        "withdrawalMistag",
         "mintAuthorization",
       ]);
       expect(
@@ -327,9 +327,9 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: 50,
-        requestedCategoryCount: 50,
-        readyCategoryCount: 50,
+        installedCategoryCount: 51,
+        requestedCategoryCount: 51,
+        readyCategoryCount: 51,
         missingCategoryCount: 0,
       });
 
@@ -385,67 +385,63 @@ describe("watcher production fault-proof application V1", () => {
         }
         expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual(
           Object.keys(
-            category === "crossBlockDuplicateEvent"
+            category === "withdrawalMistag"
               ? {
-                  phasMembershipWithdraw: true,
                   step01: true,
                   step02: true,
+                  step03: true,
+                  step04: true,
+                  step05: true,
                   computationThreadMint: true,
                   fraudProofMint: true,
+                  phasMembershipWithdraw: true,
                 }
-              : category === "doubleSpend" ||
-                  category === "nonExistentInput" ||
-                  category === "noReferenceInput" ||
-                  category === "nonExistentInputNoIndex" ||
-                  category === "referenceInputNoIdx" ||
-                  category === "inputSetUniqueness"
+              : category === "crossBlockDuplicateEvent"
                 ? {
+                    phasMembershipWithdraw: true,
                     step01: true,
                     step02: true,
-                    step03: true,
-                    step04: true,
                     computationThreadMint: true,
                     fraudProofMint: true,
-                    phasMembershipWithdraw: true,
-                    chunkedVerifyWithdraw: true,
-                    ...(category === "nonExistentInput" ||
-                    category === "noReferenceInput"
-                      ? { pexcludesWithdraw: true }
-                      : {}),
-                    fieldPreimageCertificateMint: true,
                   }
-                : category === "daHashPreimage" ||
-                    category === "committedFieldShape"
+                : category === "doubleSpend" ||
+                    category === "nonExistentInput" ||
+                    category === "noReferenceInput" ||
+                    category === "nonExistentInputNoIndex" ||
+                    category === "referenceInputNoIdx" ||
+                    category === "inputSetUniqueness"
                   ? {
                       step01: true,
                       step02: true,
+                      step03: true,
+                      step04: true,
                       computationThreadMint: true,
                       fraudProofMint: true,
                       phasMembershipWithdraw: true,
                       chunkedVerifyWithdraw: true,
-                      pexcludesWithdraw: true,
+                      ...(category === "nonExistentInput" ||
+                      category === "noReferenceInput"
+                        ? { pexcludesWithdraw: true }
+                        : {}),
+                      fieldPreimageCertificateMint: true,
                     }
-                  : category === "networkId"
+                  : category === "daHashPreimage" ||
+                      category === "committedFieldShape"
                     ? {
                         step01: true,
                         step02: true,
-                        forcedStep: true,
-                        forcedScan: true,
                         computationThreadMint: true,
                         fraudProofMint: true,
                         phasMembershipWithdraw: true,
                         chunkedVerifyWithdraw: true,
                         pexcludesWithdraw: true,
-                        fieldPreimageCertificateMint: true,
                       }
-                    : category === "nativeScriptDecoding"
+                    : category === "networkId"
                       ? {
                           step01: true,
                           step02: true,
-                          step03: true,
-                          step04: true,
-                          step05: true,
-                          step06: true,
+                          forcedStep: true,
+                          forcedScan: true,
                           computationThreadMint: true,
                           fraudProofMint: true,
                           phasMembershipWithdraw: true,
@@ -453,13 +449,14 @@ describe("watcher production fault-proof application V1", () => {
                           pexcludesWithdraw: true,
                           fieldPreimageCertificateMint: true,
                         }
-                      : category === "nativeScriptInvalid"
+                      : category === "nativeScriptDecoding"
                         ? {
                             step01: true,
                             step02: true,
                             step03: true,
                             step04: true,
                             step05: true,
+                            step06: true,
                             computationThreadMint: true,
                             fraudProofMint: true,
                             phasMembershipWithdraw: true,
@@ -467,15 +464,13 @@ describe("watcher production fault-proof application V1", () => {
                             pexcludesWithdraw: true,
                             fieldPreimageCertificateMint: true,
                           }
-                        : category === "missingNativeScriptUtxo"
+                        : category === "nativeScriptInvalid"
                           ? {
                               step01: true,
                               step02: true,
                               step03: true,
                               step04: true,
                               step05: true,
-                              step06: true,
-                              step07: true,
                               computationThreadMint: true,
                               fraudProofMint: true,
                               phasMembershipWithdraw: true,
@@ -483,83 +478,78 @@ describe("watcher production fault-proof application V1", () => {
                               pexcludesWithdraw: true,
                               fieldPreimageCertificateMint: true,
                             }
-                          : category === "minAda"
+                          : category === "missingNativeScriptUtxo"
                             ? {
                                 step01: true,
                                 step02: true,
                                 step03: true,
                                 step04: true,
                                 step05: true,
+                                step06: true,
+                                step07: true,
                                 computationThreadMint: true,
                                 fraudProofMint: true,
                                 phasMembershipWithdraw: true,
                                 chunkedVerifyWithdraw: true,
                                 pexcludesWithdraw: true,
                                 fieldPreimageCertificateMint: true,
-                                txYield: true,
-                                utxoYield: true,
                               }
-                            : category === "fieldPreimageLengthMismatch"
+                            : category === "minAda"
                               ? {
                                   step01: true,
-                                  step02Accepted: true,
-                                  step02Forced: true,
+                                  step02: true,
                                   step03: true,
+                                  step04: true,
+                                  step05: true,
                                   computationThreadMint: true,
                                   fraudProofMint: true,
                                   phasMembershipWithdraw: true,
+                                  chunkedVerifyWithdraw: true,
+                                  pexcludesWithdraw: true,
                                   fieldPreimageCertificateMint: true,
+                                  txYield: true,
+                                  utxoYield: true,
                                 }
-                              : category === "fieldItemWidthIllegal"
+                              : category === "fieldPreimageLengthMismatch"
                                 ? {
                                     step01: true,
-                                    step02: true,
+                                    step02Accepted: true,
+                                    step02Forced: true,
                                     step03: true,
                                     computationThreadMint: true,
                                     fraudProofMint: true,
                                     phasMembershipWithdraw: true,
                                     fieldPreimageCertificateMint: true,
                                   }
-                                : category === "spendInputSignerMissing" ||
-                                    category === "protectedOutputSignerMissing"
+                                : category === "fieldItemWidthIllegal"
                                   ? {
                                       step01: true,
                                       step02: true,
                                       step03: true,
-                                      step04: true,
-                                      step05: true,
                                       computationThreadMint: true,
                                       fraudProofMint: true,
                                       phasMembershipWithdraw: true,
                                       fieldPreimageCertificateMint: true,
                                     }
-                                  : category ===
-                                      "observersForbiddenOnUntaggedNetwork"
+                                  : category === "spendInputSignerMissing" ||
+                                      category ===
+                                        "protectedOutputSignerMissing"
                                     ? {
                                         step01: true,
                                         step02: true,
+                                        step03: true,
+                                        step04: true,
+                                        step05: true,
                                         computationThreadMint: true,
                                         fraudProofMint: true,
                                         phasMembershipWithdraw: true,
-                                        chunkedVerifyWithdraw: true,
-                                        pexcludesWithdraw: true,
                                         fieldPreimageCertificateMint: true,
-                                        correctionLockSpend: true,
-                                        stateQueueSpend: true,
-                                        stateQueueMint: true,
-                                        stateQueueFraudRemovalWithdraw: true,
-                                        activeOperatorsSpend: true,
-                                        activeOperatorsMint: true,
-                                        retiredOperatorsSpend: true,
-                                        retiredOperatorsMint: true,
-                                        schedulerSpend: true,
                                       }
-                                    : category === "observerOrderInvalid"
+                                    : category ===
+                                        "observersForbiddenOnUntaggedNetwork"
                                       ? {
                                           step01: true,
                                           step02: true,
-                                          step03: true,
-                                          step04: true,
                                           computationThreadMint: true,
                                           fraudProofMint: true,
                                           phasMembershipWithdraw: true,
@@ -576,11 +566,12 @@ describe("watcher production fault-proof application V1", () => {
                                           retiredOperatorsMint: true,
                                           schedulerSpend: true,
                                         }
-                                      : category === "redeemerCanonicity"
+                                      : category === "observerOrderInvalid"
                                         ? {
                                             step01: true,
                                             step02: true,
                                             step03: true,
+                                            step04: true,
                                             computationThreadMint: true,
                                             fraudProofMint: true,
                                             phasMembershipWithdraw: true,
@@ -598,7 +589,7 @@ describe("watcher production fault-proof application V1", () => {
                                             retiredOperatorsMint: true,
                                             schedulerSpend: true,
                                           }
-                                        : category === "receivePurposeLanguage"
+                                        : category === "redeemerCanonicity"
                                           ? {
                                               step01: true,
                                               step02: true,
@@ -608,6 +599,8 @@ describe("watcher production fault-proof application V1", () => {
                                               phasMembershipWithdraw: true,
                                               chunkedVerifyWithdraw: true,
                                               pexcludesWithdraw: true,
+                                              fieldPreimageCertificateMint:
+                                                true,
                                               correctionLockSpend: true,
                                               stateQueueSpend: true,
                                               stateQueueMint: true,
@@ -620,15 +613,11 @@ describe("watcher production fault-proof application V1", () => {
                                               schedulerSpend: true,
                                             }
                                           : category ===
-                                                "unusedScriptWitness" ||
-                                              category === "missingScriptSource"
+                                              "receivePurposeLanguage"
                                             ? {
                                                 step01: true,
                                                 step02: true,
                                                 step03: true,
-                                                step04: true,
-                                                step05: true,
-                                                step06: true,
                                                 computationThreadMint: true,
                                                 fraudProofMint: true,
                                                 phasMembershipWithdraw: true,
@@ -645,13 +634,13 @@ describe("watcher production fault-proof application V1", () => {
                                                 retiredOperatorsMint: true,
                                                 schedulerSpend: true,
                                               }
-                                            : category === "unusedRedeemer"
+                                            : category ===
+                                                  "unusedScriptWitness" ||
+                                                category ===
+                                                  "missingScriptSource"
                                               ? {
                                                   step01: true,
                                                   step02: true,
-                                                  step02a: true,
-                                                  step02b: true,
-                                                  step02c: true,
                                                   step03: true,
                                                   step04: true,
                                                   step05: true,
@@ -672,14 +661,17 @@ describe("watcher production fault-proof application V1", () => {
                                                   retiredOperatorsMint: true,
                                                   schedulerSpend: true,
                                                 }
-                                              : category ===
-                                                  "scriptIntegrityHashMismatch"
+                                              : category === "unusedRedeemer"
                                                 ? {
                                                     step01: true,
                                                     step02: true,
+                                                    step02a: true,
+                                                    step02b: true,
+                                                    step02c: true,
                                                     step03: true,
                                                     step04: true,
                                                     step05: true,
+                                                    step06: true,
                                                     computationThreadMint: true,
                                                     fraudProofMint: true,
                                                     phasMembershipWithdraw:
@@ -698,14 +690,13 @@ describe("watcher production fault-proof application V1", () => {
                                                     schedulerSpend: true,
                                                   }
                                                 : category ===
-                                                    "distinctAssetAccumulationLimit"
+                                                    "scriptIntegrityHashMismatch"
                                                   ? {
                                                       step01: true,
                                                       step02: true,
                                                       step03: true,
                                                       step04: true,
                                                       step05: true,
-                                                      step06: true,
                                                       computationThreadMint:
                                                         true,
                                                       fraudProofMint: true,
@@ -729,15 +720,14 @@ describe("watcher production fault-proof application V1", () => {
                                                       schedulerSpend: true,
                                                     }
                                                   : category ===
-                                                      "missingRedeemer"
+                                                      "distinctAssetAccumulationLimit"
                                                     ? {
                                                         step01: true,
                                                         step02: true,
-                                                        step02a: true,
-                                                        step02b: true,
                                                         step03: true,
                                                         step04: true,
                                                         step05: true,
+                                                        step06: true,
                                                         computationThreadMint:
                                                           true,
                                                         fraudProofMint: true,
@@ -746,8 +736,6 @@ describe("watcher production fault-proof application V1", () => {
                                                         chunkedVerifyWithdraw:
                                                           true,
                                                         pexcludesWithdraw: true,
-                                                        fieldPreimageCertificateMint:
-                                                          true,
                                                         correctionLockSpend:
                                                           true,
                                                         stateQueueSpend: true,
@@ -765,29 +753,49 @@ describe("watcher production fault-proof application V1", () => {
                                                         schedulerSpend: true,
                                                       }
                                                     : category ===
-                                                        "witnessScriptDecoding"
+                                                        "missingRedeemer"
                                                       ? {
                                                           step01: true,
                                                           step02: true,
+                                                          step02a: true,
+                                                          step02b: true,
                                                           step03: true,
                                                           step04: true,
+                                                          step05: true,
                                                           computationThreadMint:
                                                             true,
                                                           fraudProofMint: true,
                                                           phasMembershipWithdraw:
                                                             true,
+                                                          chunkedVerifyWithdraw:
+                                                            true,
+                                                          pexcludesWithdraw:
+                                                            true,
                                                           fieldPreimageCertificateMint:
                                                             true,
+                                                          correctionLockSpend:
+                                                            true,
+                                                          stateQueueSpend: true,
+                                                          stateQueueMint: true,
+                                                          stateQueueFraudRemovalWithdraw:
+                                                            true,
+                                                          activeOperatorsSpend:
+                                                            true,
+                                                          activeOperatorsMint:
+                                                            true,
+                                                          retiredOperatorsSpend:
+                                                            true,
+                                                          retiredOperatorsMint:
+                                                            true,
+                                                          schedulerSpend: true,
                                                         }
                                                       : category ===
-                                                          "outputReferenceScriptDecoding"
+                                                          "witnessScriptDecoding"
                                                         ? {
                                                             step01: true,
                                                             step02: true,
                                                             step03: true,
                                                             step04: true,
-                                                            step05: true,
-                                                            step06: true,
                                                             computationThreadMint:
                                                               true,
                                                             fraudProofMint:
@@ -798,58 +806,31 @@ describe("watcher production fault-proof application V1", () => {
                                                               true,
                                                           }
                                                         : category ===
-                                                            "executionSourceScriptDecoding"
+                                                            "outputReferenceScriptDecoding"
                                                           ? {
                                                               step01: true,
                                                               step02: true,
                                                               step03: true,
                                                               step04: true,
                                                               step05: true,
+                                                              step06: true,
                                                               computationThreadMint:
                                                                 true,
                                                               fraudProofMint:
                                                                 true,
                                                               phasMembershipWithdraw:
                                                                 true,
-                                                              chunkedVerifyWithdraw:
-                                                                true,
-                                                              pexcludesWithdraw:
-                                                                true,
-                                                              correctionLockSpend:
-                                                                true,
-                                                              stateQueueSpend:
-                                                                true,
-                                                              stateQueueMint:
-                                                                true,
-                                                              stateQueueFraudRemovalWithdraw:
-                                                                true,
-                                                              activeOperatorsSpend:
-                                                                true,
-                                                              activeOperatorsMint:
-                                                                true,
-                                                              retiredOperatorsSpend:
-                                                                true,
-                                                              retiredOperatorsMint:
-                                                                true,
-                                                              schedulerSpend:
+                                                              fieldPreimageCertificateMint:
                                                                 true,
                                                             }
                                                           : category ===
-                                                              "executionNativeScriptInvalid"
+                                                              "executionSourceScriptDecoding"
                                                             ? {
                                                                 step01: true,
                                                                 step02: true,
                                                                 step03: true,
                                                                 step04: true,
                                                                 step05: true,
-                                                                step06: true,
-                                                                step07: true,
-                                                                step08: true,
-                                                                step09: true,
-                                                                step10: true,
-                                                                step11: true,
-                                                                step12: true,
-                                                                step13: true,
                                                                 computationThreadMint:
                                                                   true,
                                                                 fraudProofMint:
@@ -859,8 +840,6 @@ describe("watcher production fault-proof application V1", () => {
                                                                 chunkedVerifyWithdraw:
                                                                   true,
                                                                 pexcludesWithdraw:
-                                                                  true,
-                                                                fieldPreimageCertificateMint:
                                                                   true,
                                                                 correctionLockSpend:
                                                                   true,
@@ -882,23 +861,54 @@ describe("watcher production fault-proof application V1", () => {
                                                                   true,
                                                               }
                                                             : category ===
-                                                                "transactionOutputNonCanonical"
+                                                                "executionNativeScriptInvalid"
                                                               ? {
                                                                   step01: true,
                                                                   step02: true,
                                                                   step03: true,
                                                                   step04: true,
+                                                                  step05: true,
+                                                                  step06: true,
+                                                                  step07: true,
+                                                                  step08: true,
+                                                                  step09: true,
+                                                                  step10: true,
+                                                                  step11: true,
+                                                                  step12: true,
+                                                                  step13: true,
                                                                   computationThreadMint:
                                                                     true,
                                                                   fraudProofMint:
                                                                     true,
                                                                   phasMembershipWithdraw:
                                                                     true,
+                                                                  chunkedVerifyWithdraw:
+                                                                    true,
+                                                                  pexcludesWithdraw:
+                                                                    true,
                                                                   fieldPreimageCertificateMint:
+                                                                    true,
+                                                                  correctionLockSpend:
+                                                                    true,
+                                                                  stateQueueSpend:
+                                                                    true,
+                                                                  stateQueueMint:
+                                                                    true,
+                                                                  stateQueueFraudRemovalWithdraw:
+                                                                    true,
+                                                                  activeOperatorsSpend:
+                                                                    true,
+                                                                  activeOperatorsMint:
+                                                                    true,
+                                                                  retiredOperatorsSpend:
+                                                                    true,
+                                                                  retiredOperatorsMint:
+                                                                    true,
+                                                                  schedulerSpend:
                                                                     true,
                                                                 }
                                                               : category ===
-                                                                  "resolvedOutputNonCanonical"
+                                                                  "transactionOutputNonCanonical"
                                                                 ? {
                                                                     step01:
                                                                       true,
@@ -907,8 +917,6 @@ describe("watcher production fault-proof application V1", () => {
                                                                     step03:
                                                                       true,
                                                                     step04:
-                                                                      true,
-                                                                    step05:
                                                                       true,
                                                                     computationThreadMint:
                                                                       true,
@@ -920,7 +928,7 @@ describe("watcher production fault-proof application V1", () => {
                                                                       true,
                                                                   }
                                                                 : category ===
-                                                                    "mintDeclaredAssetLimit"
+                                                                    "resolvedOutputNonCanonical"
                                                                   ? {
                                                                       step01:
                                                                         true,
@@ -930,39 +938,19 @@ describe("watcher production fault-proof application V1", () => {
                                                                         true,
                                                                       step04:
                                                                         true,
+                                                                      step05:
+                                                                        true,
                                                                       computationThreadMint:
                                                                         true,
                                                                       fraudProofMint:
                                                                         true,
                                                                       phasMembershipWithdraw:
                                                                         true,
-                                                                      chunkedVerifyWithdraw:
-                                                                        true,
-                                                                      pexcludesWithdraw:
-                                                                        true,
                                                                       fieldPreimageCertificateMint:
-                                                                        true,
-                                                                      correctionLockSpend:
-                                                                        true,
-                                                                      stateQueueSpend:
-                                                                        true,
-                                                                      stateQueueMint:
-                                                                        true,
-                                                                      stateQueueFraudRemovalWithdraw:
-                                                                        true,
-                                                                      activeOperatorsSpend:
-                                                                        true,
-                                                                      activeOperatorsMint:
-                                                                        true,
-                                                                      retiredOperatorsSpend:
-                                                                        true,
-                                                                      retiredOperatorsMint:
-                                                                        true,
-                                                                      schedulerSpend:
                                                                         true,
                                                                     }
                                                                   : category ===
-                                                                      "scriptIntegrityHashMissing"
+                                                                      "mintDeclaredAssetLimit"
                                                                     ? {
                                                                         step01:
                                                                           true,
@@ -971,12 +959,6 @@ describe("watcher production fault-proof application V1", () => {
                                                                         step03:
                                                                           true,
                                                                         step04:
-                                                                          true,
-                                                                        step05:
-                                                                          true,
-                                                                        step06:
-                                                                          true,
-                                                                        step07:
                                                                           true,
                                                                         computationThreadMint:
                                                                           true,
@@ -1010,9 +992,7 @@ describe("watcher production fault-proof application V1", () => {
                                                                           true,
                                                                       }
                                                                     : category ===
-                                                                          "fabricatedDeposit" ||
-                                                                        category ===
-                                                                          "fabricatedWithdrawal"
+                                                                        "scriptIntegrityHashMissing"
                                                                       ? {
                                                                           step01:
                                                                             true,
@@ -1022,13 +1002,47 @@ describe("watcher production fault-proof application V1", () => {
                                                                             true,
                                                                           step04:
                                                                             true,
+                                                                          step05:
+                                                                            true,
+                                                                          step06:
+                                                                            true,
+                                                                          step07:
+                                                                            true,
                                                                           computationThreadMint:
                                                                             true,
                                                                           fraudProofMint:
                                                                             true,
+                                                                          phasMembershipWithdraw:
+                                                                            true,
+                                                                          chunkedVerifyWithdraw:
+                                                                            true,
+                                                                          pexcludesWithdraw:
+                                                                            true,
+                                                                          fieldPreimageCertificateMint:
+                                                                            true,
+                                                                          correctionLockSpend:
+                                                                            true,
+                                                                          stateQueueSpend:
+                                                                            true,
+                                                                          stateQueueMint:
+                                                                            true,
+                                                                          stateQueueFraudRemovalWithdraw:
+                                                                            true,
+                                                                          activeOperatorsSpend:
+                                                                            true,
+                                                                          activeOperatorsMint:
+                                                                            true,
+                                                                          retiredOperatorsSpend:
+                                                                            true,
+                                                                          retiredOperatorsMint:
+                                                                            true,
+                                                                          schedulerSpend:
+                                                                            true,
                                                                         }
                                                                       : category ===
-                                                                          "missingNativeScriptTx"
+                                                                            "fabricatedDeposit" ||
+                                                                          category ===
+                                                                            "fabricatedWithdrawal"
                                                                         ? {
                                                                             step01:
                                                                               true,
@@ -1038,37 +1052,29 @@ describe("watcher production fault-proof application V1", () => {
                                                                               true,
                                                                             step04:
                                                                               true,
-                                                                            step05:
-                                                                              true,
-                                                                            step06:
-                                                                              true,
-                                                                            step07:
-                                                                              true,
-                                                                            step08:
-                                                                              true,
                                                                             computationThreadMint:
                                                                               true,
                                                                             fraudProofMint:
                                                                               true,
-                                                                            phasMembershipWithdraw:
-                                                                              true,
-                                                                            chunkedVerifyWithdraw:
-                                                                              true,
-                                                                            pexcludesWithdraw:
-                                                                              true,
-                                                                            fieldPreimageCertificateMint:
-                                                                              true,
                                                                           }
                                                                         : category ===
-                                                                              "invalidRange" ||
-                                                                            category ===
-                                                                              "zeroInput" ||
-                                                                            category ===
-                                                                              "l2TxMistag"
+                                                                            "missingNativeScriptTx"
                                                                           ? {
                                                                               step01:
                                                                                 true,
                                                                               step02:
+                                                                                true,
+                                                                              step03:
+                                                                                true,
+                                                                              step04:
+                                                                                true,
+                                                                              step05:
+                                                                                true,
+                                                                              step06:
+                                                                                true,
+                                                                              step07:
+                                                                                true,
+                                                                              step08:
                                                                                 true,
                                                                               computationThreadMint:
                                                                                 true,
@@ -1078,13 +1084,17 @@ describe("watcher production fault-proof application V1", () => {
                                                                                 true,
                                                                               chunkedVerifyWithdraw:
                                                                                 true,
+                                                                              pexcludesWithdraw:
+                                                                                true,
+                                                                              fieldPreimageCertificateMint:
+                                                                                true,
                                                                             }
                                                                           : category ===
-                                                                                "minFee" ||
+                                                                                "invalidRange" ||
                                                                               category ===
-                                                                                "invalidSignature" ||
+                                                                                "zeroInput" ||
                                                                               category ===
-                                                                                "canonicalDecodability"
+                                                                                "l2TxMistag"
                                                                             ? {
                                                                                 step01:
                                                                                   true,
@@ -1098,27 +1108,17 @@ describe("watcher production fault-proof application V1", () => {
                                                                                   true,
                                                                                 chunkedVerifyWithdraw:
                                                                                   true,
-                                                                                fieldPreimageCertificateMint:
-                                                                                  true,
                                                                               }
                                                                             : category ===
-                                                                                "missingSignature"
+                                                                                  "minFee" ||
+                                                                                category ===
+                                                                                  "invalidSignature" ||
+                                                                                category ===
+                                                                                  "canonicalDecodability"
                                                                               ? {
                                                                                   step01:
                                                                                     true,
                                                                                   step02:
-                                                                                    true,
-                                                                                  step03:
-                                                                                    true,
-                                                                                  step04:
-                                                                                    true,
-                                                                                  forcedStep:
-                                                                                    true,
-                                                                                  forcedSigner:
-                                                                                    true,
-                                                                                  forcedWitness:
-                                                                                    true,
-                                                                                  fieldPreimageCertificateMint:
                                                                                     true,
                                                                                   computationThreadMint:
                                                                                     true,
@@ -1126,9 +1126,13 @@ describe("watcher production fault-proof application V1", () => {
                                                                                     true,
                                                                                   phasMembershipWithdraw:
                                                                                     true,
+                                                                                  chunkedVerifyWithdraw:
+                                                                                    true,
+                                                                                  fieldPreimageCertificateMint:
+                                                                                    true,
                                                                                 }
                                                                               : category ===
-                                                                                  "withdrawnInput"
+                                                                                  "missingSignature"
                                                                                 ? {
                                                                                     step01:
                                                                                       true,
@@ -1136,19 +1140,25 @@ describe("watcher production fault-proof application V1", () => {
                                                                                       true,
                                                                                     step03:
                                                                                       true,
+                                                                                    step04:
+                                                                                      true,
+                                                                                    forcedStep:
+                                                                                      true,
+                                                                                    forcedSigner:
+                                                                                      true,
+                                                                                    forcedWitness:
+                                                                                      true,
+                                                                                    fieldPreimageCertificateMint:
+                                                                                      true,
                                                                                     computationThreadMint:
                                                                                       true,
                                                                                     fraudProofMint:
                                                                                       true,
                                                                                     phasMembershipWithdraw:
                                                                                       true,
-                                                                                    chunkedVerifyWithdraw:
-                                                                                      true,
-                                                                                    fieldPreimageCertificateMint:
-                                                                                      true,
                                                                                   }
                                                                                 : category ===
-                                                                                    "withdrawnReferenceInput"
+                                                                                    "withdrawnInput"
                                                                                   ? {
                                                                                       step01:
                                                                                         true,
@@ -1162,21 +1172,41 @@ describe("watcher production fault-proof application V1", () => {
                                                                                         true,
                                                                                       phasMembershipWithdraw:
                                                                                         true,
+                                                                                      chunkedVerifyWithdraw:
+                                                                                        true,
                                                                                       fieldPreimageCertificateMint:
                                                                                         true,
                                                                                     }
-                                                                                  : {
-                                                                                      step01:
-                                                                                        true,
-                                                                                      step02:
-                                                                                        true,
-                                                                                      computationThreadMint:
-                                                                                        true,
-                                                                                      fraudProofMint:
-                                                                                        true,
-                                                                                      phasMembershipWithdraw:
-                                                                                        true,
-                                                                                    },
+                                                                                  : category ===
+                                                                                      "withdrawnReferenceInput"
+                                                                                    ? {
+                                                                                        step01:
+                                                                                          true,
+                                                                                        step02:
+                                                                                          true,
+                                                                                        step03:
+                                                                                          true,
+                                                                                        computationThreadMint:
+                                                                                          true,
+                                                                                        fraudProofMint:
+                                                                                          true,
+                                                                                        phasMembershipWithdraw:
+                                                                                          true,
+                                                                                        fieldPreimageCertificateMint:
+                                                                                          true,
+                                                                                      }
+                                                                                    : {
+                                                                                        step01:
+                                                                                          true,
+                                                                                        step02:
+                                                                                          true,
+                                                                                        computationThreadMint:
+                                                                                          true,
+                                                                                        fraudProofMint:
+                                                                                          true,
+                                                                                        phasMembershipWithdraw:
+                                                                                          true,
+                                                                                      },
           ),
         );
       }
@@ -1188,8 +1218,8 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      expect(deps.makeLucid).toHaveBeenCalledTimes(50);
-      expect(transport.stop).toHaveBeenCalledTimes(50);
+      expect(deps.makeLucid).toHaveBeenCalledTimes(51);
+      expect(transport.stop).toHaveBeenCalledTimes(51);
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),
@@ -1339,7 +1369,7 @@ describe("watcher production fault-proof application V1", () => {
       await expect(
         admitted.assertStartupReady(
           invocation(configPath, "doubleSpend", {
-            category: "withdrawalMistag",
+            category: "transitionTrace",
           }),
         ),
       ).rejects.toThrow("no installed production workflow");
