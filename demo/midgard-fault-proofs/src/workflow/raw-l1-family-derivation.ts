@@ -358,6 +358,74 @@ export const deriveAuthenticatedStateQueueHeaderObservationFromRawL1 = async ({
   };
 };
 
+/** Recovery-only observation of the unique authenticated mint of a header NFT.
+ * The complete release-final unit history remains available after removal.
+ * This does not assert that the header is live or authorize a new proof action. */
+export const deriveRetainedStateQueueHeaderObservationFromRawL1 = async ({
+  snapshot,
+  definition,
+}: {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
+}): Promise<AuthenticatedStateQueueHeaderObservation> => {
+  const unit = toUnit(
+    definition.stateQueue.policyId,
+    STATE_QUEUE_NODE_ASSET_NAME_PREFIX + definition.headerHash,
+  );
+  const mints = snapshot.transactions.filter(
+    (transaction) =>
+      mintQuantity(
+        CML.TransactionBody.from_cbor_hex(transaction.bodyCbor),
+        unit,
+      ) === 1n,
+  );
+  if (mints.length !== 1)
+    throw new Error("Retained header requires one authenticated NFT mint");
+  const transaction = mints[0]!;
+  const outputs = CML.TransactionBody.from_cbor_hex(
+    transaction.bodyCbor,
+  ).outputs();
+  const matching: UTxO[] = [];
+  for (let index = 0; index < outputs.len(); index++) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (
+      output.assets[unit] === 1n &&
+      output.address === definition.stateQueue.address
+    )
+      matching.push({
+        ...output,
+        txHash: transaction.txHash,
+        outputIndex: index,
+      });
+  }
+  if (matching.length !== 1)
+    throw new Error("Retained header mint has no unique state-queue output");
+  const node = await Effect.runPromise(
+    utxoToStateQueueUTxO(matching[0]!, definition.stateQueue.policyId),
+  );
+  if ((await stateQueueHeaderHash(node)) !== definition.headerHash)
+    throw new Error("Retained header source differs from selected header");
+  const header = await Effect.runPromise(
+    getHeaderFromStateQueueDatum(node.datum),
+  );
+  return {
+    schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+    sourceMode: "local_node",
+    provenance: {
+      trustClass: "authenticated_cardano_l1",
+      sourceId: snapshot.provenance.sourceId,
+      grade: "security",
+    },
+    chainPoint: {
+      slot: BigInt(transaction.inclusionPoint.slot),
+      blockHash: transaction.inclusionPoint.blockHash,
+    },
+    confirmationDepth: transaction.confirmationDepth,
+    headerHash: definition.headerHash,
+    header,
+  };
+};
+
 const bodyOutputsContainUnit = (
   body: CML.TransactionBody,
   unit: string,

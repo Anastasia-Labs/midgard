@@ -17,6 +17,7 @@ import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
+import { deriveRetainedStateQueueHeaderObservationFromRawL1 } from "./raw-l1-family-derivation.js";
 import {
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
   deriveFraudProofRawL1FamilyStage,
@@ -49,6 +50,10 @@ export interface FraudProofFamilyL1ObservationPort<
   readonly rawL1?: FraudProofRawL1SnapshotAuthority;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
   observeHeader(input: {
+    readonly headerHash: string;
+  }): Promise<AuthenticatedStateQueueHeaderObservation>;
+  /** Recovery from exact NFT creation history; does not assert a live target. */
+  observeRetainedHeader?(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;
   /** Latest release-final raw point through which all returned history was reconfirmed. */
@@ -124,6 +129,11 @@ export const createFraudProofFamilyRawL1ObservationPort = <
       ),
     observeHeader: async ({ headerHash }) =>
       await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
+        snapshot: await capture(headerHash),
+        definition,
+      }),
+    observeRetainedHeader: async ({ headerHash }) =>
+      await deriveRetainedStateQueueHeaderObservationFromRawL1({
         snapshot: await capture(headerHash),
         definition,
       }),

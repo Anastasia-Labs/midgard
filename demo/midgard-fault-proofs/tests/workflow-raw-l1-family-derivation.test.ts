@@ -26,7 +26,9 @@ import {
   computeFraudProofRawL1PointId,
   computeFraudProofRawL1RollbackCursor,
   computeFraudProofReleaseEconomicsPolicyDigest,
+  deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
   deriveFraudProofRawL1FamilyStage,
+  deriveRetainedStateQueueHeaderObservationFromRawL1,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
   type FraudProofRawL1FamilyDefinition,
@@ -414,6 +416,69 @@ const fixture = async ({
 };
 
 describe("raw L1 family terminal economics", () => {
+  it("reopens a removed header from its exact NFT mint and rejects absent or duplicated mints", async () => {
+    const { snapshot, definition } = await fixture();
+    const removal = snapshot.transactions[0]!;
+    const target = removal.resolvedInputs[0]!;
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(CML.TransactionOutput.from_cbor_hex(target.outputCbor));
+    const body = CML.TransactionBody.new(
+      CML.TransactionInputList.new(),
+      outputs,
+      0n,
+    );
+    const mint = CML.Mint.new();
+    mint.set(
+      CML.ScriptHash.from_hex(definition.stateQueue.policyId),
+      CML.AssetName.from_hex(
+        STATE_QUEUE_NODE_ASSET_NAME_PREFIX + definition.headerHash,
+      ),
+      1n,
+    );
+    body.set_mint(mint);
+    const creation = {
+      ...removal,
+      txHash: CML.hash_transaction(body).to_hex(),
+      bodyCbor: body.to_canonical_cbor_hex(),
+      resolvedInputs: [],
+      resolvedReferenceInputs: [],
+    };
+    const retained = {
+      ...snapshot,
+      transactions: [creation, ...snapshot.transactions],
+    };
+    await expect(
+      deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
+        snapshot: retained,
+        definition,
+      }),
+    ).rejects.toThrow("requires a live target");
+    await expect(
+      deriveRetainedStateQueueHeaderObservationFromRawL1({
+        snapshot: retained,
+        definition,
+      }),
+    ).resolves.toMatchObject({
+      headerHash: definition.headerHash,
+      confirmationDepth: 30,
+    });
+    await expect(
+      deriveRetainedStateQueueHeaderObservationFromRawL1({
+        snapshot,
+        definition,
+      }),
+    ).rejects.toThrow("one authenticated NFT mint");
+    await expect(
+      deriveRetainedStateQueueHeaderObservationFromRawL1({
+        snapshot: {
+          ...retained,
+          transactions: [creation, ...retained.transactions],
+        },
+        definition,
+      }),
+    ).rejects.toThrow("one authenticated NFT mint");
+  });
+
   it("derives a live sixth computation step from exact scoped bytes", async () => {
     const value = await fixture();
     const extraAddresses = [scriptAddress("3a"), scriptAddress("3b")];

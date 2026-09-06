@@ -290,6 +290,19 @@ export const buildUnsignedFieldPreimagePublicationProgram = (
         publication,
         ...(maxPublicationBytes === undefined ? {} : { maxPublicationBytes }),
       });
+      // Publications and authenticated script references may share the prover
+      // address. They are evidence, not transaction funding.
+      const fundingInputs = (await lucid.wallet().getUtxos()).filter(
+        (utxo) =>
+          utxo.datum == null &&
+          utxo.datumHash == null &&
+          utxo.scriptRef == null &&
+          Object.keys(utxo.assets).every((unit) => unit === "lovelace"),
+      );
+      if (fundingInputs.length === 0)
+        throw new Error(
+          "Field-preimage publication requires plain-Ada funding",
+        );
       const protocolParameters = await resolveProtocolParameters(lucid);
       return await lucid
         .newTx()
@@ -304,7 +317,7 @@ export const buildUnsignedFieldPreimagePublicationProgram = (
             }),
           },
         )
-        .complete({ localUPLCEval: true });
+        .complete({ localUPLCEval: true, presetWalletInputs: fundingInputs });
     },
     catch: (cause) =>
       new Error(
