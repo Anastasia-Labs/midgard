@@ -719,6 +719,7 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   plutusSelection = false,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
+  nativeItemWidth = 0,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
@@ -727,6 +728,7 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
   readonly plutusSelection?: boolean;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
+  readonly nativeItemWidth?: number;
 }) => {
   const txOrderId = transitionTraceOutRef(txOrderSeed);
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -740,7 +742,13 @@ const buildHonestAcceptedNativeTransactionTrace = async ({
       .to_raw_bytes(),
   );
   const spentOutRef = outRefCbor(0x8a);
-  const nativeScript = { type: "all" as const, scripts: [] };
+  const nativeScript = {
+    type: "all" as const,
+    scripts: Array.from({ length: nativeItemWidth }, () => ({
+      type: "all" as const,
+      scripts: [],
+    })),
+  };
   const script = {
     language: "NativeCardano" as const,
     scriptBytes: encodeMidgardNativeScript(nativeScript),
@@ -1062,10 +1070,13 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   assetCount = 0,
   dishonestChallenger = false,
   maximumAssetProof = false,
+  lateNativeItem = false,
+  nativeItemWidth = 0,
+  prepareFieldCarriage,
 }: {
   readonly operatorVkey: string;
   readonly now: number;
-  readonly disputedPhase: "cek" | "valueAndMint";
+  readonly disputedPhase: "cek" | "valueAndMint" | "phaseANativeScripts";
   readonly disputedValueKind?: ValueAndMintStepKind;
   readonly cekSelection?: boolean;
   readonly plutusSelection?: boolean;
@@ -1074,9 +1085,24 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly assetCount?: number;
   readonly dishonestChallenger?: boolean;
   readonly maximumAssetProof?: boolean;
+  readonly lateNativeItem?: boolean;
+  readonly nativeItemWidth?: number;
+  readonly prepareFieldCarriage?: (input: {
+    trace: DeterministicValidationMachineTrace;
+    stateIndex: number;
+    source: {
+      compact_cbor: string;
+      witness_set_compact_cbor: string;
+      field_preimage_lengths_cbor: string;
+    };
+  }) => Promise<
+    Parameters<
+      typeof buildValidationDisputeEvidenceBundle
+    >[0]["resolveFieldCarriage"]
+  >;
 }): Promise<
   ForcedValidationDisputeFixture & {
-    readonly disputedPhase: "cek" | "valueAndMint";
+    readonly disputedPhase: "cek" | "valueAndMint" | "phaseANativeScripts";
     readonly disputedLowIndex: number;
   }
 > => {
@@ -1090,16 +1116,25 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   } = await buildHonestAcceptedNativeTransactionTrace({
     now,
     txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
-    assetCount: cekSelection ? Math.max(1, assetCount) : assetCount,
-    mintAsset: cekSelection || disputedValueKind === "mintAsset",
+    assetCount:
+      cekSelection || disputedPhase === "phaseANativeScripts"
+        ? Math.max(1, assetCount)
+        : assetCount,
+    mintAsset:
+      cekSelection ||
+      disputedValueKind === "mintAsset" ||
+      (disputedPhase === "phaseANativeScripts" && !plutusSelection),
     plutusSelection,
     cekProgramLambdaCount,
     cekDataGraph,
+    nativeItemWidth,
   });
   let challengerTrace = originalTrace;
   const disputedLowIndex = challengerTrace.states.findIndex(
     (state, index) =>
       state.phase === disputedPhase &&
+      (!lateNativeItem ||
+        challengerTrace.states[index - 1]?.phase === "nativeScripts") &&
       (disputedValueKind === undefined ||
         valueAndMintKind(challengerTrace.witnesses[index]!) ===
           disputedValueKind),
@@ -1151,7 +1186,13 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   const claimedChallengerTrace = dishonestChallenger
     ? operatorTrace
     : challengerTrace;
+  const resolveFieldCarriage = await prepareFieldCarriage?.({
+    trace: claimedChallengerTrace,
+    stateIndex: disputedLowIndex,
+    source: forcedTransaction.source,
+  });
   const evidence = buildValidationDisputeEvidenceBundle({
+    ...(resolveFieldCarriage === undefined ? {} : { resolveFieldCarriage }),
     operatorTrace: claimedOperatorTrace,
     challengerTrace: claimedChallengerTrace,
     currentTime: now + 2_000,

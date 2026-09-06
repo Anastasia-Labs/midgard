@@ -98,9 +98,9 @@ const placeholderZeroInput = "03".repeat(28);
 // the assertion above it failed first, which is exactly the stale-pin trap
 // the #579 note describes.
 const Q13_APPLIED_STEP_HASHES = [
-  "eef050f25ab9183890e1283c2942d6d4e546928b9e015da0e219b170",
-  "f4715dfd8f163df3b73b88ffc04336c24637b546108bbdecca8bfd6a",
-  "afdd997b50324a138014e3e9fc180790e29d1da026c5028b3ad54388",
+  "8be21010c6fc4278e29f5399e0ccdfe55625edfeef48decace9a4da1",
+  "05d34ed443775b28b451c62259f000214a770a0a0c6e86e79af3810e",
+  "7193ed565660be57754bd040ed629c39987050862cb84ee045c39bb5",
   "e05cfc9368b5851b68ddb37cab8ca8b5c45da673c7c1acdabc17b85c",
 ] as const;
 // Re-pinned 2026-08-05 (#544): the original-epoch root d88f9829…bcca394
@@ -254,7 +254,7 @@ const Q13_APPLIED_STEP_HASHES = [
 // q13AppliedIdentities producer under testnet blueprint db03f84b…;
 // the four Q13 step hashes above remain unchanged.
 const Q13_CATALOGUE_ROOT =
-  "64c917bb4d4445f91ad4dbd9802112cb5411b53140ebb9500aee950797dc0a9f";
+  "a858337cec6de7e1f4fd9564a42f15a3fac14e2118d6e3afd620c7ceae353f74";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

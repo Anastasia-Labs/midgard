@@ -293,6 +293,10 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend",
   },
   yields: {
+    phaseANativeItemNative:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_item_yields_v1.native.withdraw",
+    phaseANativeItemForeign:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_item_yields_v1.foreign.withdraw",
     cekSelectionAuthenticate:
       "fraud_proofs/validation_trace/cek_execution_selection_yields.authenticate.withdraw",
     cekSelectionSuccessor:
@@ -350,6 +354,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly yields: {
+      readonly phaseANativeItemNative: WithdrawalValidator;
+      readonly phaseANativeItemForeign: WithdrawalValidator;
       readonly cekMaterialProgramTask: WithdrawalValidator;
       readonly cekMaterialDataTask: WithdrawalValidator;
       readonly cekSelectionAuthenticate: WithdrawalValidator;
@@ -924,6 +930,48 @@ export const buildValidationTraceDisputeChain = ({
       ...baseSemanticResolvers,
       stageOneRedeemerEnvelope,
     ] as const;
+    const phaseANativeItemNative = yield* tryBuild(
+      "Failed to build phase-A item native yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .phaseANativeItemNative,
+            [
+              builtSemanticResolvers[
+                semanticTitles.indexOf(
+                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    .phaseANativeScriptsItem,
+                )
+              ]!.spendingScriptHash,
+              award.spendingScriptHash,
+              fieldPreimageCertificatePolicyId,
+            ],
+          ),
+        ),
+    );
+    const phaseANativeItemForeign = yield* tryBuild(
+      "Failed to build phase-A item foreign yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+              .phaseANativeItemForeign,
+            [
+              builtSemanticResolvers[
+                semanticTitles.indexOf(
+                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    .phaseANativeScriptsItem,
+                )
+              ]!.spendingScriptHash,
+              award.spendingScriptHash,
+              fieldPreimageCertificatePolicyId,
+            ],
+          ),
+        ),
+    );
     const selectionDispatcherHash =
       builtSemanticResolvers[
         semanticTitles.indexOf(
@@ -1342,6 +1390,8 @@ export const buildValidationTraceDisputeChain = ({
       prepareResolvers,
       semanticResolvers,
       yields: {
+        phaseANativeItemNative,
+        phaseANativeItemForeign,
         cekMaterialProgramTask,
         cekMaterialDataTask,
         valueAndMintAssetFold,

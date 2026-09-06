@@ -1038,6 +1038,49 @@ describe("validation-dispute transaction validity", () => {
     const transitionData = Data.from(
       Data.to(transition, ValidationOneStepWitness),
     );
+    const phaseAItemCarriage = new Constr(0, ["80"]);
+    const phaseAItemArgument = {
+      resolverIndex: 5,
+      semanticResolverIndex: 1,
+      transitionCbor,
+      auxiliaryCbor: Buffer.from(
+        Data.to(new Constr(1, [6n, 17n, phaseAItemCarriage])),
+        "hex",
+      ),
+    };
+    for (const kind of [0, 1] as const) {
+      expect(
+        encodeValidationSemanticResolutionRedeemer({
+          oneStepArgument: phaseAItemArgument,
+          inputIndex: 2n,
+          outputIndex: 3n,
+          phaseANativeItemInvocation: { referenceInputIndex: 7n, kind },
+        }).toString("hex"),
+      ).toBe(
+        Data.to(
+          new Constr(1, [
+            new Constr(0, [
+              2n,
+              3n,
+              transitionData,
+              6n,
+              17n,
+              phaseAItemCarriage,
+              7n,
+              BigInt(kind),
+            ]),
+          ]),
+        ),
+      );
+    }
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemer({
+        oneStepArgument: phaseAItemArgument,
+        inputIndex: 2n,
+        outputIndex: 3n,
+      }),
+    ).toThrow(/Phase-A item resolution/u);
+
     // R5 item 1: the cek index is a `prepare_selected` family. Semantic 0
     // (finish) is transition-only; semantic 1 (execution selection) carries
     // the auxiliary plus the material route as its last field; semantics 2/3

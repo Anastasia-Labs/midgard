@@ -107,15 +107,12 @@ describe("node-runtime reference-script registry", () => {
     expect(names).toContain("payout spending");
     expect(names).toContain("payout minting");
     expect(
-      names.filter((name) => name.startsWith("V1 validation-trace ")),
-    ).toEqual([
-      "V1 validation-trace dispute",
-      "V1 validation-trace source",
-      "V1 validation-trace game",
-      "V1 validation-trace boundary",
-      "V1 validation-trace timeout",
-      "V1 validation-trace award",
-    ]);
+      names.filter((name) => name.startsWith("V1 validation-trace ")).sort(),
+    ).toEqual(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE)
+        .filter((name) => name.startsWith("V1 validation-trace "))
+        .sort(),
+    );
     const registeredFraudProofNames = names.filter((name) =>
       name.startsWith("V1 fraud-proof "),
     );

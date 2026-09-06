@@ -1771,6 +1771,16 @@ export const nodeRuntimeReferenceScriptTargets = (
       .cekSelectionMaterialData.withdrawalScript,
   ),
   manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeItemNativeWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .phaseANativeItemNative.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeItemForeignWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .phaseANativeItemForeign.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
     "validationTraceDisputeValueAndMintAssetFoldWithdraw",
     contracts.fraudProofContracts.validationTraceDispute.yields
       .valueAndMintAssetFold.withdrawalScript,

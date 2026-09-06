@@ -374,7 +374,18 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         validationTraceScriptSourcesStageOneRedeemerStages,
       prepareResolvers: validationTracePrepareResolvers,
       semanticResolvers: validationTraceSemanticResolvers,
-      yields: { valueAndMintAssetFold: stateQueueYield },
+      cekMaterialTraversal: transitionTrace,
+      yields: {
+        valueAndMintAssetFold: stateQueueYield,
+        cekMaterialProgramTask: stateQueueYield,
+        cekMaterialDataTask: stateQueueYield,
+        cekSelectionAuthenticate: stateQueueYield,
+        cekSelectionSuccessor: stateQueueYield,
+        cekSelectionMaterialProgram: stateQueueYield,
+        cekSelectionMaterialData: stateQueueYield,
+        phaseANativeItemNative: stateQueueYield,
+        phaseANativeItemForeign: stateQueueYield,
+      },
       resolvers: validationTracePrepareResolvers,
     } as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
     const transitionTraceFinals = [

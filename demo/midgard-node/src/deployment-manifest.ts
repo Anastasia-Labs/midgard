@@ -250,6 +250,15 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
   "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+  "validationTraceDisputePhaseANativeItemNativeWithdraw",
+  "validationTraceDisputePhaseANativeItemForeignWithdraw",
+  "validationTraceDisputeCekMaterialTraversal",
+  "validationTraceDisputeCekMaterialProgramTaskWithdraw",
+  "validationTraceDisputeCekMaterialDataTaskWithdraw",
+  "validationTraceDisputeCekSelectionAuthenticateWithdraw",
+  "validationTraceDisputeCekSelectionSuccessorWithdraw",
+  "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
+  "validationTraceDisputeCekSelectionMaterialDataWithdraw",
   "fraudProofMinAdaStep02TxWithdraw",
   "fraudProofMinAdaStep02UtxoWithdraw",
   "correctionLockSpend",
@@ -659,6 +668,24 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
     "V1 validation-trace value-and-mint asset-fold yield":
       "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+    "V1 validation-trace phase-A native item native yield":
+      "validationTraceDisputePhaseANativeItemNativeWithdraw",
+    "V1 validation-trace phase-A native item foreign yield":
+      "validationTraceDisputePhaseANativeItemForeignWithdraw",
+    "V1 validation-trace CEK material traversal":
+      "validationTraceDisputeCekMaterialTraversal",
+    "V1 validation-trace CEK material program task yield":
+      "validationTraceDisputeCekMaterialProgramTaskWithdraw",
+    "V1 validation-trace CEK material Data task yield":
+      "validationTraceDisputeCekMaterialDataTaskWithdraw",
+    "V1 validation-trace CEK selection authenticate yield":
+      "validationTraceDisputeCekSelectionAuthenticateWithdraw",
+    "V1 validation-trace CEK selection successor yield":
+      "validationTraceDisputeCekSelectionSuccessorWithdraw",
+    "V1 validation-trace CEK selection material program yield":
+      "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
+    "V1 validation-trace CEK selection material data yield":
+      "validationTraceDisputeCekSelectionMaterialDataWithdraw",
     "V1 fraud-proof min-ada step-02 tx yield":
       "fraudProofMinAdaStep02TxWithdraw",
     "V1 fraud-proof min-ada step-02 UTxO yield":

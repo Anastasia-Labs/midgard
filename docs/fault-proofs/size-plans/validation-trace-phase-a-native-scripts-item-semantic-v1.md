@@ -284,3 +284,30 @@ cd ../midgard-core && pnpm test -- tests/deployment-manifest-identity.test.ts
   checks.
 - **Margin**: the foreign yield sits 1,362 bytes under the target; the
   single-role fallback would sit 300 under.
+
+
+## Implementation evidence — 2026-09-05
+
+The dispatcher and separate native/foreign authenticated yields are implemented
+with the eight-field action and unchanged auxiliary commitment. Complete signed
+transactions on normal testnet blueprint
+`5b9bfa6930ae22949d1afc4c308419fc13b453178c370c4e210628eed2d4b7a5`
+passed nine emulator scenarios: native/foreign proof and removal, honest-trace
+refusals, late native continuation, opposite-yield refusals, exact 32,768-byte
+certified field, and prepared-thread cancellation followed by a fresh attempt.
+The maximum fixture has one item, which is also the last item; a maximum
+multi-item last-index and malformed-header lifecycle remain to be exercised.
+
+The [fit ledger](validation-trace-phase-a-native-item-fit-ledger.json) records
+382 complete signed transactions, including 196 publications. Maxima are 15,872
+bytes, 4,731,963 memory units and 1,814,594,609 CPU units; every execution retains
+at least 20% reserve and every publication retains 512 bytes. The compiler is
+`v1.1.23+5adf783`, environment `testnet`, with no traces or L1 overrides.
+
+The guarded library selector passes 195 tests, including original/split predicate
+parity and structural phase-routing checks; the validator selector passes nine
+transaction-context tests including the exact eight-field wire layout. SDK
+reference lookup passes 7 tests, validation evidence passes 3, and submit plus
+contract inspection passes 33. These are worktree results; shared-branch rebuild
+and repetitions, full phase-A deployment roster, and installed validation-dispute
+workflow closure are still required by the parent program.

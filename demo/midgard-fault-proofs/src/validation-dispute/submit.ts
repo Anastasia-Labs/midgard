@@ -3721,6 +3721,7 @@ const semanticActionFields = ({
   auxiliary,
   materialRoute,
   assetFoldYieldReferenceInputIndex,
+  phaseANativeItemInvocation,
   cekSelectionInvocation,
 }: {
   readonly resolverIndex: number;
@@ -3736,6 +3737,10 @@ const semanticActionFields = ({
    */
   readonly materialRoute?: PlutusDataValue;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly phaseANativeItemInvocation?: {
+    readonly referenceInputIndex: bigint;
+    readonly kind: 0 | 1;
+  };
   readonly cekSelectionInvocation?: CekSelectionInvocation;
 }): readonly PlutusDataValue[] => {
   const base: readonly PlutusDataValue[] = [
@@ -3749,6 +3754,21 @@ const semanticActionFields = ({
         "CEK material route is permitted only for the CEK execution-selection semantic resolver",
       );
     }
+  }
+  if (resolverIndex === 5 && semanticResolverIndex === 1) {
+    if (
+      phaseANativeItemInvocation === undefined ||
+      phaseANativeItemInvocation.referenceInputIndex < 0n
+    )
+      throw new Error(
+        "Phase-A item resolution requires its authenticated yield reference index and kind",
+      );
+    return [
+      ...base,
+      ...auxiliary.fields,
+      phaseANativeItemInvocation.referenceInputIndex,
+      BigInt(phaseANativeItemInvocation.kind),
+    ];
   }
   if (resolverIndex === 11) {
     // `cek_v1` prepare order: finish (no auxiliary), execution selection
@@ -4337,6 +4357,7 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   outputIndex,
   materialRoute,
   assetFoldYieldReferenceInputIndex,
+  phaseANativeItemInvocation,
   cekSelectionYieldReferenceInputIndices,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgument;
@@ -4345,6 +4366,10 @@ export const encodeValidationSemanticResolutionRedeemer = ({
   /** Required by, and only by, the CEK execution-selection resolver (11/1). */
   readonly materialRoute?: ValidationCekMaterialRoute;
   readonly assetFoldYieldReferenceInputIndex?: bigint;
+  readonly phaseANativeItemInvocation?: {
+    readonly referenceInputIndex: bigint;
+    readonly kind: 0 | 1;
+  };
   readonly cekSelectionYieldReferenceInputIndices?: readonly bigint[];
 }): Buffer => {
   if (inputIndex < 0n || outputIndex < 0n) {
@@ -4375,6 +4400,9 @@ export const encodeValidationSemanticResolutionRedeemer = ({
     ...(assetFoldYieldReferenceInputIndex === undefined
       ? {}
       : { assetFoldYieldReferenceInputIndex }),
+    ...(phaseANativeItemInvocation === undefined
+      ? {}
+      : { phaseANativeItemInvocation }),
     ...(materialRoute === undefined
       ? {}
       : { materialRoute: validationCekMaterialRouteData(materialRoute) }),
@@ -4406,6 +4434,7 @@ const makeSemanticResolutionRedeemer = ({
   materialReferenceUtxos = [],
   materialRoute,
   assetFoldYieldReferenceUtxo,
+  phaseANativeItemYield,
   cekSelection,
   onLayout,
 }: {
@@ -4420,6 +4449,10 @@ const makeSemanticResolutionRedeemer = ({
   /** CEK program-material UTxOs the route names, in root order. */
   readonly materialReferenceUtxos?: readonly UTxO[];
   readonly assetFoldYieldReferenceUtxo?: UTxO;
+  readonly phaseANativeItemYield?: {
+    readonly utxo: UTxO;
+    readonly kind: 0 | 1;
+  };
   readonly cekSelection?: {
     readonly referenceUtxos: readonly UTxO[];
     readonly beginTraversal?: boolean;
@@ -4480,6 +4513,18 @@ const makeSemanticResolutionRedeemer = ({
               ),
               facts: cekSelection.facts,
               beginTraversal: cekSelection.beginTraversal ?? false,
+            },
+          }),
+      ...(phaseANativeItemYield === undefined
+        ? {}
+        : {
+            phaseANativeItemInvocation: {
+              kind: phaseANativeItemYield.kind,
+              referenceInputIndex: requireReferenceInputIndex(
+                ctx,
+                phaseANativeItemYield.utxo,
+                "phase-A item yield",
+              ),
             },
           }),
       ...(assetFoldYieldReferenceUtxo === undefined
@@ -6074,6 +6119,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   proofItemReferenceOutRef,
   proofItemDelivery,
   carriageMaterial,
+  phaseANativeItemYieldKind,
   cekProgramMaterialReferenceOutRefs,
   cekMaterialTraversalBatchSize,
   referenceScriptUtxo,
@@ -6109,6 +6155,8 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly proofItemDelivery?: ValidationProofItemDelivery;
   /** Required when the staged carriage is tier 2 or tier 3 (#600). */
   readonly carriageMaterial?: ValidationFieldCarriageMaterial;
+  /** Structural item branch; its language tag is authenticated by the rewarding validator. */
+  readonly phaseANativeItemYieldKind?: "native" | "foreign";
   /** Explicit semantic-resolver reference; otherwise resolved from deployment info. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published scripts for any multi-stage semantic route selected. */
@@ -6258,6 +6306,58 @@ export const submitValidationDisputeSemanticResolution = async ({
       role: "V1 validation-trace value-and-mint asset-fold yield",
     });
   }
+  const phaseANativeItemYield = await (async () => {
+    if (resolverIndex !== 5 || staged.semanticResolverIndex !== 1)
+      return undefined;
+    if (phaseANativeItemYieldKind === undefined)
+      throw new Error(
+        "Phase-A native item resolution requires the selected item language branch",
+      );
+    const native = phaseANativeItemYieldKind === "native";
+    const contract = native
+      ? contracts.validationTraceDispute.yields.phaseANativeItemNative
+      : contracts.validationTraceDispute.yields.phaseANativeItemForeign;
+    const entry = native
+      ? parsedDeploymentInfo.validationTraceDisputePhaseANativeItemNativeWithdraw
+      : parsedDeploymentInfo.validationTraceDisputePhaseANativeItemForeignWithdraw;
+    if (entry?.refScriptUTxO == null)
+      throw new Error("Missing authenticated phase-A item yield publication");
+    const utxo = await fetchUtxoByOutRef({
+      lucid,
+      outRef: entry.refScriptUTxO,
+      label: "phase-A item yield",
+    });
+    requireValidationDisputeReferenceScript({
+      utxo,
+      deployedScriptHash: entry.scriptHash,
+      expectedScriptHash: contract.withdrawalScriptHash,
+      authPolicyId: referenceScriptAuthPolicyId,
+      role: native
+        ? "V1 validation-trace phase-A native item native yield"
+        : "V1 validation-trace phase-A native item foreign yield",
+    });
+    return { contract, utxo, kind: native ? (0 as const) : (1 as const) };
+  })();
+  const phaseANativeItemCarriage =
+    phaseANativeItemYield === undefined
+      ? undefined
+      : midgardFieldCarriageFromData(
+          staged.auxiliary.fields[2]!,
+          "phase-A item carriage",
+        );
+  const phaseANativeItemCarriageMaterial =
+    phaseANativeItemCarriage === undefined ||
+    phaseANativeItemCarriage.carriage === "Inline"
+      ? undefined
+      : carriageMaterial;
+  if (
+    phaseANativeItemCarriage !== undefined &&
+    phaseANativeItemCarriage.carriage !== "Inline" &&
+    phaseANativeItemCarriageMaterial === undefined
+  )
+    throw new Error(
+      "Phase-A item reference carriage requires its authenticated publication material",
+    );
   const isCekExecutionSelection =
     resolverIndex === 11 && staged.semanticResolverIndex === 1;
   const cekSelectionRoles = isCekExecutionSelection
@@ -7306,7 +7406,30 @@ export const submitValidationDisputeSemanticResolution = async ({
         : [assetFoldYieldReferenceUtxo]),
       ...semanticScriptCarriage.referenceInputs,
       ...activeYields.map(({ utxo }) => utxo),
+      ...(phaseANativeItemYield === undefined
+        ? []
+        : [phaseANativeItemYield.utxo]),
+      ...(phaseANativeItemCarriageMaterial?.referenceUtxos ?? []),
     ];
+    if (phaseANativeItemCarriageMaterial !== undefined) {
+      const resolved = resolveMidgardFieldCarriageAgainstReferenceInputs({
+        plan: phaseANativeItemCarriageMaterial.plan,
+        referenceInputs,
+        ...(phaseANativeItemCarriageMaterial.certificatePolicyId === undefined
+          ? {}
+          : {
+              certificatePolicyId:
+                phaseANativeItemCarriageMaterial.certificatePolicyId,
+            }),
+      });
+      if (
+        Data.to(midgardFieldCarriageToData(resolved)) !==
+        Data.to(staged.auxiliary.fields[2]!)
+      )
+        throw new Error(
+          "Phase-A item carriage indices differ from the committed evidence",
+        );
+    }
     let tx = lucid
       .newTx()
       .collectFrom([feeInput])
@@ -7336,6 +7459,9 @@ export const submitValidationDisputeSemanticResolution = async ({
                   beginTraversal,
                 },
               }),
+          ...(phaseANativeItemYield === undefined
+            ? {}
+            : { phaseANativeItemYield }),
           ...(assetFoldYieldReferenceUtxo === undefined
             ? {}
             : { assetFoldYieldReferenceUtxo }),
@@ -7357,6 +7483,15 @@ export const submitValidationDisputeSemanticResolution = async ({
       .validFrom(range.validFrom)
       .validTo(range.validTo)
       .addSignerKey(signer.paymentKeyHash);
+    if (phaseANativeItemYield !== undefined)
+      tx = tx.withdraw(
+        validatorToRewardAddress(
+          network,
+          phaseANativeItemYield.contract.withdrawalScript,
+        ),
+        0n,
+        Data.void(),
+      );
     if (assetFoldYield !== undefined)
       tx = tx.withdraw(
         validatorToRewardAddress(network, assetFoldYield.withdrawalScript),
@@ -8008,3 +8143,42 @@ export const submitValidationDisputeAward = async ({
 
 export const validationDisputeDescriptorData =
   validationTraceDescriptorDataFromCore;
+
+/** Cancel an owned prepared semantic thread by its live out-ref. */
+export const cancelValidationSemanticResolution = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+}) => {
+  const { validationTraceDisputeCategory, contracts } =
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+    });
+  return await submitLinearFaultCancel({
+    lucid,
+    family: "validation semantic resolution",
+    steps: contracts.validationTraceDispute.semanticResolvers,
+    computationThread: contracts.computationThread,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    signer,
+    threadOutRef,
+    referenceScriptUtxo,
+    witnessReferenceScripts,
+  });
+};

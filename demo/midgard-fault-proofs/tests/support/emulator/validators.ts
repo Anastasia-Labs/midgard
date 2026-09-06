@@ -192,6 +192,8 @@ export const makeAlwaysSucceedsContracts = (
     validationTraceDispute: {
       ...scaffoldChain(alwaysValidationTraceDispute, 1),
       yields: {
+        phaseANativeItemNative: reserve,
+        phaseANativeItemForeign: reserve,
         cekMaterialProgramTask: reserve,
         cekMaterialDataTask: reserve,
         valueAndMintAssetFold: reserve,

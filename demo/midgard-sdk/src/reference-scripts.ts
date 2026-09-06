@@ -241,6 +241,10 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
   "V1 validation-trace value-and-mint asset-fold yield":
     "V1VtVamAssetFoldYield",
+  "V1 validation-trace phase-A native item native yield":
+    "V1VtPhaseANativeItemNativeYield",
+  "V1 validation-trace phase-A native item foreign yield":
+    "V1VtPhaseANativeItemForeignYield",
   "V1 validation-trace CEK material traversal": "V1VtCekMatTraversal",
   "V1 validation-trace CEK material program task yield":
     "V1VtCekMatProgramTask",

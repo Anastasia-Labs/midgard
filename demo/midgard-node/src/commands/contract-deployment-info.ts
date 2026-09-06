@@ -1089,6 +1089,18 @@ const collectScriptDescriptors = (
     "V1 validation-trace CEK selection material data yield",
   ),
   withdrawalDescriptor(
+    "validationTraceDisputePhaseANativeItemNativeWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .phaseANativeItemNative,
+    "V1 validation-trace phase-A native item native yield",
+  ),
+  withdrawalDescriptor(
+    "validationTraceDisputePhaseANativeItemForeignWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .phaseANativeItemForeign,
+    "V1 validation-trace phase-A native item foreign yield",
+  ),
+  withdrawalDescriptor(
     "validationTraceDisputeValueAndMintAssetFoldWithdraw",
     contracts.fraudProofContracts.validationTraceDispute.yields
       .valueAndMintAssetFold,

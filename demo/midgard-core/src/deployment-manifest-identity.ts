@@ -239,6 +239,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
   "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+  "validationTraceDisputePhaseANativeItemNativeWithdraw",
+  "validationTraceDisputePhaseANativeItemForeignWithdraw",
   "validationTraceDisputeCekMaterialTraversal",
   "validationTraceDisputeCekMaterialProgramTaskWithdraw",
   "validationTraceDisputeCekMaterialDataTaskWithdraw",
@@ -860,6 +862,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
     "V1 validation-trace value-and-mint asset-fold yield":
       "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+    "V1 validation-trace phase-A native item native yield":
+      "validationTraceDisputePhaseANativeItemNativeWithdraw",
+    "V1 validation-trace phase-A native item foreign yield":
+      "validationTraceDisputePhaseANativeItemForeignWithdraw",
     "V1 validation-trace CEK material traversal":
       "validationTraceDisputeCekMaterialTraversal",
     "V1 validation-trace CEK material program task yield":
@@ -1330,6 +1336,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
   "V1 validation-trace value-and-mint asset-fold yield":
     "V1VtVamAssetFoldYield",
+  "V1 validation-trace phase-A native item native yield":
+    "V1VtPhaseANativeItemNativeYield",
+  "V1 validation-trace phase-A native item foreign yield":
+    "V1VtPhaseANativeItemForeignYield",
   "V1 validation-trace CEK material traversal": "V1VtCekMatTraversal",
   "V1 validation-trace CEK material program task yield":
     "V1VtCekMatProgramTask",

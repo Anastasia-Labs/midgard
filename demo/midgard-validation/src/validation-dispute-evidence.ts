@@ -1078,10 +1078,14 @@ export const buildValidationDisputeEvidenceBundle = ({
   operatorTrace,
   challengerTrace,
   currentTime,
+  resolveFieldCarriage,
 }: {
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly challengerTrace: DeterministicValidationMachineTrace;
   readonly currentTime: number;
+  readonly resolveFieldCarriage?: Parameters<
+    typeof buildValidationOneStepArgument
+  >[0]["resolveFieldCarriage"];
 }): ValidationDisputeEvidenceBundle => {
   const openingDispute = openMidgardValidationDispute({
     operatorDescriptor: operatorTrace.tree.descriptor,
@@ -1153,6 +1157,7 @@ export const buildValidationDisputeEvidenceBundle = ({
   const oneStepArgument = buildValidationOneStepArgument({
     trace: challengerTrace,
     stateIndex: dispute.lowIndex,
+    ...(resolveFieldCarriage === undefined ? {} : { resolveFieldCarriage }),
   });
   requireProofEnvelope(operatorDescriptorCbor, "operator descriptor");
   requireProofEnvelope(challengerDescriptorCbor, "challenger descriptor");

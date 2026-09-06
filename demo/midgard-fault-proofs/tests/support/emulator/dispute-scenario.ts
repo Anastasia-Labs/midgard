@@ -15,6 +15,7 @@ import {
 
 import {
   cancelValidationCekMaterialTraversal,
+  cancelValidationSemanticResolution,
   resolveValidationTraceDisputeDeploymentContracts,
   resumeValidationCekMaterialTraversal,
   submitRemoveFraudulentBlock,
@@ -59,6 +60,10 @@ import {
   midgardScriptHashNames,
 } from "./measurement.js";
 import {
+  PHASE_A_ITEM_YIELD_SPECS,
+  preparePhaseAItemCarriage,
+} from "./phase-a-item-carriage.js";
+import {
   publishAuthenticatedValidationDisputeControl,
   publishFaultProofWitnessReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
@@ -93,16 +98,27 @@ export const runForcedValidationDisputeScenario = async (
   buildFixture: (input: {
     readonly operatorVkey: string;
     readonly now: number;
+    readonly prepareFieldCarriage?: NonNullable<
+      Parameters<
+        typeof import("./validation-dispute-fixtures.js").buildForgedOperatorSuccessorValidationDisputeFixture
+      >[0]["prepareFieldCarriage"]
+    >;
   }) => Promise<ForcedValidationDisputeFixture>,
   {
     stopAfter,
     cekMaterialTraversalBatchSize,
+    phaseANativeItemYieldKind,
+    phaseANativeItemMaximum = false,
+    cancelPreparedSemantic = false,
     restartCekMaterialTraversal = false,
     cancelCekMaterialTraversal = false,
     onRemovalReferenceScriptPublicationAttempt,
     onSubmittedTransaction,
   }: {
     readonly cekMaterialTraversalBatchSize?: number;
+    readonly phaseANativeItemYieldKind?: "native" | "foreign";
+    readonly phaseANativeItemMaximum?: boolean;
+    readonly cancelPreparedSemantic?: boolean;
     readonly restartCekMaterialTraversal?: boolean;
     readonly cancelCekMaterialTraversal?: boolean;
     readonly stopAfter?:
@@ -112,6 +128,7 @@ export const runForcedValidationDisputeScenario = async (
     readonly onRemovalReferenceScriptPublicationAttempt?: () => void;
     readonly onSubmittedTransaction?: (
       measurement: ReturnType<typeof measureCompleteSignedTransaction>,
+      transactionCbor: string,
     ) => void;
   } = {},
 ) => {
@@ -132,7 +149,10 @@ export const runForcedValidationDisputeScenario = async (
     const submit = emulator.submitTx.bind(emulator);
     emulator.submitTx = async (transaction) => {
       const hash = await submit(transaction);
-      onSubmittedTransaction(measureCompleteSignedTransaction(transaction));
+      onSubmittedTransaction(
+        measureCompleteSignedTransaction(transaction),
+        transaction,
+      );
       return hash;
     };
   }
@@ -189,9 +209,33 @@ export const runForcedValidationDisputeScenario = async (
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(
       operatorLucid,
-      emulator.now() + 120_000,
+      emulator.now() + 120_000 + (phaseANativeItemMaximum ? 8 * 20_000 : 0),
     ) - 1;
+  let phaseAItemCarriage:
+    | Awaited<ReturnType<typeof preparePhaseAItemCarriage>>
+    | undefined;
   const fixture = await buildFixture({
+    ...(phaseANativeItemMaximum
+      ? {
+          prepareFieldCarriage: async (
+            input: Pick<
+              Parameters<typeof preparePhaseAItemCarriage>[0],
+              "trace" | "stateIndex" | "source"
+            >,
+          ) => {
+            phaseAItemCarriage = await preparePhaseAItemCarriage({
+              ...input,
+              lucid: challengerLucid,
+              signer: challengerSigner,
+              chain: contracts.fraudProofContracts.validationTraceDispute,
+              certificate: contracts.fieldPreimageCertificate,
+              authPolicy: referenceScriptAuth,
+              kind: phaseANativeItemYieldKind ?? "native",
+            });
+            return phaseAItemCarriage.resolveFieldCarriage;
+          },
+        }
+      : {}),
     operatorVkey: operatorPaymentCredential.hash,
     now: headerStartTime,
   });
@@ -429,24 +473,46 @@ export const runForcedValidationDisputeScenario = async (
       ).toString()} is unpublishable under the Van Rossem maxTxSize; lifecycle excluded until the resolver is split`,
     );
   }
-  const semanticPublication = await runEmulatorLifecycleStage(
-    `reference-script.publish.${
-      valueAndMintSemanticEntryName ??
-      `validationSemanticResolver${validationSemanticResolverGlobalIndex(
-        stagedResolverIndex,
-        stagedSemanticIndex,
-      ).toString()}`
-    }`,
-    async () =>
-      await withRealL1MaxTxSize(emulator, () =>
-        publishPlainReferenceScriptUtxo({
-          lucid: referenceScriptPublisherLucid,
-          script: semanticContract.spendingScript,
-          label:
-            valueAndMintSemanticEntryName ?? "validation semantic resolver",
-        }),
-      ),
-  );
+  const semanticPublication =
+    phaseAItemCarriage?.semanticPublication ??
+    (await runEmulatorLifecycleStage(
+      `reference-script.publish.${
+        valueAndMintSemanticEntryName ??
+        `validationSemanticResolver${validationSemanticResolverGlobalIndex(
+          stagedResolverIndex,
+          stagedSemanticIndex,
+        ).toString()}`
+      }`,
+      async () =>
+        await withRealL1MaxTxSize(emulator, () =>
+          publishPlainReferenceScriptUtxo({
+            lucid: referenceScriptPublisherLucid,
+            script: semanticContract.spendingScript,
+            label:
+              valueAndMintSemanticEntryName ?? "validation semantic resolver",
+          }),
+        ),
+    ));
+  if (cancelPreparedSemantic) {
+    const cancellation = await cancelValidationSemanticResolution({
+      lucid: targetChallengerLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: challengerSigner,
+      threadOutRef: selectedResult.nextThreadOutRef,
+      referenceScriptUtxo: semanticPublication.utxo,
+      witnessReferenceScripts,
+    });
+    return {
+      fixture,
+      contracts,
+      initResult,
+      lowIndex,
+      highIndex,
+      cancellation,
+    };
+  }
   const valueAndMintSemanticPublication =
     valueAndMintSemanticContract !== undefined
       ? semanticPublication
@@ -497,6 +563,40 @@ export const runForcedValidationDisputeScenario = async (
             },
           },
         };
+  if (stagedResolverIndex === 5 && stagedSemanticIndex === 1) {
+    for (const spec of PHASE_A_ITEM_YIELD_SPECS) {
+      const contract =
+        contracts.fraudProofContracts.validationTraceDispute.yields[
+          spec.contract
+        ];
+      const publication =
+        phaseAItemCarriage?.yields.find(
+          (entry) => entry.spec.contract === spec.contract,
+        )?.publication ??
+        (await publishAuthenticatedValidationDisputeControl({
+          lucid: challengerLucid,
+          authPolicy: referenceScriptAuth,
+          target: {
+            control: spec.contract,
+            name: spec.role,
+            script: contract.withdrawalScript,
+          },
+        }));
+      semanticDeploymentInfo = {
+        ...semanticDeploymentInfo,
+        contracts: {
+          ...semanticDeploymentInfo.contracts,
+          [spec.deployment]: {
+            scriptHash: contract.withdrawalScriptHash,
+            refScriptUTxO: {
+              txHash: publication.utxo.txHash,
+              outputIndex: publication.utxo.outputIndex,
+            },
+          },
+        },
+      };
+    }
+  }
   if (stagedResolverIndex === 11 && stagedSemanticIndex === 1) {
     for (const spec of [
       ...CEK_SELECTION_YIELD_ROLES,
@@ -603,6 +703,10 @@ export const runForcedValidationDisputeScenario = async (
       > => {
         try {
           return await submitValidationDisputeSemanticResolution({
+            phaseANativeItemYieldKind,
+            ...(phaseAItemCarriage === undefined
+              ? {}
+              : { carriageMaterial: phaseAItemCarriage.material }),
             cekMaterialTraversalBatchSize,
             lucid: targetChallengerLucid,
             blueprint: realBlueprint,
