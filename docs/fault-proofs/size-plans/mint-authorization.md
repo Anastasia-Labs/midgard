@@ -172,3 +172,24 @@ transactions; the largest scan used 8,327,181 memory units and 2,728,341,566 CPU
 units. Its source, field certificate, structured claim, validator and removal
 publications are actual signed transactions. The independent ledger gate
 requires this path and its exact 258 scan continuations in the full 17-case run.
+
+### Shared bounded-scan maximum closure
+
+The combined normal testnet blueprint
+`f9e3afeb905b5de2f6299ed091d41d77f5ad12d20cb1a3e9b834214908d0e24c`
+passes all 17 installed mint-authorization lifecycle cases in one complete run
+(2,291 seconds), followed by the current-blueprint ledger verifier. The ledger
+contains 4,995 transactions and 429 publications, maximum 15,872 signed bytes,
+11,801,068 memory and 3,935,977,526 CPU; every row passes both 20% execution
+reserves. The two formerly over-budget full mint-field walks now run as bounded
+Step02 continuations, preserving seven logical stages and exact mint grammar.
+The exact 32-KiB selected-policy case covers 8,247 assets, alternating mint/burn,
+258 Step02 transactions, four 64-branch frontiers, proof mint and removal.
+The complete suite also covers maximum witness/native/reference scans and
+cancellation/restart during both witness and mint scans.
+
+Commands: `MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/mint-authorization-installed-lifecycle.test.ts --reporter verbose`,
+then `pnpm --dir demo/midgard-fault-proofs exec vitest run tests/mint-authorization-workflow-fit-ledger.test.ts --reporter verbose`.
+The diagnostic checkpoint is `/tmp/nip-shared-mint17-measurements.json`; the
+committed standard ledger is the closure evidence. Later source/blueprint
+changes still require the program's final combined verification.
