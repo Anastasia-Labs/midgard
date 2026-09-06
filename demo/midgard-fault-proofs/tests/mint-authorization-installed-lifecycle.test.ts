@@ -79,6 +79,7 @@ import {
 } from "./support/mint-authorization-emulator.js";
 import {
   mintAuthorizationMaximumMintField,
+  mintAuthorizationMaximumSelectedAssets,
   mintAuthorizationMaximumWitnessField,
 } from "./support/mint-authorization-maxima.js";
 import { runMintAuthorizationProofMaximum } from "./support/mint-authorization-proof-maximum.js";
@@ -171,9 +172,19 @@ describe("mintAuthorization installed cursor actuator", () => {
     "cancel-witness-scan",
     "cancel-mint-scan",
     "maximum-proofs",
+    "maximum-selected-assets",
   ])(
     "captures and restarts %s through mint and removal",
     async (name) => {
+      if (name === "maximum-selected-assets") {
+        measurements.push(
+          ...(await runMintAuthorizationProofMaximum(
+            mintAuthorizationMaximumSelectedAssets(),
+            name,
+          )),
+        );
+        return;
+      }
       if (name === "maximum-proofs") {
         measurements.push(...(await runMintAuthorizationProofMaximum()));
         return;

@@ -49,9 +49,13 @@ import {
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** Synthetic sibling frontiers measure physical proof ceilings separately from retained-DA workflow cases. */
-export const runMintAuthorizationProofMaximum = async (): Promise<
-  VanRossemFitMeasurement[]
-> => {
+export const runMintAuthorizationProofMaximum = async (
+  selectedMint?: Pick<
+    ReturnType<typeof mintAuthorizationMaximumMintField>,
+    "mintItemCbors" | "targetPolicyIndex"
+  >,
+  scenario = "maximum-proofs",
+): Promise<VanRossemFitMeasurement[]> => {
   const h = await makeMintAuthorizationEmulatorHarness();
   const measurements: VanRossemFitMeasurement[] = [];
   const capture = async <T>(
@@ -66,10 +70,9 @@ export const runMintAuthorizationProofMaximum = async (): Promise<
     );
     result.measurements.forEach((m, index) =>
       measurements.push({
-        name: `maximum-proofs/${stage}/${index}`,
+        name: `${scenario}/${stage}/${index}`,
         kind,
-        maximumShape:
-          "64-branch source/event/transition/ledger openings; maximum mint-field tail",
+        maximumShape: `64-branch source/event/transition/ledger openings; ${selectedMint === undefined ? "maximum mint-field tail" : "32768-byte selected asset map"}`,
         signedBytes: m.completeSignedBytes,
         memoryUnits: m.executionMemory,
         cpuUnits: m.executionSteps,
@@ -90,7 +93,7 @@ export const runMintAuthorizationProofMaximum = async (): Promise<
     value: Buffer.from(ledger.descriptorCbor, "hex"),
     branchLevels: 64,
   });
-  const mint = mintAuthorizationMaximumMintField();
+  const mint = selectedMint ?? mintAuthorizationMaximumMintField();
   const subject = buildMintAuthorizationSubject({
     mintItemCbors: mint.mintItemCbors,
     referenceInputItemCbors: [reference],

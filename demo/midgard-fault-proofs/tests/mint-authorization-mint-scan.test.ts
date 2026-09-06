@@ -6,7 +6,10 @@ import {
   initialMintScan,
   mintScanComplete,
 } from "../src/mint-authorization/mint-scan.js";
-import { mintAuthorizationMaximumMintField } from "./support/mint-authorization-maxima.js";
+import {
+  mintAuthorizationMaximumMintField,
+  mintAuthorizationMaximumSelectedAssets,
+} from "./support/mint-authorization-maxima.js";
 
 const run = (bytes: Buffer, index: bigint) => {
   let state = initialMintScan(bytes, index);
@@ -46,6 +49,15 @@ describe("bounded mint claim scan", () => {
     const { state, batches } = run(bytes, 0n);
     expect(state.policy_id).toBe("01".repeat(28));
     expect(batches).toBe(Math.ceil(8101 / 32));
+  });
+  it("completes the exact32KiB selected asset frontier in258 batches", () => {
+    const maximum = mintAuthorizationMaximumSelectedAssets();
+    const bytes = encodeMidgardFieldPreimage(
+      maximum.mintItemCbors.map((item) => Buffer.from(item, "hex")),
+    );
+    expect(bytes.length).toBe(32768);
+    expect(maximum.assetCount).toBe(8247);
+    expect(run(bytes, 0n).batches).toBe(258);
   });
   it("refuses zero quantities and trailing or truncated fields", () => {
     const policy = (quantity: bigint) =>

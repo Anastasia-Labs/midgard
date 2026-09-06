@@ -160,6 +160,15 @@ physical roster remain unchanged.
 The repaired raw Step02 is 13,536 bytes. Fresh targeted lifecycle measurements
 for the maximum tail and combined 64-branch proof frontiers passed the strict
 shared writer: initial Step02 used 2,162,665 and 7,379,719 memory units,
-respectively. These are targeted diagnostic evidence; the complete 16-case
+respectively. These are targeted diagnostic evidence; the complete 17-case
 installed lifecycle roster must be regenerated against the final shared
 blueprint before the independent fit-ledger verifier can pass.
+
+The additional selected-asset lifecycle fills exactly 32,768 bytes with 8,247
+canonical distinct names and both quantity signs, combined with all four
+64-branch proof frontiers. It completes 258 Step02 transactions through
+permanent proof minting and removal. The strict writer accepted 294 measured
+transactions; the largest scan used 8,327,181 memory units and 2,728,341,566 CPU
+units. Its source, field certificate, structured claim, validator and removal
+publications are actual signed transactions. The independent ledger gate
+requires this path and its exact 258 scan continuations in the full 17-case run.
