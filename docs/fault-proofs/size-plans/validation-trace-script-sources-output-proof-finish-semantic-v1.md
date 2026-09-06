@@ -92,3 +92,14 @@ Raw stage-frame library; lands with stage 5.
 
 Minimal. The dropped re-validation is covered by the induction argument and
 the equivalence property test.
+
+### Empty-mint replay correction
+
+The first real output-finish lifecycle exposed a host replay mismatch: the
+empty mint fold changed `policyCount` from -1 to 0 before emitting the stage-six
+predecessor. The on-chain machine performs that normalization in the stage-six
+to stage-seven transition. Moving the host assignment after the stage-six
+witness restores exact stage-five to stage-six parity. Both output boundaries
+now pass actual success/removal and honest-successor refusal (four scenarios).
+The raw boundary contracts measure 6,854 and 5,807 bytes before application.
+Publication registry, maxima and cancellation evidence continue separately.

@@ -3340,12 +3340,6 @@ export const buildDeterministicValidationMachineTrace = (
                   throw new Error("V1 mint policy item has trailing bytes");
                 }
               }
-              if (mintCollection.items.length === 0) {
-                mintFoldControl = {
-                  ...mintFoldControl,
-                  policyCount: 0,
-                };
-              }
               pushWitness(
                 "scriptSources",
                 scriptSourcesWitnessCbor({
@@ -3363,6 +3357,14 @@ export const buildDeterministicValidationMachineTrace = (
                   receiveScan: receiveSourceScan(),
                 }),
               );
+              // The empty-mint normalization belongs to the stage-six
+              // transition. Its predecessor must retain the stage-five fold.
+              if (mintCollection.items.length === 0) {
+                mintFoldControl = {
+                  ...mintFoldControl,
+                  policyCount: 0,
+                };
+              }
               let observerPurposeFrontier = mintPurposeFrontier;
               let observerTotalCount = 0;
               let observerSeen = 0;
