@@ -1,4 +1,6 @@
+use aiken/collection/list
 use aiken/crypto.{blake2b_256}
+use aiken/fuzz
 use midgard/validation_merkle_v1
 
 const h_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -37,4 +39,27 @@ test validation_merkle_frontier_rejects_an_occupied_empty_slot() {
     0,
     [validation_merkle_v1.FrontierPeak { height: 0, hash: h_a }],
   )
+}
+
+test batch_frontier_equals_checked_incremental_build(
+  count via fuzz.int_between(0, 257),
+) {
+  let leaves = list.repeat(h_a, count)
+  let (next_count, peaks) = list.foldl(
+    leaves,
+    (0, validation_merkle_v1.empty_frontier()),
+    fn(leaf, acc) {
+      let (i, previous) = acc
+      (i + 1, validation_merkle_v1.append_leaf(i, previous, leaf))
+    },
+  )
+  let batch = validation_merkle_v1.build_frontier(leaves)
+  batch.count == next_count && batch.peaks == peaks && validation_merkle_v1.frontier_is_well_formed(
+    batch.count,
+    batch.peaks,
+  )
+}
+
+test batch_frontier_rejects_malformed_leaf() fail {
+  validation_merkle_v1.build_frontier([h_a, #"00"]).count == 2
 }

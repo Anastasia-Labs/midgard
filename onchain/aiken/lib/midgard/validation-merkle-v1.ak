@@ -128,8 +128,14 @@ fn append_all(
 ) -> BuiltFrontier {
   when leaves is {
     [] -> BuiltFrontier { count, peaks }
-    [leaf, ..rest] ->
-      append_all(rest, count + 1, append_leaf(count, peaks, leaf))
+    [leaf, ..rest] -> {
+      // This fold starts from the empty frontier and carries only its own
+      // previous result. Validate external leaves, preserving that invariant
+      // without rechecking all authenticated peaks at every append.
+      expect count < maximum_leaf_count
+      expect bytearray.length(leaf) == 32
+      append_all(rest, count + 1, append_carry(count, 0, leaf, peaks))
+    }
   }
 }
 
