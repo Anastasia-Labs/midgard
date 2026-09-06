@@ -36,6 +36,69 @@ const controlFromCarrier = (
   return bytes(pending[4], "input output proof");
 };
 
+/**
+ * Traversal stage of the datum sub-control carried at LOP control item 7, as
+ * `scalar_control` in `lib/midgard/ledger-output-proof-datum.ak` reads it: the
+ * item is `Constr(0, [[version, stage, ..8 more]])` and the on-chain scalar
+ * actions pin `stage` against `cek_data_traverse_v1.stage_integer` (1) or
+ * `stage_bytes` (2). The action constructor alone does not discriminate the
+ * two, so the planner must read the same field the validators pin.
+ */
+const datumTraverseStage = (control: readonly Data[]): bigint => {
+  const wrapper = control[7];
+  if (
+    !(wrapper instanceof Constr) ||
+    wrapper.index !== 0 ||
+    wrapper.fields.length !== 1
+  )
+    throw new Error("Datum traversal sub-control is malformed");
+  return integer(
+    items(wrapper.fields[0]!, 10, "datum traversal control")[1],
+    "datum traversal stage",
+  );
+};
+
+/**
+ * Published role index for one datum-traversal step. Attach (action 5) and
+ * advance (action 0) each split across an integer and a bytes validator; every
+ * other action has a single physical role.
+ */
+export const ledgerOutputProofDatumRoleIndex = (
+  control: readonly Data[],
+  action: Constr<Data>,
+): number => {
+  const scalarRole = (integerRole: number, bytesRole: number): number => {
+    const traverseStage = datumTraverseStage(control);
+    if (traverseStage === 1n) return integerRole;
+    if (traverseStage === 2n) return bytesRole;
+    throw new Error(
+      "Scalar datum action requires the integer or bytes traversal stage",
+    );
+  };
+  switch (action.index) {
+    case 7:
+      return 2;
+    case 8:
+      return 3;
+    case 1:
+      return 4;
+    case 2:
+      return 14;
+    case 3:
+      return 15;
+    case 4:
+      return 16;
+    case 6:
+      return 6;
+    case 5:
+      return scalarRole(5, 17);
+    case 0:
+      return scalarRole(7, 18);
+    default:
+      throw new Error("Unknown datum action");
+  }
+};
+
 export type LedgerOutputProofStepPlan = {
   readonly controlCbor: string;
   readonly nextControlCbor: string;
@@ -107,28 +170,7 @@ export const deriveLedgerOutputProofStepPlan = ({
         !(witness.fields[0] instanceof Constr)
       )
         throw new Error("Datum output proof witness is malformed");
-      const action = witness.fields[0];
-      roleIndex =
-        action.index === 7
-          ? 2
-          : action.index === 8
-            ? 3
-            : action.index === 1
-              ? 4
-              : action.index === 2
-                ? 14
-                : action.index === 3
-                  ? 15
-                  : action.index === 4
-                    ? 16
-                    : action.index === 5
-                      ? 5
-                      : action.index === 6
-                        ? 6
-                        : action.index === 0
-                          ? 7
-                          : -1;
-      if (roleIndex < 0) throw new Error("Unknown datum action");
+      roleIndex = ledgerOutputProofDatumRoleIndex(control, witness.fields[0]);
     }
   } else if (stage === 3n) roleIndex = 8;
   else if (stage === 4n) roleIndex = 9;
