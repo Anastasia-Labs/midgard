@@ -835,3 +835,23 @@ application 3/3, fault-proofs TypeScript check, and 49 collected Aiken checks
 (carriage 4, steps 01–04: 4/4/18/14, frontier 5). The installed registry now
 contains 51 of 54 families. Transition trace, validation-trace dispute and mint
 authorization remain open; this receipt does not close the whole program.
+
+
+### CEK execution-selection shared integration — 2026-09-05
+
+Copied selection and authenticated material traversal in `d598bb67`,
+`a4084bca`, and `04e3e3aa`. The combined normal testnet blueprint SHA-256 is
+`552dd026ce085395eb591b75f5f5b4a0749005869409cf9e17ee04dee160aeec`.
+The shared lifecycle/maximum suites passed 10/10; fit-ledger/facts checks
+passed 5/5 and fault-proofs tsc passed. Aiken collected and passed 6 traversal,
+3 material-partition and 42 selection/split checks. A zero-match attempted
+`cek_selection_witness` selector was rejected by the guard and is not evidence.
+
+The regenerated complete ledger contains 894 publication/lifecycle rows,
+maximum 15,108 signed bytes / 11,016,207 memory / 3,744,142,543 CPU. Six
+separate atomic maximum rows cover 64-branch material task proofs and bounded
+blob/Data shapes, maximum 14,049 bytes / 7,682,179 memory / 2,361,657,530 CPU.
+The lifecycle includes accepted-checkpoint process loss, JSON reconstruction,
+public out-ref resume, cancellation, honest refusals, permanent proof minting
+and removal. CEK core/context and the installed validation workflow remain
+open; selection closure alone does not close validation-trace dispute.

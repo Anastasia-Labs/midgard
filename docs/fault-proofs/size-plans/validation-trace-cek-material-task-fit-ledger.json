@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/CEK material tasks",
-  "blueprintSha256": "65fad653625519f5a49a5a3b3d438d351357a1c7f786dc8b151b1a9c9bc9ea97",
+  "blueprintSha256": "552dd026ce085395eb591b75f5f5b4a0749005869409cf9e17ee04dee160aeec",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -21,11 +21,11 @@
       "kind": "lifecycle",
       "maximumShape": "program",
       "signedBytes": 14049,
-      "memoryUnits": "6877123",
-      "cpuUnits": "2058441056",
+      "memoryUnits": "6874255",
+      "cpuUnits": "2057548809",
       "signedByteMargin": 2335,
-      "memoryUnitMargin": "9622877",
-      "cpuUnitMargin": "7941558944",
+      "memoryUnitMargin": "9625745",
+      "cpuUnitMargin": "7942451191",
       "publicationReserveMargin": null
     },
     {
@@ -77,5 +77,5 @@
       "publicationReserveMargin": 8075
     }
   ],
-  "ledgerSha256": "8fff869b01c622baba9d3a151d8fddb1bbd16d5a351f515ad6a72afeba6f3954"
+  "ledgerSha256": "a9615e63c5c9f4bd2d157fc3778a839b8aa244a441f3288630231d78af16fdb3"
 }
