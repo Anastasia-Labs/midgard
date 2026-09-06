@@ -53,6 +53,10 @@ pub type LedgerOutputScanControlV1 {
   reference_script_length: Int,
 }
 
+/// Pinned against encode_control_v1(initial_control_v1()) in the scan tests.
+pub const initial_control_cbor_v1 =
+  #"970100000000400000000000404040008020000020202000"
+
 pub fn initial_control_v1() -> LedgerOutputScanControlV1 {
   LedgerOutputScanControlV1 {
     version,

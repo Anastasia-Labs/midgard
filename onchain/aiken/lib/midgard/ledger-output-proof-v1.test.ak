@@ -1,4 +1,5 @@
 use aiken/builtin
+use aiken/fuzz
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/cek_data_frame_v1
@@ -444,4 +445,17 @@ test decodes_the_long_typescript_terminal_control_canonically() {
     ),
     ledger_output_proof_v1.encode_control_v1(control) == cross_language_long_terminal_control,
   }
+}
+
+test initial_control_specialized_encoder_matches_generic(
+  args via fuzz.tuple3(
+    fuzz.int_at_least(0),
+    fuzz.int_at_least(1),
+    fuzz.bytearray_fixed(32),
+  ),
+) {
+  let (index, length, commitment) = args
+  ledger_output_proof_v1.encode_initial_control_v1(index, length, commitment) == ledger_output_proof_v1.encode_control_v1(
+    ledger_output_proof_v1.initial_control_v1(index, length, commitment),
+  )
 }

@@ -299,6 +299,25 @@ pub fn initial_control_v1(
   control
 }
 
+/// The initial stage has fixed empty optional sub-controls.
+pub fn encode_initial_control_v1(
+  output_index: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
+) -> ByteArray {
+  expect output_index >= 0
+  expect total_length > 0
+  expect bytearray.length(item_commitment) == 32
+  #"8c"
+    |> bytearray.concat(cbor.serialise(version))
+    |> bytearray.concat(cbor.serialise(stage_structure))
+    |> bytearray.concat(cbor.serialise(output_index))
+    |> bytearray.concat(cbor.serialise(total_length))
+    |> bytearray.concat(cbor.serialise(builtin.b_data(item_commitment)))
+    |> bytearray.concat(ledger_output_scan_v1.initial_control_cbor_v1)
+    |> bytearray.concat(#"d87a80d87a800080d87a80d87a80")
+}
+
 fn encode_optional_script_hash(
   control: Option<blake2b_224_trace_v1.Blake2b224TraceControlV1>,
 ) -> ByteArray {

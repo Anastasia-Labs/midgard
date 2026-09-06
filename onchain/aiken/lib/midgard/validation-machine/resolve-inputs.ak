@@ -10,6 +10,7 @@ use midgard/rejection_reason_v1.{
   reject_missing_required_witness, reject_native_script_depth,
   reject_native_script_node_count, reject_validity_interval_mismatch,
 }
+use midgard/resolve_inputs_control_v1 as raw_control
 use midgard/validation_machine/machine_types.{
   InputSignerAuthorized, InputSignerMissing, InputSignerProofMalformed,
   LedgerOutputProofFinalizeWitness, LedgerOutputProofStepWitness,
@@ -412,7 +413,9 @@ pub fn verify_resolve_inputs_initial_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
+  let control = raw_control.control_no_pending_from_witness(
+    witness.work_witness_cbor,
+  )
   let Pair(verified, _) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
@@ -422,25 +425,14 @@ pub fn verify_resolve_inputs_initial_semantics_v1(
   let context = decode_validation_context(control.context_cbor)
   and {
     verified.version == 1,
-    resolve_inputs_control_is_bound(pre, witness, control),
+    raw_control.control_no_pending_is_bound(pre, witness, control),
     control.cursor == 0,
-    control.pending == None,
     if validity_interval_contains_slot(
       verified.tx_compact.body,
       context.block_slot,
     ) {
-      let next_control = encode_resolve_inputs_witness(
-        control.compact_cbor,
-        control.witness_set_compact_cbor,
-        control.field_preimage_lengths_cbor,
-        control.context_cbor,
-        1,
-        control.accumulator,
-        control.remaining_schedule_hash,
-        control.signer_count,
-        control.signer_frontier_commitment,
-        None,
-        control.resolution_schedule_hash,
+      let next_control = raw_control.encode_control_raw(
+        raw_control.ResolveInputsControlRawV1 { ..control, cursor: 1 },
       )
       and {
         witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
@@ -464,11 +456,12 @@ pub fn verify_resolve_inputs_finish_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
+  let control = raw_control.control_no_pending_from_witness(
+    witness.work_witness_cbor,
+  )
   and {
-    resolve_inputs_control_is_bound(pre, witness, control),
+    raw_control.control_no_pending_is_bound(pre, witness, control),
     control.cursor > 0,
-    control.pending == None,
     control.remaining_schedule_hash == empty_resolution_schedule_hash(),
     witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
     witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
@@ -520,22 +513,41 @@ pub fn verify_resolve_inputs_membership_begin_semantics_v1(
   proof: Proof,
   signer_proof: SignerSetProofV1,
 ) -> Bool {
-  let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
+  let control = raw_control.control_no_pending_from_witness(
+    witness.work_witness_cbor,
+  )
+  let descriptor = ledger_output_commitment_v1.decode(value)
+  let input = decode_midgard_tx_input_cbor(key)
   and {
-    resolve_inputs_control_is_bound(pre, witness, control),
+    raw_control.control_no_pending_is_bound(pre, witness, control),
     control.cursor > 0,
-    control.pending == None,
     control.remaining_schedule_hash != empty_resolution_schedule_hash(),
-    resolve_membership_begin_step(
-      pre,
-      witness,
-      control,
-      source_kind,
-      key,
-      next_schedule_hash,
-      value,
-      proof,
-      signer_proof,
+    signer_proof == NoSignerSetProof,
+    source_kind == 0 || source_kind == 1,
+    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.remaining_schedule_hash,
+    input.output_index == descriptor.output_index,
+    descriptor.total_length > 0,
+    mpf_proof_v1.has(pre.prior_ledger_root, key, value, proof),
+    witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
+    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ResolveInputs,
+      pre.program_counter + 1,
+      raw_control.encode_control_raw(
+        raw_control.ResolveInputsControlRawV1 {
+          ..control,
+          pending_cbor: raw_control.encode_pending_raw(
+            source_kind,
+            key,
+            next_schedule_hash,
+            value,
+            ledger_output_proof_v1.encode_initial_control_v1(
+              descriptor.output_index,
+              descriptor.total_length,
+              descriptor.item_commitment,
+            ),
+          ),
+        },
+      ),
     ),
   }
 }
@@ -592,20 +604,19 @@ pub fn verify_resolve_inputs_non_membership_semantics_v1(
   next_schedule_hash: ByteArray,
   proof: Proof,
 ) -> Bool {
-  let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
+  let control = raw_control.control_no_pending_from_witness(
+    witness.work_witness_cbor,
+  )
   and {
-    resolve_inputs_control_is_bound(pre, witness, control),
+    raw_control.control_no_pending_is_bound(pre, witness, control),
     control.cursor > 0,
-    control.pending == None,
     control.remaining_schedule_hash != empty_resolution_schedule_hash(),
-    resolve_non_membership_step(
+    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.remaining_schedule_hash,
+    mpf_proof_v1.does_not_have(pre.prior_ledger_root, key, proof),
+    rejected_successor_is_exact(
       pre,
-      witness,
-      control,
-      source_kind,
-      key,
-      next_schedule_hash,
-      proof,
+      witness.claimed_successor,
+      reject_input_not_found,
     ),
   }
 }

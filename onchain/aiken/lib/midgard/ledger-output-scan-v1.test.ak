@@ -231,3 +231,9 @@ test rejects_inline_datum_without_plutus_data_bytes() {
     optional_control.cursor,
   ) == None
 }
+
+test initial_control_encoding_is_pinned() {
+  ledger_output_scan_v1.encode_control_v1(
+    ledger_output_scan_v1.initial_control_v1(),
+  ) == ledger_output_scan_v1.initial_control_cbor_v1
+}
