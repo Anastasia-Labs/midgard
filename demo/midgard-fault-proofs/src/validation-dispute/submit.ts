@@ -29,16 +29,17 @@ import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consens
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 import {
-  sharedRedeemerItemReferenceScripts,
-  type SharedRedeemerItemStages,
-} from "@al-ft/midgard-sdk";
-import {
   AssetFoldClaim,
   AuthenticatedCanonicalDecodeItemDatum,
   buildUnsignedValidationProofItemPublicationProgram,
+  CEK_CONTEXT_STAGE_REFERENCES,
   CEK_CORE_STAGE_REFERENCES,
   CEK_MATERIAL_TASK_YIELD_ROLES,
   CEK_SELECTION_YIELD_ROLES,
+  CekContextDatum,
+  cekContextItemReferenceScripts,
+  cekContextReferenceScripts,
+  type CekContextStages,
   CekCoreDatum,
   type CekCoreStages,
   CekMaterialTraversalDatum,
@@ -71,6 +72,8 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   resolveMidgardFieldCarriageAgainstReferenceInputs,
+  sharedRedeemerItemReferenceScripts,
+  type SharedRedeemerItemStages,
   ValidationAuxiliaryWitness,
   type ValidationAuxiliaryWitness as ValidationAuxiliaryWitnessData,
   ValidationAwardSpendRedeemer,
@@ -159,6 +162,7 @@ import {
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import { buildValidationAssetFoldClaim } from "./asset-fold.js";
+import { deriveCekContextPlan, submitCekContextChain } from "./cek-context.js";
 import { deriveCekCorePlan, submitCekCoreChain } from "./cek-core.js";
 import {
   initialCekMaterialTraversal,
@@ -1579,7 +1583,7 @@ const VALIDATION_AUXILIARY_SHAPES = {
   cekResolvedContextItem: [13, 5],
   cekOutputContextItem: [14, 3],
   cekSignerContextItem: [15, 4],
-  cekMintContextItem: [16, 5],
+  cekMintContextItem: [16, 6],
   cekRedeemerContextSelect: [17, 12],
   cekContextFinalize: [19, 1],
   cekContextFinalizeSpend: [20, 5],
@@ -6497,6 +6501,96 @@ export const submitValidationDisputeSemanticResolution = async ({
     },
     WinningValidationResolutionDatum,
   );
+  if (resolverIndex === 11 && staged.semanticResolverIndex === 2) {
+    if (semanticValidatorReferenceScriptUtxo === undefined)
+      throw new Error("Missing CEK context binder publication");
+    const prepared = Data.from(
+      Data.to(inputDatum.data, PreparedValidationResolutionState),
+    );
+    if (staged.cekContextSuccessorWorkWitnessCbor === undefined)
+      throw new Error(
+        "CEK context requires retained canonical successor bytes",
+      );
+    const successorWorkWitnessCbor = Buffer.from(
+      staged.cekContextSuccessorWorkWitnessCbor,
+    ).toString("hex");
+    const plan = deriveCekContextPlan({
+      prepared,
+      transition: staged.transitionData,
+      auxiliary: staged.auxiliaryData,
+      successorWorkWitnessCbor,
+    });
+    const stageReferences: Partial<Record<keyof CekContextStages, UTxO>> = {};
+    for (const key of plan.route) {
+      const spec = CEK_CONTEXT_STAGE_REFERENCES[key];
+      const contract = contracts.validationTraceDispute.cekContextStages[key];
+      const entry = parsedDeploymentInfo[spec.deployment];
+      if (entry?.refScriptUTxO == null)
+        throw new Error(`Missing CEK context publication: ${spec.deployment}`);
+      const utxo = await fetchUtxoByOutRef({
+        lucid,
+        outRef: entry.refScriptUTxO,
+        label: spec.role,
+      });
+      requireValidationDisputeReferenceScript({
+        utxo,
+        deployedScriptHash: entry.scriptHash,
+        expectedScriptHash: contract.spendingScriptHash,
+        authPolicyId: referenceScriptAuthPolicyId,
+        role: spec.role,
+      });
+      stageReferences[key] = utxo;
+    }
+    const result = await submitCekContextChain({
+      lucid,
+      signer,
+      contracts: contracts.validationTraceDispute,
+      binder: semanticContract,
+      binderReference: semanticValidatorReferenceScriptUtxo,
+      stageReferences,
+      sharedItem:
+        plan.item === undefined
+          ? undefined
+          : {
+              stages: contracts.validationTraceDispute.cekContextItemStages,
+              deploymentId: deriveValidationTraceDeploymentId(
+                fraudProofCataloguePolicyId,
+              ),
+              references: await resolveCekContextItemReferences({
+                lucid,
+                deployed: parsedDeploymentInfo,
+                authPolicyId: referenceScriptAuthPolicyId,
+                stages: contracts.validationTraceDispute.cekContextItemStages,
+              }),
+            },
+      threadUtxo,
+      threadUnit: token.unit,
+      prepared,
+      transition: staged.transitionData,
+      auxiliary: staged.auxiliaryData,
+      successorWorkWitnessCbor,
+      awardDatum: outputDatum,
+      getValidityRange: () =>
+        refreshExpiredValidationDisputeValidityRange({
+          range,
+          currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
+        }),
+    });
+    const last = result.transactions.at(-1)!;
+    return {
+      txHash: last.txHash,
+      threadOutRef,
+      nextThreadOutRef: last.nextThreadOutRef,
+      proofItemCarriage: "direct",
+      resolverIndex,
+      semanticResolverIndex: staged.semanticResolverIndex,
+      semanticResolverGlobalIndex: staged.semanticResolverGlobalIndex,
+      inputIndex: last.inputIndex,
+      outputIndex: last.outputIndex,
+      awaitedConfirmation: true,
+      stageTransactions: result.transactions,
+    };
+  }
   if (resolverIndex === 11 && staged.semanticResolverIndex === 3) {
     if (semanticValidatorReferenceScriptUtxo === undefined)
       throw new Error("Missing CEK core binder publication");
@@ -8130,6 +8224,283 @@ export const cancelValidationCekCore = async ({
   const spec = CEK_CORE_STAGE_REFERENCES[key];
   const stage = contracts.validationTraceDispute.cekCoreStages[key];
   const entry = deployed[spec.deployment];
+  if (entry?.refScriptUTxO == null)
+    throw new Error(`Missing ${spec.role} publication`);
+  const reference = await fetchUtxoByOutRef({
+    lucid,
+    outRef: entry.refScriptUTxO,
+    label: spec.role,
+  });
+  requireValidationDisputeReferenceScript({
+    utxo: reference,
+    deployedScriptHash: entry.scriptHash,
+    expectedScriptHash: stage.spendingScriptHash,
+    authPolicyId: referenceScriptAuthPolicyId,
+    role: spec.role,
+  });
+  return await submitLinearFaultCancel({
+    lucid,
+    signer,
+    threadOutRef,
+    steps: [stage],
+    categoryId: validationTraceDisputeCategory.categoryId,
+    computationThread: contracts.computationThread,
+    referenceScriptUtxo: reference,
+    witnessReferenceScripts,
+    family: "validationTraceDispute",
+    awaitConfirmation: true,
+  });
+};
+
+const resolveCekContextItemReferences = async ({
+  lucid,
+  deployed,
+  authPolicyId,
+  stages,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deployed: Awaited<
+    ReturnType<typeof resolveValidationTraceDisputeDeploymentContracts>
+  >["deploymentInfo"];
+  readonly authPolicyId: string;
+  readonly stages: SharedRedeemerItemStages;
+}) => {
+  const references = new Map<string, UTxO>();
+  for (const {
+    deploymentEntry,
+    role,
+    validator,
+  } of cekContextItemReferenceScripts(stages)) {
+    const entry = deployed[deploymentEntry];
+    if (entry?.refScriptUTxO == null)
+      throw new Error(`Missing CEK item publication: ${deploymentEntry}`);
+    const utxo = await fetchUtxoByOutRef({
+      lucid,
+      outRef: entry.refScriptUTxO,
+      label: role,
+    });
+    requireValidationDisputeReferenceScript({
+      utxo,
+      deployedScriptHash: entry.scriptHash,
+      expectedScriptHash: validator.spendingScriptHash,
+      authPolicyId,
+      role,
+    });
+    references.set(validator.spendingScriptHash, utxo);
+  }
+  return references;
+};
+
+export const resumeValidationCekContext = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  oneStepArgument,
+  preparedCbor,
+  validityRange,
+  maxTransactions,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly oneStepArgument: ValidationOneStepSubmissionArgument;
+  readonly preparedCbor: Uint8Array;
+  readonly validityRange?: ValidationDisputeValidityRange;
+  readonly maxTransactions?: number;
+}) => {
+  const {
+    deploymentInfo: deployed,
+    fraudProofCataloguePolicyId,
+    referenceScriptAuthPolicyId,
+    validationTraceDisputeCategory,
+    contracts,
+  } = await resolveValidationTraceDisputeDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+  });
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "CEK context checkpoint"),
+    label: "CEK context checkpoint",
+  });
+  if (
+    ![
+      ...cekContextReferenceScripts(
+        contracts.validationTraceDispute.cekContextStages,
+        contracts.validationTraceDispute.cekContextItemStages,
+      ),
+      ...cekContextItemReferenceScripts(
+        contracts.validationTraceDispute.cekContextItemStages,
+      ),
+    ].some(
+      ({ validator }) => validator.spendingScriptAddress === threadUtxo.address,
+    )
+  )
+    throw new Error(
+      "CEK context checkpoint is not at a deployed context stage",
+    );
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  if (threadUtxo.datum == null)
+    throw new Error("CEK context checkpoint has no datum");
+  const datum = Data.from(threadUtxo.datum, CekContextDatum);
+  if (datum.fraud_prover !== signer.paymentKeyHash || datum.data === null)
+    throw new Error("CEK context checkpoint has no state or the wrong prover");
+  const preparedData = exactPlutusDataFromCbor(
+    preparedCbor,
+    "retained CEK context prepared state",
+  );
+  const prepared = Data.from(
+    Data.to(preparedData),
+    PreparedValidationResolutionState,
+  );
+  const staged = requireStagedOneStepArgument(oneStepArgument);
+  if (
+    oneStepArgument.resolverIndex !== 11 ||
+    staged.semanticResolverIndex !== 2 ||
+    staged.evidenceHash !== prepared.evidence_hash
+  )
+    throw new Error(
+      "Retained evidence does not match the authenticated CEK context checkpoint",
+    );
+  if (staged.cekContextSuccessorWorkWitnessCbor === undefined)
+    throw new Error("CEK context requires retained canonical successor bytes");
+  const successorWorkWitnessCbor = Buffer.from(
+    staged.cekContextSuccessorWorkWitnessCbor,
+  ).toString("hex");
+  const plan = deriveCekContextPlan({
+    prepared: preparedData,
+    transition: staged.transitionData,
+    auxiliary: staged.auxiliaryData,
+    successorWorkWitnessCbor,
+  });
+  const stageReferences: Partial<Record<keyof CekContextStages, UTxO>> = {};
+  for (const key of plan.route) {
+    const spec = CEK_CONTEXT_STAGE_REFERENCES[key];
+    const contract = contracts.validationTraceDispute.cekContextStages[key];
+    const entry = deployed[spec.deployment];
+    if (entry?.refScriptUTxO == null)
+      throw new Error(`Missing CEK context publication: ${spec.deployment}`);
+    const utxo = await fetchUtxoByOutRef({
+      lucid,
+      outRef: entry.refScriptUTxO,
+      label: spec.role,
+    });
+    requireValidationDisputeReferenceScript({
+      utxo,
+      deployedScriptHash: entry.scriptHash,
+      expectedScriptHash: contract.spendingScriptHash,
+      authPolicyId: referenceScriptAuthPolicyId,
+      role: spec.role,
+    });
+    stageReferences[key] = utxo;
+  }
+  const binder =
+    contracts.validationTraceDispute.semanticResolvers[
+      staged.semanticResolverGlobalIndex
+    ]!;
+  const range = requireValidityRange(
+    validityRange ??
+      validationDisputeValidityRange(lucid.slotToUnixTime(lucid.currentSlot())),
+  );
+  return await submitCekContextChain({
+    lucid,
+    signer,
+    contracts: contracts.validationTraceDispute,
+    binder,
+    stageReferences,
+    sharedItem:
+      plan.item === undefined
+        ? undefined
+        : {
+            stages: contracts.validationTraceDispute.cekContextItemStages,
+            deploymentId: deriveValidationTraceDeploymentId(
+              fraudProofCataloguePolicyId,
+            ),
+            references: await resolveCekContextItemReferences({
+              lucid,
+              deployed: deployed,
+              authPolicyId: referenceScriptAuthPolicyId,
+              stages: contracts.validationTraceDispute.cekContextItemStages,
+            }),
+          },
+    threadUtxo,
+    threadUnit: token.unit,
+    prepared: preparedData,
+    transition: staged.transitionData,
+    auxiliary: staged.auxiliaryData,
+    successorWorkWitnessCbor,
+    awardDatum: Data.to(
+      { fraud_prover: signer.paymentKeyHash, data: { version: 1n } },
+      WinningValidationResolutionDatum,
+    ),
+    getValidityRange: () =>
+      refreshExpiredValidationDisputeValidityRange({
+        range,
+        currentLedgerTime: lucid.slotToUnixTime(lucid.currentSlot()),
+      }),
+    maxTransactions,
+  });
+};
+
+export const cancelValidationCekContext = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  witnessReferenceScripts,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+}) => {
+  const {
+    deploymentInfo: deployed,
+    referenceScriptAuthPolicyId,
+    validationTraceDisputeCategory,
+    contracts,
+  } = await resolveValidationTraceDisputeDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+  });
+  const thread = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "CEK context checkpoint"),
+    label: "CEK context checkpoint",
+  });
+  const spec = [
+    ...cekContextReferenceScripts(
+      contracts.validationTraceDispute.cekContextStages,
+      contracts.validationTraceDispute.cekContextItemStages,
+    ),
+    ...cekContextItemReferenceScripts(
+      contracts.validationTraceDispute.cekContextItemStages,
+    ),
+  ].find(({ validator }) => validator.spendingScriptAddress === thread.address);
+  if (spec === undefined)
+    throw new Error(
+      "CEK context cancellation is not at a deployed context stage",
+    );
+  const stage = spec.validator;
+  const entry = deployed[spec.deploymentEntry];
   if (entry?.refScriptUTxO == null)
     throw new Error(`Missing ${spec.role} publication`);
   const reference = await fetchUtxoByOutRef({

@@ -332,6 +332,42 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputePhaseANativeItemNativeWithdraw",
   "validationTraceDisputePhaseANativeItemForeignWithdraw",
   "validationTraceDisputeCekMaterialTraversal",
+  "validationTraceDisputeCekContextSettle",
+  "validationTraceDisputeCekContextControl",
+  "validationTraceDisputeCekContextReference",
+  "validationTraceDisputeCekContextSpend",
+  "validationTraceDisputeCekContextOutput",
+  "validationTraceDisputeCekContextSigner",
+  "validationTraceDisputeCekContextObserverAuthenticate",
+  "validationTraceDisputeCekContextObserverFold",
+  "validationTraceDisputeCekContextMintInit",
+  "validationTraceDisputeCekContextMintItem",
+  "validationTraceDisputeCekContextAssemble",
+  "validationTraceDisputeCekContextTxInfo",
+  "validationTraceDisputeCekContextSeed",
+  "validationTraceDisputeCekContextFinalizeAuthenticate",
+  "validationTraceDisputeCekContextFinalizeSpend",
+  "validationTraceDisputeCekContextFinalizeMint",
+  "validationTraceDisputeCekContextFinalizeWithdraw",
+  "validationTraceDisputeCekContextFinalizeObserve",
+  "validationTraceDisputeCekContextFinalizeMidgard",
+  "validationTraceDisputeCekContextRedeemerBegin",
+  "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
+  "validationTraceDisputeCekContextRedeemerSelectInitialize",
+  "validationTraceDisputeCekContextRedeemerSelectHash",
+  "validationTraceDisputeCekContextRedeemerSelectFinish",
+  "validationTraceDisputeCekContextItemBind",
+  "validationTraceDisputeCekContextItemReturn",
+  "validationTraceDisputeCekContextItemSelectionHash",
+  "validationTraceDisputeCekContextItemDataHash",
+  "validationTraceDisputeCekContextItemFinalize",
+  "validationTraceDisputeCekContextItemSelectionContinue",
+  "validationTraceDisputeCekContextItemSelectionFinish",
+  "validationTraceDisputeCekContextItemDataContinue",
+  "validationTraceDisputeCekContextItemDataFinishDescriptor",
+  "validationTraceDisputeCekContextItemDataFinishValue",
+  "validationTraceDisputeCekContextItemEntry",
+  "validationTraceDisputeCekContextItemSettlement",
   "validationTraceDisputeCekCoreSettle",
   "validationTraceDisputeCekCoreCompute",
   "validationTraceDisputeCekCoreMachine",
@@ -559,6 +595,124 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 field-preimage certificate": "fieldPreimageCertificateSpend",
     "V1 field-preimage certificate minting": "fieldPreimageCertificateMint",
     "V1 immutable CEK program-material publication": "cekProgramMaterialSpend",
+    "V1 validation-trace redeemer item traversal normalizer":
+      "validationTraceDisputeRedeemerItemTraversalNormalizer",
+    "V1 validation-trace redeemer item outer normalizer":
+      "validationTraceDisputeRedeemerItemOuterNormalizer",
+    "V1 validation-trace redeemer item source authenticator":
+      "validationTraceDisputeRedeemerItemSourceAuthenticator",
+    "V1 validation-trace redeemer item fold map executor":
+      "validationTraceDisputeRedeemerItemFoldMapExecutor",
+    "V1 validation-trace redeemer item finalize frame executor":
+      "validationTraceDisputeRedeemerItemFinalizeFrameExecutor",
+    "V1 validation-trace redeemer item open header executor":
+      "validationTraceDisputeRedeemerItemOpenHeaderExecutor",
+    "V1 validation-trace redeemer item open tail executor":
+      "validationTraceDisputeRedeemerItemOpenTailExecutor",
+    "V1 validation-trace redeemer item head scalar executor":
+      "validationTraceDisputeRedeemerItemHeadScalarExecutor",
+    "V1 validation-trace redeemer item head sequence executor":
+      "validationTraceDisputeRedeemerItemHeadSequenceExecutor",
+    "V1 validation-trace redeemer item head map executor":
+      "validationTraceDisputeRedeemerItemHeadMapExecutor",
+    "V1 validation-trace redeemer item head large constructor executor":
+      "validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor",
+    "V1 validation-trace redeemer item attach integer executor":
+      "validationTraceDisputeRedeemerItemAttachIntegerExecutor",
+    "V1 validation-trace redeemer item attach bytes executor":
+      "validationTraceDisputeRedeemerItemAttachBytesExecutor",
+    "V1 validation-trace redeemer item fold list executor":
+      "validationTraceDisputeRedeemerItemFoldListExecutor",
+    "V1 validation-trace redeemer item advance integer executor":
+      "validationTraceDisputeRedeemerItemAdvanceIntegerExecutor",
+    "V1 validation-trace redeemer item advance bytes executor":
+      "validationTraceDisputeRedeemerItemAdvanceBytesExecutor",
+    "V1 validation-trace redeemer item advance large constructor executor":
+      "validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor",
+    "V1 validation-trace redeemer item advance large fields executor":
+      "validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor",
+    "V1 validation-trace redeemer item close executor":
+      "validationTraceDisputeRedeemerItemCloseExecutor",
+    "V1 validation-trace redeemer item finish data executor":
+      "validationTraceDisputeRedeemerItemFinishDataExecutor",
+    "V1 validation-trace redeemer item invalid header executor":
+      "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
+    "V1 validation-trace redeemer item invalid tail executor":
+      "validationTraceDisputeRedeemerItemInvalidTailExecutor",
+    "V1 validation-trace redeemer item settlement":
+      "validationTraceDisputeRedeemerItemSettlement",
+    "V1 validation-trace CEK context settle":
+      "validationTraceDisputeCekContextSettle",
+    "V1 validation-trace CEK context control":
+      "validationTraceDisputeCekContextControl",
+    "V1 validation-trace CEK context reference":
+      "validationTraceDisputeCekContextReference",
+    "V1 validation-trace CEK context spend":
+      "validationTraceDisputeCekContextSpend",
+    "V1 validation-trace CEK context output":
+      "validationTraceDisputeCekContextOutput",
+    "V1 validation-trace CEK context signer":
+      "validationTraceDisputeCekContextSigner",
+    "V1 validation-trace CEK context observer authenticate":
+      "validationTraceDisputeCekContextObserverAuthenticate",
+    "V1 validation-trace CEK context observer fold":
+      "validationTraceDisputeCekContextObserverFold",
+    "V1 validation-trace CEK context mint init":
+      "validationTraceDisputeCekContextMintInit",
+    "V1 validation-trace CEK context mint item":
+      "validationTraceDisputeCekContextMintItem",
+    "V1 validation-trace CEK context assemble":
+      "validationTraceDisputeCekContextAssemble",
+    "V1 validation-trace CEK context tx info":
+      "validationTraceDisputeCekContextTxInfo",
+    "V1 validation-trace CEK context seed":
+      "validationTraceDisputeCekContextSeed",
+    "V1 validation-trace CEK context finalize authenticate":
+      "validationTraceDisputeCekContextFinalizeAuthenticate",
+    "V1 validation-trace CEK context finalize spend":
+      "validationTraceDisputeCekContextFinalizeSpend",
+    "V1 validation-trace CEK context finalize mint":
+      "validationTraceDisputeCekContextFinalizeMint",
+    "V1 validation-trace CEK context finalize withdraw":
+      "validationTraceDisputeCekContextFinalizeWithdraw",
+    "V1 validation-trace CEK context finalize observe":
+      "validationTraceDisputeCekContextFinalizeObserve",
+    "V1 validation-trace CEK context finalize midgard":
+      "validationTraceDisputeCekContextFinalizeMidgard",
+    "V1 validation-trace CEK context redeemer begin":
+      "validationTraceDisputeCekContextRedeemerBegin",
+    "V1 validation-trace CEK context redeemer select authenticate":
+      "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
+    "V1 validation-trace CEK context redeemer select initialize":
+      "validationTraceDisputeCekContextRedeemerSelectInitialize",
+    "V1 validation-trace CEK context redeemer select hash":
+      "validationTraceDisputeCekContextRedeemerSelectHash",
+    "V1 validation-trace CEK context redeemer select finish":
+      "validationTraceDisputeCekContextRedeemerSelectFinish",
+    "V1 validation-trace CEK context item bind":
+      "validationTraceDisputeCekContextItemBind",
+    "V1 validation-trace CEK context item return":
+      "validationTraceDisputeCekContextItemReturn",
+    "V1 validation-trace CEK context item selection hash":
+      "validationTraceDisputeCekContextItemSelectionHash",
+    "V1 validation-trace CEK context item data hash":
+      "validationTraceDisputeCekContextItemDataHash",
+    "V1 validation-trace CEK context item finalize":
+      "validationTraceDisputeCekContextItemFinalize",
+    "V1 validation-trace CEK context item selection continue":
+      "validationTraceDisputeCekContextItemSelectionContinue",
+    "V1 validation-trace CEK context item selection finish":
+      "validationTraceDisputeCekContextItemSelectionFinish",
+    "V1 validation-trace CEK context item data continue":
+      "validationTraceDisputeCekContextItemDataContinue",
+    "V1 validation-trace CEK context item data finish descriptor":
+      "validationTraceDisputeCekContextItemDataFinishDescriptor",
+    "V1 validation-trace CEK context item data finish value":
+      "validationTraceDisputeCekContextItemDataFinishValue",
+    "V1 validation-trace CEK context item entry":
+      "validationTraceDisputeCekContextItemEntry",
+    "V1 validation-trace CEK context item settlement":
+      "validationTraceDisputeCekContextItemSettlement",
     "V1 validation-trace CEK core settle":
       "validationTraceDisputeCekCoreSettle",
     "V1 validation-trace CEK core compute":
@@ -914,52 +1068,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
     "V1 validation-trace script-sources StageSevenFinish semantic":
       "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
-    "V1 validation-trace redeemer item traversal normalizer":
-      "validationTraceDisputeRedeemerItemTraversalNormalizer",
-    "V1 validation-trace redeemer item outer normalizer":
-      "validationTraceDisputeRedeemerItemOuterNormalizer",
-    "V1 validation-trace redeemer item source authenticator":
-      "validationTraceDisputeRedeemerItemSourceAuthenticator",
-    "V1 validation-trace redeemer item fold map executor":
-      "validationTraceDisputeRedeemerItemFoldMapExecutor",
-    "V1 validation-trace redeemer item finalize frame executor":
-      "validationTraceDisputeRedeemerItemFinalizeFrameExecutor",
-    "V1 validation-trace redeemer item open header executor":
-      "validationTraceDisputeRedeemerItemOpenHeaderExecutor",
-    "V1 validation-trace redeemer item open tail executor":
-      "validationTraceDisputeRedeemerItemOpenTailExecutor",
-    "V1 validation-trace redeemer item head scalar executor":
-      "validationTraceDisputeRedeemerItemHeadScalarExecutor",
-    "V1 validation-trace redeemer item head sequence executor":
-      "validationTraceDisputeRedeemerItemHeadSequenceExecutor",
-    "V1 validation-trace redeemer item head map executor":
-      "validationTraceDisputeRedeemerItemHeadMapExecutor",
-    "V1 validation-trace redeemer item head large constructor executor":
-      "validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor",
-    "V1 validation-trace redeemer item attach integer executor":
-      "validationTraceDisputeRedeemerItemAttachIntegerExecutor",
-    "V1 validation-trace redeemer item attach bytes executor":
-      "validationTraceDisputeRedeemerItemAttachBytesExecutor",
-    "V1 validation-trace redeemer item fold list executor":
-      "validationTraceDisputeRedeemerItemFoldListExecutor",
-    "V1 validation-trace redeemer item advance integer executor":
-      "validationTraceDisputeRedeemerItemAdvanceIntegerExecutor",
-    "V1 validation-trace redeemer item advance bytes executor":
-      "validationTraceDisputeRedeemerItemAdvanceBytesExecutor",
-    "V1 validation-trace redeemer item advance large constructor executor":
-      "validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor",
-    "V1 validation-trace redeemer item advance large fields executor":
-      "validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor",
-    "V1 validation-trace redeemer item close executor":
-      "validationTraceDisputeRedeemerItemCloseExecutor",
-    "V1 validation-trace redeemer item finish data executor":
-      "validationTraceDisputeRedeemerItemFinishDataExecutor",
-    "V1 validation-trace redeemer item invalid header executor":
-      "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
-    "V1 validation-trace redeemer item invalid tail executor":
-      "validationTraceDisputeRedeemerItemInvalidTailExecutor",
-    "V1 validation-trace redeemer item settlement":
-      "validationTraceDisputeRedeemerItemSettlement",
     "V1 validation-trace script-sources RedeemerNormalization semantic":
       "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
     "V1 validation-trace script-sources StageTwoAdvance yield":

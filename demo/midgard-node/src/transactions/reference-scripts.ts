@@ -2291,6 +2291,12 @@ export const nodeRuntimeReferenceScriptTargets = (
       .spendingScript,
   ),
 
+  ...SDK.cekContextReferenceScripts(
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages,
+    contracts.fraudProofContracts.validationTraceDispute.cekContextItemStages,
+  ).map(({ deploymentEntry, validator }) =>
+    manifestReferenceScriptTarget(deploymentEntry, validator.spendingScript),
+  ),
   manifestReferenceScriptTarget(
     "validationTraceDisputeCekMaterialTraversal",
     contracts.fraudProofContracts.validationTraceDispute.cekMaterialTraversal

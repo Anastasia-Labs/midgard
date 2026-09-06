@@ -5204,12 +5204,25 @@ export const buildDeterministicValidationMachineTrace = (
                 stage: 8,
               };
 
+              const orderedMint = authenticatedMintAssets
+                .map((asset, index) => ({ ...asset, index }))
+                .sort(
+                  (left, right) =>
+                    Buffer.compare(left.policyId, right.policyId) ||
+                    Buffer.compare(left.assetName, right.assetName),
+                );
+              let previousHead: {
+                assetName: Buffer;
+                quantity: bigint;
+                tail: ReturnType<typeof emptyMidgardCekDataPairSummary>;
+              } | null = null;
               for (
-                let mintIndex = authenticatedMintAssets.length - 1;
-                mintIndex >= 0;
-                mintIndex -= 1
+                let orderedIndex = orderedMint.length - 1;
+                orderedIndex >= 0;
+                orderedIndex--
               ) {
-                const asset = authenticatedMintAssets[mintIndex]!;
+                const asset = orderedMint[orderedIndex]!;
+                const mintIndex = asset.index;
                 pushWitness(
                   "cek",
                   cekContextWitness({
@@ -5221,6 +5234,11 @@ export const buildDeterministicValidationMachineTrace = (
                   {
                     kind: "cekMintContextItem",
                     mintIndex,
+                    previous: contextControl.currentMintPolicy.equals(
+                      asset.policyId,
+                    )
+                      ? previousHead
+                      : null,
                     policyId: asset.policyId,
                     assetName: asset.assetName,
                     quantity: asset.quantity,
@@ -5230,6 +5248,13 @@ export const buildDeterministicValidationMachineTrace = (
                     ).siblings,
                   },
                 );
+                previousHead = {
+                  assetName: asset.assetName,
+                  quantity: asset.quantity,
+                  tail: contextControl.currentMintPolicy.equals(asset.policyId)
+                    ? contextControl.currentMintAssets
+                    : emptyMidgardCekDataPairSummary(),
+                };
                 const nextAssetSummary = prependMidgardCekDataPairSummary(
                   summarizeMidgardCekLucidData(asset.assetName.toString("hex")),
                   summarizeMidgardCekLucidData(asset.quantity),

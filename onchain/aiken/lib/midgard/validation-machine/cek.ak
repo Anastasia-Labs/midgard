@@ -5,6 +5,7 @@ use midgard/bounded_item_v1
 use midgard/cek_constant_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
+use midgard/cek_mint_order
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, verify_native_tx_proof_source_v1,
@@ -1219,11 +1220,16 @@ fn verify_cek_mint_context_item(
           asset_name,
           quantity,
           siblings,
+          previous,
         }
       = auxiliary
-    let expected_index = native_control.mint_count - context_control.mint_cursor - 1
     let membership_verified = and {
-      mint_index == expected_index,
+      cek_mint_order.order_is_valid(
+        context_control,
+        policy_id,
+        asset_name,
+        previous,
+      ),
       validation_merkle_v1.verify_membership(
         native_control.mint_count,
         native_control.mint_peaks,

@@ -40,7 +40,7 @@ validator main(
           context.stage == 0 && context.redeemer_context_control_hash == #""
         expect chain.auxiliary_is_bound(staged.bound, action.auxiliary)
         expect
-            Pair(9,
+            Pair(10,
             [
               index_data, count_data, length_data, commitment_data,
               siblings_data,

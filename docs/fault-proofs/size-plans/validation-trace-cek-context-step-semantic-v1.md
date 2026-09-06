@@ -549,3 +549,22 @@ pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cek-context-fit-ledge
 The publication ledger is preliminary tail evidence. Completion also requires
 the shared item entry, full registered dispute lifecycles, and the separate
 maximum lifecycle measurements against the final consolidated blueprint.
+
+### Mixed-width mint ordering closure
+
+The exact 1,304-asset mixed-width mint vector exposed different native and
+execution orders. Native CBOR authenticates assets in encoded-key order;
+`script-context.ts::mintData` preserves the existing execution contract by
+sorting policy IDs and asset names lexicographically. The context fold must
+prove that permutation rather than change either ordering contract.
+
+The bounded fix keeps the 25-field context control. Each mint item authenticates
+its original frontier index and carries an optional previous map-head opening
+(asset name, quantity, and tail pair summary). On a same-policy step, rebuilding
+the committed current-assets summary authenticates the previous name before the
+validator requires a strictly smaller new name. Policy changes require a strictly
+smaller policy ID and no previous-head opening. Strict pair ordering, membership
+of every item, and the authenticated exact count rule out repetitions, omissions,
+and revisiting a prior policy group. The producer sorts the traversal while
+retaining each original membership index. The final mint map therefore preserves
+the existing execution-context order without restricting native source shapes.

@@ -321,6 +321,42 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputePhaseANativeItemNativeWithdraw",
   "validationTraceDisputePhaseANativeItemForeignWithdraw",
   "validationTraceDisputeCekMaterialTraversal",
+  "validationTraceDisputeCekContextSettle",
+  "validationTraceDisputeCekContextControl",
+  "validationTraceDisputeCekContextReference",
+  "validationTraceDisputeCekContextSpend",
+  "validationTraceDisputeCekContextOutput",
+  "validationTraceDisputeCekContextSigner",
+  "validationTraceDisputeCekContextObserverAuthenticate",
+  "validationTraceDisputeCekContextObserverFold",
+  "validationTraceDisputeCekContextMintInit",
+  "validationTraceDisputeCekContextMintItem",
+  "validationTraceDisputeCekContextAssemble",
+  "validationTraceDisputeCekContextTxInfo",
+  "validationTraceDisputeCekContextSeed",
+  "validationTraceDisputeCekContextFinalizeAuthenticate",
+  "validationTraceDisputeCekContextFinalizeSpend",
+  "validationTraceDisputeCekContextFinalizeMint",
+  "validationTraceDisputeCekContextFinalizeWithdraw",
+  "validationTraceDisputeCekContextFinalizeObserve",
+  "validationTraceDisputeCekContextFinalizeMidgard",
+  "validationTraceDisputeCekContextRedeemerBegin",
+  "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
+  "validationTraceDisputeCekContextRedeemerSelectInitialize",
+  "validationTraceDisputeCekContextRedeemerSelectHash",
+  "validationTraceDisputeCekContextRedeemerSelectFinish",
+  "validationTraceDisputeCekContextItemBind",
+  "validationTraceDisputeCekContextItemReturn",
+  "validationTraceDisputeCekContextItemSelectionHash",
+  "validationTraceDisputeCekContextItemDataHash",
+  "validationTraceDisputeCekContextItemFinalize",
+  "validationTraceDisputeCekContextItemSelectionContinue",
+  "validationTraceDisputeCekContextItemSelectionFinish",
+  "validationTraceDisputeCekContextItemDataContinue",
+  "validationTraceDisputeCekContextItemDataFinishDescriptor",
+  "validationTraceDisputeCekContextItemDataFinishValue",
+  "validationTraceDisputeCekContextItemEntry",
+  "validationTraceDisputeCekContextItemSettlement",
   "validationTraceDisputeCekCoreSettle",
   "validationTraceDisputeCekCoreCompute",
   "validationTraceDisputeCekCoreMachine",
@@ -1155,6 +1191,78 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputePhaseANativeItemForeignWithdraw",
     "V1 validation-trace CEK material traversal":
       "validationTraceDisputeCekMaterialTraversal",
+    "V1 validation-trace CEK context settle":
+      "validationTraceDisputeCekContextSettle",
+    "V1 validation-trace CEK context control":
+      "validationTraceDisputeCekContextControl",
+    "V1 validation-trace CEK context reference":
+      "validationTraceDisputeCekContextReference",
+    "V1 validation-trace CEK context spend":
+      "validationTraceDisputeCekContextSpend",
+    "V1 validation-trace CEK context output":
+      "validationTraceDisputeCekContextOutput",
+    "V1 validation-trace CEK context signer":
+      "validationTraceDisputeCekContextSigner",
+    "V1 validation-trace CEK context observer authenticate":
+      "validationTraceDisputeCekContextObserverAuthenticate",
+    "V1 validation-trace CEK context observer fold":
+      "validationTraceDisputeCekContextObserverFold",
+    "V1 validation-trace CEK context mint init":
+      "validationTraceDisputeCekContextMintInit",
+    "V1 validation-trace CEK context mint item":
+      "validationTraceDisputeCekContextMintItem",
+    "V1 validation-trace CEK context assemble":
+      "validationTraceDisputeCekContextAssemble",
+    "V1 validation-trace CEK context tx info":
+      "validationTraceDisputeCekContextTxInfo",
+    "V1 validation-trace CEK context seed":
+      "validationTraceDisputeCekContextSeed",
+    "V1 validation-trace CEK context finalize authenticate":
+      "validationTraceDisputeCekContextFinalizeAuthenticate",
+    "V1 validation-trace CEK context finalize spend":
+      "validationTraceDisputeCekContextFinalizeSpend",
+    "V1 validation-trace CEK context finalize mint":
+      "validationTraceDisputeCekContextFinalizeMint",
+    "V1 validation-trace CEK context finalize withdraw":
+      "validationTraceDisputeCekContextFinalizeWithdraw",
+    "V1 validation-trace CEK context finalize observe":
+      "validationTraceDisputeCekContextFinalizeObserve",
+    "V1 validation-trace CEK context finalize midgard":
+      "validationTraceDisputeCekContextFinalizeMidgard",
+    "V1 validation-trace CEK context redeemer begin":
+      "validationTraceDisputeCekContextRedeemerBegin",
+    "V1 validation-trace CEK context redeemer select authenticate":
+      "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
+    "V1 validation-trace CEK context redeemer select initialize":
+      "validationTraceDisputeCekContextRedeemerSelectInitialize",
+    "V1 validation-trace CEK context redeemer select hash":
+      "validationTraceDisputeCekContextRedeemerSelectHash",
+    "V1 validation-trace CEK context redeemer select finish":
+      "validationTraceDisputeCekContextRedeemerSelectFinish",
+    "V1 validation-trace CEK context item bind":
+      "validationTraceDisputeCekContextItemBind",
+    "V1 validation-trace CEK context item return":
+      "validationTraceDisputeCekContextItemReturn",
+    "V1 validation-trace CEK context item selection hash":
+      "validationTraceDisputeCekContextItemSelectionHash",
+    "V1 validation-trace CEK context item data hash":
+      "validationTraceDisputeCekContextItemDataHash",
+    "V1 validation-trace CEK context item finalize":
+      "validationTraceDisputeCekContextItemFinalize",
+    "V1 validation-trace CEK context item selection continue":
+      "validationTraceDisputeCekContextItemSelectionContinue",
+    "V1 validation-trace CEK context item selection finish":
+      "validationTraceDisputeCekContextItemSelectionFinish",
+    "V1 validation-trace CEK context item data continue":
+      "validationTraceDisputeCekContextItemDataContinue",
+    "V1 validation-trace CEK context item data finish descriptor":
+      "validationTraceDisputeCekContextItemDataFinishDescriptor",
+    "V1 validation-trace CEK context item data finish value":
+      "validationTraceDisputeCekContextItemDataFinishValue",
+    "V1 validation-trace CEK context item entry":
+      "validationTraceDisputeCekContextItemEntry",
+    "V1 validation-trace CEK context item settlement":
+      "validationTraceDisputeCekContextItemSettlement",
     "V1 validation-trace CEK core settle":
       "validationTraceDisputeCekCoreSettle",
     "V1 validation-trace CEK core compute":
@@ -1864,6 +1972,49 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace phase-A native item foreign yield":
     "V1VtPhaseANativeItemForeignYield",
   "V1 validation-trace CEK material traversal": "V1VtCekMatTraversal",
+  "V1 validation-trace CEK context settle": "V1VtCekCtxSet",
+  "V1 validation-trace CEK context control": "V1VtCekCtxCon",
+  "V1 validation-trace CEK context reference": "V1VtCekCtxRef",
+  "V1 validation-trace CEK context spend": "V1VtCekCtxSpe",
+  "V1 validation-trace CEK context output": "V1VtCekCtxOut",
+  "V1 validation-trace CEK context signer": "V1VtCekCtxSig",
+  "V1 validation-trace CEK context observer authenticate": "V1VtCekCtxObsAut",
+  "V1 validation-trace CEK context observer fold": "V1VtCekCtxObsFol",
+  "V1 validation-trace CEK context mint init": "V1VtCekCtxMinIni",
+  "V1 validation-trace CEK context mint item": "V1VtCekCtxMinIte",
+  "V1 validation-trace CEK context assemble": "V1VtCekCtxAss",
+  "V1 validation-trace CEK context tx info": "V1VtCekCtxTxInf",
+  "V1 validation-trace CEK context seed": "V1VtCekCtxSee",
+  "V1 validation-trace CEK context finalize authenticate": "V1VtCekCtxFinAut",
+  "V1 validation-trace CEK context finalize spend": "V1VtCekCtxFinSpe",
+  "V1 validation-trace CEK context finalize mint": "V1VtCekCtxFinMin",
+  "V1 validation-trace CEK context finalize withdraw": "V1VtCekCtxFinWit",
+  "V1 validation-trace CEK context finalize observe": "V1VtCekCtxFinObs",
+  "V1 validation-trace CEK context finalize midgard": "V1VtCekCtxFinMid",
+  "V1 validation-trace CEK context redeemer begin": "V1VtCekCtxRedBeg",
+  "V1 validation-trace CEK context redeemer select authenticate":
+    "V1VtCekCtxRedSelAut",
+  "V1 validation-trace CEK context redeemer select initialize":
+    "V1VtCekCtxRedSelIni",
+  "V1 validation-trace CEK context redeemer select hash": "V1VtCekCtxRedSelHas",
+  "V1 validation-trace CEK context redeemer select finish":
+    "V1VtCekCtxRedSelFin",
+  "V1 validation-trace CEK context item bind": "V1VtCekCtxIteBin",
+  "V1 validation-trace CEK context item return": "V1VtCekCtxIteRet",
+  "V1 validation-trace CEK context item selection hash": "V1VtCekCtxIteSelHas",
+  "V1 validation-trace CEK context item data hash": "V1VtCekCtxIteDatHas",
+  "V1 validation-trace CEK context item finalize": "V1VtCekCtxIteFin",
+  "V1 validation-trace CEK context item selection continue":
+    "V1VtCekCtxIteSelCon",
+  "V1 validation-trace CEK context item selection finish":
+    "V1VtCekCtxIteSelFin",
+  "V1 validation-trace CEK context item data continue": "V1VtCekCtxIteDatCon",
+  "V1 validation-trace CEK context item data finish descriptor":
+    "V1VtCekCtxIteDatFinDes",
+  "V1 validation-trace CEK context item data finish value":
+    "V1VtCekCtxIteDatFinVal",
+  "V1 validation-trace CEK context item entry": "V1VtCekCtxIteEnt",
+  "V1 validation-trace CEK context item settlement": "V1VtCekCtxIteSet",
   "V1 validation-trace CEK core settle": "V1VtCekCoreSet",
   "V1 validation-trace CEK core compute": "V1VtCekCoreCom",
   "V1 validation-trace CEK core machine": "V1VtCekCoreMac",

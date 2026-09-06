@@ -10,7 +10,7 @@ import {
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 
 describe("CEK context current blueprint fit evidence", () => {
-  it.each(["context-publication"])(
+  it.each(["context-publication", "context"])(
     "verifies the %s ledger and its measured margins",
     async (kind) => {
       const ledger: VanRossemFitLedger = JSON.parse(
@@ -35,7 +35,9 @@ describe("CEK context current blueprint fit evidence", () => {
           8_000_000_000n,
         );
       }
-      expect(ledger.entries).toHaveLength(32);
+      if (kind === "context-publication")
+        expect(ledger.entries).toHaveLength(36);
+      else expect(ledger.entries.length).toBeGreaterThan(1_000);
       expect(ledger.compilerVersion).toBe("v1.1.23+5adf783");
       expect(
         buildVanRossemFitLedger({
@@ -53,7 +55,7 @@ describe("CEK context current blueprint fit evidence", () => {
         }),
       ).toEqual(ledger);
       expect(new Set(ledger.entries.map((row) => row.maximumShape)).size).toBe(
-        1,
+        kind === "context-publication" ? 1 : 24,
       );
     },
   );

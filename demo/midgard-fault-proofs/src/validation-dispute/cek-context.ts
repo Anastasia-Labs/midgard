@@ -30,6 +30,7 @@ import {
   decodeRedeemerItemControlData,
   decodeRedeemerItemWitnessData,
 } from "../redeemer-item-data.js";
+import { deriveCekRedeemerItemPlan } from "../redeemer-item-plan.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -115,6 +116,26 @@ export const deriveCekContextPlan = ({
     successorData = record([nextBinding.context]);
   }
   const verified = record([binding.staged, successorData]);
+  if (
+    (stage === 0 && context[9] !== "") ||
+    (stage === 9 && auxiliary instanceof Constr && auxiliary.index === 18)
+  ) {
+    const item = deriveCekContextItemReturnPlan({
+      staged: binding.staged,
+      auxiliary,
+      verifiedContext: verified,
+    });
+    return {
+      route: [
+        "control",
+        "itemBind",
+        ...item.route,
+        "settle",
+      ] as CekContextStageKey[],
+      states: [binding.bound, binding.staged, item.pending, ...item.states],
+      item,
+    };
+  }
   const route: CekContextStageKey[] = [];
   const states: Data[] = [binding.bound, binding.staged];
   const finish = (key: CekContextStageKey) => {
@@ -297,6 +318,7 @@ export const submitCekContextChain = async ({
   binder,
   binderReference,
   stageReferences,
+  sharedItem,
   threadUtxo: initialThread,
   threadUnit,
   prepared,
@@ -317,6 +339,11 @@ export const submitCekContextChain = async ({
   readonly binder: SDK.SpendingValidator;
   readonly binderReference?: UTxO;
   readonly stageReferences: Readonly<Partial<Record<CekContextStageKey, UTxO>>>;
+  readonly sharedItem?: {
+    readonly stages: SDK.SharedRedeemerItemStages;
+    readonly deploymentId: string;
+    readonly references: ReadonlyMap<string, UTxO>;
+  };
   readonly threadUtxo: UTxO;
   readonly threadUnit: string;
   readonly prepared: Data;
@@ -342,7 +369,46 @@ export const submitCekContextChain = async ({
     auxiliary,
     successorWorkWitnessCbor,
   });
-  const keys = ["binder", ...plan.route] as const;
+  const keys: string[] = ["binder", ...plan.route];
+  const outputStates = [...plan.states];
+  const stageContracts: Record<string, SDK.SpendingValidator> = {
+    binder,
+    ...contracts.cekContextStages,
+  };
+  const references: Record<string, UTxO | undefined> = {
+    binder: binderReference,
+    ...stageReferences,
+  };
+  const sharedRedeemers = new Map<
+    string,
+    (input: bigint, output: bigint) => Data
+  >();
+  if (plan.item !== undefined) {
+    if (sharedItem === undefined)
+      throw new Error("CEK item route requires its deployed shared stages");
+    const shared = deriveCekRedeemerItemPlan({
+      pending: plan.item.pending,
+      witness: plan.item.witness,
+      stages: sharedItem.stages,
+      deploymentId: sharedItem.deploymentId,
+    });
+    const insertion = keys.indexOf("itemBind") + 1;
+    const sharedKeys = shared.map((step) => `shared:${step.key}`);
+    keys.splice(insertion, 0, ...sharedKeys);
+    outputStates.splice(
+      insertion,
+      0,
+      ...shared.map((step) => step.outputState),
+    );
+    for (const [index, step] of shared.entries()) {
+      const key = sharedKeys[index]!;
+      stageContracts[key] = step.validator;
+      references[key] = sharedItem.references.get(
+        step.validator.spendingScriptHash,
+      );
+      sharedRedeemers.set(key, step.spendRedeemer);
+    }
+  }
   const stateDatum = (bound: Data) =>
     Data.to(
       { fraud_prover: signer.paymentKeyHash, data: bound },
@@ -367,10 +433,9 @@ export const submitCekContextChain = async ({
   }[] = [];
   for (let index = 0; index < keys.length; index++) {
     const key = keys[index]!;
-    const contract =
-      key === "binder" ? binder : contracts.cekContextStages[key];
+    const contract = stageContracts[key]!;
     const expectedDatum =
-      index === 0 ? initialDatum : stateDatum(plan.states[index - 1]!);
+      index === 0 ? initialDatum : stateDatum(outputStates[index - 1]!);
     if (!foundCheckpoint) {
       if (
         threadUtxo.address !== contract.spendingScriptAddress ||
@@ -381,7 +446,7 @@ export const submitCekContextChain = async ({
         continue;
       foundCheckpoint = true;
     }
-    const reference = key === "binder" ? binderReference : stageReferences[key];
+    const reference = references[key];
     if (reference === undefined)
       throw new Error(`Missing CEK context ${key} reference script`);
     const nextKey = keys[index + 1];
@@ -390,9 +455,9 @@ export const submitCekContextChain = async ({
     const nextContract =
       nextKey === undefined || nextKey === "binder"
         ? contracts.award
-        : contracts.cekContextStages[nextKey];
+        : stageContracts[nextKey]!;
     const nextDatum =
-      key === "settle" ? awardDatum : stateDatum(plan.states[index]!);
+      key === "settle" ? awardDatum : stateDatum(outputStates[index]!);
     const currentInput = threadUtxo;
     let inputIndex = -1;
     let outputIndex = -1;
@@ -411,11 +476,15 @@ export const submitCekContextChain = async ({
           `CEK context ${key}`,
         ),
       );
+      const sharedRedeemer = sharedRedeemers.get(key);
+      if (sharedRedeemer !== undefined)
+        return Data.to(sharedRedeemer(BigInt(inputIndex), BigInt(outputIndex)));
       return SDK.encodeCekContextRedeemer(
         BigInt(inputIndex),
         BigInt(outputIndex),
         transition,
         auxiliary,
+        key === "itemBind" ? plan.item?.claimedNext : undefined,
       );
     }) satisfies BuildTxWithRedeemer;
     signer.selectWallet(lucid);

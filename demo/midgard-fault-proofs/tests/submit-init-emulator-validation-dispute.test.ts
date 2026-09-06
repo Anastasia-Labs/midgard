@@ -153,17 +153,14 @@ describe("fault-proof emulator integration", () => {
     }
   }, 300_000);
 
-  it("records oversized CEK resolver publications as unpublishable negative diagnostics", async () => {
+  it("publishes bounded CEK resolver entries within the normal ledger envelope", async () => {
     const realBlueprint = readBlueprint(realBlueprintPath);
     const publisher = generateEmulatorAccount({
       lovelace: 4_000_000_000_000n,
     });
-    // MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_BEGIN
-    // This raised emulator exists only to measure the negative publication
-    // margin. No lifecycle or readiness claim consumes these UTxOs.
     const emulator = new Emulator([publisher], {
       ...EMULATOR_PROTOCOL_PARAMETERS,
-      maxTxSize: 262_144,
+      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
     });
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(publisher.seedPhrase);
@@ -204,7 +201,7 @@ describe("fault-proof emulator integration", () => {
           semanticResolverIndex
         ];
       const appliedResolverBytes = semantic.spendingScript.script.length / 2;
-      expect(appliedResolverBytes).toBeGreaterThan(
+      expect(appliedResolverBytes).toBeLessThan(
         PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
       );
       const publication = await runEmulatorLifecycleStage(
@@ -214,12 +211,11 @@ describe("fault-proof emulator integration", () => {
             lucid,
             script: semantic.spendingScript,
             label: entryName,
-            oversized: true,
           }),
       );
-      // Honest deployment-time measurement: the publication itself exceeds
-      // the L1 proof envelope precisely because the resolver body does.
-      expect(publication.publicationMeasurement.l1ByteMargin).toBeLessThan(0);
+      expect(publication.publicationMeasurement.l1ByteMargin).toBeGreaterThan(
+        0,
+      );
       if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
         console.info(
           JSON.stringify(
@@ -238,7 +234,6 @@ describe("fault-proof emulator integration", () => {
         );
       }
     }
-    // MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_END
   }, 300_000);
 
   it.each([

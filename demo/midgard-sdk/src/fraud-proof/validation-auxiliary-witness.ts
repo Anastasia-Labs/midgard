@@ -1068,6 +1068,13 @@ export const ValidationAuxiliaryWitnessSchema = Data.Enum([
       asset_name: Data.Bytes(),
       quantity: Data.Integer(),
       siblings: ByteArrayListSchema,
+      previous: Data.Nullable(
+        Data.Object({
+          asset_name: Data.Bytes(),
+          quantity: Data.Integer(),
+          tail: DataSequenceSummarySchema,
+        }),
+      ),
     }),
   }),
   Data.Object({

@@ -1,7 +1,10 @@
 import {
+  asArray,
+  asBytes,
   buildMidgardValidationTraceTree,
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
+  decodeSingleCbor,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_NULL_ROOT,
   encodeCbor,
@@ -737,6 +740,7 @@ const buildNativeTransactionTrace = async ({
   resolveMissingInput = false,
   scriptSourcesRejection,
   descriptorMaximum = false,
+  cekObserverCount = 0,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
@@ -764,6 +768,7 @@ const buildNativeTransactionTrace = async ({
     | "missingIntegrity"
     | "untaggedObservers"
     | "observerOrder";
+  readonly cekObserverCount?: number;
 }) => {
   const txOrderId = transitionTraceOutRef(txOrderSeed);
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -900,12 +905,36 @@ const buildNativeTransactionTrace = async ({
           ]),
           validityIntervalEnd: BigInt(now + 1_000_000),
         };
+  const cekObserverScripts = Array.from(
+    { length: cekObserverCount },
+    (_, index) => {
+      const nativeScript = {
+        type: "any" as const,
+        scripts: [
+          { type: "all" as const, scripts: [] },
+          { type: "after" as const, slot: BigInt(index) },
+        ],
+      };
+      return {
+        language: "NativeCardano" as const,
+        nativeScript,
+        scriptBytes: encodeMidgardNativeScript(nativeScript),
+      };
+    },
+  );
+  const cekRequiredObserverHashes = cekObserverScripts
+    .map(hashMidgardVersionedScript)
+    .sort();
   const scriptFields =
     plutusScript === undefined
       ? mintFields
       : {
+          ...mintFields,
+          requiredObserverHashes: cekRequiredObserverHashes,
           scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
+            ...(mintAsset ? [script] : []),
             plutusScript,
+            ...cekObserverScripts,
           ]),
           redeemerTxWitsPreimageCbor,
           scriptIntegrityHash: computeScriptIntegrityHashForLanguages(
@@ -1215,6 +1244,9 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   cekSelection = false,
   cekCoreArm,
   cekContextStage,
+  cekContextMintCursor,
+  cekContextItemAction,
+  cekObserverCount,
   plutusSelection = false,
   cekProgramLambdaCount = 1,
   cekDataGraph = false,
@@ -1255,6 +1287,9 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly cekSelection?: boolean;
   readonly cekCoreArm?: string;
   readonly cekContextStage?: number;
+  readonly cekContextMintCursor?: number;
+  readonly cekContextItemAction?: string;
+  readonly cekObserverCount?: number;
   readonly plutusSelection?: boolean;
   readonly cekProgramLambdaCount?: number;
   readonly cekDataGraph?: boolean;
@@ -1357,6 +1392,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     resolveMissingInput: resolveInputsKind === "nonMembership",
     scriptSourcesRejection,
     descriptorMaximum,
+    cekObserverCount,
   });
   let challengerTrace = originalTrace;
   const disputedLowIndex = challengerTrace.states.findIndex((state, index) => {
@@ -1371,9 +1407,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       if (!Array.isArray(work) || typeof work[1] !== "string" || work[1] === "")
         return undefined;
       const context = decodeCekContextCborArray(work[1], 25);
-      return Array.isArray(context) && typeof context[0] === "bigint"
-        ? Number(context[0])
-        : undefined;
+      return context;
     })();
     return (
       state.phase === disputedPhase &&
@@ -1460,7 +1494,13 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
               preconditionsItemIndex)) &&
       (!lateNativeItem ||
         challengerTrace.states[index - 1]?.phase === "nativeScripts") &&
-      (cekContextStage === undefined || contextStage === cekContextStage) &&
+      (cekContextStage === undefined ||
+        contextStage?.[0] === BigInt(cekContextStage)) &&
+      (cekContextMintCursor === undefined ||
+        contextStage?.[20] === BigInt(cekContextMintCursor)) &&
+      (cekContextItemAction === undefined ||
+        (auxiliary?.kind === "redeemerItemStep" &&
+          auxiliary.witness.action.kind === cekContextItemAction)) &&
       (cekCoreArm === undefined ||
         (auxiliary?.kind === "cekCoreStep" &&
           auxiliary.step.witness.kind === cekCoreArm)) &&
@@ -1508,11 +1548,36 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
         ? { ...state, workRoot: Buffer.alloc(32, 0x7e) }
         : forgedTerminal,
   );
+  const operatorWitnesses = [...challengerTrace.witnesses];
+  if (dishonestChallenger && cekContextStage !== undefined) {
+    const successorIndex = disputedLowIndex + 1;
+    const adjacent = operatorWitnesses[successorIndex]!;
+    const work = asArray(decodeSingleCbor(adjacent.cbor), "context successor");
+    const nextContext = asArray(
+      decodeSingleCbor(asBytes(work[1], "context control")),
+      "context control",
+    );
+    // Supply a well-encoded dishonest continuation, so refusal reaches the
+    // physical context verifier instead of the host's missing-evidence gate.
+    nextContext[20] = 1n;
+    work[1] = encodeCbor(nextContext);
+    const cbor = encodeCbor(work);
+    operatorWitnesses[successorIndex] = { ...adjacent, cbor };
+    operatorStates[successorIndex] = {
+      ...operatorStates[successorIndex]!,
+      workRoot: hashMidgardValidationWorkWitness({
+        phase: adjacent.phase,
+        programCounter: adjacent.programCounter,
+        witnessCbor: cbor,
+      }),
+    };
+  }
   const operatorTrace: DeterministicValidationMachineTrace = {
     ...challengerTrace,
     verdict: "accepted",
     rejectionCode: null,
     states: operatorStates,
+    witnesses: operatorWitnesses,
     tree: buildMidgardValidationTraceTree(
       operatorStates.map(hashMidgardValidationMachineState),
       "accepted",

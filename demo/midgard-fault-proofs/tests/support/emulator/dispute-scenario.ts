@@ -3,13 +3,17 @@ import {
   CEK_CORE_STAGE_REFERENCES,
   CEK_MATERIAL_TASK_YIELD_ROLES,
   CEK_SELECTION_YIELD_ROLES,
+  cekContextReferenceScripts,
   createReferenceScriptAuthPolicy,
+  PreparedValidationResolutionDatum,
+  PreparedValidationResolutionState,
   sharedRedeemerItemReferenceScripts,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
   CML,
+  Data,
   getAddressDetails,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
@@ -17,10 +21,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  cancelValidationCekContext,
   cancelValidationCekCore,
   cancelValidationCekMaterialTraversal,
   cancelValidationSemanticResolution,
   resolveValidationTraceDisputeDeploymentContracts,
+  resumeValidationCekContext,
   resumeValidationCekCore,
   resumeValidationCekMaterialTraversal,
   submitRemoveFraudulentBlock,
@@ -128,6 +134,9 @@ export const runForcedValidationDisputeScenario = async (
     restartCekCore = false,
     scriptSourcesItemCheckpoint,
     cancelScriptSourcesItem = false,
+    restartCekContext = false,
+    cancelCekContext = false,
+    cekContextCheckpointStage,
     cancelCekCore = false,
     cancelCekMaterialTraversal = false,
     onRemovalReferenceScriptPublicationAttempt,
@@ -143,6 +152,9 @@ export const runForcedValidationDisputeScenario = async (
     readonly restartCekCore?: boolean;
     readonly scriptSourcesItemCheckpoint?: number;
     readonly cancelScriptSourcesItem?: boolean;
+    readonly restartCekContext?: boolean;
+    readonly cancelCekContext?: boolean;
+    readonly cekContextCheckpointStage?: "settle" | "item";
     readonly cancelCekCore?: boolean;
     readonly cancelCekMaterialTraversal?: boolean;
     readonly stopAfter?:
@@ -830,6 +842,42 @@ export const runForcedValidationDisputeScenario = async (
       };
     }
   }
+  if (stagedResolverIndex === 11 && stagedSemanticIndex === 2) {
+    const contextContracts =
+      contracts.fraudProofContracts.validationTraceDispute;
+    for (const { deploymentEntry, role, validator: contract } of [
+      ...cekContextReferenceScripts(
+        contextContracts.cekContextStages,
+        contextContracts.cekContextItemStages,
+      ),
+      ...sharedRedeemerItemReferenceScripts(
+        contextContracts.cekContextItemStages,
+      ),
+    ]) {
+      const publication = await publishAuthenticatedValidationDisputeControl({
+        lucid: challengerLucid,
+        authPolicy: referenceScriptAuth,
+        target: {
+          control: deploymentEntry,
+          name: role,
+          script: contract.spendingScript,
+        },
+      });
+      semanticDeploymentInfo = {
+        ...semanticDeploymentInfo,
+        contracts: {
+          ...semanticDeploymentInfo.contracts,
+          [deploymentEntry]: {
+            scriptHash: contract.spendingScriptHash,
+            refScriptUTxO: {
+              txHash: publication.utxo.txHash,
+              outputIndex: publication.utxo.outputIndex,
+            },
+          },
+        },
+      };
+    }
+  }
   if (stagedResolverIndex === 11 && stagedSemanticIndex === 3) {
     for (const [key, spec] of Object.entries(CEK_CORE_STAGE_REFERENCES)) {
       const contract =
@@ -888,6 +936,7 @@ export const runForcedValidationDisputeScenario = async (
   }
   let checkpointJson: string | undefined;
   let coreCheckpointJson: string | undefined;
+  let contextCheckpointJson: string | undefined;
   let traversalOutputs = 0;
   const submitBeforeRestart = emulator.submitTx.bind(emulator);
   if (restartCekMaterialTraversal || cancelCekMaterialTraversal)
@@ -982,6 +1031,71 @@ export const runForcedValidationDisputeScenario = async (
         });
         throw new Error(
           "simulated process loss after accepted ScriptSources item checkpoint",
+        );
+      }
+      return hash;
+    };
+  }
+
+  if (restartCekContext || cancelCekContext) {
+    let contextOutputs = 0;
+    const [selectedHash, selectedIndex] =
+      selectedResult.nextThreadOutRef.split("#");
+    const selected = (
+      await targetChallengerLucid.utxosByOutRef([
+        { txHash: selectedHash!, outputIndex: Number(selectedIndex) },
+      ])
+    )[0];
+    if (selected?.datum == null)
+      throw new Error("Missing prepared context source");
+    const preparedCborHex = Data.to(
+      Data.from(selected.datum, PreparedValidationResolutionDatum).data!,
+      PreparedValidationResolutionState,
+    );
+    const successor =
+      fixture.evidence.oneStepArgument.cekContextSuccessorWorkWitnessCbor;
+    if (successor === undefined)
+      throw new Error("Missing context successor capture");
+    const addresses = new Set(
+      Object.values(
+        contracts.fraudProofContracts.validationTraceDispute.cekContextStages,
+      ).map((stage) => stage.spendingScriptAddress),
+    );
+    const contextFamily = contracts.fraudProofContracts.validationTraceDispute;
+    const checkpointAddress =
+      cekContextCheckpointStage === "settle"
+        ? contextFamily.cekContextStages.settle.spendingScriptAddress
+        : cekContextCheckpointStage === "item"
+          ? contextFamily.cekContextItemStages.outerNormalizer
+              .spendingScriptAddress
+          : undefined;
+    if (checkpointAddress !== undefined) addresses.add(checkpointAddress);
+    emulator.submitTx = async (cbor) => {
+      const hash = await submitBeforeRestart(cbor);
+      const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
+      for (let index = 0; index < outputs.len(); index++) {
+        if (!addresses.has(outputs.get(index).address().to_bech32())) continue;
+        contextOutputs++;
+        if (
+          checkpointAddress === undefined
+            ? contextOutputs !== 2
+            : outputs.get(index).address().to_bech32() !== checkpointAddress
+        )
+          continue;
+        contextCheckpointJson = JSON.stringify({
+          threadOutRef: `${hash}#${index}`,
+          deploymentInfo: semanticDeploymentInfo,
+          preparedCborHex,
+          successorCborHex: Buffer.from(successor).toString("hex"),
+          transitionCborHex: Buffer.from(
+            fixture.evidence.oneStepArgument.transitionCbor,
+          ).toString("hex"),
+          auxiliaryCborHex: Buffer.from(
+            fixture.evidence.oneStepArgument.auxiliaryCbor,
+          ).toString("hex"),
+        });
+        throw new Error(
+          "simulated process loss after accepted context checkpoint",
         );
       }
       return hash;
@@ -1114,6 +1228,75 @@ export const runForcedValidationDisputeScenario = async (
             });
             if (!resumed.completed)
               throw new Error("Restart did not finish CEK core chain");
+            const last = resumed.transactions.at(-1)!;
+            return {
+              txHash: last.txHash,
+              threadOutRef: selectedResult.nextThreadOutRef,
+              nextThreadOutRef: last.nextThreadOutRef,
+              proofItemCarriage: "direct",
+              resolverIndex: stagedResolverIndex,
+              semanticResolverIndex: stagedSemanticIndex,
+              semanticResolverGlobalIndex:
+                validationSemanticResolverGlobalIndex(
+                  stagedResolverIndex,
+                  stagedSemanticIndex,
+                ),
+              inputIndex: last.inputIndex,
+              outputIndex: last.outputIndex,
+              awaitedConfirmation: true,
+              stageTransactions: resumed.transactions,
+            };
+          }
+          if (contextCheckpointJson !== undefined) {
+            emulator.submitTx = submitBeforeRestart;
+            const checkpoint: {
+              threadOutRef: string;
+              deploymentInfo: unknown;
+              transitionCborHex: string;
+              auxiliaryCborHex: string;
+              preparedCborHex: string;
+              successorCborHex: string;
+            } = JSON.parse(contextCheckpointJson);
+            await targetChallengerLucid.awaitTx(
+              checkpoint.threadOutRef.split("#")[0]!,
+            );
+            if (cancelCekContext)
+              return {
+                cancellation: await cancelValidationCekContext({
+                  lucid: targetChallengerLucid,
+                  blueprint: realBlueprint,
+                  deploymentInfo: checkpoint.deploymentInfo,
+                  network,
+                  signer: challengerSigner,
+                  threadOutRef: checkpoint.threadOutRef,
+                  witnessReferenceScripts,
+                }),
+              };
+            const resumed = await resumeValidationCekContext({
+              lucid: targetChallengerLucid,
+              blueprint: realBlueprint,
+              deploymentInfo: checkpoint.deploymentInfo,
+              network,
+              signer: challengerSigner,
+              threadOutRef: checkpoint.threadOutRef,
+              preparedCbor: Buffer.from(checkpoint.preparedCborHex, "hex"),
+              oneStepArgument: {
+                resolverIndex: 11,
+                semanticResolverIndex: 2,
+                cekContextSuccessorWorkWitnessCbor: Buffer.from(
+                  checkpoint.successorCborHex,
+                  "hex",
+                ),
+                transitionCbor: Buffer.from(
+                  checkpoint.transitionCborHex,
+                  "hex",
+                ),
+                auxiliaryCbor: Buffer.from(checkpoint.auxiliaryCborHex, "hex"),
+              },
+              validityRange: validityRange(),
+            });
+            if (!resumed.completed)
+              throw new Error("Restart did not finish CEK context chain");
             const last = resumed.transactions.at(-1)!;
             return {
               txHash: last.txHash,

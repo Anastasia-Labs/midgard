@@ -1858,6 +1858,13 @@ export const validationAuxiliaryWitnessData = (
         bytes(auxiliary.assetName),
         auxiliary.quantity,
         byteList(auxiliary.siblings),
+        option(auxiliary.previous, (head) =>
+          record([
+            bytes(head.assetName),
+            head.quantity,
+            sequenceSummaryData(head.tail),
+          ]),
+        ),
       ]);
     case "cekRedeemerContextSelect":
       return new Constr(17, [

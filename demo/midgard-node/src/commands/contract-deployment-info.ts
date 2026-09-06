@@ -1477,6 +1477,220 @@ const collectScriptDescriptors = (
   ),
   ...legacyFaultProofMissingStepDescriptors(contracts),
   spendDescriptor(
+    "validationTraceDisputeCekContextSettle",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .settle,
+    "V1 validation-trace CEK context settle",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextControl",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .control,
+    "V1 validation-trace CEK context control",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextReference",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .reference,
+    "V1 validation-trace CEK context reference",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextSpend",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages.spend,
+    "V1 validation-trace CEK context spend",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextOutput",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .output,
+    "V1 validation-trace CEK context output",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextSigner",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .signer,
+    "V1 validation-trace CEK context signer",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextObserverAuthenticate",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .observerAuthenticate,
+    "V1 validation-trace CEK context observer authenticate",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextObserverFold",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .observerFold,
+    "V1 validation-trace CEK context observer fold",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextMintInit",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .mintInit,
+    "V1 validation-trace CEK context mint init",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextMintItem",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .mintItem,
+    "V1 validation-trace CEK context mint item",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextAssemble",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .assemble,
+    "V1 validation-trace CEK context assemble",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextTxInfo",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .txInfo,
+    "V1 validation-trace CEK context tx info",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextSeed",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages.seed,
+    "V1 validation-trace CEK context seed",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextFinalizeAuthenticate",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .finalizeAuthenticate,
+    "V1 validation-trace CEK context finalize authenticate",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextFinalizeSpend",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .finalizeSpend,
+    "V1 validation-trace CEK context finalize spend",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextFinalizeMint",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .finalizeMint,
+    "V1 validation-trace CEK context finalize mint",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextFinalizeWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .finalizeWithdraw,
+    "V1 validation-trace CEK context finalize withdraw",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextFinalizeObserve",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .finalizeObserve,
+    "V1 validation-trace CEK context finalize observe",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextFinalizeMidgard",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .finalizeMidgard,
+    "V1 validation-trace CEK context finalize midgard",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextRedeemerBegin",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .redeemerBegin,
+    "V1 validation-trace CEK context redeemer begin",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .redeemerSelectAuthenticate,
+    "V1 validation-trace CEK context redeemer select authenticate",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextRedeemerSelectInitialize",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .redeemerSelectInitialize,
+    "V1 validation-trace CEK context redeemer select initialize",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextRedeemerSelectHash",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .redeemerSelectHash,
+    "V1 validation-trace CEK context redeemer select hash",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextRedeemerSelectFinish",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .redeemerSelectFinish,
+    "V1 validation-trace CEK context redeemer select finish",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemBind",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemBind,
+    "V1 validation-trace CEK context item bind",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemReturn",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemReturn,
+    "V1 validation-trace CEK context item return",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemSelectionHash",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemSelectionHash,
+    "V1 validation-trace CEK context item selection hash",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemDataHash",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemDataHash,
+    "V1 validation-trace CEK context item data hash",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemFinalize",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemFinalize,
+    "V1 validation-trace CEK context item finalize",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemSelectionContinue",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemSelectionContinue,
+    "V1 validation-trace CEK context item selection continue",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemSelectionFinish",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemSelectionFinish,
+    "V1 validation-trace CEK context item selection finish",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemDataContinue",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemDataContinue,
+    "V1 validation-trace CEK context item data continue",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemDataFinishDescriptor",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemDataFinishDescriptor,
+    "V1 validation-trace CEK context item data finish descriptor",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemDataFinishValue",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages
+      .itemDataFinishValue,
+    "V1 validation-trace CEK context item data finish value",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemEntry",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextItemStages
+      .entry,
+    "V1 validation-trace CEK context item entry",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeCekContextItemSettlement",
+    contracts.fraudProofContracts.validationTraceDispute.cekContextItemStages
+      .settlement,
+    "V1 validation-trace CEK context item settlement",
+  ),
+  spendDescriptor(
     "validationTraceDisputeCekCoreSettle",
     contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.settle,
     "V1 validation-trace CEK core settle",

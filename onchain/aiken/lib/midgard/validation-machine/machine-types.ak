@@ -183,6 +183,7 @@ pub type ValidationAuxiliaryWitnessV1 {
     asset_name: ByteArray,
     quantity: Int,
     siblings: List<ByteArray>,
+    previous: Option<CekMintHead>,
   }
   CekRedeemerContextSelectWitness {
     control: CekRedeemerContextControlV1,
@@ -809,4 +810,10 @@ pub type CekWitnessControlV1 {
   program_envelope_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
+}
+
+pub type CekMintHead {
+  asset_name: ByteArray,
+  quantity: Int,
+  tail: cek_data_v1.DataSequenceSummaryV1,
 }

@@ -261,4 +261,26 @@ describe("CEK context retained successor planning", () => {
       ]),
     );
   }, 120_000);
+  it("preserves lexical execution mint order at the mixed-width 1,304-asset source maximum", async () => {
+    const fixture = await buildForgedOperatorSuccessorValidationDisputeFixture({
+      operatorVkey: "11".repeat(32),
+      now: 1_780_000_000_000,
+      disputedPhase: "cek",
+      plutusSelection: true,
+      cekSelection: true,
+      assetCount: 1304,
+      cekContextStage: 8,
+      cekContextMintCursor: 1303,
+    });
+    const input = inputAt(fixture, fixture.disputedLowIndex);
+    const plan = deriveCekContextPlan(input);
+    expect(plan.route).toEqual(["control", "mintItem", "settle"]);
+    const auxiliary =
+      fixture.challengerTrace.witnesses[fixture.disputedLowIndex]!.auxiliary;
+    if (auxiliary?.kind !== "cekMintContextItem")
+      throw new Error("Missing mint context item");
+    expect(auxiliary.mintIndex).toBe(0);
+    expect(auxiliary.assetName.length).toBe(0);
+    expect(auxiliary.previous).not.toBeNull();
+  }, 180_000);
 });

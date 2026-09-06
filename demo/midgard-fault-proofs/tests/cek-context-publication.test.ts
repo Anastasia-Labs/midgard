@@ -3,8 +3,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  buildCekContextTail,
-  parseFaultProofBlueprint,
+  cekContextReferenceScripts,
   type ValidationTraceDisputeFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
@@ -24,7 +23,6 @@ import {
   alwaysSucceedsBlueprintPath,
   buildMinimalFaultProofContracts,
   EMULATOR_PROTOCOL_PARAMETERS,
-  network,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -47,22 +45,19 @@ describe("CEK context tail publication", () => {
       nonce,
       { realValidationTraceDispute: true, alwaysFraudProofCatalogue: true },
     );
-    const tail = buildCekContextTail(
-      parseFaultProofBlueprint(real),
-      network,
-      (
-        contracts as typeof contracts &
-          ValidationTraceDisputeFaultProofContracts
-      ).validationTraceDispute.award.spendingScriptHash,
-      contracts.computationThread.policyId,
-      contracts.fieldPreimageCertificate.policyId,
+    const family = (
+      contracts as typeof contracts & ValidationTraceDisputeFaultProofContracts
+    ).validationTraceDispute;
+    const publications = cekContextReferenceScripts(
+      family.cekContextStages,
+      family.cekContextItemStages,
     );
     const rows: VanRossemFitMeasurement[] = [];
     const blueprintBytes = readFileSync(realBlueprintPath);
     const blueprintSha256 = createHash("sha256")
       .update(blueprintBytes)
       .digest("hex");
-    for (const [key, contract] of Object.entries(tail)) {
+    for (const { deploymentEntry: key, validator: contract } of publications) {
       const result = await publishPlainReferenceScriptUtxo({
         lucid,
         script: contract.spendingScript,
@@ -80,13 +75,13 @@ describe("CEK context tail publication", () => {
         );
       rows.push({
         name: key,
-        maximumShape: "parameterized context tail publication",
+        maximumShape: "parameterized context publication",
         kind: "publication",
         signedBytes: measurement.completeSignedBytes,
         memoryUnits: measurement.executionMemory,
         cpuUnits: measurement.executionSteps,
       });
-      expect(measurement.l1ByteMargin, key).toBeGreaterThan(0);
+      expect(measurement.l1ByteMargin, key).toBeGreaterThanOrEqual(512);
     }
     if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1")
       await writeVanRossemFitLedger(

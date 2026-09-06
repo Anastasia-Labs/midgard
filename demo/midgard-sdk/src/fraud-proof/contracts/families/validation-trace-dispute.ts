@@ -20,6 +20,11 @@ import {
   tryBuild,
 } from "../blueprint.js";
 import {
+  buildCekContextTail,
+  type CekContextStages,
+  completeCekContextStages,
+} from "../cek-context.js";
+import {
   buildCekCoreStages,
   cekCoreEntryHashes,
   type CekCoreStages,
@@ -33,7 +38,11 @@ import {
   type BuildFaultProofContractsParams,
   type FraudProofChain,
 } from "../types.js";
-import { buildScriptSourcesRedeemerItemStages } from "./shared-redeemer-item.js";
+import {
+  buildCekRedeemerItemStages,
+  buildScriptSourcesRedeemerItemStages,
+  type SharedRedeemerItemStages,
+} from "./shared-redeemer-item.js";
 
 /**
  * The semantic-resolver group each prepare validator routes into, in
@@ -381,6 +390,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
     readonly cekProgramMaterial: SpendingValidator;
     readonly cekMaterialTraversal: SpendingValidator;
     readonly cekCoreStages: CekCoreStages;
+    readonly cekContextStages: CekContextStages;
+    readonly cekContextItemStages: SharedRedeemerItemStages;
     readonly opener: SpendingValidator;
     readonly source: SpendingValidator;
     readonly game: SpendingValidator;
@@ -660,6 +671,39 @@ export const buildValidationTraceDisputeChain = ({
     const deploymentId = deriveValidationTraceDeploymentId(
       fraudProofCataloguePolicyId,
     );
+    const cekContextTail = yield* tryBuild(
+      "Failed to build CEK context return stages",
+      () =>
+        buildCekContextTail(
+          blueprint,
+          network,
+          award.spendingScriptHash,
+          computationThread.policyId,
+          fieldPreimageCertificatePolicyId,
+        ),
+    );
+    const cekContextItemStages = yield* tryBuild(
+      "Failed to build shared CEK item stages",
+      () =>
+        buildCekRedeemerItemStages({
+          blueprint,
+          network,
+          computationThreadPolicyId: computationThread.policyId,
+          deploymentId,
+          returnScriptHash: cekContextTail.itemReturn.spendingScriptHash,
+        }),
+    );
+    const cekContextStages = yield* tryBuild(
+      "Failed to complete CEK context stages",
+      () =>
+        completeCekContextStages(
+          blueprint,
+          network,
+          cekContextTail,
+          cekContextItemStages.entry.spendingScriptHash,
+          computationThread.policyId,
+        ),
+    );
     const sharedItem = yield* tryBuild(
       "Failed to build shared ScriptSources redeemer item chain",
       () =>
@@ -786,6 +830,10 @@ export const buildValidationTraceDisputeChain = ({
     const semanticResolverParameterValues = new Map<string, Data>([
       ["award_script_hash", award.spendingScriptHash],
       ["arm_script_hashes", cekCoreEntryHashes(cekCoreStages)],
+      [
+        "cek_context_control_script_hash",
+        cekContextStages.control.spendingScriptHash,
+      ],
       [
         "cek_material_traversal_script_hash",
         cekMaterialTraversal.spendingScriptHash,
@@ -1624,6 +1672,9 @@ export const buildValidationTraceDisputeChain = ({
         sharedItem.sourceAuthenticator,
         ...sharedItem.executors,
         sharedItem.settlement,
+        ...Object.values(cekContextStages),
+        cekContextItemStages.entry,
+        cekContextItemStages.settlement,
         ...Object.values(canonicalDecodeItemStages),
         ...prepareResolvers,
       ],
@@ -1637,6 +1688,8 @@ export const buildValidationTraceDisputeChain = ({
       cekProgramMaterial,
       cekMaterialTraversal,
       cekCoreStages,
+      cekContextStages,
+      cekContextItemStages,
       canonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages,
       prepareResolvers,

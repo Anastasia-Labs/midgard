@@ -3,12 +3,13 @@ use aiken/primitive/bytearray
 use midgard/cek_constant_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
+use midgard/cek_mint_order
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/compact.{decode_native_tx_compact_v1}
 use midgard/script_context_v1
 use midgard/validation_machine/machine_types.{
   CekContextControlV1, CekContextPartsControlV1, CekFinalContextControlV1,
-  CekTxInfoAssemblyControlV1, NativeScriptsControlV1,
+  CekMintHead, CekTxInfoAssemblyControlV1, NativeScriptsControlV1,
 }
 use midgard/validation_machine/shared.{
   mint_asset_leaf_hash, prepend_mint_asset_summary,
@@ -324,14 +325,18 @@ pub fn next_mint_item(
   } else {
     expect
         Pair(16,
-        [index_data, policy_data, name_data, quantity_data, siblings_data])
+        [
+          index_data, policy_data, name_data, quantity_data, siblings_data,
+          previous_data,
+        ])
       = builtin.un_constr_data(auxiliary)
     expect index: Int = index_data
     expect policy: ByteArray = policy_data
     expect name: ByteArray = name_data
     expect quantity: Int = quantity_data
     expect siblings: List<ByteArray> = siblings_data
-    expect index == native.mint_count - context.mint_cursor - 1
+    expect previous: Option<CekMintHead> = previous_data
+    expect cek_mint_order.order_is_valid(context, policy, name, previous)
     expect
       validation_merkle_v1.verify_membership(
         native.mint_count,

@@ -29,7 +29,6 @@ use aiken/primitive/bytearray
 use cardano/address
 use cardano/assets
 use cardano/transaction as l1
-use fraud_proofs/validation_trace/cek_context_bind as context_bind
 use fraud_proofs/validation_trace/cek_context_control as context_control
 use fraud_proofs/validation_trace/cek_context_item_bind as context_item_bind
 use fraud_proofs/validation_trace/cek_context_item_hash as context_item_hash
@@ -44,7 +43,7 @@ use fraud_proofs/validation_trace/cek_context_reference as context_reference
 use fraud_proofs/validation_trace/cek_context_settle as context_settle
 use fraud_proofs/validation_trace/cek_context_signer as context_signer
 use fraud_proofs/validation_trace/cek_context_spend as context_spend
-use fraud_proofs/validation_trace/cek_context_step_semantic_v1 as context_validator
+use fraud_proofs/validation_trace/cek_context_step_semantic_v1 as context_bind
 use fraud_proofs/validation_trace/cek_core_arm_compute as core_compute
 use fraud_proofs/validation_trace/cek_core_settle as core_settle
 use fraud_proofs/validation_trace/cek_core_step_semantic_v1 as core_validator
@@ -59,6 +58,7 @@ use midgard/cek_context_observer as context_observer
 use midgard/cek_context_step as context_step
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
+use midgard/cek_mint_order
 use midgard/cek_proof_v1
 use midgard/cek_selection_yield as selection_yield
 use midgard/cek_semantic_chain as core_chain
@@ -85,12 +85,13 @@ use midgard/script_sources_redeemer_normalization_v1.{
 }
 use midgard/validation_machine/cek as cek_semantics
 use midgard/validation_machine/machine_types.{
-  CekContextControlV1, CekCoreStepWitness, CekWitnessControlV1,
+  CekContextControlV1, CekCoreStepWitness, CekMintHead, CekWitnessControlV1,
   NativeExecutionScanWitness, NativeScriptsControlV1, NoAuxiliaryWitness,
   RedeemerItemStepWitness, ValidationAuxiliaryWitnessV1,
   ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/shared.{prepend_mint_asset_summary}
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
@@ -102,6 +103,7 @@ use midgard/validation_resolution_v1.{
 use midgard/validation_resolver_v1.{
   CekMaterialRouteV1, DirectCekMaterial, NoCekMaterial, PrepareSelected,
 }
+use midgard/validation_semantic_v1 as semantic
 use midgard/validation_trace_v1
 
 // ---------------------------------------------------------------------------
@@ -1078,8 +1080,8 @@ test execution_selection_wire_layout_is_pinned() {
 }
 
 test context_step_wire_layout_is_pinned() {
-  let real: context_validator.SpendRedeemer = ct.Continue(
-    context_validator.VerifyContextStep {
+  let real: context_bind.SpendRedeemer = ct.Continue(
+    context_chain.VerifyContext {
       input_index: 1,
       output_index: 2,
       transition: golden_transition(),
@@ -1095,7 +1097,7 @@ test context_step_wire_layout_is_pinned() {
     },
   )
   let mirror_data: Data = mirror
-  expect decoded: context_validator.SpendRedeemer = mirror_data
+  expect decoded: context_bind.SpendRedeemer = mirror_data
   and {
     cbor.serialise(real) == cbor.serialise(mirror),
     decoded == real,
@@ -1464,26 +1466,35 @@ fn run_selection(
   }
 }
 
+// Retain the aggregate verifier as a parity oracle; production uses the
+// independently exercised binder/control/leaf/settlement continuation chain.
 fn run_context_step(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  context_validator.main.spend(
+  let tx = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
+  let auxiliary_data: Data = auxiliary
+  semantic.continue_winning(
+    validation_trace_v1.Cek,
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
-    fixture.test_certificate_policy_id,
     Some(semantic_datum(base)),
-    ct.Continue(
-      context_validator.VerifyContextStep {
-        input_index: 0,
-        output_index: 0,
-        transition,
-        auxiliary,
+    0,
+    0,
+    transition,
+    auxiliary_data,
+    cek_semantics.verify_cek_context_step_semantics_v1(
+      base.resolution.pre_state,
+      transition,
+      auxiliary,
+      field_door.MachineFieldDoorV1 {
+        reference_inputs: tx.reference_inputs,
+        certificate_policy_id: fixture.test_certificate_policy_id,
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    tx,
   )
 }
 
@@ -2753,4 +2764,100 @@ test bounded_context_binding_wire_matches_sdk() {
     ],
   )
   blake2b_256(cbor.serialise(vector)) == #"9f1d1bd9bf12507c305a77bcc809bd592aacee87abea2b701393f7926e5bcd4e"
+}
+
+fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {
+  let previous = CekMintHead {
+    asset_name: #"ff",
+    quantity: 1,
+    tail: cek_data_v1.empty_data_pair_summary_v1(),
+  }
+  let original = context_staged_fixture(context_step_fixture()).context
+  Pair(
+    CekContextControlV1 {
+      ..original,
+      stage: 8,
+      mint_cursor: 1,
+      current_mint_policy: h_28_a,
+      current_mint_assets: prepend_mint_asset_summary(
+        previous.asset_name,
+        previous.quantity,
+        previous.tail,
+      ),
+    },
+    previous,
+  )
+}
+
+test context_mint_order_accepts_mixed_width_and_empty_names() {
+  let Pair(context, previous) = ordered_mint_fixture()
+  and {
+    cek_mint_order.order_is_valid(context, h_28_a, #"0000", Some(previous)),
+    cek_mint_order.order_is_valid(
+      context,
+      h_28_a,
+      #"0000000000000000000000000000000000000000000000000000000000000000",
+      Some(previous),
+    ),
+    cek_mint_order.order_is_valid(context, h_28_a, #"", Some(previous)),
+  }
+}
+
+test context_mint_order_refuses_duplicate_asset() {
+  let Pair(context, previous) = ordered_mint_fixture()
+  !cek_mint_order.order_is_valid(context, h_28_a, #"ff", Some(previous))
+}
+
+test context_mint_order_refuses_substituted_previous_head() {
+  let Pair(context, previous) = ordered_mint_fixture()
+  !cek_mint_order.order_is_valid(
+    context,
+    h_28_a,
+    #"00",
+    Some(CekMintHead { ..previous, asset_name: #"fe" }),
+  )
+}
+
+test context_mint_order_refuses_substituted_previous_tail() {
+  let Pair(context, previous) = ordered_mint_fixture()
+  !cek_mint_order.order_is_valid(
+    context,
+    h_28_a,
+    #"00",
+    Some(
+      CekMintHead {
+        ..previous,
+        tail: prepend_mint_asset_summary(#"01", 1, previous.tail),
+      },
+    ),
+  )
+}
+
+test context_mint_order_refuses_omitted_previous_head() fail {
+  let Pair(context, _) = ordered_mint_fixture()
+  expect cek_mint_order.order_is_valid(context, h_28_a, #"00", None)
+}
+
+test context_mint_order_refuses_policy_revisit_and_spurious_head() {
+  let Pair(context, previous) = ordered_mint_fixture()
+  and {
+    !cek_mint_order.order_is_valid(
+      context,
+      #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      #"00",
+      None,
+    ),
+    !cek_mint_order.order_is_valid(
+      context,
+      #"00000000000000000000000000000000000000000000000000000000",
+      #"00",
+      Some(previous),
+    ),
+    cek_mint_order.order_is_valid(
+      context,
+      #"00000000000000000000000000000000000000000000000000000000",
+      #"00",
+      None,
+    ),
+  }
 }
