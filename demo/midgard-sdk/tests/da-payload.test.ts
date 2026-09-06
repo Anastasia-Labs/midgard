@@ -25,6 +25,8 @@ import {
   encodeDaPayload,
   encodeRetainedValidationWitness,
   encodeRetainedValidationWitnessKey,
+  retainedValidationEndpointCoordinate,
+  retainedValidationStateCoordinate,
 } from "../src/index.js";
 
 const bytes = (value: number, length: number): string =>
@@ -372,6 +374,39 @@ describe("DaPayloadV1 canonical codec", () => {
         MIDGARD_MAX_DA_PAYLOAD_BYTES -
           MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES,
       ),
+    );
+  });
+});
+
+describe("retained operator trace coordinates", () => {
+  it("keeps all chronological states and both endpoints disjoint from native aliases", () => {
+    for (const count of [0n, 1n, 17n, 65535n]) {
+      const initial = retainedValidationEndpointCoordinate(count, "initial");
+      const terminal = retainedValidationEndpointCoordinate(count, "terminal");
+      expect(initial).toBe(-count - 2n);
+      expect(terminal).toBe(-count - 3n);
+      expect(retainedValidationStateCoordinate(count, 0n)).toBe(-count - 1n);
+      expect(retainedValidationStateCoordinate(count, count)).toBe(-1n);
+      for (const coordinate of [initial, terminal]) {
+        const key = {
+          event_key: { L2TransactionEventKey: { tx_id: "11".repeat(32) } },
+          execution_index: coordinate,
+        };
+        expect(
+          decodeRetainedValidationWitnessKey(
+            encodeRetainedValidationWitnessKey(key),
+          ),
+        ).toEqual(key);
+      }
+    }
+    expect(() => retainedValidationStateCoordinate(1n, 2n)).toThrow(
+      /outside the trace/u,
+    );
+    expect(() => retainedValidationStateCoordinate(1n, -1n)).toThrow(
+      /outside the trace/u,
+    );
+    expect(() => retainedValidationEndpointCoordinate(-1n, "initial")).toThrow(
+      /integer domain/u,
     );
   });
 });

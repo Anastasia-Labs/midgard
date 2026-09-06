@@ -2,7 +2,6 @@
  * Deterministic validation-trace member construction and event-key set validation.
  */
 
-import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -103,71 +102,13 @@ export const buildDeterministicValidationTraceMembers = (
             trace.tree.descriptor.rejectionCodeHash.toString("hex"),
         };
         const witnesses = trace.witnesses.flatMap((witness, stateIndex) => {
-          const decodedControl =
-            witness.phase === "scriptSources" ||
-            witness.phase === "scriptIntegrity" ||
-            witness.phase === "valueAndMint"
-              ? decodeSingleCbor(witness.cbor)
-              : null;
-          const scriptSourcesStage =
-            witness.phase === "scriptSources" &&
-            Array.isArray(decodedControl) &&
-            (decodedControl.length === 30 || decodedControl.length === 31)
-              ? BigInt(decodedControl[9] as bigint | number)
-              : null;
-          const retainedLedgerDescriptor =
-            (witness.phase === "resolveInputs" &&
-              witness.auxiliary?.kind === "scheduledLedgerLookup" &&
-              witness.auxiliary.value !== null) ||
-            (witness.phase === "ledgerDelta" &&
-              witness.auxiliary?.kind === "ledgerDeltaOutput");
           const retainedNativeExecution =
             witness.phase === "nativeScripts" &&
             witness.auxiliary?.kind === "nativeExecutionDescriptor";
-          const retainedScriptSources =
-            witness.phase === "scriptSources" &&
-            (witness.auxiliary === null ||
-              witness.auxiliary.kind === "scriptPurposeScan" ||
-              witness.auxiliary.kind === "scriptSourceScan" ||
-              ((witness.auxiliary.kind === "redeemerScanBegin" ||
-                witness.auxiliary.kind === "redeemerItemStep") &&
-                (scriptSourcesStage === 10n || scriptSourcesStage === 12n)));
-          const retainedScriptIntegrityTerminal =
-            witness.phase === "scriptIntegrity" &&
-            witness.auxiliary === null &&
-            Array.isArray(decodedControl) &&
-            decodedControl.length === 4 &&
-            BigInt(decodedControl[1] as bigint | number) === 3n;
-          const retainedValueAndMintAsset =
-            witness.phase === "valueAndMint" &&
-            Array.isArray(decodedControl) &&
-            decodedControl.length === 12 &&
-            witness.auxiliary !== null &&
-            ((witness.auxiliary.kind === "valueInputAsset" &&
-              BigInt(decodedControl[1] as bigint | number) === 2n) ||
-              (witness.auxiliary.kind === "valueOutputAsset" &&
-                BigInt(decodedControl[1] as bigint | number) === 3n) ||
-              (witness.auxiliary.kind === "valueMintAsset" &&
-                BigInt(decodedControl[1] as bigint | number) === 4n));
-          if (
-            !retainedLedgerDescriptor &&
-            !retainedNativeExecution &&
-            !retainedScriptSources &&
-            !retainedScriptIntegrityTerminal &&
-            !retainedValueAndMintAsset
-          ) {
-            return [];
-          }
-          // Non-negative coordinates remain the consensus execution indexes
-          // consumed by the existing NativeScripts reconstruction API. The
-          // chronological negative domain is reserved for ScriptSources
-          // controls/frontier openings, the exact ScriptIntegrity stage-3
-          // terminal control, and ValueAndMint asset mutations. This keeps
-          // every retained phase collision-free
-          // without making a caller-provided label part of witness authority.
-          const retainedCoordinate = retainedNativeExecution
-            ? BigInt(witness.auxiliary.executionIndex)
-            : BigInt(stateIndex) - BigInt(trace.witnesses.length);
+          const retainedCoordinate = SDK.retainedValidationStateCoordinate(
+            descriptor.step_count,
+            BigInt(stateIndex),
+          );
           const key: SDK.RetainedValidationWitnessKey = {
             event_key: transaction.eventKey,
             execution_index: retainedCoordinate,
@@ -185,30 +126,73 @@ export const buildDeterministicValidationTraceMembers = (
             trace_proof: SDK.validationTraceProofDataFromCore(
               trace.tree.proofs[stateIndex]!,
             ),
-            phase: BigInt(
-              witness.phase === "resolveInputs"
-                ? MidgardValidationPhase.resolveInputs
-                : witness.phase === "ledgerDelta"
-                  ? MidgardValidationPhase.ledgerDelta
-                  : witness.phase === "scriptSources"
-                    ? MidgardValidationPhase.scriptSources
-                    : witness.phase === "nativeScripts"
-                      ? MidgardValidationPhase.nativeScripts
-                      : witness.phase === "scriptIntegrity"
-                        ? MidgardValidationPhase.scriptIntegrity
-                        : MidgardValidationPhase.valueAndMint,
-            ),
+            phase: BigInt(MidgardValidationPhase[witness.phase]),
             program_counter: BigInt(witness.programCounter),
             witness_cbor: witness.cbor.toString("hex"),
             auxiliary,
           };
-          return [
-            [
-              SDK.encodeRetainedValidationWitnessKey(key).toString("hex"),
-              SDK.encodeRetainedValidationWitness(value).toString("hex"),
-            ] satisfies SDK.DaPayloadEntry,
-          ];
+          const keys = retainedNativeExecution
+            ? [
+                key,
+                {
+                  ...key,
+                  execution_index: BigInt(witness.auxiliary.executionIndex),
+                },
+              ]
+            : [key];
+          return keys.map(
+            (coordinate) =>
+              [
+                SDK.encodeRetainedValidationWitnessKey(coordinate).toString(
+                  "hex",
+                ),
+                SDK.encodeRetainedValidationWitness(value).toString("hex"),
+              ] satisfies SDK.DaPayloadEntry,
+          );
         });
+        const terminalIndex = trace.states.length - 1;
+        const endpoints = (["initial", "terminal"] as const).map((endpoint) => {
+          const stateIndex = endpoint === "initial" ? 0 : terminalIndex;
+          const sourceWitness = trace.witnesses[stateIndex]!;
+          const value: SDK.RetainedValidationWitness = {
+            machine_state: SDK.validationMachineStateDataFromCore(
+              trace.states[stateIndex]!,
+            ),
+            trace_proof: SDK.validationTraceProofDataFromCore(
+              trace.tree.proofs[stateIndex]!,
+            ),
+            phase:
+              endpoint === "initial"
+                ? -1n
+                : BigInt(MidgardValidationPhase[sourceWitness.phase]),
+            program_counter: BigInt(sourceWitness.programCounter),
+            witness_cbor: (endpoint === "initial"
+              ? trace.validationContextCbor
+              : sourceWitness.cbor
+            ).toString("hex"),
+            auxiliary: "NoAuxiliaryWitness",
+          };
+          return [
+            SDK.encodeRetainedValidationWitnessKey({
+              event_key: transaction.eventKey,
+              execution_index: SDK.retainedValidationEndpointCoordinate(
+                descriptor.step_count,
+                endpoint,
+              ),
+            }).toString("hex"),
+            SDK.encodeRetainedValidationWitness(value).toString("hex"),
+          ] satisfies SDK.DaPayloadEntry;
+        });
+        witnesses.push(...endpoints);
+        if (new Set(witnesses.map(([key]) => key)).size !== witnesses.length) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: PendingBlockFinalizationsDB.tableName,
+              message: "Validation trace retained coordinates are not unique",
+              cause: transaction.eventKey,
+            }),
+          );
+        }
         return {
           eventKey: transaction.eventKey,
           keyCbor,

@@ -10,6 +10,7 @@ import {
   hashMidgardValidationWorkWitness,
   type MidgardValidationMachineState,
   type MidgardValidationMerkleFrontier,
+  MidgardValidationPhase,
   verifyMidgardValidationMerkleMembership,
   verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
@@ -17,6 +18,7 @@ import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
   decodeRetainedValidationWitness,
   decodeRetainedValidationWitnessKey,
+  encodeRetainedValidationWitness,
   type EventKey,
   EventKeySchema,
   Proof,
@@ -340,30 +342,41 @@ export const buildUnusedRedeemerDirectionControlFromRetainedDa = async ({
     .sort((left, right) =>
       left.key.execution_index < right.key.execution_index ? -1 : 1,
     );
-  const validatedAll = eventEntries.map(({ key, retained }) => {
-    const state = machineState(retained.machine_state);
-    const proof = validationTraceProofCoreFromData(retained.trace_proof);
-    if (
-      retained.program_counter !== retained.machine_state.program_counter ||
-      retained.program_counter !== retained.trace_proof.state_index ||
-      retained.program_counter >= descriptor.stepCount ||
-      state.transactionId.toString("hex") !== transactionId ||
-      !state.eventKeyHash.equals(hashMidgardValidationEventKey(eventKeyCbor)) ||
-      !hashMidgardValidationMachineState(state).equals(proof.stateHash) ||
-      !verifyMidgardValidationTraceProof({ descriptor, proof }) ||
-      !state.workRoot.equals(
-        hashMidgardValidationWorkWitness({
-          phase: "scriptSources",
-          programCounter: state.programCounter,
-          witnessCbor: Buffer.from(retained.witness_cbor, "hex"),
-        }),
-      )
+  const validatedAll = eventEntries
+    .filter(
+      ({ retained }) =>
+        (retained.phase === 8n &&
+          retained.machine_state.phase === "ScriptSources") ||
+        (retained.phase === 9n &&
+          retained.machine_state.phase === "NativeScripts"),
     )
-      throw new Error(
-        "unusedRedeemer retained state/proof/work witness is invalid",
-      );
-    return { key, retained, state };
-  });
+    .map(({ key, retained }) => {
+      const state = machineState(retained.machine_state);
+      const proof = validationTraceProofCoreFromData(retained.trace_proof);
+      if (
+        retained.program_counter !== retained.machine_state.program_counter ||
+        retained.program_counter !== retained.trace_proof.state_index ||
+        retained.trace_proof.state_index >= BigInt(descriptor.stepCount) ||
+        retained.phase !== BigInt(MidgardValidationPhase[state.phase]) ||
+        state.transactionId.toString("hex") !== transactionId ||
+        !state.eventKeyHash.equals(
+          hashMidgardValidationEventKey(eventKeyCbor),
+        ) ||
+        !hashMidgardValidationMachineState(state).equals(proof.stateHash) ||
+        !verifyMidgardValidationTraceProof({ descriptor, proof }) ||
+        !state.workRoot.equals(
+          hashMidgardValidationWorkWitness({
+            phase: state.phase,
+            programCounter: state.programCounter,
+            witnessCbor: Buffer.from(retained.witness_cbor, "hex"),
+          }),
+        )
+      )
+        throw new Error(
+          "unusedRedeemer retained state/proof/work witness is invalid",
+        );
+      return { key, retained, state };
+    });
   const validated = validatedAll.filter(
     ({ retained, state }) =>
       retained.phase === 8n && state.phase === "scriptSources",
@@ -571,15 +584,26 @@ export const buildUnusedRedeemerDirectionControlFromRetainedDa = async ({
       item.program_counter === retained.program_counter + 1n;
     return allowed ? [auxiliary.RedeemerItemStepWitness] : [];
   });
+  const nativeStates = new Map<bigint, string>();
   const retainedNativeExecutions = validatedAll.flatMap(
     ({ retained: item, state }) => {
       const auxiliary = item.auxiliary;
-      return state.phase === "nativeScripts" &&
-        item.phase === 9n &&
-        typeof auxiliary === "object" &&
-        "NativeExecutionDescriptorWitness" in auxiliary
-        ? [auxiliary.NativeExecutionDescriptorWitness]
-        : [];
+      if (
+        state.phase !== "nativeScripts" ||
+        item.phase !== 9n ||
+        typeof auxiliary !== "object" ||
+        !("NativeExecutionDescriptorWitness" in auxiliary)
+      )
+        return [];
+      const exact = encodeRetainedValidationWitness(item).toString("hex");
+      const previous = nativeStates.get(item.trace_proof.state_index);
+      if (previous !== undefined) {
+        if (previous !== exact)
+          throw new Error("unusedRedeemer retained native aliases disagree");
+        return [];
+      }
+      nativeStates.set(item.trace_proof.state_index, exact);
+      return [auxiliary.NativeExecutionDescriptorWitness];
     },
   );
   const reconstructedExecutions = validated.flatMap(({ retained: item }) => {

@@ -616,6 +616,76 @@ describe("V1 forced transaction material", () => {
     );
 
     expect(members).toHaveLength(1);
+    const member = members[0]!;
+    const endpoints = SDK.readRetainedValidationEndpoints({
+      entries: member.witnesses,
+      eventKey,
+      descriptor: member.value,
+    });
+    expect(endpoints.initial.trace_proof.state_index).toBe(0n);
+    expect(endpoints.terminal.trace_proof.state_index).toBe(
+      member.value.step_count,
+    );
+    const records = member.witnesses.map(([key, value]) => ({
+      key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(key, "hex")),
+      value: SDK.decodeRetainedValidationWitness(Buffer.from(value, "hex")),
+    }));
+    for (let index = 0n; index <= member.value.step_count; index += 1n) {
+      expect(
+        records.filter(
+          (entry) =>
+            entry.key.execution_index ===
+            SDK.retainedValidationStateCoordinate(
+              member.value.step_count,
+              index,
+            ),
+        ),
+      ).toHaveLength(1);
+      expect(
+        SDK.readRetainedValidationState({
+          entries: member.witnesses,
+          eventKey,
+          descriptor: member.value,
+          stateIndex: index,
+        }).trace_proof.state_index,
+      ).toBe(index);
+    }
+    expect(new Set(member.witnesses.map(([key]) => key)).size).toBe(
+      member.witnesses.length,
+    );
+    const tampered = member.witnesses.map(([key, value]) => {
+      const coordinate = SDK.decodeRetainedValidationWitnessKey(
+        Buffer.from(key, "hex"),
+      );
+      return coordinate.execution_index ===
+        SDK.retainedValidationEndpointCoordinate(
+          member.value.step_count,
+          "initial",
+        )
+        ? ([
+            key,
+            SDK.encodeRetainedValidationWitness({
+              ...SDK.decodeRetainedValidationWitness(Buffer.from(value, "hex")),
+              witness_cbor: "00",
+            }).toString("hex"),
+          ] as SDK.DaPayloadEntry)
+        : ([key, value] as SDK.DaPayloadEntry);
+    });
+    expect(() =>
+      SDK.readRetainedValidationEndpoints({
+        entries: tampered,
+        eventKey,
+        descriptor: member.value,
+      }),
+    ).toThrow(/context differs/u);
+    expect(() =>
+      SDK.readRetainedValidationEndpoints({
+        entries: member.witnesses,
+        eventKey,
+        descriptor: { ...member.value, trace_root: "ff".repeat(32) },
+      }),
+    ).toThrow(/selected operator trace/u);
+
     expect(members[0]?.value).toMatchObject({
       schema_version: 1n,
       machine_version: 1n,
@@ -738,7 +808,7 @@ describe("V1 forced transaction material", () => {
       ({ value }) => value.phase === 8n,
     );
     const nativeExecutions = retainedEntries.filter(
-      ({ value }) => value.phase === 9n,
+      ({ key, value }) => key.execution_index >= 0n && value.phase === 9n,
     );
     expect(scriptSources.length).toBeGreaterThan(0);
     expect(scriptSources.every(({ key }) => key.execution_index < 0n)).toBe(
@@ -924,7 +994,17 @@ describe("V1 forced transaction material", () => {
       );
       expect(outputDescriptors).toHaveLength(1);
       expect(outputDescriptors[0]!.key.execution_index).toBeLessThan(0n);
-      const terminal = retained.find(({ value }) => value.phase === 10n);
+      const terminal = retained.find(({ value }) => {
+        if (value.phase !== 10n) return false;
+        const control = decodeSingleCbor(
+          Buffer.from(value.witness_cbor, "hex"),
+        );
+        return (
+          Array.isArray(control) &&
+          control.length === 4 &&
+          BigInt(control[1] as number) === 3n
+        );
+      });
       expect(terminal).toMatchObject({
         value: {
           phase: 10n,
@@ -939,7 +1019,12 @@ describe("V1 forced transaction material", () => {
       );
       expect(terminal!.key.execution_index).toBeLessThan(0n);
       const assetMutations = retained.filter(
-        ({ value }) => value.phase === 12n,
+        ({ value }) =>
+          value.phase === 12n &&
+          typeof value.auxiliary === "object" &&
+          ("ValueInputAssetWitness" in value.auxiliary ||
+            "ValueOutputAssetWitness" in value.auxiliary ||
+            "ValueMintAssetWitness" in value.auxiliary),
       );
       expect(assetMutations).toHaveLength(2);
       expect(assetMutations.every(({ key }) => key.execution_index < 0n)).toBe(

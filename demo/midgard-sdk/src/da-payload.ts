@@ -23,9 +23,9 @@ export const DaPayloadEntry = asDataType<DaPayloadEntry>(DaPayloadEntrySchema);
 /**
  * Event-local retained validation coordinate. Non-negative values are exact
  * NativeScripts execution indexes; the negative domain is reserved for
- * chronological ScriptSources frontier/control/redeemer-item witnesses and
- * the exact ScriptIntegrity stage-3 terminal control and ValueAndMint asset
- * mutations.
+ * all chronological state/work witnesses; two further negative coordinates
+ * retain initial context and terminal endpoint openings. See
+ * retainedValidationStateCoordinate and retainedValidationEndpointCoordinate.
  */
 export const RetainedValidationWitnessKeySchema = Data.Object({
   event_key: EventKeySchema,
@@ -36,7 +36,8 @@ export type RetainedValidationWitnessKey = Data.Static<
 >;
 
 /**
- * Minimal public reconstruction material for a ScriptSources frontier/control
+ * Public reconstruction material for every chronological deterministic state,
+ * initial context and terminal endpoint, including a ScriptSources frontier/control
  * or redeemer-item state, the ScriptIntegrity stage-3 terminal control, a
  * ValueAndMint asset mutation, or a NativeScripts
  * `nativeExecutionDescriptor` transition. The state

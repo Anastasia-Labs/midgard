@@ -6,6 +6,7 @@ import {
   hashMidgardValidationRejectionCode,
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+  MidgardValidationPhase,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -184,8 +185,6 @@ const buildMaterial = async (
     { key: eventKeyCbor, value: descriptorCbor },
   ]);
   const retainedWitnesses = trace.witnesses.flatMap((witness, index) => {
-    if (witness.phase !== "scriptSources" && witness.phase !== "nativeScripts")
-      return [];
     const defaultTarget = direction === "accepted" ? 1 : 0;
     const auditHeaderPc = defaultTarget === 1 ? 88 : 85;
     if (omitAuditHeader && witness.programCounter === auditHeaderPc) return [];
@@ -197,7 +196,7 @@ const buildMaterial = async (
         ...SDK.validationTraceProofDataFromCore(claimedTree.proofs[index]!),
         state_index: BigInt(index + (mutateProofIndex ? 1 : 0)),
       },
-      phase: witness.phase === "scriptSources" ? 8n : 9n,
+      phase: BigInt(MidgardValidationPhase[witness.phase]),
       program_counter: BigInt(witness.programCounter),
       witness_cbor: witness.cbor.toString("hex"),
       auxiliary: Data.from(
@@ -209,12 +208,46 @@ const buildMaterial = async (
       [
         SDK.encodeRetainedValidationWitnessKey({
           event_key: eventKey,
-          execution_index: -BigInt(index + 1),
+          execution_index: SDK.retainedValidationStateCoordinate(
+            descriptor.step_count,
+            BigInt(index),
+          ),
         }),
         SDK.encodeRetainedValidationWitness(retained),
       ] as const,
     ];
   });
+  for (const endpoint of ["initial", "terminal"] as const) {
+    const stateIndex = endpoint === "initial" ? 0 : trace.states.length - 1;
+    const witness = trace.witnesses[stateIndex]!;
+    retainedWitnesses.push([
+      SDK.encodeRetainedValidationWitnessKey({
+        event_key: eventKey,
+        execution_index: SDK.retainedValidationEndpointCoordinate(
+          descriptor.step_count,
+          endpoint,
+        ),
+      }),
+      SDK.encodeRetainedValidationWitness({
+        machine_state: SDK.validationMachineStateDataFromCore(
+          trace.states[stateIndex]!,
+        ),
+        trace_proof: SDK.validationTraceProofDataFromCore(
+          claimedTree.proofs[stateIndex]!,
+        ),
+        phase:
+          endpoint === "initial"
+            ? -1n
+            : BigInt(MidgardValidationPhase[witness.phase]),
+        program_counter: BigInt(witness.programCounter),
+        witness_cbor: (endpoint === "initial"
+          ? trace.validationContextCbor
+          : witness.cbor
+        ).toString("hex"),
+        auxiliary: "NoAuxiliaryWitness",
+      }),
+    ]);
+  }
   const block = {
     header: { validationTracesRoot: traceRoot.root },
     reconstruction: {

@@ -703,3 +703,29 @@ The ledger digest is
 `33af2c7d1ea78c76e30b93b7c280a2e2cf9e9882423dd0495d660785156a7546`.
 These are direct-family gates. Installed retained-history admission and durable
 workflow gates are tracked separately and are not asserted complete here.
+
+Reproduction commands (from the repository root, except the Aiken check):
+
+```sh
+# Run in onchain/aiken; exact brace selectors collected 106 checks.
+flock --close /tmp/midgard-nip-aiken.lock /home/gumbo/.aiken/bin/aiken check --env testnet \
+  -m 'fraud_proofs/transition_trace/deposit_value.{..}' \
+  -m 'fraud_proofs/transition_trace/output_summaries.{..}' \
+  -m 'midgard/fraud_proofs/transition_trace.{..}'
+# Use declared Node22 and pnpm9 for all commands below.
+export PATH=/home/gumbo/.local/share/pnpm:/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH
+TRANSITION_TRACE_FIT_LEDGER_PATH=/tmp/transition-trace-deposit-outref-ledger.json \
+  pnpm --dir demo/midgard-fault-proofs exec vitest run \
+  tests/submit-init-emulator-transition-trace-final.test.ts -t 'assets=1295.*deposit'
+TRANSITION_TRACE_FIT_LEDGER_PATH=/tmp/transition-trace-outref-other-ledger.json \
+  pnpm --dir demo/midgard-fault-proofs exec vitest run \
+  tests/submit-init-emulator-transition-trace-final.test.ts -t '^(?!.*assets=1295)'
+pnpm --dir demo/midgard-fault-proofs exec vitest run \
+  tests/submit-init-emulator-transition-trace.test.ts \
+  tests/submit-init-emulator-transition-trace-subvariants.test.ts \
+  tests/transition-trace-output-summary.test.ts
+pnpm --dir demo/midgard-sdk exec tsc --noEmit
+pnpm --dir demo/midgard-fault-proofs exec tsc --noEmit
+pnpm --dir demo/midgard-node exec tsc --noEmit
+pnpm --dir demo/midgard-watcher exec tsc --noEmit
+```

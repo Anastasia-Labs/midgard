@@ -138,7 +138,13 @@ export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDa =
       seen.add(coordinate);
       if (!retainedKeyBytes.equals(keyBytes)) return [];
       const witness = decodeRetainedValidationWitness(entry.value);
-      return witness.phase === 10n && witness.program_counter === 3n
+      if (witness.phase !== 10n) return [];
+      const control = decodeSingleCbor(
+        Buffer.from(witness.witness_cbor, "hex"),
+      );
+      return Array.isArray(control) &&
+        control.length === 4 &&
+        integer(control[1], "stage") === 3n
         ? [witness]
         : [];
     });
@@ -149,6 +155,7 @@ export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDa =
     const retained = candidates[0]!;
     if (
       retained.machine_state.phase !== "ScriptIntegrity" ||
+      retained.program_counter !== retained.machine_state.program_counter ||
       retained.auxiliary !== "NoAuxiliaryWitness"
     )
       throw new Error(

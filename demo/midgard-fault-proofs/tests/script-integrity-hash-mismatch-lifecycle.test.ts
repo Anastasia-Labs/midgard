@@ -421,7 +421,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
         ),
         trace_proof: SDK.validationTraceProofDataFromCore(selectedProof),
         phase: 10n,
-        program_counter: 3n,
+        program_counter: BigInt(witness.programCounter),
         witness_cbor: witness.cbor.toString("hex"),
         auxiliary,
       };
@@ -443,6 +443,25 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
           ],
           expectedValidationTracesRoot: traceRoot.root,
         });
+      expect(retained.program_counter).not.toBe(3n);
+      await expect(
+        buildScriptIntegrityStageThreeAuthenticationFromRetainedDa({
+          eventKey,
+          authenticatedValidationTraceEntries: [
+            { key: eventKeyCbor, value: descriptorCbor },
+          ],
+          retainedValidationWitnessEntries: [
+            {
+              key: SDK.encodeRetainedValidationWitnessKey(retainedKey),
+              value: SDK.encodeRetainedValidationWitness({
+                ...retained,
+                program_counter: 3n,
+              }),
+            },
+          ],
+          expectedValidationTracesRoot: traceRoot.root,
+        }),
+      ).rejects.toThrow(/stage\/auxiliary changed/u);
       if (maximum) {
         const deep = syntheticDeepMembershipProof({
           key: eventKeyCbor,
