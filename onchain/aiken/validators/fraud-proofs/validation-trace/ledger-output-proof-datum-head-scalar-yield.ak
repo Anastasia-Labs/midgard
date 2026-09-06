@@ -11,7 +11,10 @@ validator main(dispatcher_script_hashes: List<ScriptHash>) {
       tx.inputs,
       tx.redeemers,
     )
-    shared.attest(claim, datum.head_scalar(claim.control, claim.witness))
+    shared.attest(
+      claim,
+      datum.head_scalar(claim.control, claim.witness, claim.claimed_span),
+    )
   }
 
   else(_) {

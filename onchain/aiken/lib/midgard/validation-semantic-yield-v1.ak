@@ -4,6 +4,7 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
+use aiken/primitive/bytearray
 use cardano/address.{Script}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Spend, Transaction}
@@ -26,6 +27,39 @@ pub fn require_semantic_yield_v1(
     role,
     yield_ref_input_index,
   )
+}
+
+/// Require one authenticated zero yield per role, reading the reference-input
+/// index list in role order. The list length must be exactly the role count:
+/// a shorter list fails the destructure, a longer one the final equality.
+pub fn require_semantic_yields_v1(
+  tx: Transaction,
+  reference_script_auth_policy_id: PolicyId,
+  roles: List<AssetName>,
+  yield_ref_input_indices: List<Int>,
+) -> Bool {
+  when roles is {
+    [] -> yield_ref_input_indices == []
+    [role, ..rest_roles] -> {
+      expect [index, ..rest_indices] = yield_ref_input_indices
+      and {
+        bytearray.length(
+          require_semantic_yield_v1(
+            tx,
+            reference_script_auth_policy_id,
+            role,
+            index,
+          ),
+        ) == 28,
+        require_semantic_yields_v1(
+          tx,
+          reference_script_auth_policy_id,
+          rest_roles,
+          rest_indices,
+        ),
+      }
+    }
+  }
 }
 
 pub fn unique_semantic_dispatch_v1(

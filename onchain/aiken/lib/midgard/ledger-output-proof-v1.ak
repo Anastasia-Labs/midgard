@@ -584,6 +584,82 @@ fn authenticated_chunk_window(
   )
 }
 
+/// The slicing half of `authenticated_output_span_for_output`: the same
+/// bounds and chunk-shape branches over the same witness, without the two
+/// chunk merkle membership checks. A stage yield may take a span through this
+/// function only when the span attestation yield has verified the same
+/// `(absolute_start, length, witness)` triple with the merkle checks in the
+/// same transaction; the two functions are deterministic on the shared
+/// dispatcher action, so the bytes are the authenticated span whenever both
+/// succeed (see `span_slice_matches_authenticated_span` in
+/// ledger-output-proof-v1.test.ak).
+pub fn output_span_slice_v1(
+  total_length: Int,
+  absolute_start: Int,
+  length: Int,
+  witness: LedgerOutputProofWitnessV1,
+) -> Option<ByteArray> {
+  when witness is {
+    LedgerOutputProofChunks { chunk_proof, next_chunk_proof } ->
+      output_span_slice_raw_v1(
+        total_length,
+        absolute_start,
+        length,
+        chunk_proof.chunk,
+        when next_chunk_proof is {
+          None -> None
+          Some(next) -> Some(next.chunk)
+        },
+      )
+    _ -> None
+  }
+}
+
+/// `output_span_slice_v1` on the raw chunk contents, for a consumer that
+/// reads the chunk bytes straight out of the shared witness data (field 5 of
+/// each `ChunkProofV1` constructor) without linking the checked decoder; the
+/// span attestation yield decodes and authenticates the same witness data in
+/// the same transaction, so the conjunction only passes on the checked shape.
+pub fn output_span_slice_raw_v1(
+  total_length: Int,
+  absolute_start: Int,
+  length: Int,
+  first_chunk: ByteArray,
+  next_chunk: Option<ByteArray>,
+) -> Option<ByteArray> {
+  if or {
+    length <= 0,
+    length > bounded_item_v1.chunk_bytes,
+    absolute_start < 0,
+    absolute_start + length > total_length,
+  } {
+    None
+  } else {
+    let first_chunk_index = absolute_start / bounded_item_v1.chunk_bytes
+    let last_chunk_index = ( absolute_start + length - 1 ) / bounded_item_v1.chunk_bytes
+    let local_start = absolute_start - first_chunk_index * bounded_item_v1.chunk_bytes
+    if last_chunk_index > first_chunk_index + 1 {
+      None
+    } else if last_chunk_index == first_chunk_index {
+      if next_chunk == None {
+        Some(builtin.slice_bytearray(local_start, length, first_chunk))
+      } else {
+        None
+      }
+    } else {
+      when next_chunk is {
+        None -> None
+        Some(next) ->
+          Some(
+            first_chunk
+              |> bytearray.concat(next)
+              |> builtin.slice_bytearray(local_start, length, _),
+          )
+      }
+    }
+  }
+}
+
 pub fn authenticated_output_span_for_output(
   output_index: Int,
   total_length: Int,

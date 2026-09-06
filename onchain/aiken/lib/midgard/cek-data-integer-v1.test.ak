@@ -1,3 +1,4 @@
+use aiken/cbor
 use midgard/cek_data_integer_v1
 use midgard/fraud_proofs/native_tx/codec.{slice_len}
 
@@ -117,5 +118,44 @@ test rejects_missing_short_and_surplus_authenticated_syntax_windows() {
     cek_data_integer_v1.step_v1(initial, None) == None,
     cek_data_integer_v1.step_v1(initial, Some(#"0000000000")) == None,
     cek_data_integer_v1.step_v1(initial, Some(#"000000000000")) == None,
+  }
+}
+
+/// `control_data_v1` is pinned to the wire encoding at every state of an
+/// honest trace: the directly built Plutus data equals the deserialised
+/// `encode_control_v1` bytes (the promise its doc comment makes for the
+/// shared-LOP scalar attestation path).
+fn trace_pins_wire_data(
+  control: cek_data_integer_v1.CekDataIntegerControlV1,
+  source: ByteArray,
+  source_start: Int,
+) -> Bool {
+  expect Some(wire_data) = cbor.deserialise(
+    cek_data_integer_v1.encode_control_v1(control),
+  )
+  expect cek_data_integer_v1.control_data_v1(control) == wire_data
+  if control.stage == cek_data_integer_v1.stage_terminal {
+    True
+  } else {
+    let source_bytes = when
+      cek_data_integer_v1.next_source_span_v1(control)
+    is {
+      None -> None
+      Some(span) ->
+        Some(slice_len(source, span.absolute_start - source_start, span.length))
+    }
+    expect Some(next) = cek_data_integer_v1.step_v1(control, source_bytes)
+    trace_pins_wire_data(next, source, source_start)
+  }
+}
+
+test integer_control_data_matches_wire_encoding() {
+  and {
+    trace_pins_wire_data(
+      cek_data_integer_v1.initial_control_v1(17, 11),
+      #"c349010000000000000000",
+      17,
+    ),
+    trace_pins_wire_data(cek_data_integer_v1.initial_control_v1(0, 1), #"0b", 0),
   }
 }

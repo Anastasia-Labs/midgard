@@ -289,6 +289,27 @@ pub fn encode_control_v1(control: CekDataIntegerControlV1) -> ByteArray {
     |> bytearray.concat(encode_optional_blob(control.blob))
 }
 
+/// The Plutus data form of the wire control — structurally
+/// `cbor.deserialise(encode_control_v1(control))` — built directly; see
+/// `blake2b_256_trace_v1.control_data_v1`. Pinned by
+/// `integer_control_data_matches_wire_encoding`.
+pub fn control_data_v1(control: CekDataIntegerControlV1) -> Data {
+  builtin.list_data(
+    [
+      builtin.i_data(version),
+      builtin.i_data(control.stage),
+      builtin.i_data(control.source_start),
+      builtin.i_data(control.source_length),
+      builtin.i_data(control.memory),
+      when control.blob is {
+        None -> builtin.constr_data(1, [])
+        Some(value) ->
+          builtin.constr_data(0, [cek_source_blob_v1.control_data_v1(value)])
+      },
+    ],
+  )
+}
+
 fn optional_blob_from_data(
   data: Data,
 ) -> Option<cek_source_blob_v1.CekSourceBlobControlV1> {
@@ -433,7 +454,20 @@ pub fn step_v1(
 ) -> Option<CekDataIntegerControlV1> {
   if !control_is_well_formed(control) {
     None
-  } else if control.stage == stage_syntax {
+  } else {
+    prevalidated_step_v1(control, source_bytes)
+  }
+}
+
+/// `step_v1` for a control already proven well-formed by the caller's
+/// authentication (the shared-LOP scalar attestation yield attests the claim
+/// equals the exact `control_from_data_v1` decode, which enforces
+/// `control_is_well_formed`), so the consuming stage yield skips the check.
+pub fn prevalidated_step_v1(
+  control: CekDataIntegerControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Option<CekDataIntegerControlV1> {
+  if control.stage == stage_syntax {
     step_syntax(control, source_bytes)
   } else if control.stage == stage_blob {
     step_blob(control, source_bytes)

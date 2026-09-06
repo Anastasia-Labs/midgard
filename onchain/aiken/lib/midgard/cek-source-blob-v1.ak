@@ -175,6 +175,26 @@ pub fn encode_control_v1(control: CekSourceBlobControlV1) -> ByteArray {
     |> bytearray.concat(encode_optional_active_hash(control.active_hash))
 }
 
+/// The Plutus data form of the wire control — structurally
+/// `cbor.deserialise(encode_control_v1(control))` — built directly; see
+/// `blake2b_256_trace_v1.control_data_v1`.
+pub fn control_data_v1(control: CekSourceBlobControlV1) -> Data {
+  builtin.list_data(
+    [
+      builtin.i_data(version),
+      builtin.i_data(control.stage),
+      builtin.i_data(control.source_start),
+      builtin.i_data(control.source_length),
+      cek_blob_frontier_v1.frontier_data_v1(control.frontier),
+      when control.active_hash is {
+        None -> builtin.constr_data(1, [])
+        Some(value) ->
+          builtin.constr_data(0, [blake2b_256_trace_v1.control_data_v1(value)])
+      },
+    ],
+  )
+}
+
 fn peak_from_data(data: Data) -> cek_blob_frontier_v1.CekBlobFrontierPeakV1 {
   expect [height_data, root_data, byte_length_data] = builtin.un_list_data(data)
   cek_blob_frontier_v1.CekBlobFrontierPeakV1 {

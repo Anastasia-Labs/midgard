@@ -3,7 +3,11 @@ use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/components.{decode_midgard_tx_input_cbor}
+use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_proof_raw
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
+use midgard/validation_machine/witness.{resolution_schedule_node_hash}
 use midgard/validation_trace_v1
 
 pub type ResolveInputsControlRawV1 {
@@ -122,4 +126,98 @@ pub fn encode_pending_raw(
     |> bytearray.concat(encode_definite_bytes(next_schedule_hash))
     |> bytearray.concat(encode_definite_bytes(descriptor_cbor))
     |> bytearray.concat(encode_definite_bytes(output_proof_cbor))
+}
+
+/// The five-item pending record of a resolve-inputs control, with the nested
+/// ledger-output-proof control kept as canonical bytes: the carrier binds it,
+/// the stage yield decodes it.
+pub type PendingRawV1 {
+  source_kind: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  descriptor_cbor: ByteArray,
+  output_proof_cbor: ByteArray,
+}
+
+pub fn pending_raw_from_cbor(pending_cbor: ByteArray) -> PendingRawV1 {
+  expect pending_cbor != #"00"
+  expect Some(data) = cbor.deserialise(pending_cbor)
+  expect
+      [
+        source_kind_data, key_data, next_schedule_hash_data,
+        descriptor_cbor_data, output_proof_cbor_data,
+      ]
+    = builtin.un_list_data(data)
+  PendingRawV1 {
+    source_kind: builtin.un_i_data(source_kind_data),
+    key: builtin.un_b_data(key_data),
+    next_schedule_hash: builtin.un_b_data(next_schedule_hash_data),
+    descriptor_cbor: builtin.un_b_data(descriptor_cbor_data),
+    output_proof_cbor: builtin.un_b_data(output_proof_cbor_data),
+  }
+}
+
+pub fn encode_pending(pending: PendingRawV1) -> ByteArray {
+  encode_pending_raw(
+    pending.source_kind,
+    pending.key,
+    pending.next_schedule_hash,
+    pending.descriptor_cbor,
+    pending.output_proof_cbor,
+  )
+}
+
+/// Every clause of `witness.resolve_inputs_control_is_bound` for a control
+/// with a pending record, except the three ledger-output-proof scalar
+/// equalities and `control_is_well_formed`, which `control_raw_lop_is_pinned`
+/// and the selected stage yield discharge respectively.
+pub fn control_raw_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ResolveInputsControlRawV1,
+  pending: PendingRawV1,
+) -> Bool {
+  let descriptor = ledger_output_commitment_v1.decode(pending.descriptor_cbor)
+  let input = decode_midgard_tx_input_cbor(pending.key)
+  and {
+    control.pending_cbor == encode_pending(pending),
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    bytearray.length(control.accumulator) == 32,
+    bytearray.length(control.remaining_schedule_hash) == 32,
+    bytearray.length(control.resolution_schedule_hash) == 32,
+    control.cursor > 1 || control.remaining_schedule_hash == control.resolution_schedule_hash,
+    control.signer_count >= 0,
+    bytearray.length(control.signer_frontier_commitment) == 32,
+    control.cursor > 0,
+    pending.source_kind == 0 || pending.source_kind == 1,
+    resolution_schedule_node_hash(
+      pending.source_kind,
+      pending.key,
+      pending.next_schedule_hash,
+    ) == control.remaining_schedule_hash,
+    input.output_index == descriptor.output_index,
+    witness.work_witness_cbor == encode_control_raw(control),
+  }
+}
+
+/// The three ledger-output-proof scalars the monolith states explicitly:
+/// items 2, 3 and 4 of the pinned control equal the descriptor's output
+/// index, total length and item commitment. `ledger_output_proof_raw.open`
+/// supplies the remaining outer well-formedness (version, stage range,
+/// canonical re-encoding).
+pub fn control_raw_lop_is_pinned(
+  frame: ledger_output_proof_raw.Frame,
+  descriptor_cbor: ByteArray,
+) -> Bool {
+  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  and {
+    ledger_output_proof_raw.integer(frame, 2) == descriptor.output_index,
+    ledger_output_proof_raw.integer(frame, 3) == descriptor.total_length,
+    ledger_output_proof_raw.bytes(frame, 4) == descriptor.item_commitment,
+  }
 }

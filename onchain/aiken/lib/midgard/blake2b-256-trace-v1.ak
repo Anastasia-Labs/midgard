@@ -366,6 +366,27 @@ pub fn encode_control_v1(control: Blake2b256TraceControlV1) -> ByteArray {
     |> bytearray.concat(cbor.serialise(control.round))
 }
 
+/// The Plutus data form of the wire control — structurally
+/// `cbor.deserialise(encode_control_v1(control))` — built directly so a
+/// consumer that splices the control into a data carrier links neither the
+/// byte encoder nor a CBOR parser. Pinned to the encoder by
+/// `control_data_matches_wire_encoding` tests of the consuming modules.
+pub fn control_data_v1(control: Blake2b256TraceControlV1) -> Data {
+  builtin.list_data(
+    [
+      builtin.i_data(version),
+      builtin.i_data(control.stage),
+      builtin.i_data(control.cursor),
+      builtin.i_data(control.total_length),
+      builtin.b_data(control.chaining_value),
+      builtin.b_data(control.active_block),
+      builtin.i_data(control.active_block_length),
+      builtin.b_data(control.working_value),
+      builtin.i_data(control.round),
+    ],
+  )
+}
+
 pub fn control_from_data_v1(data: Data) -> Blake2b256TraceControlV1 {
   expect
       [

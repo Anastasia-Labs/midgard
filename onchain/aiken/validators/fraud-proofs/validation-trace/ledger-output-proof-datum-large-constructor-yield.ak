@@ -7,13 +7,17 @@ validator main(dispatcher_script_hashes: List<ScriptHash>) {
   withdraw(_redeemer: Data, _credential, tx: Transaction) {
     let claim = shared.dispatch(
       dispatcher_script_hashes,
-      14,
+      20,
       tx.inputs,
       tx.redeemers,
     )
     shared.attest(
       claim,
-      datum.head_sequence(claim.control, claim.witness, claim.claimed_span),
+      datum.advance_large_constructor(
+        claim.control,
+        claim.witness,
+        claim.claimed_span,
+      ),
     )
   }
 

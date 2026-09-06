@@ -1,5 +1,7 @@
+use aiken/builtin
 use aiken/fuzz
 use aiken/primitive/bytearray
+use midgard/blake2b_224_trace_v1 as blake
 use midgard/bounded_item_v1
 use midgard/cek_data_traverse_v1 as traverse
 use midgard/ledger_output_proof_raw as raw
@@ -8,6 +10,66 @@ use midgard/ledger_output_proof_v1 as proof
 use midgard/ledger_output_scan_v1 as scan
 use midgard/ledger_output_value_v1 as value
 use midgard/validation_merkle_v1 as merkle
+
+fn span_claim(start: Int, length: Int) -> Data {
+  builtin.constr_data(0, [builtin.i_data(start), builtin.i_data(length)])
+}
+
+fn no_claim() -> Data {
+  builtin.constr_data(1, [])
+}
+
+/// The honest span claim the step-dispatcher action carries: exactly the span
+/// the typed monolith reads at this control, `constr 1 []` when it reads none.
+fn honest_span_claim(control: proof.LedgerOutputProofControlV1) -> Data {
+  if control.stage == proof.stage_reference_script_commitment {
+    let scan_control = control.output_scan
+    let item_offset = scan_control.reference_script_item_offset
+    let item_length = control.total_length - item_offset
+    let chunk_count = bounded_item_v1.chunk_count(item_length)
+    let chunk_index = control.reference_script_count
+    if chunk_index == chunk_count {
+      no_claim()
+    } else {
+      span_claim(
+        item_offset + chunk_index * bounded_item_v1.chunk_bytes,
+        bounded_item_v1.expected_chunk_length(item_length, chunk_index),
+      )
+    }
+  } else if control.stage == proof.stage_script_hash {
+    expect Some(hash_control) = control.script_hash
+    if hash_control.stage == blake.stage_ready {
+      let remaining = hash_control.total_length - hash_control.cursor
+      let expected_length = if remaining < blake.block_bytes {
+        remaining
+      } else {
+        blake.block_bytes
+      }
+      let includes_language = hash_control.cursor == 0
+      let content_length = expected_length - if includes_language {
+        1
+      } else {
+        0
+      }
+      if content_length == 0 {
+        no_claim()
+      } else {
+        span_claim(
+          control.output_scan.reference_script_offset + hash_control.cursor - if includes_language {
+            0
+          } else {
+            1
+          },
+          content_length,
+        )
+      }
+    } else {
+      no_claim()
+    }
+  } else {
+    no_claim()
+  }
+}
 
 fn same_step(
   control: proof.LedgerOutputProofControlV1,
@@ -27,9 +89,9 @@ fn same_step(
   } else if control.stage == proof.stage_value_fold {
     narrow.value_fold(frame, witness)
   } else if control.stage == proof.stage_reference_script_commitment {
-    narrow.reference_script(frame, witness)
+    narrow.reference_script(frame, witness, honest_span_claim(control))
   } else if control.stage == proof.stage_script_hash {
-    narrow.script_hash(frame, witness)
+    narrow.script_hash(frame, witness, honest_span_claim(control))
   } else {
     narrow.native_script(frame, witness)
   }

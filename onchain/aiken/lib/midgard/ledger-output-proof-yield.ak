@@ -6,7 +6,6 @@ use cardano/transaction.{
   InlineDatum, Input, Output, Redeemer, ScriptPurpose, Spend,
 }
 use midgard/bounded_item_v1
-use midgard/computation_thread as ct
 use midgard/ledger_output_proof_raw as raw
 use midgard/ledger_output_proof_stages as stages
 use midgard/ledger_output_proof_v1 as proof
@@ -15,25 +14,38 @@ use midgard/rejection_reason_v1.{
   reject_invalid_field_type, reject_invalid_output, reject_native_script_depth,
   reject_native_script_node_count,
 }
-use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
-use midgard/validation_machine/shared.{rejected_successor_is_exact}
-use midgard/validation_semantic_v1.{Datum}
-use midgard/validation_trace_v1.{ValidationMachineStateV1}
+use midgard/validation_machine/shared.{encode_terminal_rejection_witness}
+use midgard/validation_trace_v1
 
+/// The shared step action's claims, read straight out of the dispatcher's
+/// authenticated spend. The dispatcher's own generated code checked-decodes
+/// its datum and its `StepRedeemer` (transition included) in the same
+/// transaction, so this side reads the two structures with direct builtins:
+/// only the fields a yield consumes are extracted, and the rejection check
+/// works on the successor state's data representation.
 pub type Claim {
-  pre: ValidationMachineStateV1,
-  transition: ValidationOneStepWitnessV1,
+  pre_program_counter: Int,
+  pre_prior_ledger_root: ByteArray,
+  /// `ValidationMachineStateV1` on the wire (the transition's
+  /// `claimed_successor`), checked by the dispatcher's redeemer decode.
+  claimed_successor: Data,
   witness: Data,
   control: raw.Frame,
   next_control_cbor: ByteArray,
+  claimed_scalar: Data,
+  claimed_span: Data,
 }
 
-pub fn dispatch(
+/// Open the one dispatcher input's shared ten-field step action. Every yield
+/// of a step transaction — the stage yield and the span/scalar attestation
+/// yields — reads the same action through this function, so the claims they
+/// verify and the claims the stage yield consumes are one value; the
+/// dispatcher never has to compare claims across yields.
+fn dispatch_action(
   dispatchers: List<ScriptHash>,
-  expected_role: Int,
   inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Claim {
+) -> (Claim, Int) {
   expect
       [
         Input {
@@ -59,19 +71,94 @@ pub fn dispatch(
       Pair(0,
       [
         _input_index, _output_index, transition_data, witness_data, control_data,
-        next_data, role_data, _ref_index,
+        next_data, claimed_scalar, claimed_span, role_data, _ref_indices,
       ])
     = builtin.un_constr_data(action)
-  expect builtin.un_i_data(role_data) == expected_role
-  expect transition: ValidationOneStepWitnessV1 = transition_data
-  expect datum: Datum = datum_data
-  expect ct.StepDatum { data: Some(state), .. } = datum
-  Claim {
-    pre: state.resolution.pre_state,
-    transition,
-    witness: witness_data,
-    control: raw.open(builtin.un_b_data(control_data)),
-    next_control_cbor: builtin.un_b_data(next_data),
+  // `StepRedeemer` transition: [work_witness_cbor, claimed_successor]; the
+  // dispatcher's checked redeemer decode pins the shape.
+  let Pair(_, transition_fields) = builtin.un_constr_data(transition_data)
+  expect [_work_witness_cbor, claimed_successor] = transition_fields
+  // `StepDatum { fraud_prover, data: Some(prepared) }` with
+  // `prepared.resolution.pre_state` the machine pre state; the dispatcher's
+  // checked datum decode pins the shape.
+  let Pair(_, datum_fields) = builtin.un_constr_data(datum_data)
+  expect [_fraud_prover, state_option] = datum_fields
+  expect Pair(0, [prepared]) = builtin.un_constr_data(state_option)
+  let Pair(_, prepared_fields) = builtin.un_constr_data(prepared)
+  expect [_prepared_version, resolution, _evidence_hash] = prepared_fields
+  let Pair(_, resolution_fields) = builtin.un_constr_data(resolution)
+  expect [_resolution_version,
+        pre_state, _operator_hash, _challenger_hash] = resolution_fields
+  let Pair(_, pre_fields) = builtin.un_constr_data(pre_state)
+  expect
+      [
+        _machine_version, _event_key_hash, _transaction_id,
+        _transaction_commitment, _validation_context_hash, _source_kind,
+        prior_ledger_root, _phase, program_counter, _work_root, _cpu, _memory,
+        _verdict, _rejection_code_hash, _ledger_delta_root,
+      ]
+    = pre_fields
+  (
+    Claim {
+      pre_program_counter: builtin.un_i_data(program_counter),
+      pre_prior_ledger_root: builtin.un_b_data(prior_ledger_root),
+      claimed_successor,
+      witness: witness_data,
+      control: raw.open(builtin.un_b_data(control_data)),
+      next_control_cbor: builtin.un_b_data(next_data),
+      claimed_scalar,
+      claimed_span,
+    },
+    builtin.un_i_data(role_data),
+  )
+}
+
+pub fn dispatch(
+  dispatchers: List<ScriptHash>,
+  expected_role: Int,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Claim {
+  let (claim, role) = dispatch_action(dispatchers, inputs, redeemers)
+  expect role == expected_role
+  claim
+}
+
+/// An attestation yield serves every stage role, so it pins no role index;
+/// the dispatcher's role table decides which attestations a role requires,
+/// and `require_authenticated_zero_yield` binds each required role name to
+/// the withdrawal that runs this dispatch.
+pub fn dispatch_attestation(
+  dispatchers: List<ScriptHash>,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Claim {
+  let (claim, _role) = dispatch_action(dispatchers, inputs, redeemers)
+  claim
+}
+
+/// The chunk proofs of a step witness, whichever witness family carries them:
+/// the datum-traversal witness (`constr 3 [action, first, second]`) or the
+/// plain chunk witness (`constr 1 [chunk, next]`). Every other witness shape
+/// carries no chunks, so a span claim over it can never verify.
+pub fn span_chunks(data: Data) -> proof.LedgerOutputProofWitnessV1 {
+  let Pair(tag, fields) = builtin.un_constr_data(data)
+  if tag == 3 {
+    expect [_action, first_data, second_data] = fields
+    expect first: Option<bounded_item_v1.ChunkProofV1> = first_data
+    expect second: Option<bounded_item_v1.ChunkProofV1> = second_data
+    when first is {
+      None -> {
+        expect second == None
+        proof.LedgerOutputProofNoWitness
+      }
+      Some(chunk_proof) ->
+        proof.LedgerOutputProofChunks { chunk_proof, next_chunk_proof: second }
+    }
+  } else if tag == 1 {
+    chunk_witness(data)
+  } else {
+    proof.LedgerOutputProofNoWitness
   }
 }
 
@@ -92,13 +179,39 @@ pub fn attest(claim: Claim, result: Option<stages.StepResult>) -> Bool {
       }
       and {
         claim.next_control_cbor == #"",
-        rejected_successor_is_exact(
-          claim.pre,
-          claim.transition.claimed_successor,
-          code,
-        ),
+        rejected_successor_data_is_exact(claim, code),
       }
     }
+  }
+}
+
+/// `validation_machine/shared.rejected_successor_is_exact` on the successor
+/// state's data representation: phase Terminal, verdict Rejected, the exact
+/// rejection-code hash, and the exact terminal-rejection work root — clause
+/// for clause, with the two enum clauses as data equality on the enums'
+/// constructor tags (Terminal = 14, Rejected = 2). Deliberately no clause on
+/// `ledger_delta_root`; see the NOTE on the typed function.
+fn rejected_successor_data_is_exact(claim: Claim, code: ByteArray) -> Bool {
+  let Pair(_, fields) = builtin.un_constr_data(claim.claimed_successor)
+  expect
+      [
+        _machine_version, _event_key_hash, _transaction_id,
+        _transaction_commitment, _validation_context_hash, _source_kind,
+        _prior_ledger_root, phase, _program_counter, work_root, _cpu, _memory,
+        verdict, rejection_code_hash, _ledger_delta_root,
+      ]
+    = fields
+  and {
+    phase == builtin.constr_data(14, []),
+    verdict == builtin.constr_data(2, []),
+    builtin.un_b_data(rejection_code_hash) == validation_trace_v1.hash_rejection_code(
+      code,
+    ),
+    builtin.un_b_data(work_root) == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Terminal,
+      claim.pre_program_counter + 1,
+      encode_terminal_rejection_witness(code, claim.pre_prior_ledger_root),
+    ),
   }
 }
 

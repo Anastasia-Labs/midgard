@@ -474,3 +474,52 @@ test initial_control_specialized_encoder_matches_generic(
     ledger_output_proof_v1.initial_control_v1(index, length, commitment),
   )
 }
+
+/// The slicing half and the authenticating whole agree on every span over an
+/// honest witness: `output_span_slice_v1` returns exactly what
+/// `authenticated_output_span_for_output` returns, for in-range and
+/// out-of-range spans alike (the promise `output_span_slice_v1`'s doc comment
+/// makes for the shared-LOP span attestation split).
+test span_slice_matches_authenticated_span(
+  args via fuzz.tuple(fuzz.int_between(-3, 60), fuzz.int_between(-1, 60)),
+) {
+  let (start, length) = args
+  let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
+  let total = bytearray.length(small_datum_output)
+  let witness = chunks(proof)
+  ledger_output_proof_v1.output_span_slice_v1(total, start, length, witness) == ledger_output_proof_v1.authenticated_output_span_for_output(
+    0,
+    total,
+    commitment,
+    start,
+    length,
+    witness,
+  )
+}
+
+/// The agreement is conditional on the merkle membership the attestation
+/// yield checks: with a substituted chunk the slice still returns bytes while
+/// the authenticated span refuses, so a stage yield may consume the slice
+/// only under the span attestation of the same transaction.
+test span_slice_alone_does_not_authenticate() {
+  let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
+  let total = bytearray.length(small_datum_output)
+  let substituted = bounded_item_v1.ChunkProofV1 {
+    ..proof,
+    chunk: builtin.replicate_byte(bytearray.length(proof.chunk), 0),
+  }
+  let witness = chunks(substituted)
+  and {
+    ledger_output_proof_v1.output_span_slice_v1(total, 0, 4, witness) == Some(
+      #"00000000",
+    ),
+    ledger_output_proof_v1.authenticated_output_span_for_output(
+      0,
+      total,
+      commitment,
+      0,
+      4,
+      witness,
+    ) == None,
+  }
+}

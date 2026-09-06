@@ -223,20 +223,75 @@ pub fn value_fold(
   }
 }
 
-fn output_span(
+/// The span claim of the shared step-dispatcher action: `constr 0 [start,
+/// length]` when the stage reads an authenticated output span this step,
+/// `constr 1 []` otherwise. The span attestation yield verifies the claimed
+/// span's chunk merkle membership; the stage yield requires the claim to be
+/// exactly the span its control demands and takes the bytes by pure slicing.
+pub fn span_fields(claimed: Data) -> Option<(Int, Int)> {
+  let Pair(tag, fields) = builtin.un_constr_data(claimed)
+  if tag == 1 {
+    expect fields == []
+    None
+  } else {
+    expect tag == 0
+    expect [start, length] = fields
+    Some((builtin.un_i_data(start), builtin.un_i_data(length)))
+  }
+}
+
+pub fn no_span_claim(claimed: Data) -> Bool {
+  span_fields(claimed) == None
+}
+
+/// Every span-claim mode of the shared step action. Sliced mode (`constr 0
+/// [start, length]`) is claimed by the chunk-cursor stages, whose spans reach
+/// `bounded_item_v1.chunk_bytes`: the stage yield takes the bytes by slicing
+/// the shared witness chunks. Content mode (`constr 2 [start, length,
+/// bytes]`) is claimed by the datum-traversal stages, whose spans stay small:
+/// the claim carries the bytes and the stage yield consumes them directly.
+/// In both modes the span attestation yield verifies the same claim with the
+/// chunk merkle checks of `authenticated_output_span_for_output`.
+pub type SpanClaimV1 {
+  SpanClaimNone
+  SpanClaimSliced { start: Int, length: Int }
+  SpanClaimContent { start: Int, length: Int, bytes: ByteArray }
+}
+
+pub fn span_claim_v1(claimed: Data) -> SpanClaimV1 {
+  let Pair(tag, fields) = builtin.un_constr_data(claimed)
+  if tag == 1 {
+    expect fields == []
+    SpanClaimNone
+  } else if tag == 0 {
+    expect [start, length] = fields
+    SpanClaimSliced {
+      start: builtin.un_i_data(start),
+      length: builtin.un_i_data(length),
+    }
+  } else {
+    expect tag == 2
+    expect [start, length, bytes] = fields
+    SpanClaimContent {
+      start: builtin.un_i_data(start),
+      length: builtin.un_i_data(length),
+      bytes: builtin.un_b_data(bytes),
+    }
+  }
+}
+
+/// Take a span the stage's control demands from the witness chunks, requiring
+/// the dispatcher action to claim exactly this span so the span attestation
+/// yield of the same transaction verifies its merkle membership.
+fn claimed_output_span(
   control: raw.Frame,
   start: Int,
   length: Int,
   witness: proof.LedgerOutputProofWitnessV1,
+  claimed_span: Data,
 ) -> Option<ByteArray> {
-  proof.authenticated_output_span_for_output(
-    raw.integer(control, 2),
-    raw.integer(control, 3),
-    raw.bytes(control, 4),
-    start,
-    length,
-    witness,
-  )
+  expect span_fields(claimed_span) == Some((start, length))
+  proof.output_span_slice_v1(raw.integer(control, 3), start, length, witness)
 }
 
 fn optional_data(encoded: ByteArray) -> Data {
@@ -246,6 +301,7 @@ fn optional_data(encoded: ByteArray) -> Data {
 pub fn reference_script(
   control: raw.Frame,
   witness: proof.LedgerOutputProofWitnessV1,
+  claimed_span: Data,
 ) -> Option<StepResult> {
   expect raw.integer(control, 1) == proof.stage_reference_script_commitment
   let scan_control = scan.control_from_data_v1(raw.item(control, 5))
@@ -263,6 +319,7 @@ pub fn reference_script(
   expect raw.item(control, 10) == builtin.constr_data(1, [])
   expect raw.item(control, 11) == builtin.constr_data(1, [])
   if chunk_index == chunk_count {
+    expect no_span_claim(claimed_span)
     if witness == proof.LedgerOutputProofNoWitness {
       let initial = blake.initial_control_v1(
         scan_control.reference_script_length + 1,
@@ -282,7 +339,9 @@ pub fn reference_script(
   } else {
     let chunk_length = bounded.expected_chunk_length(item_length, chunk_index)
     let start = item_offset + chunk_index * bounded.chunk_bytes
-    when output_span(control, start, chunk_length, witness) is {
+    when
+      claimed_output_span(control, start, chunk_length, witness, claimed_span)
+    is {
       None -> None
       Some(chunk) -> {
         let next_peaks = merkle.append_leaf(
@@ -327,6 +386,7 @@ fn next_hash(
 pub fn script_hash(
   control: raw.Frame,
   witness: proof.LedgerOutputProofWitnessV1,
+  claimed_span: Data,
 ) -> Option<StepResult> {
   expect raw.integer(control, 1) == proof.stage_script_hash
   let scan_control = scan.control_from_data_v1(raw.item(control, 5))
@@ -335,6 +395,7 @@ pub fn script_hash(
   expect hash_control.total_length == scan_control.reference_script_length + 1
   expect raw.item(control, 11) == builtin.constr_data(1, [])
   if hash_control.stage == blake.stage_terminal {
+    expect no_span_claim(claimed_span)
     if witness != proof.LedgerOutputProofNoWitness {
       None
     } else if scan_control.reference_script_language != 0 {
@@ -379,13 +440,14 @@ pub fn script_hash(
       1
     }
     let content = if content_length == 0 {
+      expect no_span_claim(claimed_span)
       if witness == proof.LedgerOutputProofNoWitness {
         Some(#"")
       } else {
         None
       }
     } else {
-      output_span(control, start, content_length, witness)
+      claimed_output_span(control, start, content_length, witness, claimed_span)
     }
     when content is {
       None -> None
@@ -400,10 +462,13 @@ pub fn script_hash(
         next_hash(control, blake.step_v1(hash_control, Some(block)))
       }
     }
-  } else if witness != proof.LedgerOutputProofNoWitness {
-    None
   } else {
-    next_hash(control, blake.step_v1(hash_control, None))
+    expect no_span_claim(claimed_span)
+    if witness != proof.LedgerOutputProofNoWitness {
+      None
+    } else {
+      next_hash(control, blake.step_v1(hash_control, None))
+    }
   }
 }
 

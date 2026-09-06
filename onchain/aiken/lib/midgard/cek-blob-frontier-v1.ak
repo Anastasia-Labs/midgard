@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/cek_proof_v1
@@ -237,6 +238,37 @@ pub fn encode_frontier_v1(frontier: CekBlobFrontierV1) -> ByteArray {
     |> bytearray.concat(cbor.serialise(frontier.count))
     |> bytearray.concat(cbor.serialise(frontier.byte_length))
     |> bytearray.concat(encode_peaks(frontier.peaks))
+}
+
+fn peak_data_items(peaks: List<CekBlobFrontierPeakV1>) -> List<Data> {
+  when peaks is {
+    [] -> []
+    [peak, ..rest] ->
+      [
+        builtin.list_data(
+          [
+            builtin.i_data(peak.height),
+            builtin.b_data(peak.root),
+            builtin.i_data(peak.byte_length),
+          ],
+        ),
+        ..peak_data_items(rest)
+      ]
+  }
+}
+
+/// The Plutus data form of the wire frontier — structurally
+/// `cbor.deserialise(encode_frontier_v1(frontier))` — built directly; see
+/// `blake2b_256_trace_v1.control_data_v1`.
+pub fn frontier_data_v1(frontier: CekBlobFrontierV1) -> Data {
+  builtin.list_data(
+    [
+      builtin.i_data(version),
+      builtin.i_data(frontier.count),
+      builtin.i_data(frontier.byte_length),
+      builtin.list_data(peak_data_items(frontier.peaks)),
+    ],
+  )
 }
 
 fn append_all(
