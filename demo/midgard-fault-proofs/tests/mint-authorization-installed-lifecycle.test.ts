@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
@@ -100,6 +100,24 @@ afterAll(async () => {
   const blueprintSha256 = createHash("sha256")
     .update(await readFile(realBlueprintPath))
     .digest("hex");
+  const checkpointPath =
+    process.env.MIDGARD_FIT_MEASUREMENT_CHECKPOINT ??
+    join(tmpdir(), `mint-authorization-measurements-${process.pid}.json`);
+  await writeFile(
+    checkpointPath,
+    JSON.stringify(
+      {
+        diagnosticOnly: true,
+        category: "mintAuthorization",
+        blueprintSha256,
+        compilerVersion: "aiken v1.1.23+5adf783",
+        measurements,
+      },
+      (_key, value) => (typeof value === "bigint" ? value.toString() : value),
+      2,
+    ) + "\n",
+  );
+  process.stderr.write(`Diagnostic measured transactions: ${checkpointPath}\n`);
   // A filtered rerun replaces its whole named scenario. Other scenarios may
   // be retained only from the exact current blueprint; the verifier below
   // independently requires the complete named lifecycle surface.
@@ -701,7 +719,9 @@ describe("mintAuthorization installed cursor actuator", () => {
         result.measurements.forEach((m, index) =>
           measurements.push({
             name: `${scenario.name}/${String(action.input.stage)}/${n}/${index}`,
-            kind: "lifecycle",
+            kind: String(action.input.stage).startsWith("publish_")
+              ? "publication"
+              : "lifecycle",
             maximumShape: `${scenario.item.length} raw script bytes`,
             signedBytes: m.completeSignedBytes,
             memoryUnits: m.executionMemory,

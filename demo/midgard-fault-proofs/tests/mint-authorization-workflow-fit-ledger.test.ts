@@ -41,6 +41,10 @@ describe("mintAuthorization installed workflow fit ledger", () => {
         })),
       }),
     ).toEqual(ledger);
+    for (const row of ledger.entries) {
+      if (row.name.split("/")[1]?.startsWith("publish_"))
+        expect(row.kind, row.name).toBe("publication");
+    }
     const names = new Set(ledger.entries.map((row) => row.name));
     for (const scenario of [
       "absent-mint",
