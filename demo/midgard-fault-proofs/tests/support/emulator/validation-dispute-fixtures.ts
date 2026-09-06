@@ -24,6 +24,7 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   decodeCekContextCborArray,
   EMPTY_MERKLE_TREE_ROOT,
@@ -741,9 +742,17 @@ const buildNativeTransactionTrace = async ({
   scriptSourcesRejection,
   descriptorMaximum = false,
   cekObserverCount = 0,
+  outputDatumCbor,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
+  /**
+   * Inline datum attached to the produced output, as Aiken-canonical Plutus
+   * data CBOR. Drives the ledger-output-proof traversal through its datum
+   * stages (and their scalar/span attestation yields), which a plain
+   * address+value output never reaches.
+   */
+  readonly outputDatumCbor?: Buffer;
   readonly assetCount?: number;
   readonly mintAsset?: boolean;
   readonly plutusSelection?: boolean;
@@ -961,6 +970,9 @@ const buildNativeTransactionTrace = async ({
       lovelace: assetCount > 100 ? 100_000_000n : 10_000_000n,
       assets: assetCount === 0 || mintAsset ? new Map() : txAssets,
     },
+    ...(outputDatumCbor === undefined
+      ? {}
+      : { datum: { kind: "inline" as const, cbor: outputDatumCbor } }),
   });
   const producedOutput = encodeMidgardTxOutput({
     address:
@@ -971,6 +983,9 @@ const buildNativeTransactionTrace = async ({
       lovelace: assetCount > 100 ? 100_000_000n : 10_000_000n,
       assets: assetCount === 0 ? new Map() : txAssets,
     },
+    ...(outputDatumCbor === undefined
+      ? {}
+      : { datum: { kind: "inline" as const, cbor: outputDatumCbor } }),
   });
   if (assetCount === 1304) {
     expect(
@@ -1272,6 +1287,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   scriptSourcesRejection,
   descriptorMaximum = false,
   scriptSourcesItemIndex,
+  disputedMatchOrdinal,
+  outputDatumCbor,
   prepareFieldCarriage,
 }: {
   readonly operatorVkey: string;
@@ -1327,6 +1344,16 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     | "missingReceive"
     | "unusedRedeemer";
   readonly scriptSourcesItemIndex?: number;
+  /**
+   * Selects the nth (0-based) state matching every other selector as the
+   * disputed low state, instead of the first. Lets a battery reach later
+   * occurrences of a repeating step kind — e.g. a ledger-output-proof step
+   * whose stage role carries attestation yields.
+   */
+  readonly disputedMatchOrdinal?: number;
+  /** Inline datum for the forced transaction's produced output; see
+   * {@link buildNativeTransactionTrace}. */
+  readonly outputDatumCbor?: Buffer;
   readonly scriptSourcesDescriptorAction?: "begin" | "header" | "tail";
   readonly prepareFieldCarriage?: (input: {
     trace: DeterministicValidationMachineTrace;
@@ -1393,8 +1420,10 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     scriptSourcesRejection,
     descriptorMaximum,
     cekObserverCount,
+    ...(outputDatumCbor === undefined ? {} : { outputDatumCbor }),
   });
   let challengerTrace = originalTrace;
+  let disputedMatchesSeen = 0;
   const disputedLowIndex = challengerTrace.states.findIndex((state, index) => {
     const auxiliary = challengerTrace.witnesses[index]?.auxiliary;
     const contextStage = (() => {
@@ -1511,7 +1540,9 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
             : cekCoreArm !== undefined))) &&
       (disputedValueKind === undefined ||
         valueAndMintKind(challengerTrace.witnesses[index]!) ===
-          disputedValueKind)
+          disputedValueKind) &&
+      (disputedMatchOrdinal === undefined ||
+        disputedMatchesSeen++ === disputedMatchOrdinal)
     );
   });
   if (disputedLowIndex < 0) {
@@ -1562,6 +1593,82 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     nextContext[20] = 1n;
     work[1] = encodeCbor(nextContext);
     const cbor = encodeCbor(work);
+    operatorWitnesses[successorIndex] = { ...adjacent, cbor };
+    operatorStates[successorIndex] = {
+      ...operatorStates[successorIndex]!,
+      workRoot: hashMidgardValidationWorkWitness({
+        phase: adjacent.phase,
+        programCounter: adjacent.programCounter,
+        witnessCbor: cbor,
+      }),
+    };
+  }
+  if (
+    dishonestChallenger &&
+    (resolveInputsKind === "membershipStep" ||
+      (disputedPhase === "scriptSources" && scriptSourcesSemanticIndex === 2))
+  ) {
+    // Ledger-output-proof step: the evidence builder demands the exact
+    // adjacent successor work witness, so a bare forged work root dies
+    // locally. Supply a well-encoded dishonest continuation instead — the
+    // honest successor with its output-proof control's leading small-int
+    // item flipped in place — so refusal reaches the on-chain stage yield.
+    // The carrier holds constr items the Midgard test codec refuses, so the
+    // control is located through Lucid's Data decode and patched at the
+    // byte level (an in-place flip keeps every enclosing length header, so
+    // the patched carrier is exactly the disputed witness with only its
+    // extension bytes exchanged).
+    const successorIndex = disputedLowIndex + 1;
+    const adjacent = operatorWitnesses[successorIndex]!;
+    const carrierHex = adjacent.cbor.toString("hex");
+    const carrierItems = Data.from(
+      aikenSerialisedPlutusDataCborPreservingMapOrder(carrierHex),
+    );
+    if (!Array.isArray(carrierItems)) {
+      throw new Error("output proof successor carrier must be a list");
+    }
+    const controlHex =
+      resolveInputsKind === "membershipStep"
+        ? (() => {
+            const pendingHex = carrierItems[9];
+            if (typeof pendingHex !== "string") {
+              throw new Error("pending input item must be bytes");
+            }
+            const pendingItems = Data.from(
+              aikenSerialisedPlutusDataCborPreservingMapOrder(pendingHex),
+            );
+            if (
+              !Array.isArray(pendingItems) ||
+              typeof pendingItems[4] !== "string"
+            ) {
+              throw new Error("pending input output proof must be bytes");
+            }
+            return pendingItems[4];
+          })()
+        : carrierItems[30];
+    if (typeof controlHex !== "string") {
+      throw new Error("output proof control item must be bytes");
+    }
+    let controlAt = carrierHex.indexOf(controlHex);
+    while (controlAt >= 0 && controlAt % 2 !== 0) {
+      controlAt = carrierHex.indexOf(controlHex, controlAt + 1);
+    }
+    if (controlAt < 0) {
+      throw new Error(
+        "output proof control bytes not found in the successor carrier",
+      );
+    }
+    const controlStart = controlAt / 2;
+    const cbor = Buffer.from(adjacent.cbor);
+    // The control is a 12-item raw frame (header 0x8c) whose first item is a
+    // single-byte small integer; flipping its low bit keeps the encoding
+    // well-formed while guaranteeing a mismatch with the honest successor.
+    if (cbor[controlStart] !== 0x8c || cbor[controlStart + 1]! > 0x17) {
+      throw new Error(
+        "output proof control does not open with a 12-item frame and small-int item",
+      );
+    }
+    cbor[controlStart + 1] = cbor[controlStart + 1]! ^ 0x01;
     operatorWitnesses[successorIndex] = { ...adjacent, cbor };
     operatorStates[successorIndex] = {
       ...operatorStates[successorIndex]!,

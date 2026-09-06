@@ -274,7 +274,9 @@ const runResolverScenario = async ({
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
   const feeUtxoCount = 12;
-  const feeUtxoLovelace = 100_000_000n;
+  // 200 Ada: the setup transaction's per-yield stake-registration deposits
+  // outgrew a 100-Ada fee UTxO once the shared LOP yields registered.
+  const feeUtxoLovelace = 200_000_000n;
   const operator = deterministicEmulatorAccount(OPERATOR_SEED_PHRASE, {
     lovelace: 40_000_000_000n,
   });

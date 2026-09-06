@@ -1589,6 +1589,7 @@ export const runForcedValidationDisputeScenario = async (
     lowIndex,
     highIndex,
     awardResult,
+    semanticMeasurement: semanticCapture.measurement,
     removal,
     removalMeasurements: removalCapture.measurements,
     removalReferenceScriptMeasurements:

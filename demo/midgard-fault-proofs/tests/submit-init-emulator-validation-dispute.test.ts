@@ -262,7 +262,9 @@ describe("fault-proof emulator integration", () => {
       const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
       const challenger = generateEmulatorAccount({ lovelace: 20_000_000_000n });
       const feeUtxoCount = 12;
-      const feeUtxoLovelace = 100_000_000n;
+      // 200 Ada: the setup transaction's per-yield stake-registration deposits
+      // outgrew a 100-Ada fee UTxO once the shared LOP yields registered.
+      const feeUtxoLovelace = 200_000_000n;
       // Both parties are seeded at the base address `selectWallet.fromSeed`
       // derives and at the enterprise address `resolveProverSigner` derives,
       // because this journey selects through both; see

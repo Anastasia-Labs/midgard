@@ -45,7 +45,10 @@ export const createValidationDisputeParties = async () => {
   const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const challenger = generateEmulatorAccount({ lovelace: 20_000_000_000n });
   const feeUtxoCount = 12;
-  const feeUtxoLovelace = 100_000_000n;
+  // The setup transaction registers a stake credential for every dispute
+  // yield (each with a 2-Ada deposit); the shared LOP family brought the
+  // registration count past what a 100-Ada fee UTxO can fund.
+  const feeUtxoLovelace = 200_000_000n;
   const emulator = new Emulator(
     [
       ...seedDualAddressPartyAccounts({
