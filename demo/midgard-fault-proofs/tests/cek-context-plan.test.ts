@@ -1,7 +1,12 @@
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
+import {
+  buildValidationOneStepArgument,
+  emptyMidgardCekDataPairSummary,
+  prependMidgardCekDataPairSummary,
+  summarizeMidgardCekLucidData,
+} from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -67,6 +72,32 @@ const inputAt = (
     ).toString("hex"),
   };
 };
+
+/**
+ * The exact mixed-width mint maximum: 1,304 assets under one policy whose
+ * names are 0, 1 and 2 bytes wide, so the native encoded-key order and the
+ * lexical execution order `script-context.ts::mintData` commits to are
+ * genuinely different permutations of each other.
+ */
+let mixedWidthMintFixturePromise:
+  | Promise<
+      Awaited<
+        ReturnType<typeof buildForgedOperatorSuccessorValidationDisputeFixture>
+      >
+    >
+  | undefined;
+const mixedWidthMintMaximum = () =>
+  (mixedWidthMintFixturePromise ??=
+    buildForgedOperatorSuccessorValidationDisputeFixture({
+      operatorVkey: "11".repeat(32),
+      now: 1_780_000_000_000,
+      disputedPhase: "cek",
+      plutusSelection: true,
+      cekSelection: true,
+      assetCount: 1304,
+      cekContextStage: 8,
+      cekContextMintCursor: 1303,
+    }));
 
 describe("CEK context retained successor planning", () => {
   it.each([0, 1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13])(
@@ -262,16 +293,7 @@ describe("CEK context retained successor planning", () => {
     );
   }, 120_000);
   it("preserves lexical execution mint order at the mixed-width 1,304-asset source maximum", async () => {
-    const fixture = await buildForgedOperatorSuccessorValidationDisputeFixture({
-      operatorVkey: "11".repeat(32),
-      now: 1_780_000_000_000,
-      disputedPhase: "cek",
-      plutusSelection: true,
-      cekSelection: true,
-      assetCount: 1304,
-      cekContextStage: 8,
-      cekContextMintCursor: 1303,
-    });
+    const fixture = await mixedWidthMintMaximum();
     const input = inputAt(fixture, fixture.disputedLowIndex);
     const plan = deriveCekContextPlan(input);
     expect(plan.route).toEqual(["control", "mintItem", "settle"]);
@@ -282,5 +304,75 @@ describe("CEK context retained successor planning", () => {
     expect(auxiliary.mintIndex).toBe(0);
     expect(auxiliary.assetName.length).toBe(0);
     expect(auxiliary.previous).not.toBeNull();
+  }, 180_000);
+  it("carries the exact permutation proof material for every mixed-width mint item", async () => {
+    const fixture = await mixedWidthMintMaximum();
+    const items = fixture.challengerTrace.witnesses.flatMap((witness) =>
+      witness.auxiliary?.kind === "cekMintContextItem"
+        ? [witness.auxiliary]
+        : [],
+    );
+    expect(items).toHaveLength(1304);
+
+    // Membership: every original frontier index is claimed exactly once, so
+    // no item is repeated and none is omitted.
+    expect(
+      [...items].map((item) => item.mintIndex).sort((a, b) => a - b),
+    ).toEqual(Array.from({ length: 1304 }, (_, index) => index));
+
+    // The names really are mixed width, and the quantity travels with the
+    // name rather than with the traversal position.
+    expect(
+      [...new Set(items.map((item) => item.assetName.length))].sort(
+        (a, b) => a - b,
+      ),
+    ).toEqual([0, 1, 2]);
+    expect(items.find((item) => item.mintIndex === 1303)!.quantity).toBe(256n);
+
+    // Strictly descending execution order over the whole traversal: the
+    // reverse of it is exactly the lexical order `mintData` commits to.
+    const executionOrder = [...items]
+      .reverse()
+      .map((item) => Buffer.from(item.assetName));
+    for (let index = 1; index < executionOrder.length; index++)
+      expect(
+        Buffer.compare(executionOrder[index - 1]!, executionOrder[index]!),
+      ).toBe(-1);
+    expect(executionOrder.map((name) => name.toString("hex"))).toEqual(
+      [...executionOrder]
+        .sort(Buffer.compare)
+        .map((name) => name.toString("hex")),
+    );
+
+    // The traversal is a genuine permutation of the native encoded-key
+    // order, not a relabelling of it.
+    const nativeOrder = [...items]
+      .sort((left, right) => left.mintIndex - right.mintIndex)
+      .map((item) => item.assetName.toString("hex"));
+    expect(executionOrder.map((name) => name.toString("hex"))).not.toEqual(
+      nativeOrder,
+    );
+
+    // Every head opening rebuilds the current-assets summary the fold had
+    // already committed - the same check the stage-8 validator runs.
+    let assets = emptyMidgardCekDataPairSummary();
+    for (const item of items) {
+      const previous = item.previous;
+      if (previous === null)
+        expect(assets).toEqual(emptyMidgardCekDataPairSummary());
+      else
+        expect(
+          prependMidgardCekDataPairSummary(
+            summarizeMidgardCekLucidData(previous.assetName.toString("hex")),
+            summarizeMidgardCekLucidData(previous.quantity),
+            previous.tail,
+          ),
+        ).toEqual(assets);
+      assets = prependMidgardCekDataPairSummary(
+        summarizeMidgardCekLucidData(item.assetName.toString("hex")),
+        summarizeMidgardCekLucidData(item.quantity),
+        assets,
+      );
+    }
   }, 180_000);
 });
