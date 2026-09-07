@@ -627,3 +627,77 @@ item-checkpoint restart) fail at the shared executor stage on this branch —
 a pre-existing red that reproduces identically at the commit that installed
 the stage graph with its own freshly built blueprint, independent of the
 permutation work.
+
+#### Receipt — stage-0 shared-item route closure (2026-09-07, blueprint `7e478b66f681ed47d4bf63a9043641e7a1c47d02b9168ed71c183975cf9ed0e9`)
+
+The pre-existing red above is closed. Root cause: an on-chain
+self-contradiction, not a builder fault. `cek-context-item-bind` requires
+`control.mode == mode_descriptor` for the selection item it binds at context
+stage 0, while the shared open-header/open-tail executors' semantics
+(`script_sources_item_semantics.open_header` / `open_tail`) gated on
+`mode == mode_data` only — so a stage-0 item was bindable but unprovable.
+Per this plan's §4.2 contract, V0b delegates the FULL
+`redeemer_item_proof_v1.step_v1` domain to the shared chain (and §10 rules
+the descriptor-only ScriptSources yield out as an alternative), so the
+executor side was wrong. Fix: the two executors accept
+`mode_descriptor || mode_data` and keep the same canonical-machine equality
+(`prevalidated_open_header` / `prevalidated_open_tail` pin the mode-dependent
+successor themselves); `invalid_header` / `invalid_tail` stay `mode_data`
+only. Selector coverage in both polarities lives in
+`script-sources-item-semantics.test.ak` (descriptor-mode canonical advance
+proved, forged successor and data-shaped tail successor for a descriptor item
+refused, data-mode advance unchanged), together with
+`open_header_refuses_an_out_of_domain_mode` /
+`open_tail_refuses_an_out_of_domain_mode` — `fail` tests, because the selector
+is an `expect` and so traps rather than returning `False`.
+
+**No semantic predicate was weakened.** `mode_descriptor` and `mode_data` (0
+and 1) are the only modes `redeemer_item_proof_v1` defines, and
+`outer_fields_are_well_formed` — reached on every step through
+`control_is_well_formed` inside `prevalidated_open_header` /
+`prevalidated_open_tail` — already requires
+
+```
+control.mode == mode_descriptor || control.mode == mode_data,
+```
+
+so the widened executor gate is now an exact restatement of a domain the
+canonical machine independently enforces, not a relaxation of one. The check
+that actually carries the semantics is untouched on both sides of the fix: the
+executors still require
+
+```
+item.prevalidated_open_header(state.current, bytes) == item.RedeemerItemProofAdvanced { control: state.next }
+```
+
+(and the `open_tail` analogue), and that equality is what pins the
+mode-dependent successor shape — a descriptor tail must advance to
+`stage_terminal` with `traversal == None`, a data tail must open the
+traversal. The old `mode == mode_data` gate was therefore never doing
+semantic work: it was an over-narrow domain restriction that contradicted
+`cek-context-item-bind`'s `mode_descriptor` requirement at context stage 0,
+which is exactly why stage-0 items were bindable but unprovable. Nothing else
+in the module changed; `invalid_header` / `invalid_tail` remain `mode_data`
+only by design.
+
+Battery: `tests/cek-context-lifecycle.test.ts` **28/28 with all 24
+lifecycles complete** (the `completed === 24` fit-ledger gate passed);
+`validation-trace-cek-context-fit-ledger.json` regenerated in that run
+against the fresh blueprint above — 2,927 entries, zero negative margins,
+worst execution 3,541,587 mem / 1,645,575,835 CPU, worst complete signed
+transaction 15,108 bytes (margin 1,276 under the 16,384 envelope).
+
+`validation-trace-cek-context-publication-fit-ledger.json` was still pinned to
+a pre-restructure blueprint (`420a8327…`) and is re-pinned here to
+`7e478b66…`: 36 entries, zero negative margins, worst complete signed
+publication 12,981 bytes (`validationTraceDisputeCekContextItemBind`). With
+that, `tests/cek-context-fit-ledger.test.ts` is 2/2 — both the context ledger
+and the context-publication ledger verify against the live blueprint, and the
+context ledger's "24 distinct maximum shapes" assertion (the `completed === 24`
+lifecycle gate) passes.
+
+`validation-trace-script-sources-item-max-fit-ledger.json` — the shared item
+executors' own maximum ledger, and therefore the other consumer of the two
+widened gates — was re-pinned to the same blueprint in the same wave: 2,019
+entries, zero negative margins, worst execution 3,898,959 mem /
+1,854,545,673 CPU, worst complete signed transaction 15,108 bytes.

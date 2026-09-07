@@ -217,6 +217,20 @@ Blueprint: fresh `aiken build --env testnet`, sha256
 v1.1.23+5adf783 (the patched fork). (The byte and execution tables below
 supersede the first-ruling receipt measured at blueprint `f066a2e6…`.)
 
+**Closure amendment (2026-09-07, blueprint `7e478b66f681ed47…`):** the
+sanctioned decode remediation landed in the ResolveInputs step dispatcher —
+one descriptor decode shared by `control_raw_is_bound_with_descriptor` and
+`control_raw_lop_is_pinned_with_descriptor`, and the successor work witness
+derived by `splice_pending_successor_v1` (the membership-step plan's §4.1
+"successor by splice", fuzz-proved byte-identical to the whole-record
+re-encode) instead of a second `encode_control_raw`/`encode_pending` walk.
+`resolve_inputs_membership_step_semantic_v1` is now 11,062 raw bytes (was
+11,137); no other row of the byte table moved. The advance-integer lifecycle
+row below is updated in place; the remaining rows were measured at
+`618dda75…` and stand as upper bounds for the step dispatcher's lifecycles
+(the dispatcher only got cheaper) — the emulator suite re-asserts every
+positive against the basis at `7e478b66…`, 20/20 green with zero skips.
+
 ### Validator byte table (raw compiledCode bytes; target ≤ 15,000)
 
 | validator                                              | bytes  |
@@ -236,7 +250,7 @@ supersede the first-ruling receipt measured at blueprint `f066a2e6…`.)
 | ledger_output_proof_structure_assets_yield             | 11,642 |
 | ledger_output_proof_datum_head_map_yield               | 11,640 |
 | ledger_output_proof_datum_close_yield                  | 11,161 |
-| resolve_inputs_membership_step_semantic_v1             | 11,137 |
+| resolve_inputs_membership_step_semantic_v1             | 11,062 |
 | ledger_output_proof_native_script_yield                | 11,068 |
 | ledger_output_proof_structure_yield                    | 10,959 |
 | ledger_output_proof_datum_head_scalar_yield            | 10,954 |
@@ -294,7 +308,7 @@ restructure); every "after" row is asserted in the emulator suite:
 | — thin terminal []                             |            | 7,260,182  | within basis                      |
 | ScriptSources span-attach step (new, role 23)  | —          | 8,009,216  | within basis                      |
 | ScriptSources advance-bytes step (2 yields)    | 11,695,656 | 12,750,094 | within basis                      |
-| ResolveInputs advance-integer step (2 yields)  | 15,481,633 | 14,226,253 | OVER basis, under cap — ESCALATED |
+| ResolveInputs advance-integer step (2 yields)  | 15,481,633 | 13,100,448 | within basis (post-remediation)   |
 
 CPU maxima are far under basis (worst 4,772,365,922 of 8,000,000,000). The
 step-path growth against the first-ruling numbers is the 17-item control
@@ -302,14 +316,17 @@ step-path growth against the first-ruling numbers is the 17-item control
 inline window binding; the finalize decomposition trades one over-cap
 transaction for four ordinary checkpointed steps.
 
-The single remaining miss — the ResolveInputs advance-integer positive at
-14,226,253 (down from 15,481,633 after retiring the per-step span yield) —
-is dominated by the ResolveInputs dispatcher's pending-carrier decode inside
-`unique_semantic_dispatch_v1`, whose redesign the ruling rejects. It is
-escalated with these measurements; its lifecycle stays skipped in the suite
-(the honest transaction fits the evaluator cap, so the matching negative
-stays active — its refusal is semantic, not budget exhaustion). Every other
-previously-skipped lifecycle is active and green.
+The former single miss — the ResolveInputs advance-integer positive at
+14,226,253 — was remediated under the closure ruling's sanctioned scope
+(narrow/lazy pending-carrier decode in the RI step dispatcher only, no
+semantic predicate change): per-redeemer attribution showed the dispatcher
+spend at 6,177,094 mem, ~1.5M above the ScriptSources step dispatcher, with
+the pending descriptor decoded twice (~1,066,000 mem each) and the successor
+re-encoding the whole 1,292-byte control. Decoding the descriptor once
+(13,203,190 — still 3,190 over) and then splicing the successor pending tail
+brought the lifecycle to **13,100,448 mem / 4,378,032,009 cpu** — within the
+13,200,000 basis with 99,552 margin. Its positive is un-skipped with the
+standard basis assertion; the suite has zero skips.
 
 ### Verification
 
@@ -321,17 +338,21 @@ previously-skipped lifecycle is active and green.
   descriptor-yield battery).
 - Emulator lifecycles
   (`submit-init-emulator-validation-dispute-ledger-output-proof.test.ts`):
-  19 passed / 1 deliberately skipped (the escalated ResolveInputs
-  advance-integer positive). Both step positives, all EIGHT finalize-shaped
-  positives (both families × three attach groups + thin terminal), the
-  span-attach positive and the ScriptSources advance-bytes positive, all
-  with basis assertions; refusals pinned to the on-chain EvaluatorError for
-  forged successors at membershipStep, ScriptSources step, fact-attach
-  (ordinal 0), thin terminal (ordinal 3), span-attach, advance-integer and
-  advance-bytes.
+  **20 passed / 0 skipped** at blueprint `7e478b66…` (the ResolveInputs
+  advance-integer positive is active since the remediation). Both step
+  positives, all EIGHT finalize-shaped positives (both families × three
+  attach groups + thin terminal), the span-attach positive and the
+  ScriptSources advance-bytes positive, all with basis assertions; refusals
+  pinned to the on-chain EvaluatorError for forged successors at
+  membershipStep, ScriptSources step, fact-attach (ordinal 0), thin terminal
+  (ordinal 3), span-attach, advance-integer and advance-bytes — the
+  advance-integer refusal exercises the splice-successor path fail-closed.
 - Publication fit test green; fit ledger regenerated with
   `MIDGARD_WRITE_FIT_LEDGER=1` against the fresh blueprint
-  (`618dda75…`, compiler v1.1.23+5adf783).
+  (`7e478b66…`, compiler v1.1.23+5adf783): 34 entries, worst signed
+  publication still `…DatumLargeConstructorWithdraw` at 14,954 (margin
+  1,430); `resolveInputsMembershipStepSemantic` signed 11,446 (margin
+  4,938).
 - `midgard-validation` suite: two golden pins updated for the restructure —
   `nested-data-boundary.test.ts` `outputProofSteps` 129,324 → 129,328 (three
   fact-attach steps replacing the monolithic finalize, plus one span-attach)
@@ -346,3 +367,88 @@ previously-skipped lifecycle is active and green.
   `plutus.json`), and one fails on three fraud-proof `rule.ak` scanner
   consumers (imports introduced pre-restructure in `e7a789f17`) lacking §3.2
   necessity artifacts.
+
+### §8 reconciliation — pre-existing >15,000-byte validators (2026-09-07)
+
+Three validation-trace semantics predate this program's 15,000-byte target
+and sit above it in the fresh blueprint (`7e478b66…`):
+`signatures_required_item_semantic_v1` (15,839 raw),
+`native_scripts_native_semantic_v1` (15,663) and
+`native_scripts_effectful_semantic_v1` (15,407). No fit ledger under
+`docs/fault-proofs/size-plans/` carries publication or execution rows for
+them; the resolver-proof fit sweep
+(`demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json`,
+semantic indices 8 / 61 / 62) records all three as **unmeasured** ("no
+harness-reachable fixture drives a genuine one-step validation dispute" to
+those indices). Measured here with the same emulator publication harness the
+LOP publication ledger uses (`publishPlainReferenceScriptUtxo`, real
+16,384-byte envelope):
+
+| validator                              | signed publication | vs 15,872 gate | vs 16,384 hard |
+| -------------------------------------- | ------------------ | -------------- | -------------- |
+| signatures_required_item_semantic_v1   | 16,223             | **BREACH**     | margin 161     |
+| native_scripts_native_semantic_v1      | 16,012             | **BREACH**     | margin 372     |
+| native_scripts_effectful_semantic_v1   | 15,756             | within         | margin 628     |
+
+Two of the three breach the 15,872 signed-publication gate (they publish,
+but inside the 512-byte reserve), and none has a measured positive-execution
+margin anywhere in the tree. Escalated to the owner with these numbers; no
+change was made to the three validators in this wave.
+
+Independently re-measured at closure over the **whole** 91-entry
+`validationTraceDispute.semanticResolvers` roster (same harness, fresh
+`7e478b66…` blueprint, emulator `maxTxSize` pinned to the real 16,384):
+every resolver publishes, and exactly the two rows above are the only ones
+whose signed publication exceeds 15,872. The applied-parameter overhead is a
+uniform +276 signed bytes over the applied script CBOR across all 91 rows
+(e.g. index 8 applied 15,947 → signed 16,223; index 61 applied 15,736 →
+signed 16,012; index 62 applied 15,480 → signed 15,756), so the raw-byte
+table above converts to signed publication as `raw + parameters + 276`. The
+third-largest signed publication in the roster is 15,150 (margin 1,234),
+i.e. there is no cluster approaching the gate behind these two. Five legacy
+`fraud_proofs/*` step validators also exceed 15,000 raw in the fresh
+blueprint (`execution_native_script_invalid/step_02` 15,457,
+`value_not_preserved/step_02` 15,392, `receive_purpose_language/step_02`
+15,388, `execution_source_script_decoding/step_02` 15,382,
+`resolved_output_non_canonical/step_04` 15,351,
+`execution_native_script_invalid/step_01` 15,158); they are outside the
+validation-trace roster and outside this program's catalogue.
+
+### §8 reconciliation — the escape-hatch sweep (2026-09-07)
+
+**Oversized bodies (>16,384 raw).** The program doc §7 checkpoint recorded
+"47 oversized validation-dispute bodies and two oversized transition-trace
+bodies". Re-measured directly against the fresh `7e478b66…` blueprint (1,131
+entries, compiler v1.1.23+5adf783), the entire set is gone: **three** entries
+exceed 16,384 raw bytes, and all three are the same validator's three
+purposes —
+
+| entry                                        | raw bytes |
+| -------------------------------------------- | --------- |
+| `availability_challenge.availability_challenge.mint`  | 19,927 |
+| `availability_challenge.availability_challenge.spend` | 19,927 |
+| `availability_challenge.availability_challenge.else`  | 19,927 |
+
+`availability_challenge` is explicitly tracked separately from this
+catalogue per the program doc, so no validation-dispute or transition-trace
+body is oversized any more. The LOP/finalize restructure — the finalize
+decomposition into checkpointed step dispatchers and the shared yield
+family — is what retired them; nothing in this wave raised a limit to make
+that true.
+
+**Escape-hatch routes in the fault-proof test surface.** Swept for raised
+transaction size, raised ExUnits, `oversized` publication and disabled local
+evaluation:
+
+| route                                                                    | disposition |
+| ------------------------------------------------------------------------ | ----------- |
+| `VAN_ROSSEM_TRANSACTION_LIMITS` (`maxTxSize` 16,384, `maxTxExMem` 16,500,000, `maxTxExSteps` 10,000,000,000) | The real L1 values; every `maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize` in the suite sets the same 16,384 and is therefore a pin, not a raise. |
+| `loadDiagnosticCardanoParameterOverrides` (`MIDGARD_DIAGNOSTIC_CARDANO_PARAMETERS`) | Fail-closed: throws unless the snapshot's `max_tx_size`, `max_tx_ex_mem` and `max_tx_ex_steps` equal the Van Rossem values exactly. Cannot raise a limit. |
+| `publishPlainReferenceScriptUtxo({ oversized })`                          | Raises the script-ref min-Ada and skips the `l1ByteMargin` assertion only; it never raises `maxTxSize`, and the consuming transaction still rides `readFrom` inside the envelope. |
+| `reference-scripts.ts` state-queue removal roster (`oversized = raw > 16,384`) | The single legitimate hit: `stateQueueMint`'s 16,835-byte body does not fit the envelope at all. Documented in `submit-init-emulator-soundness.test.ts` and tracked as Anastasia-Labs/midgard#649; its measurement is deliberately unasserted until the validator shrinks, while the other seven roster entries are asserted `l1ByteMargin > 0`. |
+| `reference-scripts.ts` legacy fault-proof steps (`oversized = raw > 14,000`) | Pre-existing and over-broad — 14,000 raw publishes at ~14,350 signed, comfortably inside the envelope, so this waives the assertion for scripts that would pass it. Not load-bearing (no legacy step body is actually oversized) and out of this wave's scope; flagged for a follow-up tightening to `> 16,384`. |
+| `oversizedEntryNames` parameter                                           | No caller in the tree; always the empty set. |
+| `final-catalogue-emulator.ts` `oversized: !enforceL1Envelope`             | `enforceL1Envelope` defaults to `true` and no caller passes `false`, so this never fires. |
+| `workflow-kupmios-source.test.ts` `oversized` / `oversizedKupo`           | Unrelated: an oversized **provider HTTP response** fixture proving the source rejects it before buffering. |
+| `transaction-output-non-canonical.test.ts` `oversizedField`, `structured-data-preimage.test.ts` oversized map entries, `raw-datum-preimage-prerequisite.test.ts` | Unrelated: oversized **preimage/datum payloads** under test, not transaction limits. |
+| Disabled local UPLC evaluation on a positive path                          | None found. Every positive lifecycle in the LOP suite runs under the emulator's real evaluator and asserts against the execution basis; the refusals are pinned to on-chain `EvaluatorError`. |
