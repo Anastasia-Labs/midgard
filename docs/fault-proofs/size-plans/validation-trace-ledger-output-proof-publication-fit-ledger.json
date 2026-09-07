@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/ledger-output-proof publication",
-  "blueprintSha256": "618dda7547bf0ad8e23b91062d47ae181ba37ac2617d5acebc7ccda3e04a4f5d",
+  "blueprintSha256": "caaf9849fe9d66b1bba2a2ba082c18857e9c16059351e70fcdc6f61781191652",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -404,14 +404,14 @@
       "name": "validationTraceDisputeLedgerOutputProofValueWithdraw",
       "kind": "publication",
       "maximumShape": "parameterized yield publication",
-      "signedBytes": 13792,
+      "signedBytes": 14282,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 2592,
+      "signedByteMargin": 2102,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 2080
+      "publicationReserveMargin": 1590
     }
   ],
-  "ledgerSha256": "45329b55299a6efa3985b9b8f82c07401aa7d503db53ae6567d7737376aab8cc"
+  "ledgerSha256": "f50e73c60dfe352d3b354018fdd3eb62e697641c49aefb465c2023d69ab331b9"
 }

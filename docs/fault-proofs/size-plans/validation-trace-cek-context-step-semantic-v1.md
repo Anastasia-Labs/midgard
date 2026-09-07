@@ -568,3 +568,62 @@ of every item, and the authenticated exact count rule out repetitions, omissions
 and revisiting a prior policy group. The producer sorts the traversal while
 retaining each original membership index. The final mint map therefore preserves
 the existing execution-context order without restricting native source shapes.
+
+The same closure applies to the ledger output value fold: the evaluated
+context's tx-out value maps are committed in lexical key order while the
+descriptor asset frontier stays canonical, and each
+`ledger_output_value_v1.asset_step` carries the same membership index and
+optional previous map-head opening. Neither ordering contract changed.
+
+#### Receipt (measured against blueprint `caaf9849fe9d66b1bba2a2ba082c18857e9c16059351e70fcdc6f61781191652`, aiken `v1.1.23+5adf783`)
+
+Selector coverage, all green inside `aiken check --env testnet`
+(4,005 passed / 0 failed after `aiken build --env testnet`):
+
+- `validators/fraud-proofs/validation-trace/cek-split-v1.test.ak`:
+  `context_mint_item_validator_wins_the_permuted_membership_step` plus the
+  out-of-range index, foreign index, substituted previous head, substituted
+  previous tail, omitted previous head, repeated item, and
+  ascending-execution-order refusals at the stage-8 validator.
+- `lib/midgard/ledger-output-value-v1.test.ak`:
+  `mixed_width_permutation_folds_to_the_lexicographic_map` plus the duplicate
+  index, out-of-range index, missing head opening, non-strictly-smaller head,
+  forged head opening, first-step head, and policy-change head refusals at the
+  value fold.
+
+Producer pins: `tests/cek-context-plan.test.ts` (21/21) preserves lexical
+execution mint order at the mixed-width 1,304-asset source maximum and pins
+the exact permutation proof material (membership index and head opening) for
+every mixed-width mint item.
+
+Registered emulator lifecycles at the exact 1,304-asset mixed-width shape
+(asset names 0, 1 and 2 bytes wide under one policy, so canonical and lexical
+orders genuinely differ):
+
+- `tests/cek-context-lifecycle.test.ts` — stage 6 and stage 8 positive
+  lifecycles (award + forged-block removal), and three challenger-side
+  mutations of the stage-8 permutation witness (foreign membership index,
+  forged head opening, omitted head opening), each refused by the on-chain
+  clause (`failed script execution`), never by a local builder gate.
+- `tests/ledger-output-value-permutation-lifecycle.test.ts` — one positive
+  value-step lifecycle disputing a step that carries a previous-head opening,
+  and the same three witness mutations refused on-chain.
+
+Measured envelope at the 1,304-asset stage-8 lifecycle (raw per-transaction
+stream, normal pinned testnet blueprint): worst execution 3,063,924 mem /
+1,181,325,013 CPU steps (23.3% and 14.8% of the 13.2M/8B reserves); worst
+complete signed transaction 15,108 bytes (764 under the 15,872 publication
+reserve). Affected validator bodies: `cek_context_mint_item` 8,632 raw bytes;
+the largest ledger-output-proof yield body
+(`ledger_output_proof_datum_large_constructor_yield`) 14,608 raw bytes — all
+under the 15,000-byte publication bar. The ledger-output-proof publication fit
+ledger and the ScriptSources item-max fit ledger are re-pinned against this
+blueprint (34 and 2,019 entries; worst signed 14,954 and 15,108 bytes).
+
+The consolidated CEK context lifecycle fit ledger still carries its earlier
+blueprint pin: regenerating it requires the whole 24-lifecycle battery in one
+run, and the stage-0 shared item lifecycles (`openHeader`, `openTail`, and the
+item-checkpoint restart) fail at the shared executor stage on this branch —
+a pre-existing red that reproduces identically at the commit that installed
+the stage graph with its own freshly built blueprint, independent of the
+permutation work.
