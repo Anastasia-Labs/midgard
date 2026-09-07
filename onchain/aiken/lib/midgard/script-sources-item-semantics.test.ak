@@ -142,6 +142,47 @@ test open_tail_refuses_a_data_shaped_successor_for_a_descriptor_item() {
   )
 }
 
+// Negative polarity of the widened mode selector itself: `mode_descriptor ||
+// mode_data` is the FULL legal domain (`redeemer_item_proof_v1` defines only
+// those two), so widening the executors did not drop a semantic requirement —
+// `outer_fields_are_well_formed` inside `prevalidated_open_header` /
+// `prevalidated_open_tail` pins the same `mode == 0 || mode == 1` domain, and
+// the canonical successor equality pins the mode-dependent shape. These two
+// tests keep the selector non-vacuous: an out-of-domain mode is refused at
+// both executors. The selector is an `expect`, so its refusal traps rather
+// than returning `False` — hence `fail`. Everything else in each fixture is
+// the genuine canonical pair, so the mode is the only thing that can refuse
+// (and the canonical machine would refuse the same control a second time:
+// `outer_fields_are_well_formed` rejects `mode == 2`).
+test open_header_refuses_an_out_of_domain_mode() fail {
+  let bytes = #"8400004100820a14"
+  let current = initial_descriptor(bytes)
+  let forged = item.RedeemerItemProofControlV1 { ..current, mode: 2 }
+  expect item.RedeemerItemProofAdvanced { control: next } = item.prevalidated_open_header(
+    current,
+    bytes,
+  )
+  semantics.open_header(
+    stepped(forged, next, item.RedeemerItemOpenHeader, bytes),
+  )
+}
+
+test open_tail_refuses_an_out_of_domain_mode() fail {
+  let bytes = #"8400004100820a14"
+  expect item.RedeemerItemProofAdvanced { control } = item.prevalidated_open_header(
+    initial_descriptor(bytes),
+    bytes,
+  )
+  expect item.RedeemerItemProofAdvanced { control: next } = item.prevalidated_open_tail(
+    control,
+    #"820a14",
+  )
+  let forged = item.RedeemerItemProofControlV1 { ..control, mode: 2 }
+  semantics.open_tail(
+    stepped(forged, next, item.RedeemerItemOpenTail, #"820a14"),
+  )
+}
+
 test open_header_still_proves_the_data_mode_canonical_advance() {
   let bytes = #"8400004100820a14"
   let current = initial(bytes)
