@@ -93,7 +93,10 @@ const maximumNestedDataTerminalVector = {
   adjacentSignedCardanoBytes: 16_385,
   nativeCanonicalBytes: 16_470,
   outputItemBytes: 16_220,
-  outputProofSteps: 129_324,
+  // +4 over the pre-restructure 129_324: the output-proof finalize is now
+  // three descriptor fact-attach steps plus a thin terminal (+3) and the span
+  // window is verified once by a dedicated span-attach step (+1).
+  outputProofSteps: 129_328,
   datumTraverseSteps: 129_311,
   maximumSourceSpan: 14,
   terminalPreControlCborHex:

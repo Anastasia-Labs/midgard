@@ -674,8 +674,12 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       "signatures",
       "phaseANativeScripts",
       "phaseAScriptPreconditions",
-      ...Array<string>(11).fill("resolveInputs"),
-      ...Array<string>(22).fill("scriptSources"),
+      // Each family's output-proof finalize is now three descriptor
+      // fact-attach steps plus a thin terminal, so both membership phases
+      // grew by three steps (this trace's span window is empty, so no
+      // span-attach step appears).
+      ...Array<string>(14).fill("resolveInputs"),
+      ...Array<string>(25).fill("scriptSources"),
       "nativeScripts",
       ...Array<string>(4).fill("scriptIntegrity"),
       "cek",
@@ -709,7 +713,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const scriptSourceWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "scriptSources",
     );
-    expect(scriptSourceWitnesses).toHaveLength(22);
+    expect(scriptSourceWitnesses).toHaveLength(25);
     expect(scriptSourceWitnesses[0]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[1]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[2]?.auxiliary).toBeNull();
@@ -820,17 +824,24 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           (witness) => witness.auxiliary?.kind === "ledgerOutputProofStep",
         ),
     ).toBe(true);
-    expect(scriptSourceWitnesses[15]?.auxiliary?.kind).toBe(
-      "ledgerOutputProofFinalize",
-    );
-    expect(scriptSourceWitnesses[16]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[17]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[18]?.auxiliary).toBeNull();
+    // The output-proof finalize is now three descriptor fact-attach steps
+    // followed by a thin terminal; all four ride the finalize witness shape.
+    expect(
+      scriptSourceWitnesses
+        .slice(15, 19)
+        .every(
+          (witness) => witness.auxiliary?.kind === "ledgerOutputProofFinalize",
+        ),
+    ).toBe(true);
     expect(scriptSourceWitnesses[19]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[20]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[21]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[22]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[23]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[24]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses.map(validationSemanticResolverIndex)).toEqual([
-      6, 14, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 3, 4, 0, 27, 23, 16, 18,
+      6, 14, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 0, 27, 23,
+      16, 18,
     ]);
     expect(() =>
       validationSemanticResolverIndex({
@@ -1124,9 +1135,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       trace.witnesses.some((witness) => {
         const auxiliary = witness.auxiliary as
-          | Record<string, unknown>
-          | null
-          | undefined;
+          Record<string, unknown> | null | undefined;
         return (
           auxiliary !== null &&
           auxiliary !== undefined &&

@@ -332,3 +332,17 @@ previously-skipped lifecycle is active and green.
 - Publication fit test green; fit ledger regenerated with
   `MIDGARD_WRITE_FIT_LEDGER=1` against the fresh blueprint
   (`618dda75…`, compiler v1.1.23+5adf783).
+- `midgard-validation` suite: two golden pins updated for the restructure —
+  `nested-data-boundary.test.ts` `outputProofSteps` 129,324 → 129,328 (three
+  fact-attach steps replacing the monolithic finalize, plus one span-attach)
+  and the `validation-machine.test.ts` accepted-transaction phase roster
+  (resolveInputs 11 → 14, scriptSources 22 → 25; that trace's span window is
+  empty, so no span-attach step). The remaining reds there are pre-existing
+  relative to this restructure: 18 tests fail on
+  `Aiken blueprint is missing definition midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`
+  (the four validators naming that type are byte-identical across this work
+  and none exposes it in an ABI position, so every fresh blueprint build
+  omits the definition — the tests were pinned against an older stale
+  `plutus.json`), and one fails on three fraud-proof `rule.ak` scanner
+  consumers (imports introduced pre-restructure in `e7a789f17`) lacking §3.2
+  necessity artifacts.
