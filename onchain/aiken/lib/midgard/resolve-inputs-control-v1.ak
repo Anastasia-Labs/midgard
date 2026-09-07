@@ -177,7 +177,27 @@ pub fn control_raw_is_bound(
   control: ResolveInputsControlRawV1,
   pending: PendingRawV1,
 ) -> Bool {
-  let descriptor = ledger_output_commitment_v1.decode(pending.descriptor_cbor)
+  control_raw_is_bound_with_descriptor(
+    pre,
+    witness,
+    control,
+    pending,
+    ledger_output_commitment_v1.decode(pending.descriptor_cbor),
+  )
+}
+
+/// `control_raw_is_bound` with the pending descriptor already decoded, so a
+/// dispatcher that also pins the ledger-output-proof scalars decodes the
+/// descriptor once instead of twice. `descriptor` MUST be
+/// `ledger_output_commitment_v1.decode(pending.descriptor_cbor)` — the wrapper
+/// above and the call sites keep that invariant.
+pub fn control_raw_is_bound_with_descriptor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ResolveInputsControlRawV1,
+  pending: PendingRawV1,
+  descriptor: ledger_output_commitment_v1.LedgerOutputCommitmentV1,
+) -> Bool {
   let input = decode_midgard_tx_input_cbor(pending.key)
   and {
     control.pending_cbor == encode_pending(pending),
@@ -205,6 +225,54 @@ pub fn control_raw_is_bound(
   }
 }
 
+/// The canonical successor work-witness bytes for a step that replaces the
+/// pending record's `output_proof_cbor` and changes nothing else. Equals
+/// `encode_control_raw(control with pending_cbor = encode_pending(pending with
+/// output_proof_cbor = next_control_cbor))` whenever `control_raw_is_bound`
+/// holds (the encoding is per-field concatenation: `witness_cbor` ends with
+/// `encode_definite_bytes(pending_cbor)` followed by the 34-byte
+/// `resolution_schedule_hash` field, and `pending_cbor` ends with
+/// `encode_definite_bytes(output_proof_cbor)`), and both tails are re-checked
+/// here so the splice fails closed on unbound inputs.
+pub fn splice_pending_successor_v1(
+  witness_cbor: ByteArray,
+  pending_cbor: ByteArray,
+  output_proof_cbor: ByteArray,
+  next_control_cbor: ByteArray,
+) -> ByteArray {
+  let old_item = encode_definite_bytes(output_proof_cbor)
+  let item_offset = bytearray.length(pending_cbor) - bytearray.length(old_item)
+  expect item_offset >= 0
+  expect
+    builtin.slice_bytearray(
+      item_offset,
+      bytearray.length(old_item),
+      pending_cbor,
+    ) == old_item
+  let new_pending = builtin.slice_bytearray(0, item_offset, pending_cbor)
+    |> bytearray.concat(encode_definite_bytes(next_control_cbor))
+  let old_field = encode_definite_bytes(pending_cbor)
+  let field_offset = bytearray.length(witness_cbor) - bytearray.length(
+    old_field,
+  ) - 34
+  expect field_offset >= 0
+  expect
+    builtin.slice_bytearray(
+      field_offset,
+      bytearray.length(old_field),
+      witness_cbor,
+    ) == old_field
+  builtin.slice_bytearray(0, field_offset, witness_cbor)
+    |> bytearray.concat(encode_definite_bytes(new_pending))
+    |> bytearray.concat(
+        builtin.slice_bytearray(
+          field_offset + bytearray.length(old_field),
+          34,
+          witness_cbor,
+        ),
+      )
+}
+
 /// The three ledger-output-proof scalars the monolith states explicitly:
 /// items 2, 3 and 4 of the pinned control equal the descriptor's output
 /// index, total length and item commitment. `ledger_output_proof_raw.open`
@@ -214,7 +282,18 @@ pub fn control_raw_lop_is_pinned(
   frame: ledger_output_proof_raw.Frame,
   descriptor_cbor: ByteArray,
 ) -> Bool {
-  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  control_raw_lop_is_pinned_with_descriptor(
+    frame,
+    ledger_output_commitment_v1.decode(descriptor_cbor),
+  )
+}
+
+/// `control_raw_lop_is_pinned` with the descriptor already decoded; the same
+/// single-decode contract as `control_raw_is_bound_with_descriptor`.
+pub fn control_raw_lop_is_pinned_with_descriptor(
+  frame: ledger_output_proof_raw.Frame,
+  descriptor: ledger_output_commitment_v1.LedgerOutputCommitmentV1,
+) -> Bool {
   and {
     ledger_output_proof_raw.integer(frame, 2) == descriptor.output_index,
     ledger_output_proof_raw.integer(frame, 3) == descriptor.total_length,

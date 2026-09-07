@@ -13,6 +13,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
+use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_raw
 use midgard/ledger_output_proof_roles
 use midgard/resolve_inputs_control_v1 as carrier
@@ -121,6 +122,10 @@ fn membership_step_dispatch(
   let control = carrier.control_raw_from_witness(transition.work_witness_cbor)
   let pending = carrier.pending_raw_from_cbor(control.pending_cbor)
   let frame = ledger_output_proof_raw.open(control_cbor)
+  // Decoded once for both carrier predicates: `decode` canonically re-encodes
+  // and well-forms the descriptor, so a second decode of the same pinned bytes
+  // proves nothing more and costs ~1.07M mem of the step budget.
+  let descriptor = ledger_output_commitment_v1.decode(pending.descriptor_cbor)
   and {
     validation_semantic_yield_v1.require_semantic_yields_v1(
       tx,
@@ -132,8 +137,14 @@ fn membership_step_dispatch(
       yield_ref_input_indices,
     ),
     control_cbor == pending.output_proof_cbor,
-    carrier.control_raw_is_bound(pre, transition, control, pending),
-    carrier.control_raw_lop_is_pinned(frame, pending.descriptor_cbor),
+    carrier.control_raw_is_bound_with_descriptor(
+      pre,
+      transition,
+      control,
+      pending,
+      descriptor,
+    ),
+    carrier.control_raw_lop_is_pinned_with_descriptor(frame, descriptor),
     successor_is_exact(pre, transition, control, pending, next_control_cbor),
   }
 }
@@ -154,19 +165,19 @@ fn successor_is_exact(
   } else {
     and {
       transition.claimed_successor.phase == ResolveInputs,
+      // `control_raw_is_bound` (a sibling clause of this dispatcher) pins
+      // `transition.work_witness_cbor == encode_control_raw(control)` and
+      // `control.pending_cbor == encode_pending(pending)`, so the tail splice
+      // is byte-identical to re-encoding the successor record whole — without
+      // a second `encode_control_raw`/`encode_pending` walk.
       transition.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
         ResolveInputs,
         pre.program_counter + 1,
-        carrier.encode_control_raw(
-          carrier.ResolveInputsControlRawV1 {
-            ..control,
-            pending_cbor: carrier.encode_pending(
-              carrier.PendingRawV1 {
-                ..pending,
-                output_proof_cbor: next_control_cbor,
-              },
-            ),
-          },
+        carrier.splice_pending_successor_v1(
+          transition.work_witness_cbor,
+          control.pending_cbor,
+          pending.output_proof_cbor,
+          next_control_cbor,
         ),
       ),
     }

@@ -174,7 +174,7 @@ and the `demo/midgard-validation` codecs are untouched.
    - **Optional scalar re-check (recommended, ≈ +1.3 KB):** `un_list_data` the LOP control into its 12 items (1,202 B, probe c06 of the shared plan) and require `items[0] == 1`, `0 ≤ items[1] ≤ 6`, `items[2] == descriptor.output_index`, `items[3] == descriptor.total_length`, `items[4] == descriptor.item_commitment` — the three equalities the monolith's `resolve_inputs_control_is_bound` states explicitly. Without it these facts are inherited from membership-begin (which constructs items 2–4 from the descriptor) and preserved because no stage step rewrites items 0–4; with it the dispatcher is clause-for-clause the monolith minus `control_is_well_formed`, which the yields discharge for the sub-control they advance. Size allows it (8,402 + ≈ 1,300 < 15,000); take it.
    - `control_cbor == pending.output_proof_cbor` — the channel value the yield attests is pinned to the agreed pre-state bytes.
    - `require_semantic_yield_v1(tx, reference_script_auth_policy_id, lop_role(yield_role_index), yield_ref_input_index)` (= `state_queue_yield.require_authenticated_zero_yield`; primer handshake item 1).
-   - Successor (primer item 3): if `next_control_cbor == #""` (rejection mode) require `claimed_successor.phase == Terminal` — the yield has already required `rejected_successor_is_exact(pre, claimed_successor, code)` for the code _it_ computed; else require `claimed_successor.phase == ResolveInputs` and `claimed_successor.work_root == hash_work_witness(ResolveInputs, pre.program_counter + 1, encode_control_raw({..control, pending: Some({..pending, output_proof_cbor: next_control_cbor})}))`. An encoded LOP control is never empty, so the mode is unambiguous (§10 D2).
+   - Successor (primer item 3): if `next_control_cbor == #""` (rejection mode) require `claimed_successor.phase == Terminal` — the yield has already required `rejected_successor_is_exact(pre, claimed_successor, code)` for the code _it_ computed; else require `claimed_successor.phase == ResolveInputs` and `claimed_successor.work_root == hash_work_witness(ResolveInputs, pre.program_counter + 1, s)` where `s = encode_control_raw({..control, pending: Some({..pending, output_proof_cbor: next_control_cbor})})`. The shipped dispatcher computes `s` as `splice_pending_successor_v1(work_witness_cbor, pending_cbor, output_proof_cbor, next_control_cbor)` — the §4.1/§2 "successor by splice": byte-identical to the re-encode whenever `control_raw_is_bound` (a sibling clause) holds, because the canonical encoding is per-field concatenation and the splice re-verifies both replaced tails; it saves the second `encode_control_raw`/`encode_pending` walk (§9 execution fit). An encoded LOP control is never empty, so the mode is unambiguous (§10 D2).
 2. **Yield** (shared; script-sources output-proof-step plan §4.2): `unique_semantic_dispatch_v1(dispatcher_script_hashes, tx)` → exactly one input at either listed dispatcher credential, its inline datum as `validation_semantic_v1.Datum`, its `Spend` redeemer's `extra` = `(proof_witness, control_cbor, next_control_cbor, yield_role_index, yield_ref_input_index)`; `expect yield_role_index == own_index`; `un_list_data(control_cbor)` into 12 items; `expect un_i_data(items[1]) == own_stage` (and the traversal action tag for datum yields); decode only its sub-control with that module's `control_from_data_v1` (which asserts well-formedness); decode `proof_witness` as `LedgerOutputProofWitnessV1` and authenticate the chunk window (`bounded_item_v1.verify_chunk` against `items[4]`); run the stage step; on `Advanced` re-encode the changed sub-control(s) with the module encoder, splice into `control_cbor` (offset verified by `slice(offset, len(old)) == old` where `old` is the module encoder's output for the decoded pre sub-control) and require equality with `next_control_cbor`; on a rejecting result require `next_control_cbor == #""` and `rejected_successor_is_exact(state.resolution.pre_state, transition.claimed_successor, code)` with the code the yield computed.
 3. Output-state re-derivation stays in the dispatcher: `continue_winning` requires the award script hash and the `winning_resolution()` datum on the continuation output.
 4. Parameters (primer item 4): the dispatcher carries the auth policy id and a compiled-in role table; the yields carry both dispatcher hashes; nothing is trusted from a redeemer except as a channel checked on both ends.
@@ -183,9 +183,17 @@ and the `demo/midgard-validation` codecs are untouched.
 
 The resolve-inputs witness nests the LOP control as
 `encode_definite_bytes(encode_control_v1(output_proof))` inside the pending
-byte string (§1). The dispatcher therefore never needs the LOP codec: it
-re-encodes the eleven items with `encode_control_raw`, substituting
-`next_control_cbor` for the nested byte string. Canonicity of the substituted
+byte string (§1). The dispatcher therefore never needs the LOP codec: the
+successor bytes substitute `next_control_cbor` for the nested byte string —
+implemented as `splice_pending_successor_v1`, which replaces the two verified
+tails (`encode_definite_bytes(output_proof_cbor)` inside `pending_cbor`,
+`encode_definite_bytes(pending_cbor)` before the 34-byte schedule-hash field)
+rather than re-walking `encode_control_raw`; the byte-identity of the two
+derivations under `control_raw_is_bound` is the fuzzed
+`splice_pending_successor_equals_whole_record_reencode` lemma. The dispatcher
+likewise decodes the pending descriptor once and feeds both
+`control_raw_is_bound_with_descriptor` and
+`control_raw_lop_is_pinned_with_descriptor` (the §4.3 clauses, unchanged). Canonicity of the substituted
 bytes is the yield's responsibility (it produced them by splicing a
 module-encoder output into the agreed canonical pre control); canonicity of
 every other byte follows by induction from `prepare_selected`, which required

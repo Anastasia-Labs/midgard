@@ -110,6 +110,62 @@ test raw_pending_initial_encoding_equals_generic(
   }
 }
 
+test splice_pending_successor_equals_whole_record_reencode(
+  args via fuzz.tuple3(fuzz.bytearray(), fuzz.bytearray(), fuzz.bytearray()),
+) {
+  let (key, old_proof, next_proof) = args
+  let c = control_fixture()
+  let pending = raw.PendingRawV1 {
+    source_kind: 1,
+    key,
+    next_schedule_hash: c.remaining_schedule_hash,
+    descriptor_cbor: #"bb",
+    output_proof_cbor: old_proof,
+  }
+  let control = raw.ResolveInputsControlRawV1 {
+    ..c,
+    cursor: 2,
+    pending_cbor: raw.encode_pending(pending),
+  }
+  let witness_cbor = raw.encode_control_raw(control)
+  raw.splice_pending_successor_v1(
+    witness_cbor,
+    control.pending_cbor,
+    pending.output_proof_cbor,
+    next_proof,
+  ) == raw.encode_control_raw(
+    raw.ResolveInputsControlRawV1 {
+      ..control,
+      pending_cbor: raw.encode_pending(
+        raw.PendingRawV1 { ..pending, output_proof_cbor: next_proof },
+      ),
+    },
+  )
+}
+
+test splice_pending_successor_refuses_a_mismatched_proof_tail() fail {
+  let c = control_fixture()
+  let pending = raw.PendingRawV1 {
+    source_kind: 0,
+    key: #"aa",
+    next_schedule_hash: c.remaining_schedule_hash,
+    descriptor_cbor: #"bb",
+    output_proof_cbor: #"9101",
+  }
+  let control = raw.ResolveInputsControlRawV1 {
+    ..c,
+    cursor: 2,
+    pending_cbor: raw.encode_pending(pending),
+  }
+  raw.splice_pending_successor_v1(
+    raw.encode_control_raw(control),
+    control.pending_cbor,
+    // Not the pending record's output-proof bytes: the tail check fails.
+    #"9102",
+    #"9103",
+  ) == #""
+}
+
 test no_pending_parser_refuses_other_pending_bytes() fail {
   let c = control_fixture()
   raw.control_no_pending_from_witness(

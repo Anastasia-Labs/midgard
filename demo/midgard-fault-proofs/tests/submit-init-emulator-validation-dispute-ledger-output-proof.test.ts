@@ -225,16 +225,13 @@ it("proves the span-attach step through its span stage yield", async () => {
   expectPositiveBasis(result, "script-sources span-attach step");
 }, 300_000);
 
-it.skip("proves a resolve-inputs advance-integer step through its scalar-integer yield", async () => {
-  // Still blocked on the positive-path basis after the span-yield removal:
-  // the lifecycle completes under the emulator's 16,500,000 cap, but the
-  // semantic transaction measured 14,226,253 memory against the 13,200,000
-  // basis (down from 15,481,633 with the per-step span yield; the remaining
-  // overhang is the ResolveInputs dispatcher's carrier decode, which the
-  // ruling's rejected-redesign list places out of scope). Escalated with the
-  // measurement; the matching negative below stays active because the honest
-  // transaction fits the evaluator cap, so its refusal is semantic rather
-  // than budget exhaustion.
+it("proves a resolve-inputs advance-integer step through its scalar-integer yield", async () => {
+  // Under the positive-path basis since the sanctioned dispatcher-decode
+  // remediation: the ResolveInputs step dispatcher decodes the pending
+  // descriptor once for both carrier predicates and derives the successor
+  // work witness by splicing the pending tail instead of re-encoding the
+  // whole control (semantic transaction 13,100,448 memory against the
+  // 13,200,000 basis, down from 14,226,253).
   const result = await runForcedValidationDisputeScenario(
     ({ operatorVkey, now }) =>
       buildForgedOperatorSuccessorValidationDisputeFixture({
