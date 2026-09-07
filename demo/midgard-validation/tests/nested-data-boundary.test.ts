@@ -262,11 +262,7 @@ describe("canonical V1 nested Cardano Data boundary", () => {
     const maximumChunkBytes = datumSteps.reduce(
       (maximum, { witness }) =>
         witness!.kind === "datum"
-          ? Math.max(
-              maximum,
-              witness!.chunkProof?.chunk.length ?? 0,
-              witness!.nextChunkProof?.chunk.length ?? 0,
-            )
+          ? Math.max(maximum, witness!.window?.length ?? 0)
           : maximum,
       0,
     );

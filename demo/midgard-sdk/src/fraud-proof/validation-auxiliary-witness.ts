@@ -848,13 +848,25 @@ const LedgerOutputProofWitnessSchema = Data.Enum([
   Data.Object({
     LedgerOutputProofDatum: Data.Object({
       action: DataTraverseActionSchema,
-      chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+      window: Data.Nullable(Data.Bytes()),
     }),
   }),
   Data.Object({
     LedgerOutputProofNativeFrame: Data.Object({
       frame: NativeScriptFrameSchema,
+    }),
+  }),
+  Data.Object({
+    LedgerOutputProofSpanAttach: Data.Object({
+      start: Data.Integer(),
+      length: Data.Integer(),
+      chunk_proof: BoundedItemChunkProofSchema,
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+    }),
+  }),
+  Data.Object({
+    LedgerOutputProofWindow: Data.Object({
+      bytes: Data.Bytes(),
     }),
   }),
 ]);

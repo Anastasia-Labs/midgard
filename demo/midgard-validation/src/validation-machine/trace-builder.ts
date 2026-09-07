@@ -7,6 +7,7 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   aikenSerialisedPlutusDataCbor,
   appendMidgardValidationMerkleLeaf,
+  attachMidgardLedgerOutputProofFacts,
   buildMidgardBlake2b224Trace,
   buildMidgardBoundedItem,
   buildMidgardBoundedItemChunkProof,
@@ -62,6 +63,7 @@ import {
   midgardBoundedItemChunkCount,
   type MidgardBoundedItemChunkProof,
   type MidgardLedgerOutputProofControl,
+  midgardLedgerOutputProofFactsComplete,
   type MidgardMpfProofFoldTrace,
   MidgardRedeemerItemProofModes,
   MidgardRedeemerItemProofStages,
@@ -2393,13 +2395,42 @@ export const buildDeterministicValidationMachineTrace = (
               },
             );
           }
+          // Chained descriptor-fact attachment: each canonical group is one
+          // checkpointed machine step over the same finalize witness shape;
+          // the thin terminal finalize below requires all four facts exact.
+          let factsProof = outputProof.terminal;
+          while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
+            pushWitness(
+              "resolveInputs",
+              resolutionWitnessCbor({
+                node: item,
+                descriptorCbor,
+                outputProof: factsProof,
+              }),
+              {
+                kind: "ledgerOutputProofFinalize",
+                descriptorCbor,
+                signerProof: { kind: "none" },
+              },
+            );
+            const attached = attachMidgardLedgerOutputProofFacts(
+              factsProof,
+              descriptorCbor,
+            );
+            if (attached === null) {
+              return yield* Effect.fail(
+                new Error("ledger output proof fact attachment failed closed"),
+              );
+            }
+            factsProof = attached;
+          }
           const signerProof = signerSetProof(item.sourceKind, outputCbor);
           pushWitness(
             "resolveInputs",
             resolutionWitnessCbor({
               node: item,
               descriptorCbor,
-              outputProof: outputProof.terminal,
+              outputProof: factsProof,
             }),
             {
               kind: "ledgerOutputProofFinalize",
@@ -3075,6 +3106,48 @@ export const buildDeterministicValidationMachineTrace = (
                   },
                 );
               }
+              // Chained descriptor-fact attachment: each canonical group is
+              // one checkpointed machine step over the same finalize witness
+              // shape; the thin terminal finalize below requires all four
+              // facts exact.
+              let factsProof = outputProof.terminal;
+              while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
+                pushWitness(
+                  "scriptSources",
+                  scriptSourcesWitnessCbor({
+                    ...scriptSourceControl,
+                    stage: 5,
+                    sourceFrontier: replaySourceFrontier,
+                    redeemerFrontier,
+                    replayCursor,
+                    replayAccumulator,
+                    replayRemainingScheduleHash,
+                    spendIndex: replaySpendIndex,
+                    purposeFrontier: replayPurposeFrontier,
+                    outputCursor,
+                    outputFrontier,
+                    receiveScan: receiveSourceScan(),
+                    outputProof: factsProof,
+                  }),
+                  {
+                    kind: "ledgerOutputProofFinalize",
+                    descriptorCbor: outputMaterial.descriptorCbor,
+                    signerProof: { kind: "none" },
+                  },
+                );
+                const attached = attachMidgardLedgerOutputProofFacts(
+                  factsProof,
+                  outputMaterial.descriptorCbor,
+                );
+                if (attached === null) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "ledger output proof fact attachment failed closed",
+                    ),
+                  );
+                }
+                factsProof = attached;
+              }
               pushWitness(
                 "scriptSources",
                 scriptSourcesWitnessCbor({
@@ -3090,7 +3163,7 @@ export const buildDeterministicValidationMachineTrace = (
                   outputCursor,
                   outputFrontier,
                   receiveScan: receiveSourceScan(),
-                  outputProof: outputProof.terminal,
+                  outputProof: factsProof,
                 }),
                 {
                   kind: "ledgerOutputProofFinalize",

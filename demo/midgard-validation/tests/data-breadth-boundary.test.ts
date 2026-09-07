@@ -595,11 +595,7 @@ const maximumDatumChunkBytes = (
 ): number =>
   trace.steps.reduce((maximum, { witness }) => {
     if (witness?.kind !== "datum") return maximum;
-    return Math.max(
-      maximum,
-      witness.chunkProof?.chunk.length ?? 0,
-      witness.nextChunkProof?.chunk.length ?? 0,
-    );
+    return Math.max(maximum, witness.window?.length ?? 0);
   }, 0);
 
 const maximumRedeemerChunkBytes = (

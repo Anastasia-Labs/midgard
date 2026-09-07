@@ -533,8 +533,7 @@ const ledgerOutputProofWitnessData = (
     case "datum":
       return new Constr(3, [
         dataTraverseActionData(witness.action),
-        option(witness.chunkProof, chunkProofData),
-        option(witness.nextChunkProof, chunkProofData),
+        option(witness.window, bytes),
       ]);
     case "nativeFrame":
       return new Constr(4, [
@@ -547,6 +546,15 @@ const ledgerOutputProofWitnessData = (
           witness.frame.required,
         ]),
       ]);
+    case "spanAttach":
+      return new Constr(5, [
+        int(witness.start),
+        int(witness.length),
+        chunkProofData(witness.chunkProof),
+        option(witness.nextChunkProof, chunkProofData),
+      ]);
+    case "window":
+      return new Constr(6, [bytes(witness.bytes)]);
   }
 };
 
