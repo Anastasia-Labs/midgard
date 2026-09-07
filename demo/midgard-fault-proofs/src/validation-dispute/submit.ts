@@ -8407,6 +8407,8 @@ export const cancelValidationCekMaterialTraversal = async ({
   signer,
   threadOutRef,
   witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -8415,6 +8417,9 @@ export const cancelValidationCekMaterialTraversal = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
 }) => {
   const {
     deploymentInfo: deployed,
@@ -8452,6 +8457,8 @@ export const cancelValidationCekMaterialTraversal = async ({
     threadOutRef,
     referenceScriptUtxo: reference,
     witnessReferenceScripts,
+    preSubmitBoundary,
+    awaitConfirmation,
   });
 };
 
@@ -8715,6 +8722,8 @@ export const cancelValidationCekCore = async ({
   signer,
   threadOutRef,
   witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -8723,6 +8732,9 @@ export const cancelValidationCekCore = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
 }) => {
   const {
     deploymentInfo: deployed,
@@ -8775,7 +8787,8 @@ export const cancelValidationCekCore = async ({
     referenceScriptUtxo: reference,
     witnessReferenceScripts,
     family: "validationTraceDispute",
-    awaitConfirmation: true,
+    preSubmitBoundary,
+    awaitConfirmation,
   });
 };
 
@@ -8989,6 +9002,8 @@ export const cancelValidationCekContext = async ({
   signer,
   threadOutRef,
   witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -8997,6 +9012,9 @@ export const cancelValidationCekContext = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
 }) => {
   const {
     deploymentInfo: deployed,
@@ -9052,7 +9070,8 @@ export const cancelValidationCekContext = async ({
     referenceScriptUtxo: reference,
     witnessReferenceScripts,
     family: "validationTraceDispute",
-    awaitConfirmation: true,
+    preSubmitBoundary,
+    awaitConfirmation,
   });
 };
 
@@ -9164,6 +9183,8 @@ export const cancelValidationSemanticResolution = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
+  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -9173,6 +9194,9 @@ export const cancelValidationSemanticResolution = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly awaitConfirmation?: boolean;
 }) => {
   const { validationTraceDisputeCategory, contracts } =
     await resolveValidationTraceDisputeDeploymentContracts({
@@ -9197,5 +9221,7 @@ export const cancelValidationSemanticResolution = async ({
     threadOutRef,
     referenceScriptUtxo,
     witnessReferenceScripts,
+    preSubmitBoundary,
+    awaitConfirmation,
   });
 };

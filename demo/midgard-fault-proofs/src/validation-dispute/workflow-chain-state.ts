@@ -36,7 +36,12 @@ export type ValidationTraceDisputeSemanticGroup =
 
 export type ValidationTraceDisputeChainStage =
   | Readonly<{ kind: "not_started"; stateQueueBlockOutRef: string }>
-  | Readonly<{ kind: "init"; threadOutRef: string }>
+  | Readonly<{
+      kind: "init";
+      threadOutRef: string;
+      /** Authenticated topology target; patched in by the derivation. */
+      stateQueueBlockOutRef: string;
+    }>
   | Readonly<{ kind: "open_pending_source"; threadOutRef: string }>
   | Readonly<{
       kind: "game";
@@ -129,7 +134,6 @@ const gameStage = (
 const decodeOnly =
   (
     kind:
-      | "init"
       | "open_pending_source"
       | "timeout_pending"
       | "resolution_boundary"
@@ -182,11 +186,12 @@ export const buildValidationTraceDisputeAddressClassifier = (
   ): void => {
     if (!map.has(address)) map.set(address, { classify });
   };
-  put(chain.opener.spendingScriptAddress, (utxo) =>
-    decodeOnly("init", (cbor) =>
-      Data.from(cbor, FraudProofComputationThreadStepDatum),
-    )(utxo),
-  );
+  put(chain.opener.spendingScriptAddress, (utxo) => {
+    Data.from(requireDatum(utxo, "init"), FraudProofComputationThreadStepDatum);
+    // The derivation replaces the placeholder with the authenticated
+    // state-queue topology target before this stage is ever surfaced.
+    return { kind: "init", threadOutRef: outRef(utxo), stateQueueBlockOutRef: "" };
+  });
   put(chain.source.spendingScriptAddress, (utxo) =>
     decodeOnly("open_pending_source", (cbor) =>
       Data.from(cbor, PendingValidationClaimDatum),
@@ -299,7 +304,19 @@ export const deriveValidationTraceDisputeChainStage = async ({
         `validationTraceDispute thread token surfaced at unknown address ${thread.address}`,
       );
     }
-    return entry.classify(thread, currentTime);
+    const stage = entry.classify(thread, currentTime);
+    if (stage.kind !== "init") return stage;
+    const topology = await stateQueueHeaderTopology({
+      lucid,
+      stateQueue,
+      headerHash,
+    });
+    if (topology.target === undefined) {
+      throw new Error(
+        "validationTraceDispute thread is open but the fraudulent header left the state queue",
+      );
+    }
+    return { ...stage, stateQueueBlockOutRef: topology.target };
   }
   const topology = await stateQueueHeaderTopology({
     lucid,
@@ -309,18 +326,22 @@ export const deriveValidationTraceDisputeChainStage = async ({
   const proof = (
     await lucid.utxosAt(fraudProofSpendingScriptAddress)
   ).find((utxo) => (utxo.assets[proofUnit] ?? 0n) === 1n);
+  if (topology.target === undefined) {
+    if (proof === undefined) {
+      throw new Error(
+        "validationTraceDispute fraudulent header disappeared without a retained proof token",
+      );
+    }
+    return { kind: "removed" };
+  }
   if (proof !== undefined) {
     return {
       kind: "proof_token",
       fraudProofOutRef: outRef(proof),
-      nextRemovalOutRef:
-        topology.successor ?? topology.target ?? outRef(proof),
+      nextRemovalOutRef: topology.successor ?? topology.target,
     };
   }
-  if (topology.target !== undefined) {
-    return { kind: "not_started", stateQueueBlockOutRef: topology.target };
-  }
-  return { kind: "removed" };
+  return { kind: "not_started", stateQueueBlockOutRef: topology.target };
 };
 
 /**
