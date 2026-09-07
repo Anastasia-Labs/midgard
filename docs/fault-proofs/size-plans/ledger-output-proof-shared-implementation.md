@@ -10,8 +10,9 @@ Finalize requires the conjunction of four descriptor facts before either
 signer/protected-output authorization branch.
 
 Each physical yield authenticates one dispatcher input, its reference role
-NFT and its zero withdrawal. The stage yields read the same 12-item LOP
-control but decode only the active sub-control. Initial sub-control encodings
+NFT and its zero withdrawal. The stage yields read the same 17-item LOP
+control (12 machine items, one span-window commitment, four descriptor-fact
+commitments) but decode only the active sub-control. Initial sub-control encodings
 are pinned against the typed encoders. Datum actions split by action family;
 additional physical splits are allowed only when measured publication or
 aggregate transaction limits require them. The four descriptor yields pin
@@ -79,6 +80,58 @@ The ruling's structure, as shipped:
    (control identity, transaction/output identity, span offsets) so nothing
    substitutes across steps, disputes, or roles.
 
+## Ruling record — execution-budget restructure (2026-09-06, second ruling)
+
+The first-ruling structure left three positive-path execution misses (memory
+units against the 13,200,000 basis / 16,500,000 evaluator cap):
+ResolveInputs finalize 21,359,516 and ScriptSources finalize 20,046,146
+(both over the cap — unpublishable), and the ResolveInputs advance-integer
+three-yield step 15,481,633. Ruling, binding:
+
+1. **Finalize → descriptor fact-attach steps + thin terminal.** Each attach
+   is an ordinary checkpointed machine step: dispatcher spend plus one or
+   two descriptor yields, grouped `[[2, 3], [0], [1]]` (datum+value
+   summaries together, then scan facts, then reference script) so each
+   positive path measures under the basis. The successor control records
+   the attested fact(s) in commitment form
+   (`fact_commitment_v1(role, descriptor, value_summary, datum_summary)` =
+   blake2b-256 of the serialized role payload — every fact commits to all
+   its identifying inputs). The terminal step requires ALL FOUR recorded
+   facts to recompute exactly from the redeemer's descriptor
+   (`facts_are_exact_v1`), performs authorization + successor, and carries
+   NO descriptor yields.
+2. **Steps → span verified once.** A span-attach step (new stage role 23,
+   `LedgerOutputProofSpanAttach` witness, allowed at the datum-traversal /
+   reference-script / script-hash stages) runs `authenticated_output_span`
+   once and records `Some { start, length, digest }` in the control (item
+   12); subsequent stage steps drop the span yield entirely and bind their
+   redeemer window bytes to the commitment inline
+   (`bound_window_bytes_v1`: containment + length + blake2b-256 equality +
+   slice). Scalar attestation yields stay per-step.
+3. Rejected: raising any cap or the 20% basis; redesigning
+   `unique_semantic_dispatch_v1`.
+4. Any positive path still over basis after this is escalated with
+   measurements, never papered over (see the advance-integer entry in the
+   measured table below).
+
+**Conjunction equivalence.** The chained conjunction equals the monolithic
+finalize predicate clause-for-clause: each descriptor yield performs exactly
+the same leaf verification it performed in the five-execution transaction,
+and its verified output now enters the control only as that step's
+`fact_attach_v1` successor — the dispatcher recomputes the successor control
+itself and requires bytewise equality, so a fact can be recorded only in a
+transaction that carries that fact's descriptor yield attestation
+(machine-attach steps themselves carry no descriptor check; the yield
+conjunction in the same transaction is the check). The thin terminal then
+recomputes all four commitments from its own redeemer descriptor and demands
+equality with the recorded facts, so the terminal is impossible with any
+fact missing, forged, stale (different descriptor/dispute), or duplicated —
+`fact_attach_v1` only fills the first all-`None` group, and a well-formed
+control admits facts only at the terminal stage. The span consumers'
+`bound_window_bytes_v1` equality against the recorded digest is exactly the
+old per-step authenticated-span check with the merkle walk hoisted into the
+span-attach step.
+
 ## Ablation evidence (remedy C is dead)
 
 Complete byte attribution of the pre-ruling 19,425-byte advance-bytes yield
@@ -116,23 +169,29 @@ into their own attested roles.
 tables** rather than one appended list, because the three families have
 different consumers and different conjunction rules:
 
-- `stage_role` — 23 entries (0 Structure, 1 Value, 2 DatumFoldMap,
+- `stage_role` — 24 entries (0 Structure, 1 Value, 2 DatumFoldMap,
   3 DatumFinalizeFrame, 4 DatumHeadScalar, 5 DatumAttachInteger,
   6 DatumFoldList, 7 DatumAdvanceInteger, 8 ReferenceScript, 9 ScriptHash,
   10 NativeScript, 11 StructureAssets, 12 StructureOptional,
   13 StructureFinish, 14 DatumHeadSequence, 15 DatumHeadMap,
   16 DatumHeadLargeConstructor, 17 DatumAttachBytes, 18 DatumAdvanceBytes,
   19 DatumFinish, 20 DatumLargeConstructor, 21 DatumLargeFields,
-  22 DatumClose). Exactly one stage role per step transaction, selected by
-  the planner from the pinned control's stage.
-- attestation roles — span, scalar-integer, scalar-bytes, joined to stage
-  roles by the `stage_attestation_roles` map ({4,8,9,14,15,16,20,21,22} →
-  [span]; 5 → [scalarInteger]; 17 → [scalarBytes]; 7 → [span,
-  scalarInteger]; 18 → [span, scalarBytes]; all others → []). Zero or more
-  per step transaction, in role-table order in
-  `yield_ref_input_indices`.
+  22 DatumClose, 23 SpanAttach). Exactly one stage role per step
+  transaction, selected by the planner from the pinned control's stage (and
+  the `SpanAttach` witness at the content stages).
+- attestation roles — scalar-integer and scalar-bytes only, joined to stage
+  roles by the `stage_attestation_roles` map ({5, 7} → [scalarInteger];
+  {17, 18} → [scalarBytes]; all others → []). Zero or one per step
+  transaction, after the stage yield in `yield_ref_input_indices`. The span
+  attestation of the first ruling was retired by the second ruling below:
+  the span is verified once by the span-attach STEP (stage role 23), its
+  window commitment is recorded in the control, and every later consumer
+  binds its redeemer window bytes to that commitment inline (one blake2b-256
+  plus equality).
 - `descriptor_roles` — 4 entries (0 ScanFacts, 1 ReferenceScript,
-  2 DatumSummary, 3 ValueSummary), always all four, finalize path only.
+  2 DatumSummary, 3 ValueSummary), finalize path only; each fact-attach
+  step references exactly its attach group's yields (`[[2, 3], [0], [1]]`
+  order) and the thin terminal references none.
 
 Roles 19–22 (DatumFinish, DatumLargeConstructor, DatumLargeFields,
 DatumClose) are physical splits of what the source plans sketched as fewer
@@ -154,104 +213,122 @@ a different action, output, or control.
 ## Receipt (2026-09-06)
 
 Blueprint: fresh `aiken build --env testnet`, sha256
-`f066a2e60b434fdc4e35599181daf6548048c402bd986fb2ed51c858145b8574`, compiler
-v1.1.23+5adf783 (the patched fork).
+`618dda7547bf0ad8e23b91062d47ae181ba37ac2617d5acebc7ccda3e04a4f5d`, compiler
+v1.1.23+5adf783 (the patched fork). (The byte and execution tables below
+supersede the first-ruling receipt measured at blueprint `f066a2e6…`.)
 
 ### Validator byte table (raw compiledCode bytes; target ≤ 15,000)
 
 | validator                                              | bytes  |
 | ------------------------------------------------------ | ------ |
-| ledger_output_proof_datum_large_constructor_yield      | 14,332 |
-| ledger_output_proof_datum_advance_bytes_yield          | 14,302 |
-| ledger_output_proof_datum_attach_bytes_yield           | 13,888 |
-| ledger_output_proof_datum_attach_integer_yield         | 13,700 |
-| ledger_output_proof_value_yield                        | 13,375 |
-| ledger_output_proof_datum_advance_integer_yield        | 13,094 |
-| ledger_output_descriptor_datum_summary_yield           | 12,509 |
-| ledger_output_proof_structure_optional_yield           | 11,889 |
-| ledger_output_descriptor_scan_facts_yield              | 11,788 |
-| ledger_output_proof_structure_assets_yield             | 11,577 |
-| ledger_output_proof_datum_head_sequence_yield          | 11,428 |
-| ledger_output_proof_datum_head_map_yield               | 11,356 |
-| ledger_output_proof_script_hash_yield                  | 11,281 |
-| ledger_output_proof_native_script_yield                | 11,015 |
-| ledger_output_proof_structure_yield                    | 10,894 |
-| ledger_output_proof_datum_close_yield                  | 10,875 |
-| ledger_output_proof_datum_head_scalar_yield            | 10,669 |
-| ledger_output_proof_datum_head_large_constructor_yield | 10,499 |
-| ledger_output_descriptor_reference_script_yield        | 10,394 |
-| ledger_output_proof_datum_large_fields_yield           | 10,213 |
-| ledger_output_proof_datum_finalize_frame_yield         | 9,549  |
-| ledger_output_proof_reference_script_yield             | 9,431  |
-| ledger_output_proof_datum_fold_map_yield               | 7,975  |
-| ledger_output_proof_structure_finish_yield             | 7,920  |
-| ledger_output_proof_datum_fold_list_yield              | 7,728  |
-| ledger_output_descriptor_value_summary_yield           | 7,648  |
-| ledger_output_proof_scalar_bytes_yield                 | 6,551  |
-| ledger_output_proof_scalar_integer_yield               | 6,337  |
-| ledger_output_proof_span_yield                         | 5,605  |
-| ledger_output_proof_datum_finish_yield                 | 3,867  |
-| resolve_inputs_membership_finalize_semantic_v1         | 13,045 |
-| resolve_inputs_membership_step_semantic_v1             | 11,330 |
-| script_sources_output_proof_finalize_semantic_v1       | 12,916 |
-| script_sources_output_proof_step_semantic_v1           | 7,759  |
+| ledger_output_proof_datum_large_constructor_yield      | 14,608 |
+| ledger_output_proof_datum_advance_bytes_yield          | 14,565 |
+| resolve_inputs_membership_finalize_semantic_v1         | 14,402 |
+| script_sources_output_proof_finalize_semantic_v1       | 14,390 |
+| ledger_output_proof_datum_attach_bytes_yield           | 13,920 |
+| ledger_output_proof_datum_attach_integer_yield         | 13,734 |
+| ledger_output_proof_value_yield                        | 13,445 |
+| ledger_output_proof_datum_advance_integer_yield        | 13,376 |
+| ledger_output_descriptor_datum_summary_yield           | 12,514 |
+| ledger_output_proof_structure_optional_yield           | 11,932 |
+| ledger_output_descriptor_scan_facts_yield              | 11,790 |
+| ledger_output_proof_datum_head_sequence_yield          | 11,713 |
+| ledger_output_proof_structure_assets_yield             | 11,642 |
+| ledger_output_proof_datum_head_map_yield               | 11,640 |
+| ledger_output_proof_datum_close_yield                  | 11,161 |
+| resolve_inputs_membership_step_semantic_v1             | 11,137 |
+| ledger_output_proof_native_script_yield                | 11,068 |
+| ledger_output_proof_structure_yield                    | 10,959 |
+| ledger_output_proof_datum_head_scalar_yield            | 10,954 |
+| ledger_output_proof_script_hash_yield                  | 10,901 |
+| ledger_output_proof_datum_head_large_constructor_yield | 10,784 |
+| ledger_output_proof_datum_large_fields_yield           | 10,475 |
+| ledger_output_descriptor_reference_script_yield        | 10,379 |
+| ledger_output_proof_datum_finalize_frame_yield         | 9,583  |
+| ledger_output_proof_reference_script_yield             | 9,127  |
+| ledger_output_proof_datum_fold_map_yield               | 8,009  |
+| ledger_output_proof_structure_finish_yield             | 7,985  |
+| script_sources_output_proof_step_semantic_v1           | 7,973  |
+| ledger_output_proof_datum_fold_list_yield              | 7,761  |
+| ledger_output_descriptor_value_summary_yield           | 7,650  |
+| ledger_output_proof_scalar_bytes_yield                 | 6,601  |
+| ledger_output_proof_scalar_integer_yield               | 6,387  |
+| ledger_output_proof_span_yield                         | 6,249  |
+| ledger_output_proof_datum_finish_yield                 | 3,927  |
 
-All 34 are under the 15,000-byte target. The pre-ruling advance yields
-(19,425 / 18,809) landed at 14,302 / 13,094 after moving span + scalar into
-attestation roles; the pre-ruling finalize monoliths (47,310 / 34,559)
-landed at 13,045 / 12,916 on the four-descriptor-yield decomposition.
+All 34 are under the 15,000-byte target (maximum 14,608). The finalize
+dispatchers grew (13,045 → 14,402 / 12,916 → 14,390) with the fact-attach /
+thin-terminal branch, and most stage yields grew modestly with the 17-item
+control and the inline window binding; the pre-ruling finalize monoliths
+(47,310 / 34,559) and advance yields (19,425 / 18,809) remain retired.
 
 ### Publication fit (real 16,384-byte envelope, 512-byte reserve)
 
 `demo/midgard-fault-proofs/tests/ledger-output-proof-publication.test.ts`
 publishes all 30 yields + 4 dispatchers as reference scripts; ledger pinned
 at `validation-trace-ledger-output-proof-publication-fit-ledger.json`
-(34 entries). Worst signed publication:
+(34 entries, blueprint sha `618dda75…`). Worst signed publication:
 `validationTraceDisputeLedgerOutputProofDatumLargeConstructorWithdraw` at
-14,678 bytes — minimum margin 1,706, all margins ≥ 512.
+14,954 bytes — minimum margin 1,430, all margins ≥ 512.
 
 ### Measured step/finalize execution (emulator, Van Rossem parameters)
 
 Positive-path basis: mem ≤ 13,200,000, CPU ≤ 8,000,000,000 (80% of the
-16,500,000 / 10,000,000,000 caps). Semantic-resolution transaction totals:
+16,500,000 / 10,000,000,000 caps). Semantic-resolution transaction totals,
+before (first-ruling structure) → after (fact-attach + span-attach
+restructure); every "after" row is asserted in the emulator suite:
 
-| lifecycle                                                                                                     | mem        | verdict                                 |
-| ------------------------------------------------------------------------------------------------------------- | ---------- | --------------------------------------- |
-| ResolveInputs step, single-yield (spend 4,475,758 + stage 3,771,861)                                          | 8,247,619  | within basis                            |
-| ScriptSources step, single-yield (spend 1,885,382 + stage 3,768,731)                                          | 5,654,113  | within basis                            |
-| ScriptSources advance-bytes step, 3 yields (2,158,062 + 4,136,586 + 2,792,411 + 2,608,597)                    | 11,695,656 | within basis                            |
-| ResolveInputs advance-integer step, 3 yields (5,961,500 + 4,126,300 + 2,605,777 + 2,790,924)                  | 15,481,633 | OVER basis, under 16.5M cap — escalated |
-| ResolveInputs finalize, 4 descriptor yields (spend 6,689,330 + 2,826,486 + 3,720,207 + 5,554,225 + 2,569,268) | 21,359,516 | OVER cap — escalated                    |
-| ScriptSources finalize, 4 descriptor yields (spend 5,391,872 + same four yields)                              | 20,046,146 | OVER cap — escalated                    |
+| lifecycle                                      | before     | after      | verdict                           |
+| ---------------------------------------------- | ---------- | ---------- | --------------------------------- |
+| ResolveInputs step, single-yield               | 8,247,619  | 9,041,949  | within basis                      |
+| ScriptSources step, single-yield               | 5,654,113  | 7,555,644  | within basis                      |
+| ResolveInputs finalize (was one tx, now four): | 21,359,516 |            | was OVER 16.5M cap                |
+| — attach [2,3] datum+value summaries           |            | 12,238,119 | within basis                      |
+| — attach [0] scan facts                        |            | 12,166,670 | within basis                      |
+| — attach [1] reference script                  |            | 10,477,090 | within basis                      |
+| — thin terminal []                             |            | 6,850,145  | within basis                      |
+| ScriptSources finalize (was one tx, now four): | 20,046,146 |            | was OVER 16.5M cap                |
+| — attach [2,3] datum+value summaries           |            | 10,744,841 | within basis                      |
+| — attach [0] scan facts                        |            | 10,683,465 | within basis                      |
+| — attach [1] reference script                  |            | 8,999,796  | within basis                      |
+| — thin terminal []                             |            | 7,260,182  | within basis                      |
+| ScriptSources span-attach step (new, role 23)  | —          | 8,009,216  | within basis                      |
+| ScriptSources advance-bytes step (2 yields)    | 11,695,656 | 12,750,094 | within basis                      |
+| ResolveInputs advance-integer step (2 yields)  | 15,481,633 | 14,226,253 | OVER basis, under cap — ESCALATED |
 
-The finalize misses are exactly the case for which
-`validation-trace-script-sources-output-proof-finalize-semantic-v1.md` §3
-reserves the two-hop chain fallback and §7 sets the 13,200,000 gate. The
-two-hop chain's cross-transaction binding is not designed in any shipped
-plan, so it is escalated rather than improvised; the finalize emulator
-lifecycles are skipped in the suite with the measured numbers, and the
-finalize negative is skipped with them (budget exhaustion would mask the
-semantic refusal it exists to prove). The ResolveInputs advance-integer
-positive is likewise skipped on the basis miss; its negative stays active
-because the honest transaction fits the evaluator cap, so its refusal is
-semantic. Per-yield cost is dominated by
-`unique_semantic_dispatch_v1` re-decoding the dispatcher input/transition in
-every yield (~2.5–5.5M mem each) — any remedy that shares that decode (or
-the two-hop chain) is an owner decision.
+CPU maxima are far under basis (worst 4,772,365,922 of 8,000,000,000). The
+step-path growth against the first-ruling numbers is the 17-item control
+(span window + four fact slots) in every control encode/decode plus the
+inline window binding; the finalize decomposition trades one over-cap
+transaction for four ordinary checkpointed steps.
+
+The single remaining miss — the ResolveInputs advance-integer positive at
+14,226,253 (down from 15,481,633 after retiring the per-step span yield) —
+is dominated by the ResolveInputs dispatcher's pending-carrier decode inside
+`unique_semantic_dispatch_v1`, whose redesign the ruling rejects. It is
+escalated with these measurements; its lifecycle stays skipped in the suite
+(the honest transaction fits the evaluator cap, so the matching negative
+stays active — its refusal is semantic, not budget exhaustion). Every other
+previously-skipped lifecycle is active and green.
 
 ### Verification
 
-- `aiken check` — 6,350 checks, 0 errors (baseline 6,339 at stage 1 + the
-  11-test descriptor-yield transaction battery
-  `ledger-output-descriptor-yields-v1.test.ak`: honest four-yield finalize
-  wins; three-yield, role-permutation, forged-leaf, spliced-receive-scan,
-  non-terminal-control, and double-dispatcher-input shapes refused; wire
-  layout and prepare routing pinned; both rejecting terminals emitted).
+- `aiken check` — 6,359 checks, 0 errors (fresh `aiken build --env testnet`
+  first; the second-ruling battery adds fact-commitment/attach/exactness
+  selector tests in both polarities in `ledger-output-proof-v1.test.ak` /
+  `ledger-output-proof-stages.test.ak` and the machine-level fact-attach
+  chain in `validation-machine-v1.test.ak` on top of the first-ruling
+  descriptor-yield battery).
 - Emulator lifecycles
   (`submit-init-emulator-validation-dispute-ledger-output-proof.test.ts`):
-  both step positives with basis assertions, both step negatives pinned to
-  the on-chain EvaluatorError, multi-yield advance coverage in both
-  polarities via `disputedMatchOrdinal` + inline-datum fixtures; finalize
-  pair + RI advance-integer positive skipped per the escalations above.
+  19 passed / 1 deliberately skipped (the escalated ResolveInputs
+  advance-integer positive). Both step positives, all EIGHT finalize-shaped
+  positives (both families × three attach groups + thin terminal), the
+  span-attach positive and the ScriptSources advance-bytes positive, all
+  with basis assertions; refusals pinned to the on-chain EvaluatorError for
+  forged successors at membershipStep, ScriptSources step, fact-attach
+  (ordinal 0), thin terminal (ordinal 3), span-attach, advance-integer and
+  advance-bytes.
 - Publication fit test green; fit ledger regenerated with
-  `MIDGARD_WRITE_FIT_LEDGER=1`.
+  `MIDGARD_WRITE_FIT_LEDGER=1` against the fresh blueprint
+  (`618dda75…`, compiler v1.1.23+5adf783).

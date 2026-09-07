@@ -1660,12 +1660,12 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     }
     const controlStart = controlAt / 2;
     const cbor = Buffer.from(adjacent.cbor);
-    // The control is a 12-item raw frame (header 0x8c) whose first item is a
+    // The control is a 17-item raw frame (header 0x91) whose first item is a
     // single-byte small integer; flipping its low bit keeps the encoding
     // well-formed while guaranteeing a mismatch with the honest successor.
-    if (cbor[controlStart] !== 0x8c || cbor[controlStart + 1]! > 0x17) {
+    if (cbor[controlStart] !== 0x91 || cbor[controlStart + 1]! > 0x17) {
       throw new Error(
-        "output proof control does not open with a 12-item frame and small-int item",
+        "output proof control does not open with a 17-item frame and small-int item",
       );
     }
     cbor[controlStart + 1] = cbor[controlStart + 1]! ^ 0x01;
