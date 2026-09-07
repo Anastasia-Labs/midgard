@@ -349,3 +349,304 @@ pub fn verify_native_scripts_effectful_semantics_v1(
     },
   )
 }
+
+// ---------------------------------------------------------------------------
+// Per-family §12 descriptor entry points
+// ---------------------------------------------------------------------------
+//
+// `verify_native_scripts` above is the whole phase in one function: the source
+// binding, the terminal hand-off to `ScriptIntegrity`, and both arms of the
+// execution-descriptor step — the native arm (`language_tag == 0`, which folds
+// a first chunk proof and hands off to `PhaseANativeScripts`) and the
+// effectful arm (`language_tag` 3 or 128, which advances the execution cursor
+// and the language bitmap). That is right for `one_step`, which dispatches all
+// of them, and wrong for the two *single-family* resolvers, which each compile
+// in the arm they can never reach:
+//
+//   * `native_scripts_native_semantic_v1` constructs its witness with
+//     `language_tag: 0` as a literal, so the effectful arm is unreachable;
+//   * `native_scripts_effectful_semantic_v1` constructs its witness with
+//     `first_chunk_proof: None`, and the native arm opens that with
+//     `expect Some(chunk_proof)`, so the native arm is unsatisfiable there.
+//
+// The two entry points below are that split. Each runs the shared source
+// binding and the shared descriptor gate — the same leaf hashes and the same
+// three §9 membership proofs, in the same order — and then only its own arm.
+// The set of accepted transitions is unchanged in both directions: an input
+// the general form accepts, each of these accepts, and an input either refuses
+// stays refused. The one observable difference is *how* the unreachable arm
+// now fails in the effectful resolver: a `language_tag == 0` witness used to
+// abort inside `expect Some(chunk_proof) = None` and now evaluates to `False`.
+// Abort and `False` are the same verdict on L1 — the step is not producible
+// either way — so no predicate moves.
+//
+// This is the "stop linking code the validator does not serve" split, taken
+// for publication margin on a consensus limit.
+
+fn native_scripts_source_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: NativeScriptsControlV1,
+) -> Bool {
+  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    verified_source.version == 1,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    native_scripts_control_is_well_formed(control),
+    witness.work_witness_cbor == encode_native_scripts_control_v1(control),
+    control.execution_cursor != control.execution_count,
+  }
+}
+
+fn native_execution_descriptor_gate(
+  control: NativeScriptsControlV1,
+  execution_index: Int,
+  language_tag: Int,
+  purpose_kind: Int,
+  purpose_index: Int,
+  script_hash: ByteArray,
+  subject: ByteArray,
+  purpose_siblings: List<ByteArray>,
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_total_length: Int,
+  script_item_commitment: ByteArray,
+  source_siblings: List<ByteArray>,
+  redeemer_leaf: ByteArray,
+  execution_siblings: List<ByteArray>,
+) -> Bool {
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(
+    purpose_kind,
+    purpose_index,
+    script_hash,
+    subject,
+  )
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    origin_kind,
+    source_key,
+    language_tag,
+    script_hash,
+    script_total_length,
+    script_item_commitment,
+  )
+  let execution_leaf = script_proof_v1.execution_leaf_hash(
+    language_tag,
+    purpose_leaf,
+    source_leaf,
+    redeemer_leaf,
+  )
+  and {
+    execution_index == control.execution_cursor,
+    control.execution_count == control.purpose_count,
+    script_total_length > 0,
+    script_total_length <= max_aggregate_field_preimage_bytes,
+    bytearray.length(script_item_commitment) == 32,
+    validation_merkle_v1.verify_membership(
+      control.purpose_count,
+      control.purpose_peaks,
+      execution_index,
+      purpose_leaf,
+      purpose_siblings,
+    ),
+    validation_merkle_v1.verify_membership(
+      control.source_count,
+      control.source_peaks,
+      source_index,
+      source_leaf,
+      source_siblings,
+    ),
+    validation_merkle_v1.verify_membership(
+      control.execution_count,
+      control.execution_peaks,
+      execution_index,
+      execution_leaf,
+      execution_siblings,
+    ),
+  }
+}
+
+pub fn verify_native_scripts_native_descriptor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  expect
+      NativeExecutionDescriptorWitness {
+        execution_index,
+        language_tag,
+        purpose_kind,
+        purpose_index,
+        script_hash,
+        subject,
+        purpose_siblings,
+        source_index,
+        origin_kind,
+        source_key,
+        script_total_length,
+        script_item_commitment,
+        source_siblings,
+        redeemer_leaf,
+        execution_siblings,
+        first_chunk_proof,
+        signer_peaks,
+      }
+    = auxiliary
+  let control = native_scripts_control_from_witness(witness.work_witness_cbor)
+  and {
+    native_scripts_source_is_bound(pre, witness, control),
+    native_execution_descriptor_gate(
+      control,
+      execution_index,
+      language_tag,
+      purpose_kind,
+      purpose_index,
+      script_hash,
+      subject,
+      purpose_siblings,
+      source_index,
+      origin_kind,
+      source_key,
+      script_total_length,
+      script_item_commitment,
+      source_siblings,
+      redeemer_leaf,
+      execution_siblings,
+    ),
+    language_tag == 0,
+    {
+      expect Some(chunk_proof) = first_chunk_proof
+      expect Some(header) = native_script_scan_v1.versioned_script_header_v1(
+        chunk_proof.chunk,
+        script_total_length,
+      )
+      let continuation_cbor = encode_native_scripts_control_v1(control)
+      and {
+        redeemer_leaf == #"",
+        chunk_proof.chunk_index == 0,
+        chunk_proof.total_length == script_total_length,
+        bounded_item_v1.verify_chunk(script_item_commitment, chunk_proof),
+        header.language_tag == 0,
+        validation_merkle_v1.frontier_is_well_formed(
+          control.signer_count,
+          signer_peaks,
+        ),
+        validation_merkle_v1.frontier_commitment(
+          control.signer_count,
+          signer_peaks,
+        ) == control.signer_frontier_commitment,
+        witness.claimed_successor.phase == validation_trace_v1.PhaseANativeScripts,
+        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+          validation_trace_v1.PhaseANativeScripts,
+          pre.program_counter + 1,
+          encode_phase_a_native_scripts_scan_witness(
+            control.compact_cbor,
+            control.witness_set_compact_cbor,
+            control.field_preimage_lengths_cbor,
+            control.context_cbor,
+            blake2b_256(continuation_cbor),
+            1,
+            1,
+            0,
+            0,
+            script_total_length,
+            script_item_commitment,
+            header.payload_offset,
+            #"",
+            0,
+            0,
+            -1,
+            control.signer_count,
+            signer_peaks,
+            continuation_cbor,
+          ),
+        ),
+      }
+    },
+  }
+}
+
+pub fn verify_native_scripts_effectful_descriptor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  expect
+      NativeExecutionDescriptorWitness {
+        execution_index,
+        language_tag,
+        purpose_kind,
+        purpose_index,
+        script_hash,
+        subject,
+        purpose_siblings,
+        source_index,
+        origin_kind,
+        source_key,
+        script_total_length,
+        script_item_commitment,
+        source_siblings,
+        redeemer_leaf,
+        execution_siblings,
+        first_chunk_proof,
+        signer_peaks,
+      }
+    = auxiliary
+  let control = native_scripts_control_from_witness(witness.work_witness_cbor)
+  and {
+    native_scripts_source_is_bound(pre, witness, control),
+    native_execution_descriptor_gate(
+      control,
+      execution_index,
+      language_tag,
+      purpose_kind,
+      purpose_index,
+      script_hash,
+      subject,
+      purpose_siblings,
+      source_index,
+      origin_kind,
+      source_key,
+      script_total_length,
+      script_item_commitment,
+      source_siblings,
+      redeemer_leaf,
+      execution_siblings,
+    ),
+    or {
+      language_tag == 3,
+      language_tag == 128,
+    },
+    bytearray.length(redeemer_leaf) == 32,
+    first_chunk_proof == None,
+    signer_peaks == [],
+    native_scripts_successor_is_exact(
+      pre,
+      witness,
+      control,
+      if language_tag == 3 {
+        control.language_bitmap + if control.language_bitmap % 2 == 0 {
+          1
+        } else {
+          0
+        }
+      } else {
+        control.language_bitmap + if control.language_bitmap < 2 {
+          2
+        } else {
+          0
+        }
+      },
+    ),
+  }
+}

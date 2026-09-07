@@ -1350,3 +1350,159 @@ fn walk_to_end(preimage: ByteArray, offset: Int, remaining: Int) -> Int {
     walk_to_end(preimage, payload_offset + length, remaining - 1)
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fixed-stride specialisation (§5.3)
+// ---------------------------------------------------------------------------
+//
+// Everything below is the §5.3 fixed-stride half of the door, split out so a
+// caller that only ever opens a fixed-stride field does not *link* the
+// variable-width half. Nothing here decides anything the general form does
+// not: for a field whose `field_stride` is not `walk_derived_stride` — fields
+// 0, 1, 3, 4 and 7 — each of these functions runs the very same checks, in the
+// same order, on the same bytes as its general counterpart, and refuses
+// (rather than walking) when handed a variable-width field. The saving is
+// purely in what the compiled validator has to carry: `walk_to_end`,
+// `walk_item_extent` and `read_chunked_range` are the variable-width and lazy
+// -chunk machinery, and a fixed-stride caller reaches none of them.
+//
+// This is the same "split the shared helper by the codec its caller actually
+// uses" move the ledger-output-proof scalar prefix split made, and it is taken
+// for the same reason: publication margin on a consensus limit.
+
+/// `whole_view`, restricted to a fixed-stride field.
+///
+/// Identical to `whole_view` on every field it accepts — same hash check,
+/// same aggregate bound, same §5.1 header decode, same §7.4 arithmetic count
+/// consistency. The one difference is that the variable-width `walk_to_end`
+/// branch is replaced by a refusal, so a caller that reaches here with a
+/// walk-derived stride fails closed instead of being served.
+pub fn fixed_whole_view(
+  preimage: ByteArray,
+  expected_hash: ByteArray,
+  stride: Int,
+) -> FieldViewV1 {
+  expect field_commitment(preimage) == expected_hash
+  let total_length = bytearray.length(preimage)
+  expect total_length <= max_transaction_aggregate_field_bytes
+  let Pair(header_len, count) = decode_field_array_header(preimage)
+  expect stride > walk_derived_stride
+  // §7.4 count consistency, arithmetic form.
+  expect header_len + stride * count == total_length
+  Whole { bytes: preimage, count, stride }
+}
+
+/// `authenticated_whole_field_view`, restricted to a fixed-stride field.
+///
+/// Same prologue (`field_door_prologue`: bounded field index, §4 positional
+/// identity for the witness-set fields), same three carriage tiers, same
+/// tier-3 materialise-then-hash. `expect stride > walk_derived_stride` is the
+/// only added line and it cannot fire for the fields this door is opened on,
+/// because `field_stride` is a total function of the *literal* field index the
+/// call site pins.
+pub fn authenticated_whole_fixed_field_view(
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> FieldViewV1 {
+  let Pair(expected_hash, stride) = field_door_prologue(
+    verified,
+    witness_set,
+    field_index,
+  )
+  expect stride > walk_derived_stride
+  when carriage is {
+    Inline { preimage } -> fixed_whole_view(preimage, expected_hash, stride)
+    RawUtxo { ref_input_index } ->
+      fixed_whole_view(
+        raw_carriage_bytes(reference_inputs, ref_input_index),
+        expected_hash,
+        stride,
+      )
+    Certified { cert_ref_input_index, chunk_ref_input_indices } -> {
+      let CertifiedChunksV1 { chunks, .. } = certified_chunks(
+        verified.tx_id,
+        field_index,
+        expected_hash,
+        reference_inputs,
+        cert_ref_input_index,
+        chunk_ref_input_indices,
+        certificate_policy_id,
+      )
+      fixed_whole_view(
+        list.foldl(
+          chunks,
+          #"",
+          fn(chunk, joined) { bytearray.concat(joined, chunk) },
+        ),
+        expected_hash,
+        stride,
+      )
+    }
+  }
+}
+
+/// `field_read_range`, restricted to a materialised view.
+///
+/// Every view `fixed_whole_view` returns is a `Whole`, so this is the only arm
+/// a fixed-stride door can reach; refusing the other two rather than serving
+/// them is what unlinks `read_chunked_range`.
+pub fn whole_view_read_range(
+  view: FieldViewV1,
+  offset: Int,
+  length: Int,
+) -> ByteArray {
+  expect Whole { bytes, .. } = view
+  slice_exact(bytes, offset, length)
+}
+
+/// `field_item_count`, restricted to a materialised view. Same answer, same
+/// authentication: a `Whole` view's count survived §5.1 count consistency at
+/// construction, which is exactly what `field_item_count`'s `Whole` arm says.
+pub fn whole_view_item_count(view: FieldViewV1) -> Int {
+  expect Whole { count, .. } = view
+  count
+}
+
+/// `item_header_at` over a materialised view — byte-for-byte the same §5.1
+/// minimal-width header decode, reading through `whole_view_read_range`.
+fn whole_item_header_at(view: FieldViewV1, offset: Int) -> Pair<Int, Int> {
+  let tag = bytearray.at(whole_view_read_range(view, offset, 1), 0)
+  if and {
+    tag >= 64,
+    tag <= 87,
+  } {
+    Pair(offset + 1, tag - 64)
+  } else if tag == 88 {
+    let length = bytearray.at(whole_view_read_range(view, offset + 1, 1), 0)
+    expect length >= 24
+    Pair(offset + 2, length)
+  } else {
+    expect tag == 89
+    let head = whole_view_read_range(view, offset + 1, 2)
+    let length = bytearray.at(head, 0) * 256 + bytearray.at(head, 1)
+    expect length > 0xff
+    Pair(offset + 3, length)
+  }
+}
+
+/// `field_item_extent`'s fixed-stride branch, with the walk branch replaced by
+/// a refusal. The per-item §5.1 wrapper read the general form documents as
+/// load-bearing is kept exactly: stride arithmetic says *where* the item
+/// begins, and the two-byte `58 LL` wrapper there says it is spelled the one
+/// way §6.1 admits.
+pub fn field_fixed_item_extent(view: FieldViewV1, index: Int) -> Pair<Int, Int> {
+  let count = whole_view_item_count(view)
+  expect index >= 0
+  expect index < count
+  let stride = field_view_stride(view)
+  expect stride > walk_derived_stride
+  let item_offset = header_len_for_count(count) + stride * index
+  let Pair(payload_offset, length) = whole_item_header_at(view, item_offset)
+  expect payload_offset == item_offset + fixed_item_wrapper_bytes
+  expect length == stride - fixed_item_wrapper_bytes
+  Pair(payload_offset, length)
+}

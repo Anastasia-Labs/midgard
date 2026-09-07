@@ -44,11 +44,13 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1.{
   Certified, Chunked, FieldCarriageV1, FieldPreimageCertificateV1, FieldViewV1,
-  Inline, RawUtxo, Whole, authenticated_field_view, chunk_bytes_k,
-  empty_field_commitment, encode_field_array_header, encode_field_preimage,
-  field_commitment, field_commitment_from_items, field_item_at, field_item_count,
-  field_item_extent, field_preimage_certificate_asset_name, field_read_range,
-  field_stride, field_total_length, hash28_stride, spend_input_stride,
+  Inline, RawUtxo, Whole, authenticated_field_view,
+  authenticated_whole_fixed_field_view, chunk_bytes_k, empty_field_commitment,
+  encode_field_array_header, encode_field_preimage, field_commitment,
+  field_commitment_from_items, field_fixed_item_extent, field_item_at,
+  field_item_count, field_item_extent, field_preimage_certificate_asset_name,
+  field_read_range, field_stride, field_total_length, hash28_stride,
+  spend_input_stride, whole_view_item_count, whole_view_read_range,
 }
 
 // ---------------------------------------------------------------------------
@@ -1499,4 +1501,136 @@ test field_view_wire_layout_matches_the_offchain_twin() {
       },
     ) == chunked_wire,
   }
+}
+
+// The publication specialization must preserve the authenticated fixed-field
+// contract, including all three carriage tiers and malformed committed bytes.
+fn fixed_view_of(
+  field_index: Int,
+  preimage: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+) -> FieldViewV1 {
+  let Pair(verified, witness_set) = source(field_index, preimage)
+  authenticated_whole_fixed_field_view(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+fn fixed_inline_view(field_index: Int, preimage: ByteArray) -> FieldViewV1 {
+  fixed_view_of(field_index, preimage, Inline { preimage }, [])
+}
+
+test fixed_door_matches_general_door_for_every_fixed_field() {
+  list.all(
+    [0, 1, 3, 4, 7],
+    fn(field_index) {
+      let preimage = field_preimage(field_index)
+      let fixed = fixed_inline_view(field_index, preimage)
+      let general = inline_view(field_index, preimage)
+      and {
+        whole_view_item_count(fixed) == field_item_count(general),
+        list.all(
+          [0, 1, 2],
+          fn(index) {
+            let Pair(offset, length) = field_fixed_item_extent(fixed, index)
+            and {
+              Pair(offset, length) == field_item_extent(general, index),
+              whole_view_read_range(fixed, offset, length) == field_item_at(
+                general,
+                index,
+              ),
+            }
+          },
+        ),
+      }
+    },
+  )
+}
+
+test fixed_door_accepts_empty_fixed_fields() {
+  list.all(
+    [0, 1, 3, 4, 7],
+    fn(field_index) {
+      whole_view_item_count(fixed_inline_view(field_index, #"80")) == 0
+    },
+  )
+}
+
+test fixed_door_authenticates_raw_carriage() {
+  let preimage = field_preimage(4)
+  let fixed = fixed_view_of(
+    4,
+    preimage,
+    RawUtxo { ref_input_index: 0 },
+    [input_of(0, key_output(builtin.b_data(preimage)))],
+  )
+  fixed == fixed_inline_view(4, preimage)
+}
+
+test fixed_door_materializes_certified_carriage_across_chunk_boundary() {
+  let fixed = fixed_view_of(
+    3,
+    straddle_preimage(),
+    Certified { cert_ref_input_index: 0, chunk_ref_input_indices: [1, 2] },
+    straddle_reference_inputs(),
+  )
+  let Pair(offset, length) = field_fixed_item_extent(fixed, 504)
+  and {
+    whole_view_item_count(fixed) == straddle_item_count,
+    whole_view_read_range(fixed, offset, length) == h28(5),
+    fixed == fixed_inline_view(3, straddle_preimage()),
+  }
+}
+
+test fixed_door_refuses_wrong_commitment() fail {
+  whole_view_item_count(
+    fixed_view_of(4, field_preimage(4), Inline { preimage: #"80" }, []),
+  ) == 0
+}
+
+test fixed_door_refuses_variable_stride_field() fail {
+  whole_view_item_count(fixed_inline_view(2, field_preimage(2))) == 3
+}
+
+test fixed_door_refuses_committed_miscount() fail {
+  whole_view_item_count(fixed_inline_view(4, miscounted_preimage(4))) >= 0
+}
+
+test fixed_door_refuses_committed_truncation() fail {
+  whole_view_item_count(fixed_inline_view(4, truncated_preimage(4))) >= 0
+}
+
+test fixed_door_refuses_noncanonical_item_wrapper() fail {
+  // Correct stride and count, but the item is a CBOR text string.
+  let preimage = bytearray.concat(#"81781c", h28(1))
+  field_fixed_item_extent(fixed_inline_view(4, preimage), 0) == Pair(3, 28)
+}
+
+test fixed_door_refuses_negative_item_index() fail {
+  field_fixed_item_extent(fixed_inline_view(4, field_preimage(4)), -1) == Pair(
+    0,
+    28,
+  )
+}
+
+test fixed_door_refuses_item_after_end() fail {
+  field_fixed_item_extent(fixed_inline_view(4, field_preimage(4)), 3) == Pair(
+    0,
+    28,
+  )
+}
+
+test fixed_door_never_clamps_a_range_read() fail {
+  let preimage = field_preimage(4)
+  whole_view_read_range(
+    fixed_inline_view(4, preimage),
+    bytearray.length(preimage),
+    1,
+  ) == #""
 }

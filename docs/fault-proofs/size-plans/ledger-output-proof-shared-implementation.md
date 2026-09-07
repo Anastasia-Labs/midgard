@@ -330,12 +330,12 @@ standard basis assertion; the suite has zero skips.
 
 ### Verification
 
-- `aiken check` — 6,359 checks, 0 errors (fresh `aiken build --env testnet`
-  first; the second-ruling battery adds fact-commitment/attach/exactness
-  selector tests in both polarities in `ledger-output-proof-v1.test.ak` /
-  `ledger-output-proof-stages.test.ak` and the machine-level fact-attach
-  chain in `validation-machine-v1.test.ak` on top of the first-ruling
-  descriptor-yield battery).
+- **Count corrected 2026-09-07:** `aiken check --env testnet --plain-numbers`
+  collected **4,014 passed / 0 failed** before the publication follow-up's
+  14 new tests, and **4,028 passed / 0 failed** on its final tree, after fresh
+  `aiken build --env testnet`. The previously stated 6,359 was not the
+  collected count. The runs include the fact-commitment/attach/exactness
+  scenarios and machine-level fact-attach chain.
 - Emulator lifecycles
   (`submit-init-emulator-validation-dispute-ledger-output-proof.test.ts`):
   **20 passed / 0 skipped** at blueprint `7e478b66…` (the ResolveInputs
@@ -358,15 +358,21 @@ standard basis assertion; the suite has zero skips.
   fact-attach steps replacing the monolithic finalize, plus one span-attach)
   and the `validation-machine.test.ts` accepted-transaction phase roster
   (resolveInputs 11 → 14, scriptSources 22 → 25; that trace's span window is
-  empty, so no span-attach step). The remaining reds there are pre-existing
-  relative to this restructure: 18 tests fail on
-  `Aiken blueprint is missing definition midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`
-  (the four validators naming that type are byte-identical across this work
-  and none exposes it in an ABI position, so every fresh blueprint build
-  omits the definition — the tests were pinned against an older stale
-  `plutus.json`), and one fails on three fraud-proof `rule.ak` scanner
-  consumers (imports introduced pre-restructure in `e7a789f17`) lacking §3.2
-  necessity artifacts.
+  empty, so no span-attach step). **Reconciled 2026-09-07:** the previously
+  reported 18 missing-`ValidationAuxiliaryWitnessV1` failures are stale.
+  That type still has no blueprint ABI definition; the tests now check its
+  frozen 40-arm tag/arity corpus and the actual resolver redeemer schemas.
+  The full validation suite against fresh blueprint `5602f4a9…` collected
+  **479 tests: 476 passed, 1 failed, 2 skipped** in the final unrestricted run. None failed on the missing
+  auxiliary definition. Three sandbox `spawnSync node EPERM` failures in the
+  initial run cleared outside the sandbox. The remaining failure is the existing
+  uncommitted §3.2 necessity-pin gate detecting eleven stale pin fields in
+  `ledger-output-incremental-proof-v1.md`,
+  `redeemer-collection-total-decode-v1.md`, and
+  `redeemer-item-traversal-v1.md`. These are not an auxiliary-witness failure
+  or a green full-suite result. See the
+  [resolver publication verification receipt](validation-trace-resolver-publication-verification.md)
+  for commands and current evidence.
 
 ### §8 reconciliation — pre-existing >15,000-byte validators (2026-09-07)
 
@@ -395,6 +401,15 @@ but inside the 512-byte reserve), and none has a measured positive-execution
 margin anywhere in the tree. Escalated to the owner with these numbers; no
 change was made to the three validators in this wave.
 
+**Publication follow-up, 2026-09-07:** the resolver specialization now brings
+the three signed publications to **15,388 / 15,048 / 12,797 bytes** respectively.
+All 91 semantic resolvers publish within the 15,872-byte target. The
+[publication fit ledger](validation-trace-resolver-publication-fit-ledger.json)
+records every row against fresh blueprint `5602f4a9…`; the dedicated
+publication test checks the 512-byte reserve on every live measurement and
+compares the complete ledger on normal runs. This closes publication coverage
+independently of the lifecycle sweep's fixture coverage.
+
 Independently re-measured at closure over the **whole** 91-entry
 `validationTraceDispute.semanticResolvers` roster (same harness, fresh
 `7e478b66…` blueprint, emulator `maxTxSize` pinned to the real 16,384):
@@ -404,7 +419,7 @@ uniform +276 signed bytes over the applied script CBOR across all 91 rows
 (e.g. index 8 applied 15,947 → signed 16,223; index 61 applied 15,736 →
 signed 16,012; index 62 applied 15,480 → signed 15,756), so the raw-byte
 table above converts to signed publication as `raw + parameters + 276`. The
-third-largest signed publication in the roster is 15,150 (margin 1,234),
+largest signed publication outside these three is 15,150 (margin 1,234),
 i.e. there is no cluster approaching the gate behind these two. Five legacy
 `fraud_proofs/*` step validators also exceed 15,000 raw in the fresh
 blueprint (`execution_native_script_invalid/step_02` 15,457,

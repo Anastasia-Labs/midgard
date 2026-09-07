@@ -8,10 +8,10 @@ use midgard/validation_machine/machine_types.{
   NativeExecutionDescriptorWitness, ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/native_scripts.{
-  verify_native_scripts_native_semantics_v1,
+  verify_native_scripts_native_descriptor,
 }
 use midgard/validation_merkle_v1.{FrontierPeak}
-use midgard/validation_semantic_v1.{Datum, continue_winning}
+use midgard/validation_semantic_v1.{Datum, continue_winning_at}
 use midgard/validation_trace_v1.{NativeScripts}
 
 pub type ActionV1 {
@@ -102,7 +102,7 @@ validator main(
           signer_peaks,
         }
         let auxiliary_data: Data = auxiliary
-        continue_winning(
+        continue_winning_at(
           NativeScripts,
           award_script_hash,
           computation_thread_policy_id,
@@ -111,26 +111,9 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_native_scripts_native_semantics_v1(
-            datum |> semantic_pre_state,
-            transition,
-            execution_index,
-            purpose_kind,
-            purpose_index,
-            script_hash,
-            subject,
-            purpose_siblings,
-            source_index,
-            origin_kind,
-            source_key,
-            script_total_length,
-            script_item_commitment,
-            source_siblings,
-            redeemer_leaf,
-            execution_siblings,
-            first_chunk_proof,
-            signer_peaks,
-          ),
+          fn(pre) {
+            verify_native_scripts_native_descriptor(pre, transition, auxiliary)
+          },
           own_out_ref,
           tx,
         )
@@ -141,9 +124,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-fn semantic_pre_state(datum: Option<Datum>) {
-  expect Some(ct.StepDatum { data: Some(state), .. }) = datum
-  state.resolution.pre_state
 }

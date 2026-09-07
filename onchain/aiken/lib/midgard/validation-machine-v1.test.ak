@@ -9154,7 +9154,51 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     payload_pre,
     finalize_work_witness_cbor,
   )
+  let native_entry = vm_machine_types.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: entry_pre,
+  }
+  let native_descriptor = vm_machine_types.NativeExecutionDescriptorWitness {
+    execution_index: 0,
+    language_tag: 0,
+    purpose_kind: 0,
+    purpose_index: 0,
+    script_hash,
+    subject: #"0102",
+    purpose_siblings: [],
+    source_index: 0,
+    origin_kind: 0,
+    source_key: #"00",
+    script_total_length: bytearray.length(script_cbor),
+    script_item_commitment: bounded_item_v1.from_bytes(6, 0, script_cbor),
+    source_siblings: [],
+    redeemer_leaf: #"",
+    execution_siblings: [],
+    first_chunk_proof: Some(chunk_proof),
+    signer_peaks: [],
+  }
   and {
+    vm_native_scripts.verify_native_scripts_native_descriptor(
+      pre,
+      native_entry,
+      native_descriptor,
+    ),
+    !vm_native_scripts.verify_native_scripts_native_descriptor(
+      pre,
+      vm_machine_types.ValidationOneStepWitnessV1 {
+        ..native_entry,
+        claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
+          ..entry_pre,
+          work_root: zero,
+        },
+      },
+      native_descriptor,
+    ),
+    !vm_native_scripts.verify_native_scripts_effectful_descriptor(
+      pre,
+      native_entry,
+      native_descriptor,
+    ),
     vm_native_scripts.verify_native_scripts_native_semantics_v1(
       pre,
       vm_machine_types.ValidationOneStepWitnessV1 {
@@ -18893,4 +18937,131 @@ fn verify_descriptor_twelve_redeemer_parity(
   } else {
     False
   }
+}
+
+fn effectful_descriptor_specialization_matches_general(
+  language_tag: Int,
+) -> Bool {
+  let tx = empty_v1_transaction()
+  let script_hash = bytearray.take(h_a, 28)
+  let script_item_commitment = h_b
+  let redeemer_leaf = h_c
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(
+    0,
+    0,
+    script_hash,
+    #"0102",
+  )
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    0,
+    #"00",
+    language_tag,
+    script_hash,
+    3,
+    script_item_commitment,
+  )
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier(
+    [
+      script_proof_v1.execution_leaf_hash(
+        language_tag,
+        purpose_leaf,
+        source_leaf,
+        redeemer_leaf,
+      ),
+    ],
+  )
+  let Pair(pre, work_witness_cbor) = native_scripts_step_fixture(
+    tx,
+    source_frontier,
+    redeemer_frontier,
+    purpose_frontier,
+    execution_frontier,
+    0,
+    0,
+    30,
+  )
+  let Pair(post, _) = native_scripts_step_fixture(
+    tx,
+    source_frontier,
+    redeemer_frontier,
+    purpose_frontier,
+    execution_frontier,
+    1,
+    if language_tag == 3 {
+      1
+    } else {
+      2
+    },
+    31,
+  )
+  let witness = vm_machine_types.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  let auxiliary = vm_machine_types.NativeExecutionDescriptorWitness {
+    execution_index: 0,
+    language_tag,
+    purpose_kind: 0,
+    purpose_index: 0,
+    script_hash,
+    subject: #"0102",
+    purpose_siblings: [],
+    source_index: 0,
+    origin_kind: 0,
+    source_key: #"00",
+    script_total_length: 3,
+    script_item_commitment,
+    source_siblings: [],
+    redeemer_leaf,
+    execution_siblings: [],
+    first_chunk_proof: None,
+    signer_peaks: [],
+  }
+  let forged_successor = vm_machine_types.ValidationOneStepWitnessV1 {
+    ..witness,
+    claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
+      ..post,
+      work_root: zero,
+    },
+  }
+  let forged_source = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    transaction_commitment: zero,
+  }
+  and {
+    vm_native_scripts.verify_native_scripts(pre, witness, auxiliary),
+    vm_native_scripts.verify_native_scripts_effectful_descriptor(
+      pre,
+      witness,
+      auxiliary,
+    ),
+    !vm_native_scripts.verify_native_scripts(pre, forged_successor, auxiliary),
+    !vm_native_scripts.verify_native_scripts_effectful_descriptor(
+      pre,
+      forged_successor,
+      auxiliary,
+    ),
+    !vm_native_scripts.verify_native_scripts(forged_source, witness, auxiliary),
+    !vm_native_scripts.verify_native_scripts_effectful_descriptor(
+      forged_source,
+      witness,
+      auxiliary,
+    ),
+    !vm_native_scripts.verify_native_scripts_native_descriptor(
+      pre,
+      witness,
+      auxiliary,
+    ),
+  }
+}
+
+test effectful_descriptor_specialization_preserves_plutus_transitions() {
+  effectful_descriptor_specialization_matches_general(3)
+}
+
+test effectful_descriptor_specialization_preserves_midgard_transitions() {
+  effectful_descriptor_specialization_matches_general(128)
 }

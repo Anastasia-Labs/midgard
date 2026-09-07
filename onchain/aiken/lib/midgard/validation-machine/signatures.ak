@@ -288,7 +288,10 @@ fn verify_required_signer_item(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  let item = field_door.open_machine_field_item(
+  // Field 4 is §5.3 fixed-stride (28-byte key hashes), so the fixed-stride
+  // door authenticates and locates the item with the same checks the general
+  // door runs, without linking the variable-width envelope walk.
+  let item = field_door.open_machine_fixed_field_item(
     door,
     verified,
     witness_set,
@@ -296,13 +299,13 @@ fn verify_required_signer_item(
     control.required_seen,
     carriage,
   )
-  let item_count = field_door.machine_field_item_count(item)
+  let item_count = field_door.machine_fixed_field_item_count(item)
   let active_count = if control.required_count == -1 {
     item_count
   } else {
     control.required_count
   }
-  let signer_hash = field_door.machine_field_item_bytes(item)
+  let signer_hash = field_door.machine_fixed_field_item_bytes(item)
   let next_required_seen = control.required_seen + 1
   let next_control = SignaturesControlV1 {
     ..control,

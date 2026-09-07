@@ -560,7 +560,18 @@ export const publishHarnessFaultProofReferenceScripts = async ({
             lucid,
             script: step.spendingScript,
             label: `fault-proof step ${entryName}`,
-            oversized: step.spendingScript.script.length / 2 > 14_000,
+            // The real limit, not a conservative stand-in for it. A 14,000
+            // -byte raw script publishes at roughly 14,350 signed bytes —
+            // comfortably inside the 16,384-byte envelope — so the former
+            // `> 14_000` threshold waived `publishPlainReferenceScriptUtxo`'s
+            // `l1ByteMargin` assertion for a band of scripts that pass it, and
+            // a step that grew into that band would have stopped being checked
+            // instead of failing. Matching `publishRemovalReferenceScripts`
+            // keeps the waiver for exactly the scripts that genuinely cannot
+            // fit.
+            oversized:
+              step.spendingScript.script.length / 2 >
+              PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
           })
         ).utxo;
         publicationByHash.set(step.spendingScriptHash, utxo);

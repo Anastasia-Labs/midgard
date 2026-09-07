@@ -253,8 +253,12 @@ const Q13_APPLIED_STEP_HASHES = [
 // successor chain and applied step-01 hash. Derived by this suite's
 // q13AppliedIdentities producer under testnet blueprint db03f84b…;
 // the four Q13 step hashes above remain unchanged.
+// Re-derived 2026-09-07 after the validation semantic resolver publication
+// specialization, using this suite's q13AppliedIdentities producer against
+// fresh testnet blueprint 5602f4a9…. The four Q13 step hashes are unchanged;
+// the catalogue root includes the changed validation-trace chain.
 const Q13_CATALOGUE_ROOT =
-  "aa457dc2c537e06561d640fcd11161867b8ebdbccd54371a6fb4e77a9025c83b";
+  "4b423f0493264b33d2a4f8b632de0e1ed4103537249281f1aeb74f6ef3f01cfd";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

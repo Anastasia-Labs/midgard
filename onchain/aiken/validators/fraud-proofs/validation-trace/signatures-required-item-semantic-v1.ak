@@ -11,7 +11,7 @@ use midgard/validation_machine/signatures.{
   verify_required_signer_item_semantics_v1,
 }
 use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
-use midgard/validation_semantic_v1.{Datum, continue_winning}
+use midgard/validation_semantic_v1.{Datum, continue_winning_at}
 use midgard/validation_trace_v1.{Signatures}
 
 pub type ActionV1 {
@@ -61,7 +61,7 @@ validator main(
           reference_inputs: tx.reference_inputs,
           certificate_policy_id: field_preimage_certificate_policy_id,
         }
-        continue_winning(
+        continue_winning_at(
           Signatures,
           award_script_hash,
           computation_thread_policy_id,
@@ -70,13 +70,15 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_required_signer_item_semantics_v1(
-            datum |> semantic_pre_state,
-            transition,
-            door,
-            carriage,
-            signer_proof,
-          ),
+          fn(pre) {
+            verify_required_signer_item_semantics_v1(
+              pre,
+              transition,
+              door,
+              carriage,
+              signer_proof,
+            )
+          },
           own_out_ref,
           tx,
         )
@@ -87,9 +89,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-fn semantic_pre_state(datum: Option<Datum>) {
-  expect Some(ct.StepDatum { data: Some(state), .. }) = datum
-  state.resolution.pre_state
 }

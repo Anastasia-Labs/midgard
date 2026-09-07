@@ -136,8 +136,10 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_whole_field_view,
-  authenticated_whole_field_view_by_commitment, field_item_count,
-  field_item_extent, field_item_header_at, field_read_range,
+  authenticated_whole_field_view_by_commitment,
+  authenticated_whole_fixed_field_view, field_fixed_item_extent,
+  field_item_count, field_item_extent, field_item_header_at, field_read_range,
+  whole_view_item_count, whole_view_read_range,
 }
 
 /// The two arguments §8's door needs that a machine step has no other way to
@@ -382,4 +384,49 @@ pub fn machine_field_item_bytes_match(
     bytearray.length(bytes) == item.item_length,
     machine_field_item_bytes(item) == bytes,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Fixed-stride door (§5.3)
+// ---------------------------------------------------------------------------
+//
+// The three functions below are `open_machine_field_item`,
+// `machine_field_item_count` and `machine_field_item_bytes` restricted to a
+// §5.3 fixed-stride field. They authenticate the same bytes with the same
+// checks — see the "Fixed-stride specialisation" section of
+// `midgard/native_tx_field_access_v1` for why each restriction is a refusal
+// rather than a relaxation — and exist so a phase that only ever opens a
+// fixed-stride field does not link the variable-width envelope walk or tier
+// 3's lazy chunk reader. Publication margin, not behaviour: every field these
+// are called on has a literal index whose `field_stride` is fixed by §5.3.
+
+/// `open_machine_field_item` for a §5.3 fixed-stride field.
+pub fn open_machine_fixed_field_item(
+  door: MachineFieldDoorV1,
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  item_index: Int,
+  carriage: FieldCarriageV1,
+) -> MachineFieldItemV1 {
+  let view = authenticated_whole_fixed_field_view(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    door.reference_inputs,
+    door.certificate_policy_id,
+  )
+  let Pair(item_offset, item_length) = field_fixed_item_extent(view, item_index)
+  MachineFieldItemV1 { view, field_index, item_index, item_offset, item_length }
+}
+
+/// `machine_field_item_count` for an item opened through the fixed-stride door.
+pub fn machine_fixed_field_item_count(item: MachineFieldItemV1) -> Int {
+  whole_view_item_count(item.view)
+}
+
+/// `machine_field_item_bytes` for an item opened through the fixed-stride door.
+pub fn machine_fixed_field_item_bytes(item: MachineFieldItemV1) -> ByteArray {
+  whole_view_read_range(item.view, item.item_offset, item.item_length)
 }
