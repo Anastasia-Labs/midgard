@@ -362,6 +362,7 @@ describe("watcher production fault-proof application V1", () => {
             "award",
             "computationThreadMint",
             "fraudProofMint",
+            "phasMembershipWithdraw",
             "correctionLockSpend",
             "stateQueueSpend",
             "stateQueueMint",
@@ -1242,11 +1243,14 @@ describe("watcher production fault-proof application V1", () => {
           ),
         );
       }
+      // The roster is complete, so this element type is `never` and the body
+      // is unreachable. The guard stays so that re-opening a residue entry is
+      // still required to fail closed at startup.
       for (const category of WATCHER_MISSING_WORKFLOW_CATEGORIES) {
         await expect(
           application.assertStartupReady(invocation(configPath, category)),
         ).rejects.toThrow(
-          `watcher has no installed production workflow for ${category}`,
+          `watcher has no installed production workflow for ${String(category)}`,
         );
       }
 

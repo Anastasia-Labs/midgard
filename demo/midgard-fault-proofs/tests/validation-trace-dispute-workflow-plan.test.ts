@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  planValidationTraceDisputeMove,
-  type ValidationTraceDisputeMove,
-} from "../src/validation-dispute/workflow-engine.js";
 import type {
   ValidationTraceDisputeChainStage,
   ValidationTraceDisputeSemanticGroup,
 } from "../src/validation-dispute/workflow-chain-state.js";
+import {
+  planValidationTraceDisputeMove,
+  type ValidationTraceDisputeMove,
+} from "../src/validation-dispute/workflow-engine.js";
 import {
   assertValidationTraceDisputeRosterIsManifestBound,
   VALIDATION_TRACE_DISPUTE_CATEGORY_ID,
@@ -55,7 +55,11 @@ describe("validationTraceDispute workflow planning (ruling R6)", () => {
       gameStage("awaiting_operator", true),
       { kind: "timeout_pending", threadOutRef: thread },
       { kind: "resolution_boundary", threadOutRef: thread },
-      { kind: "prepare_selected_pending", threadOutRef: thread, resolverIndex: 4 },
+      {
+        kind: "prepare_selected_pending",
+        threadOutRef: thread,
+        resolverIndex: 4,
+      },
       {
         kind: "semantic_pending",
         threadOutRef: thread,

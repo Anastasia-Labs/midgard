@@ -566,7 +566,17 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
   readonly operatorVkey: string;
   readonly now: number;
 }): Promise<
-  ForcedValidationDisputeFixture & { readonly disputedLowIndex: number }
+  ForcedValidationDisputeFixture & {
+    readonly disputedLowIndex: number;
+    /**
+     * The exact deterministic-machine replay input the challenger trace was
+     * built from, for the production challenge authority
+     * (`admitValidationTraceChallenge`) to reproduce independently.
+     */
+    readonly challengerReplayInput: Parameters<
+      typeof buildDeterministicValidationMachineTrace
+    >[0];
+  }
 > => {
   const txOrderId = transitionTraceOutRef("e6");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -634,29 +644,33 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
     operations: [{ type: "delete", key: spentOutRef }],
   });
   const utxosRoot = ledgerRootProbe[0]!.preRoot.toString("hex");
+  // Exposed to journey tests so the production challenge authority can rebuild
+  // the identical trace from the exact W25 replay input
+  // (`admitValidationTraceChallenge` refuses caller-authored trace objects).
+  const challengerReplayInput = {
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    eventKeyCbor: encodeData(eventKey, EventKeySchema),
+    sourceKind: "forced",
+    blockEndTimeMs: now + 1_000,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+    blockSlot: 0n,
+    transactionId,
+    canonicalTransactionCbor: forcedCanonicalCbor,
+    priorUtxosRoot: utxosRoot,
+    postUtxosRoot: utxosRoot,
+    ledgerWitnessEntries: [{ outRef: spentOutRef, output: spentOutput }],
+    expectedLedgerOps: [],
+    ledgerMutationSteps: [],
+    expectedVerdict: "rejected",
+    expectedRejectionCode: RejectCodes.MinAda,
+    // The challenger replays the operator's ACCEPTED leaf to a rejection;
+    // its states must still bind the committed (ForcedTxValid) source.
+    committedForcedVerdict: "accepted",
+  } as const;
   const challengerTrace = await Effect.runPromise(
-    buildDeterministicValidationMachineTrace({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      eventKeyCbor: encodeData(eventKey, EventKeySchema),
-      sourceKind: "forced",
-      blockEndTimeMs: now + 1_000,
-      expectedNetworkId: 0n,
-      minFeeA: 0n,
-      minFeeB: 0n,
-      blockSlot: 0n,
-      transactionId,
-      canonicalTransactionCbor: forcedCanonicalCbor,
-      priorUtxosRoot: utxosRoot,
-      postUtxosRoot: utxosRoot,
-      ledgerWitnessEntries: [{ outRef: spentOutRef, output: spentOutput }],
-      expectedLedgerOps: [],
-      ledgerMutationSteps: [],
-      expectedVerdict: "rejected",
-      expectedRejectionCode: RejectCodes.MinAda,
-      // The challenger replays the operator's ACCEPTED leaf to a rejection;
-      // its states must still bind the committed (ForcedTxValid) source.
-      committedForcedVerdict: "accepted",
-    }),
+    buildDeterministicValidationMachineTrace(challengerReplayInput),
   );
   const operatorTrace = replaceTerminalState(challengerTrace, {
     terminal: {
@@ -695,6 +709,7 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
     evidence,
     claimedLedgerDeltaRoot: challengerTrace.states[0]!.ledgerDeltaRoot,
     disputedLowIndex: challengerTrace.states.length - 2,
+    challengerReplayInput,
   };
 };
 

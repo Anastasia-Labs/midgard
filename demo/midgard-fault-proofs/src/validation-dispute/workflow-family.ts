@@ -28,10 +28,16 @@ export const VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES = Object.freeze({
   award: "validationTraceDisputeAward",
 } as const);
 
-/** Witness policies the dispute submitters attach by reference. */
+/**
+ * Witness scripts the dispute submitters attach by reference: the two token
+ * policies, plus the `phas.membership.withdraw` verifier the shared
+ * `submitInit` executes when the runner opens the thread (its carriage is
+ * fail-closed — owner ruling 2026-08-26 — so the runner must bind it).
+ */
 export const VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES = Object.freeze({
   computationThreadMint: "computationThreadMint",
   fraudProofMint: "fraudProofMint",
+  phasMembershipWithdraw: "phasMembershipWithdraw",
 } as const);
 
 /** Manifest names consumed by the shared cursor-family removal action. */

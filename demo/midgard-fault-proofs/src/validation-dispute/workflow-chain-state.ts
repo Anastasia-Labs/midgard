@@ -1,4 +1,5 @@
 import type { MidgardValidationDispute } from "@al-ft/midgard-core";
+import type { ValidationTraceDisputeFaultProofContracts } from "@al-ft/midgard-sdk";
 import {
   FraudProofComputationThreadStepDatum,
   getHeaderFromStateQueueDatum,
@@ -8,13 +9,17 @@ import {
   sortStateQueueUTxOs,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   utxoToStateQueueUTxO,
-  ValidationDisputeDatum,
   validationDisputeCoreFromData,
+  ValidationDisputeDatum,
   ValidationResolutionDatum,
   WinningValidationResolutionDatum,
 } from "@al-ft/midgard-sdk";
-import type { ValidationTraceDisputeFaultProofContracts } from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Data,
+  type LucidEvolution,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 /**
@@ -85,7 +90,10 @@ type FamilyChain =
   ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
 
 type AddressEntry = Readonly<{
-  classify: (utxo: UTxO, currentTime: number) => ValidationTraceDisputeChainStage;
+  classify: (
+    utxo: UTxO,
+    currentTime: number,
+  ) => ValidationTraceDisputeChainStage;
 }>;
 
 const outRef = (utxo: UTxO): string =>
@@ -180,17 +188,18 @@ export const buildValidationTraceDisputeAddressClassifier = (
   chain: FamilyChain,
 ): ReadonlyMap<string, AddressEntry> => {
   const map = new Map<string, AddressEntry>();
-  const put = (
-    address: string,
-    classify: AddressEntry["classify"],
-  ): void => {
+  const put = (address: string, classify: AddressEntry["classify"]): void => {
     if (!map.has(address)) map.set(address, { classify });
   };
   put(chain.opener.spendingScriptAddress, (utxo) => {
     Data.from(requireDatum(utxo, "init"), FraudProofComputationThreadStepDatum);
     // The derivation replaces the placeholder with the authenticated
     // state-queue topology target before this stage is ever surfaced.
-    return { kind: "init", threadOutRef: outRef(utxo), stateQueueBlockOutRef: "" };
+    return {
+      kind: "init",
+      threadOutRef: outRef(utxo),
+      stateQueueBlockOutRef: "",
+    };
   });
   put(chain.source.spendingScriptAddress, (utxo) =>
     decodeOnly("open_pending_source", (cbor) =>
@@ -215,7 +224,10 @@ export const buildValidationTraceDisputeAddressClassifier = (
   );
   chain.prepareResolvers.forEach((resolver, resolverIndex) => {
     put(resolver.spendingScriptAddress, (utxo) => {
-      Data.from(requireDatum(utxo, "prepare resolver"), ValidationResolutionDatum);
+      Data.from(
+        requireDatum(utxo, "prepare resolver"),
+        ValidationResolutionDatum,
+      );
       return {
         kind: "prepare_selected_pending",
         threadOutRef: outRef(utxo),
@@ -252,7 +264,9 @@ export const buildValidationTraceDisputeAddressClassifier = (
     groupAddresses(
       value,
       (address, role) => {
-        put(address, (utxo) => inFlight(group, role === "" ? group : role)(utxo));
+        put(address, (utxo) =>
+          inFlight(group, role === "" ? group : role)(utxo),
+        );
       },
       "",
     );
@@ -287,7 +301,10 @@ export const deriveValidationTraceDisputeChainStage = async ({
   readonly headerHash: string;
   readonly currentTime: number;
 }): Promise<ValidationTraceDisputeChainStage> => {
-  if (!/^[0-9a-f]{8}$/u.test(categoryId) || !/^[0-9a-f]{56}$/u.test(headerHash)) {
+  if (
+    !/^[0-9a-f]{8}$/u.test(categoryId) ||
+    !/^[0-9a-f]{56}$/u.test(headerHash)
+  ) {
     throw new Error(
       "validationTraceDispute cursor requires canonical category and header bytes",
     );
@@ -323,9 +340,9 @@ export const deriveValidationTraceDisputeChainStage = async ({
     stateQueue,
     headerHash,
   });
-  const proof = (
-    await lucid.utxosAt(fraudProofSpendingScriptAddress)
-  ).find((utxo) => (utxo.assets[proofUnit] ?? 0n) === 1n);
+  const proof = (await lucid.utxosAt(fraudProofSpendingScriptAddress)).find(
+    (utxo) => (utxo.assets[proofUnit] ?? 0n) === 1n,
+  );
   if (topology.target === undefined) {
     if (proof === undefined) {
       throw new Error(

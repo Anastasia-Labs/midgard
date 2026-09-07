@@ -1248,8 +1248,9 @@ const referenceContracts = (
       });
     case "validationTraceDispute":
       // Exact family roster (ruling R4): the six dispute control scripts, the
-      // two witness policies, and the nine shared cursor-removal contracts —
-      // derived from the family constants, never re-typed here.
+      // three witness scripts the submitters attach by reference, and the nine
+      // shared cursor-removal contracts — derived from the family constants,
+      // never re-typed here.
       return Object.freeze({
         ...VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
         ...VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
@@ -2551,6 +2552,7 @@ function taggedConfig(
             witnesses: Object.freeze({
               computationThreadMint: reference("computationThreadMint"),
               fraudProofMint: reference("fraudProofMint"),
+              phasMembershipWithdraw: reference("phasMembershipWithdraw"),
             }),
             removal: Object.freeze({
               correctionLockSpend: reference("correctionLockSpend"),
@@ -3994,8 +3996,7 @@ const taggedReferenceOutRefs = (
           tagged.config.referenceScripts.control.boundary,
           tagged.config.referenceScripts.control.timeout,
           tagged.config.referenceScripts.control.award,
-          tagged.config.referenceScripts.witnesses.computationThreadMint,
-          tagged.config.referenceScripts.witnesses.fraudProofMint,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
           ...Object.values(tagged.config.referenceScripts.removal),
         ];
       case "executionNativeScriptInvalid":

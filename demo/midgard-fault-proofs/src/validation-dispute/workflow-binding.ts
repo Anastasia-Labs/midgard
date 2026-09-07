@@ -8,8 +8,8 @@ import {
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  FraudProofComputationThreadStepDatum,
   type FraudProofCatalogueCategoryName,
+  FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 import {
   type Network,
@@ -321,7 +321,9 @@ export const bindValidationTraceDisputeWorkflowDeployment = async ({
     ["schedulerSpend", schedulerSpend],
   ] as const) {
     if (validatorToScriptHash(scriptOf(entry)) !== entry.scriptHash) {
-      throw new Error(`deployment manifest ${label} script bytes/hash disagree`);
+      throw new Error(
+        `deployment manifest ${label} script bytes/hash disagree`,
+      );
     }
   }
   const policies = releasePolicies(manifest);
@@ -356,7 +358,10 @@ export const bindValidationTraceDisputeWorkflowDeployment = async ({
     },
     operatorDirectory: {
       activePolicyId: activeMint.scriptHash,
-      activeAddress: validatorToAddress(manifest.network, scriptOf(activeSpend)),
+      activeAddress: validatorToAddress(
+        manifest.network,
+        scriptOf(activeSpend),
+      ),
       retiredPolicyId: retiredMint.scriptHash,
       retiredAddress: validatorToAddress(
         manifest.network,

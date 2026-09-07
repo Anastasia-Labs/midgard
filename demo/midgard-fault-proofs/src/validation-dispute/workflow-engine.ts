@@ -4,16 +4,16 @@ import {
   selectMidgardValidationDisputeReveal,
 } from "@al-ft/midgard-core";
 import {
+  PreparedValidationResolutionDatum,
   type ValidationClaimWitness,
+  validationDisputeCoreFromData,
   ValidationDisputeDatum,
   ValidationGameSpendRedeemer,
   ValidationMachineState,
-  type ValidationResolutionState,
-  ValidationResolutionDatum,
-  PreparedValidationResolutionDatum,
-  type ValidationTraceDescriptor,
-  validationDisputeCoreFromData,
   validationMachineStateDataFromCore,
+  ValidationResolutionDatum,
+  type ValidationResolutionState,
+  type ValidationTraceDescriptor,
   validationTraceProofCoreFromData,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
@@ -31,12 +31,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { fetchUtxoByOutRef, parseOutRef } from "../runtime.js";
-import type {
-  ResolvedValidationTraceDisputeDeploymentContracts,
-  ResolvedProverSigner,
-} from "../runtime.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import type {
+  ResolvedProverSigner,
+  ResolvedValidationTraceDisputeDeploymentContracts,
+} from "../runtime.js";
+import { fetchUtxoByOutRef, parseOutRef } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
@@ -336,7 +336,11 @@ export type ValidationTraceDisputeWorkflowReferences = Readonly<{
     timeout: UTxO;
     award: UTxO;
   }>;
-  witnesses: Readonly<{ computationThreadMint: UTxO; fraudProofMint: UTxO }>;
+  witnesses: Readonly<{
+    computationThreadMint: UTxO;
+    fraudProofMint: UTxO;
+    phasMembershipWithdraw: UTxO;
+  }>;
 }>;
 
 export type ValidationTraceDisputeActuatorConfig = Readonly<{
@@ -387,11 +391,7 @@ export const recoverValidationTraceStateIndex = ({
   readonly resolution: ValidationResolutionState;
 }): number => {
   const preStateCbor = Data.to(resolution.pre_state, ValidationMachineState);
-  for (
-    let index = 0;
-    index + 1 < trace.tree.stateHashes.length;
-    index += 1
-  ) {
+  for (let index = 0; index + 1 < trace.tree.stateHashes.length; index += 1) {
     if (
       hex(trace.tree.stateHashes[index + 1]!) !==
       resolution.challenger_successor_hash
@@ -430,6 +430,7 @@ export const createValidationTraceDisputeActuator = (
   const witnessReferenceScripts: FaultProofWitnessReferenceScripts = {
     computationThreadMint: config.references.witnesses.computationThreadMint,
     fraudProofMint: config.references.witnesses.fraudProofMint,
+    phasMembershipWithdraw: config.references.witnesses.phasMembershipWithdraw,
   };
   const threadUtxo = async (threadOutRef: string): Promise<UTxO> =>
     await fetchUtxoByOutRef({
@@ -470,7 +471,9 @@ export const createValidationTraceDisputeActuator = (
   ): Promise<ValidationResolutionState> => {
     const utxo = await threadUtxo(threadOutRef);
     if (utxo.datum == null) {
-      throw new Error("validationTraceDispute resolution thread lost its datum");
+      throw new Error(
+        "validationTraceDispute resolution thread lost its datum",
+      );
     }
     try {
       const prepared = Data.from(utxo.datum, PreparedValidationResolutionDatum);
@@ -516,32 +519,51 @@ export const createValidationTraceDisputeActuator = (
     return argument;
   };
 
-  const resolveCancelReference = async (utxo: UTxO): Promise<UTxO> => {
+  /**
+   * Resolves the published reference-script UTxO for the validator holding
+   * the thread, by scanning the manifest-bound deployment entries for the
+   * thread address's payment script hash (ruling R4: the runner consumes
+   * exactly the deployment entries the submit layer consumes — the entry
+   * name is immaterial, the immutable script hash is the identity). Returns
+   * `undefined` when no entry carries a published out-ref so the caller's
+   * own fail-closed carriage check still decides.
+   */
+  const publishedThreadScriptReference = async (
+    utxo: UTxO,
+    label: string,
+  ): Promise<UTxO | undefined> => {
     const credential = getAddressDetails(utxo.address).paymentCredential;
     if (credential?.type !== "Script") {
       throw new Error(
         "validationTraceDispute thread is not at a script address",
       );
     }
-    const deployed = Object.values(
-      config.resolved.deploymentInfo,
-    ).find(
+    const deployed = Object.values(config.resolved.deploymentInfo).find(
       (entry) =>
         entry != null &&
         typeof entry === "object" &&
         (entry as { scriptHash?: string }).scriptHash === credential.hash &&
         (entry as { refScriptUTxO?: unknown }).refScriptUTxO != null,
     ) as { refScriptUTxO: { txHash: string; outputIndex: number } } | undefined;
-    if (deployed === undefined) {
+    if (deployed === undefined) return undefined;
+    return await fetchUtxoByOutRef({
+      lucid: config.lucid,
+      outRef: deployed.refScriptUTxO,
+      label,
+    });
+  };
+
+  const resolveCancelReference = async (utxo: UTxO): Promise<UTxO> => {
+    const reference = await publishedThreadScriptReference(
+      utxo,
+      "validationTraceDispute cancel reference",
+    );
+    if (reference === undefined) {
       throw new Error(
         "validationTraceDispute cancel target has no published reference script",
       );
     }
-    return await fetchUtxoByOutRef({
-      lucid: config.lucid,
-      outRef: deployed.refScriptUTxO,
-      label: "validationTraceDispute cancel reference",
-    });
+    return reference;
   };
 
   return Object.freeze({
@@ -676,8 +698,7 @@ export const createValidationTraceDisputeActuator = (
               threadOutRef: action.threadOutRef,
               preState: validationMachineStateDataFromCore(preState),
               operatorPost: validationTraceProofDataFromCore(operatorProof),
-              challengerPost:
-                validationTraceProofDataFromCore(challengerProof),
+              challengerPost: validationTraceProofDataFromCore(challengerProof),
               boundaryReferenceScriptUtxo: config.references.control.boundary,
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -690,12 +711,24 @@ export const createValidationTraceDisputeActuator = (
             threadOutRef: action.threadOutRef,
             retained,
           });
+          // The thread sits at the boundary-selected prepare resolver's own
+          // address, so the manifest-bound deployment entries resolve its
+          // published reference by script hash. Reference-script carriage is
+          // mandatory (owner ruling 2026-08-26): when no publication exists
+          // the submit helper's fail-closed carriage check still refuses.
+          const prepareReference = await publishedThreadScriptReference(
+            await threadUtxo(action.threadOutRef),
+            "validationTraceDispute prepare-resolver reference",
+          );
           const transaction = await captureLocallyEvaluatedTransaction(
             async (preSubmitBoundary) => {
               await submitValidationDisputePrepareSelected({
                 ...common,
                 threadOutRef: action.threadOutRef,
                 oneStepArgument,
+                ...(prepareReference === undefined
+                  ? {}
+                  : { referenceScriptUtxo: prepareReference }),
                 preSubmitBoundary,
                 awaitConfirmation: false,
               });

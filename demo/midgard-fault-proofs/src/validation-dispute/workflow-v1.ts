@@ -84,7 +84,11 @@ export type ValidationTraceDisputeRemovalReferences = Readonly<
 
 export type ValidationTraceDisputeReferences = Readonly<{
   control: ValidationTraceDisputeControlReferences;
-  witnesses: Readonly<{ computationThreadMint: UTxO; fraudProofMint: UTxO }>;
+  witnesses: Readonly<{
+    computationThreadMint: UTxO;
+    fraudProofMint: UTxO;
+    phasMembershipWithdraw: UTxO;
+  }>;
   removal: ValidationTraceDisputeRemovalReferences;
 }>;
 
@@ -145,7 +149,9 @@ export type ManifestBoundValidationTraceDisputeWorkflow = Readonly<{
   material: ValidationTraceDisputeActuationMaterial | undefined;
   l1: FraudProofFamilyL1ObservationPort<"validationTraceDispute">;
   actuator: ReturnType<typeof createValidationTraceDisputeActuator>;
-  deriveStage: (currentTime: number) => Promise<ValidationTraceDisputeChainStage>;
+  deriveStage: (
+    currentTime: number,
+  ) => Promise<ValidationTraceDisputeChainStage>;
 }>;
 
 /**
@@ -177,7 +183,10 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     config.challenge === undefined
       ? undefined
       : requireValidationTraceChallenge(config.challenge);
-  if (challenge !== undefined && challenge.coordinate.headerHash !== config.headerHash)
+  if (
+    challenge !== undefined &&
+    challenge.coordinate.headerHash !== config.headerHash
+  )
     throw new Error(
       "validationTraceDispute challenge targets a different header",
     );
@@ -232,6 +241,10 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     fraudProofMint: bind(
       VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES.fraudProofMint,
       config.referenceScripts.witnesses.fraudProofMint,
+    ),
+    phasMembershipWithdraw: bind(
+      VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES.phasMembershipWithdraw,
+      config.referenceScripts.witnesses.phasMembershipWithdraw,
     ),
   });
   for (const [role, name] of Object.entries(
@@ -522,18 +535,17 @@ export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
   return { kind: "pending" as const, workflowId, txHash: submitted };
 };
 
-export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async (
-  input: {
+export const runOrResumeManifestBoundValidationTraceDisputeWorkflow =
+  async (input: {
     workflow: ManifestBoundValidationTraceDisputeWorkflow;
     journal: FraudProofWorkflowJournalStore;
-  },
-) => {
-  if (Object.keys(input).sort().join(",") !== "journal,workflow")
-    throw new Error(
-      "validationTraceDispute runner rejects caller-authored evidence",
-    );
-  return await executeManifestBoundValidationTraceDisputeWorkflow(input);
-};
+  }) => {
+    if (Object.keys(input).sort().join(",") !== "journal,workflow")
+      throw new Error(
+        "validationTraceDispute runner rejects caller-authored evidence",
+      );
+    return await executeManifestBoundValidationTraceDisputeWorkflow(input);
+  };
 
 export type LoadedValidationTraceDisputeWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
@@ -594,9 +606,10 @@ export const createValidationTraceDisputeWorkflowRunnerSurface = ({
           throw new Error(
             "validationTraceDispute requires concrete public retained DA",
           );
-        const workflow = await createManifestBoundValidationTraceDisputeWorkflow(
-          loaded.config,
-        );
+        const workflow =
+          await createManifestBoundValidationTraceDisputeWorkflow(
+            loaded.config,
+          );
         if (
           workflow.binding.deploymentFingerprint !==
             invocation.deploymentFingerprint ||
