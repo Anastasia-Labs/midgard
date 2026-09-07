@@ -145,6 +145,10 @@ import {
   type LoadUnusedScriptWitnessWorkflow,
 } from "../unused-script-witness/v1.js";
 import {
+  createValidationTraceDisputeWorkflowRunnerSurface,
+  type LoadValidationTraceDisputeWorkflow,
+} from "../validation-dispute/workflow-v1.js";
+import {
   createManifestBoundValueConservationWorkflow,
   type ManifestBoundValueConservationWorkflow,
   type ManifestBoundValueConservationWorkflowConfig,
@@ -788,6 +792,25 @@ export const createDistinctAssetAccumulationWorkflowRunner = (
   });
   return createAdmittedWorkflowRunner({
     category: "distinctAssetAccumulationLimit",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: surface.runOrResume,
+  });
+};
+
+/**
+ * Production runner for the sole interactive family. The surface re-derives
+ * the dispute cursor from live chain state on every invocation (ruling R6),
+ * so the watcher always owns a move, a deadline, or completion.
+ */
+export const createValidationTraceDisputeWorkflowRunner = (
+  loadRuntimeConfig: LoadValidationTraceDisputeWorkflow,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner => {
+  const surface = createValidationTraceDisputeWorkflowRunnerSurface({
+    loadRuntimeConfig,
+  });
+  return createAdmittedWorkflowRunner({
+    category: "validationTraceDispute",
     ...runnerFunding(fundingRequirements),
     runOrResume: surface.runOrResume,
   });
@@ -1459,4 +1482,5 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
     createExecutionNativeScriptInvalidWorkflowRunner,
   scriptIntegrityHashMismatch: createScriptIntegrityHashMismatchWorkflowRunner,
   distinctAssetAccumulationLimit: createDistinctAssetAccumulationWorkflowRunner,
+  validationTraceDispute: createValidationTraceDisputeWorkflowRunner,
 });
