@@ -30,13 +30,24 @@ pub type LedgerOutputValueControlV1 {
   result: Option<cek_data_v1.DataSummaryV1>,
 }
 
+/// Opening of the current within-policy map head, so a step can prove its
+/// asset name is strictly smaller than the previously folded one without the
+/// control retaining more than the rolling summary. Mirrors `CekMintHead`.
+pub type LedgerOutputValueHeadV1 {
+  asset_name: ByteArray,
+  quantity: Int,
+  tail: cek_data_v1.DataSequenceSummaryV1,
+}
+
 pub type LedgerOutputValueWitnessV1 {
   LedgerOutputValueNoWitness
   LedgerOutputValueAsset {
+    asset_index: Int,
     policy_id: ByteArray,
     asset_name: ByteArray,
     quantity: Int,
     siblings: List<ByteArray>,
+    previous: Option<LedgerOutputValueHeadV1>,
   }
 }
 
@@ -260,25 +271,59 @@ fn advanced(
   }
 }
 
+/// Strict descending execution order over independently authenticated source
+/// indices, mirroring `cek_mint_order.order_is_valid`. The native frontier
+/// commits assets in canonical (length-then-bytes) key order while the
+/// evaluated script context orders asset names lexicographically; the fold
+/// proves that permutation instead of changing either ordering contract. The
+/// head opening is checked against the accumulated within-policy commitment.
+fn order_is_valid(
+  control: LedgerOutputValueControlV1,
+  asset_count: Int,
+  policy_id: ByteArray,
+  asset_name: ByteArray,
+  previous: Option<LedgerOutputValueHeadV1>,
+) -> Bool {
+  if control.current_policy == #"" {
+    previous == None && control.asset_remaining == asset_count
+  } else if policy_id == control.current_policy {
+    when previous is {
+      Some(head) -> and {
+          bytearray.compare(asset_name, head.asset_name) == Less,
+          cek_data_v1.prepend_data_pair_summary_v1(
+            bounded_bytes_summary(head.asset_name),
+            bounded_integer_summary(head.quantity),
+            head.tail,
+          ) == control.current_assets,
+        }
+      None -> False
+    }
+  } else {
+    previous == None && bytearray.compare(policy_id, control.current_policy) == Less
+  }
+}
+
 fn asset_step(
   control: LedgerOutputValueControlV1,
   asset_count: Int,
   asset_peaks: List<validation_merkle_v1.FrontierPeak>,
+  asset_index: Int,
   policy_id: ByteArray,
   asset_name: ByteArray,
   quantity: Int,
   siblings: List<ByteArray>,
+  previous: Option<LedgerOutputValueHeadV1>,
 ) -> Option<LedgerOutputValueControlV1> {
-  let leaf_index = control.asset_remaining - 1
   if or {
     bytearray.length(policy_id) != 28,
     bytearray.length(asset_name) > 32,
     quantity <= 0,
     quantity > uint64_max,
+    !order_is_valid(control, asset_count, policy_id, asset_name, previous),
     !validation_merkle_v1.verify_membership(
       asset_count,
       asset_peaks,
-      leaf_index,
+      asset_index,
       ledger_output_commitment_v1.asset_leaf_hash(
         policy_id,
         asset_name,
@@ -289,42 +334,33 @@ fn asset_step(
   } {
     None
   } else {
-    let policy_order = if control.current_policy == #"" {
-      Less
+    let policy_changed = policy_id != control.current_policy
+    let value_entries = if and {
+      policy_changed,
+      control.current_policy != #"",
+    } {
+      finalize_current_policy(control)
     } else {
-      bytearray.compare(policy_id, control.current_policy)
+      control.value_entries
     }
-    if policy_order == Greater {
-      None
+    let current_assets = if policy_changed {
+      cek_data_v1.empty_data_pair_summary_v1()
     } else {
-      let policy_changed = policy_order == Less
-      let value_entries = if and {
-        policy_changed,
-        control.current_policy != #"",
-      } {
-        finalize_current_policy(control)
-      } else {
-        control.value_entries
-      }
-      let current_assets = if policy_changed {
-        cek_data_v1.empty_data_pair_summary_v1()
-      } else {
-        control.current_assets
-      }
-      advanced(
-        LedgerOutputValueControlV1 {
-          ..control,
-          asset_remaining: leaf_index,
-          current_policy: policy_id,
-          current_assets: cek_data_v1.prepend_data_pair_summary_v1(
-            bounded_bytes_summary(asset_name),
-            bounded_integer_summary(quantity),
-            current_assets,
-          ),
-          value_entries,
-        },
-      )
+      control.current_assets
     }
+    advanced(
+      LedgerOutputValueControlV1 {
+        ..control,
+        asset_remaining: control.asset_remaining - 1,
+        current_policy: policy_id,
+        current_assets: cek_data_v1.prepend_data_pair_summary_v1(
+          bounded_bytes_summary(asset_name),
+          bounded_integer_summary(quantity),
+          current_assets,
+        ),
+        value_entries,
+      },
+    )
   }
 }
 
@@ -387,15 +423,24 @@ pub fn step_v1(
       }
     } else {
       when witness is {
-        LedgerOutputValueAsset { policy_id, asset_name, quantity, siblings } ->
+        LedgerOutputValueAsset {
+          asset_index,
+          policy_id,
+          asset_name,
+          quantity,
+          siblings,
+          previous,
+        } ->
           asset_step(
             control,
             asset_count,
             asset_peaks,
+            asset_index,
             policy_id,
             asset_name,
             quantity,
             siblings,
+            previous,
           )
         _ -> None
       }

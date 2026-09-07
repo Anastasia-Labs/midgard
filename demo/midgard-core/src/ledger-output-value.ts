@@ -43,11 +43,25 @@ export type MidgardLedgerOutputValueControl = {
   readonly result: MidgardCekDataSummary | null;
 };
 
+/**
+ * Opening of the current within-policy map head, so a step can prove its
+ * asset name is strictly smaller than the previously folded one without the
+ * control retaining more than the rolling summary. Mirrors the on-chain
+ * `LedgerOutputValueHeadV1` (and the CEK mint `CekMintHead`).
+ */
+export type MidgardLedgerOutputValueHead = {
+  readonly assetName: Buffer;
+  readonly quantity: bigint;
+  readonly tail: MidgardCekDataSequenceSummary;
+};
+
 export type MidgardLedgerOutputValueWitness = {
+  readonly assetIndex: number;
   readonly policyId: Buffer;
   readonly assetName: Buffer;
   readonly quantity: bigint;
   readonly siblings: readonly Uint8Array[];
+  readonly previous: MidgardLedgerOutputValueHead | null;
 };
 
 export type MidgardLedgerOutputValueTraceStep = {
@@ -273,6 +287,57 @@ const advanced = (
 ): MidgardLedgerOutputValueControl | null =>
   isWellFormedMidgardLedgerOutputValueControl(control) ? control : null;
 
+const sequencesEqual = (
+  left: MidgardCekDataSequenceSummary,
+  right: MidgardCekDataSequenceSummary,
+): boolean =>
+  left.length === right.length &&
+  left.payloadCborLength === right.payloadCborLength &&
+  left.memory === right.memory &&
+  Buffer.from(left.root).equals(Buffer.from(right.root));
+
+/**
+ * Strict descending execution order over independently authenticated source
+ * indices, mirroring the on-chain `order_is_valid`. The native frontier
+ * commits assets in canonical (length-then-bytes) key order while the
+ * evaluated script context orders asset names lexicographically; the fold
+ * proves that permutation instead of changing either ordering contract.
+ */
+const orderIsValid = ({
+  control,
+  assetCount,
+  policyId,
+  assetName,
+  previous,
+}: {
+  readonly control: MidgardLedgerOutputValueControl;
+  readonly assetCount: number;
+  readonly policyId: Buffer;
+  readonly assetName: Buffer;
+  readonly previous: MidgardLedgerOutputValueHead | null;
+}): boolean => {
+  if (control.currentPolicy.length === 0) {
+    return previous === null && control.assetRemaining === assetCount;
+  }
+  if (policyId.equals(control.currentPolicy)) {
+    if (previous === null) return false;
+    return (
+      Buffer.compare(assetName, previous.assetName) < 0 &&
+      sequencesEqual(
+        prependMidgardCekDataPairSummary(
+          summarizeBytes(previous.assetName),
+          summarizeInteger(previous.quantity),
+          previous.tail,
+        ),
+        control.currentAssets,
+      )
+    );
+  }
+  return (
+    previous === null && Buffer.compare(policyId, control.currentPolicy) < 0
+  );
+};
+
 export const advanceMidgardLedgerOutputValue = ({
   control,
   assetFrontier,
@@ -310,7 +375,17 @@ export const advanceMidgardLedgerOutputValue = ({
       ) {
         return null;
       }
-      const leafIndex = control.assetRemaining - 1;
+      if (
+        !orderIsValid({
+          control,
+          assetCount: assetFrontier.count,
+          policyId: witness.policyId,
+          assetName: witness.assetName,
+          previous: witness.previous,
+        })
+      ) {
+        return null;
+      }
       const leafHash = hashMidgardLedgerOutputAssetLeaf({
         policyId: witness.policyId,
         assetName: witness.assetName,
@@ -319,7 +394,7 @@ export const advanceMidgardLedgerOutputValue = ({
       if (
         !verifyMidgardValidationMerkleMembership({
           frontier: assetFrontier,
-          leafIndex,
+          leafIndex: witness.assetIndex,
           leafHash,
           siblings: witness.siblings.map((sibling) =>
             ensureHash32(sibling, "ledger_output_value_v1.sibling"),
@@ -328,22 +403,17 @@ export const advanceMidgardLedgerOutputValue = ({
       ) {
         return null;
       }
-      const policyOrder =
-        control.currentPolicy.length === 0
-          ? -1
-          : Buffer.compare(witness.policyId, control.currentPolicy);
-      if (policyOrder > 0) return null;
+      const policyChanged = !witness.policyId.equals(control.currentPolicy);
       const valueEntries =
-        policyOrder < 0 && control.currentPolicy.length !== 0
+        policyChanged && control.currentPolicy.length !== 0
           ? finalizeCurrentPolicy(control)
           : control.valueEntries;
-      const currentAssets =
-        policyOrder < 0
-          ? emptyMidgardCekDataPairSummary()
-          : control.currentAssets;
+      const currentAssets = policyChanged
+        ? emptyMidgardCekDataPairSummary()
+        : control.currentAssets;
       return advanced({
         ...control,
-        assetRemaining: leafIndex,
+        assetRemaining: control.assetRemaining - 1,
         currentPolicy: Buffer.from(witness.policyId),
         currentAssets: prependMidgardCekDataPairSummary(
           summarizeBytes(witness.assetName),
@@ -404,18 +474,49 @@ export const buildMidgardLedgerOutputValueTrace = ({
   const initial = initialMidgardLedgerOutputValueControl(material.count);
   const steps: MidgardLedgerOutputValueTraceStep[] = [];
   let control = initial;
-  while (control.assetRemaining > 0) {
-    const leafIndex = control.assetRemaining - 1;
-    const asset = assets[leafIndex]!;
+  // The frontier commits assets in canonical (length-then-bytes) key order;
+  // the evaluated script context map is lexicographic. Sort the traversal
+  // lexicographically while retaining each asset's original frontier index,
+  // then fold in descending order so the prepending accumulator emits the
+  // ascending lexicographic map the evaluated context commits to.
+  const traversal = assets
+    .map((asset, assetIndex) => ({ asset, assetIndex }))
+    .sort(
+      (left, right) =>
+        Buffer.compare(
+          Buffer.from(left.asset.policyId),
+          Buffer.from(right.asset.policyId),
+        ) ||
+        Buffer.compare(
+          Buffer.from(left.asset.assetName),
+          Buffer.from(right.asset.assetName),
+        ),
+    )
+    .reverse();
+  let lastHead: MidgardLedgerOutputValueHead | null = null;
+  for (const { asset, assetIndex } of traversal) {
     const membership = buildMidgardValidationMerkleMembership(
       material.leaves,
-      leafIndex,
+      assetIndex,
     );
+    const policyId = Buffer.from(asset.policyId);
+    const samePolicy =
+      control.currentPolicy.length !== 0 &&
+      policyId.equals(control.currentPolicy);
     const witness: MidgardLedgerOutputValueWitness = {
-      policyId: Buffer.from(asset.policyId),
+      assetIndex,
+      policyId,
       assetName: Buffer.from(asset.assetName),
       quantity: asset.quantity,
       siblings: membership.siblings,
+      previous: samePolicy ? lastHead : null,
+    };
+    lastHead = {
+      assetName: Buffer.from(asset.assetName),
+      quantity: asset.quantity,
+      tail: samePolicy
+        ? control.currentAssets
+        : emptyMidgardCekDataPairSummary(),
     };
     const next = advanceMidgardLedgerOutputValue({
       control,

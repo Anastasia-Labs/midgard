@@ -285,13 +285,22 @@ pub fn value_fold(
   } else {
     let inner = when witness is {
       proof.LedgerOutputProofNoWitness -> Some(value.LedgerOutputValueNoWitness)
-      proof.LedgerOutputProofValue { policy_id, asset_name, quantity, siblings } ->
+      proof.LedgerOutputProofValue {
+        asset_index,
+        policy_id,
+        asset_name,
+        quantity,
+        siblings,
+        previous,
+      } ->
         Some(
           value.LedgerOutputValueAsset {
+            asset_index,
             policy_id,
             asset_name,
             quantity,
             siblings,
+            previous,
           },
         )
       _ -> None

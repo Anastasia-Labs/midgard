@@ -68,6 +68,7 @@ import {
   initialMidgardLedgerOutputValueControl,
   isWellFormedMidgardLedgerOutputValueControl,
   type MidgardLedgerOutputValueControl,
+  type MidgardLedgerOutputValueHead,
   MidgardLedgerOutputValueStages,
   type MidgardLedgerOutputValueWitness,
 } from "./ledger-output-value.js";
@@ -155,10 +156,12 @@ export type MidgardLedgerOutputProofWitness =
     }
   | {
       readonly kind: "value";
+      readonly assetIndex: number;
       readonly policyId: Buffer;
       readonly assetName: Buffer;
       readonly quantity: bigint;
       readonly siblings: readonly Uint8Array[];
+      readonly previous: MidgardLedgerOutputValueHead | null;
     }
   | {
       readonly kind: "datum";
@@ -861,10 +864,12 @@ export const advanceMidgardLedgerOutputProof = ({
           ? null
           : witness.kind === "value"
             ? {
+                assetIndex: witness.assetIndex,
                 policyId: witness.policyId,
                 assetName: witness.assetName,
                 quantity: witness.quantity,
                 siblings: witness.siblings,
+                previous: witness.previous,
               }
             : null;
       if (witness !== null && witness.kind !== "value") return null;
@@ -1249,10 +1254,12 @@ export const buildMidgardLedgerOutputProofTrace = ({
         ? null
         : {
             kind: "value",
+            assetIndex: valueStep.witness.assetIndex,
             policyId: valueStep.witness.policyId,
             assetName: valueStep.witness.assetName,
             quantity: valueStep.witness.quantity,
             siblings: valueStep.witness.siblings,
+            previous: valueStep.witness.previous,
           },
     );
     if (

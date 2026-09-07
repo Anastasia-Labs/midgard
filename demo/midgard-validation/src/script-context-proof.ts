@@ -43,21 +43,32 @@ const ledgerOutputContextData = (
   addressEncoding: ScriptContextAddressEncoding,
 ): DataConstr => {
   const context = scriptContextTxOutData(output, addressEncoding);
-  // Lucid's PlutusMap builder sorts keys lexicographically. Ledger output
-  // maps have already been authenticated in canonical byte-string order;
-  // changing that order changes their semantic Data root.
-  const entries = [...output.value.assets].map(
-    ([policy, assets]) =>
-      new DataPair(
-        new DataB(fromHex(policy)),
-        new DataMap(
-          [...assets].map(
-            ([name, quantity]) =>
-              new DataPair(new DataB(fromHex(name)), new DataI(quantity)),
+  // Lucid's PlutusMap builder sorts keys lexicographically, and the evaluated
+  // script context is what the executed program actually sees, so this
+  // commitment follows that order exactly. Ledger output maps are
+  // authenticated in canonical (length-then-bytes) key order; the ledger
+  // output Value fold proves that permutation per asset instead of changing
+  // either ordering contract.
+  const compareEntryKeys = (
+    [left]: readonly [string, unknown],
+    [right]: readonly [string, unknown],
+  ): number => (left < right ? -1 : left > right ? 1 : 0);
+  const entries = [...output.value.assets]
+    .sort(compareEntryKeys)
+    .map(
+      ([policy, assets]) =>
+        new DataPair(
+          new DataB(fromHex(policy)),
+          new DataMap(
+            [...assets]
+              .sort(compareEntryKeys)
+              .map(
+                ([name, quantity]) =>
+                  new DataPair(new DataB(fromHex(name)), new DataI(quantity)),
+              ),
           ),
         ),
-      ),
-  );
+    );
   if (output.value.lovelace !== 0n)
     entries.unshift(
       new DataPair(

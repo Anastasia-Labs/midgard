@@ -8,14 +8,26 @@ import {
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+const ValueHeadSchema = Data.Object({
+  asset_name: Data.Bytes(),
+  quantity: Data.Integer(),
+  tail: Data.Object({
+    root: Data.Bytes(),
+    length: Data.Integer(),
+    payload_cbor_length: Data.Integer(),
+    memory: Data.Integer(),
+  }),
+});
 const ValueWitnessSchema = Data.Enum([
   Data.Literal("LedgerOutputValueNoWitness"),
   Data.Object({
     LedgerOutputValueAsset: Data.Object({
+      asset_index: Data.Integer(),
       policy_id: Data.Bytes(),
       asset_name: Data.Bytes(),
       quantity: Data.Integer(),
       siblings: Data.Array(Data.Bytes()),
+      previous: Data.Nullable(ValueHeadSchema),
     }),
   }),
 ]);
@@ -123,10 +135,25 @@ export const nextTransitionOutputPhase = (
       ? "LedgerOutputValueNoWitness"
       : {
           LedgerOutputValueAsset: {
+            asset_index: BigInt(witness.assetIndex),
             policy_id: hex(witness.policyId),
             asset_name: hex(witness.assetName),
             quantity: witness.quantity,
             siblings: witness.siblings.map(hex),
+            previous:
+              witness.previous === null
+                ? null
+                : {
+                    asset_name: hex(witness.previous.assetName),
+                    quantity: witness.previous.quantity,
+                    tail: {
+                      root: hex(witness.previous.tail.root),
+                      length: witness.previous.tail.length,
+                      payload_cbor_length:
+                        witness.previous.tail.payloadCborLength,
+                      memory: witness.previous.tail.memory,
+                    },
+                  },
           },
         },
   );

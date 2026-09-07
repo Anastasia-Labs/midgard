@@ -46,6 +46,7 @@ fn policy_transition_witness(
   quantity: Int,
 ) -> ledger_output_value_v1.LedgerOutputValueWitnessV1 {
   ledger_output_value_v1.LedgerOutputValueAsset {
+    asset_index: 227,
     policy_id: #"11111111111111111111111111111111111111111111111111111111",
     asset_name: #"e2",
     quantity,
@@ -61,6 +62,7 @@ fn policy_transition_witness(
       #"9f1efec8e1306f877d11aa735c34e3ff4491ee38d5b428bc5d3b03c0bd33b490",
       #"4ebf5ad0166b0ae660e33b8b4037a666ea07a55c72ffd3ec3b51e9cff53bdd1c",
     ],
+    previous: None,
   }
 }
 
