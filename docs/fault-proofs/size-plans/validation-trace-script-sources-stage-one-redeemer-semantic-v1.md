@@ -381,3 +381,73 @@ Reproduce the shared carrier probe with a fresh testnet blueprint:
 ```sh
 MIDGARD_REAL_BLUEPRINT_PATH=/absolute/fresh-blueprint.json pnpm exec vitest run tests/shared-redeemer-item-lifecycle.test.ts --reporter verbose
 ```
+
+### Maximum-shape item executor fit receipt (2026-09-06)
+
+The shared carrier probe above is a small-fixture wire proof. Program §5.4
+requires the maximum supported frontier, so the seventeen shared item executor
+arms are now additionally proven at the exact consensus field width.
+
+**Maximum shape.** A single Plutus redeemer whose field-8 preimage is exactly
+`MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES` (32,768 bytes) and whose Data
+reaches all seventeen honest arms: an indefinite list holding a small definite
+list, a definite map, a large constructor (`d866 82 1880 …`), and a canonical
+chunked byte string absorbing the remaining width. It yields 3,772 item-proof
+steps and executor index set `{0 … 16}`. The prior maximum-field fixture in
+`submit-init-emulator-validation-dispute-script-sources-item.test.ts` reaches
+only `{1,2,3,4,5,8,9,10,11,12,15,16}` in 3,644 steps, so five arms had no
+maximum-shape measurement at all and the other twelve were measured only at the
+first matching step rather than the most expensive one.
+
+**Worst-step selection.** `buildForgedOperatorSuccessorValidationDisputeFixture`
+gained `worstCaseWitness`: with it, the adjudicated step is the matching step
+with the largest encoded auxiliary witness (the chunk-straddling variant), not
+the first one the honest trace reaches. It selects by cost where the sibling
+`disputedMatchOrdinal` selects by position; the two are mutually exclusive and
+the builder rejects a fixture that asks for both.
+
+Blueprint: `aiken v1.1.23+5adf783`, `plutus.json` sha256
+`618dda7547bf0ad8e23b91062d47ae181ba37ac2617d5acebc7ccda3e04a4f5d`.
+
+```sh
+cd onchain/aiken && aiken build --env testnet
+cd demo/midgard-fault-proofs && \
+  MIDGARD_REAL_BLUEPRINT_PATH=/absolute/onchain/aiken/plutus.json \
+  MIDGARD_WRITE_FIT_LEDGER=1 pnpm exec vitest run \
+  tests/submit-init-emulator-validation-dispute-script-sources-item-max.test.ts
+```
+
+Counts: 25 tests passed (17 per-arm maximum lifecycles, 3 adjacent forged-claim
+refusals, resume, cancel-and-restart, and 3 bound pins), 20 scenarios, 2,019
+signed transactions measured (1,091 publication, 928 lifecycle) across 19
+maximum shapes. Ledger:
+`docs/fault-proofs/size-plans/validation-trace-script-sources-item-max-fit-ledger.json`.
+
+Worst margins over all 2,019 rows:
+
+| Limit | Worst row | Value | Margin |
+| --- | --- | ---: | ---: |
+| Signed bytes (16,384) | cancel-and-restart / transaction-20 | 15,108 | 1,276 |
+| Publication reserve (15,872) | cancel-and-restart / transaction-20 | 15,108 | 764 |
+| Memory (16,500,000) | executor 16 / transaction-83 | 3,898,959 | 12,601,041 |
+| CPU (10,000,000,000) | executor 12 / transaction-83 | 1,854,545,673 | 8,145,454,327 |
+
+Every row also satisfies the sibling ledgers' 20-percent execution reserve
+(memory ≤ 13,200,000, CPU ≤ 8,000,000,000). No `oversized`, raised
+`maxTxSize`/ExUnits, or disabled local evaluation is used on any positive path.
+
+**Maximum breadth — primary ruling (2026-09-06).** The width maximum above is
+proven. The *breadth* frontier (a list of 32,749 children at the same
+32,768-byte field, which produces 654,986 item-proof steps and the deepest
+Merkle sibling paths) is offchain-unmeasurable as built: the item trace alone
+costs 104 s and 5.0 GB RSS, and the full emulator dispute fixture passed 35 GB
+RSS at 17 minutes without completing and was killed. This is an offchain
+trace-construction cost, not an on-chain envelope finding — per-step
+transaction cost is dominated by the bounded-item chunk proof (a function of
+total item length, already maximised above), and the only breadth-dependent
+term is the Merkle sibling path, ≈ log2(children) ≤ 15 hashes, roughly 96
+bytes, against the ≥ 764-byte worst-case signed margin recorded in the table.
+The program primary therefore ruled on 2026-09-06 that **width is the governing
+maximum for the item-executor family** and that the breadth frontier needs no
+offchain measurement to close this receipt. The ruling is left open for the §9
+reviewer to confirm or overturn.
