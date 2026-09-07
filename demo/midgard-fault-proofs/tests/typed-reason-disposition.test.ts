@@ -82,13 +82,13 @@ describe("typed rejection-reason disposition", () => {
 
   it("pins the runner-registry residue the program closure must empty", () => {
     // Program closure (§8 step 5) requires this list to be empty: every
-    // remaining entry is a typed reason that production classification would
-    // still route to validationTraceDispute. Shrink it, never grow it.
+    // non-interactive typed reason routes to a category with a compiled
+    // production runner. Keep it empty, never grow it.
     expect(
       missingNonInteractiveInstallations(
         Object.keys(WORKFLOW_RUNNER_FACTORIES),
       ),
-    ).toEqual(["ValueNotPreserved -> valueNotPreserved"]);
+    ).toEqual([]);
   });
 
   it("lists every omission when a surface lacks a direct category", () => {

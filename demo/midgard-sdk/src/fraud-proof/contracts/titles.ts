@@ -7,6 +7,17 @@ export const CEK_PROGRAM_MATERIAL_SPEND_TITLE =
 
 export const VALIDATION_TRACE_RESOLVER_COUNT = 14;
 
+/**
+ * Deployed interactive-chain step count for validationTraceDispute: the six
+ * control validators, the proof item, every semantic resolver, the shared
+ * ScriptSources item chain, the CEK context and item stages, the canonical
+ * decode item stages, and the fourteen prepare resolvers. The family builder
+ * asserts the composed `steps` array has exactly this length, so this pin can
+ * never drift from the real composition; downstream deployment tooling must
+ * derive its expectations from this constant rather than re-pinning a number.
+ */
+export const VALIDATION_TRACE_DISPUTE_STEP_COUNT = 175;
+
 export const FAULT_PROOF_SHARED_TITLES = {
   computationThreadMint: "computation_thread.mint.mint",
   fraudProofMint: "fraud_proof.mint.mint",

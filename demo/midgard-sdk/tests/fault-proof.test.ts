@@ -67,6 +67,7 @@ import {
   type Proof,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
+  VALIDATION_TRACE_DISPUTE_STEP_COUNT,
   VALIDATION_TRACE_RESOLVER_COUNT,
   ZERO_INPUT_FAULT_PROOF_TITLES,
   ZeroInputStep01Datum,
@@ -1352,7 +1353,9 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(139);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(
+      VALIDATION_TRACE_DISPUTE_STEP_COUNT,
+    );
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT,
     );
@@ -1398,7 +1401,12 @@ describe("fault-proof contract builder", () => {
       // two `invalid_signature` steps are distinct from every other family. R5
       // item 1 replaced the two cek/ValueAndMint direct resolvers with two
       // prepare resolvers plus fifteen semantic resolvers (+15 distinct).
-    ).toBe(151);
+      // The validation-trace deployed-steps roster now carries the full
+      // interactive chain (VALIDATION_TRACE_DISPUTE_STEP_COUNT = 175); the
+      // previously untallied semantic/stage validators contribute the
+      // remaining distinct hashes (this assertion was unreachable while the
+      // stale 139-step pin above failed first).
+    ).toBe(205);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -2257,7 +2265,9 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(139);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(
+      VALIDATION_TRACE_DISPUTE_STEP_COUNT,
+    );
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );
