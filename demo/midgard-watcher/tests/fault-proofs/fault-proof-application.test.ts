@@ -270,6 +270,7 @@ describe("watcher production fault-proof application V1", () => {
         "invalidRange",
         "transitionTrace",
         "zeroInput",
+        "validationTraceDispute",
         "daHashPreimage",
         "noReferenceInput",
         "referenceInputNoIdx",
@@ -318,9 +319,7 @@ describe("watcher production fault-proof application V1", () => {
         "scriptIntegrityHashMismatch",
         "distinctAssetAccumulationLimit",
       ]);
-      expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toEqual([
-        "validationTraceDispute",
-      ]);
+      expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toEqual([]);
       expect(
         workflowReadinessReport(
           WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -328,9 +327,9 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: 53,
-        requestedCategoryCount: 53,
-        readyCategoryCount: 53,
+        installedCategoryCount: 54,
+        requestedCategoryCount: 54,
+        readyCategoryCount: 54,
         missingCategoryCount: 0,
       });
 
@@ -351,6 +350,28 @@ describe("watcher production fault-proof application V1", () => {
           expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual(
             TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
           );
+          continue;
+        }
+        if (category === "validationTraceDispute") {
+          expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual([
+            "opener",
+            "source",
+            "game",
+            "boundary",
+            "timeout",
+            "award",
+            "computationThreadMint",
+            "fraudProofMint",
+            "correctionLockSpend",
+            "stateQueueSpend",
+            "stateQueueMint",
+            "stateQueueFraudRemovalWithdraw",
+            "activeOperatorsSpend",
+            "activeOperatorsMint",
+            "retiredOperatorsSpend",
+            "retiredOperatorsMint",
+            "schedulerSpend",
+          ]);
           continue;
         }
         if (category === "valueNotPreserved") {
@@ -1229,8 +1250,8 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      expect(deps.makeLucid).toHaveBeenCalledTimes(53);
-      expect(transport.stop).toHaveBeenCalledTimes(53);
+      expect(deps.makeLucid).toHaveBeenCalledTimes(54);
+      expect(transport.stop).toHaveBeenCalledTimes(54);
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),
@@ -1377,10 +1398,14 @@ describe("watcher production fault-proof application V1", () => {
           MIDGARD_NODE_ADMIN_KEY: "admin-key",
         },
       );
+      // Every catalogue category now has an installed workflow (54/54), so the
+      // uninstalled-category guard is exercised with a forged non-catalogue
+      // category string.
       await expect(
         admitted.assertStartupReady(
           invocation(configPath, "doubleSpend", {
-            category: "validationTraceDispute",
+            category:
+              "forgedUninstalledCategory" as WorkflowAdapterReadinessInput["category"],
           }),
         ),
       ).rejects.toThrow("no installed production workflow");

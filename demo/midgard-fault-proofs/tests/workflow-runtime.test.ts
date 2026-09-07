@@ -604,6 +604,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       "crossBlockDuplicateEvent",
       "withdrawalMistag",
       "minAda",
+      "transitionTrace",
       "valueNotPreserved",
       "fieldPreimageLengthMismatch",
       "fieldItemWidthIllegal",
@@ -627,6 +628,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       "executionNativeScriptInvalid",
       "scriptIntegrityHashMismatch",
       "distinctAssetAccumulationLimit",
+      "validationTraceDispute",
     ]);
   });
 
