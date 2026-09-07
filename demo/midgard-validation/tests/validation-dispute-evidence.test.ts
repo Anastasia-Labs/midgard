@@ -10,7 +10,9 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardValidationVerdictName,
 } from "@al-ft/midgard-core";
+import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
+import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -36,6 +38,44 @@ const blueprint = JSON.parse(
     "utf8",
   ),
 ) as unknown;
+
+// A regenerated blueprint carries no definition for
+// `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`:
+// the auxiliary crosses the wire as `Data` into the yield dispatchers'
+// builtin decodes, so its pin is the frozen 40-arm tag/arity corpus
+// (`validation-controls-abi.test.ts` freezes the vectors' bytes and digest)
+// plus the cross-language producer vectors in
+// `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`.
+// This helper checks the envelope half: canonical Plutus Data, a frozen
+// constructor tag, the frozen arity, and the argument size cap.
+const auxiliaryArityByTag = new Map(
+  (
+    JSON.parse(
+      readFileSync(
+        new URL(
+          "./fixtures/validation-auxiliary-witness-v1.generated.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as {
+      readonly constructors: readonly {
+        readonly tag: number;
+        readonly arity: number;
+      }[];
+    }
+  ).constructors.map((entry) => [entry.tag, entry.arity] as const),
+);
+const assertPinnedAuxiliaryEnvelope = (cbor: Buffer): void => {
+  expect(cbor.length).toBeLessThan(16 * 1024);
+  const hex = cbor.toString("hex");
+  canonicalPlutusDataCbor(hex);
+  const decoded = Data.from(hex);
+  expect(decoded).toBeInstanceOf(Constr);
+  const arity = auxiliaryArityByTag.get((decoded as Constr<unknown>).index);
+  expect(arity).toBeDefined();
+  expect((decoded as Constr<unknown>).fields).toHaveLength(arity!);
+};
 
 const baseContext = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -174,13 +214,7 @@ const expectExactBundle = (
     cbor: bundle.oneStepArgument.transitionCbor.toString("hex"),
     maxBytes: 16 * 1024 - 1,
   });
-  parseExactAikenDataCbor({
-    blueprint,
-    definitionName:
-      "midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1",
-    cbor: bundle.oneStepArgument.auxiliaryCbor.toString("hex"),
-    maxBytes: 16 * 1024 - 1,
-  });
+  assertPinnedAuxiliaryEnvelope(bundle.oneStepArgument.auxiliaryCbor);
   // R5 item 1 retired the last direct resolvers, so
   // `ValidationOneStepEvidenceV1` is no longer any validator's redeemer
   // surface and the blueprint carries no definition for it: the evidence is

@@ -11,6 +11,7 @@ export * from "./input-set-uniqueness/index.js";
 export * from "./inspect-contracts.js";
 export * from "./invalid-range/index.js";
 export * from "./l2-tx-mistag/index.js";
+export * from "./ledger-output-proof-plan.js";
 export * from "./min-ada/index.js";
 export * from "./min-fee-contracts.js";
 export * from "./min-fee-submit-common.js";
