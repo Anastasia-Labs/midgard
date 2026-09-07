@@ -167,6 +167,11 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "../workflow/transaction-boundary.js";
 import { buildValidationAssetFoldClaim } from "./asset-fold.js";
 import { deriveCekContextPlan, submitCekContextChain } from "./cek-context.js";
 import { deriveCekCorePlan, submitCekCoreChain } from "./cek-core.js";
@@ -225,6 +230,38 @@ export const selectValidationCompleteItemCarriage = (
 export type ValidationDisputeValidityRange = {
   readonly validFrom: number;
   readonly validTo: number;
+};
+
+/**
+ * Optional Q51 pre-submit boundary (workflow ruling R5). When a durable
+ * production workflow supplies `boundary`, the fully signed and locally
+ * evaluated transaction is handed to it immediately before provider I/O so
+ * the workflow can persist preflight/intent (or capture the transaction and
+ * become the sole submit authority). When unset, behaviour is byte-identical
+ * to the historical direct-submit path.
+ */
+const reachOptionalPreSubmitBoundary = async ({
+  signed,
+  boundary,
+  referenceScriptCandidates = [],
+}: {
+  readonly signed: TxSigned;
+  readonly boundary: FraudProofPreSubmitBoundary | undefined;
+  readonly referenceScriptCandidates?: readonly {
+    readonly role: string;
+    readonly utxo: UTxO | undefined;
+    readonly expectedScript?: Script;
+  }[];
+}): Promise<void> => {
+  if (boundary === undefined) return;
+  await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
+      signed,
+      candidates: referenceScriptCandidates,
+    }),
+    boundary,
+  });
 };
 
 const safeUnsignedNumber = (value: bigint, field: string): number => {
@@ -2577,12 +2614,19 @@ export const buildValidationDisputeOpen = async ({
 
 export const submitValidationDisputeOpen = async ({
   awaitConfirmation = true,
+  preSubmitBoundary,
   ...params
 }: BuildValidationDisputeOpenParams & {
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeOpenResult> => {
   const built = await buildValidationDisputeOpen(params);
   requireL1ProofEnvelope(built.signed.toCBOR(), "Validation-dispute open");
+  await reachOptionalPreSubmitBoundary({
+    signed: built.signed,
+    boundary: preSubmitBoundary,
+  });
   const txHash = await built.signed.submit();
   if (awaitConfirmation) {
     await params.lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -2642,6 +2686,7 @@ export const submitValidationDisputeVerifySource = async ({
   sourceReferenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -2653,6 +2698,8 @@ export const submitValidationDisputeVerifySource = async ({
   readonly sourceReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeVerifySourceResult> => {
   const range = requireValidityRange(validityRange);
   const { validationTraceDisputeCategory, contracts } =
@@ -2756,6 +2803,16 @@ export const submitValidationDisputeVerifySource = async ({
     signed.toCBOR(),
     "Validation-dispute source verification",
   );
+  await reachOptionalPreSubmitBoundary({
+    signed,
+    boundary: preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: "validation-dispute source validator",
+        utxo: sourceReferenceScriptUtxo,
+      },
+    ],
+  });
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -2927,6 +2984,7 @@ export const submitValidationDisputeReveal = async ({
   gameReferenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -2940,6 +2998,8 @@ export const submitValidationDisputeReveal = async ({
   readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeRevealResult> => {
   const range = requireValidityRange(validityRange);
   const { validationTraceDisputeCategory, contracts } =
@@ -3050,6 +3110,16 @@ export const submitValidationDisputeReveal = async ({
   }
   const signed = await unsigned.sign.withWallet().complete();
   requireL1ProofEnvelope(signed.toCBOR(), `Validation-dispute ${role} reveal`);
+  await reachOptionalPreSubmitBoundary({
+    signed,
+    boundary: preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: "validation-dispute game validator",
+        utxo: gameReferenceScriptUtxo,
+      },
+    ],
+  });
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -3086,6 +3156,7 @@ export const submitValidationDisputeEnterTimeout = async ({
   validityRange,
   now = Date.now(),
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -3098,6 +3169,8 @@ export const submitValidationDisputeEnterTimeout = async ({
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly now?: number;
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeEnterTimeoutResult> => {
   const { validationTraceDisputeCategory, contracts } =
     await resolveValidationTraceDisputeDeploymentContracts({
@@ -3190,6 +3263,16 @@ export const submitValidationDisputeEnterTimeout = async ({
   }
   const signed = await unsigned.sign.withWallet().complete();
   requireL1ProofEnvelope(signed.toCBOR(), "Validation-dispute timeout handoff");
+  await reachOptionalPreSubmitBoundary({
+    signed,
+    boundary: preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: "validation-dispute game validator",
+        utxo: gameReferenceScriptUtxo,
+      },
+    ],
+  });
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -3228,6 +3311,7 @@ export const submitValidationDisputeTimeout = async ({
   validityRange,
   now = Date.now(),
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -3242,6 +3326,8 @@ export const submitValidationDisputeTimeout = async ({
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly now?: number;
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeTimeoutResult> => {
   const { validationTraceDisputeCategory, contracts } =
     await resolveValidationTraceDisputeDeploymentContracts({
@@ -3380,6 +3466,24 @@ export const submitValidationDisputeTimeout = async ({
   };
   const signed = await unsigned.sign.withWallet().complete();
   requireL1ProofEnvelope(signed.toCBOR(), "Validation-dispute timeout");
+  await reachOptionalPreSubmitBoundary({
+    signed,
+    boundary: preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: "validation-dispute timeout validator",
+        utxo: timeoutReferenceScriptUtxo,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+      },
+    ],
+  });
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -3481,6 +3585,7 @@ export const submitValidationDisputeEnterResolution = async ({
   gameReferenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -3492,6 +3597,8 @@ export const submitValidationDisputeEnterResolution = async ({
   readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeEnterResolutionResult> => {
   const range = requireValidityRange(validityRange);
   const { validationTraceDisputeCategory, contracts } =
@@ -3579,6 +3686,16 @@ export const submitValidationDisputeEnterResolution = async ({
     signed.toCBOR(),
     "Validation-dispute resolution handoff",
   );
+  await reachOptionalPreSubmitBoundary({
+    signed,
+    boundary: preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: "validation-dispute game validator",
+        utxo: gameReferenceScriptUtxo,
+      },
+    ],
+  });
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -3664,6 +3781,7 @@ export const submitValidationDisputePrepareResolution = async ({
   boundaryReferenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -3678,6 +3796,8 @@ export const submitValidationDisputePrepareResolution = async ({
   readonly boundaryReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputePrepareResolutionResult> => {
   const range = requireValidityRange(validityRange);
   const { validationTraceDisputeCategory, contracts } =
@@ -3794,6 +3914,16 @@ export const submitValidationDisputePrepareResolution = async ({
     signed.toCBOR(),
     "Validation-dispute boundary preparation",
   );
+  await reachOptionalPreSubmitBoundary({
+    signed,
+    boundary: preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: "validation-dispute boundary validator",
+        utxo: boundaryReferenceScriptUtxo,
+      },
+    ],
+  });
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -5242,6 +5372,8 @@ type ValidationFinalizationTransactionParams = {
   ) => string;
   readonly materialReferenceUtxos?: readonly UTxO[];
   readonly validityRange: ValidationDisputeValidityRange;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 };
 
 type PreparedValidationFinalizationTransaction = {
@@ -5387,10 +5519,23 @@ const prepareValidationFinalizationTransaction = async ({
 const submitPreparedValidationFinalizationTransaction = async ({
   prepared,
   awaitConfirmation,
+  preSubmitBoundary,
+  referenceScriptCandidates,
 }: {
   readonly prepared: PreparedValidationFinalizationTransaction;
   readonly awaitConfirmation: boolean;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly referenceScriptCandidates?: readonly {
+    readonly role: string;
+    readonly utxo: UTxO | undefined;
+    readonly expectedScript?: Script;
+  }[];
 }): Promise<ValidationFinalizationResult> => {
+  await reachOptionalPreSubmitBoundary({
+    signed: prepared.signed,
+    boundary: preSubmitBoundary,
+    referenceScriptCandidates,
+  });
   const txHash = await prepared.signed.submit();
   if (awaitConfirmation) {
     await prepared.lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -5422,6 +5567,21 @@ const submitValidationFinalizationTransaction = async (
   submitPreparedValidationFinalizationTransaction({
     prepared: await prepareValidationFinalizationTransaction(params),
     awaitConfirmation: params.awaitConfirmation,
+    preSubmitBoundary: params.preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: `${params.spendLabel} spending validator`,
+        utxo: params.spendingScriptReferenceUtxo,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: params.witnessReferenceScripts?.computationThreadMint,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: params.witnessReferenceScripts?.fraudProofMint,
+      },
+    ],
   });
 
 export type SubmitValidationDisputePrepareSelectedResult = {
@@ -5447,6 +5607,7 @@ export const submitValidationDisputePrepareSelected = async ({
   referenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -5459,6 +5620,8 @@ export const submitValidationDisputePrepareSelected = async ({
   readonly referenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputePrepareSelectedResult> => {
   const range = requireValidityRange(validityRange);
   const {
@@ -5597,6 +5760,16 @@ export const submitValidationDisputePrepareSelected = async ({
   }
   const signed = await unsigned.sign.withWallet().complete();
   requireL1ProofEnvelope(signed.toCBOR(), "Validation semantic preparation");
+  await reachOptionalPreSubmitBoundary({
+    signed,
+    boundary: preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: "validation-dispute prepare-resolver validator",
+        utxo: prepareReferenceScriptUtxo,
+      },
+    ],
+  });
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -5995,6 +6168,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   stageReferenceScriptUtxos,
   validityRange,
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -6034,6 +6208,13 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly stageReferenceScriptUtxos?: ValidationDisputeStageReferenceScriptUtxos;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
+  /**
+   * Optional Q51 pre-submit boundary (workflow ruling R5). Invoked once per
+   * transaction the resolution route submits, immediately before each
+   * provider submission, including staged multi-transaction routes and the
+   * proof-item publication.
+   */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
   const {
     deploymentInfo: parsedDeploymentInfo,
@@ -6714,6 +6895,10 @@ export const submitValidationDisputeSemanticResolution = async ({
       datum: publication.datumCbor,
       label: "Validation complete proof-item publication",
     });
+    await reachOptionalPreSubmitBoundary({
+      signed: publicationSigned,
+      boundary: preSubmitBoundary,
+    });
     const publicationTxHash = await publicationSigned.submit();
     // A reference input cannot be consumed until its creating transaction is
     // visible, even when the caller elects not to await the later resolution.
@@ -7077,6 +7262,13 @@ export const submitValidationDisputeSemanticResolution = async ({
       const signed = await unsigned.sign.withWallet().complete();
       const signedCbor = signed.toCBOR();
       requireL1ProofEnvelope(signedCbor, label);
+      await reachOptionalPreSubmitBoundary({
+        signed,
+        boundary: preSubmitBoundary,
+        referenceScriptCandidates: [
+          { role: `${label} spending validator`, utxo: scriptReference },
+        ],
+      });
       const txHash = await signed.submit();
       const nextThreadOutRef = `${txHash}#${resolvedLayout.outputIndex.toString()}`;
       let nextThreadUtxo: UTxO | undefined;
@@ -7375,6 +7567,13 @@ export const submitValidationDisputeSemanticResolution = async ({
       const signed = await unsigned.sign.withWallet().complete();
       const signedCbor = signed.toCBOR();
       requireL1ProofEnvelope(signedCbor, label);
+      await reachOptionalPreSubmitBoundary({
+        signed,
+        boundary: preSubmitBoundary,
+        referenceScriptCandidates: [
+          { role: `${label} spending validator`, utxo: scriptReference },
+        ],
+      });
       const txHash = await signed.submit();
       const nextThreadOutRef = `${txHash}#${resolvedLayout.outputIndex.toString()}`;
       let nextThreadUtxo: UTxO | undefined;
@@ -7847,6 +8046,16 @@ export const submitValidationDisputeSemanticResolution = async ({
       readonly rejectedLocalRouteAttempts: readonly ValidationCekRejectedLocalRouteAttempt[];
     },
   ): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
+    await reachOptionalPreSubmitBoundary({
+      signed: prepared.signed,
+      boundary: preSubmitBoundary,
+      referenceScriptCandidates: [
+        {
+          role: "validation-dispute semantic-resolver validator",
+          utxo: semanticValidatorReferenceScriptUtxo,
+        },
+      ],
+    });
     const txHash = await prepared.signed.submit();
     if (awaitConfirmation) {
       await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -8860,6 +9069,7 @@ export const submitValidationDisputeAward = async ({
   witnessReferenceScripts,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -8873,6 +9083,8 @@ export const submitValidationDisputeAward = async ({
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
+  /** Optional Q51 pre-submit boundary (workflow ruling R5). */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitValidationDisputeAwardResult> => {
   const range = requireValidityRange(validityRange);
   const { validationTraceDisputeCategory, contracts } =
@@ -8935,6 +9147,7 @@ export const submitValidationDisputeAward = async ({
       ),
     validityRange: range,
     awaitConfirmation,
+    preSubmitBoundary,
   });
 };
 
