@@ -1288,6 +1288,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   descriptorMaximum = false,
   scriptSourcesItemIndex,
   disputedMatchOrdinal,
+  worstCaseWitness = false,
   outputDatumCbor,
   prepareFieldCarriage,
 }: {
@@ -1351,6 +1352,14 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
    * whose stage role carries attestation yields.
    */
   readonly disputedMatchOrdinal?: number;
+  /**
+   * Adjudicate the most expensive matching step instead of the first: the
+   * matching state whose encoded auxiliary witness is largest. A maximum-shape
+   * claim has to be measured at the worst step the honest trace reaches, not
+   * merely at the first one. Mutually exclusive with
+   * {@link disputedMatchOrdinal}, which selects by position instead.
+   */
+  readonly worstCaseWitness?: boolean;
   /** Inline datum for the forced transaction's produced output; see
    * {@link buildNativeTransactionTrace}. */
   readonly outputDatumCbor?: Buffer;
@@ -1424,7 +1433,15 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   });
   let challengerTrace = originalTrace;
   let disputedMatchesSeen = 0;
-  const disputedLowIndex = challengerTrace.states.findIndex((state, index) => {
+  if (worstCaseWitness && disputedMatchOrdinal !== undefined) {
+    throw new Error(
+      "worstCaseWitness and disputedMatchOrdinal select the disputed step by incompatible rules",
+    );
+  }
+  const isDisputedState = (
+    state: (typeof challengerTrace.states)[number],
+    index: number,
+  ): boolean => {
     const auxiliary = challengerTrace.witnesses[index]?.auxiliary;
     const contextStage = (() => {
       if (cekContextStage === undefined || state.phase !== "cek")
@@ -1544,7 +1561,21 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       (disputedMatchOrdinal === undefined ||
         disputedMatchesSeen++ === disputedMatchOrdinal)
     );
-  });
+  };
+  // A maximum-shape claim has to adjudicate the most expensive matching step,
+  // not merely the first one the honest trace happens to reach.
+  const disputedLowIndex = worstCaseWitness
+    ? challengerTrace.states.reduce(
+        (best, state, index) => {
+          if (!isDisputedState(state, index)) return best;
+          const cost = encodeValidationAuxiliaryWitnessCbor(
+            challengerTrace.witnesses[index]!.auxiliary,
+          ).length;
+          return cost > best.cost ? { index, cost } : best;
+        },
+        { index: -1, cost: -1 },
+      ).index
+    : challengerTrace.states.findIndex(isDisputedState);
   if (disputedLowIndex < 0) {
     throw new Error(
       `honest accepted validation trace is missing its ${disputedPhase} phase`,
