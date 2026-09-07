@@ -1289,6 +1289,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   scriptSourcesItemIndex,
   disputedMatchOrdinal,
   worstCaseWitness = false,
+  ledgerOutputValueOpening = false,
+  permutationWitnessMutation,
   outputDatumCbor,
   prepareFieldCarriage,
 }: {
@@ -1360,6 +1362,26 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
    * {@link disputedMatchOrdinal}, which selects by position instead.
    */
   readonly worstCaseWitness?: boolean;
+  /**
+   * Narrow the disputed step to a ledger-output-proof value step that carries
+   * a previous map-head opening — the permutation half of the mixed-width
+   * output value fold (`ledger_output_value_v1.asset_step`). Combine with
+   * `assetCount: 1304` so the native canonical key order and the lexical
+   * execution order are genuinely different permutations.
+   */
+  readonly ledgerOutputValueOpening?: boolean;
+  /**
+   * Forge the disputed step's permutation witness (a mixed-width mint context
+   * item or a ledger-output value step) in the challenger's own trace, so the
+   * refusal reaches the on-chain membership / head-opening clause rather than
+   * any local builder gate: `foreignIndex` claims another frontier slot,
+   * `forgedHead` misquotes the previous head's quantity, and `omittedHead`
+   * drops a required previous-head opening.
+   */
+  readonly permutationWitnessMutation?:
+    | "foreignIndex"
+    | "forgedHead"
+    | "omittedHead";
   /** Inline datum for the forced transaction's produced output; see
    * {@link buildNativeTransactionTrace}. */
   readonly outputDatumCbor?: Buffer;
@@ -1531,6 +1553,15 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
               return auxiliary?.kind === "ledgerOutputProofFinalize";
           }
         })()) &&
+      (!ledgerOutputValueOpening ||
+        (() => {
+          const auxiliary = challengerTrace.witnesses[index]!.auxiliary;
+          return (
+            auxiliary?.kind === "ledgerOutputProofStep" &&
+            auxiliary.witness?.kind === "value" &&
+            auxiliary.witness.previous !== null
+          );
+        })()) &&
       (disputedPhase !== "phaseAScriptPreconditions" ||
         (preconditionsItemIndex === undefined
           ? challengerTrace.witnesses[index]!.auxiliary === null
@@ -1586,6 +1617,84 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
       challengerTrace,
       disputedLowIndex,
     );
+  if (permutationWitnessMutation !== undefined) {
+    // Forge the challenger's own permutation witness for the disputed step.
+    // The adjudicated one-step argument reads the auxiliary of
+    // witnesses[disputedLowIndex] (the witness of the transition FROM the
+    // disputed low state), and the auxiliary is not part of any work root,
+    // so only the on-chain membership / head-opening clause of the stage-8
+    // mint item or the output value fold can notice the exchange - every
+    // local builder gate still passes on the honest work witnesses.
+    const adjacent = challengerTrace.witnesses[disputedLowIndex]!;
+    const auxiliary = adjacent.auxiliary;
+    const requireHead = <T>(head: T | null): T => {
+      if (head === null)
+        throw new Error(
+          "disputed permutation step carries no previous-head opening to mutate",
+        );
+      return head;
+    };
+    const mutatedAuxiliary = (() => {
+      if (auxiliary?.kind === "cekMintContextItem") {
+        switch (permutationWitnessMutation) {
+          case "foreignIndex":
+            return {
+              ...auxiliary,
+              mintIndex:
+                auxiliary.mintIndex === 0
+                  ? auxiliary.mintIndex + 1
+                  : auxiliary.mintIndex - 1,
+            };
+          case "forgedHead": {
+            const previous = requireHead(auxiliary.previous);
+            return {
+              ...auxiliary,
+              previous: { ...previous, quantity: previous.quantity + 1n },
+            };
+          }
+          case "omittedHead":
+            requireHead(auxiliary.previous);
+            return { ...auxiliary, previous: null };
+        }
+      }
+      if (
+        auxiliary?.kind === "ledgerOutputProofStep" &&
+        auxiliary.witness?.kind === "value"
+      ) {
+        const witness = auxiliary.witness;
+        switch (permutationWitnessMutation) {
+          case "foreignIndex":
+            return {
+              ...auxiliary,
+              witness: {
+                ...witness,
+                assetIndex:
+                  witness.assetIndex === 0
+                    ? witness.assetIndex + 1
+                    : witness.assetIndex - 1,
+              },
+            };
+          case "forgedHead": {
+            const previous = requireHead(witness.previous);
+            return {
+              ...auxiliary,
+              witness: {
+                ...witness,
+                previous: { ...previous, quantity: previous.quantity + 1n },
+              },
+            };
+          }
+          case "omittedHead":
+            requireHead(witness.previous);
+            return { ...auxiliary, witness: { ...witness, previous: null } };
+        }
+      }
+      throw new Error("disputed step carries no permutation witness to mutate");
+    })();
+    const witnesses = [...challengerTrace.witnesses];
+    witnesses[disputedLowIndex] = { ...adjacent, auxiliary: mutatedAuxiliary };
+    challengerTrace = { ...challengerTrace, witnesses };
+  }
   const honestTerminal = challengerTrace.states.at(-1)!;
   if (honestTerminal.phase !== "terminal") {
     throw new Error(

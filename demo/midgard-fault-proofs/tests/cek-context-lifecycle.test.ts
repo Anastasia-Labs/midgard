@@ -162,6 +162,34 @@ describe("bounded CEK context registered lifecycle", () => {
     900_000,
   );
 
+  // Negative polarity of the mixed-width closure (the size plan's
+  // "Mixed-width mint ordering closure"): the challenger's trace is honest
+  // except the disputed stage-8 item's own permutation witness, so every
+  // local builder gate passes and the refusal is the on-chain stage-8
+  // membership / head-opening clause the selector tests pin
+  // (context_mint_item_refuses_* in cek-split-v1.test.ak).
+  it.each(["foreignIndex", "forgedHead", "omittedHead"] as const)(
+    "refuses a %s mutation of the mixed-width mint permutation witness",
+    async (permutationWitnessMutation) => {
+      await expect(
+        runForcedValidationDisputeScenario(({ operatorVkey, now }) =>
+          buildForgedOperatorSuccessorValidationDisputeFixture({
+            operatorVkey,
+            now,
+            disputedPhase: "cek",
+            plutusSelection: true,
+            cekSelection: true,
+            assetCount: 1304,
+            cekContextStage: 8,
+            cekContextMintCursor: 1303,
+            permutationWitnessMutation,
+          }),
+        ),
+      ).rejects.toThrow(/failed script execution/);
+    },
+    900_000,
+  );
+
   it.each(["openHeader", "openTail", "traverseData"])(
     "proves shared context item action %s through the registered return chain",
     async (cekContextItemAction) => {
