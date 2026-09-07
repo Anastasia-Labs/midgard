@@ -32,6 +32,7 @@ import {
 import { buildSharedFaultProofContracts } from "../shared.js";
 import {
   CEK_PROGRAM_MATERIAL_SPEND_TITLE,
+  VALIDATION_TRACE_DISPUTE_STEP_COUNT,
   VALIDATION_TRACE_RESOLVER_COUNT,
 } from "../titles.js";
 import {
@@ -2134,28 +2135,37 @@ export const buildValidationTraceDisputeChain = ({
         ),
     );
 
+    const steps: [typeof dispute, ...(typeof dispute)[]] = [
+      dispute,
+      source,
+      game,
+      boundary,
+      timeout,
+      award,
+      proofItem,
+      ...semanticResolvers,
+      sharedItem.traversalNormalizer,
+      sharedItem.outerNormalizer,
+      sharedItem.sourceAuthenticator,
+      ...sharedItem.executors,
+      sharedItem.settlement,
+      ...Object.values(cekContextStages),
+      cekContextItemStages.entry,
+      cekContextItemStages.settlement,
+      ...Object.values(canonicalDecodeItemStages),
+      ...prepareResolvers,
+    ];
+    if (steps.length !== VALIDATION_TRACE_DISPUTE_STEP_COUNT) {
+      return yield* Effect.fail(
+        new Error(
+          `Validation-trace dispute composed ${steps.length.toString()} deployed steps, ` +
+            `expected VALIDATION_TRACE_DISPUTE_STEP_COUNT=${VALIDATION_TRACE_DISPUTE_STEP_COUNT.toString()}`,
+        ),
+      );
+    }
     return {
       firstStep: dispute,
-      steps: [
-        dispute,
-        source,
-        game,
-        boundary,
-        timeout,
-        award,
-        proofItem,
-        ...semanticResolvers,
-        sharedItem.traversalNormalizer,
-        sharedItem.outerNormalizer,
-        sharedItem.sourceAuthenticator,
-        ...sharedItem.executors,
-        sharedItem.settlement,
-        ...Object.values(cekContextStages),
-        cekContextItemStages.entry,
-        cekContextItemStages.settlement,
-        ...Object.values(canonicalDecodeItemStages),
-        ...prepareResolvers,
-      ],
+      steps,
       opener: dispute,
       source,
       game,

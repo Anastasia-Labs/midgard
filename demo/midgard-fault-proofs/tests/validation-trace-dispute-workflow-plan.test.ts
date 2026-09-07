@@ -148,45 +148,35 @@ describe("validationTraceDispute workflow planning (ruling R6)", () => {
     ).toEqual({ kind: "completed" });
   });
 
-  it("resumes staged routes from retained durable input and cancels otherwise", () => {
-    const resumableGroups: readonly ValidationTraceDisputeSemanticGroup[] = [
+  it("always owns the cancel move at every interrupted staged-route checkpoint", () => {
+    const groups: readonly ValidationTraceDisputeSemanticGroup[] = [
       "cek_material_traversal",
       "cek_core_stage",
       "cek_context_stage",
       "cek_context_item_stage",
+      "canonical_decode_item_stage",
+      "script_sources_item_stage",
+      "proof_item",
     ];
     const retained = {
       transitionCborHex: "d879",
       auxiliaryCborHex: "d87a",
     } as const;
-    for (const group of resumableGroups) {
+    for (const group of groups) {
       const stage: ValidationTraceDisputeChainStage = {
         kind: "semantic_in_flight",
         threadOutRef: thread,
         group,
         role: group,
       };
-      expect(
-        actionStage(planValidationTraceDisputeMove({ stage, retained })),
-      ).toBe("resume_semantic_route");
-      expect(actionStage(planValidationTraceDisputeMove({ stage }))).toBe(
-        "cancel_semantic_route",
-      );
-    }
-    for (const group of [
-      "canonical_decode_item_stage",
-      "script_sources_item_stage",
-      "proof_item",
-    ] as const) {
-      const stage: ValidationTraceDisputeChainStage = {
-        kind: "semantic_in_flight",
-        threadOutRef: thread,
-        group,
-        role: group,
-      };
+      // With or without retained material the workflow owns one legal
+      // transaction: cancel the stalled route and restart from init.
       expect(
         actionStage(planValidationTraceDisputeMove({ stage, retained })),
       ).toBe("cancel_semantic_route");
+      expect(actionStage(planValidationTraceDisputeMove({ stage }))).toBe(
+        "cancel_semantic_route",
+      );
     }
   });
 

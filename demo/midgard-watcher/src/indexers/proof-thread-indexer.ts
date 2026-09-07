@@ -6,6 +6,7 @@ import {
   type DeploymentMarker,
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES } from "@al-ft/midgard-fault-proofs";
 import {
   DA_ATTESTATION_ASSET_NAME_PREFIX,
   DaAttestationDatum,
@@ -14,6 +15,7 @@ import {
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
+  VALIDATION_TRACE_DISPUTE_STEP_COUNT,
 } from "@al-ft/midgard-sdk";
 import { CML, Data, valueToAssets } from "@lucid-evolution/lucid";
 
@@ -140,15 +142,14 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY = Object.freeze({
   },
   validationTraceDispute: {
     familyId: "validation-trace-dispute",
-    stepCount: 121,
-    deployedStepContractNames: [
-      "validationTraceDispute",
-      "validationTraceDisputeSource",
-      "validationTraceDisputeGame",
-      "validationTraceDisputeBoundary",
-      "validationTraceDisputeTimeout",
-      "validationTraceDisputeAward",
-    ],
+    // Derived from the SDK family composition (asserted against the composed
+    // deployed-steps array at contract-build time), never re-pinned here.
+    stepCount: VALIDATION_TRACE_DISPUTE_STEP_COUNT,
+    // The interactive control chain in deployed-steps order — the exact
+    // manifest deployment entries the production dispute submitters bind.
+    deployedStepContractNames: Object.values(
+      VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
+    ),
   },
   daHashPreimage: {
     familyId: "da-hash-preimage",

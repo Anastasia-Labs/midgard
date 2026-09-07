@@ -6,6 +6,7 @@ import {
 import {
   type ValidationClaimWitness,
   ValidationDisputeDatum,
+  ValidationGameSpendRedeemer,
   ValidationMachineState,
   type ValidationResolutionState,
   ValidationResolutionDatum,
@@ -22,6 +23,7 @@ import {
   type ValidationOneStepArgument,
 } from "@al-ft/midgard-validation";
 import {
+  CML,
   Data,
   getAddressDetails,
   type LucidEvolution,
@@ -78,10 +80,10 @@ import {
  * complete. `planValidationTraceDisputeMove` is total over the cursor type,
  * so the runner can always force progress: detect → initiate → play every
  * honest response → claim timeout when the operator stalls → award →
- * remove. Interrupted multi-transaction semantic routes resume from the
- * journal's durable action input when present, and otherwise cancel the
- * thread (a legal, always-available move) and restart from init — progress
- * is never blocked on lost local state.
+ * remove. An interrupted multi-transaction semantic route cancels the thread
+ * (a legal, always-available single transaction) and restarts from init —
+ * progress is never blocked on lost local state, and the cursor is re-derived
+ * exclusively from chain state on every invocation.
  */
 export type ValidationTraceDisputeActuatorAction =
   | Readonly<{ stage: "init"; stateQueueBlockOutRef: string }>
@@ -101,11 +103,6 @@ export type ValidationTraceDisputeActuatorAction =
       stage: "semantic_resolution";
       threadOutRef: string;
       scriptSourcesItemPreparedCbor?: string;
-    }>
-  | Readonly<{
-      stage: "resume_semantic_route";
-      threadOutRef: string;
-      group: ValidationTraceDisputeSemanticGroup;
     }>
   | Readonly<{
       stage: "cancel_semantic_route";
@@ -228,23 +225,22 @@ export const planValidationTraceDisputeMove = ({
               }),
         },
       };
-    case "semantic_in_flight": {
-      const resumable =
-        retained?.transitionCborHex !== undefined &&
-        retained.auxiliaryCborHex !== undefined &&
-        (stage.group === "cek_material_traversal" ||
-          stage.group === "cek_core_stage" ||
-          stage.group === "cek_context_stage" ||
-          stage.group === "cek_context_item_stage");
+    case "semantic_in_flight":
+      // A staged multi-transaction route interrupted mid-flight is always
+      // recoverable without local memory: cancellation is a single legal
+      // transaction at every checkpoint (full journal discipline), after
+      // which the cursor re-derives `not_started` and the dispute restarts.
+      // The retained-DA resume helpers remain operator tooling; their
+      // multi-transaction drivers predate the pre-submit boundary seam, so
+      // the durable workflow never routes through them.
       return {
         kind: "act",
         action: {
-          stage: resumable ? "resume_semantic_route" : "cancel_semantic_route",
+          stage: "cancel_semantic_route",
           threadOutRef: stage.threadOutRef,
           group: stage.group,
         },
       };
-    }
     case "award_pending":
       return {
         kind: "act",
@@ -285,6 +281,52 @@ export type ValidationTraceDisputeActuationMaterial = Readonly<{
 export type ValidationTraceDisputeOperatorProofSource = Readonly<{
   collect: () => Promise<readonly MidgardValidationTraceProof[]>;
 }>;
+
+/**
+ * Decodes every `Continue(RevealOperator)` game redeemer found in a witness
+ * set. The bytes come from authenticated L1 history (raw snapshot witness
+ * sets in production, submitted transactions in the emulator journey), so a
+ * proof recovered here is the operator's own on-chain commitment.
+ */
+export const decodeOperatorRevealProofsFromWitnessSet = (
+  witnessSetCbor: string,
+): readonly MidgardValidationTraceProof[] => {
+  const proofs: MidgardValidationTraceProof[] = [];
+  const witnesses = CML.TransactionWitnessSet.from_cbor_hex(witnessSetCbor);
+  const redeemers = witnesses.redeemers();
+  if (redeemers === undefined) return proofs;
+  const payloads: string[] = [];
+  const legacy = redeemers.as_arr_legacy_redeemer();
+  if (legacy !== undefined) {
+    for (let index = 0; index < legacy.len(); index += 1) {
+      payloads.push(legacy.get(index).data().to_cbor_hex());
+    }
+  }
+  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
+  if (map !== undefined) {
+    const keys = map.keys();
+    for (let index = 0; index < keys.len(); index += 1) {
+      const value = map.get(keys.get(index));
+      if (value !== undefined) payloads.push(value.data().to_cbor_hex());
+    }
+  }
+  for (const payload of payloads) {
+    let decoded: ValidationGameSpendRedeemer;
+    try {
+      decoded = Data.from(payload, ValidationGameSpendRedeemer);
+    } catch {
+      continue; // not a validation-game redeemer
+    }
+    if (typeof decoded !== "object" || !("Continue" in decoded)) continue;
+    const action = decoded.Continue[0];
+    if (typeof action === "object" && "RevealOperator" in action) {
+      proofs.push(
+        validationTraceProofCoreFromData(action.RevealOperator.proof),
+      );
+    }
+  }
+  return proofs;
+};
 
 export type ValidationTraceDisputeWorkflowReferences = Readonly<{
   control: Readonly<{
@@ -698,10 +740,6 @@ export const createValidationTraceDisputeActuator = (
             },
           });
         }
-        case "resume_semantic_route":
-          throw new Error(
-            "validationTraceDispute staged-route resumption is journal-driven; the runner surface owns it",
-          );
         case "cancel_semantic_route": {
           const utxo = await threadUtxo(action.threadOutRef);
           if (
