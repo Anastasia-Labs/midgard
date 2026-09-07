@@ -36,6 +36,7 @@ use fraud_proofs/validation_trace/cek_context_item_return as context_item_return
 use fraud_proofs/validation_trace/cek_context_item_selection_continue as context_item_selection_continue
 use fraud_proofs/validation_trace/cek_context_item_selection_finish as context_item_selection_finish
 use fraud_proofs/validation_trace/cek_context_mint_init as context_mint_init
+use fraud_proofs/validation_trace/cek_context_mint_item as context_mint_item
 use fraud_proofs/validation_trace/cek_context_observer_authenticate as context_observer_authenticate
 use fraud_proofs/validation_trace/cek_context_observer_fold as context_observer_fold
 use fraud_proofs/validation_trace/cek_context_output as context_output
@@ -85,13 +86,16 @@ use midgard/script_sources_redeemer_normalization_v1.{
 }
 use midgard/validation_machine/cek as cek_semantics
 use midgard/validation_machine/machine_types.{
-  CekContextControlV1, CekCoreStepWitness, CekMintHead, CekWitnessControlV1,
-  NativeExecutionScanWitness, NativeScriptsControlV1, NoAuxiliaryWitness,
-  RedeemerItemStepWitness, ValidationAuxiliaryWitnessV1,
-  ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
+  CekContextControlV1, CekCoreStepWitness, CekMintContextItemWitness,
+  CekMintHead, CekWitnessControlV1, NativeExecutionScanWitness,
+  NativeScriptsControlV1, NoAuxiliaryWitness, RedeemerItemStepWitness,
+  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
+  ValidationOneStepWitnessV1,
 }
 use midgard/validation_machine/one_step as vm_one_step
-use midgard/validation_machine/shared.{prepend_mint_asset_summary}
+use midgard/validation_machine/shared.{
+  mint_asset_leaf_hash, prepend_mint_asset_summary,
+}
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
@@ -2836,6 +2840,444 @@ test context_mint_order_refuses_substituted_previous_tail() {
 test context_mint_order_refuses_omitted_previous_head() fail {
   let Pair(context, _) = ordered_mint_fixture()
   expect cek_mint_order.order_is_valid(context, h_28_a, #"00", None)
+}
+
+// ---------------------------------------------------------------------------
+// Stage 8: the mixed-width mint ordering closure at the deployed validator
+// ---------------------------------------------------------------------------
+//
+// Native CBOR authenticates mint assets in encoded-key order; the execution
+// context builds the mint map in the lexical order `script-context.ts`
+// commits to. The fold proves that permutation instead of changing either
+// contract: every item authenticates its own frontier index, opens the map
+// head the fold already committed, and is strictly smaller than it.
+
+fn mint_low_leaf() -> ByteArray {
+  mint_asset_leaf_hash(h_28_a, #"00", 7)
+}
+
+fn mint_high_leaf() -> ByteArray {
+  mint_asset_leaf_hash(h_28_a, #"ff", 1)
+}
+
+fn mint_item_witness(
+  mint_index: Int,
+  asset_name: ByteArray,
+  quantity: Int,
+  siblings: List<ByteArray>,
+  previous: Option<CekMintHead>,
+) -> ValidationAuxiliaryWitnessV1 {
+  CekMintContextItemWitness {
+    mint_index,
+    policy_id: h_28_a,
+    asset_name,
+    quantity,
+    siblings,
+    previous,
+  }
+}
+
+/// A stage-8 step over two same-policy assets whose native and execution
+/// orders differ: the frontier authenticates `#"00"` at index 0 and `#"ff"`
+/// at index 1, while the fold walks them descending. `cursor` is the fold
+/// position the pre-state records, `assets` its committed map head chain.
+fn mint_stage_fixture(
+  cursor: Int,
+  assets: cek_data_v1.DataSequenceSummaryV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  successor: CekContextControlV1,
+) -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let singleton = validation_merkle_v1.build_frontier([h_a])
+  let mint = validation_merkle_v1.build_frontier(
+    [mint_low_leaf(), mint_high_leaf()],
+  )
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    purpose_count: 1,
+    purpose_peaks: singleton.peaks,
+    execution_count: 1,
+    execution_peaks: singleton.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+    mint_count: 2,
+    mint_peaks: mint.peaks,
+  }
+  let item_control = mint_stage_control(cursor, assets)
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(item_control),
+    0,
+    #"",
+    0,
+    0,
+    h_b,
+    47,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(successor),
+    0,
+    #"",
+    0,
+    0,
+    h_b,
+    48,
+    0,
+    0,
+  )
+  step_fixture(2, pre, work_witness_cbor, post, auxiliary, NoCekMaterial)
+}
+
+fn mint_stage_control(
+  cursor: Int,
+  assets: cek_data_v1.DataSequenceSummaryV1,
+) -> CekContextControlV1 {
+  CekContextControlV1 {
+    ..context_staged_fixture(context_step_fixture()).context,
+    stage: 8,
+    mint_cursor: cursor,
+    current_mint_policy: h_28_a,
+    current_mint_assets: assets,
+  }
+}
+
+fn mint_head(asset_name: ByteArray, quantity: Int) -> CekMintHead {
+  CekMintHead {
+    asset_name,
+    quantity,
+    tail: cek_data_v1.empty_data_pair_summary_v1(),
+  }
+}
+
+fn mint_head_assets(
+  asset_name: ByteArray,
+  quantity: Int,
+) -> cek_data_v1.DataSequenceSummaryV1 {
+  prepend_mint_asset_summary(
+    asset_name,
+    quantity,
+    cek_data_v1.empty_data_pair_summary_v1(),
+  )
+}
+
+/// The honest descending step: the fold already committed `#"ff"` (frontier
+/// index 1) and now authenticates `#"00"` at frontier index 0.
+fn mint_item_fixture() -> CekStepFixtureV1 {
+  let assets = mint_head_assets(#"ff", 1)
+  mint_stage_fixture(
+    1,
+    assets,
+    mint_item_witness(
+      0,
+      #"00",
+      7,
+      [mint_high_leaf()],
+      Some(mint_head(#"ff", 1)),
+    ),
+    CekContextControlV1 {
+      ..mint_stage_control(1, assets),
+      mint_cursor: 2,
+      current_mint_assets: prepend_mint_asset_summary(#"00", 7, assets),
+    },
+  )
+}
+
+/// Same step, a different auxiliary. The evidence hash follows the auxiliary,
+/// so each negative is a prover who committed to the forged item, not one
+/// caught by the binding alone.
+fn mint_item_variant(
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> CekStepFixtureV1 {
+  CekStepFixtureV1 { ..mint_item_fixture(), auxiliary }
+}
+
+fn mint_item_staged(f: CekStepFixtureV1) -> context_chain.ContextStaged {
+  context_staged_fixture(f)
+}
+
+/// What the fold would publish if the claimed item were admitted.
+fn mint_item_claim(
+  f: CekStepFixtureV1,
+  asset_name: ByteArray,
+  quantity: Int,
+) -> context_chain.ContextVerified {
+  let staged = mint_item_staged(f)
+  let staged_data: Data = staged
+  context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: CekContextControlV1 {
+        ..staged.context,
+        mint_cursor: staged.context.mint_cursor + 1,
+        current_mint_assets: prepend_mint_asset_summary(
+          asset_name,
+          quantity,
+          staged.context.current_mint_assets,
+        ),
+      },
+    },
+  }
+}
+
+fn mint_item_claim_data(
+  f: CekStepFixtureV1,
+  asset_name: ByteArray,
+  quantity: Int,
+) -> Data {
+  let claimed: Data = mint_item_claim(f, asset_name, quantity)
+  claimed
+}
+
+fn run_mint_item_hop(f: CekStepFixtureV1, output_state: Data) -> Bool {
+  context_mint_item.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(mint_item_staged(f)),
+      },
+    ),
+    ct.Continue(context_chain_action(f)),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+  )
+}
+
+test context_mint_item_validator_wins_the_permuted_membership_step() {
+  let f = mint_item_fixture()
+  let staged = mint_item_staged(f)
+  let staged_data: Data = staged
+  let bound_data: Data = staged.bound
+  let auxiliary: Data = f.auxiliary
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: context_step.next_mint_item(
+        staged.context,
+        staged.native,
+        auxiliary,
+      ),
+    },
+  }
+  let verified_data: Data = verified
+  let action = ct.Continue(context_chain_action(f))
+  let next_hash = fixture.next_step_script_hash
+  and {
+    // The item the fold authenticates sits at frontier index 0 while the
+    // fold cursor is 1: the permutation is proven, not assumed.
+    verified == mint_item_claim(f, #"00", 7),
+    run_kind(2, f),
+    context_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+    ),
+    context_control.main.spend(
+      [
+        next_hash, next_hash, next_hash, next_hash, next_hash, next_hash,
+        next_hash, next_hash, next_hash,
+      ],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged.bound),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+    ),
+    run_mint_item_hop(f, verified_data),
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    ),
+  }
+}
+
+test context_mint_item_refuses_an_out_of_range_membership_index() fail {
+  let f = mint_item_variant(
+    mint_item_witness(
+      2,
+      #"00",
+      7,
+      [mint_high_leaf()],
+      Some(mint_head(#"ff", 1)),
+    ),
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+}
+
+test context_mint_item_refuses_a_foreign_membership_index() fail {
+  let f = mint_item_variant(
+    mint_item_witness(1, #"00", 7, [mint_low_leaf()], Some(mint_head(#"ff", 1))),
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+}
+
+test context_mint_item_refuses_a_substituted_previous_head() fail {
+  let f = mint_item_variant(
+    mint_item_witness(
+      0,
+      #"00",
+      7,
+      [mint_high_leaf()],
+      Some(mint_head(#"fe", 1)),
+    ),
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+}
+
+test context_mint_item_refuses_a_substituted_previous_tail() fail {
+  let f = mint_item_variant(
+    mint_item_witness(
+      0,
+      #"00",
+      7,
+      [mint_high_leaf()],
+      Some(
+        CekMintHead { ..mint_head(#"ff", 1), tail: mint_head_assets(#"01", 1) },
+      ),
+    ),
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+}
+
+test context_mint_item_refuses_an_omitted_previous_head() fail {
+  let f = mint_item_variant(
+    mint_item_witness(0, #"00", 7, [mint_high_leaf()], None),
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+}
+
+/// A repeated item: the fold re-authenticates the pair it already committed.
+/// Membership holds; strict ordering is what refuses it.
+test context_mint_item_refuses_a_repeated_item() fail {
+  let f = mint_item_variant(
+    mint_item_witness(1, #"ff", 1, [mint_low_leaf()], Some(mint_head(#"ff", 1))),
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"ff", 1))
+}
+
+/// The producer sorted ascending: every item is a real member and the head
+/// opening is exact, but the execution order is reversed.
+test context_mint_item_refuses_an_ascending_execution_order() fail {
+  let assets = mint_head_assets(#"00", 7)
+  let f = mint_stage_fixture(
+    1,
+    assets,
+    mint_item_witness(1, #"ff", 1, [mint_low_leaf()], Some(mint_head(#"00", 7))),
+    CekContextControlV1 {
+      ..mint_stage_control(1, assets),
+      mint_cursor: 2,
+      current_mint_assets: prepend_mint_asset_summary(#"ff", 1, assets),
+    },
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"ff", 1))
+}
+
+/// An omitted item: the fold claims the terminal transition while the
+/// authenticated count still has an asset left.
+test context_mint_item_refuses_an_omitted_item() fail {
+  let assets = mint_head_assets(#"ff", 1)
+  let f = mint_stage_fixture(
+    1,
+    assets,
+    NoAuxiliaryWitness,
+    CekContextControlV1 {
+      ..mint_stage_control(1, assets),
+      stage: 9,
+      current_mint_policy: #"",
+      current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
+    },
+  )
+  let staged = mint_item_staged(f)
+  let staged_data: Data = staged
+  let claimed: Data = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: CekContextControlV1 {
+        ..staged.context,
+        stage: 9,
+        current_mint_policy: #"",
+        current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
+      },
+    },
+  }
+  expect run_mint_item_hop(f, claimed)
+}
+
+/// One item too many: the authenticated count is exhausted, so the only
+/// admissible transition is the terminal one.
+test context_mint_item_refuses_an_item_past_the_authenticated_count() fail {
+  let assets = prepend_mint_asset_summary(#"00", 7, mint_head_assets(#"ff", 1))
+  let f = mint_stage_fixture(
+    2,
+    assets,
+    mint_item_witness(
+      0,
+      #"00",
+      7,
+      [mint_high_leaf()],
+      Some(mint_head(#"00", 7)),
+    ),
+    CekContextControlV1 { ..mint_stage_control(2, assets), mint_cursor: 3 },
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+}
+
+/// A malformed checkpoint: the stage-6 initialisation datum handed to the
+/// stage-8 item validator.
+test context_mint_item_refuses_a_foreign_stage_checkpoint() fail {
+  let f = context_step_fixture()
+  expect
+    run_mint_item_hop(f, mint_item_claim_data(mint_item_fixture(), #"00", 7))
+}
+
+/// A forged successor: the fold publishes a next control the item does not
+/// produce. The item hop pins the exact output state.
+test context_mint_item_refuses_a_forged_successor() fail {
+  let f = mint_item_fixture()
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 8))
+}
+
+/// The same forgery reaching settlement: the claimed successor work root no
+/// longer equals the one the published next control encodes.
+test context_mint_item_refuses_a_forged_successor_at_settlement() fail {
+  let f = mint_item_fixture()
+  expect
+    context_settle.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(mint_item_claim(f, #"00", 8)),
+        },
+      ),
+      ct.Continue(context_chain_action(f)),
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    )
 }
 
 test context_mint_order_refuses_policy_revisit_and_spurious_head() {
