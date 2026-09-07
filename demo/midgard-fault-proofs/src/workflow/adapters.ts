@@ -201,10 +201,16 @@ const workflowAdapterRegistrationRows = [
     requiredClosure:
       "install and exercise the exact manifest-bound runner in a compiled application with the concrete public retained-DA runtime loader",
   },
-  manual("validationTraceDispute", [
-    "validation-dispute/submit.ts",
-    "validation-dispute/from-files.ts",
-  ]),
+  {
+    category: "validationTraceDispute",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "validation-trace-dispute production runner surface is being centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound interactive-dispute runner in the compiled watcher application with authenticated retained DA",
+  },
   {
     category: "daHashPreimage",
     status: "missing",

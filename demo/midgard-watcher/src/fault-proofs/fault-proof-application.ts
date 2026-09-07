@@ -90,6 +90,7 @@ import {
   createManifestBoundTransactionOutputNonCanonicalWorkflow,
   createManifestBoundUnusedRedeemerWorkflow,
   createManifestBoundUnusedScriptWitnessWorkflow,
+  createManifestBoundValidationTraceDisputeWorkflow,
   createManifestBoundWithdrawalMistagWorkflow,
   createManifestBoundWithdrawnInputWorkflow,
   createManifestBoundWithdrawnReferenceInputWorkflow,
@@ -123,6 +124,7 @@ import {
   createTransactionOutputNonCanonicalWorkflowRunner,
   createUnusedRedeemerWorkflowRunner,
   createUnusedScriptWitnessWorkflowRunner,
+  createValidationTraceDisputeWorkflowRunner,
   createWithdrawalMistagWorkflowRunner,
   createWithdrawnInputWorkflowRunner,
   createWithdrawnReferenceInputWorkflowRunner,
@@ -196,6 +198,7 @@ import {
   type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
   type ManifestBoundUnusedRedeemerWorkflowConfig,
   type ManifestBoundUnusedScriptWitnessWorkflowConfig,
+  type ManifestBoundValidationTraceDisputeWorkflowConfig,
   type ManifestBoundWithdrawalMistagWorkflowConfig,
   type ManifestBoundWithdrawnInputWorkflowConfig,
   type ManifestBoundWithdrawnReferenceInputWorkflowConfig,
@@ -234,6 +237,9 @@ import {
   TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
   UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
+  VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
+  VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
+  VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
   WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
@@ -303,6 +309,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "invalidRange",
   "transitionTrace",
   "zeroInput",
+  "validationTraceDispute",
   "daHashPreimage",
   "noReferenceInput",
   "referenceInputNoIdx",
@@ -355,9 +362,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
 export type WatcherInstalledWorkflowCategory =
   (typeof WATCHER_INSTALLED_WORKFLOW_CATEGORIES)[number];
 
-export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([
-  "validationTraceDispute",
-] as const);
+export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([] as const);
 
 const watcherWorkflowCoverage = new Set<string>([
   ...WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -652,6 +657,10 @@ type TaggedWorkflowConfig =
   | Readonly<{
       category: "distinctAssetAccumulationLimit";
       config: ManifestBoundDistinctAssetAccumulationWorkflowConfig;
+    }>
+  | Readonly<{
+      category: "validationTraceDispute";
+      config: ManifestBoundValidationTraceDisputeWorkflowConfig;
     }>;
 
 type TaggedWorkflowConfigFor<
@@ -806,6 +815,10 @@ const constructProductionWorkflow = async (
       );
     case "distinctAssetAccumulationLimit":
       return await createManifestBoundDistinctAssetAccumulationWorkflow(
+        input.config,
+      );
+    case "validationTraceDispute":
+      return await createManifestBoundValidationTraceDisputeWorkflow(
         input.config,
       );
     case "fabricatedDeposit":
@@ -1232,6 +1245,15 @@ const referenceContracts = (
         step02: "fraudProofZeroInputStep02",
         ...base,
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+      });
+    case "validationTraceDispute":
+      // Exact family roster (ruling R4): the six dispute control scripts, the
+      // two witness policies, and the nine shared cursor-removal contracts —
+      // derived from the family constants, never re-typed here.
+      return Object.freeze({
+        ...VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
+        ...VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
+        ...VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
       });
     case "daHashPreimage":
       return Object.freeze({
@@ -2394,6 +2416,13 @@ function taggedConfig(
   { readonly category: "distinctAssetAccumulationLimit" }
 >;
 function taggedConfig(
+  category: "validationTraceDispute",
+  common: CommonInfrastructure,
+): Extract<
+  TaggedWorkflowConfig,
+  { readonly category: "validationTraceDispute" }
+>;
+function taggedConfig(
   category: WatcherInstalledWorkflowCategory,
   common: CommonInfrastructure,
 ): TaggedWorkflowConfig;
@@ -2482,6 +2511,46 @@ function taggedConfig(
               ...baseWitnesses(common.references),
               chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
               pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "validationTraceDispute":
+      // The admitted W25 challenge is deliberately absent here: startup
+      // readiness constructs the workflow challenge-free (binding, signer,
+      // roster), and execution inside the workflow fail-closes until the
+      // classifier detection authority supplies a freshly admitted
+      // validation-trace challenge for the decision.
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            control: Object.freeze({
+              opener: reference("opener"),
+              source: reference("source"),
+              game: reference("game"),
+              boundary: reference("boundary"),
+              timeout: reference("timeout"),
+              award: reference("award"),
+            }),
+            witnesses: Object.freeze({
+              computationThreadMint: reference("computationThreadMint"),
+              fraudProofMint: reference("fraudProofMint"),
             }),
             removal: Object.freeze({
               correctionLockSpend: reference("correctionLockSpend"),
@@ -3917,6 +3986,18 @@ const taggedReferenceOutRefs = (
           ...Object.values(tagged.config.referenceScripts.witnesses),
           ...Object.values(tagged.config.referenceScripts.removal),
         ];
+      case "validationTraceDispute":
+        return [
+          tagged.config.referenceScripts.control.opener,
+          tagged.config.referenceScripts.control.source,
+          tagged.config.referenceScripts.control.game,
+          tagged.config.referenceScripts.control.boundary,
+          tagged.config.referenceScripts.control.timeout,
+          tagged.config.referenceScripts.control.award,
+          tagged.config.referenceScripts.witnesses.computationThreadMint,
+          tagged.config.referenceScripts.witnesses.fraudProofMint,
+          ...Object.values(tagged.config.referenceScripts.removal),
+        ];
       case "executionNativeScriptInvalid":
         return [
           ...tagged.config.referenceScripts.steps,
@@ -4328,6 +4409,9 @@ const createApplication = ({
     category: "distinctAssetAccumulationLimit",
   ): TaggedWorkflowLoaderFor<"distinctAssetAccumulationLimit">;
   function makeTaggedLoader(
+    category: "validationTraceDispute",
+  ): TaggedWorkflowLoaderFor<"validationTraceDispute">;
+  function makeTaggedLoader(
     category: WatcherInstalledWorkflowCategory,
   ): WorkflowRuntimeConfigLoader<TaggedWorkflowConfig> {
     return createWatcherWorkflowRuntimeLoader({
@@ -4421,6 +4505,7 @@ const createApplication = ({
     distinctAssetAccumulationLimit: makeTaggedLoader(
       "distinctAssetAccumulationLimit",
     ),
+    validationTraceDispute: makeTaggedLoader("validationTraceDispute"),
   } as const;
 
   const doubleSpendLoader = async (
@@ -5180,6 +5265,20 @@ const createApplication = ({
       tagged: loaded.config,
     });
   };
+  const validationTraceDisputeLoader = async (
+    input: Parameters<(typeof taggedLoaders)["validationTraceDispute"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.validationTraceDispute(input);
+    if (loaded.config.category !== "validationTraceDispute") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
 
   const runners = Object.freeze({
     doubleSpend: createDoubleSpendWorkflowRunner(
@@ -5396,6 +5495,10 @@ const createApplication = ({
         distinctAssetAccumulationLimitLoader,
         fundingProfile("distinctAssetAccumulationLimit"),
       ),
+    validationTraceDispute: createValidationTraceDisputeWorkflowRunner(
+      validationTraceDisputeLoader,
+      fundingProfile("validationTraceDispute"),
+    ),
   });
   const applicationRegistry = installWorkflowApplicationRegistry({
     deploymentFingerprint: deploymentIdentity.manifestId,

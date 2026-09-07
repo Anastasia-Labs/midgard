@@ -55,8 +55,10 @@ import {
   decodeOperatorRevealProofsFromWitnessSet,
   planValidationTraceDisputeMove,
   type ValidationTraceDisputeActuationMaterial,
+  type ValidationTraceDisputeRetainedRouteInput,
 } from "./workflow-engine.js";
 import {
+  assertValidationTraceDisputeRosterIsManifestBound,
   VALIDATION_TRACE_DISPUTE_CATEGORY,
   VALIDATION_TRACE_DISPUTE_CATEGORY_ID,
   VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
@@ -95,10 +97,19 @@ export const VALIDATION_TRACE_DISPUTE_CONFIG_KEYS = Object.freeze([
   "signer",
   "source",
   "decisionDigest",
-  "challenge",
   "referenceScripts",
   "stateQueueMutationLeaseCoordinator",
 ] as const);
+
+const configKeyJoin = (keys: readonly string[]): string =>
+  [...keys].sort().join("\0");
+const REQUIRED_CONFIG_KEY_JOIN = configKeyJoin(
+  VALIDATION_TRACE_DISPUTE_CONFIG_KEYS,
+);
+const EXECUTION_CONFIG_KEY_JOIN = configKeyJoin([
+  ...VALIDATION_TRACE_DISPUTE_CONFIG_KEYS,
+  "challenge",
+]);
 
 export type ManifestBoundValidationTraceDisputeWorkflowConfig = Readonly<{
   manifest: unknown;
@@ -114,8 +125,13 @@ export type ManifestBoundValidationTraceDisputeWorkflowConfig = Readonly<{
    * root-bound claim witness plus the challenger's deterministic replay,
    * rebuilt in this process by `admitValidationTraceChallenge`. A journal
    * copy or caller-authored object is refused by the admission registry.
+   *
+   * Optional at CONSTRUCTION so startup readiness can bind the manifest,
+   * signer, and reference roster before any dispute exists — the same
+   * contract as the other production families. EXECUTION fail-closes
+   * without it: no transaction is planned or actuated challenge-free.
    */
-  challenge: ValidationTraceChallenge;
+  challenge?: ValidationTraceChallenge;
   referenceScripts: ValidationTraceDisputeReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
@@ -125,8 +141,8 @@ export type ManifestBoundValidationTraceDisputeWorkflow = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   decisionDigest: string;
-  challenge: ValidationTraceChallenge;
-  material: ValidationTraceDisputeActuationMaterial;
+  challenge: ValidationTraceChallenge | undefined;
+  material: ValidationTraceDisputeActuationMaterial | undefined;
   l1: FraudProofFamilyL1ObservationPort<"validationTraceDispute">;
   actuator: ReturnType<typeof createValidationTraceDisputeActuator>;
   deriveStage: (currentTime: number) => Promise<ValidationTraceDisputeChainStage>;
@@ -146,17 +162,22 @@ export type ManifestBoundValidationTraceDisputeWorkflow = Readonly<{
 export const createManifestBoundValidationTraceDisputeWorkflow = async (
   config: ManifestBoundValidationTraceDisputeWorkflowConfig,
 ): Promise<ManifestBoundValidationTraceDisputeWorkflow> => {
+  const keyJoin = configKeyJoin(Object.keys(config));
   if (
-    Object.keys(config).sort().join("\0") !==
-    [...VALIDATION_TRACE_DISPUTE_CONFIG_KEYS].sort().join("\0")
+    keyJoin !== REQUIRED_CONFIG_KEY_JOIN &&
+    keyJoin !== EXECUTION_CONFIG_KEY_JOIN
   )
     throw new Error(
       "validationTraceDispute production config contains callback authority",
     );
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("validationTraceDispute decision digest is malformed");
-  const challenge = requireValidationTraceChallenge(config.challenge);
-  if (challenge.coordinate.headerHash !== config.headerHash)
+  assertValidationTraceDisputeRosterIsManifestBound();
+  const challenge =
+    config.challenge === undefined
+      ? undefined
+      : requireValidationTraceChallenge(config.challenge);
+  if (challenge !== undefined && challenge.coordinate.headerHash !== config.headerHash)
     throw new Error(
       "validationTraceDispute challenge targets a different header",
     );
@@ -168,6 +189,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     proverCredential: config.signer.paymentKeyHash,
   });
   if (
+    challenge !== undefined &&
     challenge.coordinate.deploymentFingerprint !== binding.deploymentFingerprint
   )
     throw new Error(
@@ -227,10 +249,13 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const material: ValidationTraceDisputeActuationMaterial = Object.freeze({
-    headerHash: config.headerHash,
-    ...validationTraceMaterial(challenge),
-  });
+  const material: ValidationTraceDisputeActuationMaterial | undefined =
+    challenge === undefined
+      ? undefined
+      : Object.freeze({
+          headerHash: config.headerHash,
+          ...validationTraceMaterial(challenge),
+        });
   const rawL1 = l1.rawL1;
   if (rawL1 === undefined)
     throw new Error(
@@ -350,6 +375,12 @@ export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
   journal: FraudProofWorkflowJournalStore;
 }) => {
   const headerHash = workflow.binding.definition.headerHash;
+  const challenge = workflow.challenge;
+  const material = workflow.material;
+  if (challenge === undefined || material === undefined)
+    throw new Error(
+      "validationTraceDispute execution requires the freshly admitted validation-trace challenge; construction without one serves startup readiness only",
+    );
   const identity: FraudProofWorkflowIdentity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
@@ -358,7 +389,7 @@ export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
     decisionDigest: workflow.decisionDigest,
   };
   const workflowId = computeFraudProofWorkflowId(identity);
-  const preparedArtifact = preparedChallengeArtifact(workflow.challenge);
+  const preparedArtifact = preparedChallengeArtifact(challenge);
   const artifactDigest = journalJsonDigest(preparedArtifact);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
@@ -419,7 +450,21 @@ export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
   }
   const now = Date.now();
   const stage = await workflow.deriveStage(now);
-  const move = planValidationTraceDisputeMove({ stage });
+  const retainedInput =
+    intent !== undefined &&
+    typeof intent.actionInput === "object" &&
+    intent.actionInput !== null &&
+    "durableRouteInput" in intent.actionInput
+      ? ((
+          intent.actionInput as {
+            durableRouteInput?: ValidationTraceDisputeRetainedRouteInput;
+          }
+        ).durableRouteInput ?? undefined)
+      : undefined;
+  const move = planValidationTraceDisputeMove({
+    stage,
+    ...(retainedInput === undefined ? {} : { retained: retainedInput }),
+  });
   if (move.kind === "completed")
     return { kind: "completed" as const, workflowId };
   if (move.kind === "await_counterparty")
@@ -430,7 +475,8 @@ export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
     };
   const captured = await workflow.actuator.capture({
     action: move.action,
-    material: workflow.material,
+    material,
+    ...(retainedInput === undefined ? {} : { retained: retainedInput }),
   });
   const actionId = `${move.action.stage}:${captured.transaction.txHash}`;
   await appendEvent(journal, workflowId, identity, {
@@ -446,7 +492,7 @@ export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
     actionInput: {
       schemaVersion: "midgard-validation-trace-dispute-action-v1",
       stage: move.action.stage,
-      challengeDigest: workflow.challenge.challengeDigest,
+      challengeDigest: challenge.challengeDigest,
       ...(captured.durableRouteInput === undefined
         ? {}
         : { durableRouteInput: captured.durableRouteInput }),
@@ -562,21 +608,25 @@ export const createValidationTraceDisputeWorkflowRunnerSurface = ({
           );
         // The admitted challenge is root-bound to the freshly authenticated
         // canonical block for this header: re-fetch the retained payload and
-        // require exact payload identity before actuating.
-        const block = await fetchCanonicalBlockEvidence({
-          observation: await workflow.l1.observeHeader({
-            headerHash: invocation.headerHash,
-          }),
-          sources: loaded.retainedDaSources,
-        });
-        if (
-          workflow.challenge.coordinate.payloadEnvelopeSha256 !==
-            block.payloadEnvelopeSha256 ||
-          workflow.challenge.coordinate.payloadSha256 !== block.payloadSha256
-        )
-          throw new Error(
-            "validationTraceDispute challenge diverged from the authenticated canonical block",
-          );
+        // require exact payload identity before actuating. A challenge-free
+        // construction reaches execution below, which fail-closes with the
+        // precise requirement.
+        if (workflow.challenge !== undefined) {
+          const block = await fetchCanonicalBlockEvidence({
+            observation: await workflow.l1.observeHeader({
+              headerHash: invocation.headerHash,
+            }),
+            sources: loaded.retainedDaSources,
+          });
+          if (
+            workflow.challenge.coordinate.payloadEnvelopeSha256 !==
+              block.payloadEnvelopeSha256 ||
+            workflow.challenge.coordinate.payloadSha256 !== block.payloadSha256
+          )
+            throw new Error(
+              "validationTraceDispute challenge diverged from the authenticated canonical block",
+            );
+        }
         return await runOrResumeManifestBoundValidationTraceDisputeWorkflow({
           workflow,
           journal,
