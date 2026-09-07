@@ -104,7 +104,23 @@ fn datum_ready(
     bytearray.length(output),
     commitment,
   )
-  Pair(until_datum(initial, chunk_proof, 64), chunk_proof)
+  let at_datum = until_datum(initial, chunk_proof, 64)
+  // The span-attach step records the whole output as the bound window every
+  // datum-stage step below consumes.
+  Pair(
+    advanced(
+      proof.step_v1(
+        at_datum,
+        proof.LedgerOutputProofSpanAttach {
+          start: 0,
+          length: bytearray.length(output),
+          chunk_proof,
+          next_chunk_proof: None,
+        },
+      ),
+    ),
+    chunk_proof,
+  )
 }
 
 fn active_datum(
@@ -112,27 +128,6 @@ fn active_datum(
 ) -> traverse.DataTraverseControlV1 {
   expect Some(datum_control) = control.datum
   datum_control
-}
-
-/// The honest span claim of the shared dispatcher action: the content mode
-/// (`constr 2 [start, length, bytes]`) carrying exactly the span the datum
-/// control demands, or the empty claim (`constr 1 []`) when it demands none.
-fn honest_span_claim(
-  datum_control: traverse.DataTraverseControlV1,
-  output: ByteArray,
-) -> Data {
-  when traverse.next_source_span_v1(datum_control) is {
-    None -> builtin.constr_data(1, [])
-    Some(span) ->
-      builtin.constr_data(
-        2,
-        [
-          builtin.i_data(span.absolute_start),
-          builtin.i_data(span.length),
-          builtin.b_data(slice_len(output, span.absolute_start, span.length)),
-        ],
-      )
-  }
 }
 
 /// The honest scalar claim: the traverse prefix plus the active scalar
@@ -168,18 +163,15 @@ fn routed(
   witness: Data,
   datum_control: traverse.DataTraverseControlV1,
   action: traverse.DataTraverseActionV1,
-  output: ByteArray,
 ) -> Option<narrow.StepResult> {
-  let span = honest_span_claim(datum_control, output)
   when action is {
     traverse.HeadScalar { .. } ->
-      narrow_datum.head_scalar(control_frame, witness, span)
+      narrow_datum.head_scalar(control_frame, witness)
     traverse.HeadSequence { .. } ->
-      narrow_datum.head_sequence(control_frame, witness, span)
-    traverse.HeadMap { .. } ->
-      narrow_datum.head_map(control_frame, witness, span)
+      narrow_datum.head_sequence(control_frame, witness)
+    traverse.HeadMap { .. } -> narrow_datum.head_map(control_frame, witness)
     traverse.HeadLargeConstructor { .. } ->
-      narrow_datum.head_large_constructor(control_frame, witness, span)
+      narrow_datum.head_large_constructor(control_frame, witness)
     traverse.AttachScalar { .. } ->
       if datum_control.stage == traverse.stage_integer {
         narrow_datum.attach_integer(
@@ -200,22 +192,20 @@ fn routed(
           control_frame,
           witness,
           honest_scalar_claim(datum_control),
-          span,
         )
       } else if datum_control.stage == traverse.stage_bytes {
         narrow_datum.advance_bytes(
           control_frame,
           witness,
           honest_scalar_claim(datum_control),
-          span,
         )
       } else if datum_control.stage == traverse.stage_large_constructor {
-        narrow_datum.advance_large_constructor(control_frame, witness, span)
+        narrow_datum.advance_large_constructor(control_frame, witness)
       } else if datum_control.stage == traverse.stage_large_fields {
-        narrow_datum.advance_large_fields(control_frame, witness, span)
+        narrow_datum.advance_large_fields(control_frame, witness)
       } else {
         expect datum_control.stage == traverse.stage_close
-        narrow_datum.close(control_frame, witness, span)
+        narrow_datum.close(control_frame, witness)
       }
     traverse.FoldList { .. } -> narrow_datum.fold_list(control_frame, witness)
     traverse.FoldMap { .. } -> narrow_datum.fold_map(control_frame, witness)
@@ -229,17 +219,16 @@ fn routed(
 fn same_datum_step(
   control: proof.LedgerOutputProofControlV1,
   action: traverse.DataTraverseActionV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  _chunk_proof: bounded_item_v1.ChunkProofV1,
   output: ByteArray,
 ) -> proof.LedgerOutputProofControlV1 {
   let datum_control = active_datum(control)
   let typed_witness = proof.LedgerOutputProofDatum {
     action,
-    chunk_proof: when traverse.next_source_span_v1(datum_control) is {
+    window: when traverse.next_source_span_v1(datum_control) is {
       None -> None
-      Some(_) -> Some(chunk_proof)
+      Some(_) -> Some(output)
     },
-    next_chunk_proof: None,
   }
   let next = advanced(proof.step_v1(control, typed_witness))
   let witness_data: Data = typed_witness
@@ -249,7 +238,6 @@ fn same_datum_step(
     witness_data,
     datum_control,
     action,
-    output,
   )
   expect raw.encode(raw_next) == proof.encode_control_v1(next)
   next
@@ -424,34 +412,47 @@ test datum_family_golden_agreement_over_a_streamed_large_constructor() {
   }
 }
 
-/// A span claim whose start is shifted off the span the control demands is
-/// refused by the consuming stage yield's exactness clause.
-test datum_span_claim_with_shifted_start_fails() fail {
+/// Window bytes that do not hash to the recorded span-window digest are
+/// refused by the consuming stage yield's binding clause.
+test datum_window_with_mutated_bytes_fails() fail {
   let Pair(ready, _chunk_proof) = datum_ready(large_datum_output)
-  let datum_control = active_datum(ready)
-  expect Some(span) = traverse.next_source_span_v1(datum_control)
-  let shifted = builtin.constr_data(
-    2,
-    [
-      builtin.i_data(span.absolute_start + 1),
-      builtin.i_data(span.length),
-      builtin.b_data(
-        slice_len(large_datum_output, span.absolute_start, span.length),
-      ),
-    ],
+  let mutated = bytearray.concat(
+    #"00",
+    slice_len(large_datum_output, 1, bytearray.length(large_datum_output) - 1),
   )
   let witness_data: Data = proof.LedgerOutputProofDatum {
     action: traverse.HeadLargeConstructor {
       constructor_cbor_length: 11,
       expected_children: 1,
     },
-    chunk_proof: None,
-    next_chunk_proof: None,
+    window: Some(mutated),
   }
   narrow_datum.head_large_constructor(
     raw.open(proof.encode_control_v1(ready)),
     witness_data,
-    shifted,
+  ) == None
+}
+
+/// A datum step whose control never went through the span-attach step has no
+/// recorded window for the binding clause to accept.
+test datum_window_without_span_attach_fails() fail {
+  let Pair(commitment, chunk_proof) = one_chunk_material(0, large_datum_output)
+  let initial = proof.initial_control_v1(
+    0,
+    bytearray.length(large_datum_output),
+    commitment,
+  )
+  let unattached = until_datum(initial, chunk_proof, 64)
+  let witness_data: Data = proof.LedgerOutputProofDatum {
+    action: traverse.HeadLargeConstructor {
+      constructor_cbor_length: 11,
+      expected_children: 1,
+    },
+    window: Some(large_datum_output),
+  }
+  narrow_datum.head_large_constructor(
+    raw.open(proof.encode_control_v1(unattached)),
+    witness_data,
   ) == None
 }
 
@@ -487,9 +488,9 @@ test mutated_span_content_is_refused_by_the_span_attestation() {
   }
 }
 
-/// A mutated header byte in the large-fields completion claim fails the
-/// stage function closed even before the span attestation refuses it.
-test large_fields_with_mutated_header_byte_fails_closed() {
+/// Mutated window bytes in the large-fields completion witness fail the
+/// stage function's window binding closed.
+test large_fields_with_mutated_window_fails_closed() fail {
   let Pair(ready, chunk_proof) = datum_ready(large_datum_output)
   let opened = same_datum_step(
     ready,
@@ -507,25 +508,17 @@ test large_fields_with_mutated_header_byte_fails_closed() {
     large_datum_output,
     256,
   )
-  let datum_control = active_datum(large_fields)
-  expect Some(span) = traverse.next_source_span_v1(datum_control)
-  let mutated = builtin.constr_data(
-    2,
-    [
-      builtin.i_data(span.absolute_start),
-      builtin.i_data(span.length),
-      builtin.b_data(#"00"),
-    ],
+  let mutated = bytearray.concat(
+    #"00",
+    slice_len(large_datum_output, 1, bytearray.length(large_datum_output) - 1),
   )
   let witness_data: Data = proof.LedgerOutputProofDatum {
     action: traverse.NoAction,
-    chunk_proof: None,
-    next_chunk_proof: None,
+    window: Some(mutated),
   }
   narrow_datum.advance_large_fields(
     raw.open(proof.encode_control_v1(large_fields)),
     witness_data,
-    mutated,
   ) == None
 }
 

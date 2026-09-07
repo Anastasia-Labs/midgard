@@ -3,6 +3,8 @@
 
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
+use aiken/crypto
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1 as blake
 use midgard/bounded_item_v1 as bounded
@@ -28,6 +30,106 @@ fn encoded_data(bytes: ByteArray) -> Data {
   data
 }
 
+/// The four descriptor fact items (13-16) are `None` on every non-terminal
+/// control: they are recorded only by the fact-attachment steps that run
+/// after the traversal completes.
+pub fn facts_empty(control: raw.Frame) -> Bool {
+  let none = builtin.constr_data(1, [])
+  and {
+    raw.item(control, raw.first_fact_index) == none,
+    raw.item(control, raw.first_fact_index + 1) == none,
+    raw.item(control, raw.first_fact_index + 2) == none,
+    raw.item(control, raw.first_fact_index + 3) == none,
+  }
+}
+
+/// Before the datum-traversal stage no span window may be recorded, and the
+/// facts are empty until the terminal fact-attachment steps.
+pub fn extension_items_empty(control: raw.Frame) -> Bool {
+  and {
+    raw.item(control, raw.span_window_index) == builtin.constr_data(1, []),
+    facts_empty(control),
+  }
+}
+
+/// One fact-attachment step on the raw terminal control: `stage_attach_roles`
+/// must be exactly the first canonical group whose facts are all unrecorded,
+/// and each of its facts is spliced in as the role's commitment over the
+/// dispatcher's descriptor bytes and claimed summaries (each pinned by that
+/// role's descriptor yield in the same transaction). Mirrors
+/// `ledger_output_proof_v1.fact_attach_v1` exactly.
+pub fn fact_attach(
+  control: raw.Frame,
+  attach_roles: List<Int>,
+  descriptor_cbor: ByteArray,
+  claimed_value_summary: Data,
+  claimed_datum_summary: Data,
+) -> Option<raw.Frame> {
+  expect raw.integer(control, 1) == proof.stage_terminal
+  let next_group = list.find(
+    proof.fact_attach_groups_v1(),
+    fn(group) { list.any(group, fn(role) { raw.fact(control, role) == None }) },
+  )
+  when next_group is {
+    None -> None
+    Some(group) ->
+      if attach_roles != group {
+        None
+      } else {
+        expect list.all(group, fn(role) { raw.fact(control, role) == None })
+        Some(
+          list.foldl(
+            group,
+            control,
+            fn(role, acc) {
+              raw.replace(
+                acc,
+                raw.first_fact_index + role,
+                raw.fact_data(
+                  proof.fact_commitment_v1(
+                    role,
+                    descriptor_cbor,
+                    claimed_value_summary,
+                    claimed_datum_summary,
+                  ),
+                ),
+              )
+            },
+          ),
+        )
+      }
+  }
+}
+
+/// The thin terminal's fact gate on the raw control: every recorded fact
+/// equals the commitment recomputed from the finalize redeemer's descriptor
+/// bytes and claimed summaries. Mirrors
+/// `ledger_output_proof_v1.facts_are_exact_v1` exactly.
+pub fn facts_are_exact(
+  control: raw.Frame,
+  descriptor_cbor: ByteArray,
+  claimed_value_summary: Data,
+  claimed_datum_summary: Data,
+) -> Bool {
+  let recorded = fn(role: Int) {
+    raw.fact(control, role) == Some(
+      proof.fact_commitment_v1(
+        role,
+        descriptor_cbor,
+        claimed_value_summary,
+        claimed_datum_summary,
+      ),
+    )
+  }
+  and {
+    raw.integer(control, 1) == proof.stage_terminal,
+    recorded(0),
+    recorded(1),
+    recorded(2),
+    recorded(3),
+  }
+}
+
 pub fn structure(
   control: raw.Frame,
   witness: proof.LedgerOutputProofWitnessV1,
@@ -42,6 +144,7 @@ pub fn structure(
   expect raw.item(control, 9) == builtin.list_data([])
   expect raw.item(control, 10) == builtin.constr_data(1, [])
   expect raw.item(control, 11) == builtin.constr_data(1, [])
+  expect extension_items_empty(control)
   if scan.terminal_is_exact_v1(scan_control, total_length) {
     if witness != proof.LedgerOutputProofNoWitness {
       None
@@ -139,6 +242,7 @@ pub fn value_fold(
   expect raw.item(control, 9) == builtin.list_data([])
   expect raw.item(control, 10) == builtin.constr_data(1, [])
   expect raw.item(control, 11) == builtin.constr_data(1, [])
+  expect extension_items_empty(control)
   if value_control.stage == value.stage_terminal {
     if witness != proof.LedgerOutputProofNoWitness {
       None
@@ -223,75 +327,85 @@ pub fn value_fold(
   }
 }
 
-/// The span claim of the shared step-dispatcher action: `constr 0 [start,
-/// length]` when the stage reads an authenticated output span this step,
-/// `constr 1 []` otherwise. The span attestation yield verifies the claimed
-/// span's chunk merkle membership; the stage yield requires the claim to be
-/// exactly the span its control demands and takes the bytes by pure slicing.
-pub fn span_fields(claimed: Data) -> Option<(Int, Int)> {
-  let Pair(tag, fields) = builtin.un_constr_data(claimed)
-  if tag == 1 {
-    expect fields == []
-    None
-  } else {
-    expect tag == 0
-    expect [start, length] = fields
-    Some((builtin.un_i_data(start), builtin.un_i_data(length)))
+/// The recorded span window of frame item 12, as the typed record the shared
+/// binding helper consumes.
+pub fn window_from_frame(
+  control: raw.Frame,
+) -> Option<proof.LedgerOutputSpanWindowV1> {
+  when raw.span_window(control) is {
+    None -> None
+    Some((start, length, digest)) ->
+      Some(proof.LedgerOutputSpanWindowV1 { start, length, digest })
   }
 }
 
-pub fn no_span_claim(claimed: Data) -> Bool {
-  span_fields(claimed) == None
-}
-
-/// Every span-claim mode of the shared step action. Sliced mode (`constr 0
-/// [start, length]`) is claimed by the chunk-cursor stages, whose spans reach
-/// `bounded_item_v1.chunk_bytes`: the stage yield takes the bytes by slicing
-/// the shared witness chunks. Content mode (`constr 2 [start, length,
-/// bytes]`) is claimed by the datum-traversal stages, whose spans stay small:
-/// the claim carries the bytes and the stage yield consumes them directly.
-/// In both modes the span attestation yield verifies the same claim with the
-/// chunk merkle checks of `authenticated_output_span_for_output`.
-pub type SpanClaimV1 {
-  SpanClaimNone
-  SpanClaimSliced { start: Int, length: Int }
-  SpanClaimContent { start: Int, length: Int, bytes: ByteArray }
-}
-
-pub fn span_claim_v1(claimed: Data) -> SpanClaimV1 {
-  let Pair(tag, fields) = builtin.un_constr_data(claimed)
-  if tag == 1 {
-    expect fields == []
-    SpanClaimNone
-  } else if tag == 0 {
-    expect [start, length] = fields
-    SpanClaimSliced {
-      start: builtin.un_i_data(start),
-      length: builtin.un_i_data(length),
-    }
-  } else {
-    expect tag == 2
-    expect [start, length, bytes] = fields
-    SpanClaimContent {
-      start: builtin.un_i_data(start),
-      length: builtin.un_i_data(length),
-      bytes: builtin.un_b_data(bytes),
-    }
-  }
-}
-
-/// Take a span the stage's control demands from the witness chunks, requiring
-/// the dispatcher action to claim exactly this span so the span attestation
-/// yield of the same transaction verifies its merkle membership.
-fn claimed_output_span(
+/// Take a span the stage's control demands from the witness window bytes,
+/// bound to the once-verified span window recorded in frame item 12 (one hash
+/// plus equality instead of a per-step chunk merkle verification).
+pub fn bound_window_span(
   control: raw.Frame,
   start: Int,
   length: Int,
   witness: proof.LedgerOutputProofWitnessV1,
-  claimed_span: Data,
 ) -> Option<ByteArray> {
-  expect span_fields(claimed_span) == Some((start, length))
-  proof.output_span_slice_v1(raw.integer(control, 3), start, length, witness)
+  when witness is {
+    proof.LedgerOutputProofWindow { bytes } ->
+      proof.bound_window_bytes_v1(
+        window_from_frame(control),
+        start,
+        length,
+        bytes,
+      )
+    _ -> None
+  }
+}
+
+/// The span-attach step: verify the chunk merkle membership of the claimed
+/// output span exactly once and record its `(start, length, digest)` window
+/// in frame item 12. Valid only at the span-consuming stages; the recorded
+/// window replaces any earlier one.
+pub fn span_attach(
+  control: raw.Frame,
+  witness: proof.LedgerOutputProofWitnessV1,
+) -> Option<StepResult> {
+  let stage = raw.integer(control, 1)
+  expect or {
+      stage == proof.stage_datum_traversal,
+      stage == proof.stage_reference_script_commitment,
+      stage == proof.stage_script_hash,
+    }
+  expect facts_empty(control)
+  when witness is {
+    proof.LedgerOutputProofSpanAttach {
+      start,
+      length,
+      chunk_proof,
+      next_chunk_proof,
+    } ->
+      when
+        proof.authenticated_output_span_for_output(
+          raw.integer(control, 2),
+          raw.integer(control, 3),
+          raw.bytes(control, 4),
+          start,
+          length,
+          proof.LedgerOutputProofChunks { chunk_proof, next_chunk_proof },
+        )
+      is {
+        None -> None
+        Some(bytes) ->
+          Some(
+            Advanced {
+              control: raw.replace(
+                control,
+                raw.span_window_index,
+                raw.span_window_data(start, length, crypto.blake2b_256(bytes)),
+              ),
+            },
+          )
+      }
+    _ -> None
+  }
 }
 
 fn optional_data(encoded: ByteArray) -> Data {
@@ -301,9 +415,9 @@ fn optional_data(encoded: ByteArray) -> Data {
 pub fn reference_script(
   control: raw.Frame,
   witness: proof.LedgerOutputProofWitnessV1,
-  claimed_span: Data,
 ) -> Option<StepResult> {
   expect raw.integer(control, 1) == proof.stage_reference_script_commitment
+  expect facts_empty(control)
   let scan_control = scan.control_from_data_v1(raw.item(control, 5))
   let length = raw.integer(control, 3)
   expect scan.terminal_is_exact_v1(scan_control, length)
@@ -319,7 +433,6 @@ pub fn reference_script(
   expect raw.item(control, 10) == builtin.constr_data(1, [])
   expect raw.item(control, 11) == builtin.constr_data(1, [])
   if chunk_index == chunk_count {
-    expect no_span_claim(claimed_span)
     if witness == proof.LedgerOutputProofNoWitness {
       let initial = blake.initial_control_v1(
         scan_control.reference_script_length + 1,
@@ -339,9 +452,7 @@ pub fn reference_script(
   } else {
     let chunk_length = bounded.expected_chunk_length(item_length, chunk_index)
     let start = item_offset + chunk_index * bounded.chunk_bytes
-    when
-      claimed_output_span(control, start, chunk_length, witness, claimed_span)
-    is {
+    when bound_window_span(control, start, chunk_length, witness) is {
       None -> None
       Some(chunk) -> {
         let next_peaks = merkle.append_leaf(
@@ -386,16 +497,15 @@ fn next_hash(
 pub fn script_hash(
   control: raw.Frame,
   witness: proof.LedgerOutputProofWitnessV1,
-  claimed_span: Data,
 ) -> Option<StepResult> {
   expect raw.integer(control, 1) == proof.stage_script_hash
+  expect facts_empty(control)
   let scan_control = scan.control_from_data_v1(raw.item(control, 5))
   expect Pair(0, [hash_data]) = builtin.un_constr_data(raw.item(control, 10))
   let hash_control = blake.control_from_data_v1(hash_data)
   expect hash_control.total_length == scan_control.reference_script_length + 1
   expect raw.item(control, 11) == builtin.constr_data(1, [])
   if hash_control.stage == blake.stage_terminal {
-    expect no_span_claim(claimed_span)
     if witness != proof.LedgerOutputProofNoWitness {
       None
     } else if scan_control.reference_script_language != 0 {
@@ -440,14 +550,13 @@ pub fn script_hash(
       1
     }
     let content = if content_length == 0 {
-      expect no_span_claim(claimed_span)
       if witness == proof.LedgerOutputProofNoWitness {
         Some(#"")
       } else {
         None
       }
     } else {
-      claimed_output_span(control, start, content_length, witness, claimed_span)
+      bound_window_span(control, start, content_length, witness)
     }
     when content is {
       None -> None
@@ -463,7 +572,6 @@ pub fn script_hash(
       }
     }
   } else {
-    expect no_span_claim(claimed_span)
     if witness != proof.LedgerOutputProofNoWitness {
       None
     } else {
@@ -499,6 +607,7 @@ pub fn native_script(
   witness: proof.LedgerOutputProofWitnessV1,
 ) -> Option<StepResult> {
   expect raw.integer(control, 1) == proof.stage_native_script
+  expect facts_empty(control)
   expect Pair(0, [native_data]) = builtin.un_constr_data(raw.item(control, 11))
   let native_control = native.structure_control_from_data_v1(native_data)
   if native_control.stage == native.structure_stage_terminal {
@@ -603,6 +712,7 @@ fn structure_scan(
       1,
       [],
     )
+  expect extension_items_empty(control)
   when
     proof.authenticated_chunk_window_for_output(
       raw.integer(control, 2),
@@ -674,6 +784,7 @@ pub fn structure_finish(
       1,
       [],
     )
+  expect extension_items_empty(control)
   if scan.terminal_is_exact_v1(current, total_length) {
     Some(
       Advanced {

@@ -3,7 +3,6 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/blake2b_256_trace_v1 as blake256
-use midgard/bounded_item_v1 as bounded
 use midgard/cek_blob_frontier_v1 as blob_frontier
 use midgard/cek_data_bytes_v1 as bytes_control
 use midgard/cek_data_frame_v1 as frame
@@ -26,6 +25,7 @@ fn integer(items: List<Data>, index: Int) -> Int {
 
 fn fold_control(control: raw.Frame) -> List<Data> {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   let items = builtin.un_list_data(data)
   expect list.length(items) == 10
@@ -45,9 +45,8 @@ fn fold_control(control: raw.Frame) -> List<Data> {
 }
 
 fn action_fields(witness: Data, expected: Int) -> List<Data> {
-  expect Pair(3, [action, first, second]) = builtin.un_constr_data(witness)
-  expect
-    first == builtin.constr_data(1, []) && second == builtin.constr_data(1, [])
+  expect Pair(3, [action, window]) = builtin.un_constr_data(witness)
+  expect window == builtin.constr_data(1, [])
   let Pair(tag, fields) = builtin.un_constr_data(action)
   expect tag == expected
   fields
@@ -174,12 +173,6 @@ pub fn finalize_frame(
   }
 }
 
-fn typed_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
-  expect raw.integer(control, 1) == proof.stage_datum_traversal
-  expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
-  traverse.control_from_data_v1(data)
-}
-
 fn next_control(
   control: raw.Frame,
   result: Option<traverse.DataTraverseControlV1>,
@@ -197,38 +190,30 @@ fn next_control(
   }
 }
 
-/// Take the span a stage's control demands from the witness chunks, requiring
-/// the dispatcher action to claim exactly this span (or its absence) so the
-/// span attestation yield of the same transaction verifies the chunk merkle
-/// membership the slicing here no longer re-checks.
+/// Take the span a stage's control demands from the witness window bytes,
+/// bound by digest to the span window a span-attach step recorded in frame
+/// item 12 (whose chunk merkle membership was verified exactly once there).
 fn source(
   control: raw.Frame,
   required: Option<blob.CekSourceBlobSpanV1>,
   witness: Data,
-  claimed_span: Data,
 ) -> (Data, Option<ByteArray>) {
-  expect Pair(3, [action,
-        first_data, second_data]) = builtin.un_constr_data(witness)
+  expect Pair(3, [action, window_data]) = builtin.un_constr_data(witness)
   let none = builtin.constr_data(1, [])
   let bytes = when required is {
     None -> {
-      expect stages.no_span_claim(claimed_span)
-      expect first_data == none && second_data == none
+      expect window_data == none
       None
     }
     Some(span) -> {
-      // A datum-traversal source span stays small (at most
-      // `traverse.head_bytes` / `cek_data_bytes_v1.maximum_source_span`
-      // bytes), so the claim carries the span content itself; the span
-      // attestation yield of the same transaction verifies these exact bytes
-      // are the authenticated output span at exactly this (start, length).
-      expect Pair(2, [start_data,
-            length_data, bytes_data]) = builtin.un_constr_data(claimed_span)
-      expect
-        builtin.un_i_data(start_data) == span.absolute_start && builtin.un_i_data(
-          length_data,
-        ) == span.length
-      Some(builtin.un_b_data(bytes_data))
+      expect Pair(0, [window_bytes]) = builtin.un_constr_data(window_data)
+      expect Some(bytes) = proof.bound_window_bytes_v1(
+        stages.window_from_frame(control),
+        span.absolute_start,
+        span.length,
+        builtin.un_b_data(window_bytes),
+      )
+      Some(bytes)
     }
   }
   (action, bytes)
@@ -237,15 +222,9 @@ fn source(
 pub fn head_scalar(
   control: raw.Frame,
   witness: Data,
-  claimed_span: Data,
 ) -> Option<stages.StepResult> {
   let current = head_control(control)
-  let (action, source_bytes) = head_source(
-    control,
-    current,
-    witness,
-    claimed_span,
-  )
+  let (action, source_bytes) = head_source(control, current, witness)
   expect Pair(1, [item_length]) = builtin.un_constr_data(action)
   expect Some(bytes) = source_bytes
   next_control(
@@ -261,15 +240,9 @@ pub fn head_scalar(
 pub fn head_sequence(
   control: raw.Frame,
   witness: Data,
-  claimed_span: Data,
 ) -> Option<stages.StepResult> {
   let current = head_control(control)
-  let (action, source_bytes) = head_source(
-    control,
-    current,
-    witness,
-    claimed_span,
-  )
+  let (action, source_bytes) = head_source(control, current, witness)
   expect Pair(2, [expected_children]) = builtin.un_constr_data(action)
   expect Some(bytes) = source_bytes
   next_simple_control(
@@ -282,18 +255,9 @@ pub fn head_sequence(
   )
 }
 
-pub fn head_map(
-  control: raw.Frame,
-  witness: Data,
-  claimed_span: Data,
-) -> Option<stages.StepResult> {
+pub fn head_map(control: raw.Frame, witness: Data) -> Option<stages.StepResult> {
   let current = head_control(control)
-  let (action, source_bytes) = head_source(
-    control,
-    current,
-    witness,
-    claimed_span,
-  )
+  let (action, source_bytes) = head_source(control, current, witness)
   expect Pair(3, []) = builtin.un_constr_data(action)
   expect Some(bytes) = source_bytes
   next_simple_control(control, traverse.prevalidated_head_map(current, bytes))
@@ -302,15 +266,9 @@ pub fn head_map(
 pub fn head_large_constructor(
   control: raw.Frame,
   witness: Data,
-  claimed_span: Data,
 ) -> Option<stages.StepResult> {
   let current = head_control(control)
-  let (action, source_bytes) = head_source(
-    control,
-    current,
-    witness,
-    claimed_span,
-  )
+  let (action, source_bytes) = head_source(control, current, witness)
   expect Pair(4, [constructor_length,
         expected_children]) = builtin.un_constr_data(action)
   expect Some(bytes) = source_bytes
@@ -327,6 +285,7 @@ pub fn head_large_constructor(
 
 fn head_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
       [
@@ -365,7 +324,6 @@ fn head_source(
   control: raw.Frame,
   current: traverse.DataTraverseControlV1,
   witness: Data,
-  claimed_span: Data,
 ) -> (Data, Option<ByteArray>) {
   let remaining = current.source_length - current.offset
   let length = if remaining < traverse.head_bytes {
@@ -382,7 +340,6 @@ fn head_source(
       },
     ),
     witness,
-    claimed_span,
   )
 }
 
@@ -428,6 +385,7 @@ fn scalar_prefix(
   kind: Int,
 ) -> (Int, Int, Int, ByteArray, Data) {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
       [
@@ -776,6 +734,7 @@ pub fn attach_integer(
   claimed_scalar: Data,
 ) -> Option<stages.StepResult> {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   let (current, _scalar) = claimed_integer_traverse(claimed_scalar)
   expect [parent_data] = action_fields(witness, 5)
   expect parent: Option<frame.DataFrameV1> = parent_data
@@ -791,6 +750,7 @@ pub fn attach_bytes(
   claimed_scalar: Data,
 ) -> Option<stages.StepResult> {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   let (current, _scalar) = claimed_bytes_traverse(claimed_scalar)
   expect [parent_data] = action_fields(witness, 5)
   expect parent: Option<frame.DataFrameV1> = parent_data
@@ -828,16 +788,15 @@ pub fn advance_integer(
   control: raw.Frame,
   witness: Data,
   claimed_scalar: Data,
-  claimed_span: Data,
 ) -> Option<stages.StepResult> {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   let integer = unchecked_integer_scalar(claimed_scalar_payload(claimed_scalar))
   expect integer.stage != integer_control.stage_terminal
   let (action, bytes) = source(
     control,
     integer_control.prevalidated_next_source_span(integer),
     witness,
-    claimed_span,
   )
   expect Pair(0, []) = builtin.un_constr_data(action)
   when integer_control.prevalidated_step_v1(integer, bytes) is {
@@ -854,16 +813,15 @@ pub fn advance_bytes(
   control: raw.Frame,
   witness: Data,
   claimed_scalar: Data,
-  claimed_span: Data,
 ) -> Option<stages.StepResult> {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   let scalar = unchecked_bytes_scalar(claimed_scalar_payload(claimed_scalar))
   expect scalar.stage != bytes_control.stage_terminal
   let (action, bytes) = source(
     control,
     bytes_control.prevalidated_next_source_span(scalar),
     witness,
-    claimed_span,
   )
   expect Pair(0, []) = builtin.un_constr_data(action)
   when bytes_control.prevalidated_step_v1(scalar, bytes) is {
@@ -890,6 +848,7 @@ fn large_stage_control(
   kind: Int,
 ) -> traverse.DataTraverseControlV1 {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
       [
@@ -986,12 +945,11 @@ fn large_transition(
 pub fn advance_large_constructor(
   control: raw.Frame,
   witness: Data,
-  claimed_span: Data,
 ) -> Option<stages.StepResult> {
   let current = large_stage_control(control, traverse.stage_large_constructor)
   expect Some(integer) = current.integer
   if integer.stage == integer_control.stage_terminal {
-    let (action, bytes) = source(control, None, witness, claimed_span)
+    let (action, bytes) = source(control, None, witness)
     expect Pair(0, []) = builtin.un_constr_data(action)
     expect bytes == None
     large_transition(
@@ -1004,7 +962,6 @@ pub fn advance_large_constructor(
       control,
       integer_control.prevalidated_next_source_span(integer),
       witness,
-      claimed_span,
     )
     expect Pair(0, []) = builtin.un_constr_data(action)
     let syntax_is_valid = if integer.stage == integer_control.stage_syntax {
@@ -1043,7 +1000,6 @@ pub fn advance_large_constructor(
 pub fn advance_large_fields(
   control: raw.Frame,
   witness: Data,
-  claimed_span: Data,
 ) -> Option<stages.StepResult> {
   let current = large_stage_control(control, traverse.stage_large_fields)
   expect Some(integer) = current.integer
@@ -1058,7 +1014,6 @@ pub fn advance_large_fields(
       },
     ),
     witness,
-    claimed_span,
   )
   expect Pair(0, []) = builtin.un_constr_data(action)
   let sequence_header = if children == 0 {
@@ -1110,6 +1065,7 @@ pub fn advance_large_fields(
 /// slots absent, so no scalar codec is linked.
 fn close_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect
       [
@@ -1146,17 +1102,12 @@ fn close_control(control: raw.Frame) -> traverse.DataTraverseControlV1 {
 
 /// The `NoAction` close step: the container's indefinite-length break byte
 /// moves the traversal to the fold stage (traverse stage 5).
-pub fn close(
-  control: raw.Frame,
-  witness: Data,
-  claimed_span: Data,
-) -> Option<stages.StepResult> {
+pub fn close(control: raw.Frame, witness: Data) -> Option<stages.StepResult> {
   let current = close_control(control)
   let (action, bytes) = source(
     control,
     traverse.prevalidated_next_source_span(current),
     witness,
-    claimed_span,
   )
   expect Pair(0, []) = builtin.un_constr_data(action)
   next_simple_control(
@@ -1176,6 +1127,7 @@ const scan_reference_script_language_index: Int = 19
 /// exactly as `datum_traversal_step`'s terminal branch does.
 pub fn finish(control: raw.Frame, witness: Data) -> Option<stages.StepResult> {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
+  expect stages.facts_empty(control)
   expect Pair(0, [data]) = builtin.un_constr_data(raw.item(control, 7))
   expect integer(builtin.un_list_data(data), 1) == traverse.stage_terminal
   expect witness == builtin.constr_data(0, [])

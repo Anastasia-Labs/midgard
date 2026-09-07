@@ -160,6 +160,46 @@ fn resolve_membership_proof_step(
   }
 }
 
+/// One fact-attachment step on the pending terminal output proof: record the
+/// next canonical group of descriptor fact commitments in the checkpointed
+/// pending control. Descriptor exactness itself is adjudicated by the
+/// finalize step's conjunction (on-chain, by each group's descriptor yields
+/// in the attaching transaction).
+fn resolve_membership_proof_fact_attach(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ResolveInputsControlV1,
+  pending: ResolveInputOutputProofV1,
+  descriptor_cbor: ByteArray,
+) -> Bool {
+  if descriptor_cbor != pending.descriptor_cbor {
+    False
+  } else {
+    when
+      ledger_output_proof_v1.fact_attach_v1(
+        pending.output_proof,
+        descriptor_cbor,
+      )
+    is {
+      None -> False
+      Some(next_output_proof) ->
+        resolve_inputs_successor_is_exact(
+          pre,
+          witness,
+          ResolveInputsControlV1 {
+            ..control,
+            pending: Some(
+              ResolveInputOutputProofV1 {
+                ..pending,
+                output_proof: next_output_proof,
+              },
+            ),
+          },
+        )
+    }
+  }
+}
+
 fn resolve_membership_proof_finalize(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -169,8 +209,21 @@ fn resolve_membership_proof_finalize(
   signer_proof: SignerSetProofV1,
 ) -> Bool {
   let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  let facts_are_exact = when
+    ledger_output_proof_v1.terminal_claimed_summaries_v1(pending.output_proof)
+  is {
+    None -> False
+    Some((value_data, datum_data)) ->
+      ledger_output_proof_v1.facts_are_exact_v1(
+        pending.output_proof,
+        descriptor_cbor,
+        value_data,
+        datum_data,
+      )
+  }
   if and {
     descriptor_cbor == pending.descriptor_cbor,
+    facts_are_exact,
     ledger_output_proof_v1.descriptor_is_exact_v1(
       pending.output_proof,
       descriptor,
@@ -256,14 +309,24 @@ fn resolve_lookup_step(
             proof_witness,
           )
         LedgerOutputProofFinalizeWitness { descriptor_cbor, signer_proof } ->
-          resolve_membership_proof_finalize(
-            pre,
-            witness,
-            control,
-            pending,
-            descriptor_cbor,
-            signer_proof,
-          )
+          if !ledger_output_proof_v1.facts_complete_v1(pending.output_proof) {
+            resolve_membership_proof_fact_attach(
+              pre,
+              witness,
+              control,
+              pending,
+              descriptor_cbor,
+            )
+          } else {
+            resolve_membership_proof_finalize(
+              pre,
+              witness,
+              control,
+              pending,
+              descriptor_cbor,
+              signer_proof,
+            )
+          }
         _ -> False
       }
     None ->

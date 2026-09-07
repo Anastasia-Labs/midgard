@@ -45,10 +45,6 @@ pub type ActionV1 {
     /// consumes, attested by the matching scalar yield; `constr 1 []` for
     /// every other role.
     claimed_scalar: Data,
-    /// The `(start, length)` output-span claim a span-consuming stage yield
-    /// slices, attested by the span yield; `constr 1 []` when the step reads
-    /// no span.
-    claimed_span: Data,
     yield_role_index: Int,
     /// Reference-input indices of the required yields, stage yield first and
     /// then the attestation roles of `stage_attestation_roles`, exactly.
@@ -88,7 +84,6 @@ validator main(
         control_cbor,
         next_control_cbor,
         claimed_scalar: _,
-        claimed_span: _,
         yield_role_index,
         yield_ref_input_indices,
       }) ->
@@ -139,8 +134,9 @@ fn output_proof_step_dispatch(
     output_proof_stage,
   )
   // Outer well-formedness of the agreed control bytes: version, stage range,
-  // descriptor scalars and canonical re-encoding.
-  let _ = ledger_output_proof_raw.open(control_cbor)
+  // descriptor scalars and canonical re-encoding. `expect` so the checked
+  // decode actually runs (an unused `let` is fully ignored in Aiken).
+  expect _ = ledger_output_proof_raw.open(control_cbor)
   and {
     validation_semantic_yield_v1.require_semantic_yields_v1(
       tx,

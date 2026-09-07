@@ -13,11 +13,7 @@ validator main(dispatcher_script_hashes: List<ScriptHash>) {
     )
     shared.attest(
       claim,
-      datum.advance_large_fields(
-        claim.control,
-        claim.witness,
-        claim.claimed_span,
-      ),
+      datum.advance_large_fields(claim.control, claim.witness),
     )
   }
 

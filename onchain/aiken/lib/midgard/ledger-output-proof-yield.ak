@@ -33,11 +33,10 @@ pub type Claim {
   control: raw.Frame,
   next_control_cbor: ByteArray,
   claimed_scalar: Data,
-  claimed_span: Data,
 }
 
-/// Open the one dispatcher input's shared ten-field step action. Every yield
-/// of a step transaction — the stage yield and the span/scalar attestation
+/// Open the one dispatcher input's shared nine-field step action. Every yield
+/// of a step transaction — the stage yield and the scalar attestation
 /// yields — reads the same action through this function, so the claims they
 /// verify and the claims the stage yield consumes are one value; the
 /// dispatcher never has to compare claims across yields.
@@ -71,7 +70,7 @@ fn dispatch_action(
       Pair(0,
       [
         _input_index, _output_index, transition_data, witness_data, control_data,
-        next_data, claimed_scalar, claimed_span, role_data, _ref_indices,
+        next_data, claimed_scalar, role_data, _ref_indices,
       ])
     = builtin.un_constr_data(action)
   // `StepRedeemer` transition: [work_witness_cbor, claimed_successor]; the
@@ -107,7 +106,6 @@ fn dispatch_action(
       control: raw.open(builtin.un_b_data(control_data)),
       next_control_cbor: builtin.un_b_data(next_data),
       claimed_scalar,
-      claimed_span,
     },
     builtin.un_i_data(role_data),
   )
@@ -137,28 +135,36 @@ pub fn dispatch_attestation(
   claim
 }
 
-/// The chunk proofs of a step witness, whichever witness family carries them:
-/// the datum-traversal witness (`constr 3 [action, first, second]`) or the
-/// plain chunk witness (`constr 1 [chunk, next]`). Every other witness shape
-/// carries no chunks, so a span claim over it can never verify.
-pub fn span_chunks(data: Data) -> proof.LedgerOutputProofWitnessV1 {
+/// The span-attach step witness (`constr 5 [start, length, chunk_proof,
+/// next_chunk_proof]`): the once-per-window chunk merkle verification the
+/// span yield performs before the window's `(start, length, digest)` record
+/// is spliced into frame item 12.
+pub fn span_attach_witness(data: Data) -> proof.LedgerOutputProofWitnessV1 {
   let Pair(tag, fields) = builtin.un_constr_data(data)
-  if tag == 3 {
-    expect [_action, first_data, second_data] = fields
-    expect first: Option<bounded_item_v1.ChunkProofV1> = first_data
-    expect second: Option<bounded_item_v1.ChunkProofV1> = second_data
-    when first is {
-      None -> {
-        expect second == None
-        proof.LedgerOutputProofNoWitness
-      }
-      Some(chunk_proof) ->
-        proof.LedgerOutputProofChunks { chunk_proof, next_chunk_proof: second }
-    }
-  } else if tag == 1 {
-    chunk_witness(data)
-  } else {
+  expect tag == 5
+  expect [start_data, length_data, first_data, second_data] = fields
+  expect chunk_proof: bounded_item_v1.ChunkProofV1 = first_data
+  expect next_chunk_proof: Option<bounded_item_v1.ChunkProofV1> = second_data
+  proof.LedgerOutputProofSpanAttach {
+    start: builtin.un_i_data(start_data),
+    length: builtin.un_i_data(length_data),
+    chunk_proof,
+    next_chunk_proof,
+  }
+}
+
+/// The window step witness of the chunk-cursor stages (`constr 6 [bytes]`,
+/// bound to the recorded span window by digest), or the plain no-witness
+/// transition (`constr 0 []`).
+pub fn window_witness(data: Data) -> proof.LedgerOutputProofWitnessV1 {
+  let Pair(tag, fields) = builtin.un_constr_data(data)
+  if tag == 0 {
+    expect fields == []
     proof.LedgerOutputProofNoWitness
+  } else {
+    expect tag == 6
+    expect [bytes_data] = fields
+    proof.LedgerOutputProofWindow { bytes: builtin.un_b_data(bytes_data) }
   }
 }
 

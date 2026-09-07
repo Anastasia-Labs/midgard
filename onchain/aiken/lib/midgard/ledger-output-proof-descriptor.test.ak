@@ -6,7 +6,6 @@
 //// it. A non-terminal control is refused by every role's shared
 //// `terminal_scan` clause.
 
-use aiken/builtin
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/cek_data_frame_v1 as frame
@@ -64,26 +63,52 @@ fn advanced(
   control
 }
 
-/// Drive the typed proof to its terminal stage. The only datum these outputs
-/// carry is the trivial `d87980`, opened and finalized with its two scripted
-/// actions; every other stage takes `NoWitness` where accepted, otherwise the
-/// single whole-output chunk proof.
+/// Drive the typed proof to its terminal stage. On entering the first
+/// span-consuming stage a span-attach step records the whole-output window;
+/// the datum head then binds its span through `window: Some(output)`, the
+/// reference-script and script-hash stages through
+/// `LedgerOutputProofWindow`. Every other stage takes `NoWitness` where
+/// accepted, otherwise the single whole-output chunk proof.
 fn until_terminal(
   control: proof.LedgerOutputProofControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
+  output: ByteArray,
   fuel: Int,
 ) -> proof.LedgerOutputProofControlV1 {
   expect fuel > 0
   if control.stage == proof.stage_terminal {
     control
+  } else if and {
+    control.span_window == None,
+    or {
+      control.stage == proof.stage_datum_traversal,
+      control.stage == proof.stage_reference_script_commitment,
+      control.stage == proof.stage_script_hash,
+    },
+  } {
+    until_terminal(
+      advanced(
+        proof.step_v1(
+          control,
+          proof.LedgerOutputProofSpanAttach {
+            start: 0,
+            length: bytearray.length(output),
+            chunk_proof,
+            next_chunk_proof: None,
+          },
+        ),
+      ),
+      chunk_proof,
+      output,
+      fuel - 1,
+    )
   } else {
     let witness = if control.stage == proof.stage_datum_traversal {
       expect Some(datum_control) = control.datum
       if datum_control.stage == traverse.stage_head {
         proof.LedgerOutputProofDatum {
           action: traverse.HeadSequence { expected_children: 0 },
-          chunk_proof: Some(chunk_proof),
-          next_chunk_proof: None,
+          window: Some(output),
         }
       } else if datum_control.stage == traverse.stage_fold {
         proof.LedgerOutputProofDatum {
@@ -91,8 +116,7 @@ fn until_terminal(
             frame: frame.initial_small_constr_frame_v1(0, #"", 0),
             parent: None,
           },
-          chunk_proof: None,
-          next_chunk_proof: None,
+          window: None,
         }
       } else {
         expect datum_control.stage == traverse.stage_terminal
@@ -102,12 +126,25 @@ fn until_terminal(
       when proof.step_v1(control, proof.LedgerOutputProofNoWitness) is {
         Some(_) -> proof.LedgerOutputProofNoWitness
         None ->
-          proof.LedgerOutputProofChunks { chunk_proof, next_chunk_proof: None }
+          when
+            proof.step_v1(
+              control,
+              proof.LedgerOutputProofWindow { bytes: output },
+            )
+          is {
+            Some(_) -> proof.LedgerOutputProofWindow { bytes: output }
+            None ->
+              proof.LedgerOutputProofChunks {
+                chunk_proof,
+                next_chunk_proof: None,
+              }
+          }
       }
     }
     until_terminal(
       advanced(proof.step_v1(control, witness)),
       chunk_proof,
+      output,
       fuel - 1,
     )
   }
@@ -118,6 +155,7 @@ fn terminal_of(output: ByteArray) -> proof.LedgerOutputProofControlV1 {
   until_terminal(
     proof.initial_control_v1(0, bytearray.length(output), item_commitment),
     chunk_proof,
+    output,
     256,
   )
 }

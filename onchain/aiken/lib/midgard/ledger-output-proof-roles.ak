@@ -35,6 +35,10 @@ pub fn stage_role(index: Int) -> AssetName {
     20 -> "V1VtLopDatumLargeCtorYield"
     21 -> "V1VtLopDatumLargeFieldsYield"
     22 -> "V1VtLopDatumCloseYield"
+    // The span-attach step: the span yield alone verifies the chunk merkle
+    // membership of the claimed window and splices its record into frame
+    // item 12; every later span-consuming stage step binds to it by digest.
+    23 -> span_attestation_role
     _ -> fail
   }
 }
@@ -62,12 +66,13 @@ pub fn descriptor_roles() -> List<AssetName> {
   ]
 }
 
-/// Attestation yields of the step path. The span yield verifies the chunk
-/// merkle membership of the output span the dispatcher action claims; the two
+/// Attestation yields of the step path. The span yield now runs as the stage
+/// yield of the dedicated span-attach role (23): it verifies the chunk merkle
+/// membership of the claimed output span exactly once and records the window
+/// digest in the control; span-consuming stage steps bind their redeemer
+/// window bytes to that digest without a per-step span attestation. The two
 /// scalar yields verify that the pinned control's active scalar sub-control
-/// decodes to the claimed scalar tuple. A stage yield consumes those claims
-/// without re-verifying them, so each stage role names the exact attestation
-/// roles its transactions must also present.
+/// decodes to the claimed scalar tuple.
 pub const span_attestation_role: AssetName = "V1VtLopSpanYield"
 
 pub const scalar_integer_attestation_role: AssetName =
@@ -77,39 +82,23 @@ pub const scalar_bytes_attestation_role: AssetName = "V1VtLopScalarBytesYield"
 
 /// The attestation roles a step transaction must present after its stage
 /// yield, in the fixed order the redeemer's reference-input index list is
-/// read: the span role first, then the scalar role of the stage's codec
-/// family. Stages that read no authenticated span and no scalar sub-control
-/// require none.
+/// read: the scalar role of the stage's codec family. Stages that read no
+/// scalar sub-control require none.
 pub fn stage_attestation_roles(index: Int) -> List<AssetName> {
-  if index == 4 || index == 8 || index == 9 || index >= 14 && index <= 16 {
-    // datum head yields, reference-script commitment, script hash
-    [span_attestation_role]
-  } else if index == 5 {
-    // attach integer
+  if index == 5 || index == 7 {
+    // attach / advance integer
     [scalar_integer_attestation_role]
-  } else if index == 17 {
-    // attach bytes
+  } else if index == 17 || index == 18 {
+    // attach / advance bytes
     [scalar_bytes_attestation_role]
-  } else if index == 7 {
-    // advance integer
-    [span_attestation_role, scalar_integer_attestation_role]
-  } else if index == 18 {
-    // advance bytes
-    [span_attestation_role, scalar_bytes_attestation_role]
-  } else if index >= 20 && index <= 22 {
-    // datum large-constructor streaming, large-fields completion and close:
-    // their source spans are claimed in content mode and verified by the span
-    // yield; the traverse sub-control is re-validated locally, so no scalar
-    // attestation applies.
-    [span_attestation_role]
   } else {
     expect index >= 0 && index < stage_role_count
     []
   }
 }
 
-pub const stage_role_count: Int = 23
+pub const stage_role_count: Int = 24
 
 pub const descriptor_role_count: Int = 4
 
-pub const attestation_role_count: Int = 3
+pub const attestation_role_count: Int = 2

@@ -3,22 +3,27 @@
 //// `validation-trace-script-sources-output-proof-finalize-semantic-v1.md` §8).
 ////
 //// The ScriptSources output-proof finalize dispatcher opens the stage-five
-//// frame, pins the terminal LOP control bytes to frame item 30, and requires
-//// the four authenticated descriptor yields
-//// (`ledger-output-descriptor-*-yield.ak`) in every branch; the yields read
+//// frame, pins the terminal LOP control bytes to frame item 30, and runs the
+//// chained fact attachment: each attachment step carries one canonical
+//// descriptor-yield group (`ledger-output-descriptor-*-yield.ak`, which read
 //// the dispatcher redeemer back through `unique_semantic_dispatch_v1` and
-//// re-state `descriptor_is_exact_v1` piecewise. These vectors drive the
-//// deployed validators through `main.spend` / `main.withdraw` on one honest
-//// finalize of a protected script output, pin the nine-field redeemer wire
+//// re-state `descriptor_is_exact_v1` piecewise) and records the group's fact
+//// commitments; the thin terminal carries no yields and requires every
+//// recorded fact to equal its recomputation from one redeemer triple. These
+//// vectors drive the deployed validators through `main.spend` /
+//// `main.withdraw` over the honest three-step attachment chain plus thin
+//// terminal of a protected script output, pin the ten-field redeemer wire
 //// layout and the prepare routing (resolver 8, semantic slot 3), and show
-//// that the conjunction refuses an omitted yield, a role permutation, a
-//// forged leaf summary, a receive-scan splice that skips the descriptor
-//// leaf, a non-terminal control and a duplicated dispatcher input, while the
-//// two rejection arms (network-id mismatch, missing required witness) still
-//// win with all four yields present. The predicate-level partition itself is
-//// proven in `lib/midgard/ledger-output-proof-descriptor.test.ak`; what
-//// these add is that the deployed validators reach those predicates with the
-//// right arguments over a full transaction.
+//// that the chain refuses an omitted yield, a role permutation, a wrong or
+//// replayed grouping, a forged leaf summary, a missing / cross-output /
+//// stale fact at the terminal, yield indices at the thin terminal, a
+//// receive-scan splice that skips the descriptor leaf, a non-terminal
+//// control and a duplicated dispatcher input, while the two rejection arms
+//// (network-id mismatch, missing required witness) still win behind the fact
+//// gate. The predicate-level partition itself is proven in
+//// `lib/midgard/ledger-output-proof-descriptor.test.ak`; what these add is
+//// that the deployed validators reach those predicates with the right
+//// arguments over a full transaction.
 ////
 //// Note on the plan's `finalize_refuses_forged_receive_splice_offset`: the
 //// shipped redeemer carries no splice offsets (they are derived on-chain
@@ -190,23 +195,45 @@ fn advanced(
 }
 
 /// Drive the typed proof to its terminal stage; the only datum these outputs
-/// carry is the trivial `d87980`.
+/// carry is the trivial `d87980`. On entering the first span-consuming stage
+/// a span-attach step records the whole-output window the datum head then
+/// binds through `window: Some(output)`.
 fn until_terminal(
   control: proof.LedgerOutputProofControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
+  output: ByteArray,
   fuel: Int,
 ) -> proof.LedgerOutputProofControlV1 {
   expect fuel > 0
   if control.stage == proof.stage_terminal {
     control
+  } else if and {
+    control.span_window == None,
+    control.stage == proof.stage_datum_traversal,
+  } {
+    until_terminal(
+      advanced(
+        proof.step_v1(
+          control,
+          proof.LedgerOutputProofSpanAttach {
+            start: 0,
+            length: bytearray.length(output),
+            chunk_proof,
+            next_chunk_proof: None,
+          },
+        ),
+      ),
+      chunk_proof,
+      output,
+      fuel - 1,
+    )
   } else {
     let witness = if control.stage == proof.stage_datum_traversal {
       expect Some(datum_control) = control.datum
       if datum_control.stage == traverse.stage_head {
         proof.LedgerOutputProofDatum {
           action: traverse.HeadSequence { expected_children: 0 },
-          chunk_proof: Some(chunk_proof),
-          next_chunk_proof: None,
+          window: Some(output),
         }
       } else if datum_control.stage == traverse.stage_fold {
         proof.LedgerOutputProofDatum {
@@ -214,8 +241,7 @@ fn until_terminal(
             frame: data_frame.initial_small_constr_frame_v1(0, #"", 0),
             parent: None,
           },
-          chunk_proof: None,
-          next_chunk_proof: None,
+          window: None,
         }
       } else {
         expect datum_control.stage == traverse.stage_terminal
@@ -231,6 +257,7 @@ fn until_terminal(
     until_terminal(
       advanced(proof.step_v1(control, witness)),
       chunk_proof,
+      output,
       fuel - 1,
     )
   }
@@ -241,8 +268,24 @@ fn terminal_of(output: ByteArray) -> proof.LedgerOutputProofControlV1 {
   until_terminal(
     proof.initial_control_v1(0, bytearray.length(output), item_commitment),
     chunk_proof,
+    output,
     256,
   )
+}
+
+/// The terminal control after `count` canonical fact-attachment steps
+/// (`fact_attach_groups_v1` order: [2, 3], [0], [1]).
+fn with_fact_groups(
+  terminal: proof.LedgerOutputProofControlV1,
+  descriptor_cbor: ByteArray,
+  count: Int,
+) -> proof.LedgerOutputProofControlV1 {
+  if count == 0 {
+    terminal
+  } else {
+    expect Some(next) = proof.fact_attach_v1(terminal, descriptor_cbor)
+    with_fact_groups(next, descriptor_cbor, count - 1)
+  }
 }
 
 /// The honest descriptor of a terminal control, every field derived from the
@@ -408,10 +451,19 @@ type FinalizeFixtureV1 {
   datum_claim: Option<summary.DataSummaryV1>,
 }
 
-fn pre_of(output: ByteArray, context_cbor: ByteArray) -> FinalizeFixtureV1 {
+/// The fixture whose stage-five frame carries the terminal control after
+/// `attached_groups` canonical fact-attachment steps (3 = every fact
+/// recorded, ready for the thin terminal).
+fn pre_of(
+  output: ByteArray,
+  context_cbor: ByteArray,
+  attached_groups: Int,
+) -> FinalizeFixtureV1 {
   let terminal = terminal_of(output)
-  let control_cbor = proof.encode_control_v1(terminal)
   let descriptor_cbor = commitment.encode(honest_descriptor(terminal))
+  let control_cbor = proof.encode_control_v1(
+    with_fact_groups(terminal, descriptor_cbor, attached_groups),
+  )
   let work_cbor = ss_raw.append_extension_v1(
     base_witness_cbor(
       context_cbor,
@@ -475,9 +527,11 @@ fn with_successor_cbor(
   }
 }
 
-/// The honest accepting finalize of `output` under the network-0 context.
+/// The honest thin-terminal finalize of `output` under the network-0 context:
+/// every fact recorded, no descriptor yields, the receive-scan splice as the
+/// successor.
 fn accepting_fixture(output: ByteArray) -> FinalizeFixtureV1 {
-  let f = pre_of(output, context_network_zero)
+  let f = pre_of(output, context_network_zero, 3)
   with_successor_cbor(
     f,
     base_witness_cbor(
@@ -485,6 +539,44 @@ fn accepting_fixture(output: ByteArray) -> FinalizeFixtureV1 {
       1,
       spliced_receive_scan(output, f.descriptor_cbor),
     ),
+  )
+}
+
+/// The honest fact-attachment step for canonical group `group_index` (0 the
+/// leaf summaries [2, 3], 1 the scan facts [0], 2 the reference script [1]):
+/// the successor re-carries the frame with the group's facts recorded.
+fn attach_fixture(output: ByteArray, group_index: Int) -> FinalizeFixtureV1 {
+  let f = pre_of(output, context_network_zero, group_index)
+  let terminal = terminal_of(output)
+  let next_cbor = proof.encode_control_v1(
+    with_fact_groups(terminal, f.descriptor_cbor, group_index + 1),
+  )
+  with_successor_cbor(
+    f,
+    ss_raw.append_extension_v1(
+      base_witness_cbor(
+        context_network_zero,
+        0,
+        vm_witness.empty_receive_purpose_scan_control(),
+      ),
+      next_cbor,
+    ),
+  )
+}
+
+/// The canonical group's roles and its role/yield-hash pairs.
+fn group_roles(group_index: Int) -> List<Int> {
+  expect Some(group) = list.at(proof.fact_attach_groups_v1(), group_index)
+  group
+}
+
+fn group_pairs(group_index: Int) -> List<(ByteArray, ByteArray)> {
+  list.map(
+    group_roles(group_index),
+    fn(role) {
+      expect Some(pair) = list.at(role_pairs(), role)
+      pair
+    },
   )
 }
 
@@ -496,7 +588,7 @@ fn rejecting_fixture(
   signer_proof: SignerSetProofV1,
   rejection_code: ByteArray,
 ) -> FinalizeFixtureV1 {
-  let f = pre_of(output, context_cbor)
+  let f = pre_of(output, context_cbor, 3)
   FinalizeFixtureV1 {
     ..f,
     signer_proof,
@@ -569,6 +661,7 @@ fn finalize_redeemer(
   value_claim: Data,
   datum_claim: Data,
   control_cbor: ByteArray,
+  attach_roles: List<Int>,
   yield_ref_input_indices: List<Int>,
 ) -> finalize_validator.SpendRedeemer {
   ct.Continue(
@@ -581,15 +674,36 @@ fn finalize_redeemer(
       control_cbor,
       claimed_value_summary: value_claim,
       claimed_datum_summary: datum_claim,
+      attach_roles,
       yield_ref_input_indices,
     },
   )
 }
 
+/// The honest thin-terminal redeemer: no attachment roles, no yields.
 fn honest_redeemer(f: FinalizeFixtureV1) -> finalize_validator.SpendRedeemer {
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
-  finalize_redeemer(f, value_claim, datum_claim, f.control_cbor, [0, 1, 2, 3])
+  finalize_redeemer(f, value_claim, datum_claim, f.control_cbor, [], [])
+}
+
+/// The honest attachment redeemer for canonical group `group_index`, its
+/// yields at reference-input indices 0..n in role order.
+fn honest_attach_redeemer(
+  f: FinalizeFixtureV1,
+  group_index: Int,
+) -> finalize_validator.SpendRedeemer {
+  let value_claim: Data = f.value_claim
+  let datum_claim: Data = f.datum_claim
+  let group = group_roles(group_index)
+  finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    group,
+    list.range(0, list.length(group) - 1),
+  )
 }
 
 /// The full finalize transaction: the computation-thread input carrying the
@@ -698,15 +812,6 @@ fn run_value_summary_yield(tx: l1.Transaction) -> Bool {
   )
 }
 
-fn run_all_yields(tx: l1.Transaction) -> Bool {
-  and {
-    run_scan_facts_yield(tx),
-    run_reference_script_yield(tx),
-    run_datum_summary_yield(tx),
-    run_value_summary_yield(tx),
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Wire layout and prepare routing
 // ---------------------------------------------------------------------------
@@ -721,6 +826,7 @@ type FinalizeWireMirrorV1 {
     control_cbor: ByteArray,
     claimed_value_summary: Data,
     claimed_datum_summary: Data,
+    attach_roles: List<Int>,
     yield_ref_input_indices: List<Int>,
   }
 }
@@ -748,7 +854,7 @@ fn golden_transition() -> ValidationOneStepWitnessV1 {
   }
 }
 
-/// The dispatcher redeemer is exactly the nine-field constructor, in this
+/// The dispatcher redeemer is exactly the ten-field constructor, in this
 /// order, wrapped in the shared `StepRedeemer` `Continue` arm.
 test output_proof_finalize_wire_layout_is_pinned() {
   let claim: Data = 0
@@ -762,7 +868,8 @@ test output_proof_finalize_wire_layout_is_pinned() {
       control_cbor: #"22",
       claimed_value_summary: claim,
       claimed_datum_summary: claim,
-      yield_ref_input_indices: [0, 1, 2, 3],
+      attach_roles: [2, 3],
+      yield_ref_input_indices: [0, 1],
     },
   )
   let mirror: ct.StepRedeemer<FinalizeWireMirrorV1> = ct.Continue(
@@ -775,7 +882,8 @@ test output_proof_finalize_wire_layout_is_pinned() {
       control_cbor: #"22",
       claimed_value_summary: claim,
       claimed_datum_summary: claim,
-      yield_ref_input_indices: [0, 1, 2, 3],
+      attach_roles: [2, 3],
+      yield_ref_input_indices: [0, 1],
     },
   )
   let mirror_data: Data = mirror
@@ -841,24 +949,54 @@ test prepare_routes_output_proof_finalize_to_slot_three() {
 // The honest finalize and its refusals
 // ---------------------------------------------------------------------------
 
-/// The full five-execution transaction: the dispatcher wins the accepting
-/// finalize of a protected script output with an inline datum, and every
-/// descriptor yield attests its fact of `descriptor_is_exact_v1`.
-test finalize_wins_with_four_yields() {
-  let f = accepting_fixture(protected_script_datum_output)
-  let redeemer = honest_redeemer(f)
-  let tx = finalize_tx(f, redeemer, role_pairs(), [])
+/// The honest leaf-summary attachment step (canonical group [2, 3]): the
+/// dispatcher records both fact commitments and each leaf yield attests its
+/// exactness clause over the pinned control, descriptor and claim.
+test attach_wins_leaf_summary_group() {
+  let f = attach_fixture(protected_script_datum_output, 0)
+  let redeemer = honest_attach_redeemer(f, 0)
+  let tx = finalize_tx(f, redeemer, group_pairs(0), [])
   and {
     run_dispatcher(f, redeemer, tx),
-    run_all_yields(tx),
+    run_datum_summary_yield(tx),
+    run_value_summary_yield(tx),
   }
 }
 
-/// Dropping any one yield (here the value-summary role, its reference input,
-/// withdrawal and redeemer, and its index) starves the dispatcher's
-/// exact-length role walk.
-test finalize_refuses_three_yields() fail {
+/// The honest scan-facts attachment step (canonical group [0]).
+test attach_wins_scan_facts_group() {
+  let f = attach_fixture(protected_script_datum_output, 1)
+  let redeemer = honest_attach_redeemer(f, 1)
+  let tx = finalize_tx(f, redeemer, group_pairs(1), [])
+  and {
+    run_dispatcher(f, redeemer, tx),
+    run_scan_facts_yield(tx),
+  }
+}
+
+/// The honest reference-script attachment step (canonical group [1]).
+test attach_wins_reference_script_group() {
+  let f = attach_fixture(protected_script_datum_output, 2)
+  let redeemer = honest_attach_redeemer(f, 2)
+  let tx = finalize_tx(f, redeemer, group_pairs(2), [])
+  and {
+    run_dispatcher(f, redeemer, tx),
+    run_reference_script_yield(tx),
+  }
+}
+
+/// The honest thin terminal: every fact recorded, no descriptor yields, the
+/// receive-scan splice wins.
+test terminal_wins_with_recorded_facts() {
   let f = accepting_fixture(protected_script_datum_output)
+  let redeemer = honest_redeemer(f)
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
+}
+
+/// Dropping one yield of the leaf group (its reference input, withdrawal,
+/// redeemer and index) starves the dispatcher's exact-length role walk.
+test attach_refuses_missing_yield() fail {
+  let f = attach_fixture(protected_script_datum_output, 0)
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
   let redeemer = finalize_redeemer(
@@ -866,20 +1004,21 @@ test finalize_refuses_three_yields() fail {
     value_claim,
     datum_claim,
     f.control_cbor,
-    [0, 1, 2],
+    [2, 3],
+    [0],
   )
   run_dispatcher(
     f,
     redeemer,
-    finalize_tx(f, redeemer, list.take(role_pairs(), 3), []),
+    finalize_tx(f, redeemer, list.take(group_pairs(0), 1), []),
   )
 }
 
-/// Swapping two entries of `yield_ref_input_indices` cross-binds the roles:
-/// position 0 (`V1VtLopDescScanFactsYield`) resolves to the reference input
-/// carrying the reference-script role token.
-test finalize_refuses_role_permutation() fail {
-  let f = accepting_fixture(protected_script_datum_output)
+/// Swapping the two indices of the leaf group cross-binds the roles: position
+/// 0 (`V1VtLopDescDatumSummaryYield`) resolves to the reference input
+/// carrying the value-summary role token.
+test attach_refuses_role_permutation() fail {
+  let f = attach_fixture(protected_script_datum_output, 0)
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
   let redeemer = finalize_redeemer(
@@ -887,16 +1026,51 @@ test finalize_refuses_role_permutation() fail {
     value_claim,
     datum_claim,
     f.control_cbor,
-    [1, 0, 2, 3],
+    [2, 3],
+    [1, 0],
   )
-  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, role_pairs(), []))
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, group_pairs(0), []))
 }
 
-/// A forged datum leaf summary passes the dispatcher (which never reads the
-/// claims) and the two yields that do not consume it, and is refused exactly
-/// by the datum-summary yield and the scan-facts composite rebuild.
-test finalize_refuses_forged_leaf_summary() {
-  let f = accepting_fixture(protected_script_datum_output)
+/// `attach_roles` must equal the first incomplete canonical group exactly:
+/// the same roles in the wrong order are refused by the group walk.
+test attach_refuses_wrong_grouping() fail {
+  let f = attach_fixture(protected_script_datum_output, 0)
+  let value_claim: Data = f.value_claim
+  let datum_claim: Data = f.datum_claim
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    [3, 2],
+    [1, 0],
+  )
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, group_pairs(0), []))
+}
+
+/// Re-attaching a group whose facts are already recorded is refused: the
+/// first incomplete group has moved on.
+test attach_refuses_replayed_group() fail {
+  let f = attach_fixture(protected_script_datum_output, 1)
+  let value_claim: Data = f.value_claim
+  let datum_claim: Data = f.datum_claim
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    [2, 3],
+    [0, 1],
+  )
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, group_pairs(0), []))
+}
+
+/// A forged datum leaf summary passes the dispatcher (which commits whatever
+/// the redeemer claims) and the value-summary yield, and is refused exactly
+/// by the datum-summary yield that owns the claim.
+test attach_refuses_forged_leaf_summary() {
+  let f = attach_fixture(protected_script_datum_output, 0)
   let value_claim: Data = f.value_claim
   let forged_option: Option<summary.DataSummaryV1> = Some(f.value_claim)
   let forged_claim: Data = forged_option
@@ -905,16 +1079,119 @@ test finalize_refuses_forged_leaf_summary() {
     value_claim,
     forged_claim,
     f.control_cbor,
-    [0, 1, 2, 3],
+    [2, 3],
+    [0, 1],
   )
-  let tx = finalize_tx(f, redeemer, role_pairs(), [])
+  let tx = finalize_tx(f, redeemer, group_pairs(0), [])
   and {
-    run_dispatcher(f, redeemer, tx),
-    run_reference_script_yield(tx),
     run_value_summary_yield(tx),
     !run_datum_summary_yield(tx),
-    !run_scan_facts_yield(tx),
   }
+}
+
+/// A terminal step over a control with a fact still missing (only the leaf
+/// group recorded) is refused by the fact gate.
+test terminal_refuses_missing_fact() fail {
+  let f = pre_of(protected_script_datum_output, context_network_zero, 1)
+  let terminal_fixture = with_successor_cbor(
+    f,
+    base_witness_cbor(
+      context_network_zero,
+      1,
+      spliced_receive_scan(protected_script_datum_output, f.descriptor_cbor),
+    ),
+  )
+  let redeemer = honest_redeemer(terminal_fixture)
+  run_dispatcher(
+    terminal_fixture,
+    redeemer,
+    finalize_tx(terminal_fixture, redeemer, [], []),
+  )
+}
+
+/// Facts recorded for another output's descriptor (a cross-dispute forgery)
+/// do not match the terminal's recomputation from its own descriptor bytes.
+test terminal_refuses_cross_output_facts() fail {
+  let output = protected_script_datum_output
+  let terminal = terminal_of(output)
+  let foreign_descriptor = commitment.encode(
+    honest_descriptor(terminal_of(protected_script_plain_output)),
+  )
+  let forged_control_cbor = proof.encode_control_v1(
+    with_fact_groups(terminal, foreign_descriptor, 3),
+  )
+  let work_cbor = ss_raw.append_extension_v1(
+    base_witness_cbor(
+      context_network_zero,
+      0,
+      vm_witness.empty_receive_purpose_scan_control(),
+    ),
+    forged_control_cbor,
+  )
+  let pre = machine_pre(context_network_zero, work_cbor)
+  let f = FinalizeFixtureV1 {
+    pre,
+    transition: ValidationOneStepWitnessV1 {
+      work_witness_cbor: work_cbor,
+      claimed_successor: pre,
+    },
+    descriptor_cbor: commitment.encode(honest_descriptor(terminal)),
+    signer_proof: NoSignerSetProof,
+    control_cbor: forged_control_cbor,
+    value_claim: honest_value(terminal),
+    datum_claim: honest_datum(terminal),
+  }
+  let terminal_fixture = with_successor_cbor(
+    f,
+    base_witness_cbor(
+      context_network_zero,
+      1,
+      spliced_receive_scan(output, f.descriptor_cbor),
+    ),
+  )
+  let redeemer = honest_redeemer(terminal_fixture)
+  run_dispatcher(
+    terminal_fixture,
+    redeemer,
+    finalize_tx(terminal_fixture, redeemer, [], []),
+  )
+}
+
+/// A stale control (the pre-attachment terminal without facts) does not match
+/// the frame's item-30 pin once the facts are recorded.
+test terminal_refuses_stale_control() fail {
+  let f = accepting_fixture(protected_script_datum_output)
+  let stale_cbor = proof.encode_control_v1(
+    terminal_of(protected_script_datum_output),
+  )
+  let value_claim: Data = f.value_claim
+  let datum_claim: Data = f.datum_claim
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    stale_cbor,
+    [],
+    [],
+  )
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
+}
+
+/// The thin terminal carries no descriptor yields: a non-empty
+/// `yield_ref_input_indices` is refused outright.
+test terminal_refuses_yield_indices() fail {
+  let f = accepting_fixture(protected_script_datum_output)
+  let value_claim: Data = f.value_claim
+  let datum_claim: Data = f.datum_claim
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    [],
+    [0],
+  )
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, role_pairs(), []))
 }
 
 /// The plan's forged-splice-offset case, restated at the shipped surface: a
@@ -943,8 +1220,8 @@ test finalize_refuses_forged_receive_scan_splice() fail {
 }
 
 /// An output addressed to the wrong network wins only the exact
-/// `reject_network_id_mismatch` terminal -- with all four yields still
-/// required and passing.
+/// `reject_network_id_mismatch` terminal -- with the fact gate still running
+/// first over the recorded facts.
 test finalize_emits_network_id_terminal() {
   let f = rejecting_fixture(
     protected_script_plain_output,
@@ -953,11 +1230,7 @@ test finalize_emits_network_id_terminal() {
     reject_network_id_mismatch,
   )
   let redeemer = honest_redeemer(f)
-  let tx = finalize_tx(f, redeemer, role_pairs(), [])
-  and {
-    run_dispatcher(f, redeemer, tx),
-    run_all_yields(tx),
-  }
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
 }
 
 /// A protected key-payment output whose signer is provably absent from the
@@ -971,18 +1244,14 @@ test finalize_emits_missing_witness_terminal() {
     reject_missing_required_witness,
   )
   let redeemer = honest_redeemer(f)
-  let tx = finalize_tx(f, redeemer, role_pairs(), [])
-  and {
-    run_dispatcher(f, redeemer, tx),
-    run_all_yields(tx),
-  }
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
 }
 
 /// A yield fed a dispatcher redeemer whose pinned control is not terminal
 /// (the initial LOP control) aborts in the shared `terminal_scan` clause.
 test yield_refuses_non_terminal_control() fail {
   let output = protected_script_datum_output
-  let f = accepting_fixture(output)
+  let f = attach_fixture(output, 1)
   let Pair(item_commitment, _chunk_proof) = one_chunk_material(0, output)
   let initial = proof.initial_control_v1(
     0,
@@ -996,16 +1265,17 @@ test yield_refuses_non_terminal_control() fail {
     value_claim,
     datum_claim,
     proof.encode_control_v1(initial),
-    [0, 1, 2, 3],
+    [0],
+    [0],
   )
-  run_scan_facts_yield(finalize_tx(f, redeemer, role_pairs(), []))
+  run_scan_facts_yield(finalize_tx(f, redeemer, group_pairs(1), []))
 }
 
 /// Two inputs at dispatcher script addresses defeat the yields' unique
 /// dispatch: `unique_semantic_dispatch_v1` requires exactly one.
 test yield_refuses_two_dispatcher_inputs() fail {
-  let f = accepting_fixture(protected_script_datum_output)
-  let redeemer = honest_redeemer(f)
+  let f = attach_fixture(protected_script_datum_output, 1)
+  let redeemer = honest_attach_redeemer(f, 1)
   let base = fixture.ct_thread_input(ct_asset)
   let second = l1.Input {
     ..base,
@@ -1014,5 +1284,5 @@ test yield_refuses_two_dispatcher_inputs() fail {
       output_index: 7,
     },
   }
-  run_scan_facts_yield(finalize_tx(f, redeemer, role_pairs(), [second]))
+  run_scan_facts_yield(finalize_tx(f, redeemer, group_pairs(1), [second]))
 }

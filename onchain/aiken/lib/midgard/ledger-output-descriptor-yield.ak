@@ -29,7 +29,7 @@ pub fn dispatch(
   expect
       [
         descriptor_data, _signer_proof_data, control_data, value_summary_data,
-        datum_summary_data, _yield_ref_input_indices,
+        datum_summary_data, _attach_roles, _yield_ref_input_indices,
       ]
     = extra
   expect claimed_value_summary: summary.DataSummaryV1 = value_summary_data

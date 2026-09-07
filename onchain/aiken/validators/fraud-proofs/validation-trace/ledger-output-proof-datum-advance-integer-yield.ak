@@ -13,12 +13,7 @@ validator main(dispatcher_script_hashes: List<ScriptHash>) {
     )
     shared.attest(
       claim,
-      datum.advance_integer(
-        claim.control,
-        claim.witness,
-        claim.claimed_scalar,
-        claim.claimed_span,
-      ),
+      datum.advance_integer(claim.control, claim.witness, claim.claimed_scalar),
     )
   }
 

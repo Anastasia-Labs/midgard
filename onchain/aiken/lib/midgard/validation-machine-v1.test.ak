@@ -1159,6 +1159,10 @@ type AuthenticatedOutputMaterialV1 {
   initial: ledger_output_proof_v1.LedgerOutputProofControlV1,
   first_successor: ledger_output_proof_v1.LedgerOutputProofControlV1,
   terminal: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  /// The terminal with all four descriptor facts attached (the canonical
+  /// three attachment groups applied in order), as the finalize verifiers
+  /// require before the thin terminal transition.
+  facts_terminal: ledger_output_proof_v1.LedgerOutputProofControlV1,
   descriptor_cbor: ByteArray,
 }
 
@@ -1257,13 +1261,27 @@ fn authenticated_output_material(
     midgard_tx_out,
     cardano_spend_datum,
   }
+  let descriptor_cbor = ledger_output_commitment_v1.encode(descriptor)
+  expect Some(facts_one) = ledger_output_proof_v1.fact_attach_v1(
+    terminal,
+    descriptor_cbor,
+  )
+  expect Some(facts_two) = ledger_output_proof_v1.fact_attach_v1(
+    facts_one,
+    descriptor_cbor,
+  )
+  expect Some(facts_terminal) = ledger_output_proof_v1.fact_attach_v1(
+    facts_two,
+    descriptor_cbor,
+  )
   AuthenticatedOutputMaterialV1 {
     item_commitment,
     chunk_proof,
     initial,
     first_successor,
     terminal,
-    descriptor_cbor: ledger_output_commitment_v1.encode(descriptor),
+    facts_terminal,
+    descriptor_cbor,
   }
 }
 
@@ -4413,7 +4431,7 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
   }
   let pending_terminal = vm_machine_types.ResolveInputOutputProofV1 {
     ..pending_initial,
-    output_proof: material.terminal,
+    output_proof: material.facts_terminal,
   }
   let finalize_pre_cbor = vm_witness.encode_resolve_inputs_witness(
     proof_source.compact_cbor,
@@ -6314,7 +6332,7 @@ test script_sources_collects_protected_receive_source() {
     0,
     output_frontier,
     vm_witness.empty_receive_purpose_scan_control(),
-    material.terminal,
+    material.facts_terminal,
     22,
   )
   let Pair(post, _) = script_sources_output_step_fixture_with_resolved_items(
@@ -6603,7 +6621,7 @@ fn script_sources_rejects_wrong_output_network(
     0,
     output_frontier,
     vm_witness.empty_receive_purpose_scan_control(),
-    material.terminal,
+    material.facts_terminal,
     15,
   )
   vm_script_sources.verify_script_sources_output_proof_finalize_semantics_v1(
@@ -6656,7 +6674,7 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
     0,
     output_frontier,
     vm_witness.empty_receive_purpose_scan_control(),
-    material.terminal,
+    material.facts_terminal,
     15,
   )
   let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"

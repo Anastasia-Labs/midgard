@@ -1,13 +1,19 @@
 //// ScriptSources output-proof finalize dispatcher. Descriptor exactness of
 //// the terminal ledger-output-proof control runs in the four authenticated
 //// descriptor yields (`ledger-output-descriptor-*-yield.ak`, conjunction ==
-//// `descriptor_is_exact_v1`); this validator opens the stage-five
-//// ScriptSources frame, pins the terminal control bytes the yields attest
-//// against, requires all four yields in every branch, and performs the
-//// network / protected-output-authorization arms and the successor splice
-//// itself. See
+//// `descriptor_is_exact_v1`), spread over the fact-attachment steps: each
+//// attachment transaction carries one canonical group of descriptor yields
+//// and records their fact commitments (binding the descriptor bytes and the
+//// claimed summaries each yield consumed) in the terminal control; the thin
+//// terminal step carries no descriptor yields and instead recomputes all
+//// four commitments from one redeemer triple, so a fact can only have
+//// entered the control through its yield's attestation over exactly these
+//// bytes. The terminal then performs the network /
+//// protected-output-authorization arms and the successor splice itself. See
 //// docs/fault-proofs/size-plans/validation-trace-script-sources-output-proof-finalize-semantic-v1.md
-//// §4.1-4.2 and §10.x.
+//// §4.1-4.2 and §10.x, and
+//// docs/fault-proofs/size-plans/ledger-output-proof-shared-implementation.md
+//// for the chained-attachment ruling.
 
 use aiken/builtin
 use aiken/cbor
@@ -18,7 +24,9 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_proof_raw as lop_raw
 use midgard/ledger_output_proof_roles
+use midgard/ledger_output_proof_stages as lop_stages
 use midgard/ledger_output_v1
 use midgard/rejection_reason_v1.{
   reject_missing_required_witness, reject_network_id_mismatch,
@@ -74,8 +82,13 @@ pub type ActionV1 {
     /// `Option<DataSummaryV1>` on the wire; pinned by the datum-summary yield
     /// and consumed by the scan-facts yield.
     claimed_datum_summary: Data,
-    /// Reference-input indices of the four descriptor yields, in
-    /// `descriptor_roles` order, exactly.
+    /// The descriptor roles whose facts this step attaches — exactly the
+    /// first canonical `fact_attach_groups_v1` group with unrecorded facts —
+    /// or `[]` for the thin terminal step, which requires every fact
+    /// recorded and exact and carries no descriptor yields.
+    attach_roles: List<Int>,
+    /// Reference-input indices of this step's descriptor yields, in
+    /// `attach_roles` order, exactly; `[]` at the thin terminal.
     yield_ref_input_indices: List<Int>,
   }
 }
@@ -111,8 +124,9 @@ validator main(
         descriptor_cbor,
         signer_proof,
         control_cbor,
-        claimed_value_summary: _,
-        claimed_datum_summary: _,
+        claimed_value_summary,
+        claimed_datum_summary,
+        attach_roles,
         yield_ref_input_indices,
       }) -> {
         let auxiliary = LedgerOutputProofFinalizeWitness {
@@ -135,6 +149,9 @@ validator main(
             descriptor_cbor,
             signer_proof,
             control_cbor,
+            claimed_value_summary,
+            claimed_datum_summary,
+            attach_roles,
             yield_ref_input_indices,
             reference_script_auth_policy_id,
             tx,
@@ -157,6 +174,9 @@ fn output_proof_finalize_dispatch(
   descriptor_cbor: ByteArray,
   signer_proof: SignerSetProofV1,
   control_cbor: ByteArray,
+  claimed_value_summary: Data,
+  claimed_datum_summary: Data,
+  attach_roles: List<Int>,
   yield_ref_input_indices: List<Int>,
   reference_script_auth_policy_id: PolicyId,
   tx: Transaction,
@@ -167,18 +187,85 @@ fn output_proof_finalize_dispatch(
     frame_item_count,
     output_proof_stage,
   )
+  let control = lop_raw.open(control_cbor)
+  if attach_roles != [] {
+    // A fact-attachment step: the group's descriptor yields attest their
+    // exactness clauses over exactly these control bytes, this descriptor and
+    // these claimed summaries; the successor records the group's fact
+    // commitments in the terminal control.
+    and {
+      validation_semantic_yield_v1.require_semantic_yields_v1(
+        tx,
+        reference_script_auth_policy_id,
+        list.map(attach_roles, ledger_output_proof_roles.descriptor_role),
+        yield_ref_input_indices,
+      ),
+      raw.item_bytes_v1(frame, extension_index) == control_cbor,
+      when
+        lop_stages.fact_attach(
+          control,
+          attach_roles,
+          descriptor_cbor,
+          claimed_value_summary,
+          claimed_datum_summary,
+        )
+      is {
+        None -> False
+        Some(next_control) ->
+          raw.successor_is_exact_v1(
+            pre,
+            transition,
+            raw.replace_extension_v1(
+              transition.work_witness_cbor,
+              control_cbor,
+              lop_raw.encode(next_control),
+            ),
+          )
+      },
+    }
+  } else {
+    output_proof_terminal_dispatch(
+      pre,
+      transition,
+      descriptor_cbor,
+      signer_proof,
+      control_cbor,
+      control,
+      claimed_value_summary,
+      claimed_datum_summary,
+      yield_ref_input_indices,
+      frame,
+    )
+  }
+}
+
+fn output_proof_terminal_dispatch(
+  pre: ValidationMachineStateV1,
+  transition: ValidationOneStepWitnessV1,
+  descriptor_cbor: ByteArray,
+  signer_proof: SignerSetProofV1,
+  control_cbor: ByteArray,
+  control: lop_raw.Frame,
+  claimed_value_summary: Data,
+  claimed_datum_summary: Data,
+  yield_ref_input_indices: List<Int>,
+  frame: raw.RawScriptSourcesFrameV1,
+) -> Bool {
   let output_cursor = raw.item_int_v1(frame, output_cursor_index)
   let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
   and {
-    // The four descriptor yields together re-state `descriptor_is_exact_v1`
-    // on exactly these control bytes and this descriptor; the monolith
-    // checked it before either rejection arm, so they are required in every
-    // branch.
-    validation_semantic_yield_v1.require_semantic_yields_v1(
-      tx,
-      reference_script_auth_policy_id,
-      ledger_output_proof_roles.descriptor_roles(),
-      yield_ref_input_indices,
+    // The thin terminal carries no descriptor yields: every fact commitment
+    // recorded by the attachment steps must equal the commitment recomputed
+    // from this redeemer's descriptor bytes and claimed summaries, which
+    // together re-state `descriptor_is_exact_v1` on exactly these control
+    // bytes and this descriptor; the monolith checked it before either
+    // rejection arm, so the gate runs in every branch.
+    yield_ref_input_indices == [],
+    lop_stages.facts_are_exact(
+      control,
+      descriptor_cbor,
+      claimed_value_summary,
+      claimed_datum_summary,
     ),
     raw.item_bytes_v1(frame, extension_index) == control_cbor,
     output_cursor < raw.item_int_v1(frame, output_count_index),

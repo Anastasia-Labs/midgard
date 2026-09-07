@@ -13,11 +13,7 @@ validator main(dispatcher_script_hashes: List<ScriptHash>) {
     )
     shared.attest(
       claim,
-      stages.script_hash(
-        claim.control,
-        shared.chunk_witness(claim.witness),
-        claim.claimed_span,
-      ),
+      stages.script_hash(claim.control, shared.window_witness(claim.witness)),
     )
   }
 

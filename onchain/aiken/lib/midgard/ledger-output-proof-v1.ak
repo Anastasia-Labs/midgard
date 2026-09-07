@@ -1,5 +1,7 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
+use aiken/crypto
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1
 use midgard/bounded_item_v1
@@ -34,6 +36,15 @@ pub const stage_native_script: Int = 5
 
 pub const stage_terminal: Int = 6
 
+/// The once-verified authenticated output span whose bytes span-consuming
+/// stage steps later bind by digest instead of re-running the chunk merkle
+/// verification.
+pub type LedgerOutputSpanWindowV1 {
+  start: Int,
+  length: Int,
+  digest: ByteArray,
+}
+
 pub type LedgerOutputProofControlV1 {
   version: Int,
   stage: Int,
@@ -47,6 +58,11 @@ pub type LedgerOutputProofControlV1 {
   reference_script_peaks: List<validation_merkle_v1.FrontierPeak>,
   script_hash: Option<blake2b_224_trace_v1.Blake2b224TraceControlV1>,
   native_script: Option<native_script_scan_v1.NativeScriptStructureControlV1>,
+  span_window: Option<LedgerOutputSpanWindowV1>,
+  scan_facts_fact: Option<ByteArray>,
+  reference_script_fact: Option<ByteArray>,
+  datum_summary_fact: Option<ByteArray>,
+  value_summary_fact: Option<ByteArray>,
 }
 
 pub type LedgerOutputProofWitnessV1 {
@@ -63,12 +79,18 @@ pub type LedgerOutputProofWitnessV1 {
   }
   LedgerOutputProofDatum {
     action: cek_data_traverse_v1.DataTraverseActionV1,
-    chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
-    next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+    window: Option<ByteArray>,
   }
   LedgerOutputProofNativeFrame {
     frame: native_script_scan_v1.NativeScriptFrameV1,
   }
+  LedgerOutputProofSpanAttach {
+    start: Int,
+    length: Int,
+    chunk_proof: bounded_item_v1.ChunkProofV1,
+    next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  }
+  LedgerOutputProofWindow { bytes: ByteArray }
 }
 
 pub type LedgerOutputProofStepResultV1 {
@@ -118,6 +140,18 @@ fn native_script_is_terminal(control: LedgerOutputProofControlV1) -> Bool {
     Some(native_control) -> and {
         native_script_is_well_formed(control),
         native_script_scan_v1.structure_terminal_is_exact_v1(native_control),
+      }
+  }
+}
+
+/// A descriptor fact commitment may only be recorded on a terminal-stage
+/// control: the fact-attachment steps run after the traversal completes.
+fn fact_is_well_formed(stage: Int, fact: Option<ByteArray>) -> Bool {
+  when fact is {
+    None -> True
+    Some(commitment) -> and {
+        stage == stage_terminal,
+        bytearray.length(commitment) == 32,
       }
   }
 }
@@ -183,6 +217,21 @@ pub fn control_is_well_formed(control: LedgerOutputProofControlV1) -> Bool {
     control.output_index >= 0,
     control.total_length > 0,
     bytearray.length(control.item_commitment) == 32,
+    when control.span_window is {
+      None -> True
+      Some(window) -> and {
+          control.stage >= stage_datum_traversal,
+          window.start >= 0,
+          window.length > 0,
+          window.length <= bounded_item_v1.chunk_bytes,
+          window.start + window.length <= control.total_length,
+          bytearray.length(window.digest) == 32,
+        }
+    },
+    fact_is_well_formed(control.stage, control.scan_facts_fact),
+    fact_is_well_formed(control.stage, control.reference_script_fact),
+    fact_is_well_formed(control.stage, control.datum_summary_fact),
+    fact_is_well_formed(control.stage, control.value_summary_fact),
     ledger_output_scan_v1.control_is_well_formed(control.output_scan),
     control.output_scan.cursor <= control.total_length,
     if control.stage == stage_structure {
@@ -294,6 +343,11 @@ pub fn initial_control_v1(
     reference_script_peaks: validation_merkle_v1.empty_frontier(),
     script_hash: None,
     native_script: None,
+    span_window: None,
+    scan_facts_fact: None,
+    reference_script_fact: None,
+    datum_summary_fact: None,
+    value_summary_fact: None,
   }
   expect control_is_well_formed(control)
   control
@@ -308,7 +362,7 @@ pub fn encode_initial_control_v1(
   expect output_index >= 0
   expect total_length > 0
   expect bytearray.length(item_commitment) == 32
-  #"8c"
+  #"91"
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(cbor.serialise(stage_structure))
     |> bytearray.concat(cbor.serialise(output_index))
@@ -316,6 +370,7 @@ pub fn encode_initial_control_v1(
     |> bytearray.concat(cbor.serialise(builtin.b_data(item_commitment)))
     |> bytearray.concat(ledger_output_scan_v1.initial_control_cbor_v1)
     |> bytearray.concat(#"d87a80d87a800080d87a80d87a80")
+    |> bytearray.concat(#"d87a80d87a80d87a80d87a80d87a80")
 }
 
 fn encode_optional_script_hash(
@@ -440,9 +495,34 @@ fn decode_peak_items(
   }
 }
 
+fn encode_optional_span_window(
+  window: Option<LedgerOutputSpanWindowV1>,
+) -> ByteArray {
+  when window is {
+    None -> #"d87a80"
+    Some(record) ->
+      #"83"
+        |> bytearray.concat(cbor.serialise(record.start))
+        |> bytearray.concat(cbor.serialise(record.length))
+        |> bytearray.concat(cbor.serialise(builtin.b_data(record.digest)))
+        |> bytearray.concat(#"ff")
+        |> bytearray.concat(#"d8799f", _)
+  }
+}
+
+fn encode_optional_fact(fact: Option<ByteArray>) -> ByteArray {
+  when fact is {
+    None -> #"d87a80"
+    Some(commitment) ->
+      cbor.serialise(builtin.b_data(commitment))
+        |> bytearray.concat(#"ff")
+        |> bytearray.concat(#"d8799f", _)
+  }
+}
+
 pub fn encode_control_v1(control: LedgerOutputProofControlV1) -> ByteArray {
   expect control_is_well_formed(control)
-  encode_definite_array_header(12)
+  encode_definite_array_header(17)
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.output_index))
@@ -459,6 +539,44 @@ pub fn encode_control_v1(control: LedgerOutputProofControlV1) -> ByteArray {
       )
     |> bytearray.concat(encode_optional_script_hash(control.script_hash))
     |> bytearray.concat(encode_optional_native_script(control.native_script))
+    |> bytearray.concat(encode_optional_span_window(control.span_window))
+    |> bytearray.concat(encode_optional_fact(control.scan_facts_fact))
+    |> bytearray.concat(encode_optional_fact(control.reference_script_fact))
+    |> bytearray.concat(encode_optional_fact(control.datum_summary_fact))
+    |> bytearray.concat(encode_optional_fact(control.value_summary_fact))
+}
+
+fn optional_span_window_from_data(
+  data: Data,
+) -> Option<LedgerOutputSpanWindowV1> {
+  let Pair(index, fields) = builtin.un_constr_data(data)
+  if index == 1 {
+    expect fields == []
+    None
+  } else {
+    expect index == 0
+    expect [record] = fields
+    expect [start_data, length_data, digest_data] = builtin.un_list_data(record)
+    Some(
+      LedgerOutputSpanWindowV1 {
+        start: builtin.un_i_data(start_data),
+        length: builtin.un_i_data(length_data),
+        digest: builtin.un_b_data(digest_data),
+      },
+    )
+  }
+}
+
+fn optional_fact_from_data(data: Data) -> Option<ByteArray> {
+  let Pair(index, fields) = builtin.un_constr_data(data)
+  if index == 1 {
+    expect fields == []
+    None
+  } else {
+    expect index == 0
+    expect [value] = fields
+    Some(builtin.un_b_data(value))
+  }
 }
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputProofControlV1 {
@@ -468,7 +586,9 @@ pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputProofControlV1 
         version_data, stage_data, output_index_data, total_length_data,
         item_commitment_data, output_scan_data, value_data, datum_data,
         reference_script_count_data, reference_script_peaks_data,
-        script_hash_data, native_script_data,
+        script_hash_data, native_script_data, span_window_data,
+        scan_facts_fact_data, reference_script_fact_data,
+        datum_summary_fact_data, value_summary_fact_data,
       ]
     = builtin.un_list_data(data)
   let control = LedgerOutputProofControlV1 {
@@ -486,6 +606,11 @@ pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputProofControlV1 
       |> decode_peak_items,
     script_hash: optional_script_hash_from_data(script_hash_data),
     native_script: optional_native_script_from_data(native_script_data),
+    span_window: optional_span_window_from_data(span_window_data),
+    scan_facts_fact: optional_fact_from_data(scan_facts_fact_data),
+    reference_script_fact: optional_fact_from_data(reference_script_fact_data),
+    datum_summary_fact: optional_fact_from_data(datum_summary_fact_data),
+    value_summary_fact: optional_fact_from_data(value_summary_fact_data),
   }
   expect control_is_well_formed(control)
   expect encode_control_v1(control) == control_cbor
@@ -584,82 +709,6 @@ fn authenticated_chunk_window(
   )
 }
 
-/// The slicing half of `authenticated_output_span_for_output`: the same
-/// bounds and chunk-shape branches over the same witness, without the two
-/// chunk merkle membership checks. A stage yield may take a span through this
-/// function only when the span attestation yield has verified the same
-/// `(absolute_start, length, witness)` triple with the merkle checks in the
-/// same transaction; the two functions are deterministic on the shared
-/// dispatcher action, so the bytes are the authenticated span whenever both
-/// succeed (see `span_slice_matches_authenticated_span` in
-/// ledger-output-proof-v1.test.ak).
-pub fn output_span_slice_v1(
-  total_length: Int,
-  absolute_start: Int,
-  length: Int,
-  witness: LedgerOutputProofWitnessV1,
-) -> Option<ByteArray> {
-  when witness is {
-    LedgerOutputProofChunks { chunk_proof, next_chunk_proof } ->
-      output_span_slice_raw_v1(
-        total_length,
-        absolute_start,
-        length,
-        chunk_proof.chunk,
-        when next_chunk_proof is {
-          None -> None
-          Some(next) -> Some(next.chunk)
-        },
-      )
-    _ -> None
-  }
-}
-
-/// `output_span_slice_v1` on the raw chunk contents, for a consumer that
-/// reads the chunk bytes straight out of the shared witness data (field 5 of
-/// each `ChunkProofV1` constructor) without linking the checked decoder; the
-/// span attestation yield decodes and authenticates the same witness data in
-/// the same transaction, so the conjunction only passes on the checked shape.
-pub fn output_span_slice_raw_v1(
-  total_length: Int,
-  absolute_start: Int,
-  length: Int,
-  first_chunk: ByteArray,
-  next_chunk: Option<ByteArray>,
-) -> Option<ByteArray> {
-  if or {
-    length <= 0,
-    length > bounded_item_v1.chunk_bytes,
-    absolute_start < 0,
-    absolute_start + length > total_length,
-  } {
-    None
-  } else {
-    let first_chunk_index = absolute_start / bounded_item_v1.chunk_bytes
-    let last_chunk_index = ( absolute_start + length - 1 ) / bounded_item_v1.chunk_bytes
-    let local_start = absolute_start - first_chunk_index * bounded_item_v1.chunk_bytes
-    if last_chunk_index > first_chunk_index + 1 {
-      None
-    } else if last_chunk_index == first_chunk_index {
-      if next_chunk == None {
-        Some(builtin.slice_bytearray(local_start, length, first_chunk))
-      } else {
-        None
-      }
-    } else {
-      when next_chunk is {
-        None -> None
-        Some(next) ->
-          Some(
-            first_chunk
-              |> bytearray.concat(next)
-              |> builtin.slice_bytearray(local_start, length, _),
-          )
-      }
-    }
-  }
-}
-
 pub fn authenticated_output_span_for_output(
   output_index: Int,
   total_length: Int,
@@ -741,6 +790,70 @@ fn authenticated_output_span(
     length,
     witness,
   )
+}
+
+/// Bind redeemer-supplied window bytes to the recorded span-window commitment
+/// (one hash plus equality) and slice the demanded span out of them. This is
+/// the consuming half of the span-attach step: the digest was recorded by an
+/// earlier step whose chunk merkle verification proved these exact bytes.
+pub fn bound_window_bytes_v1(
+  span_window: Option<LedgerOutputSpanWindowV1>,
+  absolute_start: Int,
+  length: Int,
+  bytes: ByteArray,
+) -> Option<ByteArray> {
+  when span_window is {
+    None -> None
+    Some(window) ->
+      if and {
+        length > 0,
+        absolute_start >= window.start,
+        absolute_start + length <= window.start + window.length,
+        bytearray.length(bytes) == window.length,
+        crypto.blake2b_256(bytes) == window.digest,
+      } {
+        Some(
+          builtin.slice_bytearray(absolute_start - window.start, length, bytes),
+        )
+      } else {
+        None
+      }
+  }
+}
+
+/// The span-attach step: verify the chunk merkle membership of the claimed
+/// output span exactly once and record its `(start, length, digest)` window
+/// in the control. Valid only at the span-consuming stages.
+fn span_attach_step(
+  control: LedgerOutputProofControlV1,
+  start: Int,
+  length: Int,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<LedgerOutputProofStepResultV1> {
+  when
+    authenticated_output_span(
+      control,
+      start,
+      length,
+      LedgerOutputProofChunks { chunk_proof, next_chunk_proof },
+    )
+  is {
+    None -> None
+    Some(bytes) ->
+      advanced(
+        LedgerOutputProofControlV1 {
+          ..control,
+          span_window: Some(
+            LedgerOutputSpanWindowV1 {
+              start,
+              length,
+              digest: crypto.blake2b_256(bytes),
+            },
+          ),
+        },
+      )
+  }
 }
 
 fn advanced(
@@ -932,32 +1045,26 @@ fn datum_traversal_step(
     }
   } else {
     when witness is {
-      LedgerOutputProofDatum { action, chunk_proof, next_chunk_proof } -> {
+      LedgerOutputProofDatum { action, window } -> {
         let authenticated: Option<Option<ByteArray>> = when
           cek_data_traverse_v1.next_source_span_v1(datum_control)
         is {
           None ->
-            if and {
-              chunk_proof == None,
-              next_chunk_proof == None,
-            } {
+            if window == None {
               Some(None)
             } else {
               None
             }
           Some(span) ->
-            when chunk_proof is {
+            when window is {
               None -> None
-              Some(first) ->
+              Some(window_bytes) ->
                 when
-                  authenticated_output_span(
-                    control,
+                  bound_window_bytes_v1(
+                    control.span_window,
                     span.absolute_start,
                     span.length,
-                    LedgerOutputProofChunks {
-                      chunk_proof: first,
-                      next_chunk_proof,
-                    },
+                    window_bytes,
                   )
                 is {
                   None -> None
@@ -1018,7 +1125,16 @@ fn reference_script_commitment_step(
     )
     let absolute_start = item_offset + chunk_index * bounded_item_v1.chunk_bytes
     when
-      authenticated_output_span(control, absolute_start, chunk_length, witness)
+      when witness is {
+        LedgerOutputProofWindow { bytes } ->
+          bound_window_bytes_v1(
+            control.span_window,
+            absolute_start,
+            chunk_length,
+            bytes,
+          )
+        _ -> None
+      }
     is {
       None -> None
       Some(chunk) ->
@@ -1095,12 +1211,16 @@ fn script_hash_step(
         None
       }
     } else {
-      authenticated_output_span(
-        control,
-        absolute_start,
-        content_length,
-        witness,
-      )
+      when witness is {
+        LedgerOutputProofWindow { bytes } ->
+          bound_window_bytes_v1(
+            control.span_window,
+            absolute_start,
+            content_length,
+            bytes,
+          )
+        _ -> None
+      }
     }
     when content is {
       None -> None
@@ -1188,6 +1308,27 @@ pub fn step_v1(
 ) -> Option<LedgerOutputProofStepResultV1> {
   if !control_is_well_formed(control) {
     None
+  } else if when witness is {
+    LedgerOutputProofSpanAttach { .. } -> True
+    _ -> False
+  } {
+    expect
+        LedgerOutputProofSpanAttach {
+          start,
+          length,
+          chunk_proof,
+          next_chunk_proof,
+        }
+      = witness
+    if or {
+      control.stage == stage_datum_traversal,
+      control.stage == stage_reference_script_commitment,
+      control.stage == stage_script_hash,
+    } {
+      span_attach_step(control, start, length, chunk_proof, next_chunk_proof)
+    } else {
+      None
+    }
   } else if control.stage == stage_structure {
     structure_step(control, witness)
   } else if control.stage == stage_value_fold {
@@ -1485,6 +1626,216 @@ fn descriptor_reference_script_is_exact_v1(
             }
         }
     }
+  }
+}
+
+/// The commitment a fact-attachment step records for descriptor role `role`
+/// (0 scan facts, 1 reference script, 2 datum summary, 3 value summary). Each
+/// fact binds the exact descriptor bytes plus every prover-claimed summary its
+/// descriptor yield consumed, so the thin terminal's recomputation forces one
+/// consistent `(descriptor, value summary, datum summary)` triple across the
+/// whole attachment chain.
+pub fn fact_commitment_v1(
+  role: Int,
+  descriptor_cbor: ByteArray,
+  claimed_value_summary: Data,
+  claimed_datum_summary: Data,
+) -> ByteArray {
+  let descriptor_data = builtin.b_data(descriptor_cbor)
+  let payload = if role == 0 {
+    [descriptor_data, claimed_value_summary, claimed_datum_summary]
+  } else if role == 1 {
+    [descriptor_data]
+  } else if role == 2 {
+    [descriptor_data, claimed_datum_summary]
+  } else {
+    expect role == 3
+    [descriptor_data, claimed_value_summary]
+  }
+  crypto.blake2b_256(builtin.serialise_data(builtin.list_data(payload)))
+}
+
+pub fn fact_v1(
+  control: LedgerOutputProofControlV1,
+  role: Int,
+) -> Option<ByteArray> {
+  if role == 0 {
+    control.scan_facts_fact
+  } else if role == 1 {
+    control.reference_script_fact
+  } else if role == 2 {
+    control.datum_summary_fact
+  } else {
+    expect role == 3
+    control.value_summary_fact
+  }
+}
+
+pub fn with_fact_v1(
+  control: LedgerOutputProofControlV1,
+  role: Int,
+  commitment: ByteArray,
+) -> LedgerOutputProofControlV1 {
+  if role == 0 {
+    LedgerOutputProofControlV1 { ..control, scan_facts_fact: Some(commitment) }
+  } else if role == 1 {
+    LedgerOutputProofControlV1 {
+      ..control,
+      reference_script_fact: Some(commitment),
+    }
+  } else if role == 2 {
+    LedgerOutputProofControlV1 {
+      ..control,
+      datum_summary_fact: Some(commitment),
+    }
+  } else {
+    expect role == 3
+    LedgerOutputProofControlV1 {
+      ..control,
+      value_summary_fact: Some(commitment),
+    }
+  }
+}
+
+pub fn facts_complete_v1(control: LedgerOutputProofControlV1) -> Bool {
+  and {
+    control.scan_facts_fact != None,
+    control.reference_script_fact != None,
+    control.datum_summary_fact != None,
+    control.value_summary_fact != None,
+  }
+}
+
+/// The claimed-summary channel of the finalize dispatchers, computed from the
+/// terminal control itself: the `DataSummaryV1` of the output's value and the
+/// `Option<DataSummaryV1>` of its datum result, both as their wire data.
+pub fn terminal_claimed_summaries_v1(
+  control: LedgerOutputProofControlV1,
+) -> Option<(Data, Data)> {
+  if !terminal_is_exact_v1(control) {
+    None
+  } else {
+    when value_summary_v1(control) is {
+      None -> None
+      Some(value_summary) -> {
+        let value_data: Data = value_summary
+        let datum_data: Data = if control.output_scan.datum_offset == -1 {
+          builtin.constr_data(1, [])
+        } else {
+          when control.datum is {
+            None -> builtin.constr_data(1, [])
+            Some(datum_control) ->
+              when cek_data_traverse_v1.finalize_v1(datum_control) is {
+                None -> builtin.constr_data(1, [])
+                Some(datum_summary) -> {
+                  let inner: Data = datum_summary
+                  builtin.constr_data(0, [inner])
+                }
+              }
+          }
+        }
+        Some((value_data, datum_data))
+      }
+    }
+  }
+}
+
+/// The canonical fact-attachment groups, in machine order: the two leaf
+/// summaries first, then the composite scan facts, then the reference script.
+/// The grouping bounds each attachment transaction's descriptor-yield count so
+/// its measured memory stays within the positive-path basis.
+pub fn fact_attach_groups_v1() -> List<List<Int>> {
+  [[2, 3], [0], [1]]
+}
+
+/// One canonical fact-attachment machine step on a terminal control: record
+/// the next incomplete group's fact commitments, computed from the descriptor
+/// bytes and the control's own terminal summaries. `None` when every fact is
+/// already recorded (the next step is the thin terminal finalize).
+pub fn fact_attach_v1(
+  control: LedgerOutputProofControlV1,
+  descriptor_cbor: ByteArray,
+) -> Option<LedgerOutputProofControlV1> {
+  when terminal_claimed_summaries_v1(control) is {
+    None -> None
+    Some((value_data, datum_data)) -> {
+      let next_group = list.find(
+        fact_attach_groups_v1(),
+        fn(group) {
+          list.any(group, fn(role) { fact_v1(control, role) == None })
+        },
+      )
+      when next_group is {
+        None -> None
+        Some(group) -> {
+          expect list.all(group, fn(role) { fact_v1(control, role) == None })
+          Some(
+            list.foldl(
+              group,
+              control,
+              fn(role, acc) {
+                with_fact_v1(
+                  acc,
+                  role,
+                  fact_commitment_v1(
+                    role,
+                    descriptor_cbor,
+                    value_data,
+                    datum_data,
+                  ),
+                )
+              },
+            ),
+          )
+        }
+      }
+    }
+  }
+}
+
+/// The thin terminal's fact gate: every recorded fact equals the commitment
+/// recomputed from the finalize redeemer's descriptor bytes and claimed
+/// summaries — a fact can therefore only have entered the control through its
+/// descriptor yield's attestation over these exact bytes.
+pub fn facts_are_exact_v1(
+  control: LedgerOutputProofControlV1,
+  descriptor_cbor: ByteArray,
+  claimed_value_summary: Data,
+  claimed_datum_summary: Data,
+) -> Bool {
+  and {
+    control.scan_facts_fact == Some(
+      fact_commitment_v1(
+        0,
+        descriptor_cbor,
+        claimed_value_summary,
+        claimed_datum_summary,
+      ),
+    ),
+    control.reference_script_fact == Some(
+      fact_commitment_v1(
+        1,
+        descriptor_cbor,
+        claimed_value_summary,
+        claimed_datum_summary,
+      ),
+    ),
+    control.datum_summary_fact == Some(
+      fact_commitment_v1(
+        2,
+        descriptor_cbor,
+        claimed_value_summary,
+        claimed_datum_summary,
+      ),
+    ),
+    control.value_summary_fact == Some(
+      fact_commitment_v1(
+        3,
+        descriptor_cbor,
+        claimed_value_summary,
+        claimed_datum_summary,
+      ),
+    ),
   }
 }
 

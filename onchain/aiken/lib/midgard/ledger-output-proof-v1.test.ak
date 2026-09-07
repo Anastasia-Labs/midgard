@@ -1,4 +1,5 @@
 use aiken/builtin
+use aiken/crypto
 use aiken/fuzz
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
@@ -26,7 +27,7 @@ const malformed_nonminimal_output =
   #"b80200581d7811111111111111111111111111111111111111111111111111111111018200a0"
 
 const cross_language_long_terminal_control =
-  #"8c010600192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770d8799f8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f835820f1f2c712b57f2a363ba09d8673a2cf47b8688568395388f1baf86ce7f477c23618301852ffffd8799f8a0107185419142719142740d87a80d87a80d87a80d8799f8358202aa2efa1446b0d53ad8a806d29396c82aca037037c095811d7948f5304d3896219142719138cffff02818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80"
+  #"91010600192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770d8799f8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f835820f1f2c712b57f2a363ba09d8673a2cf47b8688568395388f1baf86ce7f477c23618301852ffffd8799f8a0107185419142719142740d87a80d87a80d87a80d8799f8358202aa2efa1446b0d53ad8a806d29396c82aca037037c095811d7948f5304d3896219142719138cffff02818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80d87a80d87a80d87a80d87a80d87a80"
 
 fn one_chunk_material(
   output_index: Int,
@@ -69,10 +70,19 @@ fn chunks(
 
 fn datum(
   action: cek_data_traverse_v1.DataTraverseActionV1,
-  proof: Option<bounded_item_v1.ChunkProofV1>,
+  window: Option<ByteArray>,
 ) -> ledger_output_proof_v1.LedgerOutputProofWitnessV1 {
-  ledger_output_proof_v1.LedgerOutputProofDatum {
-    action,
+  ledger_output_proof_v1.LedgerOutputProofDatum { action, window }
+}
+
+/// A span-attach witness recording the whole output as the window.
+fn whole_output_span(
+  output: ByteArray,
+  proof: bounded_item_v1.ChunkProofV1,
+) -> ledger_output_proof_v1.LedgerOutputProofWitnessV1 {
+  ledger_output_proof_v1.LedgerOutputProofSpanAttach {
+    start: 0,
+    length: bytearray.length(output),
     chunk_proof: proof,
     next_chunk_proof: None,
   }
@@ -231,8 +241,19 @@ test derives_the_first_script_hash_block_from_the_output_chunk() {
     ),
   )
   let reference_ready = finish_empty_value(scan_terminal)
+  let span_attached = advanced(
+    ledger_output_proof_v1.step_v1(
+      reference_ready,
+      whole_output_span(small_reference_output, proof),
+    ),
+  )
   let reference_committed = advanced(
-    ledger_output_proof_v1.step_v1(reference_ready, chunks(proof)),
+    ledger_output_proof_v1.step_v1(
+      span_attached,
+      ledger_output_proof_v1.LedgerOutputProofWindow {
+        bytes: small_reference_output,
+      },
+    ),
   )
   let hash_ready = advanced(
     ledger_output_proof_v1.step_v1(
@@ -241,7 +262,12 @@ test derives_the_first_script_hash_block_from_the_output_chunk() {
     ),
   )
   let hash_round = advanced(
-    ledger_output_proof_v1.step_v1(hash_ready, chunks(proof)),
+    ledger_output_proof_v1.step_v1(
+      hash_ready,
+      ledger_output_proof_v1.LedgerOutputProofWindow {
+        bytes: small_reference_output,
+      },
+    ),
   )
   expect Some(hash_control) = hash_round.script_hash
   and {
@@ -282,12 +308,18 @@ test authenticates_the_inline_datum_semantics_from_output_chunks() {
     ),
   )
   let datum_ready = finish_empty_value(scan_terminal)
-  let datum_opened = advanced(
+  let datum_windowed = advanced(
     ledger_output_proof_v1.step_v1(
       datum_ready,
+      whole_output_span(small_datum_output, proof),
+    ),
+  )
+  let datum_opened = advanced(
+    ledger_output_proof_v1.step_v1(
+      datum_windowed,
       datum(
         cek_data_traverse_v1.HeadSequence { expected_children: 0 },
-        Some(proof),
+        Some(small_datum_output),
       ),
     ),
   )
@@ -389,7 +421,35 @@ test fails_closed_for_a_substituted_reference_script_item_chunk() {
     ..proof,
     chunk: builtin.replicate_byte(bytearray.length(proof.chunk), 0),
   }
-  ledger_output_proof_v1.step_v1(reference_ready, chunks(substituted)) == None
+  let span_attached = advanced(
+    ledger_output_proof_v1.step_v1(
+      reference_ready,
+      whole_output_span(small_reference_output, proof),
+    ),
+  )
+  and {
+    // A substituted chunk fails the span-attach merkle check.
+    ledger_output_proof_v1.step_v1(
+      reference_ready,
+      ledger_output_proof_v1.LedgerOutputProofSpanAttach {
+        start: 0,
+        length: bytearray.length(small_reference_output),
+        chunk_proof: substituted,
+        next_chunk_proof: None,
+      },
+    ) == None,
+    // Window bytes that do not hash to the recorded digest are refused at the
+    // consuming step.
+    ledger_output_proof_v1.step_v1(
+      span_attached,
+      ledger_output_proof_v1.LedgerOutputProofWindow {
+        bytes: builtin.replicate_byte(
+          bytearray.length(small_reference_output),
+          0,
+        ),
+      },
+    ) == None,
+  }
 }
 
 test fails_closed_for_a_substituted_inline_datum_item_chunk() {
@@ -422,13 +482,40 @@ test fails_closed_for_a_substituted_inline_datum_item_chunk() {
     ..proof,
     chunk: builtin.replicate_byte(bytearray.length(proof.chunk), 0),
   }
-  ledger_output_proof_v1.step_v1(
-    datum_ready,
-    datum(
-      cek_data_traverse_v1.HeadSequence { expected_children: 0 },
-      Some(substituted),
+  let datum_windowed = advanced(
+    ledger_output_proof_v1.step_v1(
+      datum_ready,
+      whole_output_span(small_datum_output, proof),
     ),
-  ) == None
+  )
+  and {
+    // A substituted chunk fails the span-attach merkle check.
+    ledger_output_proof_v1.step_v1(
+      datum_ready,
+      ledger_output_proof_v1.LedgerOutputProofSpanAttach {
+        start: 0,
+        length: bytearray.length(small_datum_output),
+        chunk_proof: substituted,
+        next_chunk_proof: None,
+      },
+    ) == None,
+    // Tampered window bytes are refused by the datum head's window binding.
+    ledger_output_proof_v1.step_v1(
+      datum_windowed,
+      datum(
+        cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+        Some(builtin.replicate_byte(bytearray.length(small_datum_output), 0)),
+      ),
+    ) == None,
+    // A datum step without the span-attach step has no window to bind to.
+    ledger_output_proof_v1.step_v1(
+      datum_ready,
+      datum(
+        cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+        Some(small_datum_output),
+      ),
+    ) == None,
+  }
 }
 
 test decodes_the_long_typescript_terminal_control_canonically() {
@@ -475,51 +562,49 @@ test initial_control_specialized_encoder_matches_generic(
   )
 }
 
-/// The slicing half and the authenticating whole agree on every span over an
-/// honest witness: `output_span_slice_v1` returns exactly what
-/// `authenticated_output_span_for_output` returns, for in-range and
-/// out-of-range spans alike (the promise `output_span_slice_v1`'s doc comment
-/// makes for the shared-LOP span attestation split).
-test span_slice_matches_authenticated_span(
+/// The window binding returns exactly the authenticated span over the honest
+/// window bytes, for every demanded span the window covers; out-of-window
+/// spans, oversized or truncated bytes, and tampered bytes are refused.
+test bound_window_bytes_binds_the_recorded_digest(
   args via fuzz.tuple(fuzz.int_between(-3, 60), fuzz.int_between(-1, 60)),
 ) {
   let (start, length) = args
   let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
   let total = bytearray.length(small_datum_output)
-  let witness = chunks(proof)
-  ledger_output_proof_v1.output_span_slice_v1(total, start, length, witness) == ledger_output_proof_v1.authenticated_output_span_for_output(
+  let window = Some(
+    ledger_output_proof_v1.LedgerOutputSpanWindowV1 {
+      start: 0,
+      length: total,
+      digest: crypto.blake2b_256(small_datum_output),
+    },
+  )
+  let bound = ledger_output_proof_v1.bound_window_bytes_v1(
+    window,
+    start,
+    length,
+    small_datum_output,
+  )
+  let authenticated = ledger_output_proof_v1.authenticated_output_span_for_output(
     0,
     total,
     commitment,
     start,
     length,
-    witness,
+    chunks(proof),
   )
-}
-
-/// The agreement is conditional on the merkle membership the attestation
-/// yield checks: with a substituted chunk the slice still returns bytes while
-/// the authenticated span refuses, so a stage yield may consume the slice
-/// only under the span attestation of the same transaction.
-test span_slice_alone_does_not_authenticate() {
-  let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
-  let total = bytearray.length(small_datum_output)
-  let substituted = bounded_item_v1.ChunkProofV1 {
-    ..proof,
-    chunk: builtin.replicate_byte(bytearray.length(proof.chunk), 0),
-  }
-  let witness = chunks(substituted)
   and {
-    ledger_output_proof_v1.output_span_slice_v1(total, 0, 4, witness) == Some(
-      #"00000000",
-    ),
-    ledger_output_proof_v1.authenticated_output_span_for_output(
-      0,
-      total,
-      commitment,
-      0,
-      4,
-      witness,
+    bound == authenticated,
+    ledger_output_proof_v1.bound_window_bytes_v1(
+      window,
+      start,
+      length,
+      builtin.replicate_byte(total, 0),
+    ) == None,
+    ledger_output_proof_v1.bound_window_bytes_v1(
+      None,
+      start,
+      length,
+      small_datum_output,
     ) == None,
   }
 }

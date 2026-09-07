@@ -36,10 +36,6 @@ pub type ActionV1 {
     /// consumes, attested by the matching scalar yield; `constr 1 []` for
     /// every other role.
     claimed_scalar: Data,
-    /// The `(start, length)` output-span claim a span-consuming stage yield
-    /// slices, attested by the span yield; `constr 1 []` when the step reads
-    /// no span.
-    claimed_span: Data,
     yield_role_index: Int,
     /// Reference-input indices of the required yields, stage yield first and
     /// then the attestation roles of `stage_attestation_roles`, exactly.
@@ -79,7 +75,6 @@ validator main(
         control_cbor,
         next_control_cbor,
         claimed_scalar: _,
-        claimed_span: _,
         yield_role_index,
         yield_ref_input_indices,
       }) ->

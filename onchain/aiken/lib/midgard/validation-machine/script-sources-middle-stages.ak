@@ -522,6 +522,33 @@ pub fn script_sources_output_proof_step(
   }
 }
 
+/// One fact-attachment step on a terminal output proof: record the next
+/// canonical group of descriptor fact commitments in the checkpointed control.
+/// The commitments bind the descriptor bytes and the control's own terminal
+/// summaries; descriptor exactness itself is adjudicated by the finalize
+/// step's conjunction (on-chain, by each group's descriptor yields in the
+/// attaching transaction).
+pub fn script_sources_output_proof_fact_attach(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  output_proof: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  descriptor_cbor: ByteArray,
+) -> Bool {
+  when ledger_output_proof_v1.fact_attach_v1(output_proof, descriptor_cbor) is {
+    None -> False
+    Some(next_output_proof) ->
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          output_proof: Some(next_output_proof),
+        },
+      )
+  }
+}
+
 pub fn script_sources_output_proof_finalize(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -531,7 +558,22 @@ pub fn script_sources_output_proof_finalize(
   signer_proof: SignerSetProofV1,
 ) -> Bool {
   let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-  if !ledger_output_proof_v1.descriptor_is_exact_v1(output_proof, descriptor) {
+  let facts_are_exact = when
+    ledger_output_proof_v1.terminal_claimed_summaries_v1(output_proof)
+  is {
+    None -> False
+    Some((value_data, datum_data)) ->
+      ledger_output_proof_v1.facts_are_exact_v1(
+        output_proof,
+        descriptor_cbor,
+        value_data,
+        datum_data,
+      )
+  }
+  if or {
+    !facts_are_exact,
+    !ledger_output_proof_v1.descriptor_is_exact_v1(output_proof, descriptor),
+  } {
     False
   } else {
     expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
@@ -630,14 +672,24 @@ pub fn script_sources_stage_five(
         if ledger_output_proof_v1.terminal_is_exact_v1(output_proof) {
           when auxiliary is {
             LedgerOutputProofFinalizeWitness { descriptor_cbor, signer_proof } ->
-              script_sources_output_proof_finalize(
-                pre,
-                witness,
-                control,
-                output_proof,
-                descriptor_cbor,
-                signer_proof,
-              )
+              if !ledger_output_proof_v1.facts_complete_v1(output_proof) {
+                script_sources_output_proof_fact_attach(
+                  pre,
+                  witness,
+                  control,
+                  output_proof,
+                  descriptor_cbor,
+                )
+              } else {
+                script_sources_output_proof_finalize(
+                  pre,
+                  witness,
+                  control,
+                  output_proof,
+                  descriptor_cbor,
+                  signer_proof,
+                )
+              }
             _ -> False
           }
         } else {

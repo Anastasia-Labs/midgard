@@ -15,8 +15,7 @@ validator main(dispatcher_script_hashes: List<ScriptHash>) {
       claim,
       stages.reference_script(
         claim.control,
-        shared.chunk_witness(claim.witness),
-        claim.claimed_span,
+        shared.window_witness(claim.witness),
       ),
     )
   }
