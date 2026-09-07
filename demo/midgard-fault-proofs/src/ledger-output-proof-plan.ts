@@ -1,13 +1,3 @@
-import {
-  type MidgardBlake2b256TraceControl,
-  type MidgardCekBlobFrontier,
-  type MidgardCekDataBytesControl,
-  type MidgardCekDataIntegerControl,
-  type MidgardCekDataSummary,
-  type MidgardCekDataTraverseControl,
-  type MidgardCekSourceBlobControl,
-  nextMidgardCekDataTraverseSpan,
-} from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 import { ValidationOneStepWitness } from "@al-ft/midgard-sdk";
@@ -133,186 +123,11 @@ const optionInner = (value: Data | undefined, label: string): Data | null => {
     throw new Error(`${label} must be an option`);
   return wrapper.fields[0]!;
 };
-const count = (value: Data | undefined, label: string): number => {
-  const raw = integer(value, label);
-  const exact = Number(raw);
-  if (!Number.isSafeInteger(exact))
-    throw new Error(`${label} must be a safe integer`);
-  return exact;
-};
-const buffer = (value: Data | undefined, label: string): Buffer =>
-  Buffer.from(bytes(value, label), "hex");
-
-// ---------------------------------------------------------------------------
-// Wire decoders for the datum-traversal sub-controls. The wire layouts are
-// the canonical `control_data_v1` list encodings of the on-chain machines,
-// byte-identical to the `encodeMidgard*Control` producers in midgard-core;
-// the typed records feed midgard-core's own `next*Span` planners so the
-// planner claims exactly the span the stage yield's control demands.
-// ---------------------------------------------------------------------------
-
-const blake256FromWire = (
-  value: Data,
-  label: string,
-): MidgardBlake2b256TraceControl => {
-  const fields = items(value, 9, label);
-  if (integer(fields[0], `${label} version`) !== 1n)
-    throw new Error(`${label} version must be 1`);
-  return {
-    version: 1,
-    stage: count(
-      fields[1],
-      `${label} stage`,
-    ) as MidgardBlake2b256TraceControl["stage"],
-    cursor: count(fields[2], `${label} cursor`),
-    totalLength: count(fields[3], `${label} total length`),
-    chainingValue: buffer(fields[4], `${label} chaining value`),
-    activeBlock: buffer(fields[5], `${label} active block`),
-    activeBlockLength: count(fields[6], `${label} active block length`),
-    workingValue: buffer(fields[7], `${label} working value`),
-    round: count(fields[8], `${label} round`),
-  };
-};
-
-const frontierFromWire = (
-  value: Data,
-  label: string,
-): MidgardCekBlobFrontier => {
-  const fields = items(value, 4, label);
-  if (integer(fields[0], `${label} version`) !== 1n)
-    throw new Error(`${label} version must be 1`);
-  const peaksData = fields[3];
-  if (!Array.isArray(peaksData))
-    throw new Error(`${label} peaks must be a list`);
-  return {
-    count: count(fields[1], `${label} count`),
-    byteLength: integer(fields[2], `${label} byte length`),
-    peaks: peaksData.map((peak) => {
-      const parts = items(peak, 3, `${label} peak`);
-      return {
-        height: count(parts[0], `${label} peak height`),
-        root: buffer(parts[1], `${label} peak root`),
-        byteLength: integer(parts[2], `${label} peak byte length`),
-      };
-    }),
-  };
-};
-
-const blobFromWire = (
-  value: Data,
-  label: string,
-): MidgardCekSourceBlobControl => {
-  const fields = items(value, 6, label);
-  if (integer(fields[0], `${label} version`) !== 1n)
-    throw new Error(`${label} version must be 1`);
-  const activeHash = optionInner(fields[5], `${label} active hash`);
-  return {
-    version: 1,
-    stage: count(
-      fields[1],
-      `${label} stage`,
-    ) as MidgardCekSourceBlobControl["stage"],
-    sourceStart: count(fields[2], `${label} source start`),
-    sourceLength: count(fields[3], `${label} source length`),
-    frontier: frontierFromWire(fields[4]!, `${label} frontier`),
-    activeHash:
-      activeHash === null
-        ? null
-        : blake256FromWire(activeHash, `${label} active hash`),
-  };
-};
-
-const integerControlFromWire = (
-  value: Data,
-  label: string,
-): MidgardCekDataIntegerControl => {
-  const fields = items(value, 6, label);
-  if (integer(fields[0], `${label} version`) !== 1n)
-    throw new Error(`${label} version must be 1`);
-  const blob = optionInner(fields[5], `${label} blob`);
-  return {
-    version: 1,
-    stage: count(
-      fields[1],
-      `${label} stage`,
-    ) as MidgardCekDataIntegerControl["stage"],
-    sourceStart: count(fields[2], `${label} source start`),
-    sourceLength: count(fields[3], `${label} source length`),
-    memory: integer(fields[4], `${label} memory`),
-    blob: blob === null ? null : blobFromWire(blob, `${label} blob`),
-  };
-};
-
-const bytesControlFromWire = (
-  value: Data,
-  label: string,
-): MidgardCekDataBytesControl => {
-  const fields = items(value, 6, label);
-  if (integer(fields[0], `${label} version`) !== 1n)
-    throw new Error(`${label} version must be 1`);
-  const blob = optionInner(fields[5], `${label} blob`);
-  return {
-    version: 1,
-    stage: count(
-      fields[1],
-      `${label} stage`,
-    ) as MidgardCekDataBytesControl["stage"],
-    sourceStart: count(fields[2], `${label} source start`),
-    sourceLength: count(fields[3], `${label} source length`),
-    bytesLength: count(fields[4], `${label} bytes length`),
-    blob: blob === null ? null : blobFromWire(blob, `${label} blob`),
-  };
-};
-
-const summaryFromWire = (value: Data, label: string): MidgardCekDataSummary => {
-  const fields = items(value, 3, label);
-  return {
-    root: buffer(fields[0], `${label} root`),
-    cborLength: integer(fields[1], `${label} cbor length`),
-    memory: integer(fields[2], `${label} memory`),
-  };
-};
-
 const datumTraverseItems = (control: readonly Data[]): Data[] => {
   const wrapper = constr(control[7], "datum traversal item");
   if (wrapper.index !== 0 || wrapper.fields.length !== 1)
     throw new Error("Datum traversal sub-control is malformed");
   return items(wrapper.fields[0]!, 10, "datum traversal control");
-};
-
-const traverseControlFromWire = (
-  control: readonly Data[],
-): MidgardCekDataTraverseControl => {
-  const fields = datumTraverseItems(control);
-  if (integer(fields[0], "traversal version") !== 1n)
-    throw new Error("Datum traversal control version must be 1");
-  const pending = optionInner(fields[6], "traversal pending children");
-  const integerControl = optionInner(fields[7], "traversal integer control");
-  const bytesControl = optionInner(fields[8], "traversal bytes control");
-  const result = optionInner(fields[9], "traversal result");
-  return {
-    version: 1,
-    stage: count(
-      fields[1],
-      "traversal stage",
-    ) as MidgardCekDataTraverseControl["stage"],
-    sourceStart: count(fields[2], "traversal source start"),
-    sourceLength: count(fields[3], "traversal source length"),
-    offset: count(fields[4], "traversal offset"),
-    frameRoot: buffer(fields[5], "traversal frame root"),
-    pendingLargeExpectedChildren:
-      pending === null ? null : count(pending, "traversal pending children"),
-    integer:
-      integerControl === null
-        ? null
-        : integerControlFromWire(integerControl, "traversal integer control"),
-    bytes:
-      bytesControl === null
-        ? null
-        : bytesControlFromWire(bytesControl, "traversal bytes control"),
-    result:
-      result === null ? null : summaryFromWire(result, "traversal result"),
-  };
 };
 
 // ---------------------------------------------------------------------------
@@ -402,178 +217,7 @@ const scalarClaim = (
   ]);
 };
 
-// ---------------------------------------------------------------------------
-// Span claims. Sliced mode (`constr 0 [start, length]`) for the chunk-cursor
-// stages; content mode (`constr 2 [start, length, bytes]`) for the
-// datum-traversal stages, whose bytes the planner slices out of the shared
-// witness chunk proofs exactly as `output_span_slice_raw_v1` does.
-// ---------------------------------------------------------------------------
-
-const CHUNK_BYTES = 4095n;
-
-const chunkProofBytes = (
-  value: Data | undefined,
-  label: string,
-): { readonly chunkIndex: bigint; readonly chunk: string } => {
-  const proof = constr(value, label);
-  if (proof.index !== 0 || proof.fields.length !== 8)
-    throw new Error(`${label} must be a chunk proof`);
-  return {
-    chunkIndex: integer(proof.fields[4], `${label} chunk index`),
-    chunk: bytes(proof.fields[5], `${label} chunk`),
-  };
-};
-
-const witnessChunks = (
-  witness: Constr<Data>,
-): {
-  readonly first: {
-    readonly chunkIndex: bigint;
-    readonly chunk: string;
-  } | null;
-  readonly next: { readonly chunkIndex: bigint; readonly chunk: string } | null;
-} => {
-  if (witness.index === 1 && witness.fields.length === 2) {
-    const nextInner = optionInner(witness.fields[1], "next chunk proof");
-    return {
-      first: chunkProofBytes(witness.fields[0], "chunk proof"),
-      next:
-        nextInner === null
-          ? null
-          : chunkProofBytes(nextInner, "next chunk proof"),
-    };
-  }
-  if (witness.index === 3 && witness.fields.length === 3) {
-    const firstInner = optionInner(witness.fields[1], "datum chunk proof");
-    const nextInner = optionInner(witness.fields[2], "next datum chunk proof");
-    return {
-      first:
-        firstInner === null
-          ? null
-          : chunkProofBytes(firstInner, "datum chunk proof"),
-      next:
-        nextInner === null
-          ? null
-          : chunkProofBytes(nextInner, "next datum chunk proof"),
-    };
-  }
-  return { first: null, next: null };
-};
-
-/** `output_span_slice_raw_v1` over the witness chunk proofs, as hex. */
-const sliceWitnessSpan = (
-  totalLength: bigint,
-  start: bigint,
-  length: bigint,
-  witness: Constr<Data>,
-): string => {
-  if (length <= 0n || length > CHUNK_BYTES)
-    throw new Error("Output span length is out of range");
-  if (start < 0n || start + length > totalLength)
-    throw new Error("Output span exceeds the output bytes");
-  const firstIndex = start / CHUNK_BYTES;
-  const lastIndex = (start + length - 1n) / CHUNK_BYTES;
-  if (lastIndex > firstIndex + 1n)
-    throw new Error("Output span crosses more than two chunks");
-  const { first, next } = witnessChunks(witness);
-  if (first === null)
-    throw new Error("Output span requires a witness chunk proof");
-  if (first.chunkIndex !== firstIndex)
-    throw new Error("Witness chunk proof does not cover the span start");
-  const localStart = Number(start - firstIndex * CHUNK_BYTES);
-  const spanLength = Number(length);
-  if (lastIndex === firstIndex) {
-    if (next !== null)
-      throw new Error("Single-chunk span must carry exactly one chunk proof");
-    return first.chunk.slice(localStart * 2, (localStart + spanLength) * 2);
-  }
-  if (next === null)
-    throw new Error("Chunk-crossing span requires the next chunk proof");
-  if (next.chunkIndex !== firstIndex + 1n)
-    throw new Error("Witness chunk proofs are not adjacent");
-  return (first.chunk + next.chunk).slice(
-    localStart * 2,
-    (localStart + spanLength) * 2,
-  );
-};
-
-/**
- * Content-mode span claim for a datum-traversal stage: the exact source span
- * midgard-core's traverse planner demands next, with its bytes sliced out of
- * the shared witness chunk proofs. `required` marks the roles whose stage
- * always reads a span; the streaming roles claim no span on the steps that
- * consume no source bytes.
- */
-const contentSpanClaim = (
-  control: readonly Data[],
-  witness: Constr<Data>,
-  required: boolean,
-): Data => {
-  const traverse = traverseControlFromWire(control);
-  const span = nextMidgardCekDataTraverseSpan(traverse);
-  if (span === null) {
-    if (required)
-      throw new Error("Datum traversal stage demands a source span");
-    return none();
-  }
-  return new Constr(2, [
-    BigInt(span.absoluteStart),
-    BigInt(span.length),
-    sliceWitnessSpan(
-      integer(control[3], "output length"),
-      BigInt(span.absoluteStart),
-      BigInt(span.length),
-      witness,
-    ),
-  ]);
-};
-
-/** Sliced-mode span claim of the reference-script commitment stage. */
-const referenceScriptSpanClaim = (control: readonly Data[]): Data => {
-  const scan = items(control[5]!, 23, "output scan");
-  const totalLength = integer(control[3], "output length");
-  const itemOffset = integer(scan[20], "reference script item offset");
-  const itemLength = totalLength - itemOffset;
-  if (itemLength <= 0n)
-    throw new Error("Reference script item must be non-empty");
-  const chunkCount = (itemLength + CHUNK_BYTES - 1n) / CHUNK_BYTES;
-  const chunkIndex = integer(control[8], "reference script chunk index");
-  if (chunkIndex < 0n || chunkIndex > chunkCount)
-    throw new Error("Reference script chunk index is out of range");
-  if (chunkIndex === chunkCount) return none();
-  const length =
-    chunkIndex + 1n < chunkCount
-      ? CHUNK_BYTES
-      : itemLength - chunkIndex * CHUNK_BYTES;
-  return new Constr(0, [itemOffset + chunkIndex * CHUNK_BYTES, length]);
-};
-
-/** Sliced-mode span claim of the script-hash trace stage. */
-const scriptHashSpanClaim = (control: readonly Data[]): Data => {
-  const scan = items(control[5]!, 23, "output scan");
-  const inner = optionInner(control[10], "script hash control");
-  if (inner === null)
-    throw new Error("Script hash stage requires an active trace control");
-  const trace = items(inner, 9, "blake2b-224 control");
-  if (integer(trace[1], "script hash stage") !== 0n) return none();
-  const cursor = integer(trace[2], "script hash cursor");
-  const totalLength = integer(trace[3], "script hash total length");
-  const remaining = totalLength - cursor;
-  const expected = remaining < 128n ? remaining : 128n;
-  const includesLanguage = cursor === 0n;
-  const contentLength = expected - (includesLanguage ? 1n : 0n);
-  if (contentLength === 0n) return none();
-  const start =
-    integer(scan[21], "reference script offset") +
-    cursor -
-    (includesLanguage ? 0n : 1n);
-  return new Constr(0, [start, contentLength]);
-};
-
-export type LedgerOutputProofAttestation =
-  | "span"
-  | "scalarInteger"
-  | "scalarBytes";
+export type LedgerOutputProofAttestation = "scalarInteger" | "scalarBytes";
 
 /**
  * The attestation yields one stage role requires, in the exact order of
@@ -583,85 +227,38 @@ export type LedgerOutputProofAttestation =
 export const ledgerOutputProofAttestationRoles = (
   roleIndex: number,
 ): readonly LedgerOutputProofAttestation[] => {
-  if (
-    roleIndex === 4 ||
-    roleIndex === 8 ||
-    roleIndex === 9 ||
-    (roleIndex >= 14 && roleIndex <= 16) ||
-    (roleIndex >= 20 && roleIndex <= 22)
-  )
-    return ["span"];
-  if (roleIndex === 5) return ["scalarInteger"];
-  if (roleIndex === 17) return ["scalarBytes"];
-  if (roleIndex === 7) return ["span", "scalarInteger"];
-  if (roleIndex === 18) return ["span", "scalarBytes"];
-  if (roleIndex >= 0 && roleIndex < 23) return [];
+  if (roleIndex === 5 || roleIndex === 7) return ["scalarInteger"];
+  if (roleIndex === 17 || roleIndex === 18) return ["scalarBytes"];
+  if (Number.isInteger(roleIndex) && roleIndex >= 0 && roleIndex < 24)
+    return [];
   throw new Error("Unknown ledger output proof stage role");
 };
 
 /**
- * The span and scalar claims of one shared LOP step, exactly the values the
- * stage yield of `roleIndex` demands and its attestation yields verify.
+ * The scalar claim of one shared LOP step, exactly the value the scalar
+ * attestation yield of `roleIndex` verifies. Span claims are gone: the span
+ * window is attested once by the span-attach step (role 23) and every later
+ * consumer binds its redeemer bytes to the recorded window commitment
+ * inline.
  */
 export const deriveLedgerOutputProofStepClaims = ({
   control,
-  witness,
   roleIndex,
 }: {
   readonly control: readonly Data[];
-  readonly witness: Constr<Data>;
   readonly roleIndex: number;
-}): { readonly claimedSpan: Data; readonly claimedScalar: Data } => {
+}): { readonly claimedScalar: Data } => {
   switch (roleIndex) {
-    case 4:
-    case 14:
-    case 15:
-    case 16:
-    case 21:
-    case 22:
-      return {
-        claimedSpan: contentSpanClaim(control, witness, true),
-        claimedScalar: none(),
-      };
-    case 20:
-      return {
-        claimedSpan: contentSpanClaim(control, witness, false),
-        claimedScalar: none(),
-      };
     case 5:
-      return {
-        claimedSpan: none(),
-        claimedScalar: scalarClaim(control, "integer"),
-      };
-    case 17:
-      return {
-        claimedSpan: none(),
-        claimedScalar: scalarClaim(control, "bytes"),
-      };
     case 7:
-      return {
-        claimedSpan: contentSpanClaim(control, witness, false),
-        claimedScalar: scalarClaim(control, "integer"),
-      };
+      return { claimedScalar: scalarClaim(control, "integer") };
+    case 17:
     case 18:
-      return {
-        claimedSpan: contentSpanClaim(control, witness, false),
-        claimedScalar: scalarClaim(control, "bytes"),
-      };
-    case 8:
-      return {
-        claimedSpan: referenceScriptSpanClaim(control),
-        claimedScalar: none(),
-      };
-    case 9:
-      return {
-        claimedSpan: scriptHashSpanClaim(control),
-        claimedScalar: none(),
-      };
+      return { claimedScalar: scalarClaim(control, "bytes") };
     default:
-      if (!(Number.isInteger(roleIndex) && roleIndex >= 0 && roleIndex < 23))
+      if (!(Number.isInteger(roleIndex) && roleIndex >= 0 && roleIndex < 24))
         throw new Error("Unknown ledger output proof stage role");
-      return { claimedSpan: none(), claimedScalar: none() };
+      return { claimedScalar: none() };
   }
 };
 
@@ -669,7 +266,6 @@ export type LedgerOutputProofStepPlan = {
   readonly controlCbor: string;
   readonly nextControlCbor: string;
   readonly roleIndex: number;
-  readonly claimedSpan: Data;
   readonly claimedScalar: Data;
   readonly attestationRoles: readonly LedgerOutputProofAttestation[];
 };
@@ -704,7 +300,7 @@ export const deriveLedgerOutputProofStepPlan = ({
     resolverIndex,
     transition.work_witness_cbor,
   );
-  const control = items(controlData(controlCbor), 12, "output proof control");
+  const control = items(controlData(controlCbor), 17, "output proof control");
   const stage = integer(control[1], "output proof stage");
   const auxiliary = Data.from(Buffer.from(auxiliaryCbor).toString("hex"));
   if (
@@ -730,28 +326,27 @@ export const deriveLedgerOutputProofStepPlan = ({
         integer(scan[18], "payload remaining") === 0n);
     roleIndex = finished ? 13 : scanStage <= 1n ? 0 : scanStage <= 3n ? 11 : 12;
   } else if (stage === 1n) roleIndex = 1;
-  else if (stage === 2n) {
+  else if (stage === 2n || stage === 3n || stage === 4n) {
+    // `SpanAttach` routes first at the content stages: the span-attach step
+    // (role 23) records the window commitment every later consumer binds to.
+    if (witness.index === 5 && witness.fields.length === 4) roleIndex = 23;
+    else if (stage === 3n) roleIndex = 8;
+    else if (stage === 4n) roleIndex = 9;
     // `NoWitness` at the datum stage is the terminal finish hand-off
     // (`ledger_output_proof_datum.finish`, role 19).
-    if (witness.index === 0 && witness.fields.length === 0) roleIndex = 19;
+    else if (witness.index === 0 && witness.fields.length === 0) roleIndex = 19;
     else {
       if (
         witness.index !== 3 ||
-        witness.fields.length !== 3 ||
+        witness.fields.length !== 2 ||
         !(witness.fields[0] instanceof Constr)
       )
         throw new Error("Datum output proof witness is malformed");
       roleIndex = ledgerOutputProofDatumRoleIndex(control, witness.fields[0]);
     }
-  } else if (stage === 3n) roleIndex = 8;
-  else if (stage === 4n) roleIndex = 9;
-  else if (stage === 5n) roleIndex = 10;
+  } else if (stage === 5n) roleIndex = 10;
   else throw new Error("Terminal output proof cannot take a step");
-  const claims = deriveLedgerOutputProofStepClaims({
-    control,
-    witness,
-    roleIndex,
-  });
+  const claims = deriveLedgerOutputProofStepClaims({ control, roleIndex });
   const attestationRoles = ledgerOutputProofAttestationRoles(roleIndex);
   const successor = transition.claimed_successor;
   if (successor.phase === "Terminal") {
@@ -802,6 +397,27 @@ export type LedgerOutputProofFinalizePlan = {
   readonly claimedValueSummary: Data;
   /** `Option<DataSummaryV1>` on the wire, pinned by the datum-summary yield. */
   readonly claimedDatumSummary: Data;
+  /**
+   * Descriptor roles this finalize-shaped step attaches, exactly
+   * `ledger_output_proof_v1.fact_attach_groups_v1`'s first all-missing group;
+   * empty exactly at the thin terminal (all four facts recorded).
+   */
+  readonly attachRoles: readonly number[];
+};
+
+/**
+ * Fact-commitment slots live at control items 13-16 in role order (role 0 ->
+ * item 13). The attach order is `[[2, 3], [0], [1]]`; the first group whose
+ * facts are all missing is the group this step attaches.
+ */
+export const ledgerOutputProofFactAttachRoles = (
+  control: readonly Data[],
+): readonly number[] => {
+  const missing = (role: number): boolean =>
+    optionInner(control[13 + role], "fact commitment") === null;
+  for (const group of [[2, 3], [0], [1]])
+    if (group.every(missing)) return group;
+  return [];
 };
 
 /**
@@ -837,8 +453,12 @@ export const deriveLedgerOutputProofFinalizePlan = ({
     resolverIndex,
     transition.work_witness_cbor,
   );
-  const control = items(controlData(controlCbor), 12, "output proof control");
-  return { controlCbor, ...deriveLedgerOutputProofFinalizeClaims(control) };
+  const control = items(controlData(controlCbor), 17, "output proof control");
+  return {
+    controlCbor,
+    ...deriveLedgerOutputProofFinalizeClaims(control),
+    attachRoles: ledgerOutputProofFactAttachRoles(control),
+  };
 };
 
 /**

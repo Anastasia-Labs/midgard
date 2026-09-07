@@ -136,18 +136,19 @@ export const LEDGER_OUTPUT_PROOF_STAGE_YIELD_ROLES = [
     deployment: "validationTraceDisputeLedgerOutputProofDatumCloseWithdraw",
     role: "V1 validation-trace ledger-output-proof datum close yield",
   },
-] as const;
-
-/**
- * The three shared attestation yields, keyed by the plan's attestation-role
- * names.
- */
-export const LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES = {
-  span: {
+  {
     contract: "ledgerOutputProofSpan",
     deployment: "validationTraceDisputeLedgerOutputProofSpanWithdraw",
     role: "V1 validation-trace ledger-output-proof span yield",
   },
+] as const;
+
+/**
+ * The two shared scalar attestation yields, keyed by the plan's
+ * attestation-role names. The span yield is no longer an attestation: it is
+ * the stage yield of the span-attach step (stage role 23) above.
+ */
+export const LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES = {
   scalarInteger: {
     contract: "ledgerOutputProofScalarInteger",
     deployment: "validationTraceDisputeLedgerOutputProofScalarIntegerWithdraw",

@@ -7,6 +7,7 @@ import {
   deriveLedgerOutputProofStepPlan,
   ledgerOutputProofAttestationRoles,
   ledgerOutputProofDatumRoleIndex,
+  ledgerOutputProofFactAttachRoles,
 } from "../src/ledger-output-proof-plan.js";
 import { buildForgedOperatorSuccessorValidationDisputeFixture } from "./support/submit-init-emulator-shared.js";
 
@@ -26,7 +27,6 @@ describe("ledger output proof successor carriage", () => {
       const argument = fixture.evidence.oneStepArgument;
       const plan = deriveLedgerOutputProofStepPlan(argument);
       expect(plan.roleIndex).toBe(0);
-      expect(plan.claimedSpan).toStrictEqual(new Constr(1, []));
       expect(plan.claimedScalar).toStrictEqual(new Constr(1, []));
       expect(plan.attestationRoles).toStrictEqual([]);
       expect(plan.controlCbor).not.toBe(plan.nextControlCbor);
@@ -131,73 +131,30 @@ describe("ledger output proof datum role selection", () => {
 const NONE = new Constr(1, []);
 const some = (inner: Data): Data => new Constr(0, [inner]);
 const ROOT = "11".repeat(32);
-const OUTPUT_BYTES = Buffer.from(
-  Array.from({ length: 40 }, (_, index) => index),
-).toString("hex");
-
-const chunkProofData = (chunkIndex: bigint, chunk: string): Data =>
-  new Constr(0, [1n, 2n, 0n, 40n, chunkIndex, chunk, 0n, []]);
-const datumWitness = (chunk: string): Constr<Data> =>
-  new Constr(3, [
-    new Constr(0, []),
-    some(chunkProofData(0n, chunk)),
-    new Constr(1, []),
-  ]);
-const noSpanWitness = (): Constr<Data> =>
-  new Constr(3, [new Constr(0, []), new Constr(1, []), new Constr(1, [])]);
 
 const controlWithTraverse = (slots: Data[]): Data[] => {
-  const control: Data[] = Array.from({ length: 12 }, () => 0n);
+  const control: Data[] = Array.from({ length: 17 }, () => 0n);
   control[3] = 40n;
   control[7] = new Constr(0, [slots]);
   return control;
 };
 
 describe("ledger output proof step claims", () => {
-  it("claims nothing for a role without attestations", () => {
-    for (const roleIndex of [0, 1, 2, 3, 6, 10, 11, 12, 13, 19]) {
+  it("claims nothing for a role without a scalar attestation", () => {
+    for (const roleIndex of [
+      0, 1, 2, 3, 4, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23,
+    ]) {
       expect(
         deriveLedgerOutputProofStepClaims({
           control: controlWithTraverse([]),
-          witness: noSpanWitness(),
           roleIndex,
         }),
-      ).toStrictEqual({ claimedSpan: NONE, claimedScalar: NONE });
+      ).toStrictEqual({ claimedScalar: NONE });
       expect(ledgerOutputProofAttestationRoles(roleIndex)).toStrictEqual([]);
     }
   });
 
-  it.each([4, 14, 15, 16])(
-    "claims the head window content for head role %i",
-    (roleIndex) => {
-      const control = controlWithTraverse([
-        1n,
-        0n,
-        10n,
-        20n,
-        0n,
-        "",
-        NONE,
-        NONE,
-        NONE,
-        NONE,
-      ]);
-      const claims = deriveLedgerOutputProofStepClaims({
-        control,
-        witness: datumWitness(OUTPUT_BYTES),
-        roleIndex,
-      });
-      expect(claims.claimedScalar).toStrictEqual(NONE);
-      expect(claims.claimedSpan).toStrictEqual(
-        new Constr(2, [10n, 14n, OUTPUT_BYTES.slice(20, 48)]),
-      );
-      expect(ledgerOutputProofAttestationRoles(roleIndex)).toStrictEqual([
-        "span",
-      ]);
-    },
-  );
-
-  it("claims the attach-integer scalar without a span", () => {
+  it("claims the attach-integer scalar", () => {
     const integerWire = [1n, 2n, 5n, 3n, 5n, NONE];
     const control = controlWithTraverse([
       1n,
@@ -213,10 +170,8 @@ describe("ledger output proof step claims", () => {
     ]);
     const claims = deriveLedgerOutputProofStepClaims({
       control,
-      witness: noSpanWitness(),
       roleIndex: 5,
     });
-    expect(claims.claimedSpan).toStrictEqual(NONE);
     expect(claims.claimedScalar).toStrictEqual(
       new Constr(0, [
         3n,
@@ -250,7 +205,6 @@ describe("ledger output proof step claims", () => {
     ]);
     const claims = deriveLedgerOutputProofStepClaims({
       control,
-      witness: noSpanWitness(),
       roleIndex: 5,
     });
     expect(claims.claimedScalar).toStrictEqual(
@@ -280,7 +234,7 @@ describe("ledger output proof step claims", () => {
     );
   });
 
-  it("claims the syntax window and scalar for the advance-integer role", () => {
+  it("claims the integer scalar for the advance-integer role", () => {
     const integerWire = [1n, 0n, 5n, 4n, 0n, NONE];
     const control = controlWithTraverse([
       1n,
@@ -296,12 +250,8 @@ describe("ledger output proof step claims", () => {
     ]);
     const claims = deriveLedgerOutputProofStepClaims({
       control,
-      witness: datumWitness(OUTPUT_BYTES),
       roleIndex: 7,
     });
-    expect(claims.claimedSpan).toStrictEqual(
-      new Constr(2, [5n, 4n, OUTPUT_BYTES.slice(10, 18)]),
-    );
     expect(claims.claimedScalar).toStrictEqual(
       new Constr(0, [
         3n,
@@ -312,12 +262,11 @@ describe("ledger output proof step claims", () => {
       ]),
     );
     expect(ledgerOutputProofAttestationRoles(7)).toStrictEqual([
-      "span",
       "scalarInteger",
     ]);
   });
 
-  it("claims the bytes syntax window and scalar for the advance-bytes role", () => {
+  it("claims the bytes scalar for the advance-bytes role", () => {
     const bytesWire = [1n, 0n, 5n, 4n, 0n, NONE];
     const control = controlWithTraverse([
       1n,
@@ -333,12 +282,8 @@ describe("ledger output proof step claims", () => {
     ]);
     const claims = deriveLedgerOutputProofStepClaims({
       control,
-      witness: datumWitness(OUTPUT_BYTES),
       roleIndex: 18,
     });
-    expect(claims.claimedSpan).toStrictEqual(
-      new Constr(2, [5n, 2n, OUTPUT_BYTES.slice(10, 14)]),
-    );
     expect(claims.claimedScalar).toStrictEqual(
       new Constr(0, [
         3n,
@@ -349,89 +294,17 @@ describe("ledger output proof step claims", () => {
       ]),
     );
     expect(ledgerOutputProofAttestationRoles(18)).toStrictEqual([
-      "span",
       "scalarBytes",
     ]);
   });
 
-  it("claims no span for the large-constructor completion step", () => {
-    const blobWire = [1n, 1n, 1n, 3n, [1n, 1n, 3n, [[0n, ROOT, 3n]]], NONE];
-    const integerWire = [1n, 2n, 1n, 3n, 5n, some(blobWire)];
+  it("refuses a scalar role without its active sub-control", () => {
     const control = controlWithTraverse([
+      1n,
       1n,
       3n,
-      0n,
-      10n,
-      1n,
-      ROOT,
-      some(2n),
-      some(integerWire),
-      NONE,
-      NONE,
-    ]);
-    const claims = deriveLedgerOutputProofStepClaims({
-      control,
-      witness: noSpanWitness(),
-      roleIndex: 20,
-    });
-    expect(claims).toStrictEqual({ claimedSpan: NONE, claimedScalar: NONE });
-  });
-
-  it("claims the single header byte for the large-fields completion", () => {
-    const blobWire = [1n, 1n, 1n, 3n, [1n, 1n, 3n, [[0n, ROOT, 3n]]], NONE];
-    const integerWire = [1n, 2n, 1n, 3n, 5n, some(blobWire)];
-    const control = controlWithTraverse([
-      1n,
-      4n,
-      0n,
-      10n,
-      4n,
-      ROOT,
-      some(2n),
-      some(integerWire),
-      NONE,
-      NONE,
-    ]);
-    const claims = deriveLedgerOutputProofStepClaims({
-      control,
-      witness: datumWitness(OUTPUT_BYTES),
-      roleIndex: 21,
-    });
-    expect(claims.claimedSpan).toStrictEqual(
-      new Constr(2, [4n, 1n, OUTPUT_BYTES.slice(8, 10)]),
-    );
-  });
-
-  it("claims the break byte for the close step", () => {
-    const control = controlWithTraverse([
-      1n,
-      5n,
-      0n,
-      10n,
-      4n,
-      ROOT,
-      NONE,
-      NONE,
-      NONE,
-      NONE,
-    ]);
-    const claims = deriveLedgerOutputProofStepClaims({
-      control,
-      witness: datumWitness(OUTPUT_BYTES),
-      roleIndex: 22,
-    });
-    expect(claims.claimedSpan).toStrictEqual(
-      new Constr(2, [4n, 1n, OUTPUT_BYTES.slice(8, 10)]),
-    );
-  });
-
-  it("refuses a head step whose control demands no span", () => {
-    const control = controlWithTraverse([
-      1n,
-      6n,
-      0n,
-      10n,
-      4n,
+      8n,
+      2n,
       ROOT,
       NONE,
       NONE,
@@ -439,90 +312,18 @@ describe("ledger output proof step claims", () => {
       NONE,
     ]);
     expect(() =>
-      deriveLedgerOutputProofStepClaims({
-        control,
-        witness: noSpanWitness(),
-        roleIndex: 4,
-      }),
-    ).toThrow(/demands a source span/);
-  });
-
-  const scanWith = (entries: Record<number, bigint>): Data[] => {
-    const scan: Data[] = Array.from({ length: 23 }, () => 0n);
-    for (const [index, value] of Object.entries(entries))
-      scan[Number(index)] = value;
-    return scan;
-  };
-
-  it("claims sliced reference-script chunks by cursor", () => {
-    const control: Data[] = Array.from({ length: 12 }, () => 0n);
-    control[3] = 5000n;
-    control[5] = scanWith({ 20: 5n });
-    control[8] = 0n;
-    expect(
-      deriveLedgerOutputProofStepClaims({
-        control,
-        witness: noSpanWitness(),
-        roleIndex: 8,
-      }).claimedSpan,
-    ).toStrictEqual(new Constr(0, [5n, 4095n]));
-    control[8] = 1n;
-    expect(
-      deriveLedgerOutputProofStepClaims({
-        control,
-        witness: noSpanWitness(),
-        roleIndex: 8,
-      }).claimedSpan,
-    ).toStrictEqual(new Constr(0, [4100n, 900n]));
-    control[8] = 2n;
-    expect(
-      deriveLedgerOutputProofStepClaims({
-        control,
-        witness: noSpanWitness(),
-        roleIndex: 8,
-      }).claimedSpan,
-    ).toStrictEqual(NONE);
-  });
-
-  it("claims sliced script-hash blocks in the ready stage only", () => {
-    const control: Data[] = Array.from({ length: 12 }, () => 0n);
-    control[3] = 5000n;
-    control[5] = scanWith({ 21: 6n });
-    control[10] = some([1n, 0n, 0n, 100n, "", "", 0n, "", 0n]);
-    expect(
-      deriveLedgerOutputProofStepClaims({
-        control,
-        witness: noSpanWitness(),
-        roleIndex: 9,
-      }).claimedSpan,
-    ).toStrictEqual(new Constr(0, [6n, 99n]));
-    control[10] = some([1n, 0n, 128n, 200n, "", "", 0n, "", 0n]);
-    expect(
-      deriveLedgerOutputProofStepClaims({
-        control,
-        witness: noSpanWitness(),
-        roleIndex: 9,
-      }).claimedSpan,
-    ).toStrictEqual(new Constr(0, [133n, 72n]));
-    control[10] = some([1n, 1n, 128n, 200n, "", "", 0n, "", 0n]);
-    expect(
-      deriveLedgerOutputProofStepClaims({
-        control,
-        witness: noSpanWitness(),
-        roleIndex: 9,
-      }).claimedSpan,
-    ).toStrictEqual(NONE);
+      deriveLedgerOutputProofStepClaims({ control, roleIndex: 5 }),
+    ).toThrow(/active integer sub-control/);
   });
 
   it("refuses an out-of-range role index", () => {
     expect(() =>
       deriveLedgerOutputProofStepClaims({
         control: controlWithTraverse([]),
-        witness: noSpanWitness(),
-        roleIndex: 23,
+        roleIndex: 24,
       }),
     ).toThrow(/Unknown ledger output proof stage role/);
-    expect(() => ledgerOutputProofAttestationRoles(23)).toThrow(
+    expect(() => ledgerOutputProofAttestationRoles(24)).toThrow(
       /Unknown ledger output proof stage role/,
     );
   });
@@ -532,8 +333,9 @@ describe("ledger output proof finalize claims", () => {
   const terminalControl = (datumOffset: bigint): Data[] => {
     const scan: Data[] = Array.from({ length: 23 }, () => 0n);
     scan[16] = datumOffset;
-    const control: Data[] = Array.from({ length: 12 }, () => 0n);
+    const control: Data[] = Array.from({ length: 17 }, () => 0n);
     control[1] = 6n;
+    for (let slot = 12; slot < 17; slot += 1) control[slot] = NONE;
     control[3] = 40n;
     control[5] = scan;
     control[6] = some([1n, 3n, 0n, "", 0n, 0n, some([ROOT, 5n, 7n])]);
@@ -573,5 +375,24 @@ describe("ledger output proof finalize claims", () => {
     expect(() => deriveLedgerOutputProofFinalizeClaims(control)).toThrow(
       /terminal output proof control/,
     );
+  });
+
+  it("attaches fact groups in the canonical order", () => {
+    const fact = some("33".repeat(32));
+    const control = terminalControl(10n);
+    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([2, 3]);
+    control[15] = fact;
+    control[16] = fact;
+    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([0]);
+    control[13] = fact;
+    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([1]);
+    control[14] = fact;
+    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([]);
+  });
+
+  it("refuses a half-attached fact group", () => {
+    const control = terminalControl(10n);
+    control[15] = some("33".repeat(32));
+    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([0]);
   });
 });

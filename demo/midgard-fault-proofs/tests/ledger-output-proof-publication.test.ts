@@ -73,7 +73,6 @@ describe("ledger-output-proof publication", () => {
     ).validationTraceDispute;
     const yieldSpecs = [
       ...LEDGER_OUTPUT_PROOF_STAGE_YIELD_ROLES,
-      LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES.span,
       LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES.scalarInteger,
       LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES.scalarBytes,
       ...LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES,

@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import {
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
   buildMidgardRedeemerItemProofTrace,
   buildMidgardValidationTraceTree,
   encodeCbor,
@@ -42,6 +44,7 @@ import {
   validationCekProgramMaterialReferenceOutRefsFromFiles,
   validationOneStepArgumentFromFiles,
 } from "../src/validation-dispute/from-files.js";
+import { scriptSourcesDescriptorClaim } from "../src/validation-dispute/script-sources-descriptor.js";
 import {
   deriveScriptSourcesItemSubmissionPlan,
   encodeValidationSemanticResolutionRedeemer,
@@ -1398,6 +1401,15 @@ describe("validation-dispute transaction validity", () => {
       "22".repeat(32),
       [],
     ] as const;
+    const redeemerItem = buildMidgardBoundedItem({
+      fieldIndex: 8,
+      itemIndex: 0,
+      bytes: Buffer.from("8400004100820101", "hex"),
+    });
+    const redeemerItemChunk = buildMidgardBoundedItemChunkProof(
+      redeemerItem,
+      0,
+    );
     const redeemerChunkProof = new Constr(0, [
       1n,
       8n,
@@ -1405,8 +1417,11 @@ describe("validation-dispute transaction validity", () => {
       8n,
       0n,
       "8400004100820101",
-      [],
-      [],
+      redeemerItemChunk.frontier.peaks.map(
+        (peak) =>
+          new Constr(0, [BigInt(peak.height), peak.hash.toString("hex")]),
+      ),
+      redeemerItemChunk.siblings.map((sibling) => sibling.toString("hex")),
     ]);
     const redeemerItemControl = new Constr(0, [
       1n,
@@ -1415,7 +1430,7 @@ describe("validation-dispute transaction validity", () => {
       0n,
       1n,
       8n,
-      "22".repeat(32),
+      redeemerItem.commitment.toString("hex"),
       -1n,
       -1n,
       -1n,
@@ -1556,6 +1571,16 @@ describe("validation-dispute transaction validity", () => {
                 observerHash: "11".repeat(28),
                 activeCount: 1n,
                 indices: [2n, 3n],
+              },
+            }
+          : {}),
+        ...(selected.index === 22
+          ? {
+              scriptSourcesDescriptorInvocation: {
+                claim: scriptSourcesDescriptorClaim(
+                  selected.auxiliary as Constr<unknown>,
+                ),
+                referenceInputIndex: 2n,
               },
             }
           : {}),

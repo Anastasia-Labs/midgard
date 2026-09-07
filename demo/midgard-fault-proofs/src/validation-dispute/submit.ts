@@ -4103,16 +4103,15 @@ const semanticActionFields = ({
         "Ledger output proof step requires its exact authenticated yields",
       );
     // `VerifyOutputProofStep` field order: the auxiliary's `proof_witness`,
-    // then control, successor control, claimed scalar, claimed span, the
-    // stage role and the yield reference-input indices (stage yield first,
-    // then `stage_attestation_roles` order).
+    // then control, successor control, claimed scalar, the stage role and
+    // the yield reference-input indices (stage yield first, then
+    // `stage_attestation_roles` order).
     return [
       ...base,
       ...auxiliary.fields,
       ledgerOutputProofStepInvocation.plan.controlCbor,
       ledgerOutputProofStepInvocation.plan.nextControlCbor,
       ledgerOutputProofStepInvocation.plan.claimedScalar,
-      ledgerOutputProofStepInvocation.plan.claimedSpan,
       BigInt(ledgerOutputProofStepInvocation.plan.roleIndex),
       [...ledgerOutputProofStepInvocation.indices],
     ];
@@ -4132,22 +4131,26 @@ const semanticActionFields = ({
     if (
       ledgerOutputProofFinalizeInvocation === undefined ||
       ledgerOutputProofFinalizeInvocation.indices.length !==
-        LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES.length ||
+        ledgerOutputProofFinalizeInvocation.plan.attachRoles.length ||
       ledgerOutputProofFinalizeInvocation.indices.some((index) => index < 0n)
     )
       throw new Error(
-        "Ledger output proof finalize requires its four authenticated descriptor yields",
+        "Ledger output proof finalize requires exactly its attach group's authenticated descriptor yields",
       );
     // `VerifyOutputProofFinalize` field order: the auxiliary's
     // `descriptor_cbor` and `signer_proof`, then control, the two claimed
-    // leaf summaries and the descriptor yield reference-input indices in
-    // `descriptor_roles` order.
+    // leaf summaries, the attach roles of this step's fact group (empty at
+    // the thin terminal) and the descriptor yield reference-input indices in
+    // the same order.
     return [
       ...base,
       ...auxiliary.fields,
       ledgerOutputProofFinalizeInvocation.plan.controlCbor,
       ledgerOutputProofFinalizeInvocation.plan.claimedValueSummary,
       ledgerOutputProofFinalizeInvocation.plan.claimedDatumSummary,
+      ledgerOutputProofFinalizeInvocation.plan.attachRoles.map((role) =>
+        BigInt(role),
+      ),
       [...ledgerOutputProofFinalizeInvocation.indices],
     ];
   }
@@ -6411,8 +6414,19 @@ export const submitValidationDisputeSemanticResolution = async ({
       semanticResolverIndex: staged.semanticResolverIndex,
       transitionCbor: oneStepArgument.transitionCbor,
     });
+    // A fact-attach step references exactly its attach group's descriptor
+    // yields; the thin terminal (all four facts recorded) references none.
     const yields = await Promise.all(
-      LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES.map(fetchLedgerOutputProofYield),
+      plan.attachRoles
+        .map((role) => {
+          const spec = LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES[role];
+          if (spec === undefined)
+            throw new Error(
+              "Ledger output descriptor role is outside the roles table",
+            );
+          return spec;
+        })
+        .map(fetchLedgerOutputProofYield),
     );
     return { plan, yields };
   })();
