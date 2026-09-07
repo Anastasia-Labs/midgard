@@ -179,9 +179,14 @@ pub fn finalize_frame(state: normalized.TraversalExecution) -> Bool {
   }
 }
 
+// Both carriers: the CEK context binds descriptor-mode selection items into
+// this same chain (cek-context-item-bind requires mode_descriptor at context
+// stage 0), so the executor domain is the full step_v1 header domain. The
+// canonical machine derives the mode-dependent successor itself.
 pub fn open_header(state: normalized.OuterExecution) -> Bool {
   expect state.current.stage == item.stage_header
-  expect state.current.mode == item.mode_data
+  expect
+    state.current.mode == item.mode_descriptor || state.current.mode == item.mode_data
   expect state.action == item.RedeemerItemOpenHeader
   expect Some(bytes) = state.source_bytes
   item.prevalidated_open_header(state.current, bytes) == item.RedeemerItemProofAdvanced {
@@ -189,9 +194,13 @@ pub fn open_header(state: normalized.OuterExecution) -> Bool {
   }
 }
 
+// Same step_v1 domain as open_header: descriptor-mode tails advance to the
+// terminal stage with no traversal, data-mode tails open the traversal; the
+// canonical prevalidated_open_tail successor pins whichever shape applies.
 pub fn open_tail(state: normalized.OuterExecution) -> Bool {
   expect state.current.stage == item.stage_tail
-  expect state.current.mode == item.mode_data
+  expect
+    state.current.mode == item.mode_descriptor || state.current.mode == item.mode_data
   expect state.action == item.RedeemerItemOpenTail
   expect Some(bytes) = state.source_bytes
   item.prevalidated_open_tail(state.current, bytes) == item.RedeemerItemProofAdvanced {

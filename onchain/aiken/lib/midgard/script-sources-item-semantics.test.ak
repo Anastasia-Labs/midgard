@@ -16,6 +16,27 @@ fn initial(bytes: ByteArray) -> item.RedeemerItemProofControlV1 {
   )
 }
 
+fn initial_descriptor(bytes: ByteArray) -> item.RedeemerItemProofControlV1 {
+  item.initial_control_v1(
+    item.mode_descriptor,
+    0,
+    1,
+    bytearray.length(bytes),
+    bounded.from_bytes(8, 0, bytes),
+    -1,
+    -1,
+  )
+}
+
+fn stepped(
+  current: item.RedeemerItemProofControlV1,
+  next: item.RedeemerItemProofControlV1,
+  action: item.RedeemerItemProofActionV1,
+  bytes: ByteArray,
+) -> normalized.OuterExecution {
+  normalized.OuterExecution { ..execution(current, action, bytes), next }
+}
+
 fn execution(
   control: item.RedeemerItemProofControlV1,
   action: item.RedeemerItemProofActionV1,
@@ -58,6 +79,79 @@ test invalid_tail_proves_exact_canonical_invalid_result() {
     bytes,
   )
   semantics.invalid_tail(execution(control, item.RedeemerItemOpenTail, #"810a"))
+}
+
+// The CEK context binds descriptor-mode selection items into the shared
+// chain (context stage 0), so the open executors accept the full step_v1
+// header/tail domain: descriptor steps advance by the same canonical machine.
+test open_header_proves_the_descriptor_mode_canonical_advance() {
+  let bytes = #"8400004100820a14"
+  let current = initial_descriptor(bytes)
+  expect item.RedeemerItemProofAdvanced { control: next } = item.prevalidated_open_header(
+    current,
+    bytes,
+  )
+  semantics.open_header(
+    stepped(current, next, item.RedeemerItemOpenHeader, bytes),
+  )
+}
+
+test open_header_refuses_a_forged_descriptor_mode_successor() {
+  let bytes = #"8400004100820a14"
+  let current = initial_descriptor(bytes)
+  !semantics.open_header(
+    stepped(current, current, item.RedeemerItemOpenHeader, bytes),
+  )
+}
+
+test open_tail_proves_the_descriptor_mode_terminal_advance() {
+  let bytes = #"8400004100820a14"
+  expect item.RedeemerItemProofAdvanced { control } = item.prevalidated_open_header(
+    initial_descriptor(bytes),
+    bytes,
+  )
+  expect item.RedeemerItemProofAdvanced { control: next } = item.prevalidated_open_tail(
+    control,
+    #"820a14",
+  )
+  expect next.stage == item.stage_terminal
+  expect next.traversal == None
+  semantics.open_tail(
+    stepped(control, next, item.RedeemerItemOpenTail, #"820a14"),
+  )
+}
+
+test open_tail_refuses_a_data_shaped_successor_for_a_descriptor_item() {
+  let bytes = #"8400004100820a14"
+  expect item.RedeemerItemProofAdvanced { control } = item.prevalidated_open_header(
+    initial_descriptor(bytes),
+    bytes,
+  )
+  // Forge the mode_data tail successor shape (stage_data + opened traversal)
+  // for a descriptor item: the canonical machine pins stage_terminal/None.
+  expect item.RedeemerItemProofAdvanced { control: data_next } = item.prevalidated_open_tail(
+    item.RedeemerItemProofControlV1 { ..control, mode: item.mode_data },
+    #"820a14",
+  )
+  let forged = item.RedeemerItemProofControlV1 {
+    ..data_next,
+    mode: item.mode_descriptor,
+  }
+  !semantics.open_tail(
+    stepped(control, forged, item.RedeemerItemOpenTail, #"820a14"),
+  )
+}
+
+test open_header_still_proves_the_data_mode_canonical_advance() {
+  let bytes = #"8400004100820a14"
+  let current = initial(bytes)
+  expect item.RedeemerItemProofAdvanced { control: next } = item.prevalidated_open_header(
+    current,
+    bytes,
+  )
+  semantics.open_header(
+    stepped(current, next, item.RedeemerItemOpenHeader, bytes),
+  )
 }
 
 test invalid_tail_refuses_an_honest_tail() {
