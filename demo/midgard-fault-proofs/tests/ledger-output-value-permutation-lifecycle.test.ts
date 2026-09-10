@@ -5,8 +5,8 @@ import {
   runForcedValidationDisputeScenario,
 } from "./support/submit-init-emulator-shared.js";
 
-// The output half of the size plan's "Mixed-width mint ordering closure"
-// (docs/fault-proofs/size-plans/validation-trace-cek-context-step-semantic-v1.md):
+// Authenticated mixed-width asset ordering across descriptor and context
+// (docs/fault-proofs/decisions/0003-publishable-semantic-resolvers.md):
 // the descriptor asset frontier commits assets in canonical
 // (length-then-bytes) key order while the evaluated script context orders
 // asset names lexicographically, and `ledger_output_value_v1.asset_step`
@@ -40,6 +40,26 @@ describe("mixed-width ledger output value permutation lifecycle", () => {
     );
     expect(result.awardResult?.txHash).toHaveLength(64);
     expect(result.removal?.transactions.length).toBeGreaterThan(0);
+    expect(result.semanticMeasurement!.executionMemory).toBeLessThanOrEqual(
+      13_200_000n,
+    );
+    expect(result.semanticMeasurement!.executionSteps).toBeLessThanOrEqual(
+      8_000_000_000n,
+    );
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify(
+          {
+            ledgerOutputNecessityMeasurement: {
+              label: "mixed-width 1,304-asset value permutation",
+              ...result.semanticMeasurement,
+            },
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+        ),
+      );
+    }
   }, 900_000);
 
   it.each(["foreignIndex", "forgedHead", "omittedHead"] as const)(

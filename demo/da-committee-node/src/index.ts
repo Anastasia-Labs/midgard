@@ -3,6 +3,7 @@ import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 
 import { createWatcherApiServer } from "./api/server.js";
+import { availabilityResponderFromConfig } from "./availability/factory.js";
 import { loadWatcherConfig } from "./config.js";
 import {
   l1SubmitterWalletPreflightFromConfig,
@@ -19,6 +20,7 @@ import {
   DaPeerRegistry,
   StoreBackedDaAttestationProtocol,
 } from "./da/libp2p/index.js";
+import { availabilityRetentionSourceFromStore } from "./l1/availability-retention-source.js";
 import { daAttestationReaderFromConfig } from "./l1/da-attestation-reader.js";
 import { providerFromConfig } from "./l1/provider.js";
 import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
@@ -236,7 +238,24 @@ const main = async (): Promise<void> => {
     daPeerRegistry,
   });
   await service.initialize();
+  const availabilityRuntime = config.l1SubmissionEnabled
+    ? await availabilityResponderFromConfig(config, store, provider)
+    : undefined;
   await daLibp2pNode.start();
+
+  const runAvailabilityResponse = async (): Promise<void> => {
+    if (availabilityRuntime === undefined) return;
+    const report = await availabilityRuntime.responder.tick();
+    if (report.status !== "idle") {
+      const stream =
+        report.status === "failed" || report.status === "unavailable"
+          ? process.stderr
+          : process.stdout;
+      stream.write(
+        `${JSON.stringify({ event: "availability_responder", ...report })}\n`,
+      );
+    }
+  };
 
   let retentionReadiness: WatcherRetentionReadinessSnapshot = {
     status: "not_checked",
@@ -246,18 +265,29 @@ const main = async (): Promise<void> => {
     alerting: 0,
   };
   const runRetention = async (): Promise<void> => {
-    // Q58 is not deployed. Absence is not authority that no challenge exists:
-    // the retention decision therefore receives no challenge authority and
-    // holds every payload. Q58 must replace this with an authenticated L1
-    // active/inactive observation before production deletion can start.
+    // The live responder authenticates deployment capability. Payload deletion
+    // still needs current, finalized terminal evidence for each header.
+    const nowMs = Date.now();
     const options = {
-      nowMs: Date.now(),
+      nowMs,
       retentionDays: config.daTransport.retentionDays,
       deploymentFingerprint: config.deploymentFingerprint,
       minimumFinalityDepth: config.finalityDepth,
     };
     try {
-      const { deadlines, prune } = await runRetentionCycle(store, options);
+      const availabilityChallengeAuthority =
+        availabilityRuntime === undefined
+          ? undefined
+          : await availabilityRetentionSourceFromStore(
+              config,
+              store,
+              provider,
+              nowMs,
+            );
+      const { deadlines, prune } = await runRetentionCycle(store, {
+        ...options,
+        availabilityChallengeAuthority,
+      });
       retentionReadiness = {
         status: deadlines.alerting > 0 ? "alerting" : "ok",
         checkedAt: new Date(options.nowMs).toISOString(),
@@ -293,10 +323,12 @@ const main = async (): Promise<void> => {
   if (process.argv.includes("--once")) {
     try {
       const result = await service.tick();
+      await runAvailabilityResponse();
       await runRetention();
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } finally {
       await daLibp2pNode.stop();
+      availabilityRuntime?.close();
       await store.close?.();
     }
     return;
@@ -335,6 +367,7 @@ const main = async (): Promise<void> => {
     tickInFlight = true;
     try {
       const result = await service.tick();
+      await runAvailabilityResponse();
       await runRetention();
       if (result.errors.length > 0) {
         process.stderr.write(`${JSON.stringify(result)}\n`);
@@ -355,6 +388,7 @@ const main = async (): Promise<void> => {
     clearInterval(interval);
     await api.close();
     await daLibp2pNode.stop();
+    availabilityRuntime?.close();
     await store.close?.();
   };
   process.once("SIGINT", () => {
@@ -396,7 +430,7 @@ Usage:
   midgard-watcher l1-wallet-preflight --json   print L1 submitter wallet readiness
   midgard-watcher                              run API and polling loop
 
-Required configuration follows docs/da-payload-attestation-watcher-plan.md.
+Required configuration follows demo/da-committee-node/docs/da-committee-node-architecture.md in the repository.
 L1 submission requires L1_SUBMITTER_KEY_SOURCE for a funded Cardano wallet.
 Supported CARDANO_PROVIDER_URLS forms:
   blockfrost:https://cardano-preview.blockfrost.io/api/v0#PROJECT_ID

@@ -1,4 +1,5 @@
 import { isAbsolute, normalize as normalizePath } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import {
   type DeploymentMarker,
@@ -10,13 +11,22 @@ import {
   WATCHER_CARDANO_SECURITY_PARAMETER_K,
   type WatcherConfig,
 } from "../runtime/config.js";
-import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import {
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
+} from "../runtime/deployment-identity.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
+  readWatcherLocalBackfillObservation,
+  type WatcherLocalBackfillObservationReceipt,
+} from "./l1-adapter.js";
+import {
+  evaluateWatcherLocalBackfillConsistency,
   WATCHER_MULTI_PROVIDER_ALERT_CODES,
   WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS,
   WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION,
   WATCHER_MULTI_PROVIDER_REASON_CODES,
+  type WatcherMultiProviderConsistency,
 } from "./multi-provider-consistency.js";
 
 export const WATCHER_FINALITY_POLICY_SCHEMA_VERSION =
@@ -75,7 +85,7 @@ export const WATCHER_FINALITY_REASON_CODES = [
   "invalid_state_semantics",
   "stale_state",
   "configured_network_mismatch",
-  "release_evidence_mismatch",
+  "blueprint_mismatch",
   "deployment_mismatch",
   "post_finality_depth_regression",
   "post_finality_point_changed",
@@ -127,7 +137,7 @@ export type WatcherFinalityPolicy = Readonly<{
   maximumPostFinalityRecoveryDepth: string;
   beforeFinalityRollback: "rewind";
   afterFinalityRollback: "quarantine";
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   policyDigest: string;
 }>;
@@ -155,7 +165,7 @@ export type WatcherFinalityState = Readonly<{
   schemaVersion: typeof WATCHER_FINALITY_STATE_SCHEMA_VERSION;
   policyDigest: string;
   network: (typeof NETWORKS)[number];
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   phase: WatcherFinalityPhase;
   pending: WatcherFinalityBoundObservation | null;
@@ -533,7 +543,7 @@ const makePolicy = (
     maximumPostFinalityRecoveryDepth: value.maximumPostFinalityRecoveryDepth,
     beforeFinalityRollback: "rewind" as const,
     afterFinalityRollback: "quarantine" as const,
-    releaseEvidenceDigest: value.releaseEvidenceDigest,
+    blueprintHash: value.blueprintHash,
     deploymentMarker,
   };
   return Object.freeze({
@@ -560,7 +570,7 @@ export const parseWatcherFinalityPolicy = (
       "maximumPostFinalityRecoveryDepth",
       "beforeFinalityRollback",
       "afterFinalityRollback",
-      "releaseEvidenceDigest",
+      "blueprintHash",
       "deploymentMarker",
       "policyDigest",
     ]);
@@ -607,7 +617,7 @@ export const parseWatcherFinalityPolicy = (
         BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K) ||
       policy.beforeFinalityRollback !== "rewind" ||
       policy.afterFinalityRollback !== "quarantine" ||
-      !isHex32(policy.releaseEvidenceDigest) ||
+      !isHex32(policy.blueprintHash) ||
       marker === null ||
       !isHex32(policy.policyDigest)
     ) {
@@ -632,7 +642,7 @@ export const parseWatcherFinalityPolicy = (
       maximumPostFinalityRecoveryDepth: policy.maximumPostFinalityRecoveryDepth,
       beforeFinalityRollback: "rewind",
       afterFinalityRollback: "quarantine",
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      blueprintHash: policy.blueprintHash,
       deploymentMarker: marker,
     });
     return canonical.policyDigest === policy.policyDigest ? canonical : null;
@@ -649,7 +659,8 @@ const parseVerifiedDeploymentIdentity = (
       "manifestId",
       "network",
       "trustRootId",
-      "releaseEvidenceDigest",
+      "fundingProfileBundleDigest",
+      "blueprintHash",
       "ruleBundleCommitment",
       "programCommitments",
       "durableMarker",
@@ -659,7 +670,8 @@ const parseVerifiedDeploymentIdentity = (
       !isHex32(identity.manifestId) ||
       !isNetwork(identity.network) ||
       !isHex32(identity.trustRootId) ||
-      !isHex32(identity.releaseEvidenceDigest) ||
+      !isHex32(identity.fundingProfileBundleDigest) ||
+      !isHex32(identity.blueprintHash) ||
       !isHex32(identity.ruleBundleCommitment)
     ) {
       return null;
@@ -749,7 +761,7 @@ export const makeWatcherFinalityPolicy = (
         config.l1.finality.rollback.postFinalityRecoveryMaxDepth.toString(),
       beforeFinalityRollback: config.l1.finality.rollback.beforeFinality,
       afterFinalityRollback: config.l1.finality.rollback.afterFinality,
-      releaseEvidenceDigest: identity.releaseEvidenceDigest,
+      blueprintHash: identity.blueprintHash,
       deploymentMarker: identity.durableMarker,
     });
   } catch {
@@ -837,7 +849,7 @@ const makeState = (
     schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
     policyDigest: value.policyDigest,
     network: value.network,
-    releaseEvidenceDigest: value.releaseEvidenceDigest,
+    blueprintHash: value.blueprintHash,
     deploymentMarker: value.deploymentMarker,
     phase: value.phase,
     pending: value.pending,
@@ -856,7 +868,7 @@ const stateMatchesPolicy = (
 ): boolean =>
   state.policyDigest === policy.policyDigest &&
   state.network === policy.network &&
-  state.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+  state.blueprintHash === policy.blueprintHash &&
   sameMarker(state.deploymentMarker, policy.deploymentMarker);
 
 const stateSemanticsAreValid = (
@@ -878,9 +890,16 @@ const stateSemanticsAreValid = (
     return false;
   }
   if (state.phase === "pending") {
+    if (visibilityCount === 1n) {
+      return (
+        currentDepth === firstSeenDepth &&
+        observation.firstSeenConsistencyDigest ===
+          observation.lastSeenConsistencyDigest
+      );
+    }
     return (
       currentDepth < BigInt(policy.confirmationDepth) &&
-      (visibilityCount === 1n || currentDepth > firstSeenDepth)
+      currentDepth > firstSeenDepth
     );
   }
   return (
@@ -899,7 +918,7 @@ export const parseWatcherFinalityState = (
       "schemaVersion",
       "policyDigest",
       "network",
-      "releaseEvidenceDigest",
+      "blueprintHash",
       "deploymentMarker",
       "phase",
       "pending",
@@ -912,7 +931,7 @@ export const parseWatcherFinalityState = (
       state.schemaVersion !== WATCHER_FINALITY_STATE_SCHEMA_VERSION ||
       !isHex32(state.policyDigest) ||
       !isNetwork(state.network) ||
-      !isHex32(state.releaseEvidenceDigest) ||
+      !isHex32(state.blueprintHash) ||
       !isHex32(state.stateDigest)
     ) {
       return null;
@@ -950,7 +969,7 @@ export const parseWatcherFinalityState = (
       schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
       policyDigest: state.policyDigest,
       network: state.network,
-      releaseEvidenceDigest: state.releaseEvidenceDigest,
+      blueprintHash: state.blueprintHash,
       deploymentMarker: marker,
       phase: phase as WatcherFinalityPhase,
       pending,
@@ -981,7 +1000,7 @@ const initialState = (policy: WatcherFinalityPolicy): WatcherFinalityState =>
     schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     phase: "unobserved",
     pending: null,
@@ -1509,7 +1528,7 @@ const quarantineFinalized = (
     schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
     policyDigest: state.policyDigest,
     network: state.network,
-    releaseEvidenceDigest: state.releaseEvidenceDigest,
+    blueprintHash: state.blueprintHash,
     deploymentMarker: state.deploymentMarker,
     phase: "quarantined",
     pending: null,
@@ -1532,8 +1551,8 @@ const bindingFailure = (
   if (state.network !== policy.network) {
     return "configured_network_mismatch";
   }
-  if (state.releaseEvidenceDigest !== policy.releaseEvidenceDigest) {
-    return "release_evidence_mismatch";
+  if (state.blueprintHash !== policy.blueprintHash) {
+    return "blueprint_mismatch";
   }
   if (!sameMarker(state.deploymentMarker, policy.deploymentMarker)) {
     return "deployment_mismatch";
@@ -1837,7 +1856,7 @@ export const evaluateWatcherFinality = (
       schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
       policyDigest: policy.policyDigest,
       network: policy.network,
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      blueprintHash: policy.blueprintHash,
       deploymentMarker: policy.deploymentMarker,
       phase: "pending",
       pending: makeBoundObservation(agreement, null),
@@ -1935,7 +1954,7 @@ export const evaluateWatcherFinality = (
       schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
       policyDigest: policy.policyDigest,
       network: policy.network,
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      blueprintHash: policy.blueprintHash,
       deploymentMarker: policy.deploymentMarker,
       phase: "pending",
       pending: replacement,
@@ -1976,7 +1995,7 @@ export const evaluateWatcherFinality = (
       schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
       policyDigest: policy.policyDigest,
       network: policy.network,
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      blueprintHash: policy.blueprintHash,
       deploymentMarker: policy.deploymentMarker,
       phase: "finalized",
       pending: null,
@@ -1995,7 +2014,7 @@ export const evaluateWatcherFinality = (
     schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     phase: "pending",
     pending: nextBound,
@@ -2009,4 +2028,292 @@ export const evaluateWatcherFinality = (
     ["watcher_finality_pending"],
     next,
   );
+};
+
+const localBackfillFinalityBrand = Symbol("local-backfill-finality");
+export type WatcherLocalBackfillFinalityReceipt = Readonly<{
+  [localBackfillFinalityBrand]: true;
+}>;
+type LocalBackfillFinalityRead = Readonly<{
+  consistency: WatcherMultiProviderConsistency;
+  result: WatcherFinalityResult;
+  policy: WatcherFinalityPolicy;
+  bindingDigest: string;
+  sourceIdentityDigest: string;
+  acquisitionDigest: string;
+  point: ReturnType<
+    typeof readWatcherLocalBackfillObservation
+  >["capture"]["point"];
+  step: 1 | 2;
+  startedAtMonotonicMs: number;
+  admittedAtMonotonicMs: number;
+}>;
+type LocalBackfillAcceptedWitness = Readonly<{
+  finality: LocalBackfillFinalityRead;
+  observation: ReturnType<typeof readWatcherLocalBackfillObservation>;
+}>;
+type LocalBackfillStep = {
+  readonly observation: WatcherLocalBackfillObservationReceipt;
+  readonly value: LocalBackfillFinalityRead;
+  readonly witness: LocalBackfillAcceptedWitness;
+  readonly predecessor: WatcherLocalBackfillFinalityReceipt | null;
+  successor: WatcherLocalBackfillFinalityReceipt | null;
+};
+const localBackfillSteps = new WeakMap<
+  WatcherLocalBackfillFinalityReceipt,
+  LocalBackfillStep
+>();
+const localBackfillAcceptedObservations = new WeakMap<
+  WatcherLocalBackfillObservationReceipt,
+  WatcherLocalBackfillFinalityReceipt
+>();
+
+/** A live descriptive view; serialized views cannot restore admission. */
+export const readWatcherLocalBackfillFinality = (
+  receipt: WatcherLocalBackfillFinalityReceipt,
+): LocalBackfillFinalityRead => {
+  const owner = localBackfillSteps.get(receipt);
+  if (owner === undefined)
+    throw new Error("local backfill finality receipt is absent");
+  readWatcherLocalBackfillObservation(owner.observation);
+  return owner.value;
+};
+
+/** Reads only the identical currently live observation owned by this step. */
+export const readWatcherLocalBackfillFinalityObservation = ({
+  finality,
+  observation,
+}: Readonly<{
+  finality: WatcherLocalBackfillFinalityReceipt;
+  observation: WatcherLocalBackfillObservationReceipt;
+}>): Readonly<{
+  finality: ReturnType<typeof readWatcherLocalBackfillFinality>;
+  observation: ReturnType<typeof readWatcherLocalBackfillObservation>;
+}> => {
+  const owner = localBackfillSteps.get(finality);
+  if (owner === undefined || owner.observation !== observation)
+    throw new Error(
+      "local backfill finality and observation are not the identical admitted pair",
+    );
+  const observed = readWatcherLocalBackfillObservation(observation);
+  const step = readWatcherLocalBackfillFinality(finality);
+  if (
+    readWatcherLocalBackfillObservation(observation) !== observed ||
+    readWatcherLocalBackfillFinality(finality) !== step
+  )
+    throw new Error("local backfill pair changed during its read");
+  return Object.freeze({ finality: step, observation: observed });
+};
+
+/**
+ * Reads original accepted facts through their currently live finalized pair.
+ * The first capture stays closed; these descriptive values restore no authority.
+ * Re-read the current pair after asynchronous work before relying on this view.
+ */
+export const readWatcherLocalBackfillFinalityOriginalWitness = (
+  input: Readonly<{
+    finality: WatcherLocalBackfillFinalityReceipt;
+    observation: WatcherLocalBackfillObservationReceipt;
+  }>,
+): Readonly<{
+  first: LocalBackfillAcceptedWitness;
+  current: LocalBackfillAcceptedWitness;
+}> => {
+  const pair = readWatcherLocalBackfillFinalityObservation(input);
+  const owner = localBackfillSteps.get(input.finality);
+  if (
+    owner === undefined ||
+    pair.finality !== owner.witness.finality ||
+    pair.observation !== owner.witness.observation ||
+    owner.value.step !== 2 ||
+    owner.value.result.action !== "finalize" ||
+    owner.value.result.protocolDecision !== "finality_granted" ||
+    owner.value.result.state?.finalized?.visibilityCount !== "2"
+  )
+    throw new Error(
+      "local backfill original witness requires a finalized pair",
+    );
+  const first =
+    owner.predecessor === null
+      ? undefined
+      : localBackfillSteps.get(owner.predecessor);
+  if (
+    first === undefined ||
+    first.predecessor !== null ||
+    first.successor !== input.finality ||
+    first.value.step !== 1 ||
+    first.value.result.action !== "observe_pending" ||
+    first.value.result.state?.pending?.visibilityCount !== "1" ||
+    first.value.bindingDigest !== owner.value.bindingDigest ||
+    first.value.sourceIdentityDigest !== owner.value.sourceIdentityDigest ||
+    first.value.policy.policyDigest !== owner.value.policy.policyDigest
+  )
+    throw new Error("local backfill original witness predecessor differs");
+  const current = readWatcherLocalBackfillFinalityObservation(input);
+  if (
+    current.finality !== pair.finality ||
+    current.observation !== pair.observation
+  )
+    throw new Error("local backfill pair changed during original witness read");
+  return Object.freeze({ first: first.witness, current: owner.witness });
+};
+
+/** Two process-local transitions, each backed by its own currently live capture. */
+export const admitWatcherLocalBackfillFinality = (
+  input: Readonly<{
+    watcherConfig: unknown;
+    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+    observation: WatcherLocalBackfillObservationReceipt;
+    previous: WatcherLocalBackfillFinalityReceipt | null;
+  }>,
+): Readonly<{
+  result: WatcherFinalityResult;
+  admitted: WatcherLocalBackfillFinalityReceipt | null;
+}> => {
+  const {
+    watcherConfig,
+    deploymentIdentity,
+    observation: receipt,
+    previous,
+  } = input;
+  const observation = readWatcherLocalBackfillObservation(receipt);
+  const capture = observation.capture;
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  const config = parseWatcherConfig(watcherConfig);
+  if (
+    deploymentIdentity.manifestId !== capture.deploymentIdentityDigest ||
+    deploymentIdentity.blueprintHash !== capture.blueprintHash ||
+    deploymentIdentity.network !== capture.network ||
+    config.targetNetwork !== capture.network ||
+    sha256Canonical(config.l1.finality) !==
+      sha256Canonical(capture.finalityConfig)
+  )
+    throw new Error(
+      "local backfill deployment or finality configuration differs from capture",
+    );
+  const policy = makeWatcherFinalityPolicy(config, deploymentIdentity);
+  const finality = capture.finalityConfig;
+  if (
+    policy === null ||
+    policy.sourceMode !== "local_node" ||
+    policy.confirmationDepth !== finality.depth.toString() ||
+    policy.maximumPreFinalityRollbackDepth !==
+      finality.rollback.maxDepth.toString() ||
+    policy.maximumPostFinalityRecoveryDepth !==
+      finality.rollback.postFinalityRecoveryMaxDepth.toString() ||
+    policy.beforeFinalityRollback !== finality.rollback.beforeFinality ||
+    policy.afterFinalityRollback !== finality.rollback.afterFinality
+  )
+    throw new Error(
+      "local backfill policy differs from captured finality configuration",
+    );
+  const assertCurrent = () => {
+    assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+    if (readWatcherLocalBackfillObservation(receipt) !== observation)
+      throw new Error(
+        "local backfill observation changed during finality admission",
+      );
+  };
+  assertCurrent();
+  const consistency = evaluateWatcherLocalBackfillConsistency(receipt);
+  assertCurrent();
+  if (
+    consistency.configuredSourceDigest !==
+    sha256Canonical(watcherFinalityConfiguredSource(policy))
+  )
+    throw new Error("local backfill policy source differs from capture");
+  const bindingDigest = sha256Canonical({
+    policyDigest: policy.policyDigest,
+    sourceIdentityDigest: observation.sourceIdentityDigest,
+    pointDigest: observation.native.chainPoint.pointDigest,
+    blockContentDigest: observation.native.blockContentDigest,
+  });
+  // Historical private records survive closure only as facts of accepted steps.
+  // They never refresh a capture or act as the current observation.
+  const prior =
+    previous === null ? undefined : localBackfillSteps.get(previous);
+  if (previous !== null && prior === undefined)
+    throw new Error("local backfill previous step is not privately admitted");
+  if (prior !== undefined && prior.value.bindingDigest !== bindingDigest)
+    throw new Error("local backfill previous step binding differs");
+  const accepted = localBackfillAcceptedObservations.get(receipt);
+  const priorSuccessor =
+    prior?.successor === null || prior?.successor === undefined
+      ? undefined
+      : localBackfillSteps.get(prior.successor);
+  const replay =
+    accepted === undefined ? undefined : localBackfillSteps.get(accepted);
+  const previousState =
+    priorSuccessor?.value.result.state ??
+    prior?.value.result.state ??
+    replay?.value.result.state ??
+    null;
+  const evaluated = evaluateWatcherFinality(policy, previousState, consistency);
+  assertCurrent();
+  const noAdmission = () =>
+    Object.freeze({ result: evaluated, admitted: null });
+  if (
+    accepted !== undefined ||
+    priorSuccessor !== undefined ||
+    prior?.value.step === 2
+  )
+    return noAdmission();
+  const first = prior === undefined;
+  if (
+    first &&
+    BigInt(capture.depthAtObservedTip) < BigInt(policy.confirmationDepth)
+  )
+    throw new Error(
+      "local backfill first visibility is below confirmation depth",
+    );
+  if (
+    first
+      ? evaluated.action !== "observe_pending" ||
+        evaluated.state?.pending?.visibilityCount !== "1"
+      : evaluated.action !== "finalize" ||
+        evaluated.state?.finalized?.visibilityCount !== "2"
+  )
+    return noAdmission();
+  if (
+    !first &&
+    (capture.startedAtMonotonicMs <= prior.value.admittedAtMonotonicMs ||
+      observation.acquisitionDigest === prior.value.acquisitionDigest ||
+      BigInt(capture.depthAtObservedTip) <=
+        BigInt(prior.value.result.state!.pending!.currentDepth))
+  )
+    throw new Error(
+      "local backfill successor requires a later-started capture and actual greater depth",
+    );
+  assertCurrent();
+  const value: LocalBackfillFinalityRead = Object.freeze({
+    consistency,
+    result: evaluated,
+    policy,
+    bindingDigest,
+    sourceIdentityDigest: observation.sourceIdentityDigest,
+    acquisitionDigest: observation.acquisitionDigest,
+    point: capture.point,
+    step: first ? 1 : 2,
+    startedAtMonotonicMs: capture.startedAtMonotonicMs,
+    admittedAtMonotonicMs: performance.now(),
+  });
+  const witness: LocalBackfillAcceptedWitness = Object.freeze({
+    finality: value,
+    observation,
+  });
+  // No callback or asynchronous gap occurs between this read and map mutation.
+  assertCurrent();
+  const admitted = Object.freeze({
+    [localBackfillFinalityBrand]: true as const,
+  });
+  localBackfillSteps.set(admitted, {
+    observation: receipt,
+    value,
+    witness,
+    predecessor: previous,
+    successor: null,
+  });
+  localBackfillAcceptedObservations.set(receipt, admitted);
+  if (prior !== undefined) prior.successor = admitted;
+  return Object.freeze({ result: evaluated, admitted });
 };

@@ -391,6 +391,29 @@ export const minimalStateQueueYields =
       ]),
     ) as MidgardNodeDeployment["stateQueueYields"];
 
+export const minimalAvailabilityChallengeYields =
+  (): MidgardNodeDeployment["availabilityChallengeYields"] =>
+    Object.fromEntries(
+      (
+        [
+          ["bond", "availabilityChallengeBondWithdraw", "c1"],
+          ["open", "availabilityChallengeOpenWithdraw", "c2"],
+          ["settle", "availabilityChallengeSettleWithdraw", "c3"],
+          ["close", "availabilityChallengeCloseWithdraw", "c4"],
+          ["timeout", "availabilityChallengeTimeoutWithdraw", "c5"],
+        ] as const
+      ).map(([role, key, byte]) => [
+        role,
+        {
+          key,
+          purpose: "withdraw",
+          script: { type: "Native", script: "00" },
+          scriptHash: byte.repeat(28),
+          refScriptOutRef: { txHash: byte.repeat(32), outputIndex: 0 },
+        },
+      ]),
+    ) as MidgardNodeDeployment["availabilityChallengeYields"];
+
 export const minimalConfig = ({
   dir,
   manifestPath,
@@ -436,6 +459,7 @@ export const minimalConfig = ({
   },
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   midgardNodeDeployment: {
+    referenceScriptAuthPolicyId: "f0".repeat(28),
     hubOraclePolicyId: "99".repeat(28),
     correctionLockAddress: "addr_test1correctionlock",
     hubOracle: minimalAuthenticatedDeployment({
@@ -474,6 +498,7 @@ export const minimalConfig = ({
       spendingScriptHash: "88".repeat(28),
       spendingScriptAddress: "addr_test1statequeue",
     }),
+    availabilityChallengeYields: minimalAvailabilityChallengeYields(),
     stateQueueYields: minimalStateQueueYields(),
   },
   l1Source: {

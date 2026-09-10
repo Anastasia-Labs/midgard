@@ -116,7 +116,7 @@ const FACTS = [
     countPhrase: "`TxStatus` has {n} kinds",
   },
   {
-    label: "deployed catalogue category",
+    label: "source catalogue category",
     source: "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
     doc: "docs-site/content/docs/onchain/fraud-proof-machines.mdx",
     extract: (src) => {
@@ -125,7 +125,7 @@ const FACTS = [
       );
       return order ? quoted(order[1]) : [];
     },
-    countPhrase: "The {n} deployed catalogue categories",
+    countPhrase: "The {n} source catalogue categories",
   },
 ];
 
@@ -159,6 +159,84 @@ for (const { label, source, doc, extract, countPhrase } of FACTS) {
       `${doc}: expected the phrase "${expected}" (${source} yields ${symbols.length}).`,
     );
   }
+}
+
+// The source inventory is useful only if IDs and actual runner installations
+// stay checked together. Catalogue array position is deliberately not identity.
+const catalogueSource = read("demo/midgard-sdk/src/fraud-proof/catalogue.ts");
+const catalogueOrder = quoted(
+  catalogueSource.match(
+    /FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = \[([\s\S]*?)\] as const/,
+  )?.[1] ?? "",
+);
+const catalogueIds = new Map(
+  [
+    ...(
+      catalogueSource.match(
+        /FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = \{([\s\S]*?)\}/,
+      )?.[1] ?? ""
+    ).matchAll(/(\w+): "([0-9a-f]{8})"/g),
+  ].map((match) => [match[1], match[2]]),
+);
+const installedCategories = quoted(
+  read(
+    "demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts",
+  ).match(
+    /WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object\.freeze\(\[([\s\S]*?)\] as const/,
+  )?.[1] ?? "",
+);
+const catalogueDocPath = "docs/fault-proofs/catalogue-status.md";
+const catalogueDoc = read(catalogueDocPath);
+const inventory = [
+  ...catalogueDoc.matchAll(
+    /^\|\s*`([0-9a-f]{8})`\s*\|\s*`(\w+)`\s*\|\s*(Yes|No)\s*\|$/gm,
+  ),
+].map((match) => [match[1], match[2], match[3]]);
+const expectedInventory = catalogueOrder.map((category) => [
+  catalogueIds.get(category),
+  category,
+  installedCategories.includes(category) ? "Yes" : "No",
+]);
+if (
+  catalogueOrder.length === 0 ||
+  catalogueIds.size !== catalogueOrder.length ||
+  installedCategories.length === 0 ||
+  installedCategories.some((category) => !catalogueIds.has(category)) ||
+  JSON.stringify(inventory) !== JSON.stringify(expectedInventory)
+) {
+  fail(
+    `${catalogueDocPath}: category IDs, order, or watcher installations differ from source.`,
+  );
+}
+const inventorySummary = catalogueDoc.replace(/\s+/g, " ");
+if (
+  !inventorySummary.includes(
+    `The ${catalogueOrder.length} source catalogue categories and all ${installedCategories.length} watcher installations`,
+  )
+) {
+  fail(`${catalogueDocPath}: inventory summary counts differ from source.`);
+}
+
+const languageSource = read(
+  "demo/midgard-core/src/codec/script-language-views.ts",
+);
+const languageBlock =
+  languageSource.match(
+    /MIDGARD_SUPPORTED_SCRIPT_LANGUAGES = Object\.freeze\(\[([\s\S]*?)\] as const/,
+  )?.[1] ?? "";
+const languages = [...languageBlock.matchAll(/name: "(\w+)"/g)].map(
+  (match) => match[1],
+);
+const languagePhrase = `exactly ${languages.map((name) => `\`${name}\``).join(" and ")} in`;
+if (
+  languages.length === 0 ||
+  !read("demo/lucid-midgard/README.md")
+    .replace(/\s+/g, " ")
+    .includes(languagePhrase)
+) {
+  fail(
+    "demo/lucid-midgard/README.md: supportedScriptLanguages must match the exact core advertisement.",
+  );
 }
 
 const demoPackage = JSON.parse(read("demo/package.json"));
@@ -222,4 +300,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Docs facts check passed: ${FACTS.length + 3} fact groups.`);
+console.log(`Docs facts check passed: ${FACTS.length + 5} fact groups.`);

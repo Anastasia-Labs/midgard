@@ -427,7 +427,7 @@ describe("transition trace installed retained-history workflow", () => {
           releaseFinality: {
             schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
             deploymentIdentityDigest: DEPLOYMENT,
-            releaseIdentityDigest: "bb".repeat(32),
+            blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
             policy: finalityPolicy,
@@ -435,7 +435,7 @@ describe("transition trace installed retained-history workflow", () => {
           releaseEconomics: {
             schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
             deploymentIdentityDigest: DEPLOYMENT,
-            releaseIdentityDigest: "bb".repeat(32),
+            blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
             policy: economicsPolicy,

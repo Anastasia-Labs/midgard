@@ -1,10 +1,8 @@
-import {
-  decodeMidgardNativeByteListPreimage,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-} from "@al-ft/midgard-core";
+import { decodeMidgardNativeByteListPreimage } from "@al-ft/midgard-core";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import {
   bindForcedDuplicateInput,
   type BoundDuplicateInput,
@@ -41,7 +39,7 @@ export const detectInputSetUniquenessForcedReplay = (
       ) {
         return;
       }
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveRejectedTransactionFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       const source = transaction.value.source;

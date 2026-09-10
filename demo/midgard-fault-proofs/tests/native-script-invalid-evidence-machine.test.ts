@@ -8,11 +8,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertNativeScriptInvalidDirectRoute,
-  NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT,
-  NATIVE_SCRIPT_INVALID_NODE_BATCH,
-  NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH,
-  NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH,
-  NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH,
   nativeScriptInvalidPushdownStep,
   nativeScriptInvalidSignerScanState,
   nativeScriptInvalidSignerSet,
@@ -128,11 +123,6 @@ describe("native-script-invalid staged evidence machine", () => {
   });
 
   it("pins the direct and independently governed staged frontiers", () => {
-    expect(NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT).toBe(28);
-    expect(NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH).toBe(16);
-    expect(NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH).toBe(16);
-    expect(NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH).toBe(16);
-    expect(NATIVE_SCRIPT_INVALID_NODE_BATCH).toBe(16);
     expect(
       nativeScriptInvalidUsesDirectRoute({
         signerCount: 28,

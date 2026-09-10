@@ -1595,7 +1595,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     console.info(
       `[spend-input-signer-missing-fit-ledger] ${JSON.stringify(ledger)}`,
     );
-    if (process.env.MIDGARD_UPDATE_FIT === "1")
+    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1")
       await writeFile(
         new URL(
           "../../../docs/fault-proofs/size-plans/spend-input-signer-missing-v1-fit-ledger.json",

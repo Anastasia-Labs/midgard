@@ -26,6 +26,7 @@ export const INVALID_SIGNATURE_FAULT_PROOF_TITLES = {
 export type InvalidSignatureFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
   readonly invalidSignature: FraudProofChain & {
     readonly steps: readonly [SpendingValidator, SpendingValidator];
   };
@@ -108,6 +109,7 @@ export const buildInvalidSignatureFaultProofContracts = (
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       invalidSignature,
     };
   });

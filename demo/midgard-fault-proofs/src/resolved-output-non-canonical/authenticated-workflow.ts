@@ -73,6 +73,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { createResolvedOutputNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
@@ -297,7 +298,7 @@ export const loadManifestBoundResolvedOutputNonCanonicalConfig = async (
       })) as unknown as ResolvedOutputNonCanonicalContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
-      hubOraclePolicyId: binding.deploymentInfo.hubOracleMint!.scriptHash,
+      hubOraclePolicyId: binding.contractEntries.hubOracleMint!.scriptHash,
       stateQueuePolicyId: binding.definition.stateQueue.policyId,
       fieldPreimageCertificatePolicyId: certificate.policyId,
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
@@ -1246,10 +1247,15 @@ export const createResolvedOutputNonCanonicalWorkflowRunnerSurface = ({
             "resolvedOutputNonCanonical manifest-bound workflow identity differs from invocation",
           );
         }
-        return await executeManifestBoundResolvedOutputNonCanonicalWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundResolvedOutputNonCanonicalWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

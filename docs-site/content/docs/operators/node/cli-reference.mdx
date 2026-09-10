@@ -1,78 +1,80 @@
 ---
 title: "CLI Reference"
-description: "The midgard-node command-line interface, grouped by function."
+description: "Operator and tooling command boundaries, with reconciliation subcommands shown explicitly."
 ---
 
-`midgard-node` is a Commander CLI (`bin: midgard-node`). Run `midgard-node --help`
-for the authoritative, version-specific list. The 67 commands below are grouped
-by function.
+The operator binary is `midgard-node`; the separate `midgard-node-tools` binary
+owns wallet generation, stress workloads and E2E orchestration. From either
+package directory, `node dist/index.js --help` lists that binary's commands.
+Build the relevant package first. Use a command's `--help` for required options.
 
-<Callout type="info" title="The server">
-  `listen` is the long-running command that starts the HTTP API server and the
-  [background fibers](/docs/operators/node/background-fibers). See [Server &amp;
-  HTTP API](/docs/operators/node/server-http-api).
-</Callout>
+The 51 commands explicitly registered in the operator entry point are joined by
+generated reference-script publication commands. The groups below distinguish
+operator commands, nested reconciliation commands, and separate tooling.
 
-## Initialization & deployment
+## Operator runtime and deployment
 
-`init` · `export-contract-deployment-info` · `deployment-manifest` ·
-`deployment-status` · `reference-scripts-complete` ·
-`reference-script-wallet-status` · `sweep-reference-script-wallet`
+Run these through `midgard-node`:
 
-## Database
+- `listen`
+- `init` · `export-contract-deployment-info` · `deployment-status`
+- `prepare-hub-oracle-one-shot-nonce`
+- `reference-script-wallet-status` · `sweep-reference-script-wallet`
+- `deploy-reference-script-<name>`: generated publication commands; use the
+  binary's help for the configured list.
+- `register-active-operator` · `activate-operator`
+- `register-phas-membership-reward-account`
 
-`db:migrate` · `db:status` · `db:verify` · `db:checksum` ·
-`db:backfill-da-payloads`, see [Database &amp; State](/docs/operators/node/database).
+See [Initialization & Deployment](/docs/operators/node/initialization-deployment)
+and [Server HTTP API](/docs/operators/node/server-http-api).
 
-## Operators & PHAS
+## Operator database, user events and settlement
 
-`register-active-operator` · `activate-operator` ·
-`register-phas-membership-reward-account` · `phas-registered`
+- `db:migrate` · `db:status` · `db:verify` · `db:checksum` · `db:backfill-da-payloads`
+- `submit-l2-transfer` · `submit-deposit` · `submit-withdrawal` · `withdrawal-status`
+- `project-deposits-once` · `fetch-withdrawals-once` · `reconcile-deposit-submission`
+- `resolve-event-settlement-proof` · `absorb-confirmed-deposit-to-reserve`
+- `initialize-payout` · `add-reserve-funds-to-payout` · `conclude-payout`
+- `payout-status` · `reserve-utxos`
+- `address-from-seed` · `utxos` · `l1-utxos` · `l1-provider-preflight`
+- `audit-blocks-immutable` · `mpf-audit` · `mpf-replay`
+- `da-libp2p-preflight` · `da-libp2p-generate-manifest`
 
-## L2 transactions, deposits & withdrawals
+`commit-explicit-block-header` is a separately acknowledged drill command for
+caller-supplied roots, not the ordinary mempool commitment command.
+`attest-state-queue-once` uses locally held committee keys; it does not replace
+independent committee acceptance. Ordinary operation uses the background fibers.
 
-`submit-l2-transfer` · `submit-deposit` · `submit-withdrawal` ·
-`withdrawal-status` · `project-deposits-once` · `deposit-projected` ·
-`fetch-withdrawals-once` · `absorb-confirmed-deposit-to-reserve` ·
-`reconcile-deposit-submission`, see
-[Deposits &amp; Withdrawals](/docs/operators/node/deposits-withdrawals).
+## Operator reconciliation
 
-## Blocks, attestation & settlement
+These are subcommands of `reconcile`, not top-level commands:
 
-`commit-explicit-block-header` · `block-committed` · `tx-committed` ·
-`attest-state-queue-once` · `da-attested` · `merge-complete` ·
-`resolve-event-settlement-proof` · `reconcile` · `local-finalization` ·
-`retention-check`
+- `reconcile phas-registered`
+- `reconcile reference-scripts-complete`
+- `reconcile deployment-manifest`
+- `reconcile deposit-projected`
+- `reconcile tx-committed`
+- `reconcile da-attested`
+- `reconcile block-committed`
+- `reconcile retention-check`
+- `reconcile local-finalization`
+- `reconcile merge-complete`
 
-## Reserve & payout
+Inspect the result before selecting an available `--repair` action. Read-only
+inspection does not imply that a repair ran or a milestone completed.
 
-`initialize-payout` · `add-reserve-funds-to-payout` · `conclude-payout` ·
-`payout-status` · `reserve-utxos`, see
-[Reserve &amp; Payout](/docs/operators/node/reserve-payout).
+## Separate tooling binary
 
-## Hub oracle & wallets
+Run these through `midgard-node-tools`:
 
-`prepare-hub-oracle-one-shot-nonce` · `create-l2-wallet` · `address-from-seed` ·
-`utxos` · `l1-utxos` · `l1-provider-preflight`
+- `create-l2-wallet`
+- `stress-wallets:prepare` · `stress-wallets:fanout` · `stress-wallets:consolidate`
+  · `stress-wallets:terminal-drain`
+- `stress-corpus-generate` · `stress-corpus-verify`
+- `e2e-start-service` · `e2e-run-step` · `e2e-finalize-summary`
+- `e2e-stress-l2-throughput` · `e2e-clean-owned-process-group`
+- `phase4-genesis-ledger` · `phase4-t1-probe` · `phase4-t1-advance`
+- `e2e-pipelined-commit-process-acceptance`
 
-## Stress wallets & corpus
-
-`stress-wallets:prepare` · `stress-wallets:fanout` ·
-`stress-wallets:consolidate` · `stress-wallets:terminal-drain` ·
-`stress-wallets:consolidate-verify-legacy-state` ·
-`stress-wallets:consolidate-upgrade-state` · `stress-corpus-generate` ·
-`stress-corpus-historical-extension` · `stress-corpus-verify`, see
-[Benchmarks &amp; Stress Testing](/docs/operators/node/benchmarks).
-
-## Audit & DA transport
-
-`audit-blocks-immutable` · `mpf-audit` · `mpf-replay` ·
-`da-libp2p-preflight` · `da-libp2p-generate-manifest`
-
-## E2E & local-devnet acceptance
-
-`e2e-start-service` · `e2e-run-step` · `e2e-finalize-summary` ·
-`e2e-stress-l2-throughput` · `e2e-clean-owned-process-group` ·
-`phase4-genesis-ledger` · `phase4-t1-probe` · `phase4-t1-advance` ·
-`e2e-pipelined-commit-process-acceptance`, see
-[Benchmarks &amp; Stress Testing](/docs/operators/node/benchmarks).
+See [Benchmarks & Stress Testing](/docs/operators/node/benchmarks) and
+[End-to-End Testing Flow](/docs/operators/node/e2e-testing-flow).

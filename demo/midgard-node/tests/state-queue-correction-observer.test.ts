@@ -16,6 +16,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  decodeKupoAvailabilityRetentionInput,
   makeLocalKupmiosStateQueueCorrectionSource,
   parseStateQueueCorrectionObserverState,
   reconcileStateQueueCorrectionObserver,
@@ -1185,4 +1186,47 @@ describe("node-owned state-queue correction observer", () => {
       ).toHaveLength(1);
     },
   );
+});
+
+describe("consumed availability retention input admission", () => {
+  it("requires exact output identity, queue policy and inline datum", () => {
+    const reference = { txHash: h32("1"), outputIndex: 0 };
+    const address = "addr_test_queue";
+    const unit = policy + STATE_QUEUE_NODE_ASSET_NAME_PREFIX + target;
+    const candidate = {
+      transaction_id: reference.txHash,
+      output_index: 0,
+      address,
+      datum_type: "inline",
+      datum: "00",
+      value: { coins: 4000000, assets: { [unit]: 1 } },
+    };
+    expect(
+      decodeKupoAvailabilityRetentionInput(
+        candidate,
+        reference,
+        address,
+        policy,
+        target,
+      )?.assets[unit],
+    ).toBe(1n);
+    for (const changed of [
+      { transaction_id: h32("2") },
+      { output_index: 1 },
+      { address: "foreign" },
+      { datum_type: "hash" },
+      { script_hash: h28("f") },
+      { value: { coins: 4000000, assets: { [unit]: 2 } } },
+      { value: { coins: 4000000, assets: { [unit]: 1, [h28("f")]: 1 } } },
+    ])
+      expect(
+        decodeKupoAvailabilityRetentionInput(
+          { ...candidate, ...changed },
+          reference,
+          address,
+          policy,
+          target,
+        ),
+      ).toBeNull();
+  });
 });

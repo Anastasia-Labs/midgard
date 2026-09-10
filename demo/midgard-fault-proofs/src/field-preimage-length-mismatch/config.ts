@@ -49,7 +49,7 @@ export const FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS = Object.freeze({
   step02Accepted: "fraudProofFieldPreimageLengthMismatchStep02Accepted",
   step02Forced: "fraudProofFieldPreimageLengthMismatchStep02Forced",
   step03: "fraudProofFieldPreimageLengthMismatchStep03",
-  computationThreadMint: "fraudProofComputationThreadMint",
+  computationThreadMint: "computationThreadMint",
   fraudProofMint: "fraudProofMint",
   phasMembershipWithdraw: "phasMembershipWithdraw",
   fieldPreimageCertificateMint: "fieldPreimageCertificateMint",

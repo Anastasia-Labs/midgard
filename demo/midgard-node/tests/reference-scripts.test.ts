@@ -25,6 +25,7 @@ import {
   resolveSpendableWalletUtxos,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "../src/transactions/reference-scripts.js";
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const REFERENCE_SCRIPT_ADDRESS = "addr_test1reference";
 const RETURN_ADDRESS = "addr_test1return";
@@ -64,6 +65,27 @@ const mkUtxo = ({
 });
 
 describe("node-runtime reference-script registry", () => {
+  it("publishes exactly every manifest role for the real contract set", async () => {
+    const contracts = await loadRealMidgardContractsForTest({
+      txHash: txHashFixture("0"),
+      outputIndex: 0,
+    });
+    const targets = nodeRuntimeReferenceScriptTargets(contracts);
+
+    expect(targets.map(({ name }) => name).sort()).toEqual(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).sort(),
+    );
+    expect(
+      targets.find(({ name }) => name === "V1 field-preimage certificate")
+        ?.script,
+    ).toEqual(contracts.fieldPreimageCertificate.spendingScript);
+    expect(
+      targets.find(
+        ({ name }) => name === "V1 field-preimage certificate minting",
+      )?.script,
+    ).toEqual(contracts.fieldPreimageCertificate.mintingScript);
+  });
+
   it("exposes node-runtime as the primary deployment command", () => {
     expect(REFERENCE_SCRIPT_COMMAND_NAMES[0]).toEqual("node-runtime");
     expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("node-runtime");
@@ -134,36 +156,6 @@ describe("node-runtime reference-script registry", () => {
     expect(registeredFraudProofNames).toContain(
       "V1 fraud-proof missing-native-script-tx step-06",
     );
-    expect(
-      registeredFraudProofNames.filter((name) =>
-        name.startsWith("V1 fraud-proof transition-trace "),
-      ),
-    ).toEqual([
-      "V1 fraud-proof transition-trace route",
-      "V1 fraud-proof transition-trace final-0",
-      "V1 fraud-proof transition-trace final-1",
-      "V1 fraud-proof transition-trace final-2",
-      "V1 fraud-proof transition-trace final-3",
-      "V1 fraud-proof transition-trace final-4",
-      "V1 fraud-proof transition-trace final-5",
-      "V1 fraud-proof transition-trace final-6",
-      "V1 fraud-proof transition-trace final-7",
-      "V1 fraud-proof transition-trace final-4 L2 open yield",
-      "V1 fraud-proof transition-trace final-4 L2 summaries yield",
-      "V1 fraud-proof transition-trace final-4 L2 replay yield",
-      "V1 fraud-proof transition-trace final-4 claim structure yield",
-      "V1 fraud-proof transition-trace final-4 claim source yield",
-      "V1 fraud-proof transition-trace final-4 claim endpoints yield",
-      "V1 fraud-proof transition-trace final-5 projection yield",
-      "V1 fraud-proof transition-trace final-5 summaries yield",
-      "V1 fraud-proof transition-trace final-4 L2 assembly yield",
-      "V1 fraud-proof transition-trace final-4 L2 scan yield",
-      "V1 fraud-proof transition-trace final-4 L2 value yield",
-      "V1 fraud-proof transition-trace final-5 assembly yield",
-      "V1 fraud-proof transition-trace final-5 scan yield",
-      "V1 fraud-proof transition-trace final-5 value yield",
-      "V1 fraud-proof transition-trace final-5 replay yield",
-    ]);
   });
 
   it("derives protocol-init as a strict subset of node-runtime", async () => {

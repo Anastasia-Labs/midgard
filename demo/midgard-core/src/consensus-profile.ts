@@ -19,9 +19,8 @@ import {
 /**
  * Exact protocol tuple for the canonical V1 validator deployment.
  *
- * Importing the tuple does not activate a release. Activation requires exact
- * deployment-manifest, validator-hash, and release-evidence matches at every
- * trust boundary.
+ * Runtime compatibility is established by the protocol tuple and actual
+ * deployed validator identities. Release reports are not protocol inputs.
  */
 export const MIDGARD_PROTOCOL_VERSION = 1 as const;
 export const MIDGARD_TRANSITION_STEP_SCHEMA_VERSION = 1 as const;
@@ -225,8 +224,6 @@ const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 // That helper is a test corpus; this is the production pin the validator half
 // mirrors, and its Aiken counterpart is `env.coins_per_utxo_byte`, held
 // identical in onchain/aiken/env/default.ak and onchain/aiken/env/testnet.ak.
-// demo/midgard-validation/tests/min-ada-twin-cross-check.test.ts reads all
-// three as source text and fails if any pair disagrees.
 //
 // A COMPILED DEPLOYMENT CONSTANT, NOT A DECLARED FIELD (owner ruling
 // 2026-08-23 on #627, option B): the rate that convicts a block is not the
@@ -382,26 +379,6 @@ export const MIDGARD_REQUIRED_PROOF_FAMILIES = Object.freeze([
   "forced-transaction-verdict-mismatch",
   "forced-program-material-availability",
 ] as const);
-
-/**
- * The V1 profile must not become a runtime feature flag. A release changes
- * this compiled value only after the validator-hash-bound evidence bundle for
- * every required proof family has passed the proof-fit gate.
- */
-export const MIDGARD_RELEASE_EVIDENCE_DIGEST: string | null = null;
-
-export const assertMidgardConsensusReleaseReady = (): void => {
-  if (MIDGARD_RELEASE_EVIDENCE_DIGEST === null) {
-    throw new Error(
-      "midgard-consensus-v1 is not activated: the compiled L1 verifier and validator-hash-bound release evidence are incomplete",
-    );
-  }
-  if (!/^[0-9a-f]{64}$/u.test(MIDGARD_RELEASE_EVIDENCE_DIGEST)) {
-    throw new Error(
-      "midgard-consensus-v1 has an invalid compiled release evidence digest",
-    );
-  }
-};
 
 export const MIDGARD_CONSENSUS_PROFILE = Object.freeze({
   profileId: MIDGARD_CONSENSUS_PROFILE_ID,

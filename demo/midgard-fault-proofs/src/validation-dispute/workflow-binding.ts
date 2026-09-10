@@ -99,8 +99,7 @@ type ManifestContract = {
 type FinalizedWorkflowManifest = {
   readonly manifestId: string;
   readonly network: Network;
-  readonly proofEvidence: {
-    readonly digest: string;
+  readonly artifacts: {
     readonly blueprintHash: string;
   };
   readonly l1Finality: DeploymentManifestL1Finality;
@@ -116,8 +115,7 @@ const finalizedManifest = (value: unknown): FinalizedWorkflowManifest => {
   const manifest = verified as unknown as FinalizedWorkflowManifest;
   if (
     !HEX_32.test(manifest.manifestId) ||
-    !HEX_32.test(manifest.proofEvidence.digest) ||
-    !HEX_32.test(manifest.proofEvidence.blueprintHash)
+    !HEX_32.test(manifest.artifacts.blueprintHash)
   ) {
     throw new Error(
       "finalized deployment manifest has invalid release or blueprint identity",
@@ -212,7 +210,7 @@ const releasePolicies = (
   const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifest.manifestId,
-    releaseIdentityDigest: manifest.proofEvidence.digest,
+    blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
     policy: finalityPolicy,
   };
@@ -230,7 +228,7 @@ const releasePolicies = (
   const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
     schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifest.manifestId,
-    releaseIdentityDigest: manifest.proofEvidence.digest,
+    blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest:
       computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
     policy: economicsPolicy,
@@ -262,9 +260,9 @@ export const bindValidationTraceDisputeWorkflowDeployment = async ({
   const blueprintHash = createHash("sha256")
     .update(blueprintJson)
     .digest("hex");
-  if (blueprintHash !== manifest.proofEvidence.blueprintHash) {
+  if (blueprintHash !== manifest.artifacts.blueprintHash) {
     throw new Error(
-      `blueprint SHA-256 does not match the finalized deployment manifest: expected=${manifest.proofEvidence.blueprintHash} actual=${blueprintHash}`,
+      `blueprint SHA-256 does not match the finalized deployment manifest: expected=${manifest.artifacts.blueprintHash} actual=${blueprintHash}`,
     );
   }
   let blueprint: unknown;
@@ -273,12 +271,13 @@ export const bindValidationTraceDisputeWorkflowDeployment = async ({
   } catch {
     throw new Error("deployment-manifest blueprint is not valid JSON");
   }
-  const deploymentInfo = parseContractDeploymentInfo(deploymentInfoValue);
+  const deploymentDocument: unknown = structuredClone(deploymentInfoValue);
+  const deploymentInfo = parseContractDeploymentInfo(deploymentDocument);
   assertDeploymentInfoMatchesManifest({ manifest, deploymentInfo });
   const resolvedContracts =
     await resolveValidationTraceDisputeDeploymentContracts({
       blueprint,
-      deploymentInfo: deploymentInfoValue,
+      deploymentInfo: deploymentDocument,
       network: manifest.network,
       requireStateQueueMint: true,
       requireFraudProofSpend: true,
@@ -376,10 +375,11 @@ export const bindValidationTraceDisputeWorkflowDeployment = async ({
   return {
     bindingVersion: FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING,
     deploymentFingerprint: manifest.manifestId,
-    releaseIdentityDigest: manifest.proofEvidence.digest,
+    blueprintHash: manifest.artifacts.blueprintHash,
     network: manifest.network,
     blueprint,
-    deploymentInfo,
+    deploymentInfo: deploymentDocument,
+    contractEntries: deploymentInfo,
     ...policies,
     cardanoProtocolParameters: manifest.cardanoProtocolParameters.snapshot,
     catalogue: {

@@ -143,7 +143,7 @@ const assertCanonicalComputationSteps = (
     steps.some((step, index) => step.role !== COMPUTATION_STEP_ROLES[index])
   ) {
     throw new Error(
-      "raw L1 family definition requires one to nine canonically ordered computation steps",
+      `raw L1 family definition requires one to ${COMPUTATION_STEP_ROLES.length} canonically ordered computation steps`,
     );
   }
 };
@@ -627,7 +627,7 @@ const deriveTerminal = async ({
   if (
     verifiedEconomics.deploymentIdentityDigest !==
       snapshot.deploymentIdentityDigest ||
-    verifiedEconomics.releaseIdentityDigest !== snapshot.releaseIdentityDigest
+    verifiedEconomics.blueprintHash !== snapshot.blueprintHash
   ) {
     throw new Error(
       "release economics identity does not match the raw L1 snapshot",
@@ -804,7 +804,7 @@ export const fraudProofRawL1SnapshotRequestForFamily = ({
   const assetName = `${definition.categoryId}${definition.headerHash}`;
   return {
     deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
-    releaseIdentityDigest: releaseFinality.releaseIdentityDigest,
+    blueprintHash: releaseFinality.blueprintHash,
     finalityPolicyDigest: releaseFinality.policyDigest,
     headerHash: definition.headerHash,
     scopes: [

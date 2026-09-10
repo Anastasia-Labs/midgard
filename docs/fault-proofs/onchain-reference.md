@@ -1,78 +1,65 @@
 # On-Chain Fault-Proof Reference
 
-Current Aiken map reviewed against the working tree on 2026-09-01.
+Status: Active
+
+Last reviewed: 2026-09-07 (source map).
 
 ## Compiled identity
 
-| Item                 | Value                                                              |
-| -------------------- | ------------------------------------------------------------------ |
-| Blueprint            | `onchain/aiken/plutus.json`                                        |
-| Validators           | 563                                                                |
-| SHA-256              | `b885c3abb0eeaace296011a108fbe4a06d0e5303bfb9d73bbec48fc30f32f9de` |
-| Catalogue categories | 32, IDs `00000000`–`0000001f`                                      |
-| Catalogue root       | `690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4` |
+See [catalogue status](catalogue-status.md) for source category IDs and how to
+bind a generated blueprint to deployment acceptance. The generated
+`onchain/aiken/plutus.json` is not a checked-in release artifact. Counts and
+hashes from older builds do not identify the current deployment.
 
 ## Shared validators and libraries
 
-| Surface                                | Source                                                                           |
-| -------------------------------------- | -------------------------------------------------------------------------------- |
-| Catalogue policy/validator             | `onchain/aiken/validators/fraud-proof-catalogue.ak`                              |
-| Computation-thread policy              | `onchain/aiken/validators/computation-thread.ak`                                 |
-| Permanent proof token                  | `onchain/aiken/validators/fraud-proof.ak`                                        |
-| State-queue dispatch, init, and deinit | `onchain/aiken/validators/state-queue.ak`                                        |
-| State-queue operational arms           | `onchain/aiken/validators/state-queue-yields.ak`                                 |
-| Common family binding/cancel/finalize  | `onchain/aiken/lib/midgard/fraud-proofs/common.ak`                               |
-| Native transaction commitments/codecs  | `onchain/aiken/lib/midgard/fraud-proofs/native-tx/`                              |
-| Transition-trace proof logic           | `onchain/aiken/lib/midgard/fraud-proofs/transition-trace/`                       |
-| Validation machine and dispute types   | `onchain/aiken/lib/midgard/validation-machine-v1.ak`, `validation-dispute-v1.ak` |
-| Large-field verifier support           | `onchain/aiken/validators/fraud-proofs/mpf-chunked-proof/`                       |
+| Surface                                | Source                                                                                                |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Catalogue policy/validator             | `onchain/aiken/validators/fraud-proof-catalogue.ak`                                                   |
+| Computation-thread policy              | `onchain/aiken/validators/computation-thread.ak`                                                      |
+| Permanent proof token                  | `onchain/aiken/validators/fraud-proof.ak`                                                             |
+| State-queue dispatch, init, and deinit | `onchain/aiken/validators/state-queue.ak`                                                             |
+| State-queue operational arms           | `onchain/aiken/validators/state-queue-yields.ak`                                                      |
+| Common family binding/cancel/finalize  | `onchain/aiken/lib/midgard/fraud-proofs/common.ak`                                                    |
+| Native transaction commitments/codecs  | `onchain/aiken/lib/midgard/fraud-proofs/native-tx/`                                                   |
+| Transition-trace proof logic           | `onchain/aiken/lib/midgard/fraud-proofs/transition-trace/`                                            |
+| Validation machine and dispute types   | `onchain/aiken/lib/midgard/validation-machine/`, `onchain/aiken/lib/midgard/validation-dispute-v1.ak` |
+| Large-field verifier support           | `onchain/aiken/validators/fraud-proofs/mpf-chunked-proof/`                                            |
 
 ## Catalogue validator directories
 
-```text
-double-spend                  no-input
-input-no-idx                  invalid-range
-transition-trace              zero-input
-validation-trace              da-hash-preimage
-no-reference-input            reference-input-no-idx
-invalid-signature             fabricated-deposit
-fabricated-withdrawal         native-script-decoding
-missing-signature             missing-native-script-tx
-withdrawn-reference-input     canonical-decodability
-committed-field-shape         min-fee
-withdrawal-mistag             double-withdraw
-cross-block-duplicate-event   l2-tx-mistag
-withdrawn-input               value-not-preserved
-input-set-uniqueness          mint-authorization
-network-id                    missing-native-script-utxo
-native-script-invalid         min-ada
-```
+Family validators live under `onchain/aiken/validators/fraud-proofs/`. The SDK
+catalogue's explicit ID map determines category identity; filesystem order and
+shared-helper directories do not. See [catalogue status](catalogue-status.md)
+for the complete inventory.
 
-These 32 directories correspond positionally to the SDK catalogue.
-`mpf-chunked-proof` is the 33rd direct child and is not a category.
-
-## Final three families
+## Native-script and minimum-Ada families
 
 ### `missing-native-script-utxo` (`0000001d`)
 
 Seven steps bind the challenged transaction, select the spent input, prove the
-predecessor UTxO and credential, authenticate native-script material, perform
-bounded staged parsing/evaluation where required, and finalize only the fault
-verdict. Tests live in `staged-v1.test.ak`.
+predecessor UTxO and credential, bind native-script material to that credential,
+and prove absence from the transaction's script witnesses through direct or
+bounded grammar/scan continuations. Only the absence verdict can finalize. Tests live in `staged-v1.test.ak`.
 
 ### `native-script-invalid` (`0000001e`)
 
 Five steps bind the transaction and native witness, scan the bounded address-
 witness frontier, carry a resumable evaluator cursor/stack, and finalize only
-when the selected native script evaluates false. Tests live in
+when the selected native script contradicts the authenticated verdict: false
+for accepted-invalid evidence, true for wrongful forced rejection. Tests live in
 `staged-v1.test.ak`.
 
 ### `min-ada` (`0000001f`)
 
-Five steps support transaction-output and post-UTxO violation shapes. They use
+Five spending steps and two authenticated rewarding-script yields support
+transaction-output and post-UTxO violation shapes. They use
 the same canonical minimum-Ada function and production parameter snapshot as
 the validation machine, authenticate membership/non-membership as required,
-and reject exact-floor or inherited-underfunding false accusations. Tests live
+and reject exact-floor or inherited-underfunding false accusations on the
+accepted-invalid route. Wrongful forced `OutputBelowMinAda` rejection instead
+requires sufficiency, including the exact floor, at the authenticated output
+index. Tests live
 in `family-v1.test.ak`.
 
 ## Invariants for every standalone family
@@ -95,7 +82,7 @@ Build and deploy with:
 
 ```bash
 cd onchain/aiken
-aiken check
+aiken check --env testnet
 aiken build --env testnet
 ```
 

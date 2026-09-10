@@ -1,4 +1,4 @@
-import { CML, Data } from "@lucid-evolution/lucid";
+import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,6 +20,7 @@ import {
   daAvailabilityChallengeAssetName,
   daAvailabilityChunkLeafHash,
   DaAvailabilityCommitment,
+  DaAvailabilityMintRedeemer,
   DaAvailabilityParameters,
   daAvailabilityParameters,
   DaAvailabilityPublicationDatum,
@@ -616,6 +617,24 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow();
   });
+
+  it.each([
+    [0, "0000"],
+    [1, "0100"],
+    [15, "0f00"],
+    [63, "3f00"],
+  ] as const)(
+    "matches the Aiken little-endian tranche asset vector for index %i",
+    (trancheIndex, encodedIndex) => {
+      const suffix = "22".repeat(28);
+      expect(
+        daAvailabilityTrancheAssetName({
+          challengeAssetName: `44414348${suffix}`,
+          trancheIndex,
+        }),
+      ).toBe(`4454${suffix}${encodedIndex}`);
+    },
+  );
 
   it("plans exact ordered publications and advances only through the deadline", () => {
     const geometry = availabilityResponseGeometry({
@@ -1558,4 +1577,30 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("authenticated deadline");
   });
+});
+
+describe("availability mint delegation ABI", () => {
+  it.each([
+    [0, "MintBondFromAttestation", [1n, 2n, 3n, 4n, 5n, 6n]],
+    [1, "OpenChallenge", [1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, OWNER]],
+    [2, "SettleTranche", [1n, 2n, 3n, 4n, new Constr(1, [])]],
+    [3, "CloseChallenge", [1n, 2n, 3n, 4n, 5n, 6n, 7n]],
+    [4, "TimeoutChallenge", [1n, 2n, 3n, 4n, 5n, 6n]],
+  ] as const)(
+    "keeps constructor %s (%s) and requires its leading yield reference",
+    (tag, arm, fields) => {
+      const encoded = Data.to(new Constr(tag, [42n, ...fields]));
+      const decoded = Data.from(encoded, DaAvailabilityMintRedeemer);
+      expect(decoded).toMatchObject({
+        [arm]: { yield_to_ref_input_index: 42n },
+      });
+      expect(Data.to(decoded, DaAvailabilityMintRedeemer)).toBe(encoded);
+      expect(() =>
+        Data.from(
+          Data.to(new Constr(tag, [...fields])),
+          DaAvailabilityMintRedeemer,
+        ),
+      ).toThrow();
+    },
+  );
 });

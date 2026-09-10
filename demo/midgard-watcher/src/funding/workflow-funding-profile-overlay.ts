@@ -20,18 +20,21 @@ import { watcherCanonicalJson } from "../storage/durable-store.js";
 
 export const WATCHER_WORKFLOW_FUNDING_PROFILE_BUNDLE =
   "midgard-watcher-production-workflow-funding-profile-bundle-v1" as const;
-export const WATCHER_WORKFLOW_FUNDING_RELEASE_EVIDENCE =
-  "midgard-watcher-production-workflow-funding-release-evidence-v1" as const;
+export const WATCHER_WORKFLOW_FUNDING_CONFIGURATION =
+  "midgard-watcher-workflow-funding-configuration-v1" as const;
 export const WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY =
   "midgard-watcher-production-workflow-funding-profile-overlay-v1" as const;
 
 export type WatcherWorkflowFundingProfileOverlay = Readonly<{
   schemaVersion: typeof WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY;
   deploymentFingerprint: string;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
+  fundingProfileBundleDigest: string;
   bundlePath: string;
   profiles: Readonly<
-    Record<FraudProofCatalogueCategoryName, WorkflowFundingRequirements>
+    Partial<
+      Record<FraudProofCatalogueCategoryName, WorkflowFundingRequirements>
+    >
   >;
 }>;
 
@@ -40,9 +43,8 @@ export type WatcherWorkflowFundingProfileBody = Omit<
   "deploymentFingerprint"
 >;
 
-export type WatcherWorkflowFundingReleaseEvidence = Readonly<{
-  releaseEvidenceBytes: Uint8Array;
-  releaseEvidenceDigest: string;
+export type WatcherWorkflowFundingProfileBundle = Readonly<{
+  fundingProfileBundleBytes: Uint8Array;
   fundingProfileBundleDigest: string;
 }>;
 
@@ -106,37 +108,46 @@ const profileBody = (
 
 /**
  * Deployment builder seam. Profile bodies deliberately omit the future
- * manifest ID, so construction terminates in finite order: funding bundle,
- * release evidence, manifest ID, then hydrated admitted profiles.
+ * manifest ID. The deployment signature binds the bundle digest alongside
+ * the contract blueprint hash, then profiles hydrate with the
+ * verified manifest ID.
  */
-export const createWatcherWorkflowFundingReleaseEvidence = ({
+export const createWatcherWorkflowFundingProfileBundle = ({
   profiles,
 }: {
   readonly profiles: readonly WatcherWorkflowFundingProfileBody[];
-}): WatcherWorkflowFundingReleaseEvidence => {
-  if (profiles.length !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length) {
-    throw new Error(
-      "production funding profile bodies do not cover the exact catalogue",
-    );
+}): WatcherWorkflowFundingProfileBundle => {
+  const bodies = new Map<
+    FraudProofCatalogueCategoryName,
+    WatcherWorkflowFundingProfileBody
+  >();
+  for (const profile of profiles) {
+    const hydrated = profileBody(profile, "00".repeat(32));
+    if (hydrated.scope.kind !== "fraud_proof_category") {
+      throw new Error(
+        "production funding profile body requires a catalogue category",
+      );
+    }
+    const { category } = hydrated.scope;
+    if (bodies.has(category)) {
+      throw new Error(
+        `production funding profile repeats category ${category}`,
+      );
+    }
+    const {
+      schemaVersion: _schemaVersion,
+      deploymentFingerprint: _deploymentFingerprint,
+      profileDigest: _profileDigest,
+      ...body
+    } = hydrated;
+    // Preserve measured inputs; derived transaction fields are recomputed
+    // when the signed bundle is loaded.
+    bodies.set(category, Object.freeze({ ...body, actions: profile.actions }));
   }
   const normalizedBodies = Object.freeze(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category, index) => {
-      const hydrated = profileBody(profiles[index], "00".repeat(32));
-      if (
-        hydrated.scope.kind !== "fraud_proof_category" ||
-        hydrated.scope.category !== category
-      ) {
-        throw new Error(
-          `production funding profile body ${index.toString()} is not canonical ${category}`,
-        );
-      }
-      const {
-        schemaVersion: _schemaVersion,
-        deploymentFingerprint: _deploymentFingerprint,
-        profileDigest: _profileDigest,
-        ...body
-      } = hydrated;
-      return Object.freeze(body);
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.flatMap((category) => {
+      const body = bodies.get(category);
+      return body === undefined ? [] : [body];
     }),
   );
   const fundingProfileBundle = Object.freeze({
@@ -146,18 +157,14 @@ export const createWatcherWorkflowFundingReleaseEvidence = ({
   const fundingProfileBundleDigest = sha256(
     Buffer.from(canonicalJson(fundingProfileBundle), "utf8"),
   );
-  const releaseEvidence = Object.freeze({
-    schemaVersion: WATCHER_WORKFLOW_FUNDING_RELEASE_EVIDENCE,
+  const artifacts = Object.freeze({
+    schemaVersion: WATCHER_WORKFLOW_FUNDING_CONFIGURATION,
     fundingProfileBundle,
     fundingProfileBundleDigest,
   });
-  const releaseEvidenceBytes = Buffer.from(
-    canonicalJson(releaseEvidence),
-    "utf8",
-  );
+  const artifactsBytes = Buffer.from(canonicalJson(artifacts), "utf8");
   return Object.freeze({
-    releaseEvidenceBytes,
-    releaseEvidenceDigest: sha256(releaseEvidenceBytes),
+    fundingProfileBundleBytes: artifactsBytes,
     fundingProfileBundleDigest,
   });
 };
@@ -167,7 +174,7 @@ export const assertWatcherWorkflowFundingProfileOverlay = (
 ): void => {
   if (!admittedOverlays.has(overlay)) {
     throw new Error(
-      "production workflow funding profile overlay was not admitted from signed release evidence",
+      "production workflow funding profile overlay was not admitted from signed deployment configuration",
     );
   }
 };
@@ -181,6 +188,9 @@ export const workflowFundingProfileFromOverlay = ({
 }): WorkflowFundingRequirements => {
   assertWatcherWorkflowFundingProfileOverlay(overlay);
   const profile = overlay.profiles[category];
+  if (profile === undefined) {
+    throw new Error(`${category} has no signed measured funding profile`);
+  }
   if (
     profile.scope.kind !== "fraud_proof_category" ||
     profile.scope.category !== category ||
@@ -192,10 +202,9 @@ export const workflowFundingProfileFromOverlay = ({
 };
 
 /**
- * Loads the sole release-bound funding profile bundle. The file is authority
- * only because its exact canonical bytes hash to the release-evidence digest
- * carried by the already verified signed deployment identity. A runtime path
- * selects bytes to verify; it never supplies a profile or profile digest.
+ * Loads the funding bundle authenticated by the deployment signature and
+ * local policy. Its canonical inner digest is separate from compiled release
+ * evidence. A runtime path only selects bytes to verify.
  */
 export const loadWatcherWorkflowFundingProfileOverlay = async ({
   bundlePath,
@@ -223,26 +232,16 @@ export const loadWatcherWorkflowFundingProfileOverlay = async ({
   if (!bytes.equals(canonicalBytes)) {
     throw new Error("production funding profile bundle is not canonical JSON");
   }
-  const releaseEvidenceDigest = sha256(bytes);
-  if (releaseEvidenceDigest !== deploymentIdentity.releaseEvidenceDigest) {
-    throw new Error(
-      "production funding release evidence does not match signed deployment identity",
-    );
-  }
-  const releaseEvidence = exact(
+  const artifacts = exact(
     value,
     ["schemaVersion", "fundingProfileBundle", "fundingProfileBundleDigest"],
-    "production funding release evidence",
+    "workflow funding configuration",
   );
-  if (
-    releaseEvidence.schemaVersion !== WATCHER_WORKFLOW_FUNDING_RELEASE_EVIDENCE
-  ) {
-    throw new Error(
-      "production funding release evidence version is unsupported",
-    );
+  if (artifacts.schemaVersion !== WATCHER_WORKFLOW_FUNDING_CONFIGURATION) {
+    throw new Error("workflow funding configuration version is unsupported");
   }
   const fundingProfileBundle = exact(
-    releaseEvidence.fundingProfileBundle,
+    artifacts.fundingProfileBundle,
     ["schemaVersion", "profiles"],
     "production funding profile bundle",
   );
@@ -255,11 +254,16 @@ export const loadWatcherWorkflowFundingProfileOverlay = async ({
   const fundingProfileBundleDigest = sha256(
     Buffer.from(canonicalJson(fundingProfileBundle), "utf8"),
   );
+  if (artifacts.fundingProfileBundleDigest !== fundingProfileBundleDigest) {
+    throw new Error(
+      "production funding profile bundle digest differs from configuration",
+    );
+  }
   if (
-    releaseEvidence.fundingProfileBundleDigest !== fundingProfileBundleDigest
+    fundingProfileBundleDigest !== deploymentIdentity.fundingProfileBundleDigest
   ) {
     throw new Error(
-      "production funding profile bundle digest differs from release evidence",
+      "production funding profile bundle does not match signed deployment identity",
     );
   }
   if (!Array.isArray(fundingProfileBundle.profiles)) {
@@ -268,37 +272,41 @@ export const loadWatcherWorkflowFundingProfileOverlay = async ({
     );
   }
   const rawProfiles: readonly unknown[] = fundingProfileBundle.profiles;
-  if (rawProfiles.length !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length) {
-    throw new Error(
-      "production funding profile bundle does not cover the exact catalogue",
-    );
-  }
+  let previousCategoryIndex = -1;
   const profiles = Object.freeze(
     Object.fromEntries(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category, index) => {
-        const profile = profileBody(
-          rawProfiles[index],
-          deploymentIdentity.manifestId,
-        );
+      rawProfiles.map((rawProfile, index) => {
+        const profile = profileBody(rawProfile, deploymentIdentity.manifestId);
         if (
           profile.scope.kind !== "fraud_proof_category" ||
-          profile.scope.category !== category ||
           profile.deploymentFingerprint !== deploymentIdentity.manifestId
         ) {
           throw new Error(
-            `production funding profile bundle entry ${index.toString()} is not canonical ${category}`,
+            `production funding profile bundle entry ${index.toString()} requires a catalogue category`,
           );
         }
+        const { category } = profile.scope;
+        const categoryIndex =
+          FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(category);
+        if (categoryIndex <= previousCategoryIndex) {
+          throw new Error(
+            "production funding profile bundle categories repeat or are not canonical",
+          );
+        }
+        previousCategoryIndex = categoryIndex;
         return [category, profile] as const;
       }),
     ),
   ) as Readonly<
-    Record<FraudProofCatalogueCategoryName, WorkflowFundingRequirements>
+    Partial<
+      Record<FraudProofCatalogueCategoryName, WorkflowFundingRequirements>
+    >
   >;
   const overlay = Object.freeze({
     schemaVersion: WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY,
     deploymentFingerprint: deploymentIdentity.manifestId,
-    releaseEvidenceDigest,
+    blueprintHash: deploymentIdentity.blueprintHash,
+    fundingProfileBundleDigest,
     bundlePath: canonicalPath,
     profiles,
   });

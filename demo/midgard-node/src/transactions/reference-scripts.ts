@@ -1314,54 +1314,11 @@ const manifestReferenceScriptTarget = (
   return { name, script };
 };
 
-/**
- * The prefix of a compiled fault-proof chain that the canonical deployment ABI
- * actually registers.
- *
- * The canonical ABI registers all five `nativeScriptInvalid` steps. The
- * separate `missingNativeScriptUtxo` chain still compiles seven steps while
- * its manifest names five. The exact manifest key set therefore bounds that
- * chain until its own ABI extension is implemented across consumers.
- *
- * This is a BOUND, not a filter. It only ever drops a TAIL of unregistered
- * steps: an unregistered step with a registered step after it, or a chain whose
- * very first step is unregistered, still fails closed here, and every step it
- * does return still goes through `manifestReferenceScriptTarget`.
- */
-const abiRegisteredChainSteps = <T>(
-  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
-  steps: readonly T[],
-): readonly T[] => {
-  const registered = steps.map((_, stepIndex) =>
-    REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME.has(
-      faultProofStepContractName(category, stepIndex),
-    ),
-  );
-  const firstUnregistered = registered.indexOf(false);
-  if (firstUnregistered === -1) {
-    return steps;
-  }
-  if (firstUnregistered === 0) {
-    throw new Error(
-      `Fault-proof category ${category} has no canonical reference-script role for its first step`,
-    );
-  }
-  if (registered.lastIndexOf(true) > firstUnregistered) {
-    throw new Error(
-      `Fault-proof category ${category} registers a step after unregistered step ${(firstUnregistered + 1).toString()}`,
-    );
-  }
-  return steps.slice(0, firstUnregistered);
-};
-
 const registeredFraudProofReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
 ): readonly ReferenceScriptTarget[] => [
   ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
-    abiRegisteredChainSteps(
-      category,
-      contracts.fraudProofContracts[category].steps,
-    ).map((validator, stepIndex) =>
+    contracts.fraudProofContracts[category].steps.map((validator, stepIndex) =>
       manifestReferenceScriptTarget(
         faultProofStepContractName(category, stepIndex),
         validator.spendingScript,
@@ -1662,19 +1619,6 @@ export const nodeRuntimeReferenceScriptTargets = (
     name: "payout minting",
     script: contracts.payout.mintingScript,
   },
-  // The state-correction wave gave the availability challenge both a
-  // reference-script role and an auth token in the deployment manifest, and
-  // `fetchDaAttestationReferenceScripts` in `src/transactions/da-attestation.ts`
-  // resolves "availability-challenge minting" at runtime, but the publication
-  // command was never extended to match — the node-runtime plan reported 152
-  // targets against the manifest's declared roles and every DA-attestation
-  // settlement path failed with `Missing reference script`. These publish
-  // exactly the two roles the manifest declares, no more.
-  //
-  // Anastasia-Labs/midgard#649: `availability_challenge` compiles to 19,956
-  // bytes, so real-L1 publication of these two targets stays blocked until #649
-  // lands and the validator shrinks; the emulator suites raise their envelope
-  // and so do cover them.
   {
     name: "availability-challenge spending",
     script: contracts.availabilityChallenge.spendingScript,
@@ -1683,13 +1627,37 @@ export const nodeRuntimeReferenceScriptTargets = (
     name: "availability-challenge minting",
     script: contracts.availabilityChallenge.mintingScript,
   },
-  // #579 removed all three "V1 transaction-field" reference scripts with their
-  // contracts; the §8.6 certificate carries its own roles elsewhere in this
-  // list. Only the CEK publication survives inside this guard, so the guard now
-  // reads off `cekProgramMaterial` rather than the retired preimage lock. The
-  // test is unchanged in meaning: under the always-succeeds contract set that
-  // validator IS the tx-order spend script, and this list must not publish a
-  // stand-in as though it were a distinct deployed reference script.
+  {
+    name: "availability-challenge bond withdrawal",
+    script: contracts.availabilityChallenge.yields.bond.withdrawalScript,
+  },
+  {
+    name: "availability-challenge open withdrawal",
+    script: contracts.availabilityChallenge.yields.open.withdrawalScript,
+  },
+  {
+    name: "availability-challenge settle withdrawal",
+    script: contracts.availabilityChallenge.yields.settle.withdrawalScript,
+  },
+  {
+    name: "availability-challenge close withdrawal",
+    script: contracts.availabilityChallenge.yields.close.withdrawalScript,
+  },
+  {
+    name: "availability-challenge timeout withdrawal",
+    script: contracts.availabilityChallenge.yields.timeout.withdrawalScript,
+  },
+
+  manifestReferenceScriptTarget(
+    "fieldPreimageCertificateSpend",
+    contracts.fieldPreimageCertificate.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fieldPreimageCertificateMint",
+    contracts.fieldPreimageCertificate.mintingScript,
+  ),
+  // Under the always-succeeds contract set the CEK validator is the tx-order
+  // spend script. Do not publish that stand-in as a distinct deployed script.
   ...(contracts.cekProgramMaterial.spendingScriptHash ===
   contracts.txOrder.spendingScriptHash
     ? []
@@ -2713,12 +2681,13 @@ export const referenceScriptTargetsByCommand = (
       name: "da-attestation minting",
       script: contracts.daAttestation.mintingScript,
     },
-    // `fetchDaAttestationReferenceScripts` resolves this alongside the
-    // da-attestation pair, so the `da` scope has to publish it too. Same
-    // Anastasia-Labs/midgard#649 caveat as the node-runtime entries above.
     {
       name: "availability-challenge minting",
       script: contracts.availabilityChallenge.mintingScript,
+    },
+    {
+      name: "availability-challenge bond withdrawal",
+      script: contracts.availabilityChallenge.yields.bond.withdrawalScript,
     },
   ],
   "state-queue": [

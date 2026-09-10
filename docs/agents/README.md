@@ -15,6 +15,11 @@ single agent turn.
 - `docs/agents/naming-and-versioning.md`: identifier, file, and version naming
   policy (what carries a version, what never does).
 
+- `docs/agents/domain.md`: terminology and architectural decision records.
+- `docs/agents/withdraw-zero-yielding.md`: spending-to-rewarding delegation.
+- `docs/agents/issue-tracker.md`: GitHub issue workflows.
+- `docs/agents/triage-labels.md`: repository triage roles.
+
 Add a new domain file only when repeated repository-specific guidance cannot be
 derived from code, tests, or an existing skill. Do not create placeholder files
 or cite proposed paths as though they exist.

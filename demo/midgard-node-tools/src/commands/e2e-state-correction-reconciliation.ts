@@ -36,7 +36,6 @@ export type StateCorrectionIndependentSourcePaths = {
   readonly blueprintPath: string;
   readonly cataloguePath: string;
   readonly parametersPath: string;
-  readonly releaseEvidencePath: string;
   readonly workflowJournalDirectories: readonly string[];
   readonly l1ObservationPaths: readonly string[];
   readonly recoveryObservationPaths: readonly string[];
@@ -1506,7 +1505,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     blueprintBytes,
     catalogueValue,
     parametersValue,
-    releaseEvidenceBytes,
     workflows,
     l1Values,
     recoveryValues,
@@ -1516,7 +1514,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     readFile(paths.blueprintPath),
     readJson(paths.cataloguePath),
     readJson(paths.parametersPath),
-    readFile(paths.releaseEvidencePath),
     Promise.all(paths.workflowJournalDirectories.map(loadWorkflow)),
     Promise.all(paths.l1ObservationPaths.map(readJson)),
     Promise.all(paths.recoveryObservationPaths.map(readJson)),
@@ -1535,14 +1532,13 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   assertEqual(catalogueValue, catalogue, "independent catalogue source");
   const blueprintSha256 = sha256(blueprintBytes);
   const parametersSha256 = computeDeploymentManifestJsonDigest(parametersValue);
-  const releaseEvidenceSha256 = sha256(releaseEvidenceBytes);
   assertEqual(
     manifest.manifestId,
     claim.deployment.manifestId,
     "manifest identity",
   );
   assertEqual(
-    manifest.proofEvidence.blueprintHash,
+    manifest.artifacts.blueprintHash,
     blueprintSha256,
     "manifest/blueprint identity",
   );
@@ -1566,16 +1562,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     claim.deployment.parametersSha256,
     parametersSha256,
     "claim parameter digest",
-  );
-  assertEqual(
-    manifest.proofEvidence.digest,
-    releaseEvidenceSha256,
-    "manifest release evidence identity",
-  );
-  assertEqual(
-    claim.deployment.releaseEvidenceSha256,
-    releaseEvidenceSha256,
-    "claim release evidence identity",
   );
 
   if (workflows.length !== claim.families.length) {
@@ -2166,7 +2152,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     blueprintSha256,
     catalogueRoot: catalogue.root,
     parametersSha256,
-    releaseEvidenceSha256,
   };
   const satisfied = (
     label: string,
@@ -2191,10 +2176,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     { label: "state-correction-blueprint", path: paths.blueprintPath },
     { label: "state-correction-catalogue", path: paths.cataloguePath },
     { label: "state-correction-parameters", path: paths.parametersPath },
-    {
-      label: "state-correction-release-evidence",
-      path: paths.releaseEvidencePath,
-    },
     ...workflows.flatMap((workflow) => [
       {
         label: `workflow-journal:${workflow.entries[0]!.identity.category}`,

@@ -67,6 +67,7 @@ import { expectProofFit } from "./support/emulator/proof-fit.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   makeNetworkIdEmulatorHarness,
   publishNetworkIdReferenceScriptsMeasured,
@@ -291,11 +292,13 @@ const preparedFor = ({
 };
 
 /** Stage builders over one harness; every submission is measured. */
+let measuredScenario = 0;
 const makeStages = (
   harness: Harness,
   refs: readonly [UTxO, UTxO, UTxO, UTxO],
   setup: Awaited<ReturnType<typeof commitForcedBlock>>["setup"],
 ) => {
+  const measuredCase = measuredScenario++;
   const [step01Ref, step02Ref, forcedRef, scanRef] = refs;
   const measurements: {
     stage: string;
@@ -306,6 +309,13 @@ const makeStages = (
     captured: Awaited<ReturnType<typeof captureEmulatorSubmission<T>>>,
   ) => {
     measurements.push({ stage, measurement: captured.measurement });
+    captured.measurements.forEach((measurement, index) =>
+      measuredFit.record(
+        `case-${measuredCase}/${measurements.length - 1}-${stage}-${index}`,
+        measurement,
+        measurement.executionMemory === 0n ? "publication" : "lifecycle",
+      ),
+    );
     return captured.result;
   };
   const initialize = async () => {
@@ -591,13 +601,20 @@ const makeStages = (
   };
 };
 
+let measuredPublicationScenario = 0;
 const makeHarness = async () => {
+  const publicationCase = measuredPublicationScenario++;
   const harness = await makeNetworkIdEmulatorHarness();
   const published = await publishNetworkIdReferenceScriptsMeasured({
     lucid: harness.proverLucid,
     contracts: harness.networkId,
   });
   for (const { name, scriptHash, measurement } of published.measurements) {
+    measuredFit.record(
+      `publication-${publicationCase}/${name}`,
+      measurement,
+      "publication",
+    );
     expectProofFit({
       stage: `publication:${name}`,
       measurement,
@@ -615,6 +632,12 @@ const makeHarness = async () => {
   }
   return { harness, refs: published.utxos };
 };
+
+const measuredFit = createMeasuredFitRecorder(
+  "network-id-wrongful-rejection",
+  "lifecycle",
+  "forced universal output scan, maximum inline/certified fields, cancellation and correction",
+);
 
 describe("networkId wrongful-rejection real lifecycle", () => {
   it("runs Init through the forced door to a permanent mint and removal, cancels every nonterminal step, and restarts by out-ref", async () => {

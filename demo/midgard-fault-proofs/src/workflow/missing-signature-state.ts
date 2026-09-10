@@ -345,14 +345,15 @@ export const reconcileMissingSignatureAction = async ({
     stage: admittedStage,
     actionId: action.actionId,
   });
-  if (included && unchanged) return { kind: "pending", txHash };
-  if (!included && unchanged) return { kind: "not_found" };
+  // Absence from release-final history does not authorize rebuilding a
+  // submitted transaction whose inputs may already be spent at the live tip.
+  if (unchanged) return { kind: "pending", txHash };
   if (
     !included &&
     parsed.stage === "remove" &&
     admittedStage.kind === "proof_token"
   ) {
-    return { kind: "not_found" };
+    return { kind: "pending", txHash };
   }
   return {
     kind: "conflict",

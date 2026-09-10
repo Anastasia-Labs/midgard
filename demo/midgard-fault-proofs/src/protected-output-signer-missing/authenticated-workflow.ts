@@ -69,6 +69,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { createProtectedOutputSignerMissingCentralJournalAdapter } from "./central-journal.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 import { planProtectedOutputSignerWitnessOpening } from "./field-plans.js";
@@ -310,7 +311,7 @@ export const loadManifestBoundProtectedOutputSignerMissingConfig = async (
       })) as unknown as ProtectedOutputSignerMissingContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
-      hubOraclePolicyId: binding.deploymentInfo.hubOracleMint!.scriptHash,
+      hubOraclePolicyId: binding.contractEntries.hubOracleMint!.scriptHash,
       stateQueuePolicyId: binding.definition.stateQueue.policyId,
       fieldPreimageCertificatePolicyId: certificate.policyId,
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
@@ -1372,10 +1373,15 @@ export const createProtectedOutputSignerMissingWorkflowRunnerSurface = ({
             "protectedOutputSignerMissing manifest-bound workflow identity differs from invocation",
           );
         }
-        return await executeManifestBoundProtectedOutputSignerMissingWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundProtectedOutputSignerMissingWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
@@ -6,8 +8,8 @@ import {
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
 import {
-  assertWatcherProverFundingCalculation,
-  type WatcherProverFundingCalculation,
+  assertWatcherRuntimeProverFundingCalculation,
+  type WatcherRuntimeProverFundingCalculation,
 } from "./prover-funding-calculation.js";
 
 export const WATCHER_PROVER_FUNDING_RESERVATION_PLAN =
@@ -31,8 +33,8 @@ export type WatcherProverFundingReservationPlan = Readonly<{
   schemaVersion: typeof WATCHER_PROVER_FUNDING_RESERVATION_PLAN;
   deploymentFingerprint: string;
   decisionDigest: string;
-  profileDigest: string;
-  calculationDigest: string;
+  policyDigest: string;
+  reservationBasisDigest: string;
   fundingPaymentKeyHash: string;
   walletAddress: string;
   inputs: readonly WatcherProverFundingReservationInput[];
@@ -46,6 +48,8 @@ export type WatcherProverFundingReservationTransition = Readonly<{
   actionKind: string;
   transactionHash: string;
   transactionBodySha256: string;
+  signedTransactionCborHex: string;
+  /** Reserved wallet funding inputs; empty for an admitted protocol-funded tx. */
   consumedOutRefs: readonly string[];
   producedInputs: readonly WatcherProverFundingReservationInput[];
   transitionDigest: string;
@@ -55,8 +59,8 @@ export type WatcherProverFundingReservationRecord = Readonly<{
   reservationId: string;
   deploymentFingerprint: string;
   decisionDigest: string;
-  profileDigest: string;
-  calculationDigest: string;
+  policyDigest: string;
+  reservationBasisDigest: string;
   revision: string;
   state: "active" | "released" | "conflict";
   activeInputs: readonly WatcherProverFundingReservationInput[];
@@ -68,11 +72,10 @@ export type WatcherProverFundingReservationRecord = Readonly<{
 
 export type WatcherProverFundingReservationStore = Readonly<{
   readAll(): Promise<readonly unknown[]>;
-  readConfirmedActionOutput(input: {
+  readConfirmedInput(input: {
     readonly reservationId: string;
-    readonly sourceActionKind: string;
-    readonly sourceOutputIndex: number;
-  }): Promise<unknown>;
+    readonly outRef: string;
+  }): Promise<unknown | null>;
   reserve(
     plan: WatcherProverFundingReservationPlan,
   ): Promise<"reserved" | "unchanged">;
@@ -226,6 +229,7 @@ const parseTransition = (
       "actionKind",
       "transactionHash",
       "transactionBodySha256",
+      "signedTransactionCborHex",
       "consumedOutRefs",
       "producedInputs",
       "transitionDigest",
@@ -239,12 +243,23 @@ const parseTransition = (
     !HEX_32.test(record.transactionHash) ||
     typeof record.transactionBodySha256 !== "string" ||
     !HEX_32.test(record.transactionBodySha256) ||
+    typeof record.signedTransactionCborHex !== "string" ||
+    !/^(?:[0-9a-f]{2})+$/u.test(record.signedTransactionCborHex) ||
     typeof record.transitionDigest !== "string" ||
     !HEX_32.test(record.transitionDigest) ||
     !Array.isArray(record.consumedOutRefs)
   ) {
     throw new Error(`${label} is invalid`);
   }
+  const signed = CML.Transaction.from_cbor_hex(record.signedTransactionCborHex);
+  if (
+    signed.to_cbor_hex() !== record.signedTransactionCborHex ||
+    CML.hash_transaction(signed.body()).to_hex() !== record.transactionHash ||
+    createHash("sha256")
+      .update(Buffer.from(signed.body().to_cbor_hex(), "hex"))
+      .digest("hex") !== record.transactionBodySha256
+  )
+    throw new Error(`${label} differs from its exact signed transaction wire`);
   const consumedOutRefs = record.consumedOutRefs.map((outRef, index) => {
     if (typeof outRef !== "string" || !OUT_REF.test(outRef)) {
       throw new Error(
@@ -254,7 +269,6 @@ const parseTransition = (
     return outRef;
   });
   if (
-    consumedOutRefs.length === 0 ||
     consumedOutRefs.some(
       (outRef, index) =>
         index > 0 && consumedOutRefs[index - 1]!.localeCompare(outRef) >= 0,
@@ -270,6 +284,7 @@ const parseTransition = (
     actionKind: record.actionKind,
     transactionHash: record.transactionHash,
     transactionBodySha256: record.transactionBodySha256,
+    signedTransactionCborHex: record.signedTransactionCborHex,
     consumedOutRefs: Object.freeze(consumedOutRefs),
     producedInputs,
   });
@@ -294,8 +309,8 @@ export const parseWatcherProverFundingReservationRecord = (
       "reservationId",
       "deploymentFingerprint",
       "decisionDigest",
-      "profileDigest",
-      "calculationDigest",
+      "policyDigest",
+      "reservationBasisDigest",
       "revision",
       "state",
       "activeInputs",
@@ -313,10 +328,10 @@ export const parseWatcherProverFundingReservationRecord = (
     !HEX_32.test(record.deploymentFingerprint) ||
     typeof record.decisionDigest !== "string" ||
     !HEX_32.test(record.decisionDigest) ||
-    typeof record.profileDigest !== "string" ||
-    !HEX_32.test(record.profileDigest) ||
-    typeof record.calculationDigest !== "string" ||
-    !HEX_32.test(record.calculationDigest) ||
+    typeof record.policyDigest !== "string" ||
+    !HEX_32.test(record.policyDigest) ||
+    typeof record.reservationBasisDigest !== "string" ||
+    !HEX_32.test(record.reservationBasisDigest) ||
     typeof record.revision !== "string" ||
     !NATURAL.test(record.revision) ||
     !["active", "released", "conflict"].includes(record.state as string) ||
@@ -357,8 +372,8 @@ export const parseWatcherProverFundingReservationRecord = (
     reservationId: record.reservationId,
     deploymentFingerprint: record.deploymentFingerprint,
     decisionDigest: record.decisionDigest,
-    profileDigest: record.profileDigest,
-    calculationDigest: record.calculationDigest,
+    policyDigest: record.policyDigest,
+    reservationBasisDigest: record.reservationBasisDigest,
     revision: record.revision,
     state: record.state as WatcherProverFundingReservationRecord["state"],
     activeInputs,
@@ -385,8 +400,8 @@ export const makeWatcherProverFundingReservationRecord = (input: {
     reservationId: input.plan.reservationId,
     deploymentFingerprint: input.plan.deploymentFingerprint,
     decisionDigest: input.plan.decisionDigest,
-    profileDigest: input.plan.profileDigest,
-    calculationDigest: input.plan.calculationDigest,
+    policyDigest: input.plan.policyDigest,
+    reservationBasisDigest: input.plan.reservationBasisDigest,
     revision: "0",
     state: "active" as const,
     activeInputs: input.plan.inputs,
@@ -489,100 +504,30 @@ const selectCollateral = (input: {
           : 1,
     )[0];
   if (one !== undefined) return Object.freeze([one]);
-  const selected = pureAda
-    .sort(compareLargestFirst)
-    .slice(0, input.maximumInputs);
-  if (
-    selected.length === 0 ||
-    selected.reduce((total, candidate) => total + candidate.lovelace, 0n) <
-      input.required
-  ) {
+  const selected: Candidate[] = [];
+  let total = 0n;
+  for (const candidate of pureAda.sort(compareLargestFirst)) {
+    if (selected.length === input.maximumInputs) break;
+    selected.push(candidate);
+    total += candidate.lovelace;
+    if (total >= input.required) break;
+  }
+  if (total < input.required) {
     throw new Error("prover wallet has insufficient plain-Ada collateral");
   }
   return Object.freeze(selected.sort(compareOutRef));
 };
 
-const remainingAssetNeeds = (
-  required: ReadonlyMap<string, bigint>,
-  selected: readonly Candidate[],
-): Map<string, bigint> => {
-  const remaining = new Map(required);
-  for (const candidate of selected) {
-    for (const [unit, quantity] of candidate.assets) {
-      const needed = remaining.get(unit) ?? 0n;
-      remaining.set(unit, needed > quantity ? needed - quantity : 0n);
-    }
-  }
-  return remaining;
-};
+type ReservationIdentityInput = Readonly<{
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  calculation: WatcherRuntimeProverFundingCalculation;
+  decisionDigest: string;
+  walletAddress: string;
+}>;
 
-const selectFunding = (input: {
-  readonly candidates: readonly Candidate[];
-  readonly requiredLovelace: bigint;
-  readonly requiredAssets: ReadonlyMap<string, bigint>;
-  readonly maximumInputs: number;
-}): readonly Candidate[] => {
-  const selected: Candidate[] = [];
-  const selectedOutRefs = new Set<string>();
-  let remainingAssets = new Map(input.requiredAssets);
-  for (const candidate of [...input.candidates].sort(compareOutRef)) {
-    const contributes = [...candidate.assets].some(
-      ([unit, quantity]) =>
-        quantity > 0n && (remainingAssets.get(unit) ?? 0n) > 0n,
-    );
-    if (!contributes) continue;
-    selected.push(candidate);
-    if (selected.length > input.maximumInputs) {
-      throw new Error(
-        "prover funding exceeds the measured ordinary input bound",
-      );
-    }
-    selectedOutRefs.add(candidate.outRef);
-    remainingAssets = remainingAssetNeeds(input.requiredAssets, selected);
-    if ([...remainingAssets.values()].every((quantity) => quantity === 0n)) {
-      break;
-    }
-  }
-  if ([...remainingAssets.values()].some((quantity) => quantity > 0n)) {
-    throw new Error("prover wallet has insufficient required native assets");
-  }
-  let selectedLovelace = selected.reduce(
-    (total, candidate) => total + candidate.lovelace,
-    0n,
-  );
-  for (const candidate of [...input.candidates].sort(compareLargestFirst)) {
-    if (selectedLovelace >= input.requiredLovelace) break;
-    if (selectedOutRefs.has(candidate.outRef)) continue;
-    selected.push(candidate);
-    if (selected.length > input.maximumInputs) {
-      throw new Error(
-        "prover funding exceeds the measured ordinary input bound",
-      );
-    }
-    selectedOutRefs.add(candidate.outRef);
-    selectedLovelace += candidate.lovelace;
-  }
-  if (selectedLovelace < input.requiredLovelace) {
-    throw new Error("prover wallet has insufficient deterministic funding");
-  }
-  return Object.freeze(selected.sort(compareOutRef));
-};
-
-/**
- * Deterministically plans disjoint funding and pure-Ada collateral inputs.
- * The plan is not a live reservation: the durable coordinator must atomically
- * persist it and reauthenticate every out-ref before minting an actuation
- * permit for a runner.
- */
-export const planWatcherProverFundingReservation = (input: {
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly calculation: WatcherProverFundingCalculation;
-  readonly decisionDigest: string;
-  readonly walletAddress: string;
-  readonly utxos: readonly UTxO[];
-}): WatcherProverFundingReservationPlan => {
+const reservationIdentity = (input: ReservationIdentityInput) => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
-  assertWatcherProverFundingCalculation(input.calculation);
+  assertWatcherRuntimeProverFundingCalculation(input.calculation);
   if (
     input.calculation.deploymentFingerprint !==
     input.deploymentIdentity.manifestId
@@ -608,8 +553,33 @@ export const planWatcherProverFundingReservation = (input: {
     !HEX_28.test(paymentCredential.hash) ||
     paymentCredential.hash !== input.calculation.fundingPaymentKeyHash
   ) {
-    throw new Error("prover wallet differs from measured funding key");
+    throw new Error("prover wallet differs from runtime funding key");
   }
+  return Object.freeze({
+    schemaVersion: WATCHER_PROVER_FUNDING_RESERVATION_PLAN,
+    deploymentFingerprint: input.deploymentIdentity.manifestId,
+    decisionDigest: input.decisionDigest,
+    policyDigest: input.calculation.policyDigest,
+    reservationBasisDigest: input.calculation.reservationBasisDigest,
+    fundingPaymentKeyHash: input.calculation.fundingPaymentKeyHash,
+    walletAddress: input.walletAddress,
+  });
+};
+
+/**
+ * Deterministically plans disjoint funding and pure-Ada collateral inputs.
+ * The plan is not a live reservation: the durable coordinator must atomically
+ * persist it and reauthenticate every out-ref before minting an actuation
+ * permit for a runner.
+ */
+export const planWatcherProverFundingReservation = (input: {
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly calculation: WatcherRuntimeProverFundingCalculation;
+  readonly decisionDigest: string;
+  readonly walletAddress: string;
+  readonly utxos: readonly UTxO[];
+}): WatcherProverFundingReservationPlan => {
+  const identity = reservationIdentity(input);
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
   for (const utxo of input.utxos) {
@@ -622,7 +592,7 @@ export const planWatcherProverFundingReservation = (input: {
     candidates.push(candidate);
   }
   const maximumCollateralInputs = Number(
-    input.calculation.totals.maximumCollateralInputs,
+    input.calculation.maximumCollateralInputs,
   );
   if (
     !Number.isSafeInteger(maximumCollateralInputs) ||
@@ -630,9 +600,14 @@ export const planWatcherProverFundingReservation = (input: {
   ) {
     throw new Error("prover funding maximum collateral inputs is invalid");
   }
-  const collateralRequired = BigInt(
-    input.calculation.totals.reusableCollateralLovelace,
-  );
+  const collateralRequired = [
+    input.calculation.collateralFloorLovelace,
+    input.calculation.maximumCollateralLovelace,
+    input.calculation.maximumSlashCollateralLovelace,
+  ].reduce((maximum, value) => {
+    const required = BigInt(value);
+    return required > maximum ? required : maximum;
+  }, 0n);
   const collateral = selectCollateral({
     candidates,
     required: collateralRequired,
@@ -641,30 +616,19 @@ export const planWatcherProverFundingReservation = (input: {
   const collateralOutRefs = new Set(
     collateral.map((candidate) => candidate.outRef),
   );
-  const requiredAssets = new Map(
-    input.calculation.totals.requiredNativeAssets.map(({ unit, quantity }) => [
-      unit,
-      BigInt(quantity),
-    ]),
-  );
-  const requiredLovelace =
-    BigInt(input.calculation.totals.requiredLovelace) - collateralRequired;
-  const funding = selectFunding({
-    candidates: candidates.filter(
-      (candidate) => !collateralOutRefs.has(candidate.outRef),
-    ),
-    requiredLovelace,
-    requiredAssets,
-    maximumInputs: Number(input.calculation.totals.maximumFundingInputs),
-  });
+  const funding = candidates
+    .filter((candidate) => !collateralOutRefs.has(candidate.outRef))
+    .sort(compareOutRef);
+  if (funding.length === 0)
+    throw new Error(
+      "prover wallet has no available funding inputs after collateral reservation",
+    );
+  const fundingAssets = new Map<string, bigint>();
+  for (const candidate of funding)
+    for (const [unit, quantity] of candidate.assets)
+      fundingAssets.set(unit, (fundingAssets.get(unit) ?? 0n) + quantity);
   const reservationInput = Object.freeze({
-    schemaVersion: WATCHER_PROVER_FUNDING_RESERVATION_PLAN,
-    deploymentFingerprint: input.deploymentIdentity.manifestId,
-    decisionDigest: input.decisionDigest,
-    profileDigest: input.calculation.profileDigest,
-    calculationDigest: input.calculation.calculationDigest,
-    fundingPaymentKeyHash: input.calculation.fundingPaymentKeyHash,
-    walletAddress: input.walletAddress,
+    ...identity,
     inputs: Object.freeze(
       [
         ...funding.map((candidate) =>
@@ -691,11 +655,60 @@ export const planWatcherProverFundingReservation = (input: {
     collateralLovelace: collateral
       .reduce((total, candidate) => total + candidate.lovelace, 0n)
       .toString(),
-    assets: assetEntries(requiredAssets),
+    assets: assetEntries(fundingAssets),
   });
   const plan = Object.freeze({
     ...reservationInput,
-    reservationId: computeDeploymentManifestJsonDigest(reservationInput),
+    // This identity survives confirmed input rotation. The store retains and
+    // validates the exact active leases; fresh wallet topups cannot change it.
+    reservationId: computeDeploymentManifestJsonDigest(identity),
+  });
+  admittedPlans.add(plan);
+  return plan;
+};
+
+/** Reattaches exact persisted leases, including pending consumption, without coin selection. */
+export const restoreWatcherProverFundingReservationPlan = (
+  input: ReservationIdentityInput &
+    Readonly<{
+      record: unknown;
+    }>,
+): WatcherProverFundingReservationPlan => {
+  const identity = reservationIdentity(input);
+  const record = parseWatcherProverFundingReservationRecord(input.record);
+  const reservationId = computeDeploymentManifestJsonDigest(identity);
+  if (
+    record.reservationId !== reservationId ||
+    record.deploymentFingerprint !== identity.deploymentFingerprint ||
+    record.decisionDigest !== identity.decisionDigest ||
+    record.policyDigest !== identity.policyDigest ||
+    record.reservationBasisDigest !== identity.reservationBasisDigest
+  )
+    throw new Error("restored prover funding reservation identity mismatch");
+  if (record.state !== "active")
+    throw new Error("restored prover funding reservation is not active");
+  const fundingAssets = new Map<string, bigint>();
+  let fundingLovelace = 0n;
+  let collateralLovelace = 0n;
+  for (const entry of record.activeInputs) {
+    if (entry.role === "collateral") {
+      collateralLovelace += BigInt(entry.lovelace);
+    } else {
+      fundingLovelace += BigInt(entry.lovelace);
+      for (const { unit, quantity } of entry.assets)
+        fundingAssets.set(
+          unit,
+          (fundingAssets.get(unit) ?? 0n) + BigInt(quantity),
+        );
+    }
+  }
+  const plan = Object.freeze({
+    ...identity,
+    inputs: record.activeInputs,
+    fundingLovelace: fundingLovelace.toString(),
+    collateralLovelace: collateralLovelace.toString(),
+    assets: assetEntries(fundingAssets),
+    reservationId,
   });
   admittedPlans.add(plan);
   return plan;

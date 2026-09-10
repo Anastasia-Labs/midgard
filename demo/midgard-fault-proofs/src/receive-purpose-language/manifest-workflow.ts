@@ -36,6 +36,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   type BoundReceivePurposeLanguageActuatorConfig,
@@ -148,7 +149,7 @@ export const createManifestBoundReceivePurposeLanguageWorkflow = async (
       };
     };
   const chain = binding.resolvedContracts.contracts.receivePurposeLanguage;
-  const hubOraclePolicyId = raw.deploymentInfo.hubOracleMint?.scriptHash;
+  const hubOraclePolicyId = raw.contractEntries.hubOracleMint?.scriptHash;
   const stateQueuePolicyId = raw.resolvedContracts.stateQueuePolicyId;
   if (
     chain === undefined ||
@@ -445,10 +446,15 @@ export const createReceivePurposeLanguageWorkflowRunnerSurface = ({
           throw new Error(
             "receivePurposeLanguage runtime binding changed invocation",
           );
-        return await runOrResumeManifestBoundReceivePurposeLanguageWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            runOrResumeManifestBoundReceivePurposeLanguageWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

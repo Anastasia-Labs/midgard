@@ -15,17 +15,12 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const realBlueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const realSdkModulePath = resolve(repoRoot, "demo/midgard-sdk/dist/index.js");
 
-const registry = JSON.parse(
+const contract = JSON.parse(
   readFileSync(
-    new URL(
-      "../../docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
-      import.meta.url,
-    ),
+    new URL("./canonical-v1-header-v1-abi-contract.json", import.meta.url),
     "utf8",
   ),
 );
-const contract = registry.formats.find((row) => row.id === "L01")
-  .canonicalForms[0];
 
 const blueprintRef = (name) => `#/definitions/${name.replaceAll("/", "~1")}`;
 
@@ -80,8 +75,7 @@ const makeSdkSchema = (source = contract) => ({
 // contract under test, so the suite could only ever prove that the contract
 // agrees with itself. This case consumes the two projections it does NOT own —
 // the blueprint the Aiken compiler generated and the Data schema the built SDK
-// exports at runtime — and is the case the registry's L01 cross-language row
-// cites. It fails closed when either artifact is absent: a missing build must
+// exports at runtime. It fails closed when either artifact is absent: a missing build must
 // redden the suite, not silently delete its only real comparison.
 test("agrees with the real Aiken blueprint and the real SDK runtime schema", async () => {
   assert.ok(

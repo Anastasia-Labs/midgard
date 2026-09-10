@@ -7,7 +7,6 @@
  * script evaluation and vitest isolates per FILE; that leak is fixed upstream,
  * and the split is kept so each file runs in its own fresh process.
  */
-
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
@@ -31,6 +30,7 @@ import {
   submitZeroInputStep01,
   submitZeroInputStep02V1,
 } from "./support/legacy-submit-emulator.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   buildInvalidRangeTransactionInclusionFixture,
   buildNonExistentInputFixture,
@@ -54,6 +54,12 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+
+const measuredFit = createMeasuredFitRecorder(
+  "invalid-range-wrongful-rejection",
+  "accepted",
+  "accepted-invalid complete measured stage sequence using real scripts",
+);
 
 describe("fault-proof emulator integration", () => {
   it("proves and removes a tail invalid-range block end to end", async () => {
@@ -342,6 +348,11 @@ describe("fault-proof emulator integration", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
+      measuredFit.record(
+        stage,
+        measurement,
+        measurement.executionMemory === 0n ? "publication" : "lifecycle",
+      );
       expectProofFit({
         stage: `invalid-range ${stage}`,
         measurement,

@@ -36,6 +36,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   type BoundExecutionSourceScriptDecodingActuatorConfig,
@@ -168,7 +169,8 @@ export const createManifestBoundExecutionSourceScriptDecodingWorkflow = async (
       };
   const chain =
     binding.resolvedContracts.contracts.executionSourceScriptDecoding;
-  const hubOraclePolicyId = rawBinding.deploymentInfo.hubOracleMint?.scriptHash;
+  const hubOraclePolicyId =
+    rawBinding.contractEntries.hubOracleMint?.scriptHash;
   const stateQueuePolicyId = rawBinding.resolvedContracts.stateQueuePolicyId;
   if (
     chain === undefined ||
@@ -521,13 +523,16 @@ export const createExecutionSourceScriptDecodingWorkflowRunnerSurface = ({
           throw new Error(
             "executionSourceScriptDecoding runtime binding changed invocation",
           );
-        return (await runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow(
-          {
-            workflow,
-            sources: loaded.retainedDaSources,
-            journal,
-          },
-        )) as never;
+        return (await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
+        })) as never;
       } finally {
         await loaded.close();
       }

@@ -1,119 +1,116 @@
-import { Deferred, Effect, Fiber, Option } from "effect";
+import { Deferred, Effect, Exit, Fiber, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { evaluateReadiness } from "../src/commands/readiness.js";
 import { runAfterL1ControlPlaneRelease } from "../src/fibers/da-publication-trigger.js";
 
-const healthyReadiness = () =>
-  evaluateReadiness({
-    nowMillis: 1_000,
-    maxHeartbeatAgeMs: 10_000,
-    maxQueueDepth: 100,
-    queueDepth: 0,
-    workerHeartbeats: {
-      blockCommitment: 1_000,
-      blockConfirmation: 1_000,
-      merge: 1_000,
-      depositFetch: 1_000,
-      withdrawalFetch: 1_000,
-      txQueueProcessor: 1_000,
-    },
-    localFinalizationPending: false,
-    unresolvedBlockSubmissionAgeMs: 0,
-    maxUnresolvedBlockSubmissionAgeMs: 60_000,
-    dbHealthy: true,
-    awaitingForeignTipReconciliations: 0,
-  });
+const FINALIZED_HEADER_HASH = "ab".repeat(28);
 
 describe("post-finalization DA publication ordering", () => {
-  for (const path of ["legacy", "speculative"] as const) {
-    it(`${path} releases the L1 permit and completes mutation before a dead-peer publication wait`, async () => {
-      let unfinishedLocalMutationJobs = 1;
-      let durablePublicationBacklog = 0;
-      let publicationAttempts = 0;
-      const publicationStarted = await Effect.runPromise(Deferred.make<void>());
-      const releaseDeadPeer = await Effect.runPromise(Deferred.make<void>());
-      const l1ControlPlane = await Effect.runPromise(Effect.makeSemaphore(1));
+  it("releases the L1 permit and completes the mutation before publication starts", async () => {
+    // Ordered runtime probe: every step appends to one log, so the assertion
+    // observes the actual interleaving instead of a source-text ordering.
+    const trace: string[] = [];
+    const publicationStarted = await Effect.runPromise(Deferred.make<void>());
+    const releaseDeadPeer = await Effect.runPromise(Deferred.make<void>());
+    const l1ControlPlane = await Effect.runPromise(Effect.makeSemaphore(1));
+    const publishedHeaderHashes: string[] = [];
 
-      const program = runAfterL1ControlPlaneRelease(
-        l1ControlPlane.withPermits(1)(
-          Effect.sync(() => {
-            durablePublicationBacklog = 4;
-            unfinishedLocalMutationJobs = 0;
-            return { finalizedHeaderHash: "ab".repeat(28) };
-          }),
-        ),
-        (result) => result.finalizedHeaderHash,
-        () =>
-          Effect.gen(function* () {
-            publicationAttempts += 1;
-            yield* Deferred.succeed(publicationStarted, undefined);
-            yield* Deferred.await(releaseDeadPeer);
-            yield* Effect.fail(new Error("dead committee peer timeout"));
-          }).pipe(Effect.either, Effect.asVoid),
-      );
-
-      const fiber = Effect.runFork(program);
-      await Effect.runPromise(Deferred.await(publicationStarted));
-
-      const permit = await Effect.runPromise(
-        l1ControlPlane.withPermitsIfAvailable(1)(Effect.succeed("reacquired")),
-      );
-      expect(Option.getOrUndefined(permit)).toBe("reacquired");
-
-      const readiness = healthyReadiness();
-      const reasons = [...readiness.reasons];
-      if (unfinishedLocalMutationJobs > 0) {
-        reasons.push(
-          `unfinished_local_mutation_jobs:${unfinishedLocalMutationJobs.toString()}`,
-        );
-      }
-      expect({ ready: reasons.length === 0, reasons }).toEqual({
-        ready: true,
-        reasons: [],
-      });
-      expect(durablePublicationBacklog).toBe(4);
-      expect(publicationAttempts).toBe(1);
-      expect(Option.isNone(await Effect.runPromise(Fiber.poll(fiber)))).toBe(
-        true,
-      );
-
-      await Effect.runPromise(Deferred.succeed(releaseDeadPeer, undefined));
-      await expect(Effect.runPromise(Fiber.join(fiber))).resolves.toEqual({
-        finalizedHeaderHash: "ab".repeat(28),
-      });
-    });
-  }
-
-  it("wires both parent submit paths to publish only after the outer L1 effect", async () => {
-    for (const relativePath of [
-      "../src/fibers/block-commitment.ts",
-      "../src/fibers/speculative-commit-builder.ts",
-    ]) {
-      const source = await readFile(
-        new URL(relativePath, import.meta.url),
-        "utf8",
-      );
-      const ordering = source.slice(
-        source.indexOf("runAfterL1ControlPlaneRelease("),
-        source.indexOf(
-          "publishFinalizedDaPayloadBestEffort",
-          source.indexOf("runAfterL1ControlPlaneRelease("),
-        ) + "publishFinalizedDaPayloadBestEffort".length,
-      );
-      expect(ordering).toContain("withL1ControlPlane(");
-      expect(ordering.indexOf("withL1ControlPlane(")).toBeGreaterThan(0);
-      expect(
-        ordering.indexOf("publishFinalizedDaPayloadBestEffort"),
-      ).toBeGreaterThan(ordering.indexOf("withL1ControlPlane("));
-    }
-
-    const workerSource = await readFile(
-      new URL("../src/workers/utils/commit-submission.ts", import.meta.url),
-      "utf8",
+    const program = runAfterL1ControlPlaneRelease(
+      l1ControlPlane.withPermits(1)(
+        Effect.gen(function* () {
+          trace.push("mutation-start");
+          yield* Effect.yieldNow();
+          trace.push("mutation-end");
+          return { finalizedHeaderHash: FINALIZED_HEADER_HASH };
+        }),
+      ),
+      (result) => result.finalizedHeaderHash,
+      (headerHash) =>
+        Effect.gen(function* () {
+          trace.push("publish-start");
+          publishedHeaderHashes.push(headerHash);
+          yield* Deferred.succeed(publicationStarted, undefined);
+          yield* Deferred.await(releaseDeadPeer);
+          trace.push("publish-end");
+          yield* Effect.fail(new Error("dead committee peer timeout"));
+        }).pipe(Effect.either, Effect.asVoid),
     );
-    expect(workerSource).not.toContain("publishDaPayloadInsertFromEnv");
-    expect(workerSource).toContain("seedDaPayloadPublicationOutboxFromEnv");
+
+    const fiber = Effect.runFork(program);
+    await Effect.runPromise(Deferred.await(publicationStarted));
+
+    // The L1 control plane permit must already be free while publication is
+    // still blocked on a dead peer: a re-nesting of publication inside the
+    // permit would leave `withPermitsIfAvailable` empty here.
+    const permit = await Effect.runPromise(
+      l1ControlPlane.withPermitsIfAvailable(1)(Effect.succeed("reacquired")),
+    );
+    expect(Option.getOrUndefined(permit)).toBe("reacquired");
+    expect(trace).toEqual(["mutation-start", "mutation-end", "publish-start"]);
+    expect(publishedHeaderHashes).toEqual([FINALIZED_HEADER_HASH]);
+
+    // Publication is still in flight, so the caller's fiber has not settled.
+    expect(Option.isNone(await Effect.runPromise(Fiber.poll(fiber)))).toBe(
+      true,
+    );
+
+    await Effect.runPromise(Deferred.succeed(releaseDeadPeer, undefined));
+    // A failing publication is absorbed: the L1 result is still returned.
+    await expect(Effect.runPromise(Fiber.join(fiber))).resolves.toEqual({
+      finalizedHeaderHash: FINALIZED_HEADER_HASH,
+    });
+    expect(trace).toEqual([
+      "mutation-start",
+      "mutation-end",
+      "publish-start",
+      "publish-end",
+    ]);
+  });
+
+  it("does not publish when the L1 result carries no finalized header hash", async () => {
+    const publishedHeaderHashes: string[] = [];
+
+    const result = await Effect.runPromise(
+      runAfterL1ControlPlaneRelease(
+        Effect.succeed({ finalizedHeaderHash: undefined }),
+        (value) => value.finalizedHeaderHash,
+        (headerHash) =>
+          Effect.sync(() => {
+            publishedHeaderHashes.push(headerHash);
+          }),
+      ),
+    );
+
+    expect(result).toEqual({ finalizedHeaderHash: undefined });
+    expect(publishedHeaderHashes).toEqual([]);
+  });
+
+  it("does not publish and releases the permit when the L1 effect fails", async () => {
+    const l1ControlPlane = await Effect.runPromise(Effect.makeSemaphore(1));
+    const publishedHeaderHashes: string[] = [];
+    const l1Failure = new Error("state queue commit rejected");
+
+    const exit = await Effect.runPromiseExit(
+      runAfterL1ControlPlaneRelease(
+        l1ControlPlane.withPermits(1)(
+          Effect.fail(l1Failure) as Effect.Effect<
+            { finalizedHeaderHash: string },
+            Error
+          >,
+        ),
+        (value) => value.finalizedHeaderHash,
+        (headerHash) =>
+          Effect.sync(() => {
+            publishedHeaderHashes.push(headerHash);
+          }),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(publishedHeaderHashes).toEqual([]);
+    const permit = await Effect.runPromise(
+      l1ControlPlane.withPermitsIfAvailable(1)(Effect.succeed("reacquired")),
+    );
+    expect(Option.getOrUndefined(permit)).toBe("reacquired");
   });
 });
-import { readFile } from "node:fs/promises";

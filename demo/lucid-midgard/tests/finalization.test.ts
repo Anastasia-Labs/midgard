@@ -610,6 +610,35 @@ describe("TxBuilder finalization", () => {
     expect(completed.metadata.localValidation).toBeUndefined();
   });
 
+  it("reports a Phase A rejection when the provider fee requirement increases", async () => {
+    let minFeeB = 0n;
+    const provider = {
+      ...zeroFeeProvider,
+      getProtocolParameters: async () => ({
+        ...(await zeroFeeProvider.getProtocolParameters()),
+        minFeeB,
+      }),
+    };
+    const midgard = await LucidMidgard.new(provider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const completed = await midgard
+      .newTx()
+      .collectFrom([makeUtxo(makeOutRef(0x11), { lovelace: 1_000_000n })])
+      .pay.ToAddress(address, { lovelace: 1_000_000n })
+      .complete();
+
+    expect((await completed.validate("phase-a")).acceptedTxIds).toEqual([
+      completed.txIdHex,
+    ]);
+    minFeeB = 1n;
+    expect(await completed.validate("phase-a")).toMatchObject({
+      acceptedTxIds: [],
+      rejected: [{ txId: completed.txIdHex, code: "E_MIN_FEE" }],
+    });
+  });
+
   it("requires explicit pre-state for Phase B local validation", async () => {
     const midgard = await LucidMidgard.new(zeroFeeProvider, {
       network: "Preview",
@@ -682,6 +711,15 @@ describe("TxBuilder finalization", () => {
       statePatch: {
         deletedOutRefs: [inputOutRefCbor.toString("hex")],
       },
+    });
+
+    const missingInputReport = await completed.validate("phase-b", {
+      localPreState: new Map(),
+    });
+    expect(missingInputReport).toMatchObject({
+      acceptedTxIds: [],
+      rejected: [{ txId: completed.txIdHex, code: "E_INPUT_NOT_FOUND" }],
+      statePatch: { deletedOutRefs: [], upsertedOutRefs: [] },
     });
   });
 

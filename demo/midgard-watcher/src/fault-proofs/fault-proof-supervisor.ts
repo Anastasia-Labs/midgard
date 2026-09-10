@@ -419,45 +419,48 @@ const createSupervisor = (input: {
       return;
     }
     activeJob = job;
+    let outcome: unknown;
+    let failure: Error | undefined;
     try {
-      entry.resolve(await input.dependencies.run({ job, actuationPermit }));
+      outcome = await input.dependencies.run({ job, actuationPermit });
     } catch (error) {
       if (input.dependencies.isActuationRevokedError(error)) {
         if (
           error.decisionDigest !== job.decisionDigest ||
           error.rollbackGeneration !== job.rollbackGeneration
         ) {
-          entry.reject(
-            block(
-              new Error(
-                "revoked actuation outcome differs from the scheduled workflow identity",
-              ),
-              job,
+          failure = block(
+            new Error(
+              "revoked actuation outcome differs from the scheduled workflow identity",
             ),
+            job,
           );
         } else {
-          entry.resolve(
-            Object.freeze({
-              kind: "actuation_revoked" as const,
-              decisionDigest: error.decisionDigest,
-              rollbackGeneration: error.rollbackGeneration,
-              checkpoint: error.checkpoint,
-            }),
-          );
+          outcome = Object.freeze({
+            kind: "actuation_revoked" as const,
+            decisionDigest: error.decisionDigest,
+            rollbackGeneration: error.rollbackGeneration,
+            checkpoint: error.checkpoint,
+          });
         }
       } else {
-        entry.reject(block(error, job));
+        failure = block(error, job);
       }
     } finally {
-      activeJob = null;
       try {
         await (
           await queueJournal
         ).markFinished(entry.jobIdentityDigest, now().toString());
       } catch (error) {
-        block(error, job);
+        failure ??= block(error, job);
       }
+      activeJob = null;
     }
+    // Completion releases the in-memory deduplication entry. Keep it owned
+    // until the durable finish is committed so an unchanged fault cannot
+    // restart a completed runner while its reservation has already closed.
+    if (failure === undefined) entry.resolve(outcome);
+    else entry.reject(failure);
   };
 
   const ensurePump = (): void => {

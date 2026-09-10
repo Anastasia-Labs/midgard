@@ -7,11 +7,14 @@ A fresh Midgard deployment is stood up once, in order, and the result is an on-c
 identity that every operator and watcher must agree on. This page covers that flow.
 
 <Callout type="error" title="This flow writes to Cardano L1">
-`init` initializes **protocol state on Layer 1**, not local node state. Local database
-state is handled separately by [`db:migrate`](/docs/operators/node/database). Once
-`init` has succeeded, the deployment exists on chain and cannot be re-run over itself.
-Never pair a wiped local database with an existing on-chain deployment. See
-[Compatibility &amp; State-Reset Rules](/docs/operators/node/compatibility-rules).
+  `init` initializes **protocol state on Layer 1**, not local node state. Local
+  database state is handled separately by
+  [`db:migrate`](/docs/operators/node/database). Once `init` has succeeded, the
+  deployment exists on chain. The command recognizes a complete existing
+  deployment rather than creating another one; it can also reconcile PHAS
+  registration. Prefer attach/resume for ongoing operation. Never pair a wiped
+  local database with an existing on-chain deployment. See [Compatibility &amp;
+  State-Reset Rules](/docs/operators/node/compatibility-rules).
 </Callout>
 
 ## Prerequisites
@@ -37,22 +40,24 @@ the `HUB_ORACLE_ONE_SHOT_*` configuration. This UTxO is consumed exactly once an
 becomes the deployment's identity.
 
 Options: `--amount-lovelace <lovelace>`, `--run-state <path>`, `--dry-run`,
-`--fresh-redeploy`.
+`--fresh-redeploy` with its required `--fresh-redeploy-reason <text>`.
 
 Use a fresh, funded UTxO. Reusing a spent one-shot out-ref is the most common cause of
 a failed deployment.
+
 </Step>
 
 <Step>
 ### Publish reference scripts
 
-`reference-scripts-complete` reconciles node-runtime reference-script publication
+`reconcile reference-scripts-complete` reconciles node-runtime reference-script publication
 (`--manifest <path>`, `--scope <scope>`, `--repair`, `--json`). The command is a
-reconciler, so it is safe to re-run: it publishes what is missing rather than
-republishing everything.
+reconciler: without `--repair` it inspects; with `--repair` it publishes missing
+node-runtime reference scripts. Inspect its result before deciding to repair.
 
 `reference-script-wallet-status` and `sweep-reference-script-wallet` manage the wallet
 that funds publication.
+
 </Step>
 
 <Step>
@@ -68,18 +73,20 @@ node dist/index.js init \
 
 `init` refuses to run over invalid or partially initialized on-chain topology. A refusal
 is a signal to reconcile, not to redeploy.
+
 </Step>
 
 <Step>
 ### Record the deployment
 
 `export-contract-deployment-info` writes the contract deployment info JSON for the
-configured validator bundle. `deployment-manifest` reconciles the manifest after a
+configured validator bundle. `reconcile deployment-manifest` reconciles the manifest after a
 confirmed initialization (`--json`). `deployment-status` prints the live deployment
 status for the configured contracts.
 
 The manifest is how operators and watchers confirm they are talking about the same
 deployment. A watcher that cannot match its manifest to L1 must fail closed.
+
 </Step>
 
 </Steps>
@@ -93,12 +100,12 @@ acceptance sequence, including the DA committee node and the first merge.
 
 ## When something fails
 
-| Symptom | Safe next action |
-| --- | --- |
-| `init` refuses over existing topology | Attach to the existing deployment. Do not redeploy. Run `deployment-status` to see what exists. |
-| One-shot out-ref already spent | Stop. Start a fresh deployment with a new nonce and a matching local state reset, or resume the existing one. |
-| Reference scripts partially published | Re-run `reference-scripts-complete`, optionally with `--repair`. |
-| Manifest disagrees with L1 | Do not start the node. Reconcile the manifest first. |
+| Symptom                               | Safe next action                                                                                                                                          |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init` refuses over existing topology | Inspect `deployment-status` and the refusal. Attach only to a complete verified deployment; partial or invalid state needs an explicit recovery decision. |
+| One-shot out-ref already spent        | Stop. Start a fresh deployment with a new nonce and a matching local state reset, or resume the existing one.                                             |
+| Reference scripts partially published | Inspect `reconcile reference-scripts-complete`, then use `--repair` for missing publications.                                                             |
+| Manifest disagrees with L1            | Do not start the node. Reconcile the manifest first.                                                                                                      |
 
 The deployment and init logic lives in `src/commands/`; the transaction builders live in
 `src/transactions/`.

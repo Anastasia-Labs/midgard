@@ -15,43 +15,49 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = ZERO_INPUT_BLUEPRINT_TITLES.every((title) =>
-  blueprint.validators.some((validator) => validator.title === title),
-);
 
-describe.runIf(hasFamily)(
-  "zeroInput direction-complete signed publication fit",
-  () => {
-    it("publishes both applied scripts below the reliability reserve", async () => {
-      const harness = await makeFaultProofEmulatorHarness();
-      const proofAddressData = await Effect.runPromise(
-        addressDataFromBech32(
-          harness.contracts.fraudProof.spendingScriptAddress,
-        ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
-      );
-      const steps = applyZeroInputScripts({
-        blueprint,
-        network: "Preprod",
-        computationThreadPolicyId: harness.contracts.computationThread.policyId,
-        fraudProofPolicyId: harness.contracts.fraudProof.policyId,
-        fraudProofTokenAddressData: proofAddressData,
-        fieldPreimageCertificatePolicyId:
-          harness.contracts.fieldPreimageCertificate.policyId,
-        hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+describe("zeroInput direction-complete signed publication fit", () => {
+  it("publishes both applied scripts below the reliability reserve", async () => {
+    expect(
+      ZERO_INPUT_BLUEPRINT_TITLES.filter(
+        (title) =>
+          !blueprint.validators.some((validator) => validator.title === title),
+      ),
+      "the blueprint must declare every zeroInput validator title",
+    ).toEqual([]);
+    const harness = await makeFaultProofEmulatorHarness();
+    const proofAddressData = await Effect.runPromise(
+      addressDataFromBech32(
+        harness.contracts.fraudProof.spendingScriptAddress,
+      ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
+    );
+    const steps = applyZeroInputScripts({
+      blueprint,
+      network: "Preprod",
+      computationThreadPolicyId: harness.contracts.computationThread.policyId,
+      fraudProofPolicyId: harness.contracts.fraudProof.policyId,
+      fraudProofTokenAddressData: proofAddressData,
+      fieldPreimageCertificatePolicyId:
+        harness.contracts.fieldPreimageCertificate.policyId,
+      hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
+    });
+    expect(
+      steps.length,
+      "every declared title must yield one applied publishable step",
+    ).toBe(ZERO_INPUT_BLUEPRINT_TITLES.length);
+    for (const [index, step] of steps.entries()) {
+      const published = await publishPlainReferenceScriptUtxo({
+        lucid: harness.funderLucid,
+        script: step.spendingScript,
+        label: `zero input direction complete step ${index + 1}`,
       });
-      for (const [index, step] of steps.entries()) {
-        const published = await publishPlainReferenceScriptUtxo({
-          lucid: harness.funderLucid,
-          script: step.spendingScript,
-          label: `zero input direction complete step ${index + 1}`,
-        });
-        console.info(
-          `[zero-input-publication] ${JSON.stringify({ step: index + 1, scriptHash: step.spendingScriptHash, bytes: published.publicationMeasurement.completeSignedBytes, memory: published.publicationMeasurement.executionMemory.toString(), cpu: published.publicationMeasurement.executionSteps.toString() })}`,
-        );
-        expect(
-          published.publicationMeasurement.completeSignedBytes,
-        ).toBeLessThanOrEqual(15_872);
-      }
-    }, 600_000);
-  },
-);
+      console.info(
+        `[zero-input-publication] ${JSON.stringify({ step: index + 1, scriptHash: step.spendingScriptHash, bytes: published.publicationMeasurement.completeSignedBytes, memory: published.publicationMeasurement.executionMemory.toString(), cpu: published.publicationMeasurement.executionSteps.toString() })}`,
+      );
+      expect(
+        published.publicationMeasurement.completeSignedBytes,
+        `step ${(index + 1).toString()} signed publication bytes`,
+      ).toBeLessThanOrEqual(15_872);
+    }
+  }, 600_000);
+});

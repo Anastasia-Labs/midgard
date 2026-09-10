@@ -81,6 +81,8 @@ export type HistoricalNativeScriptCorpus = Readonly<{
   providerRosterDigest: string;
   corpusDigest: string;
   checkpointDigest: string;
+  /** Exact challenged history, independent of the current cache checkpoint. */
+  evidenceDigest: string;
 }>;
 
 export type HistoricalNativeScriptCheckpoint = Readonly<{
@@ -993,6 +995,31 @@ const entriesThroughHeaders = (
     }),
   );
 
+const historicalCorpusEvidenceDigest = (
+  deploymentFingerprint: string,
+  corpus: Pick<
+    HistoricalNativeScriptCorpus,
+    | "throughHeaderHash"
+    | "headerHashes"
+    | "payloadEnvelopeSha256s"
+    | "entries"
+    | "providerRosterDigest"
+  >,
+): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        schemaVersion: "midgard-historical-native-script-evidence-v1",
+        deploymentFingerprint,
+        throughHeaderHash: corpus.throughHeaderHash,
+        headerHashes: corpus.headerHashes,
+        payloadEnvelopeSha256s: corpus.payloadEnvelopeSha256s,
+        entries: corpus.entries,
+        providerRosterDigest: corpus.providerRosterDigest,
+      }),
+    )
+    .digest("hex");
+
 const fetchHistoricalPayload = async ({
   headerHash,
   sources,
@@ -1143,6 +1170,10 @@ export const resolveHistoricalNativeScriptCorpus = async ({
     } as const;
     const corpus = Object.freeze({
       ...withoutDigest,
+      evidenceDigest: historicalCorpusEvidenceDigest(
+        deploymentFingerprint,
+        withoutDigest,
+      ),
       corpusDigest: createHash("sha256")
         .update(JSON.stringify(withoutDigest))
         .digest("hex"),
@@ -1157,14 +1188,19 @@ export const resolveHistoricalNativeScriptCorpus = async ({
     [currentEvidence.headerHash, currentEvidence.payloadEnvelopeSha256],
   ]);
   const seen = new Set<string>([currentEvidence.headerHash]);
-  const targetHeaderHash = checkpoint?.throughHeaderHash ?? GENESIS_HEADER_HASH;
+  const checkpointIndices = new Map(
+    (checkpoint?.headerHashes ?? []).map((headerHash, index) => [
+      headerHash,
+      index,
+    ]),
+  );
   let expectedHeaderHash = currentEvidence.header.prevHeaderHash;
-  while (expectedHeaderHash !== targetHeaderHash) {
-    if (expectedHeaderHash === GENESIS_HEADER_HASH) {
-      throw new Error(
-        "historical checkpoint is not an ancestor of the challenged block",
-      );
-    }
+  // A corrected queue can replace the cached suffix. Join the exact common
+  // ancestor named by the new hash/root chain, retaining only its prefix facts.
+  while (
+    expectedHeaderHash !== GENESIS_HEADER_HASH &&
+    !checkpointIndices.has(expectedHeaderHash)
+  ) {
     if (seen.has(expectedHeaderHash)) {
       throw new Error("historical retained-DA header chain contains a cycle");
     }
@@ -1195,13 +1231,29 @@ export const resolveHistoricalNativeScriptCorpus = async ({
     );
     expectedHeaderHash = reconstruction.header.prevHeaderHash;
   }
-  if (checkpoint !== null) {
+  const prefixLength =
+    expectedHeaderHash === GENESIS_HEADER_HASH
+      ? 0
+      : checkpointIndices.get(expectedHeaderHash)! + 1;
+  const prefixHeaders = checkpoint?.headerHashes.slice(0, prefixLength) ?? [];
+  if (prefixLength > 0) {
+    const checkpointPayload =
+      expectedHeaderHash === checkpoint!.throughHeaderHash
+        ? Buffer.from(checkpoint!.throughPayloadEnvelopeCborHex, "hex")
+        : await fetchHistoricalPayload({
+            headerHash: expectedHeaderHash,
+            sources,
+            historySource,
+            ...(retries === undefined ? {} : { retries }),
+          });
+    if (
+      sha256(checkpointPayload) !==
+      checkpoint!.payloadEnvelopeSha256s[prefixLength - 1]
+    )
+      throw new Error("historical checkpoint ancestor payload changed");
     const checkpointReconstruction = await reconstructDaPayload({
-      payloadEnvelopeCbor: Buffer.from(
-        checkpoint.throughPayloadEnvelopeCborHex,
-        "hex",
-      ),
-      expectedHeaderHash: checkpoint.throughHeaderHash,
+      payloadEnvelopeCbor: checkpointPayload,
+      expectedHeaderHash,
     });
     const child = newestFirst[newestFirst.length - 1]!;
     if (
@@ -1214,28 +1266,26 @@ export const resolveHistoricalNativeScriptCorpus = async ({
     }
     newestFirst.push(checkpointReconstruction);
     envelopeShaByHeader.set(
-      checkpoint.throughHeaderHash,
-      checkpoint.throughPayloadEnvelopeSha256,
+      expectedHeaderHash,
+      checkpoint!.payloadEnvelopeSha256s[prefixLength - 1]!,
     );
   }
   const reconstructions = Object.freeze([...newestFirst].reverse());
   const appended = reconstructions.filter(
-    (reconstruction) =>
-      checkpoint === null ||
-      reconstruction.headerHash !== checkpoint.throughHeaderHash,
+    (reconstruction) => reconstruction.headerHash !== expectedHeaderHash,
   );
   const headerHashes = Object.freeze([
-    ...(checkpoint?.headerHashes ?? []),
+    ...prefixHeaders,
     ...appended.map((reconstruction) => reconstruction.headerHash),
   ]);
   const payloadEnvelopeSha256s = Object.freeze([
-    ...(checkpoint?.payloadEnvelopeSha256s ?? []),
+    ...(checkpoint?.payloadEnvelopeSha256s.slice(0, prefixLength) ?? []),
     ...appended.map(
       (reconstruction) => envelopeShaByHeader.get(reconstruction.headerHash)!,
     ),
   ]);
   const entries = mergeCorpusEntries(
-    checkpoint?.entries ?? [],
+    entriesThroughHeaders(checkpoint?.entries ?? [], new Set(prefixHeaders)),
     buildCorpusEntries(appended),
   );
   const nextWithoutDigest = {
@@ -1279,6 +1329,10 @@ export const resolveHistoricalNativeScriptCorpus = async ({
   } as const;
   const corpus = Object.freeze({
     ...withoutDigest,
+    evidenceDigest: historicalCorpusEvidenceDigest(
+      deploymentFingerprint,
+      withoutDigest,
+    ),
     corpusDigest: createHash("sha256")
       .update(JSON.stringify(withoutDigest))
       .digest("hex"),

@@ -151,6 +151,9 @@ const harness = (input: {
     value: ReturnType<typeof decision>,
   ) => ReturnType<typeof decision> | Promise<ReturnType<typeof decision>>;
   readonly enqueueError?: Error;
+  readonly pendingAvailabilityHeaders?: () => ReadonlySet<string>;
+  readonly resolvePredecessorOverride?: () => Promise<undefined>;
+  readonly decisionUsesLocalEventHistory?: boolean;
 }) => {
   const admitted = new WeakSet<object>([input.current]);
   const appended: ReturnType<typeof decision>[] = [];
@@ -158,6 +161,7 @@ const harness = (input: {
   const enqueuedGenerations: string[] = [];
   const controllerGenerations: string[] = [];
   const revocations: string[] = [];
+  const retainedDecisionAuthorities: (string | null)[] = [];
   const application = {
     deploymentFingerprint: DEPLOYMENT,
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -180,10 +184,20 @@ const harness = (input: {
     runtimeConfigPath: "/var/lib/midgard/watcher.json",
     maximumClassificationConcurrency: 2,
     dependencies: Object.freeze({
+      ...(input.pendingAvailabilityHeaders === undefined
+        ? {}
+        : { pendingAvailabilityHeaders: input.pendingAvailabilityHeaders }),
+      retainDecisionAuthorities: (digest) =>
+        retainedDecisionAuthorities.push(digest),
+      decisionUsesLocalEventHistory: () =>
+        input.decisionUsesLocalEventHistory ?? false,
       assertObservation: (candidate) => {
         if (!admitted.has(candidate)) throw new Error("not admitted");
       },
       observationDigest: async () => OBSERVATION_DIGEST,
+      ...(input.resolvePredecessorOverride === undefined
+        ? {}
+        : { resolvePredecessorHeader: input.resolvePredecessorOverride }),
       readRecords: async () => input.records ?? Object.freeze([]),
       append: async (fresh) => {
         appended.push(fresh as ReturnType<typeof decision>);
@@ -229,10 +243,54 @@ const harness = (input: {
     enqueued,
     enqueuedGenerations,
     revocations,
+    retainedDecisionAuthorities,
   };
 };
 
 describe("production fault decision bridge", () => {
+  it("keeps attested public-DA failures pending without manufacturing a classifier decision", async () => {
+    const original = observation([headerFixture("01")]);
+    const first = original.finalizedHeaders[0]!;
+    const current: WatcherAuthenticatedStateQueueObservation = {
+      ...original,
+      finalizedHeaders: [
+        {
+          ...first,
+          daAvailability: { Attested: { da_bond_asset_name: "44".repeat(32) } },
+        },
+      ],
+    };
+    let pending = new Set([first.headerHash]);
+    const currentHarness = harness({
+      current,
+      categoryByHeader: { [first.headerHash]: "doubleSpend" },
+      pendingAvailabilityHeaders: () => pending,
+    });
+    const waiting = await currentHarness.bridge.reconcileAndDispatch(current);
+    expect(waiting.target).toBeNull();
+    expect(waiting.decisionDigests).toEqual([]);
+    expect(currentHarness.application.classifyHeader).not.toHaveBeenCalled();
+    expect(currentHarness.appended).toEqual([]);
+    expect(currentHarness.enqueued).toEqual([]);
+    pending = new Set();
+    const recovered = await currentHarness.bridge.reconcileAndDispatch(current);
+    expect(recovered.target?.headerHash).toBe(first.headerHash);
+    expect(currentHarness.application.classifyHeader).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a pending-availability claim for an unattested header", async () => {
+    const current = observation([headerFixture("01")]);
+    const first = current.finalizedHeaders[0]!;
+    const currentHarness = harness({
+      current,
+      categoryByHeader: {},
+      pendingAvailabilityHeaders: () => new Set([first.headerHash]),
+    });
+    await expect(
+      currentHarness.bridge.reconcileAndDispatch(current),
+    ).rejects.toThrow("authenticated challengeable header");
+  });
+
   it("journals every header but dispatches only the first canonical Idle target", async () => {
     const current = observation([headerFixture("01"), headerFixture("02")]);
     const [first, second] = current.finalizedHeaders;
@@ -251,6 +309,9 @@ describe("production fault decision bridge", () => {
     });
     expect(currentHarness.appended).toHaveLength(2);
     expect(currentHarness.enqueued).toHaveLength(0);
+    expect(currentHarness.retainedDecisionAuthorities).toEqual([
+      prepared.target!.decisionDigest,
+    ]);
 
     await currentHarness.bridge.dispatchPrepared();
     expect(currentHarness.enqueued.map(({ category }) => category)).toEqual([
@@ -277,6 +338,7 @@ describe("production fault decision bridge", () => {
     ).toBe(false);
 
     currentHarness.bridge.invalidateForRollback();
+    expect(currentHarness.retainedDecisionAuthorities.at(-1)).toBeNull();
     expect(() =>
       currentHarness.bridge.isJobPermitted({
         mode: "resume",
@@ -417,72 +479,168 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.enqueued).toHaveLength(0);
   });
 
-  it("invalidates authority when rollback races an awaited classification", async () => {
+  it("does not enter classification after rollback during predecessor resolution", async () => {
     const current = observation([headerFixture("06")]);
-    const [header] = current.finalizedHeaders;
-    let release!: (value: ReturnType<typeof decision>) => void;
-    const waiting = new Promise<ReturnType<typeof decision>>((resolve) => {
+    const header = current.finalizedHeaders[0]!;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const currentHarness = harness({
-      current,
-      categoryByHeader: { [header!.headerHash]: "doubleSpend" },
-      classifyOverride: async () => await waiting,
-    });
-    const preparing = currentHarness.bridge.prepareForRecovery(current);
-    await vi.waitFor(() =>
-      expect(currentHarness.application.classifyHeader).toHaveBeenCalledOnce(),
-    );
-    currentHarness.bridge.invalidateForRollback();
-    release(decision(header!.headerHash, "doubleSpend"));
-    await expect(preparing).rejects.toThrow(
-      "authority changed during fault classification",
-    );
-    expect(currentHarness.enqueued).toHaveLength(0);
-  });
-
-  it("preserves an exact active target across unrelated finalized observations but revokes on rollback", async () => {
-    const current = observation([headerFixture("0d")]);
-    const header = current.finalizedHeaders[0]!;
-    const later = Object.freeze({
-      ...current,
-      nativePoint: Object.freeze({
-        ...current.nativePoint,
-        blockHash: "31".repeat(32),
-        parentBlockHash: current.nativePoint.blockHash,
-        slot: "1001",
-        blockNo: "101",
-        chainPointId: "32".repeat(32),
-      }),
-      previousObservationDigest: current.observationDigest,
-      observationDigest: "33".repeat(32),
+    const resolvePredecessor = vi.fn(async () => {
+      await waiting;
+      return undefined;
     });
     const currentHarness = harness({
       current,
       categoryByHeader: { [header.headerHash]: "doubleSpend" },
+      resolvePredecessorOverride: resolvePredecessor,
     });
-    currentHarness.admitted.add(later);
-
-    const initial = await currentHarness.bridge.reconcileAndDispatch(current);
-    expect(currentHarness.controllerGenerations).toEqual(["1"]);
-    expect(currentHarness.enqueuedGenerations).toEqual(["1"]);
-
-    await currentHarness.bridge.prepareForRecovery(later);
-    expect(currentHarness.controllerGenerations).toEqual(["1"]);
-    expect(currentHarness.revocations).toEqual([]);
-    expect(
-      currentHarness.bridge.isJobPermitted({
-        mode: "resume",
-        category: "doubleSpend",
-        headerHash: header.headerHash,
-        decisionDigest: initial.target!.decisionDigest,
-        rollbackGeneration: "1",
-      }),
-    ).toBe(true);
-
+    const preparing = currentHarness.bridge.prepareForRecovery(current);
+    await vi.waitFor(() => expect(resolvePredecessor).toHaveBeenCalledOnce());
+    expect(currentHarness.application.classifyHeader).not.toHaveBeenCalled();
     currentHarness.bridge.invalidateForRollback();
-    expect(currentHarness.revocations).toEqual(["native_chain_rollback"]);
+    release();
+    await expect(preparing).rejects.toThrow(
+      "authority changed before fault classification",
+    );
+    expect(currentHarness.application.classifyHeader).not.toHaveBeenCalled();
+    expect(currentHarness.appended).toHaveLength(0);
+    expect(currentHarness.enqueued).toHaveLength(0);
+    expect(currentHarness.retainedDecisionAuthorities).toEqual([null, null]);
   });
+
+  it.each([
+    "invalidateForRollback",
+    "invalidateForHistoryChange",
+    "beforeHistoryAdvance",
+  ] as const)(
+    "%s retires authority during an awaited classification",
+    async (invalidate) => {
+      const current = observation([headerFixture("06")]);
+      const [header] = current.finalizedHeaders;
+      let release!: (value: ReturnType<typeof decision>) => void;
+      const waiting = new Promise<ReturnType<typeof decision>>((resolve) => {
+        release = resolve;
+      });
+      const currentHarness = harness({
+        current,
+        categoryByHeader: { [header!.headerHash]: "doubleSpend" },
+        classifyOverride: async () => await waiting,
+      });
+      const preparing = currentHarness.bridge.prepareForRecovery(current);
+      await vi.waitFor(() =>
+        expect(
+          currentHarness.application.classifyHeader,
+        ).toHaveBeenCalledOnce(),
+      );
+      currentHarness.bridge[invalidate]();
+      release(decision(header!.headerHash, "doubleSpend"));
+      await expect(preparing).rejects.toThrow(
+        "authority changed during fault classification",
+      );
+      expect(currentHarness.enqueued).toHaveLength(0);
+      expect(currentHarness.retainedDecisionAuthorities).toEqual([null, null]);
+    },
+  );
+
+  it.each([false, true])(
+    "history advance revokes the selected decision only when it uses the live event head (%s)",
+    async (usesLocalEventHistory) => {
+      const current = observation([headerFixture("0d")]);
+      const header = current.finalizedHeaders[0]!;
+      const currentHarness = harness({
+        current,
+        categoryByHeader: { [header.headerHash]: "transitionTrace" },
+        decisionUsesLocalEventHistory: usesLocalEventHistory,
+      });
+      const initial = await currentHarness.bridge.reconcileAndDispatch(current);
+      for (let index = 0; index < 3; index += 1) {
+        currentHarness.bridge.beforeHistoryAdvance();
+        if (usesLocalEventHistory) break;
+        await currentHarness.bridge.reconcileAndDispatch(current);
+      }
+      if (usesLocalEventHistory) {
+        expect(currentHarness.revocations).toEqual([
+          "local_event_history_change",
+        ]);
+        expect(currentHarness.bridge.dispatchPrepared()).toBeNull();
+        expect(currentHarness.retainedDecisionAuthorities.at(-1)).toBeNull();
+      } else {
+        expect(currentHarness.revocations).toEqual([]);
+        expect(currentHarness.controllerGenerations).toEqual(["1"]);
+        expect(currentHarness.enqueuedGenerations).toEqual([
+          "1",
+          "1",
+          "1",
+          "1",
+        ]);
+        expect(
+          currentHarness.bridge.isJobPermitted({
+            mode: "resume",
+            category: "transitionTrace",
+            headerHash: header.headerHash,
+            decisionDigest: initial.target!.decisionDigest,
+            rollbackGeneration: "1",
+          }),
+        ).toBe(true);
+        currentHarness.bridge.invalidateForRollback();
+        expect(currentHarness.revocations).toEqual(["native_chain_rollback"]);
+        expect(currentHarness.bridge.dispatchPrepared()).toBeNull();
+      }
+    },
+  );
+
+  it.each([
+    { invalidate: "invalidateForRollback", reason: "native_chain_rollback" },
+    {
+      invalidate: "invalidateForHistoryChange",
+      reason: "local_event_history_change",
+    },
+  ] as const)(
+    "preserves an exact target across unrelated observations, then revokes for $reason",
+    async ({ invalidate, reason }) => {
+      const current = observation([headerFixture("0d")]);
+      const header = current.finalizedHeaders[0]!;
+      const later = Object.freeze({
+        ...current,
+        nativePoint: Object.freeze({
+          ...current.nativePoint,
+          blockHash: "31".repeat(32),
+          parentBlockHash: current.nativePoint.blockHash,
+          slot: "1001",
+          blockNo: "101",
+          chainPointId: "32".repeat(32),
+        }),
+        previousObservationDigest: current.observationDigest,
+        observationDigest: "33".repeat(32),
+      });
+      const currentHarness = harness({
+        current,
+        categoryByHeader: { [header.headerHash]: "doubleSpend" },
+      });
+      currentHarness.admitted.add(later);
+
+      const initial = await currentHarness.bridge.reconcileAndDispatch(current);
+      expect(currentHarness.controllerGenerations).toEqual(["1"]);
+      expect(currentHarness.enqueuedGenerations).toEqual(["1"]);
+
+      await currentHarness.bridge.prepareForRecovery(later);
+      expect(currentHarness.controllerGenerations).toEqual(["1"]);
+      expect(currentHarness.revocations).toEqual([]);
+      expect(
+        currentHarness.bridge.isJobPermitted({
+          mode: "resume",
+          category: "doubleSpend",
+          headerHash: header.headerHash,
+          decisionDigest: initial.target!.decisionDigest,
+          rollbackGeneration: "1",
+        }),
+      ).toBe(true);
+
+      currentHarness.bridge[invalidate]();
+      expect(currentHarness.revocations).toEqual([reason]);
+    },
+  );
 
   it("surfaces enqueue failure instead of reporting a reconciled dispatch", async () => {
     const current = observation([headerFixture("07")]);
@@ -545,6 +703,10 @@ describe("production fault decision bridge", () => {
     await expect(second).resolves.toMatchObject({
       target: { headerHash: secondHeader.headerHash },
     });
+    expect(currentHarness.retainedDecisionAuthorities).toEqual([
+      decision(firstHeader.headerHash, "doubleSpend").decisionDigest,
+      decision(secondHeader.headerHash, "invalidRange").decisionDigest,
+    ]);
   });
 
   it("bounds concurrent classification while preserving finalized queue order", async () => {

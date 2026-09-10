@@ -1,0 +1,142 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 54ade4cc0..7faf6b3b3 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -636,7 +636,11 @@ var addOutput = (config, outputBuilder, assets) => (0, import_core_utils5.withCM
+ });
+ var ToAddressWithData = (address, outputDatum, assets, scriptRef) => import_effect7.Effect.gen(function* () {
+   const { config } = yield* TxConfig;
+-  const outputBuilder = buildBaseOutput(address, outputDatum, scriptRef);
++  const datum = config.canonicalOutputs && outputDatum?.kind === "inline" ? {
++    ...outputDatum,
++    value: (0, import_core_utils5.withCMLScope)((own) => own(CML.PlutusData.from_cbor_hex(outputDatum.value)).to_canonical_cbor_hex())
++  } : outputDatum;
++  const outputBuilder = buildBaseOutput(address, datum, scriptRef);
+   assets ??= {};
+   addOutput(config, outputBuilder, assets);
+ });
+@@ -3977,6 +3981,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
+     catch: (error) => completeTxError(error)
+   }) : presetWalletInputs;
+   config.walletInputs = walletInputs;
++  config.canonicalOutputs = canonical || internalOptions.forceCanonical === true;
+   yield* import_effect22.Effect.all(config.programs);
+   yield* finalizeVotes();
+   yield* applyTreasuryDonationToBuilder(config);
+@@ -4005,10 +4010,14 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
+         )
+       )
+     );
++    const collateralCandidates = wallet.getCollateral === undefined ? walletInputs : yield* import_effect22.Effect.tryPromise({
++      try: () => wallet.getCollateral(),
++      catch: (error) => completeTxError(error)
++    });
+     const collateralInput = yield* findCollateral(
+       config.lucidConfig.protocolParameters.coinsPerUtxoByte,
+       totalCollateral,
+-      walletInputs
++      collateralCandidates
+     );
+     yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
+     evaluatedScriptBody = (yield* selectionAndEvaluation(
+@@ -4087,6 +4096,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
+ }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
+ var completeStaticFromActions = (sourceConfig, options) => {
+   const replayConfig = makeReplayConfig(sourceConfig);
++  replayConfig.canonicalOutputs = options.canonical === true;
+   return (0, import_effect22.pipe)(
+     import_effect22.Effect.gen(function* () {
+       yield* replayTxActions(sourceConfig.actions);
+@@ -4116,6 +4126,7 @@ var completeDelayedFromActions = (sourceConfig, options) => import_effect22.Effe
+   let bootstrapWalletInputs = [];
+   for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
+     const replayConfig = makeReplayConfig(sourceConfig);
++    replayConfig.canonicalOutputs = true;
+     let usedBootstrapExUnits = false;
+     const completion = yield* (0, import_effect22.pipe)(
+       import_effect22.Effect.gen(function* () {
+@@ -5012,8 +5023,11 @@ var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculati
+       applyBootstrapRedeemerExUnits(
+         redeemers,
+         config.txBuilder,
+-        config.lucidConfig.protocolParameters.maxTxExMem,
+-        config.lucidConfig.protocolParameters.maxTxExSteps
++        // An explicitly funded transaction must bootstrap its canonical context
++        // without charging the aggregate maximum before its redeemers exist.
++        // Resolved redeemers still undergo normal local evaluation and fee checks.
++        config.minFee === void 0 ? config.lucidConfig.protocolParameters.maxTxExMem : 0n,
++        config.minFee === void 0 ? config.lucidConfig.protocolParameters.maxTxExSteps : 0n
+       );
+       (0, import_core_utils14.freeCML)(redeemers, candidate);
+       return true;
+diff --git a/dist/index.js b/dist/index.js
+index 2fb0a2150..1ac04643b 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -499,7 +499,11 @@ var addOutput = (config, outputBuilder, assets) => withCMLScope5((own) => {
+ });
+ var ToAddressWithData = (address, outputDatum, assets, scriptRef) => Effect6.gen(function* () {
+   const { config } = yield* TxConfig;
+-  const outputBuilder = buildBaseOutput(address, outputDatum, scriptRef);
++  const datum = config.canonicalOutputs && outputDatum?.kind === "inline" ? {
++    ...outputDatum,
++    value: withCMLScope5((own) => own(CML.PlutusData.from_cbor_hex(outputDatum.value)).to_canonical_cbor_hex())
++  } : outputDatum;
++  const outputBuilder = buildBaseOutput(address, datum, scriptRef);
+   assets ??= {};
+   addOutput(config, outputBuilder, assets);
+ });
+@@ -3875,6 +3879,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
+     catch: (error) => completeTxError(error)
+   }) : presetWalletInputs;
+   config.walletInputs = walletInputs;
++  config.canonicalOutputs = canonical || internalOptions.forceCanonical === true;
+   yield* Effect21.all(config.programs);
+   yield* finalizeVotes();
+   yield* applyTreasuryDonationToBuilder(config);
+@@ -3903,10 +3908,14 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
+         )
+       )
+     );
++    const collateralCandidates = wallet.getCollateral === undefined ? walletInputs : yield* Effect21.tryPromise({
++      try: () => wallet.getCollateral(),
++      catch: (error) => completeTxError(error)
++    });
+     const collateralInput = yield* findCollateral(
+       config.lucidConfig.protocolParameters.coinsPerUtxoByte,
+       totalCollateral,
+-      walletInputs
++      collateralCandidates
+     );
+     yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
+     evaluatedScriptBody = (yield* selectionAndEvaluation(
+@@ -3985,6 +3994,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
+ }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
+ var completeStaticFromActions = (sourceConfig, options) => {
+   const replayConfig = makeReplayConfig(sourceConfig);
++  replayConfig.canonicalOutputs = options.canonical === true;
+   return pipe10(
+     Effect21.gen(function* () {
+       yield* replayTxActions(sourceConfig.actions);
+@@ -4014,6 +4024,7 @@ var completeDelayedFromActions = (sourceConfig, options) => Effect21.gen(functio
+   let bootstrapWalletInputs = [];
+   for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
+     const replayConfig = makeReplayConfig(sourceConfig);
++    replayConfig.canonicalOutputs = true;
+     let usedBootstrapExUnits = false;
+     const completion = yield* pipe10(
+       Effect21.gen(function* () {
+@@ -4910,8 +4921,11 @@ var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculati
+       applyBootstrapRedeemerExUnits(
+         redeemers,
+         config.txBuilder,
+-        config.lucidConfig.protocolParameters.maxTxExMem,
+-        config.lucidConfig.protocolParameters.maxTxExSteps
++        // An explicitly funded transaction must bootstrap its canonical context
++        // without charging the aggregate maximum before its redeemers exist.
++        // Resolved redeemers still undergo normal local evaluation and fee checks.
++        config.minFee === void 0 ? config.lucidConfig.protocolParameters.maxTxExMem : 0n,
++        config.minFee === void 0 ? config.lucidConfig.protocolParameters.maxTxExSteps : 0n
+       );
+       freeCML(redeemers, candidate);
+       return true;

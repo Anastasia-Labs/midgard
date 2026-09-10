@@ -38,7 +38,7 @@
  * Thread state carries the §2.5 transaction anchor rather than a per-field
  * collection commitment, and a step redeemer carries `FieldOpeningV1` rather
  * than a reproduced `..._preimage: List<…>`. See
- * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 import {
   encodeCbor,

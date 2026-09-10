@@ -55,7 +55,7 @@
  * WHAT `verified` REQUIRES. W29 may map this block to `verified` only on
  * `action: "accept"`, and `WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT` is
  * carried inside every result so the contract travels with the record. A
- * non-L2 step is applied from its complete W15/W16 authority-derived effect in
+ * non-L2 step is applied from its originating W15 and DA claim-bound effect in
  * the exact W22-authenticated transition order, and every resulting root is
  * checked against the committed trace. W25 proves root-exact replay only;
  * W26 remains responsible for due/omitted/fabricated/duplicate event
@@ -95,9 +95,7 @@ import { createHash } from "node:crypto";
 
 import {
   computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import {
@@ -116,12 +114,12 @@ import type {
   EventKey,
   EventToStepValue,
   EvidenceProvenance,
-  Header,
   TransitionStep,
 } from "@al-ft/midgard-sdk";
 import {
   DepositEvent,
   EMPTY_MERKLE_TREE_ROOT,
+  Header,
   makeReturn,
   OutputReference,
   TxOrderEvent,
@@ -154,25 +152,28 @@ import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 
 import {
-  parseWatcherSettlementIndexerResult,
-  type WatcherSettlementIndexerResult,
-  type WatcherSettlementResultVerificationContext,
-} from "../indexers/settlement-indexer.js";
-import {
+  assertWatcherLocalUserEventAuthorityCurrent,
   parseWatcherUserEventIndexerResult,
+  readWatcherLocalUserEventAuthority,
   WATCHER_FORCED_TX_VALID,
   type WatcherForcedOperatorVerdict,
-  type WatcherForcedTerminalClassification,
   type WatcherIndexedUserEvent,
+  type WatcherLocalUserEventAuthority,
+  type WatcherLocalUserEventHeaderCutoff,
   type WatcherTerminalUserEvent,
   type WatcherUserEventIndexerResult,
 } from "../indexers/user-event-indexer.js";
+import type { WatcherUserEventReferenceAuthority } from "../indexers/user-event-reference-authority.js";
 import type { WatcherL1TransportAttestationContext } from "../l1/l1-adapter.js";
 import {
   makeWatcherDurablePayload,
   type WatcherReconstructedState,
   watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
+import {
+  bindWatcherOriginEventClaim,
+  type WatcherCommittedEventClaim,
+} from "./event-claims.js";
 import type { WatcherHeaderRootReconstructionResult } from "./header-root-reconstruction.js";
 import { WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION } from "./header-root-reconstruction.js";
 import {
@@ -182,6 +183,7 @@ import {
   type WatcherPhaseAVerificationResult,
 } from "./phase-a-verifier.js";
 import {
+  computeWatcherRuleBundleCommitment,
   WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
   WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
   type WatcherRuleBundle,
@@ -474,8 +476,6 @@ export const WATCHER_BLOCK_REPLAY_REASON_CODES = [
   "user_event_authority_invalid",
   "user_event_authority_not_indexed",
   "user_event_authority_identity_mismatch",
-  "settlement_authority_invalid",
-  "settlement_authority_identity_mismatch",
   "transition_effect_digest_mismatch",
   "transition_effect_semantics_mismatch",
   "missing_event_authority",
@@ -558,9 +558,10 @@ export type WatcherBlockReplayIntermediateRoot = Readonly<{
   postRoot: string;
 }>;
 
-/** The state boundary around one accepted transaction. */
+/** The canonical state boundary around one replayed transaction.
+ * Rejected committed transactions retain an exact zero-mutation boundary. */
 export type WatcherBlockReplayTransactionRoot = Readonly<{
-  /** Position in the canonical accepted order. */
+  /** Position in the canonical block transaction order. */
   txIndex: number;
   txId: string;
   preRoot: string;
@@ -655,6 +656,41 @@ export type WatcherBlockReplayResult = Readonly<{
 
 const admittedFullBlockReplayResults = new WeakSet<object>();
 
+export type WatcherBlockReplayClassificationEvidence = Readonly<{
+  headerHash: string;
+  payloadEnvelopeSha256: string;
+  priorStateRoot: string;
+  claims: readonly WatcherCommittedEventClaim[];
+  priorState: readonly WatcherBlockReplayPriorUtxo[];
+}>;
+const classificationEvidence = new WeakMap<
+  object,
+  WatcherBlockReplayClassificationEvidence
+>();
+
+/** A full replay re-authenticates these raw inputs; W26 independently derives
+ * classification from them. Deserialized results must be replayed first.
+ */
+export const watcherBlockReplayClassificationEvidence = (
+  result: WatcherBlockReplayResult,
+): WatcherBlockReplayClassificationEvidence => {
+  assertWatcherFullBlockReplayResult(result);
+  const evidence = classificationEvidence.get(result);
+  if (
+    evidence === undefined ||
+    result.action !== "accept" ||
+    evidence.headerHash !== result.headerHash ||
+    evidence.payloadEnvelopeSha256 !== result.payloadEnvelopeSha256 ||
+    evidence.priorStateRoot !== result.priorStateRoot ||
+    evidence.priorStateRoot !== result.expectedPriorStateRoot
+  ) {
+    throw new Error(
+      "watcher block replay classification evidence is not admitted",
+    );
+  }
+  return evidence;
+};
+
 /**
  * Production replay artifacts may consume only a result minted by the full
  * W21/W22/W23/W24-bound entry point below. A digest-correct structural clone
@@ -675,6 +711,36 @@ const admitFullBlockReplayResult = (
   return result;
 };
 
+export const watcherBlockReplayDownstreamInputDigest = (
+  result: Pick<
+    WatcherBlockReplayResult,
+    | "headerHash"
+    | "payloadEnvelopeSha256"
+    | "reconstructionDigest"
+    | "phaseAResultDigest"
+    | "ruleBundleCommitment"
+    | "authorityManifestDigest"
+    | "sourceManifestDigest"
+    | "effectManifestDigest"
+    | "forcedValidationFacts"
+    | "priorStateRoot"
+    | "postStateRoot"
+  >,
+): string =>
+  watcherSha256CanonicalJson({
+    headerHash: result.headerHash,
+    payloadEnvelopeSha256: result.payloadEnvelopeSha256,
+    reconstructionDigest: result.reconstructionDigest,
+    phaseAResultDigest: result.phaseAResultDigest,
+    ruleBundleCommitment: result.ruleBundleCommitment,
+    authorityManifestDigest: result.authorityManifestDigest,
+    sourceManifestDigest: result.sourceManifestDigest,
+    effectManifestDigest: result.effectManifestDigest,
+    forcedValidationFacts: result.forcedValidationFacts,
+    priorStateRoot: result.priorStateRoot,
+    postStateRoot: result.postStateRoot,
+  });
+
 const digestResult = (
   result: Omit<
     WatcherBlockReplayResult,
@@ -683,19 +749,7 @@ const digestResult = (
 ): WatcherBlockReplayResult =>
   Object.freeze(
     (() => {
-      const inputDigest = watcherSha256CanonicalJson({
-        headerHash: result.headerHash,
-        payloadEnvelopeSha256: result.payloadEnvelopeSha256,
-        reconstructionDigest: result.reconstructionDigest,
-        phaseAResultDigest: result.phaseAResultDigest,
-        ruleBundleCommitment: result.ruleBundleCommitment,
-        authorityManifestDigest: result.authorityManifestDigest,
-        sourceManifestDigest: result.sourceManifestDigest,
-        effectManifestDigest: result.effectManifestDigest,
-        forcedValidationFacts: result.forcedValidationFacts,
-        priorStateRoot: result.priorStateRoot,
-        postStateRoot: result.postStateRoot,
-      });
+      const inputDigest = watcherBlockReplayDownstreamInputDigest(result);
       const downstreamPrerequisite = Object.freeze({
         schemaVersion:
           WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
@@ -1068,6 +1122,7 @@ export type WatcherBlockReplayUserEventVerificationContext = Readonly<{
   observation: unknown;
   publicContext: unknown;
   transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[];
 }>;
 
 export type WatcherBlockReplayUserEventAuthority = Readonly<{
@@ -1075,29 +1130,43 @@ export type WatcherBlockReplayUserEventAuthority = Readonly<{
   context: WatcherBlockReplayUserEventVerificationContext;
 }>;
 
-export type WatcherBlockReplaySettlementAuthority = Readonly<{
-  result: unknown;
-  context: WatcherSettlementResultVerificationContext;
-  /** Selects the exact accepted observation whose transition is authoritative. */
-  observationDigest: string;
-}>;
-
 /**
- * An event effect is accepted only alongside a parser-recomputed W15 record;
- * withdrawals additionally require the exact parser-recomputed W16 terminal
- * transition that commits whether the L2 out-ref was consumed or refunded.
+ * An event effect requires originating W15 authority from parser replay or
+ * private local publication, plus the exact operator claim authenticated by
+ * the block DA roots. W16 settlement is
+ * a later accounting authority, never a prerequisite for challenge-period replay.
  */
-export type WatcherBlockReplayEventAuthority = Readonly<{
-  eventKey: EventKey;
-  phase: Exclude<WatcherBlockReplayCommittedStep["phase"], "L2Transaction">;
-  userEvent: WatcherBlockReplayUserEventAuthority;
-  settlement?: WatcherBlockReplaySettlementAuthority | null;
-  transitionEffect: CanonicalTransitionEffect;
-  /** Required only for a forced order; exact bytes are compact/commitment-bound to W15. */
-  canonicalNativeTxCbor?: Uint8Array | null;
-  /** Canonical Phase-A program material for the forced native transaction. */
-  programMaterialSidecarCbor?: Uint8Array | null;
-}>;
+export type WatcherBlockReplayEventAuthority = Readonly<
+  {
+    eventKey: EventKey;
+  } & (
+    | {
+        userEvent: WatcherBlockReplayUserEventAuthority;
+        localUserEvent?: never;
+      }
+    | {
+        localUserEvent: WatcherLocalUserEventAuthority;
+        userEvent?: never;
+      }
+  ) &
+    (
+      | {
+          phase: "Withdrawal" | "Deposit";
+          transitionEffect: CanonicalTransitionEffect;
+          canonicalNativeTxCbor?: never;
+          programMaterialSidecarCbor?: never;
+        }
+      | {
+          phase: "ForcedTransaction";
+          /** Exact bytes compact/commitment-bound to the originating W15 order. */
+          canonicalNativeTxCbor: Uint8Array;
+          /** Canonical Phase-A program material for the forced native transaction. */
+          programMaterialSidecarCbor?: Uint8Array | null;
+          /** W25 derives the effect against its current canonical ledger. */
+          transitionEffect?: never;
+        }
+    )
+>;
 
 export type WatcherBlockReplayEventRoot = Readonly<{
   stepIndex: number;
@@ -1140,16 +1209,118 @@ const eventKeyFingerprint = (eventKey: EventKey): string => {
   return `ForcedTransaction:${id.transactionId}:${id.outputIndex.toString()}`;
 };
 
+export type WatcherBlockReplayEventOriginRecord = Readonly<
+  { snapshotDigest: string; historyEntryDigests: readonly string[] } & (
+    | {
+        source: "local_publication";
+        deploymentManifestId: string;
+        blueprintHash: string;
+        checkpointDigest: string;
+        checkpointPayloadDigest: string;
+        headEntryDigest: string;
+        throughHeader: WatcherLocalUserEventHeaderCutoff | null;
+      }
+    | { source: "parser_replay"; resultDigest: string; stateDigest: string }
+  )
+>;
+
+export type WatcherBlockReplayEffectRecord = Readonly<{
+  canonicalCborHex: string;
+  digest: string;
+  operations: readonly Readonly<
+    | { type: "delete"; outRefCborHex: string }
+    | { type: "insert"; outRefCborHex: string; outputCborHex: string }
+  >[];
+}>;
+
+/** Descriptive canonical replay input/output material. This is never authority. */
+export type WatcherBlockReplayEventAuthorityRecord = Readonly<{
+  phase: WatcherBlockReplayEventAuthority["phase"];
+  eventKey: EventKey;
+  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
+  network: WatcherRuleBundle["network"];
+  origin: WatcherBlockReplayEventOriginRecord;
+  committedClaim: WatcherCommittedEventClaim;
+  canonicalNativeTxCborHex: string | null;
+  programMaterialSidecarCborHex: string | null;
+  transitionEffect: WatcherBlockReplayEffectRecord;
+}>;
+
+const fullReplayEventRecords = new WeakMap<
+  WatcherBlockReplayResult,
+  readonly WatcherBlockReplayEventAuthorityRecord[]
+>();
+
+/** Copies only descriptive material from an actually admitted full W25 replay. */
+export const readWatcherBlockReplayEventAuthorityRecords = (
+  result: WatcherBlockReplayResult,
+): readonly WatcherBlockReplayEventAuthorityRecord[] => {
+  assertWatcherFullBlockReplayResult(result);
+  const records = fullReplayEventRecords.get(result);
+  if (records === undefined)
+    return fail("canonical_replay_threw", "$.eventAuthorityRecords");
+  return structuredClone(records);
+};
+
+export const watcherBlockReplayEventAuthorityManifest = (
+  record: Pick<
+    WatcherBlockReplayEventAuthorityRecord,
+    "phase" | "eventKey" | "event" | "origin" | "committedClaim"
+  >,
+): Readonly<Record<string, unknown>> => {
+  const { event, origin } = record;
+  const provenance =
+    origin.source === "local_publication"
+      ? {
+          authoritySource: origin.source,
+          deploymentManifestId: origin.deploymentManifestId,
+          blueprintHash: origin.blueprintHash,
+          checkpointDigest: origin.checkpointDigest,
+          checkpointPayloadDigest: origin.checkpointPayloadDigest,
+          userEventSnapshotDigest: origin.snapshotDigest,
+          headEntryDigest: origin.headEntryDigest,
+          throughHeader: origin.throughHeader,
+        }
+      : {
+          userEventResultDigest: origin.resultDigest,
+          userEventStateDigest: origin.stateDigest,
+          userEventSnapshotDigest: origin.snapshotDigest,
+        };
+  return Object.freeze({
+    phase: record.phase,
+    eventKeyFingerprint: eventKeyFingerprint(record.eventKey),
+    ...provenance,
+    historyEntryDigests: origin.historyEntryDigests,
+    eventId: event.eventId,
+    eventOutRef: event.outRef,
+    transactionHash: event.transactionHash,
+    eventContentDigest: event.eventContentDigest,
+    datumDigest: event.datumDigest,
+    outputDigest: event.outputDigest,
+    originPointDigest: event.originPointDigest,
+    originChainPointId: event.originChainPointId,
+    originBlockHash: event.originBlockHash,
+    originSlot: event.originSlot,
+    originBlockNo: event.originBlockNo,
+    finalityStatus: event.finalityStatus,
+    committedSource: record.committedClaim,
+  });
+};
+
 type ValidatedEventAuthority = Readonly<{
   phase: WatcherBlockReplayEventAuthority["phase"];
   eventKeyFingerprint: string;
-  effect: CanonicalTransitionEffect;
+  effect: CanonicalTransitionEffect | null;
   canonicalNativeTxCbor: Buffer | null;
   programMaterialSidecarCbor: Buffer | null;
-  terminalClassification: WatcherForcedTerminalClassification | null;
+  committedForcedValidity: WatcherForcedOperatorVerdict | null;
   userEvent: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
   authorityManifest: Readonly<Record<string, unknown>>;
-  effectManifest: Readonly<Record<string, unknown>>;
+  effectManifest: Readonly<Record<string, unknown>> | null;
+  recordSource: Omit<
+    WatcherBlockReplayEventAuthorityRecord,
+    "transitionEffect"
+  >;
 }>;
 
 const sha256Hex = (bytes: Uint8Array): string =>
@@ -1275,125 +1446,11 @@ const authoritativeHistoryDigests = (
           .map(({ entryDigest }) => entryDigest),
       );
 
-const parseSettlementAuthority = (
-  authority: WatcherBlockReplaySettlementAuthority,
-): Readonly<{
-  result: WatcherSettlementIndexerResult;
-  observation: NonNullable<
-    WatcherSettlementIndexerResult["state"]
-  >["activeHistory"][number]["observation"];
-}> => {
-  const parsed = parseWatcherSettlementIndexerResult(
-    authority.result,
-    authority.context,
-  );
-  if (
-    parsed === null ||
-    parsed.action !== "accept" ||
-    parsed.protocolDecision !== "indexed" ||
-    parsed.state === null
-  ) {
-    return fail("settlement_authority_invalid", "$.settlement.result");
-  }
-  const observation = parsed.state.activeHistory.find(
-    (entry) =>
-      entry.observation.observationDigest === authority.observationDigest,
-  )?.observation;
-  if (observation === undefined) {
-    return fail(
-      "settlement_authority_identity_mismatch",
-      "$.settlement.observationDigest",
-    );
-  }
-  return Object.freeze({ result: parsed, observation });
-};
-
-const validateSettlementEventBinding = (input: {
-  readonly phase: WatcherBlockReplayEventAuthority["phase"];
-  readonly event: WatcherIndexedUserEvent;
-  readonly authority: WatcherBlockReplaySettlementAuthority;
-}): Readonly<Record<string, unknown>> => {
-  const { result, observation } = parseSettlementAuthority(input.authority);
-  const transition = observation.transition;
-  const subjects = result.state!.snapshot.subjects;
-  const hasExactConsumedEvent =
-    transition.consumedOutRefs.length === 1 &&
-    transition.consumedOutRefs[0] === input.event.outRef;
-  const isAbsorbedDeposit =
-    input.phase === "Deposit" &&
-    transition.kind === "absorb_to_reserve" &&
-    transition.subjectId === input.event.assetNameHex &&
-    transition.relatedSubjectId === null &&
-    hasExactConsumedEvent &&
-    transition.producedOutRefs.length === 1 &&
-    subjects.some(
-      (subject) =>
-        subject.subjectKind === "reserve" &&
-        subject.relatedSubjectId === input.event.assetNameHex &&
-        subject.resourceOutRef === transition.producedOutRefs[0],
-    );
-  const isInitializedPayout =
-    input.phase === "Withdrawal" &&
-    transition.kind === "initialize_payout" &&
-    transition.subjectId !== null &&
-    transition.relatedSubjectId === input.event.assetNameHex &&
-    hasExactConsumedEvent &&
-    subjects.some(
-      (subject) =>
-        subject.subjectKind === "payout" &&
-        subject.subjectId === transition.subjectId &&
-        subject.relatedSubjectId === input.event.assetNameHex &&
-        subject.resourceOutRef !== null &&
-        transition.producedOutRefs.includes(subject.resourceOutRef),
-    ) &&
-    subjects.some(
-      (subject) =>
-        subject.subjectKind === "withdrawal" &&
-        subject.subjectId === input.event.assetNameHex &&
-        subject.status === "resolved" &&
-        subject.resourceOutRef === null,
-    );
-  const isRefundedWithdrawal =
-    input.phase === "Withdrawal" &&
-    transition.kind === "refund_withdrawal" &&
-    transition.subjectId === input.event.assetNameHex &&
-    transition.relatedSubjectId === null &&
-    hasExactConsumedEvent &&
-    transition.producedOutRefs.length === 0 &&
-    subjects.some(
-      (subject) =>
-        subject.subjectKind === "withdrawal" &&
-        subject.subjectId === input.event.assetNameHex &&
-        subject.status === "refunded" &&
-        subject.resourceOutRef === null,
-    );
-  if (!isAbsorbedDeposit && !isInitializedPayout && !isRefundedWithdrawal) {
-    return fail(
-      "settlement_authority_identity_mismatch",
-      "$.settlement.transition",
-    );
-  }
-  return Object.freeze({
-    resultDigest: result.resultDigest,
-    stateDigest: result.state!.stateDigest,
-    observationDigest: observation.observationDigest,
-    transitionKind: transition.kind,
-    subjectId: transition.subjectId,
-    relatedSubjectId: transition.relatedSubjectId,
-    consumedOutRefs: transition.consumedOutRefs,
-    producedOutRefs: transition.producedOutRefs,
-    transactionHash: observation.transactionHash,
-    pointDigest: observation.pointDigest,
-    chainPointId: observation.chainPointId,
-    blockHash: observation.blockHash,
-    slot: observation.slot,
-    blockNo: observation.blockNo,
-    snapshotDigest: observation.snapshot.snapshotDigest,
-  });
-};
-
 const canonicalEffectFromAuthority = (
-  authority: WatcherBlockReplayEventAuthority,
+  authority: Extract<
+    WatcherBlockReplayEventAuthority,
+    { phase: "Withdrawal" | "Deposit" }
+  >,
 ): CanonicalTransitionEffect => {
   const rebuilt = buildCanonicalTransitionEffect(
     authority.transitionEffect.operations,
@@ -1411,43 +1468,151 @@ const canonicalEffectFromAuthority = (
   return rebuilt;
 };
 
-const validateEventAuthority = (
+const eventEffectManifest = (
+  phase: WatcherBlockReplayEventAuthority["phase"],
+  fingerprint: string,
+  effect: CanonicalTransitionEffect,
+): Readonly<Record<string, unknown>> =>
+  Object.freeze({
+    phase,
+    eventKeyFingerprint: fingerprint,
+    effectDigest: effect.digest,
+    effectCborSha256: sha256Hex(effect.canonicalCbor),
+    operations: effect.operations.map((operation) => ({
+      type: operation.type,
+      outRefCbor: operation.outRefCbor.toString("hex"),
+      ...(operation.type === "insert"
+        ? { outputCborSha256: sha256Hex(operation.outputCbor) }
+        : {}),
+    })),
+  });
+
+type ReplayDeploymentBinding = Readonly<
+  Pick<WatcherRuleBundle, "deploymentManifestId" | "blueprintHash" | "network">
+>;
+
+type ReplayHeaderBinding = Pick<
+  WatcherLocalUserEventHeaderCutoff,
+  "headerHash" | "headerCborHex" | "observedBlockHash" | "observedSlot"
+>;
+
+const readLocalEventAuthority = async (
+  receipt: WatcherLocalUserEventAuthority,
+) => {
+  try {
+    return await readWatcherLocalUserEventAuthority(receipt);
+  } catch {
+    return fail("user_event_authority_invalid", "$.localUserEvent");
+  }
+};
+
+const validateEventAuthority = async (
   authority: WatcherBlockReplayEventAuthority,
-): ValidatedEventAuthority => {
-  const parsed = parseWatcherUserEventIndexerResult(
-    authority.userEvent.result,
-    authority.userEvent.context,
-  );
-  if (parsed === null) {
-    return fail("user_event_authority_invalid", "$.userEvent.result");
-  }
-  if (
-    parsed.action !== "accept" ||
-    parsed.protocolDecision !== "indexed" ||
-    parsed.state === null ||
-    parsed.state.snapshot.quarantined
-  ) {
-    return fail(
-      "user_event_authority_not_indexed",
-      "$.userEvent.result.action",
-    );
-  }
+  claims: readonly WatcherCommittedEventClaim[],
+  deployment: ReplayDeploymentBinding,
+  header: ReplayHeaderBinding,
+): Promise<ValidatedEventAuthority> => {
   const eventId = eventIdForKeyCborHex(authority.eventKey);
   const eventOutRef = eventIdForKey(authority.eventKey);
   const expectedKind = userEventKindForPhase(authority.phase);
-  const matches = allUserEvents(parsed).filter(
-    (event) =>
-      event.kind === expectedKind &&
-      event.eventId === eventId &&
-      decodeUserEventIdCborHex(event) === eventId,
-  );
-  if (matches.length !== 1) {
+  let event: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
+  let network: WatcherRuleBundle["network"];
+  let historyEntryDigests: readonly string[];
+  let origin: WatcherBlockReplayEventOriginRecord;
+  if (authority.localUserEvent !== undefined) {
+    if (authority.userEvent !== undefined) {
+      return fail("user_event_authority_invalid", "$.localUserEvent");
+    }
+    const local = await readLocalEventAuthority(authority.localUserEvent);
+    if (
+      local.deploymentManifestId !== deployment.deploymentManifestId ||
+      local.blueprintHash !== deployment.blueprintHash ||
+      local.network !== deployment.network
+    ) {
+      return fail(
+        "user_event_authority_identity_mismatch",
+        "$.localUserEvent.deployment",
+      );
+    }
+    if (
+      local.throughHeader !== null &&
+      (local.throughHeader.headerHash !== header.headerHash ||
+        local.throughHeader.headerCborHex !== header.headerCborHex ||
+        local.throughHeader.observedBlockHash !== header.observedBlockHash ||
+        local.throughHeader.observedSlot !== header.observedSlot)
+    ) {
+      return fail(
+        "user_event_authority_identity_mismatch",
+        "$.localUserEvent.throughHeader",
+      );
+    }
+    event = local.event;
+    network = local.network;
+    historyEntryDigests = local.historyEntryDigests;
+    origin = Object.freeze({
+      source: "local_publication",
+      historyEntryDigests: local.historyEntryDigests,
+      deploymentManifestId: local.deploymentManifestId,
+      blueprintHash: local.blueprintHash,
+      checkpointDigest: local.checkpointDigest,
+      checkpointPayloadDigest: local.checkpointPayloadDigest,
+      snapshotDigest: local.snapshotDigest,
+      headEntryDigest: local.headEntryDigest,
+      throughHeader: local.throughHeader,
+    });
+  } else {
+    if (authority.userEvent === undefined) {
+      return fail("user_event_authority_invalid", "$.userEvent");
+    }
+    const parsed = parseWatcherUserEventIndexerResult(
+      authority.userEvent.result,
+      authority.userEvent.context,
+    );
+    if (parsed === null) {
+      return fail("user_event_authority_invalid", "$.userEvent.result");
+    }
+    if (
+      parsed.action !== "accept" ||
+      parsed.protocolDecision !== "indexed" ||
+      parsed.state === null ||
+      parsed.state.snapshot.quarantined
+    ) {
+      return fail(
+        "user_event_authority_not_indexed",
+        "$.userEvent.result.action",
+      );
+    }
+    const matches = allUserEvents(parsed).filter(
+      (candidate) =>
+        candidate.kind === expectedKind && candidate.eventId === eventId,
+    );
+    if (matches.length !== 1) {
+      return fail(
+        "user_event_authority_identity_mismatch",
+        "$.userEvent.result.state.snapshot",
+      );
+    }
+    event = matches[0]!;
+    network = parsed.state.network;
+    historyEntryDigests = authoritativeHistoryDigests(parsed, event);
+    origin = Object.freeze({
+      source: "parser_replay",
+      resultDigest: parsed.resultDigest,
+      stateDigest: parsed.state.stateDigest,
+      snapshotDigest: parsed.state.snapshot.snapshotDigest,
+      historyEntryDigests,
+    });
+  }
+  if (
+    event.kind !== expectedKind ||
+    event.eventId !== eventId ||
+    decodeUserEventIdCborHex(event) !== eventId
+  ) {
     return fail(
       "user_event_authority_identity_mismatch",
-      "$.userEvent.result.state.snapshot",
+      "$.eventAuthority.eventId",
     );
   }
-  const event = matches[0]!;
   if (
     event.nonceOutRef !==
       `${eventOutRef.transactionId}#${eventOutRef.outputIndex.toString()}` ||
@@ -1461,57 +1626,38 @@ const validateEventAuthority = (
       "$.userEvent.result.state.snapshot.digest",
     );
   }
-  if (
-    authority.phase === "ForcedTransaction" &&
-    (!("terminalStatus" in event) ||
-      event.terminalStatus !== "processed" ||
-      event.terminalClassification === undefined)
-  ) {
-    return fail(
-      "user_event_authority_identity_mismatch",
-      "$.userEvent.result.state.snapshot.terminalStatus",
-    );
-  }
-  const terminalEvent = "terminalStatus" in event ? event : null;
-  const terminalClassification =
-    authority.phase === "ForcedTransaction" && terminalEvent !== null
-      ? (terminalEvent.terminalClassification ?? null)
-      : null;
-  if (
-    authority.phase === "ForcedTransaction" &&
-    (terminalClassification === null ||
-      terminalClassification.terminalTransactionHash !==
-        terminalEvent?.terminalTransactionHash ||
-      terminalClassification.terminalPointDigest !==
-        terminalEvent?.terminalPointDigest)
-  ) {
-    return fail(
-      "user_event_authority_identity_mismatch",
-      "$.userEvent.result.state.snapshot.terminalClassification",
-    );
-  }
-  const historyEntryDigests = authoritativeHistoryDigests(parsed, event);
   if (historyEntryDigests.length === 0) {
     return fail(
       "user_event_authority_identity_mismatch",
       "$.userEvent.result.state.history",
     );
   }
-  const effect = canonicalEffectFromAuthority(authority);
+  const matchesClaim = claims.filter(
+    (claim) =>
+      claim.phase === authority.phase && claim.eventIdCborHex === event.eventId,
+  );
+  if (matchesClaim.length !== 1)
+    return fail("event_authority_identity_mismatch", "$.committedEventClaim");
+  const claim = matchesClaim[0]!;
+  let bound;
+  try {
+    bound = bindWatcherOriginEventClaim(event, claim);
+  } catch {
+    return fail("event_authority_identity_mismatch", "$.committedEventClaim");
+  }
+  let effect: CanonicalTransitionEffect | null = null;
   let canonicalNativeTxCbor: Buffer | null = null;
   let programMaterialSidecarCbor: Buffer | null = null;
-  let settlementManifest: Readonly<Record<string, unknown>> | null = null;
+  const committedForcedValidity =
+    bound.phase === "ForcedTransaction" ? bound.operatorValidity : null;
   if (authority.phase === "Withdrawal") {
-    if (authority.settlement === undefined || authority.settlement === null) {
-      return fail("settlement_authority_invalid", "$.settlement");
-    }
-    settlementManifest = validateSettlementEventBinding({
-      phase: authority.phase,
-      event,
-      authority: authority.settlement,
-    });
-    const isCommittedValid =
-      settlementManifest.transitionKind === "initialize_payout";
+    effect = canonicalEffectFromAuthority(authority);
+    if (bound.phase !== "Withdrawal")
+      return fail(
+        "event_authority_identity_mismatch",
+        "$.committedEventClaim.phase",
+      );
+    const isCommittedValid = bound.committed.validity === "WithdrawalIsValid";
     const decoded = LucidData.from(
       event.eventCborHex,
       WithdrawalEvent as never,
@@ -1540,14 +1686,7 @@ const validateEventAuthority = (
       );
     }
   } else if (authority.phase === "Deposit") {
-    if (authority.settlement === undefined || authority.settlement === null) {
-      return fail("settlement_authority_invalid", "$.settlement");
-    }
-    settlementManifest = validateSettlementEventBinding({
-      phase: authority.phase,
-      event,
-      authority: authority.settlement,
-    });
+    effect = canonicalEffectFromAuthority(authority);
     const decoded = LucidData.from(
       event.eventCborHex,
       DepositEvent as never,
@@ -1565,7 +1704,7 @@ const validateEventAuthority = (
       };
     };
     const derivedEffect = deriveCanonicalDepositTransitionEffect({
-      configuredNetwork: parsed.state.network,
+      configuredNetwork: network,
       eventId: decoded.id,
       l2NetworkId: decoded.info.l2_network_id,
       l2Address: decoded.info.l2_address,
@@ -1591,6 +1730,12 @@ const validateEventAuthority = (
       );
     }
   } else {
+    if ("transitionEffect" in authority) {
+      return fail(
+        "transition_effect_semantics_mismatch",
+        "$.transitionEffect.forced.callerEffect",
+      );
+    }
     if (
       authority.canonicalNativeTxCbor === undefined ||
       authority.canonicalNativeTxCbor === null
@@ -1606,112 +1751,47 @@ const validateEventAuthority = (
       authority.programMaterialSidecarCbor === null
         ? null
         : Buffer.from(authority.programMaterialSidecarCbor);
-    try {
-      const decodedEvent = LucidData.from(
-        event.eventCborHex,
-        TxOrderEvent as never,
-      ) as {
-        readonly tx: {
-          readonly tx_id: string;
-          readonly transaction_commitment: string;
-          readonly source: {
-            readonly compact_cbor: string;
-            readonly witness_set_compact_cbor: string;
-            readonly field_preimage_lengths_cbor: string;
-          };
-        };
-      };
-      const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
-        canonicalNativeTxCbor,
-      );
-      const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
-        canonicalNativeTxCbor,
-      );
-      if (
-        computeMidgardNativeTxId(nativeTx).toString("hex") !==
-          decodedEvent.tx.tx_id ||
-        computeMidgardNativeTxProofCommitment(source).toString("hex") !==
-          decodedEvent.tx.transaction_commitment ||
-        source.compactCbor.toString("hex") !==
-          decodedEvent.tx.source.compact_cbor ||
-        source.witnessSetCompactCbor.toString("hex") !==
-          decodedEvent.tx.source.witness_set_compact_cbor ||
-        source.fieldPreimageLengthsCbor.toString("hex") !==
-          decodedEvent.tx.source.field_preimage_lengths_cbor
-      ) {
-        return fail(
-          "transition_effect_semantics_mismatch",
-          "$.canonicalNativeTxCbor.binding",
-        );
-      }
-    } catch (error) {
-      if (error instanceof WatcherBlockReplayError) {
-        throw error;
-      }
+    if (
+      canonicalNativeTxCbor.toString("hex") !== claim.canonicalNativeTxCborHex
+    ) {
       return fail(
         "transition_effect_semantics_mismatch",
-        "$.canonicalNativeTxCbor",
+        "$.canonicalNativeTxCbor.binding",
       );
     }
   }
-  const authorityManifest = Object.freeze({
+  const recordSource = Object.freeze({
     phase: authority.phase,
-    eventKeyFingerprint: eventKeyFingerprint(authority.eventKey),
-    userEventResultDigest: parsed.resultDigest,
-    userEventStateDigest: parsed.state.stateDigest,
-    userEventSnapshotDigest: parsed.state.snapshot.snapshotDigest,
-    historyEntryDigests,
-    eventId: event.eventId,
-    eventOutRef: event.outRef,
-    transactionHash: event.transactionHash,
-    eventContentDigest: event.eventContentDigest,
-    datumDigest: event.datumDigest,
-    outputDigest: event.outputDigest,
-    originPointDigest: event.originPointDigest,
-    originChainPointId: event.originChainPointId,
-    originBlockHash: event.originBlockHash,
-    originSlot: event.originSlot,
-    originBlockNo: event.originBlockNo,
-    finalityStatus: event.finalityStatus,
-    ...("terminalStatus" in event
-      ? {
-          terminalStatus: event.terminalStatus,
-          terminalTransactionHash: event.terminalTransactionHash,
-          terminalPointDigest: event.terminalPointDigest,
-          terminalBlockHash: event.terminalBlockHash,
-          terminalSlot: event.terminalSlot,
-          terminalBlockNo: event.terminalBlockNo,
-          terminalFinalityStatus: event.terminalFinalityStatus,
-          ...(event.terminalClassification === undefined
-            ? {}
-            : { terminalClassification: event.terminalClassification }),
-        }
-      : {}),
-    ...(settlementManifest === null ? {} : { settlementManifest }),
+    eventKey: authority.eventKey,
+    event,
+    network,
+    origin,
+    committedClaim: claim,
+    canonicalNativeTxCborHex: canonicalNativeTxCbor?.toString("hex") ?? null,
+    programMaterialSidecarCborHex:
+      programMaterialSidecarCbor?.toString("hex") ?? null,
   });
-  const effectManifest = Object.freeze({
-    phase: authority.phase,
-    eventKeyFingerprint: eventKeyFingerprint(authority.eventKey),
-    effectDigest: effect.digest,
-    effectCborSha256: sha256Hex(effect.canonicalCbor),
-    operations: effect.operations.map((operation) => ({
-      type: operation.type,
-      outRefCbor: operation.outRefCbor.toString("hex"),
-      ...(operation.type === "insert"
-        ? { outputCborSha256: sha256Hex(operation.outputCbor) }
-        : {}),
-    })),
-  });
+  const authorityManifest =
+    watcherBlockReplayEventAuthorityManifest(recordSource);
+  const effectManifest =
+    effect === null
+      ? null
+      : eventEffectManifest(
+          authority.phase,
+          eventKeyFingerprint(authority.eventKey),
+          effect,
+        );
   return Object.freeze({
     phase: authority.phase,
     eventKeyFingerprint: eventKeyFingerprint(authority.eventKey),
     effect,
     canonicalNativeTxCbor,
     programMaterialSidecarCbor,
-    terminalClassification,
+    committedForcedValidity,
     userEvent: event,
     authorityManifest,
     effectManifest,
+    recordSource,
   });
 };
 
@@ -1729,6 +1809,7 @@ export type EvaluateWatcherBlockReplayCandidatesInput = {
 };
 
 type ReplayCore = {
+  readonly eventAuthorityRecords?: readonly WatcherBlockReplayEventAuthorityRecord[];
   readonly reasonCodes: Set<WatcherBlockReplayReasonCode>;
   readonly stageMismatches: WatcherBlockReplayStageMismatch[];
   readonly rejections: WatcherBlockReplayRejection[];
@@ -1957,9 +2038,9 @@ type CommittedReplayGroup = Readonly<{
 }>;
 
 const eventLedgerOperations = (
-  authority: ValidatedEventAuthority,
+  effect: CanonicalTransitionEffect,
 ): readonly ValidationMachineLedgerOp[] =>
-  authority.effect.operations.map((operation) =>
+  effect.operations.map((operation) =>
     operation.type === "delete"
       ? {
           type: "delete",
@@ -1973,9 +2054,9 @@ const eventLedgerOperations = (
 
 const applyRawEventOperations = (
   state: Map<string, Buffer>,
-  authority: ValidatedEventAuthority,
+  effect: CanonicalTransitionEffect,
 ): void => {
-  for (const operation of authority.effect.operations) {
+  for (const operation of effect.operations) {
     if (operation.type === "delete") {
       state.delete(operation.outRefCbor.toString("hex"));
     } else {
@@ -2002,13 +2083,16 @@ const applyAcceptedCandidate = (
   }
 };
 
-const bindForcedTransitionEffect = async (input: {
+const replayForcedTransitionEffect = async (input: {
   readonly authority: ValidatedEventAuthority;
   readonly state: ReadonlyMap<string, Buffer>;
   readonly phaseAConfig: PhaseAConfig;
   readonly phaseBConfig: PhaseBConfig;
   readonly step: WatcherBlockReplayCommittedStep;
-}): Promise<WatcherBlockReplayForcedValidationFact | null> => {
+}): Promise<Readonly<{
+  fact: WatcherBlockReplayForcedValidationFact;
+  effect: CanonicalTransitionEffect;
+}> | null> => {
   if (input.authority.phase !== "ForcedTransaction") {
     return null;
   }
@@ -2026,10 +2110,10 @@ const bindForcedTransitionEffect = async (input: {
       "$.canonicalNativeTxCbor",
     );
   }
-  if (input.authority.terminalClassification === null) {
+  if (input.authority.committedForcedValidity === null) {
     return fail(
       "user_event_authority_identity_mismatch",
-      "$.userEvent.result.state.snapshot.terminalClassification",
+      "$.committedEventClaim.verdict",
     );
   }
   const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
@@ -2090,36 +2174,20 @@ const bindForcedTransitionEffect = async (input: {
       derived = canonicalTransitionEffectFromStatePatch(phaseB.statePatch);
     }
   }
-  if (
-    input.authority.terminalClassification.operatorValidity !==
-    canonicalOperatorValidity
-  ) {
-    return fail(
-      "transition_effect_semantics_mismatch",
-      "$.transitionEffect.forced.operatorValidity",
-    );
-  }
-  if (
-    derived.digest !== input.authority.effect.digest ||
-    !derived.canonicalCbor.equals(input.authority.effect.canonicalCbor)
-  ) {
-    return fail(
-      "transition_effect_semantics_mismatch",
-      "$.transitionEffect.forced",
-    );
-  }
   return Object.freeze({
-    eventKeyFingerprint: input.authority.eventKeyFingerprint,
-    stepIndex: input.step.stepIndex,
-    authenticatedOperatorValidity:
-      input.authority.terminalClassification.operatorValidity,
-    canonicalOperatorValidity,
-    phaseAStatus,
-    phaseARejectCode,
-    phaseBStatus,
-    phaseBRejectCode,
-    canonicalEffectDigest: derived.digest,
-    canonicalEffectMutationCount: derived.operations.length,
+    effect: derived,
+    fact: Object.freeze({
+      eventKeyFingerprint: input.authority.eventKeyFingerprint,
+      stepIndex: input.step.stepIndex,
+      authenticatedOperatorValidity: input.authority.committedForcedValidity,
+      canonicalOperatorValidity,
+      phaseAStatus,
+      phaseARejectCode,
+      phaseBStatus,
+      phaseBRejectCode,
+      canonicalEffectDigest: derived.digest,
+      canonicalEffectMutationCount: derived.operations.length,
+    }),
   });
 };
 
@@ -2137,6 +2205,9 @@ const replayCommittedBlock = async (input: {
   readonly phaseAConfig: PhaseAConfig;
   readonly committedSteps: readonly WatcherBlockReplayCommittedStep[];
   readonly eventAuthorities: readonly WatcherBlockReplayEventAuthority[];
+  readonly committedEventClaims: readonly WatcherCommittedEventClaim[];
+  readonly deployment: ReplayDeploymentBinding;
+  readonly header: ReplayHeaderBinding;
 }): Promise<ReplayCore> => {
   const prior = await watcherBlockReplayPriorState(input.priorState);
   const reasonCodes = new Set<WatcherBlockReplayReasonCode>();
@@ -2191,7 +2262,15 @@ const replayCommittedBlock = async (input: {
         `$.eventAuthorities[${index.toString()}].eventKey`,
       );
     }
-    authorityByFingerprint.set(fingerprint, validateEventAuthority(authority));
+    authorityByFingerprint.set(
+      fingerprint,
+      await validateEventAuthority(
+        authority,
+        input.committedEventClaims,
+        input.deployment,
+        input.header,
+      ),
+    );
   }
 
   const state = new Map(
@@ -2256,6 +2335,7 @@ const replayCommittedBlock = async (input: {
       }
       reasonCodes.add("phase_b_rejection");
     }
+    const segmentGroupStart = groups.length;
     for (const candidate of phaseB.accepted) {
       const txId = candidate.ledgerTx.txId.toString("hex");
       const step = segmentSteps.find((entry) => entry.txId === txId);
@@ -2273,6 +2353,27 @@ const replayCommittedBlock = async (input: {
       });
       acceptedTxIds.push(txId);
       applyAcceptedCandidate(state, candidate);
+    }
+    // A canonical rejection is a real no-op boundary, not a missing event.
+    // Insert these boundaries without changing canonical accepted replay order.
+    for (const rejection of projected) {
+      const step = segmentSteps.find((entry) => entry.txId === rejection.txId);
+      if (step === undefined) {
+        return fail("canonical_replay_threw", `$.rejected[${rejection.txId}]`);
+      }
+      const group: CommittedReplayGroup = {
+        step,
+        txIndex: rejection.index,
+        txId: rejection.txId,
+        phase: "L2Transaction",
+        eventKeyFingerprint: step.eventKeyFingerprint,
+        operations: [],
+      };
+      const nextIndex = groups.findIndex(
+        (entry, index) =>
+          index >= segmentGroupStart && entry.step.stepIndex > step.stepIndex,
+      );
+      groups.splice(nextIndex < 0 ? groups.length : nextIndex, 0, group);
     }
   };
 
@@ -2295,14 +2396,15 @@ const replayCommittedBlock = async (input: {
         `$.eventAuthorities[${step.eventKeyFingerprint}].phase`,
       );
     }
-    const forcedValidationFact = await bindForcedTransitionEffect({
+    const forcedReplay = await replayForcedTransitionEffect({
       authority,
       state,
       phaseAConfig: input.phaseAConfig,
       phaseBConfig: input.config,
       step,
     });
-    if (forcedValidationFact !== null) {
+    if (forcedReplay !== null) {
+      const forcedValidationFact = forcedReplay.fact;
       if (
         forcedValidationFacts.some(
           (fact) =>
@@ -2317,7 +2419,39 @@ const replayCommittedBlock = async (input: {
         );
       }
       forcedValidationFacts.push(forcedValidationFact);
+      if (
+        forcedValidationFact.authenticatedOperatorValidity !==
+        forcedValidationFact.canonicalOperatorValidity
+      ) {
+        reasonCodes.add("transition_effect_semantics_mismatch");
+        stageMismatches.push({
+          stage: "events",
+          reasonCode: "transition_effect_semantics_mismatch",
+          field: `$.transitionTrace[${step.stepIndex.toString()}].operatorValidity`,
+          expected: forcedValidationFact.canonicalOperatorValidity,
+          actual: forcedValidationFact.authenticatedOperatorValidity,
+        });
+      }
     }
+    const effect = forcedReplay?.effect ?? authority.effect;
+    if (effect === null) {
+      return fail(
+        "transition_effect_semantics_mismatch",
+        "$.transitionEffect.unresolved",
+      );
+    }
+    authorityByFingerprint.set(
+      step.eventKeyFingerprint,
+      Object.freeze({
+        ...authority,
+        effect,
+        effectManifest: eventEffectManifest(
+          authority.phase,
+          authority.eventKeyFingerprint,
+          effect,
+        ),
+      }),
+    );
     seenEventFingerprints.add(step.eventKeyFingerprint);
     groups.push({
       step,
@@ -2325,9 +2459,9 @@ const replayCommittedBlock = async (input: {
       txId: null,
       phase: step.phase,
       eventKeyFingerprint: step.eventKeyFingerprint,
-      operations: eventLedgerOperations(authority),
+      operations: eventLedgerOperations(effect),
     });
-    applyRawEventOperations(state, authority);
+    applyRawEventOperations(state, effect);
   }
   await flushL2();
 
@@ -2443,6 +2577,36 @@ const replayCommittedBlock = async (input: {
     forcedValidationFacts,
     priorStateRoot: prior.root,
     postStateRoot,
+    eventAuthorityRecords: Object.freeze(
+      orderedAuthorities.map((authority) => {
+        const effect =
+          authority.effect ??
+          fail("canonical_replay_threw", "$.eventAuthorityRecords.effect");
+        return Object.freeze({
+          ...authority.recordSource,
+          transitionEffect: Object.freeze({
+            canonicalCborHex: effect.canonicalCbor.toString("hex"),
+            digest: effect.digest,
+            operations: Object.freeze(
+              effect.operations.map((operation) =>
+                Object.freeze(
+                  operation.type === "delete"
+                    ? {
+                        type: operation.type,
+                        outRefCborHex: operation.outRefCbor.toString("hex"),
+                      }
+                    : {
+                        type: operation.type,
+                        outRefCborHex: operation.outRefCbor.toString("hex"),
+                        outputCborHex: operation.outputCbor.toString("hex"),
+                      },
+                ),
+              ),
+            ),
+          }),
+        });
+      }),
+    ),
     authorityManifestDigest: watcherSha256CanonicalJson(
       orderedAuthorities.map((authority) => authority.authorityManifest),
     ),
@@ -2709,7 +2873,7 @@ export type EvaluateWatcherBlockReplayInput = {
   /** The W23 rule bundle, with its commitment. */
   readonly ruleBundle: WatcherRuleBundle;
   readonly ruleBundleCommitment: string;
-  /** Parser-recomputed W15/W16 authorities and shared canonical effects. */
+  /** Parser-recomputed W15 originating authorities and shared canonical effects. */
   readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthority[];
   readonly minimumConfirmationDepth?: number;
 };
@@ -2856,6 +3020,91 @@ export const watcherBlockReplayCommittedSteps = (input: {
   );
 };
 
+export const snapshotWatcherBlockReplayEventAuthorities = (
+  authorities: readonly WatcherBlockReplayEventAuthority[],
+): readonly WatcherBlockReplayEventAuthority[] =>
+  Object.freeze(
+    authorities.map((authority) => {
+      if (
+        authority.localUserEvent !== undefined &&
+        authority.userEvent !== undefined
+      ) {
+        return fail("user_event_authority_invalid", "$.localUserEvent");
+      }
+      const origin =
+        authority.localUserEvent === undefined
+          ? {
+              userEvent: (() => {
+                const source =
+                  authority.userEvent ??
+                  fail("user_event_authority_invalid", "$.userEvent");
+                return Object.freeze({
+                  result: structuredClone(source.result),
+                  context: Object.freeze({
+                    policy: structuredClone(source.context.policy),
+                    previousState: structuredClone(
+                      source.context.previousState,
+                    ),
+                    observation: structuredClone(source.context.observation),
+                    publicContext: structuredClone(
+                      source.context.publicContext,
+                    ),
+                    transportAttestations: Object.freeze([
+                      ...source.context.transportAttestations,
+                    ]),
+                    referenceAuthorities: Object.freeze([
+                      ...source.context.referenceAuthorities,
+                    ]),
+                  }),
+                });
+              })(),
+            }
+          : { localUserEvent: authority.localUserEvent };
+      const eventKey = structuredClone(authority.eventKey);
+      if (authority.phase === "ForcedTransaction") {
+        if (
+          "transitionEffect" in authority ||
+          authority.canonicalNativeTxCbor == null
+        ) {
+          return fail(
+            "transition_effect_semantics_mismatch",
+            "$.transitionEffect.forced.callerEffect",
+          );
+        }
+        return Object.freeze({
+          ...origin,
+          eventKey,
+          phase: authority.phase,
+          canonicalNativeTxCbor: Buffer.from(authority.canonicalNativeTxCbor),
+          programMaterialSidecarCbor:
+            authority.programMaterialSidecarCbor == null
+              ? null
+              : Buffer.from(authority.programMaterialSidecarCbor),
+        });
+      }
+      return Object.freeze({
+        ...origin,
+        eventKey,
+        phase: authority.phase,
+        transitionEffect: Object.freeze({
+          ...authority.transitionEffect,
+          canonicalCbor: Buffer.from(authority.transitionEffect.canonicalCbor),
+          operations: Object.freeze(
+            authority.transitionEffect.operations.map((operation) =>
+              Object.freeze({
+                ...operation,
+                outRefCbor: Buffer.from(operation.outRefCbor),
+                ...(operation.type === "insert"
+                  ? { outputCbor: Buffer.from(operation.outputCbor) }
+                  : {}),
+              }),
+            ),
+          ),
+        }),
+      });
+    }),
+  );
+
 /**
  * The W25 entry point: an accepted W22 reconstruction, an accepted W24 Phase A
  * record, the exact W21 block bytes, the W21 prior-state material, and the W23
@@ -2866,11 +3115,69 @@ export const watcherBlockReplayCommittedSteps = (input: {
 export const evaluateWatcherBlockReplay = async (
   input: EvaluateWatcherBlockReplayInput,
 ): Promise<WatcherBlockReplayResult> => {
+  // Snapshot bytes before asynchronous authentication can yield to the caller.
+  let payloadEnvelopeCbor: Buffer;
+  let priorState: readonly WatcherBlockReplayPriorUtxo[];
+  let eventAuthorities: readonly WatcherBlockReplayEventAuthority[];
+  let ruleBundle: WatcherRuleBundle;
+  let deployment: ReplayDeploymentBinding;
+  let observation: AuthenticatedStateQueueHeaderObservation;
+  const ruleBundleCommitment = input.ruleBundleCommitment;
+  try {
+    ruleBundle = structuredClone(input.ruleBundle);
+    observation = structuredClone(input.observation);
+    deployment = Object.freeze({
+      deploymentManifestId: ruleBundle.deploymentManifestId,
+      blueprintHash: ruleBundle.blueprintHash,
+      network: ruleBundle.network,
+    });
+    eventAuthorities = snapshotWatcherBlockReplayEventAuthorities(
+      input.eventAuthorities ?? [],
+    );
+    if (
+      eventAuthorities.some(
+        (authority) => authority.localUserEvent !== undefined,
+      ) &&
+      computeWatcherRuleBundleCommitment(ruleBundle) !== ruleBundleCommitment
+    ) {
+      return fail(
+        "user_event_authority_identity_mismatch",
+        "$.localUserEvent.ruleBundleCommitment",
+      );
+    }
+  } catch (error) {
+    return admitFullBlockReplayResult(
+      errorResult([reasonCodeOf(error)], null, 0),
+    );
+  }
+  try {
+    payloadEnvelopeCbor = Buffer.from(input.payloadEnvelopeCbor);
+  } catch {
+    return admitFullBlockReplayResult(
+      errorResult(["canonical_reconstruction_failed"], null, 0),
+    );
+  }
+  try {
+    priorState = Object.freeze(
+      input.priorState
+        .map((entry) =>
+          Object.freeze({
+            outRef: entry.outRef,
+            outputCbor: entry.outputCbor,
+          }),
+        )
+        .sort((left, right) => left.outRef.localeCompare(right.outRef)),
+    );
+  } catch {
+    return admitFullBlockReplayResult(
+      errorResult(["malformed_prior_state"], null, 0),
+    );
+  }
   let evidence;
   try {
     evidence = await canonicalBlockEvidenceFromVerifiedPayload({
-      observation: input.observation,
-      payloadEnvelopeCbor: input.payloadEnvelopeCbor,
+      observation,
+      payloadEnvelopeCbor,
       daProvenance: input.daProvenance,
       ...(input.minimumConfirmationDepth === undefined
         ? {}
@@ -2888,8 +3195,35 @@ export const evaluateWatcherBlockReplay = async (
     payloadSha256: evidence.payloadSha256,
     reconstructionDigest: input.reconstruction.resultDigest,
     phaseAResultDigest: input.phaseA.resultDigest,
-    ruleBundleCommitment: input.ruleBundleCommitment,
+    ruleBundleCommitment,
   });
+  const committedEventClaims: readonly WatcherCommittedEventClaim[] =
+    Object.freeze([
+      ...evidence.reconstruction.deposits.map((entry) =>
+        Object.freeze({
+          phase: "Deposit" as const,
+          eventIdCborHex: entry.keyBytes.toString("hex"),
+          valueCborHex: entry.valueBytes.toString("hex"),
+          canonicalNativeTxCborHex: null,
+        }),
+      ),
+      ...evidence.reconstruction.withdrawals.map((entry) =>
+        Object.freeze({
+          phase: "Withdrawal" as const,
+          eventIdCborHex: entry.keyBytes.toString("hex"),
+          valueCborHex: entry.valueBytes.toString("hex"),
+          canonicalNativeTxCborHex: null,
+        }),
+      ),
+      ...evidence.reconstruction.forcedTransactions.map((entry) =>
+        Object.freeze({
+          phase: "ForcedTransaction" as const,
+          eventIdCborHex: entry.keyBytes.toString("hex"),
+          valueCborHex: entry.valueBytes.toString("hex"),
+          canonicalNativeTxCborHex: entry.fullTransactionCbor.toString("hex"),
+        }),
+      ),
+    ]);
   const transactionCount = evidence.reconstruction.transactions.length;
 
   let candidates: readonly PhaseAValidatedTx[];
@@ -2907,13 +3241,13 @@ export const evaluateWatcherBlockReplay = async (
       headerHash: evidence.headerHash,
       payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
       reconstructionDigest: input.reconstruction.resultDigest,
-      ruleBundleCommitment: input.ruleBundleCommitment,
+      ruleBundleCommitment,
     });
     // The Phase A configuration binding (rule bundle profile, header protocol
     // version) is W24's, reused unchanged rather than restated.
     phaseAConfig = makeWatcherPhaseAConfig({
       header: evidence.header,
-      ruleBundle: input.ruleBundle,
+      ruleBundle,
     });
     const queuedTxs: readonly QueuedTx[] = watcherPhaseAQueuedTxs({
       transactions: evidence.reconstruction.transactions.map((entry) =>
@@ -2937,14 +3271,39 @@ export const evaluateWatcherBlockReplay = async (
   try {
     const core = await replayCommittedBlock({
       candidates,
-      priorState: input.priorState,
+      priorState,
       expectedPriorStateRoot: evidence.header.prevUtxosRoot,
       config,
       phaseAConfig,
       committedSteps,
-      eventAuthorities: input.eventAuthorities ?? [],
+      eventAuthorities,
+      committedEventClaims,
+      deployment,
+      header: {
+        headerHash: evidence.headerHash,
+        headerCborHex: LucidData.to(evidence.header, Header),
+        observedBlockHash: observation.chainPoint.blockHash,
+        observedSlot: observation.chainPoint.slot.toString(),
+      },
     });
-    return admitFullBlockReplayResult(
+    // Replay yields during canonical ledger evaluation. Re-read the same private
+    // handles after that work so a closed, rolled-back or replaced head cannot
+    // authorize a newly admitted W25 record.
+    for (const authority of eventAuthorities) {
+      if (authority.localUserEvent !== undefined) {
+        await readLocalEventAuthority(authority.localUserEvent);
+      }
+    }
+    for (const authority of eventAuthorities) {
+      if (authority.localUserEvent !== undefined) {
+        try {
+          assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
+        } catch {
+          return fail("user_event_authority_invalid", "$.localUserEvent");
+        }
+      }
+    }
+    const replay = admitFullBlockReplayResult(
       finalizeResult({
         core,
         context,
@@ -2954,6 +3313,23 @@ export const evaluateWatcherBlockReplay = async (
         committedSteps,
       }),
     );
+    fullReplayEventRecords.set(replay, core.eventAuthorityRecords ?? []);
+    if (
+      replay.action === "accept" &&
+      replay.priorStateRoot === evidence.header.prevUtxosRoot
+    ) {
+      classificationEvidence.set(
+        replay,
+        Object.freeze({
+          headerHash: evidence.headerHash,
+          payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
+          priorStateRoot: evidence.header.prevUtxosRoot,
+          claims: committedEventClaims,
+          priorState,
+        }),
+      );
+    }
+    return replay;
   } catch (error) {
     return admitFullBlockReplayResult(
       errorResult([reasonCodeOf(error)], context, transactionCount),

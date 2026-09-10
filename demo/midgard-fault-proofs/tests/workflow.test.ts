@@ -101,7 +101,7 @@ const RELEASE_FINALITY_POLICY = {
 const releaseFinalityAuthority = (
   overrides: Partial<{
     readonly deploymentIdentityDigest: string;
-    readonly releaseIdentityDigest: string;
+    readonly blueprintHash: string;
   }> = {},
 ): FraudProofReleaseFinalityAuthority => ({
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -109,7 +109,7 @@ const releaseFinalityAuthority = (
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest:
       overrides.deploymentIdentityDigest ?? DEPLOYMENT_FINGERPRINT,
-    releaseIdentityDigest: overrides.releaseIdentityDigest ?? "e1".repeat(32),
+    blueprintHash: overrides.blueprintHash ?? "e1".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
     ),
@@ -757,7 +757,7 @@ describe("Q51/W-O4 resumable workflow", () => {
         adapter: makeAdapter(),
         journal,
         finalityAuthority: releaseFinalityAuthority({
-          releaseIdentityDigest: "f2".repeat(32),
+          blueprintHash: "f2".repeat(32),
         }),
       }),
     ).rejects.toThrow("release-finality identity does not match");

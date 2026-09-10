@@ -457,7 +457,7 @@ describe("production da-hash-preimage workflow V1", () => {
         verifyForWorkflow: async () => ({
           schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
           deploymentIdentityDigest: deploymentFingerprint,
-          releaseIdentityDigest: hash("e1"),
+          blueprintHash: hash("e1"),
           policyDigest:
             computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
           policy: finalityPolicy,

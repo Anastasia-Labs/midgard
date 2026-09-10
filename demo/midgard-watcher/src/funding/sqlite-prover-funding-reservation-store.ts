@@ -83,8 +83,8 @@ const assertPlanMatchesRecord = (
     record.reservationId !== plan.reservationId ||
     record.deploymentFingerprint !== plan.deploymentFingerprint ||
     record.decisionDigest !== plan.decisionDigest ||
-    record.profileDigest !== plan.profileDigest ||
-    record.calculationDigest !== plan.calculationDigest
+    record.policyDigest !== plan.policyDigest ||
+    record.reservationBasisDigest !== plan.reservationBasisDigest
   ) {
     throw new Error("prover funding reservation identity mismatch");
   }
@@ -102,8 +102,8 @@ const nextRecord = (input: {
     reservationId: input.current.reservationId,
     deploymentFingerprint: input.current.deploymentFingerprint,
     decisionDigest: input.current.decisionDigest,
-    profileDigest: input.current.profileDigest,
-    calculationDigest: input.current.calculationDigest,
+    policyDigest: input.current.policyDigest,
+    reservationBasisDigest: input.current.reservationBasisDigest,
     revision: (BigInt(input.current.revision) + 1n).toString(),
     state: input.state ?? input.current.state,
     activeInputs: Object.freeze(
@@ -137,8 +137,8 @@ const initialRecord = (
     reservationId: plan.reservationId,
     deploymentFingerprint: plan.deploymentFingerprint,
     decisionDigest: plan.decisionDigest,
-    profileDigest: plan.profileDigest,
-    calculationDigest: plan.calculationDigest,
+    policyDigest: plan.policyDigest,
+    reservationBasisDigest: plan.reservationBasisDigest,
     revision: "0",
     state: "active" as const,
     activeInputs: plan.inputs,
@@ -156,6 +156,7 @@ const makeTransition = (input: {
   readonly actionKind: string;
   readonly transactionHash: string;
   readonly transactionBodySha256: string;
+  readonly signedTransactionCborHex: string;
   readonly consumedOutRefs: readonly string[];
   readonly producedInputs: readonly WatcherProverFundingReservationInput[];
 }): WatcherProverFundingReservationTransition => {
@@ -163,6 +164,7 @@ const makeTransition = (input: {
     actionKind: input.actionKind,
     transactionHash: input.transactionHash,
     transactionBodySha256: input.transactionBodySha256,
+    signedTransactionCborHex: input.signedTransactionCborHex,
     consumedOutRefs: Object.freeze([...input.consumedOutRefs].sort()),
     producedInputs: Object.freeze(
       [...input.producedInputs].sort((left, right) =>
@@ -178,8 +180,8 @@ const makeTransition = (input: {
     reservationId: "00".repeat(32),
     deploymentFingerprint: "00".repeat(32),
     decisionDigest: "00".repeat(32),
-    profileDigest: "00".repeat(32),
-    calculationDigest: "00".repeat(32),
+    policyDigest: "00".repeat(32),
+    reservationBasisDigest: "00".repeat(32),
     revision: "0",
     state: "active" as const,
     activeInputs: transition.producedInputs,
@@ -231,8 +233,10 @@ const deriveSignedTransition = ({
   } catch {
     throw new Error("prover transition signed transaction is malformed");
   }
-  if (transaction.to_canonical_cbor_hex() !== input.signedTransactionCborHex) {
-    throw new Error("prover transition signed transaction is not canonical");
+  if (transaction.to_cbor_hex() !== input.signedTransactionCborHex) {
+    throw new Error(
+      "prover transition signed transaction is not a lossless Cardano encoding",
+    );
   }
   const body = transaction.body();
   const bodyHash = CML.hash_transaction(body).to_raw_bytes();
@@ -252,7 +256,7 @@ const deriveSignedTransition = ({
   }
   const transactionHash = CML.hash_transaction(body).to_hex();
   const transactionBodySha256 = createHash("sha256")
-    .update(Buffer.from(body.to_canonical_cbor_hex(), "hex"))
+    .update(Buffer.from(body.to_cbor_hex(), "hex"))
     .digest("hex");
   const planFunding = new Set(
     activeInputs
@@ -291,6 +295,7 @@ const deriveSignedTransition = ({
     actionKind: input.actionKind,
     transactionHash,
     transactionBodySha256,
+    signedTransactionCborHex: input.signedTransactionCborHex,
     consumedOutRefs,
     producedInputs: Object.freeze(producedInputs),
   });
@@ -371,7 +376,7 @@ const openInternal = async (
       transition_digest TEXT NOT NULL CHECK (length(transition_digest) = 64),
       phase TEXT NOT NULL CHECK (phase IN ('pending', 'confirmed')),
       lineage_digest TEXT NOT NULL CHECK (length(lineage_digest) = 64),
-      PRIMARY KEY (reservation_id, action_kind, output_index),
+      PRIMARY KEY (reservation_id, transition_digest, output_index),
       FOREIGN KEY (reservation_id)
         REFERENCES watcher_prover_funding_reservation_v1(reservation_id)
         ON DELETE CASCADE
@@ -436,14 +441,14 @@ const openInternal = async (
     SELECT reservation_id, action_kind, output_index, out_ref,
            resolved_output_cbor_hex, transition_digest, phase, lineage_digest
     FROM watcher_prover_funding_lineage_v1
-    WHERE reservation_id = ? AND action_kind = ? AND output_index = ?
+    WHERE reservation_id = ? AND out_ref = ?
           AND phase = 'confirmed'
   `);
   const selectAllLineage = database.prepare(`
     SELECT reservation_id, action_kind, output_index, out_ref,
            resolved_output_cbor_hex, transition_digest, phase, lineage_digest
     FROM watcher_prover_funding_lineage_v1
-    ORDER BY reservation_id ASC, action_kind ASC, output_index ASC
+    ORDER BY reservation_id ASC, transition_digest ASC, output_index ASC
   `);
 
   type RecordRow = Readonly<{
@@ -738,19 +743,11 @@ const openInternal = async (
 
   const store: WatcherProverFundingReservationStore = Object.freeze({
     readAll: async () => auditRead(),
-    readConfirmedActionOutput: async ({
-      reservationId,
-      sourceActionKind,
-      sourceOutputIndex,
-    }) => {
-      const row = selectConfirmedLineage.get(
-        reservationId,
-        sourceActionKind,
-        sourceOutputIndex,
-      ) as LineageRow | undefined;
-      if (row === undefined) {
-        throw new Error("confirmed prover funding action output is missing");
-      }
+    readConfirmedInput: async ({ reservationId, outRef }) => {
+      const row = selectConfirmedLineage.get(reservationId, outRef) as
+        | LineageRow
+        | undefined;
+      if (row === undefined) return null;
       const lineage = parseLineageRow(row);
       return Object.freeze({
         sourceActionKind: lineage.sourceActionKind,
@@ -805,7 +802,6 @@ const openInternal = async (
           current.activeInputs.map(({ outRef }) => outRef),
         );
         if (
-          transitionInput.consumedOutRefs.length === 0 ||
           transitionInput.consumedOutRefs.some(
             (outRef) => !activeOutRefs.has(outRef),
           )

@@ -234,7 +234,7 @@ describe("withdrawalMistag installed cursor actuator", () => {
           releaseFinality: {
             schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
             deploymentIdentityDigest: "aa".repeat(32),
-            releaseIdentityDigest: "bb".repeat(32),
+            blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
             policy: finalityPolicy,
@@ -242,7 +242,7 @@ describe("withdrawalMistag installed cursor actuator", () => {
           releaseEconomics: {
             schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
             deploymentIdentityDigest: "aa".repeat(32),
-            releaseIdentityDigest: "bb".repeat(32),
+            blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
             policy: economicsPolicy,

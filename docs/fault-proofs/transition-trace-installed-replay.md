@@ -3,9 +3,9 @@
 The watcher installs `transitionTrace` in canonical catalogue order. Its
 manifest-bound constructor checks all nine spending scripts, fifteen rewarding
 scripts and three shared witnesses before starting a computation thread.
-The accepted/deposit transition cuts and bounds remain those in
-[size-plans/transition-trace-accepted-transaction-v1.md](size-plans/transition-trace-accepted-transaction-v1.md)
-and [size-plans/transition-trace-deposit-v1.md](size-plans/transition-trace-deposit-v1.md).
+The accepted/deposit cuts use authenticated yields and bounded continuations;
+[the resolver decision](decisions/0003-publishable-semantic-resolvers.md) records
+the decomposition, and the executable lifecycle scenarios below own its measurements.
 
 ## Replay authority
 
@@ -52,41 +52,19 @@ output from release-final history and verifies the linked-list key and header
 hash. It does not assert that a removed header is live. The existing raw L1
 terminal verifier still checks the permanent proof and removal economics.
 
-`transition-trace-workflow-fit-ledger.json` records complete signed installed
-transactions, including publications, under the normal pinned testnet build.
-The lifecycle test recreates the constructor and directory journal after each
-pending boundary and advances an actual emulator block before reconciliation.
+## Verification
 
-## Verification receipt
+Run the installed lifecycle, direct final, and forced-source subvariant scenarios
+against the current normal testnet blueprint. The installed test recreates the
+constructor and directory journal after pending boundaries and advances an
+emulator block before reconciliation. Positive journeys must reach permanent
+proof and removal; honest/substituted evidence must refuse.
 
-Pinned normal testnet blueprint:
-`57310dd3c0864ffd39e9cf11ec2ce2e316c2a960e6ea1b0d73c734d13691c4de`.
+- [Installed lifecycles](../../demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts)
+- [Direct final lifecycles](../../demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-final.test.ts)
+- [Forced-source subvariants](../../demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts)
 
-- Installed classifier and recovery: 5/5 cases (deposit fraud/honest, 12,000-byte
-  deposit datum, retained accepted transaction fraud/honest).
-- Installed watcher application and canonical category roster: 3/3.
-- Challenger, descriptor-trie replay and header classifier: 61/61.
-- Transition timing/count subvariant registered lifecycles: 6/6, including
-  submitted-valid forced bytes with an adjudicated-invalid committed source
-  and an on-chain refusal for a changed exact rejection reason.
-- Guarded Aiken `midgard/fraud_proofs/transition_trace/proof.{..}`: 95/95.
-- Canonical action/publication prerequisite regressions: 14/14; retained-header
-  raw history derivation: 9/9; SDK publication funding and carriage door: 6/6.
-- SDK, fault-proofs and watcher `tsc --noEmit` passed. Touched TypeScript lint
-  and format checks passed.
-
-The installed ledger contains 497 successful complete signed transactions,
-including 337 publications: maximum 14,903 bytes, 5,249,103 memory units and
-2,367,328,446 CPU units. Its minimum publication reserve is 969 bytes.
-Ledger digest:
-`00996fff9d649c96686516ff88bc09262ed2cdf39ebf12af1b9ce58eada26ef1`.
-The forced timing ledger separately records 116 transactions and 94 publications.
-The accepted/deposit direct-family maximum fixtures remain in
-`size-plans/transition-trace-fit-ledger.json`; this installed receipt measures
-its own stated shapes rather than claiming every direct maximum was rerun here.
-
-Shared integration checkpoint: normal testnet all-contract build at `f5ea519a`
-produced blueprint `4247d99fd581a54edf952f93b6c9d4dcf9e6eaa66e52592dae71a7dfb73523e5`. FP typecheck passed.
-Shared combined suite passed 68/68: ScriptSources boundaries 25, discovery 18,
-TransitionTrace forced-source subvariants 6, and CEK context planner 19. The
-forced-window fit ledger was remeasured against this combined blueprint.
+Capture new publication and execution measurements for the release artifact.
+Direct maxima and installed recovery exercise different obligations; neither
+replaces the other. [Remaining acceptance](execution-plan.md) covers real-node
+and preprod correction.

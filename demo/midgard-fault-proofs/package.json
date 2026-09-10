@@ -9,6 +9,36 @@
       "midgard-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing/installed-workflow": {
+      "midgard-source": "./tests/support/installed-workflow.ts"
+    },
+    "./testing/installed-workflow-l1": {
+      "midgard-source": "./src/workflow/family-l1-observation.ts"
+    },
+    "./test-support/retained-reason-classifier": {
+      "midgard-source": "./tests/support/retained-reason-classifier.ts",
+      "types": "./tests/support/retained-reason-classifier.ts"
+    },
+    "./test-support/canonical-block-evidence-fixture": {
+      "midgard-source": "./tests/helpers/canonical-block-evidence-fixture.ts",
+      "types": "./tests/helpers/canonical-block-evidence-fixture.ts"
+    },
+    "./test-support/family-l1-observation": {
+      "midgard-source": "./src/workflow/family-l1-observation.ts",
+      "types": "./src/workflow/family-l1-observation.ts"
+    },
+    "./test-support/transition-trace-l1-events": {
+      "midgard-source": "./src/transition-trace/l1-events.ts",
+      "types": "./src/transition-trace/l1-events.ts"
+    },
+    "./test-support/cross-block-raw-emulator": {
+      "midgard-source": "./tests/support/cross-block-raw-emulator.ts",
+      "types": "./tests/support/cross-block-raw-emulator.ts"
+    },
+    "./test-support/transition-trace-retained": {
+      "midgard-source": "./tests/support/transition-trace-retained.ts",
+      "types": "./tests/support/transition-trace-retained.ts"
     }
   },
   "type": "module",

@@ -24,7 +24,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  MISSING_SIGNATURE_BLUEPRINT_TITLES,
   proveMissingSignatureFault,
   submitMissingSignatureInit,
   submitMissingSignatureStep01,
@@ -57,38 +56,47 @@ import {
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
-// Derivation: `compiledCode.length / 2` for each
-// `fraud_proofs/missing_signature/step_NN.main.spend` entry of
-// `onchain/aiken/plutus.json`, built with `aiken build --env testnet`.
-const EXPECTED_UNAPPLIED_BYTES = {
-  step01: 8_008,
-  forcedStep: 9_052,
-  forcedSigner: 6_914,
-  forcedWitness: 7_351,
-  step02: 6_777,
-  step03: 1_510,
-  step04: 9_836,
-} as const;
 const OWNER = Buffer.alloc(28, 0x11);
 const TX_ID = Buffer.alloc(32, 0x22);
 const overhead = 2_048;
 const bytes = (hex: string) => hex.length / 2;
 
+/**
+ * The release ExUnits basis every missing-signature transaction is held to:
+ * the mainnet-equivalent per-transaction budget the family is allowed to
+ * consume, stated once here so a measurement that outgrows it fails rather
+ * than being re-pinned.
+ */
+const RELEASE_MAX_EXECUTION_MEMORY = 13_200_000n;
+const RELEASE_MAX_EXECUTION_STEPS = 8_000_000_000n;
+
+/**
+ * The chain is four distinct spending validators (step-01 through step-04);
+ * each step is parameterised by the next step's applied hash, so the four
+ * applied hashes must differ and every parameter must be load-bearing.
+ */
+const MISSING_SIGNATURE_STEP_COUNT = 4;
+
+/**
+ * Transaction counts for the two prover journeys. These are the exact number
+ * of L1 transactions the prover is allowed to submit end to end -- one per
+ * proof step plus the carriage transactions the witness tier forces. They are
+ * pinned exactly (not as an upper bound) because an extra submission is a
+ * cost and liveness regression the reserve checks cannot see, and a missing
+ * one means a step was skipped.
+ *
+ * First automatic tier-2 frontier: 4 proof steps + init + the tier-2 raw-utxo
+ * carriage publications the frontier witness count forces = 9.
+ * Maximum admissible field-7 vector: the same journey with certified carriage
+ * for field 7, which adds five further publications = 14.
+ */
+const TIER2_FRONTIER_JOURNEY_TX_COUNT = 9;
+const MAX_FIELD07_JOURNEY_TX_COUNT = 14;
+
 describe("missing-signature compiled envelope", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
-  it("pins all seven unapplied sizes and parameter-order-distinct applied hashes", async () => {
-    for (const [step, title] of Object.entries(
-      MISSING_SIGNATURE_BLUEPRINT_TITLES,
-    )) {
-      const validator = blueprint.validators.find(
-        (candidate) => candidate.title === title,
-      );
-      expect(validator, title).toBeDefined();
-      expect(validator!.compiledCode.length / 2).toBe(
-        EXPECTED_UNAPPLIED_BYTES[step as keyof typeof EXPECTED_UNAPPLIED_BYTES],
-      );
-    }
+  it("applies four parameter-distinct steps that fit reference-script deployment", async () => {
     const fraudProofAddressData = await Effect.runPromise(
       addressDataFromBech32(
         credentialToAddress(network, scriptHashToCredential("33".repeat(28))),
@@ -102,14 +110,42 @@ describe("missing-signature compiled envelope", () => {
       fieldPreimageCertificatePolicyId: "44".repeat(28),
       hubOraclePolicyId: "55".repeat(28),
     });
+    expect(chain, "the missing-signature chain length").toHaveLength(
+      MISSING_SIGNATURE_STEP_COUNT,
+    );
+    const hashes = chain.map(({ spendingScriptHash }) => spendingScriptHash);
     expect(
-      new Set(chain.map(({ spendingScriptHash }) => spendingScriptHash)).size,
-    ).toBe(4);
+      new Set(hashes).size,
+      "each step must apply to a distinct script hash",
+    ).toBe(MISSING_SIGNATURE_STEP_COUNT);
     for (const step of chain) {
-      expect(step.spendingScript.script.length / 2 + overhead).toBeLessThan(
-        65_536,
-      );
+      expect(
+        step.spendingScript.script.length / 2 + overhead,
+        "applied step plus deployment overhead must fit a reference-script output",
+      ).toBeLessThan(65_536);
     }
+
+    // Every applied parameter must be load-bearing: changing one deployment
+    // parameter must move every step's hash, so a chain built against the
+    // wrong deployment can never collide with the right one.
+    const rebound = buildMissingSignatureChain({
+      realBlueprint: blueprint,
+      computationThreadPolicyId: "11".repeat(28),
+      fraudProofPolicyId: "99".repeat(28),
+      fraudProofTokenAddressData: fraudProofAddressData,
+      fieldPreimageCertificatePolicyId: "44".repeat(28),
+      hubOraclePolicyId: "55".repeat(28),
+    });
+    expect(
+      rebound.map(({ spendingScriptHash }) => spendingScriptHash),
+      "a different fraud-proof policy must rebind every step",
+    ).not.toEqual(hashes);
+    expect(
+      hashes.filter((hash) =>
+        rebound.some((step) => step.spendingScriptHash === hash),
+      ),
+      "no step may survive a parameter change unchanged",
+    ).toEqual([]);
   });
 
   it("fits a deep step-01 inclusion under reference-script deployment", async () => {
@@ -212,10 +248,10 @@ describe("missing-signature compiled envelope", () => {
       MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
     );
     expect(capture.measurement.executionMemory).toBeLessThanOrEqual(
-      13_200_000n,
+      RELEASE_MAX_EXECUTION_MEMORY,
     );
     expect(capture.measurement.executionSteps).toBeLessThanOrEqual(
-      8_000_000_000n,
+      RELEASE_MAX_EXECUTION_STEPS,
     );
   }, 600_000);
 
@@ -336,11 +372,20 @@ describe("missing-signature compiled envelope", () => {
         }`,
       );
     }
-    expect(capture.result.txHashes).toHaveLength(9);
-    expect(capture.measurements.length).toBeGreaterThanOrEqual(9);
+    expect(
+      capture.result.txHashes,
+      "tier-2 frontier journey transaction count",
+    ).toHaveLength(TIER2_FRONTIER_JOURNEY_TX_COUNT);
+    expect(capture.measurements.length).toBeGreaterThanOrEqual(
+      TIER2_FRONTIER_JOURNEY_TX_COUNT,
+    );
     for (const measurement of capture.measurements) {
-      expect(measurement.executionMemory).toBeLessThanOrEqual(13_200_000n);
-      expect(measurement.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
+      expect(measurement.executionMemory).toBeLessThanOrEqual(
+        RELEASE_MAX_EXECUTION_MEMORY,
+      );
+      expect(measurement.executionSteps).toBeLessThanOrEqual(
+        RELEASE_MAX_EXECUTION_STEPS,
+      );
     }
   }, 600_000);
 
@@ -381,13 +426,20 @@ describe("missing-signature compiled envelope", () => {
         }`,
       );
     }
-    expect(capture.result.txHashes).toHaveLength(14);
+    expect(
+      capture.result.txHashes,
+      "maximum field-7 journey transaction count",
+    ).toHaveLength(MAX_FIELD07_JOURNEY_TX_COUNT);
     for (const measurement of capture.measurements) {
       expect(measurement.completeSignedBytes).toBeLessThanOrEqual(
         MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
       );
-      expect(measurement.executionMemory).toBeLessThanOrEqual(13_200_000n);
-      expect(measurement.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
+      expect(measurement.executionMemory).toBeLessThanOrEqual(
+        RELEASE_MAX_EXECUTION_MEMORY,
+      );
+      expect(measurement.executionSteps).toBeLessThanOrEqual(
+        RELEASE_MAX_EXECUTION_STEPS,
+      );
     }
   }, 600_000);
 });

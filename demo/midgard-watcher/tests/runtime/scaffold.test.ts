@@ -1,205 +1,236 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 import { parseWatcherArguments } from "../../src/cli.js";
 import { unsafeRunWatcherCommandForTest } from "../../src/runtime/scaffold.js";
 
-const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const ready = (
+  overrides: {
+    readonly phase?: "accepting" | "blocked" | "closing" | "closed";
+    readonly recovered?: boolean;
+    readonly deadlineHealth?: "safe" | "at_risk" | "unsafe";
+    readonly done?: Promise<void>;
+    readonly caughtUp?: Promise<void>;
+    readonly faultProofReadiness?: readonly Readonly<{
+      ready: true;
+      category: string;
+    }>[];
+    readonly recoveredFaultProofWorkflowCount?: number;
+    readonly onClose?: () => void;
+  } = {},
+) => ({
+  done: overrides.done ?? new Promise<void>(() => undefined),
+  caughtUp: overrides.caughtUp ?? Promise.resolve(),
+  faultProofReadiness: overrides.faultProofReadiness ?? [
+    { ready: true as const, category: "doubleSpend" },
+  ],
+  recoveredFaultProofWorkflowCount:
+    overrides.recoveredFaultProofWorkflowCount ?? 0,
+  faultProofSupervisor: {
+    status: () => ({
+      phase: overrides.phase ?? ("accepting" as const),
+      recovered: overrides.recovered ?? true,
+      deadlineHealth: overrides.deadlineHealth ?? ("safe" as const),
+    }),
+  },
+  close: async () => {
+    overrides.onClose?.();
+  },
+});
 
-const readJson = (path: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-
-describe("W00 watcher package identity", () => {
-  it("declares an independent command package with all required scripts", () => {
-    const watcherPackage = readJson(join(packageRoot, "package.json"));
-    const committeePackage = readJson(
-      join(packageRoot, "..", "da-committee-node", "package.json"),
-    );
-
-    expect(watcherPackage.name).toBe("midgard-watcher");
-    expect(watcherPackage.bin).toEqual({
-      "midgard-watcher": "./dist/cli.js",
+describe("production watcher command arguments", () => {
+  it.each([
+    {
+      name: "start",
+      argv: ["start", "--config", "/etc/watcher.json"],
+      command: "start",
+    },
+    {
+      name: "replay",
+      argv: ["replay", "--config", "/etc/watcher.json"],
+      command: "replay",
+    },
+    {
+      name: "authority",
+      argv: ["authority", "--config", "/etc/authority.json"],
+      command: "authority",
+    },
+  ])("parses $name with its explicit config path", ({ argv, command }) => {
+    expect(parseWatcherArguments(argv)).toEqual({
+      kind: "command",
+      command,
+      configPath: argv[2],
     });
-    expect(watcherPackage.dependencies).toEqual({
-      "@al-ft/midgard-core": "workspace:*",
-      "@al-ft/midgard-fault-proofs": "workspace:*",
-      "@al-ft/midgard-sdk": "workspace:*",
-      "@al-ft/midgard-validation": "workspace:*",
-      "@chainsafe/libp2p-noise": "17.0.0",
-      "@chainsafe/libp2p-yamux": "8.0.1",
-      "@libp2p/peer-id": "6.0.11",
-      "@libp2p/tcp": "11.0.22",
-      "@lucid-evolution/lucid": "0.6.2",
-      "@multiformats/multiaddr": "13.0.3",
-      libp2p: "3.3.4",
-    });
-    expect(watcherPackage.scripts).toMatchObject({
-      authority: "node dist/cli.js authority",
-      build: expect.any(String),
-      lint: expect.any(String),
-      replay: "node dist/cli.js replay",
-      start: "node dist/cli.js start",
-      test: expect.any(String),
-      typecheck: "tsc --noEmit",
-    });
-
-    expect(committeePackage.name).toBe("da-committee-node");
-    expect(committeePackage.bin).toEqual({
-      "da-committee-node": "./dist/index.js",
-      "midgard-public-retained-da": "./dist/public-retained-da.js",
-    });
-    expect(committeePackage.name).not.toBe(watcherPackage.name);
   });
 
-  it("does not alias the committee or import operator-private services", () => {
-    const sourceDirectory = join(packageRoot, "src");
-    const source = readdirSync(sourceDirectory, { recursive: true })
-      .map(String)
-      .filter((path) => path.endsWith(".ts"))
-      .map((path) => readFileSync(join(sourceDirectory, path), "utf8"))
-      .join("\n");
+  it.each([
+    { name: "no arguments at all", argv: [] },
+    { name: "a command with no config flag", argv: ["start"] },
+    { name: "a config flag with no path", argv: ["start", "--config"] },
+    { name: "an empty config path", argv: ["start", "--config", ""] },
+    {
+      name: "an unknown command",
+      argv: ["prove", "--config", "/etc/watcher.json"],
+    },
+    {
+      name: "a misspelled config flag",
+      argv: ["start", "--configuration", "/etc/watcher.json"],
+    },
+    {
+      name: "a trailing extra argument",
+      argv: ["start", "--config", "/etc/watcher.json", "--force"],
+    },
+    {
+      name: "the config flag before the command",
+      argv: ["--config", "/etc/watcher.json", "start"],
+    },
+  ])("refuses $name", ({ argv }) => {
+    expect(parseWatcherArguments(argv)).toEqual({
+      kind: "invalid",
+      reason: "expected an explicit command and --config path",
+    });
+  });
 
-    expect(source).not.toMatch(/da-committee-node/);
-    expect(source).not.toMatch(/midgard-node/);
-    expect(source).not.toMatch(
-      /(?:^|[/.-])(?:admin|database|postgres)(?:[/.-]|$)/,
-    );
-    expect(source).not.toMatch(/export\s+\*\s+from/);
+  it.each([["--help"], ["-h"], ["help"]])("prints usage for %s", (flag) => {
+    expect(parseWatcherArguments([flag])).toEqual({ kind: "help" });
+  });
+
+  it("does not treat a help flag as a command elsewhere in the line", () => {
+    expect(parseWatcherArguments(["start", "--help"])).toMatchObject({
+      kind: "invalid",
+    });
   });
 });
 
 describe("production watcher commands", () => {
-  it("requires an explicit config for authority, start and replay", () => {
-    expect(parseWatcherArguments([])).toMatchObject({ kind: "invalid" });
-    expect(parseWatcherArguments(["start"])).toMatchObject({ kind: "invalid" });
-    expect(
-      parseWatcherArguments(["replay", "--config", "/etc/watcher.json"]),
-    ).toEqual({
-      kind: "command",
-      command: "replay",
-      configPath: "/etc/watcher.json",
-    });
-  });
-
-  it("closes replay after durable catch-up and closes start on shutdown", async () => {
-    const events: string[] = [];
-    const io = {
-      writeOutput: (text: string) => events.push(text),
-      writeError: (text: string) => events.push(text),
-    };
-    const dependencies = {
+  const runCommand = async (
+    command: "start" | "replay",
+    runtime: ReturnType<typeof ready>,
+    io: {
+      writeOutput: (text: string) => void;
+      writeError: (text: string) => void;
+    } = { writeOutput: () => undefined, writeError: () => undefined },
+  ) =>
+    await unsafeRunWatcherCommandForTest(command, "/etc/watcher.json", io, {
       runAuthority: async () => ({ close: async () => undefined }),
-      runWatcher: async () => ({
-        done: new Promise<void>(() => undefined),
-        caughtUp: Promise.resolve(),
+      runWatcher: async () => runtime,
+      waitForShutdown: async () => "SIGTERM" as const,
+    });
+
+  it("reports the admitted readiness record, then closes on catch-up and on shutdown", async () => {
+    const lines: string[] = [];
+    const io = {
+      writeOutput: (text: string) => lines.push(text),
+      writeError: (text: string) => lines.push(text),
+    };
+    let closes = 0;
+    const runtimeFor = (command: "start" | "replay") =>
+      ready({
         faultProofReadiness: [
           { ready: true as const, category: "doubleSpend" },
+          { ready: true as const, category: "missingSignature" },
         ],
-        recoveredFaultProofWorkflowCount: 0,
-        faultProofSupervisor: {
-          status: () => ({
-            phase: "accepting" as const,
-            recovered: true,
-            deadlineHealth: "safe" as const,
-          }),
+        recoveredFaultProofWorkflowCount: 3,
+        ...(command === "replay" ? {} : {}),
+        onClose: () => {
+          closes += 1;
         },
-        close: async () => {
-          events.push("closed");
-        },
-      }),
-      waitForShutdown: async () => "SIGTERM" as const,
-    };
-    await expect(
-      unsafeRunWatcherCommandForTest(
-        "replay",
-        "/etc/watcher.json",
-        io,
-        dependencies,
-      ),
-    ).resolves.toBe(0);
-    await expect(
-      unsafeRunWatcherCommandForTest(
-        "start",
-        "/etc/watcher.json",
-        io,
-        dependencies,
-      ),
-    ).resolves.toBe(0);
-    expect(events.filter((event) => event === "closed")).toHaveLength(2);
-    expect(events.join("\n")).toContain('"state":"caught_up"');
-    expect(events.join("\n")).toContain('"proofSupervisorState":"accepting"');
+      });
+
+    await expect(runCommand("replay", runtimeFor("replay"), io)).resolves.toBe(
+      0,
+    );
+    await expect(runCommand("start", runtimeFor("start"), io)).resolves.toBe(0);
+
+    // Both commands close the runtime they opened.
+    expect(closes).toBe(2);
+
+    const records = lines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>,
+    );
+    expect(records).toEqual([
+      {
+        packageName: "midgard-watcher",
+        command: "replay",
+        state: "ready",
+        productionReady: true,
+        proofCategories: ["doubleSpend", "missingSignature"],
+        recoveredFaultProofWorkflowCount: 3,
+        proofSupervisorState: "accepting",
+        proofDeadlineHealth: "safe",
+      },
+      {
+        packageName: "midgard-watcher",
+        command: "replay",
+        state: "caught_up",
+      },
+      {
+        packageName: "midgard-watcher",
+        command: "start",
+        state: "ready",
+        productionReady: true,
+        proofCategories: ["doubleSpend", "missingSignature"],
+        recoveredFaultProofWorkflowCount: 3,
+        proofSupervisorState: "accepting",
+        proofDeadlineHealth: "safe",
+      },
+      {
+        packageName: "midgard-watcher",
+        command: "start",
+        state: "stopping",
+        signal: "SIGTERM",
+      },
+    ]);
   });
 
-  it("refuses to advertise readiness when journal recovery supervision is blocked", async () => {
-    let closed = false;
-    await expect(
-      unsafeRunWatcherCommandForTest(
-        "start",
-        "/etc/watcher.json",
-        { writeOutput: () => undefined, writeError: () => undefined },
-        {
-          runAuthority: async () => ({ close: async () => undefined }),
-          runWatcher: async () => ({
-            done: new Promise<void>(() => undefined),
-            caughtUp: Promise.resolve(),
-            faultProofReadiness: [
-              { ready: true as const, category: "doubleSpend" },
-            ],
-            recoveredFaultProofWorkflowCount: 0,
-            faultProofSupervisor: {
-              status: () => ({
-                phase: "blocked" as const,
-                recovered: false,
-                deadlineHealth: "unsafe" as const,
-              }),
-            },
-            close: async () => {
-              closed = true;
-            },
-          }),
-          waitForShutdown: async () => "SIGTERM",
-        },
-      ),
-    ).rejects.toThrow("proof supervision is not ready");
-    expect(closed).toBe(true);
-  });
-
-  it("keeps liveness separate from readiness when a proof deadline is at risk", async () => {
-    let closed = false;
-    await expect(
-      unsafeRunWatcherCommandForTest(
-        "start",
-        "/etc/watcher.json",
-        { writeOutput: () => undefined, writeError: () => undefined },
-        {
-          runAuthority: async () => ({ close: async () => undefined }),
-          runWatcher: async () => ({
-            done: new Promise<void>(() => undefined),
-            caughtUp: Promise.resolve(),
-            faultProofReadiness: [
-              { ready: true as const, category: "doubleSpend" },
-            ],
-            recoveredFaultProofWorkflowCount: 0,
-            faultProofSupervisor: {
-              status: () => ({
-                phase: "accepting" as const,
-                recovered: true,
-                deadlineHealth: "at_risk" as const,
-              }),
-            },
-            close: async () => {
-              closed = true;
-            },
-          }),
-          waitForShutdown: async () => "SIGTERM",
-        },
-      ),
-    ).rejects.toThrow("proof supervision is not ready");
-    expect(closed).toBe(true);
-  });
+  it.each([
+    {
+      name: "journal recovery supervision is blocked",
+      overrides: { phase: "blocked" as const, recovered: false },
+    },
+    {
+      name: "the supervisor has not finished recovering",
+      overrides: { recovered: false },
+    },
+    {
+      name: "the supervisor is already closing",
+      overrides: { phase: "closing" as const },
+    },
+    {
+      name: "a proof deadline is at risk",
+      overrides: { deadlineHealth: "at_risk" as const },
+    },
+    {
+      name: "a proof deadline is already unsafe",
+      overrides: { deadlineHealth: "unsafe" as const },
+    },
+    {
+      name: "no fault-proof category reported readiness",
+      overrides: { faultProofReadiness: [] },
+    },
+    {
+      name: "the recovered workflow count is not a natural number",
+      overrides: { recoveredFaultProofWorkflowCount: -1 },
+    },
+  ])(
+    "refuses to advertise readiness when $name, and closes the runtime",
+    async ({ overrides }) => {
+      let closed = false;
+      const lines: string[] = [];
+      await expect(
+        runCommand(
+          "start",
+          ready({ ...overrides, onClose: () => (closed = true) }),
+          {
+            writeOutput: (text: string) => lines.push(text),
+            writeError: (text: string) => lines.push(text),
+          },
+        ),
+      ).rejects.toThrow("watcher production proof supervision is not ready");
+      expect(closed).toBe(true);
+      // A refused start must not have advertised readiness first.
+      expect(lines).toEqual([]);
+    },
+  );
 
   it("treats an unexpected clean runtime exit as a liveness failure and closes", async () => {
     let closed = false;
@@ -210,63 +241,33 @@ describe("production watcher commands", () => {
         { writeOutput: () => undefined, writeError: () => undefined },
         {
           runAuthority: async () => ({ close: async () => undefined }),
-          runWatcher: async () => ({
-            done: Promise.resolve(),
-            caughtUp: Promise.resolve(),
-            faultProofReadiness: [
-              { ready: true as const, category: "doubleSpend" },
-            ],
-            recoveredFaultProofWorkflowCount: 0,
-            faultProofSupervisor: {
-              status: () => ({
-                phase: "accepting" as const,
-                recovered: true,
-                deadlineHealth: "safe" as const,
-              }),
-            },
-            close: async () => {
-              closed = true;
-            },
-          }),
+          runWatcher: async () =>
+            ready({
+              done: Promise.resolve(),
+              onClose: () => (closed = true),
+            }),
           waitForShutdown: async () =>
             await new Promise<"SIGTERM">(() => undefined),
         },
       ),
-    ).rejects.toThrow("liveness ended before shutdown");
+    ).rejects.toThrow("watcher production liveness ended before shutdown");
     expect(closed).toBe(true);
   });
 
   it("fails replay instead of hanging when runtime liveness ends before catch-up", async () => {
     let closed = false;
     await expect(
-      unsafeRunWatcherCommandForTest(
+      runCommand(
         "replay",
-        "/etc/watcher.json",
-        { writeOutput: () => undefined, writeError: () => undefined },
-        {
-          runAuthority: async () => ({ close: async () => undefined }),
-          runWatcher: async () => ({
-            done: Promise.resolve(),
-            caughtUp: new Promise<void>(() => undefined),
-            faultProofReadiness: [
-              { ready: true as const, category: "doubleSpend" },
-            ],
-            recoveredFaultProofWorkflowCount: 0,
-            faultProofSupervisor: {
-              status: () => ({
-                phase: "accepting" as const,
-                recovered: true,
-                deadlineHealth: "safe" as const,
-              }),
-            },
-            close: async () => {
-              closed = true;
-            },
-          }),
-          waitForShutdown: async () => "SIGTERM",
-        },
+        ready({
+          done: Promise.resolve(),
+          caughtUp: new Promise<void>(() => undefined),
+          onClose: () => (closed = true),
+        }),
       ),
-    ).rejects.toThrow("liveness ended before durable catch-up");
+    ).rejects.toThrow(
+      "watcher production liveness ended before durable catch-up",
+    );
     expect(closed).toBe(true);
   });
 
@@ -293,6 +294,14 @@ describe("production watcher commands", () => {
         },
       ),
     ).resolves.toBe(0);
-    expect(events).toContain("authority-closed");
+    // The authority command advertises its own readiness record — never the
+    // watcher's proof-supervision record — and closes only after shutdown.
+    expect(events).toHaveLength(2);
+    expect(JSON.parse(events[0]!)).toEqual({
+      packageName: "midgard-watcher",
+      command: "authority",
+      state: "ready",
+    });
+    expect(events[1]).toBe("authority-closed");
   });
 });

@@ -55,7 +55,7 @@ const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
   verifyForWorkflow: async () => ({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
-    releaseIdentityDigest: "e1".repeat(32),
+    blueprintHash: "e1".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
     ),
@@ -141,7 +141,7 @@ describe("production authenticated-header classifier V1", () => {
         releaseFinalityAuthority: finalityAuthority(),
       }),
     ).rejects.toThrow(
-      "resolved-output complete replay requires an admitted historical replay authority",
+      "complete replay requires an admitted historical replay authority",
     );
   });
 
@@ -259,6 +259,7 @@ describe("production authenticated-header classifier V1", () => {
       fee: 1n,
       networkId: 255n,
       requiredObservers: [Buffer.alloc(28, 0x42)],
+      scriptIntegrityHash: Buffer.alloc(32, 0x43),
     });
     const fixture = await buildCanonicalBlockFixture({
       transactions: [transaction],

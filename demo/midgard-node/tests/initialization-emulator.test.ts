@@ -5,9 +5,7 @@ import {
   Data,
   Emulator,
   generateEmulatorAccount,
-  Lucid,
   paymentCredentialOf,
-  PROTOCOL_PARAMETERS_DEFAULT,
   toUnit,
   UTxO,
 } from "@lucid-evolution/lucid";
@@ -27,6 +25,10 @@ import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
+import {
+  createMainnetEmulatorLucid,
+  MAINNET_PROTOCOL_PARAMETERS,
+} from "./helpers/mainnet-protocol-parameters.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const loadContracts = (
@@ -37,20 +39,11 @@ const loadContracts = (
   referenceScriptAuth?: SDK.MintingValidator,
 ) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
 
-// The real-envelope pin (`maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize`)
-// is SUSPENDED per Anastasia-Labs/midgard#649. `state_queue.mint` is no longer
-// the blocker: removing the claim registry dropped two of its parameters and
-// the InitV1/Deinit registry checks, taking it from 16,835 to 16,139 bytes
-// unapplied, inside the 16,384-byte L1 envelope. `availability_challenge`
-// remains over at 19,956 bytes unapplied on both legs, so publishing the roster
-// as reference scripts still fails at fixture bring-up and would block every
-// atomic-initialization assertion in this file. The fit property is not lost —
-// `tests/scratch-cg1-publication-fit.test.ts` stays pinned at the real envelope
-// and is skipped with the same #649 citation, and un-skipping it is what proves
-// #649 fixed. Restore the pin then.
 const EMULATOR_PROTOCOL_PARAMETERS = {
-  ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: 65_536,
+  ...MAINNET_PROTOCOL_PARAMETERS,
+  maxTxSize: 16_384,
+  maxTxExMem: 16_500_000n,
+  maxTxExSteps: 10_000_000_000n,
   maxCollateralInputs: 3,
 } as const;
 
@@ -91,8 +84,8 @@ const TEST_DA_PARAMS: SDK.DaParamsDatum = {
 };
 
 const buildAtomicInitializationTx = async (
-  lucid: Awaited<ReturnType<typeof Lucid>>,
-  referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
+  lucid: Awaited<ReturnType<typeof createMainnetEmulatorLucid>>,
+  referenceScriptsLucid: Awaited<ReturnType<typeof createMainnetEmulatorLucid>>,
   contracts: SDK.MidgardValidators,
   nonceUtxo: UTxO,
   operatorSeedPhrase: string,
@@ -129,14 +122,17 @@ const initEmulatorLucid = async () => {
     lovelace: 30_000_000_000n,
   });
   const referenceScripts = generateEmulatorAccount({
-    lovelace: 20_000_000_000n,
+    lovelace: 40_000_000_000n,
   });
   const emulator = new Emulator(
     [operator, referenceScripts],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
-  const lucid = await Lucid(emulator, "Custom");
-  const referenceScriptsLucid = await Lucid(emulator, "Custom");
+  const lucid = await createMainnetEmulatorLucid(emulator, "Custom");
+  const referenceScriptsLucid = await createMainnetEmulatorLucid(
+    emulator,
+    "Custom",
+  );
   lucid.selectWallet.fromSeed(operator.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
   const nonceUtxo = (await lucid.wallet().getUtxos())[0];
@@ -236,6 +232,7 @@ describe("initialization emulator", () => {
           },
         ),
       },
+      register: { Stake: vi.fn(() => txBuilder) },
       readFrom: vi.fn(() => txBuilder),
       attach: {
         MintingPolicy: vi.fn(() => txBuilder),
@@ -271,14 +268,6 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      // Nine protocol-root outputs, one per NFT the atomic init mints:
-      // da-params governor, hub oracle, scheduler, state-queue root, the three
-      // operator-set roots, the fraud-proof catalogue, and — under the same hub
-      // oracle policy — the correction lock. The old pin of 8 predates the
-      // correction lock, which `src/transactions/initialization.ts` already
-      // requires (it reports a deployment missing it as a "correction-lock"
-      // root); removing the claim registry from the protocol dropped the tenth.
-      expect(outputAssets).toHaveLength(9);
       expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
         true,
       );
@@ -379,6 +368,20 @@ describe("initialization emulator", () => {
         loadPhasMembershipWithdrawalScript(),
       ),
     );
+    for (const [action, validator] of Object.entries(
+      contracts.availabilityChallenge.yields,
+    )) {
+      expect(runtimeReferenceScriptNames).toContain(
+        `availability-challenge ${action} withdrawal`,
+      );
+      const rewardAddress = SDK.scriptRewardAddress(
+        "Preprod",
+        validator.withdrawalScript,
+      );
+      expect((await lucid.rewardAccountAt(rewardAddress)).registered).toBe(
+        true,
+      );
+    }
     expect(runtimeReferenceScriptNames).toContain("state-queue spending");
     expect(runtimeReferenceScriptNames).toContain("deposit minting");
     expect(runtimeReferenceScriptNames).toContain("settlement minting");

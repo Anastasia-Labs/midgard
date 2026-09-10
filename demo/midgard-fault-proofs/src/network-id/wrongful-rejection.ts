@@ -3,7 +3,6 @@ import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardOutputFieldPreimage,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
 import {
   forcedVerdictSubject,
@@ -13,6 +12,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 
 export const NETWORK_ID_MISMATCH_REASON = "NetworkIdMismatch" as const;
@@ -63,7 +63,7 @@ const evidenceFor = ({
     forced.value.verdict.ForcedTxInvalid.reason !== NETWORK_ID_MISMATCH_REASON
   )
     return null;
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+  const material = deriveRejectedTransactionFaultEvidenceMaterial(
     forced.fullTransactionCbor,
   );
   if (

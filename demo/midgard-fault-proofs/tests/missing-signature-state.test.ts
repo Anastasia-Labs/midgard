@@ -61,6 +61,80 @@ const step04 = (threadOutRef: string) => ({
 });
 
 describe("production missing-signature authenticated cursor V1", () => {
+  it("keeps known transactions pending while finalized state is unchanged", async () => {
+    for (const stage of [
+      { kind: "not_started" as const, stateQueueBlockOutRef: outRef("10") },
+      {
+        kind: "step" as const,
+        step: 1 as const,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      },
+      {
+        kind: "proof_token" as const,
+        fraudProofOutRef: outRef("44"),
+        stateQueueBlockOutRef: outRef("10"),
+        nextRemovalOutRef: outRef("33"),
+      },
+    ]) {
+      const observed = missingSignatureObservation({
+        headerHash,
+        provenance,
+        stage,
+      });
+      if (observed.kind !== "action_required")
+        throw new Error("missing action");
+      const input = {
+        headerHash,
+        provenance,
+        stage,
+        action: observed.action,
+        transactionConfirmed: async () => false,
+      } as const;
+      await expect(
+        reconcileMissingSignatureAction({ ...input, txHash: hash("55") }),
+      ).resolves.toEqual({ kind: "pending", txHash: hash("55") });
+      await expect(reconcileMissingSignatureAction(input)).resolves.toEqual({
+        kind: "not_found",
+      });
+      if (stage.kind === "proof_token") {
+        await expect(
+          reconcileMissingSignatureAction({
+            ...input,
+            txHash: hash("55"),
+            stage: { ...stage, nextRemovalOutRef: outRef("34") },
+          }),
+        ).resolves.toEqual({ kind: "pending", txHash: hash("55") });
+      }
+    }
+  });
+
+  it("rejects changed successors when transaction history does not confirm the intent", async () => {
+    const observed = missingSignatureObservation({
+      headerHash,
+      provenance,
+      stage: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
+    });
+    if (observed.kind !== "action_required") throw new Error("missing action");
+    for (const threadOutRef of [outRef("55"), outRef("99")]) {
+      await expect(
+        reconcileMissingSignatureAction({
+          headerHash,
+          provenance,
+          action: observed.action,
+          txHash: hash("55"),
+          stage: {
+            kind: "step",
+            step: 1,
+            threadOutRef,
+            stateQueueBlockOutRef: outRef("10"),
+          },
+          transactionConfirmed: async () => false,
+        }),
+      ).resolves.toMatchObject({ kind: "conflict" });
+    }
+  });
+
   it("content-addresses every step-04 scan batch by its current thread outref", () => {
     const first = missingSignatureObservation({
       headerHash,

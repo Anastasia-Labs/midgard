@@ -10,6 +10,9 @@
     "dist"
   ],
   "exports": {
+    "./tests/validation-fixtures": {
+      "midgard-source": "./tests/validation-fixtures.ts"
+    },
     ".": {
       "midgard-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
@@ -152,11 +155,13 @@
     "typecheck": "tsc --noEmit",
     "fixtures:ordered-collection-boundary-aiken:sync": "pnpm run build && node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs",
     "fixtures:ordered-collection-boundary-aiken:check": "pnpm run build && node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs --check",
+    "fixtures:validation-auxiliary-witness-v1:sync": "pnpm run build && node scripts/generate-validation-auxiliary-witness-v1-fixture.mjs",
+    "fixtures:validation-auxiliary-witness-v1:check": "pnpm run build && node scripts/generate-validation-auxiliary-witness-v1-fixture.mjs --check",
+    "fixtures:nested-boundary-aiken:sync": "pnpm run build && node scripts/generate-nested-boundary-aiken-goldens.mjs",
+    "fixtures:nested-boundary-aiken:check": "pnpm run build && node scripts/generate-nested-boundary-aiken-goldens.mjs --check",
     "fixtures:cek-core-step-v1:sync": "pnpm run build && node scripts/generate-cek-core-step-v1-goldens.mjs",
     "fixtures:cek-core-step-v1:check": "pnpm run build && node scripts/generate-cek-core-step-v1-goldens.mjs --check",
     "test": "vitest run",
-    "test:evidence": "node scripts/run-scan-bench-evidence-v1.mjs && MIDGARD_VALIDATION_EVIDENCE=1 vitest run tests/resolver-proof-fit-sweep.test.ts",
-    "test:evidence:update": "MIDGARD_SCAN_BENCH_UPDATE=1 node scripts/run-scan-bench-evidence-v1.mjs && MIDGARD_VALIDATION_EVIDENCE=1 vitest run tests/resolver-proof-fit-sweep.test.ts",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs"
   },
   "keywords": [

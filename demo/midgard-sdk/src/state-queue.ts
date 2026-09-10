@@ -344,6 +344,8 @@ export type StateQueueFetchConfig = {
 export type EmulatorStateQueueCommitBlockHeaderParams = {
   anchorUTxO: StateQueueUTxO;
   newHeader: Header;
+  /** Reserve ADA for later availability datum transitions, which preserve value. */
+  headerNodeLovelace?: bigint;
   additionalInputs?: readonly UTxO[];
   validFrom?: bigint;
   validTo?: bigint;
@@ -1202,7 +1204,12 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       .pay.ToContract(
         config.stateQueueAddress,
         { kind: "inline", value: newBlockDatumCbor },
-        newBlockAssets,
+        {
+          ...newBlockAssets,
+          ...(params.headerNodeLovelace === undefined
+            ? {}
+            : { lovelace: params.headerNodeLovelace }),
+        },
       )
       .pay.ToContract(
         config.stateQueueAddress,

@@ -9,20 +9,16 @@ import {
   createValueConservationWorkflowRunner,
   type ManifestBoundTransitionTraceWorkflowConfig,
   type ManifestBoundValueConservationWorkflowConfig,
-  TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
   TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
   TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
-  VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import {
   bindFraudProofWorkflowDeployment,
-  CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   classifyHeader as classifyProductionHeaderV1,
-  COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
   type CompleteCanonicalReplayContext,
   createCanonicalDecodabilityWorkflowRunner,
+  createCatalogueCompleteCanonicalReplay,
   createCommittedFieldShapeWorkflowRunner,
-  createCompleteCanonicalReplayUnion,
   createCrossBlockDuplicateEventWorkflowRunner,
   createCrossBlockSettlementAuthority,
   createDaHashPreimageWorkflowRunner,
@@ -130,28 +126,14 @@ import {
   createWithdrawnReferenceInputWorkflowRunner,
   createWitnessScriptDecodingWorkflowRunner,
   createZeroInputWorkflowRunner,
-  CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
-  DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-  DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   executionNativeScriptInvalid as executionNativeScriptInvalidV1,
-  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
-  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   type HeaderDecision,
   headerDecisionReplayContext,
   type HistoricalNativeScriptCheckpointStore,
   type HistoricalNativeScriptHistorySource,
   type HistoricalNativeScriptProviderRoster,
   type HistoricalNativeScriptSourceRoster,
-  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
-  INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
   installWorkflowApplicationRegistry,
-  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
-  INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
-  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
   makeLucidForSubmit,
   type ManifestBoundCanonicalDecodabilityWorkflowConfig,
   type ManifestBoundCommittedFieldShapeWorkflowConfig,
@@ -204,51 +186,21 @@ import {
   type ManifestBoundWithdrawnReferenceInputWorkflowConfig,
   type ManifestBoundWitnessScriptDecodingWorkflowConfig,
   type ManifestBoundZeroInputWorkflowConfig,
-  MIN_ADA_COMPLETE_CANONICAL_REPLAY,
-  MIN_FEE_COMPLETE_CANONICAL_REPLAY,
-  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY,
-  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
-  MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
-  NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
-  OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   parseContractDeploymentInfo,
-  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
-  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-  REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
-  REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
   requireDeploymentReferenceScript,
   requireHistoricalNativeScriptHistoryAuthority,
-  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   resolveProverSigner,
   restrictWorkflowFundingSigner,
   runFraudProofWorkflowCli,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-  SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
-  SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
   type StateQueueMutationLeaseCoordinator,
-  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
   VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
-  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
-  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
   type WorkflowAdapterRunnerInput,
   type WorkflowApplicationRegistry,
   type WorkflowRuntimeConfigLoader,
-  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import {
   CrossBlockDuplicateEventStep02DatumSchema,
@@ -269,6 +221,8 @@ import {
 } from "../funding/workflow-funding-profile-overlay.js";
 import {
   assertWatcherStateQueueHeaderObservation,
+  assertWatcherStateQueueObservation,
+  type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type {
@@ -277,15 +231,30 @@ import type {
 } from "../runtime/config.js";
 import { parseWatcherConfig } from "../runtime/config.js";
 import {
+  assertWatcherVerifiedDeploymentAuthority,
+  type VerifiedWatcherDeploymentAuthority,
+} from "../runtime/deployment-authority.js";
+import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
+import {
+  assertWatcherUserEventRuntime,
+  type WatcherUserEventRuntime,
+} from "../runtime/user-event-runtime.js";
+import type { WatcherReplayTranscriptStore } from "../storage/replay-transcript-store.js";
 import {
   createWatcherRetainedDaRuntime,
   createWatcherWorkflowRuntimeLoader,
   type WatcherRetainedDaRuntimeOptions,
 } from "../storage/retained-da-runtime.js";
+import {
+  assertWatcherValidationReplayCaptureCurrent,
+  captureWatcherValidationReplayTranscript,
+  refreshWatcherValidationReplayCapture,
+} from "./replay-transcript-capture.js";
 
 export const WATCHER_FAULT_PROOF_APPLICATION =
   "midgard-watcher-fault-proof-production-application-v1" as const;
@@ -391,7 +360,9 @@ export type WatcherFaultProofInfrastructureAuthority = Readonly<{
 }>;
 
 export type WatcherFaultProofApplicationOptions = Readonly<{
-  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  deploymentAuthority: VerifiedWatcherDeploymentAuthority;
+  replayTranscriptStore: WatcherReplayTranscriptStore;
+  userEventRuntime: WatcherUserEventRuntime;
   infrastructure: WatcherFaultProofInfrastructureAuthority;
   historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
@@ -399,9 +370,17 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
 
 type WatcherFaultProofApplicationConstructionOptions = Omit<
   WatcherFaultProofApplicationOptions,
-  "fundingProfileOverlay" | "historicalNativeScriptCheckpointStore"
+  | "fundingProfileOverlay"
+  | "historicalNativeScriptCheckpointStore"
+  | "deploymentAuthority"
+  | "replayTranscriptStore"
+  | "userEventRuntime"
 > &
   Readonly<{
+    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+    deploymentAuthority?: VerifiedWatcherDeploymentAuthority;
+    replayTranscriptStore?: WatcherReplayTranscriptStore;
+    userEventRuntime?: WatcherUserEventRuntime;
     historicalNativeScriptCheckpointStore?: HistoricalNativeScriptCheckpointStore;
     fundingProfileOverlay?: WatcherWorkflowFundingProfileOverlay;
     unsafeTransportOptionsForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportOptionsForTest"];
@@ -420,6 +399,8 @@ export type WatcherFaultProofStartupReadiness = Readonly<{
 export type WatcherFaultProofHeaderClassificationInput = Readonly<{
   runtimeConfigPath: string;
   observation: AuthenticatedStateQueueHeaderObservation;
+  stateQueueObservation: WatcherAuthenticatedStateQueueObservation;
+  header: WatcherStateQueueHeaderObservation;
   authenticatedObservationDigest: string;
   /** Opaque local-node predecessor; its public retained DA is fetched here. */
   predecessor?: WatcherStateQueueHeaderObservation;
@@ -437,6 +418,10 @@ export type WatcherFaultProofApplication = Readonly<{
   classifyHeader(
     input: WatcherFaultProofHeaderClassificationInput,
   ): Promise<HeaderDecision>;
+  /** Retire private replay authority after target selection or invalidation. */
+  retainDecisionAuthorities(decisionDigest: string | null): void;
+  /** Whether an admitted decision retains capabilities of the live event head. */
+  decisionUsesLocalEventHistory(decisionDigest: string): boolean;
   assertStartupReady(
     invocation: WorkflowAdapterReadinessInput,
   ): Promise<WatcherFaultProofStartupReadiness>;
@@ -4108,57 +4093,6 @@ const predecessorObservationForClassifier = ({
   });
 };
 
-const WATCHER_INSTALLED_COMPLETE_REPLAY = createCompleteCanonicalReplayUnion([
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
-  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
-  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
-  TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
-  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
-  DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-  REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
-  INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
-  NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
-  MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY,
-  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-  CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
-  COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
-  MIN_FEE_COMPLETE_CANONICAL_REPLAY,
-  DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
-  CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
-  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
-  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
-  VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
-  INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
-  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
-  NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  MIN_ADA_COMPLETE_CANONICAL_REPLAY,
-  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
-  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
-  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
-  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
-  OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY,
-  REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
-  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
-  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
-]);
-
 const createApplication = ({
   options,
   dependencies,
@@ -4172,6 +4106,32 @@ const createApplication = ({
 }): WatcherFaultProofApplication => {
   const deploymentIdentity = options.deploymentIdentity;
   assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  const deploymentAuthority = options.deploymentAuthority;
+  const replayTranscriptStore = options.replayTranscriptStore;
+  const userEventRuntime = options.userEventRuntime;
+  if (allowExecution) {
+    if (
+      deploymentAuthority === undefined ||
+      replayTranscriptStore === undefined ||
+      userEventRuntime === undefined
+    ) {
+      throw new Error(
+        "watcher execution requires deployment/rule authority and durable replay transcripts",
+      );
+    }
+    assertWatcherVerifiedDeploymentAuthority(deploymentAuthority);
+    assertWatcherUserEventRuntime(userEventRuntime);
+    if (
+      userEventRuntime.deploymentFingerprint !==
+        deploymentIdentity.manifestId ||
+      userEventRuntime.blueprintHash !== deploymentIdentity.blueprintHash
+    ) {
+      throw new Error("watcher event runtime deployment authority differs");
+    }
+    if (deploymentAuthority.deploymentIdentity !== deploymentIdentity) {
+      throw new Error("watcher application deployment authorities differ");
+    }
+  }
   const infrastructure = admitInfrastructure(options.infrastructure);
   if (options.historicalNativeScriptCheckpointStore === undefined) {
     throw new Error(
@@ -4188,21 +4148,23 @@ const createApplication = ({
     if (
       options.fundingProfileOverlay.deploymentFingerprint !==
         deploymentIdentity.manifestId ||
-      options.fundingProfileOverlay.releaseEvidenceDigest !==
-        deploymentIdentity.releaseEvidenceDigest
+      options.fundingProfileOverlay.blueprintHash !==
+        deploymentIdentity.blueprintHash
     ) {
       throw new Error(
         "watcher funding-profile overlay changed deployment identity",
       );
     }
   }
-  const fundingProfile = (category: WatcherInstalledWorkflowCategory) =>
-    options.fundingProfileOverlay === undefined
-      ? undefined
-      : workflowFundingProfileFromOverlay({
-          overlay: options.fundingProfileOverlay,
-          category,
-        });
+  const fundingProfile = (category: WatcherInstalledWorkflowCategory) => {
+    const overlay = options.fundingProfileOverlay;
+    // Install every runner at startup. Funding is required when a category
+    // requests a reservation, so missing measurements do not stop observation.
+    if (overlay === undefined || overlay.profiles[category] === undefined) {
+      return undefined;
+    }
+    return workflowFundingProfileFromOverlay({ overlay, category });
+  };
   const providerRoster = createHistoricalNativeScriptProviderRoster({
     deploymentFingerprint: deploymentIdentity.manifestId,
     providers: infrastructure.historicalNativeScriptHistory.providers,
@@ -4237,6 +4199,11 @@ const createApplication = ({
     });
   const environmentSnapshot = Object.freeze({ ...environment });
   const replayContexts = new Map<string, CompleteCanonicalReplayContext>();
+  let authorityGeneration = 0;
+  const validationCaptures = new Map<
+    string,
+    Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
+  >();
   const loaderOptions = {
     deploymentIdentity,
     ...(options.unsafeTransportOptionsForTest === undefined
@@ -5274,11 +5241,45 @@ const createApplication = ({
       await loaded.close();
       throw new Error("workflow loader changed its fixed category");
     }
-    return Object.freeze({
-      ...loaded,
-      config: loaded.config.config,
-      tagged: loaded.config,
-    });
+    const decisionDigest = (
+      input.invocation as Partial<WorkflowAdapterRunnerInput>
+    ).decisionDigest;
+    if (decisionDigest === undefined) {
+      return Object.freeze({
+        ...loaded,
+        config: loaded.config.config,
+        tagged: loaded.config,
+      });
+    }
+    try {
+      const capture = validationCaptures.get(decisionDigest);
+      if (
+        capture === undefined ||
+        capture.transcript.headerHash !== input.invocation.headerHash
+      ) {
+        throw new Error(
+          "validation execution has no freshly captured classifier transcript",
+        );
+      }
+      await refreshWatcherValidationReplayCapture(capture);
+      assertWatcherValidationReplayCaptureCurrent(capture);
+      if (validationCaptures.get(decisionDigest) !== capture) {
+        throw new Error(
+          "validation decision authority was retired during workflow loading",
+        );
+      }
+      return Object.freeze({
+        ...loaded,
+        config: Object.freeze({
+          ...loaded.config.config,
+          challenge: capture.challenge,
+        }),
+        tagged: loaded.config,
+      });
+    } catch (error) {
+      await loaded.close();
+      throw error;
+    }
   };
 
   const runners = Object.freeze({
@@ -5591,10 +5592,50 @@ const createApplication = ({
           },
         },
       );
+      const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
+        deploymentIdentity,
+      ).verifyForWorkflow({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+      });
+      const lucid = await dependencies.makeLucid({
+        network: watcherConfig.targetNetwork,
+        kupoHttpUrl: kupo.endpoint,
+        ogmiosUrl: ogmios.endpoint,
+      });
+      const proverSecret = await readSecret({
+        source: watcherConfig.proverWallet.keySource,
+        dependencies,
+        environment: environmentSnapshot,
+        label: "watcher prover wallet",
+      });
+      const signer = dependencies.resolveSigner({
+        network: watcherConfig.targetNetwork,
+        secret: proverSecret,
+      });
+      const replayer = createCatalogueCompleteCanonicalReplay({
+        lucid,
+        network: watcherConfig.targetNetwork,
+        hubOraclePolicyId:
+          watcherDeploymentProtocolScriptAuthority(deploymentIdentity)
+            .protocolScriptHashes.hubOracleMint,
+        minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
+        owner: signer.paymentKeyHash,
+      });
+      if (
+        replayer.launchScope.length !==
+          WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length ||
+        replayer.launchScope.some(
+          (category, index) =>
+            category !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES[index],
+        )
+      )
+        throw new Error(
+          "Watcher classifier differs from its exact installed workflow catalogue",
+        );
       return await createHeaderClassifier({
         transitionTraceEventAuthority,
         deploymentFingerprint: deploymentIdentity.manifestId,
-        replayer: WATCHER_INSTALLED_COMPLETE_REPLAY,
+        replayer,
         releaseFinalityAuthority:
           watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
         settlementAuthority,
@@ -5612,7 +5653,46 @@ const createApplication = ({
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     runners,
     applicationRegistry,
-    classifyHeader: async (input) => {
+    decisionUsesLocalEventHistory: (decisionDigest) =>
+      validationCaptures.has(decisionDigest),
+    retainDecisionAuthorities: (decisionDigest) => {
+      authorityGeneration += 1;
+      for (const digest of replayContexts.keys()) {
+        if (digest !== decisionDigest) replayContexts.delete(digest);
+      }
+      for (const digest of validationCaptures.keys()) {
+        if (digest !== decisionDigest) validationCaptures.delete(digest);
+      }
+    },
+    classifyHeader: async (request) => {
+      const generation = authorityGeneration;
+      const input = Object.freeze({
+        ...request,
+        observation: structuredClone(request.observation),
+      });
+      assertWatcherStateQueueObservation(input.stateQueueObservation);
+      assertWatcherStateQueueHeaderObservation(input.header);
+      if (
+        input.stateQueueObservation.deploymentIdentityDigest !==
+          deploymentIdentity.manifestId ||
+        !input.stateQueueObservation.finalizedHeaders.includes(input.header) ||
+        input.observation.sourceMode !== "local_node" ||
+        input.observation.provenance.sourceId !==
+          input.stateQueueObservation.sourceId ||
+        input.observation.headerHash !== input.header.headerHash ||
+        Data.to(input.observation.header, Header) !==
+          input.header.headerCborHex ||
+        input.observation.chainPoint.slot.toString() !==
+          input.header.observedSlot ||
+        input.observation.chainPoint.blockHash !==
+          input.header.observedBlockHash ||
+        input.observation.confirmationDepth.toString() !==
+          input.header.finalityDepth
+      ) {
+        throw new Error(
+          "classifier observation differs from its authenticated queue header",
+        );
+      }
       if (!admittedApplications.has(application)) {
         throw new Error(
           "watcher fault-proof production application is not admitted",
@@ -5633,6 +5713,10 @@ const createApplication = ({
         watcherConfig,
         ...loaderOptions,
       });
+      let completedDecision: HeaderDecision;
+      let pendingCapture:
+        | Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
+        | undefined;
       try {
         if (
           retainedDa.deploymentFingerprint !== deploymentIdentity.manifestId
@@ -5670,13 +5754,80 @@ const createApplication = ({
             `${decision.category} classifier decision omitted predecessor authority`,
           );
         }
-        if (replayContext !== undefined) {
-          replayContexts.set(decision.decisionDigest, replayContext);
+        if (
+          decision.decision === "fault_detected" &&
+          decision.category === "validationTraceDispute"
+        ) {
+          if (
+            deploymentAuthority === undefined ||
+            replayTranscriptStore === undefined ||
+            userEventRuntime === undefined
+          ) {
+            throw new Error(
+              "validation classification requires live deployment authority and transcript storage",
+            );
+          }
+          const identity = {
+            deploymentFingerprint: deploymentIdentity.manifestId,
+            headerHash: input.header.headerHash,
+            inclusionPoint: {
+              transactionHash: input.header.observedTransactionHash,
+              blockHash: input.header.observedBlockHash,
+              blockNo: input.header.observedBlockNo,
+              slot: input.header.observedSlot,
+              chainPointId: input.header.observedChainPointId,
+            },
+          };
+          const archived = await replayTranscriptStore.read(identity);
+          const capture = await captureWatcherValidationReplayTranscript({
+            deploymentAuthority,
+            stateQueueObservation: input.stateQueueObservation,
+            header: input.header,
+            decision,
+            userEventRuntime,
+            ...(archived === null
+              ? {}
+              : {
+                  persistedTranscriptCborHex:
+                    archived.persistedTranscriptCborHex,
+                }),
+          });
+          if (
+            !(await replayTranscriptStore.compareAndSwap({
+              expectedTranscriptDigest: archived?.headTranscriptDigest ?? null,
+              transcript: capture.transcript,
+            }))
+          ) {
+            throw new Error(
+              "validation transcript head changed during capture; classify again",
+            );
+          }
+          pendingCapture = capture;
         }
-        return decision;
+        completedDecision = decision;
       } finally {
         await retainedDa.close();
       }
+      if (pendingCapture !== undefined) {
+        await refreshWatcherValidationReplayCapture(pendingCapture);
+        assertWatcherValidationReplayCaptureCurrent(pendingCapture);
+      }
+      if (generation !== authorityGeneration) {
+        throw new Error(
+          "decision authority was invalidated during classification",
+        );
+      }
+      if (pendingCapture !== undefined) {
+        validationCaptures.set(
+          completedDecision.decisionDigest,
+          pendingCapture,
+        );
+      }
+      const replayContext = headerDecisionReplayContext(completedDecision);
+      if (replayContext !== undefined) {
+        replayContexts.set(completedDecision.decisionDigest, replayContext);
+      }
+      return completedDecision;
     },
     assertStartupReady: async (invocation) => {
       if (
@@ -5743,7 +5894,10 @@ export const createWatcherFaultProofApplication = (
 ): WatcherFaultProofApplication =>
   createApplication({
     options: Object.freeze({
-      deploymentIdentity: options.deploymentIdentity,
+      deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
+      deploymentAuthority: options.deploymentAuthority,
+      replayTranscriptStore: options.replayTranscriptStore,
+      userEventRuntime: options.userEventRuntime,
       infrastructure: options.infrastructure,
       historicalNativeScriptCheckpointStore:
         options.historicalNativeScriptCheckpointStore,

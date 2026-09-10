@@ -124,8 +124,7 @@ export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
  * measures that headroom rather than asserting it, so a rate or intercept
  * change fails there instead of scattering `E_MIN_ADA` across unrelated
  * fixtures. The adjacent boundary itself is pinned where it belongs -- in
- * min-ada-twin-cross-check.test.ts and in the Aiken wiring vectors -- not
- * here.
+ * the Aiken wiring vectors -- not here.
  *
  * Pre-state (input and reference) outputs are deliberately NOT re-funded: the
  * wiring gates outputs a transaction produces (MIN-ADA-TX), not outputs it

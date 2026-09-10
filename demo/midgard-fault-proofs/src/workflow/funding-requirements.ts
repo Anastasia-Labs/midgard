@@ -17,7 +17,7 @@ export const WORKFLOW_FUNDING_REQUIREMENTS =
 
 const DIGEST = /^[0-9a-f]{64}$/u;
 const NATURAL = /^(0|[1-9][0-9]*)$/u;
-const ACTION_KIND = /^[a-z][a-z0-9]*(?:[-.:][a-z0-9]+)*$/u;
+const ACTION_KIND = /^[a-z][a-z0-9]*(?:[-._:][a-z0-9]+)*$/u;
 const REFERENCE_ROLE = /^[a-z][a-zA-Z0-9]*$/u;
 const MEASUREMENT_VERSION = /^[a-z][a-z0-9]*(?:[-.:][a-z0-9]+)*-v[1-9][0-9]*$/u;
 const UNIT = /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u;
@@ -70,7 +70,12 @@ export type WorkflowFundingControlledInput = Readonly<{
 
 export type WorkflowFundingControlledOutput = Readonly<{
   outputIndex: number;
-  role: "wallet_change" | "locked_reusable" | "locked_permanent" | "protocol";
+  role:
+    | "wallet_change"
+    | "locked_reusable"
+    | "locked_permanent"
+    | "protocol"
+    | "protocol_reward";
   custodyRole: "none" | "bond" | "reward" | "native_asset" | "carrier";
   semanticRole:
     | "wallet_change"
@@ -136,6 +141,19 @@ export type WorkflowFundingRequirementsInput = Readonly<{
   measurementArtifactSha256: string;
   actions: readonly WorkflowFundingActionMeasurement[];
 }>;
+
+/** Protocol-only actions spend no prover principal; rewards are not prefunding. */
+export const isProtocolFundedWorkflowAction = (
+  action: Pick<
+    WorkflowFundingActionMeasurement,
+    "fundingControlledInputs" | "fundingControlledOutputs"
+  >,
+): boolean =>
+  action.fundingControlledInputs.length > 0 &&
+  action.fundingControlledInputs.every(({ role }) => role === "protocol") &&
+  action.fundingControlledOutputs.some(
+    ({ role }) => role === "protocol_reward",
+  );
 
 export type WorkflowFundingRequirements = Readonly<{
   schemaVersion: typeof WORKFLOW_FUNDING_REQUIREMENTS;
@@ -579,7 +597,8 @@ const fundingControlledOutput = (
     (record.role !== "wallet_change" &&
       record.role !== "locked_reusable" &&
       record.role !== "locked_permanent" &&
-      record.role !== "protocol") ||
+      record.role !== "protocol" &&
+      record.role !== "protocol_reward") ||
     (record.custodyRole !== "none" &&
       record.custodyRole !== "bond" &&
       record.custodyRole !== "reward" &&
@@ -615,7 +634,8 @@ const fundingControlledOutput = (
     fundingPaymentKeyHash,
   );
   if (
-    (record.role === "wallet_change") !== isFundingChange ||
+    (record.role === "wallet_change" || record.role === "protocol_reward") !==
+      isFundingChange ||
     (record.role === "wallet_change" &&
       (record.custodyRole !== "none" ||
         record.semanticRole !== "wallet_change" ||
@@ -632,6 +652,12 @@ const fundingControlledOutput = (
         record.semanticRole !== "protocol_state" ||
         contribution.fundingLovelace !== "0" ||
         contribution.fundingAssets.length !== 0)) ||
+    (record.role === "protocol_reward" &&
+      (record.custodyRole !== "none" ||
+        record.semanticRole !== "prover_reward" ||
+        contribution.fundingLovelace !== "0" ||
+        contribution.fundingAssets.length !== 0 ||
+        Object.keys(exactOutput.assets).some((unit) => unit !== "lovelace"))) ||
     ((record.role === "locked_reusable" ||
       record.role === "locked_permanent") &&
       (record.custodyRole === "none" ||
@@ -761,7 +787,7 @@ const fundingAction = (
       ({ outRef }, inputIndex) =>
         outRef !== transaction.inputOutRefs[inputIndex],
     ) ||
-    !fundingControlledInputs.some(({ role }) => role !== "protocol")
+    fundingControlledInputs.length === 0
   ) {
     throw new Error(
       `${field} must classify every exact transaction input once`,
@@ -776,6 +802,23 @@ const fundingAction = (
         fundingPaymentKeyHash,
       ),
   );
+  const protocolFunded = isProtocolFundedWorkflowAction({
+    fundingControlledInputs,
+    fundingControlledOutputs,
+  });
+  if (
+    protocolFunded
+      ? fundingControlledOutputs.some(
+          ({ role }) => role !== "protocol" && role !== "protocol_reward",
+        )
+      : fundingControlledOutputs.some(
+          ({ role }) => role === "protocol_reward",
+        ) || fundingControlledInputs.every(({ role }) => role === "protocol")
+  ) {
+    throw new Error(
+      `${field} protocol rewards require exclusively protocol-funded inputs and outputs`,
+    );
+  }
   const referenceInputs = record.referenceInputs.map((entry, referenceIndex) =>
     fundingReferenceInput(
       entry,
@@ -803,7 +846,8 @@ const fundingAction = (
   }
   if (
     fundingControlledOutputs.length !== transaction.outputCborHex.length ||
-    !fundingControlledOutputs.some(({ role }) => role === "wallet_change") ||
+    (!protocolFunded &&
+      !fundingControlledOutputs.some(({ role }) => role === "wallet_change")) ||
     new Set(fundingControlledOutputs.map(({ outputIndex }) => outputIndex))
       .size !== fundingControlledOutputs.length ||
     fundingControlledOutputs.some(
@@ -811,7 +855,7 @@ const fundingAction = (
     )
   ) {
     throw new Error(
-      `${field} must classify every exact output once with wallet change`,
+      `${field} must classify every exact output once with wallet change or protocol reward`,
     );
   }
   for (
@@ -826,7 +870,9 @@ const fundingAction = (
       ) !==
       fundingControlledOutputs.some(
         (output) =>
-          output.outputIndex === outputIndex && output.role === "wallet_change",
+          output.outputIndex === outputIndex &&
+          (output.role === "wallet_change" ||
+            output.role === "protocol_reward"),
       )
     ) {
       throw new Error(
@@ -1039,8 +1085,27 @@ const normalizedRequirements = (
     )
       .body()
       .fee();
+    const protocolFunded = isProtocolFundedWorkflowAction(action);
+    if (protocolFunded) {
+      const protocolInputs = action.fundingControlledInputs.reduce(
+        (total, input) =>
+          total +
+          (outputValue(input.resolvedOutputCborHex).assets.lovelace ?? 0n),
+        0n,
+      );
+      const protocolOutputs = action.outputCborHex.reduce(
+        (total, output) => total + (outputValue(output).assets.lovelace ?? 0n),
+        0n,
+      );
+      if (protocolInputs !== protocolOutputs + exactFee) {
+        throw new Error(
+          `${action.actionKind} protocol-funded Ada is not conserved`,
+        );
+      }
+    }
     if (
-      inputFundingLovelace !== outputFundingLovelace + exactFee ||
+      inputFundingLovelace !==
+        outputFundingLovelace + (protocolFunded ? 0n : exactFee) ||
       inputFundingAssets.size !== outputFundingAssets.size ||
       [...inputFundingAssets].some(
         ([unit, quantity]) => outputFundingAssets.get(unit) !== quantity,

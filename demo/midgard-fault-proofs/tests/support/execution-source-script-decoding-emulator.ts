@@ -43,10 +43,6 @@ import {
   buildValidationMachineLedgerMutationSteps,
   type RejectCode,
 } from "@al-ft/midgard-validation";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { expect } from "vitest";
-
 import {
   encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,
@@ -57,7 +53,11 @@ import {
   nativeScriptWitness,
   outRefFromByte,
   outRefFromTxId,
-} from "../../../midgard-validation/tests/validation-fixtures.js";
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { expect } from "vitest";
+
 import {
   applyExecutionSourceScriptDecodingScripts,
   buildExecutionSourceMachineAuthentication,
@@ -411,17 +411,26 @@ export type SubjectFixture = Awaited<ReturnType<typeof buildSubjectFixture>>;
  */
 export const buildSubjectFixture = async ({
   harness,
+  blockContext,
   direction,
   item,
   reason,
   seed = 0x72,
 }: {
-  readonly harness: Harness;
   readonly direction: "accepted" | "forced";
   readonly item: SubjectItem;
   readonly reason?: RejectionReason;
   readonly seed?: number;
-}) => {
+} & (
+  | { readonly harness: Harness; readonly blockContext?: never }
+  | {
+      readonly harness?: never;
+      readonly blockContext: {
+        readonly operatorVkey: string;
+        readonly startTime: bigint;
+      };
+    }
+)) => {
   const spent = outRefFromByte(seed);
   const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
   const witness = nativeScriptWitness(
@@ -522,13 +531,15 @@ export const buildSubjectFixture = async ({
     claimedRejectionCode:
       arm === null ? null : EXECUTION_SOURCE_REJECTION_CODES[arm],
   });
-  const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
-  const startTime = BigInt(
-    alignUnixTimeToEmulatorSlotBoundary(
-      harness.funderLucid,
-      harness.emulator.now() + 120_000,
-    ) - 1,
-  );
+  const { operatorVkey, startTime } = blockContext ?? {
+    operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
+    startTime: BigInt(
+      alignUnixTimeToEmulatorSlotBoundary(
+        harness.funderLucid,
+        harness.emulator.now() + 120_000,
+      ) - 1,
+    ),
+  };
   const block = await buildDecodingBlockFixture({
     operatorVkey,
     startTime,

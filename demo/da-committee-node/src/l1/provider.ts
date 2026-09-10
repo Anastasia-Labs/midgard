@@ -24,7 +24,10 @@ import type {
   ObservedStateQueueNode,
   ObservedStateQueueSnapshot,
 } from "../domain.js";
-import { createLocalKupmiosStateQueueReplayProvider } from "./state-queue-replay-provider.js";
+import {
+  createLocalKupmiosAvailabilityRetentionInputReader,
+  createLocalKupmiosStateQueueReplayProvider,
+} from "./state-queue-replay-provider.js";
 import type { StateQueueProvider } from "./state-queue-scanner.js";
 
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
@@ -496,6 +499,25 @@ export class LocalNodeChainAuthority {
     return this.cursor;
   }
 
+  async withCurrentCursor(
+    expected: ChainSyncCursor,
+    action: () => Promise<boolean>,
+  ): Promise<boolean> {
+    let result = false;
+    const run = this.operation.then(async () => {
+      await this.loadCursor();
+      if (
+        this.cursor === undefined ||
+        !samePersistedCursor(this.cursor, expected)
+      )
+        return;
+      result = await action();
+    });
+    this.operation = run.catch(() => undefined);
+    await run;
+    return result;
+  }
+
   async replay(afterSequence: number): Promise<readonly ChainSyncEvent[]> {
     await this.loadCursor();
     return this.store.replay(afterSequence);
@@ -642,6 +664,9 @@ export class LucidStateQueueProvider implements StateQueueProvider {
   private readonly providerSource: string;
   private readonly chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>;
   private readonly currentChainPointResolver: () => Promise<CanonicalChainPoint>;
+  private readonly retentionInputReader?: NonNullable<
+    StateQueueProvider["readAvailabilityRetentionInput"]
+  >;
   private readonly replayCheckpoints?: NonNullable<
     StateQueueProvider["fetchStateQueueReplayCheckpoints"]
   >;
@@ -654,6 +679,7 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     chainPointResolver,
     currentChainPointResolver,
     replayCheckpoints,
+    retentionInputReader,
   }: {
     readonly lucid: LucidEvolution;
     readonly stateQueueAddress: string;
@@ -661,6 +687,9 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     readonly providerSource: string;
     readonly chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>;
     readonly currentChainPointResolver: () => Promise<CanonicalChainPoint>;
+    readonly retentionInputReader?: NonNullable<
+      StateQueueProvider["readAvailabilityRetentionInput"]
+    >;
     readonly replayCheckpoints?: NonNullable<
       StateQueueProvider["fetchStateQueueReplayCheckpoints"]
     >;
@@ -672,6 +701,7 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     this.chainPointResolver = chainPointResolver;
     this.currentChainPointResolver = currentChainPointResolver;
     this.replayCheckpoints = replayCheckpoints;
+    this.retentionInputReader = retentionInputReader;
   }
 
   async fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]> {
@@ -692,6 +722,16 @@ export class LucidStateQueueProvider implements StateQueueProvider {
 
   async currentChainPoint(): Promise<CanonicalChainPoint> {
     return this.currentChainPointResolver();
+  }
+
+  async readAvailabilityRetentionInput(
+    transition: SDK.StateQueueAuthenticatedTransition,
+  ): Promise<UTxO | null> {
+    if (this.retentionInputReader === undefined)
+      throw new Error(
+        "state-queue provider has no consumed availability input source",
+      );
+    return this.retentionInputReader(transition);
   }
 
   async fetchStateQueueReplayCheckpoints(
@@ -1090,6 +1130,59 @@ export class LocalNodeStateQueueProvider
     return histories[0]!;
   }
 
+  async readAvailabilityRetentionInput(
+    transition: SDK.StateQueueAuthenticatedTransition,
+  ): Promise<UTxO | null> {
+    const before = await this.authority.currentCursor();
+    const values = await Promise.all(
+      this.queryProviders.map(async (provider, index) => {
+        if (provider.readAvailabilityRetentionInput === undefined)
+          throw new Error(
+            "local-node query surface has no consumed availability input source",
+          );
+        this.authority.assertAligned(
+          await provider.currentChainPoint(),
+          this.queryIdentities[index]!,
+        );
+        const value = await provider.readAvailabilityRetentionInput(transition);
+        this.authority.assertAligned(
+          await provider.currentChainPoint(),
+          this.queryIdentities[index]!,
+        );
+        return value;
+      }),
+    );
+    if (!samePersistedCursor(before, await this.authority.currentCursor()))
+      throw new Error(
+        "chain authority changed during availability input admission",
+      );
+    if (
+      values.some((value) => canonicalJson(value) !== canonicalJson(values[0]))
+    )
+      throw new Error(
+        "local-node query surfaces disagree on consumed availability input",
+      );
+    return values[0]!;
+  }
+
+  async withCurrentRetentionAuthority(
+    action: () => Promise<boolean>,
+  ): Promise<boolean> {
+    await this.authority.synchronizeToTip();
+    const current = await this.authority.currentCursor();
+    const consumed = await this.consumerCursorStore.load();
+    if (
+      consumed === undefined ||
+      current.sequence < consumed.sequence ||
+      current.rollbackGeneration !== consumed.rollbackGeneration
+    )
+      return false;
+    const events = await this.authority.replay(consumed.sequence);
+    if (events.some((event) => event.direction === "roll_backward"))
+      return false;
+    return this.authority.withCurrentCursor(current, action);
+  }
+
   async loadConsumedChainSyncCursor(): Promise<ChainSyncCursor | undefined> {
     return this.consumerCursorStore.load();
   }
@@ -1447,6 +1540,11 @@ export const providerFromUrl = async (
         kupoUrl,
         ogmiosUrl,
       ),
+      retentionInputReader: createLocalKupmiosAvailabilityRetentionInputReader({
+        kupoUrl,
+        stateQueueAddress: config.stateQueueAddress,
+        stateQueuePolicyId: config.stateQueuePolicyId,
+      }),
       replayCheckpoints: createLocalKupmiosStateQueueReplayProvider({
         deploymentIdentityDigest: config.deploymentFingerprint,
         stateQueuePolicyId: config.stateQueuePolicyId,

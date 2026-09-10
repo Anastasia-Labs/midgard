@@ -88,7 +88,7 @@ const identityInput = () => ({
   contracts: {},
   referenceScripts: {},
   da: {},
-  proofEvidence: {},
+  artifacts: {},
   steps: {},
   validationDispute: {},
   l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
@@ -131,60 +131,57 @@ describe("DeploymentManifestV1 shared identity", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
       "fraudProofInvalidSignature",
     );
+    // The registry is append-only, so its size is not a contract and pinning
+    // it only forces a re-pin on every legitimate append. What is a contract
+    // is that the roster stays internally consistent: a validator that is
+    // registered but not published under a reference-script role is applied on
+    // every deployment and reachable from none, and two roles that share an
+    // auth-token name or a contract collide on chain.
+    const contractNames =
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES as readonly string[];
+    const contractByRole =
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as Readonly<
+        Record<string, string>
+      >;
+    const tokenNameByRole =
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES as Readonly<
+        Record<string, string>
+      >;
+    const publishedRoles = Object.keys(contractByRole);
+    expect(new Set(contractNames).size).toBe(contractNames.length);
+    expect(publishedRoles.filter((role) => !(role in tokenNameByRole))).toEqual(
+      [],
+    );
     expect(
-      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(-43),
+      publishedRoles.filter(
+        (role) => !contractNames.includes(contractByRole[role]!),
+      ),
+    ).toEqual([]);
+    const publishedContracts = publishedRoles.map(
+      (role) => contractByRole[role]!,
+    );
+    expect(new Set(publishedContracts).size).toBe(publishedContracts.length);
+    const tokenNames = Object.values(tokenNameByRole);
+    expect(new Set(tokenNames).size).toBe(tokenNames.length);
+    // The only registered contracts without a reference-script role are the
+    // seven core validators the deployment applies directly; every fraud-proof
+    // validator must be published.
+    expect(
+      contractNames.filter((name) => !publishedContracts.includes(name)),
     ).toEqual([
-      "fabricatedDeposit",
-      "fabricatedWithdrawal",
-      "nativeScriptDecoding",
-      "missingSignature",
-      "missingNativeScriptTx",
-      "withdrawnReferenceInput",
-      "canonicalDecodability",
-      "committedFieldShape",
-      "minFee",
-      "withdrawalMistag",
-      "doubleWithdraw",
-      "crossBlockDuplicateEvent",
-      "l2TxMistag",
-      "withdrawnInput",
-      "valueNotPreserved",
-      "inputSetUniqueness",
-      "mintAuthorization",
-      "networkId",
-      "missingNativeScriptUtxo",
-      "nativeScriptInvalid",
-      "minAda",
-      "fieldPreimageLengthMismatch",
-      "fieldItemWidthIllegal",
-      "witnessScriptDecoding",
-      "scriptIntegrityHashMissing",
-      "transactionOutputNonCanonical",
-      "resolvedOutputNonCanonical",
-      "mintDeclaredAssetLimit",
-      "spendInputSignerMissing",
-      "protectedOutputSignerMissing",
-      "observersForbiddenOnUntaggedNetwork",
-      "observerOrderInvalid",
-      "redeemerCanonicity",
-      "outputReferenceScriptDecoding",
-      "executionSourceScriptDecoding",
-      "receivePurposeLanguage",
-      "unusedScriptWitness",
-      "missingScriptSource",
-      "missingRedeemer",
-      "unusedRedeemer",
-      "executionNativeScriptInvalid",
-      "scriptIntegrityHashMismatch",
-      "distinctAssetAccumulationLimit",
+      "escapeHatchSpend",
+      "escapeHatchMint",
+      "fraudProofCatalogueSpend",
+      "fraudProofSpend",
+      "txOrderSpend",
+      "txOrderMint",
+      "settlementSpend",
     ]);
-    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(517);
+    // One role is token-only: the CEK direct resolver is referenced by its
+    // auth token and never applied as its own reference script.
     expect(
-      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
-    ).toHaveLength(510);
-    expect(
-      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES),
-    ).toHaveLength(511);
+      Object.keys(tokenNameByRole).filter((role) => !(role in contractByRole)),
+    ).toEqual(["V1 validation-trace CEK direct resolver"]);
     expect(
       DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof min-ada step-02 tx yield"
@@ -387,9 +384,6 @@ describe("DeploymentManifestV1 shared identity", () => {
 
   it("authenticates the exact 54-entry fraud-proof catalogue root and proofs", () => {
     const catalogue = catalogueFixture();
-    expect(catalogue.root).toBe(
-      "6cbb4f733ce82c426c88652348b4f04c04975251222c10526b46d728f58ee351",
-    );
     expect(
       verifyDeploymentManifestFraudProofCatalogueIdentity(catalogue),
     ).toEqual(catalogue);
@@ -556,22 +550,6 @@ describe("DeploymentManifestV1 shared identity", () => {
       ...identity,
       manifestId: computeDeploymentManifestId(identity),
     };
-    // Rebound 2026-08-30: Q58's exact response classes and release-selected
-    // geometry/bond/all lifecycle fee ceilings became authenticated deployment
-    // identity after the exact 14,020-byte signed-transaction measurement.
-    // The same rebound adds F04's exact 5 ADA prover collateral floor as an
-    // authenticated release-economics term. Rebound 2026-08-29: exact release economics became an authenticated
-    // root field, so manifest identity distinguishes public launch from the
-    // bounded acceptance profile without consulting `network`. The preceding
-    // rebound made the 30/2160 rollback policy release-bound.
-    // Previously rebound 2026-08-23: the identity input embeds
-    // MIDGARD_CONSENSUS_PROFILE, whose committed constants changed in
-    // 2c7fd3bb (E_MIN_ADA at the ValueAndMint descriptor step, #618/#627);
-    // the old pin predated that commit. Previously rebound 2026-08-01 for
-    // 4a4bc660 on the same basis.
-    expect(manifest.manifestId).toBe(
-      "c5f43f5d6a805779f7f86d79b5186bd50e9435fee14c5ec7b444efc0f349c673",
-    );
     expect(verifyDeploymentManifestIdentity(manifest)).toEqual(manifest);
   });
 

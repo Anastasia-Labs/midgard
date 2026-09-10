@@ -529,9 +529,10 @@ describe("production fault-proof supervisor", () => {
       rollbackGeneration: "0",
       deadline: deadline(h28("92"), 0),
     });
+    const unsafeRejected = expect(unsafe).rejects.toThrow("deadline is unsafe");
     gate.resolve();
     await expect(run).resolves.toBeUndefined();
-    await expect(unsafe).rejects.toThrow("deadline is unsafe");
+    await unsafeRejected;
     await expect(supervisor.done).rejects.toThrow("deadline is unsafe");
     expect(supervisor.status()).toMatchObject({
       phase: "blocked",

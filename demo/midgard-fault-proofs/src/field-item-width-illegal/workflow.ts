@@ -72,6 +72,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { createFieldItemWidthIllegalCentralJournalAdapter } from "./central-journal.js";
 import type { FieldItemWidthIllegalContracts } from "./contracts.js";
 import {
@@ -267,7 +268,7 @@ export const loadManifestBoundFieldItemWidthIllegalConfig = async (
       })) as unknown as FieldItemWidthIllegalContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
-      hubOraclePolicyId: binding.deploymentInfo.hubOracleMint!.scriptHash,
+      hubOraclePolicyId: binding.contractEntries.hubOracleMint!.scriptHash,
       stateQueuePolicyId: binding.definition.stateQueue.policyId,
       fieldPreimageCertificatePolicyId: certificate.policyId,
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
@@ -1283,10 +1284,15 @@ export const createFieldItemWidthIllegalWorkflowRunnerSurface = ({
             "fieldItemWidthIllegal manifest-bound workflow identity differs from invocation",
           );
         }
-        return await executeManifestBoundFieldItemWidthIllegalWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundFieldItemWidthIllegalWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

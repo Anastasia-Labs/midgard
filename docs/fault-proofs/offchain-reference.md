@@ -1,16 +1,14 @@
 # Off-Chain Fault-Proof Reference
 
-Current TypeScript/runtime map reviewed against the working tree on 2026-09-01.
+Status: Active
+
+Last reviewed: 2026-09-07 (catalogue and installation wiring).
 
 ## SDK and catalogue
 
-`demo/midgard-sdk/src/fraud-proof/catalogue.ts` is the positional category
-authority. It declares 32 categories through:
-
-- `networkId` — `0000001c`
-- `missingNativeScriptUtxo` — `0000001d`
-- `nativeScriptInvalid` — `0000001e`
-- `minAda` — `0000001f`
+[`catalogue.ts`](../../demo/midgard-sdk/src/fraud-proof/catalogue.ts) owns
+explicit category IDs and presentation order. See [catalogue status](catalogue-status.md)
+for the checked source inventory; array position is not category identity.
 
 `demo/midgard-sdk/src/common.ts` and
 `demo/midgard-sdk/src/fraud-proof/contracts/` carry the matching contract
@@ -36,78 +34,23 @@ five reward accounts.
 - durable journals, funding reservations, retry/resume, and reconciliation;
 - manifest-bound production runner admission.
 
-The three newest family packages are:
+Family modules live under `src/` in `demo/midgard-fault-proofs`; use the
+catalogue and their exported contracts/preparation/workflow surfaces to locate a
+family, rather than a manually maintained "newest families" list.
 
-- `src/missing-native-script-utxo/`
-- `src/native-script-invalid/`
-- `src/min-ada/`
+## Production runners and watcher installation
 
-Each contains contracts, preparation, production-artifact, production-workflow,
-and explicit submit modules.
+`WORKFLOW_RUNNER_FACTORIES` in
+[`workflow/runtime.ts`](../../demo/midgard-fault-proofs/src/workflow/runtime.ts)
+provides manifest-bound runner factories. The
+[watcher application](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts)
+composes installations and exposes `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` and
+`WATCHER_MISSING_WORKFLOW_CATEGORIES`; the latter is currently empty.
 
-## Production runner factories
-
-`WORKFLOW_RUNNER_FACTORIES` currently exposes 25 categories:
-
-```text
-doubleSpend                 nonExistentInput
-nonExistentInputNoIndex     invalidRange
-zeroInput                   daHashPreimage
-noReferenceInput            referenceInputNoIdx
-invalidSignature            fabricatedDeposit
-fabricatedWithdrawal        withdrawnReferenceInput
-canonicalDecodability       committedFieldShape
-minFee                      doubleWithdraw
-l2TxMistag                  withdrawnInput
-missingSignature            missingNativeScriptTx
-inputSetUniqueness          networkId
-missingNativeScriptUtxo     nativeScriptInvalid
-minAda
-```
-
-The seven catalogue categories without a shared factory are
-`transitionTrace`, `validationTraceDispute`, `nativeScriptDecoding`,
-`withdrawalMistag`, `crossBlockDuplicateEvent`, `valueNotPreserved`, and
-`mintAuthorization`. They retain family-specific tooling, but do not satisfy
-the shared manifest-bound runner-factory interface.
-
-The static adapter registry intentionally records missing readiness until a
-compiled application overlays an exact admitted runner. A factory existing in
-the library is therefore not the same as an installed production workflow.
-
-## Watcher application
-
-`demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts` installs
-25 categories:
-
-```text
-doubleSpend                 nonExistentInput
-nonExistentInputNoIndex     invalidRange
-zeroInput                   daHashPreimage
-noReferenceInput            referenceInputNoIdx
-invalidSignature            fabricatedDeposit
-fabricatedWithdrawal        missingSignature
-missingNativeScriptTx       withdrawnReferenceInput
-canonicalDecodability       committedFieldShape
-minFee                      doubleWithdraw
-l2TxMistag                  withdrawnInput
-inputSetUniqueness          networkId
-missingNativeScriptUtxo     nativeScriptInvalid
-minAda
-```
-
-It does not install:
-
-```text
-transitionTrace             validationTraceDispute
-nativeScriptDecoding        withdrawalMistag
-crossBlockDuplicateEvent    valueNotPreserved
-mintAuthorization
-```
-
-The watcher proof-thread indexer and deployment identity know the full
-catalogue topology. That knowledge does not replace the missing runner
-installations.
+The static adapter registry remains unready until an application supplies an
+admitted runner. Runtime startup checks proof readiness, durable recovery,
+supervision, and deadlines. See the [watcher README](../../demo/midgard-watcher/README.md)
+for the operational CLI. Source installation is distinct from public acceptance.
 
 ## Emulator acceptance basis
 
@@ -132,9 +75,7 @@ and cannot establish completion.
 
 ## Operational boundary
 
-Library modules, classifiers, and unit tests are implemented more broadly than
-the production watcher application. Release readiness requires all enabled
-families to have:
+Release readiness requires all enabled families to have:
 
 1. a concrete public retained-DA/L1 authority;
 2. an admitted manifest-bound runner;

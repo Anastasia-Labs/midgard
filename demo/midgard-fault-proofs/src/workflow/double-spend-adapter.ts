@@ -1428,7 +1428,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             chunks === undefined ||
             chunks.some((chunk) => chunk.utxo.txHash !== txHash)
           ) {
-            return { kind: "not_found" };
+            return { kind: "pending", txHash };
           }
           for (const chunk of chunks) {
             const observed = await publicationObserver.observeExact({
@@ -1438,7 +1438,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               expectedOutRef: chunk.outRef,
               expectedDatumCbor: chunk.datumCbor,
             });
-            if (observed.kind !== "confirmed") return { kind: "not_found" };
+            if (observed.kind !== "confirmed")
+              return { kind: "pending", txHash };
           }
         } else {
           const proofFor = requireJournalString(
@@ -1462,7 +1463,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
                 utxo.txHash === txHash &&
                 utxo.datum === requested.input.publicationDatumCbor,
             );
-            if (candidate?.datum == null) return { kind: "not_found" };
+            if (candidate?.datum == null) return { kind: "pending", txHash };
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
               kind: "field_publication",
@@ -1470,7 +1471,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               expectedOutRef: `${candidate.txHash}#${candidate.outputIndex.toString()}`,
               expectedDatumCbor: candidate.datum,
             });
-            if (observed.kind !== "confirmed") return { kind: "not_found" };
+            if (observed.kind !== "confirmed")
+              return { kind: "pending", txHash };
           } else {
             const certificate = await resolveFaultProofFieldPreimageCertificate(
               {
@@ -1481,7 +1483,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               },
             );
             if (certificate === undefined || certificate.txHash !== txHash) {
-              return { kind: "not_found" };
+              return { kind: "pending", txHash };
             }
             const certification = deriveFieldPreimageCertification(plan.plan);
             const observed = await publicationObserver.observeExact({
@@ -1495,7 +1497,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               expectedDatumCbor: certification.datumCbor,
               expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
             });
-            if (observed.kind !== "confirmed") return { kind: "not_found" };
+            if (observed.kind !== "confirmed")
+              return { kind: "pending", txHash };
           }
         }
         return { kind: "confirmed", txHash };
@@ -1539,6 +1542,14 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
                         observedStage.nextRemovalOutRef !==
                           requested.input.nextRemovalOutRef)
                     : false;
+      if (
+        !intendedTransactionConfirmed &&
+        actionStage === "remove" &&
+        observedStage.kind === "proof_token"
+      ) {
+        await mutationLease?.renew();
+        return { kind: "pending", txHash };
+      }
       if (stageAdvanced && !intendedTransactionConfirmed) {
         await mutationLease?.fail(
           "chain advanced without the journaled transaction in authenticated unit history",
@@ -1556,9 +1567,9 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         return { kind: "confirmed", txHash };
       }
       await mutationLease?.renew();
-      return intendedTransactionConfirmed
-        ? { kind: "pending", txHash }
-        : { kind: "not_found" };
+      // Finalized-history absence cannot distinguish an accepted transaction
+      // awaiting depth from a rejected one. Keep the durable intent and inputs.
+      return { kind: "pending", txHash };
     },
   };
 };

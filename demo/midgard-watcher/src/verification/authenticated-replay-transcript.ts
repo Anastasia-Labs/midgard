@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type AuthenticatedStateQueueHeaderObservation,
@@ -17,6 +17,11 @@ import {
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import {
+  assertWatcherLocalUserEventAuthorityCurrent,
+  readWatcherLocalUserEventAuthority,
+  type WatcherLocalUserEventAuthority,
+} from "../indexers/user-event-indexer.js";
+import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentReleaseFinalityAuthority,
@@ -24,12 +29,18 @@ import {
 import {
   assertWatcherFullBlockReplayResult,
   evaluateWatcherBlockReplay,
+  readWatcherBlockReplayEventAuthorityRecords,
+  snapshotWatcherBlockReplayEventAuthorities,
   type WatcherBlockReplayEventAuthority,
   type WatcherBlockReplayPriorUtxo,
   type WatcherBlockReplayResult,
 } from "./block-replay.js";
 import { evaluateWatcherHeaderRootReconstruction } from "./header-root-reconstruction.js";
 import { evaluateWatcherPhaseABlock } from "./phase-a-verifier.js";
+import {
+  readWatcherReplayTranscriptRecords,
+  watcherReplayTranscriptSemanticProjection,
+} from "./replay-transcript-records.js";
 import type { WatcherRuleBundle } from "./rule-bundle.js";
 
 export const WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT =
@@ -45,9 +56,9 @@ export type WatcherReplayCoordinate = Readonly<{
 }>;
 
 /**
- * Exact raw W15/W16/W22/W24/W25 capture. It deliberately has no category,
- * finding, violation, or decision digest. Those are outputs of fault-proofs'
- * independent replay and classifier, not watcher inputs.
+ * Exact W22/W24/W25 capture and descriptive canonical event records. Opaque
+ * event authorities never serialize. Category, finding, violation and decision
+ * digests are outputs of independent fault-proof replay and classification.
  */
 export type WatcherAuthenticatedReplayTranscript = Readonly<{
   schemaVersion: typeof WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT;
@@ -92,6 +103,26 @@ export const assertWatcherAuthenticatedReplayTranscript = (
 
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
+
+const readLocalEventAuthorityForHeader = async (
+  authority: WatcherLocalUserEventAuthority,
+  header: WatcherStateQueueHeaderObservation,
+): Promise<void> => {
+  const { throughHeader } = await readWatcherLocalUserEventAuthority(authority);
+  if (
+    throughHeader !== null &&
+    (throughHeader.headerHash !== header.headerHash ||
+      throughHeader.headerCborHex !== header.headerCborHex ||
+      throughHeader.queueOutRef !== header.queueOutRef ||
+      throughHeader.observedTransactionHash !==
+        header.observedTransactionHash ||
+      throughHeader.observedBlockHash !== header.observedBlockHash ||
+      throughHeader.observedSlot !== header.observedSlot ||
+      throughHeader.observedBlockNo !== header.observedBlockNo)
+  ) {
+    throw new Error("local event authority cutoff differs from replay header");
+  }
+};
 
 const assertRawCborValue = (
   value: unknown,
@@ -263,42 +294,71 @@ export const createWatcherAuthenticatedReplayTranscript = async (input: {
   readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthority[];
   readonly coordinate: WatcherReplayCoordinate;
 }): Promise<WatcherAuthenticatedReplayTranscript> => {
-  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
-  assertWatcherStateQueueObservation(input.stateQueueObservation);
-  assertWatcherStateQueueHeaderObservation(input.header);
+  // Ordinary input material belongs to this invocation before any release,
+  // reconstruction or local-checkpoint read can yield. Opaque authorities keep
+  // their original identities and are checked again at admission.
+  const captured = Object.freeze({
+    deploymentIdentity: input.deploymentIdentity,
+    stateQueueObservation: input.stateQueueObservation,
+    header: input.header,
+    payloadEnvelopeCbor: Buffer.from(input.payloadEnvelopeCbor),
+    daProvenance: structuredClone(input.daProvenance),
+    priorState: orderedPriorState(input.priorState),
+    ruleBundle: structuredClone(input.ruleBundle),
+    ruleBundleCommitment: input.ruleBundleCommitment,
+    eventAuthorities: snapshotWatcherBlockReplayEventAuthorities(
+      input.eventAuthorities ?? [],
+    ),
+    coordinate: Object.freeze({
+      domain: input.coordinate.domain,
+      index: input.coordinate.index,
+    }),
+  });
+  const payloadEnvelopeCborHex = captured.payloadEnvelopeCbor.toString("hex");
+  const payloadEnvelopeSha256 = sha256(captured.payloadEnvelopeCbor);
+  const daProvenanceCborHex = watcherReplayRawRecordCborHex(
+    captured.daProvenance,
+  );
+  const ruleBundleCborHex = watcherReplayRawRecordCborHex(captured.ruleBundle);
+  const stateQueueHeaderObservationCborHex = watcherReplayRawRecordCborHex(
+    captured.header,
+  );
+  assertVerifiedWatcherDeploymentIdentity(captured.deploymentIdentity);
+  assertWatcherStateQueueObservation(captured.stateQueueObservation);
+  assertWatcherStateQueueHeaderObservation(captured.header);
   if (
-    input.stateQueueObservation.deploymentIdentityDigest !==
-      input.deploymentIdentity.manifestId ||
-    input.ruleBundleCommitment !==
-      input.deploymentIdentity.ruleBundleCommitment ||
-    input.ruleBundle.deploymentManifestId !==
-      input.deploymentIdentity.manifestId ||
-    input.ruleBundle.network !== input.deploymentIdentity.network ||
-    input.ruleBundle.releaseEvidenceDigest !==
-      input.deploymentIdentity.releaseEvidenceDigest ||
-    JSON.stringify(input.ruleBundle.programCommitments) !==
-      JSON.stringify(input.deploymentIdentity.programCommitments) ||
-    !input.stateQueueObservation.finalizedHeaders.includes(input.header)
+    captured.stateQueueObservation.deploymentIdentityDigest !==
+      captured.deploymentIdentity.manifestId ||
+    captured.ruleBundleCommitment !==
+      captured.deploymentIdentity.ruleBundleCommitment ||
+    captured.ruleBundle.deploymentManifestId !==
+      captured.deploymentIdentity.manifestId ||
+    captured.ruleBundle.network !== captured.deploymentIdentity.network ||
+    captured.ruleBundle.blueprintHash !==
+      captured.deploymentIdentity.blueprintHash ||
+    JSON.stringify(captured.ruleBundle.programCommitments) !==
+      JSON.stringify(captured.deploymentIdentity.programCommitments) ||
+    !captured.stateQueueObservation.finalizedHeaders.includes(captured.header)
   ) {
     throw new Error(
       "production replay header differs from deployment queue authority",
     );
   }
   const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
-    input.deploymentIdentity,
+    captured.deploymentIdentity,
   ).verifyForWorkflow({
-    deploymentFingerprint: input.deploymentIdentity.manifestId,
+    deploymentFingerprint: captured.deploymentIdentity.manifestId,
   });
   const observation = authenticatedHeaderObservation({
-    stateQueueObservation: input.stateQueueObservation,
-    header: input.header,
+    stateQueueObservation: captured.stateQueueObservation,
+    header: captured.header,
     minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
   });
-  const priorState = orderedPriorState(input.priorState);
+  const priorState = captured.priorState;
   const reconstruction = await evaluateWatcherHeaderRootReconstruction({
     observation,
-    payloadEnvelopeCbor: input.payloadEnvelopeCbor,
-    daProvenance: input.daProvenance,
+    payloadEnvelopeCbor: captured.payloadEnvelopeCbor,
+    daProvenance: captured.daProvenance,
     minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
   });
   if (
@@ -310,10 +370,10 @@ export const createWatcherAuthenticatedReplayTranscript = async (input: {
   const phaseA = await evaluateWatcherPhaseABlock({
     observation,
     reconstruction,
-    payloadEnvelopeCbor: input.payloadEnvelopeCbor,
-    daProvenance: input.daProvenance,
-    ruleBundle: input.ruleBundle,
-    ruleBundleCommitment: input.ruleBundleCommitment,
+    payloadEnvelopeCbor: captured.payloadEnvelopeCbor,
+    daProvenance: captured.daProvenance,
+    ruleBundle: captured.ruleBundle,
+    ruleBundleCommitment: captured.ruleBundleCommitment,
     minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
   });
   if (phaseA.action !== "accept") {
@@ -323,64 +383,79 @@ export const createWatcherAuthenticatedReplayTranscript = async (input: {
     observation,
     reconstruction,
     phaseA,
-    payloadEnvelopeCbor: input.payloadEnvelopeCbor,
-    daProvenance: input.daProvenance,
+    payloadEnvelopeCbor: captured.payloadEnvelopeCbor,
+    daProvenance: captured.daProvenance,
     priorState,
-    ruleBundle: input.ruleBundle,
-    ruleBundleCommitment: input.ruleBundleCommitment,
-    eventAuthorities: input.eventAuthorities ?? [],
+    ruleBundle: captured.ruleBundle,
+    ruleBundleCommitment: captured.ruleBundleCommitment,
+    eventAuthorities: captured.eventAuthorities ?? [],
     minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
   });
   assertWatcherFullBlockReplayResult(blockReplay);
   if (
     blockReplay.action === "error" ||
-    blockReplay.headerHash !== input.header.headerHash ||
+    blockReplay.priorStateRoot !== observation.header.prevUtxosRoot ||
+    blockReplay.headerHash !== captured.header.headerHash ||
     blockReplay.payloadEnvelopeSha256 !==
       reconstruction.payloadEnvelopeSha256 ||
     blockReplay.payloadSha256 !== reconstruction.payloadSha256 ||
     blockReplay.reconstructionDigest !== reconstruction.resultDigest ||
     blockReplay.phaseAResultDigest !== phaseA.resultDigest ||
-    blockReplay.ruleBundleCommitment !== input.ruleBundleCommitment ||
+    blockReplay.ruleBundleCommitment !== captured.ruleBundleCommitment ||
     !HEX_32.test(blockReplay.resultDigest)
   ) {
     throw new Error(
       "production replay W25 result is not an exact usable receipt",
     );
   }
-  const eventAuthorityRecordsCborHex = Object.freeze(
-    (input.eventAuthorities ?? []).map(watcherReplayRawRecordCborHex),
+  await Promise.all(
+    captured.eventAuthorities.map(async (authority) => {
+      if (authority.localUserEvent !== undefined) {
+        await readLocalEventAuthorityForHeader(
+          authority.localUserEvent,
+          captured.header,
+        );
+      }
+    }),
   );
-  const payloadEnvelopeCborHex = Buffer.from(
-    input.payloadEnvelopeCbor,
-  ).toString("hex");
+  const eventAuthorityRecordsCborHex = Object.freeze(
+    readWatcherBlockReplayEventAuthorityRecords(blockReplay).map(
+      watcherReplayRawRecordCborHex,
+    ),
+  );
+  // No asynchronous work follows this all-handle fence before admission.
+  for (const authority of captured.eventAuthorities) {
+    if (authority.localUserEvent !== undefined) {
+      assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
+    }
+  }
   const transcriptInput = Object.freeze({
     schemaVersion: WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT,
-    deploymentFingerprint: input.deploymentIdentity.manifestId,
-    stateQueueObservationDigest: input.stateQueueObservation.observationDigest,
-    headerHash: input.header.headerHash,
+    deploymentFingerprint: captured.deploymentIdentity.manifestId,
+    stateQueueObservationDigest:
+      captured.stateQueueObservation.observationDigest,
+    headerHash: captured.header.headerHash,
     inclusionPoint: Object.freeze({
-      transactionHash: input.header.observedTransactionHash,
-      blockHash: input.header.observedBlockHash,
-      blockNo: input.header.observedBlockNo,
-      slot: input.header.observedSlot,
-      chainPointId: input.header.observedChainPointId,
-      finalityDepth: input.header.finalityDepth,
+      transactionHash: captured.header.observedTransactionHash,
+      blockHash: captured.header.observedBlockHash,
+      blockNo: captured.header.observedBlockNo,
+      slot: captured.header.observedSlot,
+      chainPointId: captured.header.observedChainPointId,
+      finalityDepth: captured.header.finalityDepth,
     }),
-    coordinate: coordinate(input.coordinate, blockReplay),
+    coordinate: coordinate(captured.coordinate, blockReplay),
     payloadEnvelopeCborHex,
-    payloadEnvelopeSha256: sha256(input.payloadEnvelopeCbor),
+    payloadEnvelopeSha256,
     payloadSha256: reconstruction.payloadSha256,
-    daProvenanceCborHex: watcherReplayRawRecordCborHex(input.daProvenance),
+    daProvenanceCborHex,
     authenticatedHeaderObservationCborHex:
       watcherReplayRawRecordCborHex(observation),
-    stateQueueHeaderObservationCborHex: watcherReplayRawRecordCborHex(
-      input.header,
-    ),
+    stateQueueHeaderObservationCborHex,
     priorState,
     reconstructionRecordCborHex: watcherReplayRawRecordCborHex(reconstruction),
     phaseARecordCborHex: watcherReplayRawRecordCborHex(phaseA),
-    ruleBundleCborHex: watcherReplayRawRecordCborHex(input.ruleBundle),
-    ruleBundleCommitment: input.ruleBundleCommitment,
+    ruleBundleCborHex,
+    ruleBundleCommitment: captured.ruleBundleCommitment,
     eventAuthorityRecordsCborHex,
     blockReplayRecordCborHex: watcherReplayRawRecordCborHex(blockReplay),
     blockReplayResultDigest: blockReplay.resultDigest,
@@ -393,55 +468,6 @@ export const createWatcherAuthenticatedReplayTranscript = async (input: {
   return transcript;
 };
 
-const decodedCborPlainValue = (value: unknown, path = "$"): unknown => {
-  if (value instanceof Map) {
-    const result: Record<string, unknown> = {};
-    for (const [key, entry] of value) {
-      if (
-        typeof key !== "string" ||
-        Object.prototype.hasOwnProperty.call(result, key)
-      ) {
-        throw new Error(`${path} contains a non-string or duplicate key`);
-      }
-      result[key] = decodedCborPlainValue(entry, `${path}.${key}`);
-    }
-    return result;
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry, index) =>
-      decodedCborPlainValue(entry, `${path}[${index.toString()}]`),
-    );
-  }
-  return value;
-};
-
-const persistedCoordinate = (value: unknown): WatcherReplayCoordinate => {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
-    throw new Error("persisted replay coordinate is not an exact record");
-  }
-  const record = value as Readonly<Record<string, unknown>>;
-  if (
-    Object.keys(record).length !== 2 ||
-    !Object.prototype.hasOwnProperty.call(record, "domain") ||
-    !Object.prototype.hasOwnProperty.call(record, "index") ||
-    (record.domain !== "block" &&
-      record.domain !== "transaction" &&
-      record.domain !== "mutation" &&
-      record.domain !== "event" &&
-      record.domain !== "transition_step") ||
-    typeof record.index !== "string" ||
-    !NATURAL.test(record.index)
-  ) {
-    throw new Error("persisted replay coordinate is invalid");
-  }
-  return Object.freeze({ domain: record.domain, index: record.index });
-};
-
 export const watcherAuthenticatedReplayTranscriptCborHex = (
   transcript: WatcherAuthenticatedReplayTranscript,
 ): string => {
@@ -450,9 +476,10 @@ export const watcherAuthenticatedReplayTranscriptCborHex = (
 };
 
 /**
- * Re-admits persisted transcript bytes only by recomputing W22/W24/W25 from
- * freshly authenticated deployment/L1/public-DA inputs. Persisted derived
- * records and digests are compared as outputs and never used as authority.
+ * Validates persisted bytes for integrity and stable semantics, then recomputes
+ * W22/W24/W25 from freshly authenticated deployment/L1/public-DA/event inputs.
+ * Historical provenance remains descriptive. The returned transcript carries
+ * the fresh capture and its own digest; persisted records never grant authority.
  */
 export const replayWatcherAuthenticatedReplayTranscript = async (input: {
   readonly persistedTranscriptCborHex: string;
@@ -466,46 +493,73 @@ export const replayWatcherAuthenticatedReplayTranscript = async (input: {
   readonly ruleBundleCommitment: string;
   readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthority[];
 }): Promise<WatcherAuthenticatedReplayTranscript> => {
-  if (!/^(?:[0-9a-f]{2})+$/u.test(input.persistedTranscriptCborHex)) {
-    throw new Error("persisted production replay transcript is not CBOR hex");
-  }
-  const decoded = decodedCborPlainValue(
-    decodeSingleCbor(Buffer.from(input.persistedTranscriptCborHex, "hex")),
-  );
-  if (
-    typeof decoded !== "object" ||
-    decoded === null ||
-    Array.isArray(decoded) ||
-    Object.getPrototypeOf(decoded) !== Object.prototype
-  ) {
-    throw new Error("persisted production replay transcript is not a record");
-  }
-  if (
-    watcherReplayRawRecordCborHex(decoded) !== input.persistedTranscriptCborHex
-  ) {
-    throw new Error("persisted production replay transcript is noncanonical");
-  }
-  const recomputed = await createWatcherAuthenticatedReplayTranscript({
+  const captured = Object.freeze({
+    persistedTranscriptCborHex: input.persistedTranscriptCborHex,
     deploymentIdentity: input.deploymentIdentity,
     stateQueueObservation: input.stateQueueObservation,
     header: input.header,
-    payloadEnvelopeCbor: input.payloadEnvelopeCbor,
-    daProvenance: input.daProvenance,
-    priorState: input.priorState,
-    ruleBundle: input.ruleBundle,
+    payloadEnvelopeCbor: Buffer.from(input.payloadEnvelopeCbor),
+    daProvenance: structuredClone(input.daProvenance),
+    priorState: orderedPriorState(input.priorState),
+    ruleBundle: structuredClone(input.ruleBundle),
     ruleBundleCommitment: input.ruleBundleCommitment,
-    eventAuthorities: input.eventAuthorities,
-    coordinate: persistedCoordinate(
-      (decoded as Readonly<Record<string, unknown>>).coordinate,
+    eventAuthorities: snapshotWatcherBlockReplayEventAuthorities(
+      input.eventAuthorities ?? [],
     ),
   });
+  assertVerifiedWatcherDeploymentIdentity(captured.deploymentIdentity);
+  const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
+    captured.deploymentIdentity,
+  ).verifyForWorkflow({
+    deploymentFingerprint: captured.deploymentIdentity.manifestId,
+  });
+  const persisted = await readWatcherReplayTranscriptRecords(
+    captured.persistedTranscriptCborHex,
+    releaseFinality.policy.confirmationDepth,
+  );
+  coordinate(persisted.transcript.coordinate, persisted.blockReplay);
+  const recomputed = await createWatcherAuthenticatedReplayTranscript({
+    deploymentIdentity: captured.deploymentIdentity,
+    stateQueueObservation: captured.stateQueueObservation,
+    header: captured.header,
+    payloadEnvelopeCbor: captured.payloadEnvelopeCbor,
+    daProvenance: captured.daProvenance,
+    priorState: captured.priorState,
+    ruleBundle: captured.ruleBundle,
+    ruleBundleCommitment: captured.ruleBundleCommitment,
+    eventAuthorities: captured.eventAuthorities,
+    coordinate: persisted.transcript.coordinate,
+  });
+  const fresh = await readWatcherReplayTranscriptRecords(
+    watcherAuthenticatedReplayTranscriptCborHex(recomputed),
+    releaseFinality.policy.confirmationDepth,
+  );
   if (
-    watcherAuthenticatedReplayTranscriptCborHex(recomputed) !==
-    input.persistedTranscriptCborHex
+    watcherReplayRawRecordCborHex(
+      watcherReplayTranscriptSemanticProjection(persisted),
+    ) !==
+    watcherReplayRawRecordCborHex(
+      watcherReplayTranscriptSemanticProjection(fresh),
+    )
   ) {
     throw new Error(
-      "persisted production replay transcript differs from fresh authenticated replay",
+      "persisted production replay transcript differs from fresh authenticated replay semantics",
     );
   }
+  await Promise.all(
+    captured.eventAuthorities.map(async (authority) => {
+      if (authority.localUserEvent !== undefined)
+        await readLocalEventAuthorityForHeader(
+          authority.localUserEvent,
+          captured.header,
+        );
+    }),
+  );
+  for (const authority of captured.eventAuthorities) {
+    if (authority.localUserEvent !== undefined)
+      assertWatcherLocalUserEventAuthorityCurrent(authority.localUserEvent);
+  }
+  // The original CBOR string is unchanged. Only this fresh independently
+  // admitted transcript is returned; its capture provenance and digest remain new.
   return recomputed;
 };

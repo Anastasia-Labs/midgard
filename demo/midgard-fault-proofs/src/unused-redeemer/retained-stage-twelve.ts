@@ -292,10 +292,9 @@ const coreFrontier = (
 });
 
 /** Strict, callback-free reconstruction of the complete stage-12 universe. */
-export const buildUnusedRedeemerDirectionControlFromRetainedDa = async ({
+export const buildUnusedRedeemerControlFromRetainedDa = async ({
   eventKey,
   transactionId,
-  direction,
   redeemerIndex,
   authenticatedValidationTraceEntries,
   retainedValidationWitnessEntries,
@@ -303,7 +302,6 @@ export const buildUnusedRedeemerDirectionControlFromRetainedDa = async ({
 }: {
   eventKey: EventKey;
   transactionId: string;
-  direction: 0n | 1n;
   redeemerIndex: number;
   authenticatedValidationTraceEntries: readonly EncodedEntry[];
   retainedValidationWitnessEntries: readonly EncodedEntry[];
@@ -411,8 +409,7 @@ export const buildUnusedRedeemerDirectionControlFromRetainedDa = async ({
     control.source_total_count !== control.source_count ||
     control.redeemer_total_count !== control.redeemer_count ||
     control.discovery.execution_count !== control.purpose_count ||
-    control.discovery.redeemer_item_control_hash === "" ||
-    selectedBit !== direction
+    control.discovery.redeemer_item_control_hash === ""
   )
     throw new Error(
       `unusedRedeemer terminal ScriptSources frontier is incomplete: ${JSON.stringify({ sourceTotal: control.source_total_count.toString(), sourceCount: control.source_count.toString(), redeemerTotal: control.redeemer_total_count.toString(), redeemerCount: control.redeemer_count.toString(), executionCount: control.discovery.execution_count.toString(), purposeCount: control.purpose_count.toString(), itemHash: control.discovery.redeemer_item_control_hash })}`,
@@ -632,6 +629,15 @@ export const buildUnusedRedeemerDirectionControlFromRetainedDa = async ({
     if (languageTag !== 0 && languageTag !== 3 && languageTag !== 128)
       throw new Error("unusedRedeemer selected language tag changed");
     const itemControl = auxiliary.RedeemerItemStepWitness.control;
+    // A purpose scans earlier redeemer coordinates before it reaches its own.
+    // Only the exact selected pointer contributes an execution leaf.
+    const purposeTag = [0n, 1n, 3n, 6n][Number(discovery.current_purpose_kind)];
+    if (
+      purposeTag === undefined ||
+      itemControl.purpose_tag !== purposeTag ||
+      itemControl.pointer_index !== discovery.current_purpose_index
+    )
+      return [];
     const purpose = purposes.find(
       (candidate) =>
         candidate.purposeKind === Number(discovery.current_purpose_kind) &&
@@ -706,6 +712,7 @@ export const buildUnusedRedeemerDirectionControlFromRetainedDa = async ({
     machineState: retained.machine_state,
     traceProof: retained.trace_proof,
     control,
+    selectedBit,
     witnessCbor: retained.witness_cbor,
     begin: beginAuxiliary.RedeemerScanBeginWitness,
     itemSteps: Object.freeze(itemSteps),

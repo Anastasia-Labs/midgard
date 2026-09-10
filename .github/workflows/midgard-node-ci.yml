@@ -248,6 +248,18 @@ jobs:
         run: pnpm --dir demo/midgard-sdk run fixtures:committed-field-shape-v1:check
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
+      # The HeaderV1 ABI pin. `sdk-aiken-schema-parity` compares SDK schemas to
+      # blueprint definitions structurally but normalizes titles away, so field
+      # *names* and their order are not covered there. This gate is the only one
+      # that holds the 25 ordered Header field names, their SDK spellings and the
+      # three field groups against BOTH real projections — the blueprint the
+      # compiler just generated and the Data schema the SDK build above exports.
+      # It runs after the SDK build because it imports that dist. The self-test
+      # follows it because a gate nothing can redden is not a gate (#519/#523):
+      # it seeds fourteen hostile mutations into one input at a time and requires
+      # each to be rejected, bracketed by clean control runs.
+      - name: Verify HeaderV1 ABI against the blueprint and the built SDK
+        run: node demo/scripts/verify-canonical-v1-header-v1-abi.mjs && node --test demo/scripts/verify-canonical-v1-header-v1-abi.test.mjs && node demo/scripts/verify-canonical-v1-header-v1-abi-self-test.mjs
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
       # The C20-6, C20-7 and field-8 maximum constant families in
@@ -258,6 +270,17 @@ jobs:
       # hand-mirrored twins again the moment the boundary moves (#588).
       - name: Check ordered-collection boundary Aiken constants
         run: pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:check
+      # The three nested-maximum families — the balanced constructor/list/map
+      # datum, the nested redeemer `Data` and the exact 5,000-byte `Value` — on
+      # the same footing. Their Aiken terminals used to be retyped out of a
+      # `MIDGARD_PRINT_AIKEN_VECTOR=1` terminal dump, and that same variable
+      # switched off the suites' own terminal comparison, so the one command
+      # that refreshed the on-chain constants also removed the oracle that made
+      # them trustworthy. The suites now assert unconditionally and publish on
+      # the machine channel; this job is what makes a stale on-chain terminal a
+      # red build rather than a silent cross-language drift.
+      - name: Check nested boundary Aiken constants
+        run: pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:check
       # The V1 CEK core-step channel. Before it the Aiken CEK and the TypeScript
       # CEK were pinned against each other by seventeen integer tags and one
       # hand-pasted CBOR vector; nothing proved that a step the TypeScript trace
@@ -270,6 +293,16 @@ jobs:
       # `:sync` re-greens both language suites unnoticed.
       - name: Check V1 CEK core-step golden vectors
         run: pnpm --dir demo/midgard-validation run fixtures:cek-core-step-v1:check
+      # The V1 validation-auxiliary-witness ABI channel. Its generator emits
+      # both `tests/fixtures/validation-auxiliary-witness-v1.generated.json` —
+      # which `demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts`
+      # decodes with the SDK's second implementation of the same ABI — and the
+      # on-chain `validation-auxiliary-witness-v1-abi-generated.ak` that pins
+      # the corpus hash and per-tag arities. It supported `--check` but no job
+      # ran it, so an edited encoder plus a re-run of the generator re-greened
+      # both language suites with nothing to notice (#519/#523).
+      - name: Check validation-auxiliary-witness ABI golden vectors
+        run: pnpm --dir demo/midgard-validation run fixtures:validation-auxiliary-witness-v1:check
       - name: Build, typecheck, and test fault-proof tooling
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
       - name: Verify DA committee transport and admission
@@ -288,6 +321,17 @@ jobs:
         run: |
           pnpm --dir demo/midgard-node run native:mpf-owner:check
           pnpm --dir demo/midgard-node run native:mpf-owner:build
+      # The transition-trace ABI golden channel. `pnpm --dir demo/midgard-node
+      # test` already holds tests/fixtures/transition-trace-abi.json against the
+      # SDK encoder, and `aiken check` decodes every one of those fixtures into
+      # its on-chain type and re-serialises it byte for byte
+      # (onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak).
+      # This step closes the loop between the two by proving the generated Aiken
+      # golden still carries exactly the bytes the JSON golden holds, so neither
+      # side can be updated alone. It is a pure file transform: no build, no
+      # database.
+      - name: Check transition-trace ABI golden vectors
+        run: pnpm --dir demo/midgard-node run fixtures:transition-trace-abi:check
       - name: Typecheck Midgard node
         run: pnpm --dir demo/midgard-node run typecheck
       - name: Build Midgard node and migrate isolated CI database

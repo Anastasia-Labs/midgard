@@ -7,8 +7,8 @@
 //// control; the thin terminal step carries no descriptor yields, recomputes
 //// all four commitments from one redeemer triple, and performs the
 //// input-signer-authorization arms and the accumulator successor itself. See
-//// docs/fault-proofs/size-plans/validation-trace-resolve-inputs-membership-finalize-semantic-v1.md
-//// §4.2-4.4.
+//// docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md
+//// Decision section.
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
@@ -98,10 +98,8 @@ validator main(
         attach_roles,
         yield_ref_input_indices,
       }) -> {
-        let auxiliary = LedgerOutputProofFinalizeWitness {
-          descriptor_cbor,
-          signer_proof,
-        }
+        let auxiliary =
+          LedgerOutputProofFinalizeWitness { descriptor_cbor, signer_proof }
         let auxiliary_data: Data = auxiliary
         continue_winning(
           ResolveInputs,
@@ -251,9 +249,8 @@ fn membership_terminal_dispatch(
     carrier.control_raw_lop_is_pinned(frame, pending.descriptor_cbor),
     {
       let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-      expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
-        descriptor.address,
-      )
+      expect Some(address) =
+        ledger_output_v1.decode_canonical_address_bytes(descriptor.address)
       when
         input_signer_authorization(
           pending.source_kind,

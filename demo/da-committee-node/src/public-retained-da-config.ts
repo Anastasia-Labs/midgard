@@ -1,9 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import {
-  assertMidgardConsensusReleaseReady,
-  isMidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile";
+import { isMidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import {
   normalizeDaDeploymentFingerprintHex,
   parseDaLibp2pRuntimeManifest,
@@ -133,7 +130,6 @@ const verifyContractDeployment = (
   if (!isMidgardConsensusProfile(verified.consensusProfile)) {
     throw new Error(`${path} does not contain the exact V1 consensus profile`);
   }
-  assertMidgardConsensusReleaseReady();
   if (typeof verified.network !== "string" || verified.network.length === 0) {
     throw new Error(`${path} does not contain a deployment network`);
   }

@@ -1,5 +1,9 @@
 import { readFile, realpath } from "node:fs/promises";
 
+import {
+  type LoadedWatcherRuleBundle,
+  loadWatcherRuleBundle,
+} from "../verification/rule-bundle.js";
 import { parseWatcherStrictJsonValue } from "./config.js";
 import {
   type VerifiedWatcherDeploymentIdentity,
@@ -7,6 +11,23 @@ import {
 } from "./deployment-identity.js";
 
 type ReadDeploymentAuthorityFile = (path: string) => Promise<Uint8Array>;
+
+export type VerifiedWatcherDeploymentAuthority = Readonly<{
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  ruleBundle: LoadedWatcherRuleBundle;
+}>;
+
+const admittedDeploymentAuthorities = new WeakSet<object>();
+
+export const assertWatcherVerifiedDeploymentAuthority = (
+  authority: VerifiedWatcherDeploymentAuthority,
+): void => {
+  if (!admittedDeploymentAuthorities.has(authority)) {
+    throw new Error(
+      "watcher deployment and rule-bundle authority is not admitted",
+    );
+  }
+};
 
 const exactRecord = (
   value: unknown,
@@ -16,7 +37,8 @@ const exactRecord = (
     typeof value !== "object" ||
     value === null ||
     Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype ||
+    (Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null) ||
     Reflect.ownKeys(value).length !== Object.keys(value).length
   ) {
     throw new Error("watcher deployment authority is not an exact object");
@@ -42,21 +64,36 @@ const read: ReadDeploymentAuthorityFile = async (path) => {
   return await readFile(path);
 };
 
+const readAuthorityJson = async (
+  path: string,
+  label: string,
+  readFile: ReadDeploymentAuthorityFile,
+): Promise<unknown> => {
+  const bytes = await readFile(path);
+  if (bytes.byteLength === 0 || bytes.byteLength > 16 * 1024 * 1024) {
+    throw new Error(`watcher ${label} file size is invalid`);
+  }
+  return parseWatcherStrictJsonValue(
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+  );
+};
+
 /**
- * Loads the signed W02 authority as a single duplicate-key-rejecting file and
- * returns only the module-admitted opaque identity minted by its verifier.
+ * Reopens the signed deployment authority and its separately supplied release
+ * rule bundle. Both verifiers receive the same raw identity, policy, trust roots
+ * and durable marker; the runtime never constructs a replacement rule bundle.
+ * The resulting authority is process-local and must be freshly loaded on restart.
  */
 export const loadWatcherVerifiedDeploymentAuthority = async (input: {
   readonly path: string;
+  readonly ruleBundlePath: string;
   readonly unsafeReadFileForTest?: ReadDeploymentAuthorityFile;
-}): Promise<VerifiedWatcherDeploymentIdentity> => {
-  const bytes = await (input.unsafeReadFileForTest ?? read)(input.path);
-  if (bytes.byteLength === 0 || bytes.byteLength > 16 * 1024 * 1024) {
-    throw new Error("watcher deployment authority file size is invalid");
-  }
-  const parsed = parseWatcherStrictJsonValue(
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes),
-  );
+}): Promise<VerifiedWatcherDeploymentAuthority> => {
+  const readFile = input.unsafeReadFileForTest ?? read;
+  const [parsed, ruleBundle] = await Promise.all([
+    readAuthorityJson(input.path, "deployment authority", readFile),
+    readAuthorityJson(input.ruleBundlePath, "release rule bundle", readFile),
+  ]);
   const authority = exactRecord(parsed, [
     "signedIdentity",
     "policy",
@@ -66,7 +103,7 @@ export const loadWatcherVerifiedDeploymentAuthority = async (input: {
   if (!Array.isArray(authority.trustRoots)) {
     throw new Error("watcher deployment authority trust roots are invalid");
   }
-  return verifyWatcherDeploymentIdentity({
+  const verificationInput = {
     signedIdentity: authority.signedIdentity,
     policy: authority.policy as Parameters<
       typeof verifyWatcherDeploymentIdentity
@@ -75,5 +112,16 @@ export const loadWatcherVerifiedDeploymentAuthority = async (input: {
       typeof verifyWatcherDeploymentIdentity
     >[0]["trustRoots"],
     durableMarker: authority.durableMarker,
+  };
+  const deploymentIdentity = verifyWatcherDeploymentIdentity(verificationInput);
+  const loadedRuleBundle = loadWatcherRuleBundle({
+    ...verificationInput,
+    ruleBundle,
   });
+  const admitted = Object.freeze({
+    deploymentIdentity,
+    ruleBundle: loadedRuleBundle,
+  });
+  admittedDeploymentAuthorities.add(admitted);
+  return admitted;
 };

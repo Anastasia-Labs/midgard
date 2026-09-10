@@ -1,158 +1,71 @@
 # Fault-Proof Testing Status
 
-Current test inventory reviewed against the working tree on 2026-09-01.
+Status: Active
 
-## Inventory
+Last reviewed: 2026-09-07 (evidence index; no new protocol test receipt).
 
-| Surface                                                      | Current inventory | Judgement                                                   |
-| ------------------------------------------------------------ | ----------------: | ----------------------------------------------------------- |
-| Aiken fault-proof test declarations under validator families |               768 | Broad; family and shared-boundary depth varies              |
-| TypeScript test files in `demo/midgard-fault-proofs/tests`   |               169 | Broad unit, workflow, and emulator coverage                 |
-| `submit-init-emulator*.test.ts` files                        |                82 | Broad Lucid Evolution coverage; two suites on fixture drift |
-| Catalogue categories                                         |                32 | All compiled and registered                                 |
-| Production workflow runner factories                         |                25 | Library runtime incomplete for seven categories             |
-| Watcher-installed workflow categories                        |                25 | Autonomous application incomplete for seven categories      |
+## What the evidence establishes
 
-The generated testnet blueprint on the working tree (built 2026-09-01 with
-`v1.1.23+5adf783`) contains 567 validators and has SHA-256
-`597c38912123f7f2c167bb73b61c3b37be44cd274be506538ee9bd4437711c96`, and a
-rebuild from the working tree with the pinned fork reproduces it
-byte-for-byte. The inspection suite pins catalogue root
-`690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4`,
-re-verified on 2026-09-04 against the working-tree testnet blueprint after the
-`networkId` forced-scan chain and the parameter-only check removal landed.
+[Catalogue status](catalogue-status.md) owns source and watcher-installation
+inventory. It does not assert that all tests passed. Avoid test-file counts:
+a file can contain skipped, uncollected, or failing scenarios.
 
-## Fidelity
+| Evidence                                   | Establishes                                                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Aiken unit/property results                | Predicate and transition behavior for the collected scenarios                                        |
+| TypeScript unit/workflow results           | Codecs, evidence, admission, journals, and deterministic workflow behavior                           |
+| Real-blueprint Lucid lifecycles            | Applied scripts, complete transaction fit, refusals, recovery, mint/removal for the exercised shapes |
+| Independent-process / real-node acceptance | Runtime composition, transport, durable recovery, and correction                                     |
+| Preprod acceptance on release identity     | Live challenge behavior for the exercised deployment and scenarios                                   |
 
-| Level                              | Status                    | What it establishes                                                                                                                                           |
-| ---------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Aiken unit/property                | Broad                     | Family predicates, exact successor binding, cancellation, maximum frontiers, shared machinery, removal, and protocol controls                                 |
-| TypeScript unit                    | Broad                     | Codecs, evidence, retained-DA replay, production artifacts, journals, runner admission, funding, reconciliation, and classifiers                              |
-| Lucid Evolution                    | Final families green      | Shared state-queue setup fits; missing-native-script-UTxO, native-script-invalid (29/33-signer staged frontiers), and both min-ADA polarities pass            |
-| Real-node/cross-process            | Partial adjacent coverage | DA and correction components have focused integration, but no complete fault proof is driven across independent production processes                          |
-| Preprod                            | Missing current artifact  | No reproducible proof-through-removal artifact is bound to the current 32-category identity                                                                   |
-| Autonomous detect → prove → remove | Incomplete                | Watcher application installs 25/32 categories; no complete release acceptance artifact exists                                                                 |
-| Van Rossem resource admission      | Enforced                  | Shared harness pins 16,384 bytes, 16.5M memory, and 10B CPU; state-queue publication, the min-ADA split, and every exercised final-family lifecycle obey them |
+The [installed validation workflow](validation-trace-dispute-installed-workflow.md)
+and [transition replay](transition-trace-installed-replay.md) identify current
+routing and executable acceptance surfaces. The [fit evidence index](size-plans/README.md)
+distinguishes current-blueprint gates from historical snapshot consistency tests.
+A saved measurement, passing digest check, or a test that returned early does not
+establish current-build acceptance.
 
-## Exact emulator status
-
-Dedicated standalone lifecycle tests cover `missingNativeScriptUtxo`,
-`nativeScriptInvalid`, and both `minAda` polarities, and all of them pass
-under the shared Van Rossem limits. Fabricated deposit and withdrawal drive
-removal, and value-not-preserved and mint-authorization drive
-cancellation/resume.
-
-The shared harness is pinned to Van Rossem's 16,384-byte transaction limit,
-16,500,000 memory units, and 10,000,000,000 CPU steps. State-queue setup
-uses five authenticated withdraw-zero rewarding scripts for commit,
-unattested-timeout removal, unavailable-timeout removal, fraud removal, and
-merge. The 5,222-byte applied minting policy publishes in 5,498 bytes; the
-5,652–8,347-byte rewarding scripts publish in 6,161–8,842 bytes. A focused
-admission test publishes all six under the shared limit.
-
-The former 28,658-byte monolithic `fraudProofMinAdaStep02` script no longer
-exists. Step 02 is a 3,319-byte authenticated dispatcher
-(`onchain/aiken/validators/fraud-proofs/min-ada/step-02.ak`) whose
-transaction and UTxO branches are separate withdraw-zero rewarding validators
-in `onchain/aiken/validators/fraud-proofs/min-ada/step-02-yields.ak` (15,522
-and 6,571 bytes in the generated blueprint), each with its own
-reference-script role NFT in `demo/midgard-sdk/src/reference-scripts.ts`.
-`submit-init-emulator-min-ada-standalone.test.ts` asserts that the signed
-publication transaction for each of the three scripts fits within 16,384
-bytes, then drives both polarities through cancel/resume, header removal, and
-permanent-evidence retention.
-
-The native-script-invalid direct lifecycle passes, and the 29-signer and
-33-signer maximum frontiers pass through the deterministic staged route with
-Van Rossem headroom; a forced 29-signer direct submission is rejected before
-builder work. Missing-native-script-UTxO passes both its direct and its staged
-step-05→06→07 predecessor-material paths, including cancel/resume and removal.
-
-Emulator green is not deployability. The `validationTraceDispute` and
-`transitionTrace` lifecycles publish 49 reference scripts whose raw bodies
-exceed 16,384 bytes through the harness's `oversized: true` publication path,
-which skips the L1 byte-margin assertion (the validation-dispute suite
-additionally raises `maxTxSize` to 262,144 for those publications).
-Every other publication path asserts a positive L1 byte margin:
-`publishFinalFamilyReferenceScripts` enforces the envelope by default for the
-missing-native-script-UTxO, native-script-invalid, and min-ADA families, and
-the mint-authorization, network-id, value-not-preserved, and withdrawal-mistag
-helpers publish without the flag, with withdrawal-mistag additionally
-requiring 1,024 bytes of headroom. Production publication refuses oversized
-bodies, so the two affected families cannot be deployed as compiled; see the
-size table in [`catalogue-status.md`](catalogue-status.md).
-
-`inspect-contracts.test.ts` is green again as of 2026-09-04 (12 of 12, with
-the catalogue root re-pinned against the working-tree blueprint). The
-validation-dispute journey suites that build their deployment through the
-emulator lifecycle harness (`submit-init-emulator-min-ada`, `-value-and-mint`,
-`-cek-value-and-mint`, `-soundness*`, `-option-b-*`, `-route-freedom-*`) are
-still red at stage setup with "Reference-script auth policy must be a native
-script": their fixtures predate the reference-script role-NFT change, which is
-a fixture-drift problem, not a validator or transaction-fit problem.
+The [availability challenge](size-plans/availability-challenge.md) now has passing
+signed-publication and registered contract-lifecycle gates using the pinned
+mainnet protocol-11 cost model. Its operational challenger/watcher and live release
+acceptance remain open. Remeasure any release evidence whose source or blueprint
+binding changed; saved results do not replace the current-build gates.
 
 ## Verification commands
 
-```bash
-# Aiken source and generated blueprint
-cd onchain/aiken
-aiken fmt --check
-aiken check
-aiken build --env testnet
+From the repository root, build the real blueprint using the pinned compiler:
 
-# Fault-proof package
-pnpm --dir demo/midgard-fault-proofs typecheck
+```sh
+(cd onchain/aiken && aiken build --env testnet)
+```
+
+Use the [Aiken build skill](../../.agents/skills/aiken-contract-build/SKILL.md)
+for focused selectors and cache isolation. Selectors must collect a nonzero
+number of tests. For package suites, also from the repository root:
+
+```sh
+pnpm --dir demo/midgard-fault-proofs run typecheck
 pnpm --dir demo/midgard-fault-proofs test
-
-# Shared codecs and validation
 pnpm --dir demo/midgard-core test
 pnpm --dir demo/midgard-sdk test
 pnpm --dir demo/midgard-validation test
-
-# Watcher, node, and DA
 pnpm --dir demo/midgard-watcher test
 pnpm --dir demo/midgard-node test
 pnpm --dir demo/da-committee-node test
 ```
 
-The Aiken project must use the repository-pinned fork and the `testnet`
-environment. The legacy Plutarch/Haskell helper suites remain manual unless
-their dependencies are retired with replacement evidence.
+Set `MIDGARD_REAL_BLUEPRINT_PATH` to the absolute freshly built blueprint when
+running real-contract scenarios. Workspace source conditions resolve sibling
+source for typecheck/lint/Vitest; scripts that invoke plain `node` still require
+the package builds they document.
 
-## CI
+Positive publication and lifecycle acceptance must use the shared
+`demo/midgard-fault-proofs/tests/support/emulator/protocol-parameters.ts`
+limits. Raised size/ExUnit limits are diagnostic, not release acceptance.
 
-Primary Aiken formatting/check/build and the core, SDK, validation,
-fault-proof, Lucid, node, watcher, and DA package checks are CI-wired. CI does
-not currently establish:
+## Release boundary
 
-- a clean public deployment;
-- a full rollback/restart/concurrent-correction matrix;
-- all 32 watcher installations;
-- a maximum-shape lifecycle sweep for every category under the shared Van
-  Rossem limits (the three final families are green; the sweep is not a gate);
-- repair of the inspection-suite and min-ADA dispute-journey fixture drift so
-  those suites are green again;
-- preprod proof-through-removal acceptance.
-
-## Last focused verification
-
-On 2026-09-01, after rebuilding the `midgard-core`, `midgard-sdk`, and
-`midgard-validation` dists (stale dists produce phantom failures in consumer
-suites):
-
-- the Van Rossem limit-pin regression passed (1/1);
-- both min-ADA standalone polarities passed, including the three-script
-  publication-size assertions, cancel/resume, header removal, and
-  permanent-evidence retention (2/2);
-- the native-script-invalid standalone lifecycle passed, including the
-  29-signer and 33-signer staged frontiers and the forced-direct rejection
-  (4/4);
-- the missing-native-script-UTxO standalone lifecycle passed on both the
-  direct and the staged predecessor-material paths (2/2);
-- `inspect-contracts.test.ts` failed 9/12 on deployment-fixture drift
-  (`referenceScriptAuthPolicy` shape), so the catalogue-root pin was not
-  re-verified;
-- `submit-init-emulator-min-ada.test.ts` failed 1/1 at stage setup on the
-  same reference-script auth-policy fixture drift.
-
-These focused checks are not a substitute for the complete commands above.
+Use [remaining acceptance](execution-plan.md) for publication, maximum-shape,
+public evidence lifetime, economics, independent-process, and preprod closure.
+The [public readiness checklist](../public_testnet_readiness.md) owns launch
+approval. A source installation or passing subset does not close these gates.

@@ -64,9 +64,10 @@ targets another environment.
   a workspace dependency and an `exports` entry, not a relative path. Every
   package's `exports` carries a `midgard-source` condition that tsc
   (`customConditions`), typescript-eslint, and vitest (`resolve.conditions`)
-  resolve first, so typecheck, lint, and test suites read sibling source and
-  never need a prior `pnpm build`. Plain `node` scripts still resolve `dist`,
-  so anything that shells out to `node` keeps building first.
+  resolve first, so configured TypeScript, lint, and Vitest imports read sibling
+  source. Plain `node` scripts still resolve `dist`; follow the package scripts'
+  build prerequisites for subprocesses and packaged imports. The node and tooling
+  `typecheck` scripts currently build Lucid and the SDK before running tsc.
 - Names carry no version, no `production-` prefix, and no ticket id; the
   version lives in wire and manifest values. See
   `docs/agents/naming-and-versioning.md` before naming or renaming anything.

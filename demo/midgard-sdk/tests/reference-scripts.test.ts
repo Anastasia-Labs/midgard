@@ -1,3 +1,7 @@
+import {
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { Assets, LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -76,6 +80,28 @@ describe("reference-script SDK boundary", () => {
     ).toThrow(/exact-envelope raw script is 16384 bytes/u);
   });
 
+  it("authenticates all availability mint arms with distinct deployment roles", () => {
+    const arms = [
+      ["bond", "Bond", "Bond"],
+      ["open", "Open", "Open"],
+      ["settle", "Settle", "Settle"],
+      ["close", "Close", "Close"],
+      ["timeout", "Timeout", "Expiry"],
+    ] as const;
+    for (const [arm, contract, token] of arms) {
+      const role = `availability-challenge ${arm} withdrawal` as const;
+      const tokenName = `AvailabilityChallenge${token}Yield`;
+      expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[role]).toBe(tokenName);
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
+        tokenName,
+      );
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
+        `availabilityChallenge${contract}Withdraw`,
+      );
+      expect(Buffer.byteLength(tokenName)).toBeLessThanOrEqual(32);
+    }
+  });
+
   it("assigns unique <=32-byte auth tokens to every registered fraud-proof role", () => {
     const fraudProofEntries = Object.entries(
       REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
@@ -86,7 +112,16 @@ describe("reference-script SDK boundary", () => {
     );
     const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
 
-    expect(fraudProofEntries).toHaveLength(256);
+    const canonicalFraudProofEntries = Object.entries(
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+    ).filter(
+      ([role]) =>
+        role.startsWith("V1 fraud-proof ") ||
+        role.startsWith("value conservation "),
+    );
+    expect(Object.fromEntries(fraudProofEntries)).toEqual(
+      Object.fromEntries(canonicalFraudProofEntries),
+    );
     expect(new Set(tokenNames).size).toBe(tokenNames.length);
     expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
       true,

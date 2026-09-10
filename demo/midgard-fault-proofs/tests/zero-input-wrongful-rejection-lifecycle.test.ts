@@ -55,11 +55,18 @@ import {
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
+
+const measuredFit = createMeasuredFitRecorder(
+  "zero-input-wrongful-rejection",
+  "lifecycle",
+  "accepted empty input and forced nonempty contradiction; cancellation, restart, mint and removal",
+);
 
 describe("zeroInput wrongful-rejection real lifecycle", () => {
   it("preserves the accepted-invalid Init to permanent-mint lifecycle", async () => {
@@ -223,6 +230,9 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       }),
     );
     expect(final.result.fraudProofUnit).toBeTruthy();
+    [initialized, bound, final].forEach(({ measurement }, index) =>
+      measuredFit.record(`accepted-${index}`, measurement),
+    );
     for (const captured of [initialized, bound, final]) {
       expect(captured.measurement.l1ByteMargin).toBeGreaterThan(0);
       expect(captured.measurement.executionMemory).toBeLessThanOrEqual(
@@ -526,6 +536,9 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
           validTo: now + 300_000n,
         }),
       ),
+    );
+    captures.forEach(({ measurement }, index) =>
+      measuredFit.record(`forced-${index}`, measurement),
     );
     for (const captured of captures) {
       expect(captured.measurement.l1ByteMargin).toBeGreaterThan(0);

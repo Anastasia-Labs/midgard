@@ -21,7 +21,10 @@ import {
   normalizeJournalJson,
 } from "../src/workflow/journal.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
-import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  workflowPreflightTransaction,
+} from "../src/workflow/transaction-boundary.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
@@ -239,6 +242,9 @@ describe("production cursor family adapter V1", () => {
     });
     const action = required(stage.value);
     const preflight = await adapter.preflight({ ...context, action });
+    expect(workflowPreflightTransaction(preflight)).toBe(
+      (await capture.mock.results[0]!.value).transaction.signed,
+    );
     expect(preflight).toMatchObject({
       actionId: action.actionId,
       txHash,
@@ -379,16 +385,20 @@ describe("production cursor family adapter V1", () => {
       fail: vi.fn(async () => undefined),
     });
     const acquired = lease();
+    const capturedRemoval = transaction();
     const first = createCursorFamilyWorkflowAdapter({
       spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({
-        transaction: transaction(),
+        transaction: capturedRemoval,
         mutationLease: acquired,
       })),
       stateQueueMutationLeaseCoordinator: { acquire: async () => acquired },
     });
     const preflight = await first.preflight({ ...context, action });
+    expect(workflowPreflightTransaction(preflight)).toBe(
+      capturedRemoval.signed,
+    );
     expect(preflight.durableRecovery).toEqual({
       stateQueueMutationLease: {
         token: acquired.token,

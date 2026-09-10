@@ -17,23 +17,23 @@ to the authenticated forced-inclusion source value:
 Transaction orders are events on L1 as an alternative to the L2 transaction submission to operators.
 Similar to a deposit or withdrawal event, a transaction order in a Midgard block acknowledges that a user has created an L1 utxo at the Midgard L1 transaction order address, obligating the operator to include the given L2 transaction.
 The transaction order payload does not carry an operator validity classification.
-In turn, the operator sets \code{MidgardTxValidity} when including the order in a block.
+In turn, the operator records a typed \code{OperatorVerdictV1} when including the order in a block.
 This invalidity claim itself can then be subject to fraud proofs if the operator had stated incorrectly.
 \begingroup
 \allowdisplaybreaks{}
 \begin{align*}
-    \T{TxOrderEventV1} &\coloneq \T{(TxOrderId, MidgardTxCompactWithoutValidity)} \\
+    \T{TxOrderEventV1} &\coloneq \T{(TxOrderId, TxOrderPayloadV1)} \\
     \T{TxOrderId} &\coloneq \T{OutputRef} \\
     \T{ForcedInclusionTxV1} &\coloneq \left\{
     \begin{array}{ll}
         \T{tx\_id} : & \T{TxId} \\
         \T{source} : & \T{NativeTxProofSourceV1} \\
-        \T{operator\_validity} : & \T{MidgardTxValidity}
+        \T{verdict} : & \T{OperatorVerdictV1}
     \end{array} \right\}
 \end{align*}
 \endgroup
 
-The \code{TxOrderId} of a transaction order event corresponds to one of the inputs spent by the user in the L1 transaction that created the transaction order utxo on L1 (more specifically, it's the hash of its serialized output-reference).
+The \code{TxOrderId} of a transaction order event corresponds to one of the inputs spent by the user in the L1 transaction that created the transaction order utxo on L1 (the authentication NFT's name is derived from that reference, while the event key remains the reference itself).
 This key is needed to identify the L1 transaction order utxo, and ensure that each order is unique.
 The forced transaction source root is keyed by this L1 order identity, not by the L2 transaction ID.
 This permits multiple L1 orders for the same L2 transaction to be represented and challenged independently.
@@ -43,29 +43,28 @@ authenticates its own key-independent transaction identity.  The compact,
 witness-set, and field-length CBOR values are carried by the nested
 \code{NativeTxProofSourceV1}; there is no alternate \code{compact\_tx} or
 \code{field\_preimage\_hashes} projection.
-The transaction validity interval is also part of the compact body, so transaction-order due checks use that validity range rather than a separate inclusion timestamp.
+The order payload is \code{TxOrderPayloadV1}\{\code{tx\_id}, \code{transaction\_commitment}, \code{source}\}.
+The optimistic L1 order datum also retains a separate \code{inclusion\_time}.
+Due checks use that inclusion time and the transaction validity interval; the unresolved interval-unit conformance issue is described in \cref{h:deviations-from-cardano-transaction-types}.
 
 The effect of a valid included transaction order on a block's utxo set is identical to a valid L2 transaction request.
 It removes all of the transaction's inputs from the ledger and adds all of its outputs.
 Invalid included transaction orders are represented as forced transaction trace steps whose operator validity classification is challengeable.
 
-In canonical V1, every canonical field preimage is published as an independently
-locked fragment. A second transaction references that fragment and may mint a
-compact field-receipt NFT only after the receipt policy recomputes the compact
-source, field hash, canonical encoding, and compiled field bound on L1. The
-receipt datum binds the \code{TxOrderId}, transaction commitment, field index,
-and exact fragment output reference. This two-transaction sequence avoids a
-circular attempt to place a publishing transaction's own ID in one of its
-inline output datums.
+Current order authentication uses the common field-carriage mechanism rather than the retired fragment/receipt chain.
+The mint redeemer carries one \code{FieldCarriageV1} for each nonempty committed field, in ascending field-index order.
+The validator reconstructs and authenticates the compact proof source and its commitment, opens every nonempty field through \code{authenticated\_whole\_field\_view}, and checks each declared byte length.
+An empty field must declare the canonical one-byte empty encoding and consumes no carriage entry; the carriage vector must be exhausted exactly.
 
-The final transaction-order mint references exactly nine compact receipts,
-not all nine large field fragments. It verifies the ordered receipt NFT and
-datum for every committed field and records both ordered reference lists in
-the order datum. When the order is consumed, all fragments and receipts must
-also be consumed, the order NFT and all receipt NFTs must be burned, and the
-fragment/receipt spending validators independently enforce those burns.
-Missing, duplicate, non-canonical, mismatched, oversized, or unreceipted
-fragments fail closed.
+Inline material is present in the order-authentication redeemer.
+Raw and certified material is read from prior L1 publications; the whole-field door reassembles and hashes certified chunks for this availability check.
+Availability after authentication is based on retained L1 history and content digests.
+The order datum does not retain fragment or receipt references, and spending the order does not require burning field-receipt NFTs.
+Published wallet-controlled carriage can be reclaimed by its owner; later consumers must still recover and authenticate the original bytes.
+
+This is the current implementation boundary, not maximum-shape liveness acceptance.
+The whole-field mint path still traverses variable-width field envelopes, so byte bounds alone do not establish that every admitted field shape fits the L1 execution budget.
+Release acceptance must measure or provide a bounded route for that frontier.
 
 The canonical V1 validation trace uses the same machine for normal and forced
 transactions. A valid forced transaction therefore applies the exact accepted

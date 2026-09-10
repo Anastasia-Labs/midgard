@@ -33,6 +33,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   createUnusedRedeemerActuator,
@@ -209,10 +210,10 @@ export const createManifestBoundUnusedRedeemerWorkflow = async (
       ],
     ),
   );
-  const hubOraclePolicyId = binding.deploymentInfo.hubOracleMint?.scriptHash;
+  const hubOraclePolicyId = binding.contractEntries.hubOracleMint?.scriptHash;
   if (hubOraclePolicyId === undefined)
     throw new Error("unusedRedeemer manifest omitted hub oracle");
-  const stateQueuePolicyId = binding.deploymentInfo.stateQueueMint?.scriptHash;
+  const stateQueuePolicyId = binding.contractEntries.stateQueueMint?.scriptHash;
   if (stateQueuePolicyId === undefined)
     throw new Error("unusedRedeemer manifest omitted state queue");
   const familyContracts: UnusedRedeemerContracts = {
@@ -460,10 +461,15 @@ export const createUnusedRedeemerWorkflowRunnerSurface = ({
             headerHash: invocation.headerHash,
           }),
         });
-        return await executeManifestBoundUnusedRedeemerWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundUnusedRedeemerWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

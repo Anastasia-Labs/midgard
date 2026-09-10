@@ -187,10 +187,8 @@ const makeFixture = async ({
   const catalogue = { root: hash(2), categories: {} };
   const parameters = { maxTxSize: 16_384, network: "Preprod" };
   const blueprintBytes = Buffer.from("independent-blueprint");
-  const releaseEvidenceBytes = Buffer.from("independent-release-evidence");
   const blueprintSha256 = sha256(blueprintBytes);
   const parametersSha256 = computeDeploymentManifestJsonDigest(parameters);
-  const releaseEvidenceSha256 = sha256(releaseEvidenceBytes);
   const headerHash = "ab".repeat(28);
   const initTxHash = hash(10);
   const stepTxHash = hash(11);
@@ -409,7 +407,6 @@ const makeFixture = async ({
       blueprintSha256,
       catalogueRoot: catalogue.root,
       parametersSha256,
-      releaseEvidenceSha256,
     },
     families: [family],
     withdrawalReservePayout,
@@ -450,9 +447,8 @@ const makeFixture = async ({
       snapshot: parameters,
       digest: parametersSha256,
     },
-    proofEvidence: {
+    artifacts: {
       blueprintHash: blueprintSha256,
-      digest: releaseEvidenceSha256,
     },
   });
   const blueprintPath = join(root, "plutus.json");
@@ -461,8 +457,6 @@ const makeFixture = async ({
   await writeJson(cataloguePath, catalogue);
   const parametersPath = join(root, "parameters.json");
   await writeJson(parametersPath, parameters);
-  const releaseEvidencePath = join(root, "release.json");
-  await writeFile(releaseEvidencePath, releaseEvidenceBytes);
   const finalSnapshotPath = join(root, "final-snapshot.json");
   await writeJson(finalSnapshotPath, finalSnapshot);
 
@@ -609,7 +603,6 @@ const makeFixture = async ({
       blueprintPath,
       cataloguePath,
       parametersPath,
-      releaseEvidencePath,
       workflowJournalDirectories: [workflowDirectory],
       l1ObservationPaths,
       recoveryObservationPaths: [recoveryPath],

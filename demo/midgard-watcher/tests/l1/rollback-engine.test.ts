@@ -7,10 +7,11 @@ import { createServer as createTlsServer } from "node:tls";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   evaluateWatcherFinality,
+  makeWatcherFinalityBootstrapState,
   makeWatcherFinalityPolicy,
   type WatcherFinalityPolicy,
   type WatcherFinalityResult,
@@ -26,6 +27,7 @@ import {
   type WatcherL1TransportAttestationContext,
   type WatcherNormalizedL1Block,
 } from "../../src/l1/l1-adapter.js";
+import * as consistencyBoundary from "../../src/l1/multi-provider-consistency.js";
 import { evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyBoundary } from "../../src/l1/multi-provider-consistency.js";
 import {
   evaluateAndPersistWatcherPostFinalityRecovery as evaluateAndPersistWatcherPostFinalityRecoveryBoundary,
@@ -38,20 +40,35 @@ import {
   parseWatcherPostFinalityRecoveryResult as parseWatcherPostFinalityRecoveryResultBoundary,
   parseWatcherRollbackResult as parseWatcherRollbackResultBoundary,
   parseWatcherRollbackState as parseWatcherRollbackStateBoundary,
+  persistWatcherRollbackDurableCanonicalProgress,
+  persistWatcherRollbackDurableObservation,
+  persistWatcherRollbackDurableUserEventCheckpoint,
   prepareWatcherRollbackDurableTrustedHeadReconciliation,
+  readWatcherRollbackDurableAuthority,
+  readWatcherRollbackDurableFinalityState,
+  revalidateWatcherRollbackDurableAuthority,
   WATCHER_POST_FINALITY_RECOVERY_RESULT_SCHEMA_VERSION,
   WATCHER_ROLLBACK_INCIDENT_SCHEMA_VERSION,
   WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION,
   WATCHER_ROLLBACK_STATE_SCHEMA_VERSION,
   type WatcherPostFinalityRecoveryInput,
   watcherRollbackDurableAuthorityStatus,
+  type WatcherRollbackDurableTrustedHead,
   type WatcherRollbackStateVerificationContext,
   type WatcherRollbackVerificationContext,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
+  createWatcherDurableRuntime,
+  persistWatcherUserEventCheckpoint,
+  readWatcherProtectedUserEventCheckpoint,
+  readWatcherProtectedUserEventCheckpointReceipt,
+} from "../../src/storage/durable-runtime.js";
+import * as storeBoundary from "../../src/storage/durable-store.js";
+import {
   encodeWatcherDurableStore,
   journalWatcherProtocolUtxoTransition,
+  makeEmptyWatcherDurableStore,
   makeWatcherDurablePayload,
   makeWatcherDurableStore,
   type WatcherDurableAtomicBackend,
@@ -59,7 +76,13 @@ import {
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
 } from "../../src/storage/durable-store.js";
+import {
+  makeWatcherUserEventCheckpoint,
+  WATCHER_USER_EVENT_CHECKPOINT_SCHEMA_VERSION,
+  watcherUserEventArchiveDigest,
+} from "../../src/storage/user-event-checkpoint.js";
 import { reorderWireKeys, sha256Canonical } from "../support/canonical-json.js";
+import { createSyntheticStateQueueObservationFixture } from "../support/state-queue-observation-fixture.js";
 
 const hex32 = (byte: string): string => byte.repeat(32);
 const testTlsIdentities = [
@@ -434,7 +457,8 @@ const deploymentIdentity = (manifestByte = "11", releaseByte = "22") => ({
   manifestId: hex32(manifestByte),
   network: "Preprod" as const,
   trustRootId: hex32("33"),
-  releaseEvidenceDigest: hex32(releaseByte),
+  fundingProfileBundleDigest: "ab".repeat(32),
+  blueprintHash: hex32(releaseByte),
   ruleBundleCommitment: hex32("44"),
   programCommitments: { validation: hex32("55") },
   durableMarker: makeDeploymentMarker(hex32(manifestByte)),
@@ -1038,6 +1062,508 @@ describe("canonical watcher rollback engine", () => {
       watcherTransportFixtureDirectory = null;
     }
     watcherTransportAttestations = [];
+  });
+
+  const revalidationFixture = async () => {
+    const finalityPolicy = policy();
+    const prior = pending(finalityPolicy, oldPoint);
+    const consistency = agreement(replacementPoint);
+    const finalityResult = evaluateWatcherFinality(
+      finalityPolicy,
+      prior,
+      consistency,
+    );
+    const backend = new MemoryRollbackAuthorityBackend();
+    const initialized = await initializeWatcherRollbackDurableAuthority({
+      backend,
+      policy: finalityPolicy,
+      authenticationKey: rollbackAuthorityKey,
+      trustedHead: null,
+      bootstrapStore: combine(
+        finalityPolicy.deploymentMarker,
+        "0",
+        [graph("10", oldPoint), graph("20", replacementPoint)],
+        undefined,
+        agreementObservations(replacementPoint),
+      ),
+      bootstrapFinalityState: prior,
+    });
+    return { backend, initialized, prior, consistency, finalityResult };
+  };
+
+  it("revalidates only the admitted handle with fresh matching bytes and an authenticated head", async () => {
+    const { backend, initialized } = await revalidationFixture();
+    const writes = backend.writes;
+    const verified = await revalidateWatcherRollbackDurableAuthority({
+      authority: initialized.authority,
+      trustedHead: initialized.trustedHead,
+    });
+    expect(readWatcherRollbackDurableAuthority(verified)).toEqual(
+      readWatcherRollbackDurableAuthority(initialized.authority),
+    );
+    const input = {
+      authority: verified,
+      trustedHead: initialized.trustedHead,
+    };
+    await expect(
+      revalidateWatcherRollbackDurableAuthority(input),
+    ).resolves.toBe(verified);
+    await expect(
+      revalidateWatcherRollbackDurableAuthority({
+        ...input,
+        authority: { ...input.authority },
+      }),
+    ).rejects.toThrow();
+    for (const trustedHead of [
+      { ...input.trustedHead, headMac: hex32("ff") },
+      { ...input.trustedHead, snapshotSha256: hex32("ff") },
+      { ...input.trustedHead, policyDigest: hex32("ff") },
+    ]) {
+      await expect(
+        revalidateWatcherRollbackDurableAuthority({ ...input, trustedHead }),
+      ).rejects.toThrow();
+    }
+    if (backend.bytes === null)
+      throw new Error("Expected persisted authority bytes");
+    const original = Uint8Array.from(backend.bytes);
+    backend.bytes = null;
+    await expect(
+      revalidateWatcherRollbackDurableAuthority(input),
+    ).rejects.toThrow();
+    backend.bytes = Uint8Array.from(original);
+    backend.bytes[0] = backend.bytes[0]! ^ 1;
+    await expect(
+      revalidateWatcherRollbackDurableAuthority(input),
+    ).rejects.toThrow();
+    backend.bytes = original;
+    await expect(
+      revalidateWatcherRollbackDurableAuthority(input),
+    ).resolves.toBe(verified);
+    expect(backend.writes).toBe(writes);
+  });
+
+  it("refuses restart when the saved validation binding or its dependencies are unusable", async () => {
+    const { backend, initialized } = await revalidationFixture();
+    const original = Uint8Array.from(backend.bytes!);
+    const input = {
+      backend,
+      policy: policy(),
+      authenticationKey: rollbackAuthorityKey,
+      trustedHead: initialized.trustedHead,
+    };
+    for (const validationSchemaVersion of [undefined, "unsupported"]) {
+      const snapshot = JSON.parse(new TextDecoder().decode(original));
+      snapshot.validationSchemaVersion = validationSchemaVersion;
+      backend.bytes = new TextEncoder().encode(JSON.stringify(snapshot));
+      await expect(
+        loadWatcherRollbackDurableAuthority(input),
+      ).rejects.toThrow();
+    }
+    backend.bytes = original;
+    await expect(
+      loadWatcherRollbackDurableAuthority({
+        ...input,
+        authenticationKey: new Uint8Array(32).fill(99),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      loadWatcherRollbackDurableAuthority({
+        ...input,
+        policy: { ...input.policy, blueprintHash: hex32("ff") },
+      }),
+    ).rejects.toThrow();
+    expect(backend.writes).toBe(1);
+    await expect(
+      loadWatcherRollbackDurableAuthority(input),
+    ).resolves.toBeDefined();
+  });
+
+  it("rejects a stale durable handle and owns the committed store independently of returned results", async () => {
+    const { initialized, prior, consistency, finalityResult } =
+      await revalidationFixture();
+    const committed = await evaluateAndPersistWatcherRollback({
+      authority: initialized.authority,
+      previousFinalityState: prior,
+      consistency,
+      finalityResult,
+    });
+    if (committed.persistence !== "committed")
+      throw new Error("Expected committed rollback");
+    await expect(
+      revalidateWatcherRollbackDurableAuthority({
+        authority: initialized.authority,
+        trustedHead: initialized.trustedHead,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      revalidateWatcherRollbackDurableAuthority({
+        authority: committed.authority,
+        trustedHead: initialized.trustedHead,
+      }),
+    ).rejects.toThrow();
+    const retained = readWatcherRollbackDurableAuthority(committed.authority);
+    if (committed.result.nextStore === null)
+      throw new Error("Expected returned rollback store");
+    Reflect.set(committed.result.nextStore, "revision", "999");
+    const returnedPoint = committed.result.nextStore.chainPoints[0];
+    if (returnedPoint === undefined)
+      throw new Error("Expected returned chain point");
+    Reflect.set(returnedPoint, "blockHash", hex32("ff"));
+    const verified = await revalidateWatcherRollbackDurableAuthority({
+      authority: committed.authority,
+      trustedHead: committed.trustedHead,
+    });
+    expect(readWatcherRollbackDurableAuthority(verified)).toEqual(retained);
+    expect(readWatcherRollbackDurableAuthority(committed.authority)).toEqual(
+      retained,
+    );
+  });
+
+  it("reuses verified protocol state only for a checkpoint-only revision and still checks durable owners", async () => {
+    const { backend, initialized } = await revalidationFixture();
+    const finalityPolicy = policy();
+    const authority = await revalidateWatcherRollbackDurableAuthority({
+      authority: initialized.authority,
+      trustedHead: initialized.trustedHead,
+    });
+    const payload = new TextEncoder().encode('{"cursor":null}');
+    const payloadDigest = watcherUserEventArchiveDigest(payload);
+    const checkpoint = makeWatcherUserEventCheckpoint({
+      schemaVersion: WATCHER_USER_EVENT_CHECKPOINT_SCHEMA_VERSION,
+      deploymentMarker: finalityPolicy.deploymentMarker,
+      network: finalityPolicy.network,
+      blueprintHash: finalityPolicy.blueprintHash,
+      finalityPolicyDigest: finalityPolicy.policyDigest,
+      userEventPolicyDigest: hex32("77"),
+      checkpointSequence: "0",
+      predecessorCheckpointDigest: null,
+      rollbackGeneration: "0",
+      payloadDigest,
+      requiredArchiveDigests: [payloadDigest],
+    });
+    const committed = await persistWatcherRollbackDurableUserEventCheckpoint({
+      authority,
+      archive: {
+        put: async () => payloadDigest,
+        read: async (digest) =>
+          digest === payloadDigest ? Uint8Array.from(payload) : null,
+      },
+      expectedCheckpointDigest: null,
+      expectedCheckpointSequence: null,
+      nextCheckpoint: checkpoint,
+    });
+    if (committed.persistence !== "committed")
+      throw new Error("Expected committed checkpoint");
+    const input = {
+      authority: committed.authority,
+      trustedHead: committed.trustedHead,
+    };
+    await expect(
+      revalidateWatcherRollbackDurableAuthority(input),
+    ).resolves.toBe(committed.authority);
+    const restarted = await loadWatcherRollbackDurableAuthority({
+      backend,
+      policy: finalityPolicy,
+      authenticationKey: rollbackAuthorityKey,
+      trustedHead: committed.trustedHead,
+    });
+    expect(readWatcherRollbackDurableAuthority(restarted)).toEqual(
+      readWatcherRollbackDurableAuthority(committed.authority),
+    );
+    expect(readWatcherRollbackDurableAuthority(restarted)).toEqual(
+      readWatcherRollbackDurableAuthority(authority),
+    );
+    await expect(
+      revalidateWatcherRollbackDurableAuthority({
+        ...input,
+        trustedHead: initialized.trustedHead,
+      }),
+    ).rejects.toThrow();
+    if (backend.bytes === null) throw new Error("Expected snapshot bytes");
+    backend.bytes[0] = backend.bytes[0]! ^ 1;
+    await expect(
+      revalidateWatcherRollbackDurableAuthority(input),
+    ).rejects.toThrow();
+  });
+
+  it("owns consistency evidence after observation and canonical progress commits", async () => {
+    const fixture = await createSyntheticStateQueueObservationFixture();
+    try {
+      const capture = await fixture.observeFresh();
+      const finalityPolicy = makeWatcherFinalityPolicy(
+        fixture.transport.watcherConfig,
+        fixture.transport.deploymentIdentity,
+      );
+      if (finalityPolicy === null)
+        throw new Error("Expected admitted local policy");
+      const bootstrapFinalityState =
+        makeWatcherFinalityBootstrapState(finalityPolicy);
+      if (bootstrapFinalityState === null)
+        throw new Error("Expected bootstrap finality");
+      const backend = new MemoryRollbackAuthorityBackend();
+      const initialized = await initializeWatcherRollbackDurableAuthority({
+        backend,
+        policy: finalityPolicy,
+        authenticationKey: rollbackAuthorityKey,
+        trustedHead: null,
+        bootstrapStore: makeEmptyWatcherDurableStore(
+          finalityPolicy.deploymentMarker,
+        ),
+        bootstrapFinalityState,
+      });
+      let authority = initialized.authority;
+      for (const persist of [
+        persistWatcherRollbackDurableObservation,
+        persistWatcherRollbackDurableCanonicalProgress,
+      ]) {
+        const consistency = structuredClone(
+          capture.localObservation.consistency,
+        );
+        await expect(
+          persist({
+            ...capture.localObservation,
+            authority,
+            consistency,
+            transportAttestations: [],
+          }),
+        ).rejects.toThrow(/authenticated/u);
+        const compareAndSwap = backend.compareAndSwap.bind(backend);
+        const persistence = vi
+          .spyOn(backend, "compareAndSwap")
+          .mockImplementationOnce(async (expected, next) => {
+            const committed = await compareAndSwap(expected, next);
+            // A caller can still mutate its inputs while persistence yields.
+            // The retained handle must describe exactly the committed bytes.
+            if (consistency.agreement !== null)
+              Reflect.set(consistency.agreement, "minimumDepth", "0");
+            return committed;
+          });
+        const committed = await persist({
+          ...capture.localObservation,
+          authority,
+          consistency,
+        });
+        persistence.mockRestore();
+        if (committed.persistence !== "committed")
+          throw new Error("Expected committed local observation");
+        const retained = readWatcherRollbackDurableAuthority(
+          committed.authority,
+        );
+        if (consistency.agreement === null)
+          throw new Error("Expected local agreement");
+        // These are the caller's mutable copies, retained after the awaited commit.
+        Reflect.set(consistency.agreement, "minimumDepth", "0");
+        Reflect.set(consistency.observationEvidenceDigests, "0", hex32("ff"));
+        const verified = await revalidateWatcherRollbackDurableAuthority({
+          authority: committed.authority,
+          trustedHead: committed.trustedHead,
+        });
+        expect(verified).toBe(committed.authority);
+        // A new backend and decoded objects model restart without any admitted
+        // in-process handle. Saved validation must not invoke store or W12 replay.
+        const restartedBackend = new MemoryRollbackAuthorityBackend();
+        restartedBackend.bytes = Uint8Array.from(backend.bytes!);
+        const parseStore = vi.spyOn(storeBoundary, "parseWatcherDurableStore");
+        const evaluateConsistency = vi.spyOn(
+          consistencyBoundary,
+          "evaluateWatcherMultiProviderConsistency",
+        );
+        const restarted = await (async () => {
+          try {
+            const loaded = await loadWatcherRollbackDurableAuthority({
+              backend: restartedBackend,
+              policy: finalityPolicy,
+              authenticationKey: rollbackAuthorityKey,
+              trustedHead: committed.trustedHead,
+            });
+            expect(parseStore).not.toHaveBeenCalled();
+            expect(evaluateConsistency).not.toHaveBeenCalled();
+            return loaded;
+          } finally {
+            parseStore.mockRestore();
+            evaluateConsistency.mockRestore();
+          }
+        })();
+        expect(readWatcherRollbackDurableAuthority(restarted)).toEqual(
+          retained,
+        );
+        expect(readWatcherRollbackDurableAuthority(verified)).toEqual(retained);
+        expect(
+          readWatcherRollbackDurableAuthority(committed.authority),
+        ).toEqual(retained);
+        authority = verified;
+      }
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("reads detached finality from admitted snapshots before and after a durable transition", async () => {
+    const finalityPolicy = policy();
+    const prior = pending(finalityPolicy, oldPoint);
+    const consistency = agreement(replacementPoint);
+    const finalityResult = evaluateWatcherFinality(
+      finalityPolicy,
+      prior,
+      consistency,
+    );
+    const initialized = await initializeWatcherRollbackDurableAuthority({
+      backend: new MemoryRollbackAuthorityBackend(),
+      policy: finalityPolicy,
+      authenticationKey: rollbackAuthorityKey,
+      trustedHead: null,
+      bootstrapStore: combine(
+        finalityPolicy.deploymentMarker,
+        "0",
+        [graph("10", oldPoint), graph("20", replacementPoint)],
+        undefined,
+        agreementObservations(replacementPoint),
+      ),
+      bootstrapFinalityState: prior,
+    });
+    const first = readWatcherRollbackDurableFinalityState(
+      initialized.authority,
+    );
+    const second = readWatcherRollbackDurableFinalityState(
+      initialized.authority,
+    );
+    expect(first).toEqual(prior);
+    expect(first).toEqual(
+      readWatcherRollbackDurableAuthority(initialized.authority)
+        .currentFinalityState,
+    );
+    expect(first).not.toBe(second);
+    expect(first.pending).not.toBe(second.pending);
+    expect(first.deploymentMarker).not.toBe(second.deploymentMarker);
+    expect(first.pending).not.toBeNull();
+    Reflect.set(first.pending!, "blockHash", hex32("ff"));
+    Reflect.set(first.deploymentMarker, "manifestId", hex32("ff"));
+    expect(
+      readWatcherRollbackDurableFinalityState(initialized.authority),
+    ).toEqual(prior);
+    expect(() =>
+      readWatcherRollbackDurableFinalityState({ ...initialized.authority }),
+    ).toThrow("unknown watcher rollback durable authority");
+
+    const committed = await evaluateAndPersistWatcherRollback({
+      authority: initialized.authority,
+      previousFinalityState: prior,
+      consistency,
+      finalityResult,
+    });
+    if (committed.persistence !== "committed")
+      throw new Error("Expected committed rollback transition");
+    expect(
+      readWatcherRollbackDurableFinalityState(committed.authority),
+    ).toEqual(finalityResult.state);
+    // Old handles remain immutable snapshots; they cannot win a stale CAS.
+    expect(
+      readWatcherRollbackDurableFinalityState(initialized.authority),
+    ).toEqual(prior);
+    expect(
+      (
+        await evaluateAndPersistWatcherRollback({
+          authority: initialized.authority,
+          previousFinalityState: prior,
+          consistency,
+          finalityResult,
+        })
+      ).persistence,
+    ).toBe("conflict");
+  });
+
+  it("preserves an independently sequenced event checkpoint and receipt through global rollback publication", async () => {
+    const finalityPolicy = policy();
+    const prior = evaluateWatcherFinality(
+      finalityPolicy,
+      null,
+      agreement(oldPoint),
+    ).state as WatcherFinalityState;
+    const consistency = agreement(replacementPoint);
+    const finalityResult = evaluateWatcherFinality(
+      finalityPolicy,
+      prior,
+      consistency,
+    );
+    const store = combine(
+      finalityPolicy.deploymentMarker,
+      "0",
+      [graph("10", oldPoint), graph("20", replacementPoint)],
+      undefined,
+      agreementObservations(replacementPoint),
+    );
+    const backend = new MemoryRollbackAuthorityBackend();
+    const initialized = await initializeWatcherRollbackDurableAuthority({
+      backend,
+      policy: finalityPolicy,
+      authenticationKey: rollbackAuthorityKey,
+      trustedHead: null,
+      bootstrapStore: store,
+      bootstrapFinalityState: prior,
+    });
+    let head: WatcherRollbackDurableTrustedHead | null =
+      initialized.trustedHead;
+    const payload = new TextEncoder().encode('{"cursor":null}');
+    const payloadDigest = watcherUserEventArchiveDigest(payload);
+    const runtime = await createWatcherDurableRuntime({
+      backend,
+      policy: finalityPolicy,
+      authenticationKey: rollbackAuthorityKey,
+      client: {
+        readRecordAuthenticationKeyId: async () => hex32("99"),
+        readCurrent: async () => head,
+        compareAndSwap: async ({ expectedTrustedHead, nextTrustedHead }) => {
+          if (JSON.stringify(expectedTrustedHead) !== JSON.stringify(head))
+            return false;
+          head = nextTrustedHead;
+          return true;
+        },
+      },
+      userEventArchive: {
+        put: async (bytes) => watcherUserEventArchiveDigest(bytes),
+        read: async (digest) => (digest === payloadDigest ? payload : null),
+      },
+    });
+    const frame = makeWatcherUserEventCheckpoint({
+      schemaVersion: WATCHER_USER_EVENT_CHECKPOINT_SCHEMA_VERSION,
+      deploymentMarker: finalityPolicy.deploymentMarker,
+      network: finalityPolicy.network,
+      blueprintHash: finalityPolicy.blueprintHash,
+      finalityPolicyDigest: finalityPolicy.policyDigest,
+      userEventPolicyDigest: hex32("77"),
+      checkpointSequence: "0",
+      predecessorCheckpointDigest: null,
+      rollbackGeneration: "0",
+      payloadDigest,
+      requiredArchiveDigests: [payloadDigest],
+    });
+    const before = runtime.read();
+    const published = await persistWatcherUserEventCheckpoint(runtime, {
+      expectedCheckpointDigest: null,
+      expectedCheckpointSequence: null,
+      nextCheckpoint: frame,
+    });
+    expect(runtime.read()).toEqual(before);
+    expect(head?.revision).toBe("1");
+    const result = await runtime.persistRollback({
+      previousFinalityState: prior,
+      consistency,
+      finalityResult,
+      transportAttestations: watcherTransportAttestations,
+    });
+    expect(result.persistence).toBe("committed");
+    expect(head?.revision).toBe("2");
+    expect(runtime.read().currentStore.revision).toBe("1");
+    expect(
+      readWatcherProtectedUserEventCheckpointReceipt(
+        published.protectedCheckpoint,
+      ).checkpoint,
+    ).toEqual(frame);
+    expect(
+      readWatcherProtectedUserEventCheckpointReceipt(
+        await readWatcherProtectedUserEventCheckpoint(runtime),
+      ).checkpoint,
+    ).toEqual(frame);
   });
 
   it("recovers authority initialization crashes and rejects stale concurrent rollback writers", async () => {
@@ -2660,7 +3186,7 @@ describe("canonical watcher rollback engine", () => {
     );
 
     expect(foreignDeployment.reasonCodes).toEqual(["deployment_mismatch"]);
-    expect(foreignRelease.reasonCodes).toEqual(["release_evidence_mismatch"]);
+    expect(foreignRelease.reasonCodes).toEqual(["blueprint_mismatch"]);
     expect(malformed.reasonCodes).toEqual(["malformed_policy"]);
     for (const diagnostic of [foreignDeployment, foreignRelease, malformed]) {
       expect(JSON.stringify(diagnostic)).not.toContain("operator-secret");
@@ -3568,7 +4094,7 @@ describe("canonical watcher rollback engine", () => {
         incident.policyDigest = hex32("81");
       },
       (incident) => {
-        incident.releaseEvidenceDigest = hex32("82");
+        incident.blueprintHash = hex32("82");
       },
       (incident) => {
         incident.deploymentMarker = makeDeploymentMarker(hex32("83"));

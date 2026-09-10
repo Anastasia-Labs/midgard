@@ -32,6 +32,7 @@ import type { ResolvedProverSigner } from "../src/runtime.js";
 import {
   createDoubleSpendConstrainedWorkflowAdapter,
   type DoubleSpendConstrainedWorkflowAdapterConfig,
+  type DoubleSpendWorkflowStage,
 } from "../src/workflow/double-spend-adapter.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -282,7 +283,7 @@ describe("Q38 tier-3 workflow action chains", () => {
         action: publication.action,
         txHash: h32(0x6b),
       }),
-    ).resolves.toEqual({ kind: "not_found" });
+    ).resolves.toEqual({ kind: "pending", txHash: h32(0x6b) });
     expect(observeExact).not.toHaveBeenCalled();
     walletUtxos = [];
     const healedPublication = await observe({
@@ -585,6 +586,99 @@ describe("Q38 tier-3 workflow action chains", () => {
       },
     });
   }, 30_000);
+
+  it("doubleSpend waits for finalized inclusion without rebuilding known intents", async () => {
+    const txHash = h32(0x7a);
+    let stage: DoubleSpendWorkflowStage = {
+      kind: "not_started",
+      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+    };
+    let included = false;
+    const adapter = createDoubleSpendConstrainedWorkflowAdapter({
+      l1: {
+        transactionConfirmed: async () => included,
+        observe: async () => ({
+          provenance: {
+            trustClass: "authenticated_cardano_l1",
+            sourceId: "local-node-test",
+            grade: "security",
+          },
+          stage,
+        }),
+      },
+    } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
+    const context = {
+      identity: workflowIdentity("doubleSpend"),
+      workflowId: h32(0x51),
+      artifact: { headerHash: HEADER_HASH },
+      entries: [],
+      action: {
+        actionId: `init:${STATE_QUEUE_OUT_REF}`,
+        input: { stage: "init" },
+      },
+      txHash,
+    } as const;
+    await expect(adapter.reconcile(context)).resolves.toEqual({
+      kind: "pending",
+      txHash,
+    });
+    stage = {
+      kind: "step_01",
+      threadOutRef: `${txHash}#0`,
+      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+    };
+    await expect(adapter.reconcile(context)).resolves.toMatchObject({
+      kind: "conflict",
+    });
+    included = true;
+    await expect(adapter.reconcile(context)).resolves.toEqual({
+      kind: "confirmed",
+      txHash,
+    });
+    included = false;
+    stage = { ...stage, threadOutRef: `${h32(0x7b)}#0` };
+    await expect(adapter.reconcile(context)).resolves.toMatchObject({
+      kind: "conflict",
+    });
+    for (const ordinal of [
+      "step_01",
+      "step_02",
+      "step_03",
+      "step_04",
+    ] as const) {
+      stage = {
+        kind: ordinal,
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      };
+      await expect(
+        adapter.reconcile({
+          ...context,
+          action: {
+            actionId: `${ordinal}:${THREAD_OUT_REF}`,
+            input: { stage: ordinal },
+          },
+        }),
+      ).resolves.toEqual({ kind: "pending", txHash });
+    }
+    for (const nextRemovalOutRef of [STATE_QUEUE_OUT_REF, `${h32(0x7c)}#0`]) {
+      stage = {
+        kind: "proof_token",
+        fraudProofOutRef: `${h32(0x7d)}#0`,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+        nextRemovalOutRef,
+      };
+      await expect(
+        adapter.reconcile({
+          ...context,
+          action: {
+            actionId: `remove:${STATE_QUEUE_OUT_REF}`,
+            input: { stage: "remove", nextRemovalOutRef: STATE_QUEUE_OUT_REF },
+          },
+        }),
+      ).resolves.toEqual({ kind: "pending", txHash });
+    }
+  });
 
   it("doubleSpend resumes the exact descendant-removal fencing lease in a fresh adapter", async () => {
     const txHash = h32(0x7a);

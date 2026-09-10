@@ -34,7 +34,6 @@ node_env="$MIDGARD_PHASE4_RUN_DIR/secrets/node.env"
 run_env="$MIDGARD_PHASE4_RUN_DIR/run.env"
 manifest="$MIDGARD_PHASE4_RUN_DIR/deploymentInfo/contract-deployment-info.json"
 run_state="$MIDGARD_PHASE4_RUN_DIR/deploymentInfo/deployment-run-state.json"
-node_root=$(CDPATH= cd -- "$phase4_root/../.." && pwd)
 repo_root=$(CDPATH= cd -- "$node_root/../.." && pwd)
 contract_root="$repo_root/onchain/aiken"
 blueprint="$contract_root/plutus.json"

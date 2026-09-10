@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // Behavioral self-test for the Header ABI gate (V-8, issue #531). The gate is
-// the only path that compares the registry-owned contract against BOTH real
+// the only path that compares the pinned contract against BOTH real
 // projections — the blueprint the Aiken compiler generated and the Data schema
 // the built SDK exports — and until now nothing invoked it, so nothing proved
 // it could fail. The gate is tested by behavior, not by reading its source:
@@ -29,9 +29,9 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
 const gatePath = resolve(scriptDir, "verify-canonical-v1-header-v1-abi.mjs");
-const registryPath = resolve(
-  repoRoot,
-  "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+const contractPath = resolve(
+  scriptDir,
+  "canonical-v1-header-v1-abi-contract.json",
 );
 const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const sdkModulePath = resolve(repoRoot, "demo/midgard-sdk/dist/index.js");
@@ -54,12 +54,12 @@ for (const [label, path, remedy] of [
   );
 }
 
-const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+const contract = JSON.parse(readFileSync(contractPath, "utf8"));
 const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8"));
 const HEADER_DEFINITION = "midgard/ledger_state/HeaderV1";
 
 const workspace = mkdtempSync(resolve(tmpdir(), "header-v1-abi-self-test-"));
-const candidateRegistryPath = resolve(workspace, "registry.json");
+const candidateContractPath = resolve(workspace, "contract.json");
 const candidateBlueprintPath = resolve(workspace, "plutus.json");
 
 const runGate = (extraArguments) => {
@@ -75,13 +75,13 @@ const runGate = (extraArguments) => {
   return result;
 };
 
-// Positive control: the published registry, the generated blueprint and the
+// Positive control: the pinned contract, the generated blueprint and the
 // built SDK schema must agree with no redirection at all.
 const control = runGate([]);
 assert.equal(
   control.status,
   0,
-  `real registry/blueprint/SDK must agree: ${control.stderr}${control.stdout}`,
+  `real contract/blueprint/SDK must agree: ${control.stderr}${control.stdout}`,
 );
 assert.match(
   control.stdout,
@@ -101,7 +101,7 @@ const mustReject = (label, expected, seed) => {
   rejectedMutations += 1;
 };
 
-// --- Seeded blueprint mismatches (real registry, real SDK schema) -----------
+// --- Seeded blueprint mismatches (real contract, real SDK schema) ----------
 
 // Only the Header definition is cloned; every other definition in the 11 MB
 // generated blueprint is carried over by reference, so each candidate is the
@@ -189,69 +189,68 @@ mustReject(
     }),
 );
 
-// --- Seeded registry mismatches (real blueprint, real SDK schema) -----------
+// --- Seeded contract mismatches (real blueprint, real SDK schema) -----------
 
-const seedRegistry = (mutate) => {
-  const candidate = structuredClone(registry);
-  const row = candidate.formats.find((format) => format.id === "L01");
-  assert.ok(row !== undefined, "L01 must exist in the registry");
-  mutate(row.canonicalForms[0], row);
-  writeFileSync(candidateRegistryPath, JSON.stringify(candidate));
-  return [`--registry-under-test=${candidateRegistryPath}`];
+const seedContract = (mutate) => {
+  const candidate = structuredClone(contract);
+  mutate(candidate);
+  writeFileSync(candidateContractPath, JSON.stringify(candidate));
+  return [`--contract-under-test=${candidateContractPath}`];
 };
 
 mustReject(
-  "the registry renames an Aiken-facing Header field",
+  "the contract renames an Aiken-facing Header field",
   /Aiken field 7 name mismatch/u,
   () =>
-    seedRegistry((contract) => {
-      contract.fields[7].name = "hostile_registry_field";
-      contract.exactFields[7] = "hostile_registry_field";
+    seedContract((candidate) => {
+      candidate.fields[7].name = "hostile_contract_field";
+      candidate.exactFields[7] = "hostile_contract_field";
     }),
 );
 
 mustReject(
-  "the registry renames an SDK-facing Header field",
+  "the contract renames an SDK-facing Header field",
   /SDK field 2 name mismatch/u,
   () =>
-    seedRegistry((contract) => {
-      contract.fields[2].sdkName = "hostileRegistryField";
+    seedContract((candidate) => {
+      candidate.fields[2].sdkName = "hostileContractField";
     }),
 );
 
 mustReject(
-  "the registry retypes an SDK-facing Header field",
+  "the contract retypes an SDK-facing Header field",
   /SDK field \d+ type mismatch/u,
   () =>
-    seedRegistry((contract) => {
-      const index = contract.fields.findIndex((field) =>
+    seedContract((candidate) => {
+      const index = candidate.fields.findIndex((field) =>
         field.type.startsWith("bytes"),
       );
       assert.ok(index >= 0, "Header must declare a bytes field");
       // The Aiken comparison erases the width suffix, so only the SDK's
       // runtime minLength/maxLength can catch this: the gate must not be
       // satisfied by the blueprint half agreeing.
-      contract.fields[index].type =
-        contract.fields[index].type === "bytes28" ? "bytes32" : "bytes28";
+      candidate.fields[index].type =
+        candidate.fields[index].type === "bytes28" ? "bytes32" : "bytes28";
     }),
 );
 
 mustReject(
-  "the registry understates the Header constructor arity",
+  "the contract understates the Header constructor arity",
   /contract\.constructor\.arity must be 25/u,
   () =>
-    seedRegistry((contract) => {
-      contract.constructor.arity = 24;
+    seedContract((candidate) => {
+      candidate.constructor.arity = 24;
     }),
 );
 
+// The pin itself going missing must not read as agreement: with no contract
+// there is nothing for the two real projections to be compared against.
 mustReject(
-  "the registry deletes the L01 contract the gate compares",
-  /format registry L01 must provide canonicalForms\[0\]/u,
-  () =>
-    seedRegistry((_contract, row) => {
-      row.canonicalForms = [];
-    }),
+  "the pinned contract is absent",
+  /Header V1 ABI contract does not exist/u,
+  () => [
+    `--contract-under-test=${resolve(workspace, "no-such-contract.json")}`,
+  ],
 );
 
 // --- A missing build may not be mistaken for agreement ---------------------
@@ -275,7 +274,7 @@ const closingControl = runGate([]);
 assert.equal(
   closingControl.status,
   0,
-  `real registry/blueprint/SDK must still agree: ${closingControl.stderr}`,
+  `real contract/blueprint/SDK must still agree: ${closingControl.stderr}`,
 );
 
 rmSync(workspace, { recursive: true, force: true });

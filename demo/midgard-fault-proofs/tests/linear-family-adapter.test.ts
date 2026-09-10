@@ -13,7 +13,10 @@ import {
 } from "../src/workflow/linear-family-adapter.js";
 import { linearFamilyObservation } from "../src/workflow/linear-family-state.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
-import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  workflowPreflightTransaction,
+} from "../src/workflow/transaction-boundary.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
@@ -147,6 +150,9 @@ describe("production linear family adapter V1", () => {
       ...context,
       action: observation.action,
     });
+    expect(workflowPreflightTransaction(preflight)).toBe(
+      (await capture.mock.results[0]!.value).transaction.signed,
+    );
     expect(preflight).toMatchObject({
       actionId: observation.action.actionId,
       txHash,
@@ -435,7 +441,7 @@ describe("production linear family adapter V1", () => {
         txHash,
         durableRecovery: preflight.durableRecovery,
       }),
-    ).resolves.toEqual({ kind: "not_found" });
+    ).resolves.toEqual({ kind: "pending", txHash });
     expect(resume).toHaveBeenCalledWith({
       token: lease.token,
       source: lease.source,

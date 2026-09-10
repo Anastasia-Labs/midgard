@@ -27,6 +27,7 @@ import {
 import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "../workflow/local-kupmios-raw-l1-authority.js";
 import {
   admitFraudProofRawL1Snapshot,
+  computeFraudProofRawL1SnapshotEvidenceDigest,
   type FraudProofRawL1Snapshot,
   type FraudProofRawL1SnapshotAuthority,
   type FraudProofRawL1SnapshotRequest,
@@ -46,6 +47,8 @@ export type CrossBlockSettlementContext = Readonly<{
   deploymentFingerprint: string;
   boundaryPointId: string;
   contextDigest: string;
+  /** Complete settlement evidence without the moving capture boundary. */
+  evidenceDigest: string;
 }>;
 type ContextData = Readonly<{
   authority: CrossBlockSettlementAuthority;
@@ -145,7 +148,7 @@ const construct = ({
       const hubPolicyId = binding.resolvedContracts.hubOraclePolicyId;
       const base: FraudProofRawL1SnapshotRequest = {
         deploymentIdentityDigest: binding.deploymentFingerprint,
-        releaseIdentityDigest: binding.releaseIdentityDigest,
+        blueprintHash: binding.blueprintHash,
         finalityPolicyDigest: binding.releaseFinality.policyDigest,
         headerHash: evidence.headerHash,
         scopes: [
@@ -271,6 +274,34 @@ const construct = ({
         challengedHeaderHash: evidence.headerHash,
         deploymentFingerprint: binding.deploymentFingerprint,
         boundaryPointId: snapshot.cursor.point.pointId,
+        evidenceDigest: sha(
+          JSON.stringify({
+            schemaVersion: "midgard-cross-block-settlement-evidence-v1",
+            deploymentFingerprint: binding.deploymentFingerprint,
+            challengedHeaderHash: evidence.headerHash,
+            settlementPolicyId: policyId,
+            settlementAddress: address,
+            rawEvidenceDigest:
+              computeFraudProofRawL1SnapshotEvidenceDigest(snapshot),
+            records: records.map(
+              ({
+                headerHash,
+                outRef,
+                policyId,
+                datumCbor,
+                payloadEnvelopeCbor,
+              }) => ({
+                headerHash,
+                outRef,
+                policyId,
+                datumCbor,
+                payloadEnvelopeSha256: createHash("sha256")
+                  .update(Buffer.from(payloadEnvelopeCbor, "hex"))
+                  .digest("hex"),
+              }),
+            ),
+          }),
+        ),
         contextDigest: sha(
           JSON.stringify({
             headerHash: evidence.headerHash,

@@ -5,7 +5,7 @@
  * committed — where it used to carry field 7's own collection commitment. §3's
  * id preimage is the body alone, so this step is the last place that hash is
  * authenticated rather than asserted. See
- * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
  * `invalid-signature` step-01 submitter (Goal task `Q15`, §9.1 output 8).
  *

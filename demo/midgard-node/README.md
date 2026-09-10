@@ -4,7 +4,7 @@ Server application with GET and POST endpoints for interacting with Midgard.
 
 ## What This Package Does
 
-`midgard-node` is the demo off-chain runtime that ties the protocol together.
+`midgard-node` is the off-chain node runtime that ties the protocol together.
 It is responsible for:
 
 - serving the HTTP API used by wallets, tests, and local tooling,
@@ -38,8 +38,8 @@ It is responsible for:
   ledger entries, immutable transactions, address history, and rejection logs.
 - `LEDGER_MPF_DB_PATH` and `TRANSACTIONS_MPF_DB_PATH` point at the LevelDB
   directories used to persist MPF-backed state roots across restarts.
-- `pnpm build` regenerates `src/generated/midgard-sdk-types.d.ts` by syncing
-  the built SDK declarations before bundling the node.
+- `pnpm build` bundles the node entry point and worker entry points with tsup;
+  workspace imports resolve through package exports.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
   or remotely reachable environment.
 - Accepted `mempool` and `mempool_ledger` rows, spent-input deletion, consumed
@@ -57,7 +57,7 @@ It is responsible for:
 
 Before using live preprod e2e as a debugging loop for builder, wallet,
 validity-window, worker, DA, or post-submit recovery changes, run the focused
-feedback ladder in [TX_PREP_FEEDBACK_LADDER.md](./docs/TX_PREP_FEEDBACK_LADDER.md).
+checks in the [e2e acceptance skill](../../.agents/skills/midgard-e2e-acceptance/SKILL.md).
 The package-level shortcuts are:
 
 ```sh
@@ -86,7 +86,8 @@ quite easily.
    sudo dockerd
    ```
 
-2. Pack the `midgard-sdk` tarball (see [here](../midgard-sdk/README.md)).
+2. Use the Node.js and pnpm versions declared in `demo/package.json`.
+   Workspace SDK dependencies resolve through pnpm; no SDK tarball is needed.
 
 3. Prepare your `.env` file. You can use `.env.example` as your starting point:
 
@@ -109,11 +110,8 @@ quite easily.
    pnpm install --frozen-lockfile
    ```
 
-   1. If the install fails with an incorrect SHA, that most likely means
-      `midgard-sdk` was updated recently, but `pnpm-lock.yaml` still expects the
-      old hash. Update the SHA value inside the `pnpm-lock.yaml` file with the
-      new one.
-   2. Rerun `pnpm install --frozen-lockfile`. Now it should install correctly.
+   Resolve dependency or lockfile drift through the workspace package manifests
+   and pnpm. Do not manually replace integrity hashes in the lockfile.
 
 5. Build the midgard-node:
 
@@ -214,16 +212,10 @@ most up to date `midgard-node`:
 # Optional
 nix develop
 
-# Bundle the SDK
-cd ../midgard-sdk
-pnpm install
-pnpm repack
-
-# Go back to `midgard-node` and force reinstallation of the SDK (faster than
-# `pnpm install --force`)
-cd ../midgard-node
-rm -rf node_modules
-pnpm install
+# From demo/midgard-node, install the pinned workspace dependencies.
+pnpm install --frozen-lockfile
+pnpm build
+node dist/index.js db:migrate
 pnpm listen
 ```
 
@@ -307,8 +299,8 @@ The main listener exposes a small operator-facing API. Common routes include:
 
 - `/deposit/build` for building unsigned L1 deposit transactions from a
   caller-supplied wallet view,
-- `/submit` for submitting raw Midgard canonical transaction CBOR with
-  `Content-Type: application/cbor`,
+- `/submit` for submitting the canonical V1 proof-submission envelope with
+  `Content-Type: application/vnd.midgard.v1+cbor`,
 - `/utxo` for querying one spendable Midgard mempool-ledger UTxO by raw
   TxOutRef CBOR hex,
 - `/utxos` for querying spendable Midgard mempool-ledger UTxOs either by
@@ -529,7 +521,7 @@ protocol deployment status. If a present manifest disagrees with configured
 network, one-shot outref, or reference-script deploy address, startup refuses to
 attach until config is corrected or a fresh redeploy is explicit.
 
-`init` now always writes the manifest. By default it goes to the repository root
+`init` now always writes the manifest. By default it goes to the node working directory
 at `deploymentInfo/contract-deployment-info.json`. If you want to override that
 path, pass:
 
@@ -622,8 +614,8 @@ Additional run matrix:
 
 Notes:
 
-- Corpus mode reads canonical transaction bytes from NDJSON and submits raw
-  CBOR to `/submit` with `Content-Type: application/cbor`.
+- Corpus mode reads canonical transaction bytes from NDJSON and submits a
+  canonical proof-submission envelope to `/submit` with `Content-Type: application/vnd.midgard.v1+cbor`.
 - The legacy no-corpus mode still reads test wallets and `/utxos`; do not use
   that mode for repeatable acceptance or regression evidence.
 - It uses pooled Undici HTTP clients and supports `STRESS_MODE=closed`,
@@ -693,7 +685,7 @@ Both the stored/transmitted envelope and its declared and actual decoded
 content are capped by the pinned DA protocol limit. Zstd decoding uses
 `maxOutputLength`, then verifies exact length and inner SHA-256 before the
 existing strict payload validator runs. Midgard node and committee runtimes
-therefore require Node.js 22.15 or newer.
+therefore require the Node.js version floor declared in `demo/package.json` (currently 22.16).
 
 Retained-payload and fault-proof consumers preserve the stored artifact as the
 hash identity. They carry `payloadSchemaVersion` from retained metadata, verify
@@ -724,5 +716,4 @@ acceptance threshold deliberately have no environment override.
 
 - [Root repository guide](../../README.md)
 - [Midgard SDK guide](../midgard-sdk/README.md)
-- [Preprod deposit and send-tx runbook](./docs/PREPROD_DEPOSIT_AND_SEND_TX.md)
 - [Technical specification guide](../../technical-spec/README.md)

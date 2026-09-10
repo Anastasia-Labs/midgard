@@ -21,11 +21,6 @@ import {
   parseWithdrawalTxOutRefLabel,
 } from "../src/commands/withdrawal-utils.js";
 import { assetsToValue } from "../src/transactions/reserve-payout.js";
-import {
-  publicKeyHashFromWithdrawalSignature,
-  signWithdrawalBody,
-  verifyWithdrawalSignature,
-} from "../src/withdrawal-signature.js";
 
 const seedPhrase =
   "test test test test test test test test test test test junk";
@@ -53,11 +48,13 @@ const makeWithdrawalBody = async (): Promise<SDK.WithdrawalBody> => {
 describe("withdrawal signature utilities", () => {
   it("signs and verifies a withdrawal body", async () => {
     const body = await makeWithdrawalBody();
-    const signature = signWithdrawalBody(privateKey, body);
-    expect(publicKeyHashFromWithdrawalSignature(signature)).toEqual(
+    const signature = SDK.signWithdrawalBody(privateKey, body);
+    expect(SDK.publicKeyHashFromWithdrawalSignature(signature)).toEqual(
       body.l2_owner,
     );
-    expect(verifyWithdrawalSignature(body, signature, body.l2_owner)).toEqual({
+    expect(
+      SDK.verifyWithdrawalSignature(body, signature, body.l2_owner),
+    ).toEqual({
       valid: true,
       publicKeyHash: body.l2_owner,
     });
@@ -65,19 +62,19 @@ describe("withdrawal signature utilities", () => {
 
   it("rejects tampered withdrawal bodies and wrong owners", async () => {
     const body = await makeWithdrawalBody();
-    const signature = signWithdrawalBody(privateKey, body);
+    const signature = SDK.signWithdrawalBody(privateKey, body);
     const tampered: SDK.WithdrawalBody = {
       ...body,
       l2_value: assetsToValue({ lovelace: 8_000_000n }),
     };
     expect(
-      verifyWithdrawalSignature(tampered, signature, body.l2_owner),
+      SDK.verifyWithdrawalSignature(tampered, signature, body.l2_owner),
     ).toMatchObject({
       valid: false,
       reason: "invalid_signature",
     });
     expect(
-      verifyWithdrawalSignature(
+      SDK.verifyWithdrawalSignature(
         body,
         signature,
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -91,14 +88,14 @@ describe("withdrawal signature utilities", () => {
   it("rejects malformed public keys and signatures", async () => {
     const body = await makeWithdrawalBody();
     expect(
-      verifyWithdrawalSignature(body, ["aa", "bb"], body.l2_owner),
+      SDK.verifyWithdrawalSignature(body, ["aa", "bb"], body.l2_owner),
     ).toEqual({
       valid: false,
       reason: "malformed_public_key",
     });
-    const [publicKey] = signWithdrawalBody(privateKey, body);
+    const [publicKey] = SDK.signWithdrawalBody(privateKey, body);
     expect(
-      verifyWithdrawalSignature(body, [publicKey, "bb"], body.l2_owner),
+      SDK.verifyWithdrawalSignature(body, [publicKey, "bb"], body.l2_owner),
     ).toEqual({
       valid: false,
       reason: "malformed_signature",

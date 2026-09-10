@@ -1,14 +1,9 @@
 import {
   computeFraudProofRawL1PointId,
-  computeFraudProofReleaseFinalityPolicyDigest,
-  createLocalKupmiosHttpOgmiosRawSource,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type LocalKupmiosFraudProofRawSource,
   localKupmiosHttpOgmiosRawSourceDetails,
   type LocalKupmiosRawBlockAtPoint,
   readAdmittedLocalKupmiosRawBlockAtPoint,
-  validateVerifiedFraudProofReleaseFinalityPolicy,
-  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs";
 
 import { parseWatcherConfig, type WatcherConfig } from "../runtime/config.js";
@@ -25,6 +20,7 @@ import {
   type WatcherL1TransportAttestationContext,
   type WatcherNormalizedL1Block,
 } from "./l1-adapter.js";
+import { createWatcherLocalKupmiosRawSource } from "./local-kupmios-raw-source.js";
 import { evaluateWatcherMultiProviderConsistency } from "./multi-provider-consistency.js";
 import type { WatcherNativeBlockAdmission } from "./native-block-admission.js";
 import {
@@ -56,16 +52,6 @@ export type WatcherLocalKupmiosNativeObservationRuntime = Readonly<{
   }): Promise<WatcherLocalKupmiosNativeObservation>;
   close(): void;
 }>;
-
-const expectedRawSourceId = (
-  deploymentIdentity: VerifiedWatcherDeploymentIdentity,
-  authorityNodeId: string,
-): string =>
-  [
-    "watcher-native-crosscheck",
-    deploymentIdentity.manifestId,
-    authorityNodeId,
-  ].join("/");
 
 const nativeBindingByLocalObservation = new WeakMap<object, string>();
 
@@ -144,23 +130,6 @@ export const unsafeAssertNativeKupmiosAgreementForTest = (
   raw: LocalKupmiosRawBlockAtPoint,
 ): void => assertNativeKupmiosAgreement(native, raw);
 
-const releaseFinalityFromDeployment = (
-  identity: VerifiedWatcherDeploymentIdentity,
-): VerifiedFraudProofReleaseFinalityPolicy => {
-  const policy = Object.freeze({
-    confirmationDepth: 30 as const,
-    automaticRecoveryMaxDepth: 2160 as const,
-    deepRollbackPolicy: "automated_rewind_replay_incident-v1" as const,
-  });
-  return validateVerifiedFraudProofReleaseFinalityPolicy({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: identity.manifestId,
-    releaseIdentityDigest: identity.releaseEvidenceDigest,
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
-    policy,
-  });
-};
-
 const tcpTransport = (
   service: Extract<
     WatcherConfig["l1"]["source"],
@@ -175,54 +144,6 @@ const tcpTransport = (
     endpoint: service.endpoint,
     connectTimeoutMs: timeoutMs,
   });
-
-/**
- * Constructs the deployment/config-bound raw Kupo/Ogmios authority before a
- * native chain-sync process is started. The runtime must subsequently bind
- * this exact source to the native authority before processing any event.
- */
-export const createWatcherLocalKupmiosRawSource = (
-  input: Readonly<{
-    watcherConfig: unknown;
-    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  }>,
-): LocalKupmiosFraudProofRawSource => {
-  const watcherConfig = parseWatcherConfig(input.watcherConfig);
-  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
-  if (
-    watcherConfig.mode !== "acceptance" ||
-    watcherConfig.targetNetwork !== "Preprod" ||
-    input.deploymentIdentity.network !== watcherConfig.targetNetwork ||
-    watcherConfig.l1.source.sourceMode !== "local_node" ||
-    watcherConfig.l1.finality.depth !== 30 ||
-    watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth !== 2160
-  ) {
-    throw new Error(
-      "local Kupo/Ogmios raw source differs from the admitted release",
-    );
-  }
-  const source = watcherConfig.l1.source;
-  const kupo = source.queryServices.find(({ kind }) => kind === "kupo");
-  const ogmios = source.queryServices.find(({ kind }) => kind === "ogmios");
-  if (kupo === undefined || ogmios === undefined) {
-    throw new Error("local Kupo/Ogmios raw source omitted a required service");
-  }
-  if (source.queryServices.some(({ kind }) => kind === "db_sync")) {
-    throw new Error(
-      "configured db-sync requires a concrete authenticated watcher query adapter",
-    );
-  }
-  return createLocalKupmiosHttpOgmiosRawSource({
-    sourceId: expectedRawSourceId(
-      input.deploymentIdentity,
-      source.authorityNodeId,
-    ),
-    kupoHttpUrl: kupo.endpoint,
-    ogmiosUrl: ogmios.endpoint,
-    releaseFinality: releaseFinalityFromDeployment(input.deploymentIdentity),
-    timeoutMs: watcherConfig.l1.requestTimeoutMs,
-  });
-};
 
 /**
  * Constructs the live W01 observation authority from one native NtC session
@@ -299,23 +220,29 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
       tcpTransport(ogmios, watcherConfig.l1.requestTimeoutMs),
     );
     queryContexts.push(ogmiosContext);
-    const rawSource =
-      input.rawSource ??
-      createWatcherLocalKupmiosRawSource({
-        watcherConfig,
-        deploymentIdentity: input.deploymentIdentity,
-      });
+    // Use the same constructor for the expected namespace and normalized URLs.
+    // Construction performs no network I/O; a supplied source still has to carry
+    // the constructor's private admission and the exact configured identity.
+    const configuredRawSource = createWatcherLocalKupmiosRawSource({
+      watcherConfig,
+      deploymentIdentity: input.deploymentIdentity,
+    });
+    const expectedSourceDetails =
+      localKupmiosHttpOgmiosRawSourceDetails(configuredRawSource);
+    const rawSource = input.rawSource ?? configuredRawSource;
     const rawSourceDetails = localKupmiosHttpOgmiosRawSourceDetails(rawSource);
     if (
       rawSourceDetails === null ||
-      rawSourceDetails.sourceId !==
-        expectedRawSourceId(input.deploymentIdentity, source.authorityNodeId) ||
+      expectedSourceDetails === null ||
+      rawSourceDetails.sourceId !== expectedSourceDetails.sourceId ||
       rawSourceDetails.deploymentIdentityDigest !==
         input.deploymentIdentity.manifestId ||
-      rawSourceDetails.releaseIdentityDigest !==
-        input.deploymentIdentity.releaseEvidenceDigest ||
-      rawSourceDetails.kupoHttpUrl !== kupo.endpoint ||
-      rawSourceDetails.ogmiosUrl !== ogmios.endpoint
+      rawSourceDetails.blueprintHash !==
+        input.deploymentIdentity.blueprintHash ||
+      rawSourceDetails.kupoHttpUrl !== expectedSourceDetails.kupoHttpUrl ||
+      rawSourceDetails.ogmiosUrl !== expectedSourceDetails.ogmiosUrl ||
+      rawSourceDetails.finalityPolicyDigest !==
+        expectedSourceDetails.finalityPolicyDigest
     ) {
       throw new Error(
         "local Kupo/Ogmios raw source differs from the admitted native topology",

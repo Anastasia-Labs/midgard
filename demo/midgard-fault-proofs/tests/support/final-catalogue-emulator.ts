@@ -156,7 +156,6 @@ export const publishFinalFamilyReferenceScripts = async <
   lucid,
   family,
   label,
-  enforceL1Envelope = true,
   onPublication,
 }: {
   readonly lucid: Parameters<
@@ -164,7 +163,6 @@ export const publishFinalFamilyReferenceScripts = async <
   >[0]["lucid"];
   readonly family: Family;
   readonly label: string;
-  readonly enforceL1Envelope?: boolean;
   readonly onPublication?: (
     stepIndex: number,
     publication: Awaited<ReturnType<typeof publishPlainReferenceScriptUtxo>>,
@@ -176,7 +174,6 @@ export const publishFinalFamilyReferenceScripts = async <
       lucid,
       script: step.spendingScript,
       label: `${label} step-${(index + 1).toString().padStart(2, "0")}`,
-      oversized: !enforceL1Envelope,
     });
     onPublication?.(index, publication);
     refs.push(publication.utxo);

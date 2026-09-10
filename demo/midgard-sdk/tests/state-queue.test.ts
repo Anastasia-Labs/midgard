@@ -1022,6 +1022,7 @@ const submitCommitHeaderTx = async ({
   correctionLock,
   commitYield,
   activeOperatorInput,
+  headerNodeLovelace,
 }: {
   readonly emulator: Emulator;
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
@@ -1034,6 +1035,7 @@ const submitCommitHeaderTx = async ({
   readonly correctionLock: UTxO;
   readonly commitYield: UTxO;
   readonly activeOperatorInput: UTxO;
+  readonly headerNodeLovelace?: bigint;
 }): Promise<{
   readonly block: StateQueueUTxO;
   readonly activeOperatorInput: UTxO;
@@ -1068,6 +1070,7 @@ const submitCommitHeaderTx = async ({
       {
         anchorUTxO: anchor,
         newHeader: header,
+        headerNodeLovelace,
         schedulerRefInput: scheduler,
         correctionLockRefInput: {
           utxo: correctionLock,
@@ -1357,6 +1360,7 @@ describe("state-queue emulator builders", () => {
       contracts,
       anchor: stateQueueRoot,
       header,
+      headerNodeLovelace: 5_000_000n,
       operator,
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
@@ -1383,6 +1387,7 @@ describe("state-queue emulator builders", () => {
       );
     }
     const committedBlock = commit.block;
+    expect(committedBlock.utxo.assets.lovelace).toBe(5_000_000n);
     const continuedRoot = await Effect.runPromise(
       utxoToStateQueueUTxO(continuedRootUtxo, contracts.stateQueue.policyId),
     );

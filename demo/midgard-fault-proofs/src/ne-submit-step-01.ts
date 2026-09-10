@@ -6,7 +6,7 @@
  * that transaction's `spend_inputs_hash`. Step-02 re-opens field 0 through the
  * §8.8 door and reads one input arithmetically instead of reproducing the whole
  * collection to re-hash it (the Q1X-F6 shape, #551). The two ledger roots are
- * unchanged. See `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * unchanged. See `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 
 import {

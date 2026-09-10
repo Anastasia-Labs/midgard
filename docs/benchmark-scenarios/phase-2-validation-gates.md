@@ -5,12 +5,13 @@ revision/configuration is evidence that the gate passed.
 
 **Last reviewed:** 2026-07-22
 
+Documentation check: 2026-09-07 (retained runner paths and package commands;
+no benchmark or live acceptance rerun).
+
 This runbook is the repeatable evidence surface for throughput Phase 2
-(parallel validation, B1–B3). Its ExecPlan was removed in the 2026-08 docs
-cleanup and is preserved in git history as
-`docs/exec-plans/throughput/phase-2-parallel-validation.md` (last commit
-`c4e0ac9a7`); still-live items from the throughput ExecPlans were consolidated
-into `docs/exec-plans/archive-extracts-2026-08.md`. Every asserted run
+(parallel validation, B1–B3). Runtime-default decisions are recorded in
+[Benchmark-gated runtime options](../midgard/decisions/benchmark-gated-runtime-options.md).
+Every asserted run
 is fail-closed: the benchmark inspects the node and PostgreSQL containers, and
 `verify-phase2-benchmark-report.mjs` rejects topology drift, transaction loss,
 queue residue, latency/scaling regressions, or incomplete soak duration.
@@ -25,7 +26,7 @@ export NODE_IMAGE="node:22.22.2"
 export POSTGRES_IMAGE="postgres:15.15-alpine"
 export PHASE2_NETWORK="midgard_phase2_gate"
 export PHASE2_PG="midgard_phase2_pg"
-export DOCKER_CLI="/mnt/wsl/docker-desktop/cli-tools/usr/bin/docker"
+export DOCKER_CLI="${DOCKER_CLI:-$(command -v docker)}"
 : "${SHORT_CORPUS:?set SHORT_CORPUS to the verified private-256 corpus path inside /workspace}"
 : "${SHORT_MANIFEST:?set SHORT_MANIFEST to that corpus manifest path inside /workspace}"
 : "${SHORT_WALLETS:?set SHORT_WALLETS to that corpus wallet directory inside /workspace}"
@@ -58,16 +59,14 @@ test -x "$DOCKER_CLI"
 ```
 
 The short rehearsal must be a newly verified private 25,600-row corpus (256
-chains × 100); there is no retained short artifact that may be treated as
-formal evidence. The currently verified 4,096-wallet full corpus has 3,063,808
-rows. It can cover only 10,212.69 tx/s for 300 seconds, so it is also not a
-valid formal resource for the expected throughput envelope. The formal corpus
+chains × 100). A short rehearsal does not establish formal acceptance.
+The formal corpus
 must contain at least 3,780,000 unique rows per replica: 12,600 tx/s of capacity
 for one continuous 300-second run. The parser still recomputes measured
 throughput from accepted rows and elapsed time, so extra rows never substitute
 for either the 300-second duration or the 10,000 tx/s floor. Both sequential
 replicas must independently clear both requirements. Generate and verify the
-missing private-256 and >=3,780,000-row corpora before running the matrix; do
+private-256 and >=3,780,000-row corpora before running the matrix; do
 not relabel or pad retained reports. Then declare the full corpus identity:
 
 ```bash

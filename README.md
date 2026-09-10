@@ -11,8 +11,8 @@ implementations, and the LaTeX technical specification in a single repository.
 
 - `onchain/aiken`: primary Aiken validators, minting policies, and shared
   protocol libraries.
-- `onchain/plutarch`: Plutarch models, validators, and test helpers that mirror
-  important protocol logic.
+- `onchain/plutarch`: Plutarch Merkle membership/exclusion validators and their
+  shared proof utilities.
 - `demo/midgard-sdk`: off-chain TypeScript SDK for building Midgard
   transactions and decoding protocol data.
 - `demo/midgard-node`: demo node runtime, HTTP server, worker loops, and
@@ -22,9 +22,8 @@ implementations, and the LaTeX technical specification in a single repository.
 - `demo/midgard-watcher`: independent verifier and challenger service.
 - `technical-spec`: normative protocol design target and diagrams. Its
   conformance status is tracked separately from the implementation.
-- `docs`: contributor documentation, decisions, and plans. Execution plans,
-  progress ledgers, and review records live under `docs/exec-plans/`; the
-  public-testnet readiness status lives at `docs/public_testnet_readiness.md`.
+- `docs`: [contributor references, decisions, and active plans](./docs/README.md).
+  Release acceptance lives in `docs/public_testnet_readiness.md`.
 - `docs-site`: documentation site covering the SDK, node, watchers, fault
   proofs, and on-chain validators.
 
@@ -39,10 +38,10 @@ implementations, and the LaTeX technical specification in a single repository.
 - [Midgard SDK guide](./demo/midgard-sdk/README.md): packaging, conventions,
   and SDK module layout.
 - [Documentation site](./docs-site/README.md): the full guides and reference,
-  runnable locally with `pnpm dev`. CI checks the pages against the source
-  files they describe, so a PR that changes a documented CLI command, fiber,
-  or transaction status also updates the matching page; the check's error
-  message names both files.
+  runnable locally with `pnpm --dir docs-site dev`. CI checks selected command,
+  fiber, transaction-status, and inventory facts against their source files.
+  These checks do not validate every prose claim or code example; review the
+  affected documentation when implementation behavior changes.
 - [Documentation policy](./docs/DOCUMENTATION_POLICY.md): source-of-truth,
   evidence, security-claim, and plan-lifecycle rules.
 - [Canonical V1 consensus profile](./docs/consensus-profile-v1.md): exact
@@ -50,11 +49,13 @@ implementations, and the LaTeX technical specification in a single repository.
 
 ## Build the On-Chain Code
 
-Install [Aiken](https://aiken-lang.org/) and run:
+Use the Aiken fork pinned in [.github/workflows/aiken-ci.yml](./.github/workflows/aiken-ci.yml).
+The upstream version number alone does not identify the repository compiler.
+With that compiler on `PATH`, build the demo/preprod environment:
 
 ```sh
 cd onchain/aiken
-aiken build
+aiken build --env testnet
 ```
 
 ## Technical Specification
@@ -82,7 +83,7 @@ pnpm build
 All contributors must enable the project's standardized git hooks:
 
 ```
-make enable-git-hooks
+bash .githooks/install
 ```
 
 Take a look at the [contribution guidelines](./CONTRIBUTING.md) for more details.

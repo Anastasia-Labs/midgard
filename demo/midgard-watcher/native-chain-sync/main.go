@@ -9,10 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -24,9 +26,10 @@ import (
 )
 
 const (
-	schemaVersion   = "midgard-watcher-native-chain-sync-v1"
-	maxStartupBytes = 64 * 1024
-	maxBlockBytes   = 4 * 1024 * 1024
+	schemaVersion        = "midgard-watcher-native-chain-sync-v1"
+	maxStartupBytes      = 64 * 1024
+	maxBlockBytes        = 4 * 1024 * 1024
+	maxQueryIngressBytes = 8 * 1024 * 1024
 )
 
 var (
@@ -45,15 +48,29 @@ type wirePoint struct {
 	Slot      string `json:"slot,omitempty"`
 }
 
+type wireBlockPoint struct {
+	BlockHash string `json:"blockHash"`
+	BlockNo   string `json:"blockNo"`
+	Slot      string `json:"slot"`
+}
+
+type wireOperation struct {
+	Kind               string          `json:"kind"`
+	PredecessorBlockNo string          `json:"predecessorBlockNo,omitempty"`
+	Target             *wireBlockPoint `json:"target,omitempty"`
+	TimeoutMs          uint64          `json:"timeoutMs,omitempty"`
+}
+
 // Fields are declared in canonical lexicographic JSON-key order.
 type startupConfig struct {
-	AuthorityNodeID       string    `json:"authorityNodeId"`
-	GenesisIdentitySHA256 string    `json:"genesisIdentitySha256"`
-	Intersection          wirePoint `json:"intersection"`
-	Network               string    `json:"network"`
-	NetworkMagic          uint32    `json:"networkMagic"`
-	SchemaVersion         string    `json:"schemaVersion"`
-	SocketPath            string    `json:"socketPath"`
+	AuthorityNodeID       string        `json:"authorityNodeId"`
+	GenesisIdentitySHA256 string        `json:"genesisIdentitySha256"`
+	Intersection          wirePoint     `json:"intersection"`
+	Network               string        `json:"network"`
+	NetworkMagic          uint32        `json:"networkMagic"`
+	Operation             wireOperation `json:"operation"`
+	SchemaVersion         string        `json:"schemaVersion"`
+	SocketPath            string        `json:"socketPath"`
 }
 
 type wireTip struct {
@@ -64,16 +81,17 @@ type wireTip struct {
 }
 
 type readyEvent struct {
-	AuthorityNodeID       string    `json:"authorityNodeId"`
-	CurrentTip            wireTip   `json:"currentTip"`
-	GenesisIdentitySHA256 string    `json:"genesisIdentitySha256"`
-	Kind                  string    `json:"kind"`
-	Network               string    `json:"network"`
-	NetworkMagic          uint32    `json:"networkMagic"`
-	SchemaVersion         string    `json:"schemaVersion"`
-	SelectedIntersection  wirePoint `json:"selectedIntersection"`
-	SocketPath            string    `json:"socketPath"`
-	StartupDigest         string    `json:"startupDigest"`
+	AuthorityNodeID       string        `json:"authorityNodeId"`
+	CurrentTip            wireTip       `json:"currentTip"`
+	GenesisIdentitySHA256 string        `json:"genesisIdentitySha256"`
+	Kind                  string        `json:"kind"`
+	Network               string        `json:"network"`
+	NetworkMagic          uint32        `json:"networkMagic"`
+	Operation             wireOperation `json:"operation"`
+	SchemaVersion         string        `json:"schemaVersion"`
+	SelectedIntersection  wirePoint     `json:"selectedIntersection"`
+	SocketPath            string        `json:"socketPath"`
+	StartupDigest         string        `json:"startupDigest"`
 }
 
 type rollForwardEvent struct {
@@ -119,7 +137,7 @@ func canonicalJSON(value any) ([]byte, error) {
 
 func readStartup() (startupConfig, []byte, error) {
 	reader := bufio.NewReaderSize(os.Stdin, maxStartupBytes+1)
-	line, err := reader.ReadBytes('\n')
+	line, err := reader.ReadSlice('\n')
 	if err != nil {
 		return startupConfig{}, nil, fmt.Errorf("read startup: %w", err)
 	}
@@ -168,8 +186,57 @@ func validateStartup(config startupConfig) error {
 	if err != nil || info.Mode()&os.ModeSocket == 0 {
 		return errors.New("startup path is not a Unix socket")
 	}
+	if err := validateOperation(config); err != nil {
+		return fmt.Errorf("startup operation is invalid: %w", err)
+	}
 	if err := validatePoint(config.Intersection); err != nil {
 		return fmt.Errorf("startup intersection is invalid: %w", err)
+	}
+	return nil
+}
+
+func parseUint64(value string) (uint64, error) {
+	if !canonicalNatural(value) {
+		return 0, errors.New("value is not a canonical UInt64")
+	}
+	return strconv.ParseUint(value, 10, 64)
+}
+
+func validateOperation(config startupConfig) error {
+	op := config.Operation
+	if op.Kind == "stream" {
+		if op.Target != nil || op.PredecessorBlockNo != "" || op.TimeoutMs != 0 {
+			return errors.New("stream operation carries exact-query fields")
+		}
+		return nil
+	}
+	if op.Kind != "exact_point" || op.Target == nil || config.Intersection.Kind != "point" {
+		return errors.New("operation must be stream or an exact point query")
+	}
+	if op.TimeoutMs < 100 || op.TimeoutMs > 120000 {
+		return errors.New("exact-query timeout is invalid")
+	}
+	if !hex32Pattern.MatchString(op.Target.BlockHash) {
+		return errors.New("exact-query target hash is invalid")
+	}
+	parentNo, err := parseUint64(op.PredecessorBlockNo)
+	if err != nil {
+		return fmt.Errorf("predecessor block number: %w", err)
+	}
+	targetNo, err := parseUint64(op.Target.BlockNo)
+	if err != nil {
+		return fmt.Errorf("target block number: %w", err)
+	}
+	parentSlot, err := parseUint64(config.Intersection.Slot)
+	if err != nil {
+		return fmt.Errorf("predecessor slot: %w", err)
+	}
+	targetSlot, err := parseUint64(op.Target.Slot)
+	if err != nil {
+		return fmt.Errorf("target slot: %w", err)
+	}
+	if targetNo == 0 || targetNo-1 != parentNo || targetSlot <= parentSlot {
+		return errors.New("exact-query target is not a direct successor")
 	}
 	return nil
 }
@@ -229,17 +296,68 @@ func tip(tip chainsync.Tip) wireTip {
 	}
 }
 
-func main() {
-	writer := &canonicalWriter{encoder: json.NewEncoder(os.Stdout)}
-	config, startupCanonical, err := readStartup()
-	if err != nil {
-		_ = writer.write(errorEvent{Code: "invalid_startup", Kind: "error", SchemaVersion: schemaVersion})
-		os.Exit(64)
-	}
+// Each exact query owns one connection. Its ingress limit is applied to the
+// actual Read slice before the Ouroboros muxer can reassemble a block frame.
+type queryLimitedConn struct {
+	net.Conn
+	remaining int
+}
 
-	errorChannel := make(chan error, 4)
-	readyGate := make(chan struct{})
-	chainSyncConfig := chainsync.Config{
+func (c *queryLimitedConn) Read(buffer []byte) (int, error) {
+	if c.remaining == 0 {
+		return 0, errors.New("native exact-query ingress bound exceeded")
+	}
+	if len(buffer) > c.remaining {
+		buffer = buffer[:c.remaining]
+	}
+	n, err := c.Conn.Read(buffer)
+	c.remaining -= n
+	return n, err
+}
+
+type exactQueryState struct {
+	config       startupConfig
+	events       int
+	acknowledged bool
+	captured     bool
+}
+
+func (q *exactQueryState) checkBackward(point pcommon.Point) error {
+	if q.config.Operation.Kind != "exact_point" {
+		return nil
+	}
+	q.events++
+	expected, err := pointFromStartup(q.config.Intersection)
+	if err != nil {
+		return err
+	}
+	if q.captured || q.acknowledged || q.events > 2 || point.Slot != expected.Slot || !bytes.Equal(point.Hash, expected.Hash) {
+		return errors.New("native exact-query rolled back outside initial intersection acknowledgement")
+	}
+	q.acknowledged = true
+	return nil
+}
+
+func (q *exactQueryState) checkForward(block ledger.Block) error {
+	if q.config.Operation.Kind != "exact_point" {
+		return nil
+	}
+	q.events++
+	target := q.config.Operation.Target
+	if q.captured || q.events > 2 || target == nil ||
+		block.Hash().String() != target.BlockHash ||
+		fmt.Sprintf("%d", block.SlotNumber()) != target.Slot ||
+		fmt.Sprintf("%d", block.BlockNumber()) != target.BlockNo ||
+		block.PrevHash().String() != q.config.Intersection.BlockHash {
+		return errors.New("native exact-query returned a different target or an extra block")
+	}
+	q.captured = true
+	return nil
+}
+
+func makeChainSyncConfig(config startupConfig, writer *canonicalWriter, readyGate <-chan struct{}) chainsync.Config {
+	query := exactQueryState{config: config}
+	result := chainsync.Config{
 		PipelineLimit: 1,
 		RecvQueueSize: 4,
 		RollForwardRawFunc: func(_ chainsync.CallbackContext, blockType uint, raw []byte, eventTip chainsync.Tip) error {
@@ -251,7 +369,10 @@ func main() {
 			if err != nil {
 				return fmt.Errorf("decode native chain-sync block: %w", err)
 			}
-			return writer.write(rollForwardEvent{
+			if err := query.checkForward(block); err != nil {
+				return err
+			}
+			if err := writer.write(rollForwardEvent{
 				BlockHash:     block.Hash().String(),
 				BlockNo:       fmt.Sprintf("%d", block.BlockNumber()),
 				BlockType:     fmt.Sprintf("%d", blockType),
@@ -261,10 +382,22 @@ func main() {
 				SchemaVersion: schemaVersion,
 				Slot:          fmt.Sprintf("%d", block.SlotNumber()),
 				Tip:           tip(eventTip),
-			})
+			}); err != nil {
+				return err
+			}
+			if config.Operation.Kind == "exact_point" {
+				// PipelineLimit=1 leaves no later request outstanding. Returning
+				// false through ErrStopSyncProcess stops the client's syncLoop;
+				// it does not suspend a callback or close this connection.
+				return chainsync.ErrStopSyncProcess
+			}
+			return nil
 		},
 		RollBackwardFunc: func(_ chainsync.CallbackContext, point pcommon.Point, eventTip chainsync.Tip) error {
 			<-readyGate
+			if err := query.checkBackward(point); err != nil {
+				return err
+			}
 			rollbackPoint := wirePoint{Kind: "origin"}
 			if len(point.Hash) > 0 || point.Slot != 0 {
 				rollbackPoint = wirePoint{
@@ -281,21 +414,60 @@ func main() {
 			})
 		},
 	}
-	connection, err := ouroboros.New(
+	if config.Operation.Kind == "exact_point" {
+		result.RecvQueueSize = 1
+	}
+	return result
+}
+
+func main() {
+	writer := &canonicalWriter{encoder: json.NewEncoder(os.Stdout)}
+	config, startupCanonical, err := readStartup()
+	if err != nil {
+		_ = writer.write(errorEvent{Code: "invalid_startup", Kind: "error", SchemaVersion: schemaVersion})
+		os.Exit(64)
+	}
+
+	errorChannel := make(chan error, 4)
+	readyGate := make(chan struct{})
+	chainSyncConfig := makeChainSyncConfig(config, writer, readyGate)
+	var queryConn net.Conn
+	if config.Operation.Kind == "exact_point" {
+		deadline := time.Now().Add(time.Duration(config.Operation.TimeoutMs) * time.Millisecond)
+		queryConn, err = net.DialTimeout("unix", config.SocketPath, min(10*time.Second, time.Until(deadline)))
+		if err != nil {
+			_ = writer.write(errorEvent{Code: "node_handshake_failed", Kind: "error", SchemaVersion: schemaVersion})
+			os.Exit(69)
+		}
+		defer queryConn.Close()
+		if err := queryConn.SetDeadline(deadline); err != nil {
+			_ = writer.write(errorEvent{Code: "node_deadline_failed", Kind: "error", SchemaVersion: schemaVersion})
+			os.Exit(69)
+		}
+		queryConn = &queryLimitedConn{Conn: queryConn, remaining: maxQueryIngressBytes}
+	}
+	options := []ouroboros.ConnectionOptionFunc{
+
 		ouroboros.WithNetworkMagic(config.NetworkMagic),
 		ouroboros.WithNodeToNode(false),
 		ouroboros.WithErrorChan(errorChannel),
 		ouroboros.WithLogger(slog.New(slog.NewJSONHandler(os.Stderr, nil))),
 		ouroboros.WithChainSyncConfig(chainSyncConfig),
-	)
+	}
+	if queryConn != nil {
+		options = append(options, ouroboros.WithConnection(queryConn))
+	}
+	connection, err := ouroboros.New(options...)
 	if err != nil {
 		_ = writer.write(errorEvent{Code: "connection_setup_failed", Kind: "error", SchemaVersion: schemaVersion})
 		os.Exit(70)
 	}
 	defer connection.Close()
-	if err := connection.DialTimeout("unix", config.SocketPath, 10*time.Second); err != nil {
-		_ = writer.write(errorEvent{Code: "node_handshake_failed", Kind: "error", SchemaVersion: schemaVersion})
-		os.Exit(69)
+	if queryConn == nil {
+		if err := connection.DialTimeout("unix", config.SocketPath, 10*time.Second); err != nil {
+			_ = writer.write(errorEvent{Code: "node_handshake_failed", Kind: "error", SchemaVersion: schemaVersion})
+			os.Exit(69)
+		}
 	}
 	currentTip, err := connection.ChainSync().Client.GetCurrentTip()
 	if err != nil {
@@ -319,6 +491,7 @@ func main() {
 		Kind:                  "ready",
 		Network:               config.Network,
 		NetworkMagic:          config.NetworkMagic,
+		Operation:             config.Operation,
 		SchemaVersion:         schemaVersion,
 		SelectedIntersection:  config.Intersection,
 		SocketPath:            config.SocketPath,

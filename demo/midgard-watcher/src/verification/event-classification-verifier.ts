@@ -14,14 +14,17 @@ import {
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
-import { OutputReference, TxOrderEvent } from "@al-ft/midgard-sdk";
+import {
+  classifyWithdrawalFromLedgerSync,
+  committedWithdrawalValueBytes,
+  OutputReference,
+  TxOrderEvent,
+  Value,
+} from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  parseWatcherSettlementIndexerResult,
-  type WatcherSettlementResultVerificationContext,
-} from "../indexers/settlement-indexer.js";
 import { parseWatcherStateQueueHeader } from "../indexers/state-queue-indexer.js";
 import {
   isWatcherForcedOperatorVerdict,
@@ -31,13 +34,16 @@ import {
   type WatcherIndexedUserEvent,
   type WatcherTerminalUserEvent,
 } from "../indexers/user-event-indexer.js";
+import type { WatcherUserEventReferenceAuthority } from "../indexers/user-event-reference-authority.js";
 import type { WatcherL1TransportAttestationContext } from "../l1/l1-adapter.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
   WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
   WATCHER_BLOCK_REPLAY_SCHEMA_VERSION,
+  watcherBlockReplayClassificationEvidence,
   type WatcherBlockReplayResult,
 } from "./block-replay.js";
+import { bindWatcherOriginEventClaim } from "./event-claims.js";
 import {
   WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
   type WatcherPhaseAVerificationResult,
@@ -54,7 +60,6 @@ export const WATCHER_EVENT_CLASSIFICATION_REASON_CODES = Object.freeze([
   "w25_prerequisite_mismatch",
   "header_binding_mismatch",
   "user_event_authority_invalid",
-  "settlement_authority_invalid",
   "duplicate_source_event",
   "authority_substitution",
   "duplicate_trace_event",
@@ -83,12 +88,8 @@ export type WatcherEventClassificationUserAuthority = Readonly<{
     observation: unknown;
     publicContext: unknown;
     transportAttestations: readonly WatcherL1TransportAttestationContext[];
+    referenceAuthorities: readonly WatcherUserEventReferenceAuthority[];
   }>;
-}>;
-
-export type WatcherEventClassificationSettlementAuthority = Readonly<{
-  result: unknown;
-  context: WatcherSettlementResultVerificationContext;
 }>;
 
 export type WatcherForcedEventNativeTransaction = Readonly<{
@@ -103,7 +104,6 @@ export type EvaluateWatcherEventClassificationInput = Readonly<{
   /** A digest-bound W24 record; W26 rechecks it against W25's phase-A digest. */
   phaseA: unknown;
   userEventAuthorities: readonly WatcherEventClassificationUserAuthority[];
-  settlementAuthorities: readonly WatcherEventClassificationSettlementAuthority[];
   forcedNativeTransactions: readonly WatcherForcedEventNativeTransaction[];
 }>;
 
@@ -114,7 +114,6 @@ export type WatcherEventClassificationFact = Readonly<{
   withdrawalValidity: "valid" | "invalid" | null;
   forcedInterval: Readonly<{ start: string; end: string }> | null;
   forcedValidity: "valid" | "invalid" | null;
-  settlementKind: "initialize_payout" | "refund_withdrawal" | null;
 }>;
 
 export type WatcherEventClassificationTraceFact = Readonly<{
@@ -390,14 +389,9 @@ export const evaluateWatcherEventClassificationRules = (
       });
     if (entry === undefined) continue;
     if (source.phase === "Withdrawal") {
-      const expectedSettlement =
-        source.withdrawalValidity === "valid"
-          ? "initialize_payout"
-          : "refund_withdrawal";
       const expectedMutation = source.withdrawalValidity === "valid";
       if (
         source.withdrawalValidity === null ||
-        source.settlementKind !== expectedSettlement ||
         (expectedMutation
           ? entry.mutationCount !== 1 || entry.preRoot === entry.postRoot
           : entry.mutationCount !== 0 || entry.preRoot !== entry.postRoot)
@@ -670,48 +664,6 @@ const parseW25 = (
   };
 };
 
-const settlementKindFor = (
-  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent,
-  authorities: readonly WatcherEventClassificationSettlementAuthority[],
-): "initialize_payout" | "refund_withdrawal" | null | "invalid" => {
-  const matches: ("initialize_payout" | "refund_withdrawal")[] = [];
-  for (const authority of authorities) {
-    const parsed = parseWatcherSettlementIndexerResult(
-      authority.result,
-      authority.context,
-    );
-    if (
-      parsed === null ||
-      parsed.action !== "accept" ||
-      parsed.protocolDecision !== "indexed" ||
-      parsed.state === null
-    )
-      return "invalid";
-    for (const { observation } of parsed.state.activeHistory) {
-      const transition = observation.transition;
-      const consumes =
-        transition.consumedOutRefs.length === 1 &&
-        transition.consumedOutRefs[0] === event.outRef;
-      if (!consumes) continue;
-      if (
-        transition.kind === "initialize_payout" &&
-        transition.relatedSubjectId === event.assetNameHex
-      )
-        matches.push("initialize_payout");
-      if (
-        transition.kind === "refund_withdrawal" &&
-        transition.subjectId === event.assetNameHex
-      )
-        matches.push("refund_withdrawal");
-    }
-  }
-  return matches.length === 1
-    ? matches[0]!
-    : matches.length === 0
-      ? null
-      : "invalid";
-};
-
 const forcedIntervalFor = (
   event: WatcherIndexedUserEvent | WatcherTerminalUserEvent,
   nativeTransactions: readonly WatcherForcedEventNativeTransaction[],
@@ -785,7 +737,8 @@ const result = (
   });
 };
 
-/** Recomputes W15/W16 authorities before applying the pure canonical rules. */
+/** Recomputes originating W15 authority and adjudicates exact DA claims from
+ * the admitted full replay before applying the pure canonical rules. */
 export const evaluateWatcherEventClassification = (
   input: EvaluateWatcherEventClassificationInput,
 ): WatcherEventClassificationResult => {
@@ -962,6 +915,27 @@ export const evaluateWatcherEventClassification = (
       null,
       null,
     );
+  let replayEvidence;
+  try {
+    replayEvidence = watcherBlockReplayClassificationEvidence(w25.receipt);
+  } catch {
+    return result(
+      "reject",
+      w25.inputDigest,
+      [
+        {
+          code: "authority_substitution",
+          fingerprint: null,
+          field: "$.blockReplay.classificationEvidence",
+        },
+      ],
+      null,
+      null,
+    );
+  }
+  const selectedLedger = new Map(
+    replayEvidence.priorState.map((entry) => [entry.outRef, entry.outputCbor]),
+  );
   const sources: WatcherEventClassificationFact[] = [];
   const sourceEvidence: unknown[] = [];
   for (const authority of input.userEventAuthorities) {
@@ -1017,35 +991,107 @@ export const evaluateWatcherEventClassification = (
         );
       let withdrawalValidity: WatcherEventClassificationFact["withdrawalValidity"] =
         null;
-      let settlementKind: WatcherEventClassificationFact["settlementKind"] =
-        null;
       let forcedInterval: WatcherEventClassificationFact["forcedInterval"] =
         null;
       let forcedValidity: WatcherEventClassificationFact["forcedValidity"] =
         null;
-      if (phase === "Withdrawal") {
+      const replayedEvent = w25.trace.find(
+        (entry) => entry.fingerprint === key,
+      );
+      let boundClaim;
+      if (replayedEvent !== undefined) {
+        const claims = replayEvidence.claims.filter(
+          (claim) =>
+            claim.phase === phase && claim.eventIdCborHex === event.eventId,
+        );
         try {
-          const classified = settlementKindFor(
-            event,
-            input.settlementAuthorities,
+          if (claims.length !== 1)
+            throw new Error("event has no unique committed source");
+          boundClaim = bindWatcherOriginEventClaim(event, claims[0]!);
+        } catch {
+          return result(
+            "reject",
+            w25.inputDigest,
+            [
+              {
+                code: "authority_substitution",
+                fingerprint: key,
+                field: "$.committedEventClaim",
+              },
+            ],
+            null,
+            null,
           );
-          if (classified === "invalid" || classified === null)
+        }
+      }
+      if (phase === "Withdrawal" && replayedEvent !== undefined) {
+        if (boundClaim?.phase !== "Withdrawal")
+          return result(
+            "reject",
+            w25.inputDigest,
+            [
+              {
+                code: "authority_substitution",
+                fingerprint: key,
+                field: "$.committedEventClaim.phase",
+              },
+            ],
+            null,
+            null,
+          );
+        try {
+          const { body } = boundClaim.origin.info;
+          const ledgerOutRef = encodeMidgardSpendInputItem({
+            txId: Buffer.from(body.l2_outref.transactionId, "hex"),
+            outputIndex: Number(body.l2_outref.outputIndex),
+          });
+          const output = selectedLedger.get(ledgerOutRef.toString("hex"));
+          const classified = classifyWithdrawalFromLedgerSync({
+            l2Owner: body.l2_owner,
+            l2ValueCbor: Data.to(body.l2_value, Value),
+            eventInfoCbor: committedWithdrawalValueBytes(
+              boundClaim.origin.info,
+            ),
+            ledgerOutRef,
+            ledgerOutput:
+              output === undefined ? null : Buffer.from(output, "hex"),
+          });
+          if (classified._tag === "Left")
             return result(
-              "reject",
+              "error",
               w25.inputDigest,
               [
                 {
-                  code: "authority_substitution",
+                  code: "malformed_input",
                   fingerprint: key,
-                  field: "$.settlementAuthorities",
+                  field: "$.withdrawal",
                 },
               ],
               null,
               null,
             );
-          settlementKind = classified;
-          withdrawalValidity =
-            classified === "initialize_payout" ? "valid" : "invalid";
+          const actual = classified.right;
+          if (
+            actual.settlementEventInfo.toString("hex") !==
+            committedWithdrawalValueBytes(boundClaim.committed)
+          ) {
+            return result(
+              "reject",
+              w25.inputDigest,
+              [
+                {
+                  code: "withdrawal_validity_mismatch",
+                  fingerprint: key,
+                  field: "$.withdrawal.validity",
+                },
+              ],
+              null,
+              null,
+            );
+          }
+          withdrawalValidity = actual.shouldDeleteLedgerUtxo
+            ? "valid"
+            : "invalid";
         } catch {
           return result(
             "error",
@@ -1095,14 +1141,7 @@ export const evaluateWatcherEventClassification = (
         forcedInterval = forced;
         const replayed = w25.trace.find((entry) => entry.fingerprint === key);
         if (replayed !== undefined) {
-          if (
-            !("terminalClassification" in event) ||
-            event.terminalClassification === undefined ||
-            event.terminalClassification.terminalTransactionHash !==
-              event.terminalTransactionHash ||
-            event.terminalClassification.terminalPointDigest !==
-              event.terminalPointDigest
-          )
+          if (boundClaim?.phase !== "ForcedTransaction")
             return result(
               "reject",
               w25.inputDigest,
@@ -1110,7 +1149,7 @@ export const evaluateWatcherEventClassification = (
                 {
                   code: "authority_substitution",
                   fingerprint: key,
-                  field: "$.userEvent.terminalClassification",
+                  field: "$.committedEventClaim.verdict",
                 },
               ],
               null,
@@ -1129,7 +1168,7 @@ export const evaluateWatcherEventClassification = (
             facts.length !== 1 ||
             fact === undefined ||
             fact.authenticatedOperatorValidity !==
-              event.terminalClassification.operatorValidity ||
+              boundClaim.operatorValidity ||
             fact.authenticatedOperatorValidity !==
               fact.canonicalOperatorValidity ||
             fact.canonicalEffectMutationCount !== replayed.mutationCount ||
@@ -1164,7 +1203,6 @@ export const evaluateWatcherEventClassification = (
         withdrawalValidity,
         forcedInterval,
         forcedValidity,
-        settlementKind,
       });
     }
   }

@@ -13,7 +13,8 @@ the field commitment.
 
 **Chunk carriage**:
 Publication of a field preimage as on-chain chunk UTxOs that dispute steps
-reference. Preimage bytes are only ever referenced, never copied into a step.
+reference. This is the certified tier; smaller preimages can use inline
+redeemer or single raw-UTxO carriage. See [MidgardTx §8](docs/spec/midgard-tx.md#8-field-preimage-carriage-three-tiers).
 
 **Validation thread**:
 The chain of L1 step transactions prosecuting a single fault claim, linked by
@@ -28,19 +29,20 @@ The hard ceiling (16,384 bytes) that an entire step transaction — datums,
 redeemers, and all — must fit within.
 
 **Authenticate-once**:
-The access model in which a thread's first touch of a field verifies the flat
-hash over the full preimage and marks the carriage authentic; every later
-step trusts thread lineage and has only its target chunk in view.
-Authentication is lazy per-field: only fields a thread actually reads are
-ever authenticated.
-_Avoid_: per-step re-authentication, eager thread-open authentication
+The lazy per-field access rule: authenticate a field before slicing it, and
+leave untouched fields unopened. Authentication is scoped to the chosen
+carriage: inline and raw-UTxO consumers hash the full preimage in each consuming
+transaction; certified carriage authenticates selected chunks against the
+mint-verified manifest. A thread checkpoint does not by itself replace these
+checks. See [MidgardTx §7](docs/spec/midgard-tx.md#7-access-invariants-normative-for-every-consumer).
 
 **Offset-and-slice access**:
 Reading an item by slicing authenticated carriage bytes at a known offset.
 
 **Fixed-stride field**:
 A field whose items share one exact width, making every item offset
-arithmetic: spend inputs, reference inputs, observers, signers.
+arithmetic: spend inputs, reference inputs, observers, signers, and address
+witnesses.
 
 **Boundary discovery**:
 The header walk that locates item boundaries in a variable-width field. Paid
@@ -72,8 +74,10 @@ running sum — that carries a paused intra-Value walk across steps. Values
 have fixed grammar depth, so no stack is ever needed.
 
 **Canonical-Data Acceptor (CDA)**:
-The checkpointable byte-level acceptor that proves a committed datum or
-redeemer payload is not canonical serialized Plutus Data. Its parse stack
-rides as a bounded window plus a hash-chained spill; spilled frames are
-resupplied transiently by the prover and verified against the chain digest.
+The byte-level canonicity and interior-access routines for serialized Plutus
+Data. The current recursive scanner distinguishes canonical bytes from forms
+the Aiken stdlib can materialize, and supports typed access to canonical
+bignums and tag-102 constructors. It does not expose a resumable parse-stack
+checkpoint; the native-script pushdown has its own hash-chained frame protocol.
+See [MidgardTx §11.2](docs/spec/midgard-tx.md#112-the-canonical-data-acceptor-case-b).
 _Avoid_: full on-chain decode, datum Merkleization

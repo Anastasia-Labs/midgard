@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
-  MIDGARD_RELEASE_EVIDENCE_DIGEST,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
@@ -89,6 +88,7 @@ import {
   fraudProofsToIndexedValidators,
 } from "../transactions/initialization.js";
 import { fetchReferenceScriptUtxosAt } from "../transactions/reference-scripts.js";
+import { queryScriptRewardRegistrationProgram } from "../transactions/script-reward-registration.js";
 import { compareOutRefs } from "../tx-context.js";
 
 export type ContractDeploymentInfoRefScriptUTxO = {
@@ -151,13 +151,14 @@ export type DeploymentManifest = ContractDeploymentInfo & {
     >
   >;
   readonly da: DeploymentManifestValue["da"];
-  readonly proofEvidence: DeploymentManifestValue["proofEvidence"];
+  readonly artifacts: DeploymentManifestValue["artifacts"];
   readonly steps: Readonly<
     Record<
       | "prepareHubOracleNonce"
       | "deployNodeRuntimeReferenceScripts"
       | "initProtocol"
       | "phasRegistration"
+      | "availabilityRegistration"
       | "operatorRegistration"
       | "operatorActivation",
       {
@@ -493,61 +494,20 @@ const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
   "fraudProofTransitionTraceDuplicate",
 ] as const;
 
-/**
- * The prefix of a compiled fault-proof chain that the canonical deployment ABI
- * actually registers.
- *
- * The canonical ABI registers all five `nativeScriptInvalid` steps. The
- * separate `missingNativeScriptUtxo` chain still compiles seven steps while
- * its manifest names five. The exact manifest key set therefore bounds that
- * chain until its own ABI extension is implemented across consumers.
- *
- * This is a BOUND, not a filter. It only ever drops a TAIL of unregistered
- * steps: an unregistered step with a registered step after it, or a chain whose
- * very first step is unregistered, still fails closed here.
- */
-const abiRegisteredChainSteps = <T>(
-  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
-  steps: readonly T[],
-): readonly T[] => {
-  const registered = steps.map(
-    (_, stepIndex) =>
-      REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME[
-        faultProofStepContractName(category, stepIndex)
-      ] !== undefined,
-  );
-  const firstUnregistered = registered.indexOf(false);
-  if (firstUnregistered === -1) {
-    return steps;
-  }
-  if (firstUnregistered === 0) {
-    throw new Error(
-      `Fault-proof category ${category} has no canonical reference-script role for its first step`,
-    );
-  }
-  if (registered.lastIndexOf(true) > firstUnregistered) {
-    throw new Error(
-      `Fault-proof category ${category} registers a step after unregistered step ${(firstUnregistered + 1).toString()}`,
-    );
-  }
-  return steps.slice(0, firstUnregistered);
-};
-
 const registeredFaultProofScriptDescriptors = (
   contracts: SDK.MidgardValidators,
 ): readonly ScriptDescriptor[] => [
   ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
-    abiRegisteredChainSteps(
-      category,
-      contracts.fraudProofContracts[category].steps,
-    ).map((validator, stepIndex) => {
-      const contractName = faultProofStepContractName(category, stepIndex);
-      return spendDescriptor(
-        contractName,
-        validator,
-        referenceScriptTargetForContract(contractName),
-      );
-    }),
+    contracts.fraudProofContracts[category].steps.map(
+      (validator, stepIndex) => {
+        const contractName = faultProofStepContractName(category, stepIndex);
+        return spendDescriptor(
+          contractName,
+          validator,
+          referenceScriptTargetForContract(contractName),
+        );
+      },
+    ),
   ),
   spendDescriptor(
     "fraudProofTransitionTrace",
@@ -2247,6 +2207,31 @@ const collectScriptDescriptors = (
     contracts.availabilityChallenge,
     "availability-challenge minting",
   ),
+  withdrawalDescriptor(
+    "availabilityChallengeBondWithdraw",
+    contracts.availabilityChallenge.yields.bond,
+    "availability-challenge bond withdrawal",
+  ),
+  withdrawalDescriptor(
+    "availabilityChallengeOpenWithdraw",
+    contracts.availabilityChallenge.yields.open,
+    "availability-challenge open withdrawal",
+  ),
+  withdrawalDescriptor(
+    "availabilityChallengeSettleWithdraw",
+    contracts.availabilityChallenge.yields.settle,
+    "availability-challenge settle withdrawal",
+  ),
+  withdrawalDescriptor(
+    "availabilityChallengeCloseWithdraw",
+    contracts.availabilityChallenge.yields.close,
+    "availability-challenge close withdrawal",
+  ),
+  withdrawalDescriptor(
+    "availabilityChallengeTimeoutWithdraw",
+    contracts.availabilityChallenge.yields.timeout,
+    "availability-challenge timeout withdrawal",
+  ),
 ];
 
 const defaultSteps = (): DeploymentManifest["steps"] => ({
@@ -2254,6 +2239,7 @@ const defaultSteps = (): DeploymentManifest["steps"] => ({
   deployNodeRuntimeReferenceScripts: { status: "pending" },
   initProtocol: { status: "pending" },
   phasRegistration: { status: "pending" },
+  availabilityRegistration: { status: "pending" },
   operatorRegistration: { status: "pending" },
   operatorActivation: { status: "pending" },
 });
@@ -2299,7 +2285,7 @@ export type DeploymentManifestBuildContext = {
   readonly cardanoProtocolParameters: DeploymentManifestValue["cardanoProtocolParameters"];
   readonly genesis: DeploymentManifestValue["genesis"];
   readonly da: DeploymentManifestValue["da"];
-  readonly proofEvidence: DeploymentManifestValue["proofEvidence"];
+  readonly artifacts: DeploymentManifestValue["artifacts"];
   readonly economics: DeploymentManifestEconomics;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
   readonly referenceScriptDeployAddress: string;
@@ -2316,7 +2302,7 @@ export type DeploymentManifestIdentityContext = Pick<
   | "cardanoProtocolParameters"
   | "genesis"
   | "da"
-  | "proofEvidence"
+  | "artifacts"
   | "economics"
   | "availabilityChallenge"
 >;
@@ -2634,8 +2620,7 @@ export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
         retentionDays: nodeConfig.RETENTION_DAYS,
       },
     },
-    proofEvidence: {
-      digest: MIDGARD_RELEASE_EVIDENCE_DIGEST,
+    artifacts: {
       blueprintHash,
     },
   };
@@ -2710,7 +2695,7 @@ export const buildDeploymentManifest = (
     contracts: deploymentInfo.contracts,
     referenceScripts,
     da: context.da,
-    proofEvidence: context.proofEvidence,
+    artifacts: context.artifacts,
     steps: baseSteps,
     validationDispute: {
       version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
@@ -3044,6 +3029,26 @@ const buildLiveDeploymentManifestProgram = (
         ),
       );
     }
+    const lucidService = yield* Lucid;
+    const liveContracts = yield* MidgardContracts;
+    const availabilityAccounts = yield* Effect.forEach(
+      Object.values(liveContracts.availabilityChallenge.yields),
+      (validator) =>
+        queryScriptRewardRegistrationProgram(
+          lucidService.api,
+          validator.withdrawalScript,
+        ),
+    );
+    const availabilityRegistered = availabilityAccounts.every(
+      (account) => account.registered,
+    );
+    if (finalizationRequested && !availabilityRegistered) {
+      return yield* Effect.fail(
+        new Error(
+          "Cannot finalize deployment manifest before all availability yield reward accounts are registered",
+        ),
+      );
+    }
     const requestedSteps = finalizationRequested
       ? {
           prepareHubOracleNonce: {
@@ -3054,8 +3059,16 @@ const buildLiveDeploymentManifestProgram = (
             status: "complete" as const,
           },
           ...options.steps,
+          availabilityRegistration: { status: "complete" as const },
         }
-      : options.steps;
+      : {
+          ...options.steps,
+          availabilityRegistration: {
+            status: availabilityRegistered
+              ? ("complete" as const)
+              : ("pending" as const),
+          },
+        };
     const deploymentManifest = buildDeploymentManifest(deploymentInfo, {
       network: nodeConfig.NETWORK,
       ...identityContext,

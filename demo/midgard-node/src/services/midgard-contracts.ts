@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  assertMidgardConsensusReleaseReady,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
@@ -1565,13 +1564,42 @@ export const midgardContractsFromDeploymentManifest = (
       "daAttestationSpend",
       "daAttestationMint",
     ),
-    availabilityChallenge: authenticatedValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "availabilityChallengeSpend",
-      "availabilityChallengeMint",
-    ),
+    availabilityChallenge: {
+      ...authenticatedValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "availabilityChallengeSpend",
+        "availabilityChallengeMint",
+      ),
+      yields: {
+        bond: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "availabilityChallengeBondWithdraw",
+        ),
+        open: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "availabilityChallengeOpenWithdraw",
+        ),
+        settle: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "availabilityChallengeSettleWithdraw",
+        ),
+        close: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "availabilityChallengeCloseWithdraw",
+        ),
+        timeout: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "availabilityChallengeTimeoutWithdraw",
+        ),
+      },
+    },
     correctionLock: spendingValidatorFromManifest(
       network,
       manifest,
@@ -1757,14 +1785,18 @@ export const REAL_DA_ATTESTATION_SCRIPT_TITLES = {
 export const REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES = {
   mint: "availability_challenge.availability_challenge.mint",
   spend: "availability_challenge.availability_challenge.spend",
+  bondYield: "availability_challenge_yields.bond.withdraw",
+  openYield: "availability_challenge_yields.open.withdraw",
+  settleYield: "availability_challenge_yields.settle.withdraw",
+  closeYield: "availability_challenge_yields.close.withdraw",
+  timeoutYield: "availability_challenge_yields.timeout.withdraw",
 } as const;
 
 /**
  * Blueprint titles for the real hub-oracle scripts.
  */
-export const REAL_HUB_ORACLE_SCRIPT_TITLES = {
-  mint: "hub_oracle.mint.mint",
-} as const;
+export const REAL_HUB_ORACLE_SCRIPT_TITLES =
+  SDK.USER_EVENT_CONTRACT_TITLES.hubOracle;
 
 /**
  * Blueprint titles for the real registered-operators scripts.
@@ -1801,36 +1833,20 @@ export const REAL_SCHEDULER_SCRIPT_TITLES = {
 /**
  * Blueprint titles for the real deposit scripts.
  */
-export const REAL_DEPOSIT_SCRIPT_TITLES = {
-  mint: "user_events/deposit.mint.mint",
-  spend: "user_events/deposit.spend.spend",
-} as const;
+export const REAL_DEPOSIT_SCRIPT_TITLES =
+  SDK.USER_EVENT_CONTRACT_TITLES.deposit;
 
 /**
  * Blueprint titles for the real tx-order scripts.
  */
-export const REAL_TX_ORDER_SCRIPT_TITLES = {
-  mint: "user_events/tx_order_v1.mint.mint",
-  spend: "user_events/tx_order_v1.spend.spend",
-  // #579: `fieldPreimageSpend`, `fieldReceiptMint` and `fieldReceiptSpend` all
-  // removed. Commit df53dc6a7 (#587) deleted `tx-field-preimage-v1.ak`,
-  // `tx-field-receipt-v1.ak` and its spend twin in one change, so the
-  // regenerated blueprint declares none of the three titles and
-  // `getBlueprintValidator` would fail on every one of them.
-  fieldPreimageCertificateSpend:
-    "field_preimage_certificate.field_preimage_certificate.spend",
-  fieldPreimageCertificateMint:
-    "field_preimage_certificate.field_preimage_certificate.mint",
-  cekProgramMaterialSpend: "user_events/cek_program_material_v1.spend.spend",
-} as const;
+export const REAL_TX_ORDER_SCRIPT_TITLES =
+  SDK.USER_EVENT_CONTRACT_TITLES.txOrder;
 
 /**
  * Blueprint titles for the real withdrawal scripts.
  */
-export const REAL_WITHDRAWAL_SCRIPT_TITLES = {
-  mint: "user_events/withdrawal.mint.mint",
-  spend: "user_events/withdrawal.spend.spend",
-} as const;
+export const REAL_WITHDRAWAL_SCRIPT_TITLES =
+  SDK.USER_EVENT_CONTRACT_TITLES.withdrawal;
 
 /**
  * Blueprint titles for the real settlement scripts.
@@ -2084,24 +2100,13 @@ const buildRealHubOracleValidator = (
   oneShotOutRef: HubOracleOneShotOutRef,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = yield* loadRealBlueprint();
-    const mintValidator = yield* getBlueprintValidator(
-      blueprint,
-      REAL_HUB_ORACLE_SCRIPT_TITLES.mint,
-    );
-    const initOutRef = new Constr(0, [
-      oneShotOutRef.txHash,
-      BigInt(oneShotOutRef.outputIndex),
-    ]);
-    const mintingScriptCBOR = yield* applyBlueprintDeclaredParams(
-      mintValidator,
-      [initOutRef, SDK.HUB_ORACLE_ASSET_NAME],
-    );
-    const mintingScript: MintingPolicy = {
-      type: "PlutusV3",
-      script: mintingScriptCBOR,
-    };
-    const policyId = mintingPolicyToId(mintingScript);
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const { mintingScriptCBOR, mintingScript, policyId } = yield* Effect.try({
+      try: () =>
+        SDK.buildHubOracleMintingValidator({ blueprint, oneShotOutRef }),
+      catch: (cause) =>
+        new Error("Failed to derive hub-oracle minting validator", { cause }),
+    });
     return {
       spendingScriptCBOR: fallbackSpendingValidator.spendingScriptCBOR,
       spendingScript: fallbackSpendingValidator.spendingScript,
@@ -2234,20 +2239,51 @@ const buildRealDaAttestationValidator = (
 const buildRealAvailabilityChallengeValidator = (
   network: Network,
   hubOraclePolicyId: string,
+  referenceScriptAuthPolicyId: string,
   parameters: SDK.DaAvailabilityParameters,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES,
-    [
+): Effect.Effect<SDK.AvailabilityChallengeValidator, Error> =>
+  Effect.gen(function* () {
+    const encodedParameters = Data.from(
+      SDK.encodeDaAvailabilityParameters(parameters),
+    );
+    const dispatcherParameters = [
       hubOraclePolicyId,
-      Data.from(SDK.encodeDaAvailabilityParameters(parameters)),
-    ],
-    () => [
-      hubOraclePolicyId,
-      Data.from(SDK.encodeDaAvailabilityParameters(parameters)),
-    ],
-  );
+      referenceScriptAuthPolicyId,
+      encodedParameters,
+    ];
+    const dispatcher = yield* buildRealAuthenticatedValidator(
+      network,
+      REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES,
+      dispatcherParameters,
+      () => dispatcherParameters,
+    );
+    const blueprint = yield* loadRealBlueprint();
+    const buildYield = (
+      arm: string,
+    ): Effect.Effect<SDK.WithdrawalValidator, Error> =>
+      Effect.gen(function* () {
+        const validator = yield* getBlueprintValidator(
+          blueprint,
+          `availability_challenge_yields.${arm}.withdraw`,
+        );
+        const compiledCode = yield* applyBlueprintDeclaredParams(validator, [
+          dispatcher.policyId,
+          hubOraclePolicyId,
+          encodedParameters,
+        ]);
+        return makeWithdrawalValidator(compiledCode);
+      });
+    return {
+      ...dispatcher,
+      yields: {
+        bond: yield* buildYield("bond"),
+        open: yield* buildYield("open"),
+        settle: yield* buildYield("settle"),
+        close: yield* buildYield("close"),
+        timeout: yield* buildYield("timeout"),
+      },
+    };
+  });
 
 const expectDerivedScriptHash = (
   label: string,
@@ -2846,12 +2882,19 @@ const buildRealDepositValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_DEPOSIT_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
-    () => [contracts.hubOracle.policyId],
-  );
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildDepositValidators({
+          blueprint,
+          network,
+          hubOraclePolicyId: contracts.hubOracle.policyId,
+        }),
+      catch: (cause) =>
+        new Error("Failed to derive deposit validators", { cause }),
+    });
+  });
 
 export type TxOrderContracts = {
   readonly txOrder: SDK.AuthenticatedValidator;
@@ -2860,106 +2903,38 @@ export type TxOrderContracts = {
   readonly cekProgramMaterial: SDK.SpendingValidator;
 };
 
-/**
- * Derives the indivisible V1 tx-order script family. The dependency order is
- * consensus-critical: the parameterless fragment lock and the parameterless §8.6
- * certificate first, then the tx-order policy that takes the certificate's policy
- * id as a parameter.
- *
- * **The receipt half is gone.** #587 deleted the `tx_field_receipt_v1` validators
- * and #594 replaced the tx-order mint's receipt parameters with the §8.6
- * certificate policy id. Until #579 regenerated the blueprint this file still had
- * to speak the receipt-era shape, because the frozen `plutus.json` predated both
- * changes and there was no certificate policy id to pass. The regeneration landed
- * both halves at once, so the receipt titles and the receipt parameters are
- * removed together here (owner ruling A, 2026-08-14).
- */
+/** Derives tx-order and its certificate/material dependencies with the SDK recipe. */
 export const buildRealTxOrderContracts = (
   network: Network,
   hubOraclePolicyId: string,
 ): Effect.Effect<TxOrderContracts, Error> =>
   Effect.gen(function* () {
-    const blueprint = yield* loadRealBlueprint();
-    const cekProgramMaterialBase = yield* unappliedBlueprintScript(
-      yield* getBlueprintValidator(
-        blueprint,
-        REAL_TX_ORDER_SCRIPT_TITLES.cekProgramMaterialSpend,
-      ),
-    );
-    const fieldPreimageCertificateSpendBase = yield* unappliedBlueprintScript(
-      yield* getBlueprintValidator(
-        blueprint,
-        REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateSpend,
-      ),
-    );
-    const fieldPreimageCertificateMintBase = yield* unappliedBlueprintScript(
-      yield* getBlueprintValidator(
-        blueprint,
-        REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateMint,
-      ),
-    );
-    // No `applyParamsToScript`: the §8.6 certificate validator declares no
-    // parameters, so the compiled script IS the deployed script and its policy
-    // id is a pure function of the blueprint. That is why the SDK's fault-proof
-    // builder can derive the same id locally without consulting the deployment
-    // registry — the two cannot disagree.
-    //
-    // It is derived BEFORE the tx-order policy because the tx-order mint now
-    // takes that policy id as a parameter; the dependency runs certificate ->
-    // tx-order, and it used to run receipt-lock -> receipt-policy -> tx-order.
-    const fieldPreimageCertificate = {
-      ...makeSpendingValidator(network, fieldPreimageCertificateSpendBase),
-      ...makeMintingPolicy(fieldPreimageCertificateMintBase),
-    };
-    const txOrderMintValidator = yield* getBlueprintValidator(
-      blueprint,
-      REAL_TX_ORDER_SCRIPT_TITLES.mint,
-    );
-    const txOrderSpendValidator = yield* getBlueprintValidator(
-      blueprint,
-      REAL_TX_ORDER_SCRIPT_TITLES.spend,
-    );
-    // The regenerated blueprint declares
-    // `(hub_oracle, field_preimage_certificate_policy_id)` — the §8.6 certificate
-    // policy that the field-access door consults on tier-3 carriage — and this is
-    // that two-term application. The receipt-era three-term form it replaces
-    // passed `(hub_oracle, receipt_script_hash, field_receipt_policy_id)` against
-    // a blueprint that predated #587 and #594.
-    //
-    // `applyBlueprintDeclaredParams` is what makes the swap safe rather than
-    // hopeful: it checks the application against the parameters the blueprint
-    // actually declares and fails by name, so a stale blueprint cannot silently
-    // absorb the wrong arity and hand back a wrong policy id.
-    const txOrder = makeAuthenticatedValidator(
-      network,
-      yield* applyBlueprintDeclaredParams(txOrderMintValidator, [
-        hubOraclePolicyId,
-        fieldPreimageCertificate.policyId,
-      ]),
-      yield* applyBlueprintDeclaredParams(txOrderSpendValidator, [
-        hubOraclePolicyId,
-      ]),
-    );
-    return {
-      txOrder,
-      fieldPreimageCertificate,
-      cekProgramMaterial: makeSpendingValidator(
-        network,
-        cekProgramMaterialBase,
-      ),
-    };
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildTxOrderValidators({ blueprint, network, hubOraclePolicyId }),
+      catch: (cause) =>
+        new Error("Failed to derive tx-order validators", { cause }),
+    });
   });
 
 const buildRealWithdrawalValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_WITHDRAWAL_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
-    () => [contracts.hubOracle.policyId],
-  );
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildWithdrawalValidators({
+          blueprint,
+          network,
+          hubOraclePolicyId: contracts.hubOracle.policyId,
+        }),
+      catch: (cause) =>
+        new Error("Failed to derive withdrawal validators", { cause }),
+    });
+  });
 
 const buildRealSettlementValidator = (
   network: Network,
@@ -3045,6 +3020,7 @@ export const withRealStateQueueAndOperatorContracts = (
       yield* buildRealAvailabilityChallengeValidator(
         network,
         realHubOracle.policyId,
+        deploymentParameters.referenceScriptAuth.policyId,
         deploymentParameters.availabilityChallengeParameters,
       );
     const realCorrectionLock = yield* buildRealCorrectionLockValidator(
@@ -3241,15 +3217,6 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
       ),
   });
   if (configuredManifest !== undefined) {
-    yield* Effect.try({
-      try: assertMidgardConsensusReleaseReady,
-      catch: (cause) =>
-        new Error(
-          `Configured V1 deployment is fail-closed: ${formatUnknownError(
-            cause,
-          )}`,
-        ),
-    });
     yield* Effect.try({
       try: () =>
         assertDeploymentManifestMatchesConfig(

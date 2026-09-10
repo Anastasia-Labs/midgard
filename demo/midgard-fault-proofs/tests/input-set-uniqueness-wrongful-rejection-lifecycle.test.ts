@@ -37,6 +37,7 @@ import {
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
 } from "./support/input-set-uniqueness-emulator.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
   expectProofFit,
@@ -225,6 +226,10 @@ const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
+    measuredFit.record(
+      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
+      captured.measurement,
+    );
     return captured.result.nextThreadOutRef;
   };
   const bind = async (threadOutRef: string) => {
@@ -241,6 +246,10 @@ const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
+    measuredFit.record(
+      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
+      captured.measurement,
+    );
     return captured.result.nextThreadOutRef;
   };
   const seed = async (threadOutRef: string) => {
@@ -261,6 +270,10 @@ const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
+    measuredFit.record(
+      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
+      captured.measurement,
+    );
     return captured.result.nextThreadOutRef;
   };
   const advance = async (threadOutRef: string, cursor: number) => {
@@ -285,6 +298,10 @@ const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
+    measuredFit.record(
+      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
+      captured.measurement,
+    );
     observedCursors.push(captured.result.state.cursor);
     return captured.result.nextThreadOutRef;
   };
@@ -301,6 +318,10 @@ const exerciseForcedLifecycle = async ({
       }),
     );
     measurements.push(captured.measurement);
+    measuredFit.record(
+      `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
+      captured.measurement,
+    );
   };
 
   if (!complete) {
@@ -376,6 +397,10 @@ const exerciseForcedLifecycle = async ({
     }),
   );
   measurements.push(finalized.measurement);
+  measuredFit.record(
+    `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
+    finalized.measurement,
+  );
   expect(finalized.result.fraudProofUnit).toBeTruthy();
 
   const removalReferences = await publishRemovalReferenceScripts({
@@ -412,6 +437,10 @@ const exerciseForcedLifecycle = async ({
     }),
   );
   measurements.push(removal.measurement);
+  measuredFit.record(
+    `forced-${referenceCount}-${complete}/${measurements.length - 1}`,
+    removal.measurement,
+  );
   for (const [index, measurement] of measurements.entries()) {
     expectProofFit({
       stage: `input-set-uniqueness-${index.toString()}`,
@@ -427,6 +456,11 @@ const exerciseForcedLifecycle = async ({
     certificateReferencePublication.measurement,
   ];
   for (const [index, measurement] of supportMeasurements.entries()) {
+    measuredFit.record(
+      `forced-${referenceCount}-${complete}/support-${index}`,
+      measurement,
+      measurement.executionMemory === 0n ? "publication" : "lifecycle",
+    );
     expectProofFit({
       stage: `input-set-uniqueness-carriage-${index.toString()}`,
       measurement,
@@ -463,6 +497,12 @@ const exerciseForcedLifecycle = async ({
     })}`,
   );
 };
+
+const measuredFit = createMeasuredFitRecorder(
+  "input-set-uniqueness-wrongful-rejection",
+  "lifecycle",
+  "819 reference inputs occupying 32763 bytes, resumed canonical frontier and cancellation",
+);
 
 describe("input-set-uniqueness wrongful-rejection lifecycle", () => {
   it("cancels at every forced boundary, restarts, resumes exactly, and rejects reference-script substitution", async () => {

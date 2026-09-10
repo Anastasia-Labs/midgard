@@ -1,21 +1,25 @@
+import { createHash } from "node:crypto";
+
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
+import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, paymentCredentialOf } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   type HistoricalNativeScriptCorpus,
   requireHistoricalNativeScriptCorpus,
 } from "../workflow/historical-native-script-corpus.js";
+import { computeFraudProofRawL1SnapshotEvidenceDigest } from "../workflow/raw-l1-snapshot.js";
 import {
   detectTransitionTraceFaults,
   type TransitionTraceDetectionEvidence,
 } from "./detect.js";
 import {
-  requireTransitionTraceL1Events,
+  readFreshTransitionTraceL1Events,
   type TransitionTraceL1Events,
 } from "./l1-events.js";
 import { eventKeyFingerprint } from "./reconstruct.js";
@@ -25,31 +29,23 @@ import type {
   OutOfWindowSourceEventEvidence,
 } from "./witnesses.js";
 
-/** This entry point requires the opaque, freshly admitted history and raw L1
- * handles. A journal copy, supplied proof, or supplied replay verdict cannot
- * recreate that authority. */
-export const replayTransitionTraceFromRetainedHistory = async ({
+const readTransitionTraceEventCoverage = ({
   evidence,
-  corpus,
   l1Events,
 }: {
   evidence: CanonicalBlockEvidence;
-  corpus: HistoricalNativeScriptCorpus;
   l1Events: TransitionTraceL1Events;
 }) => {
-  const history = requireHistoricalNativeScriptCorpus(corpus);
-  if (
-    history.currentEvidence !== evidence ||
-    l1Events.headerHash !== evidence.headerHash
-  )
+  const l1 = readFreshTransitionTraceL1Events(l1Events);
+  if (l1Events.headerHash !== evidence.headerHash)
     throw new Error(
-      "Transition replay authority targets another canonical block",
+      "Transition event evidence targets another canonical block",
     );
-  const l1 = requireTransitionTraceL1Events(l1Events);
   const current = evidence.reconstruction;
   const omitted: OmittedDueL1EventEvidence[] = [];
   const outside: OutOfWindowSourceEventEvidence[] = [];
   const referencesByEvent = new Map<string, (typeof l1.events)[number]>();
+  const relevantEvents: (typeof l1.events)[number][] = [];
   for (const entry of l1.events) {
     const common = { eventRefInputIndex: 0n, eventAssetName: entry.assetName };
     let eventKey: SDK.EventKey;
@@ -128,6 +124,7 @@ export const replayTransitionTraceFromRetainedHistory = async ({
       throw new Error("Transition L1 authority has duplicate event identities");
     referencesByEvent.set(fingerprint, entry);
     const source = current.sourceEventsByFingerprint.get(fingerprint);
+    if (due || source !== undefined) relevantEvents.push(entry);
     if (due && source === undefined) omitted.push(omittedItem);
     if (!due && source !== undefined) outside.push(outsideItem);
   }
@@ -140,6 +137,129 @@ export const replayTransitionTraceFromRetainedHistory = async ({
         "Transition replay lacks authenticated L1 coverage for a committed source",
       );
   }
+  return { l1, current, omitted, outside, referencesByEvent, relevantEvents };
+};
+
+// Each key is an opaque handle owning immutable, already admitted raw evidence.
+// The cheap projection key below binds every mutable decision input; keep only
+// the latest projection so caller changes cannot grow an unbounded cache.
+const eventEvidenceDigests = new WeakMap<
+  TransitionTraceL1Events,
+  Readonly<{ projection: string; digest: string }>
+>();
+
+/** Stable identity for every due or committed event, after full raw admission. */
+export const computeTransitionTraceL1EventEvidenceDigest = ({
+  evidence,
+  l1Events,
+}: {
+  evidence: CanonicalBlockEvidence;
+  l1Events: TransitionTraceL1Events;
+}): string => {
+  const { l1, current, relevantEvents } = readTransitionTraceEventCoverage({
+    evidence,
+    l1Events,
+  });
+  const parameters = Data.from(l1.hub.datum!, SDK.HubOracleDatum);
+  const hubScope = l1.snapshot.scopes.find(
+    (scope) => scope.role === "hub_oracle",
+  )!;
+  const hubOutRef = `${l1.hub.txHash}#${l1.hub.outputIndex.toString()}`;
+  const hubUnit =
+    paymentCredentialOf(hubScope.address).hash + SDK.HUB_ORACLE_ASSET_NAME;
+  if (!l1.snapshot.historyUnits.includes(hubUnit))
+    throw new Error("Transition event evidence omits governed hub history");
+  const relevantUnits = new Set([hubUnit]);
+  const relevantOutRefs = new Set([hubOutRef]);
+  for (const event of relevantEvents) {
+    const policy =
+      event.kind === "deposit"
+        ? parameters.deposit
+        : event.kind === "withdrawal"
+          ? parameters.withdrawal
+          : parameters.tx_order;
+    relevantUnits.add(policy + event.assetName);
+    relevantOutRefs.add(
+      `${event.utxo.txHash}#${event.utxo.outputIndex.toString()}`,
+    );
+  }
+  const history = l1.snapshot.history.filter((entry) =>
+    relevantUnits.has(entry.unit),
+  );
+  if (history.length !== relevantUnits.size)
+    throw new Error("Transition event evidence omits relevant unit history");
+  const transactionHashes = new Set(
+    history.flatMap((entry) => entry.transactionHashes),
+  );
+  const headerCbor = SDK.encodeHeaderCbor(current.header).toString("hex");
+  const relevantEventOutRefs = [...relevantOutRefs].sort();
+  const projection = JSON.stringify([
+    evidence.headerHash,
+    headerCbor,
+    evidence.payloadEnvelopeSha256,
+    evidence.payloadSha256,
+    relevantEventOutRefs,
+    [...relevantUnits].sort(),
+  ]);
+  const cached = eventEvidenceDigests.get(l1Events);
+  if (cached?.projection === projection) return cached.digest;
+  // The original complete snapshot remains the admission authority. This is
+  // only a transcript projection, never a replacement address/history claim.
+  const rawEvidenceDigest = computeFraudProofRawL1SnapshotEvidenceDigest({
+    ...l1.snapshot,
+    scopes: l1.snapshot.scopes.map((scope) => ({
+      ...scope,
+      utxos: scope.utxos.filter((entry) => relevantOutRefs.has(entry.outRef)),
+    })),
+    historyUnits: [...relevantUnits],
+    history,
+    transactions: l1.snapshot.transactions.filter((entry) =>
+      transactionHashes.has(entry.txHash),
+    ),
+  });
+  const digest = createHash("sha256")
+    .update(
+      canonicalJson(
+        {
+          schemaVersion: "midgard-transition-trace-event-evidence-v1",
+          headerHash: evidence.headerHash,
+          headerCbor,
+          payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
+          payloadSha256: evidence.payloadSha256,
+          hubAddress: hubScope.address,
+          relevantEventOutRefs,
+          rawEvidenceDigest,
+        },
+        "transition trace event evidence",
+      ),
+    )
+    .digest("hex");
+  eventEvidenceDigests.set(l1Events, { projection, digest });
+  return digest;
+};
+
+/** This entry point requires the opaque, freshly admitted history and raw L1
+ * handles. A journal copy, supplied proof, or supplied replay verdict cannot
+ * recreate that authority. */
+export const replayTransitionTraceFromRetainedHistory = async ({
+  evidence,
+  corpus,
+  l1Events,
+}: {
+  evidence: CanonicalBlockEvidence;
+  corpus: HistoricalNativeScriptCorpus;
+  l1Events: TransitionTraceL1Events;
+}) => {
+  const history = requireHistoricalNativeScriptCorpus(corpus);
+  if (
+    history.currentEvidence !== evidence ||
+    l1Events.headerHash !== evidence.headerHash
+  )
+    throw new Error(
+      "Transition replay authority targets another canonical block",
+    );
+  const { l1, current, omitted, outside, referencesByEvent } =
+    readTransitionTraceEventCoverage({ evidence, l1Events });
   const timed = {
     omittedDueL1Events: omitted,
     outOfWindowSourceEvents: outside,

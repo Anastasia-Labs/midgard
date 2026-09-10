@@ -42,6 +42,7 @@ import {
   publishInputSetUniquenessReferenceScripts,
   setupInputSetUniquenessScenario,
 } from "./support/input-set-uniqueness-emulator.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -52,6 +53,12 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+
+const measuredFit = createMeasuredFitRecorder(
+  "input-set-uniqueness-wrongful-rejection",
+  "accepted",
+  "accepted-invalid complete measured stage sequence using real scripts",
+);
 
 describe("input-set-uniqueness emulator lifecycle", () => {
   it("proves a duplicate spend input end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
@@ -228,6 +235,11 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       initResult.computationThreadAssetName,
     );
     for (const [stage, measurement] of Object.entries(proofFit)) {
+      measuredFit.record(
+        stage,
+        measurement,
+        measurement.executionMemory === 0n ? "publication" : "lifecycle",
+      );
       expectProofFit({ stage, measurement, maxTxExMem, maxTxExSteps });
     }
     console.info(

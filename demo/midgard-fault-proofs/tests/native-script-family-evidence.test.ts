@@ -429,6 +429,199 @@ describe("Q33/Q34 retained-DA evidence", () => {
     ).rejects.toThrow(/no accepted false native witness/u);
   });
 
+  it.each([false, true])(
+    "derives the genesis prior ledger from real admitted history (transaction present: %s)",
+    async (hasTransaction) => {
+      const fixture = await buildCanonicalBlockFixture({
+        transactions: hasTransaction ? [fixtureTransaction(nativeTx({}))] : [],
+        prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+      });
+      const block = await evidenceFromFixture(fixture);
+      const corpus = await resolveHistoricalNativeScriptCorpus({
+        deploymentFingerprint: "11".repeat(32),
+        checkpointStore: authenticatedCheckpointStore(),
+        historySource: historySource([fixture]),
+        currentEvidence: block,
+        sources: [retainedSource([fixture])],
+      });
+      await expect(
+        deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
+          block,
+          corpus,
+        }),
+      ).resolves.toEqual({
+        priorRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        outputs: new Map(),
+      });
+      await expect(
+        deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
+          block: { ...block },
+          corpus,
+        }),
+      ).rejects.toThrow(
+        "historical corpus belongs to another challenged block",
+      );
+      await expect(
+        deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
+          block,
+          corpus: { ...corpus },
+        }),
+      ).rejects.toThrow(/corpus/u);
+    },
+  );
+
+  it("reuses the common history prefix when correction replaces a checkpointed suffix", async () => {
+    const ancestor = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+    });
+    const removed = await buildCanonicalBlockFixture({
+      transactions: [fixtureTransaction(nativeTx({ scripts: [nativeScript] }))],
+      prevHeaderHash: ancestor.headerHash,
+      prevUtxosRoot: ancestor.header.utxosRoot,
+    });
+    const replacement = await buildCanonicalBlockFixture({
+      transactions: [],
+      startTime: 30n,
+      endTime: 40n,
+      prevHeaderHash: ancestor.headerHash,
+      prevUtxosRoot: ancestor.header.utxosRoot,
+    });
+    const checkpointStore = authenticatedCheckpointStore();
+    const fixtures = [ancestor, removed, replacement];
+    const common = {
+      deploymentFingerprint: "11".repeat(32),
+      checkpointStore,
+      historySource: historySource(fixtures),
+      sources: [retainedSource(fixtures)],
+    };
+    const previous = await resolveHistoricalNativeScriptCorpus({
+      ...common,
+      currentEvidence: await evidenceFromFixture(removed),
+    });
+    expect(previous.headerHashes).toEqual([
+      ancestor.headerHash,
+      removed.headerHash,
+    ]);
+    expect(previous.entries.map((entry) => entry.scriptHash)).toContain(
+      hashMidgardVersionedScript(nativeScript),
+    );
+    const fromOrigin = await resolveHistoricalNativeScriptCorpus({
+      ...common,
+      checkpointStore: authenticatedCheckpointStore(),
+      currentEvidence: await evidenceFromFixture(replacement),
+    });
+    expect(fromOrigin.headerHashes).toEqual([
+      ancestor.headerHash,
+      replacement.headerHash,
+    ]);
+    const corrected = await resolveHistoricalNativeScriptCorpus({
+      ...common,
+      currentEvidence: await evidenceFromFixture(replacement),
+    });
+    expect(corrected.headerHashes).toEqual([
+      ancestor.headerHash,
+      replacement.headerHash,
+    ]);
+    expect(corrected.entries).toEqual([]);
+    expect(corrected.evidenceDigest).toBe(fromOrigin.evidenceDigest);
+    expect(
+      await checkpointStore.load({
+        deploymentFingerprint: common.deploymentFingerprint,
+      }),
+    ).toMatchObject({
+      throughHeaderHash: replacement.headerHash,
+      predecessorCheckpointDigest: previous.checkpointDigest,
+    });
+    const restored = await resolveHistoricalNativeScriptCorpus({
+      ...common,
+      currentEvidence: await evidenceFromFixture(removed),
+    });
+    expect(restored.evidenceDigest).toBe(previous.evidenceDigest);
+    const mismatched = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: ancestor.headerHash,
+      prevUtxosRoot: "ff".repeat(32),
+      startTime: 50n,
+      endTime: 60n,
+    });
+    await expect(
+      resolveHistoricalNativeScriptCorpus({
+        ...common,
+        historySource: historySource([ancestor, mismatched]),
+        sources: [retainedSource([ancestor, mismatched])],
+        currentEvidence: await evidenceFromFixture(mismatched),
+      }),
+    ).rejects.toThrow(
+      "historical checkpoint does not join the retained segment",
+    );
+    expect(
+      await checkpointStore.load({
+        deploymentFingerprint: common.deploymentFingerprint,
+      }),
+    ).toMatchObject({
+      checkpointDigest: restored.checkpointDigest,
+    });
+  });
+
+  it("refuses a genesis predecessor with a substituted non-empty root", async () => {
+    const fixture = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+      prevUtxosRoot: "00".repeat(32),
+    });
+    const block = await evidenceFromFixture(fixture);
+    const corpus = await resolveHistoricalNativeScriptCorpus({
+      deploymentFingerprint: "11".repeat(32),
+      checkpointStore: authenticatedCheckpointStore(),
+      historySource: historySource([fixture]),
+      currentEvidence: block,
+      sources: [retainedSource([fixture])],
+    });
+    await expect(
+      deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
+        block,
+        corpus,
+      }),
+    ).rejects.toThrow(
+      "genesis predecessor does not commit the canonical empty ledger",
+    );
+  });
+
+  it("does not admit absent or substituted non-genesis predecessor history even when the current block is empty", async () => {
+    const predecessor = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+    });
+    const missing = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: "de".repeat(28),
+    });
+    await expect(
+      resolveHistoricalNativeScriptCorpus({
+        deploymentFingerprint: "11".repeat(32),
+        checkpointStore: authenticatedCheckpointStore(),
+        historySource: historySource([missing]),
+        currentEvidence: await evidenceFromFixture(missing),
+        sources: [retainedSource([missing])],
+      }),
+    ).rejects.toThrow();
+    const substituted = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: predecessor.headerHash,
+      prevUtxosRoot: "00".repeat(32),
+    });
+    await expect(
+      resolveHistoricalNativeScriptCorpus({
+        deploymentFingerprint: "11".repeat(32),
+        checkpointStore: authenticatedCheckpointStore(),
+        historySource: historySource([predecessor, substituted]),
+        currentEvidence: await evidenceFromFixture(substituted),
+        sources: [retainedSource([predecessor, substituted])],
+      }),
+    ).rejects.toThrow("historical retained-DA predecessor does not match");
+  });
+
   it("binds a missing UTxO script to predecessor membership and an authenticated preimage", async () => {
     const predecessorTxId = Buffer.alloc(32, 0x55);
     const outRefKey = encodeMidgardSpendInputItem({

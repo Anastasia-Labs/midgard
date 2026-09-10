@@ -58,6 +58,58 @@ afterEach(async () => {
 });
 
 describe("production watcher SQLite durable backend", () => {
+  it("retains immutable archive bytes independently across snapshot updates and restart", async () => {
+    const path = join(await directory(), "watcher.sqlite");
+    const opened = await openWatcherSqliteDurableBackend({ path });
+    const payload = bytes('{"cursor":null}');
+    const original = Uint8Array.from(payload);
+    const key = await opened.userEventArchive.put(payload);
+    expect(key).toBe(digest(original));
+    payload[0] = 0;
+    expect(await opened.userEventArchive.put(original)).toBe(key);
+    const read = await opened.userEventArchive.read(key);
+    read![0] = 0;
+    expect(await opened.userEventArchive.read(key)).toEqual(original);
+    expect(await opened.userEventArchive.read("ff".repeat(32))).toBeNull();
+    await opened.backend.compareAndSwap(null, bytes("global snapshot"));
+    opened.close();
+    const restarted = await openWatcherSqliteDurableBackend({ path });
+    try {
+      expect(await restarted.userEventArchive.read(key)).toEqual(original);
+      await expect(
+        restarted.userEventArchive.put(new Uint8Array()),
+      ).rejects.toThrow("byte bounds");
+    } finally {
+      restarted.close();
+    }
+  });
+
+  it("detects damaged archived bytes on both read and exact-repeat put", async () => {
+    const path = join(await directory(), "watcher.sqlite");
+    const opened = await openWatcherSqliteDurableBackend({ path });
+    const payload = bytes('{"cursor":null}');
+    const key = await opened.userEventArchive.put(payload);
+    opened.close();
+    const connection = new DatabaseSync(path);
+    connection
+      .prepare(
+        "UPDATE watcher_user_event_archive_v1 SET bytes = ? WHERE digest = ?",
+      )
+      .run(bytes("damaged archive"), key);
+    connection.close();
+    const restarted = await openWatcherSqliteDurableBackend({ path });
+    try {
+      await expect(restarted.userEventArchive.read(key)).rejects.toThrow(
+        "digest mismatch",
+      );
+      await expect(restarted.userEventArchive.put(payload)).rejects.toThrow(
+        "digest mismatch",
+      );
+    } finally {
+      restarted.close();
+    }
+  });
+
   it("atomically initializes, rejects stale CAS, replaces and survives restart", async () => {
     const path = join(await directory(), "watcher.sqlite");
     const first = bytes("first complete snapshot");

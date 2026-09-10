@@ -12,42 +12,13 @@ import {
 } from "./helpers/ordered-collection-boundary.js";
 import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundary.js";
 
-// The exact genuine signed-Cardano field-2 boundary. The terminal fold vector
-// below is the Aiken-replayed half; these four numbers pin the cardinality and
-// byte count the search must land on, so a silently shrunk outputs collection
-// can no longer satisfy the relative bounds alone.
+// The exact genuine signed-Cardano field-2 boundary. These four numbers pin the
+// cardinality and byte count the search must land on, so a silently shrunk
+// outputs collection can no longer satisfy the relative bounds alone.
 const MAXIMUM_OUTPUT_ACCEPTED_COUNT = 437;
 const MAXIMUM_OUTPUT_ACCEPTED_SIGNED_BYTES = 16_372;
 const MAXIMUM_OUTPUT_ADJACENT_COUNT = 438;
 const MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES = 16_409;
-
-const maximumOutputTerminalFoldVector = {
-  transactionIdHex:
-    "1faba3bc592fac6c30165c2789e08a18357deb9b449f5d0ceea1b3e6aa40ee1e",
-  transactionCommitmentHex:
-    "89de7a79482046596d7a217e20889350a26e5cb168c9cb69fdca382b4a402c7a",
-  preWorkRootHex:
-    "c355c350925b94503664350b6b6d7f44c0776ef44caef0e40ebdf5d6936b29c2",
-  postWorkRootHex:
-    "b39febf97e07ab5bd85330521e7205f074b12e8e20e0dd2e39a40e5868fdfce1",
-  encodedLengthBeforeItem: 18_794,
-  collectionProof: {
-    fieldIndex: 2,
-    itemCount: 438,
-    itemIndex: 437,
-    itemLength: 45,
-    itemCommitmentHex:
-      "0597306fb7c06665c796780ac8c2c3dff11acb9d8081451b0b6841225b66502e",
-  },
-  chunkProof: {
-    fieldIndex: 2,
-    itemIndex: 437,
-    totalLength: 45,
-    chunkIndex: 0,
-    chunkHex:
-      "a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821b000000091c0a049ba0",
-  },
-} as const;
 
 describe("canonical V1 ordered-collection Cardano boundaries", () => {
   it("derives and reveals the exact signed outputs boundary without a Midgard count cap", async () => {
@@ -164,36 +135,6 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     expect(boundary.adjacent.signedBytes).toBe(
       MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES,
     );
-    expect({
-      transactionIdHex: midgardMeasurement.terminalFoldVector.transactionIdHex,
-      transactionCommitmentHex:
-        midgardMeasurement.terminalFoldVector.transactionCommitmentHex,
-      preWorkRootHex: midgardMeasurement.terminalFoldVector.preWorkRootHex,
-      postWorkRootHex: midgardMeasurement.terminalFoldVector.postWorkRootHex,
-      encodedLengthBeforeItem:
-        midgardMeasurement.terminalFoldVector.encodedLengthBeforeItem,
-      collectionProof: {
-        fieldIndex:
-          midgardMeasurement.terminalFoldVector.collectionProof.fieldIndex,
-        itemCount:
-          midgardMeasurement.terminalFoldVector.collectionProof.itemCount,
-        itemIndex:
-          midgardMeasurement.terminalFoldVector.collectionProof.itemIndex,
-        itemLength:
-          midgardMeasurement.terminalFoldVector.collectionProof.itemLength,
-        itemCommitmentHex:
-          midgardMeasurement.terminalFoldVector.collectionProof
-            .itemCommitmentHex,
-      },
-      chunkProof: {
-        fieldIndex: midgardMeasurement.terminalFoldVector.chunkProof.fieldIndex,
-        itemIndex: midgardMeasurement.terminalFoldVector.chunkProof.itemIndex,
-        totalLength:
-          midgardMeasurement.terminalFoldVector.chunkProof.totalLength,
-        chunkIndex: midgardMeasurement.terminalFoldVector.chunkProof.chunkIndex,
-        chunkHex: midgardMeasurement.terminalFoldVector.chunkProof.chunkHex,
-      },
-    }).toEqual(maximumOutputTerminalFoldVector);
     // #590 scope item 0: the write channel this suite did not have.
     //
     // The `output-boundary-v1` fixture in

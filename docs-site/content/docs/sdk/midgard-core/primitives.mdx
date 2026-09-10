@@ -11,12 +11,13 @@ consumers pull in only what they need.
 
 An `Assets` map is `Readonly<Record<AssetUnit, bigint>>`, where a unit is either
 `"lovelace"` or a policy/asset-name string. The module provides normalized
-arithmetic that always drops zero-quantity units:
+arithmetic and normalization helpers:
 
 - `normalizeAssets`: coerces values to `bigint` and removes zero entries.
 - `addAssets` / `subtractAssetsDelta`, add or subtract maps, dropping units that
   net to zero.
-- `negateAssets`: negate every quantity.
+- `negateAssets`: negate every quantity, retaining any zero entries until
+  normalization.
 - `assetsEqual`: normalized equality.
 
 It also exports the constants `LOVELACE_UNIT`, `ADA_POLICY_ID` (empty string),
@@ -58,9 +59,9 @@ Constants and limits for the Midgard data-availability transport layer
   and the on-chain attestation domain (`DA_ON_CHAIN_ATTESTATION_DOMAIN`).
 
 <Callout type="info">
-These are transport-layer constants shared by the node's DA components. The
-transaction-building side of DA attestations lives in the SDK, see
-[DA attestation & payload](/docs/sdk/midgard-sdk/da-and-oracle).
+  These are transport-layer constants shared by the node's DA components. The
+  transaction-building side of DA attestations lives in the SDK, see [DA
+  attestation & payload](/docs/sdk/midgard-sdk/da-and-oracle).
 </Callout>
 
 ## Error formatting: `@al-ft/midgard-core/error-format`
@@ -70,7 +71,7 @@ string, with options to include the `cause` chain or a stack trace. It keeps
 logs and operator-facing failure messages consistent without scattering ad hoc
 stringification across the codebase.
 
-```ts
+```ts twoslash
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 
 try {

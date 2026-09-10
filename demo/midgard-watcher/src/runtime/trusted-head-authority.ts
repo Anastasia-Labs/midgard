@@ -1,14 +1,15 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   type FileHandle,
   mkdir,
   open,
   readdir,
-  readFile,
   realpath,
 } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { isAbsolute, join, normalize } from "node:path";
+import { setImmediate as yieldScan } from "node:timers/promises";
 
 import {
   parseWatcherFinalityPolicy,
@@ -29,6 +30,8 @@ export const WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION =
 const RECORD_FILE = /^([0-9]{20})\.json$/u;
 const UINT64_MAX = 18_446_744_073_709_551_615n;
 const MAX_RECORD_BYTES = 16_384;
+const RECORD_SCAN_BATCH_SIZE = 8;
+const MAX_CACHED_RECORDS = 4_096;
 const MAX_REQUEST_BYTES = 32_768;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -148,8 +151,8 @@ const makeAuthorityRecord = (input: {
   });
 };
 
-const readBounded = async (path: string): Promise<Uint8Array> => {
-  const bytes = await readFile(path);
+const readBounded = (path: string): Uint8Array => {
+  const bytes = readFileSync(path);
   if (bytes.byteLength === 0 || bytes.byteLength > MAX_RECORD_BYTES) {
     throw new Error("trusted-head authority record size is invalid");
   }
@@ -311,6 +314,14 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
     }) as TrustedHeadAuthorityRecord;
   };
 
+  const admittedRecords = new Map<
+    string,
+    Readonly<{
+      bytes: Uint8Array;
+      record: TrustedHeadAuthorityRecord;
+      recordSha256: string;
+    }>
+  >();
   const scan = async (): Promise<Readonly<{
     head: WatcherRollbackDurableTrustedHead;
     recordSha256: string;
@@ -325,38 +336,68 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
       return entry.name;
     });
     names.sort();
+    const retainedNames = new Set(names.slice(-MAX_CACHED_RECORDS));
+    for (const name of admittedRecords.keys()) {
+      if (!retainedNames.has(name)) admittedRecords.delete(name);
+    }
     let previous: Readonly<{
       head: WatcherRollbackDurableTrustedHead;
       recordSha256: string;
     }> | null = null;
-    for (let index = 0; index < names.length; index += 1) {
-      const name = names[index]!;
-      const expectedRevision = BigInt(index);
-      if (name !== recordName(expectedRevision)) {
-        throw new Error("trusted-head authority revision chain has a gap");
+    for (
+      let offset = 0;
+      offset < names.length;
+      offset += RECORD_SCAN_BATCH_SIZE
+    ) {
+      const batch = names.slice(offset, offset + RECORD_SCAN_BATCH_SIZE);
+      // This independent service owns tiny local records. Synchronous reads
+      // avoid thread-pool round trips per file; yield between bounded batches
+      // so another request can run. Every scan still reads every record.
+      if (offset !== 0) await yieldScan();
+      for (let index = 0; index < batch.length; index += 1) {
+        const name = batch[index]!;
+        const expectedRevision = BigInt(offset + index);
+        if (name !== recordName(expectedRevision)) {
+          throw new Error("trusted-head authority revision chain has a gap");
+        }
+        const bytes = readBounded(join(directory, name));
+        const cached = admittedRecords.get(name);
+        const unchanged =
+          cached !== undefined && Buffer.compare(bytes, cached.bytes) === 0;
+        const sidecarRecord = unchanged
+          ? cached.record
+          : admitRecord(parseJson(bytes));
+        const expectedPriorRecordSha256 = previous?.recordSha256 ?? null;
+        if (
+          revision(sidecarRecord.head) !== expectedRevision ||
+          sidecarRecord.priorRecordSha256 !== expectedPriorRecordSha256 ||
+          (!unchanged &&
+            new TextDecoder().decode(bytes) !==
+              watcherCanonicalJson(sidecarRecord))
+        ) {
+          throw new Error("trusted-head authority record is non-canonical");
+        }
+        if (
+          previous !== null &&
+          revision(sidecarRecord.head) !== revision(previous.head) + 1n
+        ) {
+          throw new Error(
+            "trusted-head authority revision chain is discontinuous",
+          );
+        }
+        const recordSha256 = unchanged ? cached.recordSha256 : sha256(bytes);
+        if (!unchanged && retainedNames.has(name)) {
+          admittedRecords.set(name, {
+            bytes,
+            record: sidecarRecord,
+            recordSha256,
+          });
+        }
+        previous = Object.freeze({
+          head: sidecarRecord.head,
+          recordSha256,
+        });
       }
-      const bytes = await readBounded(join(directory, name));
-      const sidecarRecord = admitRecord(parseJson(bytes));
-      const expectedPriorRecordSha256 = previous?.recordSha256 ?? null;
-      if (
-        revision(sidecarRecord.head) !== expectedRevision ||
-        sidecarRecord.priorRecordSha256 !== expectedPriorRecordSha256 ||
-        new TextDecoder().decode(bytes) !== watcherCanonicalJson(sidecarRecord)
-      ) {
-        throw new Error("trusted-head authority record is non-canonical");
-      }
-      if (
-        previous !== null &&
-        revision(sidecarRecord.head) !== revision(previous.head) + 1n
-      ) {
-        throw new Error(
-          "trusted-head authority revision chain is discontinuous",
-        );
-      }
-      previous = Object.freeze({
-        head: sidecarRecord.head,
-        recordSha256: sha256(bytes),
-      });
     }
     return previous;
   };

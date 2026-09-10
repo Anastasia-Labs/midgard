@@ -1,4 +1,5 @@
-import { Proof } from "@al-ft/midgard-sdk";
+import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import { MAXIMUM_CHUNK_PROOF_STEP_COUNT, Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,11 +12,14 @@ import {
   type FraudProofWorkflowAction,
 } from "../src/workflow/orchestrator.js";
 import {
+  createAuthenticatedProofChunkPrerequisitePort,
   PROOF_CHUNK_PREREQUISITE,
+  PROOF_CHUNK_PUBLICATION_RECOVERY,
   type ProofChunkPrerequisitePort,
   resolveDirectFirstProofChunks,
   withProofChunkPrerequisite,
 } from "../src/workflow/proof-chunk-prerequisite.js";
+import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 
 const txHash = "11".repeat(32);
@@ -165,6 +169,134 @@ const prerequisite = ({
 });
 
 describe("production proof-chunk prerequisite V1", () => {
+  it("waits for proof chunk finality without allowing another capture or proof preflight", async () => {
+    const underlying = base();
+    const port = prerequisite();
+    vi.mocked(port.inspect).mockResolvedValue({
+      kind: "pending",
+      reason: "proof chunks are not release-final",
+    });
+    const adapter = withProofChunkPrerequisite({
+      category: "invalidRange",
+      base: underlying,
+      prerequisite: port,
+    });
+    await expect(adapter.observe(context)).resolves.toEqual({
+      kind: "pending",
+      reason: "proof chunks are not release-final",
+    });
+    await expect(
+      adapter.preflight({ ...context, action: baseAction }),
+    ).rejects.toThrow("cannot bypass its direct-first carriage decision");
+    await expect(
+      adapter.preflight({ ...context, action: publicationAction }),
+    ).rejects.toThrow("differs from the current requirement");
+    expect(port.capture).not.toHaveBeenCalled();
+    expect(underlying.preflight).not.toHaveBeenCalled();
+    expect(underlying.submit).not.toHaveBeenCalled();
+    vi.mocked(port.inspect).mockResolvedValue({ kind: "satisfied" });
+    await expect(adapter.observe(context)).resolves.toEqual({
+      kind: "action_required",
+      action: baseAction,
+    });
+  });
+
+  it("keeps journaled proof chunks pending and rejects incomplete authenticated output sets", async () => {
+    const proofCbor = canonicalPlutusDataCbor(
+      Data.to(
+        Array.from({ length: MAXIMUM_CHUNK_PROOF_STEP_COUNT + 1 }, () => ({
+          Branch: { skip: 0n, neighbors: "" },
+        })),
+        Proof,
+      ),
+    );
+    const datums = splitProofIntoChunkDatums(proofCbor);
+    expect(datums).toHaveLength(2);
+    let included = false;
+    const confirmedOutputs = new Set<string>();
+    const port = createAuthenticatedProofChunkPrerequisitePort({
+      category: "invalidRange",
+      lucid: { utxosAt: async () => [] } as unknown as LucidEvolution,
+      network: "Preview",
+      signer: {
+        source: "test",
+        address: "addr_test1_proof_publication",
+        paymentKeyHash: "12".repeat(28),
+        selectWallet: () => undefined,
+      },
+      publications: {
+        observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
+        observeExact: async ({ expectedOutRef }) =>
+          confirmedOutputs.has(expectedOutRef)
+            ? { kind: "confirmed", outRef: expectedOutRef }
+            : { kind: "not_found" },
+      },
+      proofCborForAction: () => proofCbor,
+      transactionConfirmed: async () => included,
+    });
+    const required = await port.inspect({
+      headerHash,
+      baseAction,
+      artifact: context.artifact,
+      entries: [],
+    });
+    if (required.kind !== "required")
+      throw new Error("missing proof publication requirement");
+    const proofCborSha256 = required.action.input.proofCborSha256;
+    if (typeof proofCborSha256 !== "string")
+      throw new Error("missing proof identity");
+    const outputs = datums.map((datumCbor, index) => ({
+      outRef: `${txHash}#${index}`,
+      datumCbor,
+    }));
+    const input = {
+      headerHash,
+      action: required.action,
+      artifact: context.artifact,
+      txHash,
+      durableRecovery: {
+        proofChunkPublication: {
+          schemaVersion: PROOF_CHUNK_PUBLICATION_RECOVERY,
+          proofCborSha256,
+          outputs,
+        },
+      },
+    } as const;
+    await expect(port.reconcile(input)).resolves.toEqual({
+      kind: "pending",
+      txHash,
+    });
+    included = true;
+    await expect(port.reconcile(input)).resolves.toMatchObject({
+      kind: "conflict",
+      reason: expect.stringContaining("exact complete output set"),
+    });
+    included = false;
+    confirmedOutputs.add(outputs[0]!.outRef);
+    await expect(port.reconcile(input)).resolves.toMatchObject({
+      kind: "conflict",
+    });
+    confirmedOutputs.add(outputs[1]!.outRef);
+    await expect(port.reconcile(input)).resolves.toEqual({
+      kind: "confirmed",
+      txHash,
+    });
+    await expect(
+      port.reconcile({
+        ...input,
+        durableRecovery: {
+          proofChunkPublication: {
+            ...input.durableRecovery.proofChunkPublication,
+            outputs: [
+              { ...outputs[0]!, outRef: `${"ff".repeat(32)}#0` },
+              outputs[1]!,
+            ],
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+  });
+
   it("makes the publication a distinct durable action and forbids step bypass", async () => {
     const underlying = base({
       preflightFailure: new Error(

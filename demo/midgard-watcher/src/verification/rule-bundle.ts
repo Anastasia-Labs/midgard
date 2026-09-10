@@ -242,7 +242,7 @@ export type WatcherRuleBundle = Readonly<{
   ruleBundleVersion: typeof WATCHER_RULE_BUNDLE_VERSION;
   deploymentManifestId: string;
   network: "Mainnet" | "Preprod" | "Preview";
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   consensusProfileDigest: string;
   protocolVersion: typeof MIDGARD_PROTOCOL_VERSION;
@@ -265,7 +265,7 @@ export type LoadedWatcherRuleBundle = Readonly<{
 export type WatcherRuleBundleConstructionIdentity = Readonly<{
   manifestId: string;
   network: "Mainnet" | "Preprod" | "Preview";
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   programCommitments: Readonly<Record<string, string>>;
 }>;
 
@@ -358,7 +358,7 @@ export const parseWatcherRuleBundle = (value: unknown): WatcherRuleBundle => {
     "ruleBundleVersion",
     "deploymentManifestId",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "consensusProfileId",
     "consensusProfileDigest",
     "protocolVersion",
@@ -411,10 +411,7 @@ export const parseWatcherRuleBundle = (value: unknown): WatcherRuleBundle => {
       "$.deploymentManifestId",
     ),
     network: exactNetwork(bundle.network, "$.network"),
-    releaseEvidenceDigest: exactHex32(
-      bundle.releaseEvidenceDigest,
-      "$.releaseEvidenceDigest",
-    ),
+    blueprintHash: exactHex32(bundle.blueprintHash, "$.blueprintHash"),
     consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     protocolVersion: MIDGARD_PROTOCOL_VERSION,
@@ -452,7 +449,7 @@ const parseConstructionIdentity = (
   const identity = exactRecord(value, "$.constructionIdentity", [
     "manifestId",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "programCommitments",
   ]);
   const manifestId = exactHex32(
@@ -462,9 +459,9 @@ const parseConstructionIdentity = (
   return Object.freeze({
     manifestId,
     network: exactNetwork(identity.network, "$.constructionIdentity.network"),
-    releaseEvidenceDigest: exactHex32(
-      identity.releaseEvidenceDigest,
-      "$.constructionIdentity.releaseEvidenceDigest",
+    blueprintHash: exactHex32(
+      identity.blueprintHash,
+      "$.constructionIdentity.blueprintHash",
     ),
     programCommitments: parseProgramCommitments(
       identity.programCommitments,
@@ -500,7 +497,7 @@ export const makeWatcherCanonicalRuleBundle = (input: {
     ruleBundleVersion: WATCHER_RULE_BUNDLE_VERSION,
     deploymentManifestId: identity.manifestId,
     network: identity.network,
-    releaseEvidenceDigest: identity.releaseEvidenceDigest,
+    blueprintHash: identity.blueprintHash,
     consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     protocolVersion: MIDGARD_PROTOCOL_VERSION,
@@ -539,7 +536,7 @@ export const loadWatcherRuleBundle = (input: {
   if (
     ruleBundle.deploymentManifestId !== identity.manifestId ||
     ruleBundle.network !== identity.network ||
-    ruleBundle.releaseEvidenceDigest !== identity.releaseEvidenceDigest
+    ruleBundle.blueprintHash !== identity.blueprintHash
   ) {
     fail("deployment_identity_mismatch", "$.ruleBundle");
   }

@@ -18,7 +18,7 @@ export type ReleaseL1FinalityPolicy = {
 export type VerifiedFraudProofReleaseFinalityPolicy = {
   readonly schemaVersion: typeof FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION;
   readonly deploymentIdentityDigest: string;
-  readonly releaseIdentityDigest: string;
+  readonly blueprintHash: string;
   readonly policyDigest: string;
   readonly policy: ReleaseL1FinalityPolicy;
 };
@@ -55,7 +55,7 @@ export const validateVerifiedFraudProofReleaseFinalityPolicy = (
   }
   if (
     !DIGEST.test(value.deploymentIdentityDigest) ||
-    !DIGEST.test(value.releaseIdentityDigest) ||
+    !DIGEST.test(value.blueprintHash) ||
     !DIGEST.test(value.policyDigest)
   ) {
     throw new Error("release finality identity digests must be 32-byte hex");

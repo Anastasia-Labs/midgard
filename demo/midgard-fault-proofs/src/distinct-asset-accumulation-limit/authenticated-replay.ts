@@ -243,7 +243,7 @@ const replayCandidates = async (
     const detection: CanonicalViolationDetection = {
       detectionId: `${DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID}:${position.toString()}:${finding.subject.transaction_id}:${label}`,
       headerHash: block.headerHash,
-      violationId: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
+      violationId: `${finding.coordinate.kind}-asset-accumulation-limit`,
       position: BigInt(position),
       diagnostic: `${finding.subject.source_kind === 0n ? "accepted" : "forced"} distinct-asset accumulation contradiction at ${label}`,
     };

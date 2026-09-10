@@ -1,4 +1,4 @@
-# 0002 — Canonical V1 Goal economics and margin decision record (F04)
+# 0002 — Canonical V1 Goal economics and margin decision record
 
 - **Status:** ACCEPTED. CG5 may bind these values into the release identity
   after the named consumers pass. Amended 2026-08-31: §2.4 superseded by
@@ -21,7 +21,7 @@ The compiled dispute schedule (11 h) fits half maturity (84 h) with a 7.6×
 margin before DA fetch/construction/confirmation overhead; W04/C74 must prove
 the complete measured path still fits.
 
-## 2. Economics (replaces the zero placeholders in `onchain/aiken/env/{default,testnet}.ak`)
+## 2. Accepted economics
 
 ### 2.1 Public preprod launch economics
 
@@ -102,8 +102,8 @@ or the submitting wallet is not a reward-routing rule.
   fees balance independently and cannot reduce, supplement, or receive the
   reward. Registration and every directory transition preserve exactly the
   expected tranche rather than accepting an unclassified bond surplus.
-- The reward can be paid only within a `RemoveFraudulentBlockHeader`
-  transaction for that header (the bond-consuming slashing arms;
+- For a bad-state fault proof, the reward can be paid only within a
+  `RemoveFraudulentBlockHeader` transaction for that header (the bond-consuming slashing arms;
   successor-pruning transactions that carry the slash pay the reward;
   `OperatorAlreadySlashed` and target-block-removal-without-bond pay none). A
   path that pays no reward also does not levy the same penalty again.
@@ -114,32 +114,10 @@ The public-profile full/partial allocations are therefore
 acceptance allocations are `900_000_000 = 400_000_000 + 500_000_000` and
 `800_000_000 = 400_000_000 + 400_000_000` lovelace.
 
-### 2.4 Duplicate-token and duplicate-reward prevention (SUPERSEDED 2026-08-31 by §2.4a)
+### 2.4 Superseded claim-registry requirement
 
-> **This subsection is retained for history only. Its claim-registry
-> requirement was reversed by the owner on 2026-08-31; see §2.4a for the
-> governing rule.**
-
-The deterministic claim identity is
-`(deployment identity, fraud category ID, fraudulent header hash)`. Q53 must
-make `Init` ledger-idempotent for that identity through a deployment-bound
-singleton claim-lock/registry transition:
-
-- at most one live computation thread exists for a claim identity;
-- a concurrent or repeated `Init` while live rejects instead of minting a
-  second copy of the deterministic asset name;
-- cancellation atomically burns the live thread token and reopens the claim;
-- success atomically burns that token, mints exactly one eternal fraud-proof
-  token, and closes the claim permanently; and
-- a closed claim, a second terminal mint, a replayed reward claim, or a reward
-  attempt after the operator node has been consumed rejects on-chain.
-
-A random nonce or a fresh wallet input is not a uniqueness guard: it would
-only create multiple claim identities for the same fault. Durable watcher
-submission IDs remain useful for retry reconciliation, but are not protocol
-authorization. The singleton operator node plus the closed claim gives two
-independent idempotency boundaries: at most one terminal proof token per
-claim, and at most one reward from an operator's slashable bond.
+The owner reversed the singleton claim-registry requirement on 2026-08-31.
+§2.4a is the governing rule; Git preserves the retired registry design.
 
 ### 2.4a Concurrent fraud proofs are permitted; the bond is the reward boundary (ACCEPTED 2026-08-31)
 
@@ -194,23 +172,31 @@ validator and removal builder:
 - zero-reward profiles omit the impossible zero-lovelace output; and
 - an already-slashed/no-bond arm cannot pay another reward.
 
-Q53 is still not complete:
+**Implementation update (2026-09-07):** the zero-value and lower-bound
+placeholders described by earlier versions of this record have been replaced:
 
-- `onchain/aiken/env/default.ak` and `env/testnet.ak` still compile the bond,
-  slash, inactivity-slash, and reward values as zero;
-- operator registration and slash accounting still accept lower-bound rather
-  than exact bond/fee preservation, so the complete tranche conservation rules
-  in §2.3 are not yet enforced;
-- the accepted public and bounded profiles have not been deployed and measured
-  through live/preprod acceptance.
+- `onchain/aiken/env/default.ak` compiles the public profile: 25,000 ADA
+  slash, 75,000 ADA reward, 100,000 ADA required bond, and 10,000 ADA
+  inactivity slash.
+- `onchain/aiken/env/testnet.ak` compiles the bounded profile: 500 tADA slash,
+  400 tADA reward, 900 tADA required bond, and 100 tADA inactivity slash.
+- `onchain/aiken/lib/midgard/operator-directory.ak` checks exact full/partial
+  bond and fee allocation; `validators/operator-directory/registered-operators.ak`
+  requires the exact registration bond. Reward routing remains in the
+  state-queue validator.
+
+These source checks establish implementation, not deployment or live economic
+acceptance. Use [testnet readiness](../../public_testnet_readiness.md) and
+[proof coverage](../../fault-proofs/coverage-matrix.md) for current remaining
+gates; this documentation pass did not run a deployment or economic drill.
 
 Duplicate terminal mints are no longer an open item: under §2.4a they are
 permitted, and the single-consumption of the operator's directory node is the
 whole reward boundary.
 
 The settlement remainder helper and unrelated SDK penalty constants are not
-economics authorities. Until the remaining items above close, an F04-approved
-profile must not be described as deployed or economics-complete.
+economics authorities. An F04-approved profile must not be described as deployed or
+economics-complete without the corresponding acceptance evidence.
 
 ## 3. Finality, retries, deadlines (status per row)
 

@@ -111,8 +111,7 @@ required by `docs/agents/state-reset.md`.
 ## Lower-layer feedback gate
 
 For transaction builders, wallet/input selection, validity, workers, DA, or
-recovery changes, run the relevant layers in
-`demo/midgard-node/docs/TX_PREP_FEEDBACK_LADDER.md` before live E2E:
+recovery changes, run the relevant workspace checks before live E2E:
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -189,7 +188,8 @@ Rerun:
 
 ```bash
 node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs
-python3 /mnt/c/Users/phili/.codex/skills/.system/skill-creator/scripts/quick_validate.py \
+# Locate quick_validate.py in the installed skill-creator skill first.
+python3 "$SKILL_CREATOR_DIR/scripts/quick_validate.py" \
   .agents/skills/midgard-e2e-acceptance
 ```
 

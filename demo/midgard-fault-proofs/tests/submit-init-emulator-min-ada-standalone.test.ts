@@ -38,7 +38,6 @@ describe("min-ada standalone emulator lifecycle", () => {
       lucid: harness.proverLucid,
       family: harness.family,
       label: "min-ada",
-      enforceL1Envelope: true,
       onPublication: (stepIndex, publication) => {
         if (stepIndex === 1) {
           dispatcherPublicationBytes =
@@ -190,7 +189,6 @@ describe("min-ada standalone emulator lifecycle", () => {
       lucid: harness.proverLucid,
       family: harness.family,
       label: "min-ada",
-      enforceL1Envelope: true,
     });
     const fixture = await buildMinAdaPostUtxoEmulatorFixture({
       emptyPrevious: true,

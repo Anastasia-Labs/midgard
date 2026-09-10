@@ -59,7 +59,7 @@ const economicsPolicy = {
 const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
   schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
-  releaseIdentityDigest: RELEASE,
+  blueprintHash: RELEASE,
   policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
   policy: economicsPolicy,
 };
@@ -315,7 +315,7 @@ const fixture = async ({
   const snapshot: FraudProofRawL1Snapshot = {
     schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT,
-    releaseIdentityDigest: RELEASE,
+    blueprintHash: RELEASE,
     finalityPolicyDigest: FINALITY,
     headerHash,
     provenance: {
@@ -332,7 +332,7 @@ const fixture = async ({
       confirmationDepth: 30,
       rollbackCursor: computeFraudProofRawL1RollbackCursor({
         deploymentIdentityDigest: DEPLOYMENT,
-        releaseIdentityDigest: RELEASE,
+        blueprintHash: RELEASE,
         finalityPolicyDigest: FINALITY,
         sourceId: SOURCE,
         pointId: point.pointId,
@@ -702,7 +702,7 @@ describe("raw L1 family terminal economics", () => {
         definition: value.definition,
         releaseEconomics: {
           ...releaseEconomics,
-          releaseIdentityDigest: hash32("99"),
+          blueprintHash: hash32("99"),
         },
       }),
     ).rejects.toThrow(/economics identity does not match/u);

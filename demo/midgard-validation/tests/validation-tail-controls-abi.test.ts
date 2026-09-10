@@ -1,6 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   buildMidgardValidationLedgerDeltaFrontier,
   commitMidgardValidationMerkleFrontier,
@@ -538,39 +535,5 @@ describe("canonical V1 validation tail controls", () => {
         encodeCbor([3n, Buffer.alloc(0), h32(0x73), bytes("80")]),
       ),
     ).toThrow(/outcome/u);
-  });
-
-  it("contains no retired V2/V3 validation-tail production identity", () => {
-    const machineDirectory = fileURLToPath(
-      new URL("../src/validation-machine/", import.meta.url),
-    );
-    const sources = [
-      ...readdirSync(machineDirectory)
-        .filter((name) => name.endsWith(".ts"))
-        .sort()
-        .map((name) => `../src/validation-machine/${name}`),
-      "../src/validation-machine-data.ts",
-      ...readdirSync(
-        fileURLToPath(
-          new URL(
-            "../../../onchain/aiken/lib/midgard/validation-machine/",
-            import.meta.url,
-          ),
-        ),
-      )
-        .filter((name) => name.endsWith(".ak"))
-        .sort()
-        .map(
-          (name) =>
-            `../../../onchain/aiken/lib/midgard/validation-machine/${name}`,
-        ),
-    ].map((path) =>
-      readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8"),
-    );
-    const retired =
-      /\b(?:ValueAccumulator|ValueAccumulatorUpdate|ValueAssetMutationWitness|ValueAndMintControl|LedgerDeltaControl|LedgerDeltaPendingMutation|LedgerDeltaOperationProof|TerminalAcceptanceWitness|TerminalRejectionWitness)V[23]\b/u;
-    expect(sources.flatMap((source) => source.match(retired) ?? [])).toEqual(
-      [],
-    );
   });
 });

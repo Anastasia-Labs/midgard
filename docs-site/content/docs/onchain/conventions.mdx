@@ -51,6 +51,7 @@ These docs use the **filename** when pointing at a file and the **blueprint titl
 naming an entrypoint. A blueprint entrypoint is titled `<module>.<validator>.<purpose>`,
 and the trailing `.else` entries are the fallback handlers that reject every other
 purpose.
+
 </Callout>
 - **Types and data constructors:** `PascalCase`, and avoid `_`. If you find
   yourself wanting a prefix or postfix, that is a signal to split the file.
@@ -86,7 +87,7 @@ All contributors must enable the project's standardized git hooks before working
 on the repository:
 
 ```sh
-make enable-git-hooks
+bash .githooks/install
 ```
 
 The hooks enforce the repository's formatting and pre-commit checks so review can
@@ -94,6 +95,14 @@ focus on logic. See [`CONTRIBUTING.md`](https://github.com/Anastasia-Labs/midgar
 for the authoritative list.
 
 <Cards>
-  <Card title="ScriptContext invariants" href="/docs/onchain/script-context-invariants" description="What validators may safely assume about Aiken's Transaction / ScriptContext." />
-  <Card title="On-Chain Overview" href="/docs/onchain/overview" description="Build the blueprint and see the validator map." />
+  <Card
+    title="ScriptContext invariants"
+    href="/docs/onchain/script-context-invariants"
+    description="What validators may safely assume about Aiken's Transaction / ScriptContext."
+  />
+  <Card
+    title="On-Chain Overview"
+    href="/docs/onchain/overview"
+    description="Build the blueprint and see the validator map."
+  />
 </Cards>

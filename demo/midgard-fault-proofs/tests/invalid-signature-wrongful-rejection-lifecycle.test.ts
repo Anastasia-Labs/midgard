@@ -49,12 +49,19 @@ import {
   buildInvalidSignatureSubject,
   submitRawInvalidSignatureStep02,
 } from "./support/invalid-signature-emulator.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishPlainReferenceScriptUtxo } from "./support/submit-init-emulator-shared.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 const network = "Custom" as const;
+const measuredFit = createMeasuredFitRecorder(
+  "invalid-signature-wrongful-rejection",
+  "lifecycle",
+  "selected witness at counts 0, 139, 317 and maximum depth64 membership, exact and out-of-range forced coordinates",
+);
+
 describe("invalidSignature wrongful-rejection real lifecycle", () => {
   it.each([
     { decoyWitnessCount: 0, accused: "honest" as const, rejectedIndex: null },
@@ -575,6 +582,15 @@ describe("invalidSignature wrongful-rejection real lifecycle", () => {
           }),
         ),
       );
+      captures
+        .flatMap((capture) => capture.measurements)
+        .forEach((measurement, index) =>
+          measuredFit.record(
+            `${decoyWitnessCount}-${rejectedIndex ?? "selected"}-${deepMembership ? "deep64" : "single"}/${index}`,
+            measurement,
+            measurement.executionMemory === 0n ? "publication" : "lifecycle",
+          ),
+        );
       for (const measurement of captures.flatMap(
         (capture) => capture.measurements,
       )) {

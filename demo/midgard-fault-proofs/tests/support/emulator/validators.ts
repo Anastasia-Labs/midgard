@@ -530,7 +530,26 @@ export const makeAlwaysSucceedsContracts = (
     },
     daParamsGovernor: alwaysAuthenticated(blueprint, "state_queue"),
     daAttestation: alwaysAuthenticated(blueprint, "state_queue"),
-    availabilityChallenge: alwaysAuthenticated(blueprint, "state_queue"),
+    availabilityChallenge: {
+      ...alwaysAuthenticated(blueprint, "state_queue"),
+      yields: {
+        bond: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        open: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        settle: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        close: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        timeout: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+      },
+    },
     correctionLock: makeSpendingValidator(
       alwaysScript(blueprint, "midgard", "state_queue", "spend"),
     ),

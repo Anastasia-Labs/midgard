@@ -27,6 +27,7 @@ import {
 } from "../prepare-fabricated-deposit.js";
 import { requireSingletonUtxo } from "../runtime.js";
 import type { CanonicalViolationDetection } from "./classification.js";
+import { governedUserEventAddress } from "./user-event-address.js";
 
 export const FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY =
   "midgard-production-fabricated-deposit-evidence-authority-v1" as const;
@@ -181,10 +182,7 @@ const discoverWitness = async ({
   const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
   const nonce = await Effect.runPromise(depositEventNonce(depositId));
   const eventUnit = toUnit(hub.deposit, nonce);
-  const depositAddress = credentialToAddress(
-    network,
-    scriptHashToCredential(hub.deposit),
-  );
+  const depositAddress = governedUserEventAddress(network, hub.deposit_addr);
   const eventUtxo = exactOne(
     await lucid.utxosAtWithUnit(depositAddress, eventUnit),
     "fabricated-deposit event lookup",
@@ -402,7 +400,7 @@ export const createFabricatedDepositEvidenceAuthority = ({
         const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
         const nonce = await Effect.runPromise(depositEventNonce(depositId));
         const eventUtxos = await lucid.utxosAtWithUnit(
-          credentialToAddress(network, scriptHashToCredential(hub.deposit)),
+          governedUserEventAddress(network, hub.deposit_addr),
           toUnit(hub.deposit, nonce),
         );
         const event = exactOne(eventUtxos, "fabricated-deposit event lookup");

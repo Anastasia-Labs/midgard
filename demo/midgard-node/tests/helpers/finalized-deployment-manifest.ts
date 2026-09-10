@@ -63,7 +63,7 @@ const IDENTITY: DeploymentManifestIdentityContext = {
       retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
   },
-  proofEvidence: { digest: null, blueprintHash: "55".repeat(32) },
+  artifacts: { blueprintHash: "55".repeat(32) },
 };
 
 export const makeFinalizedDeploymentManifestFixture =
@@ -119,7 +119,10 @@ export const makeFinalizedDeploymentManifestFixture =
           hubOracleOneShotTxHash: "ab".repeat(32),
           hubOracleOneShotOutputIndex: 0,
           hubOracleOneShotStatus: "consumed_by_init",
-          steps: { initProtocol: { status: "complete" } },
+          steps: {
+            initProtocol: { status: "complete" },
+            availabilityRegistration: { status: "complete" },
+          },
         },
       ),
     );

@@ -163,18 +163,21 @@ const verifySelections = (
   });
 };
 
-export const prepareUnusedRedeemerEvidence = ({
-  finding: raw,
+/** Authenticate the selected pointer without assuming a contradiction. */
+export const observeUnusedRedeemerSelection = ({
+  transactionId,
+  redeemerIndex,
   fieldPreimage,
   universe,
 }: {
-  finding: UnusedRedeemerFinding;
+  transactionId: string;
+  redeemerIndex: number;
   fieldPreimage: Uint8Array;
   universe: AuthenticatedCommittedRedeemerUniverse;
-}): UnusedRedeemerEvidence => {
-  const finding = classifyUnusedRedeemerFinding(raw);
+}): Omit<UnusedRedeemerEvidence, "finding" | "checkpointDigest"> => {
+  index(redeemerIndex, "redeemer index");
   if (
-    universe.transactionId !== finding.subject.transaction_id ||
+    universe.transactionId !== transactionId ||
     !/^[0-9a-f]{64}$/u.test(universe.universeDigest)
   )
     fail("committed universe identity changed");
@@ -184,9 +187,7 @@ export const prepareUnusedRedeemerEvidence = ({
       : fail("retained replay omitted authenticated execution selections");
   verifySelections(selections);
   const target =
-    decodeMidgardRedeemerWitnessFieldPreimage(fieldPreimage)[
-      finding.redeemerIndex
-    ];
+    decodeMidgardRedeemerWitnessFieldPreimage(fieldPreimage)[redeemerIndex];
   if (target === undefined) fail("redeemer coordinate is outside field 8");
   const decodedPurposeTag = MIDGARD_REDEEMER_PURPOSE_TAGS[target.purpose];
   if (
@@ -200,11 +201,11 @@ export const prepareUnusedRedeemerEvidence = ({
   const targetItem = encodeMidgardRedeemerWitnessItem(target);
   const bounded = buildMidgardBoundedItem({
     fieldIndex: 8,
-    itemIndex: finding.redeemerIndex,
+    itemIndex: redeemerIndex,
     bytes: targetItem,
   });
   const targetLeaf = hashMidgardRedeemerItemLeaf({
-    redeemerIndex: finding.redeemerIndex,
+    redeemerIndex,
     itemCommitment: bounded.commitment,
   }).toString("hex");
   const pointer = index(Number(target.index), "pointer index");
@@ -216,15 +217,6 @@ export const prepareUnusedRedeemerEvidence = ({
   );
   if (matches.length > 1) fail("ambiguous execution selection");
   const unused = matches.length === 0;
-  if (unused !== (finding.subject.direction === ACCEPTED))
-    fail("selection frontier contradicts proof direction");
-  const checkpointDigest = createHash("sha256")
-    .update("MidgardUnusedRedeemerEvidenceV1\0")
-    .update(finding.subject.transaction_id, "hex")
-    .update(String(finding.redeemerIndex))
-    .update(targetLeaf, "hex")
-    .update(universe.universeDigest, "hex")
-    .digest("hex");
   const purposes = selections.map((s) => ({
     frontierIndex: s.frontierIndex,
     purposeKind: s.purposeKind,
@@ -234,7 +226,6 @@ export const prepareUnusedRedeemerEvidence = ({
     membership: s.purposeMembership,
   }));
   return Object.freeze({
-    finding,
     fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
     targetItemHex: Buffer.from(targetItem).toString("hex"),
     targetPurposeTag: purposeTag,
@@ -247,8 +238,35 @@ export const prepareUnusedRedeemerEvidence = ({
     selections: Object.freeze([...selections]),
     matchedSelectionIndex: matches[0]?.frontierIndex ?? null,
     unused,
-    checkpointDigest,
   });
+};
+
+export const prepareUnusedRedeemerEvidence = ({
+  finding: raw,
+  fieldPreimage,
+  universe,
+}: {
+  finding: UnusedRedeemerFinding;
+  fieldPreimage: Uint8Array;
+  universe: AuthenticatedCommittedRedeemerUniverse;
+}): UnusedRedeemerEvidence => {
+  const finding = classifyUnusedRedeemerFinding(raw);
+  const observation = observeUnusedRedeemerSelection({
+    transactionId: finding.subject.transaction_id,
+    redeemerIndex: finding.redeemerIndex,
+    fieldPreimage,
+    universe,
+  });
+  if (observation.unused !== (finding.subject.direction === ACCEPTED))
+    fail("selection frontier contradicts proof direction");
+  const checkpointDigest = createHash("sha256")
+    .update("MidgardUnusedRedeemerEvidenceV1\0")
+    .update(finding.subject.transaction_id, "hex")
+    .update(String(finding.redeemerIndex))
+    .update(observation.targetRedeemerLeafHex, "hex")
+    .update(universe.universeDigest, "hex")
+    .digest("hex");
+  return Object.freeze({ finding, ...observation, checkpointDigest });
 };
 export const unusedRedeemerEvidenceCloses = (
   e: UnusedRedeemerEvidence,

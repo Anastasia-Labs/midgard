@@ -15,8 +15,8 @@ one transaction
   └─ withdraws zero from Script H → arm-specific rewarding validator
 ```
 
-The spending validator authenticates `H` through a reference input and
-requires `Script(H)` in `tx.withdrawals`. Cardano consequently creates the
+For the NFT-authenticated pattern below, the spending validator authenticates
+`H` through a reference input and requires `Script(H)` in `tx.withdrawals`. Cardano consequently creates the
 rewarding purpose, and the transaction succeeds only when both validators
 succeed. There is no return value or inter-script call: the ledger composes
 their results by validating every script purpose in the transaction.
@@ -121,6 +121,14 @@ can be constructed.
 
 ## Repository Anchors
 
+Repository delegation has two target-authentication forms. The PHAS/PExcludes
+helpers bind the claim to a deployment-pinned script hash from `env`; they do
+not themselves perform the NFT reference-input handshake above. The chunked
+proof helpers accept an already authenticated verifier hash and bind its exact
+withdrawal redeemer claim. Review their callers for target selection and
+withdrawal construction; invoking a helper alone does not establish all of the
+handshake's requirements.
+
 - `onchain/aiken/lib/midgard/common/utils.ak`:
   `get_unique_withdraw_redeemer` and the `plutarch_phas*` /
   `plutarch_pexcludes*` delegation checks.
@@ -130,8 +138,8 @@ can be constructed.
   validators invoked through withdraw-zero purposes.
 - `onchain/aiken/lib/midgard/script-context-v1.ak`:
   Cardano observer representation as zero-valued script withdrawals.
-- `demo/midgard-node/docs/PREPROD_DEPOSIT_SEND_WITHDRAW_BLOCKER_FIX_PLAN.md`:
-  reward-account registration as an explicit deployment prerequisite.
+- `demo/midgard-node/src/transactions/initialization.ts`:
+  PHAS reward-account registration and initialization completeness checks.
 
 Review is complete only when target authentication, invocation, transition
 scope, deployment, and reward-account liveness are each enforced by code or a

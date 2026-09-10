@@ -13,6 +13,14 @@ import type { WatcherChainCoordinatorHooks } from "./chain-coordinator.js";
 export const WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION =
   "midgard-watcher-production-state-queue-runtime-v1" as const;
 
+export type WatcherAvailabilityLifecycle = Readonly<{
+  reconcile(
+    observation: WatcherAuthenticatedStateQueueObservation,
+    actuate: boolean,
+  ): Promise<void>;
+  invalidateForRollback(point?: WatcherNativeChainSyncPoint): void;
+}>;
+
 export type WatcherStateQueueRuntime = Readonly<{
   schemaVersion: typeof WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION;
   replayIntersection: Readonly<{
@@ -33,6 +41,7 @@ export type WatcherStateQueueRuntime = Readonly<{
   current(): WatcherAuthenticatedStateQueueObservation;
   bindFaultDecisionBridge(
     bridge: WatcherFaultDecisionBridge,
+    availability?: WatcherAvailabilityLifecycle,
   ): WatcherChainCoordinatorHooks;
 }>;
 
@@ -172,7 +181,7 @@ const createRuntime = async (input: {
     },
     caughtUp: caughtUpPromise,
     current: () => previous,
-    bindFaultDecisionBridge: (bridge) => {
+    bindFaultDecisionBridge: (bridge, availability) => {
       if (bound) {
         throw new Error("state-queue runtime already has a decision bridge");
       }
@@ -182,6 +191,7 @@ const createRuntime = async (input: {
           // This must remain before the first await: already-running proof
           // workflows lose their exact generation authority immediately.
           bridge.invalidateForRollback();
+          availability?.invalidateForRollback(point);
           await input.store.rollbackTo(point);
           const retained = await input.store.readAll();
           if (retained.length === 0) {
@@ -203,6 +213,7 @@ const createRuntime = async (input: {
               resolveCaughtUp();
             }
           }
+          await availability?.reconcile(previous, false);
           await bridge.prepareForRecovery(previous);
         },
         onFinalized: async ({
@@ -228,7 +239,12 @@ const createRuntime = async (input: {
             previous = next;
           }
           admitCatchupProgress(nativeBlock);
-          await bridge.reconcileAndDispatch(previous);
+          const finalized =
+            availability === undefined
+              ? previous
+              : (input.source.latestFinalizedObservation?.() ?? previous);
+          await availability?.reconcile(finalized, true);
+          await bridge.reconcileAndDispatch(finalized);
         },
       });
     },

@@ -74,6 +74,27 @@ describe("Wave 0 shared off-chain substrate", () => {
     ).toThrow(/malformed_diagnostic_marker/);
   });
 
+  it("detects computed publication switches, multiline limits and indirect evaluation options", () => {
+    const cases = [
+      `publish({ ${"over" + "sized"}: script.length > limit });`,
+      `publish({ ${"over" + "sized"} });`,
+      `const { ${"over" + "sized"} = false } = options;`,
+      `const p = { ${"maxTx" + "Size"}:\n262_144 };`,
+      `const p = { ${"maxTx" + "Size"}: 16384, ${"maxTx" + "Size"}: 262144 };`,
+      `parameters.${"maxTx" + "ExMem"} = 100_000_000n;`,
+      `complete({ ${"localUPLC" + "Eval"}: enabled });`,
+    ];
+    for (const source of cases) {
+      expect(
+        () =>
+          assertNoPositiveFaultProofLimitEscapes(
+            scanFaultProofLimitEscapes({ path: "regression.ts", source }),
+          ),
+        source,
+      ).toThrow();
+    }
+  });
+
   it("finds no positive limit escape across the fault-proof TypeScript surface", async () => {
     const roots = [join(process.cwd(), "src"), join(process.cwd(), "tests")];
     const files = (await Promise.all(roots.map(typescriptFilesBelow))).flat();

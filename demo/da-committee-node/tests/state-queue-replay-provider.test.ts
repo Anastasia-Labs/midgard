@@ -26,24 +26,43 @@ const after: readonly SDK.StateQueueTransitionNode[] = [
   { headerHash: target, outRef: `${transactionHash}#0` },
 ];
 
-const harness = ({ rollback = false, tipHeight = 119 } = {}) => {
-  const redeemer = Data.to(
-    {
-      RemoveUnattestedBlockAfterTimeout: {
-        yield_to_ref_input_index: 0n,
-        timed_out_header_hash: target,
-        removal_approach: {
-          PruneTimedOutBlockDescendant: {
-            confirmed_state_ref_input_index: 0n,
-            timed_out_node_input_outref: {
-              transactionId: h32("1"),
-              outputIndex: 0n,
-            },
-            timed_out_node_output_index: 0n,
+const harness = ({
+  rollback = false,
+  tipHeight = 119,
+  availability = false,
+} = {}) => {
+  const challenge = "44414348" + "dd".repeat(28);
+  const identity: SDK.CorrectionIdentity = availability
+    ? { AvailabilityChallenge: { challenge_asset_name: challenge } }
+    : "AttestationTimeout";
+  const unattested = {
+    RemoveUnattestedBlockAfterTimeout: {
+      yield_to_ref_input_index: 0n,
+      timed_out_header_hash: target,
+      removal_approach: {
+        PruneTimedOutBlockDescendant: {
+          confirmed_state_ref_input_index: 0n,
+          timed_out_node_input_outref: {
+            transactionId: h32("1"),
+            outputIndex: 0n,
           },
+          timed_out_node_output_index: 0n,
         },
       },
-    } satisfies SDK.StateQueueRedeemer,
+    },
+  } satisfies SDK.StateQueueRedeemer;
+  const redeemer = Data.to(
+    availability
+      ? {
+          RemoveUnavailableBlockAfterTimeout: {
+            yield_to_ref_input_index: 0n,
+            unavailable_header_hash: target,
+            challenge_asset_name: challenge,
+            removal_approach:
+              unattested.RemoveUnattestedBlockAfterTimeout.removal_approach,
+          },
+        }
+      : unattested,
     SDK.StateQueueRedeemer,
   );
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
@@ -75,7 +94,7 @@ const harness = ({ rollback = false, tipHeight = 119 } = {}) => {
               {
                 Locked: {
                   target_header_hash: target,
-                  correction_identity: "AttestationTimeout",
+                  correction_identity: identity,
                 },
               },
               SDK.CorrectionLockDatum,
@@ -218,6 +237,20 @@ const harness = ({ rollback = false, tipHeight = 119 } = {}) => {
 };
 
 describe("committee local Kupmios state-queue replay", () => {
+  it("authenticates availability-timeout correction identity from the native transaction", async () => {
+    const provider = harness({ availability: true });
+    const records = await provider(before, after);
+    expect(records[0]?.terminalTransition?.correctionLockWitness).toMatchObject(
+      {
+        kind: "correction_transition",
+        correctionIdentity: {
+          AvailabilityChallenge: {
+            challenge_asset_name: "44414348" + "dd".repeat(28),
+          },
+        },
+      },
+    );
+  });
   it("derives an exact finalized timeout checkpoint from independent Kupo/Ogmios reads", async () => {
     await expect(harness()(before, after)).resolves.toMatchObject([
       {

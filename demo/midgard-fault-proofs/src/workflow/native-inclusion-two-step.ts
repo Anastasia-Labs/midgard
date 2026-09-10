@@ -1361,7 +1361,7 @@ const createWorkflow = async <Category extends NativeInclusionTwoStepCategory>({
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   const certificatePolicyId =
     binding.fieldPreimageCertificate?.policyId ??
-    binding.deploymentInfo.fieldPreimageCertificateMint?.scriptHash;
+    binding.contractEntries.fieldPreimageCertificateMint?.scriptHash;
   const zeroInputContracts: ZeroInputContracts | null =
     category !== "zeroInput"
       ? null

@@ -33,7 +33,7 @@ Transaction requests submitted to operators' mempools and forced transaction ord
 The data-availability payload for this body is \code{DaPayloadBodyV1}. It
 includes the embedded header and hash, all authenticated body member arrays,
 canonical full transaction preimages, CEK program material,
-validation-trace descriptors, and count fields repeated from the header.
+validation-trace descriptors and retained step witnesses, and count fields repeated from the header.
 The payload is accepted by DA committee validators only when the embedded header hashes to \code{header\_hash}, the member arrays are canonical and duplicate-free, all counted roots recompute to the header roots, and the repeated counts match both the member arrays and the header.
 
 \Cref{fig:block-transition} shows how the block's \code{utxos} are derived from the previous block's \code{utxos} by applying the block's events.
@@ -76,10 +76,9 @@ The source roots, \code{transition\_trace\_root}, \code{event\_to\_step\_root}, 
 Each normal-transaction leaf stores a pair $(\T{TxId_i}, v_i)$ where
 $v_i : \T{L2TransactionSourceV1}$; forced-transaction leaves use their
 \T{TxOrderId} key and \T{ForcedInclusionTxV1} value.
-These pairs are individually hashed to form the leaves $L_i$ of the tree.
-The hashes of sibling leaves are concatenated and hashed to form their parent nodes.
-The nodes $N_{ij}$ are formed by concatenating and hashing their children's hashes.
-The \code{transactions\_root} is formed by concatenating and hashing its children's hashes.
+The figure is a schematic binary hash tree illustrating authentication, not the Midgard trie wire encoding.
+The implementation uses the pinned Merkle Patricia Forestry trie with compressed paths and its prescribed branch hashing.
+The header commits to the trie root together with the domain and count through \code{transition\_trace.commit\_counted\_root}; the canonical empty root uses the shared empty-tree sentinel.
 The \code{forced\_transactions\_root}, \code{transition\_trace\_root}, \code{event\_to\_step\_root}, and \code{validation\_traces\_root} use the same authenticated-map commitment pattern with their own key and value types.
 
 \begin{figure}[htb]
@@ -94,7 +93,7 @@ The \code{forced\_transactions\_root}, \code{transition\_trace\_root}, \code{eve
 ]
 
 % Root node
-  \node[merkleroot] {transactions\_root: $\mathcal{H}(N_{12} \mid\mid N_{34})$}
+  \node[merkleroot] {Schematic root: $\mathcal{H}(N_{12} \mid\mid N_{34})$}
     child { node[merklenode] {$N_{12}: \mathcal{H}(L_1 \mid\mid L_2)$}
         child { node[merkleleaf] {$L_1: \mathcal{H}(D_1)$}
           child { node[merkledata] {$D_1$ \\ $(\T{TxId_1}, v_1)$} }
@@ -113,7 +112,7 @@ The \code{forced\_transactions\_root}, \code{transition\_trace\_root}, \code{eve
     };
 
 \end{tikzpicture}
-\caption[Merkle Patricia Trie example]{A Merkle Patricia Trie example for a block's transactions.}
+\caption[Transaction authentication schematic]{Schematic transaction hash tree; the actual compressed-trie and counted-root encodings are defined by the implementation.}
 \label{fig:block-tx-mpt}
 \end{figure}
 
@@ -132,7 +131,8 @@ Forced transactions are applied before transaction requests, and the transition 
 \subsection{Block header}
 \label{h:block-header}
 
-A block header is a record with fixed-size fields: integers, hashes, and fixed-size bytestrings.
+A block header has a fixed field count and bounded scalar and hash fields.
+Its canonical serialized length can vary with the integer values.
 A block header hash is 28 bytes in size and calculated via the Blake2b-224.
 \begin{equation*}
 \begin{split}
@@ -191,7 +191,7 @@ These header fields are interpreted as follows:
             + \T{l2\_transaction\_count}
     \end{align*}
     \item The \code{start\_time} and \code{end\_time} fields are the block's event interval bounds (see \cref{h:time-model}).
-    \item The \code{block\_slot} field is the L1 slot at which the block was committed, and \code{expected\_network\_id}, \code{min\_fee\_a}, and \code{min\_fee\_b} bind the validation context used for the block.
+    \item The \code{block\_slot} field supplies the transaction-validation slot (the node derives it from the block end time), and \code{expected\_network\_id}, \code{min\_fee\_a}, and \code{min\_fee\_b} bind the validation context used for the block.
     \item The \code{prev\_header\_hash} field is a hash of the previous block header. For the genesis block, this field is set to 28 \code{0x00} bytes.
     \item The \code{operator\_vkey} field is the 28-byte \code{VerificationKeyHash} of the cryptographic verification key used for signatures of the operator who committed the block header to the L1 state queue.
     \item The \code{protocol\_version} is the Midgard protocol version that applies to this block.

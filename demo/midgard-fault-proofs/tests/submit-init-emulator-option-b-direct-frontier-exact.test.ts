@@ -67,17 +67,6 @@ const MAX_L1_TX_BYTES = PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
  */
 const EXACT_FRONTIER_ITEM_BYTES = 14_058;
 const EXACT_FRONTIER_PAYLOAD_BYTES = 13_582;
-/** The measured signed observe size at the exact frontier (margin 15). */
-const EXACT_FRONTIER_OBSERVE_BYTES = 16_369;
-
-/** File 1's item-size-independent six-stage rows, re-pinned at these items. */
-const SIX_STAGE_CONSTANT_ROW_BYTES = {
-  prepareSelected: 1_808,
-  authenticate: 2_600,
-  source: 1_855,
-  proof: 1_880,
-  settle: 623,
-} as const;
 
 const stageBytesByKind = (
   stageTransactions: readonly {
@@ -91,44 +80,6 @@ const stageBytesByKind = (
     throw new Error(`journey lost its ${kind} stage record`);
   }
   return stage.completeSignedBytes;
-};
-
-const lastLifecycleMeasurement = (
-  journey: RouteFreedomJourney,
-  label: string,
-): CompleteSignedTransactionMeasurement => {
-  const stage = journey.lifecycleMeasurements.find(
-    (entry) => entry.label === label,
-  );
-  const measurement = stage?.measurements[stage.measurements.length - 1];
-  if (measurement === undefined) {
-    throw new Error(`journey captured no ${label} stage`);
-  }
-  return measurement;
-};
-
-const expectItemIndependentRows = (
-  journey: RouteFreedomJourney,
-  stageTransactions: readonly {
-    readonly kind: string;
-    readonly completeSignedBytes: number;
-  }[],
-): void => {
-  expect(
-    lastLifecycleMeasurement(journey, "prepare-selected").completeSignedBytes,
-  ).toBe(SIX_STAGE_CONSTANT_ROW_BYTES.prepareSelected);
-  expect(stageBytesByKind(stageTransactions, "authenticate")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES.authenticate,
-  );
-  expect(stageBytesByKind(stageTransactions, "source")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES.source,
-  );
-  expect(stageBytesByKind(stageTransactions, "proof")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES.proof,
-  );
-  expect(stageBytesByKind(stageTransactions, "settle")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES.settle,
-  );
 };
 
 /**
@@ -166,132 +117,122 @@ const expectWholeJourneyProofFit = (
   }
 };
 
-const optionB = realBlueprintSpeaksOptionBV1();
-if (!optionB) {
-  console.warn(OPTION_B_SKIP_REASON);
+// Fail closed (test-quality rule 14): Option B is the shipped complete-item
+// wire, so a blueprint that still declares the retired carriage parameter is
+// a broken precondition, not a reason to report a silent pass.
+if (!realBlueprintSpeaksOptionBV1()) {
+  throw new Error(OPTION_B_SKIP_REASON);
 }
 
-describe.skipIf(!optionB)(
-  "post-Option-B direct-route exact frontier (#622)",
-  () => {
-    it("signs the observe door at the measured 16,369 bytes at the contiguous exact frontier, item 14,058", async () => {
-      const journey = await prepareRouteFreedomJourney({
-        inlineDatumPayloadBytes: EXACT_FRONTIER_PAYLOAD_BYTES,
-        minimumCompleteItemBytes: EXACT_FRONTIER_ITEM_BYTES - 1,
-      });
-      expect(journey.completeItemBytes).toBe(EXACT_FRONTIER_ITEM_BYTES);
+describe("post-Option-B direct-route exact frontier (#622)", () => {
+  it("signs the observe door inside the L1 envelope at the contiguous exact frontier, item 14,058", async () => {
+    const journey = await prepareRouteFreedomJourney({
+      inlineDatumPayloadBytes: EXACT_FRONTIER_PAYLOAD_BYTES,
+      minimumCompleteItemBytes: EXACT_FRONTIER_ITEM_BYTES - 1,
+    });
+    expect(journey.completeItemBytes).toBe(EXACT_FRONTIER_ITEM_BYTES);
 
-      const semantic = await journey.submitSemanticResolution({
-        proofItemDelivery: "inline",
-      });
-      printRouteFreedomCampaignTable(
-        "#622 exact-frontier item 14,058",
-        journey,
-        semantic,
+    const semantic = await journey.submitSemanticResolution({
+      proofItemDelivery: "inline",
+    });
+    printRouteFreedomCampaignTable(
+      "#622 exact-frontier item 14,058",
+      journey,
+      semantic,
+    );
+    const result = semantic.result;
+    expect(result.proofItemCarriage).toBe("direct");
+    expect(result.proofItemPublication).toBeUndefined();
+    expect(result.proofItemInlineEnvelopeRefusal).toBeUndefined();
+    const stageTransactions = result.stageTransactions ?? [];
+    expect(stageTransactions).toHaveLength(5);
+    expect(semantic.measurements).toHaveLength(5);
+
+    // The exact-frontier claim: the signed observe transaction still fits
+    // the envelope at this item size, and the pre-sign projection the
+    // routing heuristic admitted it on measured the exact bytes signing
+    // produced. The absolute figure (16,369 when this frontier was
+    // measured) is a record for the fit ledger, not a contract.
+    const observeBytes = stageBytesByKind(stageTransactions, "observe");
+    expect(observeBytes).toBeLessThanOrEqual(MAX_L1_TX_BYTES);
+    const observeStage = stageTransactions.find(
+      (stage) => stage.kind === "observe",
+    );
+    expect(observeStage?.projectedSignedBytes).toBe(observeBytes);
+
+    const award = await journey.submitAward(result.nextThreadOutRef);
+    expectWholeJourneyProofFit(
+      "#622 exact-frontier item 14,058",
+      journey,
+      semantic.measurements,
+      award.measurement,
+    );
+  }, 900_000);
+
+  it("refuses item 14,059 pre-sign at a projected 16,385 bytes and completes by automatic publication fallback — demotion, not stranding", async () => {
+    const journey = await prepareRouteFreedomJourney({
+      inlineDatumPayloadBytes: EXACT_FRONTIER_PAYLOAD_BYTES + 1,
+      minimumCompleteItemBytes: EXACT_FRONTIER_ITEM_BYTES,
+    });
+    expect(journey.completeItemBytes).toBe(EXACT_FRONTIER_ITEM_BYTES + 1);
+    // The fallback is available at all because the item sits under the
+    // owner-signed single-publication ceiling.
+    expect(journey.completeItemBytes).toBeLessThanOrEqual(
+      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
+    );
+
+    const semantic = await journey.submitSemanticResolution({
+      proofItemDelivery: "inline",
+    });
+    printRouteFreedomCampaignTable(
+      "#622 exact-frontier+1 item 14,059",
+      journey,
+      semantic,
+    );
+    const result = semantic.result;
+
+    // The adjacent-item probe: one preimage byte past the frontier lands
+    // the projection at 16,385 — one byte over the envelope, though by way
+    // of the measured +16 quantization jump (the balancing fixed point
+    // crossed a CBOR width boundary), not by +1 — and the refusal records
+    // both numbers.
+    const refusal = result.proofItemInlineEnvelopeRefusal;
+    if (refusal === undefined) {
+      throw new Error(
+        "exact-frontier+1 journey recorded no pre-sign envelope refusal",
       );
-      const result = semantic.result;
-      expect(result.proofItemCarriage).toBe("direct");
-      expect(result.proofItemPublication).toBeUndefined();
-      expect(result.proofItemInlineEnvelopeRefusal).toBeUndefined();
-      const stageTransactions = result.stageTransactions ?? [];
-      expect(stageTransactions).toHaveLength(5);
-      expect(semantic.measurements).toHaveLength(5);
+    }
+    expect(refusal.maxTransactionBytes).toBe(MAX_L1_TX_BYTES);
+    expect(refusal.projectedSignedBytes).toBe(MAX_L1_TX_BYTES + 1);
 
-      // The exact-frontier claim: the signed observe transaction fits the
-      // envelope at its measured 16,369 bytes (margin 15 — the balancing
-      // quantization means no item in this family signs at exactly 16,384;
-      // see the file header), and the pre-sign projection measured the same
-      // bytes signing produced.
-      const observeBytes = stageBytesByKind(stageTransactions, "observe");
-      expect(observeBytes).toBe(EXACT_FRONTIER_OBSERVE_BYTES);
-      expect(observeBytes).toBeLessThanOrEqual(MAX_L1_TX_BYTES);
-      const observeStage = stageTransactions.find(
-        (stage) => stage.kind === "observe",
-      );
-      expect(observeStage?.projectedSignedBytes).toBe(observeBytes);
+    // ... and the same staged thread completes by reference: the builder
+    // published the §8 publication itself, mid-chain (#621's fallback).
+    expect(result.proofItemCarriage).toBe("reference");
+    expect(result.proofItemPublication).toBeDefined();
+    expect(result.proofItemReferenceOutRef).toBe(
+      result.proofItemPublication?.outRef,
+    );
+    const stageTransactions = result.stageTransactions ?? [];
+    expect(stageTransactions).toHaveLength(5);
+    expect(semantic.measurements).toHaveLength(6);
+    expect(
+      semantic.measurements.map(
+        (measurement) => measurement.referenceInputCount,
+      ),
+    ).toEqual([1, 1, 0, 2, 1, 1]);
+    // The reference-route observe door does not carry the preimage; the
+    // recorded projection lives on the refusal, not the stage record.
+    const observeStage = stageTransactions.find(
+      (stage) => stage.kind === "observe",
+    );
+    expect(observeStage?.projectedSignedBytes).toBeUndefined();
 
-      // Every other stage holds file 1's item-independent literals.
-      expectItemIndependentRows(journey, stageTransactions);
-
-      const award = await journey.submitAward(result.nextThreadOutRef);
-      expectWholeJourneyProofFit(
-        "#622 exact-frontier item 14,058",
-        journey,
-        semantic.measurements,
-        award.measurement,
-      );
-    }, 900_000);
-
-    it("refuses item 14,059 pre-sign at a projected 16,385 bytes and completes by automatic publication fallback — demotion, not stranding", async () => {
-      const journey = await prepareRouteFreedomJourney({
-        inlineDatumPayloadBytes: EXACT_FRONTIER_PAYLOAD_BYTES + 1,
-        minimumCompleteItemBytes: EXACT_FRONTIER_ITEM_BYTES,
-      });
-      expect(journey.completeItemBytes).toBe(EXACT_FRONTIER_ITEM_BYTES + 1);
-      // The fallback is available at all because the item sits under the
-      // owner-signed single-publication ceiling.
-      expect(journey.completeItemBytes).toBeLessThanOrEqual(
-        MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
-      );
-
-      const semantic = await journey.submitSemanticResolution({
-        proofItemDelivery: "inline",
-      });
-      printRouteFreedomCampaignTable(
-        "#622 exact-frontier+1 item 14,059",
-        journey,
-        semantic,
-      );
-      const result = semantic.result;
-
-      // The adjacent-item probe: one preimage byte past the frontier lands
-      // the projection at 16,385 — one byte over the envelope, though by way
-      // of the measured +16 quantization jump (the balancing fixed point
-      // crossed a CBOR width boundary), not by +1 — and the refusal records
-      // both numbers.
-      const refusal = result.proofItemInlineEnvelopeRefusal;
-      if (refusal === undefined) {
-        throw new Error(
-          "exact-frontier+1 journey recorded no pre-sign envelope refusal",
-        );
-      }
-      expect(refusal.maxTransactionBytes).toBe(MAX_L1_TX_BYTES);
-      expect(refusal.projectedSignedBytes).toBe(MAX_L1_TX_BYTES + 1);
-
-      // ... and the same staged thread completes by reference: the builder
-      // published the §8 publication itself, mid-chain (#621's fallback).
-      expect(result.proofItemCarriage).toBe("reference");
-      expect(result.proofItemPublication).toBeDefined();
-      expect(result.proofItemReferenceOutRef).toBe(
-        result.proofItemPublication?.outRef,
-      );
-      const stageTransactions = result.stageTransactions ?? [];
-      expect(stageTransactions).toHaveLength(5);
-      expect(semantic.measurements).toHaveLength(6);
-      expect(
-        semantic.measurements.map(
-          (measurement) => measurement.referenceInputCount,
-        ),
-      ).toEqual([1, 1, 0, 2, 1, 1]);
-      // The reference-route observe door does not carry the preimage; the
-      // recorded projection lives on the refusal, not the stage record.
-      const observeStage = stageTransactions.find(
-        (stage) => stage.kind === "observe",
-      );
-      expect(observeStage?.projectedSignedBytes).toBeUndefined();
-
-      // The demoted journey's non-observe stages still hold the
-      // item-independent literals — demotion changed the route, not the
-      // stage machinery.
-      expectItemIndependentRows(journey, stageTransactions);
-
-      const award = await journey.submitAward(result.nextThreadOutRef);
-      expectWholeJourneyProofFit(
-        "#622 exact-frontier+1 item 14,059",
-        journey,
-        semantic.measurements,
-        award.measurement,
-      );
-    }, 900_000);
-  },
-);
+    const award = await journey.submitAward(result.nextThreadOutRef);
+    expectWholeJourneyProofFit(
+      "#622 exact-frontier+1 item 14,059",
+      journey,
+      semantic.measurements,
+      award.measurement,
+    );
+  }, 900_000);
+});

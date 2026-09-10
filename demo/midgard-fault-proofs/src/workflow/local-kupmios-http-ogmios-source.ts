@@ -3,6 +3,7 @@ import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import {
   LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
   type LocalKupmiosFraudProofRawSource,
+  settleLocalKupmiosReads,
 } from "./local-kupmios-raw-l1-authority.js";
 import {
   admitFraudProofRawL1Point,
@@ -42,6 +43,35 @@ export type LocalKupmiosRawBlockAtPoint = Readonly<{
   }>[];
 }>;
 
+export type LocalKupmiosReferenceBodiesAtPoint = Readonly<{
+  targetBlock: LocalKupmiosRawBlockAtPoint;
+  creatingTransactionBodies: readonly string[];
+}>;
+
+const admittedReferenceBodyReaders = new WeakMap<
+  object,
+  (point: FraudProofRawL1Point) => Promise<LocalKupmiosReferenceBodiesAtPoint>
+>();
+
+const admittedHistoricalPageReaders = new WeakMap<
+  LocalKupmiosFraudProofRawSource,
+  Readonly<{
+    address: LocalKupmiosFraudProofRawSource["scanAddressPage"];
+    history: LocalKupmiosFraudProofRawSource["scanUnitHistoryPage"];
+  }>
+>();
+
+export type LocalKupmiosAdmittedPredecessorPoint = Readonly<{
+  sourceId: string;
+  point: FraudProofRawL1Point;
+  predecessorPoint: FraudProofRawL1Point;
+}>;
+
+const admittedPredecessorReaders = new WeakMap<
+  object,
+  (point: FraudProofRawL1Point) => Promise<LocalKupmiosAdmittedPredecessorPoint>
+>();
+
 export type LocalKupmiosAdmittedBoundary = Readonly<{
   kupoCheckpoint: FraudProofRawL1Point;
   ogmiosTip: FraudProofRawL1Point;
@@ -63,7 +93,7 @@ export type LocalKupmiosHttpOgmiosRawSourceDetails = Readonly<{
   kupoHttpUrl: string;
   ogmiosUrl: string;
   deploymentIdentityDigest: string;
-  releaseIdentityDigest: string;
+  blueprintHash: string;
   finalityPolicyDigest: string;
   confirmationDepth: 30;
   automaticRecoveryMaxDepth: 2160;
@@ -96,6 +126,7 @@ export type FraudProofRawL1WebSocketLike = {
     listener: (event: never) => void,
     options?: { once?: boolean },
   ): void;
+  removeEventListener(type: string, listener: (event: never) => void): void;
 };
 
 export type FraudProofRawL1WebSocketFactory = (
@@ -111,6 +142,8 @@ export type LocalKupmiosHttpOgmiosSourceConfig = {
   readonly webSocketFactory?: FraudProofRawL1WebSocketFactory;
   readonly timeoutMs?: number;
   readonly blockScanLimit?: number;
+  readonly signal?: AbortSignal;
+  readonly maxResponseBytes?: number;
 };
 
 type KupoPoint = {
@@ -156,6 +189,99 @@ const HEX_28 = /^[0-9a-f]{56}$/u;
 const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;
 const NATURAL = /^(0|[1-9][0-9]*)$/u;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
+
+export const LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS = Object.freeze({
+  targetTransactions: 4_096,
+  transactionReferences: 4_096,
+  referenceOccurrences: 65_536,
+  creatingBodies: 4_096,
+  publicBytes: 1_048_576,
+  targetTransactionBytes: 67_108_864,
+  evidenceBytes: 67_108_864,
+  responseBytes: MAX_RESPONSE_BYTES,
+  inspectedMembers: MAX_MATCHES,
+});
+
+// Passed explicitly through one captured read. No ordinary operation shares
+// its counters or owns entries inserted into this operation's raw cache.
+type ReferenceReadScope = {
+  responseBytes: number;
+  inspectedMembers: number;
+  head: KupoPoint | undefined;
+  readonly rawBlocks: Map<string, Promise<ReturnType<typeof parseOgmiosBlock>>>;
+};
+const referenceResponseLimit = (
+  configured: number,
+  scope?: ReferenceReadScope,
+): number => {
+  if (scope === undefined) return configured;
+  const remaining =
+    LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.responseBytes -
+    scope.responseBytes;
+  if (remaining <= 0)
+    throw new Error("reference acquisition response byte budget exhausted");
+  return Math.min(configured, remaining);
+};
+const debitReferenceResponse = (
+  scope: ReferenceReadScope | undefined,
+  bytes: number,
+): void => {
+  if (scope === undefined) return;
+  if (
+    !Number.isSafeInteger(bytes) ||
+    bytes < 0 ||
+    bytes >
+      LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.responseBytes -
+        scope.responseBytes
+  )
+    throw new Error("reference acquisition response byte budget exceeded");
+  scope.responseBytes += bytes;
+};
+const debitReferenceMembers = (
+  scope: ReferenceReadScope | undefined,
+  members: number,
+): void => {
+  if (scope === undefined) return;
+  if (
+    !Number.isSafeInteger(members) ||
+    members < 0 ||
+    members >
+      LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.inspectedMembers -
+        scope.inspectedMembers
+  )
+    throw new Error("reference acquisition inspected-member budget exceeded");
+  scope.inspectedMembers += members;
+};
+const boundedReferenceCbor = (value: unknown, label: string): string => {
+  if (
+    typeof value !== "string" ||
+    value.length / 2 > LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.publicBytes
+  )
+    throw new Error(
+      `${label} exceeds reference acquisition public-byte bounds`,
+    );
+  return cbor(value, label);
+};
+
+const abortSignalAborted = Object.getOwnPropertyDescriptor(
+  AbortSignal.prototype,
+  "aborted",
+)!.get!;
+
+const validateSourceSignal = (signal: AbortSignal | undefined): void => {
+  if (signal === undefined) return;
+  try {
+    abortSignalAborted.call(signal);
+  } catch {
+    throw new Error("raw-source signal must be a platform AbortSignal");
+  }
+};
+
+const throwIfSourceAborted = (signal: AbortSignal | undefined): void => {
+  if (signal !== undefined && abortSignalAborted.call(signal)) {
+    throw new DOMException("local Kupmios raw source aborted", "AbortError");
+  }
+};
 
 const record = (
   value: unknown,
@@ -276,53 +402,99 @@ const fetchJson = async ({
   url,
   timeoutMs,
   init,
+  signal,
+  maxResponseBytes,
+  referenceScope,
 }: {
   readonly fetchImpl: FraudProofRawL1Fetch;
   readonly url: string;
   readonly timeoutMs: number;
   readonly init?: RequestInit;
+  readonly signal: AbortSignal | undefined;
+  readonly maxResponseBytes: number;
+  readonly referenceScope?: ReferenceReadScope;
 }): Promise<JsonHttpResponse> => {
+  throwIfSourceAborted(signal);
+  const responseLimit = referenceResponseLimit(
+    maxResponseBytes,
+    referenceScope,
+  );
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const cancelReader = (): void => {
+    if (reader !== undefined) {
+      void reader.cancel("raw-source request cancelled").catch(() => undefined);
+    }
+  };
+  const abort = (): void => {
+    controller.abort();
+    cancelReader();
+  };
+  const acceptBytes = (bytes: number): void => {
+    try {
+      debitReferenceResponse(referenceScope, bytes);
+    } catch (error) {
+      abort();
+      throw error;
+    }
+  };
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, timeoutMs);
   try {
+    throwIfSourceAborted(signal);
     const response = await fetchImpl(url, {
       ...init,
       signal: controller.signal,
     });
+    throwIfSourceAborted(signal);
+    controller.signal.throwIfAborted();
     const contentLength = response.headers.get("content-length");
     if (
       contentLength !== null &&
-      (!NATURAL.test(contentLength) ||
-        Number(contentLength) > MAX_RESPONSE_BYTES)
+      (!NATURAL.test(contentLength) || Number(contentLength) > responseLimit)
     ) {
+      controller.abort();
+      if (response.body !== null) {
+        void response.body
+          .cancel("raw-source response byte bound exceeded")
+          .catch(() => undefined);
+      }
       throw new Error(`response from ${url} exceeds the raw-source byte bound`);
     }
     const chunks: Buffer[] = [];
     let byteLength = 0;
     if (response.body === null) {
       const body = await response.arrayBuffer();
+      throwIfSourceAborted(signal);
+      controller.signal.throwIfAborted();
       byteLength = body.byteLength;
+      acceptBytes(byteLength);
       chunks.push(Buffer.from(body));
     } else {
-      const reader = response.body.getReader();
+      reader = response.body.getReader();
       while (true) {
         const next = await reader.read();
+        throwIfSourceAborted(signal);
+        controller.signal.throwIfAborted();
         if (next.done) break;
         byteLength += next.value.byteLength;
-        if (byteLength > MAX_RESPONSE_BYTES) {
+        if (byteLength > responseLimit) {
           controller.abort();
-          await reader.cancel("raw-source response byte bound exceeded");
+          cancelReader();
           throw new Error(
             `response from ${url} exceeds the raw-source byte bound`,
           );
         }
+        acceptBytes(next.value.byteLength);
         chunks.push(Buffer.from(next.value));
       }
     }
-    if (byteLength > MAX_RESPONSE_BYTES) {
+    if (byteLength > responseLimit) {
       throw new Error(`response from ${url} exceeds the raw-source byte bound`);
     }
     const body = Buffer.concat(chunks, byteLength).toString("utf8");
+    throwIfSourceAborted(signal);
+    controller.signal.throwIfAborted();
     if (!response.ok) {
       throw new Error(
         `HTTP ${response.status.toString()} from ${url}: ${body.slice(0, 256)}`,
@@ -359,6 +531,8 @@ const fetchJson = async ({
     }
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+    reader?.releaseLock();
   }
 };
 
@@ -478,10 +652,12 @@ const parseKupoMatch = (value: unknown, label: string): KupoMatch => {
 const parseKupoMatches = (
   value: unknown,
   label: string,
+  referenceScope?: ReferenceReadScope,
 ): readonly KupoMatch[] => {
   if (!Array.isArray(value) || value.length > MAX_MATCHES) {
     throw new Error(`${label} must be a bounded Kupo match array`);
   }
+  debitReferenceMembers(referenceScope, value.length);
   return value.map((entry, index) =>
     parseKupoMatch(entry, `${label}[${index.toString()}]`),
   );
@@ -536,11 +712,22 @@ const openOgmiosSession = async ({
   url,
   timeoutMs,
   webSocketFactory,
+  signal,
+  maxResponseBytes,
+  referenceScope,
 }: {
   readonly url: string;
   readonly timeoutMs: number;
   readonly webSocketFactory: FraudProofRawL1WebSocketFactory;
+  readonly signal: AbortSignal | undefined;
+  readonly maxResponseBytes: number | undefined;
+  readonly referenceScope?: ReferenceReadScope;
 }): Promise<OgmiosSession> => {
+  throwIfSourceAborted(signal);
+  referenceResponseLimit(
+    maxResponseBytes ?? MAX_RESPONSE_BYTES,
+    referenceScope,
+  );
   const socket = webSocketFactory(url);
   const pending = new Map<
     number,
@@ -548,21 +735,88 @@ const openOgmiosSession = async ({
   >();
   let nextId = 0;
   let terminal: Error | null = null;
-  const fail = (error: Error): void => {
-    terminal ??= error;
+  let opening = true;
+  let resolveOpening!: () => void;
+  let rejectOpening!: (error: Error) => void;
+  const opened = new Promise<void>((resolve, reject) => {
+    resolveOpening = resolve;
+    rejectOpening = reject;
+  });
+  const listeners: [string, (event: never) => void][] = [];
+  const listen = (type: string, listener: (event: never) => void): void => {
+    listeners.push([type, listener]);
+    socket.addEventListener(type, listener);
+  };
+  // Every terminal path owns the whole concrete session. In particular an RPC
+  // timeout now closes it immediately instead of waiting for the caller's
+  // finally block; no later request can reuse a timed-out or failed session.
+  const terminate = (error: Error): void => {
+    if (terminal !== null) return;
+    terminal = error;
+    clearTimeout(openingTimer);
+    signal?.removeEventListener("abort", onAbort);
+    for (const [type, listener] of listeners) {
+      socket.removeEventListener(type, listener);
+    }
+    listeners.length = 0;
+    if (opening) {
+      opening = false;
+      rejectOpening(error);
+    }
     for (const waiter of pending.values()) waiter.reject(error);
     pending.clear();
+    try {
+      socket.close();
+    } catch {
+      // A socket already failing/closing must not replace the terminal error.
+    }
   };
-  socket.addEventListener("message", ((event: { data: unknown }) => {
+  const onAbort = (): void => {
+    terminate(
+      new DOMException("local Kupmios raw source aborted", "AbortError"),
+    );
+  };
+  listen("message", ((event: { data: unknown }) => {
+    if (terminal !== null) return;
     if (typeof event.data !== "string") {
-      fail(new Error("Ogmios sent a non-text frame"));
+      terminate(new Error("Ogmios sent a non-text frame"));
+      return;
+    }
+    // The platform WebSocket has already buffered this frame. This limit only
+    // bounds text accepted for JSON parsing, not transport-frame allocation.
+    if (
+      maxResponseBytes !== undefined &&
+      Buffer.byteLength(event.data, "utf8") > maxResponseBytes
+    ) {
+      terminate(new Error("Ogmios response exceeds the raw-source byte bound"));
+      return;
+    }
+    try {
+      debitReferenceResponse(
+        referenceScope,
+        Buffer.byteLength(event.data, "utf8"),
+      );
+    } catch (cause) {
+      terminate(
+        cause instanceof Error
+          ? cause
+          : new Error("reference acquisition frame budget exceeded"),
+      );
       return;
     }
     let message: { id?: unknown; result?: unknown; error?: unknown };
     try {
       message = JSON.parse(event.data) as typeof message;
     } catch (cause) {
-      fail(new Error(`Ogmios sent malformed JSON: ${String(cause)}`));
+      terminate(new Error(`Ogmios sent malformed JSON: ${String(cause)}`));
+      return;
+    }
+    if (
+      typeof message !== "object" ||
+      message === null ||
+      Array.isArray(message)
+    ) {
+      terminate(new Error("Ogmios sent a non-object JSON response"));
       return;
     }
     if (typeof message.id !== "number") return;
@@ -577,45 +831,45 @@ const openOgmiosSession = async ({
       waiter.resolve(message.result);
     }
   }) as (event: never) => void);
-  socket.addEventListener("error", (() =>
-    fail(new Error("Ogmios socket failed"))) as (event: never) => void);
-  socket.addEventListener("close", (() =>
-    fail(new Error("Ogmios socket closed"))) as (event: never) => void);
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      socket.close();
-      reject(
-        new Error(
-          `Ogmios socket did not open within ${timeoutMs.toString()}ms`,
-        ),
-      );
-    }, timeoutMs);
-    socket.addEventListener(
-      "open",
-      (() => {
-        clearTimeout(timer);
-        resolve();
-      }) as (event: never) => void,
-      { once: true },
+  listen("error", (() =>
+    terminate(
+      new Error(
+        opening ? "Ogmios socket failed while opening" : "Ogmios socket failed",
+      ),
+    )) as (event: never) => void);
+  listen("close", (() => terminate(new Error("Ogmios socket closed"))) as (
+    event: never,
+  ) => void);
+  listen("open", (() => {
+    if (terminal !== null || !opening) return;
+    opening = false;
+    clearTimeout(openingTimer);
+    resolveOpening();
+  }) as (event: never) => void);
+  const openingTimer = setTimeout(() => {
+    terminate(
+      new Error(`Ogmios socket did not open within ${timeoutMs.toString()}ms`),
     );
-    socket.addEventListener(
-      "error",
-      (() => {
-        clearTimeout(timer);
-        reject(new Error("Ogmios socket failed while opening"));
-      }) as (event: never) => void,
-      { once: true },
-    );
-  });
+  }, timeoutMs);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal !== undefined && abortSignalAborted.call(signal)) onAbort();
+  await opened;
+  const assertSessionOpen = (): void => {
+    throwIfSourceAborted(signal);
+    if (terminal !== null) throw terminal;
+  };
   return {
     request: async (method, params) => {
-      if (terminal !== null) throw terminal;
+      assertSessionOpen();
+      referenceResponseLimit(
+        maxResponseBytes ?? MAX_RESPONSE_BYTES,
+        referenceScope,
+      );
       const id = nextId;
       nextId += 1;
-      return await new Promise<unknown>((resolve, reject) => {
+      const result = await new Promise<unknown>((resolve, reject) => {
         const timer = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`Ogmios ${method} timed out`));
+          terminate(new Error(`Ogmios ${method} timed out`));
         }, timeoutMs);
         pending.set(id, {
           resolve: (value) => {
@@ -627,10 +881,20 @@ const openOgmiosSession = async ({
             reject(error);
           },
         });
-        socket.send(JSON.stringify({ jsonrpc: "2.0", method, params, id }));
+        try {
+          socket.send(JSON.stringify({ jsonrpc: "2.0", method, params, id }));
+        } catch (cause) {
+          terminate(
+            cause instanceof Error
+              ? cause
+              : new Error("Ogmios socket send failed"),
+          );
+        }
       });
+      assertSessionOpen();
+      return result;
     },
-    close: () => socket.close(),
+    close: () => terminate(new Error("Ogmios session closed")),
   };
 };
 
@@ -649,6 +913,7 @@ const sameRawPoint = (
 const parseOgmiosBlock = (
   value: unknown,
   label: string,
+  referenceScope?: ReferenceReadScope,
 ): {
   readonly point: OgmiosTip;
   readonly parentBlockHash: string | null;
@@ -658,6 +923,7 @@ const parseOgmiosBlock = (
   if (!Array.isArray(parsed.transactions)) {
     throw new Error(`${label}.transactions must be an array`);
   }
+  debitReferenceMembers(referenceScope, parsed.transactions.length);
   return {
     point: {
       slot: naturalNumber(parsed.slot, `${label}.slot`),
@@ -700,10 +966,18 @@ export const requireOgmiosRawTransactionCbor = ({
       `${label}.cbor is not a Cardano transaction: ${String(cause)}`,
     );
   }
-  if (CML.hash_transaction(transaction.body()).to_hex() !== expectedTxHash) {
-    throw new Error(`${label}.cbor hashes to a different transaction`);
+  const body = transaction.body();
+  const bodyHash = CML.hash_transaction(body);
+  try {
+    if (bodyHash.to_hex() !== expectedTxHash) {
+      throw new Error(`${label}.cbor hashes to a different transaction`);
+    }
+    return transactionCbor;
+  } finally {
+    bodyHash.free();
+    body.free();
+    transaction.free();
   }
-  return transactionCbor;
 };
 
 const admitLocalKupmiosRawBlockAtPoint = ({
@@ -846,6 +1120,43 @@ export const readAdmittedLocalKupmiosRawBlockAtPoint = async ({
   });
 };
 
+/** Reads a direct predecessor through the concrete source's captured readers. */
+export const readAdmittedLocalKupmiosPredecessorPoint = async ({
+  source,
+  point,
+}: {
+  readonly source: LocalKupmiosFraudProofRawSource;
+  readonly point: FraudProofRawL1Point;
+}): Promise<LocalKupmiosAdmittedPredecessorPoint> => {
+  const read = admittedPredecessorReaders.get(source);
+  if (read === undefined) {
+    throw new Error(
+      "predecessor point read requires the admitted local Kupo/Ogmios source",
+    );
+  }
+  return await read(
+    admitFraudProofRawL1Point(point, "requested local Kupmios child point"),
+  );
+};
+
+/** Captured exact-target reference preimages; no resolved-input or native handle. */
+export const readAdmittedLocalKupmiosReferenceBodiesAtPoint = async ({
+  source,
+  point,
+}: {
+  readonly source: LocalKupmiosFraudProofRawSource;
+  readonly point: FraudProofRawL1Point;
+}): Promise<LocalKupmiosReferenceBodiesAtPoint> => {
+  const read = admittedReferenceBodyReaders.get(source);
+  if (read === undefined)
+    throw new Error(
+      "reference bodies require the admitted local Kupo/Ogmios source",
+    );
+  return await read(
+    admitFraudProofRawL1Point(point, "requested reference target point"),
+  );
+};
+
 /** Establishes and re-admits the concrete source's fresh release-final point. */
 export const readAdmittedLocalKupmiosBoundary = async ({
   source,
@@ -884,7 +1195,7 @@ export const readAdmittedLocalKupmiosBoundary = async ({
   return Object.freeze({ kupoCheckpoint, ogmiosTip, confirmationDepth });
 };
 
-/** Reads one complete, release-bounded unit history at the pinned boundary. */
+/** Reads complete unit history at the active or an admitted historical point. */
 export const readAdmittedLocalKupmiosUnitHistoryAtPoint = async ({
   source,
   unit,
@@ -907,7 +1218,7 @@ export const readAdmittedLocalKupmiosUnitHistoryAtPoint = async ({
     "requested local Kupmios unit-history point",
   );
   const page = exactKeys(
-    await source.scanUnitHistoryPage({
+    await admittedHistoricalPageReaders.get(source)!.history({
       unit,
       fromGenesis: true,
       throughPoint: checkpoint,
@@ -995,7 +1306,7 @@ export const readAdmittedLocalKupmiosAddressUtxosAtPoint = async ({
     "requested local Kupmios address point",
   );
   const page = exactKeys(
-    await source.scanAddressPage({
+    await admittedHistoricalPageReaders.get(source)!.address({
       address,
       throughPoint,
       after: null,
@@ -1038,6 +1349,91 @@ export const readAdmittedLocalKupmiosAddressUtxosAtPoint = async ({
  * the admitted raw-block path. Both provider claims and every resolved input
  * are re-admitted before the result crosses the package boundary.
  */
+export const readAdmittedLocalKupmiosUtxosByOutRefAtPoint = async (input: {
+  readonly source: LocalKupmiosFraudProofRawSource;
+  readonly point: FraudProofRawL1Point;
+  readonly outRefs: readonly string[];
+}): Promise<readonly FraudProofRawL1Utxo[]> => {
+  if (
+    !admittedHttpOgmiosSources.has(input.source) ||
+    input.source.readOutRefsAtPoint === undefined
+  ) {
+    throw new Error(
+      "Exact outref reads require admitted local Kupo/Ogmios authority",
+    );
+  }
+  const point = admitFraudProofRawL1Point(
+    input.point,
+    "exact outref checkpoint",
+  );
+  if (
+    input.outRefs.length > MAX_MATCHES ||
+    new Set(input.outRefs).size !== input.outRefs.length ||
+    input.outRefs.some((ref) => !/^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u.test(ref))
+  )
+    throw new Error("Invalid exact outref request");
+  const value = await input.source.readOutRefsAtPoint({
+    point,
+    outRefs: input.outRefs,
+  });
+  if (!Array.isArray(value) || value.length > input.outRefs.length)
+    throw new Error("Exact outref source returned an invalid set");
+  const outputs = value.map((output, index) =>
+    admitFraudProofRawL1Utxo(output, `exact outref ${index}`),
+  );
+  if (
+    new Set(outputs.map(({ outRef }) => outRef)).size !== outputs.length ||
+    outputs.some(({ outRef }) => !input.outRefs.includes(outRef))
+  ) {
+    throw new Error("Exact outref source substituted the requested set");
+  }
+  return Object.freeze(outputs);
+};
+
+export const pinAdmittedLocalKupmiosBoundaryAtPoint = async (input: {
+  readonly source: LocalKupmiosFraudProofRawSource;
+  readonly point: FraudProofRawL1Point;
+}): Promise<void> => {
+  if (
+    !admittedHttpOgmiosSources.has(input.source) ||
+    input.source.pinBoundaryAtPoint === undefined
+  ) {
+    throw new Error(
+      "Boundary pinning requires admitted local Kupo/Ogmios authority",
+    );
+  }
+  const point = admitFraudProofRawL1Point(
+    input.point,
+    "requested exact boundary",
+  );
+  const returned = admitFraudProofRawL1Point(
+    await input.source.pinBoundaryAtPoint({ point }),
+    "pinned exact boundary",
+  );
+  if (!sameRawPoint(point, returned))
+    throw new Error("Local source substituted the requested boundary");
+};
+
+export const readAdmittedLocalKupmiosTransactionInclusion = async (input: {
+  readonly source: LocalKupmiosFraudProofRawSource;
+  readonly txHash: string;
+}): Promise<FraudProofRawL1Point | null> => {
+  if (
+    !admittedHttpOgmiosSources.has(input.source) ||
+    input.source.resolveTransactionInclusion === undefined
+  ) {
+    throw new Error(
+      "Transaction inclusion requires admitted local Kupo/Ogmios history",
+    );
+  }
+  const value = await input.source.resolveTransactionInclusion({
+    txHash: digest(input.txHash, "requested inclusion transaction"),
+  });
+  return value === null
+    ? null
+    : admitFraudProofRawL1Point(value, "local transaction inclusion");
+};
+
 export const readAdmittedLocalKupmiosRawTransaction = async ({
   source,
   txHash,
@@ -1168,16 +1564,17 @@ const assertMatchOutput = ({
   ) {
     throw new Error(`${label} Kupo value disagrees with transaction CBOR`);
   }
-  const inlineDatum =
-    output.datum()?.as_datum()?.to_canonical_cbor_hex() ?? null;
+  const inlineData = output.datum()?.as_datum();
+  // Kupo returns the ledger's original datum bytes. Re-encoding equivalent
+  // Plutus data changes its hash (for example, definite/indefinite lists).
+  const inlineDatum = inlineData?.to_cbor_hex() ?? null;
   const datumHash = output.datum_hash()?.to_hex() ?? null;
   if (match.datumType === "inline") {
     if (
       inlineDatum === null ||
       inlineDatum !== match.datum ||
-      CML.hash_plutus_data(
-        CML.PlutusData.from_cbor_hex(inlineDatum),
-      ).to_hex() !== match.datumHash
+      inlineData === undefined ||
+      CML.hash_plutus_data(inlineData).to_hex() !== match.datumHash
     ) {
       throw new Error(
         `${label} Kupo inline datum disagrees with transaction CBOR`,
@@ -1303,16 +1700,36 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
   const webSocketFactory = config.webSocketFactory ?? defaultWebSocketFactory;
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const blockScanLimit = config.blockScanLimit ?? DEFAULT_BLOCK_SCAN_LIMIT;
+  const signal = config.signal;
+  const maxResponseBytes = config.maxResponseBytes;
+  validateSourceSignal(signal);
+  throwIfSourceAborted(signal);
+  if (
+    maxResponseBytes !== undefined &&
+    (!Number.isSafeInteger(maxResponseBytes) ||
+      maxResponseBytes <= 0 ||
+      maxResponseBytes > MAX_RESPONSE_BYTES)
+  ) {
+    throw new Error(
+      "raw-source maxResponseBytes must be positive and at most 64 MiB",
+    );
+  }
   if (!Number.isSafeInteger(blockScanLimit) || blockScanLimit <= 0) {
     throw new Error("Ogmios blockScanLimit must be positive");
   }
 
   let pinnedKupoResponseHead: KupoPoint | undefined;
-  const getKupoJson = async (path: string): Promise<unknown> => {
+  const getKupoJson = async (
+    path: string,
+    referenceScope?: ReferenceReadScope,
+  ): Promise<unknown> => {
     const response = await fetchJson({
       fetchImpl,
       url: joinUrl(kupoHttpUrl, path),
       timeoutMs,
+      signal,
+      maxResponseBytes: maxResponseBytes ?? MAX_RESPONSE_BYTES,
+      referenceScope,
       init: {
         headers: {
           accept: "application/json;asset-quantity=string",
@@ -1321,6 +1738,12 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
     });
     if (response.checkpointHeaders === null) {
       throw new Error("Kupo response omitted X-Most-Recent-Checkpoint or ETag");
+    }
+    if (referenceScope !== undefined) {
+      if (referenceScope.head === undefined)
+        referenceScope.head = Object.freeze({ ...response.checkpointHeaders });
+      else if (!sameKupoPoint(referenceScope.head, response.checkpointHeaders))
+        throw new Error("Kupo changed during reference acquisition");
     }
     if (pinnedKupoResponseHead === undefined) {
       pinnedKupoResponseHead = response.checkpointHeaders;
@@ -1341,6 +1764,8 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
           fetchImpl,
           url: ogmiosHttpUrl,
           timeoutMs,
+          signal,
+          maxResponseBytes: maxResponseBytes ?? MAX_RESPONSE_BYTES,
           init: {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -1355,11 +1780,26 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       "Ogmios tip",
     );
 
-  const getKupoCheckpoint = async (slot: number): Promise<KupoPoint> =>
+  const getKupoCheckpoint = async (
+    slot: number,
+    referenceScope?: ReferenceReadScope,
+  ): Promise<KupoPoint> =>
     parseKupoPoint(
-      await getKupoJson(`/checkpoints/${slot.toString()}`),
+      await getKupoJson(`/checkpoints/${slot.toString()}`, referenceScope),
       `Kupo checkpoint ${slot.toString()}`,
     );
+
+  const readPredecessorCheckpoint = async (
+    target: KupoPoint,
+    referenceScope?: ReferenceReadScope,
+  ): Promise<KupoPoint> => {
+    if (target.slot === 0) throw new Error("cannot chain-sync before genesis");
+    const ancestor = await getKupoCheckpoint(target.slot - 1, referenceScope);
+    if (ancestor.slot >= target.slot) {
+      throw new Error("Kupo did not return an earlier ancestor checkpoint");
+    }
+    return ancestor;
+  };
 
   const rawBlockCache = new Map<
     string,
@@ -1371,25 +1811,33 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
   >();
   const readBlock = async (
     target: KupoPoint,
+    referenceScope?: ReferenceReadScope,
   ): Promise<{
     readonly point: OgmiosTip;
     readonly parentBlockHash: string | null;
     readonly transactions: readonly unknown[];
   }> => {
+    throwIfSourceAborted(signal);
     const key = `${target.slot.toString()}:${target.blockHash}`;
-    const cached = rawBlockCache.get(key);
-    if (cached !== undefined) return await cached;
+    const cache = referenceScope?.rawBlocks ?? rawBlockCache;
+    const cached =
+      cache.get(key) ??
+      (referenceScope === undefined ? undefined : rawBlockCache.get(key));
+    if (cached !== undefined) {
+      const block = await cached;
+      throwIfSourceAborted(signal);
+      debitReferenceMembers(referenceScope, block.transactions.length);
+      return block;
+    }
     const read = (async () => {
-      if (target.slot === 0)
-        throw new Error("cannot chain-sync before genesis");
-      const ancestor = await getKupoCheckpoint(target.slot - 1);
-      if (sameKupoPoint(ancestor, target)) {
-        throw new Error("Kupo did not return an ancestor checkpoint");
-      }
+      const ancestor = await readPredecessorCheckpoint(target, referenceScope);
       const session = await openOgmiosSession({
         url: ogmiosWebSocketUrl,
         timeoutMs,
         webSocketFactory,
+        signal,
+        maxResponseBytes,
+        referenceScope,
       });
       try {
         const intersection = record(
@@ -1427,7 +1875,11 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
             throw new Error("Ogmios nextBlock has no supported direction");
           }
           acknowledged = true;
-          const block = parseOgmiosBlock(next.block, "Ogmios nextBlock.block");
+          const block = parseOgmiosBlock(
+            next.block,
+            "Ogmios nextBlock.block",
+            referenceScope,
+          );
           if (block.point.blockHash === target.blockHash) {
             if (block.point.slot !== target.slot) {
               throw new Error("Kupo/Ogmios block slot disagreement");
@@ -1443,29 +1895,39 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
         session.close();
       }
     })();
-    rawBlockCache.set(key, read);
+    cache.set(key, read);
     try {
-      return await read;
+      const block = await read;
+      throwIfSourceAborted(signal);
+      return block;
     } catch (cause) {
-      rawBlockCache.delete(key);
+      cache.delete(key);
       throw cause;
     }
   };
 
-  const readRawTransaction = async ({
-    txHash,
-    point,
-  }: {
-    readonly txHash: string;
-    readonly point: KupoPoint;
-  }): Promise<OgmiosRawTransactionAtPoint> => {
-    const block = await readBlock(point);
+  const readRawTransaction = async (
+    {
+      txHash,
+      point,
+    }: {
+      readonly txHash: string;
+      readonly point: KupoPoint;
+    },
+    referenceScope?: ReferenceReadScope,
+  ): Promise<OgmiosRawTransactionAtPoint> => {
+    const block = await readBlock(point, referenceScope);
     const candidates = block.transactions.filter(
       (entry) => record(entry, "Ogmios block transaction").id === txHash,
     );
     if (candidates.length !== 1) {
       throw new Error(`Ogmios block does not contain exactly one ${txHash}`);
     }
+    if (referenceScope !== undefined)
+      boundedReferenceCbor(
+        record(candidates[0], "creating transaction").cbor,
+        "creating full transaction",
+      );
     return {
       txHash,
       transactionCbor: requireOgmiosRawTransactionCbor({
@@ -1477,23 +1939,31 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
     };
   };
 
-  const fetchMatches = async (pattern: string): Promise<readonly KupoMatch[]> =>
+  const fetchMatches = async (
+    pattern: string,
+    referenceScope?: ReferenceReadScope,
+  ): Promise<readonly KupoMatch[]> =>
     parseKupoMatches(
       await getKupoJson(
         `/matches/${encodeURIComponent(pattern)}?resolve_hashes&order=oldest_first`,
+        referenceScope,
       ),
       `Kupo matches ${pattern}`,
+      referenceScope,
     );
 
-  const fetchOutRefMatch = async ({
-    txHash,
-    outputIndex,
-  }: {
-    readonly txHash: string;
-    readonly outputIndex: number;
-  }): Promise<KupoMatch> => {
+  const fetchOutRefMatch = async (
+    {
+      txHash,
+      outputIndex,
+    }: {
+      readonly txHash: string;
+      readonly outputIndex: number;
+    },
+    referenceScope?: ReferenceReadScope,
+  ): Promise<KupoMatch> => {
     const matches = (
-      await fetchMatches(`${outputIndex.toString()}@${txHash}`)
+      await fetchMatches(`${outputIndex.toString()}@${txHash}`, referenceScope)
     ).filter(
       (candidate) =>
         candidate.txHash === txHash && candidate.outputIndex === outputIndex,
@@ -1534,12 +2004,19 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
   const admittedPoint = async (
     point: KupoPoint,
   ): Promise<FraudProofRawL1Point> => {
+    throwIfSourceAborted(signal);
     const key = `${point.slot.toString()}:${point.blockHash}`;
     const cached = pointCache.get(key);
-    if (cached !== undefined) return await cached;
+    if (cached !== undefined) {
+      const admitted = await cached;
+      throwIfSourceAborted(signal);
+      return admitted;
+    }
     const read = readBlock(point).then((block) => rawPoint(block.point));
     pointCache.set(key, read);
-    return await read;
+    const admitted = await read;
+    throwIfSourceAborted(signal);
+    return admitted;
   };
 
   let activeBoundary:
@@ -1563,6 +2040,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
   >();
 
   const assertBoundary = (point: FraudProofRawL1Point): void => {
+    throwIfSourceAborted(signal);
     if (
       activeBoundary === undefined ||
       !sameRawPoint(activeBoundary.point, point)
@@ -1571,111 +2049,332 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
     }
   };
 
-  const source: LocalKupmiosFraudProofRawSource = {
-    sourceVersion: LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
-    sourceId,
-    kupoHttpUrl,
-    ogmiosWebSocketUrl,
-    readBoundary: async () => {
-      pinnedKupoResponseHead = undefined;
-      activeBoundary = undefined;
-      addressCache.clear();
-      historyCache.clear();
-      rawBlockCache.clear();
-      pointCache.clear();
-      const tip = await queryTip();
-      const minimum = config.releaseFinality.policy.confirmationDepth;
-      const maximum = config.releaseFinality.policy.automaticRecoveryMaxDepth;
-      let lookbackSlots = Math.max(64, minimum * 20);
-      for (let attempt = 0; attempt < 12; attempt += 1) {
-        const lookupSlot = Math.max(0, tip.slot - lookbackSlots);
-        const checkpoint = await getKupoCheckpoint(lookupSlot);
-        const point = await admittedPoint(checkpoint);
-        const depth = tip.blockNo - Number(point.blockNo) + 1;
-        if (depth >= minimum && depth <= maximum) {
-          activeBoundary = { point, tip: rawPoint(tip) };
-          return {
-            kupoCheckpoint: activeBoundary.point,
-            ogmiosTip: activeBoundary.tip,
-          };
-        }
-        if (depth > maximum) break;
-        lookbackSlots *= 2;
-      }
-      throw new Error(
-        "Kupo/Ogmios could not establish a release-final boundary within the automatic recovery window",
-      );
+  const readBlockAtPoint = async (
+    {
+      point: requested,
+    }: {
+      readonly point: FraudProofRawL1Point;
     },
-    readBlockAtPoint: async ({ point: requested }) => {
-      const point = admitFraudProofRawL1Point(
-        requested,
-        "local Kupmios exact block point",
+    referenceScope?: ReferenceReadScope,
+  ): Promise<LocalKupmiosRawBlockAtPoint> => {
+    throwIfSourceAborted(signal);
+    const point = admitFraudProofRawL1Point(
+      requested,
+      "local Kupmios exact block point",
+    );
+    const slot = Number(point.slot);
+    if (!Number.isSafeInteger(slot)) {
+      throw new Error("local Kupmios exact block slot exceeds safe range");
+    }
+    const expectedKupoPoint = {
+      slot,
+      blockHash: point.blockHash,
+    };
+    const before = await getKupoCheckpoint(slot, referenceScope);
+    if (!sameKupoPoint(before, expectedKupoPoint)) {
+      throw new LocalKupmiosExactPointNotCanonicalError(
+        "Kupo exact checkpoint does not contain the requested block",
       );
-      const slot = Number(point.slot);
-      if (!Number.isSafeInteger(slot)) {
-        throw new Error("local Kupmios exact block slot exceeds safe range");
-      }
-      const expectedKupoPoint = {
-        slot,
-        blockHash: point.blockHash,
-      };
-      const before = await getKupoCheckpoint(slot);
-      if (!sameKupoPoint(before, expectedKupoPoint)) {
-        throw new LocalKupmiosExactPointNotCanonicalError(
-          "Kupo exact checkpoint does not contain the requested block",
-        );
-      }
-      const block = await readBlock(before);
-      const observedPoint = rawPoint(block.point);
-      if (!sameRawPoint(observedPoint, point)) {
-        throw new Error("Ogmios exact block point differs from the request");
-      }
-      const transactions = block.transactions.map((value, index) => {
-        const transaction = record(
-          value,
-          `Ogmios exact block transaction ${index.toString()}`,
-        );
-        const transactionHash = digest(
-          transaction.id,
-          `Ogmios exact block transaction ${index.toString()}.id`,
-        );
-        return {
-          txHash: transactionHash,
-          transactionCbor: requireOgmiosRawTransactionCbor({
-            value: transaction,
-            expectedTxHash: transactionHash,
-            label: `Ogmios exact block transaction ${index.toString()}`,
-          }),
-        };
-      });
-      if (
-        new Set(transactions.map(({ txHash }) => txHash)).size !==
-        transactions.length
-      ) {
-        throw new Error(
-          "Ogmios exact block contains duplicate transaction ids",
-        );
-      }
-      const after = await getKupoCheckpoint(slot);
-      if (
-        !sameKupoPoint(after, expectedKupoPoint) ||
-        !sameKupoPoint(after, before)
-      ) {
-        throw new LocalKupmiosExactPointNotCanonicalError(
-          "Kupo rolled back during exact raw block capture",
-        );
+    }
+    const block = await readBlock(before, referenceScope);
+    const observedPoint = rawPoint(block.point);
+    if (!sameRawPoint(observedPoint, point)) {
+      throw new Error("Ogmios exact block point differs from the request");
+    }
+    if (
+      referenceScope !== undefined &&
+      block.transactions.length >
+        LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.targetTransactions
+    )
+      throw new Error("reference target transaction count exceeds bounds");
+    let targetBytes = 0;
+    const transactions = block.transactions.map((value, index) => {
+      const transaction = record(
+        value,
+        `Ogmios exact block transaction ${index.toString()}`,
+      );
+      const transactionHash = digest(
+        transaction.id,
+        `Ogmios exact block transaction ${index.toString()}.id`,
+      );
+      if (referenceScope !== undefined) {
+        const bytes =
+          boundedReferenceCbor(
+            transaction.cbor,
+            "reference target full transaction",
+          ).length / 2;
+        if (
+          bytes >
+          LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.targetTransactionBytes -
+            targetBytes
+        )
+          throw new Error("reference target transaction bytes exceed bounds");
+        targetBytes += bytes;
       }
       return {
-        schemaVersion: LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT,
-        sourceId,
-        point: observedPoint,
-        parentBlockHash: block.parentBlockHash,
-        kupoCheckpoint: after,
-        transactions,
+        txHash: transactionHash,
+        transactionCbor: requireOgmiosRawTransactionCbor({
+          value: transaction,
+          expectedTxHash: transactionHash,
+          label: `Ogmios exact block transaction ${index.toString()}`,
+        }),
       };
-    },
-    scanAddressPage: async ({ address, throughPoint, after }) => {
-      assertBoundary(throughPoint);
+    });
+    if (
+      new Set(transactions.map(({ txHash }) => txHash)).size !==
+      transactions.length
+    ) {
+      throw new Error("Ogmios exact block contains duplicate transaction ids");
+    }
+    const after = await getKupoCheckpoint(slot, referenceScope);
+    throwIfSourceAborted(signal);
+    if (
+      !sameKupoPoint(after, expectedKupoPoint) ||
+      !sameKupoPoint(after, before)
+    ) {
+      throw new LocalKupmiosExactPointNotCanonicalError(
+        "Kupo rolled back during exact raw block capture",
+      );
+    }
+    return {
+      schemaVersion: LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT,
+      sourceId,
+      point: observedPoint,
+      parentBlockHash: block.parentBlockHash,
+      kupoCheckpoint: after,
+      transactions,
+    };
+  };
+
+  const readReferenceBodies = async (
+    point: FraudProofRawL1Point,
+  ): Promise<LocalKupmiosReferenceBodiesAtPoint> => {
+    const scope: ReferenceReadScope = {
+      responseBytes: 0,
+      inspectedMembers: 0,
+      head:
+        pinnedKupoResponseHead === undefined
+          ? undefined
+          : Object.freeze({ ...pinnedKupoResponseHead }),
+      rawBlocks: new Map(),
+    };
+    try {
+      throwIfSourceAborted(signal);
+      const target = await readBlockAtPoint({ point }, scope);
+      throwIfSourceAborted(signal);
+      const required = new Map<string, Map<number, number>>();
+      let referenceOccurrences = 0;
+      for (const raw of target.transactions) {
+        let transaction: CML.Transaction | undefined;
+        let body: CML.TransactionBody | undefined;
+        let references: CML.TransactionInputList | undefined;
+        try {
+          transaction = CML.Transaction.from_cbor_hex(raw.transactionCbor);
+          if (transaction.to_cbor_hex() !== raw.transactionCbor)
+            throw new Error(
+              "reference target transaction encoding is not preserved",
+            );
+          if (!transaction.is_valid()) continue;
+          body = transaction.body();
+          references = body.reference_inputs();
+          const count = references?.len() ?? 0;
+          if (
+            count >
+              LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.transactionReferences ||
+            count >
+              LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.referenceOccurrences -
+                referenceOccurrences
+          )
+            throw new Error("reference target input roster exceeds bounds");
+          referenceOccurrences += count;
+          const unique = new Set<string>();
+          for (let index = 0; index < count; index += 1) {
+            const input = references!.get(index);
+            const id = input.transaction_id();
+            try {
+              const txHash = id.to_hex();
+              const outputIndex = Number(input.index());
+              if (!Number.isSafeInteger(outputIndex) || outputIndex < 0)
+                throw new Error("reference output index exceeds safe range");
+              const outRef = `${txHash}#${outputIndex.toString()}`;
+              if (unique.has(outRef))
+                throw new Error("reference target input roster is not unique");
+              unique.add(outRef);
+              let outputs = required.get(txHash);
+              if (outputs === undefined) {
+                if (
+                  required.size >=
+                  LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.creatingBodies
+                )
+                  throw new Error(
+                    "reference creating-body collection exceeds bounds",
+                  );
+                outputs = new Map();
+                required.set(txHash, outputs);
+              }
+              outputs.set(outputIndex, (outputs.get(outputIndex) ?? 0) + 1);
+            } finally {
+              id.free();
+              input.free();
+            }
+          }
+        } finally {
+          references?.free();
+          body?.free();
+          transaction?.free();
+        }
+      }
+      let evidenceBytes = 0;
+      const bodies: string[] = [];
+      for (const [txHash, requiredOutputs] of [...required].sort(
+        ([left], [right]) => left.localeCompare(right),
+      )) {
+        let creatingPoint: KupoPoint | undefined;
+        for (const outputIndex of requiredOutputs.keys()) {
+          const match = await fetchOutRefMatch({ txHash, outputIndex }, scope);
+          throwIfSourceAborted(signal);
+          if (match.createdAt.slot > Number(target.point.slot))
+            throw new Error("reference creating point is after its target");
+          if (
+            creatingPoint !== undefined &&
+            !sameKupoPoint(creatingPoint, match.createdAt)
+          )
+            throw new Error(
+              "reference creating transaction has inconsistent points",
+            );
+          creatingPoint = match.createdAt;
+        }
+        if (creatingPoint === undefined)
+          throw new Error(
+            "reference creating transaction has no requested output",
+          );
+        const before = await getKupoCheckpoint(creatingPoint.slot, scope);
+        if (!sameKupoPoint(before, creatingPoint))
+          throw new LocalKupmiosExactPointNotCanonicalError(
+            "reference creating checkpoint differs from its match",
+          );
+        const raw = await readRawTransaction(
+          { txHash, point: creatingPoint },
+          scope,
+        );
+        throwIfSourceAborted(signal);
+        if (
+          raw.point.blockHash !== creatingPoint.blockHash ||
+          raw.point.slot !== creatingPoint.slot.toString() ||
+          BigInt(raw.point.blockNo) > BigInt(target.point.blockNo)
+        )
+          throw new Error(
+            "reference creating transaction point differs from its lookup",
+          );
+        const after = await getKupoCheckpoint(creatingPoint.slot, scope);
+        if (!sameKupoPoint(after, before))
+          throw new LocalKupmiosExactPointNotCanonicalError(
+            "reference creating checkpoint changed during acquisition",
+          );
+        let transaction: CML.Transaction | undefined;
+        let body: CML.TransactionBody | undefined;
+        let outputs: CML.TransactionOutputList | undefined;
+        let bodyHash: CML.TransactionHash | undefined;
+        try {
+          transaction = CML.Transaction.from_cbor_hex(raw.transactionCbor);
+          if (transaction.to_cbor_hex() !== raw.transactionCbor)
+            throw new Error(
+              "reference creating transaction encoding is not preserved",
+            );
+          body = transaction.body();
+          const bodyCbor = boundedReferenceCbor(
+            body.to_cbor_hex(),
+            "reference creating body",
+          );
+          bodyHash = CML.hash_transaction(body);
+          if (bodyHash.to_hex() !== txHash)
+            throw new Error(
+              "reference creating body differs from requested ledger identity",
+            );
+          const bodyBytes = bodyCbor.length / 2;
+          if (
+            bodyBytes >
+            LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.evidenceBytes -
+              evidenceBytes
+          )
+            throw new Error(
+              "reference creating-body/output byte budget exceeded",
+            );
+          evidenceBytes += bodyBytes;
+          outputs = body.outputs();
+          for (const [outputIndex, occurrences] of requiredOutputs) {
+            const output =
+              outputIndex < outputs.len()
+                ? outputs.get(outputIndex)
+                : outputIndex === outputs.len()
+                  ? body.collateral_return()
+                  : undefined;
+            if (output === undefined)
+              throw new Error("reference creating output index does not exist");
+            try {
+              const outputBytes =
+                boundedReferenceCbor(
+                  output.to_canonical_cbor_hex(),
+                  "reference selected output",
+                ).length / 2;
+              if (
+                outputBytes >
+                Math.floor(
+                  (LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS.evidenceBytes -
+                    evidenceBytes) /
+                    occurrences,
+                )
+              )
+                throw new Error(
+                  "reference creating-body/output byte budget exceeded",
+                );
+              evidenceBytes += outputBytes * occurrences;
+            } finally {
+              output.free();
+            }
+          }
+          bodies.push(bodyCbor);
+        } finally {
+          bodyHash?.free();
+          outputs?.free();
+          body?.free();
+          transaction?.free();
+        }
+      }
+      const after = await readBlockAtPoint({ point }, scope);
+      throwIfSourceAborted(signal);
+      if (
+        !sameRawPoint(after.point, target.point) ||
+        after.parentBlockHash !== target.parentBlockHash ||
+        after.transactions.length !== target.transactions.length ||
+        after.transactions.some(
+          (transaction, index) =>
+            transaction.txHash !== target.transactions[index]!.txHash ||
+            transaction.transactionCbor !==
+              target.transactions[index]!.transactionCbor,
+        )
+      )
+        throw new Error("reference acquisition complete target changed");
+      return Object.freeze({
+        targetBlock: Object.freeze({
+          ...after,
+          point: Object.freeze({ ...after.point }),
+          kupoCheckpoint: Object.freeze({ ...after.kupoCheckpoint }),
+          transactions: Object.freeze(
+            after.transactions.map((transaction) =>
+              Object.freeze({ ...transaction }),
+            ),
+          ),
+        }),
+        creatingTransactionBodies: Object.freeze(bodies),
+      });
+    } finally {
+      scope.rawBlocks.clear();
+    }
+  };
+
+  const scanAddressPage: LocalKupmiosFraudProofRawSource["scanAddressPage"] =
+    async ({ address, throughPoint, after }) => {
       if (after !== null) {
         throw new Error("Kupo match streams have no continuation cursor");
       }
@@ -1704,19 +2403,22 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
             }
             return false;
           });
-          return await Promise.all(current.map(utxoFromMatch));
+          return await settleLocalKupmiosReads(current.map(utxoFromMatch));
         })();
         addressCache.set(key, cached);
       }
+      const utxos = await cached;
+      throwIfSourceAborted(signal);
       return {
         checkpoint: throughPoint,
-        utxos: await cached,
+        utxos,
         nextCursor: null,
         complete: true,
       };
-    },
-    scanUnitHistoryPage: async ({ unit, throughPoint, after }) => {
-      assertBoundary(throughPoint);
+    };
+
+  const scanUnitHistoryPage: LocalKupmiosFraudProofRawSource["scanUnitHistoryPage"] =
+    async ({ unit, throughPoint, after }) => {
       if (after !== null) {
         throw new Error("Kupo match streams have no continuation cursor");
       }
@@ -1750,7 +2452,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
               points.set(match.spentAt.txHash, match.spentAt);
             }
           }
-          return await Promise.all(
+          return await settleLocalKupmiosReads(
             [...points.entries()]
               .sort(([left], [right]) => left.localeCompare(right))
               .map(async ([txHash, point]) => ({
@@ -1761,12 +2463,194 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
         })();
         historyCache.set(key, cached);
       }
+      const transactions = await cached;
+      throwIfSourceAborted(signal);
       return {
         checkpoint: throughPoint,
-        transactions: await cached,
+        transactions,
         nextCursor: null,
         complete: true,
       };
+    };
+
+  const readAtHistoricalPoint = async <T>(
+    point: FraudProofRawL1Point,
+    read: () => Promise<T>,
+  ): Promise<T> => {
+    const boundary = activeBoundary;
+    assertBoundary(boundary?.point ?? point);
+    if (boundary === undefined)
+      throw new Error("Kupmios boundary is not pinned");
+    if (sameRawPoint(point, boundary.point)) return await read();
+    const blockDistance = BigInt(boundary.tip.blockNo) - BigInt(point.blockNo);
+    if (
+      BigInt(point.blockNo) > BigInt(boundary.point.blockNo) ||
+      BigInt(point.slot) > BigInt(boundary.point.slot) ||
+      blockDistance + 1n <
+        BigInt(config.releaseFinality.policy.confirmationDepth) ||
+      blockDistance >
+        BigInt(config.releaseFinality.policy.automaticRecoveryMaxDepth)
+    ) {
+      throw new Error(
+        "historical Kupmios point is outside the pinned release recovery window",
+      );
+    }
+    // Exact Kupo checkpoints and Ogmios bytes authenticate this historical
+    // context while retaining the active capture's provider head and tip.
+    await readBlockAtPoint({ point });
+    const result = await read();
+    await readBlockAtPoint({ point });
+    assertBoundary(boundary.point);
+    return result;
+  };
+
+  const source: LocalKupmiosFraudProofRawSource = {
+    sourceVersion: LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
+    sourceId,
+    kupoHttpUrl,
+    ogmiosWebSocketUrl,
+    readOutRefsAtPoint: async ({ point, outRefs }) => {
+      assertBoundary(point);
+      const result: FraudProofRawL1Utxo[] = [];
+      for (const outRef of outRefs) {
+        const [txHash, index] = outRef.split("#");
+        const matches = await fetchMatches(`${index}@${txHash}`);
+        if (
+          matches.length > 1 ||
+          matches.some(
+            (match) =>
+              match.txHash !== txHash || match.outputIndex.toString() !== index,
+          )
+        ) {
+          throw new Error("Kupo substituted exact output-reference history");
+        }
+        const match = matches[0];
+        if (match === undefined || match.createdAt.slot > Number(point.slot))
+          continue;
+        if (
+          match.createdAt.slot === Number(point.slot) &&
+          match.createdAt.blockHash !== point.blockHash
+        ) {
+          throw new LocalKupmiosExactPointNotCanonicalError(
+            "Output creation forks at pinned point",
+          );
+        }
+        if (
+          match.spentAt !== null &&
+          match.spentAt.slot <= Number(point.slot)
+        ) {
+          if (
+            match.spentAt.slot === Number(point.slot) &&
+            match.spentAt.blockHash !== point.blockHash
+          ) {
+            throw new LocalKupmiosExactPointNotCanonicalError(
+              "Output spend forks at pinned point",
+            );
+          }
+          continue;
+        }
+        result.push(await utxoFromMatch(match));
+      }
+      return result;
+    },
+    pinBoundaryAtPoint: async ({ point }) => {
+      pinnedKupoResponseHead = undefined;
+      const exact = admitFraudProofRawL1Point(
+        point,
+        "exact native availability boundary",
+      );
+      const checkpoint = await getKupoCheckpoint(Number(exact.slot));
+      const block = await readBlock(checkpoint);
+      if (!sameRawPoint(rawPoint(block.point), exact)) {
+        throw new LocalKupmiosExactPointNotCanonicalError(
+          "Exact boundary differs from canonical Kupo/Ogmios block",
+        );
+      }
+      const tip = await queryTip();
+      const depth = tip.blockNo - Number(exact.blockNo) + 1;
+      if (
+        depth < config.releaseFinality.policy.confirmationDepth ||
+        depth > config.releaseFinality.policy.automaticRecoveryMaxDepth
+      ) {
+        throw new Error(
+          "Exact boundary is outside the release finality/recovery window",
+        );
+      }
+      activeBoundary = { point: exact, tip: rawPoint(tip) };
+      addressCache.clear();
+      historyCache.clear();
+      return exact;
+    },
+    resolveTransactionInclusion: async ({ txHash }) => {
+      const matches = await fetchMatches(
+        `*@${digest(txHash, "transaction inclusion hash")}`,
+      );
+      if (matches.length === 0) return null;
+      const first = matches[0]!;
+      const indices = matches
+        .map((match) => match.outputIndex)
+        .sort((left, right) => left - right);
+      if (
+        matches.some(
+          (match) =>
+            match.txHash !== txHash ||
+            !sameKupoPoint(match.createdAt, first.createdAt),
+        ) ||
+        indices.some((index, position) => index !== position)
+      ) {
+        throw new Error(
+          "Transaction inclusion history is incomplete or substituted",
+        );
+      }
+      const point = await admittedPoint(first.createdAt);
+      const canonical = await getKupoCheckpoint(Number(point.slot));
+      if (!sameKupoPoint(canonical, first.createdAt)) {
+        throw new LocalKupmiosExactPointNotCanonicalError(
+          "Transaction inclusion is no longer canonical",
+        );
+      }
+      return point;
+    },
+    readBoundary: async () => {
+      throwIfSourceAborted(signal);
+      pinnedKupoResponseHead = undefined;
+      activeBoundary = undefined;
+      addressCache.clear();
+      historyCache.clear();
+      rawBlockCache.clear();
+      pointCache.clear();
+      const tip = await queryTip();
+      const minimum = config.releaseFinality.policy.confirmationDepth;
+      const maximum = config.releaseFinality.policy.automaticRecoveryMaxDepth;
+      let lookbackSlots = Math.max(64, minimum * 20);
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const lookupSlot = Math.max(0, tip.slot - lookbackSlots);
+        const checkpoint = await getKupoCheckpoint(lookupSlot);
+        const point = await admittedPoint(checkpoint);
+        throwIfSourceAborted(signal);
+        const depth = tip.blockNo - Number(point.blockNo) + 1;
+        if (depth >= minimum && depth <= maximum) {
+          activeBoundary = { point, tip: rawPoint(tip) };
+          return {
+            kupoCheckpoint: activeBoundary.point,
+            ogmiosTip: activeBoundary.tip,
+          };
+        }
+        if (depth > maximum) break;
+        lookbackSlots *= 2;
+      }
+      throw new Error(
+        "Kupo/Ogmios could not establish a release-final boundary within the automatic recovery window",
+      );
+    },
+    readBlockAtPoint,
+    scanAddressPage: async (input) => {
+      assertBoundary(input.throughPoint);
+      return await scanAddressPage(input);
+    },
+    scanUnitHistoryPage: async (input) => {
+      assertBoundary(input.throughPoint);
+      return await scanUnitHistoryPage(input);
     },
     readTransaction: async ({ txHash, expectedInclusionPoint }) => {
       assertBoundary(activeBoundary?.point ?? expectedInclusionPoint);
@@ -1807,12 +2691,13 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       }): Promise<FraudProofRawL1Utxo> =>
         await utxoFromMatch(await fetchOutRefMatch(input));
       const body = transaction.body();
-      const resolvedInputs = await Promise.all(
+      const resolvedInputs = await settleLocalKupmiosReads(
         transactionInputs(body.inputs()).map(resolve),
       );
-      const resolvedReferenceInputs = await Promise.all(
+      const resolvedReferenceInputs = await settleLocalKupmiosReads(
         transactionInputs(body.reference_inputs()).map(resolve),
       );
+      throwIfSourceAborted(signal);
       const witnessSet = transaction.witness_set();
       const redeemers = witnessSet.redeemers();
       const tip = activeBoundary?.tip;
@@ -1837,10 +2722,10 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
     },
     confirmCanonicalPoint: async ({ point }) => {
       assertBoundary(point);
-      const [checkpoint, tip] = await Promise.all([
+      const [checkpoint, tip] = await settleLocalKupmiosReads([
         getKupoCheckpoint(Number(point.slot)),
         queryTip(),
-      ]);
+      ] as const);
       let canonical = sameKupoPoint(checkpoint, {
         slot: Number(point.slot),
         blockHash: point.blockHash,
@@ -1858,10 +2743,59 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
           canonical = false;
         }
       }
+      throwIfSourceAborted(signal);
       if (tip.blockNo < Number(point.blockNo)) canonical = false;
       return { canonical, point };
     },
   };
+  admittedHistoricalPageReaders.set(
+    source,
+    Object.freeze({
+      address: (input) =>
+        readAtHistoricalPoint(input.throughPoint, () => scanAddressPage(input)),
+      history: (input) =>
+        readAtHistoricalPoint(input.throughPoint, () =>
+          scanUnitHistoryPage(input),
+        ),
+    }),
+  );
+  admittedReferenceBodyReaders.set(source, readReferenceBodies);
+  admittedPredecessorReaders.set(source, async (requestedPoint) => {
+    const child = await readBlockAtPoint({ point: requestedPoint });
+    if (child.parentBlockHash === null) {
+      throw new Error("local Kupmios child has no block predecessor");
+    }
+    const checkpoint = await readPredecessorCheckpoint(child.kupoCheckpoint);
+    const predecessor = await readBlockAtPoint({
+      point: await admittedPoint(checkpoint),
+    });
+    if (
+      predecessor.point.blockHash !== child.parentBlockHash ||
+      BigInt(predecessor.point.blockNo) + 1n !== BigInt(child.point.blockNo) ||
+      BigInt(predecessor.point.slot) >= BigInt(child.point.slot)
+    ) {
+      throw new Error("local Kupmios blocks do not form a direct predecessor");
+    }
+    const after = await getKupoCheckpoint(Number(child.point.slot));
+    throwIfSourceAborted(signal);
+    if (!sameKupoPoint(after, child.kupoCheckpoint)) {
+      throw new LocalKupmiosExactPointNotCanonicalError(
+        "Kupo rolled back during predecessor point capture",
+      );
+    }
+    return Object.freeze({
+      sourceId,
+      point: Object.freeze(
+        admitFraudProofRawL1Point(child.point, "local Kupmios child point"),
+      ),
+      predecessorPoint: Object.freeze(
+        admitFraudProofRawL1Point(
+          predecessor.point,
+          "local Kupmios predecessor point",
+        ),
+      ),
+    });
+  });
   admittedHttpOgmiosSources.add(source);
   admittedHttpOgmiosSourceDetails.set(
     source,
@@ -1870,7 +2804,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       kupoHttpUrl,
       ogmiosUrl: ogmiosHttpUrl,
       deploymentIdentityDigest: config.releaseFinality.deploymentIdentityDigest,
-      releaseIdentityDigest: config.releaseFinality.releaseIdentityDigest,
+      blueprintHash: config.releaseFinality.blueprintHash,
       finalityPolicyDigest: config.releaseFinality.policyDigest,
       confirmationDepth: config.releaseFinality.policy.confirmationDepth,
       automaticRecoveryMaxDepth:

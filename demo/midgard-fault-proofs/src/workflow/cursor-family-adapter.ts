@@ -130,10 +130,12 @@ const preflightOf = ({
   category,
   action,
   transaction,
+  durableRecovery,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly action: FraudProofWorkflowAction;
   readonly transaction: LocallyEvaluatedTransaction;
+  readonly durableRecovery?: JournalJsonObject;
 }): FraudProofWorkflowPreflight =>
   bindWorkflowPreflightTransaction(
     {
@@ -145,6 +147,7 @@ const preflightOf = ({
         evaluator: LOCAL_UPLC_EVALUATOR,
       },
       referenceScripts: admitReferenceScripts({ category, transaction }),
+      ...(durableRecovery === undefined ? {} : { durableRecovery }),
     },
     transaction.signed,
   );
@@ -296,16 +299,14 @@ export const createCursorFamilyWorkflowAdapter = <
           category,
           action,
           transaction: captured.transaction,
-        });
-        prepared.set(key, captured);
-        return {
-          ...preflight,
           ...(captured.mutationLease === undefined
             ? {}
             : {
                 durableRecovery: mutationLeaseRecovery(captured.mutationLease),
               }),
-        };
+        });
+        prepared.set(key, captured);
+        return preflight;
       } catch (cause) {
         await captured.mutationLease?.fail(
           `preflight admission failed before durable intent: ${String(cause)}`,

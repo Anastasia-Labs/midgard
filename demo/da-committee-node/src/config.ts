@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 
 import { assertRetentionWindowCoversDeployment } from "@al-ft/midgard-core";
 import {
-  assertMidgardConsensusReleaseReady,
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardConsensusProfile,
@@ -119,6 +119,8 @@ export type WatcherConfig = {
   readonly signerKeySource?: string;
   readonly l1SubmitterKeySource?: string;
   readonly l1SubmissionEnabled: boolean;
+  readonly availabilityJournalPath?: string;
+  readonly availabilitySubmitterKeySource?: string;
   readonly l1SubmitterPreflight: L1SubmitterPreflightConfig;
   readonly l1SubmitterId?: string;
   readonly l1SubmitterIds: readonly string[];
@@ -431,6 +433,10 @@ export const loadWatcherConfig = async (
     ...maybeSigner,
     l1SubmitterKeySource,
     l1SubmissionEnabled,
+    availabilityJournalPath: availabilityJournalPath(env),
+    availabilitySubmitterKeySource: optionalNonEmpty(
+      env.DA_AVAILABILITY_SUBMITTER_KEY_SOURCE,
+    ),
     l1SubmitterPreflight,
     ...(l1SubmitterId === undefined ? {} : { l1SubmitterId }),
     l1SubmitterIds:
@@ -1209,6 +1215,16 @@ const localState = (env: Env): LocalStateConfig => {
   throw new Error("WATCHER_DB_PATH or WATCHER_DATABASE_URL is required");
 };
 
+const availabilityJournalPath = (env: Env): string | undefined => {
+  const path = optionalNonEmpty(env.DA_AVAILABILITY_JOURNAL_PATH);
+  if (path !== undefined && !isAbsolute(path)) {
+    throw new Error(
+      "DA_AVAILABILITY_JOURNAL_PATH must be an absolute durable file path",
+    );
+  }
+  return path;
+};
+
 // @midgard-no-http-da-transport:start
 const LIBP2P_DA_ROLES = [
   "committee",
@@ -1270,7 +1286,6 @@ const contractDeploymentManifestConfig = (
   if (!isMidgardConsensusProfile(exactProfile)) {
     throw new Error(`${path} does not contain the exact V1 consensus profile`);
   }
-  assertMidgardConsensusReleaseReady();
   const manifestId = verified.manifestId as string;
   const network = verified.network;
   if (typeof network !== "string" || network.length === 0) {

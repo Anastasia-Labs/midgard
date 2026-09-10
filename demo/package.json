@@ -39,7 +39,10 @@
   "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0",
   "pnpm": {
     "patchedDependencies": {
-      "blake2b@2.1.4": "patches/blake2b@2.1.4.patch"
+      "blake2b@2.1.4": "patches/blake2b@2.1.4.patch",
+      "@lucid-evolution/lucid@0.6.4": "patches/@lucid-evolution__lucid@0.6.4.patch",
+      "@lucid-evolution/core-types@0.3.0": "patches/@lucid-evolution__core-types@0.3.0.patch",
+      "@lucid-evolution/wallet@0.2.2": "patches/@lucid-evolution__wallet@0.2.2.patch"
     },
     "overrides": {
       "@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1": "6.2.0-2",

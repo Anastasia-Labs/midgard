@@ -60,18 +60,23 @@ export {
   aggregateWatcherProverFundingSweep,
   assertWatcherProverFundingCalculation,
   assertWatcherProverFundingSweep,
+  assertWatcherRuntimeProverFundingCalculation,
   calculateWatcherProverFunding,
+  calculateWatcherRuntimeProverFunding,
   WATCHER_PROVER_FUNDING_CALCULATION,
   WATCHER_PROVER_FUNDING_SWEEP,
+  WATCHER_RUNTIME_PROVER_FUNDING_CALCULATION,
   type WatcherProverFundingActionCalculation,
   type WatcherProverFundingCalculation,
   type WatcherProverFundingSweep,
+  type WatcherRuntimeProverFundingCalculation,
 } from "./funding/prover-funding-calculation.js";
 export {
   assertWatcherProverFundingReservationPlan,
   makeWatcherProverFundingReservationRecord,
   parseWatcherProverFundingReservationRecord,
   planWatcherProverFundingReservation,
+  restoreWatcherProverFundingReservationPlan,
   WATCHER_PROVER_FUNDING_RESERVATION_PLAN,
   type WatcherProverFundingReservationInput,
   type WatcherProverFundingReservationPlan,
@@ -88,14 +93,14 @@ export {
 } from "./funding/sqlite-prover-funding-reservation-store.js";
 export {
   assertWatcherWorkflowFundingProfileOverlay,
-  createWatcherWorkflowFundingReleaseEvidence,
+  createWatcherWorkflowFundingProfileBundle,
   loadWatcherWorkflowFundingProfileOverlay,
+  WATCHER_WORKFLOW_FUNDING_CONFIGURATION,
   WATCHER_WORKFLOW_FUNDING_PROFILE_BUNDLE,
   WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY,
-  WATCHER_WORKFLOW_FUNDING_RELEASE_EVIDENCE,
   type WatcherWorkflowFundingProfileBody,
+  type WatcherWorkflowFundingProfileBundle,
   type WatcherWorkflowFundingProfileOverlay,
-  type WatcherWorkflowFundingReleaseEvidence,
   workflowFundingProfileFromOverlay,
 } from "./funding/workflow-funding-profile-overlay.js";
 export {
@@ -243,6 +248,7 @@ export {
 } from "./indexers/state-queue-indexer.js";
 export {
   deriveWatcherUserEventObservation,
+  deriveWatcherUserEventViewTransition,
   evaluateWatcherUserEventIndexer,
   makeWatcherUserEventIndexerPolicy,
   parseWatcherUserEventIndexerPolicy,
@@ -278,7 +284,19 @@ export {
   type WatcherUserEventRollbackAuthority,
   type WatcherUserEventSnapshot,
   type WatcherUserEventTerminalStatus,
+  type WatcherUserEventViewTransitionInput,
+  type WatcherUserEventViewTransitionResult,
 } from "./indexers/user-event-indexer.js";
+export {
+  createWatcherExternalUserEventReferenceAuthority,
+  createWatcherLocalUserEventReferenceAuthority,
+  createWatcherLocalUserEventReferenceAuthorityFromBodies,
+  readWatcherUserEventReferenceEvidence,
+  WATCHER_USER_EVENT_REFERENCE_AUTHORITY_SCHEMA_VERSION,
+  WATCHER_USER_EVENT_REFERENCE_EVIDENCE_SCHEMA_VERSION,
+  type WatcherUserEventReferenceAuthority,
+  type WatcherUserEventReferenceEvidence,
+} from "./indexers/user-event-reference-authority.js";
 export {
   evaluateWatcherFinality,
   makeWatcherFinalityBootstrapState,
@@ -390,6 +408,11 @@ export {
   type WatcherNativeChainSyncRuntime,
 } from "./l1/native-chain-sync.js";
 export {
+  createWatcherResolvedBlockObservationSource,
+  type WatcherResolvedBlockObservation,
+  type WatcherResolvedBlockObservationSource,
+} from "./l1/resolved-block-observation.js";
+export {
   evaluateAndPersistWatcherPostFinalityRecovery,
   evaluateAndPersistWatcherRollback,
   evaluateWatcherPostFinalityRecovery,
@@ -404,6 +427,7 @@ export {
   persistWatcherRollbackDurableObservation,
   prepareWatcherRollbackDurableTrustedHeadReconciliation,
   readWatcherRollbackDurableAuthority,
+  readWatcherRollbackDurableFinalityState,
   WATCHER_POST_FINALITY_RECOVERY_REASON_CODES,
   WATCHER_POST_FINALITY_RECOVERY_RESULT_SCHEMA_VERSION,
   WATCHER_POST_FINALITY_RECOVERY_STATE_SCHEMA_VERSION,
@@ -474,7 +498,11 @@ export {
   type WatcherTargetNetwork,
   type WatcherWalletKeySource,
 } from "./runtime/config.js";
-export { loadWatcherVerifiedDeploymentAuthority } from "./runtime/deployment-authority.js";
+export {
+  assertWatcherVerifiedDeploymentAuthority,
+  loadWatcherVerifiedDeploymentAuthority,
+  type VerifiedWatcherDeploymentAuthority,
+} from "./runtime/deployment-authority.js";
 export {
   assertWatcherDeploymentProtocolParameterAuthority,
   assertWatcherDeploymentProtocolScriptAuthority,
@@ -759,7 +787,6 @@ export {
   type WatcherBlockReplayRejection,
   watcherBlockReplayRejectionProjection,
   type WatcherBlockReplayResult,
-  type WatcherBlockReplaySettlementAuthority,
   type WatcherBlockReplayStage,
   watcherBlockReplayStageForRejection,
   type WatcherBlockReplayStageMismatch,
@@ -776,7 +803,6 @@ export {
   type WatcherEventClassificationFinding,
   type WatcherEventClassificationReasonCode,
   type WatcherEventClassificationResult,
-  type WatcherEventClassificationSettlementAuthority,
   type WatcherEventClassificationUserAuthority,
   type WatcherForcedEventNativeTransaction,
 } from "./verification/event-classification-verifier.js";

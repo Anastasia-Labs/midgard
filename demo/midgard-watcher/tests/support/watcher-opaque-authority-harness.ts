@@ -69,7 +69,6 @@ type AuthorityReferenceScriptFixture = Readonly<{
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
-const RELEASE_DIGEST = h32("22");
 const BLUEPRINT_HASH = h32("55");
 const RULE_BUNDLE_COMMITMENT = h32("44");
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
@@ -291,7 +290,7 @@ const createWatcherAuthorityDeploymentFixture = () => {
     contracts,
     referenceScripts,
     da: daIdentity,
-    proofEvidence: { digest: RELEASE_DIGEST, blueprintHash: BLUEPRINT_HASH },
+    artifacts: { blueprintHash: BLUEPRINT_HASH },
     steps: Object.fromEntries(
       DEPLOYMENT_MANIFEST_STEP_NAMES.map((name) => [
         name,
@@ -299,6 +298,7 @@ const createWatcherAuthorityDeploymentFixture = () => {
           status:
             name === "prepareHubOracleNonce" ||
             name === "deployNodeRuntimeReferenceScripts" ||
+            name === "availabilityRegistration" ||
             name === "initProtocol"
               ? "complete"
               : "pending",
@@ -349,13 +349,14 @@ const createWatcherAuthorityDeploymentFixture = () => {
   };
   const releaseBindings = {
     schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+    fundingProfileBundleDigest: "ab".repeat(32),
     ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
     programCommitments,
     da: {
       mode: "authenticated_committee_v1",
       identityDigest: computeDeploymentManifestJsonDigest(daIdentity),
     },
-    releaseEvidence: { digest: RELEASE_DIGEST, blueprintHash: BLUEPRINT_HASH },
+    artifacts: { blueprintHash: BLUEPRINT_HASH },
   };
   const privateKey = fixedEd25519Key();
   const publicKeySpkiDerHex = createPublicKey(privateKey)
@@ -423,7 +424,8 @@ const createWatcherAuthorityDeploymentFixture = () => {
     programCommitments,
     daMode: "authenticated_committee_v1",
     daIdentityDigest: releaseBindings.da.identityDigest,
-    releaseEvidenceDigest: RELEASE_DIGEST,
+    fundingProfileBundleDigest: releaseBindings.fundingProfileBundleDigest,
+
     blueprintHash: BLUEPRINT_HASH,
   };
   const trustRoots = [{ trustRootId, publicKeySpkiDerHex }];
@@ -611,7 +613,9 @@ export const createWatcherOpaqueAuthorityHarness =
         manifestId: deploymentFixture.marker.manifestId,
         network: "Preprod",
         trustRootId: deploymentFixture.result.trustRootId,
-        releaseEvidenceDigest: RELEASE_DIGEST,
+        fundingProfileBundleDigest:
+          deploymentFixture.result.fundingProfileBundleDigest,
+        blueprintHash: BLUEPRINT_HASH,
         ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
         programCommitments: { validation: h32("55") },
         durableMarker: deploymentFixture.marker,

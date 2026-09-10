@@ -50,7 +50,7 @@ const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
   verifyForWorkflow: async () => ({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
-    releaseIdentityDigest: "e7".repeat(32),
+    blueprintHash: "e7".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
     ),

@@ -167,7 +167,7 @@ export type WatcherStateQueueTransitionKind =
 export type WatcherStateQueueIndexerPolicy = Readonly<{
   schemaVersion: typeof WATCHER_STATE_QUEUE_INDEXER_POLICY_SCHEMA_VERSION;
   network: WatcherStateQueueNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   deploymentTrustRootId: string;
   requiredFinalityDepth: string;
@@ -283,7 +283,7 @@ export type WatcherStateQueueObservation = Readonly<{
   schemaVersion: typeof WATCHER_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION;
   policyDigest: string;
   network: WatcherStateQueueNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   transitionKind: WatcherStateQueueTransitionKind;
   pointDigest: string;
@@ -377,7 +377,7 @@ export type WatcherStateQueueIndexerState = Readonly<{
   schemaVersion: typeof WATCHER_STATE_QUEUE_INDEXER_STATE_SCHEMA_VERSION;
   policyDigest: string;
   network: WatcherStateQueueNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   pointDigest: string;
   transactionHash: string | null;
@@ -672,7 +672,7 @@ export const parseWatcherStateQueueIndexerPolicy = (
   const keys = [
     "schemaVersion",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "deploymentTrustRootId",
     "requiredFinalityDepth",
@@ -716,7 +716,7 @@ export const parseWatcherStateQueueIndexerPolicy = (
     record.schemaVersion !==
       WATCHER_STATE_QUEUE_INDEXER_POLICY_SCHEMA_VERSION ||
     !isNetwork(record.network) ||
-    !isHex32(record.releaseEvidenceDigest) ||
+    !isHex32(record.blueprintHash) ||
     !isHex32(record.deploymentTrustRootId) ||
     !isNatural(record.requiredFinalityDepth) ||
     BigInt(record.requiredFinalityDepth) === 0n ||
@@ -774,7 +774,7 @@ export const parseWatcherStateQueueIndexerPolicy = (
   const canonical = Object.freeze({
     schemaVersion: WATCHER_STATE_QUEUE_INDEXER_POLICY_SCHEMA_VERSION,
     network: record.network,
-    releaseEvidenceDigest: record.releaseEvidenceDigest,
+    blueprintHash: record.blueprintHash,
     deploymentMarker: marker,
     deploymentTrustRootId: record.deploymentTrustRootId,
     requiredFinalityDepth: record.requiredFinalityDepth,
@@ -1340,7 +1340,7 @@ export const parseWatcherStateQueueObservation = (
     "schemaVersion",
     "policyDigest",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "transitionKind",
     "pointDigest",
@@ -1375,7 +1375,7 @@ export const parseWatcherStateQueueObservation = (
     record.schemaVersion !== WATCHER_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION ||
     !isHex32(record.policyDigest) ||
     !isNetwork(record.network) ||
-    !isHex32(record.releaseEvidenceDigest) ||
+    !isHex32(record.blueprintHash) ||
     typeof record.transitionKind !== "string" ||
     !kinds.includes(record.transitionKind as WatcherStateQueueTransitionKind) ||
     !isHex32(record.pointDigest) ||
@@ -1411,7 +1411,7 @@ export const parseWatcherStateQueueObservation = (
     schemaVersion: WATCHER_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION,
     policyDigest: record.policyDigest,
     network: record.network,
-    releaseEvidenceDigest: record.releaseEvidenceDigest,
+    blueprintHash: record.blueprintHash,
     deploymentMarker: marker,
     transitionKind: kind,
     pointDigest: record.pointDigest,
@@ -1882,7 +1882,7 @@ const verifyDeploymentAuthority = (
       .sort();
     return same(verified, authority.result) &&
       verified.network === policy.network &&
-      verified.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+      verified.blueprintHash === policy.blueprintHash &&
       verified.trustRootId === policy.deploymentTrustRootId &&
       sameMarker(verified.durableMarker, policy.deploymentMarker) &&
       applied.stateQueueMint === policy.stateQueuePolicyId &&
@@ -1952,7 +1952,7 @@ const verifyFinalityAuthority = (
     if (
       finalityPolicy === null ||
       finalityPolicy.network !== policy.network ||
-      finalityPolicy.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+      finalityPolicy.blueprintHash !== policy.blueprintHash ||
       !sameMarker(finalityPolicy.deploymentMarker, policy.deploymentMarker) ||
       finalityPolicy.confirmationDepth !== policy.requiredFinalityDepth
     ) {
@@ -3375,7 +3375,7 @@ const makeState = (
     schemaVersion: WATCHER_STATE_QUEUE_INDEXER_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     pointDigest: observation.pointDigest,
     transactionHash: observation.transactionHash,
@@ -3572,10 +3572,10 @@ const verifiedRollbackBinding = (
     recoveryResult.resumableFinalityState !== null &&
     finalityPolicy !== null &&
     finalityPolicy.network === policy.network &&
-    finalityPolicy.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+    finalityPolicy.blueprintHash === policy.blueprintHash &&
     sameMarker(finalityPolicy.deploymentMarker, policy.deploymentMarker) &&
     recoveryState.network === finalityPolicy.network &&
-    recoveryState.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+    recoveryState.blueprintHash === policy.blueprintHash &&
     sameMarker(
       recoveryState.deploymentMarker,
       verified.store.deploymentMarker,
@@ -4261,7 +4261,7 @@ export const parseWatcherStateQueueIndexerState = (
     "schemaVersion",
     "policyDigest",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "pointDigest",
     "transactionHash",
@@ -4300,7 +4300,7 @@ export const parseWatcherStateQueueIndexerState = (
     record.schemaVersion !== WATCHER_STATE_QUEUE_INDEXER_STATE_SCHEMA_VERSION ||
     record.policyDigest !== policy.policyDigest ||
     record.network !== policy.network ||
-    record.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    record.blueprintHash !== policy.blueprintHash ||
     !sameMarker(marker, policy.deploymentMarker) ||
     !isHex32(record.pointDigest) ||
     !(record.transactionHash === null || isHex32(record.transactionHash)) ||
@@ -4356,7 +4356,7 @@ export const parseWatcherStateQueueIndexerState = (
     schemaVersion: WATCHER_STATE_QUEUE_INDEXER_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: marker,
     pointDigest: record.pointDigest,
     transactionHash: record.transactionHash,
@@ -4426,7 +4426,7 @@ export const evaluateWatcherStateQueueIndexer = (
   if (
     observation.policyDigest !== policy.policyDigest ||
     observation.network !== policy.network ||
-    observation.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    observation.blueprintHash !== policy.blueprintHash ||
     !sameMarker(observation.deploymentMarker, policy.deploymentMarker)
   ) {
     return rejected("binding_mismatch");

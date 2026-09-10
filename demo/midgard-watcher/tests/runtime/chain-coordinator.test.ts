@@ -78,33 +78,54 @@ const policy = Object.freeze({
 }) as WatcherFinalityPolicy;
 
 describe("production native-chain coordinator", () => {
-  it("replays a release-final queue hook when the durable snapshot is already ahead", async () => {
-    const replayed = block("1", "0", "100", "10");
-    const durableHead = block("9", "8", "200", "100");
-    const observed: string[] = [];
-    const finalized: string[] = [];
+  it("treats only the initial exact intersection acknowledgement as startup when finality is unobserved", async () => {
+    const first = block("2", "1", "102", "12");
+    const replacement = block("3", "1", "103", "12");
+    const intersection = {
+      kind: "point" as const,
+      blockHash: h32("1"),
+      slot: "101",
+    };
+    let state = finalityState("unobserved");
+    const order: string[] = [];
     const observation = {
-      observe: async ({
-        block: candidate,
-      }: {
-        readonly block: WatcherNativeBlockAdmission;
-      }) => {
-        observed.push(candidate.blockHash);
-        return {
-          block: { chainPoint: { blockNo: candidate.blockNo } },
-          consistency: {},
-          transportAttestations: [],
-        };
-      },
+      observe: async () => ({
+        block: {},
+        consistency: {},
+        transportAttestations: [],
+      }),
       close: () => undefined,
     } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
-      read: () => ({
-        currentFinalityState: finalityState("finalized", durableHead),
-        currentStore: {},
-      }),
+      readFinality: () => state,
+      read: () => ({ currentFinalityState: state, currentStore: {} }),
       persistCanonicalProgress: async () => {
-        throw new Error("durable finality must not rewind to replayed history");
+        if (state.phase === "unobserved") {
+          order.push("first-visibility");
+          state = finalityState("pending", first);
+          return {
+            persistence: "committed",
+            finalityResult: { action: "observe_pending" },
+          };
+        }
+        return {
+          persistence: "unchanged",
+          finalityResult: { action: "duplicate" },
+        };
+      },
+      persistObservation: async () => {
+        order.push("observation");
+      },
+      persistRollback: async () => {
+        order.push("rollback");
+        state = finalityState("pending", replacement);
+        return {
+          persistence: "committed",
+          result: {
+            action: "apply_rewind",
+            protocolDecision: "resume_pending",
+          },
+        };
       },
     } as unknown as WatcherDurableRuntime;
     const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
@@ -112,23 +133,287 @@ describe("production native-chain coordinator", () => {
         policy,
         durable,
         observation,
+        restartIntersection: intersection,
         hooks: {
-          onRollback: async () => undefined,
+          onRollback: async () => {
+            order.push("revoke");
+          },
+          onFinalized: async () => undefined,
+        },
+      },
+      {
+        admitRollForward: (event) =>
+          event.blockHash === first.blockHash ? first : replacement,
+      },
+    );
+    const backward = {
+      schemaVersion: "midgard-watcher-native-chain-sync-v1" as const,
+      kind: "roll_backward" as const,
+      point: intersection,
+      tip: {
+        kind: "point" as const,
+        blockHash: first.blockHash,
+        slot: first.slot,
+        blockNo: first.blockNo,
+      },
+    };
+    await coordinator.handle(backward);
+    expect(order).toEqual([]);
+    expect(coordinator.status().rollbackPoint).toBeNull();
+    await coordinator.handle(forward(first));
+    expect(order).toEqual(["first-visibility"]);
+    await coordinator.handle(backward);
+    await coordinator.handle(forward(replacement));
+    expect(order).toEqual([
+      "first-visibility",
+      "revoke",
+      "observation",
+      "rollback",
+    ]);
+  });
+
+  it.each(["blockHash", "slot"] as const)(
+    "does not suppress a first rollback with another intersection %s",
+    async (field) => {
+      const intersection = {
+        kind: "point" as const,
+        blockHash: h32("1"),
+        slot: "101",
+      };
+      const point = {
+        ...intersection,
+        [field]: field === "blockHash" ? h32("2") : "100",
+      };
+      const revoked: unknown[] = [];
+      const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
+        {
+          policy,
+          durable: {
+            readFinality: () => finalityState("unobserved"),
+            read: () => ({ currentFinalityState: finalityState("unobserved") }),
+          } as unknown as WatcherDurableRuntime,
+          observation: {} as WatcherLocalKupmiosNativeObservationRuntime,
+          restartIntersection: intersection,
+          hooks: {
+            onRollback: async (point) => {
+              revoked.push(point);
+            },
+            onFinalized: async () => undefined,
+          },
+        },
+        {
+          admitRollForward: () => {
+            throw new Error("not used");
+          },
+        },
+      );
+      await coordinator.handle({
+        schemaVersion: "midgard-watcher-native-chain-sync-v1",
+        kind: "roll_backward",
+        point,
+        tip: { kind: "point", blockHash: h32("3"), slot: "102", blockNo: "12" },
+      });
+      expect(revoked).toEqual([point]);
+      expect(coordinator.status().rollbackPoint).toEqual(point);
+    },
+  );
+
+  const retainedPrefixFixture = (
+    phase: "pending" | "finalized",
+    emptyPrefix = false,
+    intersectionAtRetained = false,
+  ) => {
+    const first = block("1", "0", "100", "10");
+    const second = block("2", "1", "101", "11");
+    const retained = block("3", "2", "102", "12");
+    const intersection = {
+      kind: "point" as const,
+      blockHash: intersectionAtRetained
+        ? retained.blockHash
+        : emptyPrefix
+          ? second.blockHash
+          : h32("0"),
+      slot: intersectionAtRetained
+        ? retained.slot
+        : emptyPrefix
+          ? second.slot
+          : "99",
+    };
+    const delivered: string[] = [];
+    const rolledBack: unknown[] = [];
+    const persisted: string[] = [];
+    const candidates = new Map(
+      [first, second, retained].map((item) => [item.blockHash, item]),
+    );
+    const state = finalityState(phase, retained);
+    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
+      {
+        policy,
+        restartIntersection: intersection,
+        durable: {
+          readFinality: () => state,
+          read: () => ({
+            currentFinalityState: state,
+            currentStore: {},
+            authenticatedConsistencyHistory: [],
+          }),
+          persistCanonicalProgress: async (input: {
+            block: { chainPoint: { blockNo: string } };
+          }) => {
+            persisted.push(input.block.chainPoint.blockNo);
+            if (
+              phase === "finalized" &&
+              input.block.chainPoint.blockNo === "13"
+            ) {
+              return {
+                persistence: "committed",
+                finalityResult: { action: "observe_pending" },
+              };
+            }
+            if (
+              phase !== "pending" ||
+              input.block.chainPoint.blockNo !== retained.blockNo
+            ) {
+              throw new Error(
+                "Retained history must not rewind canonical progress",
+              );
+            }
+            return {
+              persistence: "unchanged",
+              finalityResult: { action: "duplicate" },
+            };
+          },
+        } as unknown as WatcherDurableRuntime,
+        observation: {
+          observe: async ({
+            block: candidate,
+          }: {
+            block: WatcherNativeBlockAdmission;
+          }) => ({
+            block: { chainPoint: { blockNo: candidate.blockNo } },
+            consistency: {},
+            transportAttestations: [],
+          }),
+          close: () => undefined,
+        } as unknown as WatcherLocalKupmiosNativeObservationRuntime,
+        hooks: {
+          onRollback: async (point) => {
+            rolledBack.push(point);
+          },
           onFinalized: async ({ nativeBlock }) => {
-            finalized.push(nativeBlock.blockHash);
+            delivered.push(nativeBlock.blockNo);
           },
         },
       },
-      { admitRollForward: () => replayed },
+      {
+        admitRollForward: (event) => {
+          const candidate = candidates.get(event.blockHash);
+          if (candidate === undefined) throw new Error("Unknown fixture block");
+          return candidate;
+        },
+      },
     );
+    const acknowledge = async () =>
+      await coordinator.handle({
+        schemaVersion: "midgard-watcher-native-chain-sync-v1",
+        kind: "roll_backward",
+        point: intersection,
+        tip: {
+          kind: "point",
+          blockHash: retained.blockHash,
+          slot: "1000",
+          blockNo: "100",
+        },
+      });
+    return {
+      coordinator,
+      first,
+      second,
+      retained,
+      candidates,
+      delivered,
+      rolledBack,
+      persisted,
+      acknowledge,
+    };
+  };
 
-    await coordinator.handle(forward(replayed, "100"));
+  it.each(["pending", "finalized"] as const)(
+    "checks retained %s ancestry and predecessor finality before releasing recovered blocks",
+    async (phase) => {
+      const fixture = retainedPrefixFixture(phase);
+      await fixture.acknowledge();
+      expect(fixture.rolledBack).toEqual([]);
+      await fixture.coordinator.handle(forward(fixture.first, "100"));
+      expect(fixture.delivered).toEqual([]);
+      await fixture.coordinator.handle(forward(fixture.second, "100"));
+      expect(fixture.delivered).toEqual([]);
+      if (phase === "pending") {
+        await expect(
+          fixture.coordinator.handle(forward(fixture.retained, "100")),
+        ).rejects.toThrow();
+        expect(fixture.delivered).toEqual([]);
+        expect(fixture.persisted).toEqual([]);
+        return;
+      }
+      await fixture.coordinator.handle(forward(fixture.retained, "100"));
+      expect(fixture.delivered).toEqual(["10", "11", "12"]);
+      await fixture.coordinator.handle(forward(fixture.retained, "100"));
+      expect(fixture.delivered).toEqual(["10", "11", "12"]);
+      expect(fixture.persisted.every((height) => height === "12")).toBe(true);
+    },
+  );
 
-    expect(observed).toEqual([replayed.blockHash]);
-    expect(finalized).toEqual([replayed.blockHash]);
+  it("acknowledges an initial pending point without inferring any finalized ancestor when the replay prefix is empty", async () => {
+    const fixture = retainedPrefixFixture("pending", true);
+    await fixture.acknowledge();
+    expect(fixture.rolledBack).toEqual([]);
+    await fixture.coordinator.handle(forward(fixture.retained, "100"));
+    expect(fixture.delivered).toEqual([]);
+    expect(fixture.persisted).toEqual(["12"]);
   });
 
-  it("reobserves the pending block at the native tip before admitting its child", async () => {
+  it("starts the finalized head's child when the restart intersection already equals that head", async () => {
+    const fixture = retainedPrefixFixture("finalized", false, true);
+    const child = block("4", "3", "103", "13");
+    fixture.candidates.set(child.blockHash, child);
+    await fixture.acknowledge();
+    expect(fixture.rolledBack).toEqual([]);
+    await fixture.coordinator.handle(forward(child, "100"));
+    expect(fixture.delivered).toEqual([]);
+    expect(fixture.persisted).toEqual(["13"]);
+  });
+
+  it.each(["wrong_boundary", "wrong_parent", "missing_block"] as const)(
+    "rejects retained replay with %s before releasing any queue hook",
+    async (variant) => {
+      const fixture = retainedPrefixFixture("finalized");
+      await fixture.acknowledge();
+      await fixture.coordinator.handle(forward(fixture.first, "100"));
+      expect(fixture.delivered).toEqual([]);
+      if (variant !== "missing_block") {
+        const middle =
+          variant === "wrong_parent"
+            ? { ...fixture.second, prevHash: h32("8") }
+            : fixture.second;
+        fixture.candidates.set(middle.blockHash, middle);
+        await fixture.coordinator.handle(forward(middle, "100"));
+        expect(fixture.delivered).toEqual([]);
+      }
+      const boundary =
+        variant === "wrong_boundary"
+          ? { ...fixture.retained, blockHash: h32("9") }
+          : fixture.retained;
+      fixture.candidates.set(boundary.blockHash, boundary);
+      await expect(
+        fixture.coordinator.handle(forward(boundary, "100")),
+      ).rejects.toThrow();
+      expect(fixture.delivered).toEqual([]);
+      expect(fixture.persisted).toEqual([]);
+    },
+  );
+
+  it("captures the child on arrival and persists pending finality before its child", async () => {
     const first = block("1", "0", "100", "10");
     const second = block("2", "1", "101", "11");
     let state = finalityState("unobserved");
@@ -152,6 +437,7 @@ describe("production native-chain coordinator", () => {
       close: () => undefined,
     } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
+      readFinality: () => state,
       read: () => ({ currentFinalityState: state, currentStore: {} }),
       persistCanonicalProgress: async (input: {
         readonly block: { readonly chainPoint: { readonly blockNo: string } };
@@ -188,7 +474,7 @@ describe("production native-chain coordinator", () => {
     await coordinator.handle(forward(first));
     await coordinator.handle(forward(second));
 
-    expect(observed).toEqual(["10:1", "10:2", "11:1"]);
+    expect(observed).toEqual(["10:1", "11:1", "10:2"]);
     expect(persisted).toEqual(["10", "10", "11"]);
     expect(coordinator.status()).toMatchObject({
       quarantined: false,
@@ -210,6 +496,7 @@ describe("production native-chain coordinator", () => {
       close: () => undefined,
     } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
+      readFinality: () => state,
       read: () => ({ currentFinalityState: state, currentStore: {} }),
       persistObservation: async () => {
         order.push("observation");
@@ -232,7 +519,24 @@ describe("production native-chain coordinator", () => {
       }),
     } as unknown as WatcherDurableRuntime;
     const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
-      { policy, durable, observation },
+      {
+        policy,
+        durable,
+        observation,
+        hooks: {
+          onRollback: async () => {
+            order.push("revoke");
+          },
+          onFinalized: async () => {
+            throw new Error("Replacement must retain first visibility");
+          },
+        },
+        restartIntersection: {
+          kind: "point",
+          blockHash: h32("1"),
+          slot: "101",
+        },
+      },
       { admitRollForward: () => replacement },
     );
 
@@ -244,7 +548,7 @@ describe("production native-chain coordinator", () => {
     });
     await coordinator.handle(forward(replacement, "13"));
 
-    expect(order).toEqual(["observation", "rollback"]);
+    expect(order).toEqual(["revoke", "observation", "rollback"]);
     expect(coordinator.status().rollbackPoint).toBeNull();
   });
 
@@ -257,6 +561,7 @@ describe("production native-chain coordinator", () => {
       close: () => undefined,
     } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
+      readFinality: () => finalityState("pending", replacement),
       read: () => ({
         currentFinalityState: finalityState("pending", replacement),
         currentStore: {},
@@ -326,6 +631,7 @@ describe("production native-chain coordinator", () => {
       close: () => undefined,
     } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
+      readFinality: () => state,
       read: () => ({
         currentFinalityState: state,
         currentStore: {},
@@ -457,6 +763,7 @@ describe("production native-chain coordinator", () => {
       close: () => undefined,
     } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
+      readFinality: () => state,
       read: () => ({
         currentFinalityState: state,
         currentStore: {},
@@ -503,6 +810,22 @@ describe("production native-chain coordinator", () => {
       { admitRollForward: () => replacement },
     );
 
+    await coordinator.handle({
+      schemaVersion: "midgard-watcher-native-chain-sync-v1",
+      kind: "roll_backward",
+      point: {
+        kind: "point",
+        blockHash: ancestor.blockHash,
+        slot: ancestor.slot,
+      },
+      tip: {
+        kind: "point",
+        blockHash: replacement.blockHash,
+        slot: replacement.slot,
+        blockNo: replacement.blockNo,
+      },
+    });
+    expect(coordinator.status().rollbackPoint).toBeNull();
     await coordinator.handle(forward(replacement));
 
     expect(order).toEqual([

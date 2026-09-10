@@ -1,9 +1,16 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import {
+  parseDaAvailabilityRetentionEvidence,
+  parseStateQueueAuthenticatedTransition,
+} from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
-import { admitDaPayloadRetentionReleaseAuthority } from "./daPayloadTerminalOutcomes.js";
+import {
+  admitDaPayloadRetentionReleaseAuthority,
+  availabilityRetentionAuthority,
+} from "./daPayloadTerminalOutcomes.js";
 import { computeChallengeableCutoff } from "./retention-policy.js";
 import {
   clearTable,
@@ -250,7 +257,7 @@ export const retrieveByHeaderHash = (
  * A NULL `block_end_time` is never prunable. Time alone is never sufficient:
  * deletion also requires an exact finalized state-queue terminal transition
  * recorded under the authenticated deployment manifest. Missing, foreign,
- * malformed, or Q58-capable/unknown release authority retains every row.
+ * malformed, active, or unobserved availability state retains the payload.
  */
 export const pruneOlderThan = (
   cutoff: Date,
@@ -262,29 +269,74 @@ export const pruneOlderThan = (
       admitDaPayloadRetentionReleaseAuthority(deploymentManifest);
     if (
       authority === null ||
-      authority.availabilityChallengeCapability !== "deployed_inactive"
+      authority.availabilityChallengeCapability !== "deployed_unobserved"
     ) {
       return 0;
     }
     const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{ readonly deleted_count: string }>`
-      WITH deleted AS (
-        DELETE FROM ${sql(tableName)}
-        WHERE ${sql(Columns.BLOCK_END_TIME)} IS NOT NULL
-          AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
-          AND ${sql(Columns.CREATED_AT)} < ${cutoff}
-          AND EXISTS (
-            SELECT 1
-            FROM da_payload_terminal_outcomes AS terminal
-            WHERE terminal.header_hash = ${sql(tableName)}.${sql(Columns.HEADER_HASH)}
-              AND terminal.deployment_identity_digest = ${authority.deploymentIdentityDigest}
-              AND terminal.state_queue_policy_id = ${authority.stateQueuePolicyId}
-              AND terminal.finality_depth >= ${authority.minimumFinalityDepth.toString()}
+    const availabilityAuthority = availabilityRetentionAuthority(authority);
+    if (availabilityAuthority === null) return 0;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const lockedSql = yield* SqlClient.SqlClient;
+        const candidates = yield* lockedSql<{
+          readonly header_hash: Buffer;
+          readonly transition_record: unknown;
+          readonly availability_terminal_evidence: unknown;
+        }>`
+        SELECT payload.header_hash, terminal.transition_record, terminal.availability_terminal_evidence
+        FROM da_payloads AS payload
+        JOIN da_payload_terminal_outcomes AS terminal ON terminal.header_hash=payload.header_hash
+        WHERE payload.block_end_time IS NOT NULL AND payload.block_end_time < ${challengeableCutoff}
+          AND payload.created_at < ${cutoff}
+          AND terminal.deployment_identity_digest=${authority.deploymentIdentityDigest}
+          AND terminal.state_queue_policy_id=${authority.stateQueuePolicyId}
+          AND terminal.finality_depth>=${authority.minimumFinalityDepth.toString()}
+          AND terminal.availability_terminal_evidence IS NOT NULL
+        FOR UPDATE OF payload, terminal`;
+        let deleted = 0;
+        for (const candidate of candidates) {
+          const decodeJson = (value: unknown): unknown => {
+            if (typeof value !== "string") return value;
+            try {
+              return JSON.parse(value) as unknown;
+            } catch {
+              return null;
+            }
+          };
+          const transition = parseStateQueueAuthenticatedTransition(
+            decodeJson(candidate.transition_record),
+          );
+          const evidence =
+            transition === null
+              ? null
+              : parseDaAvailabilityRetentionEvidence(
+                  decodeJson(candidate.availability_terminal_evidence),
+                  transition,
+                  availabilityAuthority,
+                );
+          if (
+            transition === null ||
+            evidence === null ||
+            BigInt(evidence.blockEndTimeMs) >=
+              BigInt(challengeableCutoff.getTime()) ||
+            transition.removedHeaderHashes[0] !==
+              candidate.header_hash.toString("hex")
           )
-        RETURNING 1
-      )
-      SELECT COUNT(*)::text AS deleted_count FROM deleted`;
-    return Number(rows[0]?.deleted_count ?? "0");
+            continue;
+          const rows = yield* lockedSql<{
+            readonly header_hash: Buffer;
+          }>`DELETE FROM da_payloads AS payload
+          WHERE payload.header_hash=${candidate.header_hash}
+            AND EXISTS (SELECT 1 FROM da_payload_terminal_outcomes AS terminal WHERE terminal.header_hash=payload.header_hash
+              AND terminal.deployment_identity_digest=${authority.deploymentIdentityDigest}
+              AND terminal.transition_digest=${Buffer.from(transition.transitionDigest, "hex")})
+          RETURNING payload.header_hash`;
+          deleted += rows.length;
+        }
+        return deleted;
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`pruneOlderThan ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to prune DA payloads"),

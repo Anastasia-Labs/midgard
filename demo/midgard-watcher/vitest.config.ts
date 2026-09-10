@@ -1,7 +1,11 @@
-import { midgardSourceSsr } from "@al-ft/midgard-test-support/vitest";
+import {
+  midgardSourceSsr,
+  rawSqlLoaderPlugin,
+} from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  plugins: [rawSqlLoaderPlugin()],
   test: {
     environment: "node",
     include: ["./tests/**/*.test.ts"],

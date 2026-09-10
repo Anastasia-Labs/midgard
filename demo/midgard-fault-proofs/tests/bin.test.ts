@@ -314,7 +314,7 @@ describe("fault-proof CLI argument parsing", () => {
     });
   });
 
-  it("parses invalid-range prepare and init category arguments", () => {
+  it("parses invalid-range prepare arguments and the submit-init subject", () => {
     const prepare = parseArgs([
       "node",
       "midgard-fault-proofs",
@@ -337,6 +337,8 @@ describe("fault-proof CLI argument parsing", () => {
       txId: "44".repeat(32),
     });
 
+    // submit-init must carry the fraudulent block out-ref alongside the
+    // category; the category vocabulary itself is covered exhaustively above.
     const init = parseArgs([
       "node",
       "midgard-fault-proofs",
@@ -351,65 +353,63 @@ describe("fault-proof CLI argument parsing", () => {
       "invalidRange",
     ]);
 
-    expect(init.fraudCategory).toBe("invalidRange");
-
-    const transitionTraceInit = parseArgs([
-      "node",
-      "midgard-fault-proofs",
-      "submit-init",
-      "--blueprint",
-      "plutus.json",
-      "--deployment-info",
-      "deployment.json",
-      "--fraudulent-block-out-ref",
-      `${"55".repeat(32)}#0`,
-      "--fraud-category",
-      "transitionTrace",
-    ]);
-
-    expect(transitionTraceInit.fraudCategory).toBe("transitionTrace");
-
-    const validationTraceDisputeInit = parseArgs([
-      "node",
-      "bin",
-      "submit-init",
-      "--blueprint",
-      "plutus.json",
-      "--deployment-info",
-      "deployment.json",
-      "--fraudulent-block-out-ref",
-      `${"ef".repeat(32)}#0`,
-      "--fraud-category",
-      "validationTraceDispute",
-    ]);
-    expect(validationTraceDisputeInit.fraudCategory).toBe(
-      "validationTraceDispute",
-    );
-
-    const nonExistentInputNoIndexInit = parseArgs([
-      "node",
-      "bin",
-      "submit-init",
-      "--fraud-category",
-      "nonExistentInputNoIndex",
-    ]);
-    expect(nonExistentInputNoIndexInit.fraudCategory).toBe(
-      "nonExistentInputNoIndex",
-    );
+    expect(init).toMatchObject({
+      command: "submit-init",
+      blueprintPath: "plutus.json",
+      deploymentInfoPath: "deployment.json",
+      fraudulentBlockOutRef: `${"55".repeat(32)}#0`,
+      fraudCategory: "invalidRange",
+    });
   });
 
-  it("rejects unknown fault-proof categories", () => {
-    expect(() =>
-      parseArgs([
-        "node",
-        "midgard-fault-proofs",
-        "submit-init",
-        "--fraud-category",
-        "invalid-range",
-      ]),
-    ).toThrow(
-      `--fraud-category must be one of ${SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => `"${category}"`).join(", ")}.`,
-    );
+  it.each(SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)(
+    "accepts the catalogued %s category on submit-init",
+    (category) => {
+      expect(
+        parseArgs([
+          "node",
+          "midgard-fault-proofs",
+          "submit-init",
+          "--fraud-category",
+          category,
+        ]).fraudCategory,
+      ).toBe(category);
+    },
+  );
+
+  it("refuses an uncatalogued category and enumerates the catalogue in order", () => {
+    // The refusal message is decoded by an independently written parser rather
+    // than regenerated with the production formatting expression, so a change
+    // to either the quoting or the enumerated set is caught. The set itself is
+    // the SDK catalogue order, which is the CLI's external contract.
+    const message = (() => {
+      try {
+        parseArgs([
+          "node",
+          "midgard-fault-proofs",
+          "submit-init",
+          "--fraud-category",
+          "invalid-range",
+        ]);
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+      throw new Error(
+        'parseArgs accepted the uncatalogued category "invalid-range".',
+      );
+    })();
+
+    const prefix = "--fraud-category must be one of ";
+    expect(message.startsWith(prefix), message).toBe(true);
+    expect(message.endsWith("."), message).toBe(true);
+    const enumerated = message
+      .slice(prefix.length, -1)
+      .split(", ")
+      .map((entry) => {
+        expect(entry.startsWith('"') && entry.endsWith('"'), entry).toBe(true);
+        return entry.slice(1, -1);
+      });
+    expect(enumerated).toEqual([...SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER]);
   });
 
   it("accepts no-index removal now that the input-no-idx machine is registered", () => {
@@ -607,18 +607,6 @@ describe("fault-proof CLI argument parsing", () => {
     ).toThrow(/must be either "operator" or "challenger"/u);
   });
 
-  it("accepts the zeroInput fault-proof category", () => {
-    expect(
-      parseArgs([
-        "node",
-        "midgard-fault-proofs",
-        "submit-init",
-        "--fraud-category",
-        "zeroInput",
-      ]).fraudCategory,
-    ).toBe("zeroInput");
-  });
-
   it("requires the counted header root for zero-input preparation", async () => {
     const previousArgv = process.argv;
     process.argv = [
@@ -639,7 +627,7 @@ describe("fault-proof CLI argument parsing", () => {
     }
   });
 
-  it("parses non-existent-input prepare, init category, and submit-step arguments", () => {
+  it("parses non-existent-input prepare and submit-step arguments", () => {
     const prepare = parseArgs([
       "node",
       "midgard-fault-proofs",
@@ -664,22 +652,6 @@ describe("fault-proof CLI argument parsing", () => {
       badInputIndex: "2",
       prevUtxosRoot: "55".repeat(32),
     });
-
-    const init = parseArgs([
-      "node",
-      "midgard-fault-proofs",
-      "submit-init",
-      "--blueprint",
-      "plutus.json",
-      "--deployment-info",
-      "deployment.json",
-      "--fraudulent-block-out-ref",
-      `${"55".repeat(32)}#0`,
-      "--fraud-category",
-      "nonExistentInput",
-    ]);
-
-    expect(init.fraudCategory).toBe("nonExistentInput");
 
     const step02 = parseArgs([
       "node",

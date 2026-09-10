@@ -200,9 +200,10 @@ export const daAvailabilityTrancheAssetName = (input: {
   const challengeSuffix = input.challengeAssetName.slice(
     DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX.length,
   );
-  return `${DA_AVAILABILITY_TRANCHE_ASSET_NAME_PREFIX}${challengeSuffix}${input.trancheIndex
-    .toString(16)
-    .padStart(4, "0")}`;
+  const encodedIndex = Buffer.alloc(2);
+  // Aiken's integer_to_bytearray(False, 2, index) is little endian.
+  encodedIndex.writeUInt16LE(input.trancheIndex);
+  return `${DA_AVAILABILITY_TRANCHE_ASSET_NAME_PREFIX}${challengeSuffix}${encodedIndex.toString("hex")}`;
 };
 
 export const daAvailabilityTerminalAccumulatorAssetName = (
@@ -462,6 +463,7 @@ export const DaAvailabilityPublicationDatum =
 export const DaAvailabilityMintRedeemerSchema = Data.Enum([
   Data.Object({
     MintBondFromAttestation: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
       da_attestation_input_index: Data.Integer(),
       da_attestation_mint_redeemer_index: Data.Integer(),
@@ -472,6 +474,7 @@ export const DaAvailabilityMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     OpenChallenge: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
       bond_input_index: Data.Integer(),
       bond_output_index: Data.Integer(),
@@ -485,6 +488,7 @@ export const DaAvailabilityMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     SettleTranche: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       bond_ref_input_index: Data.Integer(),
       terminal_accumulator_input_index: Data.Integer(),
       terminal_accumulator_output_index: Data.Integer(),
@@ -494,6 +498,7 @@ export const DaAvailabilityMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     CloseChallenge: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
       bond_input_index: Data.Integer(),
       terminal_accumulator_input_index: Data.Integer(),
@@ -505,6 +510,7 @@ export const DaAvailabilityMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     TimeoutChallenge: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
       bond_input_index: Data.Integer(),
       terminal_accumulator_input_index: Data.Integer(),

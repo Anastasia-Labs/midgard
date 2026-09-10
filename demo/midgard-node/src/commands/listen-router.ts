@@ -3121,6 +3121,25 @@ export const buildSubmitRouter = <R>(
     ),
   );
 
+/** The lease coordination routes shared by the node and integration fixtures. */
+export const buildStateQueueMutationLeaseRouter = () =>
+  HttpRouter.empty.pipe(
+    HttpRouter.get(
+      `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,
+      withAdminAccess(
+        STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
+        getStateQueueMutationLeaseHandler,
+      ),
+    ),
+    HttpRouter.post(
+      `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,
+      withAdminAccess(
+        STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
+        postStateQueueMutationLeaseHandler,
+      ),
+    ),
+  );
+
 /**
  * Builds the full HTTP router for the node command server.
  */
@@ -3175,20 +3194,7 @@ export const buildListenRouter = (
         `/${STATE_QUEUE_ENDPOINT}`,
         withAdminAccess(STATE_QUEUE_ENDPOINT, getStateQueueHandler),
       ),
-      HttpRouter.get(
-        `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,
-        withAdminAccess(
-          STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
-          getStateQueueMutationLeaseHandler,
-        ),
-      ),
-      HttpRouter.post(
-        `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,
-        withAdminAccess(
-          STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
-          postStateQueueMutationLeaseHandler,
-        ),
-      ),
+      HttpRouter.concat(buildStateQueueMutationLeaseRouter()),
       HttpRouter.get(
         `/logBlocksDB`,
         withAdminAccess("logBlocksDB", getLogBlocksDBHandler),

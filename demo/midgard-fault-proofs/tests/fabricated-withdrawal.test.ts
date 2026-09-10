@@ -42,6 +42,7 @@ import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  credentialToAddress,
   Data,
   type LucidEvolution,
   toUnit,
@@ -547,6 +548,119 @@ describe("fabricated-withdrawal production evidence authority", () => {
       reconstruction: { withdrawals },
     } as unknown as CanonicalBlockEvidence;
   };
+
+  it.each([false, true])(
+    "uses the governed withdrawal spending address for ordinary lookup and readmission (stake credential: %s)",
+    async (withStake) => {
+      const hubPolicy = h28(0x16);
+      const hubUnit = toUnit(hubPolicy, SDK.HUB_ORACLE_ASSET_NAME);
+      const hubAddress = credentialToAddress("Preview", {
+        type: "Script",
+        hash: hubPolicy,
+      });
+      const eventAddress = credentialToAddress(
+        "Preview",
+        { type: "Script", hash: h28(0xe1) },
+        withStake ? { type: "Key", hash: h28(0xe2) } : undefined,
+      );
+      const hubDatum = {
+        ...Data.from(hubOracleUtxoFixture().datum!, SDK.HubOracleDatum),
+        withdrawal_addr: await Effect.runPromise(
+          SDK.addressDataFromBech32(eventAddress),
+        ),
+      };
+      const hub = {
+        ...hubOracleUtxoFixture(),
+        address: hubAddress,
+        datum: Data.to(hubDatum, SDK.HubOracleDatum),
+        assets: { lovelace: 5_000_000n, [hubUnit]: 1n },
+      };
+      const event = { ...withdrawalEventUtxoFixture(), address: eventAddress };
+      const eventUnit = toUnit(
+        hubDatum.withdrawal,
+        NONCE_AUTHENTIC_WITHDRAWAL_ID,
+      );
+      const mintPolicyAddress = credentialToAddress("Preview", {
+        type: "Script",
+        hash: hubDatum.withdrawal,
+      });
+      expect(eventAddress).not.toBe(mintPolicyAddress);
+      let liveEventAddress = eventAddress;
+      const queries: string[] = [];
+      const authority = createFabricatedWithdrawalEvidenceAuthority({
+        lucid: {
+          utxosByOutRef: async () => [],
+          utxosAtWithUnit: async (address: string, unit: string) => {
+            queries.push(address);
+            if (address === hubAddress && unit === hubUnit) return [hub];
+            return address === liveEventAddress && unit === eventUnit
+              ? [{ ...event, address: liveEventAddress }]
+              : [];
+          },
+        } as unknown as LucidEvolution,
+        network: "Preview",
+        hubOraclePolicyId: hubPolicy,
+        minimumConfirmationDepth: 1,
+      });
+      const ordinary = await buildWithdrawalsBlockFixture({
+        leaves: [
+          {
+            key: KEY_AUTHENTIC_WITHDRAWAL_ID,
+            value: VALUE_AUTHENTIC_WITHDRAWAL_INFO,
+          },
+        ],
+      });
+      const ordinaryEvidence = await canonicalEvidence(ordinary);
+      await expect(
+        authority.detect(ordinaryEvidence, h28(0x44)),
+      ).resolves.toEqual([]);
+      // Reuse the existing mismatch case solely to exercise persisted-event lookup.
+      const existing = await buildWithdrawalsBlockFixture({
+        leaves: [MM_LEAF],
+      });
+      const detections = await authority.detect(
+        await canonicalEvidence(existing),
+        h28(0x44),
+      );
+      expect(detections).toHaveLength(1);
+      expect(detections[0]!.artifact.authenticContent.eventDatumCbor).toBe(
+        eventDatumBytes(withdrawalEventDatum()),
+      );
+      expect(detections[0]!.artifact.authenticContent.eventDatumCbor).not.toBe(
+        event.datum,
+      );
+      await expect(authority.readmit(detections[0]!.artifact)).resolves.toEqual(
+        detections[0]!.artifact,
+      );
+      expect(queries).toContain(eventAddress);
+      expect(queries).not.toContain(mintPolicyAddress);
+      liveEventAddress = mintPolicyAddress;
+      await expect(
+        authority.detect(ordinaryEvidence, h28(0x44)),
+      ).rejects.toThrow("event lookup requires exactly one current L1 output");
+      await expect(authority.readmit(detections[0]!.artifact)).rejects.toThrow(
+        "event lookup requires exactly one current L1 output",
+      );
+      liveEventAddress = eventAddress;
+      const altered = withdrawalEventDatum();
+      event.datum = Data.to(
+        {
+          ...altered,
+          event: {
+            ...altered.event,
+            info: {
+              ...altered.event.info,
+              body: { ...altered.event.info.body, l2_owner: h28(0xe3) },
+            },
+          },
+        },
+        SDK.WithdrawalOrderDatum,
+      );
+      await expect(authority.readmit(detections[0]!.artifact)).rejects.toThrow(
+        "event artifact changed its authenticated L1 outref or datum",
+      );
+    },
+  );
 
   it("derives and re-admits an authenticated live-identity fault", async () => {
     const fixture = await buildWithdrawalsBlockFixture({ leaves: [FI_LEAF] });

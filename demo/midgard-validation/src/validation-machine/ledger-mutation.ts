@@ -5,6 +5,7 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   buildMidgardMpfProofFoldTrace,
+  computeHash32,
   type MidgardMpfProofFoldTrace,
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
@@ -59,14 +60,13 @@ export const buildValidationMachineLedgerInsertOp = ({
   }).descriptorCbor,
 });
 
-export const buildValidationMachineLedgerMutationSteps = async (input: {
-  readonly initialEntries: readonly ValidationMachineLedgerEntry[];
-  readonly operations: readonly ValidationMachineLedgerOp[];
-}): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
+const createLedgerTrie = async (
+  entries: readonly ValidationMachineLedgerEntry[],
+): Promise<Trie> => {
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  for (const entry of [...input.initialEntries].sort((left, right) =>
+  for (const entry of [...entries].sort((left, right) =>
     Buffer.compare(left.outRef, right.outRef),
   )) {
     await trie.insert(
@@ -77,6 +77,26 @@ export const buildValidationMachineLedgerMutationSteps = async (input: {
       }).descriptorCbor,
     );
   }
+  return trie;
+};
+
+/** Reconstructs the header's descriptor root from complete raw ledger preimages. */
+export const validationMachineLedgerRoot = async (
+  entries: readonly ValidationMachineLedgerEntry[],
+): Promise<Buffer> => {
+  const trie = await createLedgerTrie(entries);
+  // Midgard headers commit blake2b256(empty) for an empty ledger. MPF's zero
+  // sentinel remains internal to proof folds and intermediate mutation roots.
+  return trie.hash == null
+    ? computeHash32(Buffer.alloc(0))
+    : exactTrieRoot(trie);
+};
+
+export const buildValidationMachineLedgerMutationSteps = async (input: {
+  readonly initialEntries: readonly ValidationMachineLedgerEntry[];
+  readonly operations: readonly ValidationMachineLedgerOp[];
+}): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
+  const trie = await createLedgerTrie(input.initialEntries);
   const steps: ValidationMachineLedgerMutationStep[] = [];
   for (const operation of input.operations) {
     steps.push(await applyValidationMachineLedgerMutationStep(trie, operation));

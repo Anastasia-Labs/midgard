@@ -12,7 +12,10 @@ import {
   type MissingSignatureTransactionPort,
 } from "../src/workflow/missing-signature-adapter.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
-import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  workflowPreflightTransaction,
+} from "../src/workflow/transaction-boundary.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
@@ -148,6 +151,9 @@ describe("production missing-signature adapter V1", () => {
       ...context,
       action: firstObservation.action,
     });
+    expect(workflowPreflightTransaction(firstPreflight)).toBe(
+      (await capture.mock.results[0]!.value).transaction.signed,
+    );
     await expect(
       firstProcess.submit({
         ...context,

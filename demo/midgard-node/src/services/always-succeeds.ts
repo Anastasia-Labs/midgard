@@ -240,7 +240,16 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const correctionLock = stateQueue;
     const daParamsGovernor = stateQueue;
     const daAttestation = stateQueue;
-    const availabilityChallenge = stateQueue;
+    const availabilityChallenge: SDK.AvailabilityChallengeValidator = {
+      ...stateQueueAuthenticated,
+      yields: {
+        bond: stateQueueYield,
+        open: stateQueueYield,
+        settle: stateQueueYield,
+        close: stateQueueYield,
+        timeout: stateQueueYield,
+      },
+    };
     const registeredOperators = yield* mkAuthVal("registered_operators");
     const activeOperators = yield* mkAuthVal("active_operators");
     const retiredOperators = yield* mkAuthVal("retired_operators");
@@ -598,7 +607,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         forcedScan: invalidRange,
         steps: [invalidRange, invalidRange],
       },
-      missingNativeScriptUtxo: repeatedFaultProofChain(zeroInput, 5),
+      missingNativeScriptUtxo: repeatedFaultProofChain(zeroInput, 7),
       nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 5),
       minAda: {
         ...repeatedFaultProofChain(invalidRange, 5),

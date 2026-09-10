@@ -10,11 +10,13 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { daRetentionPruneDecision } from "@al-ft/midgard-core";
 import {
   assertDeploymentMarkerMatches,
   type DeploymentMarker,
   parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import * as SDK from "@al-ft/midgard-sdk";
 
 import type {
   DaAttestationCandidateRecord,
@@ -35,6 +37,15 @@ import {
   parseDaStoredPayloadRecord,
 } from "./domain.js";
 import type { StateQueueReplayAnchor } from "./l1/state-queue-scanner.js";
+
+export type RetainedPayloadDeletionAuthority = {
+  readonly headerHash: string;
+  readonly transitionDigest: string;
+  readonly sourceAuthoritySha256: string;
+  readonly authority: SDK.DaAvailabilityRetentionAuthority;
+  readonly nowMs: number;
+  readonly retentionDays: number;
+};
 
 type StoreData = {
   readonly deployment?: WatcherDeploymentRecord;
@@ -159,6 +170,9 @@ export interface WatcherStore {
    * a row existed. Callers must consult `daRetentionPruneDecisionV1` first.
    */
   deleteDaPayload(headerHash: string): Promise<boolean>;
+  deleteDaPayloadIfCurrentTerminal?(
+    authority: RetainedPayloadDeletionAuthority,
+  ): Promise<boolean>;
   saveDaSignature(record: DaSignatureRecord): Promise<void>;
   getDaSignature(args: {
     readonly headerHash: string;
@@ -470,13 +484,14 @@ export class JsonFileWatcherStore implements WatcherStore {
             affectedHeaders.has(record.headerHash)
               ? {
                   ...record,
+                  availabilityRetention: undefined,
                   status: "conflicted",
                   validationErrors: [
                     ...new Set([...record.validationErrors, errorCode]),
                   ],
                   updatedAt: quarantined.quarantinedAt!,
                 }
-              : record,
+              : { ...record, availabilityRetention: undefined },
           ]),
         ),
         daPayloads: Object.fromEntries(
@@ -608,6 +623,91 @@ export class JsonFileWatcherStore implements WatcherStore {
       deleted = true;
       const daPayloads = { ...data.daPayloads };
       delete daPayloads[headerHash];
+      return { ...data, daPayloads };
+    });
+    return deleted;
+  }
+
+  async deleteDaPayloadIfCurrentTerminal(
+    args: RetainedPayloadDeletionAuthority,
+  ): Promise<boolean> {
+    let deleted = false;
+    await this.mutate((data) => {
+      const source = data.chainCursor;
+      const header = data.stateQueueHeaders[args.headerHash];
+      const terminal = header?.availabilityRetention;
+      const payload = data.daPayloads[args.headerHash];
+      if (
+        source?.status !== "healthy" ||
+        source.sourceMode !== "local_node" ||
+        source.authoritySha256 !== args.sourceAuthoritySha256 ||
+        header === undefined ||
+        terminal === undefined ||
+        payload === undefined ||
+        payload.deploymentFingerprint !==
+          args.authority.deploymentIdentityDigest ||
+        header.deploymentFingerprint !==
+          args.authority.deploymentIdentityDigest ||
+        terminal.transition.transitionDigest !== args.transitionDigest
+      )
+        return data;
+      const transition = SDK.parseStateQueueAuthenticatedTransition(
+        terminal.transition,
+      );
+      const evidence =
+        transition === null
+          ? null
+          : SDK.parseDaAvailabilityRetentionEvidence(
+              terminal.evidence,
+              transition,
+              args.authority,
+            );
+      const observation = source.observations.find(
+        (item) => item.headerHash === args.headerHash,
+      );
+      if (
+        transition === null ||
+        evidence === null ||
+        evidence.headerHash !== args.headerHash ||
+        header.header.endTime.toString() !== evidence.blockEndTimeMs ||
+        header.computedHeaderHash !== args.headerHash ||
+        header.validationErrors.length !== 0 ||
+        !header.finalized ||
+        header.observedChainPoint.finalized !== true ||
+        header.observedChainPoint.providerSource !==
+          "authenticated_state_queue_transition_v1" ||
+        header.observedChainPoint.blockHash !== transition.blockHash ||
+        String(header.observedChainPoint.slot) !== transition.slot ||
+        String(header.observedChainPoint.blockHeight) !== transition.blockNo ||
+        !Number.isSafeInteger(header.observedChainPoint.depth) ||
+        BigInt(header.observedChainPoint.depth ?? -1) <
+          args.authority.minimumFinalityDepth ||
+        header.status !==
+          (transition.transitionKind === "merge" ? "merged" : "removed") ||
+        observation?.stateQueueStatus !== header.status ||
+        observation.blockHash !== transition.blockHash ||
+        String(observation.slot) !== transition.slot ||
+        !observation.finalized
+      )
+        return data;
+      const endTime = Number(evidence.blockEndTimeMs);
+      if (
+        !Number.isSafeInteger(endTime) ||
+        endTime < 0 ||
+        daRetentionPruneDecision(
+          { headerHash: args.headerHash, blockEndTimeMs: endTime },
+          {
+            nowMs: args.nowMs,
+            retentionDays: args.retentionDays,
+            headerStatus: header.status,
+            availabilityChallengeState: "inactive",
+          },
+        ).decision !== "prune"
+      )
+        return data;
+      const daPayloads = { ...data.daPayloads };
+      delete daPayloads[args.headerHash];
+      deleted = true;
       return { ...data, daPayloads };
     });
     return deleted;

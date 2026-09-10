@@ -2,9 +2,9 @@
 
 This file applies to `demo/midgard-node`.
 
-Backward compatibility is never a goal for `demo/midgard-node`. Midgard has not
-launched, so prefer the current canonical production design over support for
-older in-repo behavior.
+Before launch, undeployed node versions have no compatibility contract.
+Replace obsolete in-repo behavior in place. Preserve or migrate only versions
+that have actually shipped, as required by the root engineering guide.
 
 Do not add:
 

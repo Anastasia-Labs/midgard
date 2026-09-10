@@ -37,6 +37,17 @@ const raw = (
 export const recordCrossBlockRawEmulator = () => {
   const rows: Omit<FraudProofRawL1Transaction, "confirmationDepth">[] = [];
   const signedCbors = new Map<string, string>();
+  // Submission coordinates are diagnostic metadata, separate from the legacy
+  // raw rows. Actual inclusion is read from Emulator.getTransactionStatus.
+  const acceptedTransactions = new Map<
+    string,
+    Readonly<{
+      txHash: string;
+      transactionCbor: string;
+      slot: number;
+      unixTimeMs: number;
+    }>
+  >();
   const original = Emulator.prototype.submitTx;
   const recorded: { emulator?: Emulator } = {};
   const spy = vi
@@ -53,16 +64,26 @@ export const recordCrossBlockRawEmulator = () => {
           const key = hash + index;
           const found = this.ledger[key] ?? this.mempool[key];
           if (found === undefined)
-            throw new Error("recorded input missing from emulator ledger");
+            throw new Error(
+              `recorded input ${hash}#${index} missing from emulator ledger`,
+            );
           result.push(raw(`${hash}#${index}`, utxoToCore(found.utxo).output()));
         }
         return result;
       };
       const resolvedInputs = resolve(body.inputs());
       const resolvedReferenceInputs = resolve(body.reference_inputs());
+      const acceptedSlot = this.slot;
+      const acceptedTime = this.now();
       const hash = await original.call(this, cbor);
       recorded.emulator = this;
       signedCbors.set(hash, cbor);
+      acceptedTransactions.set(hash, {
+        txHash: hash,
+        transactionCbor: cbor,
+        slot: acceptedSlot,
+        unixTimeMs: acceptedTime,
+      });
       rows.push({
         txHash: hash,
         bodyCbor: body.to_cbor_hex(),
@@ -126,7 +147,7 @@ export const recordCrossBlockRawEmulator = () => {
       return {
         schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
         deploymentIdentityDigest: request.deploymentIdentityDigest,
-        releaseIdentityDigest: request.releaseIdentityDigest,
+        blueprintHash: request.blueprintHash,
         finalityPolicyDigest: request.finalityPolicyDigest,
         headerHash: request.headerHash,
         provenance: {
@@ -166,5 +187,11 @@ export const recordCrossBlockRawEmulator = () => {
       } satisfies FraudProofRawL1Snapshot;
     },
   };
-  return { authority, restore: () => spy.mockRestore(), rows, signedCbors };
+  return {
+    authority,
+    restore: () => spy.mockRestore(),
+    rows,
+    signedCbors,
+    acceptedTransactions,
+  };
 };

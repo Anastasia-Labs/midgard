@@ -1,8 +1,12 @@
 import {
+  type DaAvailabilityRetentionAuthority,
+  type DaAvailabilityRetentionEvidence,
+  parseDaAvailabilityRetentionEvidence,
   parseStateQueueAuthenticatedTransition,
   type StateQueueAuthenticatedTransition,
 } from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
+import { credentialToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { parseDeploymentManifestValue } from "../deployment-manifest.js";
@@ -21,25 +25,12 @@ export type DaPayloadRetentionReleaseAuthority = Readonly<{
   deploymentIdentityDigest: Buffer;
   stateQueuePolicyId: Buffer;
   minimumFinalityDepth: bigint;
-  availabilityChallengeCapability: "missing" | "deployed_inactive";
+  availabilityChallengeCapability: "missing" | "deployed_unobserved";
+  availabilityPolicyId: Buffer | null;
+  stateQueueAddress: string;
 }>;
 
-/**
- * Derives the deletion authority only from the exact, hash-bound release
- * manifest. The V1 manifest schema now carries an `availabilityChallenge`
- * section, but it is release-authenticated Q58 *parameters* (response classes,
- * geometry, bond and fee ceilings) — never a liveness observation:
- * `verifyDeploymentManifestV1Identity` runs
- * `parseDeploymentManifestV1AvailabilityChallenge` before
- * `parseDeploymentManifestValue` returns, and that parser rejects any key
- * outside that parameters vocabulary. So a caller still cannot smuggle a
- * challenge-state claim in through this field, and the capability stays
- * `missing`: deliberately not an assertion that no challenge is active.
- * Production deletion remains disabled (`pruneOlderThan` requires
- * `deployed_inactive`) until Q58 supplies an authenticated on-chain inactive
- * observation. The `availabilityChallenges` guard below is retained as
- * defence in depth against a caller-authored plural sibling.
- */
+/** Complete hash-bound deployed roles establish capability, never per-header inactivity. */
 export const admitDaPayloadRetentionReleaseAuthority = (
   manifestInput: unknown,
 ): DaPayloadRetentionReleaseAuthority | null => {
@@ -55,20 +46,68 @@ export const admitDaPayloadRetentionReleaseAuthority = (
     ) {
       return null;
     }
+    const availabilityRoles = [
+      "availabilityChallengeSpend",
+      "availabilityChallengeMint",
+      "availabilityChallengeBondWithdraw",
+      "availabilityChallengeOpenWithdraw",
+      "availabilityChallengeSettleWithdraw",
+      "availabilityChallengeCloseWithdraw",
+      "availabilityChallengeTimeoutWithdraw",
+      "stateQueueUnavailableTimeoutWithdraw",
+    ];
+    const deployed = availabilityRoles.every((name) => {
+      const role = manifest.contracts[name];
+      return (
+        role?.contract.type === "PlutusV3" &&
+        HEX_28.test(role.scriptHash) &&
+        role.refScriptUTxO != null
+      );
+    });
     return Object.freeze({
       deploymentIdentityDigest: Buffer.from(manifest.manifestId, "hex"),
       stateQueuePolicyId: Buffer.from(stateQueuePolicyId, "hex"),
       minimumFinalityDepth: BigInt(manifest.l1Finality.confirmationDepth),
-      availabilityChallengeCapability: "missing",
+      availabilityChallengeCapability: deployed
+        ? "deployed_unobserved"
+        : "missing",
+      availabilityPolicyId: deployed
+        ? Buffer.from(
+            manifest.contracts.availabilityChallengeMint!.scriptHash,
+            "hex",
+          )
+        : null,
+      stateQueueAddress: credentialToAddress(
+        manifest.network === "Mainnet" ? "Mainnet" : "Preprod",
+        {
+          type: "Script",
+          hash: manifest.contracts.stateQueueSpend!.scriptHash,
+        },
+      ),
     });
   } catch {
     return null;
   }
 };
 
+export const availabilityRetentionAuthority = (
+  authority: DaPayloadRetentionReleaseAuthority,
+): DaAvailabilityRetentionAuthority | null =>
+  authority.availabilityPolicyId === null
+    ? null
+    : {
+        deploymentIdentityDigest:
+          authority.deploymentIdentityDigest.toString("hex"),
+        stateQueuePolicyId: authority.stateQueuePolicyId.toString("hex"),
+        stateQueueAddress: authority.stateQueueAddress,
+        availabilityPolicyId: authority.availabilityPolicyId.toString("hex"),
+        minimumFinalityDepth: authority.minimumFinalityDepth,
+      };
+
 export const recordAuthenticatedTransition = (
   transitionInput: unknown,
   manifestInput: unknown,
+  availabilityEvidenceInput?: DaAvailabilityRetentionEvidence | null,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const authority = admitDaPayloadRetentionReleaseAuthority(manifestInput);
@@ -100,6 +139,26 @@ export const recordAuthenticatedTransition = (
         }),
       );
     }
+    const availabilityAuthority = availabilityRetentionAuthority(authority);
+    const availabilityEvidence =
+      availabilityEvidenceInput == null
+        ? null
+        : availabilityAuthority === null
+          ? null
+          : parseDaAvailabilityRetentionEvidence(
+              availabilityEvidenceInput,
+              transition,
+              availabilityAuthority,
+            );
+    if (availabilityEvidenceInput != null && availabilityEvidence === null)
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: tableName,
+          message:
+            "Refusing malformed, active, or foreign availability retention evidence",
+          cause: transition.transitionDigest,
+        }),
+      );
     const sql = yield* SqlClient.SqlClient;
     const headerHash = Buffer.from(transition.removedHeaderHashes[0]!, "hex");
     const row = {
@@ -117,6 +176,10 @@ export const recordAuthenticatedTransition = (
       chain_point_id: Buffer.from(transition.chainPointId, "hex"),
       finality_depth: transition.finalityDepth,
       transition_digest: Buffer.from(transition.transitionDigest, "hex"),
+      availability_terminal_evidence:
+        availabilityEvidence === null
+          ? null
+          : JSON.stringify(availabilityEvidence),
       transition_record: JSON.stringify(
         transition as StateQueueAuthenticatedTransition,
       ),
@@ -124,7 +187,8 @@ export const recordAuthenticatedTransition = (
     const rows = yield* sql<{ readonly header_hash: Buffer }>`
       INSERT INTO ${sql(tableName)} ${sql.insert(row)}
       ON CONFLICT (deployment_identity_digest, header_hash) DO UPDATE SET
-        created_at = ${sql(tableName)}.created_at
+        created_at = ${sql(tableName)}.created_at,
+        availability_terminal_evidence = COALESCE(${sql(tableName)}.availability_terminal_evidence, EXCLUDED.availability_terminal_evidence)
       WHERE ${sql(tableName)}.terminal_outcome = EXCLUDED.terminal_outcome
         AND ${sql(tableName)}.transition_kind = EXCLUDED.transition_kind
         AND ${sql(tableName)}.deployment_identity_digest = EXCLUDED.deployment_identity_digest
@@ -138,6 +202,7 @@ export const recordAuthenticatedTransition = (
         AND ${sql(tableName)}.finality_depth = EXCLUDED.finality_depth
         AND ${sql(tableName)}.transition_digest = EXCLUDED.transition_digest
         AND ${sql(tableName)}.transition_record = EXCLUDED.transition_record
+        AND (${sql(tableName)}.availability_terminal_evidence IS NULL OR EXCLUDED.availability_terminal_evidence IS NULL OR ${sql(tableName)}.availability_terminal_evidence = EXCLUDED.availability_terminal_evidence)
       RETURNING header_hash`;
     if (rows.length !== 1) {
       return yield* Effect.fail(

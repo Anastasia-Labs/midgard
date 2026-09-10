@@ -214,43 +214,48 @@ export const openWatcherFaultProofQueueJournal = async (input: {
   }
 
   let serial = Promise.resolve();
-  const append = async (event: QueueEvent): Promise<void> => {
-    const operation = serial.then(async () => {
-      if (nextRevision >= BigInt(MAXIMUM_RECORDS)) {
-        throw new Error("fault-proof queue journal exceeds its append bound");
-      }
-      const body = {
-        schemaVersion: WATCHER_FAULT_PROOF_QUEUE_RECORD,
-        revision: nextRevision.toString(),
-        priorRecordSha256: lastRecordSha256,
-        deploymentFingerprint: input.deploymentFingerprint,
-        event,
-        authenticationKeyId,
-      } as const;
-      const record = Object.freeze({ ...body, authenticationMac: mac(body) });
-      const bytes = Buffer.from(`${watcherCanonicalJson(record)}\n`, "utf8");
-      const name = `${nextRevision.toString().padStart(20, "0")}.json`;
-      const handle = await open(join(directory, name), "wx", 0o600);
-      try {
-        await handle.writeFile(bytes);
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      const directoryHandle = await open(directory, "r");
-      try {
-        await directoryHandle.sync();
-      } finally {
-        await directoryHandle.close();
-      }
-      lastRecordSha256 = sha256(bytes);
-      nextRevision += 1n;
-    });
+  const serialize = <T>(action: () => Promise<T>): Promise<T> => {
+    const operation = serial.then(action);
     serial = operation.then(
       () => undefined,
       () => undefined,
     );
-    await operation;
+    return operation;
+  };
+
+  // Callers hold the serializer across the state check, append and state
+  // update. Serializing only file writes lets a retry read stale active state
+  // and append a requeue after a concurrent finish has already been committed.
+  const append = async (event: QueueEvent): Promise<void> => {
+    if (nextRevision >= BigInt(MAXIMUM_RECORDS)) {
+      throw new Error("fault-proof queue journal exceeds its append bound");
+    }
+    const body = {
+      schemaVersion: WATCHER_FAULT_PROOF_QUEUE_RECORD,
+      revision: nextRevision.toString(),
+      priorRecordSha256: lastRecordSha256,
+      deploymentFingerprint: input.deploymentFingerprint,
+      event,
+      authenticationKeyId,
+    } as const;
+    const record = Object.freeze({ ...body, authenticationMac: mac(body) });
+    const bytes = Buffer.from(`${watcherCanonicalJson(record)}\n`, "utf8");
+    const name = `${nextRevision.toString().padStart(20, "0")}.json`;
+    const handle = await open(join(directory, name), "wx", 0o600);
+    try {
+      await handle.writeFile(bytes);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    const directoryHandle = await open(directory, "r");
+    try {
+      await directoryHandle.sync();
+    } finally {
+      await directoryHandle.close();
+    }
+    lastRecordSha256 = sha256(bytes);
+    nextRevision += 1n;
   };
 
   const transition = async (
@@ -277,49 +282,59 @@ export const openWatcherFaultProofQueueJournal = async (input: {
   };
 
   return Object.freeze({
-    register: async (identity, observedAtMs) => {
-      if (!NATURAL.test(observedAtMs)) {
-        throw new Error("fault-proof queue enqueue time is invalid");
-      }
-      const digest = identityDigest(input.deploymentFingerprint, identity);
-      const prior = states.get(digest);
-      if (prior?.state === "finished") {
-        return Object.freeze({ queuedAtMs: prior.queuedAtMs, finished: true });
-      }
-      if (prior?.state === "queued") {
-        return Object.freeze({ queuedAtMs: prior.queuedAtMs, finished: false });
-      }
-      if (prior?.state === "active") {
+    register: (identity, observedAtMs) =>
+      serialize(async () => {
+        if (!NATURAL.test(observedAtMs)) {
+          throw new Error("fault-proof queue enqueue time is invalid");
+        }
+        const digest = identityDigest(input.deploymentFingerprint, identity);
+        const prior = states.get(digest);
+        if (prior?.state === "finished") {
+          return Object.freeze({
+            queuedAtMs: prior.queuedAtMs,
+            finished: true,
+          });
+        }
+        if (prior?.state === "queued") {
+          return Object.freeze({
+            queuedAtMs: prior.queuedAtMs,
+            finished: false,
+          });
+        }
+        if (prior?.state === "active") {
+          await append(
+            Object.freeze({
+              kind: "requeued",
+              jobIdentityDigest: digest,
+              observedAtMs,
+            }),
+          );
+          states.set(
+            digest,
+            Object.freeze({ queuedAtMs: prior.queuedAtMs, state: "queued" }),
+          );
+          return Object.freeze({
+            queuedAtMs: prior.queuedAtMs,
+            finished: false,
+          });
+        }
         await append(
           Object.freeze({
-            kind: "requeued",
-            jobIdentityDigest: digest,
-            observedAtMs,
+            kind: "enqueued",
+            identity: Object.freeze({ ...identity }),
+            queuedAtMs: observedAtMs,
           }),
         );
         states.set(
           digest,
-          Object.freeze({ queuedAtMs: prior.queuedAtMs, state: "queued" }),
+          Object.freeze({ queuedAtMs: observedAtMs, state: "queued" }),
         );
-        return Object.freeze({ queuedAtMs: prior.queuedAtMs, finished: false });
-      }
-      await append(
-        Object.freeze({
-          kind: "enqueued",
-          identity: Object.freeze({ ...identity }),
-          queuedAtMs: observedAtMs,
-        }),
-      );
-      states.set(
-        digest,
-        Object.freeze({ queuedAtMs: observedAtMs, state: "queued" }),
-      );
-      return Object.freeze({ queuedAtMs: observedAtMs, finished: false });
-    },
-    markStarted: async (digest, observedAtMs) =>
-      await transition(digest, observedAtMs, "started"),
-    markFinished: async (digest, observedAtMs) =>
-      await transition(digest, observedAtMs, "finished"),
+        return Object.freeze({ queuedAtMs: observedAtMs, finished: false });
+      }),
+    markStarted: (digest, observedAtMs) =>
+      serialize(() => transition(digest, observedAtMs, "started")),
+    markFinished: (digest, observedAtMs) =>
+      serialize(() => transition(digest, observedAtMs, "finished")),
     status: () => {
       const queued = [...states.values()].filter(
         ({ state }) => state === "queued",

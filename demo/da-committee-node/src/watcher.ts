@@ -563,6 +563,15 @@ export class WatcherService {
         finalityDepth: this.deps.config.finalityDepth,
         consensusProfile: this.deps.config.consensusProfile,
         previousHeaders,
+        availabilityRetentionAuthority: {
+          deploymentIdentityDigest: this.deps.config.deploymentFingerprint,
+          stateQueuePolicyId: this.deps.config.stateQueuePolicyId,
+          stateQueueAddress: this.deps.config.stateQueueAddress,
+          availabilityPolicyId:
+            this.deps.config.midgardNodeDeployment.availabilityChallenge
+              .policyId,
+          minimumFinalityDepth: BigInt(this.deps.config.finalityDepth),
+        },
         ...(priorL1State?.stateQueueReplayAnchor === undefined
           ? {}
           : {

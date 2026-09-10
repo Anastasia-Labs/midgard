@@ -16,6 +16,9 @@ types, are included. Source:
   explicitly.
 </Callout>
 
+These guarantees apply to L1 ledger-created contexts, not arbitrary `Data`,
+hand-built test contexts, or all Midgard L2 context fields.
+
 ## Scope
 
 1. Aiken's `Transaction` is not a byte-for-byte copy of the full transaction
@@ -50,7 +53,8 @@ types, are included. Source:
 
 ### Redeemers
 
-- `transaction.redeemers` is ordered by ascending `ScriptPurpose`.
+- `transaction.redeemers` preserves ledger redeemer-pointer order (purpose
+  tag, then index); it is not sorted by Aiken `ScriptPurpose` constructor order.
 - For the subset used by this repository, the effective purpose ordering is
   `Spend`, then `Mint`, then `Withdraw`.
 - Within `Spend`, entries are ordered lexicographically by the
@@ -102,13 +106,12 @@ through `transaction.inputs[*].output.value`.
 
 <Callout type="error" title="Do not assume these">
   1. Do not generalize output-value positivity rules to `transaction.mint`. Mint
-     values may contain negative quantities, which represent burns.
-  2. Do not assume every spent input has a redeemer entry. Only Plutus
-     script-spent inputs do.
-  3. Do not assume redeemer positions are stable under reordering of inputs,
-     mint policies, or withdrawals. Witness indices are a function of ledger
-     ordering, not builder call order.
-  4. Do not assume output order is sorted. It is preserved body order.
+  values may contain negative quantities, which represent burns. 2. Do not
+  assume every spent input has a redeemer entry. Only Plutus script-spent inputs
+  do. 3. Do not assume redeemer positions are stable under reordering of inputs,
+  mint policies, or withdrawals. Witness indices are a function of ledger
+  ordering, not builder call order. 4. Do not assume output order is sorted. It
+  is preserved body order.
 </Callout>
 
 ## Practical summary

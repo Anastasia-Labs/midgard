@@ -2598,7 +2598,7 @@ const renderStressSummaryMarkdown = (summary: E2EL2StressSummary): string => {
     ...(summary.rateSemantics !== "burst_cycle_rate"
       ? []
       : [
-          `- burstCycleRatePerSecond: ${summary.burstCycleRatePerSecond?.toString() ?? "n/a"} (bounded by concurrency=${summary.concurrency.toString()}; NOT a production throughput measurement; see docs/exec-plans/phase-0-stop-the-bleeding.md)`,
+          `- burstCycleRatePerSecond: ${summary.burstCycleRatePerSecond?.toString() ?? "n/a"} (bounded by concurrency=${summary.concurrency.toString()}; NOT a production throughput measurement)`,
         ]),
     `- mode: ${summary.mode}`,
     ...(summary.corpusShape === undefined

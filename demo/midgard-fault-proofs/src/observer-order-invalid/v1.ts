@@ -47,6 +47,7 @@ import {
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import {
   submitCapturedTransaction,
   workflowTransactionInputOutRefs,
@@ -747,10 +748,15 @@ export const createObserverOrderInvalidWorkflowRunnerSurface = ({
           throw new Error(
             "observerOrderInvalid runtime binding changed invocation",
           );
-        return (await executeManifestBoundObserverOrderInvalidWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return (await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundObserverOrderInvalidWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         })) as never;
       } finally {
         await loaded.close();

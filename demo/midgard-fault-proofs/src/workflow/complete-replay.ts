@@ -110,13 +110,28 @@ import { detectScriptIntegrityHashMissingFromCanonicalEvidence } from "../script
 import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-signer-missing/spend-input-signer-missing.js";
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
-import type { TransitionTraceL1Events } from "../transition-trace/l1-events.js";
 import {
+  requireTransitionTraceL1Events,
+  type TransitionTraceL1Events,
+} from "../transition-trace/l1-events.js";
+import {
+  computeTransitionTraceL1EventEvidenceDigest,
   replayTransitionTraceFromRetainedHistory,
   transitionTraceDetectionId,
 } from "../transition-trace/replay-authority.js";
 import { detectUnusedRedeemerCanonicalViolations } from "../unused-redeemer/replay.js";
 import { detectUnusedScriptWitnessCanonicalViolations } from "../unused-script-witness/replay.js";
+import {
+  detectValidationTraceReplay,
+  requireValidationTraceReplayContext,
+  type ValidationTraceReplayContext,
+} from "../validation-dispute/replay.js";
+export {
+  admitValidationTraceChallengeFromReplayContext,
+  admitValidationTraceReplayContext,
+  readValidationTraceReplaySelection,
+  type ValidationTraceReplayContext,
+} from "../validation-dispute/replay.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
 import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
@@ -166,17 +181,21 @@ export type CompleteCanonicalReplayContext = Readonly<{
   /** Opaque authority for the complete retained-DA history of this header. */
   historicalCorpus?: CompleteCanonicalReplayHistoricalCorpus;
   transitionTraceEvents?: TransitionTraceL1Events;
+  /** Opaque independently derived transaction and originating-event replay. */
+  validationTraceReplay?: ValidationTraceReplayContext;
 }>;
 
 export type CompleteCanonicalReplayContextIdentity = Readonly<{
-  settlementContextDigest?: string;
+  settlementEvidenceDigest?: string;
   predecessorHeaderHash?: string;
   predecessorPayloadEnvelopeSha256?: string;
   predecessorPayloadSha256?: string;
   historicalThroughHeaderHash?: string;
   historicalProviderRosterDigest?: string;
-  historicalCheckpointDigest?: string;
-  historicalCorpusDigest?: string;
+  historicalEvidenceDigest?: string;
+  validationTraceReplayDigest?: string;
+  validationTraceEventEvidenceDigest?: string;
+  transitionTraceEventEvidenceDigest?: string;
 }>;
 
 export type CompleteCanonicalReplayHistoricalCorpus = Readonly<{
@@ -186,6 +205,7 @@ export type CompleteCanonicalReplayHistoricalCorpus = Readonly<{
   providerRosterDigest: string;
   checkpointDigest: string;
   corpusDigest: string;
+  evidenceDigest: string;
 }>;
 
 export type CompleteCanonicalReplayDecision = {
@@ -241,6 +261,7 @@ export const admitCompleteCanonicalReplayHistoricalCorpus = ({
     providerRosterDigest: corpus.providerRosterDigest,
     checkpointDigest: corpus.checkpointDigest,
     corpusDigest: corpus.corpusDigest,
+    evidenceDigest: corpus.evidenceDigest,
   });
   historicalCorpusByAuthority.set(authority, corpus);
   return authority;
@@ -267,6 +288,7 @@ const requireReplayHistoricalCorpus = ({
     authority.providerRosterDigest !== corpus.providerRosterDigest ||
     authority.checkpointDigest !== corpus.checkpointDigest ||
     authority.corpusDigest !== corpus.corpusDigest ||
+    authority.evidenceDigest !== corpus.evidenceDigest ||
     requireHistoricalNativeScriptCorpus(corpus).currentEvidence !== evidence
   ) {
     throw new Error(
@@ -286,21 +308,59 @@ const replayContextIdentity = ({
   const predecessor = requireReplayPredecessorEvidence({ evidence, context });
   const historical = context?.historicalCorpus;
   const settlements = context?.settlements;
+  const validation = context?.validationTraceReplay;
+  const events = context?.transitionTraceEvents;
+  if (events !== undefined) {
+    requireTransitionTraceL1Events(events);
+    if (events.headerHash !== evidence.headerHash)
+      throw new Error(
+        "complete replay event authority belongs to another header",
+      );
+  }
+  if (validation !== undefined)
+    requireValidationTraceReplayContext({
+      evidence,
+      context: validation,
+      predecessor: context?.predecessor,
+      transitionTraceEvents: context?.transitionTraceEvents,
+    });
   if (settlements !== undefined)
     crossBlockSettlementRecords(evidence, settlements);
   if (
     predecessor === undefined &&
     historical === undefined &&
-    settlements === undefined
+    settlements === undefined &&
+    validation === undefined &&
+    events === undefined
   )
     return null;
   if (historical !== undefined) {
     requireReplayHistoricalCorpus({ evidence, context });
   }
   return Object.freeze({
+    ...(events === undefined
+      ? {}
+      : {
+          transitionTraceEventEvidenceDigest:
+            computeTransitionTraceL1EventEvidenceDigest({
+              evidence,
+              l1Events: events,
+            }),
+        }),
+    ...(validation === undefined
+      ? {}
+      : {
+          validationTraceReplayDigest: validation.replayDigest,
+          ...(validation.eventEvidenceDigest === undefined
+            ? {}
+            : {
+                validationTraceEventEvidenceDigest:
+                  validation.eventEvidenceDigest,
+              }),
+        }),
     ...(settlements === undefined
       ? {}
-      : { settlementContextDigest: settlements.contextDigest }),
+      : { settlementEvidenceDigest: settlements.evidenceDigest }),
     ...(predecessor === undefined
       ? {}
       : {
@@ -313,8 +373,7 @@ const replayContextIdentity = ({
       : {
           historicalThroughHeaderHash: historical.throughHeaderHash,
           historicalProviderRosterDigest: historical.providerRosterDigest,
-          historicalCheckpointDigest: historical.checkpointDigest,
-          historicalCorpusDigest: historical.corpusDigest,
+          historicalEvidenceDigest: historical.evidenceDigest,
         }),
   });
 };
@@ -1412,6 +1471,18 @@ export const NETWORK_ID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence) => detectNetworkIds(evidence),
 );
 
+export const VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(["validationTraceDispute"], async (evidence, context) => {
+    if (context?.validationTraceReplay === undefined)
+      throw new Error("validation trace replay requires its admitted context");
+    return detectValidationTraceReplay({
+      evidence,
+      context: context.validationTraceReplay,
+      predecessor: context.predecessor,
+      transitionTraceEvents: context.transitionTraceEvents,
+    });
+  });
+
 /** Complete replay for the two-step invalid-range family. */
 export const INVALID_RANGE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["invalidRange"],
@@ -1498,6 +1569,17 @@ export const createMissingNativeScriptUtxoCompleteCanonicalReplay = (
       await detectMissingNativeScriptUtxoFromHistoricalCorpus({
         evidence,
         corpus,
+      }),
+  );
+
+/** Resolves the admitted history for each challenged header independently. */
+export const MISSING_NATIVE_SCRIPT_UTXO_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(
+    ["missingNativeScriptUtxo"],
+    async (evidence, context) =>
+      await detectMissingNativeScriptUtxoFromHistoricalCorpus({
+        evidence,
+        corpus: requireReplayHistoricalCorpus({ evidence, context }),
       }),
   );
 

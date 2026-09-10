@@ -7,7 +7,7 @@
  * the §8.8 door, which is also what keeps field 1 distinguishable from field 0:
  * §4's plain hashing gives the two the same commitment for the same items, and
  * only the position tells them apart. See
- * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
  * Structural mirror of the `non-existent-input` chain's step 01
  * (`ne-submit-step-01.ts`): the same applied-parameter order, the same native

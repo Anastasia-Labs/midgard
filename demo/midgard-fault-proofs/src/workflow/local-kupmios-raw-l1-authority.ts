@@ -22,6 +22,17 @@ export const LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE =
  * point, and admits the final canonical bytes.
  */
 export interface LocalKupmiosFraudProofRawSource {
+  /** Concrete local history lookup, including transactions whose outputs were spent. */
+  resolveTransactionInclusion?(input: {
+    readonly txHash: string;
+  }): Promise<unknown>;
+  pinBoundaryAtPoint?(input: {
+    readonly point: FraudProofRawL1Point;
+  }): Promise<unknown>;
+  readOutRefsAtPoint?(input: {
+    readonly point: FraudProofRawL1Point;
+    readonly outRefs: readonly string[];
+  }): Promise<unknown>;
   readonly sourceVersion: typeof LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE;
   readonly sourceId: string;
   readonly kupoHttpUrl: string;
@@ -50,6 +61,41 @@ export interface LocalKupmiosFraudProofRawSource {
     readonly point: FraudProofRawL1Point;
   }): Promise<unknown>;
 }
+
+const sourceCaptures = new WeakMap<
+  LocalKupmiosFraudProofRawSource,
+  Promise<void>
+>();
+
+/** Own the source's mutable boundary through the final read and admission.
+ * Call only at the outer capture boundary; nested reads use the held source.
+ */
+export const withLocalKupmiosSourceCapture = async <T>(
+  source: LocalKupmiosFraudProofRawSource,
+  capture: () => Promise<T>,
+): Promise<T> => {
+  const previous = sourceCaptures.get(source) ?? Promise.resolve();
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  sourceCaptures.set(source, held);
+  await previous;
+  try {
+    return await capture();
+  } finally {
+    release();
+    if (sourceCaptures.get(source) === held) sourceCaptures.delete(source);
+  }
+};
+
+/** A failed branch must not leave sibling reads using a released source. */
+export const settleLocalKupmiosReads = async <T extends readonly unknown[]>(
+  reads: T,
+): Promise<{ -readonly [K in keyof T]: Awaited<T[K]> }> => {
+  await Promise.allSettled(reads);
+  return await Promise.all(reads);
+};
 
 const MAX_PAGE_COUNT = 100_000;
 const MAX_PAGE_ITEMS = 10_000;
@@ -375,107 +421,108 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthority = ({
   assertLoopback(source.ogmiosWebSocketUrl, "Ogmios URL");
   return {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-    capture: async (request: FraudProofRawL1SnapshotRequest) => {
-      const boundary = parseBoundary(await source.readBoundary());
-      const scopes = await Promise.all(
-        request.scopes.map(async (scope) => ({
-          ...scope,
-          utxos: await scanAllAddressUtxos({
-            source,
-            address: scope.address,
-            throughPoint: boundary.kupoCheckpoint,
-          }),
-        })),
-      );
-      const histories = await Promise.all(
-        request.historyUnits.map(async (unit) => ({
-          unit,
-          transactions: await scanCompleteUnitHistory({
-            source,
-            unit,
-            throughPoint: boundary.kupoCheckpoint,
-          }),
-        })),
-      );
-      const inclusionByHash = new Map<string, FraudProofRawL1Point>();
-      for (const history of histories) {
-        for (const transaction of history.transactions) {
-          const previous = inclusionByHash.get(transaction.txHash);
-          if (
-            previous !== undefined &&
-            !samePoint(previous, transaction.inclusionPoint)
-          ) {
-            throw new Error(
-              `Kupo unit histories disagree about transaction ${transaction.txHash}`,
-            );
-          }
-          inclusionByHash.set(transaction.txHash, transaction.inclusionPoint);
-        }
-      }
-      const transactions = await Promise.all(
-        [...inclusionByHash.entries()]
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([transactionHash, inclusionPoint]) =>
-            readCrossCheckedTransaction({
+    capture: (request: FraudProofRawL1SnapshotRequest) =>
+      withLocalKupmiosSourceCapture(source, async () => {
+        const boundary = parseBoundary(await source.readBoundary());
+        const scopes = await settleLocalKupmiosReads(
+          request.scopes.map(async (scope) => ({
+            ...scope,
+            utxos: await scanAllAddressUtxos({
               source,
-              expected: { txHash: transactionHash, inclusionPoint },
+              address: scope.address,
+              throughPoint: boundary.kupoCheckpoint,
             }),
-          ),
-      );
-      await confirmPinnedPoint({ source, point: boundary.kupoCheckpoint });
-      const confirmationDepth =
-        BigInt(boundary.ogmiosTip.blockNo) -
-        BigInt(boundary.kupoCheckpoint.blockNo) +
-        1n;
-      if (
-        confirmationDepth <= 0n ||
-        confirmationDepth > BigInt(Number.MAX_SAFE_INTEGER)
-      ) {
-        throw new Error("Kupmios boundary has an invalid confirmation depth");
-      }
-      const snapshot = {
-        schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-        deploymentIdentityDigest: request.deploymentIdentityDigest,
-        releaseIdentityDigest: request.releaseIdentityDigest,
-        finalityPolicyDigest: request.finalityPolicyDigest,
-        headerHash: request.headerHash,
-        provenance: {
-          trustClass: "authenticated_cardano_l1",
-          sourceId,
-          grade: "security",
-          sourceMode: "local_kupo_ogmios",
-          kupoCheckpoint: boundary.kupoCheckpoint,
-          ogmiosTip: boundary.ogmiosTip,
-        },
-        cursor: {
-          point: boundary.kupoCheckpoint,
-          tip: boundary.ogmiosTip,
-          confirmationDepth: Number(confirmationDepth),
-          rollbackCursor: computeFraudProofRawL1RollbackCursor({
-            deploymentIdentityDigest: request.deploymentIdentityDigest,
-            releaseIdentityDigest: request.releaseIdentityDigest,
-            finalityPolicyDigest: request.finalityPolicyDigest,
+          })),
+        );
+        const histories = await settleLocalKupmiosReads(
+          request.historyUnits.map(async (unit) => ({
+            unit,
+            transactions: await scanCompleteUnitHistory({
+              source,
+              unit,
+              throughPoint: boundary.kupoCheckpoint,
+            }),
+          })),
+        );
+        const inclusionByHash = new Map<string, FraudProofRawL1Point>();
+        for (const history of histories) {
+          for (const transaction of history.transactions) {
+            const previous = inclusionByHash.get(transaction.txHash);
+            if (
+              previous !== undefined &&
+              !samePoint(previous, transaction.inclusionPoint)
+            ) {
+              throw new Error(
+                `Kupo unit histories disagree about transaction ${transaction.txHash}`,
+              );
+            }
+            inclusionByHash.set(transaction.txHash, transaction.inclusionPoint);
+          }
+        }
+        const transactions = await settleLocalKupmiosReads(
+          [...inclusionByHash.entries()]
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([transactionHash, inclusionPoint]) =>
+              readCrossCheckedTransaction({
+                source,
+                expected: { txHash: transactionHash, inclusionPoint },
+              }),
+            ),
+        );
+        await confirmPinnedPoint({ source, point: boundary.kupoCheckpoint });
+        const confirmationDepth =
+          BigInt(boundary.ogmiosTip.blockNo) -
+          BigInt(boundary.kupoCheckpoint.blockNo) +
+          1n;
+        if (
+          confirmationDepth <= 0n ||
+          confirmationDepth > BigInt(Number.MAX_SAFE_INTEGER)
+        ) {
+          throw new Error("Kupmios boundary has an invalid confirmation depth");
+        }
+        const snapshot = {
+          schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
+          deploymentIdentityDigest: request.deploymentIdentityDigest,
+          blueprintHash: request.blueprintHash,
+          finalityPolicyDigest: request.finalityPolicyDigest,
+          headerHash: request.headerHash,
+          provenance: {
+            trustClass: "authenticated_cardano_l1",
             sourceId,
-            pointId: boundary.kupoCheckpoint.pointId,
-          }),
-        },
-        scopes,
-        historyUnits: [...request.historyUnits],
-        history: histories.map((history) => ({
-          unit: history.unit,
-          fromGenesis: true as const,
-          completeThroughPointId: boundary.kupoCheckpoint.pointId,
-          transactionHashes: history.transactions.map(
-            (transaction) => transaction.txHash,
-          ),
-        })),
-        transactions,
-      };
-      return admitFraudProofRawL1Snapshot({
-        value: snapshot,
-        request,
-        releaseFinality,
-      });
-    },
+            grade: "security",
+            sourceMode: "local_kupo_ogmios",
+            kupoCheckpoint: boundary.kupoCheckpoint,
+            ogmiosTip: boundary.ogmiosTip,
+          },
+          cursor: {
+            point: boundary.kupoCheckpoint,
+            tip: boundary.ogmiosTip,
+            confirmationDepth: Number(confirmationDepth),
+            rollbackCursor: computeFraudProofRawL1RollbackCursor({
+              deploymentIdentityDigest: request.deploymentIdentityDigest,
+              blueprintHash: request.blueprintHash,
+              finalityPolicyDigest: request.finalityPolicyDigest,
+              sourceId,
+              pointId: boundary.kupoCheckpoint.pointId,
+            }),
+          },
+          scopes,
+          historyUnits: [...request.historyUnits],
+          history: histories.map((history) => ({
+            unit: history.unit,
+            fromGenesis: true as const,
+            completeThroughPointId: boundary.kupoCheckpoint.pointId,
+            transactionHashes: history.transactions.map(
+              (transaction) => transaction.txHash,
+            ),
+          })),
+          transactions,
+        };
+        return admitFraudProofRawL1Snapshot({
+          value: snapshot,
+          request,
+          releaseFinality,
+        });
+      }),
   };
 };

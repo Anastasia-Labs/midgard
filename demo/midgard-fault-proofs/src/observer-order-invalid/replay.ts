@@ -13,6 +13,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
 import {
   buildTrieView,
@@ -257,7 +258,7 @@ export const detectObserverOrderInvalidForcedReplay = (
       if (typeof reason === "string" || !("ObserverOrderInvalid" in reason))
         return;
       const observerIndex = Number(reason.ObserverOrderInvalid.observer_index);
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveRejectedTransactionFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (

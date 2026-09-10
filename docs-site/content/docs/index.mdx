@@ -46,16 +46,16 @@ down to the on-chain validators and the formal protocol specification.
 - **Validation Engine**: the Phase A / Phase B pipeline that validates queued L2
   transactions.
 - **Operators**: running the Midgard node and its load-generation tooling.
-- **Watchers & Data Availability**: the libp2p DA committee that lets watchers verify
-  availability and challenge invalid commitments.
+- **Watchers & Data Availability**: the independent watcher/challenger and the
+  separate libp2p DA committee that retains block data.
 - **Fault Proofs**: the tooling and protocol for challenging invalid blocks.
-- **On-Chain Validators**: the Aiken and Plutarch validators that enforce the
-  protocol on Layer 1.
+- **On-Chain Validators**: the active Aiken protocol validators and retained
+  Plutarch membership experiments.
 - **Protocol Specification**: the normative architecture target, with explicit
   conformance and implementation-status caveats.
 
 <Callout title="Status" type="warn">
-Midgard is under active development. See
-[Project Status &amp; Testnet Readiness](/docs/getting-started/status) for the
-go/no-go assessment and the launch blockers, dated to their last review.
+  Midgard is under active development. See [Project Status &amp; Testnet
+  Readiness](/docs/getting-started/status) for the go/no-go assessment and the
+  launch blockers, dated to their last review.
 </Callout>

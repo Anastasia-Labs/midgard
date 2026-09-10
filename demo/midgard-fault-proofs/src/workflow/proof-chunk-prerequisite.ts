@@ -1019,7 +1019,9 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
           reason: `${category} proof-chunk transaction did not produce its exact complete output set`,
         };
       }
-      return { kind: "not_found" };
+      // Release-final absence does not establish rejection or expiry of a
+      // submitted publication. Preserve its exact journaled output set.
+      return { kind: "pending", txHash };
     },
   };
   return Object.freeze(port);
@@ -1095,7 +1097,7 @@ export const withProofChunkPrerequisite = <
         return { kind: "action_required", action: inspection.action };
       }
       if (inspection.kind === "pending") {
-        return { kind: "conflict", reason: inspection.reason };
+        return { kind: "pending", reason: inspection.reason };
       }
       return observed;
     },

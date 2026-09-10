@@ -75,7 +75,7 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 describe("fault-proof emulator integration", () => {
-  it("publishes every authenticated validation-dispute control under the exact L1 envelope", async () => {
+  it("publishes every validation-dispute control and prepare with the L1 reserve", async () => {
     const realBlueprint = readBlueprint(realBlueprintPath);
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
     const publisher = generateEmulatorAccount({
@@ -133,7 +133,7 @@ describe("fault-proof emulator integration", () => {
 
     expect(Object.keys(measurements)).toHaveLength(targets.length);
     for (const measurement of Object.values(measurements)) {
-      expect(measurement.l1ByteMargin).toBeGreaterThan(0);
+      expect(measurement.l1ByteMargin).toBeGreaterThanOrEqual(512);
       expect(measurement.executionMemory).toBeLessThanOrEqual(
         emulator.protocolParameters.maxTxExMem,
       );
@@ -150,6 +150,21 @@ describe("fault-proof emulator integration", () => {
       expect(measurement.plutusV1ScriptCount).toBe(0);
       expect(measurement.plutusV2ScriptCount).toBe(0);
       expect(measurement.plutusV3ScriptCount).toBe(0);
+    }
+
+    const prepares =
+      contracts.fraudProofContracts.validationTraceDispute.prepareResolvers;
+    expect(prepares).toHaveLength(14);
+    for (const [index, prepare] of prepares.entries()) {
+      const { publicationMeasurement } = await publishPlainReferenceScriptUtxo({
+        lucid,
+        script: prepare.spendingScript,
+        label: `validation prepare ${index.toString()}`,
+      });
+      expect(
+        publicationMeasurement.l1ByteMargin,
+        `prepare ${index.toString()}`,
+      ).toBeGreaterThanOrEqual(512);
     }
   }, 300_000);
 
@@ -421,15 +436,16 @@ describe("fault-proof emulator integration", () => {
       const referenceScriptPublisherLucid = await Lucid(emulator, "Custom", {
         slotConfig: publicationSlotConfig,
       });
-      referenceScriptPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
+      referenceScriptPublisherLucid.selectWallet.fromSeed(
+        challenger.seedPhrase,
+      );
       const validationDisputeControlPublications =
         await runEmulatorLifecycleStage(
           "reference-script.publish-authenticated",
           async () => {
-            const authPolicy = createReferenceScriptAuthPolicy(
-              referenceScriptPublisherLucid,
-              emulator.now(),
-            );
+            // Scripts and deployment metadata must bind the same policy that
+            // signs their authenticated publications.
+            const authPolicy = referenceScriptAuth;
             const publications = {} as Record<
               ValidationDisputeControlPublicationTarget["control"],
               Awaited<

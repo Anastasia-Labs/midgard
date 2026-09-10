@@ -15,6 +15,10 @@ import {
   watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
 import {
+  readWatcherLocalHistoricalCapture,
+  type WatcherLocalHistoricalCaptureReceipt,
+} from "./local-historical-capture.js";
+import {
   type WatcherNativeChainSyncAuthority,
   watcherNativeChainSyncAuthorityDetails,
 } from "./native-chain-sync.js";
@@ -71,6 +75,7 @@ const AUTHENTICATION_KINDS = [
   "https_tls_identity_v1",
   "cardano_node_genesis_v1",
   "local_endpoint_identity_v1",
+  "local_capture_identity_v1",
 ] as const;
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -212,9 +217,13 @@ export type WatcherL1Transaction = Readonly<{
   txHash: string;
   transactionIndex?: string;
   isValid: boolean;
+  /** Exact accepted frame with retained ledger child encodings. */
   fullTransaction: WatcherL1PublicBytes;
+  /** Exact decoded body encoding committed to by txHash. */
   body: WatcherL1PublicBytes;
+  /** Exact decoded witness-set encoding. */
   witnessSet: WatcherL1PublicBytes;
+  /** Canonical derived views of applied outputs and witness material. */
   utxos: readonly WatcherL1Utxo[];
   scripts: readonly WatcherL1Script[];
   datums: readonly WatcherL1Datum[];
@@ -797,7 +806,7 @@ const compareRedeemers = (
     : purposeComparison;
 };
 
-const publicBytesFromCanonicalCbor = (bytesHex: string): WatcherL1PublicBytes =>
+const publicBytesFromCbor = (bytesHex: string): WatcherL1PublicBytes =>
   freezePublicBytes(bytesHex, sha256Bytes(Buffer.from(bytesHex, "hex")));
 
 type CmlWitnessScript = Readonly<{
@@ -824,7 +833,7 @@ const collectWitnessScripts = (
       Object.freeze({
         scriptHash: script.hash().to_hex(),
         language,
-        bytes: publicBytesFromCanonicalCbor(script.to_canonical_cbor_hex()),
+        bytes: publicBytesFromCbor(script.to_canonical_cbor_hex()),
       }),
     );
   }
@@ -862,7 +871,7 @@ const witnessRedeemer = (
   Object.freeze({
     purpose: redeemerPurpose(tag, path),
     index: index.toString(),
-    bytes: publicBytesFromCanonicalCbor(data.to_canonical_cbor_hex()),
+    bytes: publicBytesFromCbor(data.to_canonical_cbor_hex()),
   });
 
 const collectWitnessRedeemers = (
@@ -922,7 +931,7 @@ const collectWitnessDatums = (
   const collected: WatcherL1Datum[] = [];
   if (datums !== undefined) {
     for (let index = 0; index < datums.len(); index += 1) {
-      const bytes = publicBytesFromCanonicalCbor(
+      const bytes = publicBytesFromCbor(
         datums.get(index).to_canonical_cbor_hex(),
       );
       collected.push(
@@ -971,9 +980,8 @@ const collectWitnessViews = (
     fail("identity_mismatch", `${path}.body.bytesHex`);
   }
   return Object.freeze({
-    witnessSet: publicBytesFromCanonicalCbor(
-      witnessSet.to_canonical_cbor_hex(),
-    ),
+    // Retain the complete witness encoding; the individual views are canonical.
+    witnessSet: publicBytesFromCbor(witnessSet.to_cbor_hex()),
     scripts,
     datums,
     redeemers,
@@ -1009,9 +1017,7 @@ const referenceScriptView = (
   return Object.freeze({
     scriptHash: script.hash().to_hex(),
     language: selected.language,
-    bytes: publicBytesFromCanonicalCbor(
-      selected.script.to_canonical_cbor_hex(),
-    ),
+    bytes: publicBytesFromCbor(selected.script.to_canonical_cbor_hex()),
   });
 };
 
@@ -1022,7 +1028,7 @@ const inlineDatumView = (
   if (datum === undefined) {
     return null;
   }
-  const bytes = publicBytesFromCanonicalCbor(datum.to_canonical_cbor_hex());
+  const bytes = publicBytesFromCbor(datum.to_canonical_cbor_hex());
   return Object.freeze({
     datumHash: computeHash32(Buffer.from(bytes.bytesHex, "hex")).toString(
       "hex",
@@ -1059,7 +1065,7 @@ const collectAppliedUtxos = (
       Object.freeze({
         outRef: `${txHash}#${outputIndex}`,
         outputIndex,
-        output: publicBytesFromCanonicalCbor(output.to_canonical_cbor_hex()),
+        output: publicBytesFromCbor(output.to_canonical_cbor_hex()),
         datum: inlineDatumView(output),
         referenceScript:
           script === undefined
@@ -1074,13 +1080,13 @@ const collectAppliedUtxos = (
   return Object.freeze(utxos);
 };
 
-const decodeCanonicalTransaction = (
+const decodeTransaction = (
   fullTransaction: WatcherL1PublicBytes,
   path: string,
 ): CML.Transaction => {
   try {
     const transaction = CML.Transaction.from_cbor_hex(fullTransaction.bytesHex);
-    if (transaction.to_canonical_cbor_hex() !== fullTransaction.bytesHex) {
+    if (transaction.to_cbor_hex() !== fullTransaction.bytesHex) {
       fail("identity_mismatch", `${path}.fullTransaction.bytesHex`);
     }
     return transaction;
@@ -1092,7 +1098,7 @@ const decodeCanonicalTransaction = (
   }
 };
 
-const deriveCanonicalTransaction = (
+const deriveTransaction = (
   fullTransaction: WatcherL1PublicBytes,
   path: string,
   session: WatcherL1NormalizationSessionState | undefined,
@@ -1101,19 +1107,15 @@ const deriveCanonicalTransaction = (
   if (cached !== undefined && cached.bytesHex === fullTransaction.bytesHex) {
     return cached.derived;
   }
-  const transaction = decodeCanonicalTransaction(fullTransaction, path);
-  const canonicalFullTransaction = publicBytesFromCanonicalCbor(
-    transaction.to_canonical_cbor_hex(),
-  );
-  const body = publicBytesFromCanonicalCbor(
-    transaction.body().to_canonical_cbor_hex(),
-  );
+  const transaction = decodeTransaction(fullTransaction, path);
+  // Ledger transaction IDs commit to the exact decoded body encoding.
+  const body = publicBytesFromCbor(transaction.body().to_cbor_hex());
   const txHash = computeHash32(Buffer.from(body.bytesHex, "hex")).toString(
     "hex",
   );
   const witnessViews = collectWitnessViews(transaction, path);
   const derived = Object.freeze({
-    fullTransaction: canonicalFullTransaction,
+    fullTransaction,
     body,
     txHash,
     isValid: transaction.is_valid(),
@@ -1244,7 +1246,7 @@ const parseTransaction = (
     budget,
   );
   const body = parsePublicBytes(record.body, `${path}.body`, budget);
-  const derived = deriveCanonicalTransaction(fullTransaction, path, session);
+  const derived = deriveTransaction(fullTransaction, path, session);
   assertPublicBytesMatch(
     fullTransaction,
     derived.fullTransaction,
@@ -1955,35 +1957,12 @@ export const encodeWatcherNormalizedL1Block = (
     "utf8",
   );
 
-export const normalizeWatcherL1Block = (
-  transportAttestationContext: WatcherL1TransportAttestationContext,
+// Only this module supplies the admitted provider and private session state.
+const normalizeAdmittedBlock = (
+  provider: WatcherNormalizedAuthenticatedL1Provider,
   observationInput: unknown,
-  normalizationSession?: WatcherL1NormalizationSession,
+  session?: WatcherL1NormalizationSessionState,
 ): WatcherNormalizedL1Block => {
-  /*
-   * Trust boundary: the opaque context proves the configured live transport
-   * location and peer identity; it does not claim that this arbitrary JS value
-   * was itself read from the socket. The watcher-owned transport adapter must
-   * call this function only with bytes it decoded from that connection. This is
-   * an in-process capability boundary, not a remotely callable receipt API:
-   * untrusted serialized callers cannot construct the WeakMap-backed context,
-   * and detached/closed contexts fail below. A future wire adapter may issue
-   * per-frame receipts once its framing protocol is fixed, but manufacturing a
-   * receipt here would falsely attest provenance that this layer cannot see.
-   */
-  const session =
-    normalizationSession === undefined
-      ? undefined
-      : (normalizationSessionStates.get(normalizationSession) ??
-        fail("invalid_field", "$.normalizationSession"));
-  const attestation = watcherL1TransportAttestationDetails(
-    transportAttestationContext,
-  );
-  if (attestation === null) {
-    fail("invalid_field", "$.transportAttestationContext");
-  }
-  const provider = (attestation as WatcherL1TransportAttestationDetails)
-    .provider;
   const observation = exactRecord(observationInput, "$", [
     "schemaVersion",
     "network",
@@ -2109,6 +2088,43 @@ export const normalizeWatcherL1Block = (
     blockContentDigest,
     observationDigest,
   });
+  return normalized;
+};
+
+export const normalizeWatcherL1Block = (
+  transportAttestationContext: WatcherL1TransportAttestationContext,
+  observationInput: unknown,
+  normalizationSession?: WatcherL1NormalizationSession,
+): WatcherNormalizedL1Block => {
+  /*
+   * Trust boundary: the opaque context proves the configured live transport
+   * location and peer identity; it does not claim that this arbitrary JS value
+   * was itself read from the socket. The watcher-owned transport adapter must
+   * call this function only with bytes it decoded from that connection. This is
+   * an in-process capability boundary, not a remotely callable receipt API:
+   * untrusted serialized callers cannot construct the WeakMap-backed context,
+   * and detached/closed contexts fail below. A future wire adapter may issue
+   * per-frame receipts once its framing protocol is fixed, but manufacturing a
+   * receipt here would falsely attest provenance that this layer cannot see.
+   */
+  const session =
+    normalizationSession === undefined
+      ? undefined
+      : (normalizationSessionStates.get(normalizationSession) ??
+        fail("invalid_field", "$.normalizationSession"));
+  const attestation = watcherL1TransportAttestationDetails(
+    transportAttestationContext,
+  );
+  if (attestation === null) {
+    fail("invalid_field", "$.transportAttestationContext");
+  }
+  const provider = (attestation as WatcherL1TransportAttestationDetails)
+    .provider;
+  const normalized = normalizeAdmittedBlock(
+    provider,
+    observationInput,
+    session,
+  );
   normalizedBlockProvenance.set(
     normalized,
     transportAttestationContext as WatcherL1TransportAttestationContext,
@@ -2117,11 +2133,12 @@ export const normalizeWatcherL1Block = (
 };
 
 /**
- * Builds the exact normalized observation from canonical full transaction
- * bytes read by a watcher-owned transport adapter. All derived transaction
- * fields are reconstructed locally and then passed back through the ordinary
- * strict normalizer; callers cannot supply hashes, witnesses, outputs,
- * datums, scripts or redeemers independently of the transaction bytes.
+ * Builds a normalized observation from exact full transaction bytes read by
+ * a watcher-owned transport adapter. Full/body/witness encodings are retained;
+ * output and witness views are canonical projections derived locally. All
+ * fields pass through the ordinary strict normalizer; callers cannot supply
+ * hashes, witnesses, outputs, datums, scripts or redeemers independently of
+ * the transaction bytes.
  */
 export const normalizeWatcherL1BlockFromTransactionCbors = (
   transportAttestationContext: WatcherL1TransportAttestationContext,
@@ -2146,9 +2163,26 @@ export const normalizeWatcherL1BlockFromTransactionCbors = (
   }
   const providerId = (attestation as WatcherL1TransportAttestationDetails)
     .provider.providerId;
-  const transactions = input.transactionCbors.map((cborHex, index) => {
-    const fullTransaction = publicBytesFromCanonicalCbor(cborHex);
-    const derived = deriveCanonicalTransaction(
+  const transactions = observationsFromTransactionCbors(input.transactionCbors);
+  return normalizeWatcherL1Block(
+    transportAttestationContext,
+    {
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+      network: input.network,
+      providerId,
+      chainPoint: input.chainPoint,
+      transactions,
+    },
+    normalizationSession,
+  );
+};
+
+const observationsFromTransactionCbors = (
+  transactionCbors: readonly string[],
+) => {
+  return transactionCbors.map((cborHex, index) => {
+    const fullTransaction = publicBytesFromCbor(cborHex);
+    const derived = deriveTransaction(
       fullTransaction,
       `$.transactionCbors[${index.toString()}]`,
       undefined,
@@ -2165,15 +2199,175 @@ export const normalizeWatcherL1BlockFromTransactionCbors = (
       redeemers: derived.redeemers,
     });
   });
-  return normalizeWatcherL1Block(
-    transportAttestationContext,
-    {
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
-      network: input.network,
-      providerId,
-      chainPoint: input.chainPoint,
-      transactions,
+};
+
+const localBackfillObservationBrand = Symbol("local-backfill-observation");
+export type WatcherLocalBackfillObservationReceipt = Readonly<{
+  [localBackfillObservationBrand]: true;
+}>;
+type LocalBackfillObservationRead = Readonly<{
+  capture: ReturnType<typeof readWatcherLocalHistoricalCapture>;
+  native: WatcherNormalizedL1Block;
+  ogmios: WatcherNormalizedL1Block;
+  kupo: WatcherNormalizedL1Block;
+  sourceIdentityDigest: string;
+  acquisitionDigest: string;
+}>;
+const localBackfillObservations = new WeakMap<
+  WatcherLocalBackfillObservationReceipt,
+  Readonly<{
+    capture: WatcherLocalHistoricalCaptureReceipt;
+    value: LocalBackfillObservationRead;
+  }>
+>();
+const localBackfillCaptures = new WeakMap<
+  WatcherLocalHistoricalCaptureReceipt,
+  WatcherLocalBackfillObservationReceipt
+>();
+
+/** Returns descriptive immutable data only while the concrete capture is live. */
+export const readWatcherLocalBackfillObservation = (
+  receipt: WatcherLocalBackfillObservationReceipt,
+): LocalBackfillObservationRead => {
+  const owner = localBackfillObservations.get(receipt);
+  if (
+    owner === undefined ||
+    readWatcherLocalHistoricalCapture(owner.capture) !== owner.value.capture
+  )
+    throw new Error("local backfill observation receipt is absent or stale");
+  return owner.value;
+};
+
+/** No arbitrary provider data or transport authority is accepted or returned. */
+export const admitWatcherLocalBackfillObservation = (
+  receipt: WatcherLocalHistoricalCaptureReceipt,
+): WatcherLocalBackfillObservationReceipt => {
+  const capture = readWatcherLocalHistoricalCapture(receipt);
+  const existing = localBackfillCaptures.get(receipt);
+  if (existing !== undefined) {
+    readWatcherLocalBackfillObservation(existing);
+    return existing;
+  }
+  const binding = capture.sourceBinding;
+  const sourceIdentityDigest = digestCanonicalJson({
+    deploymentIdentityDigest: capture.deploymentIdentityDigest,
+    blueprintHash: capture.blueprintHash,
+    sourceId: capture.sourceId,
+    sourceBinding: binding,
+  });
+  const acquisitionDigest = digestCanonicalJson({
+    sourceIdentityDigest,
+    predecessor: capture.predecessorPoint,
+    target: capture.point,
+    rawBlock: {
+      ...capture.rawBlock,
+      kupoCheckpoint: {
+        ...capture.rawBlock.kupoCheckpoint,
+        slot: capture.rawBlock.kupoCheckpoint.slot.toString(),
+      },
     },
-    normalizationSession,
+    nativeAuthorityDigest: capture.nativeAuthorityDigest,
+    nativeStartupDigest: capture.nativeStartupDigest,
+    targetEventDigest: capture.targetEventDigest,
+    observedNativeTip: capture.observedNativeTip,
+    depthAtObservedTip: capture.depthAtObservedTip,
+    startedAtMonotonicMs: capture.startedAtMonotonicMs.toString(),
+  });
+  const normalize = (surface: "chain_sync" | "ogmios" | "kupo") => {
+    const service = binding.queryServices.find(({ kind }) => kind === surface);
+    if (surface !== "chain_sync" && service === undefined)
+      throw new Error("local backfill query surface is absent");
+    const provider = parseAuthenticatedProvider({
+      schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
+      network: capture.network,
+      providerId: service?.providerId ?? binding.authorityNodeId,
+      source: {
+        sourceMode: "local_node",
+        authorityNodeId: binding.authorityNodeId,
+        surface,
+      },
+      authentication:
+        surface === "chain_sync"
+          ? {
+              kind: "cardano_node_genesis_v1",
+              publicIdentitySha256: binding.genesisIdentitySha256,
+            }
+          : {
+              kind: "local_capture_identity_v1",
+              publicIdentitySha256: digestCanonicalJson({
+                sourceIdentityDigest,
+                surface,
+                service:
+                  service === undefined
+                    ? null
+                    : {
+                        kind: service.kind,
+                        providerId: service.providerId,
+                        endpoint: service.endpoint,
+                        admittedSourceUrl: service.admittedSourceUrl,
+                      },
+              }),
+            },
+    });
+    return normalizeAdmittedBlock(provider, {
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+      network: capture.network,
+      providerId: provider.providerId,
+      chainPoint: {
+        blockHash:
+          surface === "kupo"
+            ? capture.rawBlock.kupoCheckpoint.blockHash
+            : capture.point.blockHash,
+        parentBlockHash: capture.rawBlock.parentBlockHash,
+        slot:
+          surface === "kupo"
+            ? capture.rawBlock.kupoCheckpoint.slot.toString()
+            : capture.point.slot,
+        blockNo: capture.point.blockNo,
+        depth: capture.depthAtObservedTip,
+      },
+      transactions: observationsFromTransactionCbors(
+        surface === "chain_sync"
+          ? capture.nativeBlock.transactionCbors
+          : surface === "ogmios"
+            ? capture.rawBlock.transactions.map(
+                ({ transactionCbor }) => transactionCbor,
+              )
+            : [],
+      ),
+    });
+  };
+  const native = normalize("chain_sync");
+  const ogmios = normalize("ogmios");
+  const kupo = normalize("kupo");
+  if (
+    native.blockContentDigest !== ogmios.blockContentDigest ||
+    native.chainPoint.pointDigest !== kupo.chainPoint.pointDigest ||
+    !watcherSameCanonicalJson(
+      native.transactions.map(({ txHash }) => txHash),
+      capture.rawBlock.transactions.map(({ txHash }) => txHash),
+    )
+  )
+    throw new Error(
+      "local backfill normalized native/query evidence disagrees",
+    );
+  const value = Object.freeze({
+    capture,
+    native,
+    ogmios,
+    kupo,
+    sourceIdentityDigest,
+    acquisitionDigest,
+  });
+  if (readWatcherLocalHistoricalCapture(receipt) !== capture)
+    throw new Error("local backfill capture changed during normalization");
+  const observation = Object.freeze({
+    [localBackfillObservationBrand]: true as const,
+  });
+  localBackfillObservations.set(
+    observation,
+    Object.freeze({ capture: receipt, value }),
   );
+  localBackfillCaptures.set(receipt, observation);
+  return observation;
 };

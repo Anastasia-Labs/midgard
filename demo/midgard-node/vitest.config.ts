@@ -28,8 +28,8 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/deposit-flow-emulator-recovery-invalidation.test.ts
  *   tests/deposit-flow-emulator-submission.test.ts
  *   tests/migration-locking.test.ts
- *   tests/phase1-admission-acceptance.operator.test.ts (opt-in)
- *   tests/phase1-exact-crash.operator.test.ts          (opt-in)
+ *   tests/migration-runner.test.ts
+ *   tests/pipeline-status-route.test.ts
  *   tests/retention-enforcement.test.ts
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts

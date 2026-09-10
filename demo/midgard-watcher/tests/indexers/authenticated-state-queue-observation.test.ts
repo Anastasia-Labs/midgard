@@ -1554,7 +1554,7 @@ describe("production state-queue observation source", () => {
     const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
       schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
       deploymentIdentityDigest: current.deployment.result.manifestId,
-      releaseIdentityDigest: current.deployment.result.releaseEvidenceDigest,
+      blueprintHash: current.deployment.result.blueprintHash,
       policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
       policy,
     });
@@ -1579,7 +1579,7 @@ describe("production state-queue observation source", () => {
     const foreignFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
       schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
       deploymentIdentityDigest: h32("cd"),
-      releaseIdentityDigest: current.deployment.result.releaseEvidenceDigest,
+      blueprintHash: current.deployment.result.blueprintHash,
       policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
       policy,
     });

@@ -16,7 +16,17 @@ lucid-evolution users while preserving Midgard-native semantics.
 `LucidMidgard` owns configuration, provider access, wallet selection, protocol
 parameters, and transaction builder creation.
 
-```ts
+```ts twoslash
+import {
+  LucidMidgard,
+  type MidgardProvider,
+  type MidgardUtxo,
+} from "@al-ft/lucid-midgard";
+declare const provider: MidgardProvider;
+declare const seedPhrase: string;
+declare const utxo: MidgardUtxo;
+declare const destination: string;
+// ---cut---
 const midgard = await LucidMidgard.new(provider, "Preprod");
 midgard.selectWallet.fromSeed(seedPhrase);
 
@@ -59,7 +69,7 @@ The lifecycle is staged, and each stage exposes immutable data or snapshots:
    id. It becomes submit-capable only once the expected address witness set is
    complete; `submit()` on an under-signed `CompleteTx` fails.
 3. `PartiallySignedTx` holds a partial witness collection and has no `submit` method.
-   It is returned only with `allowPartial: true`.
+   It is returned with `allowPartial: true`, or by `fromTx` with `partial: true`.
 4. `SubmittedTx` carries the durable admission result and the status helpers.
 
 ## Fluent surface: `TxBuilder`
@@ -95,7 +105,7 @@ The builder methods, all returning a new `TxBuilder`:
   purposes, or encodings fail before builder state changes.
 </Callout>
 
-Completion comes in three flavors, each also as a `Safe` and `Program` variant:
+Completion and chaining each have Promise, `Safe`, and `Program` forms:
 
 - `complete(options?)` / `completeSafe(options?)` / `completeProgram(options?)`
 - `chain(options?)` / `chainSafe(options?)` / `chainProgram(options?)`, returns
@@ -112,7 +122,8 @@ Completion comes in three flavors, each also as a `Safe` and `Program` variant:
 
 ## `CompleteTx`
 
-The canonicalized, submit-capable stage. Notable members:
+The canonicalized stage; submission requires a complete address witness set.
+Notable members:
 
 - `sign`: a callable-and-object sign API (see below).
 - `assemble(bundles, options?)`: combine detached partial witness bundles.
@@ -139,15 +150,24 @@ Each has `Safe` and `Program` variants. A `TxPartialSignBuilder` exposes
 `partial()` (returns a detached `MidgardPartialWitnessBundleV1`), `complete()`,
 `completeSafe()`, and `completeProgram()`.
 
-```ts
+```ts twoslash
+import type {
+  CompleteTx,
+  MidgardWallet,
+  PrivateKey,
+} from "@al-ft/lucid-midgard";
+declare const tx: CompleteTx;
+declare const walletA: MidgardWallet;
+declare const privateKeyB: PrivateKey;
+// ---cut---
 const bundleA = await tx.sign.withWallet(walletA).partial();
 const bundleB = await tx.sign.withPrivateKey(privateKeyB).partial();
 const signed = tx.assemble([bundleA, bundleB]);
 ```
 
-Assembly verifies every vkey witness against the compact transaction body hash
+Assembly verifies every vkey witness against the domain-separated native transaction id
 and returns a submit-capable `CompleteTx` only when the expected address witness
-set is complete. `PartiallySignedTx` (returned only with `allowPartial: true`)
+set is complete. `PartiallySignedTx` (also available through `fromTx(..., { partial: true })`)
 has no `submit` method.
 
 ## `SubmittedTx`
@@ -179,7 +199,8 @@ From `core/index.js`: value helpers and `ValueLike`
 
 ## Safe and Effect conventions
 
-Every operation with side effects comes in three forms:
+Completion, signing, submission, and status operations provide these forms where
+listed above; queries and provider switching do not all have these wrappers:
 
 - **Promise**: throws structured `LucidMidgardError` subclasses.
 - **`Safe`**: returns `MidgardResult<T, LucidMidgardError>`, that is
@@ -189,7 +210,8 @@ Every operation with side effects comes in three forms:
 
 ## Error model
 
-Every thrown error is a subclass of `LucidMidgardError` (`src/core/errors.ts`):
+Expected library failures use `LucidMidgardError` subclasses
+(`src/core/errors.ts`). Unexpected defects can still escape unchanged. Common errors:
 
 | Error                     | Raised when                                                                                                              |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |

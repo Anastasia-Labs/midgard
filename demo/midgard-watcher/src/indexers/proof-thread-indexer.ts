@@ -728,7 +728,7 @@ export type WatcherProofThreadFamily = Readonly<{
 export type WatcherProofThreadPolicy = Readonly<{
   schemaVersion: typeof WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION;
   network: WatcherProofThreadNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   deploymentTrustRootId: string;
   requiredFinalityDepth: string;
@@ -781,7 +781,7 @@ export type WatcherProofThreadObservation = Readonly<{
   schemaVersion: typeof WATCHER_PROOF_THREAD_OBSERVATION_SCHEMA_VERSION;
   policyDigest: string;
   network: WatcherProofThreadNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   transitionKind: WatcherProofThreadTransitionKind;
   confirmationPhase: WatcherProofThreadConfirmationPhase | null;
@@ -879,7 +879,7 @@ export type WatcherProofThreadState = Readonly<{
   schemaVersion: typeof WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION;
   policyDigest: string;
   network: WatcherProofThreadNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   pointDigest: string;
   durableStoreDigest: string;
@@ -1273,7 +1273,7 @@ export const parseWatcherProofThreadPolicy = (
   const record = exactRecord(value, [
     "schemaVersion",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "deploymentTrustRootId",
     "requiredFinalityDepth",
@@ -1300,7 +1300,7 @@ export const parseWatcherProofThreadPolicy = (
     families.some((family) => family === null) ||
     record.schemaVersion !== WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION ||
     !isNetwork(record.network) ||
-    !isHex32(record.releaseEvidenceDigest) ||
+    !isHex32(record.blueprintHash) ||
     !isHex32(record.deploymentTrustRootId) ||
     !isNatural(record.requiredFinalityDepth) ||
     record.requiredFinalityDepth === "0" ||
@@ -1349,7 +1349,7 @@ export const parseWatcherProofThreadPolicy = (
   const canonical = Object.freeze({
     schemaVersion: WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION,
     network: record.network,
-    releaseEvidenceDigest: record.releaseEvidenceDigest,
+    blueprintHash: record.blueprintHash,
     deploymentMarker: marker,
     deploymentTrustRootId: record.deploymentTrustRootId,
     requiredFinalityDepth: record.requiredFinalityDepth,
@@ -1559,7 +1559,7 @@ export const parseWatcherProofThreadObservation = (
     "schemaVersion",
     "policyDigest",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "transitionKind",
     "confirmationPhase",
@@ -1604,7 +1604,7 @@ export const parseWatcherProofThreadObservation = (
     record.schemaVersion !== WATCHER_PROOF_THREAD_OBSERVATION_SCHEMA_VERSION ||
     !isHex32(record.policyDigest) ||
     !isNetwork(record.network) ||
-    !isHex32(record.releaseEvidenceDigest) ||
+    !isHex32(record.blueprintHash) ||
     typeof record.transitionKind !== "string" ||
     !kinds.includes(
       record.transitionKind as WatcherProofThreadTransitionKind,
@@ -1654,7 +1654,7 @@ export const parseWatcherProofThreadObservation = (
     schemaVersion: WATCHER_PROOF_THREAD_OBSERVATION_SCHEMA_VERSION,
     policyDigest: record.policyDigest,
     network: record.network,
-    releaseEvidenceDigest: record.releaseEvidenceDigest,
+    blueprintHash: record.blueprintHash,
     deploymentMarker: marker,
     transitionKind: kind,
     confirmationPhase:
@@ -2322,7 +2322,7 @@ const verifyDeploymentAuthority = (
     );
     return same(verified, authority.result) &&
       verified.network === policy.network &&
-      verified.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+      verified.blueprintHash === policy.blueprintHash &&
       verified.trustRootId === policy.deploymentTrustRootId &&
       sameMarker(verified.durableMarker, policy.deploymentMarker) &&
       authority.policy.appliedScriptHashes.fraudProofMint ===
@@ -2867,8 +2867,7 @@ const parsePublicContext = (
       (recoveryResult.recoveryState === null ||
         recoveryResult.resumableFinalityState === null ||
         recoveryResult.recoveryState.network !== policy.network ||
-        recoveryResult.recoveryState.releaseEvidenceDigest !==
-          policy.releaseEvidenceDigest ||
+        recoveryResult.recoveryState.blueprintHash !== policy.blueprintHash ||
         !sameMarker(
           recoveryResult.recoveryState.deploymentMarker,
           policy.deploymentMarker,
@@ -2983,7 +2982,7 @@ const parsePublicContext = (
     if (
       finalityPolicy === null ||
       finalityPolicy.network !== policy.network ||
-      finalityPolicy.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+      finalityPolicy.blueprintHash !== policy.blueprintHash ||
       finalityPolicy.confirmationDepth !== policy.requiredFinalityDepth ||
       !sameMarker(finalityPolicy.deploymentMarker, policy.deploymentMarker)
     ) {
@@ -4388,7 +4387,7 @@ const makeState = (
     schemaVersion: WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     pointDigest: observation.pointDigest,
     durableStoreDigest: observation.durableStoreDigest,
@@ -4464,7 +4463,7 @@ export const parseWatcherProofThreadState = (
     "schemaVersion",
     "policyDigest",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "pointDigest",
     "durableStoreDigest",
@@ -4521,7 +4520,7 @@ export const parseWatcherProofThreadState = (
     record.schemaVersion !== WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION ||
     record.policyDigest !== policy.policyDigest ||
     record.network !== policy.network ||
-    record.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    record.blueprintHash !== policy.blueprintHash ||
     !sameMarker(marker, policy.deploymentMarker) ||
     !isHex32(record.pointDigest) ||
     !isHex32(record.durableStoreDigest) ||
@@ -4543,7 +4542,7 @@ export const parseWatcherProofThreadState = (
     schemaVersion: WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: marker,
     pointDigest: record.pointDigest,
     durableStoreDigest: record.durableStoreDigest,
@@ -4675,7 +4674,7 @@ const applyWatcherProofThreadTransition = (
   if (
     observation.policyDigest !== policy.policyDigest ||
     observation.network !== policy.network ||
-    observation.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    observation.blueprintHash !== policy.blueprintHash ||
     !sameMarker(observation.deploymentMarker, policy.deploymentMarker)
   ) {
     return rejected(

@@ -582,7 +582,7 @@ export const createManifestBoundMinAdaWorkflow = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     referenceScriptAuthPolicyId:
       parseContractDeploymentReferenceScriptAuthPolicyId(
-        binding.deploymentInfo,
+        config.deploymentInfo,
         "reference-script-auth minting",
       ),
   });

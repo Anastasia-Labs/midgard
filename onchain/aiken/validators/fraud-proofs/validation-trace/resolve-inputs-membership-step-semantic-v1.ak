@@ -4,8 +4,8 @@
 //// resolve-inputs carrier, pins the pre control bytes the yield attests
 //// against, requires the yield, and re-derives the successor by splicing the
 //// attested successor control back into the pending record. See
-//// docs/fault-proofs/size-plans/validation-trace-resolve-inputs-membership-step-semantic-v1.md
-//// §4.2-4.4.
+//// docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md
+//// Decision section.
 
 use aiken/builtin
 use aiken/crypto.{ScriptHash}

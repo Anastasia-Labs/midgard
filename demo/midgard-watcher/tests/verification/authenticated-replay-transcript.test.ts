@@ -1,8 +1,9 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
@@ -15,7 +16,12 @@ import {
   watcherAuthenticatedReplayTranscriptCborHex,
   watcherReplayRawRecordCborHex,
 } from "../../src/verification/authenticated-replay-transcript.js";
+import {
+  watcherBlockReplayDownstreamInputDigest,
+  type WatcherBlockReplayResult,
+} from "../../src/verification/block-replay.js";
 import { watcherBlockReplayPriorState } from "../../src/verification/block-replay.js";
+import { decodeWatcherReplayRawRecord } from "../../src/verification/replay-transcript-records.js";
 import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
@@ -31,7 +37,7 @@ const genuineFixture = async () => {
     constructionIdentity: {
       manifestId: baseAuthority.result.manifestId,
       network: baseAuthority.result.network,
-      releaseEvidenceDigest: baseAuthority.result.releaseEvidenceDigest,
+      blueprintHash: baseAuthority.result.blueprintHash,
       programCommitments: baseAuthority.result.programCommitments,
     },
     targetParameterSnapshot: { finalityDepth: 30 },
@@ -40,7 +46,7 @@ const genuineFixture = async () => {
   const authority = makeWatcherDeploymentAuthorityFixture({
     ruleBundleCommitment,
     programCommitments: baseAuthority.result.programCommitments,
-    releaseDigest: baseAuthority.result.releaseEvidenceDigest,
+    blueprintHash: baseAuthority.result.blueprintHash,
   });
   expect(authority.result.manifestId).toBe(baseAuthority.result.manifestId);
 
@@ -114,7 +120,19 @@ const genuineFixture = async () => {
       { header, da_attestation: "Unattested" },
       SDK.StateQueueNode,
     ),
-    linkedListDatumCborHex: "80",
+    linkedListDatumCborHex: CML.PlutusData.from_cbor_hex(
+      Data.to(
+        SDK.nodeViewToLinkedListDatum({
+          key: { Key: { key: headerHash } },
+          next: "Empty",
+          data: Data.castTo(
+            { header, da_attestation: "Unattested" },
+            SDK.StateQueueNode,
+          ),
+        }),
+        SDK.LinkedListDatum,
+      ),
+    ).to_canonical_cbor_hex(),
     daAvailability: "Unattested" as const,
     queueOutRef: `${h32("41")}#1`,
     nextHeaderHash: null,
@@ -229,7 +247,7 @@ describe("production authenticated replay transcript V1", () => {
     ).toThrow("not admitted");
   });
 
-  it("constructs and offline re-admits only a byte-exact fresh W22/W24/W25 replay", async () => {
+  it("constructs and re-admits a fresh W22/W24/W25 replay with exact stable semantics", async () => {
     const fixture = await genuineFixture();
     const transcript = await createWatcherAuthenticatedReplayTranscript({
       ...fixture.createInput,
@@ -265,7 +283,7 @@ describe("production authenticated replay transcript V1", () => {
           coordinate: { domain: "transaction", index: "0" },
         }),
       }),
-    ).rejects.toThrow("coordinate is outside exact replay");
+    ).rejects.toThrow("record binding is invalid");
     await expect(
       replayWatcherAuthenticatedReplayTranscript({
         ...fixture.createInput,
@@ -274,7 +292,7 @@ describe("production authenticated replay transcript V1", () => {
           payloadSha256: "ff".repeat(32),
         }),
       }),
-    ).rejects.toThrow("differs from fresh authenticated replay");
+    ).rejects.toThrow("record binding is invalid");
     await expect(
       replayWatcherAuthenticatedReplayTranscript({
         ...fixture.createInput,
@@ -284,7 +302,62 @@ describe("production authenticated replay transcript V1", () => {
           finding: "caller-authored",
         }),
       }),
-    ).rejects.toThrow("differs from fresh authenticated replay");
+    ).rejects.toThrow("record binding is invalid");
+    const rehashTranscript = (
+      record: WatcherAuthenticatedReplayTranscript,
+    ): string => {
+      const { transcriptDigest: _digest, ...material } = record;
+      return watcherReplayRawRecordCborHex({
+        ...material,
+        transcriptDigest: computeDeploymentManifestJsonDigest(material),
+      });
+    };
+    await expect(
+      replayWatcherAuthenticatedReplayTranscript({
+        ...fixture.createInput,
+        persistedTranscriptCborHex: rehashTranscript({
+          ...transcript,
+          payloadSha256: "ef".repeat(32),
+        }),
+      }),
+    ).rejects.toThrow("payload hash");
+    await expect(
+      replayWatcherAuthenticatedReplayTranscript({
+        ...fixture.createInput,
+        persistedTranscriptCborHex: rehashTranscript({
+          ...transcript,
+          coordinate: { domain: "transaction", index: "0" },
+        }),
+      }),
+    ).rejects.toThrow("coordinate is outside exact replay");
+    const recordedW25 = decodeWatcherReplayRawRecord(
+      transcript.blockReplayRecordCborHex,
+    ) as WatcherBlockReplayResult;
+    const changedW25 = {
+      ...recordedW25,
+      sourceManifestDigest: "ed".repeat(32),
+    };
+    const { resultDigest: _resultDigest, ...changedMaterial } = {
+      ...changedW25,
+      downstreamPrerequisite: {
+        ...changedW25.downstreamPrerequisite,
+        inputDigest: watcherBlockReplayDownstreamInputDigest(changedW25),
+      },
+    };
+    const rehashedW25 = {
+      ...changedMaterial,
+      resultDigest: watcherSha256CanonicalJson(changedMaterial),
+    };
+    await expect(
+      replayWatcherAuthenticatedReplayTranscript({
+        ...fixture.createInput,
+        persistedTranscriptCborHex: rehashTranscript({
+          ...transcript,
+          blockReplayRecordCborHex: watcherReplayRawRecordCborHex(rehashedW25),
+          blockReplayResultDigest: rehashedW25.resultDigest,
+        }),
+      }),
+    ).rejects.toThrow("W25 source manifest");
     await expect(
       createWatcherAuthenticatedReplayTranscript({
         ...fixture.createInput,

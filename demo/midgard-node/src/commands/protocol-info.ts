@@ -3,7 +3,6 @@ import {
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import {
-  assertMidgardConsensusReleaseReady,
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
@@ -113,7 +112,6 @@ export const encodeProtocolInfo = ({
       localValidationIsAuthoritative: false,
     },
   };
-  assertMidgardConsensusReleaseReady();
   return {
     ...common,
     apiVersion: PROTOCOL_INFO_API_VERSION,

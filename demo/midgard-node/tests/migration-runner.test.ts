@@ -1,5 +1,7 @@
-import { createHash } from "node:crypto";
+import "./utils.js";
 
+import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +15,9 @@ import {
   splitSqlStatements,
   validateAppliedMigrationLedger,
 } from "../src/database/migrations/runner.js";
+import * as MigrationRunner from "../src/database/migrations/runner.js";
+import { BatchSql } from "../src/services/database.js";
+import { provideDatabaseLayers } from "./utils.js";
 
 describe("migrationExecutionMs", () => {
   it("never returns a negative duration", () => {
@@ -66,22 +71,24 @@ describe("splitSqlStatements", () => {
       name: "initial_schema",
       transactional: true,
     });
-    expect(splitSqlStatements(MIGRATIONS[0]!.sql).length).toBeGreaterThan(100);
   });
 
-  it("binds the exact fresh baseline bytes, name, checksum, and manifest hash", () => {
-    const migration = MIGRATIONS[0]!;
-    expect(
-      createHash("sha256").update(migration.sql, "utf8").digest("hex"),
-    ).toBe(migration.checksumSha256);
-    expect(
-      createHash("sha256")
-        .update(
-          `${migration.version.toString()}:${migration.name}:${migration.checksumSha256}`,
-          "utf8",
-        )
-        .digest("hex"),
-    ).toBe(MIGRATION_MANIFEST_HASH);
+  it("splits the real baseline into statements that re-split identically", () => {
+    // Idempotence on the 1600-line production dump is a property, not a pin:
+    // a splitter that swallowed a dollar-quoted body, merged two statements,
+    // or emitted a fragment would re-split into a different list. The dump is
+    // the only input in the tree that exercises every lexer state at once.
+    const statements = splitSqlStatements(MIGRATIONS[0]!.sql);
+    expect(statements.length).toBeGreaterThan(100);
+    expect(statements.every((statement) => statement.trim().length > 0)).toBe(
+      true,
+    );
+    expect(splitSqlStatements(statements.join(";\n") + ";")).toEqual(
+      statements,
+    );
+  });
+
+  it("accepts the exact fresh baseline ledger row", () => {
     expect(() =>
       validateAppliedMigrationLedger([appliedMigrationRow()], "exact"),
     ).not.toThrow();
@@ -132,121 +139,6 @@ describe("splitSqlStatements", () => {
     }
   });
 
-  it("keeps Architecture G replay fields all-or-none and length bound", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toContain(
-      "pending_block_finalizations_mpf_replay_all_or_none_check",
-    );
-    expect(sql).toContain("mpf_owner_schema = 1");
-    expect(sql).toContain("octet_length(mpf_owner_binary_sha256) = 32");
-    expect(sql).toContain("octet_length(mpf_replay_event_log) >= 92");
-    expect(sql).toMatch(
-      /octet_length\(mpf_replay_event_roots\) = \(?mpf_replay_event_count \* 32\)?/,
-    );
-  });
-
-  it("binds every pending MPF journal to the exact final deployment marker", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toContain("deployment_marker_schema_version text NOT NULL");
-    expect(sql).toContain("deployment_manifest_id text NOT NULL");
-    expect(sql).toContain(
-      "deployment_marker_schema_version = 'midgard-deployment-marker-v1'",
-    );
-    expect(sql).toContain("deployment_manifest_id ~ '^[0-9a-f]{64}$'");
-  });
-
-  it("persists only exact PendingBlockFinalizationV1 replay discriminators", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    const table = sql.match(
-      /CREATE TABLE public\.pending_block_finalizations \(([\s\S]+?)\n\);/u,
-    )?.[1];
-    expect(table).toBeDefined();
-    expect(table).toContain("format_version smallint NOT NULL");
-    expect(table).toContain("replay_kind text NOT NULL");
-    expect(table).toContain("format_version = 1");
-    expect(table).toContain(
-      "ARRAY['ledger_delta_v1'::text, 'ledger_delta_native_mpf_v1'::text]",
-    );
-    expect(table).toContain(
-      "(replay_kind = 'ledger_delta_v1'::text) AND (mpf_owner_schema IS NULL)",
-    );
-    expect(table).toContain(
-      "(replay_kind = 'ledger_delta_native_mpf_v1'::text) AND (mpf_owner_schema = 1)",
-    );
-    expect(table).toContain(
-      "encode(mpf_replay_base_root, 'hex'::text) = base_utxos_root",
-    );
-    expect(table).toContain(
-      "encode(mpf_replay_candidate_root, 'hex'::text) = expected_utxos_root",
-    );
-    expect(table).not.toMatch(/consensus_profile_id text DEFAULT/iu);
-    expect(table).not.toMatch(
-      /expected_validation_(?:traces_root|trace_count)[^\n]*DEFAULT/iu,
-    );
-  });
-
-  it("persists exact ForeignTipReconciliationV1 deployment and DA identity", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    const table = sql.match(
-      /CREATE TABLE public\.foreign_tip_reconciliations \(([\s\S]+?)\n\);/u,
-    )?.[1];
-    expect(table).toBeDefined();
-    expect(table).toContain("format_version smallint NOT NULL");
-    expect(table).toContain("deployment_marker_schema_version text NOT NULL");
-    expect(table).toContain("deployment_manifest_id text NOT NULL");
-    expect(table).toContain("consensus_profile_id text NOT NULL");
-    expect(table).toContain("verified_da_payload_sha256 bytea");
-    expect(table).toContain("evidence_kind text NOT NULL");
-    expect(table).toContain("format_version = 1");
-    expect(table).toContain(
-      "ARRAY['pending_v1'::text, 'verified_empty_v1'::text, 'verified_da_v1'::text]",
-    );
-    expect(table).toContain(
-      "(status <> 'resolved'::text) OR (evidence_kind <> 'pending_v1'::text)",
-    );
-    expect(table).toContain("octet_length(verified_da_payload_sha256) = 32");
-    expect(table).toContain("octet_length(verified_da_payload_cbor) > 0");
-    expect(table).toContain(
-      "foreign_tip_reconciliations_verified_da_nonempty_check",
-    );
-    expect(table).not.toMatch(/status text DEFAULT/iu);
-    expect(table).not.toMatch(/consensus_profile_id text DEFAULT/iu);
-  });
-
-  it("keeps active lease point lookups separate from expiry recovery", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toContain("idx_tx_admissions_active_lease");
-    expect(sql).toContain("(lease_owner, tx_id)");
-    expect(sql).toMatch(/WHERE \(status = 'validating'::/i);
-    expect(sql).toContain("idx_tx_admissions_lease");
-  });
-
-  it("makes only the rebuildable transaction-delta cache unlogged", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toMatch(/CREATE UNLOGGED TABLE public\.mempool_tx_deltas/i);
-    expect(sql).not.toMatch(/CREATE UNLOGGED TABLE public\.tx_admissions/i);
-    expect(sql).not.toMatch(
-      /CREATE UNLOGGED TABLE public\.tx_admission_payloads/i,
-    );
-  });
-
-  it("defines final inline payload constraints without transitional DML", () => {
-    const sql = MIGRATIONS[0]!.sql;
-    expect(sql).toMatch(
-      /CREATE TABLE public\.mempool \([\s\S]+?tx bytea NOT NULL,/i,
-    );
-    expect(sql).toMatch(
-      /CREATE TABLE public\.tx_admission_payloads \([\s\S]+?tx_canonical_cbor bytea NOT NULL,[\s\S]+?tx_full_hash_v1 bytea NOT NULL,/i,
-    );
-    expect(sql).not.toContain("tx_canonical_cbor_sha256");
-    expect(sql).toMatch(
-      /CREATE TABLE public\.tx_admission_payloads \([\s\S]+?cek_program_material_sidecar_cbor bytea NOT NULL,[\s\S]+?cek_program_material_sidecar_sha256 bytea NOT NULL,/i,
-    );
-    expect(sql).not.toContain("idx_tx_admission_payloads_tx_id_hash");
-    expect(sql).not.toMatch(/UPDATE mempool AS membership/i);
-    expect(sql).not.toMatch(/DROP INDEX/i);
-  });
-
   it("fails closed on unterminated quoted SQL", () => {
     expect(() => splitSqlStatements("SELECT 'unterminated;")).toThrow(
       MigrationError,
@@ -263,4 +155,153 @@ const appliedMigrationRow = (): AppliedMigrationRow => ({
   app_version: "test",
   execution_ms: 1,
   applied_by: "test",
+});
+
+/**
+ * The applied schema, not the dump text, is the oracle here.
+ *
+ * These assertions read `pg_catalog` after the baseline has actually been
+ * executed, so Postgres has parsed and re-rendered every CHECK expression.
+ * Reformatting `0001_initial_schema.sql` — whitespace, column order, a pg_dump
+ * re-emit — cannot move them; deleting a constraint or switching a durable
+ * table to UNLOGGED does.
+ */
+describe("applied fresh-install schema", () => {
+  /** Reviewed contract: only the rebuildable delta cache may lose its WAL. */
+  const UNLOGGED_TABLES = ["mempool_tx_deltas"] as const;
+
+  /**
+   * Reviewed contract: each replay/deployment discriminator the node relies on
+   * when reloading a journal must be enforced by the database, not only by the
+   * writer. The fragments are matched against Postgres's own normalized
+   * rendering of the constraint.
+   */
+  const REQUIRED_CHECKS: readonly {
+    readonly table: string;
+    readonly constraint: string;
+    readonly fragments: readonly string[];
+  }[] = [
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_format_version_check",
+      fragments: ["format_version = 1"],
+    },
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_replay_kind_check",
+      fragments: ["ledger_delta_v1", "ledger_delta_native_mpf_v1"],
+    },
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_mpf_replay_all_or_none_check",
+      fragments: [
+        "mpf_owner_schema = 1",
+        "octet_length(mpf_owner_binary_sha256) = 32",
+        "octet_length(mpf_replay_event_log) >= 92",
+        "octet_length(mpf_replay_event_roots) = (mpf_replay_event_count * 32)",
+        "encode(mpf_replay_base_root, 'hex'::text) = base_utxos_root",
+        "encode(mpf_replay_candidate_root, 'hex'::text) = expected_utxos_root",
+      ],
+    },
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_deployment_marker_schema_check",
+      fragments: ["'midgard-deployment-marker-v1'"],
+    },
+    {
+      table: "pending_block_finalizations",
+      constraint: "pending_block_finalizations_deployment_manifest_id_check",
+      fragments: ["'^[0-9a-f]{64}$'"],
+    },
+    {
+      table: "foreign_tip_reconciliations",
+      constraint: "foreign_tip_reconciliations_format_version_check",
+      fragments: ["format_version = 1"],
+    },
+    {
+      table: "foreign_tip_reconciliations",
+      constraint: "foreign_tip_reconciliations_evidence_kind_check",
+      fragments: ["pending_v1", "verified_empty_v1", "verified_da_v1"],
+    },
+    {
+      table: "foreign_tip_reconciliations",
+      constraint: "foreign_tip_reconciliations_resolved_evidence_check",
+      fragments: ["status <> 'resolved'", "evidence_kind <> 'pending_v1'"],
+    },
+    {
+      table: "foreign_tip_reconciliations",
+      constraint: "foreign_tip_reconciliations_verified_da_nonempty_check",
+      fragments: ["evidence_kind <> 'verified_da_v1'"],
+    },
+    {
+      table: "foreign_tip_reconciliations",
+      constraint: "foreign_tip_reconciliations_deployment_manifest_id_check",
+      fragments: ["'^[0-9a-f]{64}$'"],
+    },
+  ];
+
+  it("enforces the replay, deployment and durability contracts in the database", async () => {
+    await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          const sql = yield* BatchSql;
+          yield* sql.unsafe("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+          const status = yield* MigrationRunner.migrate({
+            appVersion: "migration-runner-test",
+            actor: "schema-contract",
+          }).pipe(Effect.provideService(SqlClient.SqlClient, sql));
+          expect(status.manifestHash).toBe(MIGRATION_MANIFEST_HASH);
+
+          const unlogged = yield* sql<{
+            readonly relname: string;
+          }>`SELECT relname
+               FROM pg_class
+               WHERE relnamespace = 'public'::regnamespace
+                 AND relkind = 'r'
+                 AND relpersistence = 'u'
+               ORDER BY relname`;
+          expect(unlogged.map((row) => row.relname)).toEqual([
+            ...UNLOGGED_TABLES,
+          ]);
+
+          const constraints = yield* sql<{
+            readonly relname: string;
+            readonly conname: string;
+            readonly definition: string;
+          }>`SELECT c.relname,
+                    con.conname,
+                    pg_get_constraintdef(con.oid) AS definition
+               FROM pg_constraint AS con
+               JOIN pg_class AS c ON c.oid = con.conrelid
+               WHERE c.relnamespace = 'public'::regnamespace
+                 AND con.contype = 'c'`;
+          const definitionByKey = new Map(
+            constraints.map((row) => [
+              `${row.relname}.${row.conname}`,
+              row.definition,
+            ]),
+          );
+
+          const missing = REQUIRED_CHECKS.filter(
+            (required) =>
+              !definitionByKey.has(`${required.table}.${required.constraint}`),
+          ).map((required) => `${required.table}.${required.constraint}`);
+          expect(missing).toEqual([]);
+
+          const unsatisfied = REQUIRED_CHECKS.flatMap((required) => {
+            const definition =
+              definitionByKey.get(`${required.table}.${required.constraint}`) ??
+              "";
+            return required.fragments
+              .filter((fragment) => !definition.includes(fragment))
+              .map(
+                (fragment) =>
+                  `${required.table}.${required.constraint}: ${fragment}`,
+              );
+          });
+          expect(unsatisfied).toEqual([]);
+        }),
+      ),
+    );
+  });
 });

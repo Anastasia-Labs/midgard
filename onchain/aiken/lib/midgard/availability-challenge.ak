@@ -75,6 +75,7 @@ pub type StateQueueStatusV1 {
 /// corresponding state transition.
 pub type MintRedeemerV1 {
   MintBondFromAttestation {
+    yield_to_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
     da_attestation_input_index: Int,
     da_attestation_mint_redeemer_index: Int,
@@ -83,6 +84,7 @@ pub type MintRedeemerV1 {
     state_queue_output_index: Int,
   }
   OpenChallenge {
+    yield_to_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
     bond_input_index: Int,
     bond_output_index: Int,
@@ -94,6 +96,7 @@ pub type MintRedeemerV1 {
     challenger: VerificationKeyHash,
   }
   SettleTranche {
+    yield_to_ref_input_index: Int,
     bond_ref_input_index: Int,
     terminal_accumulator_input_index: Int,
     terminal_accumulator_output_index: Int,
@@ -101,6 +104,7 @@ pub type MintRedeemerV1 {
     carrier_input_index: Option<Int>,
   }
   CloseChallenge {
+    yield_to_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
     bond_input_index: Int,
     terminal_accumulator_input_index: Int,
@@ -110,6 +114,7 @@ pub type MintRedeemerV1 {
     challenger_refund_output_index: Int,
   }
   TimeoutChallenge {
+    yield_to_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
     bond_input_index: Int,
     terminal_accumulator_input_index: Int,
@@ -117,6 +122,11 @@ pub type MintRedeemerV1 {
     da_slash_output_index: Int,
     challenger_refund_output_index: Int,
   }
+}
+
+/// Arm-specific yielding carries no prover-selected transition claim.
+pub type YieldRedeemerV1 {
+  Yield
 }
 
 pub type SpendRedeemerV1 {
@@ -337,15 +347,14 @@ pub fn parameters_are_canonical_v1(parameters: ParametersV1) -> Bool {
   let geometry = parameters.response_geometry
   let full_tranches = full_payload_max_bytes_v1 / geometry.tranche_byte_length
   let remainder = full_payload_max_bytes_v1 % geometry.tranche_byte_length
-  let publications_per_full_tranche = ceil_div(
-    geometry.tranche_byte_length,
-    geometry.chunk_byte_length,
-  )
-  let maximum_publications = full_tranches * publications_per_full_tranche + if remainder == 0 {
-    0
-  } else {
-    ceil_div(remainder, geometry.chunk_byte_length)
-  }
+  let publications_per_full_tranche =
+    ceil_div(geometry.tranche_byte_length, geometry.chunk_byte_length)
+  let maximum_publications =
+    full_tranches * publications_per_full_tranche + if remainder == 0 {
+      0
+    } else {
+      ceil_div(remainder, geometry.chunk_byte_length)
+    }
   and {
     response_geometry_is_canonical_v1(geometry),
     parameters.da_bond_lovelace > 0,
@@ -375,11 +384,12 @@ fn descriptors_are_canonical_v1(
       }
     [descriptor, ..rest] -> {
       let remaining = payload_byte_length - expected_offset
-      let expected_length = if remaining < tranche_byte_length {
-        remaining
-      } else {
-        tranche_byte_length
-      }
+      let expected_length =
+        if remaining < tranche_byte_length {
+          remaining
+        } else {
+          tranche_byte_length
+        }
       and {
         expected_length > 0,
         descriptor.tranche_index == expected_index,
@@ -501,13 +511,16 @@ pub fn tranche_initial_lovelaces_v1(
     None
   } else {
     let terminal_reserve = terminal_accumulator_reserve_lovelace_v1(parameters)
-    let total_publication_reserve = total_publication_reserve_v1(
-      descriptors,
-      parameters.response_geometry.chunk_byte_length,
-      parameters.max_publication_fee_lovelace,
-    )
-    let total_settlement_reserve = descriptor_count * parameters.max_settlement_fee_lovelace
-    let distributable = parameters.challenger_bond_lovelace - total_publication_reserve - total_settlement_reserve - terminal_reserve
+    let total_publication_reserve =
+      total_publication_reserve_v1(
+        descriptors,
+        parameters.response_geometry.chunk_byte_length,
+        parameters.max_publication_fee_lovelace,
+      )
+    let total_settlement_reserve =
+      descriptor_count * parameters.max_settlement_fee_lovelace
+    let distributable =
+      parameters.challenger_bond_lovelace - total_publication_reserve - total_settlement_reserve - terminal_reserve
     let base = distributable / descriptor_count
     let remainder = distributable % descriptor_count
     Some(
@@ -552,12 +565,13 @@ pub fn terminal_accumulator_start_v1(
   commitment: CommitmentV1,
   challenge_asset_name: AssetName,
 ) -> ByteArray {
-  let start = TerminalAccumulatorStartV1 {
-    version: commitment_version_v1,
-    deployment_identity: commitment.deployment_identity,
-    header_hash: commitment.header_hash,
-    challenge_asset_name,
-  }
+  let start =
+    TerminalAccumulatorStartV1 {
+      version: commitment_version_v1,
+      deployment_identity: commitment.deployment_identity,
+      header_hash: commitment.header_hash,
+      challenge_asset_name,
+    }
   let start_data: Data = start
   hash_domain_and_data(
     bytearray.from_string(@"MidgardDaAvailabilityTerminalStartV1"),
@@ -570,12 +584,13 @@ pub fn fold_terminal_accumulator_v1(
   tranche_index: Int,
   status: TrancheTerminalStatusV1,
 ) -> ByteArray {
-  let step = TerminalAccumulatorStepV1 {
-    version: commitment_version_v1,
-    previous_accumulator,
-    tranche_index,
-    status,
-  }
+  let step =
+    TerminalAccumulatorStepV1 {
+      version: commitment_version_v1,
+      previous_accumulator,
+      tranche_index,
+      status,
+    }
   let step_data: Data = step
   hash_domain_and_data(
     bytearray.from_string(@"MidgardDaAvailabilityTerminalStepV1"),
@@ -608,14 +623,15 @@ pub fn tranche_start_accumulator_v1(
   header_hash: HeaderHash,
   descriptor: TrancheDescriptorV1,
 ) -> ByteArray {
-  let start = TrancheStartV1 {
-    version: commitment_version_v1,
-    deployment_identity,
-    header_hash,
-    tranche_index: descriptor.tranche_index,
-    start_offset: descriptor.start_offset,
-    byte_length: descriptor.byte_length,
-  }
+  let start =
+    TrancheStartV1 {
+      version: commitment_version_v1,
+      deployment_identity,
+      header_hash,
+      tranche_index: descriptor.tranche_index,
+      start_offset: descriptor.start_offset,
+      byte_length: descriptor.byte_length,
+    }
   let start_data: Data = start
   hash_domain_and_data(
     bytearray.from_string(@"MidgardDaAvailabilityTrancheStartV1"),
@@ -631,16 +647,17 @@ pub fn tranche_step_accumulator_v1(
   chunk: ByteArray,
   previous_accumulator: ByteArray,
 ) -> ByteArray {
-  let step = TrancheStepV1 {
-    version: commitment_version_v1,
-    deployment_identity,
-    header_hash,
-    tranche_index,
-    chunk_offset,
-    chunk_byte_length: bytearray.length(chunk),
-    chunk_hash: blake2b_256(chunk),
-    previous_accumulator,
-  }
+  let step =
+    TrancheStepV1 {
+      version: commitment_version_v1,
+      deployment_identity,
+      header_hash,
+      tranche_index,
+      chunk_offset,
+      chunk_byte_length: bytearray.length(chunk),
+      chunk_hash: blake2b_256(chunk),
+      previous_accumulator,
+    }
   let step_data: Data = step
   hash_domain_and_data(
     bytearray.from_string(@"MidgardDaAvailabilityTrancheStepV1"),
@@ -655,14 +672,15 @@ pub fn chunk_leaf_hash_v1(
   chunk_byte_length: Int,
   chunk_hash: ByteArray,
 ) -> ByteArray {
-  let leaf = ChunkLeafV1 {
-    version: commitment_version_v1,
-    tranche_index,
-    chunk_index,
-    chunk_offset,
-    chunk_byte_length,
-    chunk_hash,
-  }
+  let leaf =
+    ChunkLeafV1 {
+      version: commitment_version_v1,
+      tranche_index,
+      chunk_index,
+      chunk_offset,
+      chunk_byte_length,
+      chunk_hash,
+    }
   let leaf_data: Data = leaf
   hash_domain_and_data(
     bytearray.from_string(@"MidgardDaAvailabilityChunkLeafV1"),
@@ -683,13 +701,14 @@ fn publication_chunk_is_committed_v1(
       publication.chunk_frontier,
     ),
   } {
-    let leaf_hash = chunk_leaf_hash_v1(
-      descriptor.tranche_index,
-      publication.chunk_index,
-      publication.chunk_offset,
-      publication.chunk_byte_length,
-      publication.chunk_hash,
-    )
+    let leaf_hash =
+      chunk_leaf_hash_v1(
+        descriptor.tranche_index,
+        publication.chunk_index,
+        publication.chunk_offset,
+        publication.chunk_byte_length,
+        publication.chunk_hash,
+      )
     and {
       validation_merkle_v1.frontier_commitment(
         descriptor.chunk_count,
@@ -729,20 +748,23 @@ pub fn publication_advances_active_tranche_v1(
     } -> {
       let end_offset = descriptor.start_offset + descriptor.byte_length
       let remaining = end_offset - next_offset
-      let expected_chunk_length = if remaining < chunk_byte_length {
-        remaining
-      } else {
-        chunk_byte_length
-      }
-      let next_accumulator = tranche_step_accumulator_v1(
-        deployment_identity,
-        header_hash,
-        descriptor.tranche_index,
-        next_offset,
-        publication.chunk,
-        accumulator,
-      )
-      let expected_chunk_index = ( next_offset - descriptor.start_offset ) / chunk_byte_length
+      let expected_chunk_length =
+        if remaining < chunk_byte_length {
+          remaining
+        } else {
+          chunk_byte_length
+        }
+      let next_accumulator =
+        tranche_step_accumulator_v1(
+          deployment_identity,
+          header_hash,
+          descriptor.tranche_index,
+          next_offset,
+          publication.chunk,
+          accumulator,
+        )
+      let expected_chunk_index =
+        ( next_offset - descriptor.start_offset ) / chunk_byte_length
       if and {
         expected_chunk_length > 0,
         publication.deployment_identity == deployment_identity,

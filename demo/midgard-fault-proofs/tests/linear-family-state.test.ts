@@ -60,6 +60,84 @@ const terminal = (
 });
 
 describe("production linear family authenticated state machine V1", () => {
+  it("keeps known transactions pending while finalized state is unchanged", async () => {
+    for (const stage of [
+      { kind: "not_started" as const, stateQueueBlockOutRef: outRef("10") },
+      {
+        kind: "step" as const,
+        step: 1 as const,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      },
+      {
+        kind: "proof_token" as const,
+        fraudProofOutRef: outRef("44"),
+        stateQueueBlockOutRef: outRef("10"),
+        nextRemovalOutRef: outRef("33"),
+      },
+    ]) {
+      const observed = linearFamilyObservation({
+        category: "daHashPreimage",
+        headerHash,
+        provenance,
+        stage,
+      });
+      if (observed.kind !== "action_required")
+        throw new Error("missing action");
+      const input = {
+        category: "daHashPreimage",
+        headerHash,
+        provenance,
+        stage,
+        action: observed.action,
+        transactionConfirmed: async () => false,
+      } as const;
+      await expect(
+        reconcileLinearFamilyAction({ ...input, txHash: hash("55") }),
+      ).resolves.toEqual({ kind: "pending", txHash: hash("55") });
+      await expect(reconcileLinearFamilyAction(input)).resolves.toEqual({
+        kind: "not_found",
+      });
+      if (stage.kind === "proof_token") {
+        await expect(
+          reconcileLinearFamilyAction({
+            ...input,
+            txHash: hash("55"),
+            stage: { ...stage, nextRemovalOutRef: outRef("34") },
+          }),
+        ).resolves.toEqual({ kind: "pending", txHash: hash("55") });
+      }
+    }
+  });
+
+  it("rejects changed successors when transaction history does not confirm the intent", async () => {
+    const observed = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
+    });
+    if (observed.kind !== "action_required") throw new Error("missing action");
+    for (const threadOutRef of [outRef("55"), outRef("99")]) {
+      await expect(
+        reconcileLinearFamilyAction({
+          category: "daHashPreimage",
+          headerHash,
+          provenance,
+          action: observed.action,
+          txHash: hash("55"),
+          stage: {
+            kind: "step",
+            step: 1,
+            threadOutRef,
+            stateQueueBlockOutRef: outRef("10"),
+          },
+          transactionConfirmed: async () => false,
+        }),
+      ).resolves.toMatchObject({ kind: "conflict" });
+    }
+  });
+
   it("defines only fixed-terminal categories in exact closed order", () => {
     expect(LINEAR_FAMILY_SPECS.map((row) => row.category)).toEqual(
       LINEAR_FAMILY_CATEGORIES,
@@ -214,7 +292,7 @@ describe("production linear family authenticated state machine V1", () => {
     ).toThrow("changed its category or target header");
   });
 
-  it("fails closed on stale/reordered states but permits an unincluded stale removal to rebuild", async () => {
+  it("fails closed on reordered states and retains an unconfirmed stale removal", async () => {
     const proof = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
@@ -242,7 +320,7 @@ describe("production linear family authenticated state machine V1", () => {
         },
         transactionConfirmed: async () => false,
       }),
-    ).resolves.toEqual({ kind: "not_found" });
+    ).resolves.toEqual({ kind: "pending", txHash: hash("55") });
 
     await expect(
       reconcileLinearFamilyAction({

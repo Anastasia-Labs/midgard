@@ -101,6 +101,11 @@ export type FraudProofWorkflowPreflight = {
 
 export type FraudProofWorkflowObservation =
   | {
+      /** A prerequisite is visible but has not reached authenticated finality. */
+      readonly kind: "pending";
+      readonly reason: string;
+    }
+  | {
       readonly kind: "action_required";
       readonly action: FraudProofWorkflowAction;
     }
@@ -425,8 +430,7 @@ const requirePreparedArtifact = ({
       JSON.stringify(evidenceBinding) ||
     envelope.releaseFinality.deploymentIdentityDigest !==
       releaseFinality.deploymentIdentityDigest ||
-    envelope.releaseFinality.releaseIdentityDigest !==
-      releaseFinality.releaseIdentityDigest ||
+    envelope.releaseFinality.blueprintHash !== releaseFinality.blueprintHash ||
     envelope.releaseFinality.policyDigest !== releaseFinality.policyDigest
   ) {
     throw new Error(
@@ -1120,6 +1124,15 @@ const runAdmittedFraudProofWorkflow = async ({
       checkpoint: "before_observe",
     });
     const observation = await adapter.observe(context);
+    if (observation.kind === "pending") {
+      return {
+        kind: "pending",
+        workflowId,
+        identity,
+        reason: observation.reason,
+        entries,
+      };
+    }
     if (observation.kind === "completed") {
       let terminal: FraudProofWorkflowTerminal;
       try {

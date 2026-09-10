@@ -1,49 +1,47 @@
 /**
  * #622 measurement campaign, file 1 of 3: the post-Option-B direct-route
- * RESERVE frontier, measured — not predicted — through the genuine
- * build-sign-submit lifecycle (the resolver proof-fit sweep precedent), with
- * the adjacent-item probe the consensus-profile ledger style demands.
+ * RESERVE frontier, driven — not predicted — through the genuine
+ * build-sign-submit lifecycle, with the adjacent-item probe.
  *
  * Since #620 narrowed the committed evidence to the transition alone and
  * #621 moved delivery routing to build time, the one stage that still grows
  * with the §5.1 complete-item preimage on the direct route is the observe
- * stage — the §8.8 door carries the preimage in its redeemer. This file pins
- * the measured frontier against the 15,872-byte reliability budget
- * (16,384 − 512, `proofItemEnvelopeReliabilityReserveBytes`):
+ * stage — the §8.8 door carries the preimage in its redeemer. The claims:
  *
- *   item 13,522 -> observe 15,816 (= budget - 56 after claim-registry removal)
- *   item 13,523 -> observe 15,817 (one byte larger, second journey)
+ *   1. At the owner-signed direct threshold
+ *      (`MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes`,
+ *      13,522) the observe transaction signs at or under the reliability
+ *      budget — `minSupportedL1MaxTxBytes` less
+ *      `proofItemEnvelopeReliabilityReserveBytes`, 16,384 - 512 = 15,872 —
+ *      so the reserve the routing policy claims really exists.
+ *   2. The pre-sign projection the routing heuristic admits the transaction
+ *      on equals the bytes signing produced.
+ *   3. The threshold is a policy line, not a cliff: item 13,523 still signs
+ *      and still completes on the direct route.
+ *   4. Every non-observe stage is item-size independent — asserted by
+ *      comparing this file's two journeys against EACH OTHER, not against
+ *      transcribed byte counts. The pre-change binder was `authenticate`,
+ *      which double-carried the item; post-change it must not move at all
+ *      when the item does.
  *
- * Measured observe shape on this fixture family: item bytes + 64-byte
- * Plutus-data chunk headers + framing, where the framing is quantized by
- * the transaction-balancing fixed point (file 2's header carries the
- * measured ladder near the envelope). Both of this file's pins are direct
- * measurements — the adjacent pair 13,522 -> 15,816 / 13,523 -> 15,817
- * proves the owner-signed policy threshold now retains 56 extra bytes of
- * headroom. The pre-change binder was
- * authenticate (which double-carried the item; owner-signed reserve
- * 12,810); post-change authenticate is item-size-independent, measured
- * byte-identical across this file's two item sizes and files 2-3's probes.
+ * No absolute byte count is asserted here. Absolute stage sizes and
+ * execution units belong in the generated fit ledger, whose `--check` mode
+ * is the drift gate; a suite that transcribes them only reports that the
+ * compiler, the fee balancer or lucid produced different bytes.
  *
- * Every pinned number is a measurement of this suite's own journey — a
- * change in any stage's shape moves a pin and must be re-pinned
- * deliberately, never absorbed. The consensus-profile pins this suite
- * measured (12,810 / 13,294) were NOT rebound by this file: #619's question
- * (b) went to the owner, who approved the lane-level rebind to 13,522 /
- * 14,004 on 2026-08-22, executed at the #617 wave sign-off. Removing the
- * claim-registry witness subsequently moved that exact frontier to 14,058;
- * this suite remains the measured table behind the reliability pin.
- *
- * Lives in its own file (two journeys), split alongside the #621 route-freedom
- * files. The split was made while `@lucid-evolution/uplc` (through 0.2.22)
- * leaked wasm linear memory on every script evaluation and vitest isolates per
- * FILE; that leak is fixed upstream, and the split is kept so each file runs
- * in its own fresh process.
+ * Lives in its own file (two journeys), split alongside the #621
+ * route-freedom files. The split was made while `@lucid-evolution/uplc`
+ * (through 0.2.22) leaked wasm linear memory on every script evaluation and
+ * vitest isolates per FILE; that leak is fixed upstream, and the split is
+ * kept so each file runs in its own fresh process.
  */
 
-import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
+import {
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
+} from "@al-ft/midgard-core/consensus-profile";
 import { PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   OPTION_B_SKIP_REASON,
@@ -58,98 +56,42 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const MAX_L1_TX_BYTES = PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
-const RELIABILITY_BUDGET_BYTES =
-  MAX_L1_TX_BYTES -
-  MIDGARD_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
-const CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES = 56;
 
 /**
- * The measured post-Option-B direct-route reserve frontier: the largest §5.1
- * complete-item preimage below which every observe transaction signs at or
- * under the 15,872-byte reliability budget (contiguous frontier — the next
- * item is measured over it in this file's second journey). Payload 13,062
- * stages exactly this preimage (fixture map: item = datumSize(payload)+49).
+ * The reliability budget this file measures against: the smallest supported
+ * L1 `max_tx_size` less the publication reliability reserve, both read from
+ * the consensus profile rather than transcribed (16,384 - 512 = 15,872).
  */
-const RESERVE_FRONTIER_ITEM_BYTES = 13_522;
+const RELIABILITY_BUDGET_BYTES =
+  MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes -
+  MIDGARD_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
+
+/**
+ * The owner-signed direct-route reserve frontier, read from the consensus
+ * profile it governs — this suite is the measured evidence BEHIND that
+ * number, so the profile is the claim and the journeys are the check.
+ * Payload 13,062 stages exactly this preimage (fixture map:
+ * item = datumSize(payload) + 49).
+ */
+const RESERVE_FRONTIER_ITEM_BYTES =
+  MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 const RESERVE_FRONTIER_PAYLOAD_BYTES = 13_062;
 
-/**
- * The item-size-INDEPENDENT rows of the measured six-stage table, identical
- * at items 13,522 and 13,523 here and re-pinned identically in files 2-3 at
- * 14,058 / 14,059 / 14,336 / 8,277 — the measured form of #619's "prepare
- * and authenticate become item-size-independent". Observe, the sole
- * item-bound stage, is pinned per journey.
- */
-const SIX_STAGE_CONSTANT_ROW_BYTES = {
-  prepareSelected: 1_808,
-  authenticate: 2_600,
-  source: 1_855,
-  proof: 1_880,
-  settle: 623,
-} as const;
+type StageRecord = {
+  readonly kind: string;
+  readonly completeSignedBytes: number;
+  readonly projectedSignedBytes?: number;
+};
 
-const stageBytesByKind = (
-  stageTransactions: readonly {
-    readonly kind: string;
-    readonly completeSignedBytes: number;
-  }[],
+const stageByKind = (
+  stageTransactions: readonly StageRecord[],
   kind: string,
-): number => {
+): StageRecord => {
   const stage = stageTransactions.find((entry) => entry.kind === kind);
   if (stage === undefined) {
     throw new Error(`journey lost its ${kind} stage record`);
   }
-  return stage.completeSignedBytes;
-};
-
-const lastLifecycleMeasurement = (
-  journey: RouteFreedomJourney,
-  label: string,
-): CompleteSignedTransactionMeasurement => {
-  const stage = journey.lifecycleMeasurements.find(
-    (entry) => entry.label === label,
-  );
-  const measurement = stage?.measurements[stage.measurements.length - 1];
-  if (measurement === undefined) {
-    throw new Error(`journey captured no ${label} stage`);
-  }
-  return measurement;
-};
-
-const expectItemIndependentRows = (
-  journey: RouteFreedomJourney,
-  stageTransactions: readonly {
-    readonly kind: string;
-    readonly completeSignedBytes: number;
-  }[],
-): void => {
-  expect(
-    lastLifecycleMeasurement(journey, "prepare-selected").completeSignedBytes,
-  ).toBe(SIX_STAGE_CONSTANT_ROW_BYTES.prepareSelected);
-  expect(stageBytesByKind(stageTransactions, "authenticate")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES.authenticate,
-  );
-  expect(stageBytesByKind(stageTransactions, "source")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES.source,
-  );
-  expect(stageBytesByKind(stageTransactions, "proof")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES.proof,
-  );
-  expect(stageBytesByKind(stageTransactions, "settle")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES.settle,
-  );
-};
-
-const semanticMeasurementAt = (
-  measurements: readonly CompleteSignedTransactionMeasurement[],
-  index: number,
-  kind: string,
-): CompleteSignedTransactionMeasurement => {
-  const measurement = measurements[index];
-  if (measurement === undefined) {
-    throw new Error(`semantic leg captured no ${kind} transaction`);
-  }
-  return measurement;
+  return stage;
 };
 
 /**
@@ -191,129 +133,136 @@ const expectWholeJourneyProofFit = (
   }
 };
 
-const optionB = realBlueprintSpeaksOptionBV1();
-if (!optionB) {
-  console.warn(OPTION_B_SKIP_REASON);
+// Fail closed (test-quality rule 14): Option B is the shipped complete-item
+// wire, so a blueprint that still declares the retired carriage parameter is
+// a broken precondition, not a reason to report a silent pass.
+if (!realBlueprintSpeaksOptionBV1()) {
+  throw new Error(OPTION_B_SKIP_REASON);
 }
 
-describe.skipIf(!optionB)(
-  "post-Option-B direct-route reserve frontier (#622)",
-  () => {
-    it("keeps 56 bytes of added headroom at the owner-signed 13,522-byte direct threshold", async () => {
-      const journey = await prepareRouteFreedomJourney({
-        inlineDatumPayloadBytes: RESERVE_FRONTIER_PAYLOAD_BYTES,
-        minimumCompleteItemBytes: RESERVE_FRONTIER_ITEM_BYTES - 1,
-      });
-      expect(journey.completeItemBytes).toBe(RESERVE_FRONTIER_ITEM_BYTES);
+type FrontierRun = {
+  readonly journey: RouteFreedomJourney;
+  readonly stageTransactions: readonly StageRecord[];
+  readonly result: Awaited<
+    ReturnType<RouteFreedomJourney["submitSemanticResolution"]>
+  >["result"];
+  readonly semanticMeasurements: readonly CompleteSignedTransactionMeasurement[];
+};
 
-      const semantic = await journey.submitSemanticResolution({
-        proofItemDelivery: "inline",
-      });
-      printRouteFreedomCampaignTable(
-        "#622 reserve-frontier item 13,522",
-        journey,
-        semantic,
-      );
-      const result = semantic.result;
-      expect(result.proofItemCarriage).toBe("direct");
-      expect(result.proofItemPublication).toBeUndefined();
-      expect(result.proofItemInlineEnvelopeRefusal).toBeUndefined();
-      const stageTransactions = result.stageTransactions ?? [];
-      expect(stageTransactions).toHaveLength(5);
-      expect(semantic.measurements).toHaveLength(5);
+/**
+ * One direct-route journey at `payloadBytes`, driven all the way to the
+ * award, with every transaction proof-fit checked. Both runs below are
+ * prepared in a single `beforeAll` so the item-size-independence comparison
+ * has both of them without one test depending on another having run.
+ */
+const runDirectFrontierJourney = async (
+  headline: string,
+  payloadBytes: number,
+  expectedItemBytes: number,
+): Promise<FrontierRun> => {
+  const journey = await prepareRouteFreedomJourney({
+    inlineDatumPayloadBytes: payloadBytes,
+    minimumCompleteItemBytes: expectedItemBytes - 1,
+  });
+  if (journey.completeItemBytes !== expectedItemBytes) {
+    throw new Error(
+      `${headline} staged a ${journey.completeItemBytes.toString()}-byte complete item, not ${expectedItemBytes.toString()}`,
+    );
+  }
+  const semantic = await journey.submitSemanticResolution({
+    proofItemDelivery: "inline",
+  });
+  printRouteFreedomCampaignTable(headline, journey, semantic);
+  const award = await journey.submitAward(semantic.result.nextThreadOutRef);
+  expectWholeJourneyProofFit(
+    headline,
+    journey,
+    semantic.measurements,
+    award.measurement,
+  );
+  return {
+    journey,
+    stageTransactions: semantic.result.stageTransactions ?? [],
+    result: semantic.result,
+    semanticMeasurements: semantic.measurements,
+  };
+};
 
-      // Removing the claim-registry reference from the deployment reduced the
-      // signed observe transaction by 56 bytes without rebinding the
-      // owner-signed direct-route threshold. The pre-sign projection must
-      // still measure the exact bytes signing produced.
-      const observeBytes = stageBytesByKind(stageTransactions, "observe");
-      expect(observeBytes).toBe(
-        RELIABILITY_BUDGET_BYTES - CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES,
-      );
-      const observeStage = stageTransactions.find(
-        (stage) => stage.kind === "observe",
-      );
-      expect(observeStage?.projectedSignedBytes).toBe(observeBytes);
+describe("post-Option-B direct-route reserve frontier (#622)", () => {
+  let atFrontier: FrontierRun;
+  let pastFrontier: FrontierRun;
 
-      // The measured six-stage table at the reserve frontier: observe is the
-      // binder, every other stage is item-size-independent.
-      expectItemIndependentRows(journey, stageTransactions);
+  beforeAll(async () => {
+    atFrontier = await runDirectFrontierJourney(
+      "#622 reserve-frontier item 13,522",
+      RESERVE_FRONTIER_PAYLOAD_BYTES,
+      RESERVE_FRONTIER_ITEM_BYTES,
+    );
+    pastFrontier = await runDirectFrontierJourney(
+      "#622 reserve-frontier+1 item 13,523",
+      RESERVE_FRONTIER_PAYLOAD_BYTES + 1,
+      RESERVE_FRONTIER_ITEM_BYTES + 1,
+    );
+  }, 1_800_000);
 
-      // Re-measured execution units at the frontier shape (#622): the §8.8
-      // door hashes the delivered preimage once — the deleted frozen-hash
-      // equality is out of the bill — and prepare/authenticate no longer
-      // touch item bytes at all. Pinned exactly, sweep-fixture style; the
-      // 20%-reserve policy is asserted for every journey transaction below.
-      const observeMeasurement = semanticMeasurementAt(
-        semantic.measurements,
-        2,
-        "observe",
-      );
-      expect(observeMeasurement.executionMemory).toBe(878_878n);
-      expect(observeMeasurement.executionSteps).toBe(305_301_155n);
-      const authenticateMeasurement = semanticMeasurementAt(
-        semantic.measurements,
-        0,
-        "authenticate",
-      );
-      expect(authenticateMeasurement.executionMemory).toBe(163_390n);
-      expect(authenticateMeasurement.executionSteps).toBe(106_674_927n);
-      const prepareSelected = lastLifecycleMeasurement(
-        journey,
-        "prepare-selected",
-      );
-      expect(prepareSelected.executionMemory).toBe(595_300n);
-      expect(prepareSelected.executionSteps).toBe(309_207_534n);
+  it("signs the observe door inside the reliability budget at the owner-signed direct threshold", () => {
+    // The claim the owner-signed `maxReliableDirectCompleteItemBytes` makes:
+    // at that item size the one preimage-carrying door signs at or under the
+    // reliability budget, so the 512-byte reserve is really there.
+    const observe = stageByKind(atFrontier.stageTransactions, "observe");
+    expect(observe.completeSignedBytes).toBeLessThanOrEqual(
+      RELIABILITY_BUDGET_BYTES,
+    );
+    // ... and the pre-sign projection the routing heuristic admitted the
+    // transaction on measured the exact bytes signing produced. A projection
+    // that were merely conservative would admit items it cannot sign.
+    expect(observe.projectedSignedBytes).toBe(observe.completeSignedBytes);
+  });
 
-      const award = await journey.submitAward(result.nextThreadOutRef);
-      expectWholeJourneyProofFit(
-        "#622 reserve-frontier item 13,522",
-        journey,
-        semantic.measurements,
-        award.measurement,
+  it("keeps the whole frontier journey on the direct route with no publication", () => {
+    expect(atFrontier.result.proofItemCarriage).toBe("direct");
+    expect(atFrontier.result.proofItemPublication).toBeUndefined();
+    expect(atFrontier.result.proofItemInlineEnvelopeRefusal).toBeUndefined();
+    expect(atFrontier.stageTransactions).toHaveLength(5);
+    expect(atFrontier.semanticMeasurements).toHaveLength(5);
+  });
+
+  it("still rides the direct route one item byte past the threshold", () => {
+    // The adjacent probe: the owner-signed threshold is a policy line with
+    // headroom under the envelope, not a cliff — the next item still signs
+    // and still completes directly.
+    expect(pastFrontier.result.proofItemCarriage).toBe("direct");
+    expect(pastFrontier.result.proofItemInlineEnvelopeRefusal).toBeUndefined();
+    const observe = stageByKind(pastFrontier.stageTransactions, "observe");
+    expect(observe.completeSignedBytes).toBeLessThanOrEqual(MAX_L1_TX_BYTES);
+  });
+
+  it("bills every non-observe stage independently of the item size", () => {
+    // The structural claim #620/#621 bought: since the transition alone is
+    // committed and routing moved to build time, the §8.8 observe door is the
+    // ONLY stage that carries the §5.1 complete-item preimage. Compared
+    // across the two journeys rather than against transcribed sizes: a stage
+    // that started double-carrying the item (the pre-change `authenticate`
+    // shape) would move here.
+    const sizes = (run: FrontierRun) =>
+      Object.fromEntries(
+        run.stageTransactions.map((stage) => [
+          stage.kind,
+          stage.completeSignedBytes,
+        ]),
       );
-    }, 900_000);
-
-    it("measures the adjacent 13,523-byte direct probe one byte larger and still completes", async () => {
-      const journey = await prepareRouteFreedomJourney({
-        inlineDatumPayloadBytes: RESERVE_FRONTIER_PAYLOAD_BYTES + 1,
-        minimumCompleteItemBytes: RESERVE_FRONTIER_ITEM_BYTES,
-      });
-      expect(journey.completeItemBytes).toBe(RESERVE_FRONTIER_ITEM_BYTES + 1);
-
-      const semantic = await journey.submitSemanticResolution({
-        proofItemDelivery: "inline",
-      });
-      printRouteFreedomCampaignTable(
-        "#622 reserve-frontier+1 item 13,523",
-        journey,
-        semantic,
-      );
-      const result = semantic.result;
-      expect(result.proofItemCarriage).toBe("direct");
-      expect(result.proofItemInlineEnvelopeRefusal).toBeUndefined();
-      const stageTransactions = result.stageTransactions ?? [];
-
-      // The adjacent-item probe: one more preimage byte is one more signed
-      // observe byte (no 64-byte chunk boundary sits between 13,522 and
-      // 13,523). The journey is forced down the direct route to prove the
-      // owner-signed threshold remains a cost steer rather than a liveness
-      // cliff.
-      expect(stageBytesByKind(stageTransactions, "observe")).toBe(
-        RELIABILITY_BUDGET_BYTES - CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES + 1,
-      );
-
-      // Item-size independence, measured: every non-observe stage signs at
-      // byte-identical size to the frontier journey.
-      expectItemIndependentRows(journey, stageTransactions);
-
-      const award = await journey.submitAward(result.nextThreadOutRef);
-      expectWholeJourneyProofFit(
-        "#622 reserve-frontier+1 item 13,523",
-        journey,
-        semantic.measurements,
-        award.measurement,
-      );
-    }, 900_000);
-  },
-);
+    const atSizes = sizes(atFrontier);
+    const pastSizes = sizes(pastFrontier);
+    expect(Object.keys(pastSizes).sort()).toEqual(Object.keys(atSizes).sort());
+    for (const kind of Object.keys(atSizes)) {
+      if (kind === "observe") {
+        continue;
+      }
+      expect(pastSizes[kind], kind).toBe(atSizes[kind]);
+    }
+    // ... and the observe door does grow with the item it carries, so the
+    // equality above is item-size independence and not a dead comparison of
+    // two identical journeys.
+    expect(pastSizes["observe"]).toBeGreaterThan(atSizes["observe"]!);
+  });
+});

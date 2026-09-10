@@ -40,12 +40,18 @@ import {
   WithdrawalOrderDatum,
   WithdrawalSpendRedeemer,
 } from "@al-ft/midgard-sdk";
-import { CML, Data } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  SLOT_CONFIG_NETWORK,
+  slotToBeginUnixTime,
+} from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   deriveWatcherUserEventObservation as deriveWatcherUserEventObservationRaw,
+  deriveWatcherUserEventViewTransition,
   evaluateWatcherUserEventIndexer as evaluateWatcherUserEventIndexerRaw,
   makeWatcherUserEventIndexerPolicy,
   parseWatcherUserEventIndexerResult as parseWatcherUserEventIndexerResultRaw,
@@ -57,6 +63,11 @@ import {
   type WatcherUserEventKind,
   type WatcherUserEventPublicContext,
 } from "../../src/indexers/user-event-indexer.js";
+import {
+  createWatcherExternalUserEventReferenceAuthority,
+  readWatcherUserEventReferenceEvidence,
+  type WatcherUserEventReferenceAuthority,
+} from "../../src/indexers/user-event-reference-authority.js";
 import {
   evaluateWatcherFinality,
   makeWatcherFinalityPolicy,
@@ -80,6 +91,7 @@ import {
   type WatcherPostFinalityRecoveryInput,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import { verifyWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import {
   encodeWatcherDurableStore,
   journalWatcherProtocolUtxoTransition,
@@ -97,7 +109,7 @@ import {
   h32,
   makeDeploymentAuthority,
   sha256,
-  WATCHER_AUTHORITY_RELEASE_DIGEST as RELEASE_DIGEST,
+  WATCHER_AUTHORITY_BLUEPRINT_HASH as BLUEPRINT_HASH,
 } from "../support/deployment-authority-fixture.js";
 import { makeWatcherTlsTransportFixture } from "../support/tls-transport-fixture.js";
 
@@ -235,8 +247,6 @@ const hubOutput = CML.TransactionOutput.new(
   CML.Value.new(5_000_000n, hubAssets),
   CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(hubDatumHex)),
 );
-const HUB_OUT_REF = `${h32("a0")}#0`;
-const SETTLEMENT_OUT_REF = `${h32("a3")}#0`;
 const MEMBERSHIP_PHAS_ROOT = h32("a4");
 const countedRoot = (
   domain:
@@ -275,6 +285,32 @@ const settlementOutput = CML.TransactionOutput.new(
     CML.PlutusData.from_cbor_hex(Data.to(settlementDatum, SettlementDatum)),
   ),
 );
+// Ordinary creating-body preimage for the existing hub/settlement outputs.
+// The target reference commits these exact bytes; no creating-block claim is made.
+const referenceCreatingBodyCbor = (() => {
+  const inputs = CML.TransactionInputList.new();
+  inputs.add(
+    CML.TransactionInput.new(CML.TransactionHash.from_hex(h32("f0")), 0n),
+  );
+  const outputs = CML.TransactionOutputList.new();
+  outputs.add(hubOutput);
+  outputs.add(settlementOutput);
+  return CML.TransactionBody.new(
+    inputs,
+    outputs,
+    200_000n,
+  ).to_canonical_cbor_hex();
+})();
+const referenceCreatingBodies = new Map<string, string>();
+const referenceCreatingTransactionHash = computeHash32(
+  Buffer.from(referenceCreatingBodyCbor, "hex"),
+).toString("hex");
+referenceCreatingBodies.set(
+  referenceCreatingTransactionHash,
+  referenceCreatingBodyCbor,
+);
+const HUB_OUT_REF = `${referenceCreatingTransactionHash}#0`;
+const SETTLEMENT_OUT_REF = `${referenceCreatingTransactionHash}#1`;
 const BOOTSTRAP_CHAIN_POINT_ID = h32("a1");
 const bootstrapStore = makeWatcherDurableStore({
   deploymentMarker: deploymentAuthorityFixture.marker,
@@ -407,7 +443,7 @@ const nonEmptyNativeCarriage = Object.freeze([
 
 const policy = makeWatcherUserEventIndexerPolicy({
   network: "Preprod",
-  releaseEvidenceDigest: RELEASE_DIGEST,
+  blueprintHash: BLUEPRINT_HASH,
   deploymentMarker: deploymentAuthorityFixture.marker,
   deposit: eventFields.deposit,
   withdrawal: eventFields.withdrawal,
@@ -494,7 +530,8 @@ const makeExternalFinalityPolicy = () =>
       manifestId: policy.deploymentMarker.manifestId,
       network: "Preprod",
       trustRootId: h32("33"),
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      fundingProfileBundleDigest: "ab".repeat(32),
+      blueprintHash: policy.blueprintHash,
       ruleBundleCommitment: h32("44"),
       programCommitments: { validation: h32("55") },
       durableMarker: policy.deploymentMarker,
@@ -521,6 +558,10 @@ const externalSource = {
   ],
 } as const;
 const watcherTransportContexts: WatcherL1TransportAttestationContext[] = [];
+const watcherReferenceAuthorities = new Map<
+  string,
+  WatcherUserEventReferenceAuthority
+>();
 const normalizedTransportContexts = new WeakMap<
   object,
   WatcherL1TransportAttestationContext
@@ -645,6 +686,7 @@ const deriveWatcherUserEventObservation = (
     previousStateInput,
     publicContextInput,
     watcherTransportContexts,
+    [...watcherReferenceAuthorities.values()],
     rollbackTargetEntryDigest,
   );
 
@@ -660,6 +702,7 @@ const evaluateWatcherUserEventIndexer = (
     observationInput,
     publicContextInput,
     watcherTransportContexts,
+    [...watcherReferenceAuthorities.values()],
   );
 
 const parseWatcherUserEventIndexerState = (
@@ -670,18 +713,20 @@ const parseWatcherUserEventIndexerState = (
     value,
     policyInput,
     watcherTransportContexts,
+    [...watcherReferenceAuthorities.values()],
   );
 
 const parseWatcherUserEventIndexerResult = (
   value: unknown,
   context: Omit<
     Parameters<typeof parseWatcherUserEventIndexerResultRaw>[1],
-    "transportAttestations"
+    "transportAttestations" | "referenceAuthorities"
   >,
 ) =>
   parseWatcherUserEventIndexerResultRaw(value, {
     ...context,
     transportAttestations: watcherTransportContexts,
+    referenceAuthorities: [...watcherReferenceAuthorities.values()],
   });
 
 const evaluateWatcherRollback = (
@@ -785,8 +830,12 @@ const makeEventFixture = (
     outputIndex: BigInt(nonceIndex),
   };
   const inclusion_time =
-    BigInt(resolveEventInclusionTime(Number(ttl), "Preprod")) +
-    inclusionTimeDelta;
+    BigInt(
+      resolveEventInclusionTime(
+        slotToBeginUnixTime(Number(ttl), SLOT_CONFIG_NETWORK.Preprod),
+        "Preprod",
+      ),
+    ) + inclusionTimeDelta;
   const datum =
     kind === "deposit"
       ? {
@@ -1069,6 +1118,31 @@ const contextFromTransaction = (
     authenticatedProvider,
     l1Observation,
   );
+  const requiredCreatingHashes = new Set(
+    normalized.transactions.flatMap((transaction) => {
+      if (!transaction.isValid) return [];
+      const inputs = CML.TransactionBody.from_cbor_hex(
+        transaction.body.bytesHex,
+      ).reference_inputs();
+      return Array.from({ length: inputs?.len() ?? 0 }, (_, index) =>
+        inputs!.get(index).transaction_id().to_hex(),
+      );
+    }),
+  );
+  const referenceAuthority = createWatcherExternalUserEventReferenceAuthority({
+    targetBlock: normalized,
+    deploymentIdentity: deploymentAuthority.result,
+    creatingTransactionBodies: [...requiredCreatingHashes].map((hash) => {
+      const body = referenceCreatingBodies.get(hash);
+      if (body === undefined)
+        throw new Error("ordinary reference fixture lacks creating body");
+      return body;
+    }),
+  });
+  watcherReferenceAuthorities.set(
+    normalized.observationDigest,
+    referenceAuthority,
+  );
   const finalityObservations = [
     { authenticatedProvider, l1Observation },
     {
@@ -1196,6 +1270,8 @@ const contextFromTransaction = (
       schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
       authenticatedProvider,
       l1Observation,
+      referenceEvidence:
+        readWatcherUserEventReferenceEvidence(referenceAuthority),
       sourceDurableStore: sourceStore,
       durableStore: store,
       deploymentAuthority,
@@ -1396,7 +1472,12 @@ const depositSpendBundle = (
   priorStore: ReturnType<typeof makeWatcherDurableStore>,
   mutateBurn = false,
   mutateRedeemers?: (redeemers: MutableRecord[]) => void,
+  creatingBodyCbor: string = referenceCreatingBodyCbor,
 ): BlockBundle => {
+  const creatingTransactionHash = computeHash32(
+    Buffer.from(creatingBodyCbor, "hex"),
+  ).toString("hex");
+  referenceCreatingBodies.set(creatingTransactionHash, creatingBodyCbor);
   const event = state.snapshot.activeEvents[0]!;
   const inputs = CML.TransactionInputList.new();
   inputs.add(
@@ -1432,10 +1513,16 @@ const depositSpendBundle = (
   body.set_certs(certificates);
   const referenceInputs = CML.TransactionInputList.new();
   referenceInputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex(h32("a0")), 0n),
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(creatingTransactionHash),
+      0n,
+    ),
   );
   referenceInputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex(h32("a3")), 0n),
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(creatingTransactionHash),
+      1n,
+    ),
   );
   body.set_reference_inputs(referenceInputs);
   body.set_script_data_hash(USER_EVENT_SCRIPT_DATA_HASH);
@@ -1625,10 +1712,16 @@ const nonDepositSpendBundle = (
   body.set_certs(certificates);
   const referenceInputs = CML.TransactionInputList.new();
   referenceInputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex(h32("a0")), 0n),
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(referenceCreatingTransactionHash),
+      0n,
+    ),
   );
   referenceInputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex(h32("a3")), 0n),
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(referenceCreatingTransactionHash),
+      1n,
+    ),
   );
   body.set_reference_inputs(referenceInputs);
   body.set_script_data_hash(USER_EVENT_SCRIPT_DATA_HASH);
@@ -2002,6 +2095,7 @@ const rollbackBundle = (
       schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
       authenticatedProvider: null,
       l1Observation: null,
+      referenceEvidence: null,
       sourceDurableStore: sourceStore,
       durableStore: applied.nextStore,
       deploymentAuthority,
@@ -2196,6 +2290,7 @@ const postFinalityUserEventRecoveryBundle = (
     schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: null,
     l1Observation: null,
+    referenceEvidence: null,
     sourceDurableStore: incident.nextStore,
     durableStore: recovery.nextStore,
     deploymentAuthority,
@@ -2219,39 +2314,255 @@ const postFinalityUserEventRecoveryBundle = (
 const accepted = (
   previous: WatcherUserEventIndexerState | null,
   bundle: BlockBundle,
+  selectedPolicy: WatcherUserEventIndexerPolicy = policy,
 ): WatcherUserEventIndexerState => {
-  const observation = deriveWatcherUserEventObservation(
-    policy,
-    previous,
-    bundle.context,
-  );
-  expect(observation).not.toBeNull();
-  const indexed = evaluateWatcherUserEventIndexer(
-    policy,
-    previous,
-    observation,
-    bundle.context,
-  );
+  if (
+    bundle.context.referenceEvidence === null ||
+    bundle.context.finalityAuthority === null
+  ) {
+    throw new Error(
+      "ordinary event fixture requires block reference and finality evidence",
+    );
+  }
+  const transition = deriveWatcherUserEventViewTransition({
+    policy: selectedPolicy,
+    previousState: previous,
+    sourceDurableStore: bundle.context.sourceDurableStore,
+    authenticatedProvider: bundle.context.authenticatedProvider,
+    l1Observation: bundle.context.l1Observation,
+    referenceEvidence: bundle.context.referenceEvidence,
+    deploymentAuthority: bundle.context.deploymentAuthority,
+    finalityAuthority: bundle.context.finalityAuthority,
+    transportAttestations: watcherTransportContexts,
+    referenceAuthorities: [...watcherReferenceAuthorities.values()],
+  });
+  expect(transition.status, JSON.stringify(transition)).toBe("derived");
+  if (transition.status !== "derived")
+    throw new Error("ordinary event candidate did not derive");
+  expect(transition.nextStore).toEqual(bundle.store);
+  expect(transition.publicContext).toEqual(bundle.context);
+  const { observation, publicContext, result: indexed } = transition;
   expect(indexed.action, JSON.stringify(indexed)).toBe("accept");
   expect(indexed.protocolDecision).toBe("indexed");
   expect(
     parseWatcherUserEventIndexerResult(JSON.parse(JSON.stringify(indexed)), {
-      policy,
+      policy: selectedPolicy,
       previousState: previous,
       observation,
-      publicContext: bundle.context,
+      publicContext,
     }),
   ).toEqual(indexed);
   expect(
     parseWatcherUserEventIndexerState(
       JSON.parse(JSON.stringify(indexed.state)),
-      policy,
+      selectedPolicy,
     ),
   ).toEqual(indexed.state);
   return indexed.state!;
 };
 
 describe("canonical authenticated user-event indexer", () => {
+  it("admits changing reference outputs without foreign view rows and remints authority on restart", () => {
+    const eventOnlyBootstrap = makeWatcherDurableStore({
+      deploymentMarker: bootstrapStore.deploymentMarker,
+      revision: bootstrapStore.revision,
+      records: { ...bootstrapStore, protocolUtxos: [] },
+    });
+    const eventOnlyPolicy = makeWatcherUserEventIndexerPolicy({
+      ...policy,
+      bootstrapStoreDigest: watcherDurableStoreBytesSha256(
+        encodeWatcherDurableStore(eventOnlyBootstrap),
+      ),
+    })!;
+    const origin = blockBundle(
+      [makeEventFixture("deposit", "9a", 0, 1_000n)],
+      eventOnlyBootstrap,
+    );
+    const active = accepted(null, origin, eventOnlyPolicy);
+    expect(origin.store.protocolUtxos.map(({ role }) => role)).toEqual([
+      "deposit",
+    ]);
+
+    // Reuse the ordinary reference outputs under a subsequent creating body.
+    // The W15 predecessor remains the exact event view and gains no foreign row.
+    const originalCreatingBody = CML.TransactionBody.from_cbor_hex(
+      referenceCreatingBodyCbor,
+    );
+    const nextCreatingBody = CML.TransactionBody.new(
+      originalCreatingBody.inputs(),
+      originalCreatingBody.outputs(),
+      210_000n,
+    );
+    const terminal = depositSpendBundle(
+      active,
+      origin.store,
+      false,
+      undefined,
+      nextCreatingBody.to_canonical_cbor_hex(),
+    );
+    const completed = accepted(active, terminal, eventOnlyPolicy);
+    expect(completed.snapshot.activeEvents).toEqual([]);
+    expect(completed.snapshot.terminalEvents).toHaveLength(1);
+    expect(terminal.store.protocolUtxos).toEqual([]);
+    expect(
+      terminal.context.referenceEvidence?.transactions[0]?.referenceInputs,
+    ).not.toEqual(
+      origin.context.referenceEvidence?.transactions[0]?.referenceInputs,
+    );
+
+    const serialized = JSON.parse(
+      JSON.stringify(completed),
+    ) as WatcherUserEventIndexerState;
+    expect(
+      parseWatcherUserEventIndexerStateRaw(
+        serialized,
+        eventOnlyPolicy,
+        watcherTransportContexts,
+        [],
+      ),
+    ).toBeNull();
+    const freshAuthorities = serialized.history.map(({ publicContext }) => {
+      const persisted = publicContext.referenceEvidence;
+      if (persisted?.sourceMode !== "external_providers") {
+        throw new Error(
+          "ordinary restart fixture requires external body evidence",
+        );
+      }
+      const freshTarget = normalizeWatcherL1Block(
+        publicContext.authenticatedProvider as WatcherAuthenticatedL1Provider,
+        publicContext.l1Observation,
+      );
+      const freshDeployment = verifyWatcherDeploymentIdentity({
+        signedIdentity: publicContext.deploymentAuthority.signedIdentity,
+        policy: publicContext.deploymentAuthority.policy,
+        trustRoots: publicContext.deploymentAuthority.trustRoots,
+        durableMarker: eventOnlyPolicy.deploymentMarker,
+      });
+      return createWatcherExternalUserEventReferenceAuthority({
+        targetBlock: freshTarget,
+        deploymentIdentity: freshDeployment,
+        creatingTransactionBodies: persisted.creatingTransactionBodies,
+      });
+    });
+    expect(
+      freshAuthorities.every(
+        (authority) =>
+          ![...watcherReferenceAuthorities.values()].includes(authority),
+      ),
+    ).toBe(true);
+    expect(
+      parseWatcherUserEventIndexerStateRaw(
+        serialized,
+        eventOnlyPolicy,
+        watcherTransportContexts,
+        freshAuthorities,
+      ),
+    ).toEqual(completed);
+    expect(
+      parseWatcherUserEventIndexerStateRaw(
+        serialized,
+        eventOnlyPolicy,
+        watcherTransportContexts,
+        structuredClone(freshAuthorities),
+      ),
+    ).toBeNull();
+  });
+
+  it("requires live reference authority and exact body preimages despite retained foreign rows", () => {
+    const origin = blockBundle([makeEventFixture("deposit", "9a", 0, 1_000n)]);
+    const target = normalizeWatcherL1Block(
+      provider,
+      origin.context.l1Observation,
+    );
+    expect(() =>
+      createWatcherExternalUserEventReferenceAuthority({
+        targetBlock: { ...target },
+        deploymentIdentity: deploymentAuthority.result,
+        creatingTransactionBodies: [referenceCreatingBodyCbor],
+      }),
+    ).toThrow("live admitted target");
+    expect(() =>
+      createWatcherExternalUserEventReferenceAuthority({
+        targetBlock: target,
+        deploymentIdentity: deploymentAuthority.result,
+        creatingTransactionBodies: [],
+      }),
+    ).toThrow("no creating-body preimage");
+    const authority = createWatcherExternalUserEventReferenceAuthority({
+      targetBlock: target,
+      deploymentIdentity: deploymentAuthority.result,
+      creatingTransactionBodies: [referenceCreatingBodyCbor],
+    });
+    const observation = deriveWatcherUserEventObservationRaw(
+      policy,
+      null,
+      origin.context,
+      watcherTransportContexts,
+      [authority],
+    );
+    expect(observation).not.toBeNull();
+    expect(
+      deriveWatcherUserEventObservationRaw(
+        policy,
+        null,
+        origin.context,
+        watcherTransportContexts,
+        [],
+      ),
+    ).toBeNull();
+    expect(
+      deriveWatcherUserEventObservationRaw(
+        policy,
+        null,
+        { ...origin.context, referenceEvidence: null },
+        watcherTransportContexts,
+        [authority],
+      ),
+    ).toBeNull();
+    const advanced = blockBundle([], origin.store, 101, 1);
+    expect(
+      deriveWatcherUserEventObservationRaw(
+        policy,
+        null,
+        {
+          ...origin.context,
+          referenceEvidence: advanced.context.referenceEvidence,
+        },
+        watcherTransportContexts,
+        [authority],
+      ),
+    ).toBeNull();
+    expect(
+      evaluateWatcherUserEventIndexerRaw(
+        policy,
+        null,
+        observation,
+        origin.context,
+        watcherTransportContexts,
+        [],
+      ).action,
+    ).toBe("reject");
+    const indexed = evaluateWatcherUserEventIndexerRaw(
+      policy,
+      null,
+      observation,
+      origin.context,
+      watcherTransportContexts,
+      [authority],
+    );
+    expect(indexed.action).toBe("accept");
+    expect(
+      parseWatcherUserEventIndexerResultRaw(indexed, {
+        policy,
+        previousState: null,
+        observation,
+        publicContext: origin.context,
+        transportAttestations: watcherTransportContexts,
+        referenceAuthorities: [],
+      }),
+    ).toBeNull();
+  });
+
   it("accepts reordered wire keys while rejecting array, mutation, unknown, and unsupported changes", () => {
     const bundle = blockBundle(
       [makeEventFixture("deposit", "9a", 0, 1_000n)],
@@ -2380,7 +2691,13 @@ describe("canonical authenticated user-event indexer", () => {
     const providerBTransport = transportForProvider(providerB);
 
     expect(
-      deriveWatcherUserEventObservationRaw(policy, null, external.context, []),
+      deriveWatcherUserEventObservationRaw(
+        policy,
+        null,
+        external.context,
+        [],
+        [...watcherReferenceAuthorities.values()],
+      ),
     ).toBeNull();
     expect(
       evaluateWatcherUserEventIndexerRaw(
@@ -2389,6 +2706,7 @@ describe("canonical authenticated user-event indexer", () => {
         observation,
         external.context,
         [],
+        [...watcherReferenceAuthorities.values()],
       ),
     ).toMatchObject({
       action: "reject",
@@ -2400,18 +2718,26 @@ describe("canonical authenticated user-event indexer", () => {
         null,
         external.context,
         structuredClone(watcherTransportContexts),
+        [...watcherReferenceAuthorities.values()],
       ),
     ).toBeNull();
     expect(
-      deriveWatcherUserEventObservationRaw(policy, null, external.context, [
-        providerBTransport,
-      ]),
+      deriveWatcherUserEventObservationRaw(
+        policy,
+        null,
+        external.context,
+        [providerBTransport],
+        [...watcherReferenceAuthorities.values()],
+      ),
     ).toBeNull();
     expect(
-      deriveWatcherUserEventObservationRaw(policy, null, external.context, [
-        ...watcherTransportContexts,
-        providerATransport,
-      ]),
+      deriveWatcherUserEventObservationRaw(
+        policy,
+        null,
+        external.context,
+        [...watcherTransportContexts, providerATransport],
+        [...watcherReferenceAuthorities.values()],
+      ),
     ).toBeNull();
   });
 
@@ -2435,7 +2761,10 @@ describe("canonical authenticated user-event indexer", () => {
         policyId: fixture.fields.policyId,
         assetNameHex: fixture.assetNameHex,
         witnessScriptHash: userEventWitnessScriptHash(fixture.assetNameHex),
-        inclusionTime: resolveEventInclusionTime(1_000, "Preprod").toString(),
+        inclusionTime: resolveEventInclusionTime(
+          slotToBeginUnixTime(1_000, SLOT_CONFIG_NETWORK.Preprod),
+          "Preprod",
+        ).toString(),
         finalityStatus: "pending",
       });
       expect(state.snapshot.activeEvents[0]!.datumCborHex).toBe(

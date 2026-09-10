@@ -218,13 +218,4 @@ describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
       ),
     ).rejects.toThrow(/honestly tagged/u);
   });
-
-  it("keeps the fraud token permanent across the removal model", () => {
-    const ledger = new Map([["fraud-token", 1n]]);
-    const headers = new Set(["challenged", "descendant"]);
-    headers.delete("descendant");
-    headers.delete("challenged");
-    expect(headers.size).toBe(0);
-    expect(ledger.get("fraud-token")).toBe(1n);
-  });
 });

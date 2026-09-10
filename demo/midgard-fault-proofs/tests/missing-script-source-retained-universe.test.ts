@@ -22,11 +22,6 @@ import {
   buildDeterministicValidationMachineTrace,
   validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
-import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
-import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
-
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -35,7 +30,12 @@ import {
   makeProtectedScriptOutput,
   nativeScriptWitness,
   outRefFromByte,
-} from "../../midgard-validation/tests/validation-fixtures.js";
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
+import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import { missingScriptSourceEvidenceFromUniverse } from "../src/missing-script-source/authenticated-replay.js";
 import { applyMissingScriptSourceScripts } from "../src/missing-script-source/contracts.js";
 import {
@@ -61,6 +61,7 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   emulatorSuccessorHeaderStart,
@@ -250,6 +251,12 @@ const retainedFixture = async (
     trace,
   };
 };
+
+const measuredFit = createMeasuredFitRecorder(
+  "missing-script-source",
+  "retained-universe",
+  "retained inline/reference source universe, cancellation and forced correction",
+);
 
 describe("missingScriptSource retained ScriptSources universe", () => {
   it("reconstructs the production purpose/source/no-auxiliary sequence in canonical location order", async () => {
@@ -598,6 +605,12 @@ describe("missingScriptSource retained ScriptSources universe", () => {
           expect(measurement.executionMemory).toBeGreaterThan(0n);
           expect(measurement.executionSteps).toBeGreaterThan(0n);
         }
+        lifecycleRows.forEach(({ label, measurement }, index) =>
+          measuredFit.record(
+            `${presentAt}-${cancel}/${index}-${label}`,
+            measurement,
+          ),
+        );
         if (process.env.MIDGARD_PRINT_FIT === "1")
           console.info(
             `[missing-script-source-fit] ${JSON.stringify(lifecycleRows, (_key, value) => (typeof value === "bigint" ? value.toString() : value))}`,
@@ -736,6 +749,12 @@ describe("missingScriptSource retained ScriptSources universe", () => {
         expect(measurement.executionMemory).toBeGreaterThan(0n);
         expect(measurement.executionSteps).toBeGreaterThan(0n);
       }
+      lifecycleRows.forEach(({ label, measurement }, index) =>
+        measuredFit.record(
+          `${presentAt}-${cancel}/${index}-${label}`,
+          measurement,
+        ),
+      );
       if (process.env.MIDGARD_PRINT_FIT === "1")
         console.info(
           `[missing-script-source-fit] ${JSON.stringify(lifecycleRows, (_key, value) => (typeof value === "bigint" ? value.toString() : value))}`,

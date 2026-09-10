@@ -10,6 +10,12 @@ import {
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
 import type { WatcherDurableAtomicBackend } from "./durable-store.js";
 import { watcherCanonicalJson } from "./durable-store.js";
+import {
+  createWatcherSqliteReplayTranscriptStore,
+  type WatcherReplayTranscriptStore,
+} from "./replay-transcript-store.js";
+import { createWatcherSqliteRecordStore } from "./sqlite-record-store.js";
+import type { WatcherUserEventArchive } from "./user-event-checkpoint.js";
 
 export const WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION =
   "midgard-watcher-sqlite-durable-backend-v1" as const;
@@ -51,6 +57,8 @@ export type WatcherSqliteDurableBackend = Readonly<{
   schemaVersion: typeof WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION;
   backend: WatcherDurableAtomicBackend;
   stateQueueObservations: WatcherSqliteStateQueueObservationStore;
+  userEventArchive: WatcherUserEventArchive;
+  replayTranscripts: WatcherReplayTranscriptStore;
   close(): void;
 }>;
 
@@ -66,7 +74,7 @@ export type WatcherSqliteStateQueueObservationStore = Readonly<{
 }>;
 
 /**
- * Production complete-snapshot CAS over SQLite. The independent trusted-head
+ * Production record updates and progress-marker CAS over SQLite. The independent trusted-head
  * authority deliberately does not share this database or its backup domain.
  */
 const openWatcherSqliteDurableBackendInternal = async (
@@ -113,11 +121,6 @@ const openWatcherSqliteDurableBackendInternal = async (
     PRAGMA synchronous = FULL;
     PRAGMA trusted_schema = OFF;
     PRAGMA busy_timeout = ${busyTimeoutMs.toString()};
-    CREATE TABLE IF NOT EXISTS watcher_durable_snapshot_v1 (
-      singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-      sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
-      bytes BLOB NOT NULL CHECK (length(bytes) > 0)
-    ) STRICT;
     CREATE TABLE IF NOT EXISTS watcher_state_queue_observation_v1 (
       sequence INTEGER PRIMARY KEY AUTOINCREMENT,
       observation_digest TEXT NOT NULL UNIQUE CHECK (length(observation_digest) = 64),
@@ -132,79 +135,8 @@ const openWatcherSqliteDurableBackendInternal = async (
     ) STRICT;
   `);
 
-  const select = database.prepare(
-    "SELECT sha256, bytes FROM watcher_durable_snapshot_v1 WHERE singleton = 1",
-  );
-  const insert = database.prepare(
-    "INSERT INTO watcher_durable_snapshot_v1(singleton, sha256, bytes) VALUES (1, ?, ?)",
-  );
-  const update = database.prepare(
-    "UPDATE watcher_durable_snapshot_v1 SET sha256 = ?, bytes = ? WHERE singleton = 1 AND sha256 = ?",
-  );
-
-  const readRow = (): Readonly<{
-    sha256: string;
-    bytes: Uint8Array;
-  }> | null => {
-    const row = select.get() as
-      | Readonly<{ sha256: unknown; bytes: unknown }>
-      | undefined;
-    if (row === undefined) return null;
-    if (
-      typeof row.sha256 !== "string" ||
-      !HEX_32.test(row.sha256) ||
-      !(row.bytes instanceof Uint8Array) ||
-      row.bytes.byteLength === 0
-    ) {
-      throw new Error("watcher SQLite durable snapshot is malformed");
-    }
-    const bytes = Uint8Array.from(row.bytes);
-    if (sha256(bytes) !== row.sha256) {
-      throw new Error("watcher SQLite durable snapshot digest mismatch");
-    }
-    return Object.freeze({ sha256: row.sha256, bytes });
-  };
-
-  const backend: WatcherDurableAtomicBackend = Object.freeze({
-    read: async () => readRow()?.bytes ?? null,
-    compareAndSwap: async (expectedSha256, next) => {
-      if (
-        (expectedSha256 !== null && !HEX_32.test(expectedSha256)) ||
-        !(next instanceof Uint8Array) ||
-        next.byteLength === 0
-      ) {
-        return false;
-      }
-      const copy = Uint8Array.from(next);
-      const nextSha256 = sha256(copy);
-      database.exec("BEGIN IMMEDIATE");
-      try {
-        const current = readRow();
-        if ((current === null ? null : current.sha256) !== expectedSha256) {
-          database.exec("ROLLBACK");
-          return false;
-        }
-        if (current === null) {
-          insert.run(nextSha256, copy);
-        } else {
-          const result = update.run(nextSha256, copy, expectedSha256);
-          if (result.changes !== 1) {
-            database.exec("ROLLBACK");
-            return false;
-          }
-        }
-        database.exec("COMMIT");
-        return readRow()?.sha256 === nextSha256;
-      } catch (error) {
-        try {
-          database.exec("ROLLBACK");
-        } catch {
-          // Preserve the original persistence error.
-        }
-        throw error;
-      }
-    },
-  });
+  const { backend, userEventArchive } =
+    createWatcherSqliteRecordStore(database);
 
   const selectStateQueueObservations = database.prepare(`
     SELECT sequence, observation_digest, previous_observation_digest,
@@ -456,6 +388,8 @@ const openWatcherSqliteDurableBackendInternal = async (
     schemaVersion: WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION,
     backend,
     stateQueueObservations,
+    userEventArchive,
+    replayTranscripts: createWatcherSqliteReplayTranscriptStore(database),
     close: () => database.close(),
   });
 };

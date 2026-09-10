@@ -87,18 +87,9 @@
  * spend-input field preimage in the step redeemer (§8.3 tier 1), 38 bytes per
  * item plus the §5.1 envelope, and that is what fills the envelope: measured
  * ~41.2 complete-signed bytes per input on both families' binding step. Q10's
- * frontier is lower than Q11's because its binding step is step-04, which
- * carries tx2's preimage on top of a larger fixed step (16,378 bytes at 74
- * inputs against Q11's 16,345 at 195), not because it is dearer per input.
- *
- * Those two figures are the **#606 re-take of 2026-08-16**, and they are quoted
- * at the cardinalities the pinned pairs below now name. They read 16,379 at 75
- * and 16,345 at 196 until that re-take: the regeneration grew every
- * field-door-consuming step validator, the legacy journeys attach those scripts
- * to the transactions they measure, and one input's worth of room went with it
- * on each family. Left alone this paragraph would have asserted as measured
- * fact that 75 and 196 fit, at the same time as the pairs below pin them as the
- * first cardinalities that do not.
+ * inline frontier is lower than Q11's because its binding step is step-04,
+ * which carries tx2's preimage on top of a larger fixed step, not because it
+ * is dearer per input.
  *
  * That is a **carriage-routing** limit rather than an execution one, and the
  * distinction is the whole difference from Q1X-F6: bytes CAN be moved off the
@@ -108,13 +99,15 @@
  * sentence "moving bytes elsewhere cannot remediate this" was true of the
  * counted scheme and is false of this one.
  *
- * **The residual, stated exactly.** The legacy step builders these journeys
- * drive carry the preimage inline unconditionally, so at tier-1 carriage
- * neither family reaches the admissible 296-input Cardano spend shape. What is
- * left is therefore a builder-routing gap over the band (195, 296] for Q11 and
- * (74, 296] for Q10 — narrow, byte-shaped, and closable off-chain — where
- * Q1X-F6 was an on-chain execution wall no carriage could move. (Both bands
- * widened by one input at their lower edge in the #606 re-take noted above.)
+ * **No inline frontier cardinality is pinned here, deliberately.** Two such
+ * pairs used to be (74/75 for Q10, 195/196 for Q11), and #580 and #606
+ * re-measured them twice: any validator regeneration that grows a step by a
+ * few bytes moves them, with no contract violated. By the time
+ * reference-script carriage landed, both members of each "boundary" pair fit,
+ * so the pairs asserted nothing about a boundary at all. What they were
+ * really guarding — a return of a per-item execution cost on the binding
+ * steps — is now measured directly, as a per-input memory spread across two
+ * cardinalities on the same route, in the closing row of this file.
  *
  * **#612 (2026-08-17) — the routing gap is closed, and the closure is driven
  * below.** All three legacy submitters (`submitStep03`, `submitStep04`,
@@ -123,10 +116,8 @@
  * `Inline` pick to tier 2, the preimage publishes once as raw carriage (§8.7)
  * and the step references it for a handful of index bytes. The routed row at
  * the bottom of this file drives BOTH families through the full admissible
- * 296-input Cardano spend shape and fits — publications included. The inline
- * pins above it are unchanged, deliberately: they remain the measured
- * frontiers of the tier the builders take when no caller forces publication,
- * which is what makes the demotion worth asking for.
+ * 296-input Cardano spend shape and fits — publications included — and does
+ * the same at the 365-input shape the ladder routes on size alone.
  *
  * Lives in its own file for the reason its siblings do. The split was made
  * while `@lucid-evolution/uplc` (through 0.2.22) leaked wasm linear memory on
@@ -189,37 +180,6 @@ const CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY = 296;
  */
 const TIER2_SIZE_SELECTED_CARDINALITY = 365;
 
-/**
- * Measured boundaries. Each is a PAIR — the largest cardinality whose complete
- * correction path fits, and the first that does not — and both members of each
- * pair are driven through the real pipeline below.
- *
- * **#580 re-take (2026-08-15). The binding axis moved, so these are byte
- * boundaries now and not execution boundaries.** See the module header's
- * "What is measured, and the verdict" section, which was re-written in the same
- * pass.
- *
- * | family | counted-era pair | flat-era pair | binding axis then / now |
- * | --- | --- | --- | --- |
- * | Q10 double-spend | 39 / 40 | 75 / 76 | step-04 execution memory / step-04 L1 bytes |
- * | Q11 no-input | 40 / 41 | 196 / 197 | step-02 execution memory / step-02 L1 bytes |
- *
- * **#606 re-take (2026-08-16), 75/76 -> 74/75 and 196/197 -> 195/196.** One
- * input each, on the same byte axis: the legacy journeys attach the step
- * scripts the transaction runs, and the #606 regeneration grew every
- * field-door-consuming step validator (the welded-`field_hash` selection
- * replacing the derived-name check), so the largest fitting transaction
- * crossed the envelope — step-04 by 35 bytes at 75 double-spend inputs,
- * step-02 by 3 bytes at 196 no-input inputs. The binding axis is unchanged
- * (bytes), both members of each pair are still driven through the real
- * pipeline, and the builder-routing-gap band the module header records widens
- * by exactly one input at its lower edge.
- */
-const DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY = 74;
-const DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY = 75;
-const NO_INPUT_LARGEST_FITTING_CARDINALITY = 195;
-const NO_INPUT_FIRST_OVER_BYTES_CARDINALITY = 196;
-
 const executionCeilings = () => ({
   memory:
     (EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem *
@@ -232,26 +192,44 @@ const executionCeilings = () => ({
 });
 
 /**
- * Pinned execution-memory ceiling for the binding steps of the routed
- * (`RawUtxo`) rows.
+ * The band the binding steps' execution memory must stay inside: a tenth of
+ * the shared 20%-reserve memory ceiling, derived from the emulator protocol
+ * parameters rather than transcribed from a run.
  *
- * STALE-HIGH, PENDING RE-MEASUREMENT. This pin was raised because the
- * claim-registry close ran `claim_registry.spend` in the same transaction that
- * burned the computation thread — a constant addition that put these rows past
- * the former `ceilings.memory / 10n` band. The claim registry has since been
- * removed from the protocol entirely, so that constant addition is gone and the
- * `/ 10n` band may well hold again. The pin is deliberately left at its old
- * value rather than lowered by guess: re-measure and either restore the band or
- * re-pin with the measured figure. Leaving it high only weakens this gate; it
- * cannot produce a false red.
- *
- * Superseded measurement (2026-08-31, with the registry still present),
- * double-spend step-04: the inline rows billed 1,109,685 at cardinality 296 and
- * 1,111,821 at cardinality 75 — flat across a 4x change in item count, so the
- * per-item cost this band exists to catch did NOT come back. The routed rows
- * billed 1,133,683 and 1,136,551, 24k-27k above inline.
+ * A tenth is the Q1X-F6 margin. The counted scheme billed ~276,000 memory
+ * units per spend input, so at any admissible cardinality it left this band
+ * far behind; under the flat commitment the binding step bills a constant.
+ * The band therefore fails the moment a per-item cost of even ~2,500 units
+ * an input returns at the 296-input shape — long before the ledger's own cap
+ * would notice.
  */
-const ROUTED_BINDING_STEP_MEMORY_CEILING = 1_200_000n;
+const bindingStepMemoryBand = (): bigint => executionCeilings().memory / 10n;
+
+/**
+ * The largest admissible spend-input cardinality, by the §5.4 field-bytes
+ * bound: `maxSpendInputsPreimageBytes` less the preimage array header,
+ * divided by the constant 38-byte per-item stride. The first test below
+ * re-derives it and states the figure (862).
+ */
+const ADMISSIBLE_CARDINALITY_BY_PREIMAGE_BYTES = Math.floor(
+  (MIDGARD_CONSENSUS_LIMITS.maxSpendInputsPreimageBytes -
+    SPEND_INPUT_PREIMAGE_ARRAY_HEADER_BYTES) /
+    SPEND_INPUT_PREIMAGE_ITEM_BYTES,
+);
+
+/**
+ * How far apart two binding-step memory measurements at different
+ * cardinalities may sit, per input of difference, before the cost stops
+ * being "constant in cardinality".
+ *
+ * Derived, not measured: the memory band above, divided by the largest
+ * admissible cardinality. A per-input cost at this rate would exhaust the
+ * whole band across the admissible range on its own, so anything at or above
+ * it is a per-item cost in the Q1X-F6 sense. The counted scheme's ~276,000
+ * units an input clears it by more than two orders of magnitude.
+ */
+const maxBindingStepMemoryPerInput = (): bigint =>
+  bindingStepMemoryBand() / BigInt(ADMISSIBLE_CARDINALITY_BY_PREIMAGE_BYTES);
 
 const printCardinalityFit = (
   label: string,
@@ -602,11 +580,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
     expect(MIDGARD_CONSENSUS_LIMITS.maxSpendInputsPreimageBytes).toBe(
       2 * L1_MAX_TX_SIZE,
     );
-    const admissibleByPreimageBytes = Math.floor(
-      (MIDGARD_CONSENSUS_LIMITS.maxSpendInputsPreimageBytes -
-        SPEND_INPUT_PREIMAGE_ARRAY_HEADER_BYTES) /
-        SPEND_INPUT_PREIMAGE_ITEM_BYTES,
-    );
+    const admissibleByPreimageBytes = ADMISSIBLE_CARDINALITY_BY_PREIMAGE_BYTES;
     expect(admissibleByPreimageBytes).toBe(862);
     expect(admissibleByPreimageBytes).toBeLessThan(
       MIDGARD_CONSENSUS_LIMITS.maxSpendInputCount,
@@ -628,110 +602,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
     expect(
       MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits,
     ).toBe(16_500_000);
-
-    // The measured ceilings are an order of magnitude below all three. That is
-    // finding Q1X-F6, and it is asserted here so it cannot drift silently.
-    for (const measured of [
-      DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY,
-      NO_INPUT_LARGEST_FITTING_CARDINALITY,
-    ]) {
-      expect(
-        measured,
-        "the spend-input cardinality axis no longer under-reaches the admissible shape; finding Q1X-F6 must be re-stated rather than left stale",
-      ).toBeLessThan(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY);
-    }
   });
-
-  it("adds reference-script headroom at the former double-spend byte boundary", async () => {
-    // Both memory bands in this test are now the restated
-    // `ROUTED_BINDING_STEP_MEMORY_CEILING` pin, so `executionCeilings()` has no
-    // remaining reader here.
-    const { stages: fitting } = await runDoubleSpendCardinalityJourney(
-      DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY,
-    );
-    for (const [stage, measurement] of Object.entries(fitting)) {
-      expectProofFit({
-        stage: `double-spend cardinality ${String(DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY)} ${stage}`,
-        measurement,
-        maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
-        maxTxExSteps: EMULATOR_PROTOCOL_PARAMETERS.maxTxExSteps,
-      });
-    }
-    printCardinalityFit(
-      "double-spend",
-      DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY,
-      fitting,
-    );
-
-    const boundaryStep04 = fitting["step-04"]!;
-    expect(boundaryStep04.l1ByteMargin).toBeGreaterThanOrEqual(0);
-    expect(boundaryStep04.l1ByteMargin).toBeGreaterThan(1_000);
-    expect(
-      boundaryStep04.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
-    ).toBe(true);
-    // step-03 carries tx1's preimage and is the smaller of the two, which is
-    // why the pair above is a step-04 boundary.
-    expect(boundaryStep04.completeSignedBytes).toBeGreaterThan(
-      fitting["step-03"]!.completeSignedBytes,
-    );
-
-    const { stages: overBytes } = await runDoubleSpendCardinalityJourney(
-      DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY,
-    );
-    printCardinalityFit(
-      "double-spend",
-      DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY,
-      overBytes,
-    );
-    const step04 = overBytes["step-04"]!;
-    expect(step04.l1ByteMargin).toBeGreaterThan(0);
-    // Same restated band as its sibling row above — this is the same
-    // double-spend step-04 measurement one cardinality along, and the former
-    // `ceilings.memory / 10n` band now cuts through the middle of that
-    // family. See ROUTED_BINDING_STEP_MEMORY_CEILING.
-    expect(step04.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING).toBe(
-      true,
-    );
-  }, 900_000);
-
-  it("adds reference-script headroom at the former no-input byte boundary", async () => {
-    const ceilings = executionCeilings();
-    const { stages: fitting } = await runNoInputCardinalityJourney(
-      NO_INPUT_LARGEST_FITTING_CARDINALITY,
-    );
-    for (const [stage, measurement] of Object.entries(fitting)) {
-      expectProofFit({
-        stage: `no-input cardinality ${String(NO_INPUT_LARGEST_FITTING_CARDINALITY)} ${stage}`,
-        measurement,
-        maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
-        maxTxExSteps: EMULATOR_PROTOCOL_PARAMETERS.maxTxExSteps,
-      });
-    }
-    printCardinalityFit(
-      "no-input",
-      NO_INPUT_LARGEST_FITTING_CARDINALITY,
-      fitting,
-    );
-
-    // Reference-script carriage removes the large inline validator witness;
-    // both sides of the former byte boundary now fit.
-    const step02 = fitting["step-02"]!;
-    expect(step02.l1ByteMargin).toBeGreaterThanOrEqual(0);
-    expect(step02.l1ByteMargin).toBeGreaterThan(1_000);
-    expect(step02.executionMemory < ceilings.memory / 10n).toBe(true);
-
-    const { stages: overBytes } = await runNoInputCardinalityJourney(
-      NO_INPUT_FIRST_OVER_BYTES_CARDINALITY,
-    );
-    printCardinalityFit(
-      "no-input",
-      NO_INPUT_FIRST_OVER_BYTES_CARDINALITY,
-      overBytes,
-    );
-    const overStep02 = overBytes["step-02"]!;
-    expect(overStep02.l1ByteMargin).toBeGreaterThan(0);
-    expect(overStep02.executionMemory < ceilings.memory / 10n).toBe(true);
-  }, 900_000);
 
   it("reaches the admissible Cardano spend shape on execution and bytes", async () => {
     // **#580 re-take, and the row that carries the Q1X-F6 verdict.**
@@ -765,120 +636,129 @@ describe("fault-proof spend-input preimage cardinality", () => {
     const ceilings = executionCeilings();
     const binding = [noInput["step-02"]!, doubleSpend["step-04"]!];
     for (const measurement of binding) {
-      expect(
-        measurement.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
-      ).toBe(true);
-      expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
+      expect(measurement.executionMemory).toBeLessThan(bindingStepMemoryBand());
+      expect(measurement.executionSteps).toBeLessThan(ceilings.steps / 10n);
       expect(measurement.l1ByteMargin).toBeGreaterThan(0);
     }
   }, 900_000);
 
-  it("routes both families through §8 tier-2 carriage to the admissible Cardano spend shape", async () => {
-    // **#612 — the closure row.** The rows above measure the tier-1 inline
-    // frontiers and the miss at 296; this one drives the same journeys with
-    // `publishCarriage` set — the option the legacy builders lacked and
-    // `input-no-idx` already shipped — so the preimage publishes once as raw
-    // carriage (§8.7) and the binding step references it. Every transaction
-    // in each journey must fit the envelope: the routed steps AND the
-    // publications that carry the bytes instead.
+  it("routes both families through §8 tier-2 carriage at both tier-2 cardinalities, at a memory cost flat in cardinality", async () => {
+    // **#612 — the closure row, and the Q1X-F6 verdict's own evidence.**
+    //
+    // Four journeys, two cardinalities, both families:
+    //
+    //   296 inputs, `publishCarriage` set — the ladder's own pick here is
+    //     `Inline` (11,251 preimage bytes, well under §8.4's 14,336-byte
+    //     tier-1 bound) and `publish` demotes exactly one rung, so `RawUtxo`
+    //     is the recorded tier: the demotion the legacy builders lacked.
+    //   365 inputs, no routing input at all — a 14,603-byte field-0 preimage
+    //     sits past the tier-1 bound and inside the single-publication
+    //     window, so the ladder picks `RawUtxo` on size alone.
+    //
+    // Every transaction of every journey — the routed steps AND the
+    // publications that carry the bytes instead — must fit the envelope. And
+    // because the same binding step is measured at two cardinalities on the
+    // same route, the per-item execution cost is measured rather than
+    // asserted: this is where a return of the Q1X-F6 wall (~276,000 memory
+    // units an input under the counted scheme) would show up.
     const ceilings = executionCeilings();
-    const noInput = await runNoInputCardinalityJourney(
-      CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
-      { publishCarriage: true },
-    );
-    const doubleSpend = await runDoubleSpendCardinalityJourney(
-      CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
-      { publishCarriage: true },
-    );
+    const runs = {
+      "no-input routed 296": {
+        binding: "step-02",
+        cardinality: CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+        journey: await runNoInputCardinalityJourney(
+          CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+          { publishCarriage: true },
+        ),
+      },
+      "double-spend routed 296": {
+        binding: "step-04",
+        cardinality: CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+        journey: await runDoubleSpendCardinalityJourney(
+          CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+          { publishCarriage: true },
+        ),
+      },
+      "no-input size-selected 365": {
+        binding: "step-02",
+        cardinality: TIER2_SIZE_SELECTED_CARDINALITY,
+        journey: await runNoInputCardinalityJourney(
+          TIER2_SIZE_SELECTED_CARDINALITY,
+        ),
+      },
+      "double-spend size-selected 365": {
+        binding: "step-04",
+        cardinality: TIER2_SIZE_SELECTED_CARDINALITY,
+        journey: await runDoubleSpendCardinalityJourney(
+          TIER2_SIZE_SELECTED_CARDINALITY,
+        ),
+      },
+    } as const;
 
-    // The ladder's own pick at 296 inputs is `Inline` — 11,251 preimage bytes
-    // is well under the tier-1 bound — and `publish` demotes exactly one
-    // rung, so the recorded tier must be `RawUtxo`: tier selection happened,
-    // and it is the one demotion §8 leaves open.
-    expect(noInput.carriageTiers["step-02"]).toBe("RawUtxo");
-    expect(doubleSpend.carriageTiers["step-03"]).toBe("RawUtxo");
-    expect(doubleSpend.carriageTiers["step-04"]).toBe("RawUtxo");
-
-    for (const [family, journey] of [
-      ["no-input", noInput],
-      ["double-spend", doubleSpend],
-    ] as const) {
+    for (const [label, { journey, binding }] of Object.entries(runs)) {
+      // Tier selection actually happened, on both of the two ways §8 reaches
+      // tier 2, and every step that consumes the preimage records it.
+      expect(journey.carriageTiers[binding], label).toBe("RawUtxo");
       printProofFit({
-        headline: `${family} routed spend-input cardinality ${String(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY)}`,
+        headline: `${label} spend-input carriage`,
         stages: journey.stages,
         extra: { carriageTiers: journey.carriageTiers },
       });
       for (const [stage, measurement] of Object.entries(journey.stages)) {
         expectProofFit({
-          stage: `${family} routed cardinality ${String(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY)} ${stage}`,
+          stage: `${label} ${stage}`,
           measurement,
           maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
           maxTxExSteps: EMULATOR_PROTOCOL_PARAMETERS.maxTxExSteps,
         });
       }
+      const bindingStep = journey.stages[binding];
+      if (bindingStep === undefined) {
+        throw new Error(`${label} captured no ${binding} measurement`);
+      }
+      expect(bindingStep.executionMemory, label).toBeLessThan(
+        bindingStepMemoryBand(),
+      );
+      expect(bindingStep.executionSteps, label).toBeLessThan(
+        ceilings.steps / 10n,
+      );
     }
+    // The double-spend family's intermediate step carries tx1's preimage and
+    // must be routed too, or the bytes only moved off one of the two.
+    expect(
+      runs["double-spend routed 296"].journey.carriageTiers["step-03"],
+    ).toBe("RawUtxo");
+    expect(
+      runs["double-spend size-selected 365"].journey.carriageTiers["step-03"],
+    ).toBe("RawUtxo");
 
-    // Execution stays inside the pinned binding-step band, same as the inline
-    // rows — routing moved bytes, not per-item computation. See
-    // ROUTED_BINDING_STEP_MEMORY_CEILING for the measured restatement.
-    for (const measurement of [
-      noInput.stages["step-02"]!,
-      doubleSpend.stages["step-04"]!,
-    ]) {
-      expect(
-        measurement.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
-      ).toBe(true);
-      expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
-    }
-  }, 900_000);
-
-  it("selects tier-2 carriage on size alone past the tier-1 bound", async () => {
-    // The routed row above demotes deliberately — at 296 inputs the preimage
-    // is under §8.4's 14,336-byte tier-1 bound and only the L1 envelope
-    // forces publication. This row commits 365 inputs (a 14,603-byte field-0
-    // preimage, inside the single-publication window) so the ladder itself
-    // picks `RawUtxo` with no caller involvement: both families' full
-    // journeys — publications included — must fit the envelope with the tier
-    // chosen by the committed data's size and nothing else.
-    const ceilings = executionCeilings();
-    const noInput = await runNoInputCardinalityJourney(
-      TIER2_SIZE_SELECTED_CARDINALITY,
-    );
-    const doubleSpend = await runDoubleSpendCardinalityJourney(
-      TIER2_SIZE_SELECTED_CARDINALITY,
-    );
-
-    expect(noInput.carriageTiers["step-02"]).toBe("RawUtxo");
-    expect(doubleSpend.carriageTiers["step-03"]).toBe("RawUtxo");
-    expect(doubleSpend.carriageTiers["step-04"]).toBe("RawUtxo");
-
-    for (const [family, journey] of [
-      ["no-input", noInput],
-      ["double-spend", doubleSpend],
+    // The flatness property, measured across a 23% change in item count on
+    // the same route. `Math.abs` on the difference so a cost that shrank with
+    // cardinality — which would be just as much a per-item dependence — is
+    // caught too.
+    for (const [family, at296, at365] of [
+      [
+        "no-input",
+        runs["no-input routed 296"],
+        runs["no-input size-selected 365"],
+      ],
+      [
+        "double-spend",
+        runs["double-spend routed 296"],
+        runs["double-spend size-selected 365"],
+      ],
     ] as const) {
-      printProofFit({
-        headline: `${family} size-selected spend-input cardinality ${String(TIER2_SIZE_SELECTED_CARDINALITY)}`,
-        stages: journey.stages,
-        extra: { carriageTiers: journey.carriageTiers },
-      });
-      for (const [stage, measurement] of Object.entries(journey.stages)) {
-        expectProofFit({
-          stage: `${family} size-selected cardinality ${String(TIER2_SIZE_SELECTED_CARDINALITY)} ${stage}`,
-          measurement,
-          maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
-          maxTxExSteps: EMULATOR_PROTOCOL_PARAMETERS.maxTxExSteps,
-        });
-      }
-    }
-
-    for (const measurement of [
-      noInput.stages["step-02"]!,
-      doubleSpend.stages["step-04"]!,
-    ]) {
+      const memoryAt296 = at296.journey.stages[at296.binding]!.executionMemory;
+      const memoryAt365 = at365.journey.stages[at365.binding]!.executionMemory;
+      const spread =
+        memoryAt365 > memoryAt296
+          ? memoryAt365 - memoryAt296
+          : memoryAt296 - memoryAt365;
+      const inputsApart = BigInt(at365.cardinality - at296.cardinality);
       expect(
-        measurement.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
-      ).toBe(true);
-      expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
+        spread / inputsApart,
+        `${family} binding-step memory per input between ${String(at296.cardinality)} and ${String(at365.cardinality)} inputs (${memoryAt296.toString()} -> ${memoryAt365.toString()})`,
+      ).toBeLessThanOrEqual(maxBindingStepMemoryPerInput());
     }
-  }, 900_000);
+  }, 1_800_000);
 });

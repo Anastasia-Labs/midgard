@@ -9,7 +9,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  MIDGARD_RELEASE_EVIDENCE_DIGEST,
 } from "./consensus-profile.js";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
@@ -231,6 +230,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofMissingNativeScriptUtxoStep03",
   "fraudProofMissingNativeScriptUtxoStep04",
   "fraudProofMissingNativeScriptUtxoStep05",
+  "fraudProofMissingNativeScriptUtxoStep06",
+  "fraudProofMissingNativeScriptUtxoStep07",
   "fraudProofNativeScriptInvalid",
   "fraudProofNativeScriptInvalidStep02",
   "fraudProofNativeScriptInvalidStep03",
@@ -574,6 +575,11 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofDistinctAssetAccumulationLimitStep06",
   "availabilityChallengeSpend",
   "availabilityChallengeMint",
+  "availabilityChallengeBondWithdraw",
+  "availabilityChallengeOpenWithdraw",
+  "availabilityChallengeSettleWithdraw",
+  "availabilityChallengeCloseWithdraw",
+  "availabilityChallengeTimeoutWithdraw",
   "stateQueueCommitWithdraw",
   "stateQueueUnattestedTimeoutWithdraw",
   "stateQueueUnavailableTimeoutWithdraw",
@@ -1049,6 +1055,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofMissingNativeScriptUtxoStep04",
     "V1 fraud-proof missing-native-script-utxo step-05":
       "fraudProofMissingNativeScriptUtxoStep05",
+    "V1 fraud-proof missing-native-script-utxo step-06":
+      "fraudProofMissingNativeScriptUtxoStep06",
+    "V1 fraud-proof missing-native-script-utxo step-07":
+      "fraudProofMissingNativeScriptUtxoStep07",
     "V1 fraud-proof native-script-invalid step-01":
       "fraudProofNativeScriptInvalid",
     "V1 fraud-proof native-script-invalid step-02":
@@ -1716,6 +1726,16 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofDistinctAssetAccumulationLimitStep06",
     "availability-challenge spending": "availabilityChallengeSpend",
     "availability-challenge minting": "availabilityChallengeMint",
+    "availability-challenge bond withdrawal":
+      "availabilityChallengeBondWithdraw",
+    "availability-challenge open withdrawal":
+      "availabilityChallengeOpenWithdraw",
+    "availability-challenge settle withdrawal":
+      "availabilityChallengeSettleWithdraw",
+    "availability-challenge close withdrawal":
+      "availabilityChallengeCloseWithdraw",
+    "availability-challenge timeout withdrawal":
+      "availabilityChallengeTimeoutWithdraw",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
@@ -2134,6 +2154,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1FpMissingNativeScriptUtxoS04",
   "V1 fraud-proof missing-native-script-utxo step-05":
     "V1FpMissingNativeScriptUtxoS05",
+  "V1 fraud-proof missing-native-script-utxo step-06":
+    "V1FpMissingNativeScriptUtxoS06",
+  "V1 fraud-proof missing-native-script-utxo step-07":
+    "V1FpMissingNativeScriptUtxoS07",
   "V1 fraud-proof native-script-invalid step-01": "V1FpNativeScriptInvalidS01",
   "V1 fraud-proof native-script-invalid step-02": "V1FpNativeScriptInvalidS02",
   "V1 fraud-proof native-script-invalid step-03": "V1FpNativeScriptInvalidS03",
@@ -2451,6 +2475,13 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1FpDistinctAssetLimitS06",
   "availability-challenge spending": "AvailabilityChallengeSpend",
   "availability-challenge minting": "AvailabilityChallengeMint",
+  "availability-challenge bond withdrawal": "AvailabilityChallengeBondYield",
+  "availability-challenge open withdrawal": "AvailabilityChallengeOpenYield",
+  "availability-challenge settle withdrawal":
+    "AvailabilityChallengeSettleYield",
+  "availability-challenge close withdrawal": "AvailabilityChallengeCloseYield",
+  "availability-challenge timeout withdrawal":
+    "AvailabilityChallengeExpiryYield",
 } as const);
 
 export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
@@ -2458,6 +2489,7 @@ export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
   "deployNodeRuntimeReferenceScripts",
   "initProtocol",
   "phasRegistration",
+  "availabilityRegistration",
   "operatorRegistration",
   "operatorActivation",
 ] as const);
@@ -2565,7 +2597,7 @@ export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "contracts",
   "referenceScripts",
   "da",
-  "proofEvidence",
+  "artifacts",
   "steps",
   "validationDispute",
   "l1Finality",
@@ -4433,22 +4465,12 @@ export const verifyFinalizedDeploymentManifest = (
   );
   validateFinalizedDa(candidate.da);
 
-  const proofEvidence = requireRecord(
-    candidate.proofEvidence,
-    "Deployment manifest proofEvidence",
+  const artifacts = requireRecord(
+    candidate.artifacts,
+    "Deployment manifest artifacts",
   );
-  requireExactKeys(
-    proofEvidence,
-    ["digest", "blueprintHash"],
-    [],
-    "proofEvidence",
-  );
-  if (proofEvidence.digest !== MIDGARD_RELEASE_EVIDENCE_DIGEST) {
-    throw new Error(
-      "Deployment manifest proofEvidence.digest must match compiled canonical V1 evidence",
-    );
-  }
-  requireHex(proofEvidence.blueprintHash, 32, "proofEvidence.blueprintHash");
+  requireExactKeys(artifacts, ["blueprintHash"], [], "artifacts");
+  requireHex(artifacts.blueprintHash, 32, "artifacts.blueprintHash");
 
   const steps = requireRecord(candidate.steps, "Deployment manifest steps");
   requireExactKeys(steps, DEPLOYMENT_MANIFEST_STEP_NAMES, [], "steps");
@@ -4476,6 +4498,7 @@ export const verifyFinalizedDeploymentManifest = (
     "prepareHubOracleNonce",
     "deployNodeRuntimeReferenceScripts",
     "initProtocol",
+    "availabilityRegistration",
   ]) {
     const step = requireRecord(steps[requiredStep], `steps.${requiredStep}`);
     if (step.status !== "complete") {

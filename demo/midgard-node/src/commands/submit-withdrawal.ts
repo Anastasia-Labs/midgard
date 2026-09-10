@@ -10,7 +10,6 @@ import {
 } from "../transactions/reference-scripts.js";
 import { assetsToValue } from "../transactions/reserve-payout.js";
 import * as SubmitWithdrawalTx from "../transactions/submit-withdrawal.js";
-import { signWithdrawalBody } from "../withdrawal-signature.js";
 import {
   defaultMidgardNodeEndpoint,
   deriveWalletInfo,
@@ -175,7 +174,7 @@ export const submitWithdrawalCommandProgram = ({
       contracts,
       {
         body,
-        signature: signWithdrawalBody(wallet.privateKey, body),
+        signature: SDK.signWithdrawalBody(wallet.privateKey, body),
         refundAddress,
         refundDatum: parseCardanoDatum(config.refundDatum, "--refund-datum"),
         lovelace: parseOptionalPositiveLovelace(config.orderLovelace),

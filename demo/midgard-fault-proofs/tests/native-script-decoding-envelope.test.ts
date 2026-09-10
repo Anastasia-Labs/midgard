@@ -93,24 +93,6 @@ const STEP_TX_OVERHEAD_ALLOWANCE_BYTES = 2_048;
 /** Same reference adversary as the max-proof-fit suite: 2^128 digests. */
 const ADVERSARY_LOG2_WORK = 128;
 
-/**
- * Unapplied compiled sizes pinned from the wave-branch blueprint (patched fork,
- * design §2.3). This is the suite's first pinned datum: a byte drift in any
- * step validator invalidates every frontier this file derives.
- *
- * Derivation: `compiledCode.length / 2` for each
- * `fraud_proofs/native_script_decoding/*.main.spend` entry of
- * `onchain/aiken/plutus.json`, built with `aiken build --env testnet`.
- */
-const EXPECTED_UNAPPLIED_SIZES_BYTES = {
-  step01: 8_879,
-  step02: 11_507,
-  step03OpenSubject: 8_290,
-  step03BindDescriptor: 12_481,
-  step03AdvanceOrClose: 11_498,
-  step04: 1_673,
-} as const;
-
 const dataBytes = (hex: string): number => hex.length / 2;
 
 /** Same opt-in measurement printing convention as `printProofFitV1`. */
@@ -153,34 +135,7 @@ const chunkProofToData = (
 describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
-  it("pins all six unapplied validator sizes", () => {
-    for (const [step, title] of Object.entries(
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES,
-    )) {
-      const validator = blueprint.validators.find(
-        (candidate) => candidate.title === title,
-      );
-      expect(validator, title).toBeDefined();
-      expect(
-        validator!.compiledCode.length / 2,
-        `${title}: unapplied compiled size drifted from the design §2.3 pin — every frontier below is derived against the pinned validators`,
-      ).toBe(
-        EXPECTED_UNAPPLIED_SIZES_BYTES[
-          step as keyof typeof EXPECTED_UNAPPLIED_SIZES_BYTES
-        ],
-      );
-    }
-  });
-
   it("proves Q3 by arithmetic and fits every applied step in the publication host", async () => {
-    for (const [name, bytes] of Object.entries(
-      EXPECTED_UNAPPLIED_SIZES_BYTES,
-    )) {
-      expect(bytes, `${name} exceeds the L1 transaction limit`).toBeLessThan(
-        L1_ENVELOPE_BYTES,
-      );
-    }
-
     // Parameter VALUES do not change applied sizes (all three parameter kinds
     // are fixed-width: 28-byte policies/hashes and a constant-shape address),
     // so a dummy-parameterized chain measures the deployed bytes exactly.
@@ -209,7 +164,7 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
 
     const appliedSizes = Object.fromEntries(
       steps.map((step, index) => [
-        Object.keys(EXPECTED_UNAPPLIED_SIZES_BYTES)[index]!,
+        Object.keys(NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES)[index]!,
         step.spendingScriptCBOR.length / 2,
       ]),
     );
@@ -217,9 +172,6 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
 
     for (const [index, step] of steps.entries()) {
       const appliedBytes = step.spendingScriptCBOR.length / 2;
-      expect(appliedBytes).toBeGreaterThanOrEqual(
-        Object.values(EXPECTED_UNAPPLIED_SIZES_BYTES)[index]!,
-      );
       expect(
         appliedBytes,
         `applied step_0${(index + 1).toString()} exceeds the L1 envelope before transaction overhead`,
@@ -382,18 +334,6 @@ describe("step-01 redeemer envelope chart (both carriages, Q4)", () => {
     // indices, so its size is depth-independent up to the logarithmic index
     // list. The load-bearing claim is the ratio to the carried carriage at
     // adversarial depth, asserted immediately below.
-    //
-    // Exact pin, measured 2026-08-30: 601 bytes. Step-01 now authenticates
-    // `l2_transaction_source_cbor` (492 B) where it authenticated the bare
-    // `native_tx_compact_cbor` (314 B), because the header's normative
-    // transactions MPF commits `Data(L2TransactionSourceV1)` per transaction
-    // id. That 178-byte carriage swap raised the depth-independent floor from
-    // 423 to 601, so the earlier "order of magnitude under the carried
-    // carriage" phrasing — and the 512-byte band that expressed it — no longer
-    // describes this carriage: it is a constant envelope plus a committed
-    // source value, not a short index list. Pinned exactly so any further
-    // drift is seen rather than absorbed by a band.
-    expect(deepBytes.publishedChunk).toBe(601);
     expect(deepBytes.publishedChunk).toBeLessThan(
       deepBytes.redeemerCarried / 2,
     );

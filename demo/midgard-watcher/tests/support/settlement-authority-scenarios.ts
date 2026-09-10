@@ -76,6 +76,7 @@ import {
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherSha256CanonicalJson as sha256CanonicalForTest,
 } from "../../src/storage/durable-store.js";
 import { h28, h32 } from "./deployment-authority-fixture.js";
 import { makeWatcherAuthorityDeploymentFixture } from "./watcher-opaque-authority-harness.js";
@@ -264,7 +265,7 @@ const settlementAsset = "aa";
 const operator = h28("91");
 const HUB_REFERENCE_OUT_REF = `${h32("7a")}#0`;
 const SETTLEMENT_REFERENCE_OUT_REF = `${h32("7b")}#0`;
-const RELEASE_DIGEST = h32("22");
+const BLUEPRINT_HASH = h32("55");
 const RULE_BUNDLE_COMMITMENT = h32("44");
 
 const deploymentAuthorityFixture = makeWatcherAuthorityDeploymentFixture();
@@ -348,7 +349,7 @@ const bootstrapStore = makeWatcherDurableStore({
 
 const policy = makeWatcherSettlementIndexerPolicy({
   network: "Preprod",
-  releaseEvidenceDigest: RELEASE_DIGEST,
+  blueprintHash: BLUEPRINT_HASH,
   deploymentMarker: deploymentAuthorityFixture.marker,
   hubOraclePolicyId,
   depositPolicyId,
@@ -449,7 +450,8 @@ const makeExternalFinalityPolicy = () =>
       manifestId: policy.deploymentMarker.manifestId,
       network: policy.network,
       trustRootId: policy.deploymentTrustRootId,
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      fundingProfileBundleDigest: "ab".repeat(32),
+      blueprintHash: policy.blueprintHash,
       ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
       programCommitments: { validation: h32("55") },
       durableMarker: policy.deploymentMarker,
@@ -1180,7 +1182,7 @@ const bundle = (input: {
   const observation = makeWatcherSettlementObservation({
     policyDigest: activePolicy.policyDigest,
     network: activePolicy.network,
-    releaseEvidenceDigest: activePolicy.releaseEvidenceDigest,
+    blueprintHash: activePolicy.blueprintHash,
     deploymentMarker: activePolicy.deploymentMarker,
     pointDigest: normalized.chainPoint.pointDigest,
     chainPointId: normalized.chainPoint.chainPointId,
@@ -1301,30 +1303,6 @@ const bundle = (input: {
     finalityState: finalityResult.state,
     finalityResult,
   };
-};
-
-const sha256CanonicalForTest = (value: unknown): string => {
-  const canonical = (candidate: unknown): string => {
-    if (
-      candidate === null ||
-      typeof candidate === "boolean" ||
-      typeof candidate === "string"
-    ) {
-      return JSON.stringify(candidate);
-    }
-    if (Array.isArray(candidate)) {
-      return `[${candidate.map(canonical).join(",")}]`;
-    }
-    if (typeof candidate !== "object") {
-      return "{}";
-    }
-    const record = candidate as Readonly<Record<string, unknown>>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-      .join(",")}}`;
-  };
-  return createHash("sha256").update(canonical(value), "utf8").digest("hex");
 };
 
 const accepted = (

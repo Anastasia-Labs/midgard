@@ -1,12 +1,28 @@
+import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import {
+  encodeCatalogueKey,
+  encodeCatalogueValue,
+  trieRootHex,
+} from "./catalogue.js";
 import { makeFaultProofEmulatorHarness } from "./harness.js";
 
-const APPENDED_CATEGORY_NAMES = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(11);
+/**
+ * The 11 foundational categories are registered by the base deployment; the
+ * rest are appended by the families that reached central registration. The
+ * split point is a property of the canonical order, so the appended slice is
+ * derived from it rather than from a hand-maintained count; only its
+ * non-vacuity is asserted, so an empty slice cannot report green.
+ */
+const FOUNDATIONAL_CATEGORY_COUNT = 11;
+const APPENDED_CATEGORY_NAMES = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(
+  FOUNDATIONAL_CATEGORY_COUNT,
+);
 
 describe("fault-proof emulator catalogue registration", () => {
   it.each([
@@ -34,10 +50,10 @@ describe("fault-proof emulator catalogue registration", () => {
   it("registers every appended production category from its canonical chain", async () => {
     const harness = await makeFaultProofEmulatorHarness();
 
-    // Guard against a vacuous loop. 54 canonical categories minus the 11
-    // foundational ones: the 21 appended through minAda plus the 22
-    // non-interactive proof-thread families (IDs 20 through 35).
-    expect(APPENDED_CATEGORY_NAMES).toHaveLength(43);
+    expect(
+      APPENDED_CATEGORY_NAMES.length,
+      "the appended-category loop must not be vacuous",
+    ).toBeGreaterThan(0);
     for (const name of APPENDED_CATEGORY_NAMES) {
       const category = harness.catalogue.categories[name];
       const firstStep = harness.contracts.fraudProofContracts[name].firstStep;
@@ -49,7 +65,43 @@ describe("fault-proof emulator catalogue registration", () => {
       expect(harness.contracts.fraudProofs[name].spendingScriptHash).toBe(
         firstStep.spendingScriptHash,
       );
-      expect(category.membershipProofCbor).not.toBe("");
     }
   });
+
+  it("publishes a membership proof that reproves each pair under the published root", async () => {
+    const harness = await makeFaultProofEmulatorHarness();
+
+    // Independent reference model: rebuild the catalogue trie with the
+    // third-party MPF library from the declared (categoryId, scriptHash)
+    // pairs, then require the published root and every published proof to be
+    // exactly what that trie yields. A category wired under the wrong hash or
+    // id, or a proof that does not actually witness its pair, fails here --
+    // `membershipProofCbor !== ""` could not tell the difference.
+    const store = new Store(undefined);
+    await store.ready();
+    const reference = new Trie(store);
+    for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+      const category = harness.catalogue.categories[name];
+      await reference.insert(
+        encodeCatalogueKey(category.categoryId),
+        encodeCatalogueValue(category.scriptHash),
+      );
+    }
+
+    expect(trieRootHex(reference)).toBe(harness.catalogue.root);
+    for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+      const category = harness.catalogue.categories[name];
+      const proof = await reference.prove(
+        encodeCatalogueKey(category.categoryId),
+      );
+      expect(
+        proof.verify(true)?.toString("hex"),
+        `${name} membership proof must recompute the catalogue root`,
+      ).toBe(harness.catalogue.root);
+      expect(
+        category.membershipProofCbor,
+        `${name} published membership proof`,
+      ).toBe(proof.toCBOR().toString("hex"));
+    }
+  }, 120_000);
 });

@@ -3,25 +3,31 @@ title: "Benchmarks & Stress Testing"
 description: "Running the node's benchmark, stress, and end-to-end throughput commands."
 ---
 
-The node ships benchmark and stress tooling for measuring throughput and exercising the
-full pipeline. The `package.json` `bench:*` and `stress:*` scripts and the `scripts/`
-directory drive these, alongside dedicated CLI commands.
+Node package scripts measure individual pipeline stages. External stress and
+acceptance commands live in the separate `midgard-node-tools` binary; they do
+not ship in the operator binary. See each package's `package.json` and README
+for the maintained invocation and prerequisites.
 
 <Callout type="warn" title="What a benchmark run does not prove">
-These runs measure local throughput against a local L1 backend, with demo parameters and
-no adversarial load. They do not establish production capacity, and they say nothing
-about behavior under restart, rollback, or provider disagreement. Record the test
-conditions and the date alongside any number you quote. See
-[Project Status](/docs/getting-started/status) for what remains unproven.
+  A throughput measurement proves only its declared workload and environment.
+  Separate process/recovery acceptance gates exercise restart and rollback; a
+  throughput score cannot replace them. Formal scenarios impose exact profile,
+  corpus and environment requirements. Record the artifact identity, conditions
+  and date alongside any number you quote. See [Project
+  Status](/docs/getting-started/status) for what remains unproven.
 </Callout>
 
 ## Commands & scripts
+
+The following commands run through `midgard-node-tools`:
 
 - `e2e-start-service` · `e2e-run-step` · `e2e-finalize-summary`, run and summarize
   end-to-end scenarios.
 - `e2e-stress-l2-throughput`: stress-test L2 transaction throughput.
 - `stress-wallets:prepare`: prepare wallets for stress runs.
-- `audit-blocks-immutable`: audit that committed block history is immutable.
+
+The operator command `audit-blocks-immutable` checks the linkage between block
+membership and immutable transaction payloads.
 
 For large-scale load generation, use the stress and e2e commands of the
 `demo/midgard-node-tools` package (see its `README.md`).

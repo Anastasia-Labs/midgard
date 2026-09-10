@@ -8,6 +8,7 @@ import {
   toUnit,
   type TxBuilder,
   type UTxO,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
@@ -20,6 +21,7 @@ import {
   DaAvailabilityMintRedeemerSchema,
   encodeDaAvailabilityBondDatum,
 } from "./availability-challenge.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   type AddressData,
   addressDataFromBech32,
@@ -331,14 +333,45 @@ export const prefixAttestedSignerBitmap = (signatureCount: number): string => {
   return bitmap.toString("hex");
 };
 
+/**
+ * Why a DA attestation build refused. Every refusal in this module carries one
+ * of these codes so a caller — and a test — can tell *which* precondition
+ * failed instead of only that some precondition did.
+ */
+export type DaAttestationBuildFailureReason =
+  | "attestation_header_mismatch"
+  | "attestation_not_stranded"
+  | "availability_commitment_header_mismatch"
+  | "committee_rotated"
+  | "duplicate_signature_witness"
+  | "invalid_attested_signer_bitmap"
+  | "invalid_committee_bytes"
+  | "invalid_committee_size"
+  | "invalid_signature_hex"
+  | "invalid_signer_index"
+  | "invalid_validity_range"
+  | "missing_bond_yield_reference_script"
+  | "missing_network"
+  | "params_committee_hash_mismatch"
+  | "params_threshold_mismatch"
+  | "rescue_refund_address_undecodable"
+  | "rescue_refund_beneficiary_mismatch"
+  | "rescue_refund_to_attestation_script"
+  | "signer_already_attested"
+  | "signer_outside_committee"
+  | "threshold_changed"
+  | "threshold_not_reached"
+  | "validity_range_past_deadline";
+
 export class DaAttestationBuildError extends EffectData.TaggedError(
   "DaAttestationBuildError",
-)<GenericErrorFields> {}
+)<GenericErrorFields & { readonly reason: DaAttestationBuildFailureReason }> {}
 
 export type DaAttestationReferenceScripts = {
   readonly daAttestationMinting: UTxO;
   readonly daAttestationSpending: UTxO;
   readonly availabilityChallengeMinting: UTxO;
+  readonly availabilityChallengeBondWithdrawal: UTxO;
   readonly stateQueueMinting: UTxO;
   readonly stateQueueSpending: UTxO;
 };
@@ -360,10 +393,11 @@ export type DaAttestationSignatureWitness = {
 };
 
 const failBuild = (
+  reason: DaAttestationBuildFailureReason,
   message: string,
   cause: unknown,
 ): Effect.Effect<never, DaAttestationBuildError> =>
-  Effect.fail(new DaAttestationBuildError({ message, cause }));
+  Effect.fail(new DaAttestationBuildError({ reason, message, cause }));
 
 const isHexOfLength = (value: string, length: number): boolean =>
   value.length === length && /^[0-9a-fA-F]*$/.test(value);
@@ -374,6 +408,7 @@ const validateAttestedSignerBitmap = (
   isHexOfLength(attestedSignersHex, ATTESTED_SIGNER_BITMAP_HEX_LENGTH)
     ? Effect.void
     : failBuild(
+        "invalid_attested_signer_bitmap",
         "Invalid DA attested-signer bitmap",
         `expected_hex_chars=${ATTESTED_SIGNER_BITMAP_HEX_LENGTH.toString()},actual_hex_chars=${attestedSignersHex.length.toString()}`,
       );
@@ -384,6 +419,7 @@ const validateSignerIndex = (
   Number.isInteger(signerIndex) && signerIndex >= 0 && signerIndex <= 255
     ? Effect.void
     : failBuild(
+        "invalid_signer_index",
         "Invalid DA signer index",
         `signer_index=${signerIndex.toString()}`,
       );
@@ -394,6 +430,7 @@ const validateSignatureHex = (
   isHexOfLength(signatureHex, SIGNATURE_HEX_LENGTH)
     ? Effect.void
     : failBuild(
+        "invalid_signature_hex",
         "Invalid DA signature witness",
         `expected_hex_chars=${SIGNATURE_HEX_LENGTH.toString()},actual_hex_chars=${signatureHex.length.toString()}`,
       );
@@ -404,6 +441,7 @@ const validateCommitteeSize = (
   Number.isInteger(committeeSize) && committeeSize >= 0 && committeeSize <= 256
     ? Effect.void
     : failBuild(
+        "invalid_committee_size",
         "Invalid DA committee size",
         `committee_size=${committeeSize.toString()}`,
       );
@@ -412,10 +450,15 @@ const committeeSizeFromParamsDatum = (
   daParamsDatum: DaParamsDatum,
 ): Effect.Effect<number, DaAttestationBuildError> => {
   if (!/^[0-9a-fA-F]*$/.test(daParamsDatum.committee)) {
-    return failBuild("Invalid DA committee bytes", "committee is not hex");
+    return failBuild(
+      "invalid_committee_bytes",
+      "Invalid DA committee bytes",
+      "committee is not hex",
+    );
   }
   if (daParamsDatum.committee.length % VERIFICATION_KEY_HEX_LENGTH !== 0) {
     return failBuild(
+      "invalid_committee_bytes",
       "Invalid DA committee bytes",
       `hex_chars=${daParamsDatum.committee.length.toString()}`,
     );
@@ -473,6 +516,7 @@ export const encodeDaAttestationSignatureWitnesses = (
       yield* validateSignatureHex(witness.signatureHex);
       if (seen.has(witness.signerIndex)) {
         return yield* failBuild(
+          "duplicate_signature_witness",
           "Duplicate DA signature witness",
           `signer_index=${witness.signerIndex.toString()}`,
         );
@@ -510,6 +554,7 @@ export const applyDaAttestationSignatureWitnesses = (config: {
         witness.signerIndex >= config.committeeSize
       ) {
         return yield* failBuild(
+          "signer_outside_committee",
           "DA signature witness is outside committee",
           `signer_index=${witness.signerIndex.toString()},committee_size=${config.committeeSize.toString()}`,
         );
@@ -518,6 +563,7 @@ export const applyDaAttestationSignatureWitnesses = (config: {
         signerIndexIsDaAttested(config.attestedSignersHex, witness.signerIndex)
       ) {
         return yield* failBuild(
+          "signer_already_attested",
           "DA signature witness is already attested",
           `signer_index=${witness.signerIndex.toString()}`,
         );
@@ -560,6 +606,7 @@ export const incompleteInitDaAttestationTxProgram = (
       config.availabilityCommitment.header_hash !== config.target.headerHash
     ) {
       return yield* failBuild(
+        "availability_commitment_header_mismatch",
         "DA availability commitment header does not match state-queue target",
         `commitment=${config.availabilityCommitment.header_hash},target=${config.target.headerHash}`,
       );
@@ -659,6 +706,7 @@ export const incompleteAddDaAttestationSignaturesTxProgram = (
       config.daParamsDatum.da_threshold
     ) {
       return yield* failBuild(
+        "params_threshold_mismatch",
         "DA attestation datum threshold does not match DA params",
         `attestation=${config.attestation.datum.da_threshold.toString()},params=${config.daParamsDatum.da_threshold.toString()}`,
       );
@@ -668,6 +716,7 @@ export const incompleteAddDaAttestationSignaturesTxProgram = (
       config.daParamsDatum.committee_signers_hash
     ) {
       return yield* failBuild(
+        "params_committee_hash_mismatch",
         "DA attestation datum committee hash does not match DA params",
         `attestation=${config.attestation.datum.committee_signers_hash},params=${config.daParamsDatum.committee_signers_hash}`,
       );
@@ -753,6 +802,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         MAX_VALIDITY_RANGE_LENGTH_MS
     ) {
       return yield* failBuild(
+        "invalid_validity_range",
         "DA attestation apply requires a short closed validity range",
         `valid_from=${config.validityRange.validFrom.toString()},valid_to=${config.validityRange.validTo.toString()},max_length=${MAX_VALIDITY_RANGE_LENGTH_MS.toString()}`,
       );
@@ -761,6 +811,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       config.target.stateQueueNode.header.endTime + DA_ATTESTATION_TIMEOUT_MS;
     if (config.validityRange.validTo > attestationDeadline) {
       return yield* failBuild(
+        "validity_range_past_deadline",
         "DA attestation apply validity range exceeds the attestation deadline",
         `valid_to=${config.validityRange.validTo.toString()},deadline=${attestationDeadline.toString()}`,
       );
@@ -779,6 +830,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       config.daParamsDatum.committee_signers_hash
     ) {
       return yield* failBuild(
+        "committee_rotated",
         "DA committee rotated away from the attestation's frozen committee; this attestation can no longer apply and must be rescued",
         `frozen=${config.attestation.datum.committee_signers_hash},governed=${config.daParamsDatum.committee_signers_hash}`,
       );
@@ -788,12 +840,14 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       config.daParamsDatum.da_threshold
     ) {
       return yield* failBuild(
+        "threshold_changed",
         "DA threshold changed since the attestation froze it; this attestation can no longer apply and must be rescued",
         `frozen=${config.attestation.datum.da_threshold.toString()},governed=${config.daParamsDatum.da_threshold.toString()}`,
       );
     }
     if (config.attestation.datum.header_hash !== config.target.headerHash) {
       return yield* failBuild(
+        "attestation_header_mismatch",
         "DA attestation header does not match state-queue target",
         `attestation=${config.attestation.datum.header_hash},target=${config.target.headerHash}`,
       );
@@ -803,6 +857,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       config.attestation.datum.da_threshold
     ) {
       return yield* failBuild(
+        "threshold_not_reached",
         "DA attestation has not reached threshold",
         `attestation_count=${config.attestation.datum.attestation_count.toString()},threshold=${config.attestation.datum.da_threshold.toString()}`,
       );
@@ -898,6 +953,27 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         } satisfies DaAttestationSpendRedeemer as never,
         DaAttestationSpendRedeemer as never,
       )) satisfies BuildTxWithRedeemer;
+    const bondYieldScript =
+      config.referenceScripts.availabilityChallengeBondWithdrawal.scriptRef;
+    if (
+      bondYieldScript == null ||
+      validatorToScriptHash(bondYieldScript) !==
+        contracts.availabilityChallenge.yields.bond.withdrawalScriptHash
+    ) {
+      return yield* failBuild(
+        "missing_bond_yield_reference_script",
+        "DA attestation apply requires the deployed bond yield reference script",
+        "missing or mismatched bond yield script reference",
+      );
+    }
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* failBuild(
+        "missing_network",
+        "DA attestation apply requires a configured network",
+        "lucid.config().network is undefined",
+      );
+    }
     const availabilityMintRedeemer = ((ctx) => {
       requireOwnMintPurpose(
         ctx,
@@ -907,6 +983,11 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       return Data.to(
         {
           MintBondFromAttestation: {
+            yield_to_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              config.referenceScripts.availabilityChallengeBondWithdrawal,
+              "DA attestation apply bond yield reference script",
+            ),
             hub_oracle_ref_input_index: requireReferenceInputIndex(
               ctx,
               config.hubOracleRefInput,
@@ -981,6 +1062,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         config.hubOracleRefInput,
         config.daParamsUtxo,
         config.referenceScripts.availabilityChallengeMinting,
+        config.referenceScripts.availabilityChallengeBondWithdrawal,
         config.referenceScripts.daAttestationMinting,
         config.referenceScripts.daAttestationSpending,
         config.referenceScripts.stateQueueMinting,
@@ -1002,7 +1084,15 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         },
       )
       .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer)
-      .mintAssets({ [bondUnit]: 1n }, availabilityMintRedeemer);
+      .mintAssets({ [bondUnit]: 1n }, availabilityMintRedeemer)
+      .withdraw(
+        scriptRewardAddress(
+          network,
+          contracts.availabilityChallenge.yields.bond.withdrawalScript,
+        ),
+        0n,
+        Data.void(),
+      );
   });
 
 /**
@@ -1035,6 +1125,7 @@ export const incompleteRescueStrandedDaAttestationTxProgram = (
       })
     ) {
       return yield* failBuild(
+        "attestation_not_stranded",
         "DA attestation is not stranded: its committee is still the governed one, so it may still be signed and applied",
         `frozen=${config.attestation.datum.committee_signers_hash},governed=${config.daParamsDatum.committee_signers_hash}`,
       );
@@ -1043,6 +1134,7 @@ export const incompleteRescueStrandedDaAttestationTxProgram = (
       config.refundAddress === contracts.daAttestation.spendingScriptAddress
     ) {
       return yield* failBuild(
+        "rescue_refund_to_attestation_script",
         "DA attestation rescue refund may not return to the attestation script; the burnt DAAT would leave it unspendable",
         config.refundAddress,
       );
@@ -1053,6 +1145,7 @@ export const incompleteRescueStrandedDaAttestationTxProgram = (
       Effect.mapError(
         (cause) =>
           new DaAttestationBuildError({
+            reason: "rescue_refund_address_undecodable",
             message: "Failed to decode DA attestation rescue refund address",
             cause,
           }),
@@ -1068,6 +1161,7 @@ export const incompleteRescueStrandedDaAttestationTxProgram = (
     );
     if (encodedRefundAddress !== encodedBeneficiary) {
       return yield* failBuild(
+        "rescue_refund_beneficiary_mismatch",
         "DA attestation rescue refund address does not match the frozen beneficiary",
         config.refundAddress,
       );

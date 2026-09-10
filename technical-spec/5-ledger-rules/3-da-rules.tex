@@ -31,6 +31,7 @@ Before signing an attestation, a committee node must verify:
     \item \code{transition\_step\_count} equals \code{total\_event\_count}.
     \item The transition trace is dense, each trace key equals the opened \code{step\_index}, and each trace phase matches the event-key variant.
     \item Each event-to-step member points to an existing trace step whose event key and phase point back to that member.
+    \item Validation descriptors cover the committed normal and forced transaction events with matching operator verdicts; retained validation witnesses are canonically decoded and authenticated against the descriptor and bound transaction material.
 \end{enumerate}
 
 If any check fails, the committee node must not sign the DA attestation for that header.

@@ -13,10 +13,10 @@ import {
   type CanonicalTransitionEffect,
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation";
+import { makeQueued } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { makeQueued } from "../../../midgard-validation/tests/validation-fixtures.js";
 import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
 import {
   type EvaluateWatcherBlockReplayInput,
@@ -37,7 +37,6 @@ import {
   makeWatcherCanonicalRuleBundle,
 } from "../../src/verification/rule-bundle.js";
 import {
-  type GenuineSettlementAuthority,
   replayAcceptedSettlementAuthorityScenario,
   replayGenuineAbsorbToReserveAuthorityScenario,
   replayGenuineRefundWithdrawalAuthorityScenario,
@@ -132,7 +131,7 @@ const RULE_BUNDLE = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
     manifestId: h32(0x21),
     network: "Preprod",
-    releaseEvidenceDigest: h32(0x22),
+    blueprintHash: h32(0x22),
     programCommitments: {
       "transition-order-v1": h32(0x23),
       "validation-machine-v1": h32(0x24),
@@ -171,6 +170,7 @@ type GenuineReplayPublicEvent = Readonly<{
 const publicEventFromAuthority = (
   authority: UserEventAcceptedAuthorityScenario,
   canonicalNativeTxCbor: Buffer | null,
+  withdrawalValidity?: SDK.WithdrawalValidity,
 ): GenuineReplayPublicEvent => {
   const event = authority.event;
   if (event.kind === "withdrawal") {
@@ -190,16 +190,14 @@ const publicEventFromAuthority = (
       domain: "withdrawals",
       entry: [
         event.eventId,
-        dataHex(decoded.info, SDK.WithdrawalInfoSchema),
+        SDK.committedWithdrawalValueBytes({
+          ...decoded.info,
+          validity: withdrawalValidity ?? decoded.info.validity,
+        }),
       ] as SDK.DaPayloadEntry,
     });
   }
-  if (
-    event.kind !== "forced_order" ||
-    canonicalNativeTxCbor === null ||
-    !("terminalClassification" in event) ||
-    event.terminalClassification === undefined
-  ) {
+  if (event.kind !== "forced_order" || canonicalNativeTxCbor === null) {
     throw new Error("genuine W25 fixture requires an authenticated event");
   }
   const decoded = Data.from(event.eventCborHex, SDK.TxOrderEvent) as {
@@ -209,9 +207,13 @@ const publicEventFromAuthority = (
       readonly source: SDK.L2TransactionSource["source"];
     };
   };
-  const verdict = userEventForcedOperatorVerdictForClassification(
-    event.terminalClassification.operatorValidity,
-  );
+  const verdict =
+    "terminalClassification" in event &&
+    event.terminalClassification !== undefined
+      ? userEventForcedOperatorVerdictForClassification(
+          event.terminalClassification.operatorValidity,
+        )
+      : ("ForcedTxValid" as const);
   // The ORDER event binds the SUBMITTED source, but the committed DA leaf
   // carries the operator-ADJUDICATED one (§2.4.3(e)) — the payload
   // reconstruction authenticates exactly that. Re-derive through the single
@@ -294,41 +296,39 @@ const watcherHeaderRecord = (
   daAttestationPolicyId: null,
 });
 
-const settlementAuthority = (
-  authority: GenuineSettlementAuthority,
-): NonNullable<WatcherBlockReplayEventAuthority["settlement"]> => ({
-  result: authority.result,
-  context: authority.context,
-  observationDigest: authority.observation.observationDigest,
-});
-
 const eventAuthority = (input: {
   readonly publicEvent: GenuineReplayPublicEvent;
   readonly userEvent: UserEventAcceptedAuthorityScenario;
-  readonly settlement: GenuineSettlementAuthority | null;
   readonly effect: CanonicalTransitionEffect;
   readonly canonicalNativeTxCbor: Buffer | null;
-}): WatcherBlockReplayEventAuthority => ({
-  eventKey: input.publicEvent.eventKey,
-  phase: input.publicEvent.phase,
-  userEvent: {
-    result: input.userEvent.result,
-    context: input.userEvent.context,
-  },
-  ...(input.settlement === null
-    ? {}
-    : { settlement: settlementAuthority(input.settlement) }),
-  transitionEffect: input.effect,
-  ...(input.canonicalNativeTxCbor === null
-    ? {}
-    : {
-        canonicalNativeTxCbor: input.canonicalNativeTxCbor,
-        programMaterialSidecarCbor: makeQueued(
-          Buffer.alloc(32),
-          input.canonicalNativeTxCbor,
-        ).programMaterialSidecarCbor,
-      }),
-});
+}): WatcherBlockReplayEventAuthority => {
+  const common = {
+    eventKey: input.publicEvent.eventKey,
+    userEvent: {
+      result: input.userEvent.result,
+      context: input.userEvent.context,
+    },
+  };
+  if (input.publicEvent.phase === "ForcedTransaction") {
+    if (input.canonicalNativeTxCbor === null) {
+      throw new Error("forced replay fixture requires canonical native bytes");
+    }
+    return {
+      ...common,
+      phase: input.publicEvent.phase,
+      canonicalNativeTxCbor: input.canonicalNativeTxCbor,
+      programMaterialSidecarCbor: makeQueued(
+        Buffer.alloc(32),
+        input.canonicalNativeTxCbor,
+      ).programMaterialSidecarCbor,
+    };
+  }
+  return {
+    ...common,
+    phase: input.publicEvent.phase,
+    transitionEffect: input.effect,
+  };
+};
 
 export type GenuineReplayPublicReplayFixture = Readonly<{
   replayInput: EvaluateWatcherBlockReplayInput;
@@ -337,23 +337,24 @@ export type GenuineReplayPublicReplayFixture = Readonly<{
 }>;
 
 /**
- * Builds real W21/W22/W23/W24 inputs for one authenticated W15/W16 event.
+ * Builds real W21/W22/W23/W24 inputs for one authenticated originating W15 event.
  * It intentionally does not fabricate or evaluate a W25 receipt; the caller
  * must invoke the public `evaluateWatcherBlockReplayV1` entry point.
  */
 export const makeGenuineReplayPublicReplayFixture = async (input: {
   readonly userEvent: UserEventAcceptedAuthorityScenario;
-  readonly settlement?: GenuineSettlementAuthority | null;
   readonly canonicalNativeTxCbor?: Buffer | null;
   readonly transitionEffect: CanonicalTransitionEffect;
   readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
   readonly postState: readonly WatcherBlockReplayPriorUtxo[];
   readonly minFeeB?: bigint;
+  readonly withdrawalValidity?: SDK.WithdrawalValidity;
 }): Promise<GenuineReplayPublicReplayFixture> => {
   const canonicalNativeTxCbor = input.canonicalNativeTxCbor ?? null;
   const publicEvent = publicEventFromAuthority(
     input.userEvent,
     canonicalNativeTxCbor,
+    input.withdrawalValidity,
   );
   const prior = await watcherBlockReplayPriorState(input.priorState);
   const operations: ValidationMachineLedgerOp[] =
@@ -551,7 +552,6 @@ export const makeGenuineReplayPublicReplayFixture = async (input: {
         eventAuthority({
           publicEvent,
           userEvent: input.userEvent,
-          settlement: input.settlement ?? null,
           effect: input.transitionEffect,
           canonicalNativeTxCbor,
         }),

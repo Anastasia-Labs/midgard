@@ -4,6 +4,9 @@
 
 **Last reviewed:** 2026-07-22
 
+Documentation check: 2026-09-07 (retained runner paths and package commands;
+no benchmark or live acceptance rerun).
+
 This runbook closes the three Architecture G operator surfaces that are not
 performance or soak measurements: the combined final-tree safety suite, the
 release-image boundary, and one clean live functional/recovery run. A pass from

@@ -4,10 +4,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const defaultRegistryPath = resolve(
-  repoRoot,
-  "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(scriptDir, "../..");
+const defaultContractPath = resolve(
+  scriptDir,
+  "canonical-v1-header-v1-abi-contract.json",
 );
 const defaultBlueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const defaultSdkModulePath = resolve(
@@ -64,8 +65,8 @@ const requireArray = (value, label, length) => {
 const FIELD_COUNT = 25;
 
 /**
- * Validate the registry-owned machine contract without consulting any source
- * projection.  The registry contract is the only hand-maintained ABI
+ * Validate the pinned machine contract without consulting any source
+ * projection.  The contract file is the only hand-maintained ABI
  * authority; SDK and blueprint shapes are checked against it below.
  */
 export const assertHeaderV1AbiContract = (value) => {
@@ -355,7 +356,7 @@ const compare = (actual, expected, label) => {
   }
 };
 
-/** Compare both structural projections to the registry-owned contract. */
+/** Compare both structural projections to the pinned contract. */
 export const verifyHeaderV1Abi = ({
   contract: rawContract,
   blueprint,
@@ -435,23 +436,18 @@ const loadJson = (path, label) => {
 };
 
 /**
- * The only path that compares the registry-owned contract against BOTH real
+ * The only path that compares the pinned contract against BOTH real
  * projections: the blueprint the Aiken compiler generated and the Data schema
  * the built SDK exports at runtime.  Nothing here is synthesized from the
  * contract under test.
  */
 export const run = async () => {
-  const registryPath = inputPath(
-    "registry-under-test",
-    "MIDGARD_FORMAT_REGISTRY_PATH",
-    defaultRegistryPath,
+  const contractPath = inputPath(
+    "contract-under-test",
+    "MIDGARD_HEADER_V1_ABI_CONTRACT_PATH",
+    defaultContractPath,
   );
-  const registry = loadJson(registryPath, "format registry");
-  const row = registry.formats?.find((candidate) => candidate?.id === "L01");
-  if (!row?.canonicalForms?.[0]) {
-    throw new Error("format registry L01 must provide canonicalForms[0]");
-  }
-  const contract = row.canonicalForms[0];
+  const contract = loadJson(contractPath, "Header V1 ABI contract");
   const blueprintPath = inputPath(
     "blueprint-under-test",
     "MIDGARD_REAL_BLUEPRINT_PATH",
@@ -475,12 +471,11 @@ export const run = async () => {
   });
   // Provenance, not evidence: this line names the three inputs that were
   // actually read so a passing run can be attributed. It is not a test name
-  // and must never be cited as one — the format-registry gate rejects any row
-  // that cites an output literal of a script it names.
+  // and must never be cited as one.
   process.stdout.write(
     [
       `header-v1-abi: PASS constructor ${normalized.constructorTag} arity ${normalized.constructorArity}`,
-      `  registry:  ${registryPath}`,
+      `  contract:  ${contractPath}`,
       `  blueprint: ${blueprintPath}`,
       `  sdk:       ${sdkModulePath}`,
       "",

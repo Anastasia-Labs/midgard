@@ -9,6 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
   buildObserversForbiddenArtifact,
@@ -121,7 +122,7 @@ export const detectObserversForbiddenForcedReplay = (
         verdict.ForcedTxInvalid.reason !== "ObserversForbiddenOnUntaggedNetwork"
       )
         return;
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveRejectedTransactionFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (

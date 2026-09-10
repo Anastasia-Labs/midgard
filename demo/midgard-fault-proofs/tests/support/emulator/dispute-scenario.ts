@@ -15,7 +15,6 @@ import {
   CML,
   Data,
   getAddressDetails,
-  Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -101,7 +100,7 @@ import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtur
 
 /**
  * VM-DEFECT-2 dispute-level regression
- * (`docs/exec-plans/evidence/vm-defect-decision-memo.md` §2).
+ * (`docs/midgard/decisions/immutable-dispute-claims.md`).
  *
  * The shipped defect made `rejected_successor_is_exact` demand that the
  * rejecting terminal *write* `ledger_delta_root = frontier_commitment(0, [])`
@@ -352,17 +351,13 @@ export const runForcedValidationDisputeScenario = async (
       awaitConfirmation: true,
     }),
   );
-  const {
-    functionalProtocolParameters,
-    functionalSlotConfig,
-    targetOperatorLucid,
-    targetChallengerLucid,
-  } = await createRealL1TargetLucids({
-    emulator,
-    sourceLucid: challengerLucid,
-    operatorSeedPhrase: operator.seedPhrase,
-    challengerSeedPhrase: challenger.seedPhrase,
-  });
+  const { targetOperatorLucid, targetChallengerLucid } =
+    await createRealL1TargetLucids({
+      emulator,
+      sourceLucid: challengerLucid,
+      operatorSeedPhrase: operator.seedPhrase,
+      challengerSeedPhrase: challenger.seedPhrase,
+    });
   const firstStepUtxo = await expectSingleUtxoWithUnit(
     targetChallengerLucid,
     initResult.firstStepAddress,
@@ -1500,43 +1495,17 @@ export const runForcedValidationDisputeScenario = async (
       awaitConfirmation: true,
     }),
   );
-  // Block removal needs the state-queue, operator-directory and scheduler
-  // validators. Publishing them as reference-script UTxOs is what the deployed
-  // node does; `publishPlainReferenceScriptUtxo` refuses any publication that
-  // does not itself fit the literal 16,384-byte L1 envelope, so this also
-  // proves each of these validators is publishable on L1. Defer the eight
-  // submissions until the route has actually reached removal so validation-only
-  // and negative scenarios do not mutate the emulator first.
-  //
-  // The stage no longer runs under `withRealL1MaxTxSize`: the ten-parameter
-  // `state_queue.mint` is 16,498 bytes after applying this harness deployment,
-  // past the 16,384-byte L1 envelope, so its publication cannot be built at
-  // all. This raises the stage's publication budget to the same raised
-  // deployment-time parameters the R5 semantic resolvers publish under, and
-  // `publishRemovalReferenceScripts` marks that one entry `oversized` so its
-  // measurement is returned unasserted. The other seven keep their real
-  // envelope check, which lives in `publishPlainReferenceScriptUtxo` itself
-  // rather than in the emulator pin. The stage-level real-envelope pin is
-  // suspended until the validator shrinks; deployability of the oversized
-  // script on real L1 parameters is tracked in Anastasia-Labs/midgard#649.
+  // Publish all nine correction references under the same real L1 limits as
+  // the dispute. Each completed signed publication preserves the byte reserve.
+  // Defer publication until the route reaches removal.
   const removalReferenceScriptPublications = await runEmulatorLifecycleStage(
     "reference-script.publish-removal",
     async () => {
       onRemovalReferenceScriptPublicationAttempt?.();
-      const prePublicationProtocolParameters = emulator.protocolParameters;
-      emulator.protocolParameters = functionalProtocolParameters;
-      try {
-        const oversizedPublisherLucid = await Lucid(emulator, "Custom", {
-          slotConfig: functionalSlotConfig,
-        });
-        oversizedPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-        return await publishRemovalReferenceScripts({
-          lucid: oversizedPublisherLucid,
-          contracts,
-        });
-      } finally {
-        emulator.protocolParameters = prePublicationProtocolParameters;
-      }
+      return publishRemovalReferenceScripts({
+        lucid: targetOperatorLucid,
+        contracts,
+      });
     },
   );
   const removalDeploymentInfo = buildRemovalDeploymentInfo(

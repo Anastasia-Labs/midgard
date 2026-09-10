@@ -1,8 +1,11 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   assertAdmittedWorkflowFundingRequirements,
+  isProtocolFundedWorkflowAction,
+  readWorkflowRuntimeFundingPolicy,
   type WorkflowFundingRequirements,
   type WorkflowFundingScope,
+  type WorkflowRuntimeFundingPolicy,
 } from "@al-ft/midgard-fault-proofs";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -383,7 +386,11 @@ export const calculateWatcherProverFunding = async (input: {
     const lockedAssets = new Map<string, bigint>();
     const releasedAssets = new Map<string, bigint>();
     for (const controlled of action.fundingControlledOutputs) {
-      if (controlled.role === "protocol") continue;
+      if (
+        controlled.role === "protocol" ||
+        controlled.role === "protocol_reward"
+      )
+        continue;
       const lovelace = BigInt(controlled.fundingLovelace);
       if (controlled.role === "wallet_change") walletChange += lovelace;
       else {
@@ -433,7 +440,10 @@ export const calculateWatcherProverFunding = async (input: {
       lockedNativeAssets: assetEntries(lockedAssets),
       releasedNativeAssets: assetEntries(releasedAssets),
       attemptCount: attemptCount.toString(),
-      feeHeadroomLovelace: (transactionFee * attemptCount).toString(),
+      feeHeadroomLovelace: (isProtocolFundedWorkflowAction(action)
+        ? 0n
+        : transactionFee * attemptCount
+      ).toString(),
     });
   });
 
@@ -659,4 +669,76 @@ export const aggregateWatcherProverFundingSweep = (
   });
   admittedSweeps.add(sweep);
   return sweep;
+};
+
+export const WATCHER_RUNTIME_PROVER_FUNDING_CALCULATION =
+  "midgard-watcher-runtime-prover-funding-calculation-v1" as const;
+
+/** Reservation bounds from live protocol and deployed economics, without a measured recipe. */
+export type WatcherRuntimeProverFundingCalculation = Readonly<{
+  schemaVersion: typeof WATCHER_RUNTIME_PROVER_FUNDING_CALCULATION;
+  deploymentFingerprint: string;
+  policyDigest: string;
+  protocolParametersDigest: string;
+  economicsPolicyDigest: string;
+  fundingPaymentKeyHash: string;
+  collateralFloorLovelace: string;
+  maximumCollateralInputs: string;
+  maximumFeeLovelace: string;
+  maximumCollateralLovelace: string;
+  maximumSlashCollateralLovelace: string;
+  reservationBasisDigest: string;
+}>;
+
+const admittedRuntimeCalculations = new WeakSet<object>();
+
+export const assertWatcherRuntimeProverFundingCalculation = (
+  calculation: WatcherRuntimeProverFundingCalculation,
+): void => {
+  if (!admittedRuntimeCalculations.has(calculation))
+    throw new Error("runtime prover funding calculation is not admitted");
+};
+
+export const calculateWatcherRuntimeProverFunding = async (input: {
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
+  readonly policy: WorkflowRuntimeFundingPolicy;
+}): Promise<WatcherRuntimeProverFundingCalculation> => {
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
+  const policy = readWorkflowRuntimeFundingPolicy(input.policy);
+  const deploymentFingerprint = input.deploymentIdentity.manifestId;
+  if (
+    policy.deploymentFingerprint !== deploymentFingerprint ||
+    input.protocolParameters.deploymentFingerprint !== deploymentFingerprint
+  )
+    throw new Error("runtime prover funding deployment identity mismatch");
+  if (
+    policy.protocolParametersDigest !== input.protocolParameters.snapshotDigest
+  )
+    throw new Error("runtime prover funding protocol parameters mismatch");
+  const economics = await watcherDeploymentReleaseEconomicsAuthority(
+    input.deploymentIdentity,
+  ).verifyForWorkflow({ deploymentFingerprint });
+  if (policy.economicsPolicyDigest !== economics.policyDigest)
+    throw new Error("runtime prover funding economics policy mismatch");
+  const basis = Object.freeze({
+    schemaVersion: WATCHER_RUNTIME_PROVER_FUNDING_CALCULATION,
+    deploymentFingerprint,
+    policyDigest: policy.policyDigest,
+    protocolParametersDigest: input.protocolParameters.snapshotDigest,
+    economicsPolicyDigest: economics.policyDigest,
+    fundingPaymentKeyHash: policy.fundingPaymentKeyHash,
+    collateralFloorLovelace: economics.policy.proverCollateralFloorLovelace,
+    maximumCollateralInputs: policy.maximumCollateralInputs,
+    maximumFeeLovelace: policy.maximumFeeLovelace,
+    maximumCollateralLovelace: policy.maximumCollateralLovelace,
+    maximumSlashCollateralLovelace: policy.maximumSlashCollateralLovelace,
+  });
+  const calculation = Object.freeze({
+    ...basis,
+    reservationBasisDigest: computeDeploymentManifestJsonDigest(basis),
+  });
+  admittedRuntimeCalculations.add(calculation);
+  return calculation;
 };

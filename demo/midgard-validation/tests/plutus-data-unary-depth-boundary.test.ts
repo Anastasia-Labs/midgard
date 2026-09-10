@@ -441,9 +441,8 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    * That is the same exercise `exerciseMidgardRetainedDaBoundary` delegates
    * to (envelope, SDK decode, both DA classifications, every bounded reveal and
    * the terminal reconstruction fold); only the CML-bound conversion in front
-   * of it is replaced. It matches the depth-4,043 measurement in
-   * `docs/exec-plans/evidence/c26-cml-investigation.md`, which was likewise
-   * taken with stock CML through the repo codecs.
+   * of it is replaced. This keeps retained-DA verification independent of
+   * the CML conversion boundary exercised by the admission test.
    *
    * Emulator admission stays in the child-process test below.
    */

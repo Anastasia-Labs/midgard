@@ -1,5 +1,10 @@
+import { createHash } from "node:crypto";
+
 import { formatUnknownError } from "@al-ft/midgard-core";
-import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  parseDeploymentManifestEconomics,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
@@ -49,6 +54,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
+  CML,
   credentialToAddress,
   Data,
   type LucidEvolution,
@@ -58,7 +64,9 @@ import {
   type SpendingValidator,
   toUnit,
   type TxOutput,
+  type TxSigned,
   type UTxO,
+  utxoToCore,
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
@@ -85,11 +93,13 @@ import {
   type SupportedFaultProofCategoryName,
 } from "./runtime.js";
 import { selectFeeInput } from "./submit-step-01.js";
+import { computeFraudProofReleaseEconomicsPolicyDigest } from "./workflow/release-economics-policy.js";
 import {
   CapturedLocallyEvaluatedTransaction,
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
+  workflowTransactionInputOutRefs,
 } from "./workflow/transaction-boundary.js";
 
 export const STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS = 300_000n;
@@ -106,6 +116,54 @@ export type FraudSlashEconomicsPolicy = Readonly<{
   fraudProverRewardLovelace: bigint;
   proverCollateralFloorLovelace: bigint;
 }>;
+
+export type FraudSlashFundingAuthority = Readonly<{
+  deploymentFingerprint: string;
+  economicsPolicyDigest: string;
+  category: string;
+  headerHash: string;
+  fraudProofOutRef: string;
+  removedStateQueueOutRef: string;
+  operatorOutRef: string;
+  operatorBondLovelace: string;
+  tranche: "full" | "partially-inactivity-slashed";
+  exactFeeLovelace: string;
+  rewardLovelace: string;
+  rewardAddress: string;
+  transactionHash: string;
+  transactionBodySha256: string;
+  signedTransactionCborHex: string;
+  inputs: readonly Readonly<{
+    outRef: string;
+    resolvedOutputCborHex: string;
+  }>[];
+}>;
+
+// Only the evaluated canonical-manifest removal path below can mint this
+// authority. A declared action kind or fee never creates a slashing allowance.
+const slashFundingAuthorities = new WeakMap<
+  TxSigned,
+  FraudSlashFundingAuthority
+>();
+
+export const readFraudSlashFundingAuthority = (
+  signed: TxSigned,
+): FraudSlashFundingAuthority | null => {
+  const authority = slashFundingAuthorities.get(signed);
+  if (authority === undefined) return null;
+  const transaction = signed.toTransaction();
+  if (
+    signed.toHash().toLowerCase() !== authority.transactionHash ||
+    CML.hash_transaction(transaction.body()).to_hex() !==
+      authority.transactionHash ||
+    transaction.to_cbor_hex() !== authority.signedTransactionCborHex ||
+    createHash("sha256")
+      .update(Buffer.from(transaction.body().to_cbor_hex(), "hex"))
+      .digest("hex") !== authority.transactionBodySha256
+  )
+    throw new Error("signed fraud slash changed after local evaluation");
+  return authority;
+};
 
 export const fraudSlashEconomicsFromDeploymentManifest = (
   deploymentInfo: unknown,
@@ -2420,19 +2478,31 @@ export const submitRemoveFraudulentBlock = async ({
     "--fraudulent-header-hash",
     28,
   );
-  const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
+  const canonicalManifest =
+    typeof deploymentInfo === "object" &&
+    deploymentInfo !== null &&
+    "manifestId" in deploymentInfo
+      ? structuredClone(verifyFinalizedDeploymentManifest(deploymentInfo))
+      : null;
+  if (canonicalManifest !== null && canonicalManifest.network !== network) {
+    throw new Error(
+      "fraud removal network differs from its finalized manifest",
+    );
+  }
+  const deploymentDocument = canonicalManifest ?? deploymentInfo;
+  const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentDocument);
   const deploymentEconomics =
-    fraudSlashEconomicsFromDeploymentManifest(deploymentInfo);
+    fraudSlashEconomicsFromDeploymentManifest(deploymentDocument);
   const contracts =
     typeof fraudCategory === "string"
       ? await buildRemovalContracts({
           blueprint,
-          deploymentInfo,
+          deploymentInfo: deploymentDocument,
           network,
           fraudCategory,
         })
       : buildExplicitRemovalContracts({
-          deploymentInfo,
+          deploymentInfo: deploymentDocument,
           network,
           category: fraudCategory,
         });
@@ -2778,6 +2848,86 @@ export const submitRemoveFraudulentBlock = async ({
     }
 
     const signed = await unsigned.sign.withWallet().complete();
+    if (canonicalManifest !== null && slashEconomics !== null) {
+      if (operatorSlashingPlan.approach === "OperatorAlreadySlashed") {
+        throw new Error(
+          "fraud slash funding authority omitted its operator bond",
+        );
+      }
+      const transaction = signed.toTransaction();
+      if (transaction.body().fee() !== slashEconomics.exactFeeLovelace) {
+        throw new Error(
+          "signed fraud slash fee differs from release economics",
+        );
+      }
+      const inputOutRefs = [...workflowTransactionInputOutRefs(signed)].sort();
+      const resolvedInputs = await lucid.utxosByOutRef(
+        inputOutRefs.map((outRef) => ({
+          txHash: outRef.slice(0, 64),
+          outputIndex: Number(outRef.slice(65)),
+        })),
+      );
+      const inputs = resolvedInputs
+        .map((utxo) =>
+          Object.freeze({
+            outRef: outRefLabel(utxo),
+            resolvedOutputCborHex: utxoToCore(utxo)
+              .output()
+              .to_canonical_cbor_hex(),
+          }),
+        )
+        .sort((left, right) => left.outRef.localeCompare(right.outRef));
+      if (
+        inputs.length !== inputOutRefs.length ||
+        inputs.some((input, index) => input.outRef !== inputOutRefs[index])
+      ) {
+        throw new Error(
+          "signed fraud slash could not resolve its exact protocol inputs",
+        );
+      }
+      const economicsPolicy = {
+        profile: deploymentEconomics.profile,
+        requiredBondLovelace:
+          deploymentEconomics.requiredBondLovelace.toString(),
+        slashingPenaltyLovelace:
+          deploymentEconomics.slashingPenaltyLovelace.toString(),
+        fraudProverRewardLovelace:
+          deploymentEconomics.fraudProverRewardLovelace.toString(),
+        inactivitySlashingPenaltyLovelace:
+          deploymentEconomics.inactivitySlashingPenaltyLovelace.toString(),
+        proverCollateralFloorLovelace:
+          deploymentEconomics.proverCollateralFloorLovelace.toString(),
+      };
+      slashFundingAuthorities.set(
+        signed,
+        Object.freeze({
+          deploymentFingerprint: String(canonicalManifest.manifestId),
+          economicsPolicyDigest:
+            computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
+          category: contracts.fraudCategory,
+          headerHash,
+          fraudProofOutRef: outRefLabel(fraudProofUtxo),
+          removedStateQueueOutRef: outRefLabel(removed.utxo),
+          operatorOutRef: outRefLabel(
+            operatorSlashingPlan.removalPlan.node.utxo,
+          ),
+          operatorBondLovelace: (
+            operatorSlashingPlan.removalPlan.node.utxo.assets.lovelace ?? 0n
+          ).toString(),
+          tranche: slashEconomics.tranche,
+          exactFeeLovelace: slashEconomics.exactFeeLovelace.toString(),
+          rewardLovelace: slashEconomics.fraudProverRewardLovelace.toString(),
+          rewardAddress: fraudProverRewardPlan.proverEnterpriseAddress,
+          transactionHash: signed.toHash().toLowerCase(),
+          transactionBodySha256: createHash("sha256")
+            .update(Buffer.from(transaction.body().to_cbor_hex(), "hex"))
+            .digest("hex"),
+          signedTransactionCborHex: transaction.to_cbor_hex(),
+          inputs: Object.freeze(inputs),
+        }),
+      );
+      readFraudSlashFundingAuthority(signed);
+    }
     const expectedTxHash = await reachFraudProofPreSubmitBoundary({
       signed,
       referenceScripts: workflowReferenceScriptsUsedByTransaction({
@@ -2827,6 +2977,7 @@ export const submitRemoveFraudulentBlock = async ({
       }),
       boundary: preSubmitBoundary,
     });
+    readFraudSlashFundingAuthority(signed);
     const txHash = await signed.submit();
     if (txHash !== expectedTxHash) {
       throw new Error(

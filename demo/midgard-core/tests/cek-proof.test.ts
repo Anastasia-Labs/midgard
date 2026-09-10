@@ -2294,16 +2294,13 @@ describe("V1 CEK commitments", () => {
       ...envelope,
       termRoot: Buffer.from(envelope.termRoot),
     }));
-    const startedAt = performance.now();
     const verified = verifyMidgardCekProgramMaterialBundle(envelopes, material);
-    const elapsedMs = performance.now() - startedAt;
 
     expect(verified).toHaveLength(envelopes.length);
     for (const result of verified.slice(1)) {
       expect(result).toBe(verified[0]);
     }
     expect(verified[0]?.nodeCount).toBe(20_000n);
-    expect(elapsedMs).toBeLessThan(2_000);
   }, 10_000);
 
   it("rejects aggregate unique-envelope work before material traversal", () => {

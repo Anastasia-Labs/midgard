@@ -238,11 +238,11 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
             hubOraclePolicyId: h.contracts.hubOracle.policyId,
           },
           deploymentFingerprint: "aa".repeat(32),
-          releaseIdentityDigest: "bb".repeat(32),
+          blueprintHash: "bb".repeat(32),
           releaseFinality: {
             schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
             deploymentIdentityDigest: "aa".repeat(32),
-            releaseIdentityDigest: "bb".repeat(32),
+            blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
             policy: finalityPolicy,
@@ -250,7 +250,7 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
           releaseEconomics: {
             schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
             deploymentIdentityDigest: "aa".repeat(32),
-            releaseIdentityDigest: "bb".repeat(32),
+            blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
             policy: economicsPolicy,

@@ -42,7 +42,7 @@ export interface HistoricalNativeScriptSource {
   readonly operatorIdentitySha256: string | null;
   resolveReferenceScriptPublication(input: {
     readonly deploymentIdentityDigest: string;
-    readonly releaseIdentityDigest: string;
+    readonly blueprintHash: string;
     readonly finalityPolicyDigest: string;
     readonly expectedScriptHash: string;
     readonly throughPoint: FraudProofRawL1Point;
@@ -60,7 +60,7 @@ export type HistoricalNativeScriptSourceRoster = Readonly<{
   /** Digest of the single immutable application-installed history overlay. */
   applicationOverlayDigest: string;
   deploymentIdentityDigest: string;
-  releaseIdentityDigest: string;
+  blueprintHash: string;
   finalityPolicyDigest: string;
   sources: readonly Readonly<{
     sourceId: string;
@@ -72,7 +72,7 @@ export type HistoricalNativeScriptSourceRoster = Readonly<{
 export type HistoricalNativeScriptEvidence = Readonly<{
   readonly schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION;
   readonly deploymentIdentityDigest: string;
-  readonly releaseIdentityDigest: string;
+  readonly blueprintHash: string;
   readonly finalityPolicyDigest: string;
   readonly expectedScriptHash: string;
   /** Canonical Cardano NativeScript CBOR, ready for step-05. */
@@ -263,7 +263,7 @@ const createHistoricalNativeScriptSourceRoster = ({
     sourceMode,
     applicationOverlayDigest,
     deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
-    releaseIdentityDigest: releaseFinality.releaseIdentityDigest,
+    blueprintHash: releaseFinality.blueprintHash,
     finalityPolicyDigest: releaseFinality.policyDigest,
     sources: identities,
   });
@@ -394,7 +394,7 @@ const requireSourceRoster = ({
     sources === undefined ||
     roster.deploymentIdentityDigest !==
       releaseFinality.deploymentIdentityDigest ||
-    roster.releaseIdentityDigest !== releaseFinality.releaseIdentityDigest ||
+    roster.blueprintHash !== releaseFinality.blueprintHash ||
     roster.finalityPolicyDigest !== releaseFinality.policyDigest ||
     roster.rosterDigest !==
       createHash("sha256")
@@ -404,7 +404,7 @@ const requireSourceRoster = ({
             sourceMode: roster.sourceMode,
             applicationOverlayDigest: roster.applicationOverlayDigest,
             deploymentIdentityDigest: roster.deploymentIdentityDigest,
-            releaseIdentityDigest: roster.releaseIdentityDigest,
+            blueprintHash: roster.blueprintHash,
             finalityPolicyDigest: roster.finalityPolicyDigest,
             sources: roster.sources,
           }),
@@ -447,7 +447,7 @@ const admitCandidate = ({
     [
       "schemaVersion",
       "deploymentIdentityDigest",
-      "releaseIdentityDigest",
+      "blueprintHash",
       "finalityPolicyDigest",
       "expectedScriptHash",
       "sourceMode",
@@ -480,17 +480,14 @@ const admitCandidate = ({
     parsed.deploymentIdentityDigest,
     `${label}.deploymentIdentityDigest`,
   );
-  const releaseIdentityDigest = digest(
-    parsed.releaseIdentityDigest,
-    `${label}.releaseIdentityDigest`,
-  );
+  const blueprintHash = digest(parsed.blueprintHash, `${label}.blueprintHash`);
   const finalityPolicyDigest = digest(
     parsed.finalityPolicyDigest,
     `${label}.finalityPolicyDigest`,
   );
   if (
     deploymentIdentityDigest !== releaseFinality.deploymentIdentityDigest ||
-    releaseIdentityDigest !== releaseFinality.releaseIdentityDigest ||
+    blueprintHash !== releaseFinality.blueprintHash ||
     finalityPolicyDigest !== releaseFinality.policyDigest ||
     parsed.expectedScriptHash !== expectedScriptHash
   ) {
@@ -617,7 +614,7 @@ const admitCandidate = ({
   }
   return {
     deploymentIdentityDigest,
-    releaseIdentityDigest,
+    blueprintHash,
     finalityPolicyDigest,
     expectedScriptHash,
     scriptBytesHex,
@@ -637,7 +634,7 @@ const candidateDigest = (candidate: AdmittedCandidate): string =>
     .update(
       JSON.stringify({
         deploymentIdentityDigest: candidate.deploymentIdentityDigest,
-        releaseIdentityDigest: candidate.releaseIdentityDigest,
+        blueprintHash: candidate.blueprintHash,
         finalityPolicyDigest: candidate.finalityPolicyDigest,
         expectedScriptHash: candidate.expectedScriptHash,
         scriptBytesHex: candidate.scriptBytesHex,
@@ -806,7 +803,7 @@ const parsePersistedHistoricalNativeScriptEvidence = ({
     [
       "schemaVersion",
       "deploymentIdentityDigest",
-      "releaseIdentityDigest",
+      "blueprintHash",
       "finalityPolicyDigest",
       "expectedScriptHash",
       "scriptBytesHex",
@@ -875,7 +872,7 @@ const parsePersistedHistoricalNativeScriptEvidence = ({
     value: {
       schemaVersion: parsed.schemaVersion,
       deploymentIdentityDigest: parsed.deploymentIdentityDigest,
-      releaseIdentityDigest: parsed.releaseIdentityDigest,
+      blueprintHash: parsed.blueprintHash,
       finalityPolicyDigest: parsed.finalityPolicyDigest,
       expectedScriptHash: parsed.expectedScriptHash,
       sourceMode,
@@ -990,7 +987,7 @@ export const resolveHistoricalNativeScriptEvidence = async ({
       const candidate = admitCandidate({
         value: await source.resolveReferenceScriptPublication({
           deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
-          releaseIdentityDigest: releaseFinality.releaseIdentityDigest,
+          blueprintHash: releaseFinality.blueprintHash,
           finalityPolicyDigest: releaseFinality.policyDigest,
           expectedScriptHash,
           throughPoint,

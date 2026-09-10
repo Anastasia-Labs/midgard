@@ -875,8 +875,8 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
    * The measured outcome is recorded as found, not as hoped. Each maximum
    * breadth is bound by the 16,384-byte signed Cardano transaction, so the
    * complete item is itself ~16 KB and overflows both complete routes — which
-   * is precisely the necessity that `transaction-field-chunk-v1.md` and
-   * `ledger-output-incremental-proof-v1.md` record. The case therefore pins
+   * requires the bounded carriage specified in `docs/spec/midgard-tx.md`.
+   * The case therefore pins
    * both sides of the real carriage boundary per kind: the largest complete
    * Data item that both complete routes admit, its adjacent overflow, and the
    * maximum shape's exact overshoot.

@@ -33,6 +33,7 @@ import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  credentialToAddress,
   Data,
   type LucidEvolution,
   toUnit,
@@ -859,6 +860,90 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       ),
     ).toThrow(/not re-authenticated/u);
   });
+
+  it.each([false, true])(
+    "uses the governed deposit spending address for ordinary lookup and readmission (stake credential: %s)",
+    async (withStake) => {
+      const hubPolicy = h28(0x16);
+      const hubUnit = toUnit(hubPolicy, SDK.HUB_ORACLE_ASSET_NAME);
+      const hubAddress = credentialToAddress("Preview", {
+        type: "Script",
+        hash: hubPolicy,
+      });
+      const eventAddress = credentialToAddress(
+        "Preview",
+        { type: "Script", hash: h28(0xe1) },
+        withStake ? { type: "Key", hash: h28(0xe2) } : undefined,
+      );
+      const hubDatum = {
+        ...Data.from(hubOracleUtxoFixture().datum!, SDK.HubOracleDatum),
+        deposit_addr: await Effect.runPromise(
+          SDK.addressDataFromBech32(eventAddress),
+        ),
+      };
+      const hub = {
+        ...hubOracleUtxoFixture(),
+        address: hubAddress,
+        datum: Data.to(hubDatum, SDK.HubOracleDatum),
+        assets: { lovelace: 5_000_000n, [hubUnit]: 1n },
+      };
+      const event = { ...depositEventUtxoFixture(), address: eventAddress };
+      const eventUnit = toUnit(hubDatum.deposit, NONCE_AUTHENTIC_DEPOSIT_ID);
+      const mintPolicyAddress = credentialToAddress("Preview", {
+        type: "Script",
+        hash: hubDatum.deposit,
+      });
+      expect(eventAddress).not.toBe(mintPolicyAddress);
+      let liveEventAddress = eventAddress;
+      const queries: string[] = [];
+      const authority = createFabricatedDepositEvidenceAuthority({
+        lucid: {
+          utxosByOutRef: async () => [],
+          utxosAtWithUnit: async (address: string, unit: string) => {
+            queries.push(address);
+            if (address === hubAddress && unit === hubUnit) return [hub];
+            return address === liveEventAddress && unit === eventUnit
+              ? [{ ...event, address: liveEventAddress }]
+              : [];
+          },
+        } as unknown as LucidEvolution,
+        network: "Preview",
+        hubOraclePolicyId: hubPolicy,
+        minimumConfirmationDepth: 1,
+      });
+      const ordinary = await buildDepositsBlockFixture({
+        leaves: [
+          {
+            key: KEY_AUTHENTIC_DEPOSIT_ID,
+            value: VALUE_AUTHENTIC_DEPOSIT_INFO,
+          },
+        ],
+      });
+      const ordinaryEvidence = await canonicalEvidence(ordinary);
+      await expect(
+        authority.detect(ordinaryEvidence, h28(0x44)),
+      ).resolves.toEqual([]);
+      // Reuse the existing mismatch case solely to exercise persisted-event lookup.
+      const existing = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
+      const detections = await authority.detect(
+        await canonicalEvidence(existing),
+        h28(0x44),
+      );
+      expect(detections).toHaveLength(1);
+      await expect(authority.readmit(detections[0]!.artifact)).resolves.toEqual(
+        detections[0]!.artifact,
+      );
+      expect(queries).toContain(eventAddress);
+      expect(queries).not.toContain(mintPolicyAddress);
+      liveEventAddress = mintPolicyAddress;
+      await expect(
+        authority.detect(ordinaryEvidence, h28(0x44)),
+      ).rejects.toThrow("event lookup requires exactly one current L1 output");
+      await expect(authority.readmit(detections[0]!.artifact)).rejects.toThrow(
+        "event lookup requires exactly one current L1 output",
+      );
+    },
+  );
 
   it("returns no detection for an authentic due event whose content matches the block", async () => {
     const fixture = await buildDepositsBlockFixture({

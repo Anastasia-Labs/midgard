@@ -13,7 +13,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import * as DaPayloadTerminalOutcomesDB from "../database/daPayloadTerminalOutcomes.js";
@@ -44,6 +44,9 @@ export type StateQueueCorrectionObserverSource = Readonly<{
     previousQueue: readonly StateQueueTransitionNode[],
     nextQueue: readonly StateQueueTransitionNode[],
   ) => Promise<readonly StateQueueAuthenticatedReplayCheckpoint[]>;
+  readAvailabilityTerminalInput?: (
+    transition: StateQueueAuthenticatedTransition,
+  ) => Promise<UTxO | null>;
   canonicalDepth: (
     transition: StateQueueAuthenticatedTransition,
   ) => Promise<bigint | null>;
@@ -261,7 +264,9 @@ export const createFileStateQueueCorrectionObserverStore = (
 export const createDatabaseStateQueueCorrectionObserverStore = ({
   sql,
   deploymentManifest,
+  readAvailabilityTerminalInput,
 }: {
+  readonly readAvailabilityTerminalInput?: StateQueueCorrectionObserverSource["readAvailabilityTerminalInput"];
   readonly sql: SqlClient.SqlClient;
   readonly deploymentManifest: unknown;
 }): StateQueueCorrectionObserverStore => ({
@@ -280,7 +285,8 @@ export const createDatabaseStateQueueCorrectionObserverStore = ({
         WHERE deployment_identity_digest = ${authority.deploymentIdentityDigest}
         LIMIT 1`.pipe(Effect.provideService(SqlClient.SqlClient, sql)),
     );
-    return rows[0]?.state_record ?? null;
+    const state = rows[0]?.state_record ?? null;
+    return typeof state === "string" ? (JSON.parse(state) as unknown) : state;
   },
   save: async (stateInput) => {
     const state = parseStateQueueCorrectionObserverState(stateInput);
@@ -299,6 +305,30 @@ export const createDatabaseStateQueueCorrectionObserverStore = ({
         "Observer database store refused foreign or non-canonical state",
       );
     }
+    const availabilityAuthority =
+      DaPayloadTerminalOutcomesDB.availabilityRetentionAuthority(authority);
+    const evidenceByTransition = new Map<
+      string,
+      SDK.DaAvailabilityRetentionEvidence
+    >();
+    if (
+      availabilityAuthority !== null &&
+      readAvailabilityTerminalInput !== undefined
+    ) {
+      for (const transition of state.admitted) {
+        const consumed = await readAvailabilityTerminalInput(transition);
+        const evidence =
+          consumed === null
+            ? null
+            : SDK.deriveDaAvailabilityRetentionEvidence(
+                transition,
+                consumed,
+                availabilityAuthority,
+              );
+        if (evidence !== null)
+          evidenceByTransition.set(transition.transitionDigest, evidence);
+      }
+    }
     const program = sql.withTransaction(
       Effect.gen(function* () {
         const txSql = yield* SqlClient.SqlClient;
@@ -309,6 +339,7 @@ export const createDatabaseStateQueueCorrectionObserverStore = ({
           yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
             transition,
             deploymentManifest,
+            evidenceByTransition.get(transition.transitionDigest),
           );
         }
         const rows = yield* txSql<{
@@ -659,6 +690,12 @@ const fetchTip = async (
   }
   return { blockHash: point.id, slot: point.slot, blockNo: point.height };
 };
+
+/** Canonical local tip shared by operational transaction reconciliation. */
+export const readLocalOgmiosTip = (ogmiosUrl: string): Promise<Tip> =>
+  fetchTip(ogmiosUrl, (url, init) =>
+    fetch(url, { ...init, signal: AbortSignal.timeout(20_000) }),
+  );
 
 const sameSpend = (left: KupoSpend, right: KupoSpend): boolean =>
   left.transactionId === right.transactionId &&
@@ -1027,6 +1064,7 @@ const deriveCorrectionLockWitnessFromRaw = async ({
     typeof decoded === "object" &&
     decoded !== null &&
     ("RemoveUnattestedBlockAfterTimeout" in decoded ||
+      "RemoveUnavailableBlockAfterTimeout" in decoded ||
       "RemoveFraudulentBlockHeader" in decoded)
   ) {
     if (
@@ -1039,35 +1077,45 @@ const deriveCorrectionLockWitnessFromRaw = async ({
     const targetHeaderHash =
       "RemoveUnattestedBlockAfterTimeout" in decoded
         ? decoded.RemoveUnattestedBlockAfterTimeout.timed_out_header_hash
-        : decoded.RemoveFraudulentBlockHeader.fraudulent_blocks_header_hash;
+        : "RemoveUnavailableBlockAfterTimeout" in decoded
+          ? decoded.RemoveUnavailableBlockAfterTimeout.unavailable_header_hash
+          : decoded.RemoveFraudulentBlockHeader.fraudulent_blocks_header_hash;
     const correctionIdentity: SDK.CorrectionIdentity =
       "RemoveUnattestedBlockAfterTimeout" in decoded
         ? "AttestationTimeout"
-        : (() => {
-            const proofIndex = Number(
-              decoded.RemoveFraudulentBlockHeader.fraud_proof_ref_input_index,
-            );
-            const proof = referenceResolved[proofIndex];
-            if (proof === undefined) {
-              throw new Error(
-                "Fraud correction proof reference index is out of bounds",
-              );
+        : "RemoveUnavailableBlockAfterTimeout" in decoded
+          ? {
+              AvailabilityChallenge: {
+                challenge_asset_name:
+                  decoded.RemoveUnavailableBlockAfterTimeout
+                    .challenge_asset_name,
+              },
             }
-            const assetName = fraudProofAssetNameFromResolvedMatch({
-              candidate: proof.match,
-              fraudProofAddress,
-              fraudProofPolicyId,
-              targetHeaderHash,
-            });
-            if (assetName === null) {
-              throw new Error(
-                "Fraud correction proof reference is not the exact permanent proof identity",
+          : (() => {
+              const proofIndex = Number(
+                decoded.RemoveFraudulentBlockHeader.fraud_proof_ref_input_index,
               );
-            }
-            return {
-              FraudProof: { fraud_proof_asset_name: assetName },
-            };
-          })();
+              const proof = referenceResolved[proofIndex];
+              if (proof === undefined) {
+                throw new Error(
+                  "Fraud correction proof reference index is out of bounds",
+                );
+              }
+              const assetName = fraudProofAssetNameFromResolvedMatch({
+                candidate: proof.match,
+                fraudProofAddress,
+                fraudProofPolicyId,
+                targetHeaderHash,
+              });
+              if (assetName === null) {
+                throw new Error(
+                  "Fraud correction proof reference is not the exact permanent proof identity",
+                );
+              }
+              return {
+                FraudProof: { fraud_proof_asset_name: assetName },
+              };
+            })();
     return {
       kind: "correction_transition",
       consumedOutRef: locksIn[0]!.outRef,
@@ -1291,6 +1339,68 @@ const reconstructQueueAfterTransaction = ({
   return nextQueue;
 };
 
+/** Only resolved, exact NFT-bearing inline outputs can supply retention evidence. */
+export const decodeKupoAvailabilityRetentionInput = (
+  candidate: unknown,
+  reference: { readonly txHash: string; readonly outputIndex: number },
+  address: string,
+  policyId: string,
+  headerHash: string,
+): UTxO | null => {
+  try {
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      Array.isArray(candidate)
+    )
+      return null;
+    const match = candidate as Record<string, unknown>;
+    if (
+      match.transaction_id !== reference.txHash ||
+      match.output_index !== reference.outputIndex ||
+      match.address !== address ||
+      match.datum_type !== "inline" ||
+      typeof match.datum !== "string" ||
+      match.script_hash != null ||
+      match.script != null
+    )
+      return null;
+    if (
+      typeof match.value !== "object" ||
+      match.value === null ||
+      Array.isArray(match.value)
+    )
+      return null;
+    const value = match.value as Record<string, unknown>;
+    if (
+      (typeof value.coins !== "string" && typeof value.coins !== "number") ||
+      !/^(?:0|[1-9][0-9]*)$/u.test(String(value.coins)) ||
+      typeof value.assets !== "object" ||
+      value.assets === null ||
+      Array.isArray(value.assets)
+    )
+      return null;
+    const entries = Object.entries(value.assets).map(
+      ([unit, amount]) => [unit.replaceAll(".", ""), amount] as const,
+    );
+    const unit = policyId + SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash;
+    if (
+      entries.length !== 1 ||
+      entries[0]![0] !== unit ||
+      (entries[0]![1] !== 1 && entries[0]![1] !== "1")
+    )
+      return null;
+    return {
+      ...reference,
+      address,
+      assets: { lovelace: BigInt(value.coins), [unit]: 1n },
+      datum: match.datum,
+    };
+  } catch {
+    return null;
+  }
+};
+
 /** Node-owned local Kupmios/Ogmios source; no watcher process is consulted. */
 export const makeLocalKupmiosStateQueueCorrectionSource = ({
   deploymentIdentityDigest,
@@ -1346,6 +1456,35 @@ export const makeLocalKupmiosStateQueueCorrectionSource = ({
   return {
     readQueue,
     canonicalDepth,
+    readAvailabilityTerminalInput: async (transition) => {
+      if (
+        transition.deploymentIdentityDigest !== deploymentIdentityDigest ||
+        transition.stateQueuePolicyId !== stateQueuePolicyId ||
+        transition.removedHeaderHashes.length !== 1
+      )
+        return null;
+      const removed = transition.previousQueue.find(
+        (node) => node.headerHash === transition.removedHeaderHashes[0],
+      );
+      if (removed === undefined) return null;
+      const reference = outRef(removed.outRef);
+      const candidate = await fetchKupoResolvedOutput({
+        kupoUrl,
+        reference,
+        fetchImpl,
+      });
+      const decoded = decodeKupoAvailabilityRetentionInput(
+        candidate,
+        reference,
+        stateQueueAddress,
+        stateQueuePolicyId,
+        removed.headerHash!,
+      );
+      const depth = await canonicalDepth(transition);
+      return depth !== null && depth >= BigInt(transition.finalityDepth)
+        ? decoded
+        : null;
+    },
     observeTransitions: async (previousQueue, nextQueue) => {
       let workingQueue = previousQueue;
       const observations: StateQueueAuthenticatedReplayCheckpoint[] = [];

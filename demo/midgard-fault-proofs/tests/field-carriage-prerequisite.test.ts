@@ -1,7 +1,10 @@
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
   FIELD_CARRIAGE_PREREQUISITE,
+  FIELD_CARRIAGE_RECOVERY,
   type FieldCarriagePrerequisitePort,
   withFieldCarriagePrerequisite,
 } from "../src/workflow/field-carriage-prerequisite.js";
@@ -12,7 +15,9 @@ import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
 } from "../src/workflow/orchestrator.js";
+import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage.js";
 import { withRawDatumPreimagePrerequisite } from "../src/workflow/raw-datum-preimage-prerequisite.js";
+import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 
 const txHash = "11".repeat(32);
@@ -162,6 +167,146 @@ const prerequisite = ({
 });
 
 describe("production field-carriage prerequisite V1", () => {
+  it("waits for publication finality while refusing publication and proof preflight", async () => {
+    const underlying = base();
+    const port = prerequisite();
+    vi.mocked(port.inspect).mockResolvedValue({
+      kind: "pending",
+      reason: "field publication is not release-final",
+    });
+    const adapter = withFieldCarriagePrerequisite({
+      category: "nonExistentInput",
+      base: underlying,
+      prerequisite: port,
+    });
+    await expect(adapter.observe(context)).resolves.toEqual({
+      kind: "pending",
+      reason: "field publication is not release-final",
+    });
+    await expect(
+      adapter.preflight({ ...context, action: baseAction }),
+    ).rejects.toThrow("cannot bypass authenticated field carriage");
+    await expect(
+      adapter.preflight({ ...context, action: publicationAction }),
+    ).rejects.toThrow("differs from current requirement");
+    expect(port.capture).not.toHaveBeenCalled();
+    expect(underlying.preflight).not.toHaveBeenCalled();
+    expect(underlying.submit).not.toHaveBeenCalled();
+    vi.mocked(port.inspect).mockResolvedValue({ kind: "satisfied" });
+    await expect(adapter.observe(context)).resolves.toEqual({
+      kind: "action_required",
+      action: baseAction,
+    });
+  });
+
+  it("keeps an exact raw publication intent pending until its output is authenticated", async () => {
+    const requirement = createRawDatumPreimageRequirement({
+      preimage: Buffer.from("8101", "hex"),
+    });
+    const signer = {
+      source: "test",
+      address: "addr_test1_field_publication",
+      paymentKeyHash: "12".repeat(28),
+      selectWallet: () => undefined,
+    };
+    let candidates: UTxO[] = [];
+    let outputConfirmed = false;
+    let included = false;
+    const port = createAuthenticatedFieldCarriagePrerequisitePort({
+      category: "nonExistentInput",
+      lucid: { utxosAt: async () => candidates } as unknown as LucidEvolution,
+      network: "Preview",
+      signer,
+      publications: {
+        observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
+        observeExact: async ({ expectedOutRef }) =>
+          outputConfirmed
+            ? { kind: "confirmed", outRef: expectedOutRef }
+            : { kind: "not_found" },
+      },
+      requirementForAction: () => requirement,
+      transactionConfirmed: async () => included,
+    });
+    const required = await port.inspect({
+      headerHash,
+      baseAction,
+      artifact: context.artifact,
+      entries: [],
+    });
+    if (required.kind !== "required")
+      throw new Error("missing publication requirement");
+    const identitySha256 = required.action.input.requirementSha256;
+    if (typeof identitySha256 !== "string")
+      throw new Error("missing requirement identity");
+    const datumCbor = requirement.publicationDatums[0]!;
+    const input = {
+      headerHash,
+      action: required.action,
+      artifact: context.artifact,
+      txHash,
+      durableRecovery: {
+        fieldCarriage: {
+          schemaVersion: FIELD_CARRIAGE_RECOVERY,
+          kind: "publication",
+          requirementSha256: identitySha256,
+          outRef: `${txHash}#0`,
+          datumCbor,
+          unit: null,
+        },
+      },
+    } as const;
+    await expect(port.reconcile(input)).resolves.toEqual({
+      kind: "pending",
+      txHash,
+    });
+    candidates = [
+      {
+        txHash,
+        outputIndex: 0,
+        address: signer.address,
+        assets: { lovelace: 2_000_000n },
+        datum: datumCbor,
+      },
+    ];
+    const wrapped = withRawDatumPreimagePrerequisite({
+      category: "nonExistentInput",
+      base: base(),
+      prerequisite: port,
+    });
+    await expect(wrapped.observe(context)).resolves.toEqual({
+      kind: "pending",
+      reason: "nonExistentInput field publication 0 is not release-final",
+    });
+    await expect(
+      wrapped.preflight({ ...context, action: baseAction }),
+    ).rejects.toThrow("cannot bypass authenticated field carriage");
+    included = true;
+    await expect(port.reconcile(input)).resolves.toMatchObject({
+      kind: "conflict",
+      reason: expect.stringContaining("omitted its journaled output"),
+    });
+    outputConfirmed = true;
+    await expect(port.reconcile(input)).resolves.toEqual({
+      kind: "confirmed",
+      txHash,
+    });
+    await expect(wrapped.observe(context)).resolves.toEqual({
+      kind: "action_required",
+      action: baseAction,
+    });
+    await expect(
+      port.reconcile({
+        ...input,
+        durableRecovery: {
+          fieldCarriage: {
+            ...input.durableRecovery.fieldCarriage,
+            datumCbor: "00",
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+  });
+
   it("keeps nested raw and field publication namespaces distinct", async () => {
     const fieldPort = prerequisite();
     const rawPort = prerequisite({ phase: "satisfied" });

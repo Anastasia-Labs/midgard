@@ -38,24 +38,18 @@ GOAL_SPEC amendment binding the new spec document at scheme altitude
 
 ## Why
 
-### 1. Industry survey: nobody commits per-field Merkle roots in transactions
+### 1. Fine-grained proof access does not require per-field Merkle commitments
 
-`docs/research/l2-tx-commitment-survey-2026-08-06.md` surveyed the production
-optimistic L2s with live or historical fraud-proof paths (Fuel v1, Fuel
-v2/Ignition, Optimism/OP Stack, Arbitrum Nitro/BoLD). **Zero of them commit
-per-field Merkle roots inside individual transactions.** The finest
-commitment-time granularity observed anywhere is the whole transaction (Fuel
-v1's Merkle leaves). Fine-grained structure, where it exists at all, is
-derived at dispute time by disputants (OP/Arbitrum bisection and
-memory-Merkleization), or obtained by revealing the whole bounded object and
-parsing it on-chain (Fuel v1: flat commit, full reveal, boundary walk — the
-VM-less precedent closest to Midgard's shape). The counted scheme taxed every
-honest transaction to subsidize a dispute path that no production system has
-needed subsidized.
+The August 2026 comparison of Fuel, OP Stack, and Arbitrum found whole-object
+hashing/reveal or dispute-time VM commitments rather than per-field Merkle roots
+inside user transactions. The decision takes that as design context, not a
+requirement to copy another protocol or an assertion about its current deployment.
+Midgard can derive fine-grained authenticated access during a dispute while
+keeping honest-path field commitments as flat hashes.
 
 ### 2. Honest-path cost: the counted scheme is 19–36× a flat hash
 
-Node-side benchmarks of the current JS implementation measured counted-scheme
+The decision-time Node benchmarks measured counted-scheme
 commitment construction at **19–36× the cost of a flat hash, ~760 µs per
 typical transaction** ([#554](https://github.com/Anastasia-Labs/midgard/issues/554):
 "19-36x vs flat, ~760us per typical tx"), paid on every L2 transaction in the
@@ -76,10 +70,9 @@ flat-format dispute primitives at the capability maxima:
 
 - **The flat commitment check is effectively free**: one blake2b-256 over a
   maximal two-chunk preimage measured 1,341 mem / 17.4M CPU — ~0.01% of the
-  memory budget. `docs/spec/midgard-tx.md` §8.3 is the single authority for
-  that measurement and the `K` split it pins; the figure appears here only
-  because it is the rationale, and a correction there corrects this record
-  too.
+  memory budget in that prototype. This is dated rationale, not a reading for
+  the current three-chunk boundary. `docs/spec/midgard-tx.md` §8.3 owns the
+  current `K` split and §8.10 identifies the current measurement inputs.
 - **Top-level access fits under the enveloped grammar**: walking the maximal
   spend-inputs field to the last item (cardinality per
   `docs/spec/midgard-tx.md` §5.4) measured 6.2M mem; arithmetic fixed-stride
@@ -112,8 +105,8 @@ cascade, and one re-measurement campaign.
   authority (the first document of the `docs/spec/` layer; authority rule in
   `docs/spec/README.md`).
 - `GOAL_SPEC.md` is amended at scheme altitude to bind that document by
-  reference; counted-scheme evidence rows are superseded, never deleted (§3
-  invariant 14), with dispositions ledgered in `GOAL_PROGRESS.md`.
+  reference. Superseded counted-scheme evidence is not a current acceptance
+  surface; useful rationale belongs in ADRs and obsolete records are removed.
 - Necessity-artifact dispositions (dissolve / re-derive / stand) are recorded
   on [#560](https://github.com/Anastasia-Labs/midgard/issues/560); the
   consolidated re-measurement list rides the #563 phase plan at the single
@@ -124,6 +117,5 @@ cascade, and one re-measurement campaign.
 ## Superseded
 
 This record supersedes the counted bounded-collection commitment direction
-wherever prior documents, artifacts, or evidence rows assume it. Those rows
-are retired in place with superseding notes — retained as historical
-provenance, never deleted.
+wherever prior documents, artifacts, or evidence rows assume it. Superseded records are removed once any current executable
+binding and lasting rationale have been retained; Git preserves their history.

@@ -19,7 +19,6 @@ const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const NON_EMPTY_BYTES = /^(?:[0-9a-f]{2})+$/u;
 
 export type StateQueueTransitionNode = Readonly<{
   headerHash: string | null;
@@ -221,7 +220,7 @@ const parseCorrectionIdentity = (value: unknown): CorrectionIdentity | null => {
     ]);
     return fields !== null &&
       typeof fields.challenge_asset_name === "string" &&
-      NON_EMPTY_BYTES.test(fields.challenge_asset_name)
+      /^44414348[0-9a-f]{56}$/u.test(fields.challenge_asset_name)
       ? {
           AvailabilityChallenge: {
             challenge_asset_name: fields.challenge_asset_name,
@@ -440,11 +439,21 @@ export const deriveStateQueueCorrectionTransition = (
   if (
     decoded === null ||
     typeof decoded !== "object" ||
-    !("RemoveUnattestedBlockAfterTimeout" in decoded)
+    !(
+      "RemoveUnattestedBlockAfterTimeout" in decoded ||
+      "RemoveUnavailableBlockAfterTimeout" in decoded
+    )
   ) {
     return null;
   }
-  const timeout = decoded.RemoveUnattestedBlockAfterTimeout;
+  const timeout =
+    "RemoveUnattestedBlockAfterTimeout" in decoded
+      ? decoded.RemoveUnattestedBlockAfterTimeout
+      : {
+          ...decoded.RemoveUnavailableBlockAfterTimeout,
+          timed_out_header_hash:
+            decoded.RemoveUnavailableBlockAfterTimeout.unavailable_header_hash,
+        };
   const approach = timeout.removal_approach;
   const [removalApproach, pruneApproach, headApproach] =
     "PruneTimedOutBlockDescendant" in approach
@@ -610,6 +619,20 @@ const correctionLockWitnessMatchesTransition = ({
   } else if (
     typeof decoded === "object" &&
     decoded !== null &&
+    "RemoveUnavailableBlockAfterTimeout" in decoded
+  ) {
+    const timeout = decoded.RemoveUnavailableBlockAfterTimeout;
+    terminal = "RemoveTimedOutHead" in timeout.removal_approach;
+    targetHeaderHash = timeout.unavailable_header_hash;
+    identityMatches =
+      typeof witness.correctionIdentity === "object" &&
+      witness.correctionIdentity !== null &&
+      "AvailabilityChallenge" in witness.correctionIdentity &&
+      witness.correctionIdentity.AvailabilityChallenge.challenge_asset_name ===
+        timeout.challenge_asset_name;
+  } else if (
+    typeof decoded === "object" &&
+    decoded !== null &&
     "RemoveFraudulentBlockHeader" in decoded
   ) {
     const removal = decoded.RemoveFraudulentBlockHeader;
@@ -750,7 +773,10 @@ export const deriveStateQueueAuthenticatedTransition = (
 
   let transitionKind: StateQueueAuthenticatedTransitionKind;
   let correctionTransition: StateQueueCorrectionTransition | null = null;
-  if ("RemoveUnattestedBlockAfterTimeout" in decoded) {
+  if (
+    "RemoveUnattestedBlockAfterTimeout" in decoded ||
+    "RemoveUnavailableBlockAfterTimeout" in decoded
+  ) {
     correctionTransition = deriveStateQueueCorrectionTransition(input);
     if (correctionTransition === null) return null;
     transitionKind = "timeout_correction";
@@ -1140,11 +1166,20 @@ export const parseStateQueueAuthenticatedTransition = (
     canonical.transitionKind === "timeout_correction" &&
     typeof decoded === "object" &&
     decoded !== null &&
-    "RemoveUnattestedBlockAfterTimeout" in decoded &&
+    ("RemoveUnattestedBlockAfterTimeout" in decoded ||
+      "RemoveUnavailableBlockAfterTimeout" in decoded) &&
     canonical.correctionTransition !== null
   ) {
     const nested = canonical.correctionTransition;
-    const timeout = decoded.RemoveUnattestedBlockAfterTimeout;
+    const timeout =
+      "RemoveUnattestedBlockAfterTimeout" in decoded
+        ? decoded.RemoveUnattestedBlockAfterTimeout
+        : {
+            ...decoded.RemoveUnavailableBlockAfterTimeout,
+            timed_out_header_hash:
+              decoded.RemoveUnavailableBlockAfterTimeout
+                .unavailable_header_hash,
+          };
     const outerNestedIdentityMatches =
       nested.deploymentIdentityDigest === canonical.deploymentIdentityDigest &&
       nested.stateQueuePolicyId === canonical.stateQueuePolicyId &&

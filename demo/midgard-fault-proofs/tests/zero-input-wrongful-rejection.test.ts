@@ -161,6 +161,5 @@ describe("zeroInput direction-complete V1 semantics", () => {
   it("keeps the production authority boundary callback-free", () => {
     expectTypeOf<keyof ZeroInputForcedInput>().toEqualTypeOf<"block">();
     expect(prepareZeroInputForcedPlan).toHaveLength(1);
-    expect(Object.keys({ block: null })).toEqual(["block"]);
   });
 });

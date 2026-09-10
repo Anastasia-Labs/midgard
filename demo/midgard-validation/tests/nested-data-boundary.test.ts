@@ -1,5 +1,6 @@
 import {
   advanceMidgardCekDataTraverse,
+  buildMidgardCekDataTraverseTrace,
   buildMidgardLedgerOutputProofTrace,
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   decodeMidgardNativeByteListPreimage,
@@ -17,6 +18,7 @@ import {
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { publishAikenVector } from "./helpers/aiken-vector-channel.js";
 import {
   buildSignedCardanoNestedDatumCandidate,
   CARDANO_BOUNDARY_MAX_TX_SIZE,
@@ -71,46 +73,32 @@ const jsonDataFrame = (
   },
 });
 
-// The exact genuine signed-Cardano nested-datum boundary. The terminal vector
-// below carries the same numbers, but its comparison is skipped while an Aiken
-// vector is being regenerated; these four pins are unconditional, so a silently
-// shrunk datum can no longer satisfy the relative bounds alone.
+// The exact genuine signed-Cardano nested-datum boundary. These four pins are
+// the cardinality and byte count the search must land on, so a silently shrunk
+// datum can no longer satisfy the relative bounds alone.
 const MAXIMUM_NESTED_DATA_ACCEPTED_LEAF_COUNT = 5_387;
 const MAXIMUM_NESTED_DATA_ACCEPTED_SIGNED_BYTES = 16_382;
 const MAXIMUM_NESTED_DATA_ADJACENT_LEAF_COUNT = 5_388;
 const MAXIMUM_NESTED_DATA_ADJACENT_SIGNED_BYTES = 16_385;
-const MAXIMUM_NESTED_DATA_DATUM_TRAVERSE_STEP_COUNT = 129_311;
 
-const maximumNestedDataTerminalVector = {
-  maxTxSize: 16_384,
-  nestedLeafCount: 5_387,
-  dataNodeCount: 10_776,
-  datumCborBytes: 16_171,
-  signedCardanoBytes: 16_382,
-  signedCardanoByteMargin: 2,
-  adjacentLeafCount: 5_388,
-  adjacentDatumCborBytes: 16_174,
-  adjacentSignedCardanoBytes: 16_385,
-  nativeCanonicalBytes: 16_470,
-  outputItemBytes: 16_220,
-  // +4 over the pre-restructure 129_324: the output-proof finalize is now
-  // three descriptor fact-attach steps plus a thin terminal (+3) and the span
-  // window is verified once by a dedicated span-attach step (+1).
-  outputProofSteps: 129_328,
-  datumTraverseSteps: 129_311,
-  maximumSourceSpan: 14,
-  terminalPreControlCborHex:
-    "8a01061831193f2b193f2b582064c916e4a790b0d133bb36d04d9e9ecca7dc2f3c679690d2d005f84b311e9d94d87a80d87a80d87a80d87a80",
-  terminalFrameCborHex:
-    "8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf020640010181820058209f62b20d5db17ead31389c3864fb7ea3a2f68726b21ef48452c670dab47a8a6601845820f64559d8fa739e5dec6e218602ff2ebd0d24b477421f38b1872a2274454f84c701193f2419bd67",
-  terminalPostControlCborHex:
-    "8a01071831193f2b193f2b40d87a80d87a80d87a80d8799f83582077156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f193f2b19bd6bff",
-  terminalSummary: {
-    rootHex: "77156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f",
-    cborLength: "16171",
-    memory: "48491",
-  },
-} as const;
+/**
+ * A closed-form reference model for the number of traverse steps a balanced
+ * `cardanoBoundaryNestedDataCbor` datum owes.
+ *
+ * The builder emits one balanced binary tree of indefinite lists over
+ * `leafCount` leaves inside a fixed outer frame, so the traversal's step count
+ * is a linear function of the leaf count rather than a measurement: every leaf
+ * costs the same fixed run of head/fold/finalize transitions, and the outer
+ * `d866 82 1880 9f a1 d87980 … ff` framing costs a constant. The model is
+ * checked below against the real producer at small leaf counts, and the
+ * boundary datum is then required to satisfy it — which is what a traversal
+ * that stopped early, or that grew a step per byte, would fail.
+ */
+const NESTED_DATA_TRAVERSE_STEPS_PER_LEAF = 24;
+const NESTED_DATA_TRAVERSE_FRAMING_STEPS = 23;
+const balancedNestedDataTraverseSteps = (leafCount: number): number =>
+  NESTED_DATA_TRAVERSE_STEPS_PER_LEAF * leafCount +
+  NESTED_DATA_TRAVERSE_FRAMING_STEPS;
 
 describe("canonical V1 nested Cardano Data boundary", () => {
   it("retains and traverses the maximum balanced constructor/list/map datum", async () => {
@@ -234,11 +222,22 @@ describe("canonical V1 nested Cardano Data boundary", () => {
         witness?.kind === "datum" &&
         next.datum !== null,
     );
-    expect(datumSteps.length).toBeGreaterThan(
-      boundary.accepted.requestedItemCount,
-    );
+    // The reference model is checked against the real traversal at leaf counts
+    // small enough to read, and only then applied to the boundary datum.
+    for (const smallLeafCount of [1, 2, 5, 50]) {
+      const smallTrace = buildMidgardCekDataTraverseTrace({
+        sourceStart: 0,
+        source: Buffer.from(
+          cardanoBoundaryNestedDataCbor(smallLeafCount),
+          "hex",
+        ),
+      });
+      expect(smallTrace.steps).toHaveLength(
+        balancedNestedDataTraverseSteps(smallLeafCount),
+      );
+    }
     expect(datumSteps.length).toBe(
-      MAXIMUM_NESTED_DATA_DATUM_TRAVERSE_STEP_COUNT,
+      balancedNestedDataTraverseSteps(boundary.accepted.requestedItemCount),
     );
     expect(
       datumSteps.map(({ witness }) =>
@@ -404,9 +403,19 @@ describe("canonical V1 nested Cardano Data boundary", () => {
                       : {},
       };
     });
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR !== "1") {
-      expect(terminalVector).toEqual(maximumNestedDataTerminalVector);
-    }
+    // The Aiken twin's `maximum_cardano_nested_data_*` constants are rebound
+    // from this vector by
+    // `scripts/generate-nested-boundary-aiken-goldens.mjs`, whose `--check` run
+    // is a required CI job. Publishing happens after every assertion above, so
+    // the generator can only ever see a vector this suite has already accepted,
+    // and no environment variable can remove an assertion.
+    publishAikenVector("nested-data-boundary-v1", {
+      ...terminalVector,
+      // The frame's own sequence root, which the Aiken twin needs to rebuild
+      // the terminal frame it steps over.
+      terminalFrameSequenceRootHex: hex(finalAction.frame.sequence.root),
+      appliedActions: appliedActionVectors,
+    });
 
     const field = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
@@ -441,14 +450,5 @@ describe("canonical V1 nested Cardano Data boundary", () => {
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
-
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
-      console.info(
-        JSON.stringify({
-          nestedDataBoundaryV1: terminalVector,
-          nestedDataAppliedActionVectorsV1: appliedActionVectors,
-        }),
-      );
-    }
   }, 300_000);
 });

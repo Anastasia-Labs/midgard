@@ -1,20 +1,27 @@
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  createDoubleSpendWorkflowRunner,
   createWorkflowFundingRequirements,
+  createWorkflowRuntimeFundingPolicy,
   unsafeCreateMeasuredWorkflowRunnerForTest,
   workflowFundingRequirementsForRunner,
 } from "@al-ft/midgard-fault-proofs";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest } from "../../src/funding/prover-funding.js";
 import {
   aggregateWatcherProverFundingSweep,
   assertWatcherProverFundingCalculation,
+  assertWatcherRuntimeProverFundingCalculation,
   calculateWatcherProverFunding,
+  calculateWatcherRuntimeProverFunding,
 } from "../../src/funding/prover-funding-calculation.js";
 import {
   assertWatcherProverFundingReservationPlan,
+  makeWatcherProverFundingReservationRecord,
   planWatcherProverFundingReservation,
+  restoreWatcherProverFundingReservationPlan,
 } from "../../src/funding/prover-funding-reservation.js";
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
 import {
@@ -333,6 +340,93 @@ const runtimeAuthority = async (
   });
 
 describe("production prover funding calculation V1", () => {
+  it("reserves collateral but no prover fee or reward principal for protocol-funded removal", async () => {
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
+    const protocolParameters = await runtimeAuthority(deploymentIdentity);
+    const economics = await watcherDeploymentReleaseEconomicsAuthority(
+      deploymentIdentity,
+    ).verifyForWorkflow({
+      deploymentFingerprint: deploymentIdentity.manifestId,
+    });
+    const profile = createWorkflowFundingRequirements({
+      scope: { kind: "fraud_proof_category", category: "doubleSpend" },
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      blueprintSha256: "22".repeat(32),
+      protocolParametersDigest: protocolParameters.snapshotDigest,
+      economicsPolicyDigest: economics.policyDigest,
+      fundingPaymentKeyHash,
+      measurementToolVersion: "midgard-cardano-transaction-measurer-v1",
+      measurementArtifactSha256: "55".repeat(32),
+      actions: [
+        {
+          actionKind: "remove",
+          signedTransactionCborHex: transactionCbor(200_000n, true),
+          fundingControlledInputs: [
+            {
+              outRef: `${"66".repeat(32)}#0`,
+              resolvedOutputCborHex: CML.TransactionOutput.new(
+                CML.Address.from_bech32(lockedAddress),
+                CML.Value.from_coin(3_200_000n),
+              ).to_canonical_cbor_hex(),
+              role: "protocol",
+              semanticRole: "protocol_state",
+              contractAddress: lockedAddress,
+              identityAssets: [],
+              fundingLovelace: "0",
+              fundingAssets: [],
+              sourceActionKind: null,
+              sourceOutputIndex: null,
+            },
+          ],
+          fundingControlledOutputs: [
+            {
+              outputIndex: 0,
+              role: "protocol_reward",
+              custodyRole: "none",
+              semanticRole: "prover_reward",
+              contractAddress: walletAddress,
+              fundingLovelace: "0",
+              fundingAssets: [],
+            },
+          ],
+          referenceInputs: [],
+          referenceScriptBytes: 0,
+          requiredBondLovelace: "0",
+          requiredRewardCustodyLovelace: "0",
+          requiredNativeAssets: [],
+          collateralRequired: true,
+          conflictRetryCount: 2,
+        },
+      ],
+    });
+    const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
+      category: "doubleSpend",
+      fundingRequirements: profile,
+    });
+    const requirements = workflowFundingRequirementsForRunner({
+      category: "doubleSpend",
+      runner,
+    });
+    const calculation = await calculateWatcherProverFunding({
+      deploymentIdentity,
+      protocolParameters,
+      requirements,
+    });
+    expect(calculation.actions[0]).toMatchObject({
+      transactionFeeLovelace: "200000",
+      collateralLovelace: "5000000",
+      walletFundingInputCount: "0",
+      feeHeadroomLovelace: "0",
+      lockedCapitalLovelace: "0",
+      walletChangeLovelace: "0",
+    });
+    expect(calculation.totals).toMatchObject({
+      requiredLovelace: "5000000",
+      peakCapitalLovelace: "0",
+      reusableCollateralLovelace: "5000000",
+    });
+  });
+
   it("derives tiered fees, retry headroom, min-Ada, and one collateral reserve", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const protocolParameters = await runtimeAuthority(deploymentIdentity);
@@ -763,47 +857,49 @@ describe("production prover funding calculation V1", () => {
     ).verifyForWorkflow({
       deploymentFingerprint: deploymentIdentity.manifestId,
     });
-    const profile = createWorkflowFundingRequirements({
-      scope: { kind: "fraud_proof_category", category: "doubleSpend" },
+    const policy = createWorkflowRuntimeFundingPolicy({
+      category: "doubleSpend",
+      runner: createDoubleSpendWorkflowRunner(async () => {
+        throw new Error("planner must not execute a workflow");
+      }),
       deploymentFingerprint: deploymentIdentity.manifestId,
-      blueprintSha256: "22".repeat(32),
-      protocolParametersDigest: protocolParameters.snapshotDigest,
-      economicsPolicyDigest: economics.policyDigest,
       fundingPaymentKeyHash,
-      measurementToolVersion: "midgard-cardano-transaction-measurer-v1",
-      measurementArtifactSha256: "55".repeat(32),
-      actions: [
+      protocolParameters: protocolParameters.snapshot,
+      economics,
+      referenceScripts: [],
+      contracts: [
         {
-          actionKind: "proof-init",
-          signedTransactionCborHex: transactionCbor(
-            1_000_000n,
-            true,
-            undefined,
-            true,
-          ),
-          ...fundingFlow(1_000_000n, true),
-          referenceInputs: [],
-          referenceScriptBytes: 0,
-          requiredBondLovelace: "900000000",
-          requiredRewardCustodyLovelace: "100000000",
-          requiredNativeAssets: [{ unit: tokenUnit, quantity: "1" }],
-          collateralRequired: true,
-          conflictRetryCount: 1,
+          address: credentialToAddress("Preprod", {
+            type: "Script",
+            hash: "55".repeat(28),
+          }),
+          scriptHash: "55".repeat(28),
+          role: "proof_thread",
         },
       ],
     });
-    const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
-      category: "doubleSpend",
-      fundingRequirements: profile,
-    });
-    const calculation = await calculateWatcherProverFunding({
+    const calculation = await calculateWatcherRuntimeProverFunding({
       deploymentIdentity,
       protocolParameters,
-      requirements: workflowFundingRequirementsForRunner({
-        category: "doubleSpend",
-        runner,
-      }),
+      policy,
     });
+    expect(calculation.collateralFloorLovelace).toBe(
+      economics.policy.proverCollateralFloorLovelace,
+    );
+    expect(calculation.maximumSlashCollateralLovelace).toBe("750000000");
+    expect(() =>
+      assertWatcherRuntimeProverFundingCalculation(calculation),
+    ).not.toThrow();
+    expect(() =>
+      assertWatcherRuntimeProverFundingCalculation({ ...calculation }),
+    ).toThrow("not admitted");
+    await expect(
+      calculateWatcherRuntimeProverFunding({
+        deploymentIdentity,
+        protocolParameters,
+        policy: { ...policy },
+      }),
+    ).rejects.toThrow("not admitted");
     const candidates = [
       {
         txHash: "03".repeat(32),
@@ -843,8 +939,14 @@ describe("production prover funding calculation V1", () => {
     expect(first.inputs).toEqual([
       {
         outRef: `${"01".repeat(32)}#0`,
-        role: "collateral",
+        role: "funding",
         lovelace: "6000000",
+        assets: [],
+      },
+      {
+        outRef: `${"02".repeat(32)}#0`,
+        role: "collateral",
+        lovelace: "900000000",
         assets: [],
       },
       {
@@ -855,32 +957,175 @@ describe("production prover funding calculation V1", () => {
       },
     ]);
 
+    const splitCandidates = [500_000_000n, 500_000_000n, 30_000_000n].map(
+      (lovelace, index) => ({
+        txHash: String(index + 4)
+          .padStart(2, "0")
+          .repeat(32),
+        outputIndex: 0,
+        address: walletAddress,
+        assets: { lovelace },
+      }),
+    );
+    const split = planWatcherProverFundingReservation({
+      deploymentIdentity,
+      calculation,
+      decisionDigest: "77".repeat(32),
+      walletAddress,
+      utxos: splitCandidates,
+    });
+    expect(split.collateralLovelace).toBe("1000000000");
+    expect(split.fundingLovelace).toBe("30000000");
+    expect(split.inputs.map(({ role }) => role)).toEqual([
+      "collateral",
+      "collateral",
+      "funding",
+    ]);
+    expect(
+      planWatcherProverFundingReservation({
+        deploymentIdentity,
+        calculation,
+        decisionDigest: "77".repeat(32),
+        walletAddress,
+        utxos: [...splitCandidates].reverse(),
+      }).inputs,
+    ).toEqual(split.inputs);
     expect(() =>
       planWatcherProverFundingReservation({
         deploymentIdentity,
         calculation,
         decisionDigest: "77".repeat(32),
         walletAddress,
-        utxos: [
-          candidates[0]!,
-          {
-            ...candidates[1]!,
-            assets: { lovelace: 900_000_000n },
-          },
-          {
-            ...candidates[2]!,
-            assets: { lovelace: 6_000_000n },
-          },
-        ].map((candidate, index) =>
-          index === 0
-            ? {
-                ...candidate,
-                assets: { lovelace: 200_000_000n, [tokenUnit]: 1n },
-              }
-            : candidate,
-        ),
+        utxos: splitCandidates.slice(1),
       }),
-    ).toThrow("measured ordinary input bound");
+    ).toThrow("insufficient plain-Ada collateral");
+
+    // The wallet owns the budget. Actual signed transaction admission selects
+    // and checks its subset instead of enforcing a measured input-count recipe.
+    const smaller = planWatcherProverFundingReservation({
+      deploymentIdentity,
+      calculation,
+      decisionDigest: "77".repeat(32),
+      walletAddress,
+      utxos: candidates.map((candidate, index) =>
+        index === 0
+          ? {
+              ...candidate,
+              assets: { lovelace: 200_000_000n, [tokenUnit]: 1n },
+            }
+          : candidate,
+      ),
+    });
+    expect(smaller.fundingLovelace).toBe("206000000");
+    expect(smaller.reservationId).toBe(first.reservationId);
+    const rotated = planWatcherProverFundingReservation({
+      deploymentIdentity,
+      calculation,
+      decisionDigest: "77".repeat(32),
+      walletAddress,
+      utxos: candidates.map((candidate, index) =>
+        index === 0 ? { ...candidate, txHash: "04".repeat(32) } : candidate,
+      ),
+    });
+    expect(rotated.reservationId).toBe(first.reservationId);
+    expect(rotated.inputs).not.toEqual(first.inputs);
+    // Confirmed wallet change can be smaller than the dedicated collateral.
+    // Resuming must preserve the collateral and exact funding descendants.
+    const { recordDigest: _recordDigest, ...initialRecord } =
+      makeWatcherProverFundingReservationRecord({ plan: first });
+    const rotatedRecord = {
+      ...initialRecord,
+      revision: "2",
+      lastConfirmedTransitionDigest: "cc".repeat(32),
+      activeInputs: [
+        first.inputs[1]!,
+        {
+          outRef: `${"05".repeat(32)}#0`,
+          role: "funding" as const,
+          lovelace: "5000000",
+          assets: [],
+        },
+      ],
+    };
+    const restoreInput = {
+      deploymentIdentity,
+      calculation,
+      decisionDigest: "77".repeat(32),
+      walletAddress,
+      record: {
+        ...rotatedRecord,
+        recordDigest: computeDeploymentManifestJsonDigest(rotatedRecord),
+      },
+    };
+    const restored = restoreWatcherProverFundingReservationPlan(restoreInput);
+    expect(restored.reservationId).toBe(first.reservationId);
+    expect(restored.inputs).toEqual(rotatedRecord.activeInputs);
+    expect(restored.collateralLovelace).toBe("900000000");
+    expect(restored.fundingLovelace).toBe("5000000");
+    expect(() =>
+      assertWatcherProverFundingReservationPlan(restored),
+    ).not.toThrow();
+    expect(() =>
+      restoreWatcherProverFundingReservationPlan({
+        ...restoreInput,
+        decisionDigest: "88".repeat(32),
+      }),
+    ).toThrow("identity mismatch");
+    expect(() =>
+      restoreWatcherProverFundingReservationPlan({
+        ...restoreInput,
+        record: { ...restoreInput.record, policyDigest: "ff".repeat(32) },
+      }),
+    ).toThrow("digest mismatch");
+    for (const field of ["policyDigest", "reservationBasisDigest"] as const) {
+      const substituted = { ...rotatedRecord, [field]: "ff".repeat(32) };
+      expect(() =>
+        restoreWatcherProverFundingReservationPlan({
+          ...restoreInput,
+          record: {
+            ...substituted,
+            recordDigest: computeDeploymentManifestJsonDigest(substituted),
+          },
+        }),
+      ).toThrow("identity mismatch");
+    }
+    const released = { ...rotatedRecord, state: "released", activeInputs: [] };
+    expect(() =>
+      restoreWatcherProverFundingReservationPlan({
+        ...restoreInput,
+        record: {
+          ...released,
+          recordDigest: computeDeploymentManifestJsonDigest(released),
+        },
+      }),
+    ).toThrow("not active");
+    expect(() =>
+      planWatcherProverFundingReservation({
+        deploymentIdentity,
+        calculation,
+        decisionDigest: "77".repeat(32),
+        walletAddress,
+        utxos: [candidates[0]!],
+      }),
+    ).toThrow("insufficient plain-Ada collateral");
+    expect(() =>
+      planWatcherProverFundingReservation({
+        deploymentIdentity,
+        calculation,
+        decisionDigest: "77".repeat(32),
+        walletAddress,
+        utxos: [candidates[1]!],
+      }),
+    ).toThrow("no available funding inputs");
+    expect(() =>
+      planWatcherProverFundingReservation({
+        deploymentIdentity,
+        calculation,
+        decisionDigest: "77".repeat(32),
+        walletAddress,
+        utxos: [...candidates, candidates[0]!],
+      }),
+    ).toThrow("duplicate output reference");
     expect(() =>
       assertWatcherProverFundingReservationPlan(first),
     ).not.toThrow();

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
@@ -11,15 +11,20 @@ import {
 } from "../../src/l1/l1-adapter.js";
 import {
   parseWatcherNativeChainSyncEvent,
+  readWatcherNativeChainSyncEventReceipt,
   startWatcherNativeChainSync,
   startWatcherNativeChainSyncWithRetry,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   watcherNativeChainSyncAuthorityDetails,
+  type WatcherNativeChainSyncEvent,
+  type WatcherNativeChainSyncEventReceipt,
+  watcherNativeChainSyncEventReceipt,
 } from "../../src/l1/native-chain-sync.js";
 import {
   WATCHER_CONFIG_SCHEMA_VERSION,
   type WatcherConfig,
 } from "../../src/runtime/config.js";
+import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
 
 const fixturePath = fileURLToPath(
   new URL("../support/native-chain-sync-fixture.mjs", import.meta.url),
@@ -121,6 +126,7 @@ const readIdentityFixture = async (path: string): Promise<Uint8Array> => {
 const start = async (
   mode: string,
   onEvent: Parameters<typeof startWatcherNativeChainSync>[0]["onEvent"],
+  onSpawn?: (child: ChildProcessWithoutNullStreams) => void,
 ) =>
   await startWatcherNativeChainSync({
     binaryPath: "/test/native-chain-sync",
@@ -128,7 +134,11 @@ const start = async (
     intersection: INTERSECTION,
     startupTimeoutMs: 2_000,
     onEvent,
-    unsafeSpawnForTest: spawnFixture(mode),
+    unsafeSpawnForTest: () => {
+      const child = spawnFixture(mode)();
+      onSpawn?.(child);
+      return child;
+    },
     unsafeReadIdentityFileForTest: readIdentityFixture,
   });
 
@@ -142,9 +152,32 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
 describe("native Cardano node-to-client chain-sync supervisor", () => {
   it("seals the exact startup identity and admits ordered roll-forward/rollback", async () => {
-    const events: unknown[] = [];
+    const events: WatcherNativeChainSyncEvent[] = [];
+    const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+    const captured: ReturnType<
+      typeof readWatcherNativeChainSyncEventReceipt
+    >[] = [];
     const runtime = await start("honest", async (event) => {
+      const receipt = watcherNativeChainSyncEventReceipt(event);
+      if (receipt === null) throw new Error("callback event has no receipt");
+      expect(watcherNativeChainSyncEventReceipt({ ...event })).toBeNull();
+      expect(
+        watcherNativeChainSyncEventReceipt(
+          parseWatcherNativeChainSyncEvent(event),
+        ),
+      ).toBeNull();
+      expect(() =>
+        readWatcherNativeChainSyncEventReceipt({ ...receipt }),
+      ).toThrow("absent or stale");
+      if (event.kind === "roll_backward") {
+        expect(watcherNativeChainSyncEventReceipt(events[0]!)).toBeNull();
+        expect(() =>
+          readWatcherNativeChainSyncEventReceipt(receipts[0]!),
+        ).toThrow("absent or stale");
+      }
       events.push(event);
+      receipts.push(receipt);
+      captured.push(readWatcherNativeChainSyncEventReceipt(receipt));
     });
     try {
       await waitFor(() => events.length === 2);
@@ -156,6 +189,25 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         },
         { kind: "roll_backward", point: INTERSECTION },
       ]);
+      for (const [index, value] of captured.entries()) {
+        expect(value.authority).toBe(runtime.authority);
+        expect(value.startupDigest).toBe(
+          watcherNativeChainSyncAuthorityDetails(runtime.authority)
+            ?.startupDigest,
+        );
+        expect(value.event).toBe(events[index]);
+        expect(value.eventDigest).toBe(
+          createHash("sha256")
+            .update(watcherCanonicalJson(events[index]!), "utf8")
+            .digest("hex"),
+        );
+        expect(Object.isFrozen(value)).toBe(true);
+        expect(Object.isFrozen(value.event)).toBe(true);
+        expect(Object.isFrozen(value.event.tip)).toBe(true);
+      }
+      expect(readWatcherNativeChainSyncEventReceipt(receipts[1]!)).toBe(
+        captured[1],
+      );
       expect(watcherNativeChainSyncAuthorityDetails(runtime.authority)).toEqual(
         {
           network: "Preprod",
@@ -195,6 +247,119 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
       } finally {
         closeWatcherL1TransportAttestationContext(context);
       }
+    } finally {
+      await runtime.close();
+    }
+    expect(watcherNativeChainSyncEventReceipt(events[1]!)).toBeNull();
+    expect(() => readWatcherNativeChainSyncEventReceipt(receipts[1]!)).toThrow(
+      "absent or stale",
+    );
+  });
+
+  it("revokes a receipt at close entry while its callback remains pending", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+    let callbackCompleted = false;
+    const runtime = await start("honest", async (event) => {
+      if (event.kind !== "roll_forward") return;
+      const receipt = watcherNativeChainSyncEventReceipt(event);
+      if (receipt === null) throw new Error("callback event has no receipt");
+      receipts.push(receipt);
+      await gate;
+      callbackCompleted = true;
+    });
+    try {
+      await waitFor(() => receipts.length === 1);
+      const receipt = receipts[0]!;
+      const { event } = readWatcherNativeChainSyncEventReceipt(receipt);
+      const shutdown = runtime.close();
+      try {
+        expect(callbackCompleted).toBe(false);
+        expect(watcherNativeChainSyncEventReceipt(event)).toBeNull();
+        expect(() => readWatcherNativeChainSyncEventReceipt(receipt)).toThrow(
+          "absent or stale",
+        );
+      } finally {
+        release();
+        await shutdown;
+      }
+    } finally {
+      release();
+      await runtime.close();
+    }
+  });
+
+  it.each(["exit", "error"] as const)(
+    "revokes provenance when helper %s is observed during a pending callback",
+    async (lifecycle) => {
+      let child!: ChildProcessWithoutNullStreams;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+      let callbackCompleted = false;
+      const runtime = await start(
+        "honest",
+        async (event) => {
+          if (event.kind !== "roll_forward") return;
+          const receipt = watcherNativeChainSyncEventReceipt(event);
+          if (receipt === null)
+            throw new Error("callback event has no receipt");
+          receipts.push(receipt);
+          await gate;
+          callbackCompleted = true;
+        },
+        (spawned) => {
+          child = spawned;
+        },
+      );
+      try {
+        await waitFor(() => receipts.length === 1);
+        const receipt = receipts[0]!;
+        const { event } = readWatcherNativeChainSyncEventReceipt(receipt);
+        if (lifecycle === "exit") {
+          const exited = new Promise<void>((resolve) => {
+            child.once("exit", () => resolve());
+          });
+          child.kill("SIGTERM");
+          await exited;
+        } else {
+          child.emit("error", new Error("native fixture lifecycle error"));
+        }
+        expect(callbackCompleted).toBe(false);
+        expect(watcherNativeChainSyncEventReceipt(event)).toBeNull();
+        expect(() => readWatcherNativeChainSyncEventReceipt(receipt)).toThrow(
+          "absent or stale",
+        );
+        release();
+        if (lifecycle === "exit") {
+          await expect(runtime.done).rejects.toThrow("exited unexpectedly");
+        }
+      } finally {
+        release();
+        await runtime.close();
+      }
+    },
+  );
+
+  it("revokes a delivered receipt when the callback fails", async () => {
+    const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+    const runtime = await start("honest", async (event) => {
+      const receipt = watcherNativeChainSyncEventReceipt(event);
+      if (receipt === null) throw new Error("callback event has no receipt");
+      receipts.push(receipt);
+      throw new Error("native fixture callback failed");
+    });
+    try {
+      await expect(runtime.done).rejects.toThrow("callback failed");
+      expect(receipts).toHaveLength(1);
+      expect(() =>
+        readWatcherNativeChainSyncEventReceipt(receipts[0]!),
+      ).toThrow("absent or stale");
     } finally {
       await runtime.close();
     }
@@ -246,10 +411,21 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
   it.each(["reordered", "first_slot_regression", "unknown_rollback"])(
     "terminates on hostile %s output",
     async (mode) => {
-      const runtime = await start(mode, async () => undefined);
+      const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+      const runtime = await start(mode, async (event) => {
+        const receipt = watcherNativeChainSyncEventReceipt(event);
+        if (receipt === null) throw new Error("callback event has no receipt");
+        receipts.push(receipt);
+      });
       await expect(runtime.done).rejects.toThrow(
         /out of order|not durable history/u,
       );
+      expect(receipts).toHaveLength(mode === "unknown_rollback" ? 1 : 0);
+      for (const receipt of receipts) {
+        expect(() => readWatcherNativeChainSyncEventReceipt(receipt)).toThrow(
+          "absent or stale",
+        );
+      }
       await runtime.close();
     },
   );
@@ -297,7 +473,9 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         slot: "102",
       },
     };
-    expect(parseWatcherNativeChainSyncEvent(event)).toEqual(event);
+    const parsed = parseWatcherNativeChainSyncEvent(event);
+    expect(parsed).toEqual(event);
+    expect(watcherNativeChainSyncEventReceipt(parsed)).toBeNull();
     expect(() =>
       parseWatcherNativeChainSyncEvent({ ...event, trusted: true }),
     ).toThrow("unknown or missing");

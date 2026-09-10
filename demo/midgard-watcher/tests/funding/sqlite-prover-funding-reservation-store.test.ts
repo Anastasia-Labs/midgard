@@ -21,9 +21,11 @@ const walletAddress = CML.Address.from_raw_bytes(
 const signedTransition = ({
   inputHash = "11".repeat(32),
   outputLovelace = 99_000_000n,
+  nonCanonicalBody = false,
 }: {
   readonly inputHash?: string;
   readonly outputLovelace?: bigint;
+  readonly nonCanonicalBody?: boolean;
 } = {}) => {
   const inputs = CML.TransactionInputList.new();
   inputs.add(
@@ -36,7 +38,12 @@ const signedTransition = ({
       CML.Value.from_coin(outputLovelace),
     ),
   );
-  const body = CML.TransactionBody.new(inputs, outputs, 1_000_000n);
+  const canonicalBody = CML.TransactionBody.new(inputs, outputs, 1_000_000n);
+  const body = nonCanonicalBody
+    ? CML.TransactionBody.from_cbor_hex(
+        "bf" + canonicalBody.to_cbor_hex().slice(2) + "ff",
+      )
+    : canonicalBody;
   const witnesses = CML.TransactionWitnessSet.new();
   const vkeys = CML.VkeywitnessList.new();
   vkeys.add(
@@ -49,10 +56,10 @@ const signedTransition = ({
   const transaction = CML.Transaction.new(body, witnesses, true, undefined);
   const transactionHash = CML.hash_transaction(body).to_hex();
   return Object.freeze({
-    signedTransactionCborHex: transaction.to_canonical_cbor_hex(),
+    signedTransactionCborHex: transaction.to_cbor_hex(),
     transactionHash,
     transactionBodySha256: createHash("sha256")
-      .update(Buffer.from(body.to_canonical_cbor_hex(), "hex"))
+      .update(Buffer.from(body.to_cbor_hex(), "hex"))
       .digest("hex"),
     producedInputs: Object.freeze([
       Object.freeze({
@@ -98,8 +105,8 @@ const plan = (
       "midgard-watcher-production-prover-funding-reservation-plan-v1",
     deploymentFingerprint: "22".repeat(32),
     decisionDigest: decisionByte.repeat(32),
-    profileDigest: "33".repeat(32),
-    calculationDigest: "44".repeat(32),
+    policyDigest: "33".repeat(32),
+    reservationBasisDigest: "44".repeat(32),
     fundingPaymentKeyHash: fundingKeyHash,
     walletAddress,
     inputs: Object.freeze([
@@ -123,11 +130,136 @@ const plan = (
   });
 
 describe("SQLite prover funding reservation store V1", () => {
+  it("persists protocol-funded income without consuming reserved wallet inputs", async () => {
+    const opened = await openStore();
+    const currentPlan = plan("aa", "66");
+    await opened.runtime.store.reserve(currentPlan);
+    const input = {
+      plan: currentPlan,
+      expectedRevision: "0",
+      actionKind: "proof.remove",
+      ...signedTransition({
+        inputHash: "99".repeat(32),
+        nonCanonicalBody: true,
+      }),
+      consumedOutRefs: [],
+    };
+    // Empty consumption is derived from the signed body, never trusted from
+    // the caller. A normal wallet spend cannot be disguised as protocol-funded.
+    await expect(
+      opened.runtime.store.prepareTransition({
+        ...input,
+        ...signedTransition(),
+      }),
+    ).rejects.toThrow("differs from the signed transaction");
+    const pending = await opened.runtime.store.prepareTransition(input);
+    expect(pending.activeInputs).toEqual(currentPlan.inputs);
+    expect(pending.pendingTransition?.consumedOutRefs).toEqual([]);
+    opened.runtime.close();
+
+    const reopened =
+      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+        { path: opened.path },
+        () => undefined,
+      );
+    try {
+      expect(await reopened.store.readAll()).toEqual([pending]);
+      await expect(
+        reopened.store.confirmTransition({
+          plan: currentPlan,
+          expectedRevision: pending.revision,
+          transitionDigest: "ff".repeat(32),
+        }),
+      ).rejects.toThrow("confirmation mismatch");
+      const confirmed = await reopened.store.confirmTransition({
+        plan: currentPlan,
+        expectedRevision: pending.revision,
+        transitionDigest: pending.pendingTransition!.transitionDigest,
+      });
+      expect(confirmed.pendingTransition).toBeNull();
+      expect(confirmed.activeInputs).toEqual(
+        [...currentPlan.inputs, ...input.producedInputs].sort((left, right) =>
+          left.outRef.localeCompare(right.outRef),
+        ),
+      );
+      expect(
+        await reopened.store.readConfirmedInput({
+          reservationId: currentPlan.reservationId,
+          outRef: input.producedInputs[0]!.outRef,
+        }),
+      ).toMatchObject({
+        sourceActionKind: "proof.remove",
+        outRef: input.producedInputs[0]!.outRef,
+      });
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it("persists exact noncanonical signed wire across restart and rejects re-encoded identity", async () => {
+    const opened = await openStore();
+    const currentPlan = plan("aa", "66");
+    await opened.runtime.store.reserve(currentPlan);
+    const signed = signedTransition({ nonCanonicalBody: true });
+    const transaction = CML.Transaction.from_cbor_hex(
+      signed.signedTransactionCborHex,
+    );
+    expect(transaction.to_canonical_cbor_hex()).not.toBe(
+      signed.signedTransactionCborHex,
+    );
+    const canonicalBodySha = createHash("sha256")
+      .update(Buffer.from(transaction.body().to_canonical_cbor_hex(), "hex"))
+      .digest("hex");
+    expect(canonicalBodySha).not.toBe(signed.transactionBodySha256);
+    const input = {
+      plan: currentPlan,
+      expectedRevision: "0",
+      actionKind: "proof.step-01",
+      ...signed,
+      consumedOutRefs: [`${"11".repeat(32)}#0`],
+    };
+    await expect(
+      opened.runtime.store.prepareTransition({
+        ...input,
+        transactionBodySha256: canonicalBodySha,
+      }),
+    ).rejects.toThrow("differs from the signed transaction");
+    await expect(
+      opened.runtime.store.prepareTransition({
+        ...input,
+        signedTransactionCborHex: transaction.to_canonical_cbor_hex(),
+      }),
+    ).rejects.toThrow("funding witness");
+    const prepared = await opened.runtime.store.prepareTransition(input);
+    expect(prepared.pendingTransition?.signedTransactionCborHex).toBe(
+      signed.signedTransactionCborHex,
+    );
+    expect(prepared.pendingTransition?.transactionBodySha256).toBe(
+      signed.transactionBodySha256,
+    );
+    opened.runtime.close();
+    const reopened =
+      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+        { path: opened.path },
+        () => undefined,
+      );
+    expect(await reopened.store.readAll()).toEqual([prepared]);
+    reopened.close();
+  });
+
   it("atomically persists descendant rotation and restart conflict state", async () => {
     const opened = await openStore();
     const currentPlan = plan("aa", "66");
     expect(await opened.runtime.store.reserve(currentPlan)).toBe("reserved");
     expect(await opened.runtime.store.reserve(currentPlan)).toBe("unchanged");
+    for (const field of ["policyDigest", "reservationBasisDigest"] as const) {
+      await expect(
+        opened.runtime.store.reserve({
+          ...currentPlan,
+          [field]: "ff".repeat(32),
+        }),
+      ).rejects.toThrow("identity mismatch");
+    }
 
     const signed = signedTransition();
     const prepared = await opened.runtime.store.prepareTransition({
@@ -145,12 +277,11 @@ describe("SQLite prover funding reservation store V1", () => {
       },
     });
     await expect(
-      opened.runtime.store.readConfirmedActionOutput({
+      opened.runtime.store.readConfirmedInput({
         reservationId: currentPlan.reservationId,
-        sourceActionKind: "proof.step-01",
-        sourceOutputIndex: 0,
+        outRef: `${signed.transactionHash}#0`,
       }),
-    ).rejects.toThrow("is missing");
+    ).resolves.toBeNull();
     await expect(
       opened.runtime.store.release({
         plan: currentPlan,
@@ -187,10 +318,9 @@ describe("SQLite prover funding reservation store V1", () => {
       ],
     });
     await expect(
-      restarted.store.readConfirmedActionOutput({
+      restarted.store.readConfirmedInput({
         reservationId: currentPlan.reservationId,
-        sourceActionKind: "proof.step-01",
-        sourceOutputIndex: 0,
+        outRef: `${signed.transactionHash}#0`,
       }),
     ).resolves.toEqual({
       sourceActionKind: "proof.step-01",
@@ -204,6 +334,18 @@ describe("SQLite prover funding reservation store V1", () => {
         .get(0)
         .to_canonical_cbor_hex(),
     });
+    await expect(
+      restarted.store.readConfirmedInput({
+        reservationId: "bb".repeat(32),
+        outRef: `${signed.transactionHash}#0`,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      restarted.store.readConfirmedInput({
+        reservationId: currentPlan.reservationId,
+        outRef: `${"ff".repeat(32)}#0`,
+      }),
+    ).resolves.toBeNull();
     const secondSigned = signedTransition({
       inputHash: signed.transactionHash,
       outputLovelace: 98_000_000n,
@@ -271,14 +413,141 @@ describe("SQLite prover funding reservation store V1", () => {
       );
     expect(await secondRestart.store.readAll()).toEqual([conflicted]);
     await expect(
-      secondRestart.store.readConfirmedActionOutput({
+      secondRestart.store.readConfirmedInput({
         reservationId: currentPlan.reservationId,
-        sourceActionKind: "proof.step-01",
-        sourceOutputIndex: 0,
+        outRef: `${signed.transactionHash}#0`,
       }),
     ).resolves.toMatchObject({ outRef: `${signed.transactionHash}#0` });
     secondRestart.close();
   });
+
+  it.each(["publish-raw-datum-preimage", "proof.step-01"])(
+    "keeps separate confirmed lineage for repeated %s transactions across restart",
+    async (actionKind) => {
+      const opened = await openStore();
+      let runtime = opened.runtime;
+      const currentPlan = plan("aa", "66");
+      try {
+        await runtime.store.reserve(currentPlan);
+        const firstSigned = signedTransition();
+        const firstPrepared = await runtime.store.prepareTransition({
+          plan: currentPlan,
+          expectedRevision: "0",
+          actionKind,
+          ...firstSigned,
+          consumedOutRefs: [`${"11".repeat(32)}#0`],
+        });
+        const firstConfirmed = await runtime.store.confirmTransition({
+          plan: currentPlan,
+          expectedRevision: firstPrepared.revision,
+          transitionDigest: firstPrepared.pendingTransition!.transitionDigest,
+        });
+        const secondSigned = signedTransition({
+          inputHash: firstSigned.transactionHash,
+          outputLovelace: 98_000_000n,
+          nonCanonicalBody: true,
+        });
+        const secondInput = {
+          plan: currentPlan,
+          expectedRevision: firstConfirmed.revision,
+          actionKind,
+          ...secondSigned,
+          consumedOutRefs: [`${firstSigned.transactionHash}#0`],
+        };
+        const secondPrepared =
+          await runtime.store.prepareTransition(secondInput);
+        await expect(
+          runtime.store.prepareTransition(secondInput),
+        ).rejects.toThrow("cannot prepare transition");
+        await expect(
+          runtime.store.readConfirmedInput({
+            reservationId: currentPlan.reservationId,
+            outRef: `${secondSigned.transactionHash}#0`,
+          }),
+        ).resolves.toBeNull();
+        runtime.close();
+        runtime =
+          await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+            { path: opened.path },
+            () => undefined,
+          );
+        expect(await runtime.store.readAll()).toEqual([secondPrepared]);
+        expect(secondPrepared.pendingTransition?.signedTransactionCborHex).toBe(
+          secondSigned.signedTransactionCborHex,
+        );
+        await expect(
+          runtime.store.confirmTransition({
+            plan: currentPlan,
+            expectedRevision: secondPrepared.revision,
+            transitionDigest: firstPrepared.pendingTransition!.transitionDigest,
+          }),
+        ).rejects.toThrow("confirmation mismatch");
+        const secondConfirmed = await runtime.store.confirmTransition({
+          plan: currentPlan,
+          expectedRevision: secondPrepared.revision,
+          transitionDigest: secondPrepared.pendingTransition!.transitionDigest,
+        });
+        expect(
+          secondConfirmed.activeInputs.filter(({ role }) => role === "funding"),
+        ).toEqual(secondSigned.producedInputs);
+        const assertConfirmedHistory = async () => {
+          for (const signed of [firstSigned, secondSigned]) {
+            await expect(
+              runtime.store.readConfirmedInput({
+                reservationId: currentPlan.reservationId,
+                outRef: `${signed.transactionHash}#0`,
+              }),
+            ).resolves.toEqual({
+              sourceActionKind: actionKind,
+              sourceOutputIndex: 0,
+              outRef: `${signed.transactionHash}#0`,
+              resolvedOutputCborHex: CML.Transaction.from_cbor_hex(
+                signed.signedTransactionCborHex,
+              )
+                .body()
+                .outputs()
+                .get(0)
+                .to_canonical_cbor_hex(),
+            });
+          }
+        };
+        await assertConfirmedHistory();
+        const thirdSigned = signedTransition({
+          inputHash: secondSigned.transactionHash,
+          outputLovelace: 97_000_000n,
+        });
+        const thirdPrepared = await runtime.store.prepareTransition({
+          plan: currentPlan,
+          expectedRevision: secondConfirmed.revision,
+          actionKind,
+          ...thirdSigned,
+          consumedOutRefs: [`${secondSigned.transactionHash}#0`],
+        });
+        const abandoned = await runtime.store.abandonPendingTransition({
+          plan: currentPlan,
+          expectedRevision: thirdPrepared.revision,
+          transitionDigest: thirdPrepared.pendingTransition!.transitionDigest,
+        });
+        expect(abandoned.activeInputs).toEqual(secondConfirmed.activeInputs);
+        runtime.close();
+        runtime =
+          await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+            { path: opened.path },
+            () => undefined,
+          );
+        expect(await runtime.store.readAll()).toEqual([abandoned]);
+        await assertConfirmedHistory();
+        await expect(
+          runtime.store.readConfirmedInput({
+            reservationId: currentPlan.reservationId,
+            outRef: `${thirdSigned.transactionHash}#0`,
+          }),
+        ).resolves.toBeNull();
+      } finally {
+        runtime.close();
+      }
+    },
+  );
 
   it("rejects unreserved consumption and substituted produced out-refs", async () => {
     const opened = await openStore();

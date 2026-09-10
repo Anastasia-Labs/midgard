@@ -182,7 +182,7 @@ describe("production fault decision journal", () => {
     ).rejects.toThrow("launch scope differs");
     await expect(
       journal.unsafeAppendDecisionEnvelopeForTest(
-        faultDecision({ category: "nativeScriptDecoding" }),
+        faultDecision({ category: "unregisteredCategory" }),
       ),
     ).rejects.toThrow("kind or category is invalid");
     await expect(

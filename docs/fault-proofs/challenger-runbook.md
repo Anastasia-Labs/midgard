@@ -10,9 +10,11 @@ manifest. Keep the manifest, `onchain/aiken/plutus.json`, deployment-info file,
 catalogue root, reference-script outrefs, and protocol-parameter snapshot as
 one immutable evidence set.
 
-Run the fail-closed contract inspection before starting a watcher:
+Build the CLI and its workspace dependencies before invoking its `dist` entry
+point, then run the fail-closed inspection before starting a watcher:
 
 ```bash
+pnpm --dir demo --filter '@al-ft/midgard-fault-proofs...' build
 node demo/midgard-fault-proofs/dist/bin.js inspect-contracts \
   --blueprint onchain/aiken/plutus.json \
   --deployment-info "$MIDGARD_DEPLOYMENT_INFO" \
@@ -28,6 +30,12 @@ Start the DA committee and watcher from their signed manifests. Follow
 `demo/da-committee-node/docs/da-committee-node-architecture.md` and
 `demo/midgard-watcher/README.md` for configuration rather than copying
 environment variables here.
+
+The current production process launcher admits only the `acceptance` mode on
+Preprod with a `local_node` source. Its finality policy fixes confirmation depth
+and automatic pre-finality rollback depth at 30, and post-finality recovery depth
+at 2,160. Generic nested configuration types do not enable additional launcher
+modes. Follow the watcher process configuration for these exact values.
 
 The challenger path requires:
 

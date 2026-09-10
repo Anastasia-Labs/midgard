@@ -16,6 +16,7 @@ import {
   CML,
   Constr,
   Data,
+  PROTOCOL_PARAMETERS_DEFAULT,
   type SpendingValidator as LucidSpendingValidator,
   validatorToAddress,
   validatorToScriptHash,
@@ -25,6 +26,7 @@ import { describe, expect, it } from "vitest";
 
 import * as SDK from "@/index.js";
 
+import { cekCoreEntryHashes } from "../src/fraud-proof/contracts/cek-core.js";
 import {
   acceptedVerdictSubject,
   AddressData,
@@ -35,6 +37,8 @@ import {
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildZeroInputFaultProofContracts,
+  CEK_CONTEXT_STAGE_TITLES,
+  CEK_CORE_STAGE_TITLES,
   CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   deriveValidationTraceDeploymentId,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
@@ -65,6 +69,7 @@ import {
   normalizeNativeTxValidityRange,
   parseFaultProofBlueprint,
   type Proof,
+  REDEEMER_ITEM_EXECUTOR_KEYS,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_DISPUTE_STEP_COUNT,
@@ -127,6 +132,68 @@ const loadBlueprint = (): FaultProofBlueprint =>
   parseFaultProofBlueprint(
     JSON.parse(readFileSync(blueprintPath, "utf8")) as unknown,
   );
+
+/**
+ * Flattens a nested production title constant into its string leaves, so a
+ * blueprint allowlist is derived from the constants the builder itself reads
+ * instead of being hand-transcribed (and going stale).
+ */
+const collectTitles = (node: unknown): readonly string[] =>
+  typeof node === "string"
+    ? [node]
+    : Object.values(node as Record<string, unknown>).flatMap(collectTitles);
+
+/**
+ * The CEK material-traversal validators are referenced by literal title inside
+ * `buildValidationTraceDisputeFaultProofContracts`; there is no exported
+ * constant to derive them from.
+ */
+/**
+ * Publication budget for a single applied fault-proof validator, expressed as
+ * the deployment constraint it stands for rather than as a round number.
+ *
+ * `demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts`
+ * is the authoritative measurement: it publishes each applied validator as a
+ * reference script through the Lucid emulator at the default protocol
+ * parameters and requires at least a 512-byte L1 margin
+ * (`VAN_ROSSEM_PUBLICATION_RESERVE_BYTES`) on the complete signed transaction.
+ * Every row of the recorded ledger
+ * (`docs/fault-proofs/size-plans/validation-trace-resolver-publication-fit-ledger.json`)
+ * shows that publication transaction costing a constant 276 bytes over the
+ * applied script it carries, so the equivalent bound on applied script bytes
+ * -- which is all this suite can see without an emulator -- is
+ * `maxTxSize - reserve - overhead`.
+ */
+const PUBLICATION_TX_OVERHEAD_BYTES = 276;
+const PUBLICATION_RESERVE_BYTES = 512;
+const MAX_APPLIED_SCRIPT_BYTES =
+  PROTOCOL_PARAMETERS_DEFAULT.maxTxSize -
+  PUBLICATION_RESERVE_BYTES -
+  PUBLICATION_TX_OVERHEAD_BYTES;
+
+const REDEEMER_ITEM_PREFIX =
+  "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_";
+
+/**
+ * The CEK carrier of the shared redeemer-item chain (built by
+ * `buildCekRedeemerItemStages`) composes its titles from
+ * `REDEEMER_ITEM_EXECUTOR_KEYS` plus the CEK-only envelope/settlement pair, so
+ * they are derived here the same way the builder derives them.
+ */
+const CEK_REDEEMER_ITEM_TITLES = [
+  ...REDEEMER_ITEM_EXECUTOR_KEYS,
+  "source_authenticator",
+  "outer_normalizer_v1",
+  "traversal_normalizer_v1",
+  "cek_settlement",
+  "cek_envelope",
+].map((key) => `${REDEEMER_ITEM_PREFIX}${key}.main.spend`);
+
+const CEK_MATERIAL_TRAVERSAL_TITLES = [
+  "fraud_proofs/validation_trace/cek_material_traversal_v1.main.spend",
+  "fraud_proofs/validation_trace/cek_material_traversal_yields.program.withdraw",
+  "fraud_proofs/validation_trace/cek_material_traversal_yields.data.withdraw",
+] as const;
 
 const filterBlueprint = (
   blueprint: FaultProofBlueprint,
@@ -1353,12 +1420,6 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(
-      VALIDATION_TRACE_DISPUTE_STEP_COUNT,
-    );
-    expect(contracts.validationTraceDispute.resolvers).toHaveLength(
-      VALIDATION_TRACE_RESOLVER_COUNT,
-    );
     expect(contracts.fabricatedDeposit.steps).toHaveLength(4);
     expect(contracts.fabricatedWithdrawal.steps).toHaveLength(4);
     expect(contracts.nativeScriptDecoding.steps).toHaveLength(6);
@@ -1379,34 +1440,57 @@ describe("fault-proof contract builder", () => {
       l2TxMistag: contracts.l2TxMistag.firstStep,
       withdrawnInput: contracts.withdrawnInput.firstStep,
     });
+
+    // Step-script identity, stated as the property the deployment depends on
+    // rather than as a folded count of distinct hashes. Two step validators
+    // compiling to the same UPLC is legitimate only where the two steps carry
+    // the same on-chain logic and differ solely in record field *names*, which
+    // PlutusData erases; each such pair is named here so a *new* accidental
+    // collision (two steps of one family, or an undeclared cross-family
+    // twin) fails, while adding a validator to the surface does not.
+    const stepOwners = new Map<string, string[]>();
+    for (const [family, value] of Object.entries(
+      contracts as unknown as Record<string, unknown>,
+    )) {
+      const steps = (
+        value as { readonly steps?: readonly SDK.SpendingValidator[] }
+      ).steps;
+      if (!Array.isArray(steps)) {
+        continue;
+      }
+      // No family may spend the same script at two of its own steps: the step
+      // index is what advances the dispute, so a repeat would let a prover
+      // replay one step in the other's position.
+      expect(
+        new Set(steps.map((step) => step.spendingScriptHash)).size,
+        `${family} step scripts are pairwise distinct`,
+      ).toBe(steps.length);
+      steps.forEach((step, index) => {
+        const owners = stepOwners.get(step.spendingScriptHash) ?? [];
+        owners.push(`${family}[${index.toString()}]`);
+        stepOwners.set(step.spendingScriptHash, owners);
+      });
+    }
     expect(
-      new Set(
-        [
-          ...contracts.doubleSpend.steps,
-          ...contracts.nonExistentInput.steps,
-          ...contracts.nonExistentInputNoIndex.steps,
-          ...contracts.referenceInputNoIdx.steps,
-          ...contracts.invalidRange.steps,
-          ...contracts.invalidSignature.steps,
-          ...contracts.zeroInput.steps,
-          ...contracts.transitionTrace.steps,
-          ...contracts.validationTraceDispute.steps,
-        ].map((step) => step.spendingScriptHash),
-      ).size,
-      // The split stage-one route contributes the envelope resolver plus five
-      // internal stage hashes to the applied proof surface; the four
-      // `reference_input_no_idx` steps add three more distinct hashes, since
-      // only its steps 01 and 04 remain the same UPLC as `input_no_idx`'s (the
-      // carried native-tx view split the previously twin step-03 bodies); the
-      // two `invalid_signature` steps are distinct from every other family. R5
-      // item 1 replaced the two cek/ValueAndMint direct resolvers with two
-      // prepare resolvers plus fifteen semantic resolvers (+15 distinct).
-      // The validation-trace deployed-steps roster now carries the full
-      // interactive chain (VALIDATION_TRACE_DISPUTE_STEP_COUNT = 175); the
-      // previously untallied semantic/stage validators contribute the
-      // remaining distinct hashes (this assertion was unreachable while the
-      // stale 139-step pin above failed first).
-    ).toBe(205);
+      [...stepOwners.values()].filter((owners) => owners.length > 1).sort(),
+    ).toEqual(
+      [
+        // `no_reference_input` mirrors `non_existent_input` on the reference
+        // side; its steps 03/04 differ only in field names.
+        ["nonExistentInput[2]", "noReferenceInput[2]"],
+        ["nonExistentInput[3]", "noReferenceInput[3]"],
+        // `reference_input_no_idx` mirrors `input_no_idx`; only step 04 stayed
+        // identical after the carried native-tx view split step 03.
+        ["nonExistentInputNoIndex[3]", "referenceInputNoIdx[3]"],
+        // The withdrawn spend/reference pair shares its step-03 membership
+        // check.
+        ["withdrawnReferenceInput[2]", "withdrawnInput[2]"],
+        // Both convict from the same final ordered-collection comparison.
+        ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
+        // The unused-witness families share their terminal award step.
+        ["unusedScriptWitness[5]", "unusedRedeemer[8]"],
+      ].sort(),
+    );
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -1853,9 +1937,6 @@ describe("fault-proof contract builder", () => {
   });
 
   it("builds validation-trace dispute with its exact shared-policy parameter order", async () => {
-    if (currentTreeBlueprintPath === undefined) {
-      return;
-    }
     const rawBlueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as {
       readonly validators?: readonly {
         readonly title?: string;
@@ -1869,26 +1950,16 @@ describe("fault-proof contract builder", () => {
       )?.parameters,
     ).toHaveLength(2);
     const blueprint = filterBlueprint(loadBlueprint(), [
-      ...Object.values(FAULT_PROOF_SHARED_TITLES),
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.canonicalDecodeItemStages,
-      ),
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.scriptSourcesStageOneRedeemerStages,
-      ),
-      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
-      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
-      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields),
-      "fraud_proofs/validation_trace/cek_material_traversal_v1.main.spend",
-      "fraud_proofs/validation_trace/cek_material_traversal_yields.program.withdraw",
-      "fraud_proofs/validation_trace/cek_material_traversal_yields.data.withdraw",
+      // Derived from the production title constants rather than transcribed,
+      // so a stage added to the family cannot silently fall out of the
+      // allowlist. Only this family's titles (plus the shared ones) are
+      // admitted, so the leg still shows the builder needs no other family.
+      ...collectTitles(FAULT_PROOF_SHARED_TITLES),
+      ...collectTitles(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES),
+      ...collectTitles(CEK_CORE_STAGE_TITLES),
+      ...collectTitles(CEK_CONTEXT_STAGE_TITLES),
+      ...CEK_REDEEMER_ITEM_TITLES,
+      ...CEK_MATERIAL_TRAVERSAL_TITLES,
       CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     ]);
 
@@ -2021,24 +2092,51 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
       ],
     );
+    // The blueprint's own declared parameter list is the oracle for *which*
+    // argument goes in *which* position: this table maps each declared
+    // parameter title to the one value the deployment may bind to it, and the
+    // expectation is assembled by reading the titles off the blueprint entry.
+    // An argument order that disagrees with the blueprint therefore fails, and
+    // a parameter added to a resolver without a reviewed binding here fails
+    // closed rather than silently defaulting.
+    const dispute = contracts.validationTraceDispute;
+    const semanticParameterBindings: Readonly<Record<string, Data>> = {
+      award_script_hash: spendingScriptHash(expectedAward),
+      computation_thread_policy_id: contracts.computationThread.policyId,
+      field_preimage_certificate_policy_id: certificatePolicyId(blueprint),
+      reference_script_auth_policy_id: h28,
+      source_binder_script_hash:
+        dispute.canonicalDecodeItemStages.source.spendingScriptHash,
+      cek_program_material_script_hash:
+        dispute.cekProgramMaterial.spendingScriptHash,
+      cek_material_traversal_script_hash:
+        dispute.cekMaterialTraversal.spendingScriptHash,
+      cek_context_control_script_hash:
+        dispute.cekContextStages.control.spendingScriptHash,
+      arm_script_hashes: cekCoreEntryHashes(dispute.cekCoreStages),
+    };
     const expectedBaseSemanticResolvers = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
-    ).map((title, index) =>
-      applyParamsToScript(
+    ).map((title) => {
+      const declared = blueprint.validators.find(
+        (entry) => entry.title === title,
+      )?.parameters;
+      if (declared === undefined) {
+        throw new Error(`Missing declared parameters for ${title}`);
+      }
+      return applyParamsToScript(
         compiledScript(blueprint, title),
-        index === 1
-          ? [
-              contracts.validationTraceDispute.canonicalDecodeItemStages.source
-                .spendingScriptHash,
-              contracts.computationThread.policyId,
-              contracts.validationTraceDispute.proofItem.spendingScriptHash,
-            ]
-          : [
-              spendingScriptHash(expectedAward),
-              contracts.computationThread.policyId,
-            ],
-      ),
-    );
+        declared.map(({ title: parameterTitle }) => {
+          const bound = semanticParameterBindings[parameterTitle];
+          if (bound === undefined || bound === null) {
+            throw new Error(
+              `Unreviewed semantic resolver parameter ${parameterTitle} on ${title}`,
+            );
+          }
+          return bound;
+        }),
+      );
+    });
     const expectedSemanticResolvers = [
       ...expectedBaseSemanticResolvers,
       expectedStageOneRedeemerEnvelope,
@@ -2262,7 +2360,7 @@ describe("fault-proof contract builder", () => {
       expect(
         cbor.length / 2,
         `${label} parameterized script bytes`,
-      ).toBeLessThan(14 * 1024);
+      ).toBeLessThanOrEqual(MAX_APPLIED_SCRIPT_BYTES);
     }
 
     expect(contracts.validationTraceDispute.steps).toHaveLength(

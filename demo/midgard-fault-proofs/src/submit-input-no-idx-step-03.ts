@@ -2,7 +2,7 @@
  * **Re-derived onto the flat field commitments by #604.** This step forwards the
  * *producing* transaction's §2.5 anchor to step-04, where it used to forward that
  * transaction's `outputs_hash`; step-04 opens its field 2 through the §8.8 door.
- * See `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * See `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
  * `input-no-idx` step-03 submitter (Goal task `Q13`, §9.1 output 8).
  *

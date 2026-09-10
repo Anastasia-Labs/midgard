@@ -1,79 +1,36 @@
 # Midgard Fault-Proof System
 
-Current-state documentation reviewed against the working tree on 2026-09-01.
+Status: Active
 
-## Current identity
+Last reviewed: 2026-09-07 (source and documentation reconciliation).
 
-- The canonical catalogue contains **32 positional categories**, IDs
-  `00000000` through `0000001f`.
-- `networkId`, `missingNativeScriptUtxo`, `nativeScriptInvalid`, and `minAda`
-  occupy IDs `0000001c` through `0000001f`.
-- The applied catalogue root is
-  `690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4`.
-- The checked-in testnet blueprint contains **563 validators** and has SHA-256
-  `b885c3abb0eeaace296011a108fbe4a06d0e5303bfb9d73bbec48fc30f32f9de`.
-- `transitionTrace` remains category `00000004`; its deployed graph is one
-  route validator plus eight terminal validators.
-- `mpf-chunked-proof` is shared verifier machinery, not a catalogue category.
+## Implementation and identity
 
-The catalogue is immutable after genesis. Any change to positional category
-order, applied first-step hashes, or catalogue root requires a fresh
-development deployment. Canonical V1 has no migration path for an identity
-that was never publicly deployed.
+The SDK catalogue and watcher application cover the same source category set.
+The [catalogue status](catalogue-status.md) owns the checked inventory and points
+to the exact category-ID and installation authorities. Aiken validators, SDK
+parameter application, manifest-bound workflows, and emulator scenarios exist
+across that set; their presence is not a deployment or release acceptance claim.
 
-## What is implemented
+The blueprint is generated, not checked in. Build it with the pinned compiler
+and explicit `testnet` environment for demo/preprod/e2e. Bind acceptance to its
+hash and the applied deployment manifest rather than a hash copied into prose.
+Catalogue identity is immutable after genesis; changing it requires a fresh
+development deployment.
 
-All 32 planned catalogue families have Aiken validators in the generated
-blueprint and catalogue/deployment wiring in the SDK, node, core, and watcher
-identity surfaces. The final three formerly open standalone families are now
-implemented:
+## Readiness boundary
 
-- `missingNativeScriptUtxo`: seven-step proof over authenticated predecessor
-  UTxO membership and native-script material;
-- `nativeScriptInvalid`: five-step proof with bounded signer scanning and a
-  resumable native-script evaluator;
-- `minAda`: five-step transaction/UTxO proof using the shared canonical V1
-  minimum-Ada formula.
-
-The off-chain fault-proof package contains preparation, evidence, submit,
-resume, cancellation, production-artifact, and production-workflow modules for
-these families. It exposes 25 manifest-bound production runner factories. The
-watcher application currently installs 25 of the 32 catalogue categories.
-
-Dedicated init → steps → permanent token → faulty-block removal tests now exist
-for `missingNativeScriptUtxo`, `nativeScriptInvalid`, and both `minAda`
-polarities. The shared state-queue publication blocker is resolved by five
-authenticated withdraw-zero rewarding scripts: all six applied scripts and
-their signed publication transactions fit Van Rossem's 16,384-byte limit. The
-direct native-script-invalid lifecycle passes. Missing-native-script-UTxO now
-reaches proof submission but fails validation, while both min-ADA polarities
-stop at the family-specific 28,658-byte `fraudProofMinAdaStep02` script.
-
-## Readiness judgement
-
-The fault-proof system is **implemented but not release-complete**. The
-remaining launch blockers are:
-
-1. make the shared genesis/setup path and all dedicated Lucid Evolution
-   lifecycles pass under Van Rossem's transaction-size and ExUnit limits;
-2. a watcher-installed production runner for every enabled catalogue family;
-3. complete per-family soundness, cancellation/resume, removal, and maximum-
-   shape emulator coverage under those same limits;
-4. public retained-DA/proof-bundle retrieval sufficient for an independent
-   challenger throughout the challenge window;
-5. live balance-conservation and concurrent-claim acceptance for the compiled
-   non-zero economics;
-6. a reproducible watcher-driven detect → prove → remove run against a real
-   local node and on preprod.
-
-Do not describe Midgard as fault-proof ready for a public testnet until these
-gates pass.
+Release completion still requires reproducible acceptance of publication and
+maximum-shape lifecycles, independent retained proof-data retrieval, durable
+recovery, economics, real-node execution, and preprod challenges. The availability
+challenge publication work is tracked in its [size plan](size-plans/availability-challenge.md).
+[Public-testnet readiness](../public_testnet_readiness.md) owns the launch decision.
 
 ## Document map
 
 | Document                                                   | Authority                                                                   |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [`catalogue-status.md`](catalogue-status.md)               | Exact 32-category inventory and per-layer status                            |
+| [`catalogue-status.md`](catalogue-status.md)               | Source category/installation inventory and acceptance boundaries            |
 | [`coverage-matrix.md`](coverage-matrix.md)                 | Ledger-rule coverage and remaining proof/release gaps                       |
 | [`architecture.md`](architecture.md)                       | Catalogue, computation-thread, token, removal, DA, and watcher architecture |
 | [`onchain-reference.md`](onchain-reference.md)             | Aiken module map and compiled identity                                      |
@@ -83,9 +40,10 @@ gates pass.
 | [`challenger-runbook.md`](challenger-runbook.md)           | Supported autonomous challenger procedure and fail-closed boundaries        |
 | [`manual-recovery-runbook.md`](manual-recovery-runbook.md) | Recovery, rollback, and escalation procedure                                |
 
-Family-specific `*-plan-v1.md` files have been reduced to implementation
-references where their designs landed. Decision records under `decisions/`
-remain normative records rather than status ledgers.
+Delivered family and size plans have been consolidated into the
+[family semantics reference](family-reference.md), [architecture decisions](decisions/README.md),
+and [fit evidence index](size-plans/README.md). Only unfinished acceptance and
+availability work remains a plan.
 
 ## Maintenance rule
 

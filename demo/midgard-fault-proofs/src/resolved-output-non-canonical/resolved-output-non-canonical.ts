@@ -15,7 +15,9 @@ import {
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
+  EMPTY_MERKLE_TREE_ROOT,
   forcedVerdictSubject,
+  GENESIS_HEADER_HASH,
   type Proof,
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
@@ -338,6 +340,19 @@ export const deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus =
     if (admitted.currentEvidence !== block)
       return fail("historical corpus belongs to another challenged block");
     const predecessor = admitted.reconstructions.at(-2);
+    if (
+      predecessor === undefined &&
+      block.header.prevHeaderHash === GENESIS_HEADER_HASH
+    ) {
+      if (block.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT)
+        return fail(
+          "genesis predecessor does not commit the canonical empty ledger",
+        );
+      return Object.freeze({
+        priorRoot: EMPTY_MERKLE_TREE_ROOT,
+        outputs: new Map(),
+      });
+    }
     if (
       predecessor === undefined ||
       predecessor.headerHash !== block.header.prevHeaderHash ||

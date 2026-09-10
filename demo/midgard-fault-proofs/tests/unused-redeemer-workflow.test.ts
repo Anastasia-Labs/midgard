@@ -54,7 +54,10 @@ const evidence = (forced: boolean) =>
     targetRedeemerLeafHex: "33".repeat(32),
     checkpointDigest: "44".repeat(32),
   }) as unknown as UnusedRedeemerEvidence;
-const harness = (initial: UnusedRedeemerWorkflowStage = "none") => {
+const harness = (
+  initial: UnusedRedeemerWorkflowStage = "none",
+  scanBatches = 1,
+) => {
   const entries: UnusedRedeemerJournalEntry[] = [];
   let cursor: UnusedRedeemerCursor = {
     stage: initial,
@@ -63,6 +66,7 @@ const harness = (initial: UnusedRedeemerWorkflowStage = "none") => {
   };
   const confirmed = new Set<string>();
   let nonce = 0;
+  let remainingScanBatches = scanBatches;
   const journal: UnusedRedeemerJournal = {
     load: async () => entries,
     append: async (entry) => {
@@ -72,19 +76,28 @@ const harness = (initial: UnusedRedeemerWorkflowStage = "none") => {
   const actuator: UnusedRedeemerActuator = {
     observe: async () => cursor,
     capture: async ({ action }) => {
-      const targetStage = nextFor[action];
-      const target = {
-        stage: targetStage,
-        threadOutRef: `${targetStage}#0`,
-        checkpointDigest: cursor.checkpointDigest,
-      };
+      const targetStage =
+        action === "submitStep05" && remainingScanBatches > 1
+          ? "step05"
+          : nextFor[action];
       const txHash = createHash("sha256")
         .update(`${action}:${String(nonce++)}`)
         .digest("hex");
+      const target = {
+        stage: targetStage,
+        threadOutRef: `${txHash}#0`,
+        checkpointDigest:
+          action === "submitStep05"
+            ? createHash("sha256")
+                .update(`${cursor.checkpointDigest}:${txHash}`)
+                .digest("hex")
+            : cursor.checkpointDigest,
+      };
       return {
         txHash,
         target,
         submit: async () => {
+          if (action === "submitStep05") remainingScanBatches -= 1;
           cursor = target;
           confirmed.add(txHash);
           return txHash;
@@ -145,6 +158,71 @@ describe("unusedRedeemer durable nine-script workflow", () => {
       }),
     ).toBe("step02c");
     expect(h.entries.at(-1)?.phase).toBe("confirmed");
+  });
+
+  it.each([false, true])(
+    "reconciles successive scan checkpoints without resubmission, forced=%s",
+    async (forced) => {
+      const h = harness("step05", 3);
+      const input = {
+        evidence: evidence(forced),
+        journal: h.journal,
+        actuator: h.actuator,
+      };
+      for (const expectedStage of ["step05", "step05", "step06"]) {
+        const source = await h.actuator.observe("unused");
+        await runUnusedRedeemerWorkflow(input);
+        const target = await h.actuator.observe("unused");
+        expect(target.stage).toBe(expectedStage);
+        expect(target.threadOutRef).not.toBe(source.threadOutRef);
+        expect(target.checkpointDigest).not.toBe(source.checkpointDigest);
+        const submittedCount = h.entries.length;
+        await expect(
+          runUnusedRedeemerWorkflow({
+            ...input,
+            actuator: { ...h.actuator },
+          }),
+        ).resolves.toBe(expectedStage);
+        expect(h.entries).toHaveLength(submittedCount + 1);
+        expect(h.entries.at(-1)).toMatchObject({
+          phase: "confirmed",
+          source,
+          target,
+        });
+      }
+      const intents = h.entries.filter((entry) => entry.phase === "intent");
+      expect(intents.map((entry) => entry.action)).toEqual([
+        "submitStep05",
+        "submitStep05",
+        "submitStep05",
+      ]);
+      expect(new Set(intents.map((entry) => entry.txHash)).size).toBe(3);
+      expect(intents[1]?.source).toEqual(intents[0]?.target);
+      expect(intents[2]?.source).toEqual(intents[1]?.target);
+    },
+  );
+
+  it("reconciles a resumed scan before cancelling its latest checkpoint", async () => {
+    const h = harness("step05", 3);
+    const input = {
+      evidence: evidence(false),
+      journal: h.journal,
+      actuator: h.actuator,
+    };
+    await runUnusedRedeemerWorkflow(input);
+    await expect(cancelUnusedRedeemerWorkflow(input)).rejects.toThrow(
+      "must reconcile before cancellation",
+    );
+    await runUnusedRedeemerWorkflow(input);
+    const latest = await h.actuator.observe("unused");
+    await expect(cancelUnusedRedeemerWorkflow(input)).resolves.toBe(
+      "cancelled",
+    );
+    expect(h.entries.at(-1)).toMatchObject({
+      action: "cancel",
+      phase: "confirmed",
+      source: latest,
+    });
   });
 
   it.each(stages.slice(1, 10))(

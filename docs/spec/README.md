@@ -2,7 +2,8 @@
 
 This directory holds owner-reviewed, implementation-normative component
 specifications: exact types, byte-level encodings, and plain-English security
-properties for deployed Midgard components.
+properties for Midgard components. Normative status does not establish that a
+component has passed release acceptance or been deployed.
 
 - **Status:** Active.
 - **Last reviewed:** 2026-08-08 (directory established, Phase 0 of the flat

@@ -55,7 +55,19 @@ beforeAll(async () => {
   ({ writeTextFileAtomic } = await import("../src/files/atomic-write.js"));
 });
 
-describe("durable atomic write ordering and failures", () => {
+/**
+ * A real filesystem cannot show that the data reached the platter before the
+ * rename, and no crash-injection harness runs in this suite, so the durability
+ * ordering is observed through the syscall boundary instead. Only the two
+ * ordering relations the contract states are asserted; the transcript itself
+ * (how many opens, where chmod sits, whether writeFile or fs.writeFile is
+ * used) is implementation strategy. The content, permission, replacement, and
+ * cleanup claims are asserted against a real filesystem in
+ * `tests/atomic-write.test.ts`.
+ */
+const relativeOrder = (call: string): number => state.calls.indexOf(call);
+
+describe("durable atomic write ordering", () => {
   beforeEach(() => {
     state.calls.length = 0;
     state.failDirectorySync = false;
@@ -65,42 +77,37 @@ describe("durable atomic write ordering and failures", () => {
   it("syncs the file before rename and the parent directory after rename", async () => {
     await writeTextFileAtomic("/tmp/state.json", "content", { mode: 0o600 });
 
-    expect(state.calls).toEqual([
-      "mkdir",
-      "write:file",
-      "chmod",
-      "sync:file",
-      "close:file",
-      "rename",
-      "sync:directory",
-      "close:directory",
-    ]);
+    expect(relativeOrder("write:file")).toBeGreaterThanOrEqual(0);
+    expect(relativeOrder("sync:directory")).toBeGreaterThanOrEqual(0);
+    expect(relativeOrder("write:file")).toBeLessThan(
+      relativeOrder("sync:file"),
+    );
+    expect(relativeOrder("sync:file")).toBeLessThan(relativeOrder("rename"));
+    expect(relativeOrder("rename")).toBeLessThan(
+      relativeOrder("sync:directory"),
+    );
   });
 
-  it("surfaces a parent-directory sync failure and cleans up", async () => {
+  it("still removes the temp file when the parent-directory sync fails after rename", async () => {
     state.failDirectorySync = true;
 
     await expect(
       writeTextFileAtomic("/tmp/state.json", "content"),
     ).rejects.toThrow("injected directory sync failure");
-    expect(state.calls).toEqual([
-      "mkdir",
-      "write:file",
-      "sync:file",
-      "close:file",
-      "rename",
-      "sync:directory",
-      "close:directory",
-      "rm",
-    ]);
+
+    expect(relativeOrder("rename")).toBeGreaterThanOrEqual(0);
+    expect(relativeOrder("rm")).toBeGreaterThan(relativeOrder("rename"));
   });
 
-  it("cleans up and does not rename when file sync preparation fails", async () => {
+  it("never renames a temp file whose write failed", async () => {
     state.failTempWrite = true;
 
     await expect(
       writeTextFileAtomic("/tmp/state.json", "content"),
     ).rejects.toThrow("injected write failure");
-    expect(state.calls).toEqual(["mkdir", "write:file", "close:file", "rm"]);
+
+    expect(state.calls).not.toContain("rename");
+    expect(state.calls).not.toContain("sync:file");
+    expect(relativeOrder("rm")).toBeGreaterThanOrEqual(0);
   });
 });

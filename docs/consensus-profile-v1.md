@@ -55,6 +55,7 @@ ValidationTraceDescriptor {
   initial_state_hash,
   terminal_state_hash,
   verdict,
+  rejection_code_hash,
 }
 ```
 
@@ -76,21 +77,25 @@ dynamic field preimage as an independently bounded proof item instead of
 requiring the complete transaction in one fault-proof transaction.
 
 ```text
-MidgardTransactionV1 {
+MidgardTransaction {
   version = 1,
+  validity,
   body,
   witness_set,
 }
 
-MidgardTransactionWitnessSetV1 {
-  address_witnesses,
-  script_witnesses,
-  redeemers,
-  script_programs,
+MidgardTransactionWitnessSet {
+  addr_tx_wits,
+  script_tx_wits,
+  redeemer_tx_wits,
 }
 ```
 
-Every variable-sized field has one canonical definite-length CBOR encoding.
+Each field preimage uses the canonical definite-array/byte-envelope grammar in
+[MidgardTx §5](spec/midgard-tx.md#5-the-uniform-enveloped-preimage-grammar).
+Nested datum/redeemer Plutus Data follows §6.2, including its required
+indefinite list and long-byte-string forms. CEK program material is a separate
+DA/material-publication concern, not a fourth witness-set field.
 The compact transaction commits each field hash and the full witness-set hash.
 The transaction id remains the domain-separated hash of the canonical compact
 body and version.
@@ -110,8 +115,9 @@ L2TransactionSourceV1 {
 ```
 
 The map key is the 32-byte `tx_id`, and duplicate keys are rejected. A
-V1 transaction-order commitment uses the same source and adds the operator's
-terminal validity classification. The forced-transactions source root maps
+V1 transaction-order payload commits the same source and its derived proof
+commitment. The operator adds a typed verdict in the forced-inclusion leaf.
+The forced-transactions source root maps
 the serialized L1 order output reference (not the L2 transaction ID) to:
 
 ```text
@@ -122,7 +128,7 @@ ForcedInclusionTxV1 {
     witness_set_compact_cbor,
     field_preimage_lengths_cbor,
   },
-  operator_validity,
+  verdict: ForcedTxValid | ForcedTxInvalid { reason: RejectionReasonV1 },
 }
 ```
 
@@ -137,27 +143,26 @@ The canonical input and generated TypeScript/Aiken golden are maintained at
 derived JSON and Aiken projection are fresh. Set `MIDGARD_AIKEN_BIN` when a
 specific Aiken formatter executable must be used.
 
-Normal DA carries every canonical field preimage. A forced submission uses a
-staged L1 protocol for each field:
+Normal DA carries every canonical field preimage. Forced-order material follows
+[MidgardTx §8.11](spec/midgard-tx.md#811-forced-order-material-carriage-normative):
+the order mint authenticates each non-empty field through the shared field-access
+door, using inline, raw-UTxO, or certified carriage. The ordered carriage vector
+must be exhausted exactly; empty fields have the canonical one-byte encoding.
+Authenticated lengths must match the compact source's declared lengths.
 
-1. publish the field as a script-locked fragment bound to the order id,
-   transaction commitment, field index, and receipt policy;
-2. reference that existing fragment in a receipt-policy transaction;
-3. let the receipt policy verify the compact source, canonical field,
-   committed length/hash, and exact compiled field bound;
-4. mint one deterministic receipt NFT to a compact receipt datum that binds
-   the exact fragment output reference.
+The order datum commits the transaction source, not carriage output references.
+After minting, material is available from L1 history and addressed by digest;
+order settlement does not consume the carriage UTxOs. Raw material remains in
+the publisher's custody and can be reclaimed after minting. A later dispute
+re-publishes identical bytes when needed. The burn carries an empty material
+vector. The implementation is in
+[`tx-order-v1.ak`](../onchain/aiken/validators/user-events/tx-order-v1.ak) and its
+[material verification library](../onchain/aiken/lib/midgard/user-events/tx-order-v1.ak).
 
-Publishing and receipting are separate transactions because a transaction ID
-hashes its inline output datums; embedding the same transaction's ID in its own
-receipt datum would be circular. The final order mint references exactly nine
-compact receipt UTxOs. It does not place all field fragments in one validator
-context. Its datum records both ordered fragment and receipt references.
-Consuming the order must consume all eighteen staged UTxOs and burn both the
-order NFT and all receipt NFTs. Fragment and receipt spending validators
-independently enforce the exact burns. A sidecar or unreceipted fragment is
-insufficient. Missing, duplicated, non-canonical, mismatched, oversized, or
-wrong-policy material fails closed.
+This flow replaces the staged field-receipt protocol. Its old receipt execution
+measurements do not demonstrate fit for the current mint. The variable-width
+field walk still has the execution-budget limitation documented in §8.11;
+release acceptance must resolve that limitation for the required capability floor.
 
 Non-native program material uses a separate permissionless, append-only L1
 publication address:
@@ -203,20 +208,15 @@ inputs. It has these ordered phases:
 12. PlutusV3/MidgardV1 context construction and CEK execution for spend, mint,
     receive/protected-output, and observe purposes;
 13. multi-asset input/output/mint/fee accounting;
-14. accepted ledger delta or rejected no-op terminal state.
+14. ledger-delta verification (`LedgerDelta`);
+15. absorbing acceptance or rejection (`Terminal`).
 
-The phase code order above is consensus data. Versions 1 and 2 never reached
-the release gate and are rejected rather than reinterpreted. Version 3 added a
-cursor for independently revealed field preimages. Version 4 additionally
-binds every CEK constant to its semantic Data root and exact UPLC memory, and
-admits typed Data-node material. It also binds the off-chain rejection
-priority to the L1 instruction order, including transactions that violate more
-than one rule. Version 8 made source-constant decoding an exact one-step rule
-and used a distinct runtime-only term for the authenticated script context, so
-a source program cannot substitute an unproved semantic-memory claim.
-Version 9 additionally pins work-witness hashing to Aiken's exact
-`cbor.serialise` byte-string chunking, closing the off-chain/on-chain encoding
-ambiguity for witnesses longer than 64 bytes.
+The phase code order above is consensus data. The sole pre-launch machine
+version is `1`; it includes authenticated source constants, a distinct
+runtime-only script-context term, and work-witness hashing using Aiken's exact
+`cbor.serialise` byte-string chunking. Retired internal version numbers are not
+accepted deployment versions. See
+[`consensus-profile.ts`](../demo/midgard-core/src/consensus-profile.ts).
 
 Every state commits the phase, program counter, immutable transaction/source
 commitment, prior ledger root, the operator's claimed ledger delta root,
@@ -225,15 +225,10 @@ state is absorbing, which makes Merkle padding unambiguous.
 
 The claimed ledger delta root is part of the state's immutable context: it is
 supplied once with the initial state and is carried unchanged by every
-transition (`validation-machine-v1.ak` `immutable_context_matches`) and across
+transition (`validation-machine/` `immutable_context_matches`) and across
 the committed claim endpoints (`validation-claim-v1.ak`). No instruction writes
 it; the accepting terminal reconstructs the operation frontier independently and
-compares it against the claim. This enumeration previously omitted the field
-even though `encode_machine_state` commits it; the omission is corrected here.
-The correction was prompted by a production defect in which the *rejecting*
-terminal rule required the successor to clear this field, contradicting its
-immutability and making rejection one-steps unprovable from every pre-state
-carrying a real (non-empty) claimed delta. See §8.
+compares it against the claim.
 
 The same initial-state constructor and machine apply to normal and forced
 transactions. Source authentication differs; transaction semantics do not.
@@ -323,17 +318,6 @@ forced transaction is a unilateral fault
 delta root is immutable context (§5) and is carried forward unchanged by a
 rejecting terminal.
 
-This was previously implemented incorrectly: `rejected_successor_is_exact`
-additionally required the rejecting successor to *write* the empty frontier
-commitment into `ledger_delta_root`. Because the same transition must satisfy
-`immutable_context_matches` (pre == post on that field), the two clauses were
-jointly unsatisfiable for every pre-state with a non-empty claimed delta —
-i.e. for every real transaction, and in particular for the governing
-adversarial case in which an operator commits an `Accepted` descriptor over a
-transaction that truly rejects. No challenger could construct a winning
-rejection successor, so the dishonest operator won by default. The clearing
-clause has been deleted; the obligation lives here, where it always belonged.
-
 V1 requires the same accepted-transaction transition witness for valid forced
 transactions as for normal L2 transactions, with forced-source membership and
 full-transaction binding. Canonical block construction and DA verification
@@ -364,112 +348,29 @@ No 8 KiB aggregate transaction ceiling exists in V1. The effective transaction
 bound is derived by summing every bounded dynamic field in the canonical
 encoding and then adding its fixed-size fields and CBOR framing.
 
-| Item                                                            |                                                                                            Maximum |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------: |
-| supported L1 fault-proof transaction floor                      |                                                                                             16 KiB |
-| supported L1 fault-proof execution floor                        |                                                             16,500,000 memory / 10,000,000,000 CPU |
-| supported Midgard transaction execution floor                   |                        16,500,000 memory / 10,000,000,000 CPU; validation may span multiple proofs |
-| transaction-field proof overhead reservation                    |                                                                                              7 KiB |
-| each aggregate dynamic transaction field                        |                                                32,768 bytes, consumed through authenticated chunks |
-| each independently revealed transaction-field chunk             |                                                                                        4,095 bytes |
-| measured maximum field-publication datum                        |                                                                                        4,574 bytes |
-| measured maximum unsigned field-publication transaction         |                                                                                        4,675 bytes |
-| maximum CEK-material publication datum                          |                                                                                        4,268 bytes |
-| measured one-node unsigned CEK-material publication transaction |                                                                                        4,369 bytes |
-| measured maximum field-chunk receipt publication                |                                                               3,398,228 memory / 1,209,745,039 CPU |
-| measured canonical receipt-order verification                   |                                                                 1,233,800 memory / 432,521,347 CPU |
-| ledger-membership proof overhead reservation                    |                                                                                             12 KiB |
-| each ledger output preimage                                     |                                             16,384 bytes, retained and authenticated incrementally |
-| serialized Cardano output `Value`                               |                                                      5,000 bytes; no lower independent Midgard cap |
-| consensus script envelope                                       |                                                                                           50 bytes |
-| canonical CEK material nodes per program                        |                                                           at most 1,597,819 within the DA envelope |
-| canonical CEK material per program                              |                           at most 67,108,418 structural bytes; exact encoded aggregate must fit DA |
-| canonical CEK blob chunk                                        |                                                                                        4,095 bytes |
-| pinned CEK builtin tags                                         |                                                                                       0 through 86 |
-| derived canonical full transaction                              |                                                                                      295,041 bytes |
-| canonical datum                                                 |                                         no independent cap; contained by its output/field preimage |
-| reference script                                                | supported as a real output reference script with separately authenticated/chunked program material |
-| spend-inputs aggregate field                                    |                                                                                       32,768 bytes |
-| reference-inputs aggregate field                                |                                                                                       32,768 bytes |
-| outputs aggregate field                                         |                                                                                       32,768 bytes |
-| required-observers aggregate field                              |                                                                                       32,768 bytes |
-| required-signers aggregate field                                |                                                                                       32,768 bytes |
-| mint aggregate field                                            |                                                                                       32,768 bytes |
-| address-witnesses aggregate field                               |                                                                                       32,768 bytes |
-| script-witnesses aggregate field                                |                                                                                       32,768 bytes |
-| redeemers aggregate field                                       |                                                                                       32,768 bytes |
-| spend-input count guardrail                                     |                                                              16,384; aggregate bytes are effective |
-| reference-input count guardrail                                 |                                                              16,384; aggregate bytes are effective |
-| output count guardrail                                          |                                                              16,384; aggregate bytes are effective |
-| address-witness count guardrail                                 |                                                              16,384; aggregate bytes are effective |
-| required-signer count guardrail                                 |                                                              16,384; aggregate bytes are effective |
-| script-execution/redeemer count guardrail                       |                                                    16,384; bytes and execution units are effective |
-| required-observer count guardrail                               |                                                              16,384; aggregate bytes are effective |
-| distinct non-ADA asset count guardrail                          |                                                                16,384; `Value` bytes are effective |
-| native-script depth/node guardrail                              |                                                       16,384 each; transaction bytes are effective |
-| each transaction-bearing source class per block                 |                                                                                             10,000 |
-| total source events / transition steps per block                |                                                                                             40,000 |
-| validation trace descriptors per block                          |                                                                                             20,000 |
-| ledger operations per block                                     |                                                                                             40,000 |
-| validation-machine steps                                        |                                                                                         `2^32 - 1` |
-| bisection rounds                                                |                                                                                                 32 |
-| dispute response window                                         |                                                                                         300,000 ms |
-| derived minimum maturity for this dispute schedule              |                                                                                      39,600,000 ms |
-| exact V1 block maturity                                         |                                                                            604,800,000 ms (7 days) |
-| canonical transactions per block                                |                                                                                             16 MiB |
-| DA payload                                                      |                                                                                             64 MiB |
+[Appendix A](#appendix-a--exact-compiled-profile) is the generated inventory of
+profile limits. Do not maintain a second prose table of those values. The limits
+are defined in
+[`consensus-profile.ts`](../demo/midgard-core/src/consensus-profile.ts); field
+carriage is defined by [MidgardTx §8](spec/midgard-tx.md#8-field-preimage-carriage-three-tiers).
+The profile's transaction-field chunk reservation and CEK blob chunk limit are
+not the field-carriage chunk size `K`.
 
-The 32,768-byte aggregate-field reservation is not an independently revealed
-preimage or an L1 transaction claim. It accommodates canonical Midgard wrapper
-expansion while proofs consume the field in ordered, authenticated chunks of
-at most 4,095 bytes. Finalization authenticates the exact aggregate count and
-length. The one-byte-per-item count guardrail is derived from Cardano's 16 KiB
-complete-transaction floor; real item encodings and aggregate byte limits are
-always tighter, so the guardrail cannot exclude a collection cardinality that
-could fit in a Cardano transaction.
+Aggregate fields and full ledger-output preimages can exceed one proof
+transaction's available witness budget. Their bounds therefore require
+incremental authentication and consumption, with real transaction framing
+included in each step's measurement. CEK programs use a compact envelope and
+content-addressed material nodes; raw Flat is an authoring format. Exact encoded
+DA size, including tuple framing and all material, remains the aggregate gate.
 
-The current publication measurements use a maximum field chunk: a 4,574-byte
-datum and 4,675-byte unsigned publication transaction. Script execution
-reveals one independently bounded CEK material node at a time; the compact
-50-byte program envelope identifies the complete content-addressed graph and
-its measured source-scan resolver payload is 7,546 bytes. A maximum
-4,095-byte blob chunk has a 4,098-byte canonical typed preimage, a 4,268-byte
-immutable publication datum, and a 4,369-byte one-input/one-output unsigned
-publication transaction.
-
-Diagnostic CML framing measurements do not activate the profile. Release
-evidence must construct the actual applied/parameterized publication,
-resolution, and settlement transactions and measure their complete serialized
-bytes and execution units against the live Cardano parameter snapshot. Ledger
-outputs are retained in full but represented in MPF leaves by small
-authenticated descriptors, allowing their real bytes, Values, datums, and
-reference scripts to be checked incrementally rather than imposing a smaller
-whole-output proof limit. The release-evidence digest remains unset until
-those paths and the capability-parity corpus pass.
-
-CEK graph material is not capped by the former 6,911-byte raw-script limit.
-Raw Flat/CBOR is an authoring input; consensus carries a 50-byte program
-envelope plus independently content-addressed nodes. An otherwise-empty,
-structurally valid canonical V1 payload is 445 bytes. Switching its material
-list from empty to non-empty leaves 446 fixed bytes outside the tuples. The
-smallest possible tuple is 42 bytes (tuple framing, a 32-byte content root,
-and a versioned typed one-byte preimage). Therefore the 64 MiB DA envelope
-admits no more than `floor((67,108,864 - 446) / 42) = 1,597,819` material
-nodes. The corresponding structural preimage-byte upper bound is 67,108,418
-bytes. Actual tuple framing and typed preimages consume additional bytes, so
-the exact canonical V1 encoded-size gate is authoritative and generally
-tighter. These bounds remove the arbitrary raw-script cap without allowing a
-program to escape the finite DA/proof envelope.
-
-A one-shot order mint that verified all nine maximum fields measured
-45,154,331 memory and 14,905,078,582 CPU, so it is not a valid consensus path.
-The staged receipt protocol is mandatory, not an optimization or feature
-flag. Its generated near-maximum fixture is 51,080 bytes of canonical L2
-transaction data. Every individual receipt proof remains below the compiled
-16.5M-memory/10B-CPU L1 floor; the largest is the streaming canonical mint
-field at the values shown above. The final order validates only the nine
-compact receipts. These execution-unit measurements are pinned alongside the
-byte-envelope tests.
+Measured bytes and execution units are evidence tied to a compiler, blueprint,
+parameters, and fixture; they are not additional consensus constants. Use the
+[component-spec carriage measurements](spec/midgard-tx.md#810-cost-claims--the-carriage-exit-measurements)
+and [fault-proof testing status](fault-proofs/testing-status.md) to locate
+measurement commands and limitations. Historical receipt-protocol measurements
+and unsigned CML framing estimates do not activate the current profile.
+Release evidence must measure the actual applied publication, resolution, and
+settlement transactions against the deployment's Cardano parameter snapshot.
 
 These are upper bounds, not throughput targets. A release may lower a bound
 without changing semantics only by deploying a distinct profile id and
@@ -644,13 +545,7 @@ Profile digest: `fb1e4d38851c8c211e715d90af13ebbca39df051e50b631c9294a8c5d54b38c
 
 <!-- END MIDGARD_CONSENSUS_PROFILE_V1_GENERATED -->
 
-Note on `requiredProofFamilies`. `validation-machine-one-step` and
-`forced-transaction-verdict-mismatch` are listed as required and are, after the
-`rejected_successor_is_exact` fix described in §8, provable in both directions.
-Before that fix the rejecting half of `validation-machine-one-step` was
-unprovable whenever the operator's claimed delta root was non-empty, and
-`forced-transaction-verdict-mismatch` was provable only in the
-operator-says-invalid direction — a direct contradiction of the specification's
-"a fault in either direction". No profile *value* changed as a result of the
-fix, so the digest above is unaffected; only the executable status of the
-listed families did.
+`requiredProofFamilies` names release obligations, not a coverage attestation.
+Use the [coverage matrix](fault-proofs/coverage-matrix.md) and
+[public-testnet checklist](public_testnet_readiness.md) to assess completion for
+a particular revision and deployment.

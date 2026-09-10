@@ -4,8 +4,8 @@
 //// ScriptSources frame, pins the pre control bytes the yield attests against,
 //// requires the yield, and re-derives the successor by splicing the attested
 //// successor control into the frame extension. See
-//// docs/fault-proofs/size-plans/validation-trace-script-sources-output-proof-step-semantic-v1.md
-//// §4.1-4.2 and §10.x.
+//// docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md
+//// Decision section.
 
 use aiken/builtin
 use aiken/crypto.{ScriptHash}
@@ -127,12 +127,8 @@ fn output_proof_step_dispatch(
   reference_script_auth_policy_id: PolicyId,
   tx: Transaction,
 ) -> Bool {
-  let frame = raw.open_frame_v1(
-    pre,
-    transition,
-    frame_item_count,
-    output_proof_stage,
-  )
+  let frame =
+    raw.open_frame_v1(pre, transition, frame_item_count, output_proof_stage)
   // Outer well-formedness of the agreed control bytes: version, stage range,
   // descriptor scalars and canonical re-encoding. `expect` so the checked
   // decode actually runs (an unused `let` is fully ignored in Aiken).

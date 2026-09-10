@@ -407,14 +407,15 @@ export const reconcileCursorFamilyAction = async <
   ) {
     return { kind: "confirmed", txHash };
   }
-  if (included && unchanged()) return { kind: "pending", txHash };
-  if (!included && unchanged()) return { kind: "not_found" };
+  // A release-final snapshot cannot establish that a submitted transaction
+  // was rejected or expired. Preserve its intent while the state is unchanged.
+  if (unchanged()) return { kind: "pending", txHash };
   if (
     !included &&
     parsed.stage === "remove" &&
     admittedStage.kind === "proof_token"
   ) {
-    return { kind: "not_found" };
+    return { kind: "pending", txHash };
   }
   return {
     kind: "conflict",

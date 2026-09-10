@@ -8,7 +8,7 @@
  * empty-field constant, and under §4's plain hashing that constant is the same
  * 32 bytes in all nine slots, so the forwarded hash could not say *which* field
  * was empty. The rebind is recorded once in
- * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 
 import {

@@ -45,13 +45,14 @@ await submitted.awaitStatus({ until: "accepted" });
 Use `MidgardProvider` or `MidgardNodeProvider`. A provider must expose Midgard
 UTxOs, Midgard native transaction submission, transaction status, protocol fee
 parameters, and `GET /protocol-info` facts. The canonical V1 profile requires
-the exact V1 consensus limits and the complete `NativeCardano`, `PlutusV3`, and
-`MidgardV1` `supportedScriptLanguages` surface.
+the exact V1 consensus limits and exactly `PlutusV3` and `MidgardV1` in
+`supportedScriptLanguages`, as defined by `MIDGARD_SUPPORTED_SCRIPT_LANGUAGES`
+in `@al-ft/midgard-core/codec/script-language-views`.
 `codecSupportedScriptLanguages` must agree with the enabled language set.
 
 `MidgardNodeProvider.create(...)` fails closed when protocol info is unavailable
-unless an explicit fallback is supplied. Fallback diagnostics are visible through
-`provider.diagnostics()` and `midgard.config()`.
+or malformed. It has no fallback protocol configuration. Provider diagnostics
+are visible through `provider.diagnostics()` and `midgard.config()`.
 
 ## Provider Switching And UTxO Overrides
 
@@ -104,6 +105,9 @@ one transaction id/body hash.
 const bundleA = await tx.sign.withWallet(walletA).partial();
 const bundleB = await tx.sign.withPrivateKey(privateKeyB).partial();
 const signed = tx.assemble([bundleA, bundleB]);
+if (!("submit" in signed)) {
+  throw new Error("The assembled transaction still needs witnesses");
+}
 ```
 
 `PartiallySignedTx` is non-submit-capable. The sign builder also exposes
@@ -168,5 +172,5 @@ ordinary outputs.
 
 See [examples/usage.ts](./examples/usage.ts) for runnable in-memory examples
 covering balanced transfers, provider switching, UTxO overrides, observer
-execution, imports, composition, local chaining, signing, submission, status,
+construction, imports, composition, local chaining, signing, submission, status,
 safe-result errors, and Effect errors.

@@ -3,8 +3,7 @@
 - **Status:** ACCEPTED by the Goal owner's 2026-08-04 direction to resolve
   this queue now.
 - **Scope:** canonical V1 only. This record decides proof-family shape; it
-  does not mark Q27, Q32, or Q43 complete, and does not alter the task
-  manifest or GOAL_PROGRESS ledger.
+  does not mark Q27, Q32, or Q43 complete, and does not itself establish release acceptance.
 - **Normative basis:** `GOAL_SPEC.md` §3.1(4), §8.3 C42/C43/C49, and §9.3
   Q27/Q32/Q43; `docs/consensus-profile-v1.md` §3 and §8.
 
@@ -14,7 +13,8 @@
 independent required family after C42 and C49 provide the rule; it may not be
 classified N/A, replaced by an off-chain wallet check, or bound to a constant.
 
-The current source proves the gap rather than an exemption:
+At the time of the decision, source showed a gap rather than an exemption
+(the following paths describe that historical revision):
 
 - `onchain/aiken/lib/midgard/validation-machine-v1.ak` has value conservation
   and `E_MIN_FEE`, but no min-Ada rejection rule; the C49 manifest anchor
@@ -38,6 +38,15 @@ that semantic terminal. A target parameter or output-codec change invalidates
 the vectors and proof-fit evidence. This unblocks a single bounded Q27
 assignment once C42/C49 are ready; it does **not** authorize a fallback that
 shrinks supported Cardano output capability.
+
+**Implementation update (2026-09-07):** the gap described above has been
+implemented. `demo/midgard-validation/src/phase-b.ts` rejects underfunded
+outputs with `E_MIN_ADA`; `value-accounting.ts` provides the exact output-cost
+calculation. The Aiken twin lives in `validation-machine/shared.ak`, and
+`validation-machine/value-and-mint.ak` binds rejection into the machine. The
+rate is a compiled deployment constant; changing it requires redeployment,
+per [decision 0005](0005-owner-rulings-2026-08-18.md). Current proof coverage
+and remaining acceptance are recorded in [the coverage matrix](../../fault-proofs/coverage-matrix.md).
 
 ## Q32 — `req-signer-set`: structural N/A, reduces to Signatures
 
@@ -104,8 +113,12 @@ unproven.
 
 ## Focused evidence commands
 
+Run each command from the repository root with the pinned Aiken binary on PATH
+(or set `MIDGARD_AIKEN_BIN`). The helper requires the actual test module name;
+its nonzero-collection check rejects a missing selector.
+
 ```bash
-cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 signatures_proves_a_missing_required_signer_is_an_exact_no_op
-cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/transition_trace/proof accepts_valid_l2_transaction_no_op_transition_fault rejects_l2_transaction_when_trace_matches_expected_post_root
-cd demo && pnpm --filter @al-ft/midgard-validation test -- --run tests/phase-a.test.ts -t 'rejects missing required native key witnesses'
+(cd onchain/aiken && MIDGARD_AIKEN_ENV=testnet node scripts/run-focused-check.mjs midgard/validation_machine_v1.test signatures_proves_a_missing_required_signer_is_an_exact_no_op)
+(cd onchain/aiken && MIDGARD_AIKEN_ENV=testnet node scripts/run-focused-check.mjs midgard/fraud_proofs/transition_trace/proof.test accepts_valid_l2_transaction_no_op_transition_fault rejects_l2_transaction_when_trace_matches_expected_post_root)
+pnpm --dir demo/midgard-validation exec vitest run tests/phase-a.test.ts -t 'rejects missing required native key witnesses'
 ```

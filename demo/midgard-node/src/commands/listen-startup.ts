@@ -31,6 +31,7 @@ import {
   formatStateQueueTopology,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/state-queue-topology.js";
+import { assertAvailabilityChallengeRewardAccountsRegisteredProgram } from "../transactions/availability-challenge-registration.js";
 import * as Initialization from "../transactions/initialization.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
@@ -233,6 +234,10 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
         }),
       );
     }
+    yield* assertAvailabilityChallengeRewardAccountsRegisteredProgram(
+      lucid.api,
+      contracts,
+    );
     yield* Effect.logInfo(
       `Startup initialization check: protocol deployment already present (state_queue=${details}).`,
     );

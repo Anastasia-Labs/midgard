@@ -3,7 +3,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  MIDGARD_RELEASE_EVIDENCE_DIGEST,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
@@ -242,6 +241,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofMissingNativeScriptUtxoStep03",
   "fraudProofMissingNativeScriptUtxoStep04",
   "fraudProofMissingNativeScriptUtxoStep05",
+  "fraudProofMissingNativeScriptUtxoStep06",
+  "fraudProofMissingNativeScriptUtxoStep07",
   "fraudProofNativeScriptInvalid",
   "fraudProofNativeScriptInvalidStep02",
   "fraudProofNativeScriptInvalidStep03",
@@ -583,6 +584,11 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofDistinctAssetAccumulationLimitStep06",
   "availabilityChallengeSpend",
   "availabilityChallengeMint",
+  "availabilityChallengeBondWithdraw",
+  "availabilityChallengeOpenWithdraw",
+  "availabilityChallengeSettleWithdraw",
+  "availabilityChallengeCloseWithdraw",
+  "availabilityChallengeTimeoutWithdraw",
   "stateQueueCommitWithdraw",
   "stateQueueUnattestedTimeoutWithdraw",
   "stateQueueUnavailableTimeoutWithdraw",
@@ -1036,6 +1042,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofMissingNativeScriptUtxoStep04",
     "V1 fraud-proof missing-native-script-utxo step-05":
       "fraudProofMissingNativeScriptUtxoStep05",
+    "V1 fraud-proof missing-native-script-utxo step-06":
+      "fraudProofMissingNativeScriptUtxoStep06",
+    "V1 fraud-proof missing-native-script-utxo step-07":
+      "fraudProofMissingNativeScriptUtxoStep07",
     "V1 fraud-proof native-script-invalid step-01":
       "fraudProofNativeScriptInvalid",
     "V1 fraud-proof native-script-invalid step-02":
@@ -1519,6 +1529,16 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofDistinctAssetAccumulationLimitStep06",
     "availability-challenge spending": "availabilityChallengeSpend",
     "availability-challenge minting": "availabilityChallengeMint",
+    "availability-challenge bond withdrawal":
+      "availabilityChallengeBondWithdraw",
+    "availability-challenge open withdrawal":
+      "availabilityChallengeOpenWithdraw",
+    "availability-challenge settle withdrawal":
+      "availabilityChallengeSettleWithdraw",
+    "availability-challenge close withdrawal":
+      "availabilityChallengeCloseWithdraw",
+    "availability-challenge timeout withdrawal":
+      "availabilityChallengeTimeoutWithdraw",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES = Object.freeze(
@@ -1530,6 +1550,7 @@ export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
   "deployNodeRuntimeReferenceScripts",
   "initProtocol",
   "phasRegistration",
+  "availabilityRegistration",
   "operatorRegistration",
   "operatorActivation",
 ] as const);
@@ -1650,8 +1671,7 @@ export type DeploymentManifestValue = {
       readonly retentionDays: number;
     };
   };
-  readonly proofEvidence: {
-    readonly digest: string | null;
+  readonly artifacts: {
     readonly blueprintHash: string;
   };
   readonly steps: Readonly<
@@ -2494,33 +2514,9 @@ const parseDeploymentManifestCommon = (
     contracts,
   );
   validateDaIdentity(requireObject(candidate.da, "da"));
-  const proofEvidence = requireObject(candidate.proofEvidence, "proofEvidence");
-  requireExactKeys(
-    proofEvidence,
-    ["digest", "blueprintHash"],
-    [],
-    "proofEvidence",
-  );
-  if (
-    proofEvidence.digest !== null &&
-    !/^[0-9a-f]{64}$/u.test(
-      requireNonEmptyString(proofEvidence.digest, "proofEvidence.digest"),
-    )
-  ) {
-    throw new Error(
-      "Deployment manifest proofEvidence.digest must be null or lowercase SHA-256 hex",
-    );
-  }
-  if (proofEvidence.digest !== MIDGARD_RELEASE_EVIDENCE_DIGEST) {
-    throw new Error(
-      "Deployment manifest proofEvidence.digest must exactly match the compiled V1 release evidence",
-    );
-  }
-  requireLowercaseHex(
-    proofEvidence.blueprintHash,
-    32,
-    "proofEvidence.blueprintHash",
-  );
+  const artifacts = requireObject(candidate.artifacts, "artifacts");
+  requireExactKeys(artifacts, ["blueprintHash"], [], "artifacts");
+  requireLowercaseHex(artifacts.blueprintHash, 32, "artifacts.blueprintHash");
   validateSteps(requireObject(candidate.steps, "steps"));
   validateValidationDispute(
     requireObject(candidate.validationDispute, "validationDispute"),
@@ -2581,7 +2577,7 @@ export const parseDeploymentManifestValue = (
       "contracts",
       "referenceScripts",
       "da",
-      "proofEvidence",
+      "artifacts",
       "steps",
       "validationDispute",
       "l1Finality",

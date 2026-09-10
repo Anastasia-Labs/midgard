@@ -311,7 +311,7 @@ describe("production retained-DA runtime V1", () => {
       authority: "substituted",
     }));
     const substituteAuthority = makeWatcherDeploymentAuthorityFixture({
-      releaseDigest: "33".repeat(32),
+      blueprintHash: "33".repeat(32),
     });
     const mutableOptions = {
       deploymentIdentity: deploymentIdentity(),

@@ -4,10 +4,9 @@
  * Opens §2.5 field **1** of the transaction carried by step 01 and forwards the
  * challenged reference input to step 03.
  *
- * **Re-derived onto the §8.8 door by #604** — and this family was *unbannered*
- * while stale, because #576 rebound it (`b824ad6ea`) one day after
- * `docs/fault-proofs/offchain-builder-staleness-575.md` listed it as an
- * exclusion. Thread state carries `verified_tx_id`, the §2.5 anchor; the
+ * The shared door is specified in
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
+ * Thread state carries `verified_tx_id`, the §2.5 anchor; the
  * redeemer carries a `FieldOpening` rather than a reproduced
  * `reference_inputs_preimage`.
  *

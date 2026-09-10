@@ -167,7 +167,7 @@ export type WatcherSettlementAlertCode =
 export type WatcherSettlementIndexerPolicy = Readonly<{
   schemaVersion: typeof WATCHER_SETTLEMENT_INDEXER_POLICY_SCHEMA_VERSION;
   network: WatcherSettlementNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   hubOraclePolicyId: string;
   depositPolicyId: string;
@@ -329,7 +329,7 @@ export type WatcherSettlementObservation = Readonly<{
   schemaVersion: typeof WATCHER_SETTLEMENT_OBSERVATION_SCHEMA_VERSION;
   policyDigest: string;
   network: WatcherSettlementNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   pointDigest: string;
   chainPointId: string;
@@ -372,7 +372,7 @@ export type WatcherSettlementIndexerState = Readonly<{
   schemaVersion: typeof WATCHER_SETTLEMENT_INDEXER_STATE_SCHEMA_VERSION;
   policyDigest: string;
   network: WatcherSettlementNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   pointDigest: string;
   chainPointId: string;
@@ -696,7 +696,7 @@ const policyWithoutDigest = (
 
 export const makeWatcherSettlementIndexerPolicy = (input: {
   network: WatcherSettlementNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   hubOraclePolicyId: string;
   depositPolicyId: string;
@@ -733,7 +733,7 @@ export const makeWatcherSettlementIndexerPolicy = (input: {
     WATCHER_SETTLEMENT_INDEXER_BOUNDS.retryAttempts.toString();
   if (
     !NETWORKS.includes(input.network) ||
-    !isHex32(input.releaseEvidenceDigest) ||
+    !isHex32(input.blueprintHash) ||
     !isHex32(input.bootstrapStoreDigest) ||
     !isHex32(input.deploymentTrustRootId) ||
     !isNatural(input.requiredFinalityDepth) ||
@@ -781,7 +781,7 @@ export const makeWatcherSettlementIndexerPolicy = (input: {
   const canonical = Object.freeze({
     schemaVersion: WATCHER_SETTLEMENT_INDEXER_POLICY_SCHEMA_VERSION,
     network: input.network,
-    releaseEvidenceDigest: input.releaseEvidenceDigest,
+    blueprintHash: input.blueprintHash,
     deploymentMarker: marker,
     hubOraclePolicyId: input.hubOraclePolicyId,
     depositPolicyId: input.depositPolicyId,
@@ -818,7 +818,7 @@ export const parseWatcherSettlementIndexerPolicy = (
   const record = exactRecord(value, [
     "schemaVersion",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "hubOraclePolicyId",
     "depositPolicyId",
@@ -852,7 +852,7 @@ export const parseWatcherSettlementIndexerPolicy = (
   }
   const parsed = makeWatcherSettlementIndexerPolicy({
     network: record.network as WatcherSettlementNetwork,
-    releaseEvidenceDigest: record.releaseEvidenceDigest as string,
+    blueprintHash: record.blueprintHash as string,
     deploymentMarker: record.deploymentMarker as DeploymentMarker,
     hubOraclePolicyId: record.hubOraclePolicyId as string,
     depositPolicyId: record.depositPolicyId as string,
@@ -1718,7 +1718,7 @@ export const makeWatcherSettlementObservation = (
   if (
     !isHex32(input.policyDigest) ||
     !NETWORKS.includes(input.network) ||
-    !isHex32(input.releaseEvidenceDigest) ||
+    !isHex32(input.blueprintHash) ||
     marker === null ||
     !isHex32(input.pointDigest) ||
     !isHex32(input.chainPointId) ||
@@ -1743,7 +1743,7 @@ export const makeWatcherSettlementObservation = (
     schemaVersion: WATCHER_SETTLEMENT_OBSERVATION_SCHEMA_VERSION,
     policyDigest: input.policyDigest,
     network: input.network,
-    releaseEvidenceDigest: input.releaseEvidenceDigest,
+    blueprintHash: input.blueprintHash,
     deploymentMarker: marker,
     pointDigest: input.pointDigest,
     chainPointId: input.chainPointId,
@@ -1770,7 +1770,7 @@ export const parseWatcherSettlementObservation = (
     "schemaVersion",
     "policyDigest",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "pointDigest",
     "chainPointId",
@@ -1795,7 +1795,7 @@ export const parseWatcherSettlementObservation = (
   const parsed = makeWatcherSettlementObservation({
     policyDigest: record.policyDigest as string,
     network: record.network as WatcherSettlementNetwork,
-    releaseEvidenceDigest: record.releaseEvidenceDigest as string,
+    blueprintHash: record.blueprintHash as string,
     deploymentMarker: record.deploymentMarker as DeploymentMarker,
     pointDigest: record.pointDigest as string,
     chainPointId: record.chainPointId as string,
@@ -1980,7 +1980,7 @@ const verifyDeploymentAuthority = (
     const applied = authority.policy.appliedScriptHashes;
     return same(verified, authority.result) &&
       verified.network === policy.network &&
-      verified.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+      verified.blueprintHash === policy.blueprintHash &&
       verified.trustRootId === policy.deploymentTrustRootId &&
       sameMarker(verified.durableMarker, policy.deploymentMarker) &&
       applied.hubOracleMint === policy.hubOraclePolicyId &&
@@ -2107,7 +2107,7 @@ const verifyFinalityAuthority = (
   if (
     finalityPolicy === null ||
     finalityPolicy.network !== policy.network ||
-    finalityPolicy.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    finalityPolicy.blueprintHash !== policy.blueprintHash ||
     !sameMarker(finalityPolicy.deploymentMarker, policy.deploymentMarker) ||
     finalityPolicy.confirmationDepth !== policy.requiredFinalityDepth
   ) {
@@ -4932,7 +4932,7 @@ export const parseWatcherSettlementIndexerState = (
     "schemaVersion",
     "policyDigest",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "pointDigest",
     "chainPointId",
@@ -4980,7 +4980,7 @@ export const parseWatcherSettlementIndexerState = (
     record.schemaVersion !== WATCHER_SETTLEMENT_INDEXER_STATE_SCHEMA_VERSION ||
     record.policyDigest !== policy.policyDigest ||
     record.network !== policy.network ||
-    record.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    record.blueprintHash !== policy.blueprintHash ||
     !isHex32(record.pointDigest) ||
     !isHex32(record.chainPointId) ||
     !isHex32(record.durableStoreDigest) ||
@@ -5505,7 +5505,7 @@ const applyVerifiedSettlementTransition = (
     const state = makeState({
       policyDigest: policy.policyDigest,
       network: policy.network,
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      blueprintHash: policy.blueprintHash,
       deploymentMarker: policy.deploymentMarker,
       pointDigest: observation.pointDigest,
       chainPointId: observation.chainPointId,
@@ -5670,7 +5670,7 @@ const applyVerifiedSettlementTransition = (
   const state = makeState({
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     pointDigest: observation.pointDigest,
     chainPointId: observation.chainPointId,
@@ -5720,7 +5720,7 @@ export const evaluateWatcherSettlementIndexer = (
   if (
     observation.policyDigest !== policy.policyDigest ||
     observation.network !== policy.network ||
-    observation.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    observation.blueprintHash !== policy.blueprintHash ||
     !sameMarker(observation.deploymentMarker, policy.deploymentMarker)
   ) {
     return reject("binding_mismatch", "watcher_settlement_binding_rejected");

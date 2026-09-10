@@ -41,6 +41,84 @@ const actionFor = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ref: string) => {
 };
 
 describe("production cursor-family authenticated state V1", () => {
+  it("keeps known transactions pending while finalized state is unchanged", async () => {
+    for (const stage of [
+      { kind: "not_started" as const, stateQueueBlockOutRef: outRef("10") },
+      {
+        kind: "step" as const,
+        step: 1 as const,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      },
+      {
+        kind: "proof_token" as const,
+        fraudProofOutRef: outRef("44"),
+        stateQueueBlockOutRef: outRef("10"),
+        nextRemovalOutRef: outRef("33"),
+      },
+    ]) {
+      const observed = cursorFamilyObservation({
+        spec,
+        headerHash,
+        provenance,
+        stage,
+      });
+      if (observed.kind !== "action_required")
+        throw new Error("missing action");
+      const input = {
+        spec,
+        headerHash,
+        provenance,
+        stage,
+        action: observed.action,
+        transactionConfirmed: async () => false,
+      } as const;
+      await expect(
+        reconcileCursorFamilyAction({ ...input, txHash: hash("55") }),
+      ).resolves.toEqual({ kind: "pending", txHash: hash("55") });
+      await expect(reconcileCursorFamilyAction(input)).resolves.toEqual({
+        kind: "not_found",
+      });
+      if (stage.kind === "proof_token") {
+        await expect(
+          reconcileCursorFamilyAction({
+            ...input,
+            txHash: hash("55"),
+            stage: { ...stage, nextRemovalOutRef: outRef("34") },
+          }),
+        ).resolves.toEqual({ kind: "pending", txHash: hash("55") });
+      }
+    }
+  });
+
+  it("rejects changed successors when transaction history does not confirm the intent", async () => {
+    const observed = cursorFamilyObservation({
+      spec,
+      headerHash,
+      provenance,
+      stage: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
+    });
+    if (observed.kind !== "action_required") throw new Error("missing action");
+    for (const threadOutRef of [outRef("55"), outRef("99")]) {
+      await expect(
+        reconcileCursorFamilyAction({
+          spec,
+          headerHash,
+          provenance,
+          action: observed.action,
+          txHash: hash("55"),
+          stage: {
+            kind: "step",
+            step: 1,
+            threadOutRef,
+            stateQueueBlockOutRef: outRef("10"),
+          },
+          transactionConfirmed: async () => false,
+        }),
+      ).resolves.toMatchObject({ kind: "conflict" });
+    }
+  });
+
   it("accepts the exact direct and staged missing-native-script successors", async () => {
     const step06Action = actionFor(6, outRef("60"));
     const directTx = hash("61");

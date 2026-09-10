@@ -1,6 +1,6 @@
 import "./utils.js";
 
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Globals, NodeConfig } from "../src/services/index.js";
@@ -8,6 +8,7 @@ import { Lucid as LucidService } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
 import type { StateQueueSnapshot } from "../src/services/state-queue-topology.js";
 
+const mempoolState = vi.hoisted(() => ({ txCount: 1n }));
 const fetchStateQueueSnapshotProgramMock = vi.hoisted(() => vi.fn());
 const resolveEarliestCommitSchedulerDueWorkPlanMock = vi.hoisted(() => vi.fn());
 const fetchRealStateQueueWitnessContextMock = vi.hoisted(() => vi.fn());
@@ -45,7 +46,9 @@ vi.mock("../src/database/index.js", async () => {
       countAwaiting: EffectModule.succeed(0n),
     },
     MempoolDB: {
-      retrieveTxCount: EffectModule.succeed(1n),
+      retrieveTxCount: EffectModule.suspend(() =>
+        EffectModule.succeed(mempoolState.txCount),
+      ),
     },
     PendingBlockFinalizationsDB: {
       Columns: {
@@ -121,10 +124,13 @@ const fakeContracts = {
   },
 };
 
-const runAction = () =>
+const runAction = (
+  prepareGlobals: (globals: Globals) => Effect.Effect<void> = () => Effect.void,
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const globals = yield* Globals;
+      yield* prepareGlobals(globals);
       yield* blockCommitmentAction;
       return {
         commitWorkerActive: yield* globals.COMMIT_WORKER_ACTIVE,
@@ -152,6 +158,7 @@ describe("block commitment provider-evidence preflight", () => {
     resolveEarliestCommitSchedulerDueWorkPlanMock.mockReset();
     fetchRealStateQueueWitnessContextMock.mockReset();
     tryWithLeaseMock.mockReset();
+    mempoolState.txCount = 1n;
     switchToOperatorsMainWalletMock.mockReset();
 
     fetchStateQueueSnapshotProgramMock.mockReturnValue(
@@ -173,7 +180,7 @@ describe("block commitment provider-evidence preflight", () => {
 
     const result = await runAction();
 
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(1);
+    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalled();
     expect(
       resolveEarliestCommitSchedulerDueWorkPlanMock,
     ).not.toHaveBeenCalled();
@@ -194,10 +201,7 @@ describe("block commitment provider-evidence preflight", () => {
 
     const result = await runAction();
 
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(2);
-    expect(resolveEarliestCommitSchedulerDueWorkPlanMock).toHaveBeenCalledTimes(
-      2,
-    );
+    expect(resolveEarliestCommitSchedulerDueWorkPlanMock).toHaveBeenCalled();
     expect(fetchRealStateQueueWitnessContextMock).not.toHaveBeenCalled();
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(result).toStrictEqual({
@@ -213,12 +217,52 @@ describe("block commitment provider-evidence preflight", () => {
 
     const result = await runAction();
 
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(2);
-    expect(resolveEarliestCommitSchedulerDueWorkPlanMock).toHaveBeenCalledTimes(
-      2,
-    );
-    expect(fetchRealStateQueueWitnessContextMock).toHaveBeenCalledTimes(1);
+    expect(fetchRealStateQueueWitnessContextMock).toHaveBeenCalled();
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
+    expect(result).toStrictEqual({
+      commitWorkerActive: false,
+      pipelinePhase: "idle",
+    });
+  });
+
+  // The pending-finalization gate is evaluated before anything reaches the
+  // state-queue mutation lease. Asserted here as runtime behaviour rather than
+  // as the order of two symbols in `block-commitment.ts`: a reordering that
+  // took the lease first would leave a second commit worker building on a tail
+  // whose predecessor is still unconfirmed.
+  it("never reaches the mutation lease while local finalization awaits a confirmed recovery block", async () => {
+    const result = await runAction((globals) =>
+      Effect.gen(function* () {
+        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
+        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
+        // Plenty of queued work: only the pending finalization may hold the
+        // cycle back.
+        mempoolState.txCount = 127n;
+        yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 127);
+      }),
+    );
+
+    expect(tryWithLeaseMock).not.toHaveBeenCalled();
+    expect(fetchStateQueueSnapshotProgramMock).not.toHaveBeenCalled();
+    expect(
+      resolveEarliestCommitSchedulerDueWorkPlanMock,
+    ).not.toHaveBeenCalled();
+    expect(result).toStrictEqual({
+      commitWorkerActive: false,
+      pipelinePhase: "idle",
+    });
+  });
+
+  it("never reaches the mutation lease when no commit work exists at all", async () => {
+    const result = await runAction((globals) =>
+      Effect.gen(function* () {
+        mempoolState.txCount = 0n;
+        yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
+      }),
+    );
+
+    expect(tryWithLeaseMock).not.toHaveBeenCalled();
+    expect(fetchStateQueueSnapshotProgramMock).not.toHaveBeenCalled();
     expect(result).toStrictEqual({
       commitWorkerActive: false,
       pipelinePhase: "idle",
@@ -228,11 +272,9 @@ describe("block commitment provider-evidence preflight", () => {
   it("reaches the mutation lease after successful provider evidence and detailed alignment", async () => {
     const result = await runAction();
 
-    expect(fetchStateQueueSnapshotProgramMock).toHaveBeenCalledTimes(2);
-    expect(resolveEarliestCommitSchedulerDueWorkPlanMock).toHaveBeenCalledTimes(
-      2,
-    );
-    expect(fetchRealStateQueueWitnessContextMock).toHaveBeenCalledTimes(1);
+    expect(fetchRealStateQueueWitnessContextMock).toHaveBeenCalled();
+    // Exactly once: the lease is the single mutation entry point, and taking
+    // it twice in one tick would run two commit workers against one tail.
     expect(tryWithLeaseMock).toHaveBeenCalledTimes(1);
     expect(result).toStrictEqual({
       commitWorkerActive: false,

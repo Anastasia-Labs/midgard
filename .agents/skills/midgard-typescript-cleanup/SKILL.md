@@ -5,7 +5,7 @@ description: Use when scanning or refactoring Midgard TypeScript for redundant c
 
 # Midgard TypeScript Cleanup
 
-Use this skill from `/home/gumbo/midgard-hub/midgard` for cleanup passes whose goal is to reduce redundant TypeScript without weakening protocol safety.
+Use this skill from the repository root for cleanup passes whose goal is to reduce redundant TypeScript without weakening protocol safety.
 
 ## Hard Rules
 
@@ -49,7 +49,7 @@ rg -n "instanceof Error|String\\(|JSON\\.stringify\\(|isHex|hex|assert|invariant
 6. Run targeted verification first, then broader verification when the touched surface is shared:
 
 ```bash
-cd /home/gumbo/midgard-hub/midgard/demo
+cd demo
 pnpm run typecheck
 pnpm run test
 ```

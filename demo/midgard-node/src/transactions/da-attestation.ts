@@ -23,6 +23,7 @@ import {
   MidgardContracts,
 } from "../services/index.js";
 import { outRefLabel } from "../tx-context.js";
+import { assertAvailabilityChallengeRewardAccountsRegisteredProgram } from "./availability-challenge-registration.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -290,9 +291,20 @@ const fetchDaAttestationReferenceScripts = (
         name: "availability-challenge minting",
         script: contracts.availabilityChallenge.mintingScript,
       },
+      {
+        name: "availability-challenge bond withdrawal",
+        script: contracts.availabilityChallenge.yields.bond.withdrawalScript,
+      },
     ],
     contracts.referenceScriptAuth,
   ).pipe(
+    Effect.tap(() =>
+      assertAvailabilityChallengeRewardAccountsRegisteredProgram(
+        lucid,
+        contracts,
+        ["bond"],
+      ),
+    ),
     Effect.map((resolved) => ({
       daAttestationMinting: referenceScriptByName(
         resolved,
@@ -310,6 +322,10 @@ const fetchDaAttestationReferenceScripts = (
       availabilityChallengeMinting: referenceScriptByName(
         resolved,
         "availability-challenge minting",
+      ),
+      availabilityChallengeBondWithdrawal: referenceScriptByName(
+        resolved,
+        "availability-challenge bond withdrawal",
       ),
     })),
   );

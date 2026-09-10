@@ -9,8 +9,10 @@ import {
   unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
+  workflowFundingRequirementsForRunner,
   workflowReadinessReport,
 } from "@al-ft/midgard-fault-proofs";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,6 +25,10 @@ import {
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
 } from "../../src/fault-proofs/fault-proof-application.js";
+import {
+  createWatcherWorkflowFundingProfileBundle,
+  loadWatcherWorkflowFundingProfileOverlay,
+} from "../../src/funding/workflow-funding-profile-overlay.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
@@ -42,6 +48,47 @@ const ADDITIONAL_REFERENCE_CONTRACTS = [
 ] as const;
 const TEST_HISTORY_STORE =
   unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest();
+
+/**
+ * The deployment's reference contracts, in the order the fixture resolver
+ * assigns out-refs. Inverting that assignment lets a readiness roster entry be
+ * traced back to the deployment contract it names, without transcribing any
+ * workflow's roster into this file.
+ */
+const FIXTURE_REFERENCE_CONTRACT_NAMES: readonly string[] = [
+  ...Object.keys(AUTHORITY.contracts),
+  ...ADDITIONAL_REFERENCE_CONTRACTS,
+];
+
+const contractNameForOutRef = (rosterOutRef: string): string => {
+  const outputIndex = Number(rosterOutRef.split("#")[1]);
+  const name = FIXTURE_REFERENCE_CONTRACT_NAMES[outputIndex];
+  if (
+    name === undefined ||
+    rosterOutRef !==
+      `${(outputIndex + 1).toString(16).padStart(64, "0")}#${outputIndex.toString()}`
+  ) {
+    throw new Error(
+      `roster out-ref ${rosterOutRef} is not a reference script this deployment resolved`,
+    );
+  }
+  return name;
+};
+
+/** Bound by every fault-proof workflow, whatever its physical step roster. */
+const SHARED_THREAD_REFERENCE_KEYS = [
+  "computationThreadMint",
+  "fraudProofMint",
+] as const;
+
+/**
+ * The two families that accuse an L1-observed event rather than a committed L2
+ * block leaf, and therefore never prove PHAS membership.
+ */
+const NON_PHAS_MEMBERSHIP_CATEGORIES = new Set<string>([
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+]);
 
 const rawConfig = () => ({
   schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -238,6 +285,52 @@ const dependencies = (): WatcherFaultProofApplicationDependencies => {
 };
 
 describe("watcher production fault-proof application V1", () => {
+  it("installs every runner with an empty signed funding bundle while funding requests stay gated", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "midgard-empty-funding-"));
+    try {
+      const bundle = createWatcherWorkflowFundingProfileBundle({
+        profiles: [],
+      });
+      const authority = makeWatcherDeploymentAuthorityFixture({
+        fundingProfileBundleDigest: bundle.fundingProfileBundleDigest,
+      });
+      const bundlePath = join(directory, "funding.json");
+      await writeFile(bundlePath, bundle.fundingProfileBundleBytes);
+      const fundingProfileOverlay =
+        await loadWatcherWorkflowFundingProfileOverlay({
+          bundlePath,
+          deploymentIdentity: authority.result,
+        });
+      const application = unsafeCreateWatcherFaultProofApplicationForTest(
+        {
+          deploymentIdentity: authority.result,
+          infrastructure: infrastructure(),
+          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
+          unsafeTransportFactoryForTest: transportFactory().factory,
+          fundingProfileOverlay,
+        },
+        dependencies(),
+        {
+          MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
+          MIDGARD_NODE_ADMIN_KEY: "admin-key",
+        },
+      );
+      expect(application.installedCategories).toEqual([
+        ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+      ]);
+      for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+        expect(() =>
+          workflowFundingRequirementsForRunner({
+            category,
+            runner: application.runners[category],
+          }),
+        ).toThrow("has no admitted measured funding profile");
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("installs every compiled manifest-bound runner and preflights every reference roster read-only", async () => {
     const directory = await mkdtemp(join(tmpdir(), "midgard-proof-app-"));
     const configPath = join(directory, "watcher.json");
@@ -260,64 +353,13 @@ describe("watcher production fault-proof application V1", () => {
       );
 
       expect(application.schemaVersion).toBe(WATCHER_FAULT_PROOF_APPLICATION);
-      expect(application.installedCategories).toEqual(
-        WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-      );
+      // The catalogue in the SDK is the independent authority on which
+      // families a watcher must be able to prove, and in which order.
       expect(application.installedCategories).toEqual([
-        "doubleSpend",
-        "nonExistentInput",
-        "nonExistentInputNoIndex",
-        "invalidRange",
-        "transitionTrace",
-        "zeroInput",
-        "validationTraceDispute",
-        "daHashPreimage",
-        "noReferenceInput",
-        "referenceInputNoIdx",
-        "invalidSignature",
-        "fabricatedDeposit",
-        "fabricatedWithdrawal",
-        "nativeScriptDecoding",
-        "missingSignature",
-        "missingNativeScriptTx",
-        "withdrawnReferenceInput",
-        "canonicalDecodability",
-        "committedFieldShape",
-        "minFee",
-        "withdrawalMistag",
-        "doubleWithdraw",
-        "crossBlockDuplicateEvent",
-        "l2TxMistag",
-        "withdrawnInput",
-        "valueNotPreserved",
-        "inputSetUniqueness",
-        "mintAuthorization",
-        "networkId",
-        "missingNativeScriptUtxo",
-        "nativeScriptInvalid",
-        "minAda",
-        "fieldPreimageLengthMismatch",
-        "fieldItemWidthIllegal",
-        "witnessScriptDecoding",
-        "scriptIntegrityHashMissing",
-        "transactionOutputNonCanonical",
-        "resolvedOutputNonCanonical",
-        "mintDeclaredAssetLimit",
-        "spendInputSignerMissing",
-        "protectedOutputSignerMissing",
-        "observersForbiddenOnUntaggedNetwork",
-        "observerOrderInvalid",
-        "redeemerCanonicity",
-        "outputReferenceScriptDecoding",
-        "executionSourceScriptDecoding",
-        "receivePurposeLanguage",
-        "unusedScriptWitness",
-        "missingScriptSource",
-        "missingRedeemer",
-        "unusedRedeemer",
-        "executionNativeScriptInvalid",
-        "scriptIntegrityHashMismatch",
-        "distinctAssetAccumulationLimit",
+        ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+      ]);
+      expect(WATCHER_INSTALLED_WORKFLOW_CATEGORIES).toEqual([
+        ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
       ]);
       expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toEqual([]);
       expect(
@@ -327,921 +369,102 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: 54,
-        requestedCategoryCount: 54,
-        readyCategoryCount: 54,
+        installedCategoryCount: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+        requestedCategoryCount: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+        readyCategoryCount: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
         missingCategoryCount: 0,
       });
 
-      for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
+      for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+        const resolvedBefore = vi.mocked(deps.resolveReferenceScript).mock.calls
+          .length;
         const readiness = await application.assertStartupReady(
           invocation(configPath, category),
         );
-        expect(readiness).toEqual(
-          expect.objectContaining({
-            schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
-            ready: true,
-            category,
-            deploymentFingerprint: DEPLOYMENT,
-            headerHash: HEADER,
-          }),
+        const resolvedContractNames = vi
+          .mocked(deps.resolveReferenceScript)
+          .mock.calls.slice(resolvedBefore)
+          .map(([input]) => input.contractName);
+
+        const { referenceScriptOutRefs, ...envelope } = readiness;
+        expect(envelope).toEqual({
+          schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
+          ready: true,
+          category,
+          deploymentFingerprint: DEPLOYMENT,
+          headerHash: HEADER,
+        });
+
+        const rosterKeys = Object.keys(referenceScriptOutRefs);
+        const rosterOutRefs = Object.values(referenceScriptOutRefs);
+        // Every rostered entry is a real resolved reference UTxO, not a
+        // placeholder left behind by a reference script the workflow failed to
+        // bind (which surfaces as `undefined#undefined`).
+        for (const rosterOutRef of rosterOutRefs) {
+          expect(rosterOutRef).toMatch(/^[0-9a-f]{64}#\d+$/u);
+        }
+        // One distinct deployment contract per rostered name, and the roster
+        // accounts for exactly the reference scripts this workflow resolved:
+        // nothing loaded but unreported, nothing reported but never resolved.
+        expect(new Set(rosterOutRefs).size).toBe(rosterOutRefs.length);
+        expect(rosterOutRefs.map(contractNameForOutRef).sort()).toEqual(
+          [...resolvedContractNames].sort(),
         );
+        // Every fault-proof workflow drives a computation thread and mints the
+        // fraud proof; every family that accuses a committed L2 block leaf also
+        // proves PHAS membership.
+        expect(rosterKeys).toEqual(
+          expect.arrayContaining([...SHARED_THREAD_REFERENCE_KEYS]),
+        );
+        expect(rosterKeys.includes("phasMembershipWithdraw")).toBe(
+          !NON_PHAS_MEMBERSHIP_CATEGORIES.has(category),
+        );
+        expect(rosterKeys.length).toBeGreaterThan(
+          SHARED_THREAD_REFERENCE_KEYS.length,
+        );
+
+        // A physical step may appear once, or once per committed polarity
+        // (`step02Accepted` / `step02Forced`); either way its ordinal is bound.
+        const stepOrdinals = [
+          ...new Set(
+            rosterKeys
+              .map((key) => /^step(\d{2})(?:[A-Z]\w*)?$/u.exec(key)?.[1])
+              .filter((ordinal): ordinal is string => ordinal !== undefined)
+              .map(Number),
+          ),
+        ].sort((left, right) => left - right);
         if (category === "transitionTrace") {
-          expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual(
+          // The workflow module exports its own reference roster; that export
+          // is the single source of truth for what startup must preflight.
+          expect(rosterKeys).toEqual(
             TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
           );
-          continue;
+          expect(stepOrdinals).toEqual([]);
+        } else if (category === "validationTraceDispute") {
+          // The interactive dispute game names its scripts by role in the
+          // game, not by a physical step ordinal.
+          expect(stepOrdinals).toEqual([]);
+          expect(rosterKeys).toEqual(
+            expect.arrayContaining([
+              "opener",
+              "source",
+              "game",
+              "boundary",
+              "timeout",
+              "award",
+            ]),
+          );
+        } else {
+          // The physical steps of a thread are contiguous from step01: a
+          // dropped or renamed intermediate step leaves a gap here.
+          expect(stepOrdinals.length).toBeGreaterThan(0);
+          expect(stepOrdinals).toEqual(
+            Array.from(
+              { length: stepOrdinals.length },
+              (_unused, index) => index + 1,
+            ),
+          );
         }
-        if (category === "validationTraceDispute") {
-          expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual([
-            "opener",
-            "source",
-            "game",
-            "boundary",
-            "timeout",
-            "award",
-            "computationThreadMint",
-            "fraudProofMint",
-            "phasMembershipWithdraw",
-            "correctionLockSpend",
-            "stateQueueSpend",
-            "stateQueueMint",
-            "stateQueueFraudRemovalWithdraw",
-            "activeOperatorsSpend",
-            "activeOperatorsMint",
-            "retiredOperatorsSpend",
-            "retiredOperatorsMint",
-            "schedulerSpend",
-          ]);
-          continue;
-        }
-        if (category === "valueNotPreserved") {
-          expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual([
-            "step01",
-            "step02",
-            "step03",
-            "step04",
-            "unionAcceptedSource",
-            "unionForcedSource",
-            "unionEvent",
-            "unionPreState",
-            "unionInputs",
-            "unionInputValue",
-            "unionAssets",
-            "unionFieldGrammar",
-            "unionOutputs",
-            "unionOutputScan",
-            "unionMint",
-            "unionUpdate",
-            "unionTerminal",
-            "computationThreadMint",
-            "fraudProofMint",
-            "phasMembershipWithdraw",
-            "chunkedVerifyWithdraw",
-            "pexcludesWithdraw",
-            "fieldPreimageCertificateMint",
-            "correctionLockSpend",
-            "stateQueueSpend",
-            "stateQueueMint",
-            "stateQueueFraudRemovalWithdraw",
-            "activeOperatorsSpend",
-            "activeOperatorsMint",
-            "retiredOperatorsSpend",
-            "retiredOperatorsMint",
-            "schedulerSpend",
-          ]);
-          continue;
-        }
-        expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual(
-          Object.keys(
-            category === "withdrawalMistag"
-              ? {
-                  step01: true,
-                  step02: true,
-                  step03: true,
-                  step04: true,
-                  step05: true,
-                  computationThreadMint: true,
-                  fraudProofMint: true,
-                  phasMembershipWithdraw: true,
-                }
-              : category === "crossBlockDuplicateEvent"
-                ? {
-                    phasMembershipWithdraw: true,
-                    step01: true,
-                    step02: true,
-                    computationThreadMint: true,
-                    fraudProofMint: true,
-                  }
-                : category === "doubleSpend" ||
-                    category === "nonExistentInput" ||
-                    category === "noReferenceInput" ||
-                    category === "nonExistentInputNoIndex" ||
-                    category === "referenceInputNoIdx" ||
-                    category === "inputSetUniqueness"
-                  ? {
-                      step01: true,
-                      step02: true,
-                      step03: true,
-                      step04: true,
-                      computationThreadMint: true,
-                      fraudProofMint: true,
-                      phasMembershipWithdraw: true,
-                      chunkedVerifyWithdraw: true,
-                      ...(category === "nonExistentInput" ||
-                      category === "noReferenceInput"
-                        ? { pexcludesWithdraw: true }
-                        : {}),
-                      fieldPreimageCertificateMint: true,
-                    }
-                  : category === "daHashPreimage" ||
-                      category === "committedFieldShape"
-                    ? {
-                        step01: true,
-                        step02: true,
-                        computationThreadMint: true,
-                        fraudProofMint: true,
-                        phasMembershipWithdraw: true,
-                        chunkedVerifyWithdraw: true,
-                        pexcludesWithdraw: true,
-                      }
-                    : category === "networkId"
-                      ? {
-                          step01: true,
-                          step02: true,
-                          forcedStep: true,
-                          forcedScan: true,
-                          computationThreadMint: true,
-                          fraudProofMint: true,
-                          phasMembershipWithdraw: true,
-                          chunkedVerifyWithdraw: true,
-                          pexcludesWithdraw: true,
-                          fieldPreimageCertificateMint: true,
-                        }
-                      : category === "nativeScriptDecoding" ||
-                          category === "mintAuthorization"
-                        ? {
-                            step01: true,
-                            step02: true,
-                            step03: true,
-                            step04: true,
-                            step05: true,
-                            step06: true,
-                            ...(category === "mintAuthorization"
-                              ? { step07: true }
-                              : {}),
-                            computationThreadMint: true,
-                            fraudProofMint: true,
-                            phasMembershipWithdraw: true,
-                            chunkedVerifyWithdraw: true,
-                            pexcludesWithdraw: true,
-                            fieldPreimageCertificateMint: true,
-                          }
-                        : category === "nativeScriptInvalid"
-                          ? {
-                              step01: true,
-                              step02: true,
-                              step03: true,
-                              step04: true,
-                              step05: true,
-                              computationThreadMint: true,
-                              fraudProofMint: true,
-                              phasMembershipWithdraw: true,
-                              chunkedVerifyWithdraw: true,
-                              pexcludesWithdraw: true,
-                              fieldPreimageCertificateMint: true,
-                            }
-                          : category === "missingNativeScriptUtxo"
-                            ? {
-                                step01: true,
-                                step02: true,
-                                step03: true,
-                                step04: true,
-                                step05: true,
-                                step06: true,
-                                step07: true,
-                                computationThreadMint: true,
-                                fraudProofMint: true,
-                                phasMembershipWithdraw: true,
-                                chunkedVerifyWithdraw: true,
-                                pexcludesWithdraw: true,
-                                fieldPreimageCertificateMint: true,
-                              }
-                            : category === "minAda"
-                              ? {
-                                  step01: true,
-                                  step02: true,
-                                  step03: true,
-                                  step04: true,
-                                  step05: true,
-                                  computationThreadMint: true,
-                                  fraudProofMint: true,
-                                  phasMembershipWithdraw: true,
-                                  chunkedVerifyWithdraw: true,
-                                  pexcludesWithdraw: true,
-                                  fieldPreimageCertificateMint: true,
-                                  txYield: true,
-                                  utxoYield: true,
-                                }
-                              : category === "fieldPreimageLengthMismatch"
-                                ? {
-                                    step01: true,
-                                    step02Accepted: true,
-                                    step02Forced: true,
-                                    step03: true,
-                                    computationThreadMint: true,
-                                    fraudProofMint: true,
-                                    phasMembershipWithdraw: true,
-                                    fieldPreimageCertificateMint: true,
-                                  }
-                                : category === "fieldItemWidthIllegal"
-                                  ? {
-                                      step01: true,
-                                      step02: true,
-                                      step03: true,
-                                      computationThreadMint: true,
-                                      fraudProofMint: true,
-                                      phasMembershipWithdraw: true,
-                                      fieldPreimageCertificateMint: true,
-                                    }
-                                  : category === "spendInputSignerMissing" ||
-                                      category ===
-                                        "protectedOutputSignerMissing"
-                                    ? {
-                                        step01: true,
-                                        step02: true,
-                                        step03: true,
-                                        step04: true,
-                                        step05: true,
-                                        computationThreadMint: true,
-                                        fraudProofMint: true,
-                                        phasMembershipWithdraw: true,
-                                        fieldPreimageCertificateMint: true,
-                                      }
-                                    : category ===
-                                        "observersForbiddenOnUntaggedNetwork"
-                                      ? {
-                                          step01: true,
-                                          step02: true,
-                                          computationThreadMint: true,
-                                          fraudProofMint: true,
-                                          phasMembershipWithdraw: true,
-                                          chunkedVerifyWithdraw: true,
-                                          pexcludesWithdraw: true,
-                                          fieldPreimageCertificateMint: true,
-                                          correctionLockSpend: true,
-                                          stateQueueSpend: true,
-                                          stateQueueMint: true,
-                                          stateQueueFraudRemovalWithdraw: true,
-                                          activeOperatorsSpend: true,
-                                          activeOperatorsMint: true,
-                                          retiredOperatorsSpend: true,
-                                          retiredOperatorsMint: true,
-                                          schedulerSpend: true,
-                                        }
-                                      : category === "observerOrderInvalid"
-                                        ? {
-                                            step01: true,
-                                            step02: true,
-                                            step03: true,
-                                            step04: true,
-                                            computationThreadMint: true,
-                                            fraudProofMint: true,
-                                            phasMembershipWithdraw: true,
-                                            chunkedVerifyWithdraw: true,
-                                            pexcludesWithdraw: true,
-                                            fieldPreimageCertificateMint: true,
-                                            correctionLockSpend: true,
-                                            stateQueueSpend: true,
-                                            stateQueueMint: true,
-                                            stateQueueFraudRemovalWithdraw:
-                                              true,
-                                            activeOperatorsSpend: true,
-                                            activeOperatorsMint: true,
-                                            retiredOperatorsSpend: true,
-                                            retiredOperatorsMint: true,
-                                            schedulerSpend: true,
-                                          }
-                                        : category === "redeemerCanonicity"
-                                          ? {
-                                              step01: true,
-                                              step02: true,
-                                              step03: true,
-                                              computationThreadMint: true,
-                                              fraudProofMint: true,
-                                              phasMembershipWithdraw: true,
-                                              chunkedVerifyWithdraw: true,
-                                              pexcludesWithdraw: true,
-                                              fieldPreimageCertificateMint:
-                                                true,
-                                              correctionLockSpend: true,
-                                              stateQueueSpend: true,
-                                              stateQueueMint: true,
-                                              stateQueueFraudRemovalWithdraw:
-                                                true,
-                                              activeOperatorsSpend: true,
-                                              activeOperatorsMint: true,
-                                              retiredOperatorsSpend: true,
-                                              retiredOperatorsMint: true,
-                                              schedulerSpend: true,
-                                            }
-                                          : category ===
-                                              "receivePurposeLanguage"
-                                            ? {
-                                                step01: true,
-                                                step02: true,
-                                                step03: true,
-                                                computationThreadMint: true,
-                                                fraudProofMint: true,
-                                                phasMembershipWithdraw: true,
-                                                chunkedVerifyWithdraw: true,
-                                                pexcludesWithdraw: true,
-                                                correctionLockSpend: true,
-                                                stateQueueSpend: true,
-                                                stateQueueMint: true,
-                                                stateQueueFraudRemovalWithdraw:
-                                                  true,
-                                                activeOperatorsSpend: true,
-                                                activeOperatorsMint: true,
-                                                retiredOperatorsSpend: true,
-                                                retiredOperatorsMint: true,
-                                                schedulerSpend: true,
-                                              }
-                                            : category ===
-                                                  "unusedScriptWitness" ||
-                                                category ===
-                                                  "missingScriptSource"
-                                              ? {
-                                                  step01: true,
-                                                  step02: true,
-                                                  step03: true,
-                                                  step04: true,
-                                                  step05: true,
-                                                  step06: true,
-                                                  computationThreadMint: true,
-                                                  fraudProofMint: true,
-                                                  phasMembershipWithdraw: true,
-                                                  chunkedVerifyWithdraw: true,
-                                                  pexcludesWithdraw: true,
-                                                  correctionLockSpend: true,
-                                                  stateQueueSpend: true,
-                                                  stateQueueMint: true,
-                                                  stateQueueFraudRemovalWithdraw:
-                                                    true,
-                                                  activeOperatorsSpend: true,
-                                                  activeOperatorsMint: true,
-                                                  retiredOperatorsSpend: true,
-                                                  retiredOperatorsMint: true,
-                                                  schedulerSpend: true,
-                                                }
-                                              : category === "unusedRedeemer"
-                                                ? {
-                                                    step01: true,
-                                                    step02: true,
-                                                    step02a: true,
-                                                    step02b: true,
-                                                    step02c: true,
-                                                    step03: true,
-                                                    step04: true,
-                                                    step05: true,
-                                                    step06: true,
-                                                    computationThreadMint: true,
-                                                    fraudProofMint: true,
-                                                    phasMembershipWithdraw:
-                                                      true,
-                                                    chunkedVerifyWithdraw: true,
-                                                    pexcludesWithdraw: true,
-                                                    correctionLockSpend: true,
-                                                    stateQueueSpend: true,
-                                                    stateQueueMint: true,
-                                                    stateQueueFraudRemovalWithdraw:
-                                                      true,
-                                                    activeOperatorsSpend: true,
-                                                    activeOperatorsMint: true,
-                                                    retiredOperatorsSpend: true,
-                                                    retiredOperatorsMint: true,
-                                                    schedulerSpend: true,
-                                                  }
-                                                : category ===
-                                                    "scriptIntegrityHashMismatch"
-                                                  ? {
-                                                      step01: true,
-                                                      step02: true,
-                                                      step03: true,
-                                                      step04: true,
-                                                      step05: true,
-                                                      computationThreadMint:
-                                                        true,
-                                                      fraudProofMint: true,
-                                                      phasMembershipWithdraw:
-                                                        true,
-                                                      chunkedVerifyWithdraw:
-                                                        true,
-                                                      pexcludesWithdraw: true,
-                                                      correctionLockSpend: true,
-                                                      stateQueueSpend: true,
-                                                      stateQueueMint: true,
-                                                      stateQueueFraudRemovalWithdraw:
-                                                        true,
-                                                      activeOperatorsSpend:
-                                                        true,
-                                                      activeOperatorsMint: true,
-                                                      retiredOperatorsSpend:
-                                                        true,
-                                                      retiredOperatorsMint:
-                                                        true,
-                                                      schedulerSpend: true,
-                                                    }
-                                                  : category ===
-                                                      "distinctAssetAccumulationLimit"
-                                                    ? {
-                                                        step01: true,
-                                                        step02: true,
-                                                        step03: true,
-                                                        step04: true,
-                                                        step05: true,
-                                                        step06: true,
-                                                        computationThreadMint:
-                                                          true,
-                                                        fraudProofMint: true,
-                                                        phasMembershipWithdraw:
-                                                          true,
-                                                        chunkedVerifyWithdraw:
-                                                          true,
-                                                        pexcludesWithdraw: true,
-                                                        correctionLockSpend:
-                                                          true,
-                                                        stateQueueSpend: true,
-                                                        stateQueueMint: true,
-                                                        stateQueueFraudRemovalWithdraw:
-                                                          true,
-                                                        activeOperatorsSpend:
-                                                          true,
-                                                        activeOperatorsMint:
-                                                          true,
-                                                        retiredOperatorsSpend:
-                                                          true,
-                                                        retiredOperatorsMint:
-                                                          true,
-                                                        schedulerSpend: true,
-                                                      }
-                                                    : category ===
-                                                        "missingRedeemer"
-                                                      ? {
-                                                          step01: true,
-                                                          step02: true,
-                                                          step02a: true,
-                                                          step02b: true,
-                                                          step03: true,
-                                                          step04: true,
-                                                          step05: true,
-                                                          computationThreadMint:
-                                                            true,
-                                                          fraudProofMint: true,
-                                                          phasMembershipWithdraw:
-                                                            true,
-                                                          chunkedVerifyWithdraw:
-                                                            true,
-                                                          pexcludesWithdraw:
-                                                            true,
-                                                          fieldPreimageCertificateMint:
-                                                            true,
-                                                          correctionLockSpend:
-                                                            true,
-                                                          stateQueueSpend: true,
-                                                          stateQueueMint: true,
-                                                          stateQueueFraudRemovalWithdraw:
-                                                            true,
-                                                          activeOperatorsSpend:
-                                                            true,
-                                                          activeOperatorsMint:
-                                                            true,
-                                                          retiredOperatorsSpend:
-                                                            true,
-                                                          retiredOperatorsMint:
-                                                            true,
-                                                          schedulerSpend: true,
-                                                        }
-                                                      : category ===
-                                                          "witnessScriptDecoding"
-                                                        ? {
-                                                            step01: true,
-                                                            step02: true,
-                                                            step03: true,
-                                                            step04: true,
-                                                            computationThreadMint:
-                                                              true,
-                                                            fraudProofMint:
-                                                              true,
-                                                            phasMembershipWithdraw:
-                                                              true,
-                                                            fieldPreimageCertificateMint:
-                                                              true,
-                                                          }
-                                                        : category ===
-                                                            "outputReferenceScriptDecoding"
-                                                          ? {
-                                                              step01: true,
-                                                              step02: true,
-                                                              step03: true,
-                                                              step04: true,
-                                                              step05: true,
-                                                              step06: true,
-                                                              computationThreadMint:
-                                                                true,
-                                                              fraudProofMint:
-                                                                true,
-                                                              phasMembershipWithdraw:
-                                                                true,
-                                                              fieldPreimageCertificateMint:
-                                                                true,
-                                                            }
-                                                          : category ===
-                                                              "executionSourceScriptDecoding"
-                                                            ? {
-                                                                step01: true,
-                                                                step02: true,
-                                                                step03: true,
-                                                                step04: true,
-                                                                step05: true,
-                                                                computationThreadMint:
-                                                                  true,
-                                                                fraudProofMint:
-                                                                  true,
-                                                                phasMembershipWithdraw:
-                                                                  true,
-                                                                chunkedVerifyWithdraw:
-                                                                  true,
-                                                                pexcludesWithdraw:
-                                                                  true,
-                                                                correctionLockSpend:
-                                                                  true,
-                                                                stateQueueSpend:
-                                                                  true,
-                                                                stateQueueMint:
-                                                                  true,
-                                                                stateQueueFraudRemovalWithdraw:
-                                                                  true,
-                                                                activeOperatorsSpend:
-                                                                  true,
-                                                                activeOperatorsMint:
-                                                                  true,
-                                                                retiredOperatorsSpend:
-                                                                  true,
-                                                                retiredOperatorsMint:
-                                                                  true,
-                                                                schedulerSpend:
-                                                                  true,
-                                                              }
-                                                            : category ===
-                                                                "executionNativeScriptInvalid"
-                                                              ? {
-                                                                  step01: true,
-                                                                  step02: true,
-                                                                  step03: true,
-                                                                  step04: true,
-                                                                  step05: true,
-                                                                  step06: true,
-                                                                  step07: true,
-                                                                  step08: true,
-                                                                  step09: true,
-                                                                  step10: true,
-                                                                  step11: true,
-                                                                  step12: true,
-                                                                  step13: true,
-                                                                  computationThreadMint:
-                                                                    true,
-                                                                  fraudProofMint:
-                                                                    true,
-                                                                  phasMembershipWithdraw:
-                                                                    true,
-                                                                  chunkedVerifyWithdraw:
-                                                                    true,
-                                                                  pexcludesWithdraw:
-                                                                    true,
-                                                                  fieldPreimageCertificateMint:
-                                                                    true,
-                                                                  correctionLockSpend:
-                                                                    true,
-                                                                  stateQueueSpend:
-                                                                    true,
-                                                                  stateQueueMint:
-                                                                    true,
-                                                                  stateQueueFraudRemovalWithdraw:
-                                                                    true,
-                                                                  activeOperatorsSpend:
-                                                                    true,
-                                                                  activeOperatorsMint:
-                                                                    true,
-                                                                  retiredOperatorsSpend:
-                                                                    true,
-                                                                  retiredOperatorsMint:
-                                                                    true,
-                                                                  schedulerSpend:
-                                                                    true,
-                                                                }
-                                                              : category ===
-                                                                  "transactionOutputNonCanonical"
-                                                                ? {
-                                                                    step01:
-                                                                      true,
-                                                                    step02:
-                                                                      true,
-                                                                    step03:
-                                                                      true,
-                                                                    step04:
-                                                                      true,
-                                                                    computationThreadMint:
-                                                                      true,
-                                                                    fraudProofMint:
-                                                                      true,
-                                                                    phasMembershipWithdraw:
-                                                                      true,
-                                                                    fieldPreimageCertificateMint:
-                                                                      true,
-                                                                  }
-                                                                : category ===
-                                                                    "resolvedOutputNonCanonical"
-                                                                  ? {
-                                                                      step01:
-                                                                        true,
-                                                                      step02:
-                                                                        true,
-                                                                      step03:
-                                                                        true,
-                                                                      step04:
-                                                                        true,
-                                                                      step05:
-                                                                        true,
-                                                                      computationThreadMint:
-                                                                        true,
-                                                                      fraudProofMint:
-                                                                        true,
-                                                                      phasMembershipWithdraw:
-                                                                        true,
-                                                                      fieldPreimageCertificateMint:
-                                                                        true,
-                                                                    }
-                                                                  : category ===
-                                                                      "mintDeclaredAssetLimit"
-                                                                    ? {
-                                                                        step01:
-                                                                          true,
-                                                                        step02:
-                                                                          true,
-                                                                        step03:
-                                                                          true,
-                                                                        step04:
-                                                                          true,
-                                                                        computationThreadMint:
-                                                                          true,
-                                                                        fraudProofMint:
-                                                                          true,
-                                                                        phasMembershipWithdraw:
-                                                                          true,
-                                                                        chunkedVerifyWithdraw:
-                                                                          true,
-                                                                        pexcludesWithdraw:
-                                                                          true,
-                                                                        fieldPreimageCertificateMint:
-                                                                          true,
-                                                                        correctionLockSpend:
-                                                                          true,
-                                                                        stateQueueSpend:
-                                                                          true,
-                                                                        stateQueueMint:
-                                                                          true,
-                                                                        stateQueueFraudRemovalWithdraw:
-                                                                          true,
-                                                                        activeOperatorsSpend:
-                                                                          true,
-                                                                        activeOperatorsMint:
-                                                                          true,
-                                                                        retiredOperatorsSpend:
-                                                                          true,
-                                                                        retiredOperatorsMint:
-                                                                          true,
-                                                                        schedulerSpend:
-                                                                          true,
-                                                                      }
-                                                                    : category ===
-                                                                        "scriptIntegrityHashMissing"
-                                                                      ? {
-                                                                          step01:
-                                                                            true,
-                                                                          step02:
-                                                                            true,
-                                                                          step03:
-                                                                            true,
-                                                                          step04:
-                                                                            true,
-                                                                          step05:
-                                                                            true,
-                                                                          step06:
-                                                                            true,
-                                                                          step07:
-                                                                            true,
-                                                                          computationThreadMint:
-                                                                            true,
-                                                                          fraudProofMint:
-                                                                            true,
-                                                                          phasMembershipWithdraw:
-                                                                            true,
-                                                                          chunkedVerifyWithdraw:
-                                                                            true,
-                                                                          pexcludesWithdraw:
-                                                                            true,
-                                                                          fieldPreimageCertificateMint:
-                                                                            true,
-                                                                          correctionLockSpend:
-                                                                            true,
-                                                                          stateQueueSpend:
-                                                                            true,
-                                                                          stateQueueMint:
-                                                                            true,
-                                                                          stateQueueFraudRemovalWithdraw:
-                                                                            true,
-                                                                          activeOperatorsSpend:
-                                                                            true,
-                                                                          activeOperatorsMint:
-                                                                            true,
-                                                                          retiredOperatorsSpend:
-                                                                            true,
-                                                                          retiredOperatorsMint:
-                                                                            true,
-                                                                          schedulerSpend:
-                                                                            true,
-                                                                        }
-                                                                      : category ===
-                                                                            "fabricatedDeposit" ||
-                                                                          category ===
-                                                                            "fabricatedWithdrawal"
-                                                                        ? {
-                                                                            step01:
-                                                                              true,
-                                                                            step02:
-                                                                              true,
-                                                                            step03:
-                                                                              true,
-                                                                            step04:
-                                                                              true,
-                                                                            computationThreadMint:
-                                                                              true,
-                                                                            fraudProofMint:
-                                                                              true,
-                                                                          }
-                                                                        : category ===
-                                                                            "missingNativeScriptTx"
-                                                                          ? {
-                                                                              step01:
-                                                                                true,
-                                                                              step02:
-                                                                                true,
-                                                                              step03:
-                                                                                true,
-                                                                              step04:
-                                                                                true,
-                                                                              step05:
-                                                                                true,
-                                                                              step06:
-                                                                                true,
-                                                                              step07:
-                                                                                true,
-                                                                              step08:
-                                                                                true,
-                                                                              computationThreadMint:
-                                                                                true,
-                                                                              fraudProofMint:
-                                                                                true,
-                                                                              phasMembershipWithdraw:
-                                                                                true,
-                                                                              chunkedVerifyWithdraw:
-                                                                                true,
-                                                                              pexcludesWithdraw:
-                                                                                true,
-                                                                              fieldPreimageCertificateMint:
-                                                                                true,
-                                                                            }
-                                                                          : category ===
-                                                                                "invalidRange" ||
-                                                                              category ===
-                                                                                "zeroInput" ||
-                                                                              category ===
-                                                                                "l2TxMistag"
-                                                                            ? {
-                                                                                step01:
-                                                                                  true,
-                                                                                step02:
-                                                                                  true,
-                                                                                computationThreadMint:
-                                                                                  true,
-                                                                                fraudProofMint:
-                                                                                  true,
-                                                                                phasMembershipWithdraw:
-                                                                                  true,
-                                                                                chunkedVerifyWithdraw:
-                                                                                  true,
-                                                                              }
-                                                                            : category ===
-                                                                                  "minFee" ||
-                                                                                category ===
-                                                                                  "invalidSignature" ||
-                                                                                category ===
-                                                                                  "canonicalDecodability"
-                                                                              ? {
-                                                                                  step01:
-                                                                                    true,
-                                                                                  step02:
-                                                                                    true,
-                                                                                  computationThreadMint:
-                                                                                    true,
-                                                                                  fraudProofMint:
-                                                                                    true,
-                                                                                  phasMembershipWithdraw:
-                                                                                    true,
-                                                                                  chunkedVerifyWithdraw:
-                                                                                    true,
-                                                                                  fieldPreimageCertificateMint:
-                                                                                    true,
-                                                                                }
-                                                                              : category ===
-                                                                                  "missingSignature"
-                                                                                ? {
-                                                                                    step01:
-                                                                                      true,
-                                                                                    step02:
-                                                                                      true,
-                                                                                    step03:
-                                                                                      true,
-                                                                                    step04:
-                                                                                      true,
-                                                                                    forcedStep:
-                                                                                      true,
-                                                                                    forcedSigner:
-                                                                                      true,
-                                                                                    forcedWitness:
-                                                                                      true,
-                                                                                    fieldPreimageCertificateMint:
-                                                                                      true,
-                                                                                    computationThreadMint:
-                                                                                      true,
-                                                                                    fraudProofMint:
-                                                                                      true,
-                                                                                    phasMembershipWithdraw:
-                                                                                      true,
-                                                                                  }
-                                                                                : category ===
-                                                                                    "withdrawnInput"
-                                                                                  ? {
-                                                                                      step01:
-                                                                                        true,
-                                                                                      step02:
-                                                                                        true,
-                                                                                      step03:
-                                                                                        true,
-                                                                                      computationThreadMint:
-                                                                                        true,
-                                                                                      fraudProofMint:
-                                                                                        true,
-                                                                                      phasMembershipWithdraw:
-                                                                                        true,
-                                                                                      chunkedVerifyWithdraw:
-                                                                                        true,
-                                                                                      fieldPreimageCertificateMint:
-                                                                                        true,
-                                                                                    }
-                                                                                  : category ===
-                                                                                      "withdrawnReferenceInput"
-                                                                                    ? {
-                                                                                        step01:
-                                                                                          true,
-                                                                                        step02:
-                                                                                          true,
-                                                                                        step03:
-                                                                                          true,
-                                                                                        computationThreadMint:
-                                                                                          true,
-                                                                                        fraudProofMint:
-                                                                                          true,
-                                                                                        phasMembershipWithdraw:
-                                                                                          true,
-                                                                                        fieldPreimageCertificateMint:
-                                                                                          true,
-                                                                                      }
-                                                                                    : {
-                                                                                        step01:
-                                                                                          true,
-                                                                                        step02:
-                                                                                          true,
-                                                                                        computationThreadMint:
-                                                                                          true,
-                                                                                        fraudProofMint:
-                                                                                          true,
-                                                                                        phasMembershipWithdraw:
-                                                                                          true,
-                                                                                      },
-          ),
-        );
       }
       // The roster is complete, so this element type is `never` and the body
       // is unreachable. The guard stays so that re-opening a residue entry is
@@ -1254,8 +477,15 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      expect(deps.makeLucid).toHaveBeenCalledTimes(54);
-      expect(transport.stop).toHaveBeenCalledTimes(54);
+      // One isolated Lucid instance and one stopped DA transport per readiness
+      // preflight: startup must not leak a transport or share a wallet across
+      // categories.
+      expect(deps.makeLucid).toHaveBeenCalledTimes(
+        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+      );
+      expect(transport.stop).toHaveBeenCalledTimes(
+        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+      );
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),
@@ -1304,20 +534,27 @@ describe("watcher production fault-proof application V1", () => {
         deploymentFingerprint: DEPLOYMENT,
         headerHash: HEADER,
       });
-      expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual([
+      // Six physical steps, each bound to a distinct deployment contract of
+      // this family — a roster entry pointing at another family's script, or
+      // two steps sharing one script, fails here.
+      const stepEntries = Object.entries(
+        readiness.referenceScriptOutRefs,
+      ).filter(([key]) => /^step\d{2}$/u.test(key));
+      expect(stepEntries.map(([key]) => key)).toEqual([
         "step01",
         "step02",
         "step03",
         "step04",
         "step05",
         "step06",
-        "computationThreadMint",
-        "fraudProofMint",
-        "phasMembershipWithdraw",
-        "chunkedVerifyWithdraw",
-        "pexcludesWithdraw",
-        "fieldPreimageCertificateMint",
       ]);
+      const stepContractNames = stepEntries.map(([, rosterOutRef]) =>
+        contractNameForOutRef(rosterOutRef),
+      );
+      expect(new Set(stepContractNames).size).toBe(6);
+      for (const contractName of stepContractNames) {
+        expect(contractName).toMatch(/^fraudProofNativeScriptDecoding/u);
+      }
       expect(transport.stop).toHaveBeenCalledTimes(1);
     } finally {
       await rm(directory, { recursive: true, force: true });

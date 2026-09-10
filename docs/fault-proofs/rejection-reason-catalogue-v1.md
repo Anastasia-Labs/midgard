@@ -47,9 +47,9 @@ predicate itself; the operator cannot supply an unbound byte offset, hash, or
 verdict witness.
 
 Transaction-global reasons carry no fake coordinate. `ValueNotPreserved` is
-transaction-global; its standalone single-asset proof claim is selected by the
-challenger and independently authenticated by the registered
-`valueNotPreserved` family.
+transaction-global; accepted-invalid proofs can select an authenticated unbalanced asset, while
+wrongful rejection requires the registered `valueNotPreserved` family to prove
+universal conservation across the complete authenticated asset domain.
 
 ## 4. Legacy-code bridge
 

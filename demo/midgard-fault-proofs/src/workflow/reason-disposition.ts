@@ -2,8 +2,8 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 /**
  * Disposition of every typed `RejectionReason` constructor onto the fault-proof
- * catalogue, as fixed by the non-interactive proof-thread program
- * (`docs/fault-proofs/non-interactive-proof-thread-program-v1.md`, §3).
+ * catalogue, following the bounded-thread decision
+ * (`docs/fault-proofs/decisions/0002-bounded-proof-threads.md`).
  *
  * A non-interactive reason has exactly one direct family per source kind and
  * must be provable in both directions: an operator that accepted a

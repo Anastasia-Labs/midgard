@@ -7,7 +7,7 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -25,6 +25,10 @@ import {
   computeChallengeableCutoff,
   computeRetentionCutoff,
 } from "../src/database/retention-policy.js";
+import {
+  createDatabaseStateQueueCorrectionObserverStore,
+  parseStateQueueCorrectionObserverState,
+} from "../src/services/state-queue-correction-observer.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
 
@@ -158,13 +162,13 @@ describe("Q54 executable retention deadline alert", () => {
 });
 
 describe("Q54 authenticated release retention authority", () => {
-  it("treats missing Q58 capability as a fail-closed retention hold", () => {
+  it("reports deployed roles without inferring per-header inactivity", () => {
     expect(
       DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority(
         deploymentManifest,
       ),
     ).toMatchObject({
-      availabilityChallengeCapability: "missing",
+      availabilityChallengeCapability: "deployed_unobserved",
       minimumFinalityDepth: 30n,
     });
   });
@@ -305,6 +309,215 @@ const terminalMerge = (
   return transition;
 };
 
+const publishedFixture = (endTime: Date, sequence = 1) => {
+  const release =
+    DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority(
+      deploymentManifest,
+    )!;
+  const authority =
+    DaPayloadTerminalOutcomesDB.availabilityRetentionAuthority(release)!;
+  const header: SDK.Header = {
+    ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
+    prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    startTime: BigInt(endTime.getTime() - 1000),
+    endTime: BigInt(endTime.getTime()),
+    blockSlot: BigInt(sequence),
+    expectedNetworkId: 0n,
+    minFeeA: 44n,
+    minFeeB: 155381n,
+    prevHeaderHash: "11".repeat(28),
+    operatorVkey: "22".repeat(28),
+    protocolVersion: 1n,
+  };
+  const headerHash = Buffer.from(
+    Effect.runSync(SDK.hashBlockHeader(header)),
+    "hex",
+  );
+  const transition = terminalMerge(headerHash, sequence);
+  const input: UTxO = {
+    txHash: transition.previousQueue[1]!.outRef.split("#")[0]!,
+    outputIndex: 0,
+    address: authority.stateQueueAddress,
+    assets: {
+      lovelace: 4000000n,
+      [authority.stateQueuePolicyId +
+      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
+      headerHash.toString("hex")]: 1n,
+    },
+    datum: Data.to(
+      {
+        data: {
+          Node: {
+            data: Data.castTo(
+              {
+                header,
+                da_attestation: {
+                  Published: { terminal_commitment: "aa".repeat(32) },
+                },
+              },
+              SDK.StateQueueNode,
+            ),
+          },
+        },
+        link: null,
+      },
+      SDK.LinkedListDatum,
+    ),
+  };
+  const evidence = SDK.deriveDaAvailabilityRetentionEvidence(
+    transition,
+    input,
+    authority,
+  );
+  if (!evidence) throw new Error("invalid published terminal fixture");
+  return { header, headerHash, input, transition, evidence, authority };
+};
+describe("final unavailable removal retention evidence", () => {
+  it("binds timeout evidence to the exact challenge and final correction-lock transition", () => {
+    const f = publishedFixture(
+      new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY),
+    );
+    const hash = f.headerHash.toString("hex");
+    const challenge = "44414348" + "33".repeat(28);
+    const correctionIdentity = {
+      AvailabilityChallenge: { challenge_asset_name: challenge },
+    } as const;
+    const input = {
+      ...f.input,
+      datum: Data.to(
+        {
+          data: {
+            Node: {
+              data: Data.castTo(
+                {
+                  header: f.header,
+                  da_attestation: {
+                    Challenged: {
+                      da_bond_asset_name: "44".repeat(32),
+                      challenge_asset_name: challenge,
+                    },
+                  },
+                },
+                SDK.StateQueueNode,
+              ),
+            },
+          },
+          link: null,
+        },
+        SDK.LinkedListDatum,
+      ),
+    };
+    const transition = SDK.deriveStateQueueAuthenticatedTransition({
+      deploymentIdentityDigest: f.transition.deploymentIdentityDigest,
+      stateQueuePolicyId: f.authority.stateQueuePolicyId,
+      transactionHash: f.transition.transactionHash,
+      blockHash: f.transition.blockHash,
+      slot: f.transition.slot,
+      blockNo: f.transition.blockNo,
+      transactionIndex: "0",
+      chainPointId: f.transition.chainPointId,
+      finalityDepth: f.transition.finalityDepth,
+      mintPolicyIds: [f.authority.stateQueuePolicyId],
+      referenceInputOutRefs: [],
+      spentInputOutRefs: [
+        ...f.transition.consumedQueueOutRefs,
+        `${h32("f")}#0`,
+      ],
+      previousQueue: f.transition.previousQueue,
+      nextQueue: f.transition.nextQueue,
+      correctionLockWitness: {
+        kind: "correction_transition",
+        consumedOutRef: `${h32("f")}#0`,
+        continuedOutRef: `${f.transition.transactionHash}#9`,
+        targetHeaderHash: hash,
+        correctionIdentity,
+        previousDatum: {
+          Locked: {
+            target_header_hash: hash,
+            correction_identity: correctionIdentity,
+          },
+        },
+        nextDatum: "Idle",
+      },
+      redeemers: [
+        {
+          purpose: "mint",
+          index: "0",
+          cborHex: Data.to(
+            {
+              RemoveUnavailableBlockAfterTimeout: {
+                yield_to_ref_input_index: 0n,
+                unavailable_header_hash: hash,
+                challenge_asset_name: challenge,
+                removal_approach: {
+                  RemoveTimedOutHead: {
+                    confirmed_state_input_outref: {
+                      transactionId: h32("0"),
+                      outputIndex: 0n,
+                    },
+                    confirmed_state_output_index: 0n,
+                  },
+                },
+              },
+            },
+            SDK.StateQueueRedeemer,
+          ),
+        },
+      ],
+    });
+    expect(transition).not.toBeNull();
+    const evidence = SDK.deriveDaAvailabilityRetentionEvidence(
+      transition,
+      input,
+      f.authority,
+    );
+    expect(evidence?.kind).toBe("timed_out");
+    expect(
+      SDK.parseDaAvailabilityRetentionEvidence(
+        evidence,
+        transition!,
+        f.authority,
+      ),
+    ).toEqual(evidence);
+    expect(
+      SDK.deriveDaAvailabilityRetentionEvidence(
+        f.transition,
+        input,
+        f.authority,
+      ),
+    ).toBeNull();
+    expect(
+      SDK.deriveDaAvailabilityRetentionEvidence(
+        transition,
+        { ...input, txHash: h32("e") },
+        f.authority,
+      ),
+    ).toBeNull();
+  });
+});
+
+const seedPublished = (endTime: Date, sequence = 1) =>
+  Effect.gen(function* () {
+    const fixture = publishedFixture(endTime, sequence);
+    const row = {
+      ...daPayloadFixture(`published-${sequence}`, endTime),
+      [DaPayloadsDB.Columns.HEADER_HASH]: fixture.headerHash,
+    };
+    yield* DaPayloadsDB.upsertAvailable(row);
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE da_payloads SET created_at = ${new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY)} WHERE header_hash = ${fixture.headerHash}`;
+    yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
+      fixture.transition,
+      deploymentManifest,
+      fixture.evidence,
+    );
+    return fixture;
+  });
+
 const seedTerminal = (
   headerHash: Buffer,
   sequence: number,
@@ -354,7 +567,171 @@ describe.skipIf(!dbEnabled)(
         ) as Effect.Effect<A, never, never>,
       );
 
-    it("retains a 16-day-old terminal record while Q58 authority is missing", async () => {
+    it("collects and reloads terminal authority through the durable observer store", async () => {
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
+      const deleted = await run(
+        Effect.gen(function* () {
+          const f = yield* seedPublished(old);
+          const sql = yield* SqlClient.SqlClient;
+          const canonicalJson = (value: unknown): string =>
+            value === null || typeof value !== "object"
+              ? JSON.stringify(value)
+              : Array.isArray(value)
+                ? `[${value.map(canonicalJson).join(",")}]`
+                : `{${Object.entries(value)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(
+                      ([key, item]) =>
+                        `${JSON.stringify(key)}:${canonicalJson(item)}`,
+                    )
+                    .join(",")}}`;
+          const base = {
+            schemaVersion:
+              "midgard-node-state-queue-correction-observer-v1" as const,
+            deploymentIdentityDigest: f.authority.deploymentIdentityDigest,
+            stateQueuePolicyId: f.authority.stateQueuePolicyId,
+            cursorQueue: f.transition.nextQueue,
+            pending: [],
+            admitted: [f.transition],
+            retractedTransactionHashes: [],
+            postFinalityRollbackIncidents: [],
+          };
+          const state = {
+            ...base,
+            stateDigest: createHash("sha256")
+              .update(canonicalJson(base))
+              .digest("hex"),
+          };
+          expect(parseStateQueueCorrectionObserverState(state)).not.toBeNull();
+          const store = createDatabaseStateQueueCorrectionObserverStore({
+            sql,
+            deploymentManifest,
+            readAvailabilityTerminalInput: async () => f.input,
+          });
+          yield* Effect.promise(() => store.save(state));
+          expect(
+            parseStateQueueCorrectionObserverState(
+              yield* Effect.promise(() => store.load()),
+            ),
+          ).toEqual(state);
+          return yield* DaPayloadsDB.pruneOlderThan(
+            computeRetentionCutoff(NOW, 15),
+            computeChallengeableCutoff(NOW),
+            deploymentManifest,
+          );
+        }),
+      );
+      expect(deleted).toBe(1);
+    });
+    it("uses the authenticated header horizon when local timestamp metadata is stale", async () => {
+      const result = await run(
+        Effect.gen(function* () {
+          const f = yield* seedPublished(NOW);
+          const sql = yield* SqlClient.SqlClient;
+          const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
+          yield* sql`UPDATE da_payloads SET block_start_time=${old},block_end_time=${old} WHERE header_hash=${f.headerHash}`;
+          return yield* DaPayloadsDB.pruneOlderThan(
+            computeRetentionCutoff(NOW, 15),
+            computeChallengeableCutoff(NOW),
+            deploymentManifest,
+          );
+        }),
+      );
+      expect(result).toBe(0);
+    });
+
+    it("prunes published terminal evidence and revokes it atomically on rollback", async () => {
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
+      const result = await run(
+        Effect.gen(function* () {
+          yield* seedPublished(old, 1);
+          const rolledBack = yield* seedPublished(old, 2);
+          yield* DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
+            rolledBack.transition,
+            deploymentManifest,
+          );
+          const deleted = yield* DaPayloadsDB.pruneOlderThan(
+            computeRetentionCutoff(NOW, 15),
+            computeChallengeableCutoff(NOW),
+            deploymentManifest,
+          );
+          return { deleted, remaining: yield* countRows };
+        }),
+      );
+      expect(result).toEqual({ deleted: 1, remaining: 1 });
+    });
+    it("revalidates durable evidence and rejects active, foreign, malformed and shallow authority", async () => {
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
+      const result = await run(
+        Effect.gen(function* () {
+          const f = yield* seedPublished(old);
+          expect(
+            SDK.deriveDaAvailabilityRetentionEvidence(
+              f.transition,
+              {
+                ...f.input,
+                datum: Data.to(
+                  {
+                    data: {
+                      Node: {
+                        data: Data.castTo(
+                          {
+                            header: f.header,
+                            da_attestation: SDK.NO_DA_ATTESTATION,
+                          },
+                          SDK.StateQueueNode,
+                        ),
+                      },
+                    },
+                    link: null,
+                  },
+                  SDK.LinkedListDatum,
+                ),
+              },
+              f.authority,
+            ),
+          ).toBeNull();
+          expect(
+            SDK.parseDaAvailabilityRetentionEvidence(
+              { ...f.evidence, availabilityPolicyId: "ff".repeat(28) },
+              f.transition,
+              f.authority,
+            ),
+          ).toBeNull();
+          expect(
+            SDK.deriveDaAvailabilityRetentionEvidence(f.transition, f.input, {
+              ...f.authority,
+              minimumFinalityDepth: 100n,
+            }),
+          ).toBeNull();
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE da_payload_terminal_outcomes SET availability_terminal_evidence = ${JSON.stringify({ ...f.evidence, removedQueueInputCbor: "00" })} WHERE header_hash = ${f.headerHash}`;
+          return yield* DaPayloadsDB.pruneOlderThan(
+            computeRetentionCutoff(NOW, 15),
+            computeChallengeableCutoff(NOW),
+            deploymentManifest,
+          );
+        }),
+      );
+      expect(result).toBe(0);
+    });
+    it("requires the strict challenge horizon even with published terminal evidence", async () => {
+      const cutoff = computeChallengeableCutoff(NOW);
+      const result = await run(
+        Effect.gen(function* () {
+          yield* seedPublished(cutoff, 1);
+          yield* seedPublished(new Date(cutoff.getTime() - 1), 2);
+          return yield* DaPayloadsDB.pruneOlderThan(
+            computeRetentionCutoff(NOW, 15),
+            cutoff,
+            deploymentManifest,
+          );
+        }),
+      );
+      expect(result).toBe(1);
+    });
+
+    it("retains a 16-day-old terminal record without per-header availability evidence", async () => {
       const days16 = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY);
       const deleted = await run(
         Effect.gen(function* () {

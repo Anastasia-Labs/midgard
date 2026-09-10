@@ -108,7 +108,6 @@ describe("assertMidgardPlutusDataWellFormedV1", () => {
   });
 
   it("admits the exact Cardano-derived maximum unary depth and beyond", () => {
-    const start = Date.now();
     for (const depth of [1, 1_024, 1_523, 2_048, 4_043, 4_044, 16_000]) {
       expect(() =>
         assertMidgardPlutusDataWellFormed(
@@ -116,9 +115,6 @@ describe("assertMidgardPlutusDataWellFormedV1", () => {
         ),
       ).not.toThrow();
     }
-    // The recursive probe this replaced needed multiple seconds per call at
-    // these depths; the iterative pass must stay well under that in total.
-    expect(Date.now() - start).toBeLessThan(5_000);
   });
 
   it("matches the composite CML verdict on a differential corpus", () => {

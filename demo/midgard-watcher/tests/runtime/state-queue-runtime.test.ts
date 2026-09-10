@@ -219,22 +219,134 @@ describe("production state-queue runtime V1", () => {
       store,
       source,
     });
-    const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value);
+    const availability = {
+      invalidateForRollback: () => {
+        events.push("availability_revoked");
+      },
+      reconcile: async () => {
+        events.push("availability_recovered");
+      },
+    };
+    const hooks = runtime.bindFaultDecisionBridge(
+      decisionBridge.value,
+      availability,
+    );
     const rollingBack = hooks.onRollback({
       kind: "point",
       blockHash: "44".repeat(32),
       slot: "1000",
     });
-    expect(events).toEqual(["revoked", "rollback_started"]);
+    expect(events).toEqual([
+      "revoked",
+      "availability_revoked",
+      "rollback_started",
+    ]);
     expect(decisionBridge.prepareForRecovery).not.toHaveBeenCalled();
 
     releaseRollback();
     await rollingBack;
     expect(events).toEqual([
       "revoked",
+      "availability_revoked",
       "rollback_started",
       "rollback_finished",
+      "availability_recovered",
     ]);
     expect(decisionBridge.prepareForRecovery).toHaveBeenCalledWith(before);
   });
+
+  it("dispatches availability at fresh finalized points even when the queue cursor is unchanged", async () => {
+    const before = observation(100, "44", null);
+    const current = observation(101, "45", before.observationDigest);
+    const append = vi.fn(async () => "appended" as const);
+    const source: WatcherStateQueueObservationSource = {
+      restore: async () => ({
+        previous: before,
+        discardedObservationCount: 0,
+        replayIntersection: point(100, "44"),
+        catchupBoundary: {
+          ...point(100, "44"),
+          finalityDepth: "30",
+          ogmiosTipBlockNo: "130",
+        },
+      }),
+      bootstrap: async () => {
+        throw new Error("not used");
+      },
+      observe: async () => before,
+      latestFinalizedObservation: () => current,
+      resolveRetainedHeader: async () => {
+        throw new Error("not used");
+      },
+    };
+    const runtime = await createWatcherStateQueueRuntime({
+      source,
+      store: {
+        readAll: async () => [before],
+        append,
+        rollbackTo: async () => undefined,
+      },
+    });
+    const decisionBridge = bridge();
+    const reconcile = vi.fn(async () => undefined);
+    const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value, {
+      reconcile,
+      invalidateForRollback: () => undefined,
+    });
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(101, "45"),
+      localObservation,
+    });
+    expect(append).not.toHaveBeenCalled();
+    expect(runtime.current()).toBe(before);
+    expect(reconcile).toHaveBeenCalledWith(current, true);
+    expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledWith(current);
+    expect(reconcile.mock.invocationCallOrder[0]).toBeLessThan(
+      decisionBridge.reconcileAndDispatch.mock.invocationCallOrder[0]!,
+    );
+  });
+  it.each([
+    { blockNo: 102, byte: "33", reason: "foreign" },
+    { blockNo: 103, byte: "22", reason: "skipped" },
+  ])(
+    "refuses a $reason historical catch-up point with the Ogmios tip ahead",
+    async ({ blockNo, byte, reason }) => {
+      const before = observation(100, "11", null);
+      const source: WatcherStateQueueObservationSource = {
+        restore: async () => ({
+          previous: before,
+          discardedObservationCount: 0,
+          replayIntersection: point(100, "11"),
+          catchupBoundary: {
+            ...point(102, "22"),
+            finalityDepth: "30",
+            ogmiosTipBlockNo: "132",
+          },
+        }),
+        bootstrap: async () => {
+          throw new Error("nonempty cache must restore");
+        },
+        observe: async ({ previous }) => previous,
+        resolveRetainedHeader: async () => {
+          throw new Error("not used");
+        },
+      };
+      const store: WatcherSqliteStateQueueObservationStore = {
+        readAll: async () => [before],
+        append: async () => "appended",
+        rollbackTo: async () => undefined,
+      };
+      const runtime = await createWatcherStateQueueRuntime({ store, source });
+      const decisionBridge = bridge();
+      const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value);
+      await expect(
+        hooks.onFinalized({
+          nativeBlock: nativeBlock(blockNo, byte),
+          localObservation,
+        }),
+      ).rejects.toThrow(reason);
+      await expect(runtime.caughtUp).rejects.toThrow(reason);
+      expect(decisionBridge.reconcileAndDispatch).not.toHaveBeenCalled();
+    },
+  );
 });

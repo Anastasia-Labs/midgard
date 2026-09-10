@@ -86,7 +86,6 @@ import {
 } from "../support/deployment-authority-fixture.js";
 import { makeWatcherTlsTransportFixture } from "../support/tls-transport-fixture.js";
 
-const RELEASE_DIGEST = h32("66");
 const BLUEPRINT_HASH = h32("55");
 const RULE_BUNDLE_COMMITMENT = h32("77");
 const CT_POLICY = h28("c1");
@@ -206,7 +205,7 @@ const makeDeploymentAuthority = () => {
   );
   const fixture = makeWatcherDeploymentAuthorityFixture({
     contractSet,
-    releaseDigest: RELEASE_DIGEST,
+
     blueprintHash: BLUEPRINT_HASH,
     ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
     programCommitments: {
@@ -235,7 +234,7 @@ const authority = makeDeploymentAuthority();
 const applied = authority.deploymentAuthority.policy.appliedScriptHashes;
 const policy = makeWatcherProofThreadPolicy({
   network: "Preprod",
-  releaseEvidenceDigest: RELEASE_DIGEST,
+  blueprintHash: BLUEPRINT_HASH,
   deploymentMarker: authority.marker,
   deploymentTrustRootId: authority.result.trustRootId,
   requiredFinalityDepth: "2",
@@ -1272,7 +1271,7 @@ const initStage = ({
   const observation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     transitionKind: "init",
     confirmationPhase: phase,
@@ -1680,7 +1679,7 @@ const transitionStage = ({
   const observation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     transitionKind,
     confirmationPhase: phase,
@@ -2165,7 +2164,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
   const observation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     transitionKind: "rollback",
     confirmationPhase: null,
@@ -2237,7 +2236,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
   const resumeObservation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     transitionKind: "cancel",
     confirmationPhase: "pending",
@@ -2346,7 +2345,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     expect(
       makeWatcherProofThreadPolicy({
         network: "Preprod",
-        releaseEvidenceDigest: RELEASE_DIGEST,
+        blueprintHash: BLUEPRINT_HASH,
         deploymentMarker: authority.marker,
         deploymentTrustRootId: authority.result.trustRootId,
         requiredFinalityDepth: "2",
@@ -2431,7 +2430,7 @@ describe("W17 public proof/computation-thread indexer", () => {
   it("rejects incomplete, ambiguous, and unreachable signed family graphs", () => {
     const base = {
       network: "Preprod" as const,
-      releaseEvidenceDigest: RELEASE_DIGEST,
+      blueprintHash: BLUEPRINT_HASH,
       deploymentMarker: authority.marker,
       deploymentTrustRootId: authority.result.trustRootId,
       requiredFinalityDepth: "2",
@@ -3156,7 +3155,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       const rollbackObservation = makeWatcherProofThreadObservation({
         policyDigest: policy.policyDigest,
         network: policy.network,
-        releaseEvidenceDigest: policy.releaseEvidenceDigest,
+        blueprintHash: policy.blueprintHash,
         deploymentMarker: policy.deploymentMarker,
         transitionKind: "rollback",
         confirmationPhase: null,
@@ -3572,7 +3571,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       const rollbackObservation = makeWatcherProofThreadObservation({
         policyDigest: policy.policyDigest,
         network: policy.network,
-        releaseEvidenceDigest: policy.releaseEvidenceDigest,
+        blueprintHash: policy.blueprintHash,
         deploymentMarker: policy.deploymentMarker,
         transitionKind: "rollback",
         confirmationPhase: null,

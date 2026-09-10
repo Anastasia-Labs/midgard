@@ -179,6 +179,7 @@ import {
   initialCekMaterialTraversal,
   submitCekMaterialTraversal,
 } from "./cek-material-traversal.js";
+import { committedValidationClaimEndpointsAndSourceAreValid } from "./claim-endpoints.js";
 import {
   LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES,
   LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES,
@@ -2389,7 +2390,6 @@ export type SubmitValidationDisputeOpenResult = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  readonly responseDeadline: number;
   readonly awaitedConfirmation: boolean;
 };
 
@@ -2414,7 +2414,6 @@ export type BuildValidationDisputeOpenResult = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  readonly responseDeadline: number;
 };
 
 export const buildValidationDisputeOpen = async ({
@@ -2523,17 +2522,9 @@ export const buildValidationDisputeOpen = async ({
       `State-queue datum header hashes to ${computedHeaderHash}, expected ${fraudulentHeaderHash}`,
     );
   }
-  const operatorDescriptor = validationTraceDescriptorCoreFromData(
-    claim.descriptor_membership.value,
-  );
-  const challengerDescriptorCore =
-    validationTraceDescriptorCoreFromData(challengerDescriptor);
+  // Opening authenticates committed structure. A game is constructed only
+  // after source verification establishes valid normative endpoints.
   const currentTimeUpper = inclusiveValidityUpperBound(range);
-  const dispute = openMidgardValidationDispute({
-    operatorDescriptor,
-    challengerDescriptor: challengerDescriptorCore,
-    currentTime: currentTimeUpper,
-  });
   if (
     !canOpenMidgardValidationDisputeBeforeMaturity({
       currentTimeUpper,
@@ -2608,7 +2599,6 @@ export const buildValidationDisputeOpen = async ({
     outputIndex: Number(layout.outputIndex),
     hubOracleRefInputIndex: Number(layout.hubOracleRefInputIndex),
     stateQueueNodeRefInputIndex: Number(layout.stateQueueNodeRefInputIndex),
-    responseDeadline: dispute.responseDeadline,
   };
 };
 
@@ -2640,7 +2630,6 @@ export const submitValidationDisputeOpen = async ({
     outputIndex: built.outputIndex,
     hubOracleRefInputIndex: built.hubOracleRefInputIndex,
     stateQueueNodeRefInputIndex: built.stateQueueNodeRefInputIndex,
-    responseDeadline: built.responseDeadline,
     awaitedConfirmation: awaitConfirmation,
   };
 };
@@ -2672,7 +2661,8 @@ export type SubmitValidationDisputeVerifySourceResult = {
   readonly nextThreadOutRef: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly responseDeadline: number;
+  readonly outcome: "game" | "award";
+  readonly responseDeadline: number | null;
   readonly awaitedConfirmation: boolean;
 };
 
@@ -2731,30 +2721,44 @@ export const submitValidationDisputeVerifySource = async ({
       `Validation-dispute source verification requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
     );
   }
-  const operatorDescriptor = validationTraceDescriptorCoreFromData(
-    inputDatum.data.claim.descriptor_membership.value,
+  const endpointsAreValid = committedValidationClaimEndpointsAndSourceAreValid(
+    inputDatum.data.challenged_header,
+    inputDatum.data.claim,
   );
-  const challengerDescriptor = validationTraceDescriptorCoreFromData(
-    inputDatum.data.challenger_descriptor,
-  );
-  const dispute = openValidationDisputeAfterSourceVerification({
-    operatorDescriptor,
-    challengerDescriptor,
-    openTimeUpper: inputDatum.data.open_time_upper,
-    challengedBlockEndTime: inputDatum.data.challenged_header.endTime,
-    sourceValidityRange: range,
-  });
-  const outputDatum = Data.to(
-    {
-      fraud_prover: inputDatum.fraud_prover,
-      data: {
-        challenged_header_hash: inputDatum.data.challenged_header_hash,
-        operator_vkey: inputDatum.data.challenged_header.operatorVkey,
-        dispute: validationDisputeDataFromCore(dispute),
-      },
-    },
-    ValidationDisputeDatum,
-  );
+  const dispute = endpointsAreValid
+    ? openValidationDisputeAfterSourceVerification({
+        operatorDescriptor: validationTraceDescriptorCoreFromData(
+          inputDatum.data.claim.descriptor_membership.value,
+        ),
+        challengerDescriptor: validationTraceDescriptorCoreFromData(
+          inputDatum.data.challenger_descriptor,
+        ),
+        openTimeUpper: inputDatum.data.open_time_upper,
+        challengedBlockEndTime: inputDatum.data.challenged_header.endTime,
+        sourceValidityRange: range,
+      })
+    : null;
+  const outputAddress =
+    dispute === null
+      ? contracts.validationTraceDispute.award.spendingScriptAddress
+      : contracts.validationTraceDispute.game.spendingScriptAddress;
+  const outputDatum =
+    dispute === null
+      ? Data.to(
+          { fraud_prover: inputDatum.fraud_prover, data: { version: 1n } },
+          WinningValidationResolutionDatum,
+        )
+      : Data.to(
+          {
+            fraud_prover: inputDatum.fraud_prover,
+            data: {
+              challenged_header_hash: inputDatum.data.challenged_header_hash,
+              operator_vkey: inputDatum.data.challenged_header.operatorVkey,
+              dispute: validationDisputeDataFromCore(dispute),
+            },
+          },
+          ValidationDisputeDatum,
+        );
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -2770,8 +2774,7 @@ export const submitValidationDisputeVerifySource = async ({
       [threadUtxo],
       makeVerifySourceRedeemer({
         threadUtxo,
-        outputAddress:
-          contracts.validationTraceDispute.game.spendingScriptAddress,
+        outputAddress,
         outputDatum,
         threadUnit: token.unit,
         onLayout: (resolvedLayout) => {
@@ -2780,7 +2783,7 @@ export const submitValidationDisputeVerifySource = async ({
       }),
     )
     .pay.ToContract(
-      contracts.validationTraceDispute.game.spendingScriptAddress,
+      outputAddress,
       { kind: "inline", value: outputDatum },
       threadAssets(threadUtxo, token.unit),
     )
@@ -2823,7 +2826,8 @@ export const submitValidationDisputeVerifySource = async ({
     nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
-    responseDeadline: dispute.responseDeadline,
+    outcome: dispute === null ? "award" : "game",
+    responseDeadline: dispute?.responseDeadline ?? null,
     awaitedConfirmation: awaitConfirmation,
   };
 };

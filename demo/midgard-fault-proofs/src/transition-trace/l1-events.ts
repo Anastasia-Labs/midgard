@@ -18,6 +18,7 @@ import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import {
   admitFraudProofRawL1Snapshot,
+  computeFraudProofRawL1SnapshotEvidenceDigest,
   type FraudProofRawL1SnapshotAuthority,
   type FraudProofRawL1SnapshotRequest,
   type FraudProofRawL1Utxo,
@@ -26,22 +27,36 @@ import {
 export type TransitionTraceL1Events = Readonly<{
   headerHash: string;
   snapshotDigest: string;
+  evidenceDigest: string;
 }>;
 export type TransitionTraceL1Event = Readonly<{
   kind: "deposit" | "withdrawal" | "forcedTransaction";
   utxo: UTxO;
   assetName: string;
 }>;
+type AdmittedTransitionTraceL1Events = Readonly<{
+  events: readonly TransitionTraceL1Event[];
+  hub: UTxO;
+  network: Network;
+  depositPolicyId: string;
+  snapshot: ReturnType<typeof admitFraudProofRawL1Snapshot>;
+}>;
 const admitted = new WeakMap<
   object,
   Readonly<{
-    events: readonly TransitionTraceL1Event[];
-    hub: UTxO;
-    network: Network;
-    depositPolicyId: string;
-    snapshot: ReturnType<typeof admitFraudProofRawL1Snapshot>;
+    convenience: AdmittedTransitionTraceL1Events;
+    raw: AdmittedTransitionTraceL1Events;
   }>
 >();
+// Applied only to the detached result of successful admission. The snapshot
+// and all derived convenience views have one immutable owner, so reading an
+// admitted handle cannot require repeating transaction and history validation.
+const freezeAdmittedEvents = (value: unknown): void => {
+  if (value === null || typeof value !== "object") return;
+  for (const child of Object.values(value)) freezeAdmittedEvents(child);
+  Object.freeze(value);
+};
+
 const utxo = (raw: FraudProofRawL1Utxo): UTxO => {
   const [txHash, index] = raw.outRef.split("#");
   return {
@@ -88,7 +103,7 @@ export const captureTransitionTraceL1Events = async ({
   const hubUnit = toUnit(hubPolicy, SDK.HUB_ORACLE_ASSET_NAME);
   const base = {
     deploymentIdentityDigest: finality.deploymentIdentityDigest,
-    releaseIdentityDigest: finality.releaseIdentityDigest,
+    blueprintHash: finality.blueprintHash,
     finalityPolicyDigest: finality.policyDigest,
     headerHash: binding.definition.headerHash,
   };
@@ -200,18 +215,29 @@ export const captureTransitionTraceL1Events = async ({
     snapshotDigest: createHash("sha256")
       .update(JSON.stringify(snapshot))
       .digest("hex"),
+    evidenceDigest: computeFraudProofRawL1SnapshotEvidenceDigest(snapshot),
   });
-  admitted.set(handle, {
-    events: events.sort(
-      (left, right) =>
-        left.utxo.txHash.localeCompare(right.utxo.txHash) ||
-        left.utxo.outputIndex - right.utxo.outputIndex,
-    ),
+  const owned = structuredClone({
+    events,
     hub: finalHub.utxo,
     network: binding.network,
     depositPolicyId: hub.data.deposit,
     snapshot,
   });
+  freezeAdmittedEvents(owned);
+  // Preserve each reader's ordering: raw readers follow scope/NFT order;
+  // convenience readers have always sorted all event out-refs together.
+  const convenience = Object.freeze({
+    ...owned,
+    events: Object.freeze(
+      [...owned.events].sort(
+        (left, right) =>
+          left.utxo.txHash.localeCompare(right.utxo.txHash) ||
+          left.utxo.outputIndex - right.utxo.outputIndex,
+      ),
+    ),
+  });
+  admitted.set(handle, Object.freeze({ convenience, raw: owned }));
   return handle;
 };
 
@@ -223,7 +249,16 @@ export const requireTransitionTraceL1Events = (
     throw new Error(
       "Transition replay requires freshly admitted raw L1 events",
     );
-  return value;
+  return value.convenience;
+};
+
+/** Read the immutable result of exact raw admission. A different capture gets
+ * a different opaque handle and must pass admission independently. */
+export const readFreshTransitionTraceL1Events = (
+  handle: TransitionTraceL1Events,
+) => {
+  requireTransitionTraceL1Events(handle);
+  return admitted.get(handle)!.raw;
 };
 
 export type TransitionTraceEventAuthority = Readonly<{

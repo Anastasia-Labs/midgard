@@ -130,6 +130,11 @@ const exactLiteral = <T extends string>(
   return value as T;
 };
 
+// Reuse only encodings whose entire reachable JSON tree has been validated
+// and is frozen. A frozen container with a mutable child is never cacheable.
+// Weak keys let discarded snapshot revisions and their encodings be collected.
+const immutableCanonicalJson = new WeakMap<object, string>();
+
 const canonicalJson = (
   value: unknown,
   path = "$",
@@ -158,7 +163,21 @@ const canonicalJson = (
   if (ancestors.has(objectValue)) {
     fail("invalid_field", path);
   }
+  const cached = immutableCanonicalJson.get(objectValue);
+  if (cached !== undefined) return cached;
   ancestors.add(objectValue);
+  let immutable = Object.isFrozen(objectValue);
+  const encodeChild = (child: unknown, childPath: string): string => {
+    const encoded = canonicalJson(child, childPath, ancestors);
+    if (
+      typeof child === "object" &&
+      child !== null &&
+      !immutableCanonicalJson.has(child)
+    ) {
+      immutable = false;
+    }
+    return encoded;
+  };
   let result: string;
   if (Array.isArray(value)) {
     if (
@@ -189,9 +208,7 @@ const canonicalJson = (
       }
     }
     result = `[${value
-      .map((member, index) =>
-        canonicalJson(member, `${path}.${index}`, ancestors),
-      )
+      .map((member, index) => encodeChild(member, `${path}.${index}`))
       .join(",")}]`;
   } else {
     const record = plainRecord(value, path);
@@ -210,19 +227,34 @@ const canonicalJson = (
       .sort()
       .map(
         (key) =>
-          `${JSON.stringify(key)}:${canonicalJson(record[key], `${path}.${key}`, ancestors)}`,
+          `${JSON.stringify(key)}:${encodeChild(record[key], `${path}.${key}`)}`,
       )
       .join(",")}}`;
   }
   ancestors.delete(objectValue);
+  if (immutable) immutableCanonicalJson.set(objectValue, result);
   return result;
 };
 
 export const watcherCanonicalJson = (value: unknown): string =>
   canonicalJson(value);
 
-export const watcherSha256CanonicalJson = (value: unknown): string =>
-  sha256Utf8(watcherCanonicalJson(value));
+const immutableCanonicalDigests = new WeakMap<object, string>();
+export const watcherSha256CanonicalJson = (value: unknown): string => {
+  const encoded = watcherCanonicalJson(value);
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !immutableCanonicalJson.has(value)
+  )
+    return sha256Utf8(encoded);
+  let digest = immutableCanonicalDigests.get(value);
+  if (digest === undefined) {
+    digest = sha256Utf8(encoded);
+    immutableCanonicalDigests.set(value, digest);
+  }
+  return digest;
+};
 
 export const watcherSameCanonicalJson = (
   left: unknown,
@@ -1557,13 +1589,26 @@ export const makeEmptyWatcherDurableStore = (
 
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+const immutableStoreEncodings = new WeakMap<object, string>();
 
 export const encodeWatcherDurableStore = (
   value: WatcherDurableStore,
-): Uint8Array =>
-  UTF8_ENCODER.encode(
-    canonicalJson(parseWatcherDurableStore(value) as CanonicalJson),
-  );
+): Uint8Array => {
+  const cached = immutableStoreEncodings.get(value);
+  if (cached !== undefined) return UTF8_ENCODER.encode(cached);
+  const encoded = canonicalJson(parseWatcherDurableStore(value));
+  // Parsing above checks records, references, payload digests and rebuilt
+  // caches. Retain that result only if the original input is also immutable;
+  // caller-owned mutable stores must be checked again on every encoding.
+  if (Object.isFrozen(value)) {
+    canonicalJson(value);
+    if (immutableCanonicalJson.has(value)) {
+      immutableStoreEncodings.set(value, encoded);
+    }
+  }
+  // Never hand out a cached mutable byte buffer.
+  return UTF8_ENCODER.encode(encoded);
+};
 
 export const watcherDurableStoreBytesSha256 = (value: Uint8Array): string =>
   sha256Bytes(value);
@@ -1597,6 +1642,8 @@ export type WatcherDurableAtomicBackend = Readonly<{
   compareAndSwap: (
     expectedSha256: string | null,
     next: Uint8Array,
+    /** Optional encoding hint; a backend must check it against the exact bytes. */
+    canonicalValue?: unknown,
   ) => Promise<boolean>;
 }>;
 
@@ -1641,6 +1688,7 @@ export const compareAndSwapWatcherDurableAtomicSnapshot = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
   readonly expectedSha256: string | null;
   readonly next: Uint8Array;
+  readonly canonicalValue?: unknown;
 }): Promise<WatcherDurableAtomicCommit> => {
   if (input.expectedSha256 !== null && !HEX_32.test(input.expectedSha256)) {
     return fail("invalid_field", "$.expectedSha256");
@@ -1652,7 +1700,11 @@ export const compareAndSwapWatcherDurableAtomicSnapshot = async (input: {
   const sha256 = watcherDurableStoreBytesSha256(next);
   let committed: boolean;
   try {
-    committed = await input.backend.compareAndSwap(input.expectedSha256, next);
+    committed = await input.backend.compareAndSwap(
+      input.expectedSha256,
+      next,
+      input.canonicalValue,
+    );
   } catch {
     return fail("persistence_failure", "$.backend.compareAndSwap");
   }

@@ -3,8 +3,8 @@
 This runbook covers the operator-facing preprod flow for:
 
 1. submitting an L1 deposit,
-2. spending the projected L2 value with a Midgard-native transfer,
-3. committing and merging the block that includes the deposit and transfer,
+2. committing and merging the deposit block, then spending its L2 value,
+3. committing and merging the later transfer block,
 4. absorbing the confirmed deposit into the reserve,
 5. submitting a signed withdrawal order for a selected L2 UTxO,
 6. committing and merging the withdrawal block, and
@@ -19,7 +19,7 @@ Start from `demo/midgard-node/.env.example` and verify the preprod deployment is
 configured:
 
 - `NETWORK=Preprod`
-- `L1_PROVIDER` and matching provider credentials
+- `L1_PROVIDER=Kupmios` with healthy local Kupo and Ogmios endpoints
 - `L1_OPERATOR_SEED_PHRASE`
 - `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`
 - `L1_REFERENCE_SCRIPT_SEED_PHRASE`
@@ -44,6 +44,7 @@ Run the node from `demo/midgard-node` and keep it running:
 cd demo/midgard-node
 pnpm install
 pnpm build
+pnpm db:migrate
 pnpm listen
 ```
 
@@ -118,11 +119,40 @@ Wait until the deposit inclusion time has elapsed, then project deposits once:
 node dist/index.js project-deposits-once
 ```
 
-Verify the deposit is visible in the L2 ledger view:
+Inspect the spendable L2 ledger view (the new deposit remains hidden until
+its header is confirmed):
 
 ```sh
 node dist/index.js utxos --address "$USER_L2_ADDRESS" | jq .
 ```
+
+Before spending this output, this runbook requires committing the deposit block
+and waiting for its confirmed merge. The runtime exposes the projected output
+once confirmation assigns its header; the runbook waits for settlement as an
+additional sequencing check. Deposits are applied after transactions within a block; projection into
+the local ledger does not make a same-block deposit spend valid.
+
+```sh
+curl -fsS \
+  -H "x-midgard-admin-key: $ADMIN_API_KEY" \
+  "$MIDGARD_NODE_URL/commit" | jq .
+```
+
+Wait for L1 confirmation, committee DA attestation, and maturity, then merge:
+
+```sh
+curl -fsS \
+  -H "x-midgard-admin-key: $ADMIN_API_KEY" \
+  "$MIDGARD_NODE_URL/merge" | jq .
+
+node dist/index.js resolve-event-settlement-proof \
+  --kind deposit \
+  --event-id "$DEPOSIT_EVENT_ID" | jq .
+```
+
+Proceed only once the deposit settlement proof resolves. A skipped merge is not
+confirmation of that deposit; inspect its reported blocker and allow the normal
+confirmation/attestation lifecycle to finish.
 
 ## 3. Submit The L2 Send Transaction
 
@@ -145,7 +175,7 @@ Check admission status:
 curl -fsS "$MIDGARD_NODE_URL/tx-status?tx_hash=$TRANSFER_TX_ID" | jq .
 ```
 
-## 4. Commit And Merge The Deposit/Transfer Block
+## 4. Commit And Merge The Transfer Block
 
 The admin endpoints require a configured `ADMIN_API_KEY`.
 
@@ -202,10 +232,10 @@ export WITHDRAW_L2_OUT_REF="$(printf '%s\n' "$DEST_UTXOS_JSON" \
   | jq -r '.utxos
     | sort_by(.txHash, .outputIndex)
     | map(select(((.assets.lovelace // "0") | tonumber) >= 5000000))
-    | .[0]
-    | "\(.txHash)#\(.outputIndex)"')"
+    | if length == 0 then error("no funded withdrawal UTxO")
+      else .[0] | "\(.txHash)#\(.outputIndex)" end')"
 
-test "$WITHDRAW_L2_OUT_REF" != "null"
+test -n "$WITHDRAW_L2_OUT_REF"
 printf 'WITHDRAW_L2_OUT_REF=%s\n' "$WITHDRAW_L2_OUT_REF"
 ```
 

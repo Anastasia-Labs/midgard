@@ -5,6 +5,7 @@ import {
   encodeWatcherNormalizedL1Block,
   isWatcherL1BlockAttestedBy,
   normalizeWatcherL1Block,
+  readWatcherLocalBackfillObservation,
   WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
   WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION,
@@ -12,6 +13,7 @@ import {
   type WatcherL1SourceModeV1,
   type WatcherL1TransportAttestationContext,
   watcherL1TransportAttestationDetails,
+  type WatcherLocalBackfillObservationReceipt,
   type WatcherLocalNodeSurface,
   type WatcherNormalizedL1Block,
 } from "./l1-adapter.js";
@@ -742,8 +744,6 @@ export const evaluateWatcherMultiProviderConsistency = (
       sourceMode,
     );
   }
-  const configuredNetwork = configuredSource.network;
-
   let transportAttestations: readonly WatcherL1TransportAttestationContext[];
   try {
     const parsed = exactObservationArray(transportAttestationsInput);
@@ -799,6 +799,47 @@ export const evaluateWatcherMultiProviderConsistency = (
     }
   }
 
+  const localIdentities = new Map<
+    WatcherNormalizedL1Block,
+    LocalObservationIdentity
+  >();
+  for (const observation of valid) {
+    const transport = transportAttestations.find((attestation) =>
+      isWatcherL1BlockAttestedBy(observation, attestation),
+    );
+    const details = watcherL1TransportAttestationDetails(transport);
+    if (details !== null)
+      localIdentities.set(observation, {
+        authorityBindingSha256: details.authorityBindingSha256,
+        endpoint: details.transportEndpoint,
+      });
+  }
+  return evaluateAdmittedConsistency(
+    configuredSource,
+    valid,
+    rejectedObservationCount,
+    transportAttestations,
+    localIdentities,
+  );
+};
+
+type LocalObservationIdentity = Readonly<{
+  authorityBindingSha256: string | null;
+  endpoint: string;
+}>;
+
+// Both callers own the admitted observations. The lookup is never public.
+const evaluateAdmittedConsistency = (
+  configuredSource: WatcherL1SourceConsistencyConfig,
+  valid: readonly WatcherNormalizedL1Block[],
+  rejectedObservationCount: number,
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+  localIdentities: ReadonlyMap<
+    WatcherNormalizedL1Block,
+    LocalObservationIdentity
+  >,
+): WatcherMultiProviderConsistency => {
+  const configuredNetwork = configuredSource.network;
   const reasons = new Set<WatcherMultiProviderReasonCode>();
   const alerts = new Set<WatcherMultiProviderAlertCode>();
   if (rejectedObservationCount > 0) {
@@ -889,22 +930,10 @@ export const evaluateWatcherMultiProviderConsistency = (
       alerts.add("watcher_provider_identity_collision");
     }
     const authority = chainAuthorities[0] ?? null;
-    const authorityTransport =
-      authority === null
-        ? null
-        : (transportAttestations.find((attestation) =>
-            isWatcherL1BlockAttestedBy(authority, attestation),
-          ) ?? null);
-    const authorityBinding =
-      authorityTransport === null
-        ? null
-        : (watcherL1TransportAttestationDetails(authorityTransport)
-            ?.authorityBindingSha256 ?? null);
-    const authorityTransportEndpoint =
-      authorityTransport === null
-        ? null
-        : (watcherL1TransportAttestationDetails(authorityTransport)
-            ?.transportEndpoint ?? null);
+    const authorityIdentity =
+      authority === null ? undefined : localIdentities.get(authority);
+    const authorityBinding = authorityIdentity?.authorityBindingSha256 ?? null;
+    const authorityTransportEndpoint = authorityIdentity?.endpoint ?? null;
     if (
       authorityTransportEndpoint !== null &&
       authorityTransportEndpoint !== configuredSource.chainSyncSocketPath
@@ -919,14 +948,7 @@ export const evaluateWatcherMultiProviderConsistency = (
       const configured = configuredSource.queryServices.find(
         ({ providerId }) => providerId === observation.provider.providerId,
       );
-      const transport = transportAttestations.find((attestation) =>
-        isWatcherL1BlockAttestedBy(observation, attestation),
-      );
-      const endpoint =
-        transport === undefined
-          ? null
-          : (watcherL1TransportAttestationDetails(transport)
-              ?.transportEndpoint ?? null);
+      const endpoint = localIdentities.get(observation)?.endpoint ?? null;
       return configured !== undefined && endpoint !== configured.endpoint;
     });
     if (queryTransportMismatch) {
@@ -934,27 +956,15 @@ export const evaluateWatcherMultiProviderConsistency = (
       alerts.add("watcher_provider_transport_mismatch");
     }
     const queriesBoundToAuthority = queries.filter((observation) => {
-      const transport = transportAttestations.find((attestation) =>
-        isWatcherL1BlockAttestedBy(observation, attestation),
-      );
-      const binding =
-        transport === undefined
-          ? null
-          : (watcherL1TransportAttestationDetails(transport)
-              ?.authorityBindingSha256 ?? null);
+      const identity = localIdentities.get(observation);
       const configured = configuredSource.queryServices.find(
         ({ providerId }) => providerId === observation.provider.providerId,
       );
-      const transportEndpoint =
-        transport === undefined
-          ? null
-          : (watcherL1TransportAttestationDetails(transport)
-              ?.transportEndpoint ?? null);
       return (
         authorityBinding !== null &&
-        binding === authorityBinding &&
+        (identity?.authorityBindingSha256 ?? null) === authorityBinding &&
         configured !== undefined &&
-        transportEndpoint === configured.endpoint
+        (identity?.endpoint ?? null) === configured.endpoint
       );
     });
     if (queriesBoundToAuthority.length !== queries.length) {
@@ -1344,7 +1354,7 @@ export const evaluateWatcherMultiProviderConsistency = (
         : null,
     chainAuthorityObservationDigest,
     queryObservationCount,
-    observationCount: inputs.length,
+    observationCount: valid.length + rejectedObservationCount,
     independentProviderCount,
     externalProviderBindings,
     localQueryServiceBindings,
@@ -1354,4 +1364,51 @@ export const evaluateWatcherMultiProviderConsistency = (
     rejectedObservationCount,
     agreement,
   });
+};
+
+/** Evaluates only the three observations owned by a current local capture. */
+export const evaluateWatcherLocalBackfillConsistency = (
+  receipt: WatcherLocalBackfillObservationReceipt,
+): WatcherMultiProviderConsistency => {
+  const observation = readWatcherLocalBackfillObservation(receipt);
+  const binding = observation.capture.sourceBinding;
+  const configuredSource = parseConfiguredSource({
+    ...binding,
+    queryServices: binding.queryServices.map(
+      ({ kind, providerId, endpoint }) => ({ kind, providerId, endpoint }),
+    ),
+  });
+  if (configuredSource === null || configuredSource.sourceMode !== "local_node")
+    throw new Error("local backfill configured source is invalid");
+  const identities = new Map<
+    WatcherNormalizedL1Block,
+    LocalObservationIdentity
+  >();
+  identities.set(observation.native, {
+    authorityBindingSha256: observation.acquisitionDigest,
+    endpoint: binding.chainSyncSocketPath,
+  });
+  for (const block of [observation.ogmios, observation.kupo]) {
+    const service = binding.queryServices.find(
+      ({ providerId }) => providerId === block.provider.providerId,
+    );
+    if (service === undefined)
+      throw new Error("local backfill configured query is absent");
+    identities.set(block, {
+      authorityBindingSha256: observation.acquisitionDigest,
+      endpoint: service.endpoint,
+    });
+  }
+  const result = evaluateAdmittedConsistency(
+    configuredSource,
+    [observation.native, observation.ogmios, observation.kupo],
+    0,
+    [],
+    identities,
+  );
+  if (readWatcherLocalBackfillObservation(receipt) !== observation)
+    throw new Error(
+      "local backfill observation changed during consistency evaluation",
+    );
+  return result;
 };

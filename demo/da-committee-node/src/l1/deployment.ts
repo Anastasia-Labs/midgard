@@ -1,5 +1,8 @@
 import type {
   AuthenticatedValidator,
+  AvailabilityChallengeValidator,
+  AvailabilityChallengeYieldValidators,
+  SpendingValidator,
   StateQueueValidator,
   StateQueueYieldValidators,
   WithdrawalValidator,
@@ -13,6 +16,27 @@ import {
 import { normalizeHex } from "../utils/hex.js";
 
 export type LucidNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
+
+export const correctionLockValidatorFromDeploymentInfo = (
+  deploymentInfo: Record<string, unknown>,
+  network: string,
+): SpendingValidator => {
+  const contract = deploymentContract(
+    deploymentInfo,
+    "correctionLockSpend",
+    "correction lock spend",
+    "spend",
+  );
+  return {
+    spendingScriptCBOR: contract.script.script,
+    spendingScript: contract.script,
+    spendingScriptHash: contract.scriptHash,
+    spendingScriptAddress: validatorToAddress(
+      normalizeLucidNetwork(network),
+      contract.script,
+    ),
+  };
+};
 
 export type MidgardDeploymentScript = {
   readonly type: "Native" | "PlutusV1" | "PlutusV2" | "PlutusV3";
@@ -43,10 +67,17 @@ export type MidgardAuthenticatedDeployment = {
 };
 
 export type MidgardNodeDeployment = {
+  readonly referenceScriptAuthPolicyId: string;
   readonly hubOraclePolicyId: string;
   readonly correctionLockAddress: string;
   readonly hubOracle: MidgardAuthenticatedDeployment;
   readonly availabilityChallenge: MidgardAuthenticatedDeployment;
+  readonly availabilityChallengeYields: Readonly<
+    Record<
+      keyof AvailabilityChallengeYieldValidators,
+      MidgardDeploymentContract
+    >
+  >;
   readonly fraudProof: MidgardAuthenticatedDeployment;
   readonly daAttestation: MidgardAuthenticatedDeployment;
   readonly daParamsGovernor: MidgardAuthenticatedDeployment;
@@ -64,7 +95,7 @@ export type MidgardNodeDeployment = {
 
 export type DaAttestationValidatorSet = {
   readonly hubOracle: AuthenticatedValidator;
-  readonly availabilityChallenge: AuthenticatedValidator;
+  readonly availabilityChallenge: AvailabilityChallengeValidator;
   readonly daAttestation: AuthenticatedValidator;
   readonly daParamsGovernor: AuthenticatedValidator;
   readonly stateQueue: StateQueueValidator;
@@ -74,9 +105,26 @@ export const daAttestationValidatorsFromDeployment = (
   deployment: MidgardNodeDeployment,
 ): DaAttestationValidatorSet => ({
   hubOracle: authenticatedValidatorFromDeployment(deployment.hubOracle),
-  availabilityChallenge: authenticatedValidatorFromDeployment(
-    deployment.availabilityChallenge,
-  ),
+  availabilityChallenge: {
+    ...authenticatedValidatorFromDeployment(deployment.availabilityChallenge),
+    yields: {
+      bond: withdrawalValidatorFromDeployment(
+        deployment.availabilityChallengeYields.bond,
+      ),
+      open: withdrawalValidatorFromDeployment(
+        deployment.availabilityChallengeYields.open,
+      ),
+      settle: withdrawalValidatorFromDeployment(
+        deployment.availabilityChallengeYields.settle,
+      ),
+      close: withdrawalValidatorFromDeployment(
+        deployment.availabilityChallengeYields.close,
+      ),
+      timeout: withdrawalValidatorFromDeployment(
+        deployment.availabilityChallengeYields.timeout,
+      ),
+    },
+  },
   daAttestation: authenticatedValidatorFromDeployment(deployment.daAttestation),
   daParamsGovernor: authenticatedValidatorFromDeployment(
     deployment.daParamsGovernor,
@@ -121,6 +169,12 @@ export const parseMidgardNodeDeploymentInfo = (
     "spend",
   );
   return {
+    referenceScriptAuthPolicyId: deploymentContract(
+      deploymentInfo,
+      "referenceScriptAuthMint",
+      "reference script authentication mint",
+      "mint",
+    ).scriptHash,
     hubOraclePolicyId: hubOracleMint.scriptHash,
     correctionLockAddress: validatorToAddress(
       lucidNetwork,
@@ -169,6 +223,33 @@ export const parseMidgardNodeDeploymentInfo = (
       "state queue",
       lucidNetwork,
     ),
+    availabilityChallengeYields: {
+      bond: withdrawDeploymentContract(
+        deploymentInfo,
+        "availabilityChallengeBondWithdraw",
+        "availability challenge bond withdraw",
+      ),
+      open: withdrawDeploymentContract(
+        deploymentInfo,
+        "availabilityChallengeOpenWithdraw",
+        "availability challenge open withdraw",
+      ),
+      settle: withdrawDeploymentContract(
+        deploymentInfo,
+        "availabilityChallengeSettleWithdraw",
+        "availability challenge settle withdraw",
+      ),
+      close: withdrawDeploymentContract(
+        deploymentInfo,
+        "availabilityChallengeCloseWithdraw",
+        "availability challenge close withdraw",
+      ),
+      timeout: withdrawDeploymentContract(
+        deploymentInfo,
+        "availabilityChallengeTimeoutWithdraw",
+        "availability challenge timeout withdraw",
+      ),
+    },
     stateQueueYields: {
       commit: withdrawDeploymentContract(
         deploymentInfo,

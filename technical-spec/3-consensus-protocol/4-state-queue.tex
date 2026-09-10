@@ -5,6 +5,14 @@
 \section{State queue}
 \label{h:state-queue}
 
+\paragraph{Current representation and authorization.}
+An ordinary node stores \code{StateQueueNode\{header, da\_attestation\}}; its key hashes the immutable header, not the status wrapper.
+The root stores \code{ConfirmedState}.
+The schematic header-only datum below omits this availability status.
+Merge requires status \code{Attested} or \code{Published}, maturity, a valid versioned header, and exact commitment/count binding.
+Spending also permits authenticated DA-attestation and availability-status updates through their coupled policies; only structural list mutations forward to the state-queue mint policy.
+The policy additionally supports attestation-timeout correction and correction-lock ordering; these coupled paths are not expanded in the schematic below.
+
 The state queue is an L1 data structure that stores Midgard operators' committed block headers until they are confirmed.
 Active operators from the operator directory (see \cref{h:operator-directory}) take turns committing block headers to the state queue according to the rotating schedule enforced by the scheduler (see \cref{h:scheduler}).
 
@@ -20,7 +28,7 @@ Each \code{state\_queue} node's key is its block header's hash.
 \end{align*}
 
 Committing a block header to the \code{state\_queue} means appending a node containing the block header to the end of the queue.
-After staying there for the \code{maturity\_duration} (a protocol parameter), it is merged to the confirmed state (held at the \code{state\_queue} root node) in the first-in-first-out (FIFO) order.
+After staying there for the \code{maturity\_duration} (a protocol parameter), it becomes eligible, subject to availability and the merge predicates, to merge to the confirmed state (held at the \code{state\_queue} root node) in the first-in-first-out (FIFO) order.
 
 \subsection{Minting policy}
 \label{h:state-queue-minting-policy}
@@ -95,7 +103,7 @@ Redeemers:
             \item \code{start\_time} and \code{header\_hash} from \code{confirmed\_state\_node\_input} under \code{start\_time} and \code{prev\_header\_hash} respectively.
             \item Key of \code{header\_node} under \code{header\_hash}, along with its ledger and protocol version under \code{utxo\_root} and \code{protocol\_version} respectively.
           \end{enumerate}
-        \item If either the \code{deposits\_root}, \code{withdrawals\_root} or \code{transactions\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement} utxo must be produced via the Spawn redeemer.
+        \item If either the \code{deposits\_root}, \code{withdrawals\_root}, \code{forced\_transactions\_root}, or \code{transactions\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement} utxo must be produced via the Spawn redeemer.
           The redeemer must mention \code{settlement\_id} equal to \code{header\_node} as a coupling medium.
         \item Otherwise no settlement minting must be present in the transaction.
     \end{enumerate}
@@ -153,8 +161,8 @@ Redeemers:
 \subsection{Spending validator}
 \label{h:state-queue-spending-validator}
 
-The spending validator of \code{state\_queue\_addr} always forwards to its corresponding minting policy (statically parametrized) and requires the transaction to invoke it.
-It does not allow any in-place modifications to the \code{data} field of nodes in \code{state\_queue}.
+For structural list mutations, the spending validator of \code{state\_queue\_addr} forwards to its corresponding minting policy (statically parametrized) and requires the transaction to invoke it.
+It preserves the header while separately authorizing the availability-status transitions described above.
 Conditions:
 \begin{enumerate}
     \item The transaction must mint or burn tokens of the \code{state\_queue} minting policy.

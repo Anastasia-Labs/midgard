@@ -164,7 +164,7 @@ export const ReferenceInputNoIdxStep01SpendRedeemer =
  *
  * The thread carries the authenticated transaction id required to open the
  * reference-input field through the shared field-opening door. See
- * `docs/fault-proofs/offchain-builder-staleness-575.md` §2.
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`
  */
 export const ReferenceInputNoIdxStep02StateSchema = Data.Object({
   verified_tx_id: H32Schema,

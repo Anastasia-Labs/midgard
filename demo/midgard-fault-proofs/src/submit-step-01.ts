@@ -8,7 +8,7 @@
  * §8.8 door extracts field 0's commitment positionally from the compact
  * structures the anchor authenticates. Carrying it forward would be carrying a
  * value no validator reads. See
- * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 
 import {

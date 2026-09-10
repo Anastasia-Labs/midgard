@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import {
   DaPayloadContentEncoding,
@@ -468,7 +470,7 @@ describe("DaPayloadV1 builder", () => {
   });
 
   it("builds a canonical payload whose roots, counts, and header match the journal", async () => {
-    const utxoEntries = ledgerEntries("utxo", 2);
+    const utxoEntries = ledgerEntries("utxo", 3);
     const depositEntries: readonly [Buffer, Buffer][] = [
       [fixture("deposit", 34), fixture("deposit-info", 48)],
     ];
@@ -485,10 +487,31 @@ describe("DaPayloadV1 builder", () => {
       eventToStepEntries,
     });
 
+    /**
+     * Independently specified expectation: the canonical V1 body carries every
+     * supplied UTxO exactly once, keyed by out-ref hex, ascending. Built from
+     * the fixture inputs, never from the builder's own output — and fed to the
+     * builder in descending order so the sort has real work to do.
+     */
+    const expectedUtxoEntries = utxoEntries
+      .map(
+        ([outref, output]) =>
+          [outref.toString("hex"), output.toString("hex")] as const,
+      )
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+    const descendingUtxoInputs = [...utxoEntries]
+      .sort(([left], [right]) =>
+        left.toString("hex") < right.toString("hex") ? 1 : -1,
+      )
+      .map(([outref, output]) => ({ outref, output }));
+    expect(
+      descendingUtxoInputs.map(({ outref }) => outref.toString("hex")),
+    ).not.toEqual(expectedUtxoEntries.map(([key]) => key));
+
     const insert = await Effect.runPromise(
       buildDaPayloadInsert({
         record: pending,
-        utxos: utxoEntries.map(([outref, output]) => ({ outref, output })),
+        utxos: descendingUtxoInputs,
       }),
     );
     const identityUnwrapped = await unwrapDaPayload(insert.payload_cbor, {
@@ -498,8 +521,8 @@ describe("DaPayloadV1 builder", () => {
 
     expect(payload.block_body.header_hash).toBe(headerHash.toString("hex"));
     expect(payload.block_body.header).toEqual(header);
-    expect(payload.block_body.utxos.map(([key]) => key)).toEqual(
-      [...payload.block_body.utxos.map(([key]) => key)].sort(),
+    expect(payload.block_body.utxos).toEqual(
+      expectedUtxoEntries.map(([key, value]) => [key, value]),
     );
     expect(insert.utxos_root).toBe(roots.utxosRoot);
     expect(insert.forced_transactions_root).toBe(roots.forcedTransactionsRoot);
@@ -511,14 +534,16 @@ describe("DaPayloadV1 builder", () => {
     expect(insert.deposit_count).toBe(1n);
     expect(insert.withdrawal_count).toBe(1n);
     expect(insert.total_event_count).toBe(2n);
+    // Independent oracle: node:crypto over the stored envelope bytes, not the
+    // SDK helper the builder itself used to fill the column.
     expect(insert.payload_sha256.toString("hex")).toBe(
-      SDK.daPayloadHashHex(insert.payload_cbor),
+      createHash("sha256").update(insert.payload_cbor).digest("hex"),
     );
 
     const zstdInsert = await Effect.runPromise(
       buildDaPayloadInsert({
         record: pending,
-        utxos: utxoEntries.map(([outref, output]) => ({ outref, output })),
+        utxos: descendingUtxoInputs,
         envelope: { mode: "zstd", zstdLevel: 3 },
       }),
     );
@@ -530,9 +555,12 @@ describe("DaPayloadV1 builder", () => {
     ).toBe(DaPayloadContentEncoding.zstd);
     expect(zstdInsert.version).toBe(1);
     expect(unwrapped.innerBytes).toEqual(identityUnwrapped.innerBytes);
+    // The digest binds the ENVELOPE bytes, so the compressed row must carry a
+    // different digest from the identity row over the same inner payload.
     expect(zstdInsert.payload_sha256.toString("hex")).toBe(
-      SDK.daPayloadHashHex(zstdInsert.payload_cbor),
+      createHash("sha256").update(zstdInsert.payload_cbor).digest("hex"),
     );
+    expect(zstdInsert.payload_sha256).not.toEqual(insert.payload_sha256);
   });
 
   it("backfills a missing DA payload from complete journal payload members", async () => {

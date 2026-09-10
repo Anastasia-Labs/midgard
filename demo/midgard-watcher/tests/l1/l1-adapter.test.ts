@@ -8,6 +8,7 @@ import { createServer as createTlsServer } from "node:tls";
 import { promisify } from "node:util";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import { requireOgmiosRawTransactionCbor } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -32,6 +33,8 @@ import {
   type WatcherL1TransportAttestationContext,
   watcherL1TransportAttestationDetails,
 } from "../../src/l1/l1-adapter.js";
+import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
+import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
 
 type MutableRecord = Record<string, any>;
 const normalizeUntrustedL1Block = normalizeWatcherL1Block as unknown as (
@@ -482,6 +485,128 @@ describe("provider-neutral authenticated L1 adapter", () => {
         ],
       }),
     ).toThrow();
+  });
+
+  it("preserves the existing Conway ledger encodings through normalization and cache replay", async () => {
+    const rawBlockCbor = (
+      await readFile(
+        new URL("../support/conway-block.hex", import.meta.url),
+        "utf8",
+      )
+    ).trim();
+    // Metadata and bytes are the same ordinary fixture used by native admission.
+    const point = {
+      blockHash:
+        "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
+      blockNo: "12069665",
+      slot: "159835207",
+    };
+    const native = admitWatcherNativeRollForwardBlock({
+      ...point,
+      blockType: "7",
+      prevHash:
+        "ff51732269af51a2efaa2a7ad4a2ff5647af5629013a446511249e837be617a0",
+      kind: "roll_forward",
+      rawBlockCbor,
+      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+      tip: { ...point, kind: "point" },
+    });
+    const context = provider();
+    const session = makeWatcherL1NormalizationSession();
+    const chainPoint = {
+      ...point,
+      parentBlockHash: native.prevHash,
+      depth: "15",
+    };
+    const normalized = normalizeWatcherL1BlockFromTransactionCbors(
+      context,
+      {
+        network: "Preprod",
+        chainPoint,
+        transactionCbors: native.transactionCbors,
+      },
+      session,
+    );
+    expect(normalized.transactions).toHaveLength(8);
+    expect(normalized.transactions.map(({ txHash }) => txHash)).toEqual(
+      native.transactionIds,
+    );
+    for (const [index, transaction] of normalized.transactions.entries()) {
+      const frame = native.transactionCbors[index]!;
+      const decoded = CML.Transaction.from_cbor_hex(frame);
+      const body = decoded.body();
+      const witnesses = decoded.witness_set();
+      const outputs = body.outputs();
+      try {
+        expect(transaction.transactionIndex).toBe(index.toString());
+        expect(transaction.fullTransaction).toEqual(
+          makeWatcherL1PublicBytes(frame),
+        );
+        expect(transaction.body).toEqual(
+          makeWatcherL1PublicBytes(body.to_cbor_hex()),
+        );
+        expect(transaction.witnessSet).toEqual(
+          makeWatcherL1PublicBytes(witnesses.to_cbor_hex()),
+        );
+        expect(
+          computeHash32(Buffer.from(transaction.body.bytesHex, "hex")).toString(
+            "hex",
+          ),
+        ).toBe(native.transactionIds[index]);
+        expect(
+          requireOgmiosRawTransactionCbor({
+            value: { id: native.transactionIds[index]!, cbor: frame },
+            expectedTxHash: native.transactionIds[index]!,
+            label: `unchanged normalized Conway transaction ${index.toString()}`,
+          }),
+        ).toBe(frame);
+        expect(transaction.isValid).toBe(decoded.is_valid());
+        for (const utxo of transaction.utxos) {
+          const output = transaction.isValid
+            ? outputs.get(Number(utxo.outputIndex))
+            : body.collateral_return();
+          expect(output).toBeDefined();
+          try {
+            expect(utxo.output).toEqual(
+              makeWatcherL1PublicBytes(output!.to_canonical_cbor_hex()),
+            );
+          } finally {
+            output?.free();
+          }
+        }
+      } finally {
+        outputs.free();
+        witnesses.free();
+        body.free();
+        decoded.free();
+      }
+    }
+    const observationInput = {
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+      network: normalized.network,
+      providerId: normalized.provider.providerId,
+      chainPoint,
+      transactions: normalized.transactions.map((transaction) => ({
+        txHash: transaction.txHash,
+        transactionIndex: transaction.transactionIndex,
+        fullTransaction: transaction.fullTransaction,
+        body: transaction.body,
+        witnessSet: transaction.witnessSet,
+        utxos: transaction.utxos,
+        scripts: transaction.scripts,
+        datums: transaction.datums,
+        redeemers: transaction.redeemers,
+      })),
+    };
+    const cold = normalizeWatcherL1Block(context, observationInput);
+    const warm = normalizeWatcherL1Block(context, observationInput, session);
+    expect(encodeWatcherNormalizedL1Block(cold)).toEqual(
+      encodeWatcherNormalizedL1Block(normalized),
+    );
+    expect(encodeWatcherNormalizedL1Block(warm)).toEqual(
+      encodeWatcherNormalizedL1Block(normalized),
+    );
+    expect(watcherL1NormalizationSessionStats(session).retainedEntries).toBe(8);
   });
 
   it("derives deterministic redeemer pointers from Conway map witnesses", () => {

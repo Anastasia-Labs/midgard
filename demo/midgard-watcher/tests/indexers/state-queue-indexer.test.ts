@@ -92,7 +92,7 @@ import {
   h28,
   h32,
   makeDeploymentAuthority,
-  WATCHER_AUTHORITY_RELEASE_DIGEST as RELEASE_DIGEST,
+  WATCHER_AUTHORITY_BLUEPRINT_HASH as BLUEPRINT_HASH,
 } from "../support/deployment-authority-fixture.js";
 import { makeWatcherTlsTransportFixture } from "../support/tls-transport-fixture.js";
 
@@ -241,7 +241,7 @@ const categoryIds = Object.values(
 
 const policy = makeWatcherStateQueueIndexerPolicy({
   network: "Preprod",
-  releaseEvidenceDigest: RELEASE_DIGEST,
+  blueprintHash: BLUEPRINT_HASH,
   deploymentMarker: deploymentAuthorityFixture.marker,
   deploymentTrustRootId: deploymentAuthorityFixture.result.trustRootId,
   requiredFinalityDepth: "2",
@@ -437,7 +437,8 @@ const finalityPolicyAtDepth = (depth: number) =>
       manifestId: policy.deploymentMarker.manifestId,
       network: "Preprod",
       trustRootId: h32("33"),
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      fundingProfileBundleDigest: "ab".repeat(32),
+      blueprintHash: policy.blueprintHash,
       ruleBundleCommitment: h32("44"),
       programCommitments: { validation: h32("55") },
       durableMarker: policy.deploymentMarker,
@@ -984,7 +985,7 @@ const observationFor = (
   const observation = makeWatcherStateQueueObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     transitionKind: kind,
     pointDigest: block.normalized.chainPoint.pointDigest,

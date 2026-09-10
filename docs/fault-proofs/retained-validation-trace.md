@@ -38,8 +38,8 @@ program counter. UnusedRedeemer authenticates ScriptSources and NativeScripts
 work using each state's phase and deduplicates byte-identical native aliases.
 Context and unrelated phase records do not enter these family predicates.
 
-Verification includes the real node producer's ten forced-transaction tests,
-SDK payload/dispute round trips, the seven UnusedRedeemer retained-material and
-registered-chain cases, and both polarities of accepted/forced ScriptIntegrity
-bitmap-zero lifecycles. This retention seam does not by itself install the
-transitionTrace or validation-dispute durable workflow.
+Changes to retention must pass the node producer's forced-transaction scenarios,
+SDK payload/dispute round trips, UnusedRedeemer retained-material and registered
+lifecycles, and both accepted/forced ScriptIntegrity bitmap-zero polarities.
+Installed transition and validation workflows must also reopen this material
+through their public authorities after restart.

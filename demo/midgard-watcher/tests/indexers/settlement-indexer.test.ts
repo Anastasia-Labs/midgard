@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { type Server } from "node:net";
 import { join } from "node:path";
@@ -89,7 +88,7 @@ import {
   h28,
   h32,
   makeDeploymentAuthority,
-  WATCHER_AUTHORITY_RELEASE_DIGEST as RELEASE_DIGEST,
+  WATCHER_AUTHORITY_BLUEPRINT_HASH as BLUEPRINT_HASH,
   WATCHER_AUTHORITY_RULE_BUNDLE_COMMITMENT as RULE_BUNDLE_COMMITMENT,
 } from "../support/deployment-authority-fixture.js";
 import { makeWatcherTlsTransportFixture } from "../support/tls-transport-fixture.js";
@@ -304,7 +303,7 @@ const bootstrapStore = makeWatcherDurableStore({
 
 const policy = makeWatcherSettlementIndexerPolicy({
   network: "Preprod",
-  releaseEvidenceDigest: RELEASE_DIGEST,
+  blueprintHash: BLUEPRINT_HASH,
   deploymentMarker: deploymentAuthorityFixture.marker,
   hubOraclePolicyId,
   depositPolicyId,
@@ -405,7 +404,8 @@ const makeExternalFinalityPolicy = () =>
       manifestId: policy.deploymentMarker.manifestId,
       network: policy.network,
       trustRootId: policy.deploymentTrustRootId,
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      fundingProfileBundleDigest: "ab".repeat(32),
+      blueprintHash: policy.blueprintHash,
       ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
       programCommitments: { validation: h32("55") },
       durableMarker: policy.deploymentMarker,
@@ -1052,7 +1052,7 @@ const bundle = (input: {
   const observation = makeWatcherSettlementObservation({
     policyDigest: activePolicy.policyDigest,
     network: activePolicy.network,
-    releaseEvidenceDigest: activePolicy.releaseEvidenceDigest,
+    blueprintHash: activePolicy.blueprintHash,
     deploymentMarker: activePolicy.deploymentMarker,
     pointDigest: normalized.chainPoint.pointDigest,
     chainPointId: normalized.chainPoint.chainPointId,
@@ -1144,7 +1144,7 @@ const bundle = (input: {
     restartContexts: input.restartBindings ?? [],
     restartRollbackContexts: input.restartRollbackBindings ?? [],
   };
-  const contextDigest = sha256CanonicalForTest({
+  const contextDigest = watcherSha256CanonicalJson({
     policyDigest: activePolicy.policyDigest,
     observationDigest: observation!.observationDigest,
     normalizedObservationDigest: normalized.observationDigest,
@@ -1154,7 +1154,7 @@ const bundle = (input: {
     storeDigest: watcherDurableStoreBytesSha256(
       encodeWatcherDurableStore(store),
     ),
-    deploymentAuthorityDigest: sha256CanonicalForTest(deploymentAuthority),
+    deploymentAuthorityDigest: watcherSha256CanonicalJson(deploymentAuthority),
     finalityResultDigest: finalityAuthority?.result.resultDigest ?? null,
   });
   return {
@@ -1173,26 +1173,6 @@ const bundle = (input: {
     finalityState: finalityResult.state,
     finalityResult,
   };
-};
-
-const sha256CanonicalForTest = (value: unknown): string => {
-  const canonical = (candidate: any): string => {
-    if (
-      candidate === null ||
-      typeof candidate === "boolean" ||
-      typeof candidate === "string"
-    ) {
-      return JSON.stringify(candidate);
-    }
-    if (Array.isArray(candidate)) {
-      return `[${candidate.map(canonical).join(",")}]`;
-    }
-    return `{${Object.keys(candidate)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(candidate[key])}`)
-      .join(",")}}`;
-  };
-  return createHash("sha256").update(canonical(value), "utf8").digest("hex");
 };
 
 const accepted = (
@@ -4851,7 +4831,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const collision = makeWatcherSettlementObservation({
       policyDigest: initial.observation.policyDigest,
       network: initial.observation.network,
-      releaseEvidenceDigest: initial.observation.releaseEvidenceDigest,
+      blueprintHash: initial.observation.blueprintHash,
       deploymentMarker: initial.observation.deploymentMarker,
       pointDigest: initial.observation.pointDigest,
       chainPointId: initial.observation.chainPointId,
@@ -5058,7 +5038,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const forgedResult = forgedContext.rollbackAuthority!.result as Mutable;
     forgedResult.nextStoreDigest = h32("ff");
     delete forgedResult.resultDigest;
-    forgedResult.resultDigest = sha256CanonicalForTest(forgedResult);
+    forgedResult.resultDigest = watcherSha256CanonicalJson(forgedResult);
     expect(
       evaluate(recovery.recoveryEvidence.observation, forgedContext),
     ).toMatchObject({
@@ -5471,7 +5451,8 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         manifestId: policy.deploymentMarker.manifestId,
         network: "Preprod",
         trustRootId: h32("23"),
-        releaseEvidenceDigest: policy.releaseEvidenceDigest,
+        fundingProfileBundleDigest: "ab".repeat(32),
+        blueprintHash: policy.blueprintHash,
         ruleBundleCommitment: h32("24"),
         programCommitments: { validation: h32("25") },
         durableMarker: policy.deploymentMarker,
@@ -5649,7 +5630,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const forgedState: Mutable = JSON.parse(JSON.stringify(rollbackState));
     forgedState.durableStoreDigest = h32("fe");
     delete forgedState.stateDigest;
-    forgedState.stateDigest = sha256CanonicalForTest(forgedState);
+    forgedState.stateDigest = watcherSha256CanonicalJson(forgedState);
     expect(
       parseWatcherSettlementIndexerState(
         forgedState,
@@ -5669,7 +5650,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     );
     forgedResult.protocolDecision = "hold";
     delete forgedResult.resultDigest;
-    forgedResult.resultDigest = sha256CanonicalForTest(forgedResult);
+    forgedResult.resultDigest = watcherSha256CanonicalJson(forgedResult);
     expect(
       parseWatcherSettlementIndexerResult(forgedResult, {
         policy,
@@ -5921,7 +5902,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
     const rehashState = (state: Mutable): Mutable => {
       delete state.stateDigest;
-      state.stateDigest = sha256CanonicalForTest(state);
+      state.stateDigest = watcherSha256CanonicalJson(state);
       return state;
     };
     const forgedOrphanLineage = JSON.parse(

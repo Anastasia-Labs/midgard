@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import {
   assetsToValue,
@@ -14,17 +15,20 @@ import {
   type WalletApi,
 } from "@lucid-evolution/lucid";
 
+import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   assertWorkflowActuationPermitIdentity,
   type WorkflowActuationPermit,
 } from "./actuation-permit.js";
 import type { WorkflowAdapterRunner } from "./adapters.js";
-import {
-  type WorkflowFundingRequirements,
-  workflowFundingRequirementsForRunner,
-} from "./funding-requirements.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import {
+  assertWorkflowRuntimeFundingPolicyRunner,
+  readWorkflowRuntimeFundingPolicy,
+  workflowRuntimeFundingMinimumFee,
+  type WorkflowRuntimeFundingPolicy,
+} from "./runtime-funding-policy.js";
 import {
   workflowPreflightTransaction,
   workflowTransactionCollateralInputOutRefs,
@@ -51,8 +55,8 @@ export type WorkflowFundingReservationSnapshot = Readonly<{
   reservationId: string;
   deploymentFingerprint: string;
   decisionDigest: string;
-  profileDigest: string;
-  calculationDigest: string;
+  policyDigest: string;
+  reservationBasisDigest: string;
   rollbackGeneration: string;
   revision: string;
   walletAddress: string;
@@ -78,10 +82,8 @@ export type WorkflowFundingPreparedTransition = Readonly<{
 export interface WorkflowFundingReservationPort {
   load(): Promise<unknown>;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
-  resolveConfirmedActionOutput(input: {
-    readonly sourceActionKind: string;
-    readonly sourceOutputIndex: number;
-  }): Promise<unknown>;
+  /** Exact confirmed output from this reservation, or null if it has no lineage. */
+  resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;
   resolveProtocolInputAuthority(input: {
     readonly deploymentFingerprint: string;
     readonly outRef: string;
@@ -112,18 +114,21 @@ export interface WorkflowFundingReservationPermit {
 
 type PermitState = {
   readonly category: FraudProofCatalogueCategoryName;
-  readonly requirements: WorkflowFundingRequirements;
+  readonly policy: WorkflowRuntimeFundingPolicy | undefined;
   readonly actuationPermit: WorkflowActuationPermit;
   readonly port: WorkflowFundingReservationPort;
-  readonly maximumFundingInputs: number;
   readonly maximumCollateralInputs: number;
   snapshot: WorkflowFundingReservationSnapshot;
   resolvedInputs: ReadonlyMap<string, UTxO>;
   boundJournal: object | undefined;
   currentActionKind: string | undefined;
+  currentActionDigest: string | undefined;
   currentFundingOutRefs: readonly string[];
   currentCollateralOutRefs: readonly string[];
   pendingTransactionHash: string | undefined;
+  preparedTransaction:
+    | Readonly<{ signed: TxSigned; cborHex: string }>
+    | undefined;
 };
 
 const admittedPermits = new WeakMap<object, PermitState>();
@@ -226,8 +231,8 @@ const parseSnapshot = (value: unknown): WorkflowFundingReservationSnapshot => {
       "reservationId",
       "deploymentFingerprint",
       "decisionDigest",
-      "profileDigest",
-      "calculationDigest",
+      "policyDigest",
+      "reservationBasisDigest",
       "rollbackGeneration",
       "revision",
       "walletAddress",
@@ -244,10 +249,10 @@ const parseSnapshot = (value: unknown): WorkflowFundingReservationSnapshot => {
     !DIGEST.test(record.deploymentFingerprint) ||
     typeof record.decisionDigest !== "string" ||
     !DIGEST.test(record.decisionDigest) ||
-    typeof record.profileDigest !== "string" ||
-    !DIGEST.test(record.profileDigest) ||
-    typeof record.calculationDigest !== "string" ||
-    !DIGEST.test(record.calculationDigest) ||
+    typeof record.policyDigest !== "string" ||
+    !DIGEST.test(record.policyDigest) ||
+    typeof record.reservationBasisDigest !== "string" ||
+    !DIGEST.test(record.reservationBasisDigest) ||
     typeof record.rollbackGeneration !== "string" ||
     !NATURAL.test(record.rollbackGeneration) ||
     typeof record.revision !== "string" ||
@@ -283,8 +288,8 @@ const parseSnapshot = (value: unknown): WorkflowFundingReservationSnapshot => {
     reservationId: record.reservationId,
     deploymentFingerprint: record.deploymentFingerprint,
     decisionDigest: record.decisionDigest,
-    profileDigest: record.profileDigest,
-    calculationDigest: record.calculationDigest,
+    policyDigest: record.policyDigest,
+    reservationBasisDigest: record.reservationBasisDigest,
     rollbackGeneration: record.rollbackGeneration,
     revision: record.revision,
     walletAddress: record.walletAddress,
@@ -296,21 +301,17 @@ const parseSnapshot = (value: unknown): WorkflowFundingReservationSnapshot => {
 
 const assertSnapshotInputBounds = ({
   snapshot,
-  maximumFundingInputs,
   maximumCollateralInputs,
 }: {
   readonly snapshot: WorkflowFundingReservationSnapshot;
-  readonly maximumFundingInputs: number;
   readonly maximumCollateralInputs: number;
 }): void => {
   if (
-    snapshot.activeInputs.filter(({ role }) => role === "funding").length >
-      maximumFundingInputs ||
     snapshot.activeInputs.filter(({ role }) => role === "collateral").length >
-      maximumCollateralInputs
+    maximumCollateralInputs
   ) {
     throw new Error(
-      "production funding reservation exceeds its measured input bounds",
+      "production funding reservation exceeds its collateral input bound",
     );
   }
 };
@@ -322,7 +323,6 @@ const parseStateSnapshot = (
   const snapshot = parseSnapshot(value);
   assertSnapshotInputBounds({
     snapshot,
-    maximumFundingInputs: state.maximumFundingInputs,
     maximumCollateralInputs: state.maximumCollateralInputs,
   });
   return snapshot;
@@ -407,18 +407,6 @@ const resolveExactOutRefs = async ({
 
 const exactResolvedOutputCbor = (utxo: UTxO): string =>
   utxoToCore(utxo).output().to_canonical_cbor_hex();
-
-const exactIdentityAssets = (
-  utxo: UTxO,
-): readonly Readonly<{ unit: string; quantity: string }>[] =>
-  Object.freeze(
-    Object.entries(utxo.assets)
-      .filter(([unit]) => unit !== "lovelace")
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([unit, quantity]) =>
-        Object.freeze({ unit, quantity: quantity.toString() }),
-      ),
-  );
 
 const parseConfirmedActionOutput = (
   value: unknown,
@@ -515,8 +503,8 @@ const refresh = async (state: PermitState): Promise<void> => {
     snapshot.reservationId !== state.snapshot.reservationId ||
     snapshot.deploymentFingerprint !== state.snapshot.deploymentFingerprint ||
     snapshot.decisionDigest !== state.snapshot.decisionDigest ||
-    snapshot.profileDigest !== state.snapshot.profileDigest ||
-    snapshot.calculationDigest !== state.snapshot.calculationDigest ||
+    snapshot.policyDigest !== state.snapshot.policyDigest ||
+    snapshot.reservationBasisDigest !== state.snapshot.reservationBasisDigest ||
     snapshot.rollbackGeneration !== state.snapshot.rollbackGeneration ||
     snapshot.walletAddress !== state.snapshot.walletAddress ||
     snapshot.fundingPaymentKeyHash !== state.snapshot.fundingPaymentKeyHash
@@ -547,93 +535,17 @@ const actionKind = (action: FraudProofWorkflowAction): string => {
 const stateForJournal = (journal: object): PermitState | undefined =>
   journalPermits.get(journal);
 
-const selectActionInputs = ({
-  candidates,
-  maximumCount,
-  requiredLovelace,
-  requiredAssets,
-  label,
-}: {
-  readonly candidates: readonly WorkflowFundingReservedInput[];
-  readonly maximumCount: number;
-  readonly requiredLovelace: bigint;
-  readonly requiredAssets: ReadonlyMap<string, bigint>;
-  readonly label: string;
-}): readonly string[] => {
-  if (requiredLovelace === 0n && requiredAssets.size === 0) {
-    return Object.freeze([]);
-  }
-  if (!Number.isSafeInteger(maximumCount) || maximumCount < 1) {
-    throw new Error(`${label} measured input bound is invalid`);
-  }
-  const ordered = [...candidates].sort((left, right) =>
-    left.outRef.localeCompare(right.outRef),
-  );
-  const covers = (
-    selected: readonly WorkflowFundingReservedInput[],
-  ): boolean => {
-    if (
-      selected.reduce(
-        (total, candidate) => total + BigInt(candidate.lovelace),
-        0n,
-      ) < requiredLovelace
-    ) {
-      return false;
-    }
-    const assets = new Map<string, bigint>();
-    for (const candidate of selected) {
-      for (const { unit, quantity } of candidate.assets) {
-        assets.set(unit, (assets.get(unit) ?? 0n) + BigInt(quantity));
-      }
-    }
-    return [...requiredAssets].every(
-      ([unit, quantity]) => (assets.get(unit) ?? 0n) >= quantity,
-    );
-  };
-  const search = (
-    size: number,
-    start: number,
-    selected: WorkflowFundingReservedInput[],
-  ): readonly string[] | null => {
-    if (selected.length === size) {
-      return covers(selected)
-        ? Object.freeze(selected.map(({ outRef }) => outRef).sort())
-        : null;
-    }
-    for (
-      let index = start;
-      index <= ordered.length - (size - selected.length);
-      index += 1
-    ) {
-      selected.push(ordered[index]!);
-      const result = search(size, index + 1, selected);
-      selected.pop();
-      if (result !== null) return result;
-    }
-    return null;
-  };
-  for (
-    let size = 1;
-    size <= Math.min(maximumCount, ordered.length);
-    size += 1
-  ) {
-    const selected = search(size, 0, []);
-    if (selected !== null) return selected;
-  }
-  throw new Error(
-    `${label} cannot be satisfied within its measured input bound`,
-  );
-};
-
 export const createWorkflowFundingReservationPermit = async ({
   category,
   runner,
+  policy,
   actuationPermit,
   rollbackGeneration,
   port,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly runner: WorkflowAdapterRunner;
+  readonly policy: WorkflowRuntimeFundingPolicy;
   readonly actuationPermit: WorkflowActuationPermit;
   readonly rollbackGeneration: string;
   readonly port: WorkflowFundingReservationPort;
@@ -643,71 +555,56 @@ export const createWorkflowFundingReservationPermit = async ({
     category,
     rollbackGeneration,
   });
-  const requirements = workflowFundingRequirementsForRunner({
-    category,
-    runner,
-  });
+  assertWorkflowRuntimeFundingPolicyRunner({ policy, runner, category });
+  const funding = readWorkflowRuntimeFundingPolicy(policy);
   const snapshot = parseSnapshot(await port.load());
-  const maximumFundingInputs = requirements.actions.reduce(
-    (maximum, action) =>
-      Math.max(
-        maximum,
-        action.fundingControlledInputs.filter(
-          ({ role }) => role === "wallet_funding",
-        ).length,
-      ),
-    0,
-  );
-  const maximumCollateralInputs = requirements.actions.reduce(
-    (maximum, action) =>
-      Math.max(
-        maximum,
-        CML.Transaction.from_cbor_hex(action.signedTransactionCborHex)
-          .body()
-          .collateral_inputs()
-          ?.len() ?? 0,
-      ),
-    0,
-  );
+  const maximumCollateralInputs = Number(funding.maximumCollateralInputs);
   if (
     snapshot.deploymentFingerprint !== actuation.deploymentFingerprint ||
+    snapshot.deploymentFingerprint !== funding.deploymentFingerprint ||
     snapshot.decisionDigest !== actuation.decisionDigest ||
     snapshot.rollbackGeneration !== rollbackGeneration ||
-    snapshot.profileDigest !== requirements.profileDigest ||
-    snapshot.fundingPaymentKeyHash !== requirements.fundingPaymentKeyHash ||
+    snapshot.policyDigest !== funding.policyDigest ||
+    snapshot.fundingPaymentKeyHash !== funding.fundingPaymentKeyHash ||
     snapshot.state !== "active"
-  ) {
+  )
     throw new Error(
       "production funding reservation does not match its runner authority",
     );
-  }
-  assertSnapshotInputBounds({
-    snapshot,
-    maximumFundingInputs,
-    maximumCollateralInputs,
-  });
+  const address = CML.Address.from_bech32(
+    snapshot.walletAddress,
+  ).to_raw_bytes();
+  if (
+    address.length !== 29 ||
+    address[0]! >> 4 !== 6 ||
+    Buffer.from(address.subarray(1)).toString("hex") !==
+      funding.fundingPaymentKeyHash
+  )
+    throw new Error(
+      "production funding reservation has a foreign wallet credential",
+    );
+  assertSnapshotInputBounds({ snapshot, maximumCollateralInputs });
   const permit: WorkflowFundingReservationPermit = Object.freeze({
     permitVersion: WORKFLOW_FUNDING_RESERVATION_PERMIT,
   });
   admittedPermits.set(permit, {
     category,
-    requirements,
+    policy,
     actuationPermit,
     port,
-    maximumFundingInputs,
     maximumCollateralInputs,
     snapshot,
-    resolvedInputs: exactUtxos({
-      snapshot,
-      utxos: await port.resolveInputs(
-        snapshot.activeInputs.map(({ outRef }) => outRef),
-      ),
-    }),
+    // A restarted workflow must first reconcile its durable pending intent.
+    // Its inputs may already be consumed by that exact confirmed transaction.
+    // Only begin/recheck, after journal reconciliation, demand live UTxOs.
+    resolvedInputs: new Map(),
     boundJournal: undefined,
     currentActionKind: undefined,
+    currentActionDigest: undefined,
     currentFundingOutRefs: Object.freeze([]),
     currentCollateralOutRefs: Object.freeze([]),
     pendingTransactionHash: undefined,
+    preparedTransaction: undefined,
   });
   return permit;
 };
@@ -750,64 +647,30 @@ export const beginWorkflowFundingReservationAction = async ({
 }): Promise<void> => {
   const state = stateForJournal(journal);
   if (state === undefined) return;
+  if (state.policy === undefined)
+    throw new Error("test-only funding permit cannot build transactions");
   await refresh(state);
-  if (state.snapshot.state !== "active") {
+  if (state.snapshot.state !== "active")
     throw new Error("production funding reservation is not active");
-  }
-  const kind = actionKind(action);
-  const measured = state.requirements.actions.find(
-    (entry) => entry.actionKind === kind,
+  state.currentActionKind = actionKind(action);
+  state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
+  // The real builder selects from durable leased candidates; admission below
+  // derives the exact consumed subset from its signed transaction.
+  state.currentFundingOutRefs = Object.freeze(
+    state.snapshot.activeInputs
+      .filter(({ role }) => role === "funding")
+      .map(({ outRef }) => outRef),
   );
-  if (measured === undefined) {
-    throw new Error(`production funding profile omitted action ${kind}`);
-  }
-  const requiredAssets = new Map<string, bigint>();
-  let requiredLovelace = 0n;
-  for (const controlled of measured.fundingControlledInputs) {
-    if (controlled.role !== "wallet_funding") continue;
-    requiredLovelace += BigInt(controlled.fundingLovelace);
-    for (const { unit, quantity } of controlled.fundingAssets) {
-      requiredAssets.set(
-        unit,
-        (requiredAssets.get(unit) ?? 0n) + BigInt(quantity),
-      );
-    }
-  }
-  const measuredTransaction = CML.Transaction.from_cbor_hex(
-    measured.signedTransactionCborHex,
+  state.currentCollateralOutRefs = Object.freeze(
+    state.snapshot.activeInputs
+      .filter(({ role }) => role === "collateral")
+      .map(({ outRef }) => outRef),
   );
-  const measuredCollateralCount =
-    measuredTransaction.body().collateral_inputs()?.len() ?? 0;
-  const measuredCollateral =
-    measuredTransaction.body().total_collateral() ?? 0n;
-  state.currentFundingOutRefs = selectActionInputs({
-    candidates: state.snapshot.activeInputs.filter(
-      ({ role }) => role === "funding",
-    ),
-    maximumCount: measured.fundingControlledInputs.filter(
-      ({ role }) => role === "wallet_funding",
-    ).length,
-    requiredLovelace,
-    requiredAssets,
-    label: `${kind} reserved funding`,
-  });
-  state.currentCollateralOutRefs = selectActionInputs({
-    candidates: state.snapshot.activeInputs.filter(
-      ({ role }) => role === "collateral",
-    ),
-    maximumCount: measuredCollateralCount,
-    requiredLovelace: measuredCollateral,
-    requiredAssets: new Map(),
-    label: `${kind} reserved collateral`,
-  });
-  state.currentActionKind = kind;
 };
 
 const bodySha256 = (signed: TxSigned): string =>
   createHash("sha256")
-    .update(
-      Buffer.from(signed.toTransaction().body().to_canonical_cbor_hex(), "hex"),
-    )
+    .update(Buffer.from(signed.toTransaction().body().to_cbor_hex(), "hex"))
     .digest("hex");
 
 const addAssets = (
@@ -819,289 +682,451 @@ const addAssets = (
   }
 };
 
-const assertMeasuredTransactionBound = async ({
+const isProtocolFundingContract = (contract: {
+  readonly role: string;
+}): boolean =>
+  contract.role === "protocol_state" || contract.role === "correction_lock";
+
+const assertRuntimeTransactionBound = async ({
   state,
-  measured,
+  action,
   signed,
   bodyInputs,
   fundingOutRefs,
+  collateralOutRefs,
 }: {
   readonly state: PermitState;
-  readonly measured: WorkflowFundingRequirements["actions"][number];
+  readonly action: FraudProofWorkflowAction;
   readonly signed: TxSigned;
   readonly bodyInputs: readonly string[];
   readonly fundingOutRefs: readonly string[];
+  readonly collateralOutRefs: readonly string[];
 }): Promise<void> => {
+  if (state.policy === undefined)
+    throw new Error("runtime funding policy is missing");
+  const policy = readWorkflowRuntimeFundingPolicy(state.policy);
+  const parameters = policy.protocolParameters;
   const transaction = signed.toTransaction();
   const body = transaction.body();
-  const measuredTransaction = CML.Transaction.from_cbor_hex(
-    measured.signedTransactionCborHex,
+  const witnesses = transaction.witness_set();
+  const signedBytes = BigInt(transaction.to_cbor_hex().length / 2);
+  const contracts = new Map(
+    policy.contracts.map((contract) => [contract.address, contract]),
   );
-  if (
-    transaction.to_canonical_cbor_hex().length / 2 >
-      measured.signedTransactionBytes ||
-    body.to_canonical_cbor_hex().length / 2 > measured.txBodyBytes ||
-    body.inputs().len() > measured.inputOutRefs.length ||
-    body.fee() > measuredTransaction.body().fee()
-  ) {
-    throw new Error(
-      `${measured.actionKind} transaction exceeds its admitted measured shape`,
-    );
-  }
-  let memory = 0n;
-  let steps = 0n;
-  const redeemers = transaction.witness_set().redeemers()?.to_flat_format();
-  for (let index = 0; index < (redeemers?.len() ?? 0); index += 1) {
-    const units = redeemers!.get(index).ex_units();
-    memory += units.mem();
-    steps += units.steps();
-  }
-  if (
-    memory > BigInt(measured.executionUnits.memory) ||
-    steps > BigInt(measured.executionUnits.steps)
-  ) {
-    throw new Error(
-      `${measured.actionKind} execution units exceed the admitted measurement`,
-    );
-  }
-  const actualCollateral = body.collateral_inputs()?.len() ?? 0;
-  const measuredCollateral =
-    measuredTransaction.body().collateral_inputs()?.len() ?? 0;
-  if (
-    (measured.collateralRequired && actualCollateral < 1) ||
-    (!measured.collateralRequired && actualCollateral !== 0) ||
-    actualCollateral > measuredCollateral ||
-    (body.total_collateral() ?? 0n) >
-      (measuredTransaction.body().total_collateral() ?? 0n)
-  ) {
-    throw new Error(
-      `${measured.actionKind} collateral exceeds its admitted measured shape`,
-    );
-  }
-  const referenceOutRefs = [
-    ...workflowTransactionReferenceInputOutRefs(signed),
-  ].sort();
-  const measuredReferenceOutRefs = measured.referenceInputs
-    .map(({ outRef }) => outRef)
-    .sort();
-  if (
-    referenceOutRefs.length !== measuredReferenceOutRefs.length ||
-    referenceOutRefs.some(
-      (outRef, referenceIndex) =>
-        outRef !== measuredReferenceOutRefs[referenceIndex],
+  const slash = readFraudSlashFundingAuthority(signed);
+  if (slash !== null) {
+    const actuation = assertWorkflowActuationPermitIdentity({
+      permit: state.actuationPermit,
+      category: state.category,
+      rollbackGeneration: state.snapshot.rollbackGeneration,
+    });
+    const economics = policy.economics.policy;
+    const bond =
+      BigInt(economics.requiredBondLovelace) -
+      (slash.tranche === "full"
+        ? 0n
+        : BigInt(economics.inactivitySlashingPenaltyLovelace));
+    const reward = BigInt(economics.fraudProverRewardLovelace);
+    if (
+      state.currentActionKind !== "remove" ||
+      actionKind(action) !== "remove" ||
+      action.input.stage !== "remove" ||
+      state.currentActionDigest !==
+        computeDeploymentManifestJsonDigest(action) ||
+      action.input.nextRemovalOutRef !== slash.removedStateQueueOutRef ||
+      action.input.fraudProofOutRef !== slash.fraudProofOutRef ||
+      slash.category !== state.category ||
+      slash.headerHash !== actuation.headerHash ||
+      slash.deploymentFingerprint !== policy.deploymentFingerprint ||
+      slash.economicsPolicyDigest !== policy.economicsPolicyDigest ||
+      slash.rewardAddress !== state.snapshot.walletAddress ||
+      BigInt(slash.operatorBondLovelace) !== bond ||
+      BigInt(slash.rewardLovelace) !== reward ||
+      BigInt(slash.exactFeeLovelace) !== bond - reward ||
+      body.fee() !== bond - reward ||
+      fundingOutRefs.length !== 0 ||
+      slash.inputs.length !== bodyInputs.length ||
+      slash.inputs.some((input, index) => input.outRef !== bodyInputs[index]) ||
+      !bodyInputs.includes(slash.operatorOutRef) ||
+      !bodyInputs.includes(slash.removedStateQueueOutRef) ||
+      !workflowTransactionReferenceInputOutRefs(signed).includes(
+        slash.fraudProofOutRef,
+      )
     )
-  ) {
-    throw new Error(
-      `${measured.actionKind} reference-input roles differ from measurement`,
-    );
+      throw new Error(
+        "fraud slash funding authority differs from its exact removal action or economics",
+      );
   }
+  if (signedBytes > BigInt(parameters.maxTxSize))
+    throw new Error("signed transaction exceeds protocol maxTxSize");
+  if (!transaction.is_valid())
+    throw new Error("funding transaction declares script failure");
+  const bodyHash = CML.hash_transaction(body);
+  if (signed.toHash().toLowerCase() !== bodyHash.to_hex())
+    throw new Error("funding transaction hash differs from its actual body");
+  const vkeys = witnesses.vkeywitnesses();
+  let fundingSignature = false;
+  for (let index = 0; index < (vkeys?.len() ?? 0); index += 1) {
+    const witness = vkeys!.get(index);
+    if (
+      witness.vkey().hash().to_hex() === policy.fundingPaymentKeyHash &&
+      witness
+        .vkey()
+        .verify(bodyHash.to_raw_bytes(), witness.ed25519_signature())
+    )
+      fundingSignature = true;
+  }
+  if (!fundingSignature)
+    throw new Error("funding transaction lacks the reserved wallet signature");
+  if (
+    (witnesses.native_scripts()?.len() ?? 0) +
+      (witnesses.plutus_v1_scripts()?.len() ?? 0) +
+      (witnesses.plutus_v2_scripts()?.len() ?? 0) +
+      (witnesses.plutus_v3_scripts()?.len() ?? 0) !==
+    0
+  )
+    throw new Error("funding transaction embeds executable script witnesses");
+  let memory = 0n,
+    steps = 0n;
+  const redeemers = witnesses.redeemers()?.to_flat_format();
+  for (let index = 0; index < (redeemers?.len() ?? 0); index += 1) {
+    memory += redeemers!.get(index).ex_units().mem();
+    steps += redeemers!.get(index).ex_units().steps();
+  }
+  if (
+    memory > BigInt(parameters.maxTxExUnits.memory) ||
+    steps > BigInt(parameters.maxTxExUnits.steps)
+  )
+    throw new Error("funding transaction exceeds protocol maxTxExUnits");
   const references = await resolveExactOutRefs({
     port: state.port,
-    outRefs: referenceOutRefs,
-    label: `${measured.actionKind} reference inputs`,
+    outRefs: [...workflowTransactionReferenceInputOutRefs(signed)].sort(),
+    label: "runtime funding reference inputs",
   });
-  for (const expected of measured.referenceInputs) {
-    const scriptRef = references.get(expected.outRef)!.scriptRef;
-    const script = scriptRef?.script;
-    if (expected.scriptHash === null && expected.scriptBytes === null) {
-      if (scriptRef !== undefined && scriptRef !== null) {
+  let referenceScriptBytes = 0n;
+  const scriptIdentities = new Map(
+    policy.referenceScripts.map(({ outRef, scriptHash }) => [
+      outRef,
+      scriptHash,
+    ]),
+  );
+  for (const [outRef, reference] of references) {
+    const expected = scriptIdentities.get(outRef);
+    if (reference.scriptRef == null) {
+      if (expected !== undefined)
         throw new Error(
-          `${measured.actionKind} non-script reference input gained a script`,
+          "funding transaction lost its deployed reference script",
         );
-      }
       continue;
     }
-    if (
-      expected.scriptHash === null ||
-      expected.scriptBytes === null ||
-      scriptRef === undefined ||
-      scriptRef === null ||
-      script === undefined ||
-      !/^(?:[0-9a-f]{2})+$/u.test(script)
-    ) {
+    if (expected !== validatorToScriptHash(reference.scriptRef))
       throw new Error(
-        `${measured.actionKind} reference input omitted exact script bytes`,
+        "funding transaction uses an ungoverned reference script",
       );
-    }
-    if (
-      script.length / 2 !== expected.scriptBytes ||
-      validatorToScriptHash(scriptRef) !== expected.scriptHash
-    ) {
-      throw new Error(
-        `${measured.actionKind} reference-script identity differs from measurement`,
-      );
-    }
+    referenceScriptBytes += BigInt(reference.scriptRef.script.length / 2);
   }
+  if (
+    referenceScriptBytes >
+    BigInt(parameters.referenceScriptFee.maximumSizeBytes)
+  )
+    throw new Error("funding transaction exceeds reference-script byte limit");
+  const minimumFee = workflowRuntimeFundingMinimumFee({
+    parameters,
+    transactionBytes: signedBytes,
+    memory,
+    steps,
+    referenceScriptBytes,
+  });
+  if (
+    body.fee() < minimumFee ||
+    (slash === null && body.fee() > BigInt(policy.maximumFeeLovelace))
+  )
+    throw new Error(
+      "funding transaction fee is outside the live protocol funding bounds",
+    );
+  const scriptExecution = (redeemers?.len() ?? 0) !== 0;
+  const collateral = await resolveExactOutRefs({
+    port: state.port,
+    outRefs: collateralOutRefs,
+    label: "runtime funding collateral inputs",
+  });
+  const collateralValue = [...collateral.values()].reduce((total, input) => {
+    if (
+      input.address !== state.snapshot.walletAddress ||
+      Object.keys(input.assets).some((unit) => unit !== "lovelace")
+    )
+      throw new Error("funding collateral is not reserved-wallet pure Ada");
+    return total + (input.assets.lovelace ?? 0n);
+  }, 0n);
+  const declaredCollateral = body.total_collateral();
+  const collateralReturn = body.collateral_return();
+  if (scriptExecution) {
+    const percentage =
+      (body.fee() * BigInt(parameters.collateralPercentage) + 99n) / 100n;
+    const floor = BigInt(policy.economics.policy.proverCollateralFloorLovelace);
+    const reservedCollateral = state.snapshot.activeInputs
+      .filter(({ role }) => role === "collateral")
+      .reduce((sum, input) => sum + BigInt(input.lovelace), 0n);
+    if (reservedCollateral < floor)
+      throw new Error(
+        "funding collateral reservation is below the release floor",
+      );
+    if (
+      collateralOutRefs.length === 0 ||
+      collateralOutRefs.length > state.maximumCollateralInputs ||
+      declaredCollateral === undefined ||
+      declaredCollateral < percentage ||
+      declaredCollateral >
+        BigInt(
+          slash === null
+            ? policy.maximumCollateralLovelace
+            : policy.maximumSlashCollateralLovelace,
+        ) ||
+      collateralValue < declaredCollateral
+    )
+      throw new Error(
+        "funding transaction collateral is outside the exact funding bounds",
+      );
+    if (
+      collateralReturn !== undefined &&
+      (collateralReturn.address().to_bech32() !==
+        state.snapshot.walletAddress ||
+        collateralReturn.amount().has_multiassets())
+    )
+      throw new Error("funding collateral return escapes the reserved wallet");
+    if (
+      collateralReturn !== undefined &&
+      collateralReturn.amount().coin() <
+        CML.min_ada_required(
+          collateralReturn,
+          BigInt(parameters.coinsPerUtxoByte),
+        )
+    )
+      throw new Error("funding collateral return is below exact min-Ada");
+    if (
+      collateralValue !==
+      declaredCollateral + (collateralReturn?.amount().coin() ?? 0n)
+    )
+      throw new Error("funding collateral value is not conserved");
+  } else if (
+    collateralOutRefs.length !== 0 ||
+    declaredCollateral !== undefined ||
+    collateralReturn !== undefined
+  )
+    throw new Error(
+      "non-script funding transaction unexpectedly declares collateral",
+    );
   const allInputs = await resolveExactOutRefs({
     port: state.port,
     outRefs: bodyInputs,
-    label: `${measured.actionKind} ordinary inputs`,
+    label: "runtime funding ordinary inputs",
   });
-  for (const [outRef, utxo] of allInputs) {
-    if (
-      utxo.address === state.snapshot.walletAddress &&
-      !fundingOutRefs.includes(outRef)
-    ) {
-      throw new Error(
-        `${measured.actionKind} consumed an unreserved funding-wallet input`,
-      );
-    }
-  }
-  const unmatchedNonWalletOutRefs = new Set(
-    bodyInputs.filter((outRef) => !fundingOutRefs.includes(outRef)),
-  );
-  const releasedFundingAssets = new Map<string, bigint>();
-  for (const controlled of measured.fundingControlledInputs) {
-    if (controlled.role === "wallet_funding") continue;
-    if (controlled.role === "released_locked") {
-      const confirmed = parseConfirmedActionOutput(
-        await state.port.resolveConfirmedActionOutput({
-          sourceActionKind: controlled.sourceActionKind!,
-          sourceOutputIndex: controlled.sourceOutputIndex!,
-        }),
-      );
-      const sourceAction = state.requirements.actions.find(
-        ({ actionKind }) => actionKind === controlled.sourceActionKind,
-      );
-      const sourceOutput = sourceAction?.fundingControlledOutputs.find(
-        ({ outputIndex }) => outputIndex === controlled.sourceOutputIndex,
-      );
-      const actual = allInputs.get(confirmed.outRef);
-      if (
-        confirmed.sourceActionKind !== controlled.sourceActionKind ||
-        confirmed.sourceOutputIndex !== controlled.sourceOutputIndex ||
-        sourceOutput?.role !== "locked_reusable" ||
-        sourceOutput.semanticRole !== controlled.semanticRole ||
-        sourceOutput.contractAddress !== controlled.contractAddress ||
-        actual === undefined ||
-        !unmatchedNonWalletOutRefs.delete(confirmed.outRef) ||
-        exactResolvedOutputCbor(actual) !== confirmed.resolvedOutputCborHex ||
-        actual.address !== controlled.contractAddress ||
-        JSON.stringify(exactIdentityAssets(actual)) !==
-          JSON.stringify(controlled.identityAssets)
-      ) {
+  const inputAssets = new Map<string, bigint>();
+  const walletAssets = new Map<string, bigint>();
+  let releasedCustody = 0n;
+  let protocolInputLovelace = 0n;
+  for (const [outRef, input] of allInputs) {
+    addAssets(inputAssets, input.assets);
+    if (input.address === state.snapshot.walletAddress) {
+      if (slash !== null)
+        throw new Error("fraud slash cannot consume ordinary wallet funding");
+      if (!fundingOutRefs.includes(outRef))
         throw new Error(
-          `${measured.actionKind} released-lock input lacks exact confirmed lineage`,
+          "signed transaction consumed an unreserved wallet input",
         );
-      }
-      releasedFundingAssets.set(
-        "lovelace",
-        (releasedFundingAssets.get("lovelace") ?? 0n) +
-          BigInt(controlled.fundingLovelace),
-      );
-      for (const { unit, quantity } of controlled.fundingAssets) {
-        releasedFundingAssets.set(
-          unit,
-          (releasedFundingAssets.get(unit) ?? 0n) + BigInt(quantity),
-        );
-      }
+      addAssets(walletAssets, input.assets);
       continue;
     }
-    const candidates = [...unmatchedNonWalletOutRefs]
-      .map((outRef) => ({ outRef, utxo: allInputs.get(outRef)! }))
-      .filter(
-        ({ utxo }) =>
-          utxo.address === controlled.contractAddress &&
-          JSON.stringify(exactIdentityAssets(utxo)) ===
-            JSON.stringify(controlled.identityAssets),
-      )
-      .sort((left, right) => left.outRef.localeCompare(right.outRef));
-    if (candidates.length !== 1) {
+    const contract = contracts.get(input.address);
+    if (contract === undefined)
       throw new Error(
-        `${measured.actionKind} protocol input semantic role is ambiguous`,
+        "funding transaction consumed an ungoverned contract input",
+      );
+    if (
+      slash !== null &&
+      slash.inputs.find((value) => value.outRef === outRef)
+        ?.resolvedOutputCborHex !== exactResolvedOutputCbor(input)
+    ) {
+      throw new Error(
+        "fraud slash protocol input changed after local evaluation",
       );
     }
-    const candidate = candidates[0]!;
+    if (
+      slash !== null &&
+      outRef === slash.operatorOutRef &&
+      (input.assets.lovelace ?? 0n).toString() !== slash.operatorBondLovelace
+    ) {
+      throw new Error(
+        "fraud slash operator bond differs from its authenticated tranche",
+      );
+    }
+    // Slashing always reacquires live protocol authority, even for an output
+    // whose earlier transaction already appears in this workflow's lineage.
+    const lineage =
+      slash === null
+        ? await state.port.resolveConfirmedInput({ outRef })
+        : null;
+    if (lineage !== null) {
+      const confirmed = parseConfirmedActionOutput(lineage);
+      if (
+        confirmed.outRef !== outRef ||
+        confirmed.resolvedOutputCborHex !== exactResolvedOutputCbor(input)
+      )
+        throw new Error(
+          "funding released custody differs from its exact confirmed lineage",
+        );
+      if (!isProtocolFundingContract(contract))
+        releasedCustody += input.assets.lovelace ?? 0n;
+      else protocolInputLovelace += input.assets.lovelace ?? 0n;
+      continue;
+    }
+    if (!isProtocolFundingContract(contract))
+      throw new Error(
+        "funding released custody lacks confirmed workflow lineage",
+      );
     const authority = parseProtocolInputAuthority(
       await state.port.resolveProtocolInputAuthority({
-        deploymentFingerprint: state.snapshot.deploymentFingerprint,
-        outRef: candidate.outRef,
+        deploymentFingerprint: policy.deploymentFingerprint,
+        outRef,
         semanticRole: "protocol_state",
       }),
     );
     if (
-      authority.deploymentFingerprint !==
-        state.snapshot.deploymentFingerprint ||
-      authority.outRef !== candidate.outRef ||
-      authority.semanticRole !== controlled.semanticRole ||
-      authority.resolvedOutputCborHex !==
-        exactResolvedOutputCbor(candidate.utxo)
-    ) {
+      authority.deploymentFingerprint !== policy.deploymentFingerprint ||
+      authority.outRef !== outRef ||
+      authority.resolvedOutputCborHex !== exactResolvedOutputCbor(input)
+    )
       throw new Error(
-        `${measured.actionKind} protocol input lacks deployment-bound authority`,
+        "funding protocol input differs from its deployment-bound authority",
       );
-    }
-    unmatchedNonWalletOutRefs.delete(candidate.outRef);
+    protocolInputLovelace += input.assets.lovelace ?? 0n;
   }
-  if (unmatchedNonWalletOutRefs.size !== 0) {
-    throw new Error(
-      `${measured.actionKind} ordinary input topology differs from measurement`,
-    );
-  }
+  const outputAssets = new Map<string, bigint>();
+  const walletOutputAssets = new Map<string, bigint>();
   const outputs = body.outputs();
-  if (outputs.len() !== measured.fundingControlledOutputs.length) {
-    throw new Error(
-      `${measured.actionKind} output topology differs from the admitted measurement`,
+  let custody = 0n,
+    custodyAllocation = 0n,
+    protocolOutputs = 0n,
+    protocolMinimum = 0n;
+  let rewardOutputs = 0;
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const raw = outputs.get(index);
+    const output = coreToTxOutput(raw);
+    const minimum = CML.min_ada_required(
+      raw,
+      BigInt(parameters.coinsPerUtxoByte),
     );
-  }
-  const fundingAssets = new Map<string, bigint>();
-  for (const outRef of fundingOutRefs) {
-    addAssets(fundingAssets, allInputs.get(outRef)!.assets);
-  }
-  for (const [unit, quantity] of releasedFundingAssets) {
-    fundingAssets.set(unit, (fundingAssets.get(unit) ?? 0n) + quantity);
-  }
-  const outputFundingAssets = new Map<string, bigint>();
-  outputFundingAssets.set("lovelace", body.fee());
-  for (const controlled of measured.fundingControlledOutputs) {
-    const output = coreToTxOutput(outputs.get(controlled.outputIndex));
-    if (output.address !== controlled.contractAddress) {
-      throw new Error(
-        `${measured.actionKind} output semantic address differs from measurement`,
-      );
-    }
-    if (controlled.role === "protocol") continue;
-    if (controlled.role === "wallet_change") {
-      addAssets(outputFundingAssets, output.assets);
+    if (
+      raw.amount().coin() < minimum ||
+      BigInt(raw.amount().to_canonical_cbor_hex().length / 2) >
+        BigInt(parameters.maxValueSize)
+    )
+      throw new Error("funding output violates exact min-Ada or maxValueSize");
+    addAssets(outputAssets, output.assets);
+    if (output.address === state.snapshot.walletAddress) {
+      if (slash !== null) {
+        rewardOutputs += 1;
+        if (
+          raw.amount().coin().toString() !== slash.rewardLovelace ||
+          raw.amount().has_multiassets() ||
+          raw.datum() !== undefined ||
+          raw.script_ref() !== undefined
+        ) {
+          throw new Error(
+            "fraud slash reward differs from exact release economics",
+          );
+        }
+      }
+      addAssets(walletOutputAssets, output.assets);
       continue;
     }
-    if (
-      (output.assets.lovelace ?? 0n) < BigInt(controlled.fundingLovelace) ||
-      controlled.fundingAssets.some(
-        ({ unit, quantity }) => (output.assets[unit] ?? 0n) < BigInt(quantity),
-      )
-    ) {
-      throw new Error(
-        `${measured.actionKind} locked custody is below its admitted funding role`,
-      );
-    }
-    outputFundingAssets.set(
-      "lovelace",
-      (outputFundingAssets.get("lovelace") ?? 0n) +
-        BigInt(controlled.fundingLovelace),
-    );
-    for (const { unit, quantity } of controlled.fundingAssets) {
-      outputFundingAssets.set(
-        unit,
-        (outputFundingAssets.get(unit) ?? 0n) + BigInt(quantity),
-      );
+    const contract = contracts.get(output.address);
+    if (contract === undefined)
+      throw new Error("funding output escapes the governed contract roster");
+    if (isProtocolFundingContract(contract)) {
+      protocolOutputs += raw.amount().coin();
+      protocolMinimum += minimum;
+    } else {
+      custody += raw.amount().coin();
+      // Operator stake and slashing rewards never authorize prover topups.
+      // Existing custody is accounted from exact confirmed lineage above.
+      custodyAllocation += minimum;
     }
   }
-  const units = new Set([
-    ...fundingAssets.keys(),
-    ...outputFundingAssets.keys(),
-  ]);
-  if (
-    [...units].some(
-      (unit) =>
-        (fundingAssets.get(unit) ?? 0n) !==
-        (outputFundingAssets.get(unit) ?? 0n),
-    )
-  ) {
+  if (custody > releasedCustody + custodyAllocation)
     throw new Error(
-      `${measured.actionKind} signed body changes its reserved funding flow`,
+      `funding transaction exceeds its governed custody allocation: actual=${custody.toString()} allowed=${(releasedCustody + custodyAllocation).toString()}`,
     );
+  const protocolTopup =
+    protocolOutputs > protocolInputLovelace
+      ? protocolOutputs - protocolInputLovelace
+      : 0n;
+  if (
+    slash !== null &&
+    (rewardOutputs !== 1 ||
+      custody !== 0n ||
+      releasedCustody !== 0n ||
+      protocolTopup !== 0n ||
+      protocolInputLovelace !==
+        protocolOutputs + body.fee() + BigInt(slash.rewardLovelace))
+  )
+    throw new Error(
+      "fraud slash must preserve protocol state and fund only its exact fee and reward",
+    );
+  if (protocolTopup > protocolMinimum)
+    throw new Error(
+      "funding transaction exceeds exact protocol min-Ada topups",
+    );
+  const walletSpent =
+    (walletAssets.get("lovelace") ?? 0n) -
+    (walletOutputAssets.get("lovelace") ?? 0n);
+  const custodyIncrease =
+    custody > releasedCustody ? custody - releasedCustody : 0n;
+  if (walletSpent > body.fee() + custodyIncrease + protocolTopup)
+    throw new Error(
+      "signed transaction loses reserved wallet value outside fees and governed custody",
+    );
+  for (const [unit, quantity] of walletAssets) {
+    if (unit !== "lovelace" && (walletOutputAssets.get(unit) ?? 0n) < quantity)
+      throw new Error("signed transaction loses reserved wallet native assets");
   }
+  const mint = body.mint();
+  if (mint !== undefined) {
+    const policies = mint.keys();
+    for (let i = 0; i < policies.len(); i += 1) {
+      const policyHash = policies.get(i);
+      const assets = mint.get_assets(policyHash)!;
+      const names = assets.keys();
+      for (let j = 0; j < names.len(); j += 1) {
+        const name = names.get(j),
+          unit = policyHash.to_hex() + name.to_hex();
+        inputAssets.set(
+          unit,
+          (inputAssets.get(unit) ?? 0n) + assets.get(name)!,
+        );
+      }
+    }
+  }
+  // Proof workflows may use withdraw-zero yielding, but never withdraw funds
+  // or certify/deposit stake through the prover funding surface.
+  const withdrawals = body.withdrawals();
+  if (withdrawals !== undefined) {
+    const keys = withdrawals.keys();
+    for (let index = 0; index < keys.len(); index += 1)
+      if (withdrawals.get(keys.get(index)) !== 0n)
+        throw new Error("funding transaction includes a nonzero withdrawal");
+  }
+  if ((body.certs()?.len() ?? 0) !== 0 || body.donation() !== undefined)
+    throw new Error("funding transaction changes unrelated ledger accounting");
+  outputAssets.set(
+    "lovelace",
+    (outputAssets.get("lovelace") ?? 0n) + body.fee(),
+  );
+  for (const unit of new Set([...inputAssets.keys(), ...outputAssets.keys()]))
+    if ((inputAssets.get(unit) ?? 0n) !== (outputAssets.get(unit) ?? 0n))
+      throw new Error(
+        "funding transaction does not conserve exact ledger value",
+      );
 };
 
 const producedFundingInputs = ({
@@ -1170,47 +1195,40 @@ export const prepareWorkflowFundingReservationTransaction = async ({
       "production funding action changed after reservation admission",
     );
   }
-  const measured = state.requirements.actions.find(
-    (entry) => entry.actionKind === kind,
-  );
-  if (measured === undefined) {
-    throw new Error(`production funding profile omitted action ${kind}`);
-  }
-  const fundingOutRefs = canonicalOutRefs(
+  const candidates = canonicalOutRefs(
     state.currentFundingOutRefs,
     "reserved funding inputs",
   );
-  const collateralOutRefs = canonicalOutRefs(
+  const collateralCandidates = canonicalOutRefs(
     state.currentCollateralOutRefs,
     "reserved collateral inputs",
   );
   const bodyInputs = [...workflowTransactionInputOutRefs(signed)].sort();
-  const bodyCollateral = [
+  const collateralOutRefs = [
     ...workflowTransactionCollateralInputOutRefs(signed),
   ].sort();
+  const fundingOutRefs = Object.freeze(
+    bodyInputs.filter((outRef) => candidates.includes(outRef)),
+  );
   if (
-    fundingOutRefs.some((outRef) => !bodyInputs.includes(outRef)) ||
-    bodyInputs.some((outRef) => collateralOutRefs.includes(outRef))
-  ) {
-    throw new Error("signed transaction changed reserved ordinary inputs");
-  }
-  if (
-    bodyCollateral.length !== collateralOutRefs.length ||
-    bodyCollateral.some((outRef, index) => outRef !== collateralOutRefs[index])
-  ) {
-    throw new Error("signed transaction changed reserved collateral inputs");
-  }
-  await assertMeasuredTransactionBound({
+    bodyInputs.some((outRef) => collateralCandidates.includes(outRef)) ||
+    collateralOutRefs.some((outRef) => !collateralCandidates.includes(outRef))
+  )
+    throw new Error(
+      "signed transaction changed reserved ordinary/collateral separation",
+    );
+  await assertRuntimeTransactionBound({
     state,
-    measured,
+    action,
     signed,
     bodyInputs,
     fundingOutRefs,
+    collateralOutRefs,
   });
   const transactionHash = signed.toHash().toLowerCase();
   const transition = Object.freeze({
     actionKind: kind,
-    signedTransactionCborHex: signed.toTransaction().to_canonical_cbor_hex(),
+    signedTransactionCborHex: signed.toTransaction().to_cbor_hex(),
     transactionHash,
     transactionBodySha256: bodySha256(signed),
     consumedOutRefs: fundingOutRefs,
@@ -1227,6 +1245,10 @@ export const prepareWorkflowFundingReservationTransaction = async ({
     }),
   );
   state.pendingTransactionHash = transactionHash;
+  state.preparedTransaction = Object.freeze({
+    signed,
+    cborHex: transition.signedTransactionCborHex,
+  });
 };
 
 export const assertWorkflowFundingReservationReadyToSubmit = async ({
@@ -1241,6 +1263,16 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   const expectedRevision = state.snapshot.revision;
   const expectedPending = state.pendingTransactionHash;
   await refresh(state);
+  if (state.preparedTransaction !== undefined) {
+    const { signed, cborHex } = state.preparedTransaction;
+    if (
+      signed.toHash().toLowerCase() !== transactionHash ||
+      signed.toTransaction().to_cbor_hex() !== cborHex
+    ) {
+      throw new Error("prepared funding transaction changed before submission");
+    }
+    readFraudSlashFundingAuthority(signed);
+  }
   if (
     state.snapshot.state !== "active" ||
     state.snapshot.revision !== expectedRevision ||
@@ -1287,7 +1319,9 @@ const applyTransition = async ({
           });
   state.snapshot = parseStateSnapshot(state, next);
   state.pendingTransactionHash = undefined;
+  state.preparedTransaction = undefined;
   state.currentActionKind = undefined;
+  state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
 };
@@ -1319,9 +1353,11 @@ export const releaseWorkflowFundingReservation = async ({
     await state.port.release({ expectedRevision: state.snapshot.revision }),
   );
   state.currentActionKind = undefined;
+  state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
   state.pendingTransactionHash = undefined;
+  state.preparedTransaction = undefined;
 };
 
 const balanceCbor = (utxos: readonly UTxO[]): string => {
@@ -1442,8 +1478,8 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
     reservationId: "01".repeat(32),
     deploymentFingerprint,
     decisionDigest,
-    profileDigest: "02".repeat(32),
-    calculationDigest: "03".repeat(32),
+    policyDigest: "02".repeat(32),
+    reservationBasisDigest: "03".repeat(32),
     rollbackGeneration,
     revision: "0",
     walletAddress: "test-only-no-wallet",
@@ -1454,7 +1490,7 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
   const port: WorkflowFundingReservationPort = Object.freeze({
     load: async () => snapshot,
     resolveInputs: async () => [],
-    resolveConfirmedActionOutput: async () => {
+    resolveConfirmedInput: async () => {
       throw new Error("unsafe test permit has no confirmed action lineage");
     },
     resolveProtocolInputAuthority: async () => {
@@ -1468,30 +1504,19 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
   });
   admittedPermits.set(permit, {
     category,
-    requirements: Object.freeze({
-      schemaVersion: "midgard-production-workflow-funding-requirements-v1",
-      scope: Object.freeze({ kind: "fraud_proof_category", category }),
-      deploymentFingerprint,
-      blueprintSha256: "05".repeat(32),
-      protocolParametersDigest: "06".repeat(32),
-      economicsPolicyDigest: "07".repeat(32),
-      fundingPaymentKeyHash: "04".repeat(28),
-      measurementToolVersion: "test-v1",
-      measurementArtifactSha256: "08".repeat(32),
-      actions: Object.freeze([]),
-      profileDigest: "02".repeat(32),
-    }),
+    policy: undefined,
     actuationPermit,
     port,
-    maximumFundingInputs: 0,
     maximumCollateralInputs: 0,
     snapshot,
     resolvedInputs: new Map(),
     boundJournal: undefined,
     currentActionKind: undefined,
+    currentActionDigest: undefined,
     currentFundingOutRefs: Object.freeze([]),
     currentCollateralOutRefs: Object.freeze([]),
     pendingTransactionHash: undefined,
+    preparedTransaction: undefined,
   });
   return permit;
 };

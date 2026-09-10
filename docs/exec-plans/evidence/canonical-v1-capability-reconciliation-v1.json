@@ -11,9 +11,6 @@
     "goalSpec": {
       "path": "docs/exec-plans/GOAL_SPEC.md"
     },
-    "p2Matrix": {
-      "path": "docs/exec-plans/cardano-capability-p2-closure-matrix-2026-07-26.md"
-    },
     "canonicalTransaction": {
       "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak"
     },

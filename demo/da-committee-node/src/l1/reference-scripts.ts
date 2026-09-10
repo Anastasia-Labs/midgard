@@ -1,6 +1,8 @@
+import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
   type UTxO,
+  validatorToRewardAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
@@ -12,6 +14,7 @@ import type {
 
 export type DaAttestationReferenceScripts = {
   readonly availabilityChallengeMinting: UTxO;
+  readonly availabilityChallengeBondWithdrawal: UTxO;
   readonly daAttestationMinting: UTxO;
   readonly daAttestationSpending: UTxO;
   readonly stateQueueMinting: UTxO;
@@ -19,13 +22,17 @@ export type DaAttestationReferenceScripts = {
 };
 
 export const fetchDaAttestationReferenceScripts = async (
-  lucid: Pick<LucidEvolution, "utxosByOutRef">,
+  lucid: Pick<LucidEvolution, "utxosByOutRef" | "rewardAccountAt" | "config">,
   deployment: MidgardNodeDeployment,
 ): Promise<DaAttestationReferenceScripts> => {
   const targets = [
     {
       name: "availability challenge minting",
       contract: deployment.availabilityChallenge.mint,
+    },
+    {
+      name: "availability challenge bond withdrawal",
+      contract: deployment.availabilityChallengeYields.bond,
     },
     {
       name: "DA attestation minting",
@@ -53,12 +60,38 @@ export const fetchDaAttestationReferenceScripts = async (
   const resolved = targets.map((target) =>
     requireReferenceScript(target.name, target.contract, byOutRef),
   );
+  const bondReference = resolved[1]!;
+  const bondRoleUnit = referenceScriptAuthUnit(
+    deployment.referenceScriptAuthPolicyId,
+    "availability-challenge bond withdrawal",
+  );
+  if (bondReference.assets[bondRoleUnit] !== 1n) {
+    throw new Error(
+      "availability challenge bond withdrawal reference script lacks its exact authentication role NFT",
+    );
+  }
+  const network = lucid.config().network;
+  if (network === undefined) {
+    throw new Error(
+      "availability challenge bond withdrawal readiness requires a configured network",
+    );
+  }
+  const rewardAddress = validatorToRewardAddress(
+    network,
+    deployment.availabilityChallengeYields.bond.script,
+  );
+  if (!(await lucid.rewardAccountAt(rewardAddress)).registered) {
+    throw new Error(
+      `availability challenge bond withdrawal reward account is not registered: ${rewardAddress}`,
+    );
+  }
   return {
     availabilityChallengeMinting: resolved[0]!,
-    daAttestationMinting: resolved[1]!,
-    daAttestationSpending: resolved[2]!,
-    stateQueueMinting: resolved[3]!,
-    stateQueueSpending: resolved[4]!,
+    availabilityChallengeBondWithdrawal: resolved[1]!,
+    daAttestationMinting: resolved[2]!,
+    daAttestationSpending: resolved[3]!,
+    stateQueueMinting: resolved[4]!,
+    stateQueueSpending: resolved[5]!,
   };
 };
 

@@ -1,45 +1,46 @@
-# §3.2 Necessity artifact — validation dispute maximum complete item
+# Bounded-carriage necessity evidence template
 
-WORKED TEMPLATE ARTIFACT. A real artifact lives under
-`docs/exec-plans/evidence/necessity/`; its numbers must be measured. This
-concrete structure example is excluded from evidence aggregation.
+Use this structure for a measured artifact under
+`docs/exec-plans/evidence/necessity/`. Replace placeholders with actual
+measurements; the template itself provides no acceptance evidence. The current
+carriage tiers and bounds are defined in [the transaction specification](../../spec/midgard-tx.md).
 
 ## Binding
 
-- Family / item: `validation-dispute-v1` / `maximum-profile complete item`
-- Applied validator hashes measured: `example-validator-hash-a`,
-  `example-validator-hash-b` (any change
-  invalidates this artifact; re-measure before CG5 — GOAL_SPEC.md §3.2)
-- Parameter snapshot digests: capability floor `example-capability-digest`,
-  target `example-target-digest`
-- Fixture: `demo/midgard-validation/tests/fixtures/maximum-profile-v1.json`
-  `example-fixture-digest` (deterministically regenerable)
+- Family and authenticated item:
+- Source revision and dirty-source disclosure:
+- Compiler identity, flags, and generated blueprint digest:
+- Applied validator hashes and parameter application:
+- Target-network parameter snapshot and digest:
+- Fixture path, content identity, and reproduction command:
 
-## Measurements (§3.2 order — stop at the first representation that fits)
+Changing a bound identity invalidates the measurement for current acceptance.
 
-| Representation                                                        | Tx bytes / maxTxSize                 | Mem / limit | CPU / limit | Fee    | Fits §3.3                  |
-| --------------------------------------------------------------------- | ------------------------------------ | ----------- | ----------- | ------ | -------------------------- |
-| 1. Complete item direct in proof tx                                   | 17020 / 16384                        | not reached | not reached | —      | NO                         |
-| 2. Complete item as inline-datum publication + consume/reference      | pub: 15340/16384; proof: 14110/16384 | 11.2M / 14M | 7.1B / 10B  | 621000 | NO — memory reserve is 20% |
-| 3. Minimum multi-output publication + complete logical reconstruction | 15980 / 16384                        | 10.9M / 14M | 7.0B / 10B  | 640000 | NO — memory reserve is 20% |
-| 4. Incremental on-chain traversal                                     | 12100 / 16384                        | 9.8M / 14M  | 6.8B / 10B  | 590000 | YES                        |
+## Measurements
 
-## Exact limiting constraint
+Measure the simplest allowed representation first. For each applicable direct,
+publication, or incremental route, record:
 
-The direct representation is 636 bytes above the 16384-byte transaction
-limit. The publication representations remain above the required 20 percent
-memory reserve, so the incremental representation is the first fitting path.
+| Representation           | Actual L1 transaction bytes / limit | Memory / limit | CPU / limit | Fee | Required reserve | Verdict |
+| ------------------------ | ----------------------------------- | -------------- | ----------- | --- | ---------------- | ------- |
+| Fill from a measured run |                                     |                |             |     |                  |         |
 
-## Why no simpler authenticated representation closes the gap
+Name the working directory, exact command, exit status, result artifact, and
+whether the result uses real applied scripts, emulator evaluation, or diagnostic
+framing. Include publication and consumption costs. A diagnostic estimate does
+not establish deployability.
 
-The complete direct item was measured first. Inline publication and minimum
-multi-output reconstruction remove the byte overflow but do not retain the
-required memory reserve. Incremental traversal retains both limits.
+## Why the simpler representation is insufficient
 
-## Preserved complete-item path
+Identify the exact measured limiting constraint and the first failing boundary.
+Explain why the selected decomposition is necessary without reducing admitted
+transaction capability. Do not infer failure from a test that never reaches the
+relevant validator or from an artificial emulator limit.
 
-Items at or below 12000 serialized bytes continue to use representation 1;
-the fallback applies only above it. Both representations authenticate
-commitment `validation-item-root-v1` and share the equivalence tests at
-`demo/midgard-validation/tests/complete-item-proof-fit.test.ts`
-(omission, duplication, reorder, substitution, trailing data all reject).
+## Preserved semantics
+
+Identify the commitment shared by all routes and the current tests proving the
+same logical result. Include valid controls and rejection of omission,
+duplication, reordering, substitution, wrong domain, and trailing data where
+applicable. Record remaining gaps explicitly; a fallback's existence alone does
+not close acceptance.

@@ -150,8 +150,10 @@ const buildOperatorLifecycleSnapshot =
     const operator = generateEmulatorAccount({
       lovelace: 30_000_000_000n,
     });
+    // Fund the complete canonical reference registry and its remaining
+    // publication reserve without drawing on the operator's pinned nonce.
     const referenceScripts = generateEmulatorAccount({
-      lovelace: 20_000_000_000n,
+      lovelace: 200_000_000_000n,
     });
     const emulator = new Emulator(
       [operator, referenceScripts],

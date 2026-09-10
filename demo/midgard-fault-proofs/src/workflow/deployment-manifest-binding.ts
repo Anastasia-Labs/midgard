@@ -20,9 +20,11 @@ import {
 import {
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
+  parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "../inspect-contracts.js";
 import { resolveFaultProofDeploymentContracts } from "../runtime.js";
 import type { FraudProofRawL1FamilyDefinition } from "./raw-l1-family-derivation.js";
+import type { FraudProofRawL1ComputationStepRole } from "./raw-l1-snapshot.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
@@ -68,8 +70,7 @@ type ManifestContract = {
 type FinalizedWorkflowManifest = {
   readonly manifestId: string;
   readonly network: Network;
-  readonly proofEvidence: {
-    readonly digest: string;
+  readonly artifacts: {
     readonly blueprintHash: string;
   };
   readonly l1Finality: DeploymentManifestL1Finality;
@@ -88,10 +89,12 @@ export type FraudProofWorkflowDeploymentBinding<
 > = {
   readonly bindingVersion: typeof FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING;
   readonly deploymentFingerprint: string;
-  readonly releaseIdentityDigest: string;
+  readonly blueprintHash: string;
   readonly network: Network;
   readonly blueprint: unknown;
-  readonly deploymentInfo: ContractDeploymentInfo;
+  /** Complete verified document consumed by transaction builders. */
+  readonly deploymentInfo: unknown;
+  readonly contractEntries: ContractDeploymentInfo;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   readonly cardanoProtocolParameters: DeploymentManifestCardanoProtocolParameters;
@@ -297,13 +300,22 @@ const assertDeploymentInfoMatchesManifest = ({
   }
 };
 
+const freezeManifestDocument = <Value>(value: Value): Value => {
+  if (value !== null && typeof value === "object") {
+    for (const child of Object.values(value)) freezeManifestDocument(child);
+    Object.freeze(value);
+  }
+  return value;
+};
+
 const finalizedManifest = (value: unknown): FinalizedWorkflowManifest => {
   const verified = verifyFinalizedDeploymentManifest(value);
-  const manifest = verified as unknown as FinalizedWorkflowManifest;
+  const manifest = freezeManifestDocument(
+    structuredClone(verified),
+  ) as unknown as FinalizedWorkflowManifest;
   if (
     !HEX_32.test(manifest.manifestId) ||
-    !HEX_32.test(manifest.proofEvidence.digest) ||
-    !HEX_32.test(manifest.proofEvidence.blueprintHash)
+    !HEX_32.test(manifest.artifacts.blueprintHash)
   ) {
     throw new Error(
       "finalized deployment manifest has invalid release or blueprint identity",
@@ -322,7 +334,7 @@ const releasePolicies = (
   const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifest.manifestId,
-    releaseIdentityDigest: manifest.proofEvidence.digest,
+    blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
     policy: finalityPolicy,
   };
@@ -340,7 +352,7 @@ const releasePolicies = (
   const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
     schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifest.manifestId,
-    releaseIdentityDigest: manifest.proofEvidence.digest,
+    blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest:
       computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
     policy: economicsPolicy,
@@ -377,9 +389,9 @@ export const bindFraudProofWorkflowDeployment = async <
   const blueprintHash = createHash("sha256")
     .update(blueprintJson)
     .digest("hex");
-  if (blueprintHash !== manifest.proofEvidence.blueprintHash) {
+  if (blueprintHash !== manifest.artifacts.blueprintHash) {
     throw new Error(
-      `blueprint SHA-256 does not match the finalized deployment manifest: expected=${manifest.proofEvidence.blueprintHash} actual=${blueprintHash}`,
+      `blueprint SHA-256 does not match the finalized deployment manifest: expected=${manifest.artifacts.blueprintHash} actual=${blueprintHash}`,
     );
   }
   let blueprint: unknown;
@@ -388,11 +400,44 @@ export const bindFraudProofWorkflowDeployment = async <
   } catch {
     throw new Error("deployment-manifest blueprint is not valid JSON");
   }
-  const deploymentInfo = parseContractDeploymentInfo(deploymentInfoValue);
-  assertDeploymentInfoMatchesManifest({ manifest, deploymentInfo });
+  const suppliedDocument: unknown = structuredClone(deploymentInfoValue);
+  assertDeploymentInfoMatchesManifest({
+    manifest,
+    deploymentInfo: parseContractDeploymentInfo(suppliedDocument),
+  });
+  if (
+    parseContractDeploymentReferenceScriptAuthPolicyId(
+      suppliedDocument,
+      "reference-script-auth minting",
+    ) !==
+    parseContractDeploymentReferenceScriptAuthPolicyId(
+      manifest,
+      "reference-script-auth minting",
+    )
+  ) {
+    throw new Error(
+      "contract deployment info changed the finalized reference-script authority",
+    );
+  }
+  if (
+    typeof suppliedDocument === "object" &&
+    suppliedDocument !== null &&
+    "economics" in suppliedDocument &&
+    JSON.stringify(
+      parseDeploymentManifestEconomics(suppliedDocument.economics),
+    ) !== JSON.stringify(parseDeploymentManifestEconomics(manifest.economics))
+  ) {
+    throw new Error(
+      "contract deployment info changed the finalized manifest economics",
+    );
+  }
+  // Builders consume the complete verified release, including its economics
+  // and reference authority, rather than a parallel contract-only document.
+  const deploymentDocument = manifest;
+  const deploymentInfo = parseContractDeploymentInfo(deploymentDocument);
   const resolvedContracts = await resolveFaultProofDeploymentContracts({
     blueprint,
-    deploymentInfo: deploymentInfoValue,
+    deploymentInfo: deploymentDocument,
     network: manifest.network,
     categoryName: category,
     requireStateQueueMint: true,
@@ -471,10 +516,11 @@ export const bindFraudProofWorkflowDeployment = async <
   return {
     bindingVersion: FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING,
     deploymentFingerprint: manifest.manifestId,
-    releaseIdentityDigest: manifest.proofEvidence.digest,
+    blueprintHash: manifest.artifacts.blueprintHash,
     network: manifest.network,
     blueprint,
-    deploymentInfo,
+    deploymentInfo: deploymentDocument,
+    contractEntries: deploymentInfo,
     ...policies,
     cardanoProtocolParameters: manifest.cardanoProtocolParameters.snapshot,
     catalogue: {
@@ -525,16 +571,7 @@ export const bindFraudProofWorkflowDeployment = async <
       computationThread: {
         policyId: resolvedContracts.contracts.computationThread.policyId,
         steps: chain.steps.map((step, index) => ({
-          role: `computation_thread_step_0${(index + 1).toString()}` as
-            | "computation_thread_step_01"
-            | "computation_thread_step_02"
-            | "computation_thread_step_03"
-            | "computation_thread_step_04"
-            | "computation_thread_step_05"
-            | "computation_thread_step_06"
-            | "computation_thread_step_07"
-            | "computation_thread_step_08"
-            | "computation_thread_step_09",
+          role: `computation_thread_step_${(index + 1).toString().padStart(2, "0")}` as FraudProofRawL1ComputationStepRole,
           address: step.spendingScriptAddress,
           datumSchema: stepDatumSchemas[index]!,
         })),

@@ -19,8 +19,9 @@ adopted, provisional V1 limits were nevertheless below what a Cardano mainnet
 transaction can use. Those historical limits included a 4,095-byte output
 preimage, a 9,215-byte general field preimage, 64-element
 input/output/witness limits, 16 script executions, 128 distinct assets, and
-low native-script depth/node limits. The current compiled values that replace
-them are recorded below and checked into the canonical profile documentation.
+low native-script depth/node limits. The comparison below records the capability basis used by this decision.
+Current compiled values live in [the consensus profile](../../consensus-profile-v1.md)
+and its source; this ADR is not a second live parameter registry.
 
 Those restrictions came from fitting a complete witness into one L1 proof
 transaction. They are proof-layout constraints, not acceptable user-facing L2
@@ -69,22 +70,22 @@ are governable; the current values must not be confused with the wider
 [constitutional guardrails](https://cardano.org/constitution/), such as the
 32KiB upper guardrail for `maxTxSize`.
 
-## Comparison with canonical V1
+## Recorded comparison with canonical V1
 
-| Dimension                           |                                                                                   Cardano mainnet |                                                                            Midgard canonical V1 | Comparison                                              |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------: | ----------------------------------------------------------------------------------------------: | ------------------------------------------------------- |
-| Total transaction bytes             |                                                                                            16,384 |                                      295,041 derived from all bounded fields plus fixed framing | Midgard higher                                          |
-| Serialized output preimage          |                                          Transaction-size constrained; `Value` alone may be 5,000 |                                                                                          16,384 | Equal byte floor                                        |
-| General dynamic field               |                                                   May consume nearly the remaining L1 transaction |                                        32,768, consumed through authenticated 4,095-byte chunks | Midgard higher                                          |
-| Aggregate transaction execution     |                                                                          16.5M memory / 10B steps |                16.5M memory / 10B steps capability floor; execution may span proof transactions | Equal floor                                             |
-| Spend inputs                        |                                                No separate ledger count; transaction-size limited |                                      16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
-| Reference inputs                    |                                                No separate ledger count; transaction-size limited |                                      16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
-| Outputs                             |                                                No separate ledger count; transaction-size limited |                                      16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
-| Vkey witnesses and required signers |                                                No separate ledger count; transaction-size limited |                                                          16,384 each; field bytes are effective | No lower count for an L1-sized transaction              |
-| Script executions and redeemers     |                                                       Transaction-size and execution-unit limited |                                   16,384 one-byte-floor guardrail plus matching execution floor | No lower independent count                              |
-| Distinct assets                     |                                                              5,000-byte serialized output `Value` |                                     16,384 one-byte-floor guardrail plus 5,000-byte Value bound | No lower independent count                              |
-| Native-script complexity            |                                                            Primarily transaction-size constrained |                                                                Depth and node guardrails 16,384 | No lower bound for an L1-sized transaction              |
-| Reference scripts                   | 200 KiB aggregate use limit in Conway ledger rules; creation is transaction-size/UTxO constrained | 50-byte executable envelope plus up to 67,108,418 bytes of content-addressed material within DA | Midgard higher; individual proof reveals remain bounded |
+| Dimension                           |                                                                                   Cardano mainnet |                                                                               Midgard canonical V1 | Comparison                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------: | -------------------------------------------------------------------------------------------------: | ------------------------------------------------------- |
+| Total transaction bytes             |                                                                                            16,384 |                                         295,041 derived from all bounded fields plus fixed framing | Midgard higher                                          |
+| Serialized output preimage          |                                          Transaction-size constrained; `Value` alone may be 5,000 |                                                                                             16,384 | Equal byte floor                                        |
+| General dynamic field               |                                                   May consume nearly the remaining L1 transaction |                                            32,768, carried through the current MidgardTx §8 ladder | Midgard higher                                          |
+| Aggregate transaction execution     |                                                                          16.5M memory / 10B steps |                   16.5M memory / 10B steps capability floor; execution may span proof transactions | Equal floor                                             |
+| Spend inputs                        |                                                No separate ledger count; transaction-size limited |                                         16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
+| Reference inputs                    |                                                No separate ledger count; transaction-size limited |                                         16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
+| Outputs                             |                                                No separate ledger count; transaction-size limited |                                         16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
+| Vkey witnesses and required signers |                                                No separate ledger count; transaction-size limited |                                                             16,384 each; field bytes are effective | No lower count for an L1-sized transaction              |
+| Script executions and redeemers     |                                                       Transaction-size and execution-unit limited |                                      16,384 one-byte-floor guardrail plus matching execution floor | No lower independent count                              |
+| Distinct assets                     |                                                              5,000-byte serialized output `Value` |                                        16,384 one-byte-floor guardrail plus 5,000-byte Value bound | No lower independent count                              |
+| Native-script complexity            |                                                            Primarily transaction-size constrained |                                                                   Depth and node guardrails 16,384 | No lower bound for an L1-sized transaction              |
+| Reference scripts                   | 200 KiB aggregate use limit in Conway ledger rules; creation is transaction-size/UTxO constrained | 50-byte executable envelope plus content-addressed material bounded by the compiled profile and DA | Midgard higher; individual proof reveals remain bounded |
 
 “No separate count” does not mean unbounded. Cardano's complete transaction
 size, canonical encoding, ledger rules, and execution budget still impose a

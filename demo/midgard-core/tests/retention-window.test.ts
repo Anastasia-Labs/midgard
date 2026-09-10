@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "../src/consensus-profile.js";
 import { DA_TRANSPORT_LIMITS } from "../src/da-transport.js";
-import { verifyDeploymentManifestIdentity } from "../src/deployment-manifest-identity.js";
 import {
   assertRetentionDaysCoverWindow,
   assertRetentionWindowCoversDeployment,
@@ -123,7 +122,6 @@ describe("retention-days floor and deployment binding", () => {
     // still covers the derived 11-day horizon.
     expect(retentionDaysCoverWindow(14)).toBe(true);
     expect(DA_TRANSPORT_LIMITS.minimumRetentionDays).toBe(15);
-    expect(typeof verifyDeploymentManifestIdentity).toBe("function");
   });
 });
 

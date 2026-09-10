@@ -2,7 +2,7 @@
  * **Re-derived onto the flat field commitments by #604.** Thread state carries
  * the §2.5 anchor — the disputed transaction's **id** — where it used to carry
  * that transaction's `spend_inputs_hash`; step-02 re-opens field 0 through the
- * §8.8 door from it. See `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * §8.8 door from it. See `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
  * `input-no-idx` step-01 submitter (Goal task `Q13`, §9.1 output 8).
  *

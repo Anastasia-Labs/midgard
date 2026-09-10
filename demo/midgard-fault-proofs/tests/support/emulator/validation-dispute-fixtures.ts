@@ -24,7 +24,10 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  aikenSerialisedPlutusDataBytes,
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   decodeCekContextCborArray,
   EMPTY_MERKLE_TREE_ROOT,
@@ -562,9 +565,12 @@ const MIN_ADA_JOURNEY_OUTPUT_LOVELACE = 100_000n;
 export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
   operatorVkey,
   now,
+  terminalCounterMismatch = false,
 }: {
   readonly operatorVkey: string;
   readonly now: number;
+  /** Commits an ordinary off-by-one terminal counter for source routing. */
+  readonly terminalCounterMismatch?: boolean;
 }): Promise<
   ForcedValidationDisputeFixture & {
     readonly disputedLowIndex: number;
@@ -675,6 +681,9 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
   const operatorTrace = replaceTerminalState(challengerTrace, {
     terminal: {
       ...challengerTrace.states.at(-1)!,
+      programCounter:
+        challengerTrace.states.at(-1)!.programCounter -
+        (terminalCounterMismatch ? 1 : 0),
       verdict: "accepted",
       rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
       workRoot: Buffer.alloc(32, 0x7e),
@@ -758,6 +767,7 @@ const buildNativeTransactionTrace = async ({
   descriptorMaximum = false,
   cekObserverCount = 0,
   outputDatumCbor,
+  outputLovelace,
 }: {
   readonly now: number;
   readonly txOrderSeed: string;
@@ -768,6 +778,7 @@ const buildNativeTransactionTrace = async ({
    * address+value output never reaches.
    */
   readonly outputDatumCbor?: Buffer;
+  readonly outputLovelace?: bigint;
   readonly assetCount?: number;
   readonly mintAsset?: boolean;
   readonly plutusSelection?: boolean;
@@ -866,6 +877,17 @@ const buildNativeTransactionTrace = async ({
     program === undefined
       ? undefined
       : { language: "PlutusV3" as const, scriptBytes: program.envelopeCbor };
+  // 496 full 64-byte chunks and one 8-byte chunk encode to 32,747 bytes.
+  // The redeemer field adds 21 bytes, preserving its exact 32,768-byte maximum.
+  // A single long definite CBOR byte string is not admissible Plutus Data.
+  const maximumDescriptorRedeemer = descriptorMaximum
+    ? aikenSerialisedPlutusDataBytes(Buffer.alloc(31752))
+    : undefined;
+  if (maximumDescriptorRedeemer !== undefined) {
+    expect(Data.from(maximumDescriptorRedeemer.toString("hex"))).toBe(
+      "00".repeat(31752),
+    );
+  }
   const redeemerTxWitsPreimageCbor = encodeMidgardFieldPreimageForField({
     fieldIndex: 8,
     items:
@@ -877,9 +899,9 @@ const buildNativeTransactionTrace = async ({
                   {
                     purpose: "Mint" as const,
                     index: 0n,
-                    redeemerCbor: descriptorMaximum
-                      ? encodeCbor(Buffer.alloc(32744))
-                      : Buffer.from(Data.void(), "hex"),
+                    redeemerCbor:
+                      maximumDescriptorRedeemer ??
+                      Buffer.from(Data.void(), "hex"),
                     executionUnits: {
                       memory: 1_000_000_000n,
                       steps: 1_000_000_000n,
@@ -890,9 +912,10 @@ const buildNativeTransactionTrace = async ({
             {
               purpose: "Spend",
               index: 0n,
-              redeemerCbor: descriptorMaximum
-                ? encodeCbor(Buffer.alloc(32744))
-                : (redeemerDataCbor ?? Buffer.from(Data.void(), "hex")),
+              redeemerCbor:
+                maximumDescriptorRedeemer ??
+                redeemerDataCbor ??
+                Buffer.from(Data.void(), "hex"),
               executionUnits: {
                 memory: 1_000_000_000n,
                 steps: cekBlsFinal ? 10_000_000_000n : 1_000_000_000n,
@@ -982,7 +1005,8 @@ const buildNativeTransactionTrace = async ({
             Buffer.from(hashMidgardVersionedScript(plutusScript), "hex"),
           ]),
     value: {
-      lovelace: assetCount > 100 ? 100_000_000n : 10_000_000n,
+      lovelace:
+        outputLovelace ?? (assetCount > 100 ? 100_000_000n : 10_000_000n),
       assets: assetCount === 0 || mintAsset ? new Map() : txAssets,
     },
     ...(outputDatumCbor === undefined
@@ -995,7 +1019,8 @@ const buildNativeTransactionTrace = async ({
         ? Buffer.concat([Buffer.from([0x78]), Buffer.alloc(28, 0xaa)])
         : spendingAddress,
     value: {
-      lovelace: assetCount > 100 ? 100_000_000n : 10_000_000n,
+      lovelace:
+        outputLovelace ?? (assetCount > 100 ? 100_000_000n : 10_000_000n),
       assets: assetCount === 0 ? new Map() : txAssets,
     },
     ...(outputDatumCbor === undefined
@@ -1307,6 +1332,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   ledgerOutputValueOpening = false,
   permutationWitnessMutation,
   outputDatumCbor,
+  outputLovelace,
   prepareFieldCarriage,
 }: {
   readonly operatorVkey: string;
@@ -1400,6 +1426,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   /** Inline datum for the forced transaction's produced output; see
    * {@link buildNativeTransactionTrace}. */
   readonly outputDatumCbor?: Buffer;
+  readonly outputLovelace?: bigint;
   readonly scriptSourcesDescriptorAction?: "begin" | "header" | "tail";
   readonly prepareFieldCarriage?: (input: {
     trace: DeterministicValidationMachineTrace;
@@ -1467,6 +1494,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     descriptorMaximum,
     cekObserverCount,
     ...(outputDatumCbor === undefined ? {} : { outputDatumCbor }),
+    ...(outputLovelace === undefined ? {} : { outputLovelace }),
   });
   let challengerTrace = originalTrace;
   let disputedMatchesSeen = 0;

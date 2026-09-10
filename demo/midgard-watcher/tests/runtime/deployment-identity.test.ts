@@ -56,7 +56,6 @@ const NATIVE_SCRIPT_HASH =
 const DA_VKEY = "44".repeat(32);
 const DA_SIGNERS_HASH =
   "0395256ce5d90f07504b614b9e70e29a06fdd69cef6b01f6018615164125a5c5";
-const RELEASE_DIGEST = "66".repeat(32);
 const BLUEPRINT_HASH = "55".repeat(32);
 const RULE_BUNDLE_COMMITMENT = "77".repeat(32);
 
@@ -197,9 +196,9 @@ const canonicalIdentity = (): MutableRecord => {
         retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
-    proofEvidence: {
-      digest: RELEASE_DIGEST,
+    artifacts: {
       blueprintHash: BLUEPRINT_HASH,
+      fundingProfileBundleDigest: "ab".repeat(32),
     },
     steps: Object.fromEntries(
       DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
@@ -320,15 +319,16 @@ const makeFixture = () => {
   };
   const releaseBindings = {
     schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+    fundingProfileBundleDigest: "ab".repeat(32),
     ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
     programCommitments,
     da: {
       mode: "authenticated_committee_v1",
       identityDigest: computeDeploymentManifestJsonDigest(manifest.da),
     },
-    releaseEvidence: {
-      digest: RELEASE_DIGEST,
+    artifacts: {
       blueprintHash: BLUEPRINT_HASH,
+      fundingProfileBundleDigest: "ab".repeat(32),
     },
   };
   const { privateKey, trustRoot } = makeTrustRoot();
@@ -352,8 +352,9 @@ const makeFixture = () => {
     programCommitments,
     daMode: "authenticated_committee_v1",
     daIdentityDigest: releaseBindings.da.identityDigest,
-    releaseEvidenceDigest: RELEASE_DIGEST,
+
     blueprintHash: BLUEPRINT_HASH,
+    fundingProfileBundleDigest: "ab".repeat(32),
   };
   const resign = (
     identity: MutableRecord = signedIdentity,
@@ -401,7 +402,57 @@ const rejection = (
 };
 
 describe("watcher deployment identity", () => {
-  it("verifies the exact signed release identity and durable marker", () => {
+  it("authenticates the funding bundle digest with the deployment signature", () => {
+    const fixture = makeFixture();
+    fixture.signedIdentity.releaseBindings.fundingProfileBundleDigest =
+      "cd".repeat(32);
+    rejection(
+      () =>
+        verifyWatcherDeploymentIdentity({
+          signedIdentity: fixture.signedIdentity,
+          policy: fixture.policy,
+          trustRoots: [fixture.trustRoot],
+          durableMarker: fixture.durableMarker,
+        }),
+      "invalid_signature",
+      "$.attestation.signature",
+    );
+    fixture.resign();
+    rejection(
+      () =>
+        verifyWatcherDeploymentIdentity({
+          signedIdentity: fixture.signedIdentity,
+          policy: fixture.policy,
+          trustRoots: [fixture.trustRoot],
+          durableMarker: fixture.durableMarker,
+        }),
+      "mismatched_identity",
+      "$.releaseBindings.fundingProfileBundleDigest",
+    );
+  });
+
+  it.each(["policy", "releaseBindings"] as const)(
+    "requires the funding bundle digest in %s",
+    (location) => {
+      const fixture = makeFixture();
+      const input = {
+        signedIdentity: fixture.signedIdentity,
+        policy: { ...fixture.policy },
+        trustRoots: [fixture.trustRoot],
+        durableMarker: fixture.durableMarker,
+      };
+      const record: MutableRecord =
+        location === "policy"
+          ? input.policy
+          : input.signedIdentity.releaseBindings;
+      delete record.fundingProfileBundleDigest;
+      expect(() => verifyWatcherDeploymentIdentity(input)).toThrow(
+        WatcherDeploymentIdentityError,
+      );
+    },
+  );
+
+  it("verifies the exact signed deployment identity and durable marker", () => {
     const fixture = makeFixture();
 
     expect(
@@ -415,7 +466,8 @@ describe("watcher deployment identity", () => {
       manifestId: fixture.signedIdentity.manifest.manifestId,
       network: "Preprod",
       trustRootId: fixture.trustRoot.trustRootId,
-      releaseEvidenceDigest: RELEASE_DIGEST,
+      blueprintHash: BLUEPRINT_HASH,
+      fundingProfileBundleDigest: "ab".repeat(32),
       ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
       programCommitments:
         fixture.signedIdentity.releaseBindings.programCommitments,
@@ -439,6 +491,24 @@ describe("watcher deployment identity", () => {
       hubOracleOneShotOutRef: fixture.policy.hubOracleOneShotOutRef,
       protocolScriptHashes: {
         hubOracleMint: fixture.policy.appliedScriptHashes.hubOracleMint,
+        referenceScriptAuthMint:
+          fixture.policy.appliedScriptHashes.referenceScriptAuthMint,
+        availabilityChallengeSpend:
+          fixture.policy.appliedScriptHashes.availabilityChallengeSpend,
+        availabilityChallengeMint:
+          fixture.policy.appliedScriptHashes.availabilityChallengeMint,
+        availabilityChallengeBondWithdraw:
+          fixture.policy.appliedScriptHashes.availabilityChallengeBondWithdraw,
+        availabilityChallengeOpenWithdraw:
+          fixture.policy.appliedScriptHashes.availabilityChallengeOpenWithdraw,
+        availabilityChallengeSettleWithdraw:
+          fixture.policy.appliedScriptHashes
+            .availabilityChallengeSettleWithdraw,
+        availabilityChallengeCloseWithdraw:
+          fixture.policy.appliedScriptHashes.availabilityChallengeCloseWithdraw,
+        availabilityChallengeTimeoutWithdraw:
+          fixture.policy.appliedScriptHashes
+            .availabilityChallengeTimeoutWithdraw,
         stateQueueSpend: fixture.policy.appliedScriptHashes.stateQueueSpend,
         stateQueueMint: fixture.policy.appliedScriptHashes.stateQueueMint,
         correctionLockSpend:
@@ -559,7 +629,8 @@ describe("watcher deployment identity", () => {
       }),
     ).resolves.toMatchObject({
       deploymentIdentityDigest: identity.manifestId,
-      releaseIdentityDigest: RELEASE_DIGEST,
+      blueprintHash: BLUEPRINT_HASH,
+      fundingProfileBundleDigest: "ab".repeat(32),
       policy: DEPLOYMENT_MANIFEST_L1_FINALITY,
       policyDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
@@ -594,7 +665,8 @@ describe("watcher deployment identity", () => {
       }),
     ).resolves.toMatchObject({
       deploymentIdentityDigest: identity.manifestId,
-      releaseIdentityDigest: RELEASE_DIGEST,
+      blueprintHash: BLUEPRINT_HASH,
+      fundingProfileBundleDigest: "ab".repeat(32),
       policy: {
         profile: "bounded-acceptance-v1",
         proverCollateralFloorLovelace: "5000000",
@@ -937,14 +1009,14 @@ describe("watcher deployment identity", () => {
       "$.releaseBindings.da",
     ],
     [
-      "release evidence",
+      "contract blueprint",
       (fixture: ReturnType<typeof makeFixture>) => {
         fixture.policy = {
           ...fixture.policy,
-          releaseEvidenceDigest: "aa".repeat(32),
+          blueprintHash: "aa".repeat(32),
         };
       },
-      "$.releaseBindings.releaseEvidence",
+      "$.releaseBindings.artifacts",
     ],
   ])("fails closed on a %s mismatch", (_label, mutate, expectedPath) => {
     const fixture = makeFixture();

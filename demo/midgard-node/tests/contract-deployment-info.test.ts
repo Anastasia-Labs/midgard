@@ -1,10 +1,7 @@
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  MIDGARD_CONSENSUS_PROFILE,
-  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/consensus-profile";
+import { MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS,
@@ -26,7 +23,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it as unitIt } from "vitest";
 
 import {
   buildContractDeploymentInfoFromContracts,
@@ -58,6 +55,7 @@ import {
   fraudProofsToIndexedValidators,
 } from "../src/transactions/initialization.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const testReferenceScriptAuthPolicy = (
   _policyId: string,
@@ -129,8 +127,7 @@ const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestIdentityContext = {
       retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
   },
-  proofEvidence: {
-    digest: null,
+  artifacts: {
     blueprintHash: "22".repeat(32),
   },
 };
@@ -169,6 +166,7 @@ const TEST_FINALIZED_MANIFEST_BUILD_CONTEXT = {
   hubOracleOneShotStatus: "consumed_by_init",
   steps: {
     initProtocol: { status: "complete", txHash: "cd".repeat(32) },
+    availabilityRegistration: { status: "complete" },
   },
 } satisfies DeploymentManifestBuildContext;
 
@@ -221,9 +219,6 @@ describe("contract deployment info", () => {
     );
     expect(calls).toBe(1);
     expect(identity.snapshot).toEqual(TEST_CARDANO_PARAMETERS);
-    expect(identity.digest).toBe(
-      computeDeploymentManifestJsonDigest(identity.snapshot),
-    );
   });
 
   it.effect(
@@ -630,7 +625,6 @@ describe("contract deployment info", () => {
         });
 
         expect(first.schemaVersion).toEqual(DEPLOYMENT_MANIFEST_SCHEMA_VERSION);
-        expect(first.consensusProfile).toEqual(MIDGARD_CONSENSUS_PROFILE);
         expect(first.manifestId).toEqual(second.manifestId);
         expect(second.createdAt).toEqual(first.createdAt);
         expect(second.updatedAt).toEqual(first.updatedAt);
@@ -674,15 +668,6 @@ describe("contract deployment info", () => {
         expect(manifest.schemaVersion).toEqual(
           MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
         );
-        expect(manifest.consensusProfile).toEqual(MIDGARD_CONSENSUS_PROFILE);
-        expect(manifest.validationDispute).toEqual({
-          version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
-          responseWindowMs:
-            MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
-          maxBisectionRounds:
-            MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
-          maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
-        });
         expect(manifest.contracts.validationTraceDispute.scriptHash).toMatch(
           /^[0-9a-f]{56}$/u,
         );
@@ -983,6 +968,102 @@ describe("contract deployment info", () => {
           manifest.contracts.fraudProofNetworkIdStep02.scriptHash,
         ]);
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  /**
+   * Everything above runs on the AlwaysSucceeds stand-in, where every
+   * fault-proof step shares one script: an ordered `[step01, step02, ...]`
+   * comparison against manifest roles is satisfied by ANY permutation there,
+   * so the step-index-to-role wiring is not actually discriminated. This case
+   * repeats those comparisons against the real applied blueprint, where each
+   * step has its own hash, and asserts the distinctness that makes the
+   * comparison meaningful in the first place.
+   */
+  unitIt(
+    "discriminates step-index-to-role wiring against the real blueprint",
+    async () => {
+      const contracts = await loadRealMidgardContractsForTest({
+        txHash: ONE_SHOT_TX_HASH,
+        outputIndex: 0,
+      });
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+        contracts.referenceScriptAuth.mintingScriptCBOR,
+      );
+      const manifest = buildDeploymentManifest(
+        await Effect.runPromise(
+          buildFinalizedContractDeploymentInfo(contracts, authPolicy),
+        ),
+        { ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT },
+      );
+      const reconstructed = midgardContractsFromDeploymentManifest(
+        "Preprod",
+        manifest,
+        "fixture-contract-deployment-info.json",
+        contracts,
+      );
+
+      const expectOrderedDistinctWiring = (
+        label: string,
+        appliedHashes: readonly string[],
+        manifestHashes: readonly string[],
+      ) => {
+        // Without this, the ordered comparison below cannot tell a correct
+        // wiring from a permuted one.
+        expect(
+          new Set(appliedHashes).size,
+          `${label}: step scripts must be pairwise distinct`,
+        ).toEqual(appliedHashes.length);
+        expect(appliedHashes, label).toEqual(manifestHashes);
+      };
+
+      expectOrderedDistinctWiring(
+        "missingNativeScriptTx.steps",
+        reconstructed.fraudProofContracts.missingNativeScriptTx.steps.map(
+          ({ spendingScriptHash }) => spendingScriptHash,
+        ),
+        [
+          manifest.contracts.fraudProofMissingNativeScriptTx.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep02.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep03.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep04.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep05.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep06.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep07.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep08.scriptHash,
+        ],
+      );
+
+      expectOrderedDistinctWiring(
+        "transitionTrace.finals",
+        reconstructed.fraudProofContracts.transitionTrace.finals.map(
+          ({ spendingScriptHash }) => spendingScriptHash,
+        ),
+        [
+          manifest.contracts.fraudProofTransitionTraceControl.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceSource.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceWithdrawal.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceForced.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceAcceptedTransaction
+            .scriptHash,
+          manifest.contracts.fraudProofTransitionTraceDeposit.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceL1Event.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceDuplicate.scriptHash,
+        ],
+      );
+
+      expectOrderedDistinctWiring(
+        "networkId.steps",
+        reconstructed.fraudProofContracts.networkId.steps.map(
+          ({ spendingScriptHash }) => spendingScriptHash,
+        ),
+        [
+          manifest.contracts.fraudProofNetworkId.scriptHash,
+          manifest.contracts.fraudProofNetworkIdStep02.scriptHash,
+        ],
+      );
+    },
+    600_000,
   );
 
   it.effect("rejects deployment manifest contract hash drift", () =>

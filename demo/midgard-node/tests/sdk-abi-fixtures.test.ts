@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -83,6 +84,12 @@ const constructor = (
 const fields = (ctor: BlueprintConstructor): readonly string[] =>
   (ctor.fields ?? []).map((field) => field.title ?? "");
 
+// The Aiken sources are the normative home of these protocol constants and the
+// compiler emits none of them into plutus.json, so a text read of the `pub
+// const` declaration is the only channel available. It is deliberately narrow
+// and fails closed: a missing declaration fails the lookup, and anything but a
+// product of decimal literals fails the shape check rather than being silently
+// coerced.
 const aikenIntegerConst = (
   source: string,
   sourceLabel: string,
@@ -1018,8 +1025,13 @@ describe("SDK canonical ABI fixtures", () => {
     );
 
     const fixtures = buildTransitionTraceAbiFixtures();
-    if (process.env.UPDATE_TRANSITION_TRACE_ABI_FIXTURE === "1") {
-      const regenerated: GoldenAbiFixtureFile = {
+    // Emit mode belongs to scripts/generate-transition-trace-abi-fixture.mjs:
+    // it hands us a scratch path, diffs the result against the checked-in
+    // golden itself and regenerates the Aiken golden from the same bytes. A
+    // normal run has no way to rewrite the golden it is asserting against.
+    const emitPath = process.env.MIDGARD_TRANSITION_TRACE_ABI_EMIT_PATH;
+    if (emitPath !== undefined) {
+      const emitted: GoldenAbiFixtureFile = {
         version: 1,
         encoding: "lucid-plutus-data-cbor-hex",
         fixtures: Object.fromEntries(
@@ -1041,12 +1053,10 @@ describe("SDK canonical ABI fixtures", () => {
           }),
         ),
       };
-      writeFileSync(
-        transitionTraceAbiGoldenPath,
-        `${JSON.stringify(regenerated, null, 2)}\n`,
-      );
-      Object.assign(transitionTraceAbiGolden, regenerated);
+      writeFileSync(emitPath, `${JSON.stringify(emitted, null, 2)}\n`);
+      return;
     }
+
     expect(Object.keys(transitionTraceAbiGolden.fixtures).sort()).toEqual(
       Object.keys(fixtures).sort(),
     );
@@ -1468,68 +1478,120 @@ describe("SDK canonical ABI fixtures", () => {
     expectRoundTrip("Init", SDK.FraudProofCatalogueMintRedeemer);
   });
 
+  // The baseline digest is derived, never transcribed: the preimage is the
+  // checked-in transition-trace golden `HeaderV1` entry (the same bytes the
+  // generated Aiken golden decodes), and the digest is recomputed here with
+  // @noble/hashes instead of with the SDK helper under test.
   it("commits every transition field into the block header hash", async () => {
-    const header: SDK.Header = {
-      prevUtxosRoot: h32,
-      utxosRoot: h32,
-      withdrawalsRoot: h32,
-      forcedTransactionsRoot: h32,
-      transactionsRoot: h32,
-      depositsRoot: h32,
-      transitionTraceRoot: h32,
-      eventToStepRoot: h32,
-      validationTracesRoot: h32,
-      withdrawalCount: 1n,
-      forcedTransactionCount: 2n,
-      l2TransactionCount: 3n,
-      depositCount: 4n,
-      totalEventCount: 10n,
-      transitionStepCount: 10n,
-      validationTraceCount: 10n,
-      startTime: 1n,
-      endTime: 2n,
-      blockSlot: 0n,
-      expectedNetworkId: 0n,
-      minFeeA: 0n,
-      minFeeB: 0n,
-      prevHeaderHash: h28,
-      operatorVkey: h28,
-      protocolVersion: 1n,
-    };
-    const baselineHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-    expect(baselineHash).toBe(
-      "964baf9a89b4c4aa99d8cb6f1b365af9fa951a4d8043a93c5da993c1",
-    );
-    const differentRoot = "44".repeat(32);
-    const mutations: readonly SDK.Header[] = [
-      { ...header, forcedTransactionsRoot: differentRoot },
-      { ...header, transitionTraceRoot: differentRoot },
-      { ...header, eventToStepRoot: differentRoot },
-      { ...header, withdrawalCount: header.withdrawalCount + 1n },
-      {
-        ...header,
-        forcedTransactionCount: header.forcedTransactionCount + 1n,
-      },
-      { ...header, l2TransactionCount: header.l2TransactionCount + 1n },
-      { ...header, depositCount: header.depositCount + 1n },
-      { ...header, totalEventCount: header.totalEventCount + 1n },
-      { ...header, transitionStepCount: header.transitionStepCount + 1n },
-      { ...header, blockSlot: header.blockSlot + 1n },
-      {
-        ...header,
-        expectedNetworkId: header.expectedNetworkId === 0n ? 1n : 0n,
-      },
-      { ...header, minFeeA: header.minFeeA + 1n },
-      { ...header, minFeeB: header.minFeeB + 1n },
-    ];
+    const goldenHeaderCborHex =
+      transitionTraceAbiGolden.fixtures.HeaderV1!.cborHex;
+    expect(Data.to(headerFixture, SDK.Header)).toBe(goldenHeaderCborHex);
+    const expectedBaselineHash = Buffer.from(
+      blake2b(Buffer.from(goldenHeaderCborHex, "hex"), { dkLen: 28 }),
+    ).toString("hex");
 
-    await Promise.all(
-      mutations.map(async (mutation) => {
-        await expect(
-          Effect.runPromise(SDK.hashBlockHeader(mutation)),
-        ).resolves.not.toBe(baselineHash);
-      }),
+    const baselineHash = await Effect.runPromise(
+      SDK.hashBlockHeader(headerFixture),
     );
+    expect(baselineHash).toBe(expectedBaselineHash);
+
+    const differentRoot = "aa".repeat(32);
+    const differentDigest28 = "bb".repeat(28);
+    // Keyed by header field, so adding a header field without deciding whether
+    // it is committed fails to compile. `null` means "cannot be varied": the
+    // protocol version is pinned by the encoder and is covered by the refusal
+    // assertion below.
+    const mutations: Record<keyof SDK.Header, SDK.Header | null> = {
+      prevUtxosRoot: { ...headerFixture, prevUtxosRoot: differentRoot },
+      utxosRoot: { ...headerFixture, utxosRoot: differentRoot },
+      withdrawalsRoot: { ...headerFixture, withdrawalsRoot: differentRoot },
+      forcedTransactionsRoot: {
+        ...headerFixture,
+        forcedTransactionsRoot: differentRoot,
+      },
+      transactionsRoot: { ...headerFixture, transactionsRoot: differentRoot },
+      depositsRoot: { ...headerFixture, depositsRoot: differentRoot },
+      transitionTraceRoot: {
+        ...headerFixture,
+        transitionTraceRoot: differentRoot,
+      },
+      eventToStepRoot: { ...headerFixture, eventToStepRoot: differentRoot },
+      validationTracesRoot: {
+        ...headerFixture,
+        validationTracesRoot: differentRoot,
+      },
+      withdrawalCount: {
+        ...headerFixture,
+        withdrawalCount: headerFixture.withdrawalCount + 1n,
+      },
+      forcedTransactionCount: {
+        ...headerFixture,
+        forcedTransactionCount: headerFixture.forcedTransactionCount + 1n,
+      },
+      l2TransactionCount: {
+        ...headerFixture,
+        l2TransactionCount: headerFixture.l2TransactionCount + 1n,
+      },
+      depositCount: {
+        ...headerFixture,
+        depositCount: headerFixture.depositCount + 1n,
+      },
+      totalEventCount: {
+        ...headerFixture,
+        totalEventCount: headerFixture.totalEventCount + 1n,
+      },
+      transitionStepCount: {
+        ...headerFixture,
+        transitionStepCount: headerFixture.transitionStepCount + 1n,
+      },
+      validationTraceCount: {
+        ...headerFixture,
+        validationTraceCount: headerFixture.validationTraceCount + 1n,
+      },
+      startTime: { ...headerFixture, startTime: headerFixture.startTime + 1n },
+      endTime: { ...headerFixture, endTime: headerFixture.endTime + 1n },
+      blockSlot: { ...headerFixture, blockSlot: headerFixture.blockSlot + 1n },
+      expectedNetworkId: {
+        ...headerFixture,
+        expectedNetworkId: headerFixture.expectedNetworkId === 0n ? 1n : 0n,
+      },
+      minFeeA: { ...headerFixture, minFeeA: headerFixture.minFeeA + 1n },
+      minFeeB: { ...headerFixture, minFeeB: headerFixture.minFeeB + 1n },
+      prevHeaderHash: {
+        ...headerFixture,
+        prevHeaderHash: differentDigest28,
+      },
+      operatorVkey: { ...headerFixture, operatorVkey: differentDigest28 },
+      protocolVersion: null,
+    };
+    expect(Object.keys(mutations).sort()).toEqual(
+      Object.keys(headerFixture).sort(),
+    );
+
+    const mutatedHashes = await Promise.all(
+      Object.entries(mutations)
+        .filter((entry): entry is [string, SDK.Header] => entry[1] !== null)
+        .map(async ([field, mutation]) => {
+          const hash = await Effect.runPromise(SDK.hashBlockHeader(mutation));
+          expect(hash, `header field ${field} is not committed`).not.toBe(
+            baselineHash,
+          );
+          return hash;
+        }),
+    );
+    // Every field must move the digest to its own value, so two fields cannot
+    // share one commitment slot.
+    expect(new Set(mutatedHashes).size).toBe(mutatedHashes.length);
+
+    // Reject pair: the encoder refuses a header that claims a protocol version
+    // other than the one this ABI describes, so an unrecognised version can
+    // never be hashed into a block commitment.
+    expect(() =>
+      SDK.hashBlockHeader({
+        ...headerFixture,
+        protocolVersion: headerFixture.protocolVersion + 1n,
+      }),
+    ).toThrow(/protocol version/i);
   });
 
   it("validates transition commitment count and root invariants", async () => {

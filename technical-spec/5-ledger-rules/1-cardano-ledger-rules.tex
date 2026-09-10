@@ -10,6 +10,9 @@
 \section{Midgard Ledger Rules and Fraud Proofs}
 \label{h:ledger-rules-fraud-proofs}
 
+\paragraph{Scope and conformance.} These formulas state ledger obligations and schematic evidence relations; they are not the current validator ABI or a completeness claim for the catalogue. Current proofs authenticate compact sources, counted roots, output commitments, and bounded field carriage as specified in \cref{h:midgard-native-transaction-wire-format}. Accepted normal transactions and payable withdrawals change state; rejected forced transactions and non-payable withdrawals are no-ops. Resolve inputs against the state at the transaction's ordered transition, including preceding forced transactions and deposits, rather than treating the normal-transaction set alone as the whole ledger.
+
+
 In the following sections the following premises are used:
 
 \begin{equation*}
@@ -96,7 +99,7 @@ Fraud proof construction:
   \item A membership proof must be provided for $t$ that shows that the transaction is included in the block ($t \in txs$)
   \item A membership proof must be presented for input $i$ such that $i \in spend\_inputs(t)$
   \item A membership proof must be created for $t_1$ such that $tx\_hash(t_1) = tx\_hash(i)$
-  \item A DA layer proof must be presented that certifies that $length(outputs(t_1)) < index(i)$
+  \item A DA layer proof must be presented that certifies that $length(outputs(t_1)) \leq index(i)$
 \end{enumerate}
 
 \subsubsection{WITHDRAWN-INPUT violation}
@@ -124,7 +127,7 @@ A transaction $t$ attempted to spend the input $i$, which was spent in another t
 Formal specification:
 \begin{equation*}
 \begin{split}
-  &\exists t \in txs,\; \exists i \in spend\_inputs(t),\; \exists t_1 \in tx:\\
+  &\exists t \in txs,\; \exists i \in spend\_inputs(t),\; \exists t_1 \in txs:\\
     &\quad
       t \neq t_1 \;\land\;
       i \in spend\_inputs(t_1)
@@ -141,7 +144,7 @@ Fraud proof construction:
 \end{enumerate}
 
 \subsubsection{DOUBLE-WITHDRAW violation}
-\label{violation:DOUBLE-WITHDRAW}
+\label{violation:DOUBLE-WITHDRAW}\paragraph{Conformance qualification.} The current family requires both distinct withdrawal leaves to carry \code{WithdrawalIsValid}. The unqualified equation below is the earlier rule; rejecting a repeated request as non-payable is valid behavior under the current transition semantics.
 A withdrawal $w$ attempted to spend the same input, which was already withdrawn by $w_1$.
 Formal specification:
 \begin{equation*}
@@ -161,7 +164,7 @@ Fraud proof construction:
 \end{enumerate}
 
 \subsection{Rule: Transaction validity range}
-\label{rule:transaction-validity-range}
+\label{rule:transaction-validity-range}\paragraph{Conformance gap.} The formula below requires interval containment, whereas the accompanying original violation prose used non-overlap. Current validation tests the authenticated \code{block\_slot} against transaction validity scalars. These are distinct predicates; the POSIX/slot boundary noted in \cref{h:midgard-native-transaction-wire-format} must be reconciled rather than assuming this formula is enforced.
 Every valid transaction in the ledger must be included at a timestamp that conforms to the validity range that the transaction prescribes.
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}
@@ -238,7 +241,7 @@ Formal specification:
 \end{split}
 \end{empheq}
 
-The fee calculation algorithm is the same as in Cardano ... \todo
+Current static validation computes the minimum as the validation context's \code{min\_fee\_a} times the canonical native transaction size, plus \code{min\_fee\_b}. This is a size-linear native-transaction rule; it is not a claim to reproduce every component of Cardano L1 fee calculation.
 
 This ledger rule is violated if any of the following violations occur:
 \begin{itemize-multi}
@@ -263,7 +266,7 @@ Fraud proof construction:
 \end{enumerate}
 
 \subsection{Rule: Required signatures are correct}
-\label{rule:required-signatures-are-correct}
+\label{rule:required-signatures-are-correct}\paragraph{Conformance gap.} The equality and NON-REQ-SIGNER rule below require the explicit signer list to equal spending key credentials. Current validation checks explicit required-signer witness membership and separately authorizes spent key credentials; an additional explicitly required signer is not rejected solely because it does not own an input. This older equality must not be used as the current acceptance rule.
 Every valid transaction in the ledger must correctly show the required signers.
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}
@@ -311,7 +314,7 @@ Fraud proof construction:
   \item Verify that $i \in spend\_inputs(t_1)$.
   \item Verify that $i$ matches $t_2$ on transaction hash. 
   \item Let $u$ be the $t_2$ output indexed by $i$. 
-  \item Verify that the payment credential of $u$ is a public key hash and that it is included in the required signers of the transaction.
+  \item Verify that the payment credential of $u$ is a public key hash and that it is absent from the required signers of the transaction, as stated by this subsection's original formula.
 \end{enumerate}
 
 \subsubsection{MISSING-REQ-SIGNER-UTXO violation}
@@ -335,7 +338,7 @@ Fraud proof construction:
   \item Verify that $i$ matches $t_2$ on transaction hash. 
   \item Let $u$ be a utxo and $j$ be an output reference. 
   \item A membership proof must be provided that $(j,u) \in utxos_{pre}$.
-  \item Verify that the payment credential of $u$ is a public key hash and that it is included in the required signers of the transaction.
+  \item Verify that the payment credential of $u$ is a public key hash and that it is absent from the required signers of the transaction, as stated by this subsection's original formula.
 \end{enumerate}
 
 \subsubsection{NON-REQ-SIGNER violation}
@@ -631,23 +634,7 @@ Fraud proof construction:
 \subsection{Rule: Maximum transaction size}
 \label{rule:maximum-transaction-size}
 
-Canonical V1 has no independent (8{,}192)-byte aggregate transaction
-ceiling. Each dynamic canonical field preimage is independently committed by
-the compact transaction and has a (32{,}768)-byte aggregate maximum. Proof
-instructions consume each field through authenticated fragments or chunks of
-at most (4{,}095) bytes, derived from the supported (16{,}384)-byte L1
-fault-proof transaction floor and the concrete overhead of the one-step
-instruction that reveals it. For every instruction,
-\[
-    |\T{revealed\_fragment\_or\_chunk}| +
-    |\T{reserved\_proof\_overhead}| <
-    16{,}384.
-\]
-The effective maximum canonical transaction size is the sum of every bounded
-dynamic field after its canonical byte-string wrapping, plus all fixed-size
-fields and CBOR framing. It is not an independently selected protocol cap.
-Each enabled proof instruction must additionally pass its execution-unit and
-serialized worst-case transaction test.
+Canonical V1 has no independent 8{,}192-byte aggregate transaction ceiling. Each dynamic canonical field preimage has a 32{,}768-byte maximum. Its commitment is a hash of the entire canonical field; authentication uses the inline, raw-publication, or certified-publication carriage routes described in \cref{h:midgard-native-transaction-wire-format}. The 4{,}095-byte machine chunk reservation is not a universal cap on whole-field carriage or a replacement for each instruction's envelope budget. The effective transaction maximum derives from bounded fields and framing. Each enabled proof instruction still requires serialized transaction and execution-budget evidence; the field bound alone does not establish that every whole-field path fits L1.
 
 \subsection{Rule: Maximum reference script size}
 \label{rule:maximum-reference-script-size}
@@ -688,7 +675,7 @@ This ledger rule is violated if any of the following violations occur:
 
 \subsubsection{NEGATIVE-OUTPUT-VALUE violation}
 \label{violation:NEGATIVE-OUTPUT-VALUE}
-Ada is minted in transaction $t$.
+An output of transaction $t$ contains a negative asset quantity.
 Formal specification:
 \begin{equation*}
 \begin{split}
@@ -850,7 +837,7 @@ Formal specification:
 \begin{equation*}
 \begin{split}
   &\exists u \in utxos_{post}:\\
-    &\quad network\_id(addr(o)) \neq network\_id_{Midgard}
+    &\quad network\_id(addr(u)) \neq network\_id_{Midgard}
 \end{split}
 \end{equation*}
 
@@ -858,7 +845,7 @@ Fraud proof construction:
 \begin{enumerate}
   \item Let $u$ be the output alleged to violate the ledger rule.
   \item A membership proof must be provided that shows that $u \in utxos_{post}$.
-  \item $network\_id(addr(o)) \neq network\_id_{Midgard}$ must hold.
+  \item $network\_id(addr(u)) \neq network\_id_{Midgard}$ must hold.
 \end{enumerate}
 
 \subsection{Rule: Network id of transaction}
@@ -941,14 +928,14 @@ Fraud proof construction:
 
 \subsubsection{REFERENCE-INPUT-NO-IDX violation}
 \label{violation:REFERENCE-INPUT-NO-IDX}
-A transaction $t$ attempted to spend an input $i$ that was not produced by the transaction matching the tx hash of $i$.
+A transaction $t$ attempted to reference an input $i$ that was not produced by the transaction matching the tx hash of $i$.
 Formal specification:
 \begin{equation*}
 \begin{split}
   &\exists t \in txs,\; \exists i \in reference\_inputs(t): \\
-    &\quad( \exists t_1 \in txs,\;
+    &\quad\bigl( \exists t_1 \in txs,\;
       tx\_hash(t_1) = tx\_hash(i) \;\land\;
-      length(outputs(t_1) <  index(i) )
+      length(outputs(t_1)) \leq index(i) \bigr)
 \end{split}
 \end{equation*}
 
@@ -958,7 +945,7 @@ Fraud proof construction:
   \item A membership proof must be provided for $t$ that shows that the transaction is included in the block ($t \in txs$)
   \item A membership proof must be presented for input $i$ such that $i \in reference\_inputs(t)$
   \item A membership proof must be created for $t_1$ such that $tx\_hash(t_1) = tx\_hash(i)$
-  \item A DA layer proof must be presented that certifies that $length(outputs(t_1)) < index(i)$
+  \item A DA layer proof must be presented that certifies that $length(outputs(t_1)) \leq index(i)$
 \end{enumerate}
 
 \subsubsection{WITHDRAWN-REFERENCE-INPUT violation}

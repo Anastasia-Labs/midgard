@@ -9,6 +9,7 @@ import {
   type CanonicalBlockEvidence,
   fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
+import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
@@ -54,6 +55,7 @@ import {
   type JournalJsonObject,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import {
   detectRedeemerCanonicityFromCanonicalBlock,
   type RedeemerCanonicityDetection,
@@ -334,7 +336,9 @@ const createConcreteActuator = ({
     );
     if (tx === undefined)
       throw new Error("redeemerCanonicity forced source disappeared");
-    return deriveMidgardNativeTxFaultEvidenceMaterial(tx.fullTransactionCbor);
+    return deriveRejectedTransactionFaultEvidenceMaterial(
+      tx.fullTransactionCbor,
+    );
   };
   return Object.freeze({
     observe: async () => await observed(),
@@ -642,21 +646,27 @@ export const createRedeemerCanonicityWorkflowRunnerSurface = ({
           throw new Error(
             "redeemerCanonicity runtime identity differs from invocation",
           );
-        return await executeManifestBoundRedeemerCanonicityWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          runtime: {
-            journal: journalAdapter(durable, {
-              schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-              deploymentFingerprint: invocation.deploymentFingerprint,
-              category: "redeemerCanonicity",
-              target: {
-                kind: "state_queue_header",
-                headerHash: invocation.headerHash,
-              },
-              decisionDigest: invocation.decisionDigest,
-            }),
+        const runtimeJournal = journalAdapter(durable, {
+          schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+          deploymentFingerprint: invocation.deploymentFingerprint,
+          category: "redeemerCanonicity",
+          target: {
+            kind: "state_queue_header",
+            headerHash: invocation.headerHash,
           },
+          decisionDigest: invocation.decisionDigest,
+        });
+        return await continuePendingWorkflow({
+          invocation,
+          journal: durable,
+          execute: () =>
+            executeManifestBoundRedeemerCanonicityWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              runtime: {
+                journal: runtimeJournal,
+              },
+            }),
         });
       } finally {
         await loaded.close();

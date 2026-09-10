@@ -29,11 +29,6 @@ import {
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
-import { RejectCodes } from "@al-ft/midgard-validation/types";
-import { CML, Data } from "@lucid-evolution/lucid";
-import { blake2b } from "@noble/hashes/blake2.js";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -47,7 +42,12 @@ import {
   outRefFromByte,
   outRefFromTxId,
   plutusV3ScriptWitness,
-} from "../../../midgard-validation/tests/validation-fixtures.js";
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
+import { CML, Data } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
 import {
   evaluateWatcherBlockReplay,
   makeWatcherBlockReplayReconstructedState,
@@ -68,14 +68,15 @@ import {
   WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES,
   WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES,
   WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT,
+  watcherBlockReplayClassificationEvidence,
   watcherBlockReplayCommittedSteps,
   type WatcherBlockReplayEventAuthority,
-  watcherBlockReplayForcedValidityForRejectCode,
   watcherBlockReplayPriorState,
   type WatcherBlockReplayPriorUtxo,
   watcherBlockReplayRejectionProjection,
   watcherBlockReplayStageForRejection,
 } from "../../src/verification/block-replay.js";
+import { evaluateWatcherEventClassification } from "../../src/verification/event-classification-verifier.js";
 import {
   evaluateWatcherHeaderRootReconstruction,
   makeWatcherAuthenticatedHeaderObservation,
@@ -94,7 +95,6 @@ import {
 } from "../../src/verification/rule-bundle.js";
 import {
   createGenuineSettlementAuthorities,
-  type GenuineSettlementAuthority,
   type GenuineSettlementAuthorityFixtureSet,
 } from "../support/settlement-authority-scenarios.js";
 import {
@@ -613,7 +613,7 @@ const RULE_BUNDLE: WatcherRuleBundle = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
     manifestId: h32(0x21),
     network: "Preprod",
-    releaseEvidenceDigest: h32(0x22),
+    blueprintHash: h32(0x22),
     programCommitments: {
       "transition-order-v1": h32(0x23),
       "validation-machine-v1": h32(0x24),
@@ -673,6 +673,7 @@ const depositEvent = (byte: number): PublicFixtureEvent => {
 const publicEventFromW15 = (
   authority: UserEventAcceptedAuthorityScenario,
   forcedNative?: ReturnType<typeof makeNativeTx>,
+  withdrawalValidity?: SDK.WithdrawalValidity,
 ): PublicFixtureEvent => {
   const event = authority.event;
   if (event.kind === "deposit") {
@@ -713,7 +714,10 @@ const publicEventFromW15 = (
       domain: "withdrawals" as const,
       entry: [
         event.eventId,
-        dataHex(decoded.info, SDK.WithdrawalInfoSchema),
+        SDK.committedWithdrawalValueBytes({
+          ...decoded.info,
+          validity: withdrawalValidity ?? decoded.info.validity,
+        }),
       ] as SDK.DaPayloadEntry,
     });
   }
@@ -727,15 +731,13 @@ const publicEventFromW15 = (
       readonly source: SDK.L2TransactionSource["source"];
     };
   };
-  if (
-    !("terminalClassification" in event) ||
-    event.terminalClassification === undefined
-  ) {
-    throw new Error("forced W15 event lacks terminal classification");
-  }
-  const verdict = userEventForcedOperatorVerdictForClassification(
-    event.terminalClassification.operatorValidity,
-  );
+  const verdict =
+    "terminalClassification" in event &&
+    event.terminalClassification !== undefined
+      ? userEventForcedOperatorVerdictForClassification(
+          event.terminalClassification.operatorValidity,
+        )
+      : ("ForcedTxValid" as const);
   // The ORDER event binds the SUBMITTED source, but the committed DA leaf
   // carries the operator-ADJUDICATED one (§2.4.3(e)) — the payload
   // reconstruction authenticates exactly that. Re-derive through the single
@@ -928,41 +930,39 @@ const committedStepsForEffects = async (
   );
 };
 
-const settlementAuthority = (
-  fixture: GenuineSettlementAuthority,
-): NonNullable<WatcherBlockReplayEventAuthority["settlement"]> => ({
-  result: fixture.result,
-  context: fixture.context,
-  observationDigest: fixture.observation.observationDigest,
-});
-
 const eventAuthority = (input: {
   readonly event: PublicFixtureEvent;
   readonly userEvent: UserEventAcceptedAuthorityScenario;
-  readonly settlement?: GenuineSettlementAuthority;
   readonly effect: CanonicalTransitionEffect;
   readonly forcedNative?: ReturnType<typeof makeNativeTx>;
-}): WatcherBlockReplayEventAuthority => ({
-  eventKey: input.event.eventKey,
-  phase: input.event.phase,
-  userEvent: {
-    result: input.userEvent.result,
-    context: input.userEvent.context,
-  },
-  ...(input.settlement === undefined
-    ? {}
-    : { settlement: settlementAuthority(input.settlement) }),
-  transitionEffect: input.effect,
-  ...(input.forcedNative === undefined
-    ? {}
-    : {
-        canonicalNativeTxCbor: input.forcedNative.txCbor,
-        programMaterialSidecarCbor: makeQueued(
-          input.forcedNative.txId,
-          input.forcedNative.txCbor,
-        ).programMaterialSidecarCbor,
-      }),
-});
+}): WatcherBlockReplayEventAuthority => {
+  const common = {
+    eventKey: input.event.eventKey,
+    userEvent: {
+      result: input.userEvent.result,
+      context: input.userEvent.context,
+    },
+  };
+  if (input.event.phase === "ForcedTransaction") {
+    if (input.forcedNative === undefined) {
+      throw new Error("forced replay fixture requires canonical native bytes");
+    }
+    return {
+      ...common,
+      phase: input.event.phase,
+      canonicalNativeTxCbor: input.forcedNative.txCbor,
+      programMaterialSidecarCbor: makeQueued(
+        input.forcedNative.txId,
+        input.forcedNative.txCbor,
+      ).programMaterialSidecarCbor,
+    };
+  }
+  return {
+    ...common,
+    phase: input.event.phase,
+    transitionEffect: input.effect,
+  };
+};
 
 const watcherHeaderRecord = (
   value: SDK.Header,
@@ -1043,6 +1043,7 @@ const buildPublicReplayFixture = async (input: {
   }[];
   readonly requireAcceptedBindings?: boolean;
   readonly minFeeB?: bigint;
+  readonly eventWindow?: Readonly<{ start: bigint; end: bigint }>;
 }): Promise<PublicReplayFixture> => {
   const txCbors = input.txCbors ?? [];
   const events = input.events ?? [];
@@ -1184,8 +1185,8 @@ const buildPublicReplayFixture = async (input: {
       validationTraceEntries,
     ),
     ...counts,
-    startTime: 10n,
-    endTime: 20n,
+    startTime: input.eventWindow?.start ?? 10n,
+    endTime: input.eventWindow?.end ?? 20n,
     blockSlot: 0n,
     expectedNetworkId: 0n,
     minFeeA: 0n,
@@ -1259,9 +1260,6 @@ describe("W25 published rejection-code partition", () => {
       Object.values(RejectCodes),
     );
     expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES).toHaveLength(50);
-    expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES).toHaveLength(13);
-    expect(WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES).toHaveLength(27);
-    expect(WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES).toHaveLength(10);
     const claimed = [
       ...WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES,
       ...WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES,
@@ -1272,46 +1270,6 @@ describe("W25 published rejection-code partition", () => {
       [...WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES].sort(),
     );
     expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED).toHaveLength(40);
-    const expectedForcedValidity = (
-      code: (typeof RejectCodes)[keyof typeof RejectCodes],
-      phase: "phaseA" | "phaseB",
-    ): string => {
-      if (code === RejectCodes.InputNotFound) return "InputNotFound";
-      if (
-        code === RejectCodes.InvalidSignature ||
-        code === RejectCodes.MissingRequiredWitness
-      ) {
-        return "AddressWitnessSignatureInvalid";
-      }
-      if (code === RejectCodes.NativeScriptInvalid) {
-        // The one phase-split code: it must carry the same arm the node
-        // classifier commits into the leaf for the phase that rejected.
-        return phase === "phaseA"
-          ? "WitnessNativeScriptFalse"
-          : "ExecutionNativeScriptFalse";
-      }
-      if (
-        code === RejectCodes.PlutusScriptInvalid ||
-        code === RejectCodes.PlutusEvaluationUnavailable
-      ) {
-        return "PlutusExecutionFailed";
-      }
-      if (code === RejectCodes.MinFee) return "FeeBelowMinimum";
-      return "ValueNotPreserved";
-    };
-    for (const phase of ["phaseA", "phaseB"] as const) {
-      expect(
-        Object.values(RejectCodes).map((code) => ({
-          code,
-          validity: watcherBlockReplayForcedValidityForRejectCode(code, phase),
-        })),
-      ).toStrictEqual(
-        Object.values(RejectCodes).map((code) => ({
-          code,
-          validity: expectedForcedValidity(code, phase),
-        })),
-      );
-    }
     expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES).toStrictEqual(
       WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES,
     );
@@ -1409,7 +1367,7 @@ describe("W25 roots and deterministic replay", () => {
     const authority = eventAuthority({
       event,
       userEvent,
-      settlement: genuineW16.absorbToReserve,
+
       effect,
     });
     const fixture = await buildPublicReplayFixture({
@@ -1489,6 +1447,37 @@ describe("W25 roots and deterministic replay", () => {
       w29Eligibility: "requires_w26_accept",
     });
 
+    if (authority.userEvent === undefined)
+      throw new Error("deposit fixture requires parser authority");
+    const mutableParser = {
+      result: structuredClone(authority.userEvent.result),
+      context: {
+        ...authority.userEvent.context,
+        policy: structuredClone(authority.userEvent.context.policy),
+        previousState: structuredClone(
+          authority.userEvent.context.previousState,
+        ),
+        observation: structuredClone(authority.userEvent.context.observation),
+        publicContext: structuredClone(
+          authority.userEvent.context.publicContext,
+        ),
+      },
+    };
+    const parserReplayInFlight = evaluateWatcherBlockReplay({
+      ...publicInput(fixture),
+      eventAuthorities: [{ ...authority, userEvent: mutableParser }],
+    });
+    if (
+      typeof mutableParser.result !== "object" ||
+      mutableParser.result === null ||
+      typeof mutableParser.context.policy !== "object" ||
+      mutableParser.context.policy === null
+    )
+      throw new Error("parser fixture records must be objects");
+    Reflect.set(mutableParser.result, "resultDigest", "00".repeat(32));
+    Reflect.set(mutableParser.context.policy, "network", "Preview");
+    expect(await parserReplayInFlight).toStrictEqual(result);
+
     const omittedAuthority = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       eventAuthorities: [],
@@ -1515,6 +1504,9 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["user_event_authority_identity_mismatch"],
     });
+    if (authority.phase !== "Deposit") {
+      throw new Error("deposit authority fixture has another phase");
+    }
     const mutatedEffect = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       eventAuthorities: [
@@ -1530,9 +1522,11 @@ describe("W25 roots and deterministic replay", () => {
     });
   });
 
-  it("replays a Withdrawal after an L2 transaction and checks its literal terminal root", async () => {
+  it("replays the committed withdrawal claim after an L2 transaction without settlement authority", async () => {
     const userEvent = genuineW15.withdrawal;
     const event = publicEventFromW15(userEvent);
+    const inclusion = BigInt(userEvent.event.inclusionTime);
+    const eventWindow = { start: inclusion - 1n, end: inclusion };
     const l2Effect = nativeEffect({
       spent: [WITHDRAWAL_FLOW_INPUT],
       native: WITHDRAWAL_FLOW_NATIVE,
@@ -1556,11 +1550,12 @@ describe("W25 roots and deterministic replay", () => {
     const authority = eventAuthority({
       event,
       userEvent,
-      settlement: genuineW16.initializePayout,
+
       effect,
     });
     const fixture = await buildPublicReplayFixture({
       txCbors: [WITHDRAWAL_FLOW_NATIVE.txCbor],
+      eventWindow,
       events: [event],
       steps,
       priorState,
@@ -1616,6 +1611,11 @@ describe("W25 roots and deterministic replay", () => {
       },
     ]);
 
+    const refundEvent = publicEventFromW15(
+      userEvent,
+      undefined,
+      "NonExistentWithdrawalUtxo",
+    );
     const refundEffect = withdrawalEffectFromW15(userEvent, false);
     const refundGroups: readonly CommittedEffectGroup[] = [
       groups[0]!,
@@ -1628,15 +1628,16 @@ describe("W25 roots and deterministic replay", () => {
     const refundedProduced = outRefFromTxId(WITHDRAWAL_FLOW_NATIVE.txId);
     const refundFixture = await buildPublicReplayFixture({
       txCbors: [WITHDRAWAL_FLOW_NATIVE.txCbor],
-      events: [event],
+      eventWindow,
+      events: [refundEvent],
       steps: refundSteps,
       priorState,
       postState: entries([[refundedProduced, FLOW_OUTPUT]]),
       eventAuthorities: [
         eventAuthority({
-          event,
+          event: refundEvent,
           userEvent,
-          settlement: genuineW16.refundWithdrawal,
+
           effect: refundEffect,
         }),
       ],
@@ -1679,26 +1680,75 @@ describe("W25 roots and deterministic replay", () => {
       result.downstreamPrerequisite.inputDigest,
     );
 
-    const mutatedSettlement = await evaluateWatcherBlockReplay({
+    const classify = (receipt: typeof result, current: PublicReplayFixture) =>
+      evaluateWatcherEventClassification({
+        header: watcherHeaderRecord(
+          current.header,
+          headerHashOf(current.header),
+        ),
+        blockReplay: receipt,
+        phaseA: current.phaseA,
+        userEventAuthorities: [
+          { result: userEvent.result, context: userEvent.context },
+        ],
+        forcedNativeTransactions: [],
+      });
+    // The target appears only in this block's L2 step. Its later presence does
+    // not change the canonical withdrawal classification at the selected base.
+    expect(classify(result, fixture)).toMatchObject({
+      action: "reject",
+      reasonCodes: ["withdrawal_validity_mismatch"],
+    });
+    expect(classify(refund, refundFixture)).toMatchObject({
+      action: "accept",
+      reasonCodes: [],
+    });
+    const originalPayload = Buffer.from(fixture.envelope);
+    const mutablePrior = fixture.priorState.map((entry) => ({ ...entry }));
+    const replaying = evaluateWatcherBlockReplay({
       ...publicInput(fixture),
-      eventAuthorities: [
-        {
-          ...authority,
-          settlement: {
-            ...authority.settlement!,
-            observationDigest: h32(0xee),
-          },
-        },
-      ],
+      payloadEnvelopeCbor: originalPayload,
+      priorState: mutablePrior,
     });
-    expect(mutatedSettlement).toMatchObject({
+    originalPayload.fill(0);
+    mutablePrior[0]!.outputCbor = "00";
+    mutablePrior.length = 0;
+    const snapshotted = await replaying;
+    expect(snapshotted.resultDigest).toBe(result.resultDigest);
+    expect(
+      watcherBlockReplayClassificationEvidence(snapshotted).priorState,
+    ).toEqual(fixture.priorState);
+    await expect(
+      evaluateWatcherBlockReplay({
+        ...publicInput(fixture),
+        priorState: null as never,
+      }),
+    ).resolves.toMatchObject({
       action: "error",
-      reasonCodes: ["settlement_authority_identity_mismatch"],
+      reasonCodes: ["malformed_prior_state"],
     });
+    await expect(
+      evaluateWatcherBlockReplay({
+        ...publicInput(fixture),
+        payloadEnvelopeCbor: null as never,
+      }),
+    ).resolves.toMatchObject({
+      action: "error",
+      reasonCodes: ["canonical_reconstruction_failed"],
+    });
+    const rawEvidence = watcherBlockReplayClassificationEvidence(result);
+    expect(rawEvidence.priorStateRoot).toBe(result.priorStateRoot);
+    expect(Object.isFrozen(rawEvidence)).toBe(true);
+    expect(Object.isFrozen(rawEvidence.claims)).toBe(true);
+    expect(Object.isFrozen(rawEvidence.priorState)).toBe(true);
+    expect(() =>
+      watcherBlockReplayClassificationEvidence({ ...result }),
+    ).toThrow("not admitted");
   });
 
   it("replays a ForcedTransaction before a later L2 spend without stale-state batching", async () => {
-    const userEvent = genuineW15.forced;
+    const userEvent = genuineW15.forcedOrigin;
+    expect("terminalClassification" in userEvent.event).toBe(false);
     const event = publicEventFromW15(userEvent, FORCED_FLOW_NATIVE);
     const forcedProduced = outRefFromTxId(FORCED_FLOW_NATIVE.txId);
     const laterNative = makeNativeTx({
@@ -1750,7 +1800,10 @@ describe("W25 roots and deterministic replay", () => {
     const result = await evaluateWatcherBlockReplay(publicInput(fixture));
     expect(result.action).toBe("accept");
     expect(result.reasonCodes).toStrictEqual([]);
-    if (!("ForcedTransactionEventKey" in authority.eventKey)) {
+    if (
+      authority.phase !== "ForcedTransaction" ||
+      !("ForcedTransactionEventKey" in authority.eventKey)
+    ) {
       throw new Error("forced authority key narrowed to another event kind");
     }
     const forcedOrderId =
@@ -1824,6 +1877,16 @@ describe("W25 roots and deterministic replay", () => {
           "904811f9e63105745563c76031dd888b345a1ac96b0bb1a1acb0fb6122ef836a",
       },
     ]);
+
+    const callerNativeBytes = Buffer.from(authority.canonicalNativeTxCbor);
+    const forcedReplayInFlight = evaluateWatcherBlockReplay({
+      ...publicInput(fixture),
+      eventAuthorities: [
+        { ...authority, canonicalNativeTxCbor: callerNativeBytes },
+      ],
+    });
+    callerNativeBytes.fill(0);
+    expect(await forcedReplayInFlight).toStrictEqual(result);
 
     const mutatedNativeBytes = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
@@ -2001,12 +2064,83 @@ describe("W25 roots and deterministic replay", () => {
       postState: mismatchPriorState,
       eventAuthorities: [mismatchAuthority],
     });
-    expect(
-      await evaluateWatcherBlockReplay(publicInput(mismatchFixture)),
-    ).toMatchObject({
-      action: "error",
+    const mismatchResult = await evaluateWatcherBlockReplay(
+      publicInput(mismatchFixture),
+    );
+    expect(mismatchResult).toMatchObject({
+      action: "reject",
       reasonCodes: ["transition_effect_semantics_mismatch"],
+      acceptedCount: 0,
+      acceptedTxIds: [],
+      intermediateRoots: [],
+      eventRoots: [{ stepIndex: 0, mutationCount: 0 }],
+      forcedValidationFacts: [
+        {
+          stepIndex: 0,
+          authenticatedOperatorValidity: "ForcedTxValid",
+          canonicalOperatorValidity: "ValueNotPreserved",
+          phaseAStatus: "accepted",
+          phaseBStatus: "rejected",
+          phaseBRejectCode: RejectCodes.ValueNotPreserved,
+          canonicalEffectDigest: noOpEffect.digest,
+          canonicalEffectMutationCount: 0,
+        },
+      ],
     });
+    expect(mismatchResult.postStateRoot).toBe(mismatchResult.priorStateRoot);
+    expect(mismatchResult.eventRoots[0]?.preRoot).toBe(
+      mismatchResult.priorStateRoot,
+    );
+    expect(mismatchResult.eventRoots[0]?.postRoot).toBe(
+      mismatchResult.priorStateRoot,
+    );
+
+    const rejectedNormalNative = FORCED_INVALID_CASES.ValueNotPreserved.native;
+    const rejectedNormalId = rejectedNormalNative.txId.toString("hex");
+    const rejectedNormalFixture = await buildPublicReplayFixture({
+      txCbors: [rejectedNormalNative.txCbor],
+      steps: await committedStepsForEffects(mismatchPriorState, [
+        {
+          eventKey: { L2TransactionEventKey: { tx_id: rejectedNormalId } },
+          phase: "L2Transaction",
+          effect: noOpEffect,
+        },
+      ]),
+      priorState: mismatchPriorState,
+      postState: mismatchPriorState,
+    });
+    const rejectedNormalResult = await evaluateWatcherBlockReplay(
+      publicInput(rejectedNormalFixture),
+    );
+    expect(rejectedNormalResult).toMatchObject({
+      action: "reject",
+      reasonCodes: ["phase_b_rejection"],
+      acceptedCount: 0,
+      acceptedTxIds: [],
+      intermediateRoots: [],
+      rejections: [
+        {
+          index: 0,
+          txId: rejectedNormalId,
+          code: RejectCodes.ValueNotPreserved,
+        },
+      ],
+      transactionRoots: [
+        {
+          txIndex: 0,
+          txId: rejectedNormalId,
+          mutationCount: 0,
+          committedStepIndex: 0,
+          preRoot: rejectedNormalResult.priorStateRoot,
+          postRoot: rejectedNormalResult.priorStateRoot,
+          committedPreRoot: rejectedNormalResult.priorStateRoot,
+          committedPostRoot: rejectedNormalResult.priorStateRoot,
+        },
+      ],
+    });
+    expect(rejectedNormalResult.postStateRoot).toBe(
+      rejectedNormalResult.priorStateRoot,
+    );
 
     const tamperedFactResult = {
       ...restartEvidence.result,

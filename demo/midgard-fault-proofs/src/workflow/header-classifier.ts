@@ -9,6 +9,7 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
+  GENESIS_HEADER_HASH,
   Header,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -17,6 +18,10 @@ import {
   type CrossBlockSettlementAuthority,
   requireCrossBlockSettlementAuthority,
 } from "../cross-block-duplicate-event/settlement-authority.js";
+import {
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
+} from "../evidence/canonical-block-evidence.js";
 import {
   fetchFraudProofEvidence,
   FRAUD_PROOF_EVIDENCE_ROUTE,
@@ -38,6 +43,7 @@ import {
 import {
   admitCompleteCanonicalReplayHistoricalCorpus,
   admitCompleteCanonicalReplayPredecessor,
+  admitValidationTraceReplayContext,
   COMPLETE_CANONICAL_REPLAY,
   type CompleteCanonicalReplay,
   type CompleteCanonicalReplayContext,
@@ -236,6 +242,15 @@ const admittedClassifiers = new WeakMap<
   }>
 >();
 const admittedDecisions = new WeakSet<object>();
+const canonicalInputsByDecision = new WeakMap<
+  object,
+  Readonly<{
+    payloadEnvelopeCbor: Buffer;
+    observation: AuthenticatedStateQueueHeaderObservation;
+    daProvenance: CanonicalBlockEvidence["provenance"]["da"];
+    minimumConfirmationDepth: number;
+  }>
+>();
 const replayContextByDecision = new WeakMap<
   object,
   CompleteCanonicalReplayContext
@@ -289,7 +304,11 @@ export const createHeaderClassifier = async ({
     throw new Error(
       "cross-block duplicate classifier requires live settlement authority",
     );
-  if (replayer.launchScope.includes("transitionTrace")) {
+  if (
+    replayer.launchScope.includes("transitionTrace") ||
+    (replayer.launchScope.includes("validationTraceDispute") &&
+      transitionTraceEventAuthority !== undefined)
+  ) {
     if (
       transitionTraceEventAuthority === undefined ||
       transitionTraceEventAuthority.deploymentFingerprint !==
@@ -312,14 +331,14 @@ export const createHeaderClassifier = async ({
     [
       "resolvedOutputNonCanonical",
       "spendInputSignerMissing",
+      "executionNativeScriptInvalid",
+      "missingNativeScriptUtxo",
       "transitionTrace",
     ].includes(category),
   );
   if (requiresHistoricalReplay && historicalReplayAuthority === undefined) {
     throw new Error(
-      replayer.launchScope.includes("resolvedOutputNonCanonical")
-        ? "resolved-output complete replay requires an admitted historical replay authority"
-        : "spend-input-signer complete replay requires an admitted historical replay authority",
+      "complete replay requires an admitted historical replay authority",
     );
   }
   if (historicalReplayAuthority !== undefined) {
@@ -373,6 +392,10 @@ export const createHeaderClassifier = async ({
 const sealDecision = (
   decision: UnsealedHeaderDecision,
   replayContext?: CompleteCanonicalReplayContext,
+  canonical?: Readonly<{
+    evidence: CanonicalBlockEvidence;
+    minimumConfirmationDepth: number;
+  }>,
 ): HeaderDecision => {
   const decisionDigest = digest(decision as CanonicalJson);
   const sealed: HeaderDecision = Object.freeze({
@@ -380,6 +403,16 @@ const sealDecision = (
     decisionDigest,
   });
   admittedDecisions.add(sealed);
+  if (canonical !== undefined) {
+    canonicalInputsByDecision.set(sealed, {
+      payloadEnvelopeCbor: Buffer.from(
+        canonical.evidence.reconstruction.payloadEnvelopeCbor,
+      ),
+      observation: structuredClone(canonical.evidence.observation),
+      daProvenance: { ...canonical.evidence.provenance.da },
+      minimumConfirmationDepth: canonical.minimumConfirmationDepth,
+    });
+  }
   if (replayContext !== undefined) {
     replayContextByDecision.set(sealed, replayContext);
   }
@@ -397,6 +430,34 @@ export const headerDecisionReplayContext = (
     throw new Error("production header decision was not module-admitted");
   }
   return replayContextByDecision.get(decision);
+};
+
+/**
+ * Re-admits defensive input copies for a live canonical decision. Routing
+ * refusals have no complete canonical evidence. A persisted or copied decision
+ * cannot revive this reader. The copy supports value-bound validation selection;
+ * historical replay contexts still require their own original evidence object.
+ */
+export const headerDecisionCanonicalEvidence = async (
+  decision: HeaderDecision,
+): Promise<CanonicalBlockEvidence | undefined> => {
+  if (!admittedDecisions.has(decision))
+    throw new Error("production header decision was not module-admitted");
+  const inputs = canonicalInputsByDecision.get(decision);
+  if (inputs === undefined) return undefined;
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    payloadEnvelopeCbor: Buffer.from(inputs.payloadEnvelopeCbor),
+    observation: structuredClone(inputs.observation),
+    daProvenance: { ...inputs.daProvenance },
+    minimumConfirmationDepth: inputs.minimumConfirmationDepth,
+  });
+  if (
+    evidence.headerHash !== decision.headerHash ||
+    evidence.payloadEnvelopeSha256 !== decision.payloadEnvelopeSha256 ||
+    evidence.payloadSha256 !== decision.payloadSha256
+  )
+    throw new Error("live canonical decision inputs changed identity");
+  return evidence;
 };
 
 /**
@@ -717,15 +778,17 @@ export const classifyHeader = async ({
   }
   let admittedReplayContext = replayContext;
   const predecessorRequired =
-    routed.evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT &&
-    authority.replayer.launchScope.some((category) =>
-      [
-        "nonExistentInput",
-        "noReferenceInput",
-        "missingNativeScriptUtxo",
-        "minAda",
-      ].includes(category),
-    );
+    (authority.replayer.launchScope.includes("validationTraceDispute") &&
+      routed.evidence.header.prevHeaderHash !== GENESIS_HEADER_HASH) ||
+    (routed.evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT &&
+      authority.replayer.launchScope.some((category) =>
+        [
+          "nonExistentInput",
+          "noReferenceInput",
+          "missingNativeScriptUtxo",
+          "minAda",
+        ].includes(category),
+      ));
   if (
     admittedReplayContext === undefined &&
     predecessorObservation !== undefined
@@ -793,6 +856,8 @@ export const classifyHeader = async ({
       [
         "resolvedOutputNonCanonical",
         "spendInputSignerMissing",
+        "executionNativeScriptInvalid",
+        "missingNativeScriptUtxo",
         "transitionTrace",
       ].includes(category),
     )
@@ -828,7 +893,11 @@ export const classifyHeader = async ({
       settlements: await authority.settlementAuthority.capture(routed.evidence),
     });
   }
-  if (classifier.launchScope.includes("transitionTrace")) {
+  if (
+    classifier.launchScope.includes("transitionTrace") ||
+    (classifier.launchScope.includes("validationTraceDispute") &&
+      authority.transitionTraceEventAuthority !== undefined)
+  ) {
     if (authority.transitionTraceEventAuthority === undefined)
       throw new Error("Transition event authority was lost");
     admittedReplayContext = Object.freeze({
@@ -836,6 +905,19 @@ export const classifyHeader = async ({
       transitionTraceEvents: await requireTransitionTraceEventAuthority(
         authority.transitionTraceEventAuthority,
       )(routed.evidence.headerHash),
+    });
+  }
+  if (
+    classifier.launchScope.includes("validationTraceDispute") &&
+    admittedReplayContext?.validationTraceReplay === undefined
+  ) {
+    admittedReplayContext = Object.freeze({
+      ...admittedReplayContext,
+      validationTraceReplay: await admitValidationTraceReplayContext({
+        evidence: routed.evidence,
+        predecessor: admittedReplayContext?.predecessor,
+        transitionTraceEvents: admittedReplayContext?.transitionTraceEvents,
+      }),
     });
   }
   const replayDecision = await authority.replayer.replay(
@@ -888,6 +970,10 @@ export const classifyHeader = async ({
     return sealDecision(
       { ...common, decision: "healthy" },
       admittedReplayContext,
+      {
+        evidence: routed.evidence,
+        minimumConfirmationDepth: authority.confirmationDepth,
+      },
     );
   }
   if (classification.decision === "unprovable_gap") {
@@ -901,6 +987,10 @@ export const classifyHeader = async ({
         position: classification.selected.position.toString(),
       },
       admittedReplayContext,
+      {
+        evidence: routed.evidence,
+        minimumConfirmationDepth: authority.confirmationDepth,
+      },
     );
   }
   return sealDecision(
@@ -913,6 +1003,10 @@ export const classifyHeader = async ({
       position: classification.selected.position.toString(),
     },
     admittedReplayContext,
+    {
+      evidence: routed.evidence,
+      minimumConfirmationDepth: authority.confirmationDepth,
+    },
   );
 };
 

@@ -56,6 +56,7 @@ import {
 } from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -86,6 +87,12 @@ const CATEGORY_ID = "00000029";
 const MAXIMUM_OUTPUT_BYTES = 16_384;
 const coverage = createLifecycleCoverageRecorder();
 
+const measuredFit = createMeasuredFitRecorder(
+  "transaction-output-non-canonical",
+  "lifecycle",
+  "16,384-byte selected output in a 32,768-byte certified field, both directions and canonical terminal scan",
+);
+
 /** Every complete signed transaction the suite measures, in submission order. */
 const fit: [string, CompleteSignedTransactionMeasurement][] = [];
 const record = (
@@ -94,6 +101,11 @@ const record = (
 ): void => {
   expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
   fit.push([name, measurement]);
+  measuredFit.record(
+    name,
+    measurement,
+    measurement.executionMemory === 0n ? "publication" : "lifecycle",
+  );
 };
 /** Labels the chunk, certificate and step transactions one builder call submitted. */
 const recordAll = (

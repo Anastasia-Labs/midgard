@@ -1606,7 +1606,7 @@ test golden_f0_f1_item_rejects_a_short_tx_id() fail {
 /// so a 39-byte item would otherwise decode to the *same* out-ref as the
 /// canonical 38-byte one — two trie keys naming one out-ref. The exact-38
 /// guard in `decode_midgard_tx_input_cbor` is what rejects it, and its
-/// TypeScript twin `decodeMidgardSpendInputItemV1` rejects it on width too.
+/// TypeScript twin `decodeMidgardSpendInputItem` rejects it on width too.
 test golden_f0_f1_decoder_rejects_a_non_minimal_tx_id_header() fail {
   bytearray.length(
     encode_midgard_tx_input(
@@ -1993,12 +1993,13 @@ fn golden_straddle_chunks(preimage: ByteArray) -> List<ByteArray> {
 test golden_straddle_read_matches_typescript() {
   let preimage = golden_straddle_preimage()
   let chunks = golden_straddle_chunks(preimage)
-  let view = Chunked {
-    chunks,
-    chunk_digests: list.map(chunks, blake2b_256),
-    count: 400,
-    stride: 40,
-  }
+  let view =
+    Chunked {
+      chunks,
+      chunk_digests: list.map(chunks, blake2b_256),
+      count: 400,
+      stride: 40,
+    }
   and {
     bytearray.length(preimage) == 16003,
     field_commitment(preimage) == golden_straddle_commitment,

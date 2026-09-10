@@ -10,6 +10,7 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
   encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   hashMidgardInlineScriptSourceLeaf,
@@ -32,10 +33,6 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
 } from "@al-ft/midgard-validation";
-import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { describe, expect, it, vi } from "vitest";
-
 import {
   encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,
@@ -46,7 +43,11 @@ import {
   nativeScriptWitness,
   outRefFromByte,
   outRefFromTxId,
-} from "../../midgard-validation/tests/validation-fixtures.js";
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it, vi } from "vitest";
+
 import { reconstructExecutionNativeScriptPurposes } from "../src/execution-native-script-invalid/canonical-reconstruction.js";
 import { applyExecutionNativeScriptInvalidScripts } from "../src/execution-native-script-invalid/contracts.js";
 import { prepareExecutionNativeScriptInvalidEvidence } from "../src/execution-native-script-invalid/family.js";
@@ -78,6 +79,11 @@ import { submitExecutionNativeScriptInvalidStep04StartSignerScan } from "../src/
 import { submitExecutionNativeScriptInvalidStep05 } from "../src/execution-native-script-invalid/submit-step-05.js";
 import { submitExecutionNativeScriptInvalidStep06 } from "../src/execution-native-script-invalid/submit-step-06.js";
 import { buildExecutionSourceMachineAuthentication } from "../src/execution-source-script-decoding/machine-authentication.js";
+import {
+  certifyFaultProofFieldCarriage,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
@@ -85,6 +91,7 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -97,6 +104,12 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+
+const measuredFit = createMeasuredFitRecorder(
+  "execution-native-script-invalid",
+  "lifecycle",
+  "318 witnesses and 32 native nodes in both directions and source origins; all accepted purposes and cancellation at each physical boundary",
+);
 
 describe("executionNativeScriptInvalid genuine machine fixture", () => {
   it("reconstructs the authenticated nativeExecutionScan state and proof", async () => {
@@ -166,9 +179,6 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       executionIndex: 0,
       languageTag: 0,
     });
-    expect(trace.tree.proofs[stateIndex]?.stateHash).toEqual(
-      trace.tree.proofs[stateIndex]?.stateHash,
-    );
     const authenticated = await buildExecutionSourceMachineAuthentication({
       trace,
       eventKey: {
@@ -263,9 +273,20 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       acceptedPurpose: "mint" as const,
       cancelAt: "acceptedInline" as const,
     },
+    ...(["accepted", "forced"] as const).flatMap((direction) =>
+      (["inline", "reference"] as const).map((sourceOrigin) => ({
+        direction,
+        sourceOrigin,
+        acceptedPurpose: "mint" as const,
+        maximum: true,
+      })),
+    ),
   ])(
-    "runs $direction/$sourceOrigin/$acceptedPurpose lifecycle (cancel=$cancelAt)",
-    async ({ direction, sourceOrigin, acceptedPurpose = "mint", cancelAt }) => {
+    "runs $direction/$sourceOrigin/$acceptedPurpose lifecycle (cancel=$cancelAt, maximum=$maximum)",
+    async (scenario) => {
+      const { direction, sourceOrigin, acceptedPurpose = "mint" } = scenario;
+      const cancelAt = "cancelAt" in scenario ? scenario.cancelAt : undefined;
+      const maximum = "maximum" in scenario && scenario.maximum;
       const harness = await makeFaultProofEmulatorHarness({
         contractOptions: { alwaysFraudProofCatalogue: true },
       });
@@ -309,9 +330,6 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       expect(category.categoryId).toBe("00000032");
       expect(category.scriptHash).toBe(applied[0].spendingScriptHash);
       const spent = outRefFromByte(0x72);
-      const witnessKeys = Array.from({ length: 32 }, () =>
-        CML.PrivateKey.generate_ed25519(),
-      );
       const script =
         direction === "accepted"
           ? nativeScriptWitness({
@@ -321,7 +339,15 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
                 keyHash: Buffer.alloc(28, 0x80 + index),
               })),
             })
-          : nativeScriptWitness({ type: "all", scripts: [] });
+          : nativeScriptWitness({
+              type: "all",
+              scripts: maximum
+                ? Array.from({ length: 31 }, () => ({
+                    type: "all" as const,
+                    scripts: [],
+                  }))
+                : [],
+            });
       const scriptAddress = Buffer.concat([
         Buffer.from([0x70]),
         Buffer.from(hashScriptWitness(script), "hex"),
@@ -382,6 +408,10 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       const initialAddressWitnessItems = decodeMidgardFieldPreimage(
         transaction.tx.witnessSet.addrTxWitsPreimageCbor,
       );
+      const witnessKeys = Array.from(
+        { length: maximum ? 318 - initialAddressWitnessItems.length : 32 },
+        () => CML.PrivateKey.generate_ed25519(),
+      );
       const addressWitnessItems = [
         ...initialAddressWitnessItems.map((item) => ({
           signerHash: Buffer.from(
@@ -413,6 +443,12 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           Buffer.compare(left.signerHash, right.signerHash),
         )
         .map(({ item }) => item);
+      if (maximum) {
+        expect(addressWitnessItems).toHaveLength(318);
+        expect(encodeCbor(addressWitnessItems).length).toBeLessThanOrEqual(
+          32_768,
+        );
+      }
       transaction = encodeRecomputedNativeTx({
         ...transaction.tx,
         witnessSet: {
@@ -632,6 +668,13 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           );
         });
         lifecycleRows.push({ label, measurement: captured.measurement });
+        captured.measurements.forEach((measurement, index) =>
+          measuredFit.record(
+            `${direction}-${sourceOrigin}-${acceptedPurpose}-${cancelAt ?? (maximum ? "maximum" : "complete")}/${lifecycleRows.length - 1}-${label}-${index}`,
+            measurement,
+            measurement.executionMemory === 0n ? "publication" : "lifecycle",
+          ),
+        );
         return captured.result;
       };
       const subject =
@@ -1232,6 +1275,64 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         await cancel(step03.nextThreadOutRef, 3);
         return;
       }
+      let witnessCarriage: {
+        publishedCarriageUtxos?: readonly UTxO[];
+        certificateUtxo?: UTxO;
+      } = {};
+      if (maximum) {
+        const planned = planFaultProofFieldOpening({
+          fieldIndex: 7,
+          anchorTxId: block.nativeTxId,
+          nativeTxCompactCbor,
+          itemCbors: addressWitnessItems,
+          owner: harness.proverSigner.paymentKeyHash,
+          publish: true,
+          witnessSet,
+          anchorWitnessSetHash:
+            nativeTx.compact.transactionWitnessSetHash.toString("hex"),
+          label: "execution-native maximum witness field",
+        });
+        expect(planned.plan.tier).toBe("Certified");
+        const chunks = await measured("maximum-witness-carriage", () =>
+          publishFaultProofFieldCarriage({
+            lucid: harness.proverLucid,
+            signer: harness.proverSigner,
+            planned,
+            publisherAddress: harness.proverSigner.address,
+            label: "execution-native maximum witness field",
+          }),
+        );
+        const reference = await measured("maximum-certificate-reference", () =>
+          publishPlainReferenceScriptUtxo({
+            lucid: harness.funderLucid,
+            script: harness.contracts.fieldPreimageCertificate.mintingScript,
+            label: "execution-native field certificate",
+          }),
+        );
+        const certificate = await measured("maximum-witness-certificate", () =>
+          certifyFaultProofFieldCarriage({
+            lucid: harness.proverLucid,
+            network,
+            signer: harness.proverSigner,
+            planned,
+            certificatePolicyId:
+              harness.contracts.fieldPreimageCertificate.policyId,
+            certificateMintingScript:
+              harness.contracts.fieldPreimageCertificate.mintingScript,
+            certificateReferenceScriptUtxo: reference.utxo,
+            chunkUtxos: chunks,
+            compactCbor: nativeTxCompactCbor,
+            witnessSetCompactCbor:
+              encodeMidgardNativeTxWitnessSetCompact(
+                compactWitnessSet,
+              ).toString("hex"),
+          }),
+        );
+        witnessCarriage = {
+          publishedCarriageUtxos: chunks,
+          certificateUtxo: certificate.certificateUtxo,
+        };
+      }
       const start = await measured(
         "step04-signer-start",
         async () =>
@@ -1245,6 +1346,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
             witnessSet,
             scriptItemCbor: scriptItem,
             addressWitnessItems,
+            ...witnessCarriage,
             referenceScriptUtxo: references[3]!,
           }),
       );
@@ -1267,6 +1369,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               nativeTxCompactCbor,
               witnessSet,
               addressWitnessItems,
+              ...witnessCarriage,
               referenceScriptUtxo: references[4]!,
             }),
         );
@@ -1431,8 +1534,13 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       );
       for (const { measurement } of lifecycleRows) {
         expect(measurement.l1ByteMargin).toBeGreaterThan(0);
-        expect(measurement.executionMemory).toBeGreaterThan(0n);
-        expect(measurement.executionSteps).toBeGreaterThan(0n);
+        if (measurement.redeemerCount === 0) {
+          expect(measurement.executionMemory).toBe(0n);
+          expect(measurement.executionSteps).toBe(0n);
+        } else {
+          expect(measurement.executionMemory).toBeGreaterThan(0n);
+          expect(measurement.executionSteps).toBeGreaterThan(0n);
+        }
       }
       if (process.env.MIDGARD_PRINT_FIT === "1")
         console.info(

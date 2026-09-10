@@ -1,9 +1,8 @@
 /**
  * Staging helpers shared by the two validation-dispute journey harnesses
  * (`dispute-scenario.ts` and `route-freedom-journey.ts`): the party/emulator
- * ledger both start from, and the maxTxSize pinning that keeps
- * reference-script publications honest against the real L1 envelope while the
- * emulator itself runs at the raised deployment-time limit.
+ * ledger both start from, and the explicit maxTxSize pinning for
+ * reference-script publications within the shared strict L1 envelope.
  */
 
 import {
@@ -90,11 +89,9 @@ export const createValidationDisputeParties = async () => {
 };
 
 /**
- * Runs `operation` with the emulator's `maxTxSize` pinned down from the
- * raised deployment-time limit ({@link EMULATOR_PROTOCOL_PARAMETERS}) to the
- * real 16,384-byte L1 envelope, restoring the previous parameters afterwards.
- * Reference-script publications run under this pin so a publication that
- * claims to fit L1 is actually built against the real limit.
+ * Runs `operation` with the emulator's `maxTxSize` explicitly pinned to the
+ * 16,384-byte L1 envelope, restoring the strict source parameters afterwards.
+ * Reference-script publications and target Lucids share that envelope.
  */
 export const withRealL1MaxTxSize = async <T>(
   emulator: Emulator,
@@ -195,9 +192,7 @@ export const stageAuthenticatedValidationDisputePublication = async ({
 /**
  * Constructs the functional operator/challenger Lucids under the real L1
  * `maxTxSize`, so every dispute transaction they build must fit the actual
- * 16,384-byte envelope. Deliberately leaves the emulator pinned — the
- * returned pre-pin `functionalProtocolParameters` are what an oversized
- * publication temporarily restores to get a >16 KiB reference script hosted.
+ * 16,384-byte envelope. Leaves the emulator pinned for subsequent publications.
  */
 export const createRealL1TargetLucids = async ({
   emulator,
@@ -230,8 +225,6 @@ export const createRealL1TargetLucids = async ({
   targetOperatorLucid.selectWallet.fromSeed(operatorSeedPhrase);
   targetChallengerLucid.selectWallet.fromSeed(challengerSeedPhrase);
   return {
-    functionalProtocolParameters,
-    functionalSlotConfig,
     targetOperatorLucid,
     targetChallengerLucid,
   };

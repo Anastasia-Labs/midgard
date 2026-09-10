@@ -203,6 +203,7 @@ CREATE TABLE public.da_payload_terminal_outcomes (
     finality_depth numeric(20,0) NOT NULL,
     transition_digest bytea NOT NULL,
     transition_record jsonb NOT NULL,
+    availability_terminal_evidence jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT da_payload_terminal_outcomes_header_hash_check CHECK ((octet_length(header_hash) = 28)),
     CONSTRAINT da_payload_terminal_outcomes_outcome_check CHECK ((terminal_outcome = ANY (ARRAY['merged'::text, 'removed'::text]))),

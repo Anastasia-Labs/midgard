@@ -25,6 +25,11 @@ if (mode === "retry_intersection" && startup.intersection.kind === "point") {
   process.exit(69);
 }
 
+if (mode === "no_ready") {
+  setInterval(() => undefined, 1000);
+  await new Promise(() => {});
+}
+
 emit({
   authorityNodeId:
     mode === "forged_ready" ? "substituted-node" : startup.authorityNodeId,
@@ -33,6 +38,12 @@ emit({
   kind: "ready",
   network: startup.network,
   networkMagic: startup.networkMagic,
+  ...(mode === "missing_operation"
+    ? {}
+    : {
+        operation:
+          mode === "wrong_operation" ? { kind: "stream" } : startup.operation,
+      }),
   schemaVersion: startup.schemaVersion,
   selectedIntersection: startup.intersection,
   socketPath: startup.socketPath,
@@ -53,7 +64,30 @@ const forward = {
   tip,
 };
 
-if (mode === "retry_intersection") {
+if (
+  mode.startsWith("query_") ||
+  mode === "wrong_operation" ||
+  mode === "missing_operation"
+) {
+  if (mode === "query_ack")
+    emit({
+      kind: "roll_backward",
+      point: startup.intersection,
+      schemaVersion: startup.schemaVersion,
+      tip,
+    });
+  if (mode !== "query_wait")
+    emit({
+      ...forward,
+      ...(mode === "query_wrong_target" ? { blockNo: "11" } : {}),
+      ...(mode === "query_old"
+        ? { tip: { ...tip, blockNo: "5000", slot: "6000" } }
+        : {}),
+      ...(mode === "query_bad_tip" ? { tip: { ...tip, blockNo: "9" } } : {}),
+    });
+  if (mode === "query_exit") setTimeout(() => process.exit(23), 100);
+  if (mode === "query_extra") setTimeout(() => emit(forward), 100);
+} else if (mode === "retry_intersection") {
   // Successful Origin admission remains idle at the fixture tip.
 } else if (mode === "reordered") {
   emit({ ...forward, prevHash: "cc".repeat(32) });

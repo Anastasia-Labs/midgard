@@ -64,6 +64,7 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   buildMissingRedeemerFixture,
   MISSING_REDEEMER_MAXIMUM_FIELD_BYTES,
@@ -114,6 +115,12 @@ const AUTHENTICATION_SEAMS = [
   "field-commitment",
   "walk-checkpoint",
 ] as const;
+const measuredFit = createMeasuredFitRecorder(
+  "missing-redeemer",
+  "lifecycle",
+  "all purpose kinds and source locations in both directions; exact 32,768-byte certified field with 17 redeemers and resumed grammar/walk",
+);
+
 const FAMILY = "missing-redeemer";
 
 type Row = {
@@ -215,7 +222,9 @@ const makeHarness = async () => {
 type Harness = Awaited<ReturnType<typeof makeHarness>>;
 
 /** Commits the fixture's block plus one successor and publishes its carriage. */
+let measuredScenario = 0;
 const makeStage = async (bundle: Harness, fixture: MissingRedeemerFixture) => {
+  const measuredCase = `${measuredScenario++}-${fixture.shape.direction}-kind${fixture.shape.purposeKind}-${fixture.shape.sourceLocation}-field${fixture.fieldBytes}`;
   const { harness, contracts, catalogue, category, references, steps } = bundle;
   const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
   const startTime = BigInt(
@@ -290,6 +299,13 @@ const makeStage = async (bundle: Harness, fixture: MissingRedeemerFixture) => {
         captured.measurements.forEach((measurement, index) =>
           rows.push({ label: `${label}-${index.toString()}`, measurement }),
         );
+      captured.measurements.forEach((measurement, index) =>
+        measuredFit.record(
+          `${measuredCase}/${rows.length - captured.measurements.length + index}-${label}`,
+          measurement,
+          measurement.executionMemory === 0n ? "publication" : "lifecycle",
+        ),
+      );
       return captured.result;
     } catch (error) {
       console.error(`[missing-redeemer-lifecycle] ${label} failed`);

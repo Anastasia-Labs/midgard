@@ -799,6 +799,7 @@ describe("native script wrongful forced rejection", () => {
         /failed|Validation|Script|script/i,
       );
     },
+    60_000,
   );
   it.each([1, 29])(
     "refuses a forged signer signature with %s signers on chain",
@@ -811,5 +812,6 @@ describe("native script wrongful forced rejection", () => {
         /failed|Validation|Script|script/i,
       );
     },
+    60_000,
   );
 });

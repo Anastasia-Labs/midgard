@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,6 +14,7 @@ import {
   type WatcherConfig,
 } from "../../src/runtime/config.js";
 import {
+  loadWatcherProcessConfigFile,
   parseWatcherProcessConfig,
   parseWatcherTrustedHeadAuthorityProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -24,6 +26,7 @@ import {
   createWatcherTrustedHeadClientRuntime,
   startWatcherTrustedHeadAuthorityProcess,
 } from "../../src/runtime/trusted-head-runtime.js";
+import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
 
 const directories: string[] = [];
 const h28 = (byte: string): string => byte.repeat(28);
@@ -109,7 +112,8 @@ const policy = (): WatcherFinalityPolicy => {
     manifestId: h32("11"),
     network: "Preprod",
     trustRootId: h32("33"),
-    releaseEvidenceDigest: h32("22"),
+    fundingProfileBundleDigest: "ab".repeat(32),
+    blueprintHash: h32("22"),
     ruleBundleCommitment: h32("44"),
     programCommitments: { validation: h32("55") },
     durableMarker: makeDeploymentMarker(h32("11")),
@@ -124,6 +128,7 @@ const productionConfig = (): WatcherProcessConfig =>
     watcherConfig: watcherConfig(),
     watcherRuntimeConfigPath: "/etc/midgard/watcher.json",
     deploymentAuthorityPath: "/etc/midgard/deployment-authority.json",
+    ruleBundlePath: "/etc/midgard/rule-bundle.json",
     fundingProfileBundlePath: "/etc/midgard/funding-profiles.json",
     nativeChainSyncBinaryPath: "/usr/local/bin/midgard-chain-sync",
     trustedHeadAuthorityEndpoint: "http://127.0.0.1:43123",
@@ -133,6 +138,11 @@ const productionConfig = (): WatcherProcessConfig =>
       variable: "MIDGARD_WATCHER_TRUSTED_HEAD_BEARER",
     },
     workflowJournalDirectory: "/var/lib/midgard-watcher/workflows",
+    availability: {
+      keySource: { kind: "environment", variable: "WATCHER_AVAILABILITY_KEY" },
+      journalPath: "/var/lib/midgard-watcher/availability.sqlite",
+      minimumFundingLovelace: "100000000",
+    },
     readinessHeaderHash: h28("77"),
     faultProofInfrastructure: {
       manifestPath: "/etc/midgard/deployment-manifest.json",
@@ -173,6 +183,18 @@ afterEach(async () => {
 });
 
 describe("production process authority separation", () => {
+  it("loads the strict JSON process configuration with its required release artifact path", async () => {
+    const directory = await mkdtemp("/var/tmp/midgard-process-config-");
+    directories.push(directory);
+    const path = join(directory, "process.json");
+    const config = productionConfig();
+    await writeFile(
+      path,
+      JSON.stringify({ ...config, watcherConfig: watcherConfigValue() }),
+    );
+    await expect(loadWatcherProcessConfigFile(path)).resolves.toEqual(config);
+  });
+
   it("admits only acceptance Preprod local-node watcher topology", () => {
     expect(productionConfig().watcherConfig.l1.source.sourceMode).toBe(
       "local_node",
@@ -197,6 +219,16 @@ describe("production process authority separation", () => {
         readinessHeaderHash: h32("77"),
       }),
     ).toThrow("readiness header hash is invalid");
+    expect(() => {
+      const { ruleBundlePath: _omitted, ...withoutBundle } = base;
+      return parseWatcherProcessConfig(withoutBundle);
+    }).toThrow("unknown or missing fields");
+    expect(() =>
+      parseWatcherProcessConfig({
+        ...base,
+        ruleBundlePath: "etc/midgard/rule-bundle.json",
+      }),
+    ).toThrow("watcher release rule bundle is not a canonical production path");
     expect(() => {
       const { fundingProfileBundlePath: _omitted, ...withoutBundle } = base;
       return parseWatcherProcessConfig(withoutBundle);
@@ -231,6 +263,64 @@ describe("production process authority separation", () => {
         },
       }),
     ).toThrow("not independent");
+  });
+
+  it("requires a durable availability journal, positive capital, and a distinct challenger key", () => {
+    const base = productionConfig();
+    const { availability: _omitted, ...withoutAvailability } = base;
+    expect(() => parseWatcherProcessConfig(withoutAvailability)).toThrow(
+      "unknown or missing fields",
+    );
+    expect(() =>
+      parseWatcherProcessConfig({
+        ...base,
+        availability: {
+          ...base.availability,
+          keySource: base.watcherConfig.proverWallet.keySource,
+        },
+      }),
+    ).toThrow("pairwise distinct");
+    expect(() =>
+      parseWatcherProcessConfig({
+        ...base,
+        availability: {
+          ...base.availability,
+          journalPath: "/tmp/availability.sqlite",
+        },
+      }),
+    ).toThrow("canonical production path");
+    for (const minimumFundingLovelace of ["0", "-1", "01", "1.5"]) {
+      expect(() =>
+        parseWatcherProcessConfig({
+          ...base,
+          availability: {
+            ...base.availability,
+            minimumFundingLovelace,
+          },
+        }),
+      ).toThrow("positive lovelace");
+    }
+  });
+
+  it("refuses startup without the signed release rule-bundle artifact", async () => {
+    const directory = await mkdtemp("/var/tmp/midgard-release-rule-bundle-");
+    directories.push(directory);
+    const config = parseWatcherProcessConfig({
+      ...productionConfig(),
+      watcherRuntimeConfigPath: join(directory, "watcher.json"),
+      deploymentAuthorityPath: join(directory, "deployment-authority.json"),
+      ruleBundlePath: join(directory, "rule-bundle.json"),
+      workflowJournalDirectory: join(directory, "workflows"),
+    });
+    await writeFile(
+      config.watcherRuntimeConfigPath,
+      JSON.stringify(watcherConfigValue()),
+    );
+    await writeFile(config.deploymentAuthorityPath, "{}");
+    await expect(createWatcherRuntime({ config })).rejects.toMatchObject({
+      code: "ENOENT",
+      path: config.ruleBundlePath,
+    });
   });
 
   it("keeps authority config structurally unable to receive watcher rollback or proof signer sources", () => {

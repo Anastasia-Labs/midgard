@@ -156,6 +156,11 @@ const referenceScriptUtxos = (
   deployment: MidgardNodeDeployment,
   address: string,
 ): DaAttestationReferenceScripts => ({
+  availabilityChallengeBondWithdrawal: referenceScriptUtxo(
+    "25",
+    address,
+    deployment.availabilityChallengeYields.bond.script,
+  ),
   availabilityChallengeMinting: referenceScriptUtxo(
     "24",
     address,

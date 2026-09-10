@@ -59,6 +59,15 @@ const fixturePath = fileURLToPath(
  * failure surfaces exactly as vitest reports it.
  */
 const runGenerator = (outputPath) => {
+  // The vitest generation worker was removed in the 2026-09-09 test-quality
+  // cleanup (it was a generator misfiled as a test: zero assertions, skipped
+  // unless MIDGARD_REGENERATE_RESOLVER_SWEEP=1). Until a scripts-based
+  // producer exists the committed fixture is frozen; fail closed rather than
+  // let vitest report "No test files found" as success.
+  fail(
+    "the harness generation worker was removed; re-create it under demo/midgard-fault-proofs/scripts before regenerating " +
+      outputPath,
+  );
   try {
     execFileSync(
       "pnpm",

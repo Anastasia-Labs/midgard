@@ -1,12 +1,9 @@
 import { createHash } from "node:crypto";
 
 import {
-  buildMidgardBoundedItem,
   decodeMidgardRedeemerWitnessFieldPreimage,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardRedeemerWitnessItem,
   hashMidgardInlineScriptSourceLeaf,
-  hashMidgardRedeemerItemLeaf,
   hashMidgardReferenceScriptSourceLeaf,
   hashMidgardScriptExecutionLeaf,
   hashMidgardScriptPurposeLeaf,
@@ -14,7 +11,6 @@ import {
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
-  decodeRetainedValidationWitness,
   type EventKey,
   EventKeySchema,
   forcedVerdictSubject,
@@ -33,10 +29,11 @@ import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/w
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import type { UnusedRedeemerArtifact } from "./actuator.js";
 import {
+  observeUnusedRedeemerSelection,
   prepareUnusedRedeemerEvidence,
   UNUSED_REDEEMER_VIOLATION_ID,
 } from "./family.js";
-import { buildUnusedRedeemerDirectionControlFromRetainedDa } from "./retained-stage-twelve.js";
+import { buildUnusedRedeemerControlFromRetainedDa } from "./retained-stage-twelve.js";
 import type { UnusedRedeemerAuthentication } from "./submit-step-02.js";
 
 const exactIndex = (value: bigint, label: string): number => {
@@ -46,162 +43,72 @@ const exactIndex = (value: bigint, label: string): number => {
   return result;
 };
 
-type SelectedRedeemer = Readonly<{
-  transactionId: string;
-  purposeTag: number;
-  purposeIndex: number;
-  redeemerLeafHex: string;
-}>;
-
-const selectedRedeemers = (
-  block: CanonicalBlockEvidence,
-): readonly SelectedRedeemer[] =>
-  block.reconstruction.payload.block_body.validation_trace_witnesses.flatMap(
-    ([, encoded]) => {
-      const retained = decodeRetainedValidationWitness(
-        Buffer.from(encoded, "hex"),
-      );
-      if (
-        !(
-          typeof retained.auxiliary === "object" &&
-          "NativeExecutionDescriptorWitness" in retained.auxiliary
-        )
-      )
-        return [];
-      const descriptor = retained.auxiliary.NativeExecutionDescriptorWitness;
-      return [
-        {
-          transactionId: retained.machine_state.transaction_id,
-          purposeTag:
-            [0, 1, 3, 6][exactIndex(descriptor.purpose_kind, "purpose kind")] ??
-            -1,
-          purposeIndex: exactIndex(descriptor.purpose_index, "purpose index"),
-          redeemerLeafHex: descriptor.redeemer_leaf,
-        },
-      ];
-    },
-  );
-
-/**
- * Complete canonical ID2f selection. Native execution descriptors identify
- * the first-precedence source actually selected for every purpose; therefore
- * every other inline field-6 coordinate is unused. A self-consistent forged
- * descriptor remains accountable through the validation-trace-invalid arm.
- */
+/** Classify the same authenticated retained selections consumed by actuation. */
 export const detectUnusedRedeemerCanonicalViolations = async (
   block: CanonicalBlockEvidence,
 ): Promise<readonly CanonicalViolationDetection[]> => {
-  const selected = selectedRedeemers(block);
   const detections: CanonicalViolationDetection[] = [];
-  block.transactions.forEach((transaction, position) => {
+  for (const [position, transaction] of block.transactions.entries()) {
+    const txCbor = Buffer.from(transaction.txCbor, "hex");
     try {
-      projectMidgardRawEnvelopeForPhaseAV1(
-        Buffer.from(transaction.txCbor, "hex"),
-      );
+      projectMidgardRawEnvelopeForPhaseAV1(txCbor);
     } catch {
-      return;
+      continue;
     }
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      Buffer.from(transaction.txCbor, "hex"),
-    );
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(txCbor);
     const field = material.fieldPreimages[8];
-    if (field === undefined) return;
-    decodeMidgardRedeemerWitnessFieldPreimage(field).forEach(
-      (redeemer, redeemerIndex) => {
-        const itemBytes = encodeMidgardRedeemerWitnessItem(redeemer);
-        const leaf = hashMidgardRedeemerItemLeaf({
+    if (field === undefined) continue;
+    const redeemers = decodeMidgardRedeemerWitnessFieldPreimage(field);
+    for (const redeemerIndex of redeemers.keys()) {
+      const { observation } =
+        await buildUnusedRedeemerObservationFromRetainedDa({
+          block,
+          eventKey: { L2TransactionEventKey: { tx_id: transaction.nodeTxId } },
+          transactionId: transaction.nodeTxId,
           redeemerIndex,
-          itemCommitment: buildMidgardBoundedItem({
-            fieldIndex: 8,
-            itemIndex: redeemerIndex,
-            bytes: itemBytes,
-          }).commitment,
-        }).toString("hex");
-        const purposeTag =
-          redeemer.purpose === "Spend"
-            ? 0
-            : redeemer.purpose === "Mint"
-              ? 1
-              : redeemer.purpose === "Reward"
-                ? 3
-                : redeemer.purpose === "Receive"
-                  ? 6
-                  : -1;
-        const used = selected.some(
-          (entry) =>
-            entry.transactionId === transaction.nodeTxId &&
-            entry.purposeTag === purposeTag &&
-            entry.purposeIndex === Number(redeemer.index) &&
-            entry.redeemerLeafHex === leaf,
-        );
-        if (used) return;
-        detections.push({
-          detectionId: `${UNUSED_REDEEMER_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${redeemerIndex.toString()}`,
-          headerHash: block.headerHash,
-          violationId: UNUSED_REDEEMER_VIOLATION_ID,
-          position: BigInt(position),
-          diagnostic: `accepted transaction retained unused script witness ${redeemerIndex.toString()}`,
+          txCbor,
         });
-      },
-    );
-  });
-  block.reconstruction.forcedTransactions.forEach((transaction, position) => {
+      if (!observation.unused) continue;
+      detections.push({
+        detectionId: `${UNUSED_REDEEMER_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${redeemerIndex.toString()}`,
+        headerHash: block.headerHash,
+        violationId: UNUSED_REDEEMER_VIOLATION_ID,
+        position: BigInt(position),
+        diagnostic: `accepted transaction retained unused redeemer ${redeemerIndex.toString()}`,
+      });
+    }
+  }
+  for (const [
+    position,
+    transaction,
+  ] of block.reconstruction.forcedTransactions.entries()) {
     const verdict = transaction.value.verdict;
     if (
       verdict === "ForcedTxValid" ||
       typeof verdict.ForcedTxInvalid.reason === "string" ||
       !("UnusedRedeemer" in verdict.ForcedTxInvalid.reason)
     )
-      return;
+      continue;
     const redeemerIndex = exactIndex(
       verdict.ForcedTxInvalid.reason.UnusedRedeemer.redeemer_index,
       "forced reason coordinate",
     );
-    const forcedMaterial = deriveMidgardNativeTxFaultEvidenceMaterial(
-      transaction.fullTransactionCbor,
-    );
-    const forcedField = forcedMaterial.fieldPreimages[8];
-    if (forcedField === undefined) return;
-    const forcedRedeemer =
-      decodeMidgardRedeemerWitnessFieldPreimage(forcedField)[redeemerIndex];
-    if (forcedRedeemer === undefined) return;
-    const forcedItem = encodeMidgardRedeemerWitnessItem(forcedRedeemer);
-    const forcedLeaf = hashMidgardRedeemerItemLeaf({
+    const { observation } = await buildUnusedRedeemerObservationFromRetainedDa({
+      block,
+      eventKey: { ForcedTransactionEventKey: { tx_order_id: transaction.key } },
+      transactionId: transaction.value.tx_id,
       redeemerIndex,
-      itemCommitment: buildMidgardBoundedItem({
-        fieldIndex: 8,
-        itemIndex: redeemerIndex,
-        bytes: forcedItem,
-      }).commitment,
-    }).toString("hex");
-    const forcedPurposeTag =
-      forcedRedeemer.purpose === "Spend"
-        ? 0
-        : forcedRedeemer.purpose === "Mint"
-          ? 1
-          : forcedRedeemer.purpose === "Reward"
-            ? 3
-            : forcedRedeemer.purpose === "Receive"
-              ? 6
-              : -1;
-    if (
-      !selected.some(
-        (entry) =>
-          entry.transactionId === transaction.value.tx_id &&
-          entry.purposeTag === forcedPurposeTag &&
-          entry.purposeIndex === Number(forcedRedeemer.index) &&
-          entry.redeemerLeafHex === forcedLeaf,
-      )
-    )
-      return;
+      txCbor: transaction.fullTransactionCbor,
+    });
+    if (observation.unused) continue;
     detections.push({
       detectionId: `${UNUSED_REDEEMER_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${redeemerIndex.toString()}`,
       headerHash: block.headerHash,
       violationId: UNUSED_REDEEMER_VIOLATION_ID,
       position: BigInt(block.transactions.length + position),
-      diagnostic: `forced rejection called selected script witness ${redeemerIndex.toString()} unused`,
+      diagnostic: `forced rejection called selected redeemer ${redeemerIndex.toString()} unused`,
     });
-  });
+  }
   return Object.freeze(
     detections.sort(
       (left, right) =>
@@ -227,26 +134,24 @@ const retainedEntries = (block: CanonicalBlockEvidence) => ({
     ),
 });
 
-export const buildUnusedRedeemerMaterialFromRetainedDa = async ({
+/** Reconstruct a selected or unused pointer without assuming proof polarity. */
+export const buildUnusedRedeemerObservationFromRetainedDa = async ({
   block,
   eventKey,
-  subject,
+  transactionId,
   redeemerIndex,
   txCbor,
 }: {
   block: CanonicalBlockEvidence;
   eventKey: EventKey;
-  subject: VerdictSubject;
+  transactionId: string;
   redeemerIndex: number;
   txCbor: Buffer;
 }) => {
   const { traces, witnesses } = retainedEntries(block);
-  if (subject.direction !== 0n && subject.direction !== 1n)
-    throw new Error("unusedRedeemer direction changed");
-  const base = await buildUnusedRedeemerDirectionControlFromRetainedDa({
+  const base = await buildUnusedRedeemerControlFromRetainedDa({
     eventKey,
-    transactionId: subject.transaction_id,
-    direction: subject.direction,
+    transactionId,
     redeemerIndex,
     authenticatedValidationTraceEntries: traces,
     retainedValidationWitnessEntries: witnesses,
@@ -372,15 +277,52 @@ export const buildUnusedRedeemerMaterialFromRetainedDa = async ({
   const fieldPreimage = nativeMaterial.fieldPreimages[8];
   if (fieldPreimage === undefined)
     throw new Error("unusedRedeemer transaction omitted field 8");
+  if (BigInt(selections.length) !== base.control.purpose_count)
+    throw new Error("unusedRedeemer retained execution frontier is incomplete");
+  const universe = {
+    schemaVersion: "midgard-committed-redeemer-universe-v1",
+    transactionId,
+    universeDigest,
+    selections,
+  } as const;
+  const observation = observeUnusedRedeemerSelection({
+    transactionId,
+    redeemerIndex,
+    fieldPreimage,
+    universe,
+  });
+  if (observation.unused !== (base.selectedBit === 0n))
+    throw new Error(
+      "unusedRedeemer selection frontier differs from retained bitmap",
+    );
+  return Object.freeze({ base, fieldPreimage, universe, observation });
+};
+
+export const buildUnusedRedeemerMaterialFromRetainedDa = async ({
+  block,
+  eventKey,
+  subject,
+  redeemerIndex,
+  txCbor,
+}: {
+  block: CanonicalBlockEvidence;
+  eventKey: EventKey;
+  subject: VerdictSubject;
+  redeemerIndex: number;
+  txCbor: Buffer;
+}) => {
+  const { base, fieldPreimage, universe } =
+    await buildUnusedRedeemerObservationFromRetainedDa({
+      block,
+      eventKey,
+      transactionId: subject.transaction_id,
+      redeemerIndex,
+      txCbor,
+    });
   const evidence = prepareUnusedRedeemerEvidence({
     finding: { subject, redeemerIndex },
     fieldPreimage,
-    universe: {
-      schemaVersion: "midgard-committed-redeemer-universe-v1",
-      transactionId: subject.transaction_id,
-      universeDigest,
-      selections,
-    },
+    universe,
   });
   const headerStep = base.itemSteps.find((step) => step.control.stage === 0n);
   const tailStep = base.itemSteps.find((step) => step.control.stage === 1n);
@@ -520,8 +462,7 @@ export const prepareUnusedRedeemerArtifact = async (
   }
   if (sourceKind !== "forced")
     throw new Error("unusedRedeemer detection source changed");
-  const forcedPosition = position - block.transactions.length;
-  const transaction = block.reconstruction.forcedTransactions[forcedPosition];
+  const transaction = block.reconstruction.forcedTransactions[position];
   if (transaction === undefined || transaction.value.tx_id !== transactionId)
     throw new Error("unusedRedeemer forced transaction disappeared");
   const verdict = transaction.value.verdict;

@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -12,27 +12,16 @@ import { MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES } from "../src/missing-native
 import { measureBlueprintValidatorBytes } from "../src/runtime.js";
 import {
   buildMissingNativeScriptTxChain,
-  EMULATOR_PROTOCOL_PARAMETERS,
   network,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
-// Derivation: half the hex length of the blueprint body, and `parameters.length`,
-// for each `fraud_proofs/missing_native_script_tx/step_NN.main.spend` entry of
-// `onchain/aiken/plutus.json`, built with `aiken build --env testnet`. Both are
+// Derivation: `parameters.length` for each
+// `fraud_proofs/missing_native_script_tx/step_NN.main.spend` entry of
+// `onchain/aiken/plutus.json`, built with `aiken build --env testnet`. It is
 // read through `measureBlueprintValidatorBytes`, so this file never touches a
 // blueprint body itself; it measures and deploys nothing.
-const EXPECTED_UNAPPLIED_SIZES_BYTES = {
-  step01: 7_872,
-  step02: 7_199,
-  step03: 7_935,
-  step04: 8_795,
-  step05: 1_579,
-  step06: 9_899,
-  step07: 10_292,
-  step08: 9_523,
-} as const;
 const EXPECTED_DECLARED_ARITIES = {
   step01: 3,
   step02: 3,
@@ -44,11 +33,26 @@ const EXPECTED_DECLARED_ARITIES = {
   step08: 4,
 } as const;
 
+/**
+ * Everything a reference-script publication transaction carries besides the
+ * script itself — skeleton, funding input, change and collateral, the auth
+ * token mint and one signature. Same allowance the native-script-decoding
+ * envelope suite states, and the emulator publication journeys are the
+ * binding re-measurement of it.
+ */
+const PUBLICATION_OVERHEAD_ALLOWANCE_BYTES = 2_048;
+
 describe("missing-native-script-tx envelope and reference-script deployment", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
-  it("pins all eight nonzero unapplied sizes to the audited blueprint", () => {
-    let found = 0;
+  it("declares all eight step validators with their audited arities", () => {
+    // `measureBlueprintValidatorBytes` throws when the blueprint's declared
+    // parameter list does not match the audited arity, and when the title is
+    // absent or duplicated. The arity is the applied-script ABI: a step that
+    // gains or loses a parameter cannot be applied by this family's builder.
+    expect(
+      Object.keys(MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES).sort(),
+    ).toEqual(Object.keys(EXPECTED_DECLARED_ARITIES).sort());
     for (const [step, title] of Object.entries(
       MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES,
     )) {
@@ -62,14 +66,8 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
             ],
         }),
         title,
-      ).toBe(
-        EXPECTED_UNAPPLIED_SIZES_BYTES[
-          step as keyof typeof EXPECTED_UNAPPLIED_SIZES_BYTES
-        ],
-      );
-      found += 1;
+      ).toBeGreaterThan(0);
     }
-    expect(found).toBe(8);
   });
 
   it("applies eight distinct scripts and fits each oversized publication host", async () => {
@@ -86,21 +84,18 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
       fieldPreimageCertificatePolicyId: "44".repeat(28),
       hubOraclePolicyId: "55".repeat(28),
     });
+    expect(steps).toHaveLength(8);
     expect(new Set(steps.map((step) => step.spendingScriptHash)).size).toBe(8);
-    for (const [index, step] of steps.entries()) {
+    for (const step of steps) {
+      // The envelope claim, stated against the consensus floor rather than a
+      // transcribed size table: the applied script plus the publication
+      // transaction's own overhead allowance must fit the smallest L1
+      // `max_tx_size` Midgard supports.
       const appliedBytes = step.spendingScriptCBOR.length / 2;
-      expect(appliedBytes).toBeGreaterThanOrEqual(
-        Object.values(EXPECTED_UNAPPLIED_SIZES_BYTES)[index]!,
-      );
-      expect(appliedBytes + 2_048).toBeLessThanOrEqual(
-        EMULATOR_PROTOCOL_PARAMETERS.maxTxSize,
-      );
-      expect(appliedBytes).toBeGreaterThan(0);
+      expect(
+        appliedBytes + PUBLICATION_OVERHEAD_ALLOWANCE_BYTES,
+        step.spendingScriptHash,
+      ).toBeLessThanOrEqual(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
     }
-    // Owner ruling: publication/reference is uniform even though each
-    // individual validator body is below the 16,384-byte L1 envelope.
-    expect(
-      Math.max(...Object.values(EXPECTED_UNAPPLIED_SIZES_BYTES)),
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
   });
 });

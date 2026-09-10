@@ -33,7 +33,7 @@ It is intentionally strict about scope:
 
 ### Redeemers
 
-1. `transaction.redeemers` is ordered by ascending `ScriptPurpose`.
+1. `transaction.redeemers` preserves ledger redeemer-pointer order (purpose tag, then index). Do not derive that order from the constructor order of Aiken's `ScriptPurpose` type.
 2. For the subset used by this repository, the effective purpose ordering is:
    - `Spend`
    - `Mint`
@@ -63,14 +63,13 @@ These apply to Aiken `Value` values exposed inside script context, including `Ou
 7. Ada is represented as policy ID `""` and asset name `""`.
 8. Because `""` sorts before any non-empty bytestring, Ada is the first asset entry whenever a `Value` contains lovelace.
 
-
 ## `TxOut`-Specific Value Invariants
 
 These apply to `transaction.outputs[*].value` and to resolved input/output values visible through `transaction.inputs[*].output.value`.
 
 1. Output values cannot contain negative quantities.
 2. Any asset that appears in an output value has strictly positive quantity.
-3. All `Value`'s from tx outputs carry lovelace; in Aiken, Ada is therefore the first entry in a output `Value`.
+3. All `Value`s from transaction outputs carry lovelace; in Aiken, Ada is therefore the first entry in an output `Value`.
 4. Contracts may rely on "Ada first" only because:
    - outputs carry lovelace
    - Ada uses the empty policy ID and empty asset name
@@ -83,16 +82,14 @@ These apply to `transaction.outputs[*].value` and to resolved input/output value
 3. Do not assume redeemer positions are stable under reordering of inputs, mint policies, or withdrawals in the underlying transaction construction. Witness indices are a function of ledger ordering, not builder call order.
 4. Do not assume output order is sorted. It is preserved body order.
 
-## Practical Summary
+## Sources
 
-For this repository, the key facts to rely on are:
-
-1. `txInputs` are lexicographically ordered by `txOutRef`.
-2. `txOutputs` preserve tx body order.
-3. `Value` is lexicographically ordered by policy ID, then token name.
-4. Zero-quantity entries are absent from `Value`.
-5. Token quantities in TxOut values are non-negative and non-zero; assets present in them have strictly positive quantity.
-6. TxOut values always contain lovelace/ada as the first entry (policy ID of ada is `""` which lexicographically sorts first always).
-7. `txInfoRedeemers` / `transaction.redeemers` must be interpreted in ledger order, with the repository-relevant subset `Spend < Mint < Withdraw < ...`.
-
-
+The pinned Aiken stdlib defines `cardano/transaction.Transaction` and the
+opaque `cardano/assets.Value`; its `from_asset_list` and dictionary constructors
+enforce normalized asset maps. Ledger translation determines context ordering:
+[Conway TxInfo](https://github.com/IntersectMBO/cardano-ledger/blob/master/eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs)
+uses ordered input sets and output sequences, while
+[Babbage `transTxRedeemers`](https://github.com/IntersectMBO/cardano-ledger/blob/master/eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs)
+translates the ordered redeemer-pointer map without re-sorting by the translated
+Plutus purpose. These are L1 context guarantees, not guarantees for arbitrary
+user-supplied `Data` or hand-built test `Transaction` values.

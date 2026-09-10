@@ -62,7 +62,6 @@ const NATIVE_SCRIPT_HASH =
 const DA_VKEY = "44".repeat(32);
 const DA_SIGNERS_HASH =
   "0395256ce5d90f07504b614b9e70e29a06fdd69cef6b01f6018615164125a5c5";
-const RELEASE_DIGEST = h32("6");
 const BLUEPRINT_HASH = h32("5");
 
 const TARGET_PARAMETERS = Object.freeze({
@@ -202,8 +201,7 @@ const canonicalManifestIdentity = (): MutableRecord => {
         retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
-    proofEvidence: {
-      digest: RELEASE_DIGEST,
+    artifacts: {
       blueprintHash: BLUEPRINT_HASH,
     },
     steps: Object.fromEntries(
@@ -339,7 +337,7 @@ const fixture = () => {
     constructionIdentity: {
       manifestId: manifest.manifestId,
       network: "Preprod",
-      releaseEvidenceDigest: RELEASE_DIGEST,
+      blueprintHash: BLUEPRINT_HASH,
       programCommitments,
     },
     targetParameterSnapshot: TARGET_PARAMETERS,
@@ -347,14 +345,14 @@ const fixture = () => {
   const ruleBundleCommitment = computeWatcherRuleBundleCommitment(bundle);
   const releaseBindings = {
     schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+    fundingProfileBundleDigest: "ab".repeat(32),
     ruleBundleCommitment,
     programCommitments,
     da: {
       mode: "authenticated_committee_v1",
       identityDigest: computeDeploymentManifestJsonDigest(manifest.da),
     },
-    releaseEvidence: {
-      digest: RELEASE_DIGEST,
+    artifacts: {
       blueprintHash: BLUEPRINT_HASH,
     },
   };
@@ -379,7 +377,8 @@ const fixture = () => {
     programCommitments,
     daMode: "authenticated_committee_v1",
     daIdentityDigest: releaseBindings.da.identityDigest,
-    releaseEvidenceDigest: RELEASE_DIGEST,
+    fundingProfileBundleDigest: releaseBindings.fundingProfileBundleDigest,
+
     blueprintHash: BLUEPRINT_HASH,
   };
   signedIdentity.attestation.signature = sign(
@@ -748,7 +747,7 @@ describe("watcher canonical V1 rule bundle", () => {
     );
 
     const release = clone(bundle);
-    release.releaseEvidenceDigest = h32("b");
+    release.blueprintHash = h32("b");
     rejected(
       () =>
         loadWatcherRuleBundle({

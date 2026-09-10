@@ -3,6 +3,7 @@ import {
   Data,
   type LucidEvolution,
   type UTxO,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -13,6 +14,7 @@ import {
   buildDaAvailabilityCommitment,
   castStateQueueNodeToData,
   type DaAttestationBuildError,
+  type DaAttestationBuildFailureReason,
   DaAttestationDatum,
   type DaAttestationReferenceScripts,
   DaAttestationSpendRedeemer,
@@ -60,6 +62,11 @@ type RecordedPayment = {
 };
 
 type Recording = {
+  readonly withdrawals: {
+    readonly address: string;
+    readonly amount: bigint;
+    readonly redeemer: unknown;
+  }[];
   readonly reads: UTxO[][];
   readonly collects: { readonly inputs: UTxO[]; readonly redeemer: unknown }[];
   readonly mints: { readonly assets: Assets; readonly redeemer: unknown }[];
@@ -76,6 +83,7 @@ const makeRecordingLucid = (): {
   readonly record: Recording;
 } => {
   const record: Recording = {
+    withdrawals: [],
     reads: [],
     collects: [],
     mints: [],
@@ -84,6 +92,7 @@ const makeRecordingLucid = (): {
     validityRanges: [],
   };
   const lucid = {
+    config: () => ({ network: "Custom" }),
     newTx: () => {
       const tx = {
         validFrom: (validFrom: number) => {
@@ -106,6 +115,10 @@ const makeRecordingLucid = (): {
         },
         collectFrom: (inputs: UTxO[], redeemer: unknown) => {
           record.collects.push({ inputs, redeemer });
+          return tx;
+        },
+        withdraw: (address: string, amount: bigint, redeemer: unknown) => {
+          record.withdrawals.push({ address, amount, redeemer });
           return tx;
         },
         mintAssets: (assets: Assets, redeemer: unknown) => {
@@ -162,7 +175,25 @@ const makeFixture = () => {
   const contracts = {
     daAttestation: validator("aa", "addr_da_attestation"),
     stateQueue: validator("bb", "addr_state_queue"),
-    availabilityChallenge: validator("cc", "addr_availability_challenge"),
+    availabilityChallenge: {
+      ...validator("cc", "addr_availability_challenge"),
+      yields: Object.fromEntries(
+        ["bond", "open", "settle", "close", "timeout"].map((arm) => [
+          arm,
+          {
+            withdrawalScript: {
+              type: "PlutusV3",
+              script: "49480100002221200101",
+            },
+            withdrawalScriptCBOR: "49480100002221200101",
+            withdrawalScriptHash: validatorToScriptHash({
+              type: "PlutusV3",
+              script: "49480100002221200101",
+            }),
+          },
+        ]),
+      ),
+    },
   } as Pick<
     MidgardValidators,
     "availabilityChallenge" | "daAttestation" | "stateQueue"
@@ -251,6 +282,10 @@ const makeFixture = () => {
   };
   const referenceScripts: DaAttestationReferenceScripts = {
     availabilityChallengeMinting: makeUtxo(8),
+    availabilityChallengeBondWithdrawal: {
+      ...makeUtxo(9),
+      scriptRef: contracts.availabilityChallenge.yields.bond.withdrawalScript,
+    },
     daAttestationMinting: makeUtxo(4),
     daAttestationSpending: makeUtxo(5),
     stateQueueMinting: makeUtxo(6),
@@ -270,17 +305,43 @@ const makeFixture = () => {
   };
 };
 
+const outRefKey = (utxo: UTxO): string =>
+  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+
+/**
+ * The contract is *which* UTxOs the builder puts in the reference-input set,
+ * not the order of the `readFrom` calls that got them there: the ledger sorts
+ * reference inputs canonically before any validator sees them.
+ */
+const referenceSet = (record: Recording): readonly string[] =>
+  [...new Set(record.reads.flat().map(outRefKey))].sort();
+
+const collectedSet = (record: Recording): readonly string[] =>
+  [
+    ...new Set(record.collects.flatMap(({ inputs }) => inputs).map(outRefKey)),
+  ].sort();
+
+const expectedSet = (utxos: readonly UTxO[]): readonly string[] =>
+  [...new Set(utxos.map(outRefKey))].sort();
+
 const run = <A>(
   program: Effect.Effect<A, DaAttestationBuildError>,
 ): Promise<A> => Effect.runPromise(program);
 
-const expectBuildFailure = async <A>(
+/**
+ * A refusal is only evidence when it is *this* refusal: every negative below
+ * names the precondition it means to trip, so a fixture that happens to be
+ * malformed for some unrelated reason no longer satisfies the test.
+ */
+const expectBuildRefusal = async <A>(
   program: Effect.Effect<A, DaAttestationBuildError>,
+  reason: DaAttestationBuildFailureReason,
 ): Promise<void> => {
   const result = await Effect.runPromise(Effect.either(program));
   expect(result._tag).toBe("Left");
   if (result._tag === "Left") {
     expect(result.left._tag).toBe("DaAttestationBuildError");
+    expect(result.left.reason, result.left.message).toBe(reason);
   }
 };
 
@@ -319,29 +380,33 @@ describe("DA attestation witness helpers", () => {
   });
 
   it("rejects malformed, duplicate, already-attested, and out-of-committee witnesses", async () => {
-    await expectBuildFailure(
+    await expectBuildRefusal(
       encodeDaAttestationSignatureWitnesses([
         { signerIndex: 0, signatureHex: "aa" },
       ]),
+      "invalid_signature_hex",
     );
-    await expectBuildFailure(
+    await expectBuildRefusal(
       encodeDaAttestationSignatureWitnesses([
         { signerIndex: 0, signatureHex: signature("aa") },
         { signerIndex: 0, signatureHex: signature("bb") },
       ]),
+      "duplicate_signature_witness",
     );
-    await expectBuildFailure(
+    await expectBuildRefusal(
       applyDaAttestationSignatureWitnesses({
         attestedSignersHex: `80${"00".repeat(31)}`,
         witnesses: [{ signerIndex: 0, signatureHex: signature("aa") }],
       }),
+      "signer_already_attested",
     );
-    await expectBuildFailure(
+    await expectBuildRefusal(
       applyDaAttestationSignatureWitnesses({
         attestedSignersHex: EMPTY_ATTESTED_SIGNER_BITMAP,
         witnesses: [{ signerIndex: 2, signatureHex: signature("aa") }],
         committeeSize: 2,
       }),
+      "signer_outside_committee",
     );
   });
 });
@@ -364,14 +429,19 @@ describe("DA attestation SDK builders", () => {
       }),
     );
 
-    expect(record.reads).toEqual([
-      [
+    expect(referenceSet(record)).toEqual(
+      expectedSet([
         fixture.daParamsUtxo,
         fixture.target.stateQueueUtxo.utxo,
         fixture.referenceScripts.daAttestationMinting,
         fixture.referenceScripts.stateQueueMinting,
-      ],
-    ]);
+      ]),
+    );
+    // Exactness in both directions: the reference set must not silently pick up
+    // the spending-script references this transaction has no spend for.
+    expect(referenceSet(record)).not.toContain(
+      outRefKey(fixture.referenceScripts.daAttestationSpending),
+    );
     expect(record.mints[0]?.assets).toEqual({
       [fixture.attestationUnit]: 1n,
     });
@@ -411,10 +481,15 @@ describe("DA attestation SDK builders", () => {
       }),
     );
 
-    expect(record.reads).toEqual([
-      [fixture.daParamsUtxo, fixture.referenceScripts.daAttestationSpending],
-    ]);
-    expect(record.collects[0]?.inputs).toEqual([fixture.attestation.utxo]);
+    expect(referenceSet(record)).toEqual(
+      expectedSet([
+        fixture.daParamsUtxo,
+        fixture.referenceScripts.daAttestationSpending,
+      ]),
+    );
+    expect(collectedSet(record)).toEqual(
+      expectedSet([fixture.attestation.utxo]),
+    );
     expect(record.payments[0]?.assets).toEqual(fixture.attestation.utxo.assets);
     const datum = Data.from(
       record.payments[0]!.datum.value,
@@ -445,7 +520,7 @@ describe("DA attestation SDK builders", () => {
     const fixture = makeFixture();
     const { lucid } = makeRecordingLucid();
 
-    await expectBuildFailure(
+    await expectBuildRefusal(
       incompleteAddDaAttestationSignaturesTxProgram(lucid, fixture.contracts, {
         daParamsUtxo: fixture.daParamsUtxo,
         daParamsDatum: {
@@ -456,6 +531,7 @@ describe("DA attestation SDK builders", () => {
         witnesses: [{ signerIndex: 0, signatureHex: signature("aa") }],
         referenceScripts: fixture.referenceScripts,
       }),
+      "params_committee_hash_mismatch",
     );
   });
 
@@ -487,24 +563,36 @@ describe("DA attestation SDK builders", () => {
       ),
     );
 
-    expect(record.reads).toEqual([
-      [
+    expect(referenceSet(record)).toEqual(
+      expectedSet([
         fixture.hubOracleRefInput,
         fixture.daParamsUtxo,
         fixture.referenceScripts.availabilityChallengeMinting,
+        fixture.referenceScripts.availabilityChallengeBondWithdrawal,
         fixture.referenceScripts.daAttestationMinting,
         fixture.referenceScripts.daAttestationSpending,
         fixture.referenceScripts.stateQueueMinting,
         fixture.referenceScripts.stateQueueSpending,
-      ],
-    ]);
-    expect(record.collects.map((entry) => entry.inputs)).toEqual([
-      [thresholdAttestation.utxo],
-      [fixture.target.stateQueueUtxo.utxo],
-    ]);
+      ]),
+    );
+    // The apply spends the attestation and the state-queue node and nothing
+    // else — the reference-only UTxOs must stay out of the input set.
+    expect(collectedSet(record)).toEqual(
+      expectedSet([
+        thresholdAttestation.utxo,
+        fixture.target.stateQueueUtxo.utxo,
+      ]),
+    );
     expect(record.mints[0]?.assets).toEqual({
       [fixture.attestationUnit]: -1n,
     });
+    expect(record.withdrawals).toEqual([
+      {
+        address: expect.stringMatching(/^stake_test/u),
+        amount: 0n,
+        redeemer: Data.void(),
+      },
+    ]);
     expect(record.validityRanges).toEqual([
       { validFrom: 1_000, validTo: 2_000 },
     ]);
@@ -535,11 +623,42 @@ describe("DA attestation SDK builders", () => {
     }
   });
 
+  it("refuses an apply with a substituted bond yield script", async () => {
+    const fixture = makeFixture();
+    const { lucid } = makeRecordingLucid();
+    await expectBuildRefusal(
+      incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        fixture.contracts,
+        {
+          hubOracleRefInput: fixture.hubOracleRefInput,
+          daParamsUtxo: fixture.daParamsUtxo,
+          daParamsDatum: fixture.daParamsDatum,
+          target: fixture.target,
+          attestation: {
+            ...fixture.attestation,
+            datum: {
+              ...fixture.attestation.datum,
+              attested_signers: `c0${"00".repeat(31)}`,
+              attestation_count: 2n,
+            },
+          },
+          referenceScripts: {
+            ...fixture.referenceScripts,
+            availabilityChallengeBondWithdrawal: makeUtxo(9),
+          },
+          validityRange: fixture.applyValidityRange,
+        },
+      ),
+      "missing_bond_yield_reference_script",
+    );
+  });
+
   it("preflights apply header and threshold requirements", async () => {
     const fixture = makeFixture();
     const { lucid } = makeRecordingLucid();
 
-    await expectBuildFailure(
+    await expectBuildRefusal(
       incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
         fixture.contracts,
@@ -553,8 +672,9 @@ describe("DA attestation SDK builders", () => {
           validityRange: fixture.applyValidityRange,
         },
       ),
+      "threshold_not_reached",
     );
-    await expectBuildFailure(
+    await expectBuildRefusal(
       incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
         fixture.contracts,
@@ -578,6 +698,7 @@ describe("DA attestation SDK builders", () => {
           validityRange: fixture.applyValidityRange,
         },
       ),
+      "attestation_header_mismatch",
     );
   });
 });

@@ -97,7 +97,8 @@ const policy = (): WatcherFinalityPolicy => {
       manifestId: hex32("33"),
       network: "Preprod",
       trustRootId: hex32("44"),
-      releaseEvidenceDigest: hex32("55"),
+      fundingProfileBundleDigest: "ab".repeat(32),
+      blueprintHash: hex32("55"),
       ruleBundleCommitment: hex32("66"),
       programCommitments: { validation: hex32("77") },
       durableMarker: makeDeploymentMarker(hex32("33")),
@@ -312,6 +313,57 @@ describe("independent monotonic watcher trusted-head authority", () => {
         recordAuthenticationKey,
       }),
     ).rejects.toThrow("gap");
+  });
+
+  it("rechecks historical records across read batches on the same open store", async () => {
+    const finalityPolicy = policy();
+    const path = await directory();
+    const store = await openWatcherTrustedHeadAuthorityStore({
+      directory: path,
+      policy: finalityPolicy,
+      recordAuthenticationKey,
+    });
+    let current: WatcherRollbackDurableTrustedHead | null = null;
+    for (let index = 0; index < 12; index++) {
+      const next = head(finalityPolicy, index, "10");
+      expect(
+        await store.compareAndSwap({
+          expectedTrustedHead: current,
+          nextTrustedHead: next,
+        }),
+      ).toBe(true);
+      current = next;
+    }
+    expect(await store.readCurrent()).toEqual(current);
+    const historicalPath = join(path, "00000000000000000008.json");
+    const original = await readFile(historicalPath, "utf8");
+    const forged = JSON.parse(original) as { head: { headMac: string } };
+    forged.head.headMac = hex32("ee");
+    const mutations = [
+      [watcherCanonicalJson(forged), /sidecar record MAC/u],
+      [`${original}\n`, /non-canonical/u],
+      [
+        await readFile(join(path, "00000000000000000000.json"), "utf8"),
+        /non-canonical/u,
+      ],
+      ["", /record size/u],
+      [original.slice(0, -1), /malformed/u],
+    ] as const;
+    for (const [bytes, failure] of mutations) {
+      await writeFile(historicalPath, bytes, "utf8");
+      await expect(store.readCurrent()).rejects.toThrow(failure);
+      await writeFile(historicalPath, original, "utf8");
+      expect(await store.readCurrent()).toEqual(current);
+    }
+    const moved = join(path, "00000000000000000013.json");
+    await rename(historicalPath, moved);
+    await expect(store.readCurrent()).rejects.toThrow("gap");
+    await rename(moved, historicalPath);
+    const unknown = join(path, "operator-note");
+    await writeFile(unknown, "not authority", "utf8");
+    await expect(store.readCurrent()).rejects.toThrow("unknown entry");
+    await rm(unknown);
+    expect(await store.readCurrent()).toEqual(current);
   });
 
   it("exposes only authenticated loopback read and expected-prior CAS with read-back", async () => {

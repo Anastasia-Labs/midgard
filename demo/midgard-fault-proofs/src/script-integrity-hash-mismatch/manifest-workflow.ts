@@ -36,6 +36,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES,
@@ -169,7 +170,7 @@ export const createManifestBoundScriptIntegrityHashMismatchWorkflow = async (
   });
   const chain = binding.resolvedContracts.contracts.scriptIntegrityHashMismatch;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
-  const hubOraclePolicyId = binding.deploymentInfo.hubOracleMint?.scriptHash;
+  const hubOraclePolicyId = binding.contractEntries.hubOracleMint?.scriptHash;
   if (
     chain === undefined ||
     chain.steps.length !== 5 ||
@@ -463,10 +464,15 @@ export const createScriptIntegrityHashMismatchWorkflowRunnerSurface = ({
           throw new Error(
             "scriptIntegrityHashMismatch runtime binding changed invocation",
           );
-        return await executeManifestBoundScriptIntegrityHashMismatchWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundScriptIntegrityHashMismatchWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

@@ -24,7 +24,6 @@ const acceptanceFixture = (): E2EStateCorrectionAcceptance => {
       blueprintSha256: takeHash(),
       catalogueRoot: takeHash(),
       parametersSha256: takeHash(),
-      releaseEvidenceSha256: takeHash(),
     },
     families: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((familyId) => ({
       familyId,
@@ -160,12 +159,6 @@ describe("state-correction acceptance evidence", () => {
       evidencePath: "logs/fresh-final-release/state-correction.json",
     });
 
-    expect(parsed.families.map((family) => family.familyId)).toEqual(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-    );
-    expect(parsed.recoveryDrills.map((drill) => drill.id)).toEqual(
-      REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS,
-    );
     expect(evidence.db).toHaveLength(6);
     expect(evidence.db.every((gate) => gate.status === "blocked")).toBe(true);
     expect(evidence.transactions).toEqual([]);

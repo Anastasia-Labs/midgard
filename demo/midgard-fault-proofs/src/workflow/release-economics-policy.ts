@@ -26,7 +26,7 @@ export type ReleaseFraudProofEconomicsPolicy = {
 export type VerifiedFraudProofReleaseEconomicsPolicy = {
   readonly schemaVersion: typeof FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION;
   readonly deploymentIdentityDigest: string;
-  readonly releaseIdentityDigest: string;
+  readonly blueprintHash: string;
   readonly policyDigest: string;
   readonly policy: ReleaseFraudProofEconomicsPolicy;
 };
@@ -89,7 +89,7 @@ export const validateVerifiedFraudProofReleaseEconomicsPolicy = (
   }
   if (
     !DIGEST.test(value.deploymentIdentityDigest) ||
-    !DIGEST.test(value.releaseIdentityDigest) ||
+    !DIGEST.test(value.blueprintHash) ||
     !DIGEST.test(value.policyDigest)
   ) {
     throw new Error("release economics identity digests must be 32-byte hex");

@@ -1,21 +1,37 @@
 import {
   createWorkflowFundingReservationPermit,
+  createWorkflowRuntimeFundingPolicy,
   type WorkflowActuationPermit,
   type WorkflowAdapterRunner,
-  type WorkflowFundingRequirements,
   type WorkflowFundingReservationPermit,
   type WorkflowFundingReservationPort,
+  type WorkflowRuntimeFundingPolicy,
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-import type { UTxO } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress,
+  getAddressDetails,
+  scriptHashToCredential,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
-import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import type { WatcherProtocolParameterRuntimeAuthority } from "./prover-funding.js";
-import type { WatcherProverFundingCalculation } from "./prover-funding-calculation.js";
-import { calculateWatcherProverFunding } from "./prover-funding-calculation.js";
+import {
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentAppliedScriptHashes,
+  watcherDeploymentProtocolScriptAuthority,
+  watcherDeploymentReleaseEconomicsAuthority,
+} from "../runtime/deployment-identity.js";
+import {
+  assertWatcherProtocolParameterRuntimeAuthority,
+  type WatcherProtocolParameterRuntimeAuthority,
+} from "./prover-funding.js";
+import type { WatcherRuntimeProverFundingCalculation } from "./prover-funding-calculation.js";
+import { calculateWatcherRuntimeProverFunding } from "./prover-funding-calculation.js";
 import {
   parseWatcherProverFundingReservationRecord,
   planWatcherProverFundingReservation,
+  restoreWatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
@@ -35,7 +51,6 @@ export type WatcherProverFundingAuthorityFactory = Readonly<{
   create(input: {
     readonly category: FraudProofCatalogueCategoryName;
     readonly runner: WorkflowAdapterRunner;
-    readonly fundingRequirements: WorkflowFundingRequirements;
     readonly actuationPermit: WorkflowActuationPermit;
     readonly rollbackGeneration: string;
     readonly decisionDigest: string;
@@ -91,8 +106,8 @@ const snapshot = ({
     reservationId: record.reservationId,
     deploymentFingerprint: record.deploymentFingerprint,
     decisionDigest: record.decisionDigest,
-    profileDigest: record.profileDigest,
-    calculationDigest: record.calculationDigest,
+    policyDigest: record.policyDigest,
+    reservationBasisDigest: record.reservationBasisDigest,
     rollbackGeneration,
     revision: record.revision,
     walletAddress: plan.walletAddress,
@@ -102,7 +117,7 @@ const snapshot = ({
   });
 
 /**
- * Atomically reserves the exact measured wallet inputs, then mints the only
+ * Atomically reserves the exact live wallet inputs, then mints the only
  * permit accepted by production runners. Operator config cannot provide a
  * reservation identity, revision, or body transition.
  */
@@ -112,7 +127,8 @@ export const createWatcherProverFundingAuthority = async (input: {
   readonly actuationPermit: WorkflowActuationPermit;
   readonly rollbackGeneration: string;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly calculation: WatcherProverFundingCalculation;
+  readonly calculation: WatcherRuntimeProverFundingCalculation;
+  readonly policy: WorkflowRuntimeFundingPolicy;
   readonly decisionDigest: string;
   readonly walletAddress: string;
   readonly walletUtxos: readonly UTxO[];
@@ -126,13 +142,43 @@ export const createWatcherProverFundingAuthority = async (input: {
     readonly semanticRole: "protocol_state";
   }) => Promise<unknown>;
 }): Promise<WatcherProverFundingAuthority> => {
-  const plan = planWatcherProverFundingReservation({
-    deploymentIdentity: input.deploymentIdentity,
-    calculation: input.calculation,
-    decisionDigest: input.decisionDigest,
-    walletAddress: input.walletAddress,
-    utxos: input.walletUtxos,
-  });
+  const records = (await input.store.readAll()).map(
+    parseWatcherProverFundingReservationRecord,
+  );
+  const matching = records.filter(
+    (record) =>
+      record.deploymentFingerprint === input.deploymentIdentity.manifestId &&
+      record.decisionDigest === input.decisionDigest,
+  );
+  if (matching.length > 1)
+    throw new Error(
+      "prover funding has multiple reservations for the same decision",
+    );
+  const existing = matching[0];
+  const leasedElsewhere = new Set(
+    records
+      .filter((record) => record !== existing && record.state !== "released")
+      .flatMap((record) => record.activeInputs.map(({ outRef }) => outRef)),
+  );
+  const plan =
+    existing === undefined
+      ? planWatcherProverFundingReservation({
+          deploymentIdentity: input.deploymentIdentity,
+          calculation: input.calculation,
+          decisionDigest: input.decisionDigest,
+          walletAddress: input.walletAddress,
+          utxos: input.walletUtxos.filter(
+            (utxo) =>
+              !leasedElsewhere.has(`${utxo.txHash}#${utxo.outputIndex}`),
+          ),
+        })
+      : restoreWatcherProverFundingReservationPlan({
+          deploymentIdentity: input.deploymentIdentity,
+          calculation: input.calculation,
+          decisionDigest: input.decisionDigest,
+          walletAddress: input.walletAddress,
+          record: existing,
+        });
   await input.store.reserve(plan);
 
   const load = async () =>
@@ -146,16 +192,14 @@ export const createWatcherProverFundingAuthority = async (input: {
       }),
     resolveInputs: async (outRefs: readonly string[]) =>
       await input.resolveInputs(outRefs),
-    resolveConfirmedActionOutput: async ({
-      sourceActionKind,
-      sourceOutputIndex,
+    resolveConfirmedInput: async ({
+      outRef,
     }: Parameters<
-      WorkflowFundingReservationPort["resolveConfirmedActionOutput"]
+      WorkflowFundingReservationPort["resolveConfirmedInput"]
     >[0]) =>
-      await input.store.readConfirmedActionOutput({
+      await input.store.readConfirmedInput({
         reservationId: plan.reservationId,
-        sourceActionKind,
-        sourceOutputIndex,
+        outRef,
       }),
     resolveProtocolInputAuthority: async ({
       deploymentFingerprint,
@@ -256,6 +300,7 @@ export const createWatcherProverFundingAuthority = async (input: {
   const permit = await createWorkflowFundingReservationPermit({
     category: input.category,
     runner: input.runner,
+    policy: input.policy,
     actuationPermit: input.actuationPermit,
     rollbackGeneration: input.rollbackGeneration,
     port,
@@ -268,22 +313,100 @@ export const createWatcherProverFundingAuthority = async (input: {
 };
 
 /**
- * Runtime-owned funding authority. The application supplies only the fixed
- * category runner and its already-bound measured profile; the watcher cannot
- * choose or replace either identity.
+ * Runtime-owned funding authority bound to the admitted runner, deployment,
+ * current protocol parameters, and exact wallet leases.
  */
 export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
   readonly store: WatcherProverFundingReservationStore;
 }): WatcherProverFundingAuthorityFactory => {
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
   const factory: WatcherProverFundingAuthorityFactory = Object.freeze({
     schemaVersion: WATCHER_PROVER_FUNDING_AUTHORITY,
     create: async (request) => {
-      const calculation = await calculateWatcherProverFunding({
+      const credential = getAddressDetails(
+        request.walletAddress,
+      ).paymentCredential;
+      if (credential?.type !== "Key")
+        throw new Error("prover funding wallet has no payment key");
+      const economics = await watcherDeploymentReleaseEconomicsAuthority(
+        input.deploymentIdentity,
+      ).verifyForWorkflow({
+        deploymentFingerprint: input.deploymentIdentity.manifestId,
+      });
+      const contracts = Object.entries(
+        watcherDeploymentAppliedScriptHashes(input.deploymentIdentity),
+      ).flatMap(([name, scriptHash]) => {
+        if (name.endsWith("Mint") || name.endsWith("Withdraw")) return [];
+        const role =
+          name === "correctionLockSpend"
+            ? ("correction_lock" as const)
+            : name === "fraudProofSpend" ||
+                name === "fraudProofCatalogueSpend" ||
+                name === "fieldPreimageCertificateSpend" ||
+                name === "cekProgramMaterialSpend"
+              ? ("field_carrier" as const)
+              : (name.startsWith("fraudProof") &&
+                    !name.startsWith("fraudProofCatalogue")) ||
+                  name.startsWith("validationTraceDispute")
+                ? ("proof_thread" as const)
+                : name.endsWith("Spend")
+                  ? ("protocol_state" as const)
+                  : undefined;
+        return role === undefined
+          ? []
+          : [
+              {
+                address: credentialToAddress(
+                  input.deploymentIdentity.network,
+                  scriptHashToCredential(scriptHash),
+                ),
+                scriptHash,
+                role,
+              },
+            ];
+      });
+      const uniqueContracts = new Map<string, (typeof contracts)[number]>();
+      for (const contract of contracts) {
+        const prior = uniqueContracts.get(contract.address);
+        if (prior !== undefined && prior.role !== contract.role) {
+          throw new Error(
+            `signed funding contract ${contract.scriptHash} has conflicting custody roles: ${prior.role}/${contract.role}`,
+          );
+        }
+        uniqueContracts.set(contract.address, contract);
+      }
+      const referenceScripts = new Map<
+        string,
+        { outRef: string; scriptHash: string }
+      >();
+      for (const { outRef, scriptHash } of Object.values(
+        watcherDeploymentProtocolScriptAuthority(input.deploymentIdentity)
+          .referenceScripts,
+      )) {
+        const prior = referenceScripts.get(outRef);
+        if (prior !== undefined && prior.scriptHash !== scriptHash)
+          throw new Error(
+            "signed funding reference has conflicting script identities",
+          );
+        referenceScripts.set(outRef, { outRef, scriptHash });
+      }
+      const policy = createWorkflowRuntimeFundingPolicy({
+        category: request.category,
+        runner: request.runner,
+        deploymentFingerprint: input.deploymentIdentity.manifestId,
+        fundingPaymentKeyHash: credential.hash,
+        protocolParameters: input.protocolParameters.snapshot,
+        economics,
+        contracts: [...uniqueContracts.values()],
+        referenceScripts: [...referenceScripts.values()],
+      });
+      const calculation = await calculateWatcherRuntimeProverFunding({
         deploymentIdentity: input.deploymentIdentity,
         protocolParameters: input.protocolParameters,
-        requirements: request.fundingRequirements,
+        policy,
       });
       const authority = await createWatcherProverFundingAuthority({
         category: request.category,
@@ -292,6 +415,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         rollbackGeneration: request.rollbackGeneration,
         deploymentIdentity: input.deploymentIdentity,
         calculation,
+        policy,
         decisionDigest: request.decisionDigest,
         walletAddress: request.walletAddress,
         walletUtxos: request.walletUtxos,

@@ -3,7 +3,7 @@
  * remediation): thread state carries the §2.5 anchor rather than a per-field
  * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
  * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
- * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";

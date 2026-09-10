@@ -15,11 +15,22 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES.every((title) =>
-  blueprint.validators.some((validator) => validator.title === title),
+const missingTitles = MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES.filter(
+  (title) =>
+    !blueprint.validators.some((validator) => validator.title === title),
 );
 
-describe.runIf(hasFamily)("missingScriptSource signed publication fit", () => {
+describe("missingScriptSource signed publication fit", () => {
+  /**
+   * Discovery gate (§14). This file used to hang off `describe.runIf`, so a
+   * blueprint that no longer carried the family reported a clean pass instead
+   * of an unpublishable deployment. The family's presence is now a required
+   * result of its own.
+   */
+  it("finds every declared missingScriptSource validator in the deployed blueprint", () => {
+    expect(missingTitles).toEqual([]);
+  });
+
   it("publishes all six fully applied validators below the reliability reserve", async () => {
     const harness = await makeFaultProofEmulatorHarness();
     const addressData = await Effect.runPromise(
@@ -35,8 +46,11 @@ describe.runIf(hasFamily)("missingScriptSource signed publication fit", () => {
       fraudProofTokenAddressData: addressData,
       hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
     });
+    // Six is the deployment contract this file's name states: a short or empty
+    // `steps` would otherwise walk the loop below too few times and report a
+    // vacuous pass.
+    expect(steps).toHaveLength(6);
     const sizes: number[] = [];
-    const digests: string[] = [];
     for (const [index, step] of steps.entries()) {
       const published = await publishPlainReferenceScriptUtxo({
         lucid: harness.funderLucid,
@@ -44,9 +58,6 @@ describe.runIf(hasFamily)("missingScriptSource signed publication fit", () => {
         label: `missing script source step ${index + 1}`,
       });
       sizes.push(published.publicationMeasurement.completeSignedBytes);
-      digests.push(
-        createHash("sha256").update(step.spendingScript.script).digest("hex"),
-      );
       expect(
         published.publicationMeasurement.completeSignedBytes,
       ).toBeLessThanOrEqual(15_872);
@@ -54,7 +65,5 @@ describe.runIf(hasFamily)("missingScriptSource signed publication fit", () => {
     console.info(
       `[missing-script-source-publication] ${JSON.stringify(sizes)}`,
     );
-    console.info(`[missing-script-source-scripts] ${JSON.stringify(digests)}`);
   }, 600_000);
 });
-import { createHash } from "node:crypto";

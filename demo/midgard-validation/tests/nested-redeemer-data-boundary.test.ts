@@ -24,6 +24,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { decodeMidgardRedeemers } from "../src/midgard-redeemers.js";
+import { publishAikenVector } from "./helpers/aiken-vector-channel.js";
 import {
   buildCollateralFreeMidgardSchemaParallelCandidate,
   buildSignedCardanoSpendRedeemersCandidate,
@@ -73,49 +74,27 @@ const spendingScript: SpendingValidator = {
   script: applyDoubleCborEncoding(alwaysSucceedsCompiledCode),
 };
 
-// The exact genuine signed-Cardano nested-redeemer boundary. The terminal
-// vector below carries the same numbers, but its comparison is skipped while an
-// Aiken vector is being regenerated; these four pins are unconditional, so a
-// silently shrunk redeemer datum can no longer satisfy the relative bounds
-// alone.
+// The exact genuine signed-Cardano nested-redeemer boundary. These four pins
+// are the cardinality and byte count the search must land on, so a silently
+// shrunk redeemer datum can no longer satisfy the relative bounds alone.
 const MAXIMUM_NESTED_REDEEMER_DATA_ACCEPTED_LEAF_COUNT = 5_324;
 const MAXIMUM_NESTED_REDEEMER_DATA_ACCEPTED_SIGNED_BYTES = 16_382;
 const MAXIMUM_NESTED_REDEEMER_DATA_ADJACENT_LEAF_COUNT = 5_325;
 const MAXIMUM_NESTED_REDEEMER_DATA_ADJACENT_SIGNED_BYTES = 16_385;
 
-const maximumNestedRedeemerDataTerminalVector = {
-  maxTxSize: 16384,
-  nestedLeafCount: 5324,
-  dataNodeCount: 10650,
-  dataCborBytes: 15982,
-  signedCardanoBytes: 16382,
-  signedCardanoByteMargin: 2,
-  adjacentLeafCount: 5325,
-  adjacentDataCborBytes: 15985,
-  adjacentSignedCardanoBytes: 16385,
-  parallelSignedCardanoBytes: 16293,
-  nativeCanonicalBytes: 16357,
-  redeemerFieldBytes: 16001,
-  redeemerTraverseSteps: 127799,
-  maximumSourceSpan: 14,
-  terminalPreControlCborHex:
-    "8a010600193e6e193e6e582008f6a2dc24df8fbc23b2d4255dda3ca30a2fd28eb361e9ab31bf01732c764eead87a80d87a80d87a80d87a80",
-  terminalFrameCborHex:
-    "8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf0206400101818200582020de66bc0f1322c9c61884ce582d6698c9075e35c183a4264c6c7c27fbf1401b018458200f7bb776751d400f727bf81b02cd7ed66457e144209eb5f9f90e2c6500fe149601193e6719bb30",
-  terminalPostControlCborHex:
-    "8a010700193e6e193e6e40d87a80d87a80d87a80d8799f83582026ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20193e6e19bb34ff",
-  terminalSummary: {
-    rootHex: "26ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20",
-    cborLength: "15982",
-    memory: "47924",
-  },
-  productionCollateralRejection: {
-    message:
-      "Cardano tx cannot be converted to Midgard native format without dropping fields",
-    code: "E_CONVERSION_UNSUPPORTED_FEATURE",
-    detail: "collateral_inputs",
-  },
-} as const;
+/**
+ * The same closed-form reference model the nested-datum boundary uses: the
+ * redeemer carries a `cardanoBoundaryNestedDataCbor` tree, so its traversal
+ * costs a fixed run of transitions per leaf plus a constant for the outer
+ * frame. It is checked against the real producer at small leaf counts before
+ * being applied to the boundary redeemer, so an early-stopping traversal
+ * cannot satisfy it.
+ */
+const NESTED_DATA_TRAVERSE_STEPS_PER_LEAF = 24;
+const NESTED_DATA_TRAVERSE_FRAMING_STEPS = 23;
+const balancedNestedDataTraverseSteps = (leafCount: number): number =>
+  NESTED_DATA_TRAVERSE_STEPS_PER_LEAF * leafCount +
+  NESTED_DATA_TRAVERSE_FRAMING_STEPS;
 
 describe("canonical V1 nested Cardano redeemer Data boundary", () => {
   it("normalizes, retains, and traverses one maximum nested redeemer without weakening collateral rejection", async () => {
@@ -392,6 +371,24 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
     expect(maximumSourceSpan).toBeLessThanOrEqual(
       MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
     );
+    // The traverse step count is decided by the reference model above, checked
+    // first against the real producer at leaf counts small enough to read.
+    for (const smallLeafCount of [1, 2, 5, 50]) {
+      const smallTrace = buildMidgardCekDataTraverseTrace({
+        sourceStart: 0,
+        source: Buffer.from(
+          cardanoBoundaryNestedDataCbor(smallLeafCount),
+          "hex",
+        ),
+      });
+      expect(smallTrace.steps).toHaveLength(
+        balancedNestedDataTraverseSteps(smallLeafCount),
+      );
+    }
+    expect(trace.steps).toHaveLength(
+      balancedNestedDataTraverseSteps(boundary.accepted.requestedItemCount),
+    );
+
     const terminalStep = trace.steps.at(-1)!;
     expect(terminalStep.action?.kind).toBe("finalizeFrame");
     if (terminalStep.action?.kind !== "finalizeFrame") {
@@ -429,9 +426,19 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       },
       productionCollateralRejection: collateralRejection,
     };
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR !== "1") {
-      expect(terminalVector).toEqual(maximumNestedRedeemerDataTerminalVector);
-    }
+    // The Aiken twin's `maximum_cardano_nested_redeemer_*` constants are
+    // rebound from this vector by
+    // `scripts/generate-nested-boundary-aiken-goldens.mjs`, whose `--check` run
+    // is a required CI job. Publishing happens after every assertion above, and
+    // no environment variable can remove an assertion.
+    publishAikenVector("nested-redeemer-data-boundary-v1", {
+      ...terminalVector,
+      // The frame's own sequence root, which the Aiken twin needs to rebuild
+      // the terminal frame it steps over.
+      terminalFrameSequenceRootHex: Buffer.from(
+        terminalStep.action.frame.sequence.root,
+      ).toString("hex"),
+    });
 
     const retained = await exerciseMidgardRetainedDaBoundary({
       signedCardanoCborHex: parallel.cborHex,
@@ -489,13 +496,5 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
-
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
-      console.info(
-        JSON.stringify({
-          nestedRedeemerDataBoundaryV1: terminalVector,
-        }),
-      );
-    }
   }, 300_000);
 });

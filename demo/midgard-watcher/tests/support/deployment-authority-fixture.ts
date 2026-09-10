@@ -42,6 +42,7 @@ import {
   DEPLOYMENT_MANIFEST_STEP_NAMES,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import {
@@ -71,7 +72,6 @@ export const DA_SIGNERS_HASH =
 
 /** The release/rule-bundle bytes the settlement, state-queue and user-event
  * suites pin. The proof-thread suite pins its own — see the options below. */
-export const WATCHER_AUTHORITY_RELEASE_DIGEST = h32("22");
 export const WATCHER_AUTHORITY_BLUEPRINT_HASH = h32("55");
 export const WATCHER_AUTHORITY_RULE_BUNDLE_COMMITMENT = h32("44");
 export const WATCHER_AUTHORITY_PROGRAM_COMMITMENTS = {
@@ -196,8 +196,10 @@ export type WatcherDeploymentAuthorityFixtureOptions = Readonly<{
   /** Reuse an already-built contract set, so the caller can derive program
    * commitments from the catalogue it is about to commit to. */
   contractSet?: WatcherAuthorityContractSet;
-  releaseDigest?: string;
+  fundingProfileBundleDigest?: string;
   blueprintHash?: string;
+  /** Bind an existing ordinary initialization frame to its actual nonce. */
+  hubOracleOneShotOutRef?: string;
   ruleBundleCommitment?: string;
   programCommitments?: Readonly<Record<string, string>>;
 }>;
@@ -227,8 +229,6 @@ export const WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS = Object.freeze({
 const buildWatcherDeploymentAuthorityFixture = (
   options: WatcherDeploymentAuthorityFixtureOptions = {},
 ) => {
-  const releaseDigest =
-    options.releaseDigest ?? WATCHER_AUTHORITY_RELEASE_DIGEST;
   const blueprintHash =
     options.blueprintHash ?? WATCHER_AUTHORITY_BLUEPRINT_HASH;
   const ruleBundleCommitment =
@@ -238,10 +238,12 @@ const buildWatcherDeploymentAuthorityFixture = (
   const { contracts, fraudProofCatalogue, referenceScripts } =
     options.contractSet ?? makeWatcherAuthorityContracts();
   const parameters = WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS;
+  const oneShot = parseOutRefLabel(
+    options.hubOracleOneShotOutRef ?? `${h32("11")}#0`,
+  );
   const hubOracleOneShot = {
-    txHash: h32("11"),
-    outputIndex: 0,
-    outRef: `${h32("11")}#0`,
+    ...oneShot,
+    outRef: `${oneShot.txHash}#${oneShot.outputIndex.toString()}`,
     status: "consumed_by_init",
   };
   const daIdentity = {
@@ -292,8 +294,7 @@ const buildWatcherDeploymentAuthorityFixture = (
     contracts,
     referenceScripts,
     da: daIdentity,
-    proofEvidence: {
-      digest: releaseDigest,
+    artifacts: {
       blueprintHash,
     },
     steps: Object.fromEntries(
@@ -303,6 +304,7 @@ const buildWatcherDeploymentAuthorityFixture = (
           status:
             stepName === "prepareHubOracleNonce" ||
             stepName === "deployNodeRuntimeReferenceScripts" ||
+            stepName === "availabilityRegistration" ||
             stepName === "initProtocol"
               ? "complete"
               : "pending",
@@ -349,14 +351,15 @@ const buildWatcherDeploymentAuthorityFixture = (
   };
   const releaseBindings = {
     schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+    fundingProfileBundleDigest:
+      options.fundingProfileBundleDigest ?? "ab".repeat(32),
     ruleBundleCommitment,
     programCommitments,
     da: {
       mode: "authenticated_committee_v1",
       identityDigest: computeDeploymentManifestJsonDigest(daIdentity),
     },
-    releaseEvidence: {
-      digest: releaseDigest,
+    artifacts: {
       blueprintHash,
     },
   };
@@ -428,7 +431,8 @@ const buildWatcherDeploymentAuthorityFixture = (
     programCommitments,
     daMode: "authenticated_committee_v1",
     daIdentityDigest: releaseBindings.da.identityDigest,
-    releaseEvidenceDigest: releaseDigest,
+    fundingProfileBundleDigest: releaseBindings.fundingProfileBundleDigest,
+
     blueprintHash,
   };
   const trustRoots = [{ trustRootId, publicKeySpkiDerHex }];

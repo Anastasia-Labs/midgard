@@ -10,6 +10,7 @@ import { Effect, pipe } from "effect";
 import packageJson from "../package.json" with { type: "json" };
 import * as AddressFromSeed from "./commands/address-from-seed.js";
 import { auditBlocksImmutableProgram } from "./commands/audit-blocks-immutable.js";
+import * as AvailabilityChallengeCommand from "./commands/availability-challenge.js";
 import {
   assertUserCliWalletIsOperationallyIsolated,
   collectStringOption,
@@ -246,6 +247,84 @@ program.version(VERSION).description(
           ${"Midgard Node – Demo CLI Application"}
   ${ENV_VARS_GUIDE}`,
 );
+
+const availabilityChallenge = program
+  .command("availability-challenge")
+  .description(
+    "Operate and recover on-chain DA availability challenges with an isolated actor wallet",
+  );
+for (const action of [
+  "open",
+  "respond",
+  "settle",
+  "close",
+  "timeout",
+  "status",
+  "recover",
+] as const) {
+  availabilityChallenge
+    .command(action)
+    .description(
+      action === "timeout"
+        ? "Advance expired tranche settlement, unavailable timeout and locked descendant removal"
+        : `Run availability ${action}`,
+    )
+    .requiredOption(
+      "--manifest <path>",
+      "Verified finalized contract deployment manifest",
+    )
+    .requiredOption(
+      "--journal <path>",
+      "Absolute durable SQLite journal shared by this actor",
+    )
+    .requiredOption("--header-hash <hex>", "28-byte header hash")
+    .requiredOption(
+      "--wallet-seed-env <name>",
+      "Explicit environment variable containing the dedicated actor mnemonic",
+    )
+    .option(
+      "--collateral-out-ref <hash#index>",
+      "Reserved actor plain ADA collateral",
+    )
+    .option(
+      "--funding-out-ref <hash#index>",
+      "Exact challenger opening bond or removal fee funding",
+    )
+    .option(
+      "--payload-file <path>",
+      "Exact retained envelope bytes for a response",
+    )
+    .option(
+      "--tranche-index <index>",
+      "Respond on a specific active tranche",
+      (value: string) =>
+        parseNonNegativeIntegerOption(value, "--tranche-index"),
+    )
+    .option(
+      "--kupo-url <url>",
+      "Local canonical Kupo URL; defaults to L1_KUPO_KEY",
+    )
+    .option(
+      "--ogmios-url <url>",
+      "Local canonical Ogmios URL; defaults to L1_OGMIOS_KEY",
+    )
+    .action(
+      async (
+        options: AvailabilityChallengeCommand.AvailabilityCommandOptions,
+      ) => {
+        try {
+          writeJson(
+            await AvailabilityChallengeCommand.runAvailabilityChallengeCommand(
+              action,
+              options,
+            ),
+          );
+        } catch (error) {
+          failCli(`availability-challenge ${action}`, error);
+        }
+      },
+    );
+}
 
 program
   .command("l1-utxos")

@@ -5,9 +5,8 @@ authoritative contributor instruction file for this repo (principles, repo
 shape, tradeoff order, verification expectations). Read it before making
 changes.
 
-For Goal-program work, `docs/exec-plans/GOAL_SPEC.md` is the authoritative execution
-specification. `docs/exec-plans/GOAL_PROGRESS.md` is historical human context only; never parse
-it or treat it as a task, readiness, or completion authority.
+For Goal-program work, read `docs/exec-plans/GOAL_SPEC.md` for acceptance
+criteria. Current release readiness is tracked in `docs/public_testnet_readiness.md`.
 
 ## Agent skills
 
@@ -24,6 +23,5 @@ The five canonical triage roles use their default label strings
 
 ### Domain docs
 
-Single-context layout — one `CONTEXT.md` and `docs/adr/` at the repo root
-(created lazily by `/domain-modeling`; proceed silently while absent). See
-`docs/agents/domain.md`.
+Read `CONTEXT.md` for terminology and `docs/agents/domain.md` for the
+protocol and fault-proof decision directories.

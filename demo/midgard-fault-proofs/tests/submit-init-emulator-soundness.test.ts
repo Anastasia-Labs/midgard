@@ -107,21 +107,13 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
       // The scripts have to come from somewhere: reference inputs carry them.
       expect(measurement.referenceInputCount).toBeGreaterThanOrEqual(7);
     }
-    // And every validator the correction needs is itself publishable on L1 —
-    // every one but `stateQueueMint`, whose 16,835-byte body no longer fits
-    // the 16,384-byte envelope at all. That publication rides the documented
-    // oversized escape and its measurement stays deliberately unasserted
-    // until the validator shrinks (Anastasia-Labs/midgard#649). The roster
-    // grew to eight when the correction lock joined it.
+    // All nine correction references must publish with the reserved byte margin.
     const referenceScriptMeasurements = Object.entries(
       result.removalReferenceScriptMeasurements ?? {},
     );
-    expect(referenceScriptMeasurements).toHaveLength(8);
+    expect(referenceScriptMeasurements).toHaveLength(9);
     for (const [name, measurement] of referenceScriptMeasurements) {
-      if (name === "stateQueueMint") {
-        continue;
-      }
-      expect(measurement.l1ByteMargin).toBeGreaterThan(0);
+      expect(measurement.l1ByteMargin, name).toBeGreaterThanOrEqual(512);
     }
   }, 600_000);
 });

@@ -5,18 +5,199 @@ import {
   LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT,
   type LocalKupmiosRawBlockAtPoint,
 } from "@al-ft/midgard-fault-proofs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   assertWatcherLocalKupmiosNativeObservation,
   unsafeAssertNativeKupmiosAgreementForTest,
   type WatcherLocalKupmiosNativeObservation,
 } from "../../src/l1/local-kupmios-native-observation.js";
+import { createWatcherLocalKupmiosRawSource } from "../../src/l1/local-kupmios-raw-source.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import {
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncRollForward,
 } from "../../src/l1/native-chain-sync.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+
+const captureWatcherConfig = {
+  schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
+  mode: "acceptance",
+  targetNetwork: "Preprod",
+  l1: {
+    source: {
+      sourceMode: "local_node",
+      authorityNodeId: "watcher-node",
+      chainSync: {
+        kind: "cardano_node_socket",
+        socketPath: "/run/cardano/node.socket",
+        nodeConfigPath: "/etc/cardano/node-config.json",
+        genesisConfigPath: "/etc/cardano/shelley-genesis.json",
+        genesisIdentitySha256: "66".repeat(32),
+      },
+      queryServices: [
+        {
+          kind: "ogmios",
+          identity: "local-ogmios",
+          endpoint: "ws://127.0.0.1:1337",
+        },
+        {
+          kind: "kupo",
+          identity: "local-kupo",
+          endpoint: "http://127.0.0.1:1442",
+        },
+      ],
+    },
+    requestTimeoutMs: 10_000,
+    maxConcurrency: 4,
+    finality: {
+      depth: 30,
+      rollback: {
+        beforeFinality: "rewind",
+        afterFinality: "quarantine",
+        maxDepth: 30,
+      },
+    },
+  },
+  da: {
+    peers: [
+      {
+        identity: "da-peer-a",
+        multiaddr:
+          "/dns4/da.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
+      },
+    ],
+    requestTimeoutMs: 10_000,
+    maxConcurrency: 4,
+  },
+  storage: {
+    driver: "sqlite",
+    path: "/var/lib/midgard-watcher/watcher.sqlite",
+    rollbackAuthorityKeySource: {
+      kind: "environment",
+      variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+    },
+  },
+  proverWallet: {
+    keySource: { kind: "environment", variable: "MIDGARD_WATCHER_PROVER_KEY" },
+  },
+  deadlines: {
+    daFetchMs: 60_000,
+    daPublishMs: 60_000,
+    proofConstructMs: 300_000,
+    proofSubmitMs: 120_000,
+  },
+};
+
+let captureDeployment:
+  | ReturnType<typeof makeWatcherDeploymentAuthorityFixture>
+  | undefined;
+const rawSource = (
+  captureBounds?: Parameters<
+    typeof createWatcherLocalKupmiosRawSource
+  >[0]["captureBounds"],
+) => {
+  // Existing signed unit fixture only; these resource checks mint no native or
+  // historical observation and make no genuine deployment/release claim.
+  captureDeployment ??= makeWatcherDeploymentAuthorityFixture();
+  return createWatcherLocalKupmiosRawSource({
+    watcherConfig: captureWatcherConfig,
+    deploymentIdentity: captureDeployment.result,
+    ...(captureBounds === undefined ? {} : { captureBounds }),
+  });
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("concrete raw-source operational capture bounds", () => {
+  it("validates resource bounds without changing the configured default", () => {
+    expect(() => rawSource()).not.toThrow();
+    for (const bounds of [
+      { timeoutMs: 0 },
+      { timeoutMs: 10_001 },
+      { timeoutMs: 1.5 },
+      { blockScanLimit: 0 },
+      { blockScanLimit: 2_001 },
+      { maxResponseBytes: 0 },
+      { maxResponseBytes: 67_108_865 },
+    ])
+      expect(() => rawSource(bounds)).toThrow("operational bound");
+    expect(() =>
+      rawSource({
+        signal: Object.create(AbortSignal.prototype) as AbortSignal,
+      }),
+    ).toThrow("platform AbortSignal");
+  });
+
+  it("forwards the actual signal and response cap to concrete HTTP acquisition", async () => {
+    const fetcher = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetcher);
+    const source = rawSource({
+      maxResponseBytes: 1,
+      blockScanLimit: 1,
+      timeoutMs: 100,
+    });
+    await expect(source.readBoundary()).rejects.toThrow(
+      "exceeds the raw-source byte bound",
+    );
+    expect(fetcher).toHaveBeenCalledOnce();
+
+    const controller = new AbortController();
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let requestSignal: AbortSignal | null | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        requestSignal = init?.signal;
+        started();
+        return await new Promise<Response>((_resolve, reject) =>
+          requestSignal!.addEventListener(
+            "abort",
+            () => reject(requestSignal!.reason),
+            { once: true },
+          ),
+        );
+      }),
+    );
+    const cancelled = rawSource({ signal: controller.signal, timeoutMs: 500 });
+    const outcome = cancelled.readBoundary().catch((error: unknown) => error);
+    await ready;
+    controller.abort();
+    expect(await outcome).toMatchObject({ name: "AbortError" });
+    expect(requestSignal?.aborted).toBe(true);
+    await expect(cancelled.readBoundary()).rejects.toThrow("aborted");
+  });
+
+  it("uses the smaller supplied timeout and clears it after cancellation", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (_url: string, init?: RequestInit) =>
+          await new Promise<Response>((_resolve, reject) =>
+            init!.signal!.addEventListener(
+              "abort",
+              () => reject(init!.signal!.reason),
+              { once: true },
+            ),
+          ),
+      ),
+    );
+    const outcome = rawSource({ timeoutMs: 5 })
+      .readBoundary()
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(await outcome).toMatchObject({ name: "AbortError" });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
 
 const METADATA = Object.freeze({
   blockHash: "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",

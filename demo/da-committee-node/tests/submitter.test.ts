@@ -559,9 +559,27 @@ const availabilityParameters = SDK.daAvailabilityParameters({
   maxTimeoutFeeLovelace: 1_200_000n,
 });
 
+const availabilityChallengeValidator =
+  (): DaAttestationValidatorSet["availabilityChallenge"] => ({
+    ...validator("ee".repeat(28), "addr_test1availability"),
+    yields: Object.fromEntries(
+      ["bond", "open", "settle", "close", "timeout"].map((arm) => [
+        arm,
+        {
+          withdrawalScriptCBOR: "49480100002221200101",
+          withdrawalScript: {
+            type: "PlutusV3",
+            script: "49480100002221200101",
+          },
+          withdrawalScriptHash: "f1".repeat(28),
+        },
+      ]),
+    ) as SDK.AvailabilityChallengeYieldValidators,
+  });
+
 const contracts: DaAttestationValidatorSet = {
   hubOracle: validator("99".repeat(28), "addr_test1huboracle"),
-  availabilityChallenge: validator("ee".repeat(28), "addr_test1availability"),
+  availabilityChallenge: availabilityChallengeValidator(),
   daAttestation: validator("aa".repeat(28), "addr_test1daattestation"),
   daParamsGovernor: validator("bb".repeat(28), "addr_test1daparams"),
   stateQueue: stateQueueValidator("cc".repeat(28), "addr_test1statequeue"),

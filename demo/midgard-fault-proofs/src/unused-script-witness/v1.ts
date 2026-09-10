@@ -33,6 +33,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   createUnusedScriptWitnessActuator,
@@ -200,7 +201,7 @@ export const createManifestBoundUnusedScriptWitnessWorkflow = async (
       ],
     ),
   );
-  const hubOraclePolicyId = binding.deploymentInfo.hubOracleMint?.scriptHash;
+  const hubOraclePolicyId = binding.contractEntries.hubOracleMint?.scriptHash;
   if (hubOraclePolicyId === undefined)
     throw new Error("unusedScriptWitness manifest omitted hub oracle");
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
@@ -445,10 +446,15 @@ export const createUnusedScriptWitnessWorkflowRunnerSurface = ({
             headerHash: invocation.headerHash,
           }),
         });
-        return await executeManifestBoundUnusedScriptWitnessWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundUnusedScriptWitnessWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

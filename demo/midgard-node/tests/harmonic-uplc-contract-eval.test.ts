@@ -59,16 +59,36 @@ const mintingScriptContext = (
 const dataConst = (value: any) =>
   UPLCConst.data(dataFromCbor(fromHex(Data.to(value)) as Uint8Array));
 
-const expectScriptContextEvaluatesToCekConst = (
+const evaluateScriptContext = (
   ourScriptCborHex: string,
   scriptContextConstr: Constr<unknown>,
 ) => {
   const uplc = parseUPLC(fromHex(ourScriptCborHex), "cbor").body;
-  const dataEncodedScriptContext = dataConst(scriptContextConstr);
-  const applied_1 = new Application(uplc, dataEncodedScriptContext);
-  const result_1 = Machine.eval(applied_1);
+  const applied = new Application(uplc, dataConst(scriptContextConstr));
+  return Machine.eval(applied).result;
+};
 
-  expect(result_1.result instanceof CEKConst).toBe(true);
+/** The validator returned a value: the compiled `and { .. }` held. */
+const expectScriptContextAccepted = (
+  ourScriptCborHex: string,
+  scriptContextConstr: Constr<unknown>,
+) => {
+  expect(
+    evaluateScriptContext(ourScriptCborHex, scriptContextConstr),
+  ).toBeInstanceOf(CEKConst);
+};
+
+/**
+ * The validator errored: an Aiken `mint` handler that answers `False` compiles
+ * to an `error`, so a refusal is observable as a non-constant CEK result.
+ */
+const expectScriptContextRefused = (
+  ourScriptCborHex: string,
+  scriptContextConstr: Constr<unknown>,
+) => {
+  expect(
+    evaluateScriptContext(ourScriptCborHex, scriptContextConstr),
+  ).not.toBeInstanceOf(CEKConst);
 };
 
 const loadRealContracts = () =>
@@ -150,32 +170,106 @@ describe("@harmoniclabs/uplc evaluation against real Midgard contracts", () => {
       [input],
     );
 
-    expectScriptContextEvaluatesToCekConst(
+    expectScriptContextAccepted(
       contracts.hubOracle.mintingScriptCBOR,
       scriptContextConstr,
     );
   });
 
-  it("evaluates the real fraud-proof-catalogue minting policy with a ledger-shaped script context", async () => {
-    const contracts = await loadRealContracts();
-    const mint = new Map([
-      [
-        contracts.hubOracle.policyId,
-        new Map([[SDK.HUB_ORACLE_ASSET_NAME, 1n]]),
-      ],
-      [
-        contracts.fraudProofCatalogue.policyId,
-        new Map([[SDK.FRAUD_PROOF_CATALOGUE_ASSET_NAME, 1n]]),
-      ],
-    ]);
-    const scriptContextConstr = mintingScriptContext(
-      contracts.fraudProofCatalogue.policyId,
-      mint,
-    );
+  describe("real fraud-proof-catalogue minting policy", () => {
+    /**
+     * Genesis mint: exactly one catalogue NFT coupled one-to-one with the hub
+     * oracle NFT. Policy ids sort ascending here (hub < catalogue), which is
+     * the order a ledger Value carries.
+     */
+    const genesisMint = (contracts: {
+      readonly hubOracle: { readonly policyId: string };
+      readonly fraudProofCatalogue: { readonly policyId: string };
+    }): Map<string, Map<string, bigint>> =>
+      new Map([
+        [
+          contracts.hubOracle.policyId,
+          new Map([[SDK.HUB_ORACLE_ASSET_NAME, 1n]]),
+        ],
+        [
+          contracts.fraudProofCatalogue.policyId,
+          new Map([[SDK.FRAUD_PROOF_CATALOGUE_ASSET_NAME, 1n]]),
+        ],
+      ]);
 
-    expectScriptContextEvaluatesToCekConst(
-      contracts.fraudProofCatalogue.mintingScriptCBOR,
-      scriptContextConstr,
-    );
+    it("accepts the genesis mint coupled with a single hub-oracle NFT", async () => {
+      const contracts = await loadRealContracts();
+
+      expectScriptContextAccepted(
+        contracts.fraudProofCatalogue.mintingScriptCBOR,
+        mintingScriptContext(
+          contracts.fraudProofCatalogue.policyId,
+          genesisMint(contracts),
+        ),
+      );
+    });
+
+    /**
+     * Each case starts from the accepted genesis mint above and breaks exactly
+     * one requirement, so the refusal is attributable to that requirement and
+     * an always-succeeding policy cannot satisfy the group.
+     */
+    const refusals: readonly {
+      readonly name: string;
+      readonly mutate: (
+        mint: Map<string, Map<string, bigint>>,
+        contracts: {
+          readonly hubOracle: { readonly policyId: string };
+          readonly fraudProofCatalogue: { readonly policyId: string };
+        },
+      ) => void;
+    }[] = [
+      {
+        name: "a standalone post-genesis re-mint with no hub-oracle NFT",
+        mutate: (mint, contracts) => {
+          mint.delete(contracts.hubOracle.policyId);
+        },
+      },
+      {
+        name: "a hub-oracle quantity other than one",
+        mutate: (mint, contracts) => {
+          mint.set(
+            contracts.hubOracle.policyId,
+            new Map([[SDK.HUB_ORACLE_ASSET_NAME, 2n]]),
+          );
+        },
+      },
+      {
+        name: "a duplicated catalogue token",
+        mutate: (mint, contracts) => {
+          mint.set(
+            contracts.fraudProofCatalogue.policyId,
+            new Map([[SDK.FRAUD_PROOF_CATALOGUE_ASSET_NAME, 2n]]),
+          );
+        },
+      },
+      {
+        name: "a catalogue asset name that is not the catalogue NFT",
+        mutate: (mint, contracts) => {
+          mint.set(
+            contracts.fraudProofCatalogue.policyId,
+            new Map([
+              [`${SDK.FRAUD_PROOF_CATALOGUE_ASSET_NAME.slice(0, -2)}ff`, 1n],
+            ]),
+          );
+        },
+      },
+    ];
+
+    it.each(refusals)("refuses $name", async ({ mutate }) => {
+      const contracts = await loadRealContracts();
+      const mint = genesisMint(contracts);
+      mutate(mint, contracts);
+
+      expectScriptContextRefused(
+        contracts.fraudProofCatalogue.mintingScriptCBOR,
+        mintingScriptContext(contracts.fraudProofCatalogue.policyId, mint),
+      );
+    });
   });
 });

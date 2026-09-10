@@ -1,9 +1,12 @@
 # Native-script-decoding fault thread — current design
 
-Current status: implemented, registered, and emulator-proven. The canonical
+The implemented and registered canonical
 category is `nativeScriptDecoding` (`0000000d`). The family proves both
-wrongful acceptance of an undecodable native script and wrongful rejection of
-a decodable native script.
+wrongful acceptance of an undecodable resolved reference native script and
+wrongful forced rejection under `ResolvedReferenceScriptMalformed`,
+`ResolvedReferenceScriptNodeLimit`, or `ResolvedReferenceScriptDepthLimit`.
+Witness, own-output, and execution-source script decoding have separate
+catalogue families.
 
 ## 1. Security statement
 
@@ -51,7 +54,7 @@ and descriptor forward. Every step supports explicit prover cancellation.
 
 ## 4. Registration and deployment
 
-`nativeScriptDecoding` is part of the canonical append-only category order. Generic
+`nativeScriptDecoding` is part of the canonical catalogue with explicit category IDs. Generic
 Init, deployment inspection, node/core manifest identity, watcher proof-thread
 authority, and all physical step validators are wired as mandatory
 authenticated reference scripts. Catalogue changes require a fresh deployment;
@@ -63,9 +66,10 @@ The scan consumes authenticated field openings and the
 `reference_script_item_commitment` for the selected subject. Direct and
 published carriage are transport choices only; neither changes the committed
 hash or lets the prover substitute bytes. Item ordinals are checked against the
-canonical field count and fixed item grammar. Out-of-domain accusations fail
-through the dedicated bind/refusal path rather than being converted into a
-decoding conviction.
+canonical field count and fixed item grammar. A prover's out-of-domain accepted-invalid accusation refuses. A forced
+operator rejection carrying an impossible source kind or input ordinal instead
+contradicts that rejection directly: the authenticated direction-B bind path
+closes to step 04 without claiming to have decoded a nonexistent script.
 
 ## 6. Execution and proof-fit contract
 
@@ -93,13 +97,14 @@ Verification must retain controls for:
 - terminal thread burn/permanent proof mint coupling; and
 - faulty-block removal after conviction.
 
-The current Aiken selectors and four emulator suites cover both directions,
+The Aiken selectors and emulator suites cover both directions,
 both polarities, negative/resume behavior, permanent mint, and removal. The
 compiled-size envelope suite protects the physical reference-script topology.
 
-## 8. Remaining operational work
+## 8. Acceptance
 
-- expose family-specific CLI/workflow commands;
-- mount watcher detection and proving;
-- publish live/preprod evidence;
-- keep the execution ledgers and applied-script identity current.
+The manifest-bound runner and watcher installation exist. Keep the current
+execution ledgers and applied-script identity paired; exercise installed recovery
+and both claim directions on the release build. Live/preprod acceptance and the
+complete maximum-shape corpus remain governed by the
+[remaining acceptance plan](execution-plan.md).

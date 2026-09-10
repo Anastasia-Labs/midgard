@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   FABRICATED_WITHDRAWAL_VIOLATION_ID,
@@ -27,6 +28,7 @@ import {
 } from "../prepare-fabricated-withdrawal.js";
 import { requireSingletonUtxo } from "../runtime.js";
 import type { CanonicalViolationDetection } from "./classification.js";
+import { governedUserEventAddress } from "./user-event-address.js";
 
 export const FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY =
   "midgard-production-fabricated-withdrawal-evidence-authority-v1" as const;
@@ -183,9 +185,9 @@ const discoverWitness = async ({
   const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
   const nonce = await Effect.runPromise(withdrawalEventNonce(withdrawalId));
   const eventUnit = toUnit(hub.withdrawal, nonce);
-  const withdrawalAddress = credentialToAddress(
+  const withdrawalAddress = governedUserEventAddress(
     network,
-    scriptHashToCredential(hub.withdrawal),
+    hub.withdrawal_addr,
   );
   const eventUtxo = exactOne(
     await lucid.utxosAtWithUnit(withdrawalAddress, eventUnit),
@@ -200,7 +202,11 @@ const discoverWitness = async ({
       observation,
       withdrawalEventPolicyId: hub.withdrawal,
       observedEventAssetName: nonce,
-      eventDatumCbor: eventUtxo.datum,
+      // The provider retains the ledger's encoding. Proof commitments use
+      // serialise_data bytes; preserve map order while converting that form.
+      eventDatumCbor: aikenSerialisedPlutusDataCborPreservingMapOrder(
+        eventUtxo.datum,
+      ),
     },
     l1Evidence: { kind: "present_event", eventOutRef: outRef(eventUtxo) },
   };
@@ -410,7 +416,7 @@ export const createFabricatedWithdrawalEvidenceAuthority = ({
           withdrawalEventNonce(withdrawalId),
         );
         const eventUtxos = await lucid.utxosAtWithUnit(
-          credentialToAddress(network, scriptHashToCredential(hub.withdrawal)),
+          governedUserEventAddress(network, hub.withdrawal_addr),
           toUnit(hub.withdrawal, nonce),
         );
         const event = exactOne(
@@ -420,7 +426,8 @@ export const createFabricatedWithdrawalEvidenceAuthority = ({
         if (
           event.datum == null ||
           outRef(event) !== artifact.l1Evidence.eventOutRef ||
-          event.datum !== artifact.authenticContent.eventDatumCbor
+          aikenSerialisedPlutusDataCborPreservingMapOrder(event.datum) !==
+            artifact.authenticContent.eventDatumCbor
         ) {
           throw new Error(
             "fabricated-withdrawal event artifact changed its authenticated L1 outref or datum",

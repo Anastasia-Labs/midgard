@@ -102,6 +102,7 @@ import {
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
   setupFraudulentBlock,
@@ -369,10 +370,23 @@ const progress = (message: string) => {
     console.info(`[mint-declared-lifecycle] ${message}`);
 };
 
+const measuredFit = createMeasuredFitRecorder(
+  "mint-declared-asset-limit",
+  "lifecycle",
+  "62 policies with 1000-asset first policy, exact 32768-byte certified field and 192-unit fold; both directions",
+);
+
 const printLedger = (
   label: string,
   rows: readonly (readonly [string, Measurement])[],
 ) => {
+  rows.forEach(([name, measurement], index) =>
+    measuredFit.record(
+      `${label}/${index}-${name}`,
+      measurement,
+      measurement.executionMemory === 0n ? "publication" : "lifecycle",
+    ),
+  );
   if (process.env.MIDGARD_PRINT_FIT === "1")
     console.info(
       `[${label}] ${JSON.stringify(rows, (_key, value: unknown) =>

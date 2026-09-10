@@ -168,6 +168,5 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
     expectTypeOf<
       keyof InputSetUniquenessForcedInput
     >().toEqualTypeOf<"block">();
-    expect(Object.keys({ block: null })).toStrictEqual(["block"]);
   });
 });

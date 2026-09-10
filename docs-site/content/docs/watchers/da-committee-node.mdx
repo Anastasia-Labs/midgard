@@ -1,158 +1,122 @@
 ---
 title: "DA Committee Node"
-description: "Architecture of the working Midgard DA committee node, a threshold committee that stores, verifies, signs, and serves block payloads over libp2p."
+description: "Committee retention, availability attestations, and the dedicated public retained-DA reader."
 ---
 
-The DA committee node is Midgard's libp2p service for storing, verifying, signing,
-and serving block payloads. It is what makes a committed block's data retrievable,
-so that a watcher can check the block and, if it is invalid, prove it. Its npm
-package and bin are named `midgard-watcher`; the planned independent watcher is a
-separate [design target](/docs/watchers/concept).
+`demo/da-committee-node` stores and verifies canonical block payloads, signs
+availability commitments, and exchanges payloads and attestations over libp2p.
+The independent [watcher](/docs/watchers/concept) retrieves this evidence and
+checks L2 execution against authenticated L1 commitments.
 
-<Callout type="info" title="Status">
-  **Implementation:** running today. **On-chain enforcement:** payload hash and
-  threshold signature verification only. **Retention and retrieval:**
-  obligations of the `threshold-mirror-v1` profile, enforced off-chain.
-</Callout>
+The `threshold-mirror-v1` profile requires public retention for at least 14 days.
+A threshold signature is a committee commitment; it does not by itself prove
+that bytes remain publicly retrievable. Deployment and end-to-end acceptance
+remain subject to [Project Status](/docs/getting-started/status).
 
-## Purpose
+The current consensus profile has `MIDGARD_RELEASE_EVIDENCE_DIGEST = null`, so
+both committee and public-reader startup fail their release-readiness assertion.
+The commands below describe the required configuration after release evidence
+is accepted and compiled into the profile.
 
-This node defines the first public Midgard data-availability mechanism for deployments that cannot
-use Cardano Leios blobs: a **threshold committee** of DA nodes that independently store, verify,
-sign, broadcast, and publicly serve Midgard block payloads. The committee profile is named
-`threshold-mirror-v1`.
+## Contract boundary
 
-The on-chain `da_attestation.ak` design provides only the attestation **control plane**, it records
-that a threshold of configured committee keys attested to a Midgard block header. This node supplies
-the missing **data plane**: where full block data is published, how committee nodes decide whether to
-sign, how signatures are broadcast, and how watchers retrieve the bytes without trusting
-operator-local APIs.
+The DA params governor authenticates a sorted, unique packed committee of
+32-byte Ed25519 verification keys, its hash, the threshold, and governance
+owners. An attestation certificate carries the header hash, an
+`availability_commitment`, the pinned committee hash and threshold, a signer
+bitmap and count, and a rescue beneficiary.
 
-## Current contract boundary
-
-As implemented in the repository, the on-chain layer verifies only the control plane:
-
-- The DA params governor owns a `MIDGARD_DA_PARAMS` NFT whose datum holds `committee`,
-  `committee_signers_hash`, `da_threshold`, governance `owners`, and `update_threshold`.
-- `committee` is the sorted, unique, packed byte string of 32-byte Ed25519 verification keys, and
-  `committee_signers_hash` is `blake2b_256(committee)`. `da_threshold` must be greater than zero and
-  no larger than the committee length.
-- Per block, the DA attestation policy mints a `DAAT || header_hash` token into an attestation UTxO.
-  Its datum carries `header_hash`, `da_threshold`, `committee_signers_hash`, a 256-bit MSB-first
-  signer bitmap, and `attestation_count`.
-- `AddSignatures` accepts packed `1-byte signer index || 64-byte Ed25519 signature` chunks with
-  strictly ascending indexes, each verified against the key at that index.
-- `ApplyToStateQueue` requires `attestation_count >= da_threshold`, burns the `DAAT || header_hash`
-  token, and rewrites the state-queue node from empty `da_attestation` to the DA attestation policy
-  id.
-
-<Callout type="info" title="What the contracts do not check">
-  The contracts do not verify payload bytes, libp2p retrieval readiness,
-  retention windows, deployment manifests, peer broadcasts, or the 14-day
-  availability promise. Those are obligations of the `threshold-mirror-v1`
-  profile defined off-chain by this node. After attachment, the live state-queue
-  node carries only the DA attestation policy id marker; detailed signer
-  evidence lives in the historical attestation transactions and the attestation
-  UTxO while it exists.
-</Callout>
-
-The current node also has a demo/default path: protocol initialization derives a one-key committee
-from the operator payment key with threshold `1`, and `attest-state-queue-once` creates, signs with
-signer index `0`, and applies the attestation itself. The public committee architecture generalizes
-or wraps that operator-local path for production deployments.
-
-## Security claim
-
-For a deployment using `threshold-mirror-v1` DA:
-
-- A block is DA-acceptable only if a threshold of configured DA committee nodes have independently
-  verified, stored, and made the canonical block payload retrievable over the DA libp2p network for
-  at least **14 days**. The 14 days is an obligation of the `threshold-mirror-v1` profile, not a
-  condition any contract checks.
-- A committee signature over `header_hash` means: "I have the public payload needed to reconstruct
-  this exact state-queue header and I will keep it available for 14 days."
-- Watchers retrieve the payload from committee peers over libp2p, reconstruct the state-queue header,
-  compare it to Cardano L1, and then run normal Midgard block verification.
-- Operator databases, MPF stores, and admin endpoints are not security-critical DA sources.
-
-This is **weaker than Leios** because availability is backed by a configured committee, not Cardano
-L1 consensus. It is still a concrete public mechanism: under the `threshold-mirror-v1` profile a
-committee member must not sign until it can reconstruct the on-chain state commitment from locally
-stored payload bytes retrievable over libp2p. A member that signs earlier violates the profile; the
-contracts do not stop it. See [DA layer spec](/docs/watchers/da-layer-spec) for the protocol-level
-DA design.
-
-## Attestation semantics
-
-The on-chain `da_attestation.ak` signing message is exactly the UTF-8 bytes of the prefix
-concatenated with the 28-byte `header_hash`:
+`AddSignatures` verifies packed `signer_index_u8 || signature_64_bytes`
+witnesses with strictly ascending indexes. The signed message is:
 
 ```text
-MidgardDAAttestationV1 || header_hash
+blake2b256(
+  UTF8("MidgardDaAvailabilityAttestationV1")
+  ++ serialise_data(availability_commitment)
+)
 ```
 
-The public identifier for DA retrieval is the state-queue `header_hash`. Committee nodes and watchers
-validate payloads by deterministically reconstructing the full header from the payload and comparing
-it to the header observed on Cardano L1. The Midgard **producer payload** is the source data bundle
-that makes block roots independently checkable; it must **not** be required to include
-`transition_proof_data`. When transition trace roots are enabled, committee nodes may derive
-trace/proof artifacts from the producer payload and propagate an enriched **committee DA payload**;
-receivers must recompute or verify the derived data before signing. The chain still verifies only the
-signature over `MidgardDAAttestationV1 || header_hash`.
+The commitment binds the deployment identity, header hash, payload length,
+response geometry, tranche descriptors, and bond owner. Use
+`daAvailabilityAttestationMessage` from `@al-ft/midgard-sdk`; the older
+`encodeDaAttestationPreimage(headerHash)` transport helper is not this contract's
+signing message.
 
-## Components
+`ApplyToStateQueue` checks quorum against the current governed committee and
+threshold, burns the attestation token, and cross-binds the availability policy's
+`MintBondFromAttestation` action. Queue availability is a typed lifecycle:
+`Unattested`, `Attested`, `Challenged`, or `Published`, with the corresponding
+bond/challenge identifiers or terminal commitment. It is not a policy-id marker.
+Committee rotation invalidates a stale certificate; the rescue branch returns
+its value to the certificate's pinned rescue beneficiary.
 
-<Mermaid
-  chart={`
-flowchart LR
-  OP["Operator node"] --> P2P["DA libp2p swarm"]
-  P2P --> VAL["Payload validator"]
-  VAL --> BS["Canonical block store"]
-  VAL --> L1["L1 header resolver"]
-  BS --> P2P
-  L1 --> SIGN["Attestation signer"]
-  SIGN --> BC["Signature broadcaster"]
-  BC --> AGG["Attestation coordinator"]
-  BC --> PEER["Peer DA nodes"]
-  AGG --> SQ["Cardano state queue"]
-  P2P --> W["Watcher / challenger"]
-  SQ --> W
-`}
-/>
+The contracts bind attestations and availability state transitions. They do not
+run libp2p retrieval or inspect the committee's database. See the
+[DA validators](/docs/onchain/da-validators) and the SDK's
+`availability-challenge.ts` for the current schemas.
 
-- **DA libp2p transport**: accepts and replicates canonical block payloads from operators or peer
-  committee nodes. The DA data plane is libp2p-only; HTTP is not part of the DA transport, not even
-  as fallback. It authenticates peers by manifest peer id, rejects oversized payloads before
-  validation, stores an immutable staging record before signing, and rejects conflicting bytes for a
-  `header_hash` it has already signed.
-- **Payload validator**: strict-decodes canonical CBOR, verifies `deployment_fingerprint`,
-  `network_id`, `protocol_version`, and `schema_version`, recomputes all roots and counts,
-  reconstructs the exact `Header`, computes `header_hash = blake2b_224(serialise_data(header))`,
-  resolves the matching state-queue node on L1, and confirms 14-day retention is possible. It may
-  store before the L1 header exists but must not sign until the header is observed and matched.
-- **Canonical block store**: immutable payload bytes and metadata keyed by
-  `{deployment_fingerprint}:{header_hash}`, with keys such as `payload:...`, `metadata:...`,
-  `proof_bundle:...`, `trace_step:...:{step_index}`, `event_to_step:...:{event_key}`, and
-  `attestations:...`. A retention sweeper refuses deletion before the 14-day promise plus a safety
-  margin.
-- **L1 header resolver**: follows Cardano L1 enough to confirm the target header exists in the
-  state queue, using the same manifest fields as watchers.
-- **Attestation signer**: owns one DA committee signing key and signs only after durable storage,
-  libp2p retrieval readiness, and header reconstruction succeed. Its output witness is
-  `signer_index_u8 || ed25519_sign("MidgardDAAttestationV1" || header_hash)`, 65 bytes, sorted by
-  strictly increasing signer index within one `AddSignatures` redeemer.
-- **Signature broadcaster**: broadcasts the witness to the coordinator, peer committee nodes, and
-  the local `attestations-by-header` service, with backoff and dedup, never before the local payload
-  is durably stored and retrievable.
-- **Attestation coordinator**: collects committee signatures and submits `Init`, `AddSignatures`,
-  and `ApplyToStateQueue`. It is **not** trusted for data availability; it only transports signatures
-  and submits L1 transactions.
+## Publish, retain, and retrieve
 
-## Libp2p protocol API
+The committee validates the payload's deployment identity, canonical encoding,
+roots and counts, reconstructs its header, and matches that header to L1 before
+signing. Storage and retrieval readiness must precede signing. The exact
+retained envelope and payload schemas live in the SDK DA codecs; derived trace
+and execution material must be checked against the commitments they support.
 
-Discovery is deployment-manifest-bound, so any watcher can start from a manifest plus L1 state and
-fetch payloads without operator assistance. Required GossipSub topics and request-response protocols
-are deployment-scoped:
+The committee runtime wires libp2p transport, payload validation and storage,
+peer signature coordination, the on-chain coordinator, and submitter
+reconciliation. The process API provides health/readiness and manifest surfaces;
+DA protocol bytes travel over libp2p only.
+
+The runtime runs retention checks and exposes readiness/deadline evidence.
+Currently `src/index.ts` supplies no authenticated active-challenge authority to
+the retention decision, so it holds every payload. Reaching 14 days does not
+authorize pruning. The source labels that missing deployed authority Q58.
+
+## Dedicated public reader
+
+Public retrieval runs in the separate `midgard-public-retained-da` process.
+It serves TCP/Noise/Yamux requests from a PostgreSQL reader role. It does not
+load the committee signer, submitter, or mutable store configuration.
+
+After installing the demo workspace, build the package from the repository root:
+
+```bash
+pnpm --dir demo --filter da-committee-node... build
+```
+
+Configure the dedicated reader's service environment with all of:
+
+| Variable                                   | Required value                                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `DA_PUBLIC_RETAINED_DA_ENABLED`            | `true`                                                                                                 |
+| `MIDGARD_DEPLOYMENT_MANIFEST_PATH`         | Runtime manifest with `runtime_topology.target = "watcher"` and `public_retained_da`.                  |
+| `MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH`    | Matching finalized contract deployment manifest with the exact V1 consensus profile.                   |
+| `DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE` | Dedicated `seed:`, `hex:`, or `file:` libp2p key source matching the manifest's public reader peer id. |
+| `DA_PUBLIC_RETAINED_DA_DATABASE_URL`       | PostgreSQL connection using the dedicated reader credentials.                                          |
+| `DA_PUBLIC_RETAINED_DA_DATABASE_ROLE`      | Exact PostgreSQL reader role name.                                                                     |
+
+The database role must have `SELECT` and no DML privileges on
+`watcher_da_payloads` and `watcher_state_queue_headers`; startup verifies role and
+privilege constraints. File stores are unsupported. Do not pass
+`WATCHER_DB_PATH` or `WATCHER_DATABASE_URL` to this process: the configuration
+loader rejects either variable. Keep its environment separate from committee
+credentials.
+
+With that environment supplied by the service manager, start from the repository root:
+
+```bash
+node demo/da-committee-node/dist/public-retained-da.js
+```
+
+The executable accepts no arguments other than `--help`. Matching manifests,
+release-ready consensus configuration, database permissions, peer identity, and
+listener startup are prerequisites; a listening process alone is not retrieval
+acceptance evidence.
+
+## Protocol routes
+
+Topics and request-response routes are deployment-scoped:
 
 ```text
 /midgard/{deployment_fingerprint}/da/payload-announcements/1
@@ -167,81 +131,13 @@ are deployment-scoped:
 /midgard/{deployment_fingerprint}/da/attestations-by-header/1
 ```
 
-`payload-submit` is the producer-to-committee write path; `payload-by-header` returns canonical CBOR
-or a chunk manifest for large payloads; `payload-chunk` returns byte ranges. Metadata, proof bundle,
-and attestation payloads use canonical CBOR, not JSON. The transport constants and size limits are
-exported from `@al-ft/midgard-core/da-transport`; the exact CBOR wire schemas and limits live with
-that source module and its tests. For the decisions that the completed migration froze, see
-[DA transport migration](/docs/watchers/da-transport-migration).
+These describe the committee transport surface, not permission to expose its
+write routes on the public reader. The reader enables only its manifest's
+allowed retrieval protocols, with per-peer and global request limits. Exact
+schemas, route constructors, and bounds live in
+`@al-ft/midgard-core/da-transport`. See [DA transport rules](/docs/watchers/da-transport).
 
-## Publish and attest workflow
-
-<Mermaid chart={`
-sequenceDiagram
-  participant O as Operator
-  participant D as DA Node
-  participant C as Coordinator
-  participant L as Cardano L1
-  participant W as Watcher
-
-O->>D: Open libp2p stream with producer payload
-D->>D: Decode, reconstruct roots and header
-D->>D: Derive trace/proof data if required
-D->>D: Store immutable payload
-O->>L: Append state-queue header
-D->>L: Observe state-queue header
-D->>D: Compare reconstructed header to L1 header
-D->>C: Gossip OnChainDaSignatureWitness
-C->>L: AddSignatures until threshold
-C->>L: ApplyToStateQueue
-W->>L: Observe attested state-queue header
-W->>D: libp2p request payload by header hash
-W->>W: Reconstruct header and verify block
-`} />
-
-A node must never sign data it has not stored, reconstructed, matched to L1, and made retrievable
-over libp2p.
-
-## Committee node state machine
-
-```text
-received
-  -> decoded
-  -> reconstructed_header
-  -> stored
-  -> waiting_for_l1_header
-  -> l1_header_matched
-  -> libp2p_retrievable
-  -> signed
-  -> gossiped
-  -> expired
-```
-
-Failure states include `rejected_malformed`, `rejected_wrong_deployment`, `rejected_header_mismatch`,
-`rejected_root_mismatch`, `rejected_missing_proof_data`, `rejected_retention_unavailable`,
-`conflicting_payload`, `storage_unavailable`, `signer_unavailable`, and `broadcast_failed`. Every
-transition is durable and auditable, and the node must recover after restart without signing a
-payload whose storage and retrieval status are unknown.
-
-## Watcher retrieval policy
-
-For every queued block a watcher observes the state-queue header on L1, confirms the node's
-`da_attestation` marker equals the expected policy id, loads committee peer ids/multiaddrs from the
-signed manifest, fetches metadata and payload by `header_hash`, reconstructs and compares the header,
-and caches all proof-critical preimages.
-
-<Callout type="error" title="Missing DA near maturity is an emergency">
-  If the state queue is DA-attested but the watcher cannot retrieve a valid
-  payload from committee peers before the warning deadline, the block decision
-  is `pending_da` and must escalate. Near maturity, missing DA can prevent
-  fraud-proof construction entirely.
-</Callout>
-
-## Open protocol decisions
-
-Decisions still to freeze include the exact producer and committee CBOR shapes,
-deterministic header reconstruction rules with trace commitments, the slot/deadline expression for
-the 14-day promise, coordinator peer discovery, whether committee members are bonded/slashable, and
-whether payload streams must be authenticated. For the transport-level answers already frozen, see
-[DA transport migration](/docs/watchers/da-transport-migration), which is now historical design
-context rather than pending work.
+A watcher must authenticate the L1 header and its availability state, retrieve
+matching retained bytes, and reconstruct the committed roots. Missing or
+inconsistent DA remains non-actionable evidence and can prevent a supported
+proof before maturity; it must never be treated as a successfully verified block.

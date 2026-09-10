@@ -1,7 +1,8 @@
 # Transaction Finalization
 
-For transaction finalization in this repository, always use local UPLC
-evaluation.
+For Cardano L1 transaction finalization with Lucid Evolution, always use local
+UPLC evaluation. These options belong to the L1 builder; Lucid Midgard L2
+completion has its own API and validation semantics.
 
 - Use `.complete({ localUPLCEval: true })`.
 - Never set `.complete({ localUPLCEval: false })`.

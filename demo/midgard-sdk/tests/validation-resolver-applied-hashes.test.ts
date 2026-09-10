@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   applyParamsToScript,
-  mintingPolicyToId,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -13,7 +12,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildFaultProofContracts,
   CEK_PROGRAM_MATERIAL_SPEND_TITLE,
-  FAULT_PROOF_SHARED_TITLES,
   parseFaultProofBlueprint,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "../src/index.js";
@@ -31,16 +29,8 @@ const currentTreeBlueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
   resolve(repositoryRoot, "onchain/aiken/plutus.json");
 
-const fieldPreimageCertificatePolicyId = (
-  blueprint: ReturnType<typeof parseFaultProofBlueprint>,
-): string =>
-  mintingPolicyToId({
-    type: "PlutusV3",
-    script: blueprint.validators.find(
-      (entry) =>
-        entry.title === FAULT_PROOF_SHARED_TITLES.fieldPreimageCertificateMint,
-    )!.compiledCode,
-  });
+const referenceScriptAuthPolicyId = "dd".repeat(28);
+
 describe("validation resolver production-builder parameter application", () => {
   it("applies immutable CEK material identity as the exact third parameter of the CEK execution-selection semantic resolver", async () => {
     const currentTreeBlueprint = parseFaultProofBlueprint(
@@ -67,73 +57,105 @@ describe("validation resolver production-builder parameter application", () => {
     ) {
       throw new Error("CEK semantic or program-material validator is missing");
     }
-    // The CEK direct resolver (five parameters since #592) was split into a
-    // prepare validator plus four semantic resolvers. Complete program
-    // material is admitted only at the execution-selection boundary, so the
-    // material identity is that resolver's third parameter; the field-access
-    // door's certificate policy belongs to the context-step resolver alone.
-    expect(selectionValidator.parameters).toHaveLength(5);
-    expect(contextStepValidator.parameters).toHaveLength(3);
+    // The one claim this file exists to hold, stated by hand because it is a
+    // reviewed property of the deployment and not something a table can
+    // derive: complete CEK program material is admitted only at the
+    // execution-selection boundary, so the material identity is that
+    // resolver's THIRD parameter (#592/#605). Context execution instead
+    // delegates to its control validator, whose identity is the context-step
+    // resolver's FIRST parameter.
+    const selectionTitles = (selectionValidator.parameters ?? []).map(
+      ({ title }) => title,
+    );
+    const contextStepTitles = (contextStepValidator.parameters ?? []).map(
+      ({ title }) => title,
+    );
+    expect(selectionTitles[2]).toBe("cek_program_material_script_hash");
+    expect(contextStepTitles[0]).toBe("cek_context_control_script_hash");
+
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         blueprint: currentTreeBlueprint,
         network: "Preprod",
         hubOraclePolicyId: "bb".repeat(28),
         fraudProofCataloguePolicyId: "cc".repeat(28),
-        referenceScriptAuthPolicyId: "dd".repeat(28),
+        referenceScriptAuthPolicyId: referenceScriptAuthPolicyId,
       }),
     );
+    const dispute = contracts.validationTraceDispute;
     const materialHash = validatorToScriptHash({
       type: "PlutusV3",
       script: materialValidator.compiledCode,
     });
-    expect(
-      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptHash,
-    ).toBe(materialHash);
-    const awardHash = contracts.validationTraceDispute.award.spendingScriptHash;
-    const selectionSemantic =
-      contracts.validationTraceDispute.semanticResolvers[68];
-    const contextStepSemantic =
-      contracts.validationTraceDispute.semanticResolvers[69];
-    expect(selectionSemantic.spendingScriptHash).toBe(
+    expect(dispute.cekProgramMaterial.spendingScriptHash).toBe(materialHash);
+
+    // The value each declared parameter name must be bound to. The blueprint's
+    // declared order is the only authority on *positions*, so a builder that
+    // passes the same values in a different order fails, and a parameter this
+    // deployment has no reviewed value for fails closed rather than defaulting.
+    const bindings: Readonly<Record<string, string>> = {
+      award_script_hash: dispute.award.spendingScriptHash,
+      computation_thread_policy_id: contracts.computationThread.policyId,
+      cek_program_material_script_hash: materialHash,
+      reference_script_auth_policy_id: referenceScriptAuthPolicyId,
+      cek_material_traversal_script_hash:
+        dispute.cekMaterialTraversal.spendingScriptHash,
+      cek_context_control_script_hash:
+        dispute.cekContextStages.control.spendingScriptHash,
+    };
+    const applied = (
+      validator: { readonly compiledCode: string },
+      titles: readonly string[],
+    ): string =>
       validatorToScriptHash({
         type: "PlutusV3",
-        script: applyParamsToScript(selectionValidator.compiledCode, [
-          awardHash,
-          contracts.computationThread.policyId,
-          materialHash,
-          "dd".repeat(28),
-          contracts.validationTraceDispute.cekMaterialTraversal
-            .spendingScriptHash,
-        ]),
-      }),
+        script: applyParamsToScript(
+          validator.compiledCode,
+          titles.map((title) => {
+            const value = bindings[title];
+            if (value === undefined) {
+              throw new Error(`Unreviewed resolver parameter ${title}`);
+            }
+            return value;
+          }),
+        ),
+      });
+
+    // Resolver positions are derived from the production title table rather
+    // than hard-coded, so appending a semantic resolver cannot silently move
+    // this check onto a different validator.
+    const semanticNames = Object.keys(
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
+    );
+    const selectionSemantic =
+      dispute.semanticResolvers[semanticNames.indexOf("cekExecutionSelection")];
+    const contextStepSemantic =
+      dispute.semanticResolvers[semanticNames.indexOf("cekContextStep")];
+    if (selectionSemantic === undefined || contextStepSemantic === undefined) {
+      throw new Error("CEK semantic resolvers are not deployed");
+    }
+    expect(selectionSemantic.spendingScriptHash).toBe(
+      applied(selectionValidator, selectionTitles),
     );
     expect(contextStepSemantic.spendingScriptHash).toBe(
-      validatorToScriptHash({
-        type: "PlutusV3",
-        script: applyParamsToScript(contextStepValidator.compiledCode, [
-          awardHash,
-          contracts.computationThread.policyId,
-          fieldPreimageCertificatePolicyId(currentTreeBlueprint),
-        ]),
-      }),
+      applied(contextStepValidator, contextStepTitles),
     );
-    // Every shorter application is an always-succeeds script under Plutus V3
-    // (#605): the deployment must be neither.
-    for (const [validator, deployed] of [
-      [selectionValidator, selectionSemantic],
-      [contextStepValidator, contextStepSemantic],
+
+    // #605: under Plutus V3 an under-applied script is an always-succeeds
+    // script -- it would let any prover collect the award. Every strict prefix
+    // of the declared parameter list must therefore differ from what is
+    // deployed, which is exactly the fault the stale four-vs-five parameter
+    // claim let through.
+    for (const [validator, titles, deployed] of [
+      [selectionValidator, selectionTitles, selectionSemantic],
+      [contextStepValidator, contextStepTitles, contextStepSemantic],
     ] as const) {
-      for (const shortParams of [
-        [awardHash],
-        [awardHash, contracts.computationThread.policyId],
-      ]) {
-        expect(deployed.spendingScriptHash).not.toBe(
-          validatorToScriptHash({
-            type: "PlutusV3",
-            script: applyParamsToScript(validator.compiledCode, shortParams),
-          }),
-        );
+      expect(titles.length).toBeGreaterThan(1);
+      for (let count = 0; count < titles.length; count += 1) {
+        expect(
+          deployed.spendingScriptHash,
+          `under-applied with ${count.toString()} of ${titles.length.toString()} parameters`,
+        ).not.toBe(applied(validator, titles.slice(0, count)));
       }
     }
   });

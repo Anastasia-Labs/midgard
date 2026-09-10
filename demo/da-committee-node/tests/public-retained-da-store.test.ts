@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { randomBytes } from "node:crypto";
+
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   PostgresPublicRetainedDaStore,
@@ -229,60 +232,6 @@ describe("PostgresPublicRetainedDaStore", () => {
     await store.close();
   });
 
-  it("surfaces the read-only transaction rejection when DML is attempted", async () => {
-    // Simulates PostgreSQL's own barrier: once BEGIN READ ONLY is in effect,
-    // any DELETE raises 25006. The store still completes its reads, proving the
-    // read-only frame is real rather than cosmetic.
-    let readOnly = false;
-    const release = vi.fn();
-    const client: PublicRetainedDaPoolClient = {
-      query: async <T extends Record<string, unknown>>(
-        query: string,
-      ): Promise<{ readonly rows: readonly T[] }> => {
-        if (query === "BEGIN READ ONLY") {
-          readOnly = true;
-          return { rows: [] };
-        }
-        if (query === "COMMIT" || query === "ROLLBACK") {
-          readOnly = false;
-          return { rows: [] };
-        }
-        if (
-          readOnly &&
-          /^\s*(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/imu.test(query)
-        ) {
-          throw new Error(
-            "cannot execute DELETE in a read-only transaction (25006)",
-          );
-        }
-        if (query.includes("FROM pg_roles role")) {
-          return { rows: [readOnlyAccess() as unknown as T] };
-        }
-        if (query.includes("FROM watcher_da_payloads")) {
-          return {
-            rows: [{ record: payloadRecord() }] as unknown as readonly T[],
-          };
-        }
-        return { rows: [] };
-      },
-      release,
-    };
-    const pool: PublicRetainedDaPool = {
-      connect: async (): Promise<PublicRetainedDaPoolClient> => client,
-      end: async (): Promise<void> => undefined,
-    };
-    const store = await openWith(pool);
-    await expect(store.getDaPayload(HEADER_HASH)).resolves.toMatchObject({
-      headerHash: HEADER_HASH,
-    });
-    await client.query("BEGIN READ ONLY");
-    await expect(
-      client.query("DELETE FROM watcher_da_payloads"),
-    ).rejects.toThrow(/read-only transaction/u);
-    await client.query("ROLLBACK");
-    await store.close();
-  });
-
   it("rejects malformed payloads and row-key mismatches", async () => {
     const malformed = await openWith(
       fakePool({ payload: { headerHash: HEADER_HASH } }).pool,
@@ -308,4 +257,163 @@ describe("PostgresPublicRetainedDaStore", () => {
     ).rejects.toThrow(/row key does not match/u);
     await mismatchedHeader.close();
   });
+});
+
+/**
+ * The privilege probe in `assertReadOnlyRole` is a SQL claim about a real
+ * PostgreSQL cluster: "this login cannot write the retained-evidence tables".
+ * A fake client can only replay whatever booleans a test hands it, so the
+ * claim is settled here against a real server — the probe SQL is run against
+ * actual roles and grants, and PostgreSQL itself decides the answers.
+ *
+ * This suite fails closed: with no reachable cluster it errors, it never
+ * skips. CI provides one (midgard-node-ci `postgres` service, POSTGRES_*).
+ */
+describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () => {
+  const suffix = randomBytes(6).toString("hex");
+  const databaseName = `midgard_public_reader_${suffix}`;
+  const readerRole = `midgard_public_reader_${suffix}`;
+  const readerPassword = `pw_${suffix}`;
+  const admin = {
+    host: process.env.POSTGRES_HOST ?? "127.0.0.1",
+    port: Number(process.env.POSTGRES_PORT ?? "5432"),
+    user: process.env.POSTGRES_USER ?? "postgres",
+    password: process.env.POSTGRES_PASSWORD ?? "postgres",
+  };
+  const readerUrl = `postgresql://${readerRole}:${readerPassword}@${admin.host}:${admin.port.toString()}/${databaseName}`;
+  let clusterClient: Client;
+  let dbClient: Client;
+
+  const adminClient = async (database: string): Promise<Client> => {
+    const client = new Client({ ...admin, database });
+    await client.connect();
+    return client;
+  };
+
+  beforeAll(async () => {
+    clusterClient = await adminClient(process.env.POSTGRES_DB ?? "postgres");
+    await clusterClient.query(`CREATE DATABASE ${databaseName}`);
+    await clusterClient.query(
+      `CREATE ROLE ${readerRole} LOGIN PASSWORD '${readerPassword}'`,
+    );
+    dbClient = await adminClient(databaseName);
+    await dbClient.query(
+      "CREATE TABLE watcher_da_payloads (header_hash text PRIMARY KEY, record jsonb NOT NULL)",
+    );
+    await dbClient.query(
+      "CREATE TABLE watcher_state_queue_headers (header_hash text PRIMARY KEY, record jsonb NOT NULL)",
+    );
+    await dbClient.query(
+      "INSERT INTO watcher_da_payloads (header_hash, record) VALUES ($1, $2)",
+      [HEADER_HASH, JSON.stringify(payloadRecord())],
+    );
+    await dbClient.query(
+      "INSERT INTO watcher_state_queue_headers (header_hash, record) VALUES ($1, $2)",
+      [HEADER_HASH, JSON.stringify({ headerHash: HEADER_HASH })],
+    );
+    await dbClient.query(
+      `GRANT CONNECT ON DATABASE ${databaseName} TO ${readerRole}`,
+    );
+    await dbClient.query(`GRANT USAGE ON SCHEMA public TO ${readerRole}`);
+    await dbClient.query(
+      `GRANT SELECT ON watcher_da_payloads, watcher_state_queue_headers TO ${readerRole}`,
+    );
+  }, 60_000);
+
+  afterAll(async () => {
+    await dbClient?.end();
+    await clusterClient?.query(`DROP DATABASE IF EXISTS ${databaseName}`);
+    await clusterClient?.query(`DROP ROLE IF EXISTS ${readerRole}`);
+    await clusterClient?.end();
+  }, 60_000);
+
+  const openReal = () =>
+    PostgresPublicRetainedDaStore.open({
+      databaseUrl: readerUrl,
+      expectedRole: readerRole,
+    });
+
+  it("opens on a SELECT-only login and reads the retained evidence PostgreSQL actually stores", async () => {
+    const store = await openReal();
+    try {
+      await expect(store.getDaPayload(HEADER_HASH)).resolves.toMatchObject({
+        headerHash: HEADER_HASH,
+        validationStatus: "verified",
+        payloadSha256: "ef".repeat(32),
+      });
+      await expect(store.getStateQueueHeader(HEADER_HASH)).resolves.toEqual({
+        headerHash: HEADER_HASH,
+      });
+      await expect(
+        store.getDaPayload("ba".repeat(28)),
+      ).resolves.toBeUndefined();
+    } finally {
+      await store.close();
+    }
+  }, 60_000);
+
+  it("refuses the same login the moment PostgreSQL grants it DELETE, and admits it again when the grant is revoked", async () => {
+    // The whole point of the probe: a login that merely HOLDS DELETE on the
+    // retained-evidence table is refused. Only a real cluster can decide
+    // whether the probe's has_table_privilege SQL sees that grant.
+    await dbClient.query(
+      `GRANT DELETE ON watcher_da_payloads TO ${readerRole}`,
+    );
+    try {
+      await expect(openReal()).rejects.toThrow(/SELECT-only role/u);
+    } finally {
+      // Revoked in a finally so a failure here cannot leak the grant into
+      // the following cases and manufacture cascading failures.
+      await dbClient.query(
+        `REVOKE DELETE ON watcher_da_payloads FROM ${readerRole}`,
+      );
+    }
+    const store = await openReal();
+    await store.close();
+  }, 60_000);
+
+  it("refuses a login that inherits pg_read_all_data", async () => {
+    await dbClient.query(`GRANT pg_read_all_data TO ${readerRole}`);
+    try {
+      await expect(openReal()).rejects.toThrow(/SELECT-only role/u);
+    } finally {
+      await dbClient.query(`REVOKE pg_read_all_data FROM ${readerRole}`);
+    }
+    const store = await openReal();
+    await store.close();
+  }, 60_000);
+
+  it("has no write path even for a superuser inside BEGIN READ ONLY", async () => {
+    // The second barrier, decided by the server rather than by a double: a
+    // DELETE inside the store's transaction mode is rejected with 25006 even
+    // for the cluster owner, so no privilege escalation reopens the pruning
+    // path the store deliberately lacks.
+    await dbClient.query("BEGIN READ ONLY");
+    await expect(
+      dbClient.query("DELETE FROM watcher_da_payloads"),
+    ).rejects.toMatchObject({ code: "25006" });
+    await dbClient.query("ROLLBACK");
+    // Nothing was pruned.
+    const remaining = await dbClient.query<{ readonly count: string }>(
+      "SELECT count(*)::text AS count FROM watcher_da_payloads",
+    );
+    expect(remaining.rows[0]?.count).toBe("1");
+  }, 60_000);
+
+  it("refuses the reader's own DELETE attempt with a privilege error", async () => {
+    const reader = new Client({
+      ...admin,
+      user: readerRole,
+      password: readerPassword,
+      database: databaseName,
+    });
+    await reader.connect();
+    try {
+      await expect(
+        reader.query("DELETE FROM watcher_da_payloads"),
+      ).rejects.toMatchObject({ code: "42501" });
+    } finally {
+      await reader.end();
+    }
+  }, 60_000);
 });

@@ -58,7 +58,7 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
         input.expectedUnit === undefined ? [] : [input.expectedUnit];
       const request = {
         deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
-        releaseIdentityDigest: releaseFinality.releaseIdentityDigest,
+        blueprintHash: releaseFinality.blueprintHash,
         finalityPolicyDigest: releaseFinality.policyDigest,
         headerHash: input.headerHash,
         scopes: [{ role: input.kind, address: input.address }],

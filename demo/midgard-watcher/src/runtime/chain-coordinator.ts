@@ -1,5 +1,6 @@
 import {
   evaluateWatcherFinality,
+  makeWatcherFinalityBootstrapState,
   type WatcherFinalityPolicy,
 } from "../l1/finality-engine.js";
 import type { WatcherLocalKupmiosNativeObservationRuntime } from "../l1/local-kupmios-native-observation.js";
@@ -185,9 +186,47 @@ const createCoordinator = (input: {
   readonly dependencies: Readonly<{ admitRollForward: AdmitRollForward }>;
 }): WatcherChainCoordinator => {
   const buffered = new Map<string, WatcherNativeBlockAdmission>();
+  const captured = new Map<
+    string,
+    {
+      first: WatcherLocalKupmiosNativeObservation;
+      firstDepth: string;
+      latest: WatcherLocalKupmiosNativeObservation;
+      latestDepth: string;
+    }
+  >();
+  const retainedFinality = input.durable.readFinality();
+  // A sparse queue cursor may lag the finality snapshot after a crash. Only
+  // this retained prefix can be replayed without advancing durable finality.
+  // A pending successor does not itself belong to the finalized prefix.
+  let replayBoundary =
+    retainedFinality.phase === "finalized" &&
+    retainedFinality.finalized !== null
+      ? { point: retainedFinality.finalized, inclusive: true }
+      : retainedFinality.phase === "pending" &&
+          retainedFinality.pending !== null
+        ? { point: retainedFinality.pending, inclusive: false }
+        : null;
+  const retainedHistory =
+    retainedFinality.phase === "pending"
+      ? (input.durable.read().authenticatedConsistencyHistory ?? [])
+      : [];
+  let retainedReplay: readonly WatcherNativeBlockAdmission[] | null = null;
+  let retainedReplacement: Readonly<{
+    block: WatcherNativeBlockAdmission;
+    parent: Extract<WatcherNativeChainSyncPoint, { readonly kind: "point" }>;
+  }> | null = null;
+  if (
+    replayBoundary !== null &&
+    input.restartIntersection?.kind === "point" &&
+    input.restartIntersection.blockHash === replayBoundary.point.blockHash &&
+    input.restartIntersection.slot === replayBoundary.point.slot
+  ) {
+    replayBoundary = null;
+  }
   let rollbackPoint: WatcherNativeChainSyncPoint | null = null;
-  let quarantined =
-    input.durable.read().currentFinalityState.phase === "quarantined";
+  let firstNativeEvent = true;
+  let quarantined = input.durable.readFinality().phase === "quarantined";
   const releaseFinalizedHooked = new Map<
     string,
     Readonly<{ blockHash: string; blockNo: string; slot: string }>
@@ -241,8 +280,191 @@ const createCoordinator = (input: {
       WatcherNativeChainSyncEvent,
       { readonly kind: "roll_forward" }
     >,
-  ) =>
-    await input.observation.observe({ block, depth: depthAtTip(block, event) });
+  ): Promise<WatcherLocalKupmiosNativeObservation> => {
+    const key = pointKey(block.blockHash, block.slot);
+    const depth = depthAtTip(block, event);
+    const prior = captured.get(key);
+    if (prior?.latestDepth === depth) return prior.latest;
+    const observation = await input.observation.observe({ block, depth });
+    if (prior === undefined) {
+      captured.set(key, {
+        first: observation,
+        firstDepth: depth,
+        latest: observation,
+        latestDepth: depth,
+      });
+    } else {
+      prior.latest = observation;
+      prior.latestDepth = depth;
+    }
+    return observation;
+  };
+
+  const deliverFinalized = async (
+    block: WatcherNativeBlockAdmission,
+    observation: WatcherLocalKupmiosNativeObservation,
+  ): Promise<void> => {
+    const key = pointKey(block.blockHash, block.slot);
+    if (releaseFinalizedHooked.has(key)) return;
+    await input.hooks.onFinalized({
+      nativeBlock: block,
+      localObservation: observation,
+    });
+    releaseFinalizedHooked.set(
+      key,
+      Object.freeze({
+        blockHash: block.blockHash,
+        blockNo: block.blockNo,
+        slot: block.slot,
+      }),
+    );
+  };
+
+  const replayRetainedPrefix = async (
+    event: Extract<
+      WatcherNativeChainSyncEvent,
+      { readonly kind: "roll_forward" }
+    >,
+  ): Promise<boolean> => {
+    if (replayBoundary === null) return true;
+    const boundary = replayBoundary;
+    if (retainedReplay === null) {
+      const intersection = input.restartIntersection;
+      if (intersection?.kind !== "point") {
+        throw new Error(
+          "retained finality replay requires an exact restart intersection",
+        );
+      }
+      if (BigInt(event.blockNo) < BigInt(boundary.point.blockNo)) return false;
+      const candidates = [...buffered.values()]
+        .filter(
+          (block) => BigInt(block.blockNo) <= BigInt(boundary.point.blockNo),
+        )
+        .sort((left, right) =>
+          BigInt(left.blockNo) < BigInt(right.blockNo) ? -1 : 1,
+        );
+      const last = candidates.at(-1);
+      if (
+        last === undefined ||
+        last.blockNo !== boundary.point.blockNo ||
+        (boundary.inclusive &&
+          (last.blockHash !== boundary.point.blockHash ||
+            last.slot !== boundary.point.slot)) ||
+        (last.blockHash === boundary.point.blockHash &&
+          last.slot !== boundary.point.slot)
+      ) {
+        throw new Error(
+          "native replay differs from the retained finality boundary",
+        );
+      }
+      let parentHash = intersection.blockHash;
+      let parentSlot = intersection.slot;
+      let parentBlockNo: string | null = null;
+      for (const block of candidates) {
+        if (
+          block.prevHash !== parentHash ||
+          BigInt(block.slot) <= BigInt(parentSlot) ||
+          (parentBlockNo !== null &&
+            BigInt(block.blockNo) !== BigInt(parentBlockNo) + 1n)
+        ) {
+          throw new Error(
+            "native replay is not a contiguous retained finality prefix",
+          );
+        }
+        parentHash = block.blockHash;
+        parentSlot = block.slot;
+        parentBlockNo = block.blockNo;
+      }
+      const prefix = boundary.inclusive ? candidates : candidates.slice(0, -1);
+      if (!boundary.inclusive && prefix.length > 0) {
+        // Pending alone is not finality authority. Re-establish its exact
+        // predecessor's finalized state from the retained authenticated
+        // observations, then bind that point to the native ancestry above.
+        const predecessor = prefix.at(-1)!;
+        const history = retainedHistory
+          .filter(
+            ({ agreement }) =>
+              agreement?.blockHash === predecessor.blockHash &&
+              agreement.blockNo === predecessor.blockNo &&
+              agreement.slot === predecessor.slot,
+          )
+          .sort((left, right) =>
+            BigInt(left.agreement!.minimumDepth) <
+            BigInt(right.agreement!.minimumDepth)
+              ? -1
+              : 1,
+          );
+        let state = makeWatcherFinalityBootstrapState(input.policy);
+        for (const consistency of history) {
+          if (state === null) break;
+          const result = evaluateWatcherFinality(
+            input.policy,
+            state,
+            consistency,
+          );
+          if (result.action === "reject" || result.state === null) {
+            state = null;
+            break;
+          }
+          state = result.state;
+          if (state.phase === "finalized") break;
+        }
+        if (
+          state?.phase !== "finalized" ||
+          state.finalized?.blockHash !== predecessor.blockHash ||
+          state.finalized.blockNo !== predecessor.blockNo ||
+          state.finalized.slot !== predecessor.slot
+        ) {
+          throw new Error(
+            "pending replay prefix lacks retained predecessor finality",
+          );
+        }
+      }
+      retainedReplay = prefix;
+      if (!boundary.inclusive && last.blockHash !== boundary.point.blockHash) {
+        const parent = candidates.at(-2);
+        retainedReplacement = {
+          block: last,
+          parent:
+            parent === undefined
+              ? intersection
+              : {
+                  kind: "point",
+                  blockHash: parent.blockHash,
+                  slot: parent.slot,
+                },
+        };
+      }
+    }
+    while (retainedReplay.length > 0) {
+      const block = retainedReplay[0]!;
+      if (
+        BigInt(depthAtTip(block, event)) <
+        BigInt(input.policy.confirmationDepth)
+      ) {
+        return false;
+      }
+      await deliverFinalized(block, await observe(block, event));
+      const key = pointKey(block.blockHash, block.slot);
+      buffered.delete(key);
+      captured.delete(key);
+      retainedReplay = retainedReplay.slice(1);
+    }
+    replayBoundary = null;
+    retainedReplay = null;
+    if (retainedReplacement !== null) {
+      // FindIntersect can select an ancestor of an orphaned pending point.
+      // Once its replacement and ancestry are authenticated, use the normal
+      // pre-finality rewind path. A finalized boundary never takes this path.
+      const replacement = retainedReplacement;
+      retainedReplacement = null;
+      await input.hooks.onRollback(replacement.parent);
+      rollbackPoint = replacement.parent;
+      await processRollbackReplacement(replacement.block, event);
+      if (quarantined) return false;
+    }
+    return true;
+  };
 
   const processRollbackReplacement = async (
     block: WatcherNativeBlockAdmission,
@@ -320,8 +542,9 @@ const createCoordinator = (input: {
       { readonly kind: "roll_forward" }
     >,
   ): Promise<void> => {
-    for (let iteration = 0; iteration <= buffered.size; iteration += 1) {
-      const state = input.durable.read().currentFinalityState;
+    const maximumIterations = buffered.size + 1;
+    for (let iteration = 0; iteration < maximumIterations; iteration += 1) {
+      const state = input.durable.readFinality();
       if (state.phase === "quarantined") {
         quarantined = true;
         return;
@@ -344,25 +567,39 @@ const createCoordinator = (input: {
                 : null,
             );
       if (target === null) return;
-      const observed = await observe(target, event);
-      const progress = await input.durable.persistCanonicalProgress(observed);
+      const key = pointKey(target.blockHash, target.slot);
+      const arrival = captured.get(key);
+      if (arrival === undefined) {
+        throw new Error(
+          "native buffered block has no authenticated first observation",
+        );
+      }
+      // A child may have waited behind the pending head. Preserve the actual
+      // earlier observation instead of making its first visibility the later
+      // tip at which it becomes the canonical child.
+      let observed =
+        state.phase === "pending"
+          ? await observe(target, event)
+          : arrival.first;
+      let progress = await input.durable.persistCanonicalProgress(observed);
       if (progress.persistence === "conflict") {
         throw new Error("watcher canonical progress persistence conflicted");
       }
+      if (
+        progress.finalityResult.action !== "finalize" &&
+        state.phase !== "pending" &&
+        BigInt(depthAtTip(target, event)) > BigInt(arrival.firstDepth)
+      ) {
+        observed = await observe(target, event);
+        progress = await input.durable.persistCanonicalProgress(observed);
+        if (progress.persistence === "conflict") {
+          throw new Error("watcher canonical progress persistence conflicted");
+        }
+      }
       if (progress.finalityResult.action !== "finalize") return;
-      await input.hooks.onFinalized({
-        nativeBlock: target,
-        localObservation: observed,
-      });
-      releaseFinalizedHooked.set(
-        pointKey(target.blockHash, target.slot),
-        Object.freeze({
-          blockHash: target.blockHash,
-          blockNo: target.blockNo,
-          slot: target.slot,
-        }),
-      );
-      buffered.delete(pointKey(target.blockHash, target.slot));
+      await deliverFinalized(target, observed);
+      buffered.delete(key);
+      captured.delete(key);
     }
     throw new Error("watcher canonical buffer did not converge");
   };
@@ -370,10 +607,31 @@ const createCoordinator = (input: {
   return Object.freeze({
     schemaVersion: WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION,
     handle: async (event) => {
+      const selected = input.restartIntersection;
+      const initialAcknowledgement =
+        firstNativeEvent &&
+        event.kind === "roll_backward" &&
+        selected !== undefined &&
+        (selected.kind === "origin"
+          ? event.point.kind === "origin"
+          : event.point.kind === "point" &&
+            event.point.blockHash === selected.blockHash &&
+            event.point.slot === selected.slot);
+      firstNativeEvent = false;
+      if (initialAcknowledgement) {
+        // Native FindIntersect acknowledges the selected point with a backward
+        // frame. This first exact acknowledgement is not a rewind, including
+        // when the sparse queue cursor trails retained durable finality.
+        await restartRecovery;
+        if (!quarantined) return;
+      }
       if (event.kind === "roll_backward") {
         // The production hook invalidates the in-memory actuation generation
         // before awaiting its durable cache rollback.
         await input.hooks.onRollback(event.point);
+        replayBoundary = null;
+        retainedReplay = null;
+        retainedReplacement = null;
         for (const [key, hooked] of releaseFinalizedHooked) {
           if (
             event.point.kind === "origin" ||
@@ -400,6 +658,7 @@ const createCoordinator = (input: {
             samePoint(event.point, block)
           ) {
             buffered.delete(key);
+            captured.delete(key);
           }
         }
         return;
@@ -418,37 +677,15 @@ const createCoordinator = (input: {
         await processRollbackReplacement(block, event);
         if (quarantined) return;
       }
+      await observe(block, event);
+      if (!(await replayRetainedPrefix(event))) return;
       await advanceCanonical(event);
-      // The SQLite durable snapshot and sparse queue cache are intentionally
-      // separate records. A crash can commit finality immediately before the
-      // queue hook appends its authenticated sparse cursor. On restart native
-      // replay begins at the queue cursor, while the durable finality state is
-      // already ahead and therefore has no canonical-progress child to select.
-      // Reauthenticate and deliver every such release-final replay block once;
-      // exact digest append semantics make a repeated crash idempotent.
-      if (
-        BigInt(depthAtTip(block, event)) >=
-          BigInt(input.policy.confirmationDepth) &&
-        !releaseFinalizedHooked.has(key)
-      ) {
-        const observed = await observe(block, event);
-        await input.hooks.onFinalized({
-          nativeBlock: block,
-          localObservation: observed,
-        });
-        releaseFinalizedHooked.set(
-          key,
-          Object.freeze({
-            blockHash: block.blockHash,
-            blockNo: block.blockNo,
-            slot: block.slot,
-          }),
-        );
-      }
       const minimumBlockNo = BigInt(block.blockNo) - 2_160n;
       for (const [bufferedKey, candidate] of buffered) {
-        if (BigInt(candidate.blockNo) < minimumBlockNo)
+        if (BigInt(candidate.blockNo) < minimumBlockNo) {
           buffered.delete(bufferedKey);
+          captured.delete(bufferedKey);
+        }
       }
       for (const [hookedKey, hooked] of releaseFinalizedHooked) {
         if (BigInt(hooked.blockNo) < minimumBlockNo) {

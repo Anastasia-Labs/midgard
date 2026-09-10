@@ -55,7 +55,6 @@ type DeploymentBinding = {
   readonly blueprintSha256: string;
   readonly catalogueRoot: string;
   readonly parametersSha256: string;
-  readonly releaseEvidenceSha256: string;
 };
 
 type ChainPoint = {
@@ -323,13 +322,7 @@ const parseDeployment = (value: unknown): DeploymentBinding => {
   const candidate = record(value, "state-correction deployment");
   exactKeys(
     candidate,
-    [
-      "manifestId",
-      "blueprintSha256",
-      "catalogueRoot",
-      "parametersSha256",
-      "releaseEvidenceSha256",
-    ],
+    ["manifestId", "blueprintSha256", "catalogueRoot", "parametersSha256"],
     "state-correction deployment",
   );
   return {
@@ -342,10 +335,6 @@ const parseDeployment = (value: unknown): DeploymentBinding => {
     parametersSha256: sha256(
       candidate.parametersSha256,
       "deployment.parametersSha256",
-    ),
-    releaseEvidenceSha256: sha256(
-      candidate.releaseEvidenceSha256,
-      "deployment.releaseEvidenceSha256",
     ),
   };
 };
@@ -877,7 +866,6 @@ export const stateCorrectionAcceptanceEvidence = ({
     blueprintSha256: evidence.deployment.blueprintSha256,
     catalogueRoot: evidence.deployment.catalogueRoot,
     parametersSha256: evidence.deployment.parametersSha256,
-    releaseEvidenceSha256: evidence.deployment.releaseEvidenceSha256,
   };
   return {
     db: [

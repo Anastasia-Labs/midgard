@@ -11,10 +11,10 @@ import {
   FraudProofComputationThreadStepDatum,
   validationDisputeCoreFromData,
   ValidationDisputeDatum,
+  WinningValidationResolutionDatum,
 } from "@al-ft/midgard-sdk";
 import {
   Data,
-  Lucid,
   toUnit,
   type UTxO,
   validatorToScriptHash,
@@ -121,6 +121,42 @@ const economicsPolicy = {
   proverCollateralFloorLovelace: "5000000",
 } as const;
 
+const withLifecycleDeadline = async <T>(
+  operation: () => Promise<T>,
+  progress: () => string,
+  timeoutMs = 30_000,
+): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () =>
+            reject(new Error(`Timed out after ${timeoutMs}ms; ${progress()}`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+describe("installed lifecycle stage deadline", () => {
+  it("reports the last completed stage when an operation stops responding", async () => {
+    await expect(
+      withLifecycleDeadline(
+        () => new Promise<never>(() => {}),
+        () => "last completed stage: open; waiting for: verify_source",
+        5,
+      ),
+    ).rejects.toThrow(
+      "Timed out after 5ms; last completed stage: open; waiting for: verify_source",
+    );
+  });
+});
+
 /**
  * Stages the complete installed-workflow ledger for the sole interactive
  * family and returns the production R6 runner plus the emulator-side operator
@@ -131,7 +167,9 @@ const economicsPolicy = {
  * `runOrResumeManifestBoundValidationTraceDisputeWorkflow` pair — no direct
  * submit-helper call plays the watcher side.
  */
-const stageInstalledValidationTraceDisputeJourney = async () => {
+const stageInstalledValidationTraceDisputeJourney = async (
+  terminalCounterMismatch = false,
+) => {
   const recorder = recordCrossBlockRawEmulator();
   hooks.authority = recorder.authority;
   const realBlueprint = readBlueprint(realBlueprintPath);
@@ -163,7 +201,6 @@ const stageInstalledValidationTraceDisputeJourney = async () => {
       {
         referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
         realValidationTraceDispute: true,
-        alwaysFraudProofCatalogue: true,
       },
     )),
     referenceScriptAuth,
@@ -193,6 +230,7 @@ const stageInstalledValidationTraceDisputeJourney = async () => {
     {
       operatorVkey: operatorSigner.paymentKeyHash,
       now: headerStartTime,
+      terminalCounterMismatch,
     },
   );
   emulator.awaitSlot(
@@ -262,42 +300,17 @@ const stageInstalledValidationTraceDisputeJourney = async () => {
       label: "validation semantic resolver",
     }),
   );
-  const {
-    functionalProtocolParameters,
-    functionalSlotConfig,
-    targetOperatorLucid,
-    targetChallengerLucid,
-  } = await createRealL1TargetLucids({
-    emulator,
-    sourceLucid: challengerLucid,
-    operatorSeedPhrase: operator.seedPhrase,
-    challengerSeedPhrase: challenger.seedPhrase,
+  const { targetOperatorLucid, targetChallengerLucid } =
+    await createRealL1TargetLucids({
+      emulator,
+      sourceLucid: challengerLucid,
+      operatorSeedPhrase: operator.seedPhrase,
+      challengerSeedPhrase: challenger.seedPhrase,
+    });
+  const removal = await publishRemovalReferenceScripts({
+    lucid: targetOperatorLucid,
+    contracts,
   });
-  // Removal-validator publications run under the raised deployment-time
-  // parameters, not the real 16,384-byte envelope: the ten-parameter
-  // `state_queue.mint` applied to this deployment is 16,498 bytes, so its
-  // publication cannot be built under the real L1 limit at all.
-  // `publishRemovalReferenceScripts` marks that one entry `oversized`; its
-  // deployability on real L1 parameters is tracked in
-  // Anastasia-Labs/midgard#649 (ruling R7: pre-existing, tests may use the
-  // established test-driver deployment mechanism; production never raises
-  // limits).
-  const removal = await (async () => {
-    const prePublicationProtocolParameters = emulator.protocolParameters;
-    emulator.protocolParameters = functionalProtocolParameters;
-    try {
-      const oversizedPublisherLucid = await Lucid(emulator, "Custom", {
-        slotConfig: functionalSlotConfig,
-      });
-      oversizedPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-      return await publishRemovalReferenceScripts({
-        lucid: oversizedPublisherLucid,
-        contracts,
-      });
-    } finally {
-      emulator.protocolParameters = prePublicationProtocolParameters;
-    }
-  })();
   const builtDeploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     validationDisputePublication,
     removalReferenceScripts: removal.published,
@@ -392,14 +405,14 @@ const stageInstalledValidationTraceDisputeJourney = async () => {
   );
   const binding = {
     deploymentFingerprint: DEPLOYMENT,
-    releaseIdentityDigest: "bb".repeat(32),
+    blueprintHash: "bb".repeat(32),
     network,
     blueprint: realBlueprint,
     deploymentInfo,
     releaseFinality: {
       schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
       deploymentIdentityDigest: DEPLOYMENT,
-      releaseIdentityDigest: "bb".repeat(32),
+      blueprintHash: "bb".repeat(32),
       policyDigest:
         computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
       policy: finalityPolicy,
@@ -407,7 +420,7 @@ const stageInstalledValidationTraceDisputeJourney = async () => {
     releaseEconomics: {
       schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
       deploymentIdentityDigest: DEPLOYMENT,
-      releaseIdentityDigest: "bb".repeat(32),
+      blueprintHash: "bb".repeat(32),
       policyDigest:
         computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
       policy: economicsPolicy,
@@ -619,6 +632,111 @@ const expectRemoved = async (journey: Journey) => {
 };
 
 describe("validation trace dispute installed production workflow", () => {
+  it("awards an inconsistent committed terminal counter and removes the block directly after source verification", async () => {
+    const journey = await stageInstalledValidationTraceDisputeJourney(true);
+    const expectedStages = ["init", "open", "verify_source", "award", "remove"];
+    let lastCompletedStage = "fixture setup";
+    let waitingFor = "init";
+    const progress = () =>
+      `last completed stage: ${lastCompletedStage}; waiting for: ${waitingFor}`;
+    const journal = new DirectoryFraudProofWorkflowJournalStore(
+      join(journey.directory, "journal"),
+    );
+    const runObserved = () =>
+      withLifecycleDeadline(async () => {
+        const run = await journey.runCold();
+        const entries = await journal.load(run.result.workflowId);
+        const intents = entries.flatMap(({ event }) =>
+          event.kind === "submission_intent" ? [event] : [],
+        );
+        const submitted = entries.flatMap(({ event }) =>
+          event.kind === "submitted" ? [event] : [],
+        );
+        const confirmed = entries.flatMap(({ event }) =>
+          event.kind === "confirmed" ? [event] : [],
+        );
+        expect(intents.map(({ actionInput }) => actionInput.stage)).toEqual(
+          expectedStages.slice(0, intents.length),
+        );
+        expect(submitted.map(({ txHash }) => txHash)).toEqual(
+          intents.map(({ txHash }) => txHash),
+        );
+        for (const event of submitted) {
+          // The recorder adds a row only after the real emulator accepts submitTx.
+          expect(
+            journey.recorder.rows.filter(
+              ({ txHash }) => txHash === event.txHash,
+            ),
+          ).toHaveLength(1);
+          expect(journey.recorder.signedCbors.has(event.txHash)).toBe(true);
+        }
+        expect(
+          confirmed.map(({ actionId, txHash }) => ({ actionId, txHash })),
+        ).toEqual(
+          intents
+            .slice(0, confirmed.length)
+            .map(({ actionId, txHash }) => ({ actionId, txHash })),
+        );
+        lastCompletedStage =
+          expectedStages[confirmed.length - 1] ?? "fixture setup";
+        waitingFor =
+          expectedStages[confirmed.length] ?? "removed contract state";
+        if (run.result.kind === "completed") {
+          expect(confirmed).toHaveLength(expectedStages.length);
+        }
+        return run;
+      }, progress);
+    try {
+      let observedAward = false;
+      let { result } = await runObserved();
+      for (let hop = 0; hop < 20 && result.kind !== "completed"; hop++) {
+        expect(result.kind).not.toBe("awaiting_counterparty");
+        journey.emulator.awaitBlock();
+        const awardUtxos = await journey.config.lucid.utxosAtWithUnit(
+          journey.resolvedContracts.contracts.validationTraceDispute.award
+            .spendingScriptAddress,
+          journey.threadUnit,
+        );
+        if (awardUtxos.length > 0) {
+          expect(awardUtxos).toHaveLength(1);
+          const awardDatum = awardUtxos[0]!.datum;
+          expect(awardDatum).toBeDefined();
+          expect(
+            Data.from(awardDatum!, WinningValidationResolutionDatum).data,
+          ).toEqual({ version: 1n });
+          expect(
+            await journey.config.lucid.utxosAtWithUnit(
+              journey.resolvedContracts.contracts.validationTraceDispute.source
+                .spendingScriptAddress,
+              journey.threadUnit,
+            ),
+          ).toHaveLength(0);
+          observedAward = true;
+        }
+        ({ result } = await runObserved());
+      }
+      expect(result.kind, progress()).toBe("completed");
+      expect(observedAward).toBe(true);
+      await withLifecycleDeadline(async () => {
+        await expectRemoved(journey);
+        expect(
+          await journey.config.lucid.utxosAtWithUnit(
+            journey.contracts.stateQueue.spendingScriptAddress,
+            journey.setup.stateQueueBlockUnit,
+          ),
+        ).toHaveLength(0);
+      }, progress);
+      lastCompletedStage = "removed contract state";
+    } catch (cause) {
+      throw Object.assign(
+        new Error(`Direct proof lifecycle failed; ${progress()}`),
+        { cause },
+      );
+    } finally {
+      await journey.cleanup();
+    }
+  }, 180_000);
+
   it("plays the full honest game to award and removal, refusing forged and caller-authored material at the exact checks", async () => {
     const journey = await stageInstalledValidationTraceDisputeJourney();
     try {

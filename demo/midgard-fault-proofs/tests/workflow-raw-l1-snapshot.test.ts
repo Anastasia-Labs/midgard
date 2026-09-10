@@ -38,7 +38,7 @@ const policy = {
 const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
-  releaseIdentityDigest: RELEASE,
+  blueprintHash: RELEASE,
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
 };
@@ -132,7 +132,7 @@ const fixture = (): {
   });
   const request = {
     deploymentIdentityDigest: DEPLOYMENT,
-    releaseIdentityDigest: RELEASE,
+    blueprintHash: RELEASE,
     finalityPolicyDigest: releaseFinality.policyDigest,
     headerHash: HEADER,
     scopes: [{ role: "state_queue", address }],
@@ -141,7 +141,7 @@ const fixture = (): {
   const snapshot = {
     schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT,
-    releaseIdentityDigest: RELEASE,
+    blueprintHash: RELEASE,
     finalityPolicyDigest: releaseFinality.policyDigest,
     headerHash: HEADER,
     provenance: {
@@ -158,7 +158,7 @@ const fixture = (): {
       confirmationDepth: 30,
       rollbackCursor: computeFraudProofRawL1RollbackCursor({
         deploymentIdentityDigest: DEPLOYMENT,
-        releaseIdentityDigest: RELEASE,
+        blueprintHash: RELEASE,
         finalityPolicyDigest: releaseFinality.policyDigest,
         sourceId: SOURCE,
         pointId: cursorPoint.pointId,
@@ -448,6 +448,62 @@ const localSource = (
 };
 
 describe("local Kupmios raw L1 capture authority V1", () => {
+  it("drains failed capture siblings before a queued authority repins the source", async () => {
+    const value = fixture();
+    const original = localSource(value);
+    let releaseRead!: () => void;
+    let readStarted!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      readStarted = resolve;
+    });
+    const providerError = new Error("provider address read failed");
+    let boundaries = 0;
+    let pendingReadFinished = false;
+    const source = localSource(value, {
+      readBoundary: async () => {
+        boundaries += 1;
+        if (boundaries > 1) expect(pendingReadFinished).toBe(true);
+        return await original.readBoundary();
+      },
+      scanAddressPage: async (input) => {
+        if (boundaries === 1) {
+          if (input.address === "failed-address") throw providerError;
+          readStarted();
+          await pending;
+          pendingReadFinished = true;
+        }
+        return await original.scanAddressPage(input);
+      },
+    });
+    const first = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
+      source,
+      releaseFinality,
+    })
+      .capture({
+        ...value.request,
+        scopes: [
+          ...value.request.scopes,
+          { role: "hub_oracle", address: "failed-address" },
+        ],
+      })
+      .catch((error: unknown) => error);
+    await started;
+    const second = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
+      source,
+      releaseFinality,
+    }).capture(value.request);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const boundariesWhilePending = boundaries;
+    releaseRead();
+    expect(await first).toBe(providerError);
+    await expect(second).resolves.toEqual(value.snapshot);
+    expect(boundariesWhilePending).toBe(1);
+    expect(boundaries).toBe(2);
+  });
+
   it("paginates address/unit scans from origin and cross-checks Ogmios bytes", async () => {
     const value = fixture();
     const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthority({

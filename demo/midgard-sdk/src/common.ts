@@ -212,6 +212,18 @@ export type WithdrawalValidator = {
 
 export type AuthenticatedValidator = SpendingValidator & MintingValidator;
 
+export type AvailabilityChallengeYieldValidators = {
+  readonly bond: WithdrawalValidator;
+  readonly open: WithdrawalValidator;
+  readonly settle: WithdrawalValidator;
+  readonly close: WithdrawalValidator;
+  readonly timeout: WithdrawalValidator;
+};
+
+export type AvailabilityChallengeValidator = AuthenticatedValidator & {
+  readonly yields: AvailabilityChallengeYieldValidators;
+};
+
 export type StateQueueYieldValidators = {
   readonly commit: WithdrawalValidator;
   readonly unattestedTimeout: WithdrawalValidator;
@@ -355,7 +367,7 @@ export type MidgardValidators = {
   daParamsGovernor: AuthenticatedValidator;
   daAttestation: AuthenticatedValidator;
   /** Per-header retained DA bond, challenge, tranche and carrier authority. */
-  availabilityChallenge: AuthenticatedValidator;
+  availabilityChallenge: AvailabilityChallengeValidator;
   /** Deployment-bound singleton which serializes state correction. */
   correctionLock: SpendingValidator;
   stateQueue: StateQueueValidator;

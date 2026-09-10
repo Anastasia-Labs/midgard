@@ -53,6 +53,7 @@ import {
   type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createScriptIntegrityHashMissingTransactionPort,
@@ -423,10 +424,15 @@ export const createScriptIntegrityHashMissingWorkflowRunnerSurface = ({
           throw new Error(
             "scriptIntegrityHashMissing manifest-bound workflow identity differs from invocation",
           );
-        return await executeManifestBoundScriptIntegrityHashMissingWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundScriptIntegrityHashMissingWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

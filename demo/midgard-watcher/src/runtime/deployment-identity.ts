@@ -5,13 +5,9 @@ import {
   verify as verifySignature,
 } from "node:crypto";
 
-import {
-  MIDGARD_CONSENSUS_PROFILE_DIGEST,
-  MIDGARD_RELEASE_EVIDENCE_DIGEST,
-} from "@al-ft/midgard-core/consensus-profile";
+import { MIDGARD_CONSENSUS_PROFILE_DIGEST } from "@al-ft/midgard-core/consensus-profile";
 import {
   assertDeploymentMarkerMatches,
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -25,6 +21,7 @@ import {
   verifyDeploymentManifestIdentity,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -41,6 +38,22 @@ import {
   type VerifiedFraudProofReleaseEconomicsPolicy,
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs";
+import {
+  type AuthenticatedValidator,
+  buildDepositValidators,
+  buildHubOracleMintingValidator,
+  buildTxOrderValidators,
+  buildWithdrawalValidators,
+  HUB_ORACLE_ASSET_NAME,
+  parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk";
+import {
+  CML,
+  credentialToAddress,
+  scriptHashToCredential,
+} from "@lucid-evolution/lucid";
+
+import { parseWatcherStrictJsonValue } from "./config.js";
 
 export const WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION =
   "midgard-watcher-signed-deployment-identity-v1" as const;
@@ -133,7 +146,6 @@ export type WatcherDeploymentIdentityErrorCode =
   | "missing_durable_marker"
   | "missing_field"
   | "mismatched_identity"
-  | "release_evidence_unavailable"
   | "unknown_field"
   | "untrusted_signer";
 
@@ -298,7 +310,8 @@ export type WatcherDeploymentIdentityPolicy = Readonly<{
   programCommitments: Readonly<Record<string, string>>;
   daMode: "authenticated_committee_v1";
   daIdentityDigest: string;
-  releaseEvidenceDigest: string;
+
+  fundingProfileBundleDigest: string;
   blueprintHash: string;
 }>;
 
@@ -396,7 +409,8 @@ const parsePolicy = (value: WatcherDeploymentIdentityPolicy): ParsedPolicy => {
     "programCommitments",
     "daMode",
     "daIdentityDigest",
-    "releaseEvidenceDigest",
+
+    "fundingProfileBundleDigest",
     "blueprintHash",
   ]);
   if (
@@ -448,9 +462,10 @@ const parsePolicy = (value: WatcherDeploymentIdentityPolicy): ParsedPolicy => {
       "$.policy.daIdentityDigest",
       HEX_32,
     ),
-    releaseEvidenceDigest: exactString(
-      policy.releaseEvidenceDigest,
-      "$.policy.releaseEvidenceDigest",
+
+    fundingProfileBundleDigest: exactString(
+      policy.fundingProfileBundleDigest,
+      "$.policy.fundingProfileBundleDigest",
       HEX_32,
     ),
     blueprintHash: exactString(
@@ -463,14 +478,14 @@ const parsePolicy = (value: WatcherDeploymentIdentityPolicy): ParsedPolicy => {
 
 type ReleaseBindings = Readonly<{
   schemaVersion: typeof WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION;
+  fundingProfileBundleDigest: string;
   ruleBundleCommitment: string;
   programCommitments: Readonly<Record<string, string>>;
   da: Readonly<{
     mode: "authenticated_committee_v1";
     identityDigest: string;
   }>;
-  releaseEvidence: Readonly<{
-    digest: string;
+  artifacts: Readonly<{
     blueprintHash: string;
   }>;
 }>;
@@ -484,7 +499,8 @@ const parseReleaseBindings = (
     "ruleBundleCommitment",
     "programCommitments",
     "da",
-    "releaseEvidence",
+    "artifacts",
+    "fundingProfileBundleDigest",
   ]);
   if (
     bindings.schemaVersion !==
@@ -496,13 +512,16 @@ const parseReleaseBindings = (
   if (da.mode !== "authenticated_committee_v1") {
     fail("invalid_field", `${path}.da.mode`);
   }
-  const releaseEvidence = exactRecord(
-    bindings.releaseEvidence,
-    `${path}.releaseEvidence`,
-    ["digest", "blueprintHash"],
-  );
+  const artifacts = exactRecord(bindings.artifacts, `${path}.artifacts`, [
+    "blueprintHash",
+  ]);
   return Object.freeze({
     schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+    fundingProfileBundleDigest: exactString(
+      bindings.fundingProfileBundleDigest,
+      `${path}.fundingProfileBundleDigest`,
+      HEX_32,
+    ),
     ruleBundleCommitment: exactString(
       bindings.ruleBundleCommitment,
       `${path}.ruleBundleCommitment`,
@@ -522,15 +541,10 @@ const parseReleaseBindings = (
         HEX_32,
       ),
     }),
-    releaseEvidence: Object.freeze({
-      digest: exactString(
-        releaseEvidence.digest,
-        `${path}.releaseEvidence.digest`,
-        HEX_32,
-      ),
+    artifacts: Object.freeze({
       blueprintHash: exactString(
-        releaseEvidence.blueprintHash,
-        `${path}.releaseEvidence.blueprintHash`,
+        artifacts.blueprintHash,
+        `${path}.artifacts.blueprintHash`,
         HEX_32,
       ),
     }),
@@ -757,17 +771,17 @@ const assertPolicyBindings = (
   ) {
     fail("mismatched_identity", "$.releaseBindings.da");
   }
-  const proofEvidence = plainRecord(
-    manifest.proofEvidence,
-    "$.manifest.proofEvidence",
-  );
   if (
-    bindings.releaseEvidence.digest !== policy.releaseEvidenceDigest ||
-    bindings.releaseEvidence.blueprintHash !== policy.blueprintHash ||
-    proofEvidence.digest !== policy.releaseEvidenceDigest ||
-    proofEvidence.blueprintHash !== policy.blueprintHash
+    bindings.fundingProfileBundleDigest !== policy.fundingProfileBundleDigest
   ) {
-    fail("mismatched_identity", "$.releaseBindings.releaseEvidence");
+    fail("mismatched_identity", "$.releaseBindings.fundingProfileBundleDigest");
+  }
+  const artifacts = plainRecord(manifest.artifacts, "$.manifest.artifacts");
+  if (
+    bindings.artifacts.blueprintHash !== policy.blueprintHash ||
+    artifacts.blueprintHash !== policy.blueprintHash
+  ) {
+    fail("mismatched_identity", "$.releaseBindings.artifacts");
   }
 };
 
@@ -780,29 +794,10 @@ const verifyCanonicalManifest = (value: unknown): JsonRecord => {
     }
   })();
 
-  // The finalized decoder owns all strict nested-shape, script-byte/hash,
-  // reference-script, catalogue, DA, one-shot, and profile invariants. During
-  // pre-release construction its compiled digest is null, so validate the
-  // exact signed candidate structurally with only that release slot replaced;
-  // the original identity and its non-null release digest are independently
-  // authenticated and policy-pinned below.
-  const proofEvidence = plainRecord(
-    candidate.proofEvidence,
-    "$.manifest.proofEvidence",
-  );
-  const structuralIdentity: JsonRecord = {
-    ...candidate,
-    proofEvidence: {
-      ...proofEvidence,
-      digest: MIDGARD_RELEASE_EVIDENCE_DIGEST,
-    },
-  };
-  const { manifestId: _manifestId, ...identityInput } = structuralIdentity;
+  // Validate the exact signed manifest, including contract bytes, parameters,
+  // references, and blueprint identity. No release evidence is required.
   try {
-    verifyFinalizedDeploymentManifest({
-      ...identityInput,
-      manifestId: computeDeploymentManifestId(identityInput),
-    });
+    verifyFinalizedDeploymentManifest(candidate);
   } catch {
     fail("canonical_manifest_invalid", "$.manifest");
   }
@@ -813,7 +808,8 @@ export type VerifiedWatcherDeploymentIdentity = Readonly<{
   manifestId: string;
   network: "Mainnet" | "Preprod" | "Preview";
   trustRootId: string;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
+  fundingProfileBundleDigest: string;
   ruleBundleCommitment: string;
   programCommitments: Readonly<Record<string, string>>;
   durableMarker: DeploymentMarker;
@@ -831,6 +827,14 @@ export type WatcherDeploymentProtocolScriptAuthority = Readonly<{
     correctionLockSpend: string;
     fraudProofSpend: string;
     fraudProofMint: string;
+    referenceScriptAuthMint: string;
+    availabilityChallengeSpend: string;
+    availabilityChallengeMint: string;
+    availabilityChallengeBondWithdraw: string;
+    availabilityChallengeOpenWithdraw: string;
+    availabilityChallengeSettleWithdraw: string;
+    availabilityChallengeCloseWithdraw: string;
+    availabilityChallengeTimeoutWithdraw: string;
   }>;
   referenceScripts: Readonly<Record<string, WatcherReferenceScriptIdentity>>;
   authorityDigest: string;
@@ -863,6 +867,10 @@ const protocolScriptAuthorityByDeploymentIdentity = new WeakMap<
   object,
   WatcherDeploymentProtocolScriptAuthority
 >();
+const appliedScriptHashesByDeploymentIdentity = new WeakMap<
+  object,
+  Readonly<Record<string, string>>
+>();
 const releaseFinalityAuthorityByDeploymentIdentity = new WeakMap<
   object,
   FraudProofReleaseFinalityAuthority
@@ -879,6 +887,250 @@ const availabilityChallengeAuthorityByDeploymentIdentity = new WeakMap<
   object,
   WatcherDeploymentAvailabilityChallengeAuthority
 >();
+
+const USER_EVENT_SIGNED_CONTRACT_NAMES = [
+  "hubOracleMint",
+  "depositMint",
+  "depositSpend",
+  "withdrawalMint",
+  "withdrawalSpend",
+  "txOrderMint",
+  "txOrderSpend",
+  "fieldPreimageCertificateMint",
+] as const;
+type UserEventSignedContractName =
+  (typeof USER_EVENT_SIGNED_CONTRACT_NAMES)[number];
+type SignedUserEventScript = Readonly<{
+  type: string;
+  cborHex: string;
+  scriptHash: string;
+}>;
+const userEventScriptsByDeploymentIdentity = new WeakMap<
+  object,
+  Readonly<{
+    blueprintSha256: string;
+    contracts: Readonly<
+      Record<UserEventSignedContractName, SignedUserEventScript>
+    >;
+  }>
+>();
+
+declare const watcherUserEventScriptBindingBrand: unique symbol;
+/** Live script-application authority only; this carries no activation or history proof. */
+export type WatcherUserEventScriptBinding = Readonly<{
+  [watcherUserEventScriptBindingBrand]: true;
+}>;
+type UserEventScriptIdentity = Readonly<{
+  policyId: string;
+  spendScriptHash: string;
+  addressHex: string;
+}>;
+type WatcherUserEventScriptBindingDescription = Readonly<{
+  deploymentFingerprint: string;
+  blueprintHash: string;
+  blueprintSha256: string;
+  network: VerifiedWatcherDeploymentIdentity["network"];
+  canonicalOneShotOutRef: string;
+  hub: Readonly<{ policyId: string; assetName: string; addressHex: string }>;
+  deposit: UserEventScriptIdentity;
+  withdrawal: UserEventScriptIdentity;
+  forcedOrder: UserEventScriptIdentity;
+  certificatePolicyId: string;
+}>;
+const userEventScriptBindings = new WeakMap<
+  object,
+  Readonly<{
+    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+    description: WatcherUserEventScriptBindingDescription;
+  }>
+>();
+
+const typedArrayByteLength = Object.getOwnPropertyDescriptor(
+  Object.getPrototypeOf(Uint8Array.prototype),
+  "byteLength",
+)!.get!;
+
+/** Admit the exact signed blueprint bytes and independently derive every event script. */
+export const verifyWatcherUserEventScriptBinding = (input: {
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly blueprintBytes: Uint8Array;
+}): WatcherUserEventScriptBinding => {
+  const { deploymentIdentity, blueprintBytes } = input;
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  const signed =
+    userEventScriptsByDeploymentIdentity.get(deploymentIdentity) ??
+    fail("invalid_field", "$.verifiedDeploymentIdentity.userEventScripts");
+  const byteLength = (() => {
+    try {
+      return typedArrayByteLength.call(blueprintBytes) as number;
+    } catch {
+      return fail("invalid_field", "$.blueprintBytes");
+    }
+  })();
+  if (
+    !(blueprintBytes instanceof Uint8Array) ||
+    byteLength < 1 ||
+    byteLength > 64 * 1024 * 1024
+  ) {
+    fail("invalid_field", "$.blueprintBytes");
+  }
+  const bytes = new Uint8Array(blueprintBytes);
+  if (
+    createHash("sha256").update(bytes).digest("hex") !== signed.blueprintSha256
+  ) {
+    fail("mismatched_identity", "$.blueprintBytes.sha256");
+  }
+  const blueprint = (() => {
+    try {
+      const raw = plainRecord(
+        parseWatcherStrictJsonValue(
+          new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+        ),
+        "$.blueprint",
+      );
+      if (
+        !Array.isArray(raw.validators) ||
+        raw.validators.length < 1 ||
+        raw.validators.length > 4096
+      ) {
+        fail("invalid_field", "$.blueprint.validators");
+      }
+      return parseFaultProofBlueprint(raw);
+    } catch {
+      return fail("invalid_field", "$.blueprint");
+    }
+  })();
+  const protocol = watcherDeploymentProtocolScriptAuthority(deploymentIdentity);
+  const derived = (() => {
+    try {
+      const hub = buildHubOracleMintingValidator({
+        blueprint,
+        oneShotOutRef: parseOutRefLabel(protocol.hubOracleOneShotOutRef),
+      });
+      const parameters = {
+        blueprint,
+        network: deploymentIdentity.network,
+        hubOraclePolicyId: hub.policyId,
+      };
+      return {
+        hub,
+        deposit: buildDepositValidators(parameters),
+        withdrawal: buildWithdrawalValidators(parameters),
+        ...buildTxOrderValidators(parameters),
+      };
+    } catch {
+      return fail("invalid_field", "$.blueprint.userEventScripts");
+    }
+  })();
+  const actual: Record<UserEventSignedContractName, SignedUserEventScript> = {
+    hubOracleMint: {
+      type: derived.hub.mintingScript.type,
+      cborHex: derived.hub.mintingScriptCBOR,
+      scriptHash: derived.hub.policyId,
+    },
+    depositMint: {
+      type: derived.deposit.mintingScript.type,
+      cborHex: derived.deposit.mintingScriptCBOR,
+      scriptHash: derived.deposit.policyId,
+    },
+    depositSpend: {
+      type: derived.deposit.spendingScript.type,
+      cborHex: derived.deposit.spendingScriptCBOR,
+      scriptHash: derived.deposit.spendingScriptHash,
+    },
+    withdrawalMint: {
+      type: derived.withdrawal.mintingScript.type,
+      cborHex: derived.withdrawal.mintingScriptCBOR,
+      scriptHash: derived.withdrawal.policyId,
+    },
+    withdrawalSpend: {
+      type: derived.withdrawal.spendingScript.type,
+      cborHex: derived.withdrawal.spendingScriptCBOR,
+      scriptHash: derived.withdrawal.spendingScriptHash,
+    },
+    txOrderMint: {
+      type: derived.txOrder.mintingScript.type,
+      cborHex: derived.txOrder.mintingScriptCBOR,
+      scriptHash: derived.txOrder.policyId,
+    },
+    txOrderSpend: {
+      type: derived.txOrder.spendingScript.type,
+      cborHex: derived.txOrder.spendingScriptCBOR,
+      scriptHash: derived.txOrder.spendingScriptHash,
+    },
+    fieldPreimageCertificateMint: {
+      type: derived.fieldPreimageCertificate.mintingScript.type,
+      cborHex: derived.fieldPreimageCertificate.mintingScriptCBOR,
+      scriptHash: derived.fieldPreimageCertificate.policyId,
+    },
+  };
+  for (const name of USER_EVENT_SIGNED_CONTRACT_NAMES) {
+    const expected = signed.contracts[name];
+    const script = actual[name];
+    if (
+      expected.type !== "PlutusV3" ||
+      script.type !== expected.type ||
+      script.cborHex !== expected.cborHex ||
+      script.scriptHash !== expected.scriptHash
+    ) {
+      fail("mismatched_identity", `$.manifest.contracts.${name}`);
+    }
+  }
+  const eventIdentity = (
+    validator: AuthenticatedValidator,
+  ): UserEventScriptIdentity =>
+    Object.freeze({
+      policyId: validator.policyId,
+      spendScriptHash: validator.spendingScriptHash,
+      addressHex: CML.Address.from_bech32(
+        validator.spendingScriptAddress,
+      ).to_hex(),
+    });
+  const description: WatcherUserEventScriptBindingDescription = Object.freeze({
+    deploymentFingerprint: deploymentIdentity.manifestId,
+    blueprintHash: deploymentIdentity.blueprintHash,
+    blueprintSha256: signed.blueprintSha256,
+    network: deploymentIdentity.network,
+    canonicalOneShotOutRef: protocol.hubOracleOneShotOutRef,
+    hub: Object.freeze({
+      policyId: derived.hub.policyId,
+      assetName: HUB_ORACLE_ASSET_NAME,
+      addressHex: CML.Address.from_bech32(
+        credentialToAddress(
+          deploymentIdentity.network,
+          scriptHashToCredential(derived.hub.policyId),
+        ),
+      ).to_hex(),
+    }),
+    deposit: eventIdentity(derived.deposit),
+    withdrawal: eventIdentity(derived.withdrawal),
+    forcedOrder: eventIdentity(derived.txOrder),
+    certificatePolicyId: derived.fieldPreimageCertificate.policyId,
+  });
+  const binding = Object.freeze({}) as WatcherUserEventScriptBinding;
+  userEventScriptBindings.set(
+    binding,
+    Object.freeze({ deploymentIdentity: deploymentIdentity, description }),
+  );
+  return binding;
+};
+
+/** The returned frozen description cannot be substituted for the admitted handle. */
+export const readWatcherUserEventScriptBinding = (input: {
+  readonly binding: WatcherUserEventScriptBinding;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+}): WatcherUserEventScriptBindingDescription => {
+  const { binding, deploymentIdentity } = input;
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  const admitted = userEventScriptBindings.get(binding);
+  if (
+    admitted === undefined ||
+    admitted.deploymentIdentity !== deploymentIdentity
+  ) {
+    return fail("invalid_field", "$.userEventScriptBinding");
+  }
+  return admitted.description;
+};
 
 /**
  * Refuses structural casts at production authority boundaries. Only the
@@ -911,6 +1163,17 @@ export const watcherDeploymentProtocolScriptAuthority = (
   return (
     protocolScriptAuthorityByDeploymentIdentity.get(identity) ??
     fail("invalid_field", "$.verifiedDeploymentIdentity.protocolScripts")
+  );
+};
+
+/** Exact applied scripts from the already verified deployment manifest. */
+export const watcherDeploymentAppliedScriptHashes = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): Readonly<Record<string, string>> => {
+  assertVerifiedWatcherDeploymentIdentity(identity);
+  return (
+    appliedScriptHashesByDeploymentIdentity.get(identity) ??
+    fail("invalid_field", "$.verifiedDeploymentIdentity.appliedScriptHashes")
   );
 };
 
@@ -1052,9 +1315,6 @@ export const verifyWatcherDeploymentIdentity = (input: {
   if (!signatureValid) {
     fail("invalid_signature", "$.attestation.signature");
   }
-  if (policy.releaseEvidenceDigest.length === 0) {
-    fail("release_evidence_unavailable", "$.policy.releaseEvidenceDigest");
-  }
   assertPolicyBindings(manifest, bindings, policy);
 
   const expectedMarker = makeDeploymentMarker(manifestId);
@@ -1075,7 +1335,8 @@ export const verifyWatcherDeploymentIdentity = (input: {
     manifestId,
     network: policy.network,
     trustRootId,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
+    fundingProfileBundleDigest: policy.fundingProfileBundleDigest,
     ruleBundleCommitment: policy.ruleBundleCommitment,
     programCommitments: policy.programCommitments,
     durableMarker: expectedMarker,
@@ -1087,7 +1348,27 @@ export const verifyWatcherDeploymentIdentity = (input: {
     correctionLockSpend: policy.appliedScriptHashes.correctionLockSpend!,
     fraudProofSpend: policy.appliedScriptHashes.fraudProofSpend!,
     fraudProofMint: policy.appliedScriptHashes.fraudProofMint!,
+    referenceScriptAuthMint:
+      policy.appliedScriptHashes.referenceScriptAuthMint!,
+    availabilityChallengeSpend:
+      policy.appliedScriptHashes.availabilityChallengeSpend!,
+    availabilityChallengeMint:
+      policy.appliedScriptHashes.availabilityChallengeMint!,
+    availabilityChallengeBondWithdraw:
+      policy.appliedScriptHashes.availabilityChallengeBondWithdraw!,
+    availabilityChallengeOpenWithdraw:
+      policy.appliedScriptHashes.availabilityChallengeOpenWithdraw!,
+    availabilityChallengeSettleWithdraw:
+      policy.appliedScriptHashes.availabilityChallengeSettleWithdraw!,
+    availabilityChallengeCloseWithdraw:
+      policy.appliedScriptHashes.availabilityChallengeCloseWithdraw!,
+    availabilityChallengeTimeoutWithdraw:
+      policy.appliedScriptHashes.availabilityChallengeTimeoutWithdraw!,
   });
+  appliedScriptHashesByDeploymentIdentity.set(
+    verified,
+    Object.freeze({ ...policy.appliedScriptHashes }),
+  );
   if (Object.values(protocolScriptHashes).some((hash) => !HEX_28.test(hash))) {
     fail("mismatched_identity", "$.policy.appliedScriptHashes");
   }
@@ -1175,9 +1456,9 @@ export const verifyWatcherDeploymentIdentity = (input: {
   const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifestId,
-    releaseIdentityDigest: exactString(
-      plainRecord(manifest.proofEvidence, "$.manifest.proofEvidence").digest,
-      "$.manifest.proofEvidence.digest",
+    blueprintHash: exactString(
+      plainRecord(manifest.artifacts, "$.manifest.artifacts").blueprintHash,
+      "$.manifest.artifacts.blueprintHash",
       HEX_32,
     ),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
@@ -1222,9 +1503,9 @@ export const verifyWatcherDeploymentIdentity = (input: {
   const releaseEconomics = validateVerifiedFraudProofReleaseEconomicsPolicy({
     schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifestId,
-    releaseIdentityDigest: exactString(
-      plainRecord(manifest.proofEvidence, "$.manifest.proofEvidence").digest,
-      "$.manifest.proofEvidence.digest",
+    blueprintHash: exactString(
+      plainRecord(manifest.artifacts, "$.manifest.artifacts").blueprintHash,
+      "$.manifest.artifacts.blueprintHash",
       HEX_32,
     ),
     policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(
@@ -1251,6 +1532,51 @@ export const verifyWatcherDeploymentIdentity = (input: {
         return releaseEconomics;
       },
     });
+  const signedContracts = plainRecord(
+    manifest.contracts,
+    "$.manifest.contracts",
+  );
+  const signedUserEventContracts = Object.freeze(
+    Object.fromEntries(
+      USER_EVENT_SIGNED_CONTRACT_NAMES.map((name) => {
+        const entry = plainRecord(
+          signedContracts[name],
+          `$.manifest.contracts.${name}`,
+        );
+        const contract = plainRecord(
+          entry.contract,
+          `$.manifest.contracts.${name}.contract`,
+        );
+        return [
+          name,
+          Object.freeze({
+            type: exactString(
+              contract.type,
+              `$.manifest.contracts.${name}.contract.type`,
+              /^.+$/u,
+            ),
+            cborHex: exactString(
+              contract.cborHex,
+              `$.manifest.contracts.${name}.contract.cborHex`,
+              /^(?:[0-9a-f]{2})+$/u,
+            ),
+            scriptHash: exactString(
+              entry.scriptHash,
+              `$.manifest.contracts.${name}.scriptHash`,
+              HEX_28,
+            ),
+          }),
+        ];
+      }),
+    ),
+  ) as Readonly<Record<UserEventSignedContractName, SignedUserEventScript>>;
+  userEventScriptsByDeploymentIdentity.set(
+    verified,
+    Object.freeze({
+      blueprintSha256: policy.blueprintHash,
+      contracts: signedUserEventContracts,
+    }),
+  );
   authenticatedWatcherDeploymentIdentities.add(verified);
   authenticatedWatcherProtocolScriptAuthorities.add(protocolScriptAuthority);
   authenticatedWatcherProtocolParameterAuthorities.add(

@@ -8,6 +8,11 @@
     "midgard-public-retained-da": "./dist/public-retained-da.js"
   },
   "exports": {
+    "./availability": {
+      "midgard-source": "./src/availability/index.ts",
+      "types": "./dist/availability/index.d.ts",
+      "import": "./dist/availability/index.js"
+    },
     "./config": {
       "midgard-source": "./src/config.ts",
       "types": "./dist/config.d.ts",
@@ -35,7 +40,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/da/libp2p/index.ts src/da/libp2p/DaStreamCodec.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/availability/index.ts src/da/libp2p/index.ts src/da/libp2p/DaStreamCodec.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

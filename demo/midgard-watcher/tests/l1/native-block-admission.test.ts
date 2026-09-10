@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 
+import { requireOgmiosRawTransactionCbor } from "@al-ft/midgard-fault-proofs";
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
@@ -39,7 +41,8 @@ const fixtureEvent = async (): Promise<WatcherNativeChainSyncRollForward> => {
 
 describe("native block admission", () => {
   it("independently derives the era, header identity, ancestry, height and ordered transaction ids", async () => {
-    const admitted = admitWatcherNativeRollForwardBlock(await fixtureEvent());
+    const event = await fixtureEvent();
+    const admitted = admitWatcherNativeRollForwardBlock(event);
     expect(admitted).toMatchObject({
       ...FIXTURE_METADATA,
       protocolMajor: "10",
@@ -52,6 +55,35 @@ describe("native block admission", () => {
     expect(admitted.transactionIds).toEqual(
       expect.arrayContaining([expect.stringMatching(/^[0-9a-f]{64}$/u)]),
     );
+    const block = CML.Block.from_cbor_hex(event.rawBlockCbor);
+    const bodies = block.transaction_bodies();
+    try {
+      for (const [index, cbor] of admitted.transactionCbors.entries()) {
+        const transaction = CML.Transaction.from_cbor_hex(cbor);
+        const body = transaction.body();
+        const originalBody = bodies.get(index);
+        const txHash = CML.hash_transaction(body);
+        try {
+          expect(body.to_cbor_hex()).toBe(originalBody.to_cbor_hex());
+          expect(txHash.to_hex()).toBe(admitted.transactionIds[index]);
+          expect(
+            requireOgmiosRawTransactionCbor({
+              value: { id: admitted.transactionIds[index]!, cbor },
+              expectedTxHash: admitted.transactionIds[index]!,
+              label: `unchanged Conway transaction ${index.toString()}`,
+            }),
+          ).toBe(cbor);
+        } finally {
+          txHash.free();
+          originalBody.free();
+          body.free();
+          transaction.free();
+        }
+      }
+    } finally {
+      bodies.free();
+      block.free();
+    }
   });
 
   it.each([

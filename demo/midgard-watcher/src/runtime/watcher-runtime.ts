@@ -2,6 +2,7 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
+  computeFraudProofRawL1PointId,
   createSqliteHistoricalNativeScriptCheckpointStore,
   isWorkflowActuationRevokedError,
   resolveProverSigner,
@@ -13,6 +14,10 @@ import {
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { Kupmios, type UTxO, utxoToCore } from "@lucid-evolution/lucid";
 
+import {
+  createWatcherAvailabilityRuntime,
+  type WatcherAvailabilityRuntime,
+} from "../availability/runtime.js";
 import {
   createWatcherFaultDecisionBridge,
   type WatcherFaultDecisionBridge,
@@ -38,22 +43,17 @@ import {
   openWatcherSqliteProverFundingReservationStore,
   type WatcherSqliteProverFundingReservationStoreRuntime,
 } from "../funding/sqlite-prover-funding-reservation-store.js";
-import {
-  loadWatcherWorkflowFundingProfileOverlay,
-  type WatcherWorkflowFundingProfileOverlay,
-  workflowFundingProfileFromOverlay,
-} from "../funding/workflow-funding-profile-overlay.js";
+import { loadWatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import { createWatcherStateQueueObservationSource } from "../indexers/authenticated-state-queue-observation.js";
 import {
   makeWatcherFinalityPolicy,
   type WatcherFinalityPolicy,
 } from "../l1/finality-engine.js";
-import {
-  createWatcherLocalKupmiosNativeObservationRuntime,
-  createWatcherLocalKupmiosRawSource,
-} from "../l1/local-kupmios-native-observation.js";
+import { createWatcherLocalKupmiosNativeObservationRuntime } from "../l1/local-kupmios-native-observation.js";
+import { createWatcherLocalKupmiosRawSource } from "../l1/local-kupmios-raw-source.js";
 import {
   startWatcherNativeChainSyncWithRetry,
+  type WatcherNativeChainSyncAuthority,
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncPoint,
@@ -74,7 +74,10 @@ import {
   type WatcherChainCoordinator,
 } from "./chain-coordinator.js";
 import { parseWatcherConfigJson } from "./config.js";
-import { loadWatcherVerifiedDeploymentAuthority } from "./deployment-authority.js";
+import {
+  loadWatcherVerifiedDeploymentAuthority,
+  type VerifiedWatcherDeploymentAuthority,
+} from "./deployment-authority.js";
 import {
   startWatcherOperationsHttpServer,
   type WatcherOperationsHttpServer,
@@ -88,14 +91,22 @@ import {
   loadWatcherSecretText,
   type WatcherProcessConfig,
 } from "./process-config.js";
-import { createWatcherStateQueueRuntime } from "./state-queue-runtime.js";
+import {
+  createWatcherStateQueueRuntime,
+  type WatcherStateQueueRuntime,
+} from "./state-queue-runtime.js";
 import { createWatcherTrustedHeadClientRuntime } from "./trusted-head-runtime.js";
+import {
+  createWatcherUserEventRuntime,
+  type WatcherUserEventRuntime,
+} from "./user-event-runtime.js";
 
 export const WATCHER_RUNTIME_SCHEMA_VERSION =
   "midgard-watcher-production-runtime-v1" as const;
 
 export type WatcherRuntime = Readonly<{
   schemaVersion: typeof WATCHER_RUNTIME_SCHEMA_VERSION;
+  deploymentAuthority: VerifiedWatcherDeploymentAuthority;
   policy: WatcherFinalityPolicy;
   coordinator: WatcherChainCoordinator;
   faultProofApplication: WatcherFaultProofApplication;
@@ -104,6 +115,7 @@ export type WatcherRuntime = Readonly<{
   operations: WatcherOperationsObservability;
   operationsEndpoint: string;
   recoveredFaultProofWorkflowCount: number;
+  availability: WatcherAvailabilityRuntime;
   done: Promise<void>;
   caughtUp: Promise<void>;
   status(): Readonly<{
@@ -112,6 +124,7 @@ export type WatcherRuntime = Readonly<{
     readiness: boolean;
     caughtUp: boolean;
     proofSupervisor: ReturnType<WatcherFaultProofSupervisor["status"]>;
+    availability: ReturnType<WatcherAvailabilityRuntime["status"]>;
   }>;
   close(): Promise<void>;
 }>;
@@ -134,6 +147,50 @@ export const assertWatcherFaultProofLaunchScope = (
       "watcher production fault-proof application does not cover the exact canonical catalogue",
     );
   }
+};
+
+/** Check the live native stream against the previously admitted recovery cursor. */
+export const readWatcherNativeRecoveryBoundary = (input: {
+  readonly nativeAuthority: WatcherNativeChainSyncAuthority;
+  readonly recovery: Pick<
+    WatcherStateQueueRuntime,
+    "replayIntersection" | "catchupBoundary"
+  >;
+}) => {
+  const details = watcherNativeChainSyncAuthorityDetails(input.nativeAuthority);
+  if (details === null) {
+    throw new Error("native chain-sync authority expired during startup");
+  }
+  if (
+    details.selectedIntersection.kind !== "point" ||
+    details.selectedIntersection.blockHash !==
+      input.recovery.replayIntersection.blockHash ||
+    details.selectedIntersection.slot !== input.recovery.replayIntersection.slot
+  ) {
+    throw new Error(
+      "native chain-sync selected a point outside state-queue restore authority",
+    );
+  }
+  // Recovery and native startup observe the live node at different times.
+  // Growth is admissible only inside the existing bounded replay window; the
+  // state-queue runtime still verifies the exact historical catch-up point.
+  if (
+    details.currentTip.kind !== "point" ||
+    BigInt(details.currentTip.blockNo) <
+      BigInt(input.recovery.catchupBoundary.ogmiosTipBlockNo) ||
+    BigInt(details.currentTip.blockNo) -
+      BigInt(input.recovery.replayIntersection.blockNo) >
+      2_160n
+  ) {
+    throw new Error(
+      "native chain-sync tip differs from the admitted state-queue recovery bound",
+    );
+  }
+  return Object.freeze({
+    ...details,
+    selectedIntersection: details.selectedIntersection,
+    currentTip: details.currentTip,
+  });
 };
 
 const parseWatcherProverFundingOutRef = (
@@ -164,7 +221,6 @@ export type WatcherProverFundingUtxoProvider = Readonly<{
 export const mintWatcherProverFundingReservationPermit = async (input: {
   readonly category: WatcherInstalledWorkflowCategory;
   readonly runner: WorkflowAdapterRunner;
-  readonly fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
   readonly factory: WatcherProverFundingAuthorityFactory;
   readonly actuationPermit: WorkflowActuationPermit;
   readonly rollbackGeneration: string;
@@ -173,14 +229,9 @@ export const mintWatcherProverFundingReservationPermit = async (input: {
   readonly provider: WatcherProverFundingUtxoProvider;
 }): Promise<WorkflowFundingReservationPermit> => {
   assertWatcherProverFundingAuthorityFactory(input.factory);
-  const fundingRequirements = workflowFundingProfileFromOverlay({
-    overlay: input.fundingProfileOverlay,
-    category: input.category,
-  });
   return await input.factory.create({
     category: input.category,
     runner: input.runner,
-    fundingRequirements,
     actuationPermit: input.actuationPermit,
     rollbackGeneration: input.rollbackGeneration,
     decisionDigest: input.decisionDigest,
@@ -320,9 +371,11 @@ export const createWatcherRuntime = async (input: {
 }): Promise<WatcherRuntime> => {
   await requireWatcherRuntimeConfig(input.config);
   await prepareJournalDirectory(input.config.workflowJournalDirectory);
-  const deploymentIdentity = await loadWatcherVerifiedDeploymentAuthority({
+  const deploymentAuthority = await loadWatcherVerifiedDeploymentAuthority({
     path: input.config.deploymentAuthorityPath,
+    ruleBundlePath: input.config.ruleBundlePath,
   });
+  const { deploymentIdentity } = deploymentAuthority;
   const policy = makeWatcherFinalityPolicy(
     input.config.watcherConfig,
     deploymentIdentity,
@@ -348,6 +401,7 @@ export const createWatcherRuntime = async (input: {
     policy,
     additionalSecretSources: [
       input.config.faultProofInfrastructure.midgardNodeAdminKeySource,
+      input.config.availability.keySource,
     ],
   });
   const historicalNativeScriptCheckpointStore =
@@ -359,38 +413,12 @@ export const createWatcherRuntime = async (input: {
     bundlePath: input.config.fundingProfileBundlePath,
     deploymentIdentity,
   });
-  const faultProofApplication = createWatcherFaultProofApplication({
-    deploymentIdentity,
-    infrastructure: input.config.faultProofInfrastructure,
-    historicalNativeScriptCheckpointStore,
-    fundingProfileOverlay,
-  });
-  assertWatcherFaultProofLaunchScope(faultProofApplication.installedCategories);
-  const faultProofReadiness: WatcherFaultProofStartupReadiness[] = [];
-  for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
-    const journalDirectory = join(
-      input.config.workflowJournalDirectory,
-      "readiness",
-      category,
-      input.config.readinessHeaderHash,
-    );
-    await prepareJournalDirectory(journalDirectory);
-    faultProofReadiness.push(
-      await faultProofApplication.assertStartupReady({
-        mode: "resume",
-        category,
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        headerHash: input.config.readinessHeaderHash,
-        journalDirectory,
-        runtimeConfigPath: input.config.watcherRuntimeConfigPath,
-      }),
-    );
-  }
-
   const sqlite = await openWatcherSqliteDurableBackend({
     path: input.config.watcherConfig.storage.path,
   });
+
   let native: WatcherNativeChainSyncRuntime | undefined;
+  let userEventRuntime: WatcherUserEventRuntime | undefined;
   let observation:
     | Awaited<
         ReturnType<typeof createWatcherLocalKupmiosNativeObservationRuntime>
@@ -398,6 +426,7 @@ export const createWatcherRuntime = async (input: {
     | undefined;
   let faultProofSupervisor: WatcherFaultProofSupervisor | undefined;
   let faultDecisionBridge: WatcherFaultDecisionBridge | undefined;
+  let availability: WatcherAvailabilityRuntime | undefined;
   let operationsHttp: WatcherOperationsHttpServer | undefined;
   let retainedDaOperationsBinding:
     | WatcherRetainedDaOperationsBinding
@@ -408,6 +437,7 @@ export const createWatcherRuntime = async (input: {
   const closeAllocatedResources = async (): Promise<void> => {
     const failures: unknown[] = [];
     faultDecisionBridge?.invalidateForShutdown();
+    availability?.invalidateForShutdown();
     try {
       retainedDaOperationsBinding?.close();
     } catch (error) {
@@ -434,6 +464,13 @@ export const createWatcherRuntime = async (input: {
         failures.push(error);
       }
     }
+    if (availability !== undefined) {
+      try {
+        await availability.close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
     try {
       observation?.close();
     } catch (error) {
@@ -443,6 +480,13 @@ export const createWatcherRuntime = async (input: {
       proverFundingStore?.close();
     } catch (error) {
       failures.push(error);
+    }
+    if (userEventRuntime !== undefined) {
+      try {
+        await userEventRuntime.close();
+      } catch (error) {
+        failures.push(error);
+      }
     }
     try {
       sqlite.close();
@@ -464,19 +508,73 @@ export const createWatcherRuntime = async (input: {
       rejectCoordinator = reject;
     },
   );
+  // Startup can fail before the event handler awaits this promise. Observe
+  // rejection immediately while leaving the original promise rejecting.
+  void coordinatorReady.catch(() => undefined);
   let resolveCaughtUp!: () => void;
   let rejectCaughtUp!: (reason: Error) => void;
   const nativeCaughtUp = new Promise<void>((resolve, reject) => {
     resolveCaughtUp = resolve;
     rejectCaughtUp = reject;
   });
+  void nativeCaughtUp.catch(() => undefined);
   try {
     const durable = await createWatcherDurableRuntime({
       backend: sqlite.backend,
+      userEventArchive: sqlite.userEventArchive,
       policy,
       authenticationKey: trusted.rollbackAuthenticationKey,
       client: trusted.client,
     });
+    const eventHistory = await createWatcherUserEventRuntime({
+      watcherConfig: input.config.watcherConfig,
+      deploymentAuthority,
+      blueprintBytes: await readFile(
+        input.config.faultProofInfrastructure.blueprintPath,
+      ),
+      nativeChainSyncBinaryPath: input.config.nativeChainSyncBinaryPath,
+      runtime: durable,
+      archive: sqlite.userEventArchive,
+    });
+    userEventRuntime = eventHistory;
+    const retireEventHistory = () =>
+      faultDecisionBridge?.invalidateForHistoryChange();
+    void eventHistory.done.then(retireEventHistory, retireEventHistory);
+    const { faultProofApplication, faultProofReadiness } = await (async () => {
+      const faultProofApplication = createWatcherFaultProofApplication({
+        deploymentAuthority,
+        replayTranscriptStore: sqlite.replayTranscripts,
+        userEventRuntime: eventHistory,
+        infrastructure: input.config.faultProofInfrastructure,
+        historicalNativeScriptCheckpointStore,
+        fundingProfileOverlay,
+      });
+      assertWatcherFaultProofLaunchScope(
+        faultProofApplication.installedCategories,
+      );
+      const faultProofReadiness: WatcherFaultProofStartupReadiness[] = [];
+      for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
+        const journalDirectory = join(
+          input.config.workflowJournalDirectory,
+          "readiness",
+          category,
+          input.config.readinessHeaderHash,
+        );
+        await prepareJournalDirectory(journalDirectory);
+        faultProofReadiness.push(
+          await faultProofApplication.assertStartupReady({
+            mode: "resume",
+            category,
+            deploymentFingerprint: deploymentIdentity.manifestId,
+            headerHash: input.config.readinessHeaderHash,
+            journalDirectory,
+            runtimeConfigPath: input.config.watcherRuntimeConfigPath,
+          }),
+        );
+      }
+      return { faultProofApplication, faultProofReadiness };
+    })();
+
     const rawSource = createWatcherLocalKupmiosRawSource({
       watcherConfig: input.config.watcherConfig,
       deploymentIdentity,
@@ -574,7 +672,6 @@ export const createWatcherRuntime = async (input: {
             await mintWatcherProverFundingReservationPermit({
               category,
               runner: faultProofApplication.runners[category],
-              fundingProfileOverlay,
               factory: proverFundingAuthorityFactory,
               actuationPermit,
               rollbackGeneration: job.rollbackGeneration,
@@ -594,6 +691,22 @@ export const createWatcherRuntime = async (input: {
             runtimeConfigPath: input.config.watcherRuntimeConfigPath,
           };
           const result = await faultProofApplication.runOrResume(invocation);
+          if (
+            typeof result !== "object" ||
+            result === null ||
+            !("kind" in result) ||
+            result.kind !== "completed"
+          ) {
+            const reason =
+              typeof result === "object" &&
+              result !== null &&
+              "reason" in result
+                ? String(result.reason)
+                : "workflow did not return a completed outcome";
+            throw new Error(
+              `Watcher ${category} workflow did not complete: ${reason}`,
+            );
+          }
           operations.sink.recordProofStep({
             decisionDigest,
             stage: "terminal",
@@ -637,6 +750,13 @@ export const createWatcherRuntime = async (input: {
       deploymentIdentity,
       sink: operations.sink,
     });
+    availability = await createWatcherAvailabilityRuntime({
+      config: input.config,
+      identity: deploymentIdentity,
+      rawSource,
+      proverWalletAddress,
+    });
+    await availability.reconcile(stateQueueRuntime.current(), false);
     faultDecisionBridge = await createWatcherFaultDecisionBridge({
       application: faultProofApplication,
       supervisor: faultProofSupervisor,
@@ -645,6 +765,16 @@ export const createWatcherRuntime = async (input: {
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       maximumClassificationConcurrency: 16,
       operationsSink: operations.sink,
+      pendingAvailabilityHeaders: availability.pendingAvailabilityHeaders,
+    });
+    // Capture the full finalized backlog in bounded batches before recovering
+    // older queue headers. Their event views remain scoped to each header.
+    const restoredQueuePoint = stateQueueRuntime.catchupBoundary;
+    await eventHistory.advanceThrough({
+      blockHash: restoredQueuePoint.blockHash,
+      blockNo: restoredQueuePoint.blockNo,
+      slot: restoredQueuePoint.slot,
+      pointId: computeFraudProofRawL1PointId(restoredQueuePoint),
     });
     await faultDecisionBridge.prepareForRecovery(stateQueueRuntime.current());
     const recoveredFaultProofWorkflowCount =
@@ -682,39 +812,49 @@ export const createWatcherRuntime = async (input: {
       nativeAuthority: native.authority,
       rawSource,
     });
-    const details = watcherNativeChainSyncAuthorityDetails(native.authority);
-    if (details === null) {
-      throw new Error("native chain-sync authority expired during startup");
-    }
-    if (
-      details.selectedIntersection.kind !== "point" ||
-      details.selectedIntersection.blockHash !==
-        stateQueueRuntime.replayIntersection.blockHash ||
-      details.selectedIntersection.slot !==
-        stateQueueRuntime.replayIntersection.slot
-    ) {
-      throw new Error(
-        "native chain-sync selected a point outside state-queue restore authority",
-      );
-    }
-    if (
-      details.currentTip.kind !== "point" ||
-      details.currentTip.blockNo !==
-        stateQueueRuntime.catchupBoundary.ogmiosTipBlockNo ||
-      BigInt(details.currentTip.blockNo) -
-        BigInt(stateQueueRuntime.replayIntersection.blockNo) >
-        2_160n
-    ) {
-      throw new Error(
-        "native chain-sync tip differs from the admitted state-queue recovery bound",
-      );
-    }
+    const details = readWatcherNativeRecoveryBoundary({
+      nativeAuthority: native.authority,
+      recovery: stateQueueRuntime,
+    });
+    const queueHooks = stateQueueRuntime.bindFaultDecisionBridge(
+      faultDecisionBridge,
+      availability,
+    );
+    const activeUserEventRuntime = eventHistory;
+    const activeBridge = faultDecisionBridge;
+    const activeAvailability = availability;
     const coordinator = createWatcherChainCoordinator({
       policy,
       durable,
       observation,
       restartIntersection: details.selectedIntersection,
-      hooks: stateQueueRuntime.bindFaultDecisionBridge(faultDecisionBridge),
+      hooks: {
+        onRollback: async (point) => {
+          activeBridge.invalidateForRollback();
+          activeAvailability.invalidateForRollback(point);
+          await activeUserEventRuntime.handleRollback(point);
+          await queueHooks.onRollback(point);
+        },
+        onFinalized: async (finalized) => {
+          const head = activeUserEventRuntime.read().currentPoint;
+          if (
+            head === null ||
+            BigInt(finalized.nativeBlock.blockNo) > BigInt(head.blockNo)
+          ) {
+            activeBridge.beforeHistoryAdvance();
+          }
+          await activeUserEventRuntime.advanceThrough(
+            {
+              blockHash: finalized.nativeBlock.blockHash,
+              blockNo: finalized.nativeBlock.blockNo,
+              slot: finalized.nativeBlock.slot,
+              pointId: computeFraudProofRawL1PointId(finalized.nativeBlock),
+            },
+            { prefetch: true },
+          );
+          await queueHooks.onFinalized(finalized);
+        },
+      },
     });
     resolveCoordinator(coordinator);
     if (
@@ -730,6 +870,7 @@ export const createWatcherRuntime = async (input: {
     const activeFaultProofSupervisor = faultProofSupervisor;
     const runtimeDone = Promise.race([
       native.done,
+      activeUserEventRuntime.done,
       activeFaultProofSupervisor.done,
       operationsHttp.done,
     ]);
@@ -743,6 +884,7 @@ export const createWatcherRuntime = async (input: {
         );
       }),
     ]);
+    void caughtUpPromise.catch(() => undefined);
     void runtimeDone.then(
       () => {
         if (phase === "live") phase = "failed";
@@ -753,6 +895,7 @@ export const createWatcherRuntime = async (input: {
     );
     const runtime: WatcherRuntime = Object.freeze({
       schemaVersion: WATCHER_RUNTIME_SCHEMA_VERSION,
+      deploymentAuthority,
       policy,
       coordinator,
       faultProofApplication,
@@ -761,11 +904,13 @@ export const createWatcherRuntime = async (input: {
       operations,
       operationsEndpoint: operationsHttp.endpoint,
       recoveredFaultProofWorkflowCount,
+      availability,
       done: runtimeDone,
       caughtUp: caughtUpPromise,
       status: () => {
         const proofSupervisor = activeFaultProofSupervisor.status();
         const operationsStatus = operations.api.status();
+        const availabilityStatus = availability!.status();
         const liveness = phase === "live";
         return Object.freeze({
           phase,
@@ -776,9 +921,11 @@ export const createWatcherRuntime = async (input: {
             proofSupervisor.phase === "accepting" &&
             proofSupervisor.recovered &&
             proofSupervisor.deadlineHealth === "safe" &&
+            availabilityStatus.phase !== "blocked" &&
             operationsStatus.readiness === "ready",
           caughtUp,
           proofSupervisor,
+          availability: availabilityStatus,
         });
       },
       close: () => {

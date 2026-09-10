@@ -10,7 +10,7 @@ Fraud proof tokens represent fraud proof computations that have successfully con
 \subsection{Minting policy}
 \label{h:fraud-proof-tokens-minting-policy}
 
-The \code{fraud\_proof} minting policy is statically parametrized on the \code{computation\_thread} and \code{hub\_oracle} minting policies.
+The \code{fraud\_proof} minting policy is statically parametrized on the \code{computation\_thread} minting policy.
 Redeemers:
 
 \begin{description}
@@ -19,7 +19,7 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must burn a \code{computation\_thread} token via the Success redeemer.
             \item The transaction must mint a \code{fraud\_proof} token with the same token name as the \code{computation\_thread} token.
-            \item The \code{fraud\_proof} token must be sent to an address which its payment part is the same script as the token's policy ID.
+            \item The terminal computation step must send the \code{fraud\_proof} token to the configured always-failing fraud-proof address, with inline \code{FraudProofDatum\{fraud\_prover\}}, no reference script, and no other non-ADA assets. This output check belongs to the terminal step helper, while the mint policy owns exact token replacement.
             \item The transaction must \emph{not} mint or burn any other tokens.
         \end{enumerate}
 \end{description}

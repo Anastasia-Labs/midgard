@@ -4,9 +4,6 @@ import {
   buildCanonicalTransitionEffect,
   canonicalCommittedWithdrawalTransitionEffect,
 } from "@al-ft/midgard-validation";
-import { CML, Data } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
 import {
   FUNDED_OUTPUT_LOVELACE,
   makeNativeTx,
@@ -14,7 +11,10 @@ import {
   nativeScriptWitness,
   outRefFromByte,
   outRefFromTxId,
-} from "../../../midgard-validation/tests/validation-fixtures.js";
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { CML, Data } from "@lucid-evolution/lucid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
 import { makeWatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
@@ -39,7 +39,6 @@ import {
 } from "../support/replay-authority-fixtures.js";
 import {
   createGenuineSettlementAuthorities,
-  type GenuineSettlementAuthority,
   type GenuineSettlementAuthorityFixtureSet,
 } from "../support/settlement-authority-scenarios.js";
 import {
@@ -64,7 +63,6 @@ const source = (
   withdrawalValidity: null,
   forcedInterval: null,
   forcedValidity: null,
-  settlementKind: null,
   ...overrides,
 });
 
@@ -285,7 +283,26 @@ const FORCED_INVALID_CASES = Object.freeze({
 const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) =>
   genuineUserEventForcedPayloadForCanonicalTx(native.txCbor);
 
+const WITHDRAWAL_BODY: SDK.WithdrawalBody = {
+  l2_outref: { transactionId: "a6".repeat(32), outputIndex: 0n },
+  l2_owner: FIXED_KEY.to_public().hash().to_hex(),
+  l2_value: new Map([["", new Map([["", FUNDED_OUTPUT_LOVELACE]])]]),
+  l1_address: {
+    paymentCredential: {
+      PublicKeyCredential: [FIXED_KEY.to_public().hash().to_hex()],
+    },
+    stakeCredential: null,
+  },
+  l1_datum: "NoDatum",
+};
+const WITHDRAWAL_INFO: SDK.WithdrawalInfo = {
+  body: WITHDRAWAL_BODY,
+  signature: SDK.signWithdrawalBody(FIXED_KEY, WITHDRAWAL_BODY),
+  validity: "WithdrawalIsValid",
+};
+
 const genuineUserEventInput = () => ({
+  withdrawalInfo: WITHDRAWAL_INFO,
   forcedPayloadOverride: forcedPayloadForNative(FORCED_VALID_NATIVE),
   forcedVariants: Object.entries(FORCED_INVALID_CASES).map(
     ([key, invalidCase], index) => ({
@@ -361,11 +378,6 @@ afterAll(async () => {
 }, 120_000);
 
 const userEventAuthority = (authority: UserEventAcceptedAuthorityScenario) => ({
-  result: authority.result,
-  context: authority.context,
-});
-
-const settlementAuthority = (authority: GenuineSettlementAuthority) => ({
   result: authority.result,
   context: authority.context,
 });
@@ -535,13 +547,12 @@ describe("W26 canonical event classification rules", () => {
     ).toStrictEqual([]);
   });
 
-  it("requires a valid withdrawal to delete exactly once via payout", () => {
+  it("requires an independently valid withdrawal to delete exactly once", () => {
     const withdrawal = source({
       fingerprint:
         "Withdrawal:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0",
       phase: "Withdrawal",
       withdrawalValidity: "valid",
-      settlementKind: "initialize_payout",
     });
     expect(
       rules(
@@ -568,13 +579,12 @@ describe("W26 canonical event classification rules", () => {
     });
   });
 
-  it("requires an invalid withdrawal to be a refund no-op", () => {
+  it("requires an independently invalid withdrawal to be a no-op", () => {
     const withdrawal = source({
       fingerprint:
         "Withdrawal:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0",
       phase: "Withdrawal",
       withdrawalValidity: "invalid",
-      settlementKind: "refund_withdrawal",
     });
     expect(
       rules(
@@ -621,7 +631,7 @@ describe("W26 canonical event classification rules", () => {
         blockReplay: receipt,
         phaseA,
         userEventAuthorities: [],
-        settlementAuthorities: [],
+
         forcedNativeTransactions: [],
       }),
     ).toMatchObject({
@@ -639,7 +649,7 @@ describe("W26 canonical event classification rules", () => {
         blockReplay: { ...receipt, sourceManifestDigest: "d".repeat(64) },
         phaseA,
         userEventAuthorities: [],
-        settlementAuthorities: [],
+
         forcedNativeTransactions: [],
       }),
     ).toMatchObject({
@@ -663,7 +673,7 @@ describe("W26 canonical event classification rules", () => {
         blockReplay: replacement,
         phaseA,
         userEventAuthorities: [],
-        settlementAuthorities: [],
+
         forcedNativeTransactions: [],
       }),
     ).toMatchObject({
@@ -724,7 +734,7 @@ describe("W26 canonical event classification rules", () => {
         blockReplay: interleaved,
         phaseA,
         userEventAuthorities: [],
-        settlementAuthorities: [],
+
         forcedNativeTransactions: [],
       }),
     ).toMatchObject({
@@ -741,7 +751,7 @@ describe("W26 canonical event classification rules", () => {
         blockReplay,
         phaseA,
         userEventAuthorities: [],
-        settlementAuthorities: [],
+
         forcedNativeTransactions: [],
       });
     expect(evaluate({})).toMatchObject({
@@ -779,7 +789,8 @@ describe("W26 canonical event classification rules", () => {
       w16DuplicateDisposeSharedPromise: true,
       w16FreshReferences: true,
     });
-    const validAuthority = genuineW15.forced;
+    const validAuthority = genuineW15.forcedOrigin;
+    expect("terminalClassification" in validAuthority.event).toBe(false);
     const validEffect = buildCanonicalTransitionEffect([
       { type: "delete", outRefCbor: FORCED_VALID_INPUT },
       {
@@ -818,7 +829,7 @@ describe("W26 canonical event classification rules", () => {
         blockReplay: validReceipt,
         phaseA: validFixture.phaseA,
         userEventAuthorities: [userEventAuthority(validAuthority)],
-        settlementAuthorities: [],
+
         forcedNativeTransactions: [
           forcedNativeAuthority(validAuthority, FORCED_VALID_NATIVE),
         ],
@@ -873,7 +884,7 @@ describe("W26 canonical event classification rules", () => {
           blockReplay: receipt,
           phaseA: fixture.phaseA,
           userEventAuthorities: [userEventAuthority(authority)],
-          settlementAuthorities: [],
+
           forcedNativeTransactions: [
             forcedNativeAuthority(authority, invalidCase.native),
           ],
@@ -922,7 +933,7 @@ describe("W26 canonical event classification rules", () => {
         userEventAuthorities: overrides.userAuthorities ?? [
           userEventAuthority(authority),
         ],
-        settlementAuthorities: [],
+
         forcedNativeTransactions: overrides.nativeAuthorities ?? [
           forcedNativeAuthority(authority, invalidCase.native),
         ],
@@ -1064,114 +1075,73 @@ describe("W26 canonical event classification rules", () => {
     }
   });
 
-  it("accepts genuine withdrawal initialize/refund authorities and rejects W16 omission, substitution, duplication, and tampering", async () => {
+  it("adjudicates signed originating withdrawals against the selected base before settlement", async () => {
     const authority = genuineW15.withdrawal;
     const validEffect = withdrawalTransitionEffect(authority, true);
     const deleted = validEffect.operations[0];
     if (deleted?.type !== "delete")
-      throw new Error("valid withdrawal effect did not delete its L2 input");
+      throw new Error("valid withdrawal has no delete");
     const priorState = ledgerEntries([[deleted.outRefCbor, FLOW_OUTPUT]]);
     const validFixture = await makeGenuineReplayPublicReplayFixture({
       userEvent: authority,
-      settlement: genuineW16.initializePayout,
       transitionEffect: validEffect,
       priorState,
       postState: [],
     });
     const validReceipt = await acceptedPublicW25(validFixture);
-    const invalidFixture = await makeGenuineReplayPublicReplayFixture({
-      userEvent: authority,
-      settlement: genuineW16.refundWithdrawal,
-      transitionEffect: withdrawalTransitionEffect(authority, false),
-      priorState,
-      postState: priorState,
-    });
-    const invalidReceipt = await acceptedPublicW25(invalidFixture);
-    const evaluate = (input: {
-      readonly fixture: GenuineReplayPublicReplayFixture;
-      readonly receipt: unknown;
-      readonly settlementAuthorities: readonly ReturnType<
-        typeof settlementAuthority
-      >[];
-    }) =>
+    const evaluate = (
+      fixture: GenuineReplayPublicReplayFixture,
+      receipt: unknown,
+    ) =>
       evaluateWatcherEventClassification({
-        header: input.fixture.header,
-        blockReplay: input.receipt,
-        phaseA: input.fixture.phaseA,
+        header: fixture.header,
+        blockReplay: receipt,
+        phaseA: fixture.phaseA,
         userEventAuthorities: [userEventAuthority(authority)],
-        settlementAuthorities: input.settlementAuthorities,
         forcedNativeTransactions: [],
       });
-    expect(
-      evaluate({
-        fixture: validFixture,
-        receipt: validReceipt,
-        settlementAuthorities: [
-          settlementAuthority(genuineW16.initializePayout),
-        ],
-      }),
-    ).toMatchObject({ action: "accept", reasonCodes: [], findings: [] });
-    expect(
-      evaluate({
-        fixture: invalidFixture,
-        receipt: invalidReceipt,
-        settlementAuthorities: [
-          settlementAuthority(genuineW16.refundWithdrawal),
-        ],
-      }),
-    ).toMatchObject({ action: "accept", reasonCodes: [], findings: [] });
+    expect(evaluate(validFixture, validReceipt)).toMatchObject({
+      action: "accept",
+      reasonCodes: [],
+    });
+    expect(evaluate(validFixture, { ...validReceipt })).toMatchObject({
+      action: "reject",
+      reasonCodes: ["authority_substitution"],
+    });
 
-    expect(
-      evaluate({
-        fixture: validFixture,
-        receipt: validReceipt,
-        settlementAuthorities: [],
-      }),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["authority_substitution"],
+    const absentFixture = await makeGenuineReplayPublicReplayFixture({
+      userEvent: authority,
+      transitionEffect: withdrawalTransitionEffect(authority, false),
+      priorState: [],
+      postState: [],
+      withdrawalValidity: "NonExistentWithdrawalUtxo",
     });
-    expect(
-      evaluate({
-        fixture: validFixture,
-        receipt: validReceipt,
-        settlementAuthorities: [
-          settlementAuthority(genuineW16.refundWithdrawal),
-        ],
-      }),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["withdrawal_validity_mismatch"],
+    const absentReceipt = await acceptedPublicW25(absentFixture);
+    expect(evaluate(absentFixture, absentReceipt)).toMatchObject({
+      action: "accept",
+      reasonCodes: [],
     });
-    expect(
-      evaluate({
-        fixture: validFixture,
-        receipt: validReceipt,
-        settlementAuthorities: [
-          settlementAuthority(genuineW16.initializePayout),
-          settlementAuthority(genuineW16.initializePayout),
-        ],
-      }),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["authority_substitution"],
+    expect(absentReceipt.eventRoots[0]).toMatchObject({
+      mutationCount: 0,
+      preRoot: emptyRoot,
+      postRoot: emptyRoot,
     });
-    const tamperedSettlement = {
-      ...settlementAuthority(genuineW16.initializePayout),
-      result: {
-        ...genuineW16.initializePayout.result,
-        resultDigest: "f".repeat(64),
-      },
-    };
-    expect(
-      evaluate({
-        fixture: validFixture,
-        receipt: validReceipt,
-        settlementAuthorities: [tamperedSettlement],
-      }),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["authority_substitution"],
+    const classified = SDK.classifyWithdrawalFromLedgerSync({
+      l2Owner: WITHDRAWAL_BODY.l2_owner,
+      l2ValueCbor: Data.to(WITHDRAWAL_BODY.l2_value, SDK.Value),
+      eventInfoCbor: SDK.committedWithdrawalValueBytes(WITHDRAWAL_INFO),
+      ledgerOutRef: deleted.outRefCbor,
+      ledgerOutput: null,
     });
+    expect(classified._tag).toBe("Right");
+    if (classified._tag !== "Right")
+      throw new Error("ordinary missing output did not classify");
+    expect(classified.right.validity).toBe("NonExistentWithdrawalUtxo");
+    expect(classified.right.settlementEventInfo.toString("hex")).toBe(
+      SDK.committedWithdrawalValueBytes({
+        ...WITHDRAWAL_INFO,
+        validity: "NonExistentWithdrawalUtxo",
+      }),
+    );
   });
 });

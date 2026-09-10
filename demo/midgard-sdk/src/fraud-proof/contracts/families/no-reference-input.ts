@@ -35,6 +35,7 @@ export const NO_REFERENCE_INPUT_FAULT_PROOF_TITLES = {
 export type NoReferenceInputFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
   readonly noReferenceInput: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
@@ -151,6 +152,7 @@ export const buildNoReferenceInputFaultProofContracts = (
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       noReferenceInput,
     };
   });

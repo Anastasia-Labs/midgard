@@ -1,10 +1,8 @@
-import {
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  midgardFieldCommitment,
-} from "@al-ft/midgard-core";
+import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import {
   prepareZeroInputEvidence,
   ZERO_INPUT_FIELD_INDEX,
@@ -40,7 +38,7 @@ export const detectZeroInputForcedReplay = (
         verdict.ForcedTxInvalid.reason !== "EmptyInputs"
       )
         return;
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveRejectedTransactionFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (

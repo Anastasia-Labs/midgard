@@ -36,8 +36,10 @@ import {
   type StateQueueTopology,
 } from "../services/state-queue-topology.js";
 import { outRefLabel } from "../tx-context.js";
+import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "./availability-challenge-registration.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "./phas-membership-registration.js";
 import { ensureNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.js";
+import { ensureRuntimeRewardAccountsRegisteredProgram } from "./script-reward-registration.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -981,8 +983,13 @@ export const program: Effect.Effect<
 
   const status = yield* fetchProtocolDeploymentStatus(lucid, contracts);
   if (status.complete) {
+    yield* ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
+      lucid,
+      contracts,
+    );
     const phasRegistration =
       yield* ensurePhasMembershipRewardAccountRegisteredProgram(lucid);
+    yield* ensureRuntimeRewardAccountsRegisteredProgram(lucid, contracts);
     yield* Effect.logInfo(
       `PHAS membership reward-account registration status: status=${phasRegistration.status},scriptHash=${phasRegistration.scriptHash},rewardAddress=${phasRegistration.rewardAddress},txHash=${phasRegistration.txHash ?? "already-registered"}`,
     );
@@ -1018,8 +1025,13 @@ export const program: Effect.Effect<
     `Atomic real protocol initialization submitted: txHash=${txHash}`,
   );
   yield* waitForAtomicInitializationVisibility(lucid, contracts);
+  yield* ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
+    lucid,
+    contracts,
+  );
   const phasRegistration =
     yield* ensurePhasMembershipRewardAccountRegisteredProgram(lucid);
+  yield* ensureRuntimeRewardAccountsRegisteredProgram(lucid, contracts);
   yield* Effect.logInfo(
     `PHAS membership reward-account registration status: status=${phasRegistration.status},scriptHash=${phasRegistration.scriptHash},rewardAddress=${phasRegistration.rewardAddress},txHash=${phasRegistration.txHash ?? "already-registered"}`,
   );

@@ -154,7 +154,6 @@ import {
   type SubmitWithdrawalReferenceScripts,
 } from "../src/transactions/submit-withdrawal.js";
 import { outRefLabel } from "../src/tx-context.js";
-import { signWithdrawalBody } from "../src/withdrawal-signature.js";
 import {
   commitExplicitBlockHeaderProgram,
   runCommitBlockHeaderWorkerProgram,
@@ -189,21 +188,9 @@ import {
   makeOutRefCbor,
 } from "./midgard-output-helpers.js";
 
-// Raised above the real 16,384-byte L1 envelope pending
-// Anastasia-Labs/midgard#649. `state_queue.mint` is no longer the reason:
-// removing the claim registry took it from 16,835 to 16,139 bytes unapplied,
-// inside the envelope. `availability_challenge` remains oversized at 19,956
-// bytes unapplied on both legs, so publishing the roster as reference scripts
-// still cannot fit the real envelope and every deposit-flow fixture would fail
-// at bring-up, long before the deposit/commit/merge behaviour these suites
-// exist to test. The fit property is not lost — it lives in
-// `tests/scratch-cg1-publication-fit.test.ts`, which stays pinned at the real
-// envelope and is skipped with the same #649 citation; un-skipping that gate is
-// what proves #649 fixed. Restore this to
-// `PROTOCOL_PARAMETERS_DEFAULT.maxTxSize` once the validator shrinks.
 export const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: Number(process.env.MIDGARD_EMULATOR_MAX_TX_SIZE ?? 65_536),
+  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
   maxCollateralInputs: 3,
 } as const;
 
@@ -555,7 +542,7 @@ export const makeFixture = async (): Promise<EmulatorFixture> => {
     lovelace: 20_000_000_000n,
   });
   const referenceScriptsAccount = generateEmulatorAccount({
-    lovelace: 20_000_000_000n,
+    lovelace: 50_000_000_000n,
   });
   const emulator = new Emulator(
     [operatorAccount, depositorAccount, referenceScriptsAccount],
@@ -2799,7 +2786,6 @@ export {
   SDK,
   seedLatestLocalBlockBoundaryOnStartup,
   serializeStateQueueUTxO,
-  signWithdrawalBody,
   SqlClient,
   StateQueueMutationLeasesDB,
   toUnit,

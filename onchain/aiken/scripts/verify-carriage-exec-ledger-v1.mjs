@@ -1,36 +1,19 @@
 #!/usr/bin/env node
 
 /**
- * Pins every execution figure `docs/spec/midgard-tx.md` §8.10 publishes for the
- * §8 carriage ladder against a fresh `aiken check` measurement.
+ * Checks the §8 carriage ladder's saved execution ledger against fresh
+ * `aiken check` measurements. `docs/spec/midgard-tx.md` §8.10 identifies the
+ * ledger and its verification contract.
  *
- * **Why this exists.** §8.10's rows were hand-transcribed from a check run into
- * a Markdown table, and nothing in the repo asserted them: a grep for the
- * published figures returned zero hits outside the document itself. That is the
- * gate-that-cannot-fail shape — the numbers could drift arbitrarily far from the
- * validator without any suite going red, and a cost claim nothing can falsify is
- * not a measurement. The byte-level constants in the same section are pinned
- * (`MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES` and its neighbours are asserted
- * in the emulator suite); the execution figures now are too.
+ * Aiken tests cannot assert their own execution units: those units are report
+ * observations. This verifier checks them outside the measured tests.
  *
- * Aiken tests cannot assert their own execution units — the units are the
- * check *report's* observation of the test, not a value in scope — so the pin
- * has to live one level up. This is that level: a ledger of expected readings
- * next to a verifier that takes the readings and compares.
- *
- * **What is checked.** Three things, because publishing a table is three claims:
- *
- *   1. Every raw row matches to the unit. These are absolute readings, and
- *      §8.10 quotes them as absolutes precisely so the deltas can be recomputed.
- *   2. Every derived figure §8.10 publishes is the subtraction it says it is.
- *      A control row and a measured row that both drifted by the same amount
- *      would leave the delta right and the readings wrong; checking both closes
- *      that.
- *   3. The neutralisation selectors still run and still pass. Each measured
- *      family has a fixture-shape assertion and a tampered-input rejection; the
- *      measurement is of a validator that discriminates, and without these the
- *      rows could be a measurement of something that returns `True` for
- *      anything.
+ * Checks:
+ *   1. Every raw row matches the fresh reading to the unit.
+ *   2. Every derived figure matches its stated subtraction. Equal drift in
+ *      control and measured rows must not hide changed absolute readings.
+ *   3. Neutralisation selectors run and pass, retaining fixture-shape and
+ *      tampered-input controls alongside the cost measurements.
  *
  * Two conditions sit underneath all three, and neither is data the ledger gets
  * to supply about itself: the basis the read budget is computed against is
@@ -45,8 +28,8 @@
  *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-carriage-exec-ledger-v1.mjs --update
  *
  * `--update` rewrites the ledger from the measurement. It is how a legitimate
- * re-take is recorded — and it is the only way, so the spec table and the ledger
- * move together or the check that follows fails.
+ * remeasurement is recorded; review the corresponding specification limits
+ * when measured behavior changes.
  *
  * **`--update` is not a bypass.** It absorbs measurement drift and nothing else:
  * a selector that did not run, a referenced claim that does not exist, or a
@@ -217,8 +200,7 @@ if (openCost === undefined || perRead === undefined) {
 // Structural failures are fatal in **both** modes, and they are checked before
 // anything is written: a `--update` run that could not find a neutralisation
 // selector must not leave a rewritten ledger behind as evidence that it
-// succeeded. This file's own header refuses that shape for the spec table; it
-// had not been applied to the flag itself until #575's round-2 review.
+// succeeded.
 if (failures.length > 0) {
   for (const failure of failures) {
     console.error(failure);

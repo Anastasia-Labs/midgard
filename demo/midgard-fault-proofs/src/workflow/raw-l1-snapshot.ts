@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
@@ -47,7 +48,7 @@ export type FraudProofRawL1ScopeRole =
 
 export type FraudProofRawL1SnapshotRequest = {
   readonly deploymentIdentityDigest: string;
-  readonly releaseIdentityDigest: string;
+  readonly blueprintHash: string;
   readonly finalityPolicyDigest: string;
   readonly headerHash: string;
   readonly scopes: readonly {
@@ -97,7 +98,7 @@ export type FraudProofRawL1UnitHistory = {
 export type FraudProofRawL1Snapshot = {
   readonly schemaVersion: typeof FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION;
   readonly deploymentIdentityDigest: string;
-  readonly releaseIdentityDigest: string;
+  readonly blueprintHash: string;
   readonly finalityPolicyDigest: string;
   readonly headerHash: string;
   readonly provenance: EvidenceProvenance & {
@@ -120,6 +121,66 @@ export type FraudProofRawL1Snapshot = {
   readonly historyUnits: readonly string[];
   readonly history: readonly FraudProofRawL1UnitHistory[];
   readonly transactions: readonly FraudProofRawL1Transaction[];
+};
+
+/**
+ * Stable content identity after full snapshot admission. This does not grant
+ * authority or replace the snapshot's live finality/rollback binding. Preserve
+ * all address coverage, unit membership and exact transaction evidence; omit
+ * only capture progress and confirmation counters that advance without changing
+ * any of that evidence.
+ */
+export const computeFraudProofRawL1SnapshotEvidenceDigest = (
+  snapshot: FraudProofRawL1Snapshot,
+): string => {
+  const orderedUtxos = (values: readonly FraudProofRawL1Utxo[]) =>
+    [...values].sort((left, right) => left.outRef.localeCompare(right.outRef));
+  const transcript = {
+    schemaVersion: "midgard-fraud-proof-raw-l1-evidence-v1",
+    snapshotSchemaVersion: snapshot.schemaVersion,
+    deploymentIdentityDigest: snapshot.deploymentIdentityDigest,
+    blueprintHash: snapshot.blueprintHash,
+    finalityPolicyDigest: snapshot.finalityPolicyDigest,
+    headerHash: snapshot.headerHash,
+    provenance: {
+      trustClass: snapshot.provenance.trustClass,
+      sourceId: snapshot.provenance.sourceId,
+      grade: snapshot.provenance.grade,
+      sourceMode: snapshot.provenance.sourceMode,
+    },
+    scopes: snapshot.scopes
+      .map((scope) => ({
+        role: scope.role,
+        address: scope.address,
+        utxos: orderedUtxos(scope.utxos),
+      }))
+      .sort((left, right) => left.role.localeCompare(right.role)),
+    historyUnits: [...snapshot.historyUnits].sort(),
+    history: snapshot.history
+      .map((entry) => ({
+        unit: entry.unit,
+        fromGenesis: entry.fromGenesis,
+        transactionHashes: [...entry.transactionHashes].sort(),
+      }))
+      .sort((left, right) => left.unit.localeCompare(right.unit)),
+    transactions: snapshot.transactions
+      .map((transaction) => ({
+        txHash: transaction.txHash,
+        bodyCbor: transaction.bodyCbor,
+        witnessSetCbor: transaction.witnessSetCbor,
+        redeemersCbor: transaction.redeemersCbor,
+        isValid: transaction.isValid,
+        inclusionPoint: transaction.inclusionPoint,
+        resolvedInputs: orderedUtxos(transaction.resolvedInputs),
+        resolvedReferenceInputs: orderedUtxos(
+          transaction.resolvedReferenceInputs,
+        ),
+      }))
+      .sort((left, right) => left.txHash.localeCompare(right.txHash)),
+  };
+  return createHash("sha256")
+    .update(canonicalJson(transcript, "raw L1 immutable evidence"))
+    .digest("hex");
 };
 
 /**
@@ -291,20 +352,20 @@ export const admitFraudProofRawL1Point = (
 
 export const computeFraudProofRawL1RollbackCursor = ({
   deploymentIdentityDigest,
-  releaseIdentityDigest,
+  blueprintHash,
   finalityPolicyDigest,
   sourceId,
   pointId,
 }: {
   readonly deploymentIdentityDigest: string;
-  readonly releaseIdentityDigest: string;
+  readonly blueprintHash: string;
   readonly finalityPolicyDigest: string;
   readonly sourceId: string;
   readonly pointId: string;
 }): string =>
   createHash("sha256")
     .update(
-      `${deploymentIdentityDigest}:${releaseIdentityDigest}:${finalityPolicyDigest}:${sourceId}:${pointId}`,
+      `${deploymentIdentityDigest}:${blueprintHash}:${finalityPolicyDigest}:${sourceId}:${pointId}`,
     )
     .digest("hex");
 
@@ -587,7 +648,7 @@ export const admitFraudProofRawL1Snapshot = ({
     [
       "schemaVersion",
       "deploymentIdentityDigest",
-      "releaseIdentityDigest",
+      "blueprintHash",
       "finalityPolicyDigest",
       "headerHash",
       "provenance",
@@ -606,9 +667,9 @@ export const admitFraudProofRawL1Snapshot = ({
     root.deploymentIdentityDigest,
     "raw L1 snapshot deploymentIdentityDigest",
   );
-  const releaseIdentityDigest = digest(
-    root.releaseIdentityDigest,
-    "raw L1 snapshot releaseIdentityDigest",
+  const blueprintHash = digest(
+    root.blueprintHash,
+    "raw L1 snapshot blueprintHash",
   );
   const finalityPolicyDigest = digest(
     root.finalityPolicyDigest,
@@ -620,7 +681,7 @@ export const admitFraudProofRawL1Snapshot = ({
   if (
     request.deploymentIdentityDigest !==
       releaseFinality.deploymentIdentityDigest ||
-    request.releaseIdentityDigest !== releaseFinality.releaseIdentityDigest ||
+    request.blueprintHash !== releaseFinality.blueprintHash ||
     request.finalityPolicyDigest !== releaseFinality.policyDigest ||
     !HEX_28.test(request.headerHash)
   ) {
@@ -631,8 +692,8 @@ export const admitFraudProofRawL1Snapshot = ({
   if (
     deploymentIdentityDigest !== request.deploymentIdentityDigest ||
     deploymentIdentityDigest !== releaseFinality.deploymentIdentityDigest ||
-    releaseIdentityDigest !== request.releaseIdentityDigest ||
-    releaseIdentityDigest !== releaseFinality.releaseIdentityDigest ||
+    blueprintHash !== request.blueprintHash ||
+    blueprintHash !== releaseFinality.blueprintHash ||
     finalityPolicyDigest !== request.finalityPolicyDigest ||
     finalityPolicyDigest !== releaseFinality.policyDigest ||
     headerHash !== request.headerHash
@@ -717,7 +778,7 @@ export const admitFraudProofRawL1Snapshot = ({
     cursor.rollbackCursor !==
     computeFraudProofRawL1RollbackCursor({
       deploymentIdentityDigest,
-      releaseIdentityDigest,
+      blueprintHash,
       finalityPolicyDigest,
       sourceId: provenance.sourceId,
       pointId: cursor.point.pointId,
@@ -895,7 +956,7 @@ export const admitFraudProofRawL1Snapshot = ({
   return {
     schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
     deploymentIdentityDigest,
-    releaseIdentityDigest,
+    blueprintHash,
     finalityPolicyDigest,
     headerHash,
     provenance,

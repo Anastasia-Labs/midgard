@@ -14,7 +14,6 @@ import {
   CML,
   credentialToAddress,
   Lucid,
-  PROTOCOL_PARAMETERS_DEFAULT,
   type Script,
   scriptHashToCredential,
   type UTxO,
@@ -24,6 +23,7 @@ import { Effect } from "effect";
 import type { CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../../../src/ne-submit-step-03.js";
 import { chunkedVerifyWithdrawalScript } from "../../../src/proof-chunk-carriage.js";
+import { VAN_ROSSEM_PUBLICATION_TARGET_BYTES } from "../../../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   getCompiledScript,
@@ -125,9 +125,12 @@ export const publishAuthenticatedValidationDisputeControl = async ({
   const publicationMeasurement = measureCompleteSignedTransaction(
     signed.toCBOR(),
   );
-  if (publicationMeasurement.l1ByteMargin <= 0) {
+  if (
+    publicationMeasurement.completeSignedBytes >
+    VAN_ROSSEM_PUBLICATION_TARGET_BYTES
+  ) {
     throw new Error(
-      `Authenticated validation-dispute ${target.control} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and does not fit the 16,384-byte L1 envelope`,
+      `Authenticated validation-dispute ${target.control} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and exceeds the 15,872-byte publication target`,
     );
   }
   const txHash = await signed.submit();
@@ -310,21 +313,10 @@ export const publishPlainReferenceScriptUtxo = async ({
   lucid,
   script,
   label,
-  oversized = false,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly script: Script;
   readonly label: string;
-  /**
-   * The applied CEK execution-selection / context-step / core-step semantic
-   * resolvers (R5 item 1) exceed the 16,384-byte L1 proof envelope, so their
-   * deployment-time publication cannot fit it: the emulator must host them
-   * under a raised `maxTxSize`, the output must reach the script-ref min-Ada
-   * for a ~45–94 KiB reference script, and the measurement is returned
-   * unasserted so callers pin the honest publication size while the consuming
-   * semantic-resolution transaction stays inside the envelope via `readFrom`.
-   */
-  readonly oversized?: boolean;
 }): Promise<{
   readonly utxo: UTxO;
   readonly publicationMeasurement: CompleteSignedTransactionMeasurement;
@@ -335,9 +327,7 @@ export const publishPlainReferenceScriptUtxo = async ({
     network,
     scriptHashToCredential("2f".repeat(28)),
   );
-  const lovelace = oversized
-    ? BigInt(script.script.length / 2) * 8_620n + 100_000_000n
-    : 20_000_000n;
+  const lovelace = 20_000_000n;
   const unsigned = await lucid
     .newTx()
     .pay.ToAddressWithData(parkAddress, undefined, { lovelace }, script)
@@ -350,9 +340,12 @@ export const publishPlainReferenceScriptUtxo = async ({
   const signed = await unsigned.sign.withWallet().complete();
   const signedCbor = signed.toCBOR();
   const publicationMeasurement = measureCompleteSignedTransaction(signedCbor);
-  if (!oversized && publicationMeasurement.l1ByteMargin <= 0) {
+  if (
+    publicationMeasurement.completeSignedBytes >
+    VAN_ROSSEM_PUBLICATION_TARGET_BYTES
+  ) {
     throw new Error(
-      `${label} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and does not fit the 16,384-byte L1 envelope`,
+      `${label} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and exceeds the 15,872-byte publication target`,
     );
   }
   const outputs = CML.Transaction.from_cbor_hex(signedCbor).body().outputs();
@@ -480,7 +473,6 @@ export const publishFraudProofChainReferenceScripts = async ({
   steps,
   entryNames,
   familyLabel,
-  oversizedEntryNames = new Set(),
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly steps: readonly {
@@ -489,12 +481,6 @@ export const publishFraudProofChainReferenceScripts = async ({
   }[];
   readonly entryNames: readonly string[];
   readonly familyLabel: string;
-  /**
-   * Explicit emulator-only publication hosts for scripts whose production
-   * CBOR exceeds one L1 transaction. Their consuming transactions still use
-   * the real reference inputs and remain under the normal envelope.
-   */
-  readonly oversizedEntryNames?: ReadonlySet<string>;
 }): Promise<
   Readonly<Record<string, { readonly scriptHash: string; readonly utxo: UTxO }>>
 > => {
@@ -512,7 +498,6 @@ export const publishFraudProofChainReferenceScripts = async ({
       lucid,
       script: steps[index]!.spendingScript,
       label: `${familyLabel} ${entryName}`,
-      oversized: oversizedEntryNames.has(entryName),
     });
     publications[entryName] = {
       scriptHash: steps[index]!.spendingScriptHash,
@@ -560,18 +545,6 @@ export const publishHarnessFaultProofReferenceScripts = async ({
             lucid,
             script: step.spendingScript,
             label: `fault-proof step ${entryName}`,
-            // The real limit, not a conservative stand-in for it. A 14,000
-            // -byte raw script publishes at roughly 14,350 signed bytes —
-            // comfortably inside the 16,384-byte envelope — so the former
-            // `> 14_000` threshold waived `publishPlainReferenceScriptUtxo`'s
-            // `l1ByteMargin` assertion for a band of scripts that pass it, and
-            // a step that grew into that band would have stopped being checked
-            // instead of failing. Matching `publishRemovalReferenceScripts`
-            // keeps the waiver for exactly the scripts that genuinely cannot
-            // fit.
-            oversized:
-              step.spendingScript.script.length / 2 >
-              PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
           })
         ).utxo;
         publicationByHash.set(step.spendingScriptHash, utxo);
@@ -729,13 +702,10 @@ export const publishRemovalReferenceScripts = async ({
   // Sequential: each publication consumes wallet UTxOs the next one selects
   // from.
   for (const [name, script] of roster) {
-    const oversized =
-      script.script.length / 2 > PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
     const publication = await publishPlainReferenceScriptUtxo({
       lucid,
       script,
       label: `state-queue removal ${name}`,
-      oversized,
     });
     published[name] = publication.utxo;
     measurements[name] = publication.publicationMeasurement;

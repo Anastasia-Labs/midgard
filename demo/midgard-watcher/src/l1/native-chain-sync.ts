@@ -3,8 +3,10 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, normalize, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import {
+  parseWatcherConfig,
   parseWatcherStrictJsonValue,
   type WatcherConfig,
 } from "../runtime/config.js";
@@ -19,6 +21,8 @@ const MAX_BLOCK_CBOR_HEX = 8 * 1024 * 1024;
 const MAX_STDERR_BYTES = 1024 * 1024;
 const MAX_INTERSECTIONS = 128;
 const MAX_IDENTITY_FILE_BYTES = 4 * 1024 * 1024;
+const MAX_QUERY_STDOUT_BYTES = MAX_BLOCK_CBOR_HEX + 16_384;
+const MAX_UINT64 = (1n << 64n) - 1n;
 const NETWORK_MAGIC = Object.freeze({
   Mainnet: 764_824_073,
   Preprod: 1,
@@ -75,12 +79,28 @@ export type WatcherNativeChainSyncAuthority = Readonly<{
   authorityDigest: string;
 }>;
 
+type NativeBlockPoint = Readonly<{
+  blockHash: string;
+  blockNo: string;
+  slot: string;
+}>;
+
+type NativeOperation =
+  | Readonly<{ kind: "stream" }>
+  | Readonly<{
+      kind: "exact_point";
+      predecessorBlockNo: string;
+      target: NativeBlockPoint;
+      timeoutMs: number;
+    }>;
+
 export type WatcherNativeChainSyncAuthorityDetails = Readonly<{
   network: WatcherConfig["targetNetwork"];
   authorityNodeId: string;
   genesisIdentitySha256: string;
   socketPath: string;
   startupDigest: string;
+  operation: NativeOperation;
   selectedIntersection: WatcherNativeChainSyncPoint;
   currentTip: NativeTip;
 }>;
@@ -106,6 +126,52 @@ export const watcherNativeChainSyncAuthorityDetails = (
   authorityLiveness.get(authority)?.active === true
     ? (authorityDetails.get(authority) ?? null)
     : null;
+
+const eventReceiptBrand = Symbol("native-chain-sync-event-receipt");
+
+/** Process-local acquisition provenance, not block or historical admission. */
+export type WatcherNativeChainSyncEventReceipt = Readonly<{
+  [eventReceiptBrand]: true;
+}>;
+
+type NativeEventReceiptRead = Readonly<{
+  authority: WatcherNativeChainSyncAuthority;
+  startupDigest: string;
+  /** The identical parsed event delivered to onEvent, including its observed tip. */
+  event: WatcherNativeChainSyncEvent;
+  /** SHA256 of watcherCanonicalJson(event), excluding any line terminator. */
+  eventDigest: string;
+}>;
+
+const receiptsByEvent = new WeakMap<
+  WatcherNativeChainSyncEvent,
+  WatcherNativeChainSyncEventReceipt
+>();
+const eventReceipts = new WeakMap<
+  WatcherNativeChainSyncEventReceipt,
+  Readonly<{ value: NativeEventReceiptRead; isLive(): boolean }>
+>();
+
+/** Only supervisor-delivered object identity can acquire a live receipt. */
+export const watcherNativeChainSyncEventReceipt = (
+  event: WatcherNativeChainSyncEvent,
+): WatcherNativeChainSyncEventReceipt | null => {
+  const receipt = receiptsByEvent.get(event);
+  return receipt !== undefined && eventReceipts.get(receipt)?.isLive() === true
+    ? receipt
+    : null;
+};
+
+/** Rollback, observed helper failure/exit, and close revoke prior provenance. */
+export const readWatcherNativeChainSyncEventReceipt = (
+  receipt: WatcherNativeChainSyncEventReceipt,
+): NativeEventReceiptRead => {
+  const state = eventReceipts.get(receipt);
+  if (state === undefined || !state.isLive()) {
+    throw new Error("native chain-sync event receipt is absent or stale");
+  }
+  return state.value;
+};
 
 const exactRecord = (
   value: unknown,
@@ -258,10 +324,16 @@ const parseJsonLine = (line: string): unknown => {
 
 const lines = async function* (
   stream: AsyncIterable<Uint8Array>,
+  maxTotalBytes?: number,
 ): AsyncGenerator<string> {
+  let totalBytes = 0;
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let pending = "";
   for await (const chunk of stream) {
+    totalBytes += chunk.byteLength;
+    if (maxTotalBytes !== undefined && totalBytes > maxTotalBytes) {
+      throw new Error("native exact-point query stdout exceeded its bound");
+    }
     pending += decoder.decode(chunk, { stream: true });
     if (pending.length > MAX_BLOCK_CBOR_HEX + 4_096) {
       throw new Error("native chain-sync output line exceeds its bound");
@@ -362,7 +434,7 @@ const productionSpawn: SpawnProcess = (binaryPath) =>
     env: Object.freeze({ PATH: process.env.PATH ?? "/usr/bin:/bin" }),
   });
 
-export const startWatcherNativeChainSync = async (input: {
+type NativeStreamInput = {
   readonly binaryPath: string;
   readonly watcherConfig: WatcherConfig;
   readonly intersection: WatcherNativeChainSyncPoint;
@@ -370,7 +442,23 @@ export const startWatcherNativeChainSync = async (input: {
   readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
   readonly unsafeSpawnForTest?: SpawnProcess;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
-}): Promise<WatcherNativeChainSyncRuntime> => {
+};
+
+export const startWatcherNativeChainSync = async (
+  input: NativeStreamInput,
+): Promise<WatcherNativeChainSyncRuntime> =>
+  await startNativeSupervisor({
+    ...input,
+    operation: Object.freeze({ kind: "stream" }),
+  });
+
+const startNativeSupervisor = async (
+  input: NativeStreamInput & {
+    readonly operation: NativeOperation;
+    readonly signal?: AbortSignal;
+  },
+): Promise<WatcherNativeChainSyncRuntime> => {
+  input.signal?.throwIfAborted();
   if (input.watcherConfig.l1.source.sourceMode !== "local_node") {
     throw new Error(
       "native chain-sync requires the admitted local-node source",
@@ -391,7 +479,9 @@ export const startWatcherNativeChainSync = async (input: {
     if ((await realpath(binaryPath)) !== binaryPath) {
       throw new Error("native chain-sync binary path traverses a symlink");
     }
+    input.signal?.throwIfAborted();
     await access(binaryPath, constants.X_OK);
+    input.signal?.throwIfAborted();
   }
   const intersection = parsePoint(
     input.intersection,
@@ -406,21 +496,42 @@ export const startWatcherNativeChainSync = async (input: {
           unsafeReadIdentityFileForTest: input.unsafeReadIdentityFileForTest,
         }),
   });
+  input.signal?.throwIfAborted();
   const startup = Object.freeze({
     authorityNodeId: source.authorityNodeId,
     genesisIdentitySha256,
     intersection,
     network: input.watcherConfig.targetNetwork,
     networkMagic: NETWORK_MAGIC[input.watcherConfig.targetNetwork],
+    operation: input.operation,
     schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
     socketPath: source.chainSync.socketPath,
   });
   const startupJson = watcherCanonicalJson(startup);
   const startupDigest = sha256(startupJson);
+  if (Buffer.byteLength(startupJson, "utf8") + 1 > 64 * 1024) {
+    throw new Error("native chain-sync startup exceeds its byte bound");
+  }
+  input.signal?.throwIfAborted();
   const child = (input.unsafeSpawnForTest ?? productionSpawn)(binaryPath);
+  const eventProvenance = { active: true, generation: 0n };
+  const revokeEventProvenance = (): void => {
+    eventProvenance.active = false;
+    eventProvenance.generation += 1n;
+  };
+  // Lifecycle events remain observable while the ordered callback is awaiting.
+  child.once("exit", revokeEventProvenance);
+  child.once("error", revokeEventProvenance);
   child.stdin.end(`${startupJson}\n`, "utf8");
 
   let closing = false;
+  const abortHandler = () => {
+    revokeEventProvenance();
+    rejectReady(
+      new Error("native chain-sync startup or session was cancelled"),
+    );
+    void close();
+  };
   let resolveReady!: (authority: WatcherNativeChainSyncAuthority) => void;
   let rejectReady!: (error: Error) => void;
   const ready = new Promise<WatcherNativeChainSyncAuthority>(
@@ -453,22 +564,36 @@ export const startWatcherNativeChainSync = async (input: {
         })
       : null;
   let sawReady = false;
+  let queryEventCount = 0;
+  let queryAcknowledged = false;
+  let queryCaptured = false;
   let mintedAuthority: WatcherNativeChainSyncAuthority | undefined;
 
   const stderrDrain = (async () => {
-    let total = 0;
-    for await (const chunk of child.stderr) {
-      total += chunk.byteLength;
-      if (total > MAX_STDERR_BYTES) {
-        child.kill("SIGKILL");
-        throw new Error("native chain-sync stderr exceeded its bound");
+    try {
+      let total = 0;
+      for await (const chunk of child.stderr) {
+        total += chunk.byteLength;
+        if (total > MAX_STDERR_BYTES) {
+          child.kill("SIGKILL");
+          throw new Error("native chain-sync stderr exceeded its bound");
+        }
       }
+    } catch (error) {
+      revokeEventProvenance();
+      throw error;
     }
   })();
 
+  void stderrDrain.catch(() => undefined);
   const done = (async () => {
     try {
-      for await (const line of lines(child.stdout)) {
+      for await (const line of lines(
+        child.stdout,
+        input.operation.kind === "exact_point"
+          ? MAX_QUERY_STDOUT_BYTES
+          : undefined,
+      )) {
         const value = parseJsonLine(line);
         if (!sawReady) {
           if (
@@ -500,6 +625,7 @@ export const startWatcherNativeChainSync = async (input: {
               "kind",
               "network",
               "networkMagic",
+              "operation",
               "schemaVersion",
               "selectedIntersection",
               "socketPath",
@@ -518,6 +644,8 @@ export const startWatcherNativeChainSync = async (input: {
             record.genesisIdentitySha256 !== startup.genesisIdentitySha256 ||
             record.network !== startup.network ||
             record.networkMagic !== startup.networkMagic ||
+            watcherCanonicalJson(record.operation) !==
+              watcherCanonicalJson(startup.operation) ||
             watcherCanonicalJson(selectedIntersection) !==
               watcherCanonicalJson(intersection) ||
             record.socketPath !== startup.socketPath ||
@@ -534,6 +662,7 @@ export const startWatcherNativeChainSync = async (input: {
             genesisIdentitySha256: startup.genesisIdentitySha256,
             socketPath: startup.socketPath,
             startupDigest,
+            operation: startup.operation,
             selectedIntersection,
             currentTip,
           });
@@ -550,6 +679,36 @@ export const startWatcherNativeChainSync = async (input: {
           continue;
         }
         const event = parseWatcherNativeChainSyncEvent(value);
+        if (input.operation.kind === "exact_point") {
+          queryEventCount += 1;
+          if (queryCaptured || queryEventCount > 2) {
+            throw new Error("native exact-point query emitted an extra event");
+          }
+          if (event.kind === "roll_backward") {
+            if (
+              queryAcknowledged ||
+              watcherCanonicalJson(event.point) !==
+                watcherCanonicalJson(intersection)
+            ) {
+              throw new Error("native exact-point query rolled back");
+            }
+            queryAcknowledged = true;
+          } else {
+            const target = input.operation.target;
+            if (
+              intersection.kind !== "point" ||
+              event.blockHash !== target.blockHash ||
+              event.slot !== target.slot ||
+              event.blockNo !== target.blockNo ||
+              event.prevHash !== intersection.blockHash
+            ) {
+              throw new Error(
+                "native exact-point query returned a different target",
+              );
+            }
+            queryCaptured = true;
+          }
+        }
         if (event.kind === "roll_forward") {
           const slot = BigInt(event.slot);
           const blockNo = BigInt(event.blockNo);
@@ -583,6 +742,28 @@ export const startWatcherNativeChainSync = async (input: {
           for (const [hash, point] of knownPoints) {
             if (point.slot > rollback.slot) knownPoints.delete(hash);
           }
+          eventProvenance.generation += 1n;
+        }
+        if (eventProvenance.active && mintedAuthority !== undefined) {
+          const authority = mintedAuthority;
+          const generation = eventProvenance.generation;
+          const receipt = Object.freeze({ [eventReceiptBrand]: true as const });
+          eventReceipts.set(
+            receipt,
+            Object.freeze({
+              value: Object.freeze({
+                authority,
+                startupDigest,
+                event,
+                eventDigest: sha256(watcherCanonicalJson(event)),
+              }),
+              isLive: () =>
+                eventProvenance.active &&
+                eventProvenance.generation === generation &&
+                watcherNativeChainSyncAuthorityDetails(authority) !== null,
+            }),
+          );
+          receiptsByEvent.set(event, receipt);
         }
         await input.onEvent(event);
       }
@@ -590,11 +771,16 @@ export const startWatcherNativeChainSync = async (input: {
       if (!closing)
         throw new Error("native chain-sync process exited unexpectedly");
     } catch (error) {
+      revokeEventProvenance();
       const failure = error instanceof Error ? error : new Error(String(error));
       rejectReady(failure);
       if (!closing) child.kill("SIGKILL");
       throw failure;
     } finally {
+      revokeEventProvenance();
+      if (abortHandler !== undefined) {
+        input.signal?.removeEventListener("abort", abortHandler);
+      }
       const liveness =
         mintedAuthority === undefined
           ? undefined
@@ -604,32 +790,14 @@ export const startWatcherNativeChainSync = async (input: {
   })();
   void done.catch(() => undefined);
 
-  let startupTimer: NodeJS.Timeout | undefined;
-  const authority = await Promise.race([
-    ready,
-    new Promise<never>((_, reject) => {
-      startupTimer = setTimeout(
-        () => reject(new Error("native chain-sync startup timed out")),
-        input.startupTimeoutMs,
-      );
-    }),
-  ])
-    .catch((error) => {
-      closing = true;
-      child.kill("SIGKILL");
-      throw error;
-    })
-    .finally(() => {
-      if (startupTimer !== undefined) clearTimeout(startupTimer);
-    });
-
-  return Object.freeze({
-    authority,
-    done,
-    close: async () => {
-      if (closing) return;
-      closing = true;
-      child.kill("SIGTERM");
+  let closePromise: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    revokeEventProvenance();
+    closePromise ??= (async () => {
+      if (!closing) {
+        closing = true;
+        child.kill("SIGTERM");
+      }
       let forceKillTimer: NodeJS.Timeout | undefined;
       try {
         await Promise.race([
@@ -644,8 +812,304 @@ export const startWatcherNativeChainSync = async (input: {
       } finally {
         if (forceKillTimer !== undefined) clearTimeout(forceKillTimer);
       }
-    },
+    })();
+    return closePromise;
+  };
+
+  input.signal?.addEventListener("abort", abortHandler, { once: true });
+  if (input.signal?.aborted === true) abortHandler();
+
+  let startupTimer: NodeJS.Timeout | undefined;
+  const authority = await Promise.race([
+    ready,
+    new Promise<never>((_, reject) => {
+      startupTimer = setTimeout(
+        () => reject(new Error("native chain-sync startup timed out")),
+        input.startupTimeoutMs,
+      );
+    }),
+  ])
+    .catch(async (error: unknown) => {
+      revokeEventProvenance();
+      closing = true;
+      child.kill("SIGKILL");
+      if (input.operation.kind === "exact_point") await close();
+      throw error;
+    })
+    .finally(() => {
+      if (startupTimer !== undefined) clearTimeout(startupTimer);
+    });
+
+  return Object.freeze({ authority, done, close });
+};
+
+const queryReceiptBrand = Symbol("native-exact-point-query-receipt");
+
+export type WatcherNativeExactPointQueryReceipt = Readonly<{
+  [queryReceiptBrand]: true;
+}>;
+
+type NativeExactPointQueryRead = Readonly<{
+  authority: WatcherNativeChainSyncAuthority;
+  eventReceipt: WatcherNativeChainSyncEventReceipt;
+  startupDigest: string;
+  eventDigest: string;
+  event: WatcherNativeChainSyncRollForward;
+  observedTip: NativeBlockPoint;
+  depthAtObservedTip: string;
+  observedAt: string;
+  expiresAt: string;
+}>;
+
+const queryReceipts = new WeakMap<
+  WatcherNativeExactPointQueryReceipt,
+  Readonly<{ value: NativeExactPointQueryRead; assertLive(): void }>
+>();
+
+/**
+ * A bounded exact-query snapshot, not a passive rollback monitor. A new query
+ * is required for fresh canonical corroboration; this read only checks the
+ * original acquisition's process-local liveness and monotonic deadline.
+ */
+export const readWatcherNativeExactPointQuery = (
+  receipt: WatcherNativeExactPointQueryReceipt,
+): NativeExactPointQueryRead => {
+  const state = queryReceipts.get(receipt);
+  if (state === undefined) {
+    throw new Error("native exact-point query receipt is absent or stale");
+  }
+  state.assertLive();
+  readWatcherNativeChainSyncEventReceipt(state.value.eventReceipt);
+  return state.value;
+};
+
+const uint64 = (value: string, label: string): bigint => {
+  if (!NATURAL.test(value) || value.length > 20 || BigInt(value) > MAX_UINT64) {
+    throw new Error(`${label} is not a canonical UInt64`);
+  }
+  return BigInt(value);
+};
+
+const parseBlockPoint = (value: unknown, label: string): NativeBlockPoint => {
+  const parsed = exactRecord(value, ["blockHash", "blockNo", "slot"], label);
+  const result = Object.freeze({
+    blockHash: string(parsed.blockHash, HEX_32, `${label} hash`),
+    blockNo: string(parsed.blockNo, NATURAL, `${label} block number`),
+    slot: string(parsed.slot, NATURAL, `${label} slot`),
   });
+  uint64(result.blockNo, `${label} block number`);
+  uint64(result.slot, `${label} slot`);
+  return result;
+};
+
+/** Owns one configured helper query; callers cannot supply acquired events. */
+export const openWatcherNativeExactPointQuery = async (input: {
+  readonly binaryPath: string;
+  readonly watcherConfig: unknown;
+  readonly predecessor: NativeBlockPoint;
+  readonly target: NativeBlockPoint;
+  readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
+}): Promise<
+  Readonly<{
+    receipt: WatcherNativeExactPointQueryReceipt;
+    close(): Promise<void>;
+  }>
+> => {
+  const timeoutMs = input.timeoutMs;
+  const signal = input.signal;
+  if (signal !== undefined) {
+    try {
+      Object.getOwnPropertyDescriptor(
+        AbortSignal.prototype,
+        "aborted",
+      )!.get!.call(signal);
+    } catch {
+      throw new Error("native exact-point query signal is not an AbortSignal");
+    }
+  }
+  const started = performance.now();
+  const startedUtc = Date.now();
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 100 ||
+    timeoutMs > 120_000
+  ) {
+    throw new Error("native exact-point query timeout is invalid");
+  }
+  signal?.throwIfAborted();
+  const watcherConfig = parseWatcherConfig(input.watcherConfig);
+  const predecessor = parseBlockPoint(
+    input.predecessor,
+    "native query predecessor",
+  );
+  const target = parseBlockPoint(input.target, "native query target");
+  if (
+    BigInt(predecessor.blockNo) + 1n !== BigInt(target.blockNo) ||
+    BigInt(predecessor.slot) >= BigInt(target.slot)
+  ) {
+    throw new Error(
+      "native exact-point query target is not the direct successor",
+    );
+  }
+  const deadline = started + timeoutMs;
+  const controller = new AbortController();
+  let active = true;
+  let runtime: WatcherNativeChainSyncRuntime | undefined;
+  type TargetCapture = Readonly<{
+    receipt: WatcherNativeChainSyncEventReceipt;
+    observedAt: string;
+  }>;
+  let rejectTarget!: (error: Error) => void;
+  let resolveTarget!: (capture: TargetCapture) => void;
+  const targetReady = new Promise<TargetCapture>((resolve, reject) => {
+    resolveTarget = resolve;
+    rejectTarget = reject;
+  });
+  void targetReady.catch(() => undefined);
+  const invalidate = (error: Error): void => {
+    active = false;
+    controller.abort(error);
+    rejectTarget(error);
+  };
+  const abort = (): void =>
+    invalidate(new Error("native exact-point query was cancelled"));
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(
+    () => invalidate(new Error("native exact-point query expired")),
+    Math.max(0, deadline - performance.now()),
+  );
+  const assertLive = (): void => {
+    if (!active || controller.signal.aborted || performance.now() >= deadline) {
+      throw new Error("native exact-point query receipt is absent or stale");
+    }
+  };
+  const cleanup = (): void => {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  };
+  let startup: Promise<WatcherNativeChainSyncRuntime> | undefined;
+  const close = async (): Promise<void> => {
+    invalidate(new Error("native exact-point query was closed"));
+    cleanup();
+    const owned = runtime ?? (await startup?.catch(() => undefined));
+    await owned?.close();
+  };
+  try {
+    assertLive();
+    startup = startNativeSupervisor({
+      binaryPath: input.binaryPath,
+      watcherConfig,
+      intersection: Object.freeze({
+        kind: "point",
+        blockHash: predecessor.blockHash,
+        slot: predecessor.slot,
+      }),
+      startupTimeoutMs: timeoutMs,
+      operation: Object.freeze({
+        kind: "exact_point",
+        predecessorBlockNo: predecessor.blockNo,
+        target,
+        timeoutMs: timeoutMs,
+      }),
+      signal: controller.signal,
+      onEvent: async (event) => {
+        assertLive();
+        if (event.kind !== "roll_forward") return;
+        const receipt = watcherNativeChainSyncEventReceipt(event);
+        if (receipt === null)
+          throw new Error(
+            "native exact-point target has no acquisition receipt",
+          );
+        resolveTarget({ receipt, observedAt: new Date().toISOString() });
+      },
+    });
+    const cancellation = new Promise<never>((_, reject) => {
+      const rejectCancelled = () =>
+        reject(new Error("native exact-point query was cancelled or expired"));
+      controller.signal.addEventListener("abort", rejectCancelled, {
+        once: true,
+      });
+      void startup!
+        .finally(() =>
+          controller.signal.removeEventListener("abort", rejectCancelled),
+        )
+        .catch(() => undefined);
+    });
+    runtime = await Promise.race([startup, cancellation]);
+    void runtime.done.then(
+      () => {
+        invalidate(new Error("native exact-point helper exited"));
+        cleanup();
+      },
+      (error: unknown) => {
+        invalidate(
+          error instanceof Error
+            ? error
+            : new Error("native exact-point helper failed"),
+        );
+        cleanup();
+      },
+    );
+    const targetCapture = await targetReady;
+    const eventReceipt = targetCapture.receipt;
+    assertLive();
+    const observed = readWatcherNativeChainSyncEventReceipt(eventReceipt);
+    if (
+      observed.event.kind !== "roll_forward" ||
+      observed.authority !== runtime.authority ||
+      observed.event.tip.kind !== "point"
+    ) {
+      throw new Error("native exact-point query omitted a current target tip");
+    }
+    const tip = parseBlockPoint(
+      {
+        blockHash: observed.event.tip.blockHash,
+        blockNo: observed.event.tip.blockNo,
+        slot: observed.event.tip.slot,
+      },
+      "native query observed tip",
+    );
+    const depth = BigInt(tip.blockNo) - BigInt(target.blockNo) + 1n;
+    if (
+      depth <= 0n ||
+      depth > MAX_UINT64 ||
+      BigInt(tip.slot) < BigInt(target.slot) ||
+      (depth === 1n &&
+        (tip.blockHash !== target.blockHash || tip.slot !== target.slot)) ||
+      (depth > 1n && BigInt(tip.slot) <= BigInt(target.slot))
+    ) {
+      throw new Error("native exact-point query tip cannot contain the target");
+    }
+    const receipt = Object.freeze({ [queryReceiptBrand]: true as const });
+    queryReceipts.set(
+      receipt,
+      Object.freeze({
+        assertLive,
+        value: Object.freeze({
+          authority: observed.authority,
+          eventReceipt,
+          startupDigest: observed.startupDigest,
+          eventDigest: observed.eventDigest,
+          event: observed.event,
+          observedTip: tip,
+          depthAtObservedTip: depth.toString(),
+          observedAt: targetCapture.observedAt,
+          expiresAt: new Date(startedUtc + timeoutMs).toISOString(),
+        }),
+      }),
+    );
+    return Object.freeze({ receipt, close });
+  } catch (error) {
+    invalidate(new Error("native exact-point query failed"));
+    cleanup();
+    // Identity reads may still be pending. They recheck cancellation before
+    // spawning; a helper that was already spawned is closed by the core.
+    if (runtime !== undefined) await runtime.close();
+    else if (startup !== undefined)
+      void startup.then((owned) => owned.close()).catch(() => undefined);
+    throw error;
+  }
 };
 
 export const startWatcherNativeChainSyncWithRetry = async (input: {

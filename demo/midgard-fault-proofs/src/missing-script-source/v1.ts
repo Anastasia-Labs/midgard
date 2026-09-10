@@ -36,6 +36,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   type BoundMissingScriptSourceActuatorConfig,
@@ -165,7 +166,8 @@ export const createManifestBoundMissingScriptSourceWorkflow = async (
         };
       };
   const chain = binding.resolvedContracts.contracts.missingScriptSource;
-  const hubOraclePolicyId = rawBinding.deploymentInfo.hubOracleMint?.scriptHash;
+  const hubOraclePolicyId =
+    rawBinding.contractEntries.hubOracleMint?.scriptHash;
   if (
     chain === undefined ||
     chain.steps.length !== 6 ||
@@ -505,10 +507,15 @@ export const createMissingScriptSourceWorkflowRunnerSurface = ({
           throw new Error(
             "missingScriptSource runtime binding changed invocation",
           );
-        return (await runOrResumeManifestBoundMissingScriptSourceWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return (await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            runOrResumeManifestBoundMissingScriptSourceWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         })) as never;
       } finally {
         await loaded.close();

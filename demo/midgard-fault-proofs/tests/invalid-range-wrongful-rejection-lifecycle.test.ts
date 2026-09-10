@@ -37,10 +37,17 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
+const measuredFit = createMeasuredFitRecorder(
+  "invalid-range-wrongful-rejection",
+  "lifecycle",
+  "exact forced interval contradiction, both cancellation boundaries, restart, mint and removal",
+);
+
 describe("invalidRange wrongful-rejection real lifecycle", () => {
   it("runs every cancel/restart boundary, forced contradiction, permanent mint, and leased removal", async () => {
     const harness = await makeFaultProofEmulatorHarness({
@@ -285,6 +292,9 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
           validTo: now + 300_000n,
         }),
       ),
+    );
+    captures.forEach(({ measurement }, index) =>
+      measuredFit.record(`forced-${index}`, measurement),
     );
     for (const { measurement } of captures) {
       expect(measurement.l1ByteMargin).toBeGreaterThan(0);

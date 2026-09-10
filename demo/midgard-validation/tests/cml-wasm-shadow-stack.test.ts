@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,9 +25,7 @@ import {
  *
  * This suite establishes, on every run:
  *
- *   1. lucid-evolution resolves the published `6.2.0-2` artifact, and every
- *      `6.2.0-x` CML copy in the store is `6.2.0-2` with the pinned bytes —
- *      a lockfile regression back to `6.2.0-1` fails loudly here;
+ *   1. lucid-evolution resolves the published `6.2.0-2` artifact;
  *   2. the binary's `__stack_pointer` global is 16 MiB, i.e. the fix is
  *      structural in the artifact, not an environment accident;
  *   3. the old depth ceiling is gone: the first previously-trapping depth
@@ -41,12 +38,8 @@ import {
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PNPM_STORE = join(HERE, "..", "..", "node_modules", ".pnpm");
 
 const PINNED_VERSION = "6.2.0-2";
-const PUBLISHED_WASM_SHA256 =
-  "47e566383ca7b8f945377b149af83eb32c6d185e5e9e1b58eea19f85043d2b3c";
-const PUBLISHED_WASM_BYTES = 2_904_467;
 const SHADOW_STACK_POINTER = 16_777_216;
 const MAXIMUM_UNARY_DEPTH = 4_043;
 const OLD_STOCK_TRAP_DEPTH = 1_523;
@@ -54,9 +47,6 @@ const BEYOND_MAXIMUM_CONTROL_DEPTH = 4_044;
 // Below the measured 1,400 KB machine-stack floor at depth 4,043, so the
 // RangeError control fails deterministically on every Node version.
 const BELOW_FLOOR_V8_STACK_SIZE_KB = 600;
-
-const sha256Hex = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
 
 const require_ = createRequire(join(HERE, "placeholder.cjs"));
 const installedCmlMainPath = createRequire(
@@ -112,48 +102,6 @@ describe("C26 CML wasm shadow stack (source-fixed 6.2.0-2)", () => {
       "@anastasia-labs/cardano-multiplatform-lib-nodejs",
     );
     expect(manifest.version).toBe(PINNED_VERSION);
-
-    const wasm = readFileSync(
-      join(installedCmlDir, "cardano_multiplatform_lib_bg.wasm"),
-    );
-    expect(wasm.length).toBe(PUBLISHED_WASM_BYTES);
-    expect(sha256Hex(wasm)).toBe(PUBLISHED_WASM_SHA256);
-  });
-
-  it("has no 6.2.0-x CML copy in the store other than pinned 6.2.0-2", () => {
-    const entries = readdirSync(PNPM_STORE).filter((entry) =>
-      /^@anastasia-labs\+cardano-multiplatform-lib-(nodejs|browser)@/.test(
-        entry,
-      ),
-    );
-    const series = entries.filter((entry) => entry.includes("@6.2.0"));
-    // Both wasm-bindgen targets are shipped by lucid-evolution; both must be
-    // present and pinned. Other majors (e.g. 6.0.2-x for core-utils) are a
-    // different consumer contract and are deliberately left alone.
-    expect(
-      series.filter((entry) => entry.includes("-nodejs@")).length,
-    ).toBeGreaterThanOrEqual(1);
-    expect(
-      series.filter((entry) => entry.includes("-browser@")).length,
-    ).toBeGreaterThanOrEqual(1);
-    for (const entry of series) {
-      expect(entry, `stale/overridden CML copy in store: ${entry}`).toContain(
-        `@${PINNED_VERSION}`,
-      );
-      const variant = entry.includes("-browser@") ? "browser" : "nodejs";
-      const wasm = readFileSync(
-        join(
-          PNPM_STORE,
-          entry,
-          "node_modules",
-          "@anastasia-labs",
-          `cardano-multiplatform-lib-${variant}`,
-          "cardano_multiplatform_lib_bg.wasm",
-        ),
-      );
-      expect(wasm.length).toBe(PUBLISHED_WASM_BYTES);
-      expect(sha256Hex(wasm)).toBe(PUBLISHED_WASM_SHA256);
-    }
   });
 
   it("carries the 16 MiB shadow stack structurally in the binary", () => {

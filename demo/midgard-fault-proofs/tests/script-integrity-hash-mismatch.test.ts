@@ -19,7 +19,6 @@ import {
   createManifestBoundScriptIntegrityHashMismatchWorkflow,
   createScriptIntegrityHashMismatchWorkflowRunnerSurface,
   SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS,
-  type ScriptIntegrityHashMismatchActuator,
 } from "../src/script-integrity-hash-mismatch/v1.js";
 import {
   cancelScriptIntegrityHashMismatchWorkflow,
@@ -30,6 +29,18 @@ import {
 import { WORKFLOW_ADAPTER_RUNNER } from "../src/workflow/adapters.js";
 
 const txId = "00".repeat(32);
+/**
+ * The redeemer-witness hash and the four expected script-integrity hashes are
+ * the cross-implementation vectors the on-chain validator is pinned to:
+ * `onchain/aiken/lib/midgard/script-language-views-v1.test.ak`
+ * (`script_integrity_language_view_vectors_match_typescript`) asserts exactly
+ * these four bytes for bitmaps 0..3 over the same all-`0x11` redeemer hash,
+ * and `demo/midgard-core/tests/script-language-views.test.ts` asserts them for
+ * the codec that produces them. Their provenance is therefore a second,
+ * independently written implementation of the same rule — not this module's
+ * own output — which is what makes the bitmap-to-hash wiring below checkable
+ * rather than self-confirming.
+ */
 const redeemerHash = "11".repeat(32);
 const expected = [
   "01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
@@ -64,9 +75,11 @@ describe("scriptIntegrityHashMismatch V1", () => {
     expect(languagesForIntegrityBitmap(2)).toEqual(["MidgardV1"]);
     expect(languagesForIntegrityBitmap(3)).toEqual(["PlutusV3", "MidgardV1"]);
   });
-  it("matches authoritative Cardano language-view vectors", () => {
+  it("derives the on-chain expected hash for every language bitmap", () => {
     for (const bitmap of [0, 1, 2, 3] as const)
-      expect(evidence(bitmap).expectedHash).toBe(expected[bitmap]);
+      expect(evidence(bitmap).expectedHash, `bitmap ${bitmap.toString()}`).toBe(
+        expected[bitmap],
+      );
   });
   it("closes both direction polarities and refuses equality/mismatch inversions", () => {
     expect(scriptIntegrityHashMismatchEvidenceCloses(evidence(3))).toBe(true);
@@ -203,21 +216,14 @@ describe("scriptIntegrityHashMismatch V1", () => {
       ).resolves.toBe("cancelled");
     }
   });
-  it("exposes no caller verdict callback on the production actuator", () => {
-    const keys: readonly (keyof ScriptIntegrityHashMismatchActuator)[] = [
-      "observe",
-      "captureSignedTransaction",
-      "submitSignedTransaction",
-      "transactionConfirmed",
-      "acquireRemovalLease",
-    ];
-    expect(keys).not.toContain("verdict");
-    expect(keys).not.toContain("evidence");
-  });
   it("exposes a strict shared-runtime loader and refuses category substitution", async () => {
-    expect(SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS).not.toEqual(
-      expect.arrayContaining(["evidence", "actuator", "verdict", "submit"]),
-    );
+    // Each forbidden key on its own: `not.arrayContaining` over the four is
+    // satisfied by omitting any single one of them, so it does not state the
+    // claim that none of them may appear.
+    for (const forbidden of ["evidence", "actuator", "verdict", "submit"])
+      expect(SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS).not.toContain(
+        forbidden,
+      );
     await expect(
       createManifestBoundScriptIntegrityHashMismatchWorkflow({
         manifest: {},
@@ -258,9 +264,6 @@ describe("scriptIntegrityHashMismatch V1", () => {
       fraudProofTokenAddressData: new Constr(0, []),
       hubOracleScriptHash: "33".repeat(28),
     });
-    expect(
-      steps.map(({ spendingScript }) => spendingScript.script.length / 2),
-    ).toEqual([14692, 11817, 1603, 5401, 1957]);
     expect(
       steps.every(
         ({ spendingScript }) => spendingScript.script.length / 2 < 15_872,

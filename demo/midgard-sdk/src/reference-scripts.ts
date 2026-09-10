@@ -439,6 +439,10 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1FpMissingNativeScriptUtxoS04",
   "V1 fraud-proof missing-native-script-utxo step-05":
     "V1FpMissingNativeScriptUtxoS05",
+  "V1 fraud-proof missing-native-script-utxo step-06":
+    "V1FpMissingNativeScriptUtxoS06",
+  "V1 fraud-proof missing-native-script-utxo step-07":
+    "V1FpMissingNativeScriptUtxoS07",
   "V1 fraud-proof native-script-invalid step-01": "V1FpNativeScriptInvalidS01",
   "V1 fraud-proof native-script-invalid step-02": "V1FpNativeScriptInvalidS02",
   "V1 fraud-proof native-script-invalid step-03": "V1FpNativeScriptInvalidS03",
@@ -762,6 +766,13 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   // absent from the other makes every manifest unverifiable by one of the two.
   "availability-challenge spending": "AvailabilityChallengeSpend",
   "availability-challenge minting": "AvailabilityChallengeMint",
+  "availability-challenge bond withdrawal": "AvailabilityChallengeBondYield",
+  "availability-challenge open withdrawal": "AvailabilityChallengeOpenYield",
+  "availability-challenge settle withdrawal":
+    "AvailabilityChallengeSettleYield",
+  "availability-challenge close withdrawal": "AvailabilityChallengeCloseYield",
+  "availability-challenge timeout withdrawal":
+    "AvailabilityChallengeExpiryYield",
 } as const;
 
 export type ReferenceScriptAuthTokenTarget =

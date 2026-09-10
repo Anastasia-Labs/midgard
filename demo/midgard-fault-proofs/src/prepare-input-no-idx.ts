@@ -4,7 +4,7 @@
  * where they used to carry field-0 and field-2 collection commitments, and the
  * proof-fit measurement reports §8.4's carriage tier where it used to report a
  * retired direct/fold split. See
- * `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
  * `input-no-idx` (`nonExistentInputNoIndex`) evidence builder (Goal task `Q13`,
  * §9.1 outputs 6-8).

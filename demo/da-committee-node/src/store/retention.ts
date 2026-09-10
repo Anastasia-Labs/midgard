@@ -4,6 +4,7 @@ import {
   retentionDeadlineAlert,
   type RetentionPruneDecision,
 } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk";
 
 import type {
   DaStoredPayloadRecord,
@@ -31,6 +32,7 @@ export type RetentionCandidate = {
   readonly terminalHistoryAuthorityMismatch: boolean;
   readonly availabilityChallengeAuthorityMismatch: boolean;
   readonly activeAvailabilityChallenge: boolean;
+  readonly availabilityTerminalTransitionDigest: string | null;
   readonly decision: RetentionPruneDecision;
 };
 
@@ -49,8 +51,22 @@ export type RetentionScanOptions = {
   readonly minimumFinalityDepth?: number;
   readonly availabilityChallengeAuthority?: {
     readonly deploymentFingerprint: string;
-    readonly capability: "deployed";
-    readonly activeHeaderHashes: ReadonlySet<string>;
+    readonly capability: "deployed_unobserved";
+    readonly activeHeaderHashes?: ReadonlySet<string>;
+    readonly terminalEvidence?: ReadonlyMap<
+      string,
+      {
+        readonly transition: SDK.StateQueueAuthenticatedTransition;
+        readonly evidence: SDK.DaAvailabilityRetentionEvidence;
+        readonly authority: SDK.DaAvailabilityRetentionAuthority;
+      }
+    >;
+    /** Serializes the exact evidence check and deletion with source rollback. */
+    readonly withCurrentTerminalEvidence?: (
+      headerHash: string,
+      transitionDigest: string,
+      remove: () => Promise<boolean>,
+    ) => Promise<boolean>;
   };
 };
 
@@ -140,13 +156,40 @@ export const retentionCandidates = async (
         options.deploymentFingerprint;
     const activeAvailabilityChallenge =
       !availabilityChallengeAuthorityMismatch &&
-      challengeAuthority.capability === "deployed" &&
-      challengeAuthority.activeHeaderHashes.has(payload.headerHash);
+      challengeAuthority.capability === "deployed_unobserved" &&
+      challengeAuthority.activeHeaderHashes?.has(payload.headerHash) === true;
+    const terminal = challengeAuthority?.terminalEvidence?.get(
+      payload.headerHash,
+    );
+    const confirmedInactive =
+      terminal !== undefined &&
+      header !== undefined &&
+      terminal.authority.deploymentIdentityDigest ===
+        payload.deploymentFingerprint &&
+      Number.isSafeInteger(options.minimumFinalityDepth) &&
+      terminal.authority.minimumFinalityDepth ===
+        BigInt(options.minimumFinalityDepth ?? -1) &&
+      terminal.transition.blockHash === header.observedChainPoint.blockHash &&
+      terminal.transition.slot === String(header.observedChainPoint.slot) &&
+      terminal.transition.blockNo ===
+        String(header.observedChainPoint.blockHeight) &&
+      terminal.transition.removedHeaderHashes[0] === payload.headerHash &&
+      terminal.evidence.blockEndTimeMs === String(blockEndTimeMs) &&
+      (terminal.transition.transitionKind === "merge"
+        ? "merged"
+        : "removed") === header.status &&
+      SDK.parseDaAvailabilityRetentionEvidence(
+        terminal.evidence,
+        terminal.transition,
+        terminal.authority,
+      ) !== null;
     const availabilityChallengeState = availabilityChallengeAuthorityMismatch
       ? "unknown"
       : activeAvailabilityChallenge
         ? "active"
-        : "inactive";
+        : confirmedInactive
+          ? "inactive"
+          : "unknown";
     const decision = daRetentionPruneDecision(
       { headerHash: payload.headerHash, blockEndTimeMs },
       {
@@ -170,6 +213,9 @@ export const retentionCandidates = async (
       terminalHistoryAuthorityMismatch,
       availabilityChallengeAuthorityMismatch,
       activeAvailabilityChallenge,
+      availabilityTerminalTransitionDigest: confirmedInactive
+        ? terminal.transition.transitionDigest
+        : null,
       decision: fingerprintMismatch
         ? { decision: "retain", reasonCode: "header_status_unknown" }
         : decision,
@@ -186,6 +232,7 @@ export type RetentionPruneResult = {
 const pruneRetentionCandidates = async (
   store: WatcherStore,
   candidates: readonly RetentionCandidate[],
+  options: RetentionScanOptions,
 ): Promise<RetentionPruneResult> => {
   const prunedHeaderHashes: string[] = [];
   for (const candidate of candidates) {
@@ -198,7 +245,21 @@ const pruneRetentionCandidates = async (
     ) {
       continue;
     }
-    const deleted = await store.deleteDaPayload(candidate.headerHash);
+    const source = options.availabilityChallengeAuthority;
+    const terminal = source?.terminalEvidence?.get(candidate.headerHash);
+    if (
+      !terminal ||
+      !source?.withCurrentTerminalEvidence ||
+      candidate.availabilityTerminalTransitionDigest === null ||
+      candidate.availabilityTerminalTransitionDigest !==
+        terminal.transition.transitionDigest
+    )
+      continue;
+    const deleted = await source.withCurrentTerminalEvidence(
+      candidate.headerHash,
+      candidate.availabilityTerminalTransitionDigest,
+      () => store.deleteDaPayload(candidate.headerHash),
+    );
     if (deleted) {
       prunedHeaderHashes.push(candidate.headerHash);
     }
@@ -221,7 +282,7 @@ export const pruneExpiredDaPayloads = async (
   options: RetentionScanOptions,
 ): Promise<RetentionPruneResult> => {
   const candidates = await retentionCandidates(store, options);
-  return pruneRetentionCandidates(store, candidates);
+  return pruneRetentionCandidates(store, candidates, options);
 };
 
 export type RetentionDeadlineEntry = {
@@ -330,6 +391,6 @@ export const runRetentionCycle = async (
   // delete a record that was never present in the preceding report.
   const candidates = await retentionCandidates(store, options);
   const deadlines = retentionDeadlineReportFromCandidates(candidates, options);
-  const prune = await pruneRetentionCandidates(store, candidates);
+  const prune = await pruneRetentionCandidates(store, candidates, options);
   return { deadlines, prune };
 };

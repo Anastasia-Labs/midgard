@@ -32,18 +32,17 @@ resolve):
 ```bash
 pnpm --dir ../midgard-node build
 pnpm build
-set -a
-. ../midgard-node/.env
-set +a
-export POSTGRES_HOST=127.0.0.1
-export POSTGRES_PORT=5433
+# First generate, bootstrap, and capture the matched isolated devnet described
+# in devnet/phase4-process/README.md. Use its immutable acceptance.env.
+export MIDGARD_PHASE4_RUN_DIR=/absolute/path/to/matched-phase4-run
+export MIDGARD_PHASE4_PROCESS_ENV_FILE="$MIDGARD_PHASE4_RUN_DIR/secrets/acceptance.env"
+export MIDGARD_PHASE4_PROCESS_DEPLOYMENT_MANIFEST_PATH="$MIDGARD_PHASE4_RUN_DIR/deploymentInfo/contract-deployment-info.json"
+export MIDGARD_PHASE4_PROCESS_RUN_DIR="$MIDGARD_PHASE4_RUN_DIR/acceptance"
+export MIDGARD_DOTENV_MODE=disabled
 export MIDGARD_PHASE4_PROCESS_ACCEPTANCE=pipelined-commit-live-v1
 export MIDGARD_PHASE4_PROCESS_TARGET=local-devnet
-export MIDGARD_PHASE4_MATCHED_RESET_COMMAND='/absolute/path/to/restore-matched-phase4-snapshot.sh'
-# Must advance/evict the submitted N tip and print the reviewed recovery
-# attestation. L2 header hashes are 56 lowercase hex characters. Cardano
-# transaction/block hashes and SHA-256 digests are 64 lowercase hex characters.
-export MIDGARD_PHASE4_T1_RECOVERY_COMMAND='/absolute/path/to/evict-or-advance-t1-tip.sh'
+export MIDGARD_PHASE4_MATCHED_RESET_COMMAND="$PWD/devnet/phase4-process/scripts/reset.sh"
+export MIDGARD_PHASE4_T1_RECOVERY_COMMAND="$PWD/devnet/phase4-process/scripts/t1-recover.sh"
 pnpm accept:phase4:pipelined-process
 ```
 

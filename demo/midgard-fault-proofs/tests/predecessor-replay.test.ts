@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
+  admitCompleteCanonicalReplayPredecessor,
   COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -35,6 +36,45 @@ const evidenceFor = async () => {
 };
 
 describe("production predecessor-relative complete replay V1", () => {
+  it("accepts an authenticated empty predecessor after genesis", async () => {
+    const predecessor = await buildCanonicalBlockFixture({ transactions: [] });
+    const current = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: predecessor.headerHash,
+      prevUtxosRoot: predecessor.header.utxosRoot,
+    });
+    const daProvenance = {
+      trustClass: "public_or_permissionless_da",
+      sourceId: "libp2p/predecessor-replay-test",
+      grade: "security",
+    } as const;
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(current),
+      payloadEnvelopeCbor: current.payloadEnvelopeCbor,
+      daProvenance,
+    });
+    const context = {
+      predecessor: await admitCompleteCanonicalReplayPredecessor({
+        value: {
+          observation: authenticatedHeaderObservation(predecessor),
+          payloadEnvelopeCborHex:
+            predecessor.payloadEnvelopeCbor.toString("hex"),
+          daProvenance,
+        },
+        currentEvidence: evidence,
+        minimumConfirmationDepth: 30,
+      }),
+    };
+    for (const replayer of [
+      NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
+      NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+    ]) {
+      await expect(replayer.replay(evidence, context)).resolves.toMatchObject({
+        detections: [],
+      });
+    }
+  });
+
   it("detects absent spend and reference inputs against the committed empty genesis ledger", async () => {
     const evidence = await evidenceFor();
     await expect(

@@ -9,37 +9,48 @@ entry point `src/index.ts` wires together several subsystems:
 - **libp2p transport** (`src/da/libp2p/`), a gossipsub-based network for exchanging
   attestations, payloads, and proofs between committee peers. Uses
   `@libp2p/gossipsub`, `@chainsafe/libp2p-noise`, and yamux.
-- **Watcher API server** (`src/api/`), the node's HTTP surface.
+- **Process API server** (`src/api/`), HTTP health, readiness, and deployment-manifest surfaces;
+  DA protocol data remains on libp2p.
 - **Peer coordination** (`src/peer/`), a signature coordinator/poller that collects
   peer signatures.
 - **Signer & committee validation** (`src/signer.ts`), the DA signer and committee
   validation logic.
 - **On-chain coordination** (`src/coordinator/`, `src/l1/`), an on-chain
   coordinator plus a submitter reconciler that reconciles committee state with L1.
-- **Store** (`src/store/`), the watcher's persistent store (uses `pg`).
+- **Store** (`src/store/`), the committee's persistent store, configured with either a file path or
+  PostgreSQL credentials. The separate public reader requires PostgreSQL.
 
-<Mermaid chart={`flowchart TD
+<Mermaid
+  chart={`flowchart TD
   P["libp2p gossipsub peers"] --> DA["da/libp2p"]
   DA --> COORD["peer signature coordinator"]
   COORD --> SIG["DA signer + committee validation"]
   SIG --> L1["on-chain coordinator + submitter reconciler"]
-  DA --> STORE["watcher store (pg)"]
-  API["watcher API server"] --> STORE`} />
+  DA --> STORE["committee store (pg)"]
+  API["process API server"] --> STORE`}
+/>
 
-## Required configuration
+## Configuration inputs
 
 The runtime reads its deployment and network identity from the environment:
 
 - `MIDGARD_DEPLOYMENT_MANIFEST_PATH`: path to the deployment manifest JSON
-  (schema `midgard-deployment-manifest-v1`) that pins the deployment the watcher
-  serves.
+  that pins the deployment the committee
+  serves. This is the DA runtime manifest, distinct from the finalized contract
+  deployment manifest; its exact schema is parsed by `da-transport.ts`.
 - `MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH`: path to the contract deployment info
   produced at protocol init.
 - `DA_LIBP2P_PRIVATE_KEY_SOURCE`: the node's libp2p identity key, given as a
   `seed:`, `hex:`, or `file:` source. Required in libp2p DA mode.
 
+These are identity inputs, not a complete environment. Committee startup also
+requires store configuration (`WATCHER_DB_PATH` or `WATCHER_DATABASE_URL`) and the
+manifest-selected committee signer and provider settings validated by
+`src/config.ts`. The public retained-DA reader has its own isolated environment
+and [startup instructions](/docs/watchers/da-committee-node#dedicated-public-reader).
+
 ## Related
 
 - [DA Committee Node Architecture](/docs/watchers/da-committee-node)
-- [DA Transport Migration](/docs/watchers/da-transport-migration)
+- [DA Transport Rules](/docs/watchers/da-transport)
 - On-chain: [`da-attestation`](/docs/onchain/da-validators)

@@ -47,11 +47,25 @@ Verify `.env` without printing seed phrases:
   and
 - `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity.
 
-Build the current operator CLI and the tooling CLI, then start only the local
-provider plumbing needed by host commands. Compose dependencies start Cardano
-node and bootstrap services.
+Check release readiness before submitting any deployment transaction or resetting
+state. The current source has `MIDGARD_RELEASE_EVIDENCE_DIGEST = null` in
+`demo/midgard-core/src/consensus-profile.ts`, so the assertion below fails and this
+live sequence is blocked. The dedicated public retained-DA reader enforces the
+same assertion at startup. Resume only after release evidence is accepted and
+its digest is compiled into the release; do not substitute a made-up digest or
+bypass the assertion. Passing it is a prerequisite, not proof that the remaining
+acceptance gates have passed.
+
+Build core so this check reads the current packaged source, then build the
+operator and tooling CLIs and start the local provider plumbing. Compose
+dependencies start Cardano node and bootstrap services.
 
 ```bash
+pnpm --dir "$REPO_ROOT/demo/midgard-core" build || exit 1
+node --input-type=module -e '
+  import { assertMidgardConsensusReleaseReady } from "@al-ft/midgard-core/consensus-profile";
+  assertMidgardConsensusReleaseReady();
+' || exit 1
 pnpm build
 pnpm --dir "$TOOLS_DIR" build
 $COMPOSE up -d cardano-node-ogmios kupo
@@ -200,15 +214,15 @@ node "$TOOLS_CLI" e2e-run-step \
 
 INIT_TX_HASH="$(node --input-type=module -e '
   import { readFileSync } from "node:fs";
-  const summary = JSON.parse(readFileSync(process.argv[1], "utf8"));
-  const hash = summary?.parsedJson?.initTxHash
-    ?? summary?.parsedJson?.txHash
-    ?? summary?.observedTxHashes?.[0];
-  if (typeof hash !== "string" || !/^[0-9a-f]{64}$/i.test(hash)) {
-    throw new Error("init step summary contains no transaction hash");
+  const manifest = JSON.parse(readFileSync(process.argv[1], "utf8"));
+  const step = manifest.steps?.initProtocol;
+  const hash = step?.txHash;
+  if (step?.status !== "complete" || typeof hash !== "string"
+      || !/^[0-9a-f]{64}$/i.test(hash)) {
+    throw new Error("deployment manifest has no completed init transaction");
   }
   process.stdout.write(hash.toLowerCase());
-' "$INIT_STEP")"
+' deploymentInfo/contract-deployment-info.json)"
 
 node dist/index.js reconcile deployment-manifest \
   --out deploymentInfo/contract-deployment-info.json \
@@ -233,7 +247,7 @@ that exact recovery state. Do not deregister or rewrite SQL to recover.
 
 ## DA manifests and watcher
 
-Generate three manifests from the finalized v2 contract deployment manifest:
+Generate three manifests from the finalized canonical contract deployment manifest:
 
 - a producer runtime manifest for the producer container;
 - a producer host-preflight manifest used while the producer is stopped; and
@@ -246,7 +260,7 @@ Set an explicit funded L1 submitter key source without printing it. Supported
 forms include `seed:<mnemonic>` and `file:<path-containing-a-supported-source>`.
 Keep this wallet distinct from the operator and DA signer.
 
-The command block below is the default legacy 1-of-1 profile. If `.env`
+The command block below is the local development 1-of-1 example. If `.env`
 configures a larger committee or threshold, supply one `--committee-member`
 entry per configured member, generate a target-specific watcher manifest for
 each signer, and start enough watcher instances to reach the configured
@@ -266,9 +280,12 @@ CONTRACT_INFO="$NODE_DIR/deploymentInfo/contract-deployment-info.json"
 PRODUCER_MANIFEST="$NODE_DIR/deploymentInfo/da-libp2p-producer-manifest.json"
 PRODUCER_PREFLIGHT_MANIFEST="$NODE_DIR/deploymentInfo/da-libp2p-producer-host-preflight-manifest.json"
 WATCHER_MANIFEST="$DA_NODE_DIR/run/$RUN_ID-watcher-manifest.json"
-WATCHER_DB="$DA_NODE_DIR/run/$RUN_ID-watcher-store.json"
+# Provision the committee database and a distinct SELECT-only public reader
+# as described in the DA committee guide before starting either process.
+: "${DA_COMMITTEE_DATABASE_URL:?set the committee PostgreSQL writer connection}"
 PRODUCER_LIBP2P_KEY_SOURCE="${DA_PRODUCER_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000001}"
 WATCHER_LIBP2P_KEY_SOURCE="${DA_WATCHER_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000002}"
+PUBLIC_RETAINED_LIBP2P_KEY_SOURCE="${DA_RETAINED_LIBP2P_KEY_SOURCE:?set a dedicated non-signer libp2p identity}"
 DA_THRESHOLD="${DA_THRESHOLD:-1}"
 mkdir -p "$DA_NODE_DIR/run" "$DA_NODE_DIR/db"
 
@@ -288,6 +305,7 @@ NODE
 COMMON_MANIFEST_ARGS=(
   --contract-deployment-info "$CONTRACT_INFO"
   --producer-libp2p-key-source "$PRODUCER_LIBP2P_KEY_SOURCE"
+  --public-retained-da-libp2p-key-source "$PUBLIC_RETAINED_LIBP2P_KEY_SOURCE"
   --threshold "$DA_THRESHOLD"
   --committee-member "0,$DA_VKEY,$WATCHER_LIBP2P_KEY_SOURCE,committee+retrieval+coordinator"
   --network "${NETWORK:-Preprod}"
@@ -334,6 +352,11 @@ if [ -z "${DA_COMMITTEE_HEX:-}" ]; then
   unset DA_COMMITTEE_HEX
 fi
 
+# Committee configuration rejects public-reader credentials and cohosting.
+unset WATCHER_DB_PATH DA_PUBLIC_RETAINED_DA_ENABLED \
+  DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE DA_PUBLIC_RETAINED_DA_DATABASE_URL \
+  DA_PUBLIC_RETAINED_DA_DATABASE_ROLE
+
 DA_WATCHER_ENV=(
   "MIDGARD_NETWORK=${NETWORK:-Preprod}"
   "MIDGARD_DEPLOYMENT_MANIFEST_PATH=$WATCHER_MANIFEST"
@@ -346,7 +369,7 @@ DA_WATCHER_ENV=(
   "DA_THRESHOLD=$DA_THRESHOLD"
   "DA_L1_SUBMISSION_ENABLED=true"
   "L1_SUBMITTER_KEY_SOURCE=$DA_L1_SUBMITTER_KEY_SOURCE"
-  "WATCHER_DB_PATH=$WATCHER_DB"
+  "WATCHER_DATABASE_URL=$DA_COMMITTEE_DATABASE_URL"
   "WATCHER_API_HOST=127.0.0.1"
   "WATCHER_API_PORT=8787"
   "WATCHER_POLL_INTERVAL_MS=15000"
@@ -368,7 +391,20 @@ node "$TOOLS_CLI" e2e-run-step \
 Stop if the submitter wallet is not ready. Fund the distinct submitter wallet,
 wait for confirmation, and rerun the preflight.
 
-Start the watcher before probing producer-to-committee reachability:
+Start the watcher before probing producer-to-committee reachability.
+The committee uses PostgreSQL so the dedicated public retained-DA reader can
+read the same retained payload/header tables with a separate SELECT-only role.
+A JSON file store cannot support that public-reader path.
+
+After the committee starts and initializes its tables, start the dedicated
+`midgard-public-retained-da` process in a separately managed environment using the
+[DA committee guide](../../../../docs-site/content/docs/watchers/da-committee-node.mdx).
+Use the watcher manifest, the same contract manifest, the dedicated
+`PUBLIC_RETAINED_LIBP2P_KEY_SOURCE`, and the read-only database role. Never pass
+committee signer, provider, submitter, or writer-store credentials to that
+process. Its readiness must be established by a real public libp2p retrieval;
+it does not expose the committee's HTTP `/readyz` endpoint. Preserve its process,
+log, role, and retrieval evidence with the run.
 
 ```bash
 DA_NODE_LOG="logs/$RUN_ID/da-committee-node.log"
@@ -504,6 +540,13 @@ If projection is empty, inspect `deposits_utxos.inclusion_time`. Wait until the
 record is due plus a small buffer, then rerun `project-deposits-once`. A deposit
 not yet due is not a failure.
 
+Before spending the deposit, wait for its block to commit, receive DA attestation,
+mature, and merge through the normal fibers. Confirm its settlement membership
+with `resolve-event-settlement-proof --kind deposit --event-id <event-id>`.
+A projected local UTxO alone is insufficient: deposits execute after transactions
+within a block, so the same block cannot introduce and spend that deposit.
+Retain the deposit block's confirmation and merge evidence with the run.
+
 ### Submit two baseline L2 transfers
 
 Require the watcher to remain ready first:
@@ -542,8 +585,10 @@ Poll until both are `committed`. Do not treat `accepted` as committed or final.
 
 For every committed header:
 
-1. Fetch `/da/payload/metadata?header_hash=<hash>`.
-2. Save `/da/payload?header_hash=<hash>` as a raw artifact.
+1. Retain the producer libp2p publication report for the header, including
+   deployment fingerprint, threshold, announcement topic, and per-peer results.
+2. Retain the exact payload bytes obtained through libp2p retrieval and their
+   digest. The operator HTTP server has no DA payload retrieval route.
 3. Query the watcher deployment/header status.
 4. Record payload hash/schema, watcher verification, attestation init,
    add-signatures, and apply transaction hashes.
@@ -559,9 +604,9 @@ DEPLOYMENT_FINGERPRINT="$(node --input-type=module -e '
     "deploymentInfo/contract-deployment-info.json",
     "utf8",
   ));
-  if (manifest.schemaVersion !== "midgard-deployment-manifest-v2"
+  if (manifest.schemaVersion !== "midgard-deployment-manifest-v1"
       || typeof manifest.manifestId !== "string") {
-    throw new Error("expected finalized v2 deployment manifest");
+    throw new Error("expected canonical deployment manifest");
   }
   process.stdout.write(manifest.manifestId.toLowerCase());
 ')"
@@ -641,11 +686,12 @@ Before any live drill, run the deterministic parser/gate rehearsal. It submits
 nothing and does not touch the deployment:
 
 ```bash
-cd "$NODE_DIR"
+cd "$TOOLS_DIR"
 NODE_ENV=emulator pnpm exec vitest run \
   tests/e2e-state-correction-acceptance.test.ts \
   tests/e2e-state-correction-reconciliation.test.ts \
   tests/e2e-state-correction-local-authority.test.ts
+cd "$NODE_DIR"
 ```
 
 Set the artifact path now and preserve it with the run:
@@ -803,12 +849,13 @@ const find = (value) => {
   }
 };
 const hash = find(summary.parsedJson);
-if (hash) process.stdout.write(hash.toLowerCase());
+if (!hash) throw new Error(`no ${selector} transaction hash in ${summaryPath}`);
+process.stdout.write(hash.toLowerCase());
 NODE
 }
 
 HUB_ORACLE_NONCE_TX_HASH="$(step_tx_hash "$HUB_ORACLE_NONCE_STEP" txHash)"
-INIT_TX_HASH="$(step_tx_hash "$INIT_STEP" txHash)"
+# INIT_TX_HASH was read from the completed deployment-manifest init step.
 OPERATOR_REGISTRATION_TX_HASH="$(step_tx_hash "$OPERATOR_STEP" registerTxHash)"
 OPERATOR_ACTIVATION_TX_HASH="$(step_tx_hash "$OPERATOR_STEP" activateTxHash)"
 DEPOSIT_TX_HASH="$(step_tx_hash "$DEPOSIT_STEP" txHash)"
@@ -816,32 +863,34 @@ TX_A="$(step_tx_hash "$L2_TRANSFER_A_STEP" txId)"
 TX_B="$(step_tx_hash "$L2_TRANSFER_B_STEP" txId)"
 ```
 
-After automatic merge, obtain the two fresh header-commit transaction hashes
-from the fresh database. Fail if the run does not have exactly two distinct,
-confirmed header commits; do not invent labels or use unrelated hashes.
+After automatic merge, reconcile the confirmed header commits against the
+fresh run's deposit and L2 transactions. Assign `HEADER_COMMIT_A_TX_HASH` and
+`HEADER_COMMIT_B_TX_HASH` from those authenticated observations for the required
+`header-commit-a` and `header-commit-b` evidence labels. Record which header and
+source events each hash proves. Retain any additional commits separately.
 
-```bash
-mapfile -t HEADER_COMMIT_TX_HASHES < <(
-  $COMPOSE exec -T postgres \
-    psql -U postgres -d midgard -At \
-    -c "select encode(submitted_tx_hash, 'hex') from pending_block_finalizations where status = 'finalized' and submitted_tx_hash is not null order by created_at"
-)
-if [ "${#HEADER_COMMIT_TX_HASHES[@]}" -ne 2 ] \
-  || [ "${HEADER_COMMIT_TX_HASHES[0]}" = "${HEADER_COMMIT_TX_HASHES[1]}" ]; then
-  echo "expected exactly two distinct finalized header commits" >&2
-  exit 1
-fi
-HEADER_COMMIT_A_TX_HASH="${HEADER_COMMIT_TX_HASHES[0]}"
-HEADER_COMMIT_B_TX_HASH="${HEADER_COMMIT_TX_HASHES[1]}"
-```
+The finalizer requires those labels; it does not require exactly two total
+header commits in the database. Do not select the first two rows from an
+unfiltered table, truncate additional commits, or use unrelated transaction hashes.
 
 ### Generate the dashboard
+
+Capture the full container log for this run; a fixed recent-time window can
+omit an earlier failed attempt. For attach/resume, retain the existing raw
+logs as well and identify the run's start in the evidence.
+
+Require the reconciled commit observations before constructing the dashboard:
+
+```bash
+: "${HEADER_COMMIT_A_TX_HASH:?set from confirmed run evidence}"
+: "${HEADER_COMMIT_B_TX_HASH:?set from confirmed run evidence}"
+```
 
 Include every required step summary, including the DA bind/listen preflight.
 
 ```bash
 NODE_LOG="logs/$RUN_ID/midgard-node.log"
-$COMPOSE logs --no-color --since=60m midgard-node > "$NODE_LOG"
+$COMPOSE logs --no-color midgard-node > "$NODE_LOG"
 rg -i \
   "error|failed|failure|unknownOutput|crashed|abandon|ScriptIntegrityHashMismatch|hash mismatch" \
   "$NODE_LOG" || true

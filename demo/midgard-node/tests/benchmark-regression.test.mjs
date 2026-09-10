@@ -27,6 +27,10 @@ import {
   tagReportWithDefects,
 } from "../../../scripts/ci/tag-defect-signatures.mjs";
 import {
+  runDeadlineBatchedSchedule,
+  scheduledStartCountDue,
+} from "../scripts/lib/deadline-batched-schedule.mjs";
+import {
   buildScenarioEnvironment,
   phase1FormalHarnessIds,
 } from "../scripts/benchmark-scenario.mjs";
@@ -758,83 +762,6 @@ describe("histogram delta reporting", () => {
 });
 
 describe("Phase 1 formal scenario contracts", () => {
-  it("ships the formal stress engine HTTP client as a runtime dependency", () => {
-    const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-    expect(packageJson.dependencies?.undici).toBe("^7.25.0");
-    expect(packageJson.devDependencies?.undici).toBeUndefined();
-  });
-
-  it("routes the client-capacity self-check through the configured no-op endpoint", () => {
-    const source = fs.readFileSync(
-      "scripts/throughput-valid-stress.mjs",
-      "utf8",
-    );
-    const selfCheck = source.slice(
-      source.indexOf("const runClientSelfCheck"),
-      source.indexOf("const summarizeCursorContinuity"),
-    );
-    expect(selfCheck).toContain("`${noOpEndpoint}/submit`");
-    expect(selfCheck).toContain(
-      '"content-type": "application/vnd.midgard.v1+cbor"',
-    );
-    expect(selfCheck).toContain("body: Buffer.from([0])");
-    expect(selfCheck).toContain(".request(endpoint, requestOptions)");
-    expect(selfCheck).toContain("Math.min(httpConnections, submitConcurrency)");
-    expect(selfCheck).toContain("warmupFailures > 0");
-    expect(selfCheck).toContain("runDeadlineBatchedSchedule({");
-    const initialHttpConnections = source.slice(
-      source.indexOf("const httpConnectionsSetting"),
-      source.indexOf("let httpConnections"),
-    );
-    expect(initialHttpConnections).toContain('"256"');
-  });
-
-  it("batches every due high-rate start after a coarse timer wake", () => {
-    const source = fs.readFileSync(
-      "scripts/throughput-valid-stress.mjs",
-      "utf8",
-    );
-    const scheduler = source.slice(
-      source.indexOf("const scheduledStartCountDue"),
-      source.indexOf("const findAvailableCursor"),
-    );
-    expect(scheduler).toContain("Math.max(1, Math.ceil(waitMs))");
-    expect(scheduler).toContain("nextStartIndex < dueStarts");
-    expect(scheduler).toContain("inFlight.size < maxInFlight");
-    expect(scheduler).toContain("missedStarts: totalStarts - nextStartIndex");
-    expect(scheduler).not.toContain("await sleep(intervalMs)");
-  });
-
-  it("uses the same deadline scheduler for calibration and open-loop load", () => {
-    const source = fs.readFileSync(
-      "scripts/throughput-valid-stress.mjs",
-      "utf8",
-    );
-    const openLoop = source.slice(
-      source.indexOf("const runOpenLoopStage"),
-      source.indexOf("const collectCalibrationRows"),
-    );
-    const calibration = source.slice(
-      source.indexOf("const runNoOpCalibrationStage"),
-      source.indexOf("const waitForStageDrain"),
-    );
-    expect(openLoop).toContain("runDeadlineBatchedSchedule({");
-    expect(openLoop).toContain("stage.missedStarts += schedule.missedStarts");
-    expect(openLoop).not.toContain("allowPostDeadlineCatchUp: true");
-    expect(calibration).toContain("runDeadlineBatchedSchedule({");
-    expect(calibration).toContain("startedAtPerfMs: startedPerfMs");
-    expect(calibration).toContain("warmupRequestCount");
-    expect(calibration).toContain("warmupFailures > 0");
-    expect(calibration.indexOf("warmupResults")).toBeLessThan(
-      calibration.indexOf("const startedPerfMs"),
-    );
-    expect(calibration).toContain("allowPostDeadlineCatchUp: true");
-    expect(calibration).toContain("(1 - missedStartMaxRatio)");
-    expect(source).toContain("readAheadRows: 1");
-    expect(calibration).toContain("schedule.missedStarts === 0");
-    expect(source).toContain('"calibration_capacity_selected"');
-  });
-
   const sha = (character) => character.repeat(64);
   const makeFormalFixture = (overrides = {}) => {
     const directory = fs.mkdtempSync(
@@ -989,40 +916,81 @@ describe("Phase 1 formal scenario contracts", () => {
         fixture.binding.path,
       ),
     ).toEqual(fixture.bindingDocument);
+    // Each case breaks exactly one V1 rule and names the refusal it must
+    // produce, so a validator that collapsed several rules into one generic
+    // failure — or stopped checking one of them — is visible here.
     const mutations = [
-      (binding) => {
-        binding.schemaVersion = "midgard-phase1-live-corpus-binding-v2";
+      {
+        name: "an unsupported schema version",
+        mutate: (binding) => {
+          binding.schemaVersion = "midgard-phase1-live-corpus-binding-v2";
+        },
+        expected:
+          /schemaVersion must be midgard-phase1-live-corpus-binding-v1/u,
       },
-      (binding) => {
-        binding.unknown = true;
+      {
+        name: "an extra top-level key",
+        mutate: (binding) => {
+          binding.unknown = true;
+        },
+        expected:
+          /binding artifact must use the exact V1 keys; missing=\[\], extra=\[unknown\]/u,
       },
-      (binding) => {
-        binding.corpus.unknown = true;
+      {
+        name: "an extra corpus key",
+        mutate: (binding) => {
+          binding.corpus.unknown = true;
+        },
+        expected:
+          /corpus must use the exact V1 keys; missing=\[\], extra=\[unknown\]/u,
       },
-      (binding) => {
-        binding.corpus.path = "./corpus.ndjson";
+      {
+        name: "a relative corpus path",
+        mutate: (binding) => {
+          binding.corpus.path = "./corpus.ndjson";
+        },
+        expected:
+          /corpus\.path must be a canonical absolute corpus path or artifact path/u,
       },
-      (binding) => {
-        binding.walletSetSha256 = binding.walletSetSha256.toUpperCase();
+      {
+        name: "an upper-case wallet-set digest",
+        mutate: (binding) => {
+          binding.walletSetSha256 = binding.walletSetSha256.toUpperCase();
+        },
+        expected: /walletSetSha256 must be 32-byte lowercase hex/u,
       },
-      (binding) => {
-        binding.livePreflight.entries[1].walletId =
-          binding.livePreflight.entries[0].walletId;
+      {
+        name: "a duplicated live-preflight wallet id",
+        mutate: (binding) => {
+          binding.livePreflight.entries[1].walletId =
+            binding.livePreflight.entries[0].walletId;
+        },
+        expected: /livePreflight\.entries must use unique wallet IDs/u,
       },
-      (binding) => {
-        binding.livePreflight.entries[0].firstInputOutref = `${"0".repeat(64)}#00`;
+      {
+        name: "a non-canonical first-input outref index",
+        mutate: (binding) => {
+          binding.livePreflight.entries[0].firstInputOutref = `${"0".repeat(64)}#00`;
+        },
+        expected: /livePreflight\.entries\[0\]\.firstInputOutref is invalid/u,
       },
-      (binding) => {
-        binding.stressCorpusEnv.STRESS_CORPUS_WALLET_SEED_PHRASE =
-          "must-not-be-accepted";
+      {
+        name: "a seed phrase smuggled into the stress corpus env",
+        mutate: (binding) => {
+          binding.stressCorpusEnv.STRESS_CORPUS_WALLET_SEED_PHRASE =
+            "must-not-be-accepted";
+        },
+        expected:
+          /stressCorpusEnv must use the exact V1 keys; missing=\[\], extra=\[STRESS_CORPUS_WALLET_SEED_PHRASE\]/u,
       },
     ];
-    for (const mutate of mutations) {
+    for (const { name, mutate, expected } of mutations) {
       const binding = structuredClone(fixture.bindingDocument);
       mutate(binding);
-      expect(() =>
-        parsePhase1FormalBindingDocument(binding, fixture.binding.path),
-      ).toThrow();
+      expect(
+        () => parsePhase1FormalBindingDocument(binding, fixture.binding.path),
+        name,
+      ).toThrow(expected);
     }
   });
 
@@ -1497,5 +1465,176 @@ describe("benchmark defect signature tagging", () => {
 
     expect(observed).toEqual(["DEF-001"]);
     expect(report.defectSignaturesObserved).toEqual(["DEF-001"]);
+  });
+});
+
+/**
+ * The open-loop start scheduler, exercised directly against a fake clock.
+ *
+ * This replaces three tests that asserted ~40 substrings of
+ * `scripts/throughput-valid-stress.mjs` as proof of runtime scheduling: they
+ * broke on any rename and never ran a single start. The contract they were
+ * reaching for — one coarse timer wake dispatches every start that became due,
+ * instead of `await sleep(intervalMs)` per start — is a behavioural claim and
+ * is asserted as one here.
+ */
+describe("deadline-batched open-loop scheduler", () => {
+  const makeFakeClock = (startMs = 0) => {
+    let clockMs = startMs;
+    const sleeps = [];
+    return {
+      now: () => clockMs,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clockMs += ms;
+        await Promise.resolve();
+      },
+      sleeps,
+      advance: (ms) => {
+        clockMs += ms;
+      },
+      get clockMs() {
+        return clockMs;
+      },
+    };
+  };
+
+  it("counts a start due at its own deadline and clamps to the schedule", () => {
+    const schedule = {
+      startedAtPerfMs: 100,
+      intervalMs: 10,
+      totalStarts: 5,
+    };
+    expect(
+      [99, 100, 109, 110, 139, 140, 1_000].map((nowPerfMs) =>
+        scheduledStartCountDue({ ...schedule, nowPerfMs }),
+      ),
+      // 139ms is 3.9 intervals after the start: four starts are due, not five.
+    ).toEqual([0, 1, 1, 2, 4, 5, 5]);
+  });
+
+  it("dispatches every start that came due during one coarse wake", async () => {
+    // 10k starts/s: a per-start `sleep(intervalMs)` cannot hold this rate,
+    // because Node rounds every sub-millisecond timer up to 1ms.
+    const totalStarts = 200;
+    const intervalMs = 0.1;
+    const clock = makeFakeClock();
+    const dispatchClockMs = [];
+
+    const result = await runDeadlineBatchedSchedule({
+      totalStarts,
+      startedAtPerfMs: 0,
+      deadlinePerfMs: 10_000,
+      intervalMs,
+      maxInFlight: totalStarts,
+      dispatchStart: ({ startIndex, scheduledAtPerfMs }) => {
+        dispatchClockMs.push({
+          startIndex,
+          scheduledAtPerfMs,
+          at: clock.now(),
+        });
+        return Promise.resolve();
+      },
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result.scheduledStarts).toBe(totalStarts);
+    expect(result.missedStarts).toBe(0);
+    expect(result.stoppedWithoutCapacity).toBe(false);
+    // Starts are handed out in schedule order at their own scheduled times.
+    expect(dispatchClockMs.map(({ startIndex }) => startIndex)).toEqual(
+      Array.from({ length: totalStarts }, (_, index) => index),
+    );
+    expect(
+      dispatchClockMs.map(({ scheduledAtPerfMs }) => scheduledAtPerfMs),
+    ).toEqual(
+      Array.from({ length: totalStarts }, (_, index) => index * intervalMs),
+    );
+
+    // Every timer wake is the 1ms floor, and one wake releases a whole batch:
+    // 200 starts at 0.1ms spacing must cost ~20 sleeps, not 200.
+    expect(new Set(clock.sleeps)).toEqual(new Set([1]));
+    expect(clock.sleeps.length).toBeLessThanOrEqual(25);
+    const batchSizes = new Map();
+    for (const { at } of dispatchClockMs) {
+      batchSizes.set(at, (batchSizes.get(at) ?? 0) + 1);
+    }
+    expect(Math.max(...batchSizes.values())).toBeGreaterThanOrEqual(10);
+  });
+
+  it("never exceeds the in-flight bound", async () => {
+    const clock = makeFakeClock();
+    let live = 0;
+    let peakLive = 0;
+    const result = await runDeadlineBatchedSchedule({
+      totalStarts: 50,
+      startedAtPerfMs: 0,
+      deadlinePerfMs: 10_000,
+      intervalMs: 0.1,
+      maxInFlight: 4,
+      dispatchStart: () => {
+        live += 1;
+        peakLive = Math.max(peakLive, live);
+        return Promise.resolve().then(() => {
+          live -= 1;
+        });
+      },
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result.scheduledStarts).toBe(50);
+    expect(peakLive).toBeLessThanOrEqual(4);
+    expect(result.maxObservedInFlight).toBeLessThanOrEqual(4);
+  });
+
+  it("stops at a hard deadline but catches up when the stage allows it", async () => {
+    const runPastDeadline = (allowPostDeadlineCatchUp) => {
+      const clock = makeFakeClock(5_000);
+      return runDeadlineBatchedSchedule({
+        totalStarts: 10,
+        startedAtPerfMs: 0,
+        deadlinePerfMs: 1_000,
+        intervalMs: 1,
+        maxInFlight: 3,
+        dispatchStart: () => Promise.resolve(),
+        allowPostDeadlineCatchUp,
+        now: clock.now,
+        sleep: clock.sleep,
+      });
+    };
+
+    const hardDeadline = await runPastDeadline(false);
+    expect(hardDeadline.scheduledStarts).toBe(3);
+    expect(hardDeadline.missedStarts).toBe(7);
+    expect(hardDeadline.stoppedWithoutCapacity).toBe(false);
+
+    const catchUp = await runPastDeadline(true);
+    expect(catchUp.scheduledStarts).toBe(10);
+    expect(catchUp.missedStarts).toBe(0);
+  });
+
+  it("reports a starved schedule rather than spinning when no start can be dispatched", async () => {
+    const clock = makeFakeClock(5_000);
+    const result = await runDeadlineBatchedSchedule({
+      totalStarts: 5,
+      startedAtPerfMs: 0,
+      deadlinePerfMs: 1_000,
+      intervalMs: 1,
+      maxInFlight: 3,
+      // No cursor is available: the stress script signals that with `null`.
+      dispatchStart: () => null,
+      allowPostDeadlineCatchUp: true,
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result).toMatchObject({
+      scheduledStarts: 0,
+      missedStarts: 5,
+      stoppedWithoutCapacity: true,
+      lastDispatchedAtPerfMs: null,
+    });
   });
 });

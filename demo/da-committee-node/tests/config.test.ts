@@ -3,18 +3,7 @@ import { join } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { computeDeploymentManifestId } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@al-ft/midgard-core/consensus-profile", async (importOriginal) => {
-  const original =
-    await importOriginal<
-      typeof import("@al-ft/midgard-core/consensus-profile")
-    >();
-  return {
-    ...original,
-    assertMidgardConsensusReleaseReady: (): void => undefined,
-  };
-});
+import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
@@ -861,7 +850,7 @@ describe("loadWatcherConfig", () => {
       // `daAttestationMint`; a literal rather than a re-read of
       // `expectedDeployment` so the config path is proved to carry the
       // document's own value rather than agreeing with itself.
-      txHash: "06".repeat(32),
+      txHash: "6".padStart(64, "0"),
       outputIndex: 0,
     });
     expect(config.midgardNodeDeployment?.stateQueue.spend.scriptHash).toBe(

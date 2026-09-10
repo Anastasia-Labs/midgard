@@ -1327,10 +1327,6 @@ program
     "Cardano protocol-parameter snapshot independently digested for state-correction acceptance",
   )
   .option(
-    "--state-correction-release-evidence <path>",
-    "Release-evidence artifact independently hashed for state-correction acceptance",
-  )
-  .option(
     "--state-correction-workflow-journal <directory>",
     "Immutable completed family workflow journal directory; repeat once per launch-scope family",
     collectStringOption,
@@ -1382,7 +1378,6 @@ program
       opts.stateCorrectionBlueprint,
       opts.stateCorrectionCatalogue,
       opts.stateCorrectionParameters,
-      opts.stateCorrectionReleaseEvidence,
       opts.stateCorrectionFinalSnapshot,
     ];
     const hasAnyStateCorrectionIndependentSource =
@@ -1404,7 +1399,7 @@ program
       !hasAllStateCorrectionIndependentSources
     ) {
       throw new Error(
-        "State-correction independent reconciliation requires manifest, blueprint, catalogue, parameters, release evidence, at least one workflow journal, at least one authenticated L1 observation, at least one recovery observation, and the final snapshot together.",
+        "State-correction independent reconciliation requires manifest, blueprint, catalogue, parameters, at least one workflow journal, at least one authenticated L1 observation, at least one recovery observation, and the final snapshot together.",
       );
     }
     const mainEffect = provideDatabaseServices(
@@ -1438,8 +1433,6 @@ program
                 blueprintPath: opts.stateCorrectionBlueprint as string,
                 cataloguePath: opts.stateCorrectionCatalogue as string,
                 parametersPath: opts.stateCorrectionParameters as string,
-                releaseEvidencePath:
-                  opts.stateCorrectionReleaseEvidence as string,
                 workflowJournalDirectories:
                   stateCorrectionWorkflowJournalDirectories,
                 l1ObservationPaths: stateCorrectionL1ObservationPaths,

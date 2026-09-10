@@ -276,6 +276,7 @@ import {
   type ManifestBoundNonExistentInputWorkflowConfig,
   runOrResumeManifestBoundNonExistentInputWorkflow,
 } from "./non-existent-input.js";
+import { continuePendingWorkflow } from "./pending-continuation.js";
 import {
   createManifestBoundReferenceInputNoIdxWorkflow,
   type ManifestBoundReferenceInputNoIdxWorkflow,
@@ -423,11 +424,10 @@ const createManifestBoundWorkflowRunOrResume =
           "manifest-bound workflow identity differs from the compiled CLI invocation",
         );
       }
-      return await execute({
-        workflow,
-        sources,
+      return await continuePendingWorkflow({
+        invocation,
         journal,
-        mode: invocation.mode,
+        execute: (mode) => execute({ workflow, sources, journal, mode }),
       });
     } finally {
       await loaded.close();

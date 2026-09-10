@@ -46,7 +46,7 @@ The core check is `valuePreservationDelta`, which computes:
 delta = inputs − fee + mint − outputs
 ```
 
-```ts
+```text
 export const valuePreservationDelta = (
   inputSum: MidgardValue,
   fee: bigint,
@@ -102,10 +102,10 @@ const MidgardRedeemerTag = {
 
 ### Decoding
 
-`decodeMidgardRedeemers(preimageCbor)` accepts **both** redeemer encodings, a
-CBOR array of 4-element entries (`[tag, index, data, exUnits]`) or a CBOR map
-keyed by `[tag, index]`, and returns a normalized
-`DecodedMidgardRedeemer[]`. During decoding it:
+`decodeMidgardRedeemers(preimageCbor)` accepts the canonical V1 field-8
+enveloped list through `decodeMidgardRedeemerWitnessFieldPreimage`. Raw Cardano
+arrays and pointer-keyed maps are retired encodings and are rejected. It returns
+a normalized `DecodedMidgardRedeemer[]`. During decoding it:
 
 - rejects any tag outside the supported set (`ensureSupportedTag`);
 - validates that each redeemer payload actually encodes Plutus `Data`
@@ -138,9 +138,12 @@ turn a purpose into Plutus data:
 
 ## How the pieces connect
 
-When Phase B evaluates a script, it: resolves the input/output values and runs
-`valuePreservationDelta` to confirm conservation; converts the signed mint into
-`ScriptMintValue` for the context; matches the script purpose to its redeemer via
-`findRedeemerByPointer`; and encodes the purpose with the appropriate
-Cardano/Midgard encoder before handing the assembled context to
-`evaluateScriptWithHarmonic`.
+Phase B resolves inputs, converts signed mint into the context mint value,
+matches purposes to redeemers, and builds the appropriate context. Canonical V1
+execution uses the structural CEK executor with exact program material. It then
+checks minimum Ada and value preservation before accepting the candidate.
+
+Each output must satisfy
+`lovelace >= coinsPerUtxoByte * (160 + canonicalOutputCbor.length)`. The rate is a
+deployment consensus constant, not a value chosen by a block producer;
+`outputCborMeetsMinAda` and its Aiken twin enforce this floor.

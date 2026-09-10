@@ -14,10 +14,6 @@ import {
   MidgardRedeemerTag,
   validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
-import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
-
 import {
   encodeByteList,
   encodeRecomputedNativeTx,
@@ -29,7 +25,11 @@ import {
   makeRedeemersCbor,
   outRefFromByte,
   plutusV3ScriptWitness,
-} from "../../midgard-validation/tests/validation-fixtures.js";
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
@@ -41,6 +41,7 @@ import {
 } from "../src/unused-redeemer/contracts.js";
 import { UNUSED_REDEEMER_CATEGORY_ID } from "../src/unused-redeemer/family.js";
 import { buildUnusedRedeemerMaterialFromRetainedDa } from "../src/unused-redeemer/replay.js";
+import { decodeUnusedRedeemerDirectionControl } from "../src/unused-redeemer/retained-stage-twelve.js";
 import { submitUnusedRedeemerCancel } from "../src/unused-redeemer/submit-cancel.js";
 import {
   submitUnusedRedeemerStep01Accepted,
@@ -60,6 +61,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -69,13 +71,46 @@ import {
 
 const network = "Custom" as const;
 
+/** Pads a selected canonical Data byte string to the exact field-8 carriage bound. */
+const redeemerItems = (spendCount: number) => [
+  ...Array.from({ length: spendCount }, (_, index) => ({
+    tag: MidgardRedeemerTag.Spend,
+    index: BigInt(index),
+  })),
+  { tag: MidgardRedeemerTag.Mint, index: 0n },
+];
+
+const maximumRedeemerField = (
+  direction: "accepted" | "forced",
+  spendCount: number,
+) => {
+  let padding = 32_000;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const data = Buffer.from(Data.to("a5".repeat(padding)), "hex");
+    const selected = direction === "accepted" ? spendCount : spendCount - 1;
+    const field = makeRedeemersCbor(
+      redeemerItems(spendCount).map((item, index) => ({
+        ...item,
+        ...(index === selected ? { data } : {}),
+      })),
+    );
+    if (field.length === 32_768) return field;
+    padding += 32_768 - field.length;
+  }
+  throw new Error("Unable to construct exact maximum unused-redeemer field");
+};
+
 const buildMaterial = async (
   direction: "accepted" | "forced",
   mutateProofIndex = false,
   redeemerIndexOverride?: number,
   omitAuditHeader = false,
+  maximum = false,
+  spendCount = 1,
 ) => {
-  const spent = outRefFromByte(0x71);
+  const spent = Array.from({ length: spendCount }, (_, index) =>
+    outRefFromByte(0x71, BigInt(index)),
+  );
   const privateKey = CML.PrivateKey.generate_ed25519();
   const script = plutusV3ScriptWitness(
     Buffer.from(
@@ -87,15 +122,16 @@ const buildMaterial = async (
     hashScriptWitness(script),
     FUNDED_OUTPUT_LOVELACE,
   );
-  const producedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
+  const producedOutput = makeOutput(
+    FUNDED_OUTPUT_LOVELACE * BigInt(spendCount),
+  );
   const source = makeNativeTx({
-    spendInputs: [spent],
+    spendInputs: spent,
     outputs: [producedOutput],
     scriptWitnesses: [script],
-    redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-      { tag: MidgardRedeemerTag.Spend, index: 0n },
-      { tag: MidgardRedeemerTag.Mint, index: 0n },
-    ]),
+    redeemerTxWitsPreimageCbor: maximum
+      ? maximumRedeemerField(direction, spendCount)
+      : makeRedeemersCbor(redeemerItems(spendCount)),
     scriptLanguages: ["PlutusV3"],
     privateKey,
   });
@@ -147,7 +183,10 @@ const buildMaterial = async (
       ),
       priorUtxosRoot: "00".repeat(32),
       postUtxosRoot: "00".repeat(32),
-      ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+      ledgerWitnessEntries: spent.map((outRef) => ({
+        outRef,
+        output: spentOutput,
+      })),
       expectedLedgerOps: [],
       ledgerMutationSteps: [],
       expectedVerdict: "rejected",
@@ -184,9 +223,40 @@ const buildMaterial = async (
   const traceRoot = await buildCountedRoot(SDK.ROOT_DOMAINS.validationTraces, [
     { key: eventKeyCbor, value: descriptorCbor },
   ]);
+  const defaultTarget = direction === "accepted" ? spendCount : spendCount - 1;
+  const auditHeader = trace.witnesses.find((witness) => {
+    const auxiliary = witness.auxiliary;
+    if (
+      witness.phase !== "scriptSources" ||
+      auxiliary?.kind !== "redeemerItemStep" ||
+      auxiliary.control.itemIndex !== defaultTarget ||
+      auxiliary.control.stage !== 0
+    )
+      return false;
+    try {
+      return decodeUnusedRedeemerDirectionControl(witness.cbor).stage === 12n;
+    } catch {
+      return false;
+    }
+  });
+  if (auditHeader === undefined)
+    throw new Error("exact audit header witness is absent");
+  const auditHeaderPc = auditHeader.programCounter;
   const retainedWitnesses = trace.witnesses.flatMap((witness, index) => {
-    const defaultTarget = direction === "accepted" ? 1 : 0;
-    const auditHeaderPc = defaultTarget === 1 ? 88 : 85;
+    // This direct family consumes ScriptSources authentication and item
+    // boundaries. Generic field-carriage auxiliaries belong to transactions
+    // that resolve their reference inputs, not to this retained proof slice.
+    if (
+      witness.phase !== "scriptSources" ||
+      (witness.auxiliary !== null &&
+        ![
+          "scriptPurposeScan",
+          "scriptSourceScan",
+          "redeemerScanBegin",
+          "redeemerItemStep",
+        ].includes(witness.auxiliary.kind))
+    )
+      return [];
     if (omitAuditHeader && witness.programCounter === auditHeaderPc) return [];
     const retained: SDK.RetainedValidationWitness = {
       machine_state: SDK.validationMachineStateDataFromCore(
@@ -265,14 +335,17 @@ const buildMaterial = async (
     },
   } as unknown as CanonicalBlockEvidence;
   const redeemerIndex =
-    redeemerIndexOverride ?? (direction === "accepted" ? 1 : 0);
+    redeemerIndexOverride ??
+    (direction === "accepted" ? spendCount : spendCount - 1);
   const subject =
     direction === "accepted"
       ? SDK.acceptedVerdictSubject(transaction.txId.toString("hex"))
       : SDK.forcedVerdictSubject({
           transactionId: transaction.txId.toString("hex"),
           sourceKey,
-          rejectionReason: { UnusedRedeemer: { redeemer_index: 0n } },
+          rejectionReason: {
+            UnusedRedeemer: { redeemer_index: BigInt(redeemerIndex) },
+          },
         });
   const material = await buildUnusedRedeemerMaterialFromRetainedDa({
     block,
@@ -281,24 +354,42 @@ const buildMaterial = async (
     redeemerIndex,
     txCbor: transaction.txCbor,
   });
-  return { material, transaction, traceRoot, trace, subject, eventKey };
+  return {
+    material,
+    transaction,
+    traceRoot,
+    trace,
+    subject,
+    eventKey,
+    auditHeaderPc,
+  };
 };
+
+const measuredFit = createMeasuredFitRecorder(
+  "unused-redeemer",
+  "lifecycle",
+  "exact32,768-byte selected redeemer field in both directions, authenticated nine-step traversal, proof mint and correction",
+);
 
 describe("unusedRedeemer concrete retained lifecycle material", () => {
   it("derives exact stage-12 item and execution evidence", async () => {
-    const { material } = await buildMaterial("accepted");
+    const { material, auditHeaderPc } = await buildMaterial("accepted");
     expect(material.evidence.unused).toBe(true);
     expect(material.authentication.control.stage).toBe(12n);
     expect(material.authentication.itemControl.item_index).toBe(1n);
-    expect(material.authentication.controlState.program_counter).toBe(88n);
+    expect(material.authentication.controlState.program_counter).toBe(
+      BigInt(auditHeaderPc),
+    );
   });
 
   it("derives the exact stage-12 selected redeemer frontier", async () => {
-    const { material } = await buildMaterial("forced");
+    const { material, auditHeaderPc } = await buildMaterial("forced");
     expect(material.evidence.unused).toBe(false);
     expect(material.authentication.control.stage).toBe(12n);
     expect(material.authentication.itemControl.item_index).toBe(0n);
-    expect(material.authentication.controlState.program_counter).toBe(85n);
+    expect(material.authentication.controlState.program_counter).toBe(
+      BigInt(auditHeaderPc),
+    );
   });
 
   it("refuses a wrong global program-counter substitution", async () => {
@@ -309,7 +400,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
 
   it("refuses a cross-cursor substitution", async () => {
     await expect(buildMaterial("accepted", false, 0)).rejects.toThrow(
-      "terminal ScriptSources frontier is incomplete",
+      "selection frontier contradicts proof direction",
     );
   });
 
@@ -319,9 +410,16 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
     ).rejects.toThrow("exact direction-specific ScriptSources state is absent");
   });
 
-  it.each(["accepted", "forced"] as const)(
-    "runs %s Init through all nine real reference scripts",
-    async (direction) => {
+  it.each([
+    { direction: "accepted" as const, maximum: false, spendCount: 1 },
+    { direction: "forced" as const, maximum: false, spendCount: 1 },
+    { direction: "accepted" as const, maximum: true, spendCount: 1 },
+    { direction: "forced" as const, maximum: true, spendCount: 1 },
+    { direction: "accepted" as const, maximum: true, spendCount: 17 },
+    { direction: "forced" as const, maximum: true, spendCount: 17 },
+  ])(
+    "runs $direction Init through all nine real reference scripts (maximum=$maximum, spendCount=$spendCount)",
+    async ({ direction, maximum, spendCount }) => {
       const harness = await makeFaultProofEmulatorHarness({
         contractOptions: { alwaysFraudProofCatalogue: true },
       });
@@ -363,7 +461,18 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
       const category = catalogue.categories.unusedRedeemer!;
       expect(category.categoryId).toBe(UNUSED_REDEEMER_CATEGORY_ID);
       const { material, transaction, traceRoot, eventKey } =
-        await buildMaterial(direction);
+        await buildMaterial(
+          direction,
+          false,
+          undefined,
+          false,
+          maximum,
+          spendCount,
+        );
+      if (maximum)
+        expect(
+          transaction.tx.witnessSet.redeemerTxWitsPreimageCbor.length,
+        ).toBe(32_768);
       const forcedEvent = eventKey.ForcedTransactionEventKey;
       const forcedOrderKey = forcedEvent?.tx_order_id ?? null;
       if (direction === "forced" && forcedOrderKey === null)
@@ -386,7 +495,13 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
                 orderKey: forcedOrderKey!,
                 verdict: {
                   ForcedTxInvalid: {
-                    reason: { UnusedRedeemer: { redeemer_index: 0n } },
+                    reason: {
+                      UnusedRedeemer: {
+                        redeemer_index: BigInt(
+                          material.evidence.finding.redeemerIndex,
+                        ),
+                      },
+                    },
                   },
                 },
               },
@@ -438,6 +553,10 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
           cpu: capture.measurement.executionSteps.toString(),
           margin: capture.measurement.l1ByteMargin,
         });
+        measuredFit.record(
+          `${direction}${maximum ? "-maximum" : ""}${spendCount > 1 ? `-purposes-${spendCount}` : ""}/${ledger.length - 1}-${label}`,
+          capture.measurement,
+        );
         return capture.result;
       };
       const initialize = () =>
@@ -483,7 +602,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
               stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
               txInclusion: block.txInclusion!,
               header,
-              redeemerIndex: 1n,
+              redeemerIndex: BigInt(material.evidence.finding.redeemerIndex),
               referenceScriptUtxo: references[0]!,
               witnessReferenceScripts: harness.witnessReferenceScripts,
             });
@@ -499,7 +618,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
             threadOutRef: outRef,
             header,
             membership,
-            redeemerIndex: 0n,
+            redeemerIndex: BigInt(material.evidence.finding.redeemerIndex),
             referenceScriptUtxo: references[0]!,
           });
         })
@@ -529,20 +648,26 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
         outRef = result.nextThreadOutRef;
         await restart();
       }
-      const scan = await measured(`${direction}-step05`, () =>
-        submitUnusedRedeemerStep05({
-          lucid: harness.proverLucid,
-          contracts,
-          categoryId: category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef: outRef,
-          evidence: material.evidence,
-          referenceScriptUtxo: references[7]!,
-        }),
-      );
-      expect(scan.complete).toBe(true);
-      outRef = scan.nextThreadOutRef;
-      await restart();
+      let scanComplete = false;
+      let scanBatches = 0;
+      while (!scanComplete) {
+        const scan = await measured(`${direction}-step05-${scanBatches}`, () =>
+          submitUnusedRedeemerStep05({
+            lucid: harness.proverLucid,
+            contracts,
+            categoryId: category.categoryId,
+            signer: harness.proverSigner,
+            threadOutRef: outRef,
+            evidence: material.evidence,
+            referenceScriptUtxo: references[7]!,
+          }),
+        );
+        scanComplete = scan.complete;
+        scanBatches += 1;
+        outRef = scan.nextThreadOutRef;
+        await restart();
+      }
+      expect(scanBatches).toBe(Math.ceil(spendCount / 16));
       const finalized = await measured(`${direction}-step06`, () =>
         submitUnusedRedeemerStep06({
           lucid: harness.proverLucid,
@@ -572,7 +697,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
               stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
               txInclusion: block.txInclusion!,
               header,
-              redeemerIndex: 1n,
+              redeemerIndex: BigInt(material.evidence.finding.redeemerIndex),
               referenceScriptUtxo: references[0]!,
               witnessReferenceScripts: harness.witnessReferenceScripts,
             })
@@ -592,9 +717,10 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
               } as never)
             ).nextThreadOutRef;
           }
-          if (target > 7)
-            current = (
-              await submitUnusedRedeemerStep05({
+          if (target > 7) {
+            let complete = false;
+            while (!complete) {
+              const scan = await submitUnusedRedeemerStep05({
                 lucid: harness.proverLucid,
                 contracts,
                 categoryId: category.categoryId,
@@ -602,8 +728,11 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
                 threadOutRef: current,
                 evidence: material.evidence,
                 referenceScriptUtxo: references[7]!,
-              })
-            ).nextThreadOutRef;
+              });
+              current = scan.nextThreadOutRef;
+              complete = scan.complete;
+            }
+          }
           return current;
         };
         for (let target = 0; target < 9; target += 1) {

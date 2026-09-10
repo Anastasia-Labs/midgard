@@ -1310,7 +1310,9 @@ describe("native transaction integration", () => {
     expect(result.accepted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-    expect(result.rejected[0].detail).toContain("duplicate required observer");
+    expect(result.rejected[0].detail).toContain(
+      "required observers must be strictly ordered and unique",
+    );
   });
 
   it("rejects duplicate reference inputs in phase A", async () => {

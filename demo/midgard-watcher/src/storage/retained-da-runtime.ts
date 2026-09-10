@@ -10,11 +10,13 @@ import {
   DaLibp2pRetainedDaSource,
   type RetainedDaLibp2pRequest,
   type RetainedDaLibp2pTransport,
+  type RetainedDaPayloadSource,
   WORKFLOW_RUNTIME_CONFIG,
   type WorkflowAdapterReadinessInput,
   type WorkflowRuntimeConfigLoader,
 } from "@al-ft/midgard-fault-proofs";
 
+import { assertWatcherL1AvailabilityPayloadSource } from "../availability/published-payload.js";
 import {
   parseWatcherConfig,
   parseWatcherConfigJson,
@@ -38,6 +40,40 @@ const operationsSinkByDeploymentIdentity = new WeakMap<
   VerifiedWatcherDeploymentIdentity,
   WatcherOperationsSink
 >();
+const l1AvailabilitySourceByDeploymentIdentity = new WeakMap<
+  VerifiedWatcherDeploymentIdentity,
+  RetainedDaPayloadSource
+>();
+
+export const bindWatcherL1AvailabilityPayloadSource = (input: {
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  source: RetainedDaPayloadSource;
+}): Readonly<{ close(): void }> => {
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  assertWatcherL1AvailabilityPayloadSource(
+    input.source,
+    input.deploymentIdentity,
+  );
+  if (l1AvailabilitySourceByDeploymentIdentity.has(input.deploymentIdentity))
+    throw new Error("L1 availability source is already bound");
+  l1AvailabilitySourceByDeploymentIdentity.set(
+    input.deploymentIdentity,
+    input.source,
+  );
+  return {
+    close: () => {
+      if (
+        l1AvailabilitySourceByDeploymentIdentity.get(
+          input.deploymentIdentity,
+        ) === input.source
+      ) {
+        l1AvailabilitySourceByDeploymentIdentity.delete(
+          input.deploymentIdentity,
+        );
+      }
+    },
+  };
+};
 
 export type WatcherRetainedDaOperationsBinding = Readonly<{
   close(): void;
@@ -229,6 +265,22 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
   }
 }
 
+class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSource {
+  constructor(
+    options: ConstructorParameters<typeof DaLibp2pRetainedDaSource>[0],
+    private readonly l1Source: RetainedDaPayloadSource,
+  ) {
+    super(options);
+  }
+
+  override async fetchPayloadByHeaderHash(headerHash: string) {
+    const result = await super.fetchPayloadByHeaderHash(headerHash);
+    return result.ok
+      ? result
+      : await this.l1Source.fetchPayloadByHeaderHash(headerHash);
+  }
+}
+
 /**
  * Compiled public-DA authority for production fault-proof workflows.
  *
@@ -276,18 +328,22 @@ const createRuntimeFromAdmittedConfig = async (
       config.da.requestTimeoutMs,
       operationsSinkByDeploymentIdentity.get(options.deploymentIdentity),
     );
-    const sources = Object.freeze(
-      config.da.peers.map(
-        (peer) =>
-          new DaLibp2pRetainedDaSource({
-            sourceId: `watcher-public-da/${peer.identity}`,
-            deploymentFingerprint,
-            peers: [{ peerId: peer.peerId }],
-            transport: adapter,
-            timeoutMs: config.da.requestTimeoutMs,
-          }),
-      ),
+    const l1Source = l1AvailabilitySourceByDeploymentIdentity.get(
+      options.deploymentIdentity,
     );
+    const publicSources = config.da.peers.map((peer, index) => {
+      const options = {
+        sourceId: `watcher-public-da/${peer.identity}`,
+        deploymentFingerprint,
+        peers: [{ peerId: peer.peerId }],
+        transport: adapter,
+        timeoutMs: config.da.requestTimeoutMs,
+      };
+      return l1Source !== undefined && index === config.da.peers.length - 1
+        ? new WatcherRetainedDaSourceWithL1Fallback(options, l1Source)
+        : new DaLibp2pRetainedDaSource(options);
+    });
+    const sources = Object.freeze(publicSources);
     let closed = false;
     return Object.freeze({
       schemaVersion: WATCHER_RETAINED_DA_RUNTIME,

@@ -1,74 +1,81 @@
 # Fault-Proof Coverage Matrix
 
-Current coverage reviewed against the working tree on 2026-09-01. This matrix distinguishes implemented
-verifiers from release evidence. A compiled family is not release-complete
+Status: Active
+
+Documentation disposition reviewed: 2026-09-07.
+
+The rule mapping below is a partial explanatory matrix, not an exhaustive
+category roster or a fresh test receipt. [Catalogue status](catalogue-status.md)
+owns the complete source inventory; [testing status](testing-status.md) scopes
+acceptance evidence. Later categories may refine a rule into narrower families.
+
+This matrix distinguishes proof routes from release evidence. A compiled family is not release-complete
 until its evidence remains constructible, its transactions fit, its valid-block
 negative passes, and its full correction lifecycle is exercised.
 
 ## Transaction and ledger rules
 
-| Rule or fault class                        | Canonical enforcement/proof route                               | Standalone category                            | Current state                                        | Remaining release work                                                  |
-| ------------------------------------------ | --------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| Duplicate spend across transactions        | direct membership/equality proof                                | `doubleSpend`                                  | Implemented; emulator removal covered                | watcher/preprod                                                         |
-| Missing spent input                        | double non-membership                                           | `nonExistentInput`                             | Implemented; emulator removal covered                | watcher/preprod                                                         |
-| Spend output index out of range            | transaction/output-count opening                                | `nonExistentInputNoIndex`                      | Implemented; emulator removal covered                | watcher/preprod                                                         |
-| Invalid validity interval                  | header/transaction interval comparison                          | `invalidRange`                                 | Implemented; emulator removal covered                | watcher/preprod                                                         |
-| Zero spend inputs                          | authenticated empty field                                       | `zeroInput`                                    | Implemented; emulator removal covered                | watcher/preprod                                                         |
-| Missing reference input                    | double non-membership                                           | `noReferenceInput`                             | Implemented; emulator removal covered                | watcher/preprod                                                         |
-| Reference output index out of range        | transaction/output-count opening                                | `referenceInputNoIdx`                          | Implemented; emulator removal covered                | watcher/preprod                                                         |
-| Invalid address signature                  | Ed25519 verification                                            | `invalidSignature`                             | Implemented; emulator removal covered                | watcher/preprod                                                         |
-| Missing required signature                 | required-signer/witness frontier                                | `missingSignature`                             | Implemented; maximum-field emulator coverage         | watcher/preprod                                                         |
-| Missing native script in transaction       | script credential/witness-set proof                             | `missingNativeScriptTx`                        | Implemented; direct/staged emulator coverage         | watcher/preprod                                                         |
-| Missing native script at predecessor UTxO  | predecessor membership plus script-material proof               | `missingNativeScriptUtxo`                      | Implemented; direct/staged emulator removal covered  | preprod                                                                 |
-| Invalid native script                      | bounded signer scan and resumable evaluator                     | `nativeScriptInvalid`                          | Implemented; direct and staged-frontier emulator     | preprod                                                                 |
-| Withdrawn spend/reference input            | withdrawal/event and ledger proofs                              | `withdrawnInput`, `withdrawnReferenceInput`    | Implemented; emulator coverage                       | watcher/preprod                                                         |
-| Duplicate/overlapping input sets           | ordered set scan                                                | `inputSetUniqueness`                           | Implemented; tier-2 emulator removal covered         | watcher/preprod                                                         |
-| Value not preserved                        | authenticated input/output/mint comparison                      | `valueNotPreserved`                            | Implemented; ADA/token emulator removal covered      | cancel drive, watcher install, preprod                                  |
-| Unauthorized native-policy mint            | policy/script evidence                                          | `mintAuthorization`                            | Implemented; both-direction emulator removal covered | cancel drive, watcher install, preprod                                  |
-| Wrong transaction/output network           | transaction/output address proof                                | `networkId`                                    | Implemented; both-direction emulator removal covered | preprod                                                                 |
-| Minimum fee violation                      | exact canonical transaction size and fee formula                | `minFee`                                       | Implemented; both-polarity emulator removal covered  | preprod                                                                 |
-| Minimum Ada violation                      | exact output size and canonical minimum-Ada formula             | `minAda`                                       | Implemented; both-polarity emulator removal covered  | preprod                                                                 |
-| Non-canonical or malformed committed field | canonical decode/shape proofs                                   | `canonicalDecodability`, `committedFieldShape` | Implemented; emulator removal covered                | watcher/preprod and remaining tier-3 cases                              |
-| Plutus/MidgardV1 execution failure         | interactive validation-machine bisection and CEK one-step proof | `validationTraceDispute`                       | Implemented locally across major semantic routes     | exhaustive differential/rejection-terminal, proof-fit, watcher, preprod |
+| Rule or fault class                        | Canonical enforcement/proof route                               | Standalone category                            |
+| ------------------------------------------ | --------------------------------------------------------------- | ---------------------------------------------- |
+| Duplicate spend across transactions        | direct membership/equality proof                                | `doubleSpend`                                  |
+| Missing spent input                        | double non-membership                                           | `nonExistentInput`                             |
+| Spend output index out of range            | transaction/output-count opening                                | `nonExistentInputNoIndex`                      |
+| Invalid validity interval                  | header/transaction interval comparison                          | `invalidRange`                                 |
+| Zero spend inputs                          | authenticated empty field                                       | `zeroInput`                                    |
+| Missing reference input                    | double non-membership                                           | `noReferenceInput`                             |
+| Reference output index out of range        | transaction/output-count opening                                | `referenceInputNoIdx`                          |
+| Invalid address signature                  | Ed25519 verification                                            | `invalidSignature`                             |
+| Missing required signature                 | required-signer/witness frontier                                | `missingSignature`                             |
+| Missing native script in transaction       | script credential/witness-set proof                             | `missingNativeScriptTx`                        |
+| Missing native script at predecessor UTxO  | predecessor membership plus script-material proof               | `missingNativeScriptUtxo`                      |
+| Invalid native script                      | bounded signer scan and resumable evaluator                     | `nativeScriptInvalid`                          |
+| Withdrawn spend/reference input            | withdrawal/event and ledger proofs                              | `withdrawnInput`, `withdrawnReferenceInput`    |
+| Duplicate/overlapping input sets           | ordered set scan                                                | `inputSetUniqueness`                           |
+| Value not preserved                        | authenticated input/output/mint comparison                      | `valueNotPreserved`                            |
+| Unauthorized native-policy mint            | policy/script evidence                                          | `mintAuthorization`                            |
+| Wrong transaction/output network           | transaction/output address proof                                | `networkId`                                    |
+| Minimum fee violation                      | exact canonical transaction size and fee formula                | `minFee`                                       |
+| Minimum Ada violation                      | exact output size and canonical minimum-Ada formula             | `minAda`                                       |
+| Non-canonical or malformed committed field | canonical decode/shape proofs                                   | `canonicalDecodability`, `committedFieldShape` |
+| Plutus/MidgardV1 execution failure         | interactive validation-machine bisection and CEK one-step proof | `validationTraceDispute`                       |
 
 ## Transition and event rules
 
-| Rule or fault class                                                              | Category                   | Current state                                                                                         | Remaining release work                               |
-| -------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Trace boundary/link/source/event/count/duplicate/omission/window/one-step faults | `transitionTrace`          | Routed validator graph, retained-DA detection, submission, representative emulator finals and removal | watcher application and complete live/preprod corpus |
-| DA transaction key/preimage mismatch                                             | `daHashPreimage`           | Implemented; local proof/removal lifecycle                                                            | watcher/preprod                                      |
-| Fabricated deposit                                                               | `fabricatedDeposit`        | Implemented; emulator reaches permanent mint and rejects honest evidence                              | drive removal; watcher/preprod                       |
-| Fabricated withdrawal                                                            | `fabricatedWithdrawal`     | Implemented; emulator reaches permanent mint and rejects honest evidence                              | drive removal; watcher/preprod                       |
-| Withdrawal validity mistag                                                       | `withdrawalMistag`         | Implemented; both-polarity emulator removal                                                           | watcher/preprod                                      |
-| Duplicate payable withdrawal                                                     | `doubleWithdraw`           | Implemented; on-chain honest non-payable refusal and emulator removal                                 | final spec wording, preprod                          |
-| Cross-block duplicate L1 event                                                   | `crossBlockDuplicateEvent` | Implemented; deposit/withdrawal emulator removal                                                      | settlement-history retention, watcher/preprod        |
-| Normal L2 transaction mistagged invalid                                          | `l2TxMistag`               | Implemented; adversarial emulator removal                                                             | preprod                                              |
+| Rule or fault class                                                              | Category                   |
+| -------------------------------------------------------------------------------- | -------------------------- |
+| Trace boundary/link/source/event/count/duplicate/omission/window/one-step faults | `transitionTrace`          |
+| DA transaction key/preimage mismatch                                             | `daHashPreimage`           |
+| Fabricated deposit                                                               | `fabricatedDeposit`        |
+| Fabricated withdrawal                                                            | `fabricatedWithdrawal`     |
+| Withdrawal validity mistag                                                       | `withdrawalMistag`         |
+| Duplicate payable withdrawal                                                     | `doubleWithdraw`           |
+| Cross-block duplicate L1 event                                                   | `crossBlockDuplicateEvent` |
+| Normal L2 transaction mistagged invalid                                          | `l2TxMistag`               |
 
 ## Structural non-categories
 
 These are intentionally not additional catalogue entries:
 
-| Concern                                                       | Disposition                                                                         |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Required-signer-set duplicate family                          | Structural N/A: covered by the authenticated Signatures path and `missingSignature` |
-| ADA minting                                                   | Structural N/A under canonical value encoding and validation rules                  |
-| Negative output value                                         | Structural N/A under canonical output/value decoding                                |
-| Valid normal transaction made a no-op                         | Covered by accepted validation claim plus transition-trace binding                  |
-| Valid forced transaction made a no-op or wrong forced verdict | Covered by forced-source validation claim and `validationTraceDispute`              |
-| Shared large-field verification                               | `mpf-chunked-proof` support machinery, not a category                               |
-| Unattested head timeout                                       | Separate no-slash state-queue correction path                                       |
-| Post-attestation data withholding                             | DA remedy/recovery problem, not a transaction fault category                        |
+| Concern                                                       | Disposition                                                                                             |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Separate required-signer membership family                    | Structural N/A: covered by the authenticated Signatures path and `missingSignature`                     |
+| ADA minting                                                   | Structural N/A under canonical value encoding and validation rules                                      |
+| Negative output value                                         | Structural N/A under canonical output/value decoding                                                    |
+| Valid normal transaction made a no-op                         | Covered by accepted validation claim plus transition-trace binding                                      |
+| Valid forced transaction made a no-op or wrong forced verdict | Typed deterministic fault family or interactive execution dispute, plus transition-trace effect binding |
+| Shared large-field verification                               | `mpf-chunked-proof` support machinery, not a category                                                   |
+| Unattested head timeout                                       | Separate no-slash state-queue correction path                                                           |
+| Post-attestation data withholding                             | DA remedy/recovery problem, not a transaction fault category                                            |
 
 ## Cross-cutting gaps
 
-1. **Emulator catalogue closure:** standalone Lucid lifecycles for all three
-   final families pass under the shared Van Rossem limits. The inspection
-   suite and the min-ADA validation-dispute journey are red on
-   reference-script fixture drift, and no all-category maximum-shape sweep is
-   gated yet.
-2. **Autonomous application coverage:** the watcher installs 25 of 32
-   categories; topology and classification are broader than executable
-   installation.
+1. **Emulator catalogue closure:** verify every enabled family and maximum
+   supported shape on the release blueprint. Use [testing status](testing-status.md)
+   for executable verification surfaces and evidence requirements.
+2. **Autonomous application acceptance:** the watcher installs the source
+   catalogue; release acceptance must verify admitted runners and complete
+   correction on the intended deployment, not merely topology or classification.
+
 3. **Data lifetime:** every proof input must remain authentic and
    retrievable through the complete challenge window, including after event
    NFT consumption or settlement.

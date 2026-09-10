@@ -69,6 +69,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import type { AcceptedReconstructionState } from "./accepted-reconstruction-machine.js";
 import { reconstructExecutionNativeScriptPurposes } from "./canonical-reconstruction.js";
@@ -1150,14 +1151,17 @@ export const createExecutionNativeScriptInvalidWorkflowRunnerSurface = ({
           throw new Error(
             "executionNativeScriptInvalid runtime binding changed invocation",
           );
-        return await runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow(
-          {
-            workflow,
-            sources: loaded.retainedDaSources,
-            journal,
-            decisionDigest: invocation.decisionDigest,
-          },
-        );
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+              decisionDigest: invocation.decisionDigest,
+            }),
+        });
       } finally {
         await loaded.close();
       }

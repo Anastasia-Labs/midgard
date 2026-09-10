@@ -406,8 +406,9 @@ export const prepareRouteFreedomJourney = async ({
   } = await stageAuthenticatedValidationDisputePublication({
     emulator,
     operatorLucid,
-    operatorSeedPhrase: operator.seedPhrase,
+    operatorSeedPhrase: challenger.seedPhrase,
     contracts,
+    authPolicy: referenceScriptAuth,
     runStage: runCapturedLifecycleStage,
   });
   const publishPlain = (label: string, script: Script) =>

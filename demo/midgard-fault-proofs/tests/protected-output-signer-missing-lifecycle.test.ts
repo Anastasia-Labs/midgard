@@ -83,6 +83,7 @@ import {
 } from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   countedTransactionsRoot,
@@ -680,6 +681,12 @@ const withSwappedCertificateSlot = (
   return copy as SDK.FieldOpening;
 };
 
+const measuredFit = createMeasuredFitRecorder(
+  "protected-output-signer-missing",
+  "lifecycle",
+  "318 address witnesses in a three-chunk certified field 7; forced exact-reason and direct-terminal paths",
+);
+
 describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
   it("runs maximum-carriage evidence through cancel, restartable scan, mint and leased removal", async () => {
     const harness = await makeFaultProofEmulatorHarness({
@@ -1044,6 +1051,22 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       expect(capture.measurement.executionMemory).toBeGreaterThan(0n);
       expect(capture.measurement.executionSteps).toBeGreaterThan(0n);
     }
+    measuredFit.record("accepted-init", init.measurement);
+    measuredFit.record("accepted-step01", step01Result.measurement);
+    measuredFit.record("accepted-step02", step02Result.measurement);
+    step03Result.measurements.forEach((measurement, index) =>
+      measuredFit.record(
+        `accepted-carriage-${index}`,
+        measurement,
+        measurement.executionMemory === 0n ? "publication" : "lifecycle",
+      ),
+    );
+    scanResults.forEach((capture, index) =>
+      measuredFit.record(`accepted-scan-${index}`, capture.measurement),
+    );
+    measuredFit.record("accepted-step05", step05Result.measurement);
+    measuredFit.record("accepted-cancel-init", cancelInit.measurement);
+    measuredFit.record("accepted-cancel", cancellation.measurement);
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info(
         JSON.stringify(
@@ -1106,6 +1129,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     );
     expect(removal.result.fraudCategoryId).toBe("0000002b");
     expect(removal.measurement.l1ByteMargin).toBeGreaterThan(0);
+    measuredFit.record("accepted-removal", removal.measurement);
     coverage.scenario("permanent_proof_token_and_descendant_removal");
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info(
@@ -1198,28 +1222,41 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       s.forced01(thread, evidence),
     );
     expect(bound.measurement.l1ByteMargin).toBeGreaterThan(0);
+    measuredFit.record("forced-bind", bound.measurement);
     console.info(
       `[protected-output-signer-missing-forced-step01] ${JSON.stringify({ bytes: bound.measurement.completeSignedBytes, memory: bound.measurement.executionMemory.toString(), cpu: bound.measurement.executionSteps.toString() })}`,
     );
-    const credential = await s.step02(
-      bound.result.nextThreadOutRef,
-      evidence,
-      adjudicated,
+    const completed = await captureEmulatorSubmission(
+      s.harness.emulator,
+      async () => {
+        const credential = await s.step02(
+          bound.result.nextThreadOutRef,
+          evidence,
+          adjudicated,
+        );
+        const carriage = await s.step03(
+          credential.nextThreadOutRef,
+          evidence,
+          adjudicated,
+        );
+        const terminal = await scanToTerminal(
+          s,
+          carriage.nextThreadOutRef,
+          evidence,
+          adjudicated,
+          carriage,
+        );
+        const minted = await s.step05(terminal, evidence);
+        expect(minted.fraudProofUnit).toContain(s.category.categoryId);
+      },
     );
-    const carriage = await s.step03(
-      credential.nextThreadOutRef,
-      evidence,
-      adjudicated,
+    completed.measurements.forEach((measurement, index) =>
+      measuredFit.record(
+        `forced-completion-${index}`,
+        measurement,
+        measurement.executionMemory === 0n ? "publication" : "lifecycle",
+      ),
     );
-    const terminal = await scanToTerminal(
-      s,
-      carriage.nextThreadOutRef,
-      evidence,
-      adjudicated,
-      carriage,
-    );
-    const minted = await s.step05(terminal, evidence);
-    expect(minted.fraudProofUnit).toContain(s.category.categoryId);
     coverage.reason(REASON, "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
   }, 900_000);
@@ -1699,6 +1736,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       );
       expect(direct.result.stage).toBe("step05");
       expect(direct.measurement.l1ByteMargin).toBeGreaterThan(0);
+      measuredFit.record(`forced-direct-${label}`, direct.measurement);
       console.info(
         `[protected-output-signer-missing-forced-direct-${label}] ${JSON.stringify({ bytes: direct.measurement.completeSignedBytes, memory: direct.measurement.executionMemory.toString(), cpu: direct.measurement.executionSteps.toString() })}`,
       );

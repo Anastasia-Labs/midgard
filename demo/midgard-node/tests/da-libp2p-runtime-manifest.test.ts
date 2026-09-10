@@ -78,8 +78,7 @@ const MANIFEST_IDENTITY_CONTEXT: DeploymentManifestIdentityContext = {
       retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
   },
-  proofEvidence: {
-    digest: null,
+  artifacts: {
     blueprintHash: "33".repeat(32),
   },
 };
@@ -411,6 +410,7 @@ const writeFinalizedDeploymentInfo = async (
       hubOracleOneShotStatus: "consumed_by_init",
       steps: {
         initProtocol: { status: "complete" },
+        availabilityRegistration: { status: "complete" },
       },
     },
   ) as unknown as Record<string, unknown>;

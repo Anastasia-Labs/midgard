@@ -26,6 +26,35 @@ afterEach(async () => {
 });
 
 describe("production fault-proof queue journal V1", () => {
+  it("keeps a completed job finished when a retry arrives during its durable finish", async () => {
+    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
+    directories.push(journalRoot);
+    const input = { journalRoot, deploymentFingerprint, authenticationKey };
+    const journal = await openWatcherFaultProofQueueJournal(input);
+    await journal.register(identity, "1000");
+    const digest = watcherFaultProofQueueIdentityDigest({
+      deploymentFingerprint,
+      identity,
+    });
+    await journal.markStarted(digest, "1001");
+
+    // The runner has finished while the coordinator still sees the same fault.
+    // Its next enqueue races the finish record's asynchronous fsync.
+    const finishing = journal.markFinished(digest, "1002");
+    const retry = journal.register(identity, "1003");
+    await finishing;
+    await expect(retry).resolves.toEqual({
+      queuedAtMs: "1000",
+      finished: true,
+    });
+    expect(journal.status().queuedJobCount).toBe(0);
+    const restarted = await openWatcherFaultProofQueueJournal(input);
+    await expect(restarted.register(identity, "1004")).resolves.toEqual({
+      queuedAtMs: "1000",
+      finished: true,
+    });
+  });
+
   it("preserves original queued time through authenticated restart and retry", async () => {
     const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
     directories.push(journalRoot);

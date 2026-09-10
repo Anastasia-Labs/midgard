@@ -5,7 +5,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  MIDGARD_RELEASE_EVIDENCE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
@@ -126,6 +125,24 @@ export const readDaDeploymentFixture = async (): Promise<
 export const buildDaDeploymentFixture = async (
   fixture: Record<string, unknown>,
 ): Promise<Record<string, unknown>> => {
+  const artifacts = fixture.artifacts;
+  if (!isRecord(artifacts)) {
+    throw new Error("DA deployment fixture artifacts must be an object");
+  }
+  requireExactKeys(
+    artifacts,
+    ["blueprintHash"],
+    "DA deployment fixture artifacts",
+  );
+  const blueprintHash = artifacts.blueprintHash;
+  if (
+    typeof blueprintHash !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(blueprintHash)
+  ) {
+    throw new Error(
+      "DA deployment fixture artifacts.blueprintHash must be 32-byte lowercase hex",
+    );
+  }
   const fixtureContracts = requireFixtureContracts(fixture);
   const referenceScriptContractNames = new Set<string>(
     Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
@@ -383,9 +400,8 @@ export const buildDaDeploymentFixture = async (
         retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
-    proofEvidence: {
-      digest: MIDGARD_RELEASE_EVIDENCE_DIGEST,
-      blueprintHash: "00".repeat(32),
+    artifacts: {
+      blueprintHash,
     },
     steps: Object.fromEntries(
       DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
@@ -394,7 +410,8 @@ export const buildDaDeploymentFixture = async (
           status:
             stepName === "prepareHubOracleNonce" ||
             stepName === "deployNodeRuntimeReferenceScripts" ||
-            stepName === "initProtocol"
+            stepName === "initProtocol" ||
+            stepName === "availabilityRegistration"
               ? "complete"
               : "pending",
         },
@@ -423,13 +440,13 @@ export const buildDaDeploymentFixture = async (
         trancheByteLength: 4_194_304,
         maxTrancheCount: 16,
       },
-      daBondLovelace: 10_000_000_000,
-      challengerBondLovelace: 10_000_000_000,
-      maxOpenFeeLovelace: 500_000,
-      maxPublicationFeeLovelace: 500_000,
-      maxSettlementFeeLovelace: 500_000,
-      maxCloseFeeLovelace: 1_000_000,
-      maxTimeoutFeeLovelace: 1_200_000,
+      daBondLovelace: 12_000_000_000,
+      challengerBondLovelace: 12_000_000_000,
+      maxOpenFeeLovelace: 2_000_000,
+      maxPublicationFeeLovelace: 2_000_000,
+      maxSettlementFeeLovelace: 2_000_000,
+      maxCloseFeeLovelace: 2_000_000,
+      maxTimeoutFeeLovelace: 3_000_000,
       bondOwnerCredential: "77".repeat(28),
     },
   };

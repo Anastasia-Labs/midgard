@@ -345,6 +345,14 @@ export const incompleteInitializationTxProgram = (
         ),
       );
 
+    for (const validator of Object.values(
+      midgardValidators.availabilityChallenge.yields,
+    )) {
+      tx.register.Stake(
+        scriptRewardAddress(network, validator.withdrawalScript),
+      );
+    }
+
     if (params.referenceScripts !== undefined) {
       return tx.readFrom([
         params.referenceScripts.daParamsGovernorMinting,

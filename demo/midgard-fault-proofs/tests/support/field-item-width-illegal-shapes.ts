@@ -336,11 +336,21 @@ export const buildWidthForcedFixture = async ({
   now,
   nativeTx,
   rejectionReason,
+  finalOutputCbor,
+  priorUtxosRoot = EMPTY_MERKLE_TREE_ROOT,
+  prevHeaderHash,
+  minFeeB,
+  fieldPreimageLengthsCbor,
 }: {
   readonly operatorVkey: string;
   readonly now: number;
   readonly nativeTx: MidgardNativeTxFull;
   readonly rejectionReason: RejectionReason;
+  readonly finalOutputCbor?: Buffer;
+  readonly priorUtxosRoot?: string;
+  readonly prevHeaderHash?: string;
+  readonly minFeeB?: bigint;
+  readonly fieldPreimageLengthsCbor?: Buffer;
 }) => {
   const txOrderId = transitionTraceOutRef("f1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -348,7 +358,8 @@ export const buildWidthForcedFixture = async ({
     outputReferenceCbor({ transactionId: h32("01"), outputIndex: 0n }).toString(
       "hex",
     ),
-    "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
+    finalOutputCbor?.toString("hex") ??
+      "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
   );
   const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: Buffer.from(finalUtxo[0], "hex"),
@@ -365,8 +376,9 @@ export const buildWidthForcedFixture = async ({
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
-      field_preimage_lengths_cbor:
-        source.fieldPreimageLengthsCbor.toString("hex"),
+      field_preimage_lengths_cbor: (
+        fieldPreimageLengthsCbor ?? source.fieldPreimageLengthsCbor
+      ).toString("hex"),
     },
     verdict: { ForcedTxInvalid: { reason: rejectionReason } },
   } as const;
@@ -387,7 +399,7 @@ export const buildWidthForcedFixture = async ({
         step_index: 0n,
         event_key: eventKey,
         phase: "ForcedTransaction",
-        pre_utxos_root: EMPTY_MERKLE_TREE_ROOT,
+        pre_utxos_root: priorUtxosRoot,
         post_utxos_root: finalRoot.root,
       },
       valueSchema: TransitionStepSchema,
@@ -447,6 +459,9 @@ export const buildWidthForcedFixture = async ({
   };
   const header = {
     ...makeHeader(operatorVkey, now),
+    ...(minFeeB === undefined ? {} : { minFeeB }),
+    prevUtxosRoot: priorUtxosRoot,
+    ...(prevHeaderHash === undefined ? {} : { prevHeaderHash }),
     utxosRoot: finalRoot.root,
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: transitionRoot.root,
@@ -485,6 +500,8 @@ export const buildWidthForcedFixture = async ({
   );
   return {
     header,
+    headerHash,
+    payloadEnvelopeCbor,
     reconstruction: await reconstructDaPayload({
       payloadEnvelopeCbor,
       expectedHeaderHash: headerHash,

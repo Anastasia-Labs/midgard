@@ -20,6 +20,7 @@ import {
 import { publishProofChunks } from "../src/publish-proof-chunks.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { expectProofFit } from "./support/emulator/proof-fit.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   buildNetworkIdFixture,
   buildNetworkIdPostUtxoFixture,
@@ -47,6 +48,12 @@ import {
   syntheticDeepSharedRootProofs,
 } from "./support/synthetic-deep-proof.js";
 
+const measuredFit = createMeasuredFitRecorder(
+  "network-id-wrongful-rejection",
+  "accepted",
+  "accepted-invalid network nibble and maximum-depth post-UTxO witnesses, correction",
+);
+
 describe("Q35 network-id real-fault lifecycle", () => {
   it.each([
     {
@@ -63,6 +70,23 @@ describe("Q35 network-id real-fault lifecycle", () => {
     "mints permanent evidence and removes $label",
     async ({ outputNetworkId, protectedAddress }) => {
       const harness = await makeNetworkIdEmulatorHarness();
+      const submitMeasured = async <T>(
+        stage: string,
+        operation: () => Promise<T>,
+      ) => {
+        const captured = await captureEmulatorSubmission(
+          harness.emulator,
+          operation,
+        );
+        captured.measurements.forEach((measurement, index) =>
+          measuredFit.record(
+            `${outputNetworkId}-${protectedAddress}/${stage}-${index}`,
+            measurement,
+            measurement.executionMemory === 0n ? "publication" : "lifecycle",
+          ),
+        );
+        return captured.result;
+      };
       const preSubmitStages: string[] = [];
       const preSubmitBoundary =
         (stage: string) =>
@@ -94,23 +118,25 @@ describe("Q35 network-id real-fault lifecycle", () => {
         fixture,
       });
       const prepared = { ...fixture.prepared, headerHash: setup.headerHash };
-      const init = await submitNetworkIdInit({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: harness.networkId,
-        category: harness.category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: harness.catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-        preSubmitBoundary: preSubmitBoundary("init"),
-      });
+      const init = await submitMeasured("init", () =>
+        submitNetworkIdInit({
+          lucid: harness.proverLucid,
+          blueprint: harness.realBlueprint,
+          network,
+          contracts: harness.networkId,
+          category: harness.category,
+          catalogue: {
+            policyId: harness.contracts.fraudProofCatalogue.policyId,
+            spendingScriptAddress:
+              harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+            root: harness.catalogue.root,
+          },
+          signer: harness.proverSigner,
+          fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+          preSubmitBoundary: preSubmitBoundary("init"),
+        }),
+      );
       expect(init.fraudCategoryId).toBe(NETWORK_ID_EMULATOR_CATEGORY_ID);
 
       const firstStep = await expectSingleUtxoWithUnit(
@@ -118,20 +144,22 @@ describe("Q35 network-id real-fault lifecycle", () => {
         init.firstStepAddress,
         init.computationThreadUnit,
       );
-      const step01 = await submitNetworkIdStep01({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        contracts: harness.networkId,
-        categoryId: harness.category.categoryId,
-        network,
-        signer: harness.proverSigner,
-        threadOutRef: outRefLabel(firstStep),
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        prepared,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-        preSubmitBoundary: preSubmitBoundary("step01"),
-      });
+      const step01 = await submitMeasured("step01", () =>
+        submitNetworkIdStep01({
+          lucid: harness.proverLucid,
+          blueprint: harness.realBlueprint,
+          contracts: harness.networkId,
+          categoryId: harness.category.categoryId,
+          network,
+          signer: harness.proverSigner,
+          threadOutRef: outRefLabel(firstStep),
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+          prepared,
+          referenceScriptUtxo: step01Ref,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+          preSubmitBoundary: preSubmitBoundary("step01"),
+        }),
+      );
       const secondStep = await expectSingleUtxoWithUnit(
         harness.proverLucid,
         step01.secondStepAddress,
@@ -146,18 +174,20 @@ describe("Q35 network-id real-fault lifecycle", () => {
         prepared,
         owner: harness.proverSigner.paymentKeyHash,
       });
-      const step02 = await submitNetworkIdStep02({
-        lucid: harness.proverLucid,
-        contracts: harness.networkId,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: outRefLabel(secondStep),
-        prepared,
-        outputsOpeningPlan: opening,
-        referenceScriptUtxo: step02Ref,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-        preSubmitBoundary: preSubmitBoundary("step02"),
-      });
+      const step02 = await submitMeasured("step02", () =>
+        submitNetworkIdStep02({
+          lucid: harness.proverLucid,
+          contracts: harness.networkId,
+          categoryId: harness.category.categoryId,
+          signer: harness.proverSigner,
+          threadOutRef: outRefLabel(secondStep),
+          prepared,
+          outputsOpeningPlan: opening,
+          referenceScriptUtxo: step02Ref,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+          preSubmitBoundary: preSubmitBoundary("step02"),
+        }),
+      );
       expect(step02.outputOpeningTier).toBe("Inline");
       expect(step02.fraudProofUnit).toBe(
         toUnit(
@@ -198,19 +228,21 @@ describe("Q35 network-id real-fault lifecycle", () => {
         },
       };
       const removeNow = BigInt(harness.emulator.now());
-      const removal = await submitRemoveFraudulentBlock({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        deploymentInfo,
-        network,
-        signer: harness.proverSigner,
-        fraudCategory: "networkId",
-        fraudulentHeaderHash: setup.headerHash,
-        requireReferenceScripts: true,
-        validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
-        validTo: removeNow + 300_000n,
-        preSubmitBoundary: preSubmitBoundary("remove"),
-      });
+      const removal = await submitMeasured("removal", () =>
+        submitRemoveFraudulentBlock({
+          lucid: harness.proverLucid,
+          blueprint: harness.realBlueprint,
+          deploymentInfo,
+          network,
+          signer: harness.proverSigner,
+          fraudCategory: "networkId",
+          fraudulentHeaderHash: setup.headerHash,
+          requireReferenceScripts: true,
+          validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+          validTo: removeNow + 300_000n,
+          preSubmitBoundary: preSubmitBoundary("remove"),
+        }),
+      );
       expect(removal.fraudCategory).toBe("networkId");
       await expect(
         harness.proverLucid.utxosAtWithUnit(
@@ -557,6 +589,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
       { stage: "step02", measurement: step02.measurement },
     ];
     for (const { stage, measurement } of measured) {
+      measuredFit.record(`post-utxo-maximum/${stage}`, measurement);
       expectProofFit({
         stage: `accepted-maximum-depth:${stage}`,
         measurement,

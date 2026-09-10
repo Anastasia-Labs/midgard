@@ -215,6 +215,15 @@ const replayCandidates = async (block: CanonicalBlockEvidence) => {
         const eventKey = {
           ForcedTransactionEventKey: { tx_order_id: transaction.key },
         } as const;
+        const hasMissingTerminal =
+          discoverRetainedMissingScriptSourceCoordinates({
+            eventKey,
+            retainedValidationWitnessEntries: retainedWitnessEntries,
+          }).some(
+            (candidate) =>
+              candidate.purposeKind === purposeKind &&
+              candidate.purposeIndex === purposeIndex,
+          );
         const universe = await buildRetainedMissingScriptSourceUniverse({
           eventKey,
           purposeKind: purposeKind as 0 | 1 | 2 | 3,
@@ -222,7 +231,7 @@ const replayCandidates = async (block: CanonicalBlockEvidence) => {
           authenticatedValidationTraceEntries: validationTraceEntries,
           retainedValidationWitnessEntries: retainedWitnessEntries,
           expectedValidationTracesRoot: block.header.validationTracesRoot,
-          expectedPresence: true,
+          expectedPresence: !hasMissingTerminal,
         });
         const adjudicated = encodeMidgardNativeTxCanonical(
           adjudicateMidgardNativeTxFullValidity(

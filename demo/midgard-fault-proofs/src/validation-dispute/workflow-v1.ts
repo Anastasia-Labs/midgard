@@ -39,6 +39,7 @@ import {
   journalJsonDigest,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { fraudProofRawL1SnapshotRequestForFamily } from "../workflow/raw-l1-family-derivation.js";
 import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
@@ -640,9 +641,14 @@ export const createValidationTraceDisputeWorkflowRunnerSurface = ({
               "validationTraceDispute challenge diverged from the authenticated canonical block",
             );
         }
-        return await runOrResumeManifestBoundValidationTraceDisputeWorkflow({
-          workflow,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            runOrResumeManifestBoundValidationTraceDisputeWorkflow({
+              workflow,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

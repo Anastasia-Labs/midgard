@@ -110,7 +110,9 @@ export const admitWatcherNativeRollForwardBlock = (
           auxiliary,
         );
         assembled = true;
-        transactionCbors.push(transaction.to_canonical_cbor_hex());
+        // Ledger transaction IDs commit to the original body encoding. Keep
+        // decoded child encodings when assembling the transaction frame.
+        transactionCbors.push(transaction.to_cbor_hex());
       } finally {
         transaction?.free();
         // CML.Transaction.new takes ownership of its child handles. Only

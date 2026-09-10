@@ -28,6 +28,7 @@ export const NON_EXISTENT_INPUT_FAULT_PROOF_TITLES = {
 export type NonExistentInputFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
   readonly nonExistentInput: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
@@ -144,6 +145,7 @@ export const buildNonExistentInputFaultProofContracts = (
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       nonExistentInput,
     };
   });

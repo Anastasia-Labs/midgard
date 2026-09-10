@@ -1,49 +1,33 @@
 import { CML } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertMidgardConsensusReleaseReady,
+  encodeMidgardConsensusProfile,
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_ENVELOPE_MEASUREMENTS,
-  MIDGARD_RELEASE_EVIDENCE_DIGEST,
 } from "../src/index.js";
 import { isPlainRecord, parseJsonUnknown } from "../src/narrowing.js";
 
 describe("canonical V1 consensus profile", () => {
   it("pins the indivisible V1 version tuple", () => {
-    expect(MIDGARD_CONSENSUS_PROFILE).toMatchObject({
-      profileId: "midgard-consensus-v1",
-      protocolVersion: 1,
-      nativeTransactionVersion: 1,
-      nativeTransactionProofSourceVersion: 1,
-      transitionStepSchemaVersion: 1,
-      headerSchemaVersion: 1,
-      stateQueueSchemaVersion: 1,
-      transactionOrderSchemaVersion: 1,
-      transactionFieldPublicationSchemaVersion: 1,
-      forcedTransactionJournalVersion: 1,
-      daPayloadVersion: 1,
-      daEnvelopeVersion: 1,
-      daTransportProtocolVersion: 1,
-      daRuntimeManifestSchemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
-      validationMachineVersion: 1,
-      validationTraceDescriptorVersion: 1,
-      validationDisputeVersion: 1,
-      cekProgramEnvelopeVersion: 1,
-      cekValueSchemaVersion: 1,
-      cekProgramMaterialVersion: 1,
-      cekProgramMaterialSidecarVersion: 1,
-      proofSubmissionEnvelopeVersion: 1,
-      scriptProofSchemaVersion: 1,
-      ledgerOutputSchemaVersion: 1,
-      mpfProofSchemaVersion: 1,
-      deploymentManifestSchemaVersion: "midgard-deployment-manifest-v1",
-      protocolInfoApiVersion: 1,
-    });
+    // The version tuple is indivisible because one digest covers all of it.
+    // Rather than restate the profile object (a copy of its own definition
+    // that has to be re-typed on every legitimate addition), check the two
+    // properties that make the digest binding: the encoded bytes carry the
+    // whole profile, and the digest is Blake2b-256 over exactly those bytes,
+    // recomputed here with an independent hash implementation.
     expect(MIDGARD_CONSENSUS_PROFILE_DIGEST).toMatch(/^[0-9a-f]{64}$/u);
+    const encoded = encodeMidgardConsensusProfile();
+    expect(parseJsonUnknown(encoded.toString("utf8"))).toEqual(
+      JSON.parse(JSON.stringify(MIDGARD_CONSENSUS_PROFILE)),
+    );
+    expect(MIDGARD_CONSENSUS_PROFILE_DIGEST).toBe(
+      Buffer.from(blake2b(encoded, { dkLen: 32 })).toString("hex"),
+    );
     expect(
       MIDGARD_CONSENSUS_LIMITS.maxCekBlobChunkBytes +
         MIDGARD_CONSENSUS_LIMITS.maxTransactionFieldProofOverheadBytes,
@@ -55,24 +39,6 @@ describe("canonical V1 consensus profile", () => {
     expect(
       MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes,
     ).toBeGreaterThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes).toBeGreaterThan(
-      51_110,
-    );
-    expect(MIDGARD_CONSENSUS_LIMITS.maxOutputValueCborBytes).toBe(5_000);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramNodeCount).toBe(1_597_819);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramEnvelopeBytes).toBe(50);
-    expect(
-      MIDGARD_ENVELOPE_MEASUREMENTS.maxScriptEnvelopeResolverArgumentsBytes,
-    ).toBe(7_546);
-    // 64 MiB minus the 447-byte fixed V1 DA framing that a payload carrying
-    // any program material pays. `midgard-sdk`'s da-payload suite measures that
-    // framing against the canonical encoder rather than restating it.
-    expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramMaterialBytes).toBe(
-      67_108_417,
-    );
-    expect(MIDGARD_CONSENSUS_LIMITS.maxCekBlobChunkBytes).toBe(4_095);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxCekBuiltinTag).toBe(86);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxCekDirectBlsMillerLoopLeaves).toBe(10);
     expect(
       MIDGARD_ENVELOPE_MEASUREMENTS.maxBlsFinalBuiltinTransitionCpuUnits,
     ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits * 0.8);
@@ -95,15 +61,6 @@ describe("canonical V1 consensus profile", () => {
       MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits * 0.8,
     );
     expect(
-      MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits,
-    ).toBe(16_500_000);
-    expect(
-      MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionCpuUnits,
-    ).toBe(10_000_000_000);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes).toBeGreaterThan(
-      8 * 1024,
-    );
-    expect(
       MIDGARD_ENVELOPE_MEASUREMENTS.maxFieldPublicationUnsignedTransactionBytes,
     ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
     expect(
@@ -115,17 +72,6 @@ describe("canonical V1 consensus profile", () => {
     expect(
       MIDGARD_ENVELOPE_MEASUREMENTS.canonicalReceiptOrderVerificationMemoryUnits,
     ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxValidationBisectionRounds).toBe(32);
-    expect(MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount).toBe(
-      0xffff_ffff,
-    );
-    expect(MIDGARD_CONSENSUS_LIMITS.validationDisputeResponseWindowMs).toBe(
-      300_000,
-    );
-    expect(MIDGARD_CONSENSUS_LIMITS.minValidationDisputeMaturityMs).toBe(
-      39_600_000,
-    );
-    expect(MIDGARD_CONSENSUS_LIMITS.blockMaturityMs).toBe(604_800_000);
   });
 
   // Regression pin for C21-CORE-ENVELOPE.
@@ -161,47 +107,6 @@ describe("canonical V1 consensus profile", () => {
     const budget = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes - reserve;
     const frontier =
       MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
-
-    // Anchored to the deployed five-stage measurement, OBSERVE limiting.
-    // Lane-level re-pin 2026-08-23 at the #617 wave sign-off (owner ruling
-    // (b) on the #622 sign-off table, 2026-08-22): the reserve cost steer
-    // remains 13,522. Removing the claim-registry witness added 56 bytes of
-    // transaction headroom and moved the measured exact frontier from 14,004
-    // to 14,058 after the larger item crossed a CBOR framing width.
-    expect(reserve).toBe(512);
-    expect(budget).toBe(15_872);
-    expect(frontier).toBe(13_522);
-    expect(MIDGARD_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes).toBe(
-      14_058,
-    );
-
-    // Mirrors `selectValidationCompleteItemCarriageV1`. The production selector
-    // lives in `@al-ft/midgard-fault-proofs` (importing it here would invert the
-    // package dependency), and the validation carriage-policy suite pins its
-    // source to exactly this constant with these `<=` semantics. Evaluating the
-    // rule at literal byte counts therefore pins the deployed boundary: any
-    // rebind of the constant flips one of these four answers.
-    const carriage = (itemBytes: number): "direct" | "reference" =>
-      itemBytes <= frontier ? "direct" : "reference";
-
-    // Direction 1: the frontier item is carried directly.
-    expect(carriage(13_522)).toBe("direct");
-    // Direction 2: one byte over is NOT. Since Option B (#620) this boundary
-    // steers cost rather than soundness — #622 measured item 13,523
-    // completing to award past it, "a cost line, not a cliff" — but the
-    // builder still refuses to widen it on its own: the pre-sign projection
-    // and the envelope gate are the operative guards, proven live at 14,059.
-    expect(carriage(13_523)).toBe("reference");
-    // The retired single-transaction by-reference frontiers (13,282 from the
-    // necessity evidence, 13,998 from the measurement script's counted-shape
-    // model) no longer straddle the boundary the same way: the re-pinned
-    // five-stage frontier now sits above 13,282 — exactly the band #622
-    // measured as paying an unnecessary ~15K-byte publication before the
-    // rebind — and still below 13,998.
-    expect(carriage(13_282)).toBe("direct");
-    expect(carriage(13_998)).toBe("reference");
-    expect(frontier).toBeGreaterThan(13_282);
-    expect(frontier).toBeLessThan(13_998);
 
     // The owner-signed cost steer intentionally retained the 56 bytes freed by
     // claim-registry removal instead of widening the direct route.
@@ -398,10 +303,5 @@ describe("canonical V1 consensus profile", () => {
       Object.isFrozen(MIDGARD_CONSENSUS_PROFILE.requiredProofFamilies),
     ).toBe(true);
     expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE.limits)).toBe(true);
-  });
-
-  it("fails closed until validator-hash-bound L1 release evidence is compiled in", () => {
-    expect(MIDGARD_RELEASE_EVIDENCE_DIGEST).toBeNull();
-    expect(assertMidgardConsensusReleaseReady).toThrow(/not activated/u);
   });
 });

@@ -1,6 +1,8 @@
 # Fault-Proof Architecture
 
-Current architecture reviewed against the working tree on 2026-09-01.
+Status: Active
+
+Last reviewed: 2026-09-07 (catalogue and runtime wiring).
 
 ## End-to-end path
 
@@ -28,10 +30,11 @@ source, duplicate, omission, window, count, and one-step transition faults.
 
 ## Catalogue and deployment identity
 
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` in
-`demo/midgard-sdk/src/fraud-proof/catalogue.ts` is the positional authority.
-It contains 32 categories, `00000000`–`0000001f`. Every deployed family uses
-its applied first-step spending-script hash as the catalogue leaf value.
+`FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in
+`demo/midgard-sdk/src/fraud-proof/catalogue.ts` is the explicit ID authority.
+`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` controls presentation, not ID derivation.
+Every deployed family uses its applied first-step spending-script hash as the
+catalogue leaf value. [Catalogue status](catalogue-status.md) owns the inventory.
 
 The same topology is represented in:
 
@@ -42,8 +45,8 @@ The same topology is represented in:
 - watcher deployment identity and proof-thread indexer.
 
 Every family step named by deployment identity is consumed as an authenticated
-reference script. The catalogue root is
-`690aee597bc1d432e8cfb7f45cdc27d42259708ce0962110be65c1f5094385e4`.
+reference script. Derive the catalogue root from the applied deployment identity;
+a root from a prior blueprint is not a current deployment pin.
 
 ## Computation threads
 
@@ -111,12 +114,11 @@ is a DA/liveness remedy, not a fault-proof category.
 
 The fault-proof package performs retained-DA replay, violation classification,
 evidence construction, publication, transaction submission, durable journaling,
-resume/reconciliation, and removal. It provides 25 production runner factories.
-
-The watcher application installs 25 categories. Missing application
-installations are listed in [`offchain-reference.md`](offchain-reference.md).
-Classification or topology knowledge alone does not mean a family can be
-driven autonomously.
+resume/reconciliation, and removal. Runner factories are defined in
+`demo/midgard-fault-proofs/src/workflow/runtime.ts`; the watcher composes the
+complete source catalogue in its application. [Off-chain reference](offchain-reference.md)
+links those authorities. Classification or topology knowledge alone does not
+establish runtime readiness or successful challenge acceptance.
 
 ## Trust and release boundaries
 
@@ -125,15 +127,11 @@ driven autonomously.
 - Challengers require authentic evidence for the full challenge window.
 - DA attestation does not by itself provide an on-chain remedy for post-
   attestation withholding.
-- The implemented availability-challenge validator is not publishable under
-  the current 16,384-byte L1 transaction limit. Its applied spending and
-  minting roles are the same 20,017-byte applied multipurpose script
-  (19,927-byte raw blueprint body), so the script alone exceeds the
-  complete-transaction limit. Production publication rejects
-  it before funding selection. Activating
-  this remedy requires an authenticated split or withdraw-zero-yielding
-  redesign, new manifest roles, reward-account registration, and matching
-  redeemer/builder ABI changes.
+- Availability-challenge publication remains a release gate. Its
+  [size plan](size-plans/availability-challenge.md) owns the dated measurements
+  and required redesign; complete signed publication and lifecycle acceptance
+  must establish that the remedy can be deployed.
+
 - The aggregate reserve remains an optimistic invariant protected by timely
   fault detection and correction.
 - A production escape hatch for a halted operator path remains separate

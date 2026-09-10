@@ -8,8 +8,8 @@ import {
 import {
   type AuthenticatedStateQueueHeaderObservation,
   CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
-  EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+  GENESIS_HEADER_HASH,
   Header,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -77,6 +77,10 @@ export type WatcherFaultDecisionBridge = Readonly<{
   dispatchPrepared(): Promise<unknown> | null;
   /** Invalidates all runnable authority synchronously on native rollback. */
   invalidateForRollback(): void;
+  /** Fence advancing history without revoking a target that does not consume it. */
+  beforeHistoryAdvance(): void;
+  /** Retire all cached decisions when local event history loses authority. */
+  invalidateForHistoryChange(): void;
   /** Revokes all runnable authority before production shutdown can await I/O. */
   invalidateForShutdown(): void;
   /** Called immediately before any new or resumed workflow may execute. */
@@ -102,6 +106,10 @@ type BridgeApplication = Pick<
 >;
 
 type BridgeDependencies = Readonly<{
+  /** Availability observations are reconciled before this bridge is invoked. */
+  pendingAvailabilityHeaders?(
+    observation: WatcherAuthenticatedStateQueueObservation,
+  ): ReadonlySet<string>;
   assertObservation(
     observation: WatcherAuthenticatedStateQueueObservation,
   ): void;
@@ -136,6 +144,8 @@ type BridgeDependencies = Readonly<{
     deadline: WatcherFaultProofDeadline | null,
     rollbackGeneration: string,
   ): Promise<number>;
+  retainDecisionAuthorities(decisionDigest: string | null): void;
+  decisionUsesLocalEventHistory(decisionDigest: string): boolean;
 }>;
 
 const exactInstalledScope = (
@@ -340,6 +350,7 @@ const createBridge = (input: {
   let serial: Promise<void> = Promise.resolve();
 
   const invalidate = (reason: string): void => {
+    input.dependencies.retainDecisionAuthorities(null);
     actuationController?.revoke(reason);
     actuationController = null;
     classificationEpoch += 1;
@@ -360,7 +371,25 @@ const createBridge = (input: {
         "state-queue observation differs from the fault-proof deployment",
       );
     }
+    const pendingAvailability =
+      input.dependencies.pendingAvailabilityHeaders?.(candidate) ??
+      new Set<string>();
+    for (const headerHash of pendingAvailability) {
+      const header = candidate.finalizedHeaders.find(
+        (header) => header.headerHash === headerHash,
+      );
+      if (
+        header === undefined ||
+        header.daAvailability === "Unattested" ||
+        "Published" in header.daAvailability
+      ) {
+        throw new Error(
+          "pending availability classification lacks an authenticated challengeable header",
+        );
+      }
+    }
     if (
+      input.dependencies.pendingAvailabilityHeaders === undefined &&
       observation?.observationDigest === candidate.observationDigest &&
       preparedResult !== null
     ) {
@@ -396,7 +425,7 @@ const createBridge = (input: {
       }
       persistedByObservation.set(key, record);
     }
-    const decisions = new Array<HeaderDecision>(
+    const classifications = new Array<HeaderDecision | null>(
       candidate.finalizedHeaders.length,
     );
     let nextHeaderIndex = 0;
@@ -408,6 +437,10 @@ const createBridge = (input: {
         nextHeaderIndex += 1;
         if (index >= candidate.finalizedHeaders.length) return;
         const header = candidate.finalizedHeaders[index]!;
+        if (pendingAvailability.has(header.headerHash)) {
+          classifications[index] = null;
+          continue;
+        }
         const nowMs = input.dependencies.nowMs ?? (() => BigInt(Date.now()));
         const queuedAtMs = nowMs().toString();
         let startedAtMs = queuedAtMs;
@@ -420,9 +453,16 @@ const createBridge = (input: {
           startedAtMs = nowMs().toString();
           const predecessor =
             await input.dependencies.resolvePredecessorHeader?.(header);
+          if (token !== classificationEpoch) {
+            throw new Error(
+              "state-queue authority changed before fault classification",
+            );
+          }
           const decision = await input.application.classifyHeader({
             runtimeConfigPath: input.runtimeConfigPath,
             observation: admitted,
+            stateQueueObservation: candidate,
+            header,
             authenticatedObservationDigest,
             ...(predecessor === undefined ? {} : { predecessor }),
           });
@@ -468,7 +508,7 @@ const createBridge = (input: {
                   ? "verified"
                   : "unprovable_gap",
           });
-          decisions[index] = decision;
+          classifications[index] = decision;
         } catch (error) {
           if (verificationSubjectDigest !== null) {
             const failedAtMs = nowMs().toString();
@@ -497,6 +537,13 @@ const createBridge = (input: {
       ),
     );
     if (classificationFailed) throw classificationFailure;
+    const decisions: HeaderDecision[] = [];
+    for (let index = 0; index < classifications.length; index += 1) {
+      const classification = classifications[index];
+      if (classification === undefined)
+        throw new Error("bounded production classification omitted a header");
+      if (classification !== null) decisions.push(classification);
+    }
     for (const decision of decisions) {
       if (decision === undefined) {
         throw new Error("bounded production classification omitted a header");
@@ -577,6 +624,9 @@ const createBridge = (input: {
       ),
       target: selected,
     });
+    input.dependencies.retainDecisionAuthorities(
+      selected?.decisionDigest ?? null,
+    );
     return preparedResult;
   };
 
@@ -585,7 +635,15 @@ const createBridge = (input: {
     dispatch: boolean,
   ): Promise<WatcherFaultDecisionBridgeResult> => {
     const result = serial.then(async () => {
-      const prepared = await prepare(candidate);
+      let prepared: WatcherFaultDecisionBridgeResult;
+      try {
+        prepared = await prepare(candidate);
+      } catch (error) {
+        input.dependencies.retainDecisionAuthorities(
+          target?.decisionDigest ?? null,
+        );
+        throw error;
+      }
       // Keep reconciliation and its exact selected decision inside the same
       // serializer turn. A later prepare/rollback must not replace globals in
       // the gap between prepare resolution and enqueue.
@@ -658,6 +716,25 @@ const createBridge = (input: {
     },
     dispatchPrepared,
     invalidateForRollback: () => invalidate("native_chain_rollback"),
+    beforeHistoryAdvance: () => {
+      if (
+        targetDecision === null ||
+        input.dependencies.decisionUsesLocalEventHistory(
+          targetDecision.decisionDigest,
+        )
+      ) {
+        invalidate("local_event_history_change");
+        return;
+      }
+      // An in-flight classification may be acquiring event-head capabilities,
+      // but the selected immutable replay does not acquire that dependency just
+      // because another finalized L1 block extends local history.
+      classificationEpoch += 1;
+      input.dependencies.retainDecisionAuthorities(
+        targetDecision.decisionDigest,
+      );
+    },
+    invalidateForHistoryChange: () => invalidate("local_event_history_change"),
     invalidateForShutdown: () => invalidate("watcher_shutdown"),
     isJobPermitted: (job) => {
       if (observation === null) {
@@ -693,6 +770,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly runtimeConfigPath: string;
   readonly maximumClassificationConcurrency: number;
   readonly operationsSink?: WatcherOperationsSink;
+  readonly pendingAvailabilityHeaders?: BridgeDependencies["pendingAvailabilityHeaders"];
   readonly nowMs?: () => bigint;
 }): Promise<WatcherFaultDecisionBridge> => {
   assertWatcherFaultProofApplication(input.application);
@@ -706,7 +784,13 @@ export const createWatcherFaultDecisionBridge = async (input: {
     runtimeConfigPath: input.runtimeConfigPath,
     maximumClassificationConcurrency: input.maximumClassificationConcurrency,
     dependencies: Object.freeze({
+      ...(input.pendingAvailabilityHeaders === undefined
+        ? {}
+        : { pendingAvailabilityHeaders: input.pendingAvailabilityHeaders }),
       assertObservation: assertWatcherStateQueueObservation,
+      retainDecisionAuthorities: input.application.retainDecisionAuthorities,
+      decisionUsesLocalEventHistory:
+        input.application.decisionUsesLocalEventHistory,
       observationDigest: async (candidate) =>
         await authenticatedStateQueueObservationDigest({
           observation: candidate,
@@ -722,7 +806,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
       deadlineForHeader: watcherFaultProofDeadline,
       resolvePredecessorHeader: async (header) => {
         const decoded = Data.from(header.headerCborHex, Header);
-        if (decoded.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT) return undefined;
+        if (decoded.prevHeaderHash === GENESIS_HEADER_HASH) return undefined;
         return await input.stateQueueSource.resolveRetainedHeader({
           headerHash: decoded.prevHeaderHash,
         });

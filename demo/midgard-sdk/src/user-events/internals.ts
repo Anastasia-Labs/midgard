@@ -269,8 +269,10 @@ export const slotToUnixTimeForLucidOrEmulatorFallback = (
 export const resolveUserEventValidTo = (
   lucid: LucidEvolution,
   ttlMs = USER_EVENT_TX_TTL_MS,
+  /** Injected so the deadline arithmetic can be exercised at a known instant. */
+  now: () => number = Date.now,
 ): number => {
-  const targetUnixTime = Date.now() + ttlMs;
+  const targetUnixTime = now() + ttlMs;
   const slot = lucid.unixTimeToSlot(targetUnixTime);
   const alignedUnixTime = slotToUnixTimeForLucidOrEmulatorFallback(lucid, slot);
   return alignedUnixTime > targetUnixTime

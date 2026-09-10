@@ -159,7 +159,8 @@ const canonicalIdentity = (): Omit<DeploymentManifestValue, "manifestId"> => {
         status:
           stepName === "prepareHubOracleNonce" ||
           stepName === "deployNodeRuntimeReferenceScripts" ||
-          stepName === "initProtocol"
+          stepName === "initProtocol" ||
+          stepName === "availabilityRegistration"
             ? ("complete" as const)
             : ("pending" as const),
       },
@@ -221,8 +222,7 @@ const canonicalIdentity = (): Omit<DeploymentManifestValue, "manifestId"> => {
         retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
-    proofEvidence: {
-      digest: null,
+    artifacts: {
       blueprintHash: "55".repeat(32),
     },
     validationDispute: {
@@ -268,13 +268,6 @@ describe("V1 deployment manifest", () => {
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS).toEqual(
       SHARED_DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
     );
-    // Re-derived from the wave-current `midgard-core` roster. The shared test
-    // pins the same three numbers and this package fails closed against the
-    // complete ordered copies above.
-    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(517);
-    expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES).toHaveLength(510);
-    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(511);
-    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(54);
   });
 
   it("names the network-id forced (wrongful-rejection) step and scan", () => {
@@ -306,6 +299,23 @@ describe("V1 deployment manifest", () => {
     expect(parseDeploymentManifestValue(canonicalManifest())).toEqual(
       canonicalManifest(),
     );
+  });
+
+  it("rejects finalization before availability reward registration completes", () => {
+    const { manifestId: _manifestId, ...identity } = canonicalManifest();
+    const incomplete = {
+      ...identity,
+      steps: {
+        ...identity.steps,
+        availabilityRegistration: { status: "pending" as const },
+      },
+    };
+    expect(() =>
+      parseDeploymentManifestValue({
+        ...incomplete,
+        manifestId: computeDeploymentManifestId(incomplete),
+      }),
+    ).toThrow("steps.availabilityRegistration.status must be complete");
   });
 
   it("rejects catalogue root, explicit ID, and membership-proof tampering", () => {

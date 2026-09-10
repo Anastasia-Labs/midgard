@@ -2,7 +2,6 @@
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
@@ -16,6 +15,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 
 export const MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID =
@@ -69,7 +69,7 @@ export const detectMissingSignatureForcedTransaction = (
   const reason = forced.value.verdict.ForcedTxInvalid.reason;
   if (typeof reason !== "object" || !("RequiredSignerUnsigned" in reason))
     return [];
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+  const material = deriveRejectedTransactionFaultEvidenceMaterial(
     forced.fullTransactionCbor,
   );
   if (
@@ -84,10 +84,7 @@ export const detectMissingSignatureForcedTransaction = (
     throw new Error(
       "missingSignature: retained forced transaction differs from its authenticated leaf",
     );
-  const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
-    forced.fullTransactionCbor,
-  );
-  if (decoded.validity !== "TxIsInvalid") return [];
+  const decoded = material.canonical;
   const evidence: MissingSignatureWrongfulRejectionEvidence = {
     subject: forcedVerdictSubject({
       transactionId: forced.value.tx_id,
@@ -149,7 +146,7 @@ export const prepareMissingSignatureWrongfulRejection = async ({
       script_tx_wits_hash: witnessSet.scriptTxWitsHash.toString("hex"),
       redeemer_tx_wits_hash: witnessSet.redeemerTxWitsHash.toString("hex"),
     },
-    verifiedWitnessSetHash: deriveMidgardNativeTxFaultEvidenceMaterial(
+    verifiedWitnessSetHash: deriveRejectedTransactionFaultEvidenceMaterial(
       forced.fullTransactionCbor,
     ).compact.transactionWitnessSetHash.toString("hex"),
     forcedSource: {

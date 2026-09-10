@@ -39,6 +39,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   createDistinctAssetAccumulationActuator,
@@ -568,9 +569,16 @@ export const createDistinctAssetAccumulationWorkflowRunnerSurface = ({
           throw new Error(
             "distinctAssetAccumulationLimit runtime binding changed invocation",
           );
-        return (await runOrResumeManifestBoundDistinctAssetAccumulationWorkflow(
-          { workflow, sources: loaded.retainedDaSources, journal },
-        )) as never;
+        return (await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            runOrResumeManifestBoundDistinctAssetAccumulationWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
+        })) as never;
       } finally {
         await loaded.close();
       }

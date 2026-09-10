@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -790,6 +790,7 @@ const correctionLockWitness = async ({
     typeof decoded === "object" &&
     decoded !== null &&
     ("RemoveUnattestedBlockAfterTimeout" in decoded ||
+      "RemoveUnavailableBlockAfterTimeout" in decoded ||
       "RemoveFraudulentBlockHeader" in decoded)
   ) {
     if (
@@ -802,31 +803,43 @@ const correctionLockWitness = async ({
     const targetHeaderHash =
       "RemoveUnattestedBlockAfterTimeout" in decoded
         ? decoded.RemoveUnattestedBlockAfterTimeout.timed_out_header_hash
-        : decoded.RemoveFraudulentBlockHeader.fraudulent_blocks_header_hash;
+        : "RemoveUnavailableBlockAfterTimeout" in decoded
+          ? decoded.RemoveUnavailableBlockAfterTimeout.unavailable_header_hash
+          : decoded.RemoveFraudulentBlockHeader.fraudulent_blocks_header_hash;
     const identity: SDK.CorrectionIdentity =
       "RemoveUnattestedBlockAfterTimeout" in decoded
         ? "AttestationTimeout"
-        : (() => {
-            const reference =
-              referenceResolved[
-                Number(
-                  decoded.RemoveFraudulentBlockHeader
-                    .fraud_proof_ref_input_index,
-                )
-              ];
-            const assetName =
-              reference === undefined
-                ? null
-                : fraudProofAssetName(
-                    reference.value,
-                    fraudProofAddress,
-                    fraudProofPolicyId,
-                    targetHeaderHash,
-                  );
-            if (assetName === null)
-              throw new Error("fraud proof CorrectionLock identity is invalid");
-            return { FraudProof: { fraud_proof_asset_name: assetName } };
-          })();
+        : "RemoveUnavailableBlockAfterTimeout" in decoded
+          ? {
+              AvailabilityChallenge: {
+                challenge_asset_name:
+                  decoded.RemoveUnavailableBlockAfterTimeout
+                    .challenge_asset_name,
+              },
+            }
+          : (() => {
+              const reference =
+                referenceResolved[
+                  Number(
+                    decoded.RemoveFraudulentBlockHeader
+                      .fraud_proof_ref_input_index,
+                  )
+                ];
+              const assetName =
+                reference === undefined
+                  ? null
+                  : fraudProofAssetName(
+                      reference.value,
+                      fraudProofAddress,
+                      fraudProofPolicyId,
+                      targetHeaderHash,
+                    );
+              if (assetName === null)
+                throw new Error(
+                  "fraud proof CorrectionLock identity is invalid",
+                );
+              return { FraudProof: { fraud_proof_asset_name: assetName } };
+            })();
     return {
       kind: "correction_transition",
       consumedOutRef: locksIn[0]!.outRef,
@@ -1079,3 +1092,87 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
     throw new Error("committee state-queue replay exceeded its safety bound");
   };
 };
+
+export const createLocalKupmiosAvailabilityRetentionInputReader =
+  (config: {
+    readonly kupoUrl: string;
+    readonly stateQueueAddress: string;
+    readonly stateQueuePolicyId: string;
+    readonly fetchImpl?: StateQueueReplayFetch;
+  }) =>
+  async (
+    transition: SDK.StateQueueAuthenticatedTransition,
+  ): Promise<UTxO | null> => {
+    if (
+      transition.stateQueuePolicyId !== config.stateQueuePolicyId ||
+      transition.removedHeaderHashes.length !== 1
+    )
+      return null;
+    const headerHash = transition.removedHeaderHashes[0]!;
+    const reference = transition.previousQueue.find(
+      (node) => node.headerHash === headerHash,
+    )?.outRef;
+    if (
+      reference === undefined ||
+      !transition.consumedQueueOutRefs.includes(reference)
+    )
+      return null;
+    const { txHash, index } = splitOutRef(reference);
+    const candidate = await fetchResolvedOutput(
+      config.kupoUrl,
+      reference,
+      config.fetchImpl ?? fetch,
+    );
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      Array.isArray(candidate)
+    )
+      return null;
+    const match = candidate as Record<string, unknown>;
+    if (
+      match.transaction_id !== txHash ||
+      match.output_index !== index ||
+      match.address !== config.stateQueueAddress ||
+      match.datum_type !== "inline" ||
+      typeof match.datum !== "string" ||
+      match.script_hash != null ||
+      match.script != null
+    )
+      return null;
+    if (
+      typeof match.value !== "object" ||
+      match.value === null ||
+      Array.isArray(match.value)
+    )
+      return null;
+    const value = match.value as Record<string, unknown>;
+    if (
+      (typeof value.coins !== "number" && typeof value.coins !== "string") ||
+      (typeof value.coins === "number" && !Number.isSafeInteger(value.coins)) ||
+      !/^(?:0|[1-9][0-9]*)$/u.test(String(value.coins)) ||
+      typeof value.assets !== "object" ||
+      value.assets === null ||
+      Array.isArray(value.assets)
+    )
+      return null;
+    const entries = Object.entries(value.assets);
+    const assetName = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash;
+    const unit = config.stateQueuePolicyId + assetName;
+    if (
+      entries.length !== 1 ||
+      !(
+        entries[0]![0] === unit ||
+        entries[0]![0] === `${config.stateQueuePolicyId}.${assetName}`
+      ) ||
+      (entries[0]![1] !== 1 && entries[0]![1] !== "1")
+    )
+      return null;
+    return {
+      txHash,
+      outputIndex: index,
+      address: config.stateQueueAddress,
+      assets: { lovelace: BigInt(value.coins), [unit]: 1n },
+      datum: match.datum,
+    };
+  };

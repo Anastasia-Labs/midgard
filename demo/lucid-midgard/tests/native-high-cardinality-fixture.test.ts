@@ -10,6 +10,7 @@ import {
   type HighCardinalityNativeTxFixture,
 } from "./fixtures/native-high-cardinality.js";
 import { stableNativeTxFixtureJson } from "./fixtures/native-tx-fixture-shape.js";
+import { expectNativeTxFixtureFacetsSatisfySpec } from "./fixtures/native-tx-fixture-spec.js";
 
 const fixturePath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -44,9 +45,10 @@ describe("native high-cardinality conformance fixture", () => {
     const rebuilt = await buildHighCardinalityNativeTxFixture();
 
     expect(rebuilt.counts).toEqual(HIGH_CARDINALITY_COUNTS);
-    expect(rebuilt.mintPolicyIdsInTxInfoOrder).toHaveLength(
-      HIGH_CARDINALITY_COUNTS.mintPolicies,
-    );
+    // The redeemer pointer set is the fixture's reason to exist: three of the
+    // eight spend inputs are script-witnessed (indices 1, 4 and 7 of the
+    // *sorted* input list), all six mint policies carry a redeemer, and the
+    // two observers and two receives follow under their own purpose tags.
     expect(rebuilt.redeemerPointers).toEqual([
       "0:1",
       "0:4",
@@ -63,11 +65,20 @@ describe("native high-cardinality conformance fixture", () => {
       "6:1",
     ]);
     expect(rebuilt.fullTxCborHex).not.toBe(rebuilt.compactTxCborHex);
-    expect(rebuilt.txIdHex).toHaveLength(64);
-    expect(rebuilt.hashes.witnessSetHashHex).toHaveLength(64);
-    expect(rebuilt.sizes.fullTxCborBytes).toBe(
-      rebuilt.fullTxCborHex.length / 2,
-    );
+    // Everything the fixture advertises about its own bytes — the nine field
+    // commitments, the witness-set hash, the compact-body layout, the
+    // transaction id, the canonical out-ref lists, the mint policy order —
+    // re-derived from the specification rather than from the codec that
+    // produced them.
+    expectNativeTxFixtureFacetsSatisfySpec(rebuilt, {
+      label: "high-cardinality",
+      version: 1n,
+      spendInputs: HIGH_CARDINALITY_COUNTS.spendInputs,
+      referenceInputs: HIGH_CARDINALITY_COUNTS.referenceInputs,
+      mintPolicies: HIGH_CARDINALITY_COUNTS.mintPolicies,
+      redeemers: HIGH_CARDINALITY_COUNTS.totalRedeemers,
+      sortedInputs: true,
+    });
 
     if (syncing) {
       fs.writeFileSync(fixturePath, stableNativeTxFixtureJson(rebuilt));
@@ -77,6 +88,19 @@ describe("native high-cardinality conformance fixture", () => {
     expect(stableNativeTxFixtureJson(rebuilt)).toBe(
       fs.readFileSync(fixturePath, "utf8"),
     );
-    expect(readFixture()).toEqual(rebuilt);
+    // The checked-in vector is what the Aiken goldens and the cross-language
+    // conformance consumers read, so it is held to the same specification as
+    // the freshly built one rather than only to byte-equality with it.
+    const checkedIn = readFixture();
+    expect(checkedIn).toEqual(rebuilt);
+    expectNativeTxFixtureFacetsSatisfySpec(checkedIn, {
+      label: "high-cardinality (checked-in file)",
+      version: 1n,
+      spendInputs: HIGH_CARDINALITY_COUNTS.spendInputs,
+      referenceInputs: HIGH_CARDINALITY_COUNTS.referenceInputs,
+      mintPolicies: HIGH_CARDINALITY_COUNTS.mintPolicies,
+      redeemers: HIGH_CARDINALITY_COUNTS.totalRedeemers,
+      sortedInputs: true,
+    });
   });
 });

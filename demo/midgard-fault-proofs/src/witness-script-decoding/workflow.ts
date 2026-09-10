@@ -76,6 +76,7 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { createWitnessScriptDecodingCentralJournalAdapter } from "./central-journal.js";
 import type { WitnessScriptDecodingContracts } from "./contracts.js";
 import { submitWitnessScriptDecodingCancel } from "./submit-cancel.js";
@@ -307,7 +308,7 @@ export const loadManifestBoundWitnessScriptDecodingConfig = async (
       })) as unknown as WitnessScriptDecodingContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
-      hubOraclePolicyId: binding.deploymentInfo.hubOracleMint!.scriptHash,
+      hubOraclePolicyId: binding.contractEntries.hubOracleMint!.scriptHash,
       stateQueuePolicyId: binding.definition.stateQueue.policyId,
       fieldPreimageCertificatePolicyId: certificate.policyId,
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
@@ -1417,10 +1418,15 @@ export const createWitnessScriptDecodingWorkflowRunnerSurface = ({
             "witnessScriptDecoding manifest-bound workflow identity differs from invocation",
           );
         }
-        return await executeManifestBoundWitnessScriptDecodingWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundWitnessScriptDecodingWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

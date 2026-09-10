@@ -1034,12 +1034,15 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       if (observation.kind === "confirmed") {
         return { kind: "confirmed", txHash };
       }
-      return (await transactionConfirmed({ headerHash, txHash }))
-        ? {
-            kind: "conflict",
-            reason: `${category} field prerequisite transaction omitted its journaled output`,
-          }
-        : { kind: "not_found" };
+      if (await transactionConfirmed({ headerHash, txHash })) {
+        return {
+          kind: "conflict",
+          reason: `${category} field prerequisite transaction omitted its journaled output`,
+        };
+      }
+      // A known submitted hash can be absent until the release-final cursor
+      // catches up. Keep its journaled output and funding reservation pending.
+      return { kind: "pending", txHash };
     },
   };
   return Object.freeze(port);
@@ -1103,7 +1106,7 @@ export const withFieldCarriagePrerequisite = <
         return { kind: "action_required", action: inspection.action };
       }
       return inspection.kind === "pending"
-        ? { kind: "conflict", reason: inspection.reason }
+        ? { kind: "pending", reason: inspection.reason }
         : observed;
     },
     preflight: async (context) => {

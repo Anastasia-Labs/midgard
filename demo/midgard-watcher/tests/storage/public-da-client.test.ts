@@ -149,7 +149,8 @@ const identityOf = (options?: {
     manifestId,
     network: options?.network ?? "Preprod",
     trustRootId: "trust-root-a",
-    releaseEvidenceDigest: repeatHex(0x33, 32),
+    fundingProfileBundleDigest: "ab".repeat(32),
+    blueprintHash: repeatHex(0x33, 32),
     ruleBundleCommitment: repeatHex(0x44, 32),
     programCommitments: {},
     durableMarker: makeDeploymentMarker(

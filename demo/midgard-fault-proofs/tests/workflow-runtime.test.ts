@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,10 +7,13 @@ import {
   CML,
   type Script,
   type TxSigned,
+  type UTxO,
+  utxoToCore,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
+import * as removalFunding from "../src/remove-fraudulent-block.js";
 import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.js";
 import {
   assertWorkflowJournalActuation,
@@ -29,8 +33,6 @@ import {
   workflowAdapterRunner,
 } from "../src/workflow/adapters.js";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import { createWorkflowFundingRequirements } from "../src/workflow/funding-requirements.js";
-import { unsafeCreateMeasuredWorkflowRunnerForTest } from "../src/workflow/funding-requirements-test-support.js";
 import {
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
@@ -54,6 +56,7 @@ import {
   type FraudProofWorkflowIdentity,
   MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
+import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -65,6 +68,7 @@ import {
   WORKFLOW_RUNNER_FACTORIES,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../src/workflow/runtime.js";
+import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   authenticatedHeaderObservation,
@@ -72,6 +76,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { runtimeFundingPolicyFixture } from "./helpers/runtime-funding-policy-fixture.js";
 
 const DEPLOYMENT = "d7".repeat(32);
 const RELEASE_FINALITY_POLICY = {
@@ -97,7 +102,7 @@ const admittedActuation = async () => {
       verifyForWorkflow: async () => ({
         schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
         deploymentIdentityDigest: DEPLOYMENT,
-        releaseIdentityDigest: "f7".repeat(32),
+        blueprintHash: "f7".repeat(32),
         policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
           RELEASE_FINALITY_POLICY,
         ),
@@ -162,147 +167,52 @@ const fundingAddress = CML.EnterpriseAddress.new(
 )
   .to_address()
   .to_bech32();
-const measuredReferenceOutRef = `${"74".repeat(32)}#0`;
-const measuredReferenceScript = Object.freeze({
+const fundingReferenceOutRef = `${"74".repeat(32)}#0`;
+const fundingReferenceScript = Object.freeze({
   type: "PlutusV3" as const,
   script: "4d01000033222220051200120011",
 });
 
-const measuredFundingAction = (
-  actionKind: string,
-  coins: readonly bigint[],
-  referenceScript?: Script,
-) => {
-  const inputs = CML.TransactionInputList.new();
-  const fundingControlledInputs = coins.map((coin, index) => {
-    const txHash = (0x71 + index).toString(16).padStart(2, "0").repeat(32);
-    inputs.add(
-      CML.TransactionInput.new(CML.TransactionHash.from_hex(txHash), 0n),
-    );
-    return Object.freeze({
-      outRef: `${txHash}#0`,
-      resolvedOutputCborHex: CML.TransactionOutput.new(
-        CML.Address.from_bech32(fundingAddress),
-        CML.Value.from_coin(coin),
-      ).to_canonical_cbor_hex(),
-      role: "wallet_funding" as const,
-      semanticRole: "wallet_funding" as const,
-      contractAddress: fundingAddress,
-      identityAssets: Object.freeze([]),
-      fundingLovelace: coin.toString(),
-      fundingAssets: Object.freeze([]),
-      sourceActionKind: null,
-      sourceOutputIndex: null,
-    });
-  });
-  const fee = 1n;
-  const change = coins.reduce((total, coin) => total + coin, 0n) - fee;
-  const outputs = CML.TransactionOutputList.new();
-  outputs.add(
-    CML.TransactionOutput.new(
-      CML.Address.from_bech32(fundingAddress),
-      CML.Value.from_coin(change),
-    ),
-  );
-  const body = CML.TransactionBody.new(inputs, outputs, fee);
-  if (referenceScript !== undefined) {
-    const references = CML.TransactionInputList.new();
-    references.add(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex("74".repeat(32)),
-        0n,
-      ),
-    );
-    body.set_reference_inputs(references);
-  }
-  const witnesses = CML.TransactionWitnessSet.new();
-  const vkeys = CML.VkeywitnessList.new();
-  vkeys.add(
-    CML.Vkeywitness.new(
-      fundingKey.to_public(),
-      fundingKey.sign(CML.hash_transaction(body).to_raw_bytes()),
-    ),
-  );
-  witnesses.set_vkeywitnesses(vkeys);
-  return Object.freeze({
-    actionKind,
-    signedTransactionCborHex: CML.Transaction.new(
-      body,
-      witnesses,
-      true,
-      undefined,
-    ).to_canonical_cbor_hex(),
-    fundingControlledInputs: Object.freeze(fundingControlledInputs),
-    fundingControlledOutputs: Object.freeze([
-      Object.freeze({
-        outputIndex: 0,
-        role: "wallet_change" as const,
-        custodyRole: "none" as const,
-        semanticRole: "wallet_change" as const,
-        contractAddress: fundingAddress,
-        fundingLovelace: change.toString(),
-        fundingAssets: Object.freeze([]),
-      }),
-    ]),
-    referenceInputs: Object.freeze(
-      referenceScript === undefined
-        ? []
-        : [
-            Object.freeze({
-              role: "proofStep",
-              outRef: measuredReferenceOutRef,
-              scriptHash: validatorToScriptHash(referenceScript),
-              scriptBytes: referenceScript.script.length / 2,
-            }),
-          ],
-    ),
-    referenceScriptBytes: referenceScript?.script.length
-      ? referenceScript.script.length / 2
-      : 0,
-    requiredBondLovelace: "0",
-    requiredRewardCustodyLovelace: "0",
-    requiredNativeAssets: Object.freeze([]),
-    collateralRequired: false,
-    conflictRetryCount: 0,
-  });
-};
-
-const measuredFundingRuntime = async (
-  actionKind: "step-one" | "step-three",
+const runtimeFunding = async (
+  actionKind: "step-one" | "step-three" | "verify_source",
   options: Readonly<{
-    measuredReference?: Script;
+    governedReference?: Script;
     resolvedReference?: Script;
+    useStage?: boolean;
+    collateral?: boolean;
+    begin?: boolean;
+    additionalInputs?: readonly UTxO[];
+    confirmedInput?: UTxO;
+    changedLineage?: boolean;
   }> = {},
 ) => {
   const actuation = await admittedActuation();
-  const requirements = createWorkflowFundingRequirements({
-    scope: { kind: "fraud_proof_category", category: "doubleSpend" },
+  const { runner, policy } = runtimeFundingPolicyFixture({
     deploymentFingerprint: DEPLOYMENT,
-    blueprintSha256: "a1".repeat(32),
-    protocolParametersDigest: "a2".repeat(32),
-    economicsPolicyDigest: "a3".repeat(32),
     fundingPaymentKeyHash: fundingKey.to_public().hash().to_hex(),
-    measurementToolVersion: "funding-selection-test-v1",
-    measurementArtifactSha256: "a4".repeat(32),
-    actions: [
-      measuredFundingAction("step-one", [10n], options.measuredReference),
-      measuredFundingAction("step-three", [10n, 3n, 2n]),
-    ],
-  });
-  const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
-    category: "doubleSpend",
-    fundingRequirements: requirements,
+    referenceScripts:
+      options.governedReference === undefined
+        ? []
+        : [
+            {
+              outRef: fundingReferenceOutRef,
+              scriptHash: validatorToScriptHash(options.governedReference),
+            },
+          ],
   });
   const values = new Map([
-    [`${"71".repeat(32)}#0`, 3n],
-    [`${"72".repeat(32)}#0`, 2n],
-    [`${"73".repeat(32)}#0`, 10n],
+    [`${"71".repeat(32)}#0`, 3_000_000n],
+    [`${"72".repeat(32)}#0`, 2_000_000n],
+    [`${"73".repeat(32)}#0`, 10_000_000n],
   ]);
+  if (options.collateral) values.set(`${"76".repeat(32)}#0`, 5_000_000n);
   const activeInputs = Object.freeze(
     [...values].map(([outRef, lovelace]) =>
       Object.freeze({
         outRef,
-        role: "funding" as const,
+        role: outRef.startsWith("76".repeat(32))
+          ? ("collateral" as const)
+          : ("funding" as const),
         lovelace: lovelace.toString(),
         assets: Object.freeze([]),
       }),
@@ -312,8 +222,8 @@ const measuredFundingRuntime = async (
     reservationId: "b1".repeat(32),
     deploymentFingerprint: DEPLOYMENT,
     decisionDigest: actuation.decisionDigest,
-    profileDigest: requirements.profileDigest,
-    calculationDigest: "b2".repeat(32),
+    policyDigest: readWorkflowRuntimeFundingPolicy(policy).policyDigest,
+    reservationBasisDigest: "b2".repeat(32),
     rollbackGeneration: "7",
     revision: "0",
     walletAddress: fundingAddress,
@@ -323,34 +233,57 @@ const measuredFundingRuntime = async (
   });
   let currentSnapshot: WorkflowFundingReservationSnapshot = snapshot;
   const prepare = vi.fn(async () => snapshot);
+  const resolveInputs = vi.fn(async (outRefs: readonly string[]) =>
+    outRefs.map((outRef) => {
+      const additional = options.additionalInputs?.find(
+        (input) => `${input.txHash}#${input.outputIndex.toString()}` === outRef,
+      );
+      if (additional !== undefined) return additional;
+      if (outRef === fundingReferenceOutRef)
+        return {
+          txHash: "74".repeat(32),
+          outputIndex: 0,
+          address: fundingAddress,
+          assets: { lovelace: 2_000_000n },
+          scriptRef: options.resolvedReference,
+        };
+      const [txHash, outputIndex] = outRef.split("#");
+      return {
+        txHash: txHash!,
+        outputIndex: Number(outputIndex),
+        address: fundingAddress,
+        assets: { lovelace: values.get(outRef) ?? 1_000_000n },
+      };
+    }),
+  );
   const permit = await createWorkflowFundingReservationPermit({
     category: "doubleSpend",
     runner,
+    policy,
     actuationPermit: actuation.actuationPermit,
     rollbackGeneration: "7",
     port: {
       load: async () => currentSnapshot,
-      resolveInputs: async (outRefs) =>
-        outRefs.map((outRef) => {
-          if (outRef === measuredReferenceOutRef) {
-            return {
-              txHash: "74".repeat(32),
-              outputIndex: 0,
-              address: fundingAddress,
-              assets: { lovelace: 2_000_000n },
-              scriptRef: options.resolvedReference,
-            };
-          }
-          const [txHash, outputIndex] = outRef.split("#");
-          return {
-            txHash: txHash!,
-            outputIndex: Number(outputIndex),
-            address: fundingAddress,
-            assets: { lovelace: values.get(outRef)! },
-          };
-        }),
-      resolveConfirmedActionOutput: async () => {
-        throw new Error("test action has no released locked input");
+      resolveInputs,
+      resolveConfirmedInput: async ({ outRef }) => {
+        const input = options.confirmedInput;
+        if (
+          input === undefined ||
+          outRef !== `${input.txHash}#${input.outputIndex.toString()}`
+        )
+          return null;
+        return {
+          sourceActionKind: "init",
+          sourceOutputIndex: input.outputIndex,
+          outRef,
+          resolvedOutputCborHex: utxoToCore(
+            options.changedLineage
+              ? { ...input, assets: { lovelace: 1_000_000n } }
+              : input,
+          )
+            .output()
+            .to_canonical_cbor_hex(),
+        };
       },
       resolveProtocolInputAuthority: async () => {
         throw new Error("test action has no protocol input");
@@ -364,11 +297,19 @@ const measuredFundingRuntime = async (
   });
   const journal = Object.freeze({ actionKind });
   bindWorkflowFundingReservationJournal({ journal, permit });
-  await beginWorkflowFundingReservationAction({
-    journal,
-    action: { actionId: actionKind, input: { actionKind } },
-  });
+  const begin = () =>
+    beginWorkflowFundingReservationAction({
+      journal,
+      action: {
+        actionId: actionKind,
+        input: options.useStage ? { stage: actionKind } : { actionKind },
+      },
+    });
+  if (options.begin !== false) await begin();
   return Object.freeze({
+    policy,
+    begin,
+    resolveInputs,
     journal,
     permit,
     prepare,
@@ -380,14 +321,25 @@ const measuredFundingRuntime = async (
   });
 };
 
-const measuredFundingSelection = async (
-  actionKind: "step-one" | "step-three",
-) => (await measuredFundingRuntime(actionKind)).selected;
+const runtimeFundingSelection = async (actionKind: "step-one" | "step-three") =>
+  (await runtimeFunding(actionKind)).selected;
 
 const signedFundingTransaction = (input: {
   readonly inputOutRefs: readonly string[];
   readonly outputLovelace: bigint;
   readonly referenceOutRefs?: readonly string[];
+  readonly fee?: bigint;
+  readonly outputAddress?: string;
+  readonly additionalOutputs?: readonly CML.TransactionOutput[];
+  readonly collateral?: {
+    outRefs: readonly string[];
+    total: bigint;
+    returned: bigint;
+    returnAddress?: string;
+  };
+  readonly redeemerMemory?: bigint;
+  readonly signingKey?: CML.PrivateKey;
+  readonly nonCanonicalBody?: boolean;
 }): TxSigned => {
   const inputs = CML.TransactionInputList.new();
   for (const outRef of input.inputOutRefs) {
@@ -402,11 +354,34 @@ const signedFundingTransaction = (input: {
   const outputs = CML.TransactionOutputList.new();
   outputs.add(
     CML.TransactionOutput.new(
-      CML.Address.from_bech32(fundingAddress),
+      CML.Address.from_bech32(input.outputAddress ?? fundingAddress),
       CML.Value.from_coin(input.outputLovelace),
     ),
   );
-  const body = CML.TransactionBody.new(inputs, outputs, 1n);
+  for (const output of input.additionalOutputs ?? []) outputs.add(output);
+  let body = CML.TransactionBody.new(inputs, outputs, input.fee ?? 200_000n);
+  if (input.collateral !== undefined) {
+    const collateral = CML.TransactionInputList.new();
+    for (const outRef of input.collateral.outRefs) {
+      const [txHash, index] = outRef.split("#");
+      collateral.add(
+        CML.TransactionInput.new(
+          CML.TransactionHash.from_hex(txHash!),
+          BigInt(index!),
+        ),
+      );
+    }
+    body.set_collateral_inputs(collateral);
+    body.set_total_collateral(input.collateral.total);
+    body.set_collateral_return(
+      CML.TransactionOutput.new(
+        CML.Address.from_bech32(
+          input.collateral.returnAddress ?? fundingAddress,
+        ),
+        CML.Value.from_coin(input.collateral.returned),
+      ),
+    );
+  }
   if (input.referenceOutRefs !== undefined) {
     const references = CML.TransactionInputList.new();
     for (const outRef of input.referenceOutRefs) {
@@ -420,12 +395,29 @@ const signedFundingTransaction = (input: {
     }
     body.set_reference_inputs(references);
   }
+  if (input.nonCanonicalBody)
+    body = CML.TransactionBody.from_cbor_hex(
+      "bf" + body.to_cbor_hex().slice(2) + "ff",
+    );
   const witnesses = CML.TransactionWitnessSet.new();
+  if (input.redeemerMemory !== undefined) {
+    const redeemers = CML.LegacyRedeemerList.new();
+    redeemers.add(
+      CML.LegacyRedeemer.new(
+        CML.RedeemerTag.Spend,
+        0n,
+        CML.PlutusData.from_cbor_hex("00"),
+        CML.ExUnits.new(input.redeemerMemory, 1n),
+      ),
+    );
+    witnesses.set_redeemers(CML.Redeemers.new_arr_legacy_redeemer(redeemers));
+  }
+  const signingKey = input.signingKey ?? fundingKey;
   const vkeys = CML.VkeywitnessList.new();
   vkeys.add(
     CML.Vkeywitness.new(
-      fundingKey.to_public(),
-      fundingKey.sign(CML.hash_transaction(body).to_raw_bytes()),
+      signingKey.to_public(),
+      signingKey.sign(CML.hash_transaction(body).to_raw_bytes()),
     ),
   );
   witnesses.set_vkeywitnesses(vkeys);
@@ -447,7 +439,535 @@ const retainedDaSource = (): DaLibp2pRetainedDaSource =>
     },
   });
 
+const prepareRuntimeFunding = (
+  runtime: Awaited<ReturnType<typeof runtimeFunding>>,
+  signed: TxSigned,
+) =>
+  prepareWorkflowFundingReservationTransaction({
+    journal: runtime.journal,
+    action: { actionId: "step-one", input: { stage: "step-one" } },
+    preflight: bindWorkflowPreflightTransaction(
+      Object.freeze({ txHash: signed.toHash() }),
+      signed,
+    ),
+  });
+
+const slashFundingFixture = async (
+  options: {
+    tranche?: "full" | "partially-inactivity-slashed";
+    feeDelta?: bigint;
+    rewardDelta?: bigint;
+    actionStage?: string;
+    includeWalletInput?: boolean;
+    capability?: boolean;
+    foreignAuthority?: boolean;
+  } = {},
+) => {
+  const actuation = await admittedActuation();
+  const tranche = options.tranche ?? "full";
+  const bond = tranche === "full" ? 900_000_000n : 800_000_000n;
+  const exactFee = bond - 400_000_000n;
+  const protocolAddress = CML.EnterpriseAddress.new(
+    0,
+    CML.Credential.new_script(CML.ScriptHash.from_hex("a5".repeat(28))),
+  )
+    .to_address()
+    .to_bech32();
+  const operator: UTxO = {
+    txHash: "81".repeat(32),
+    outputIndex: 0,
+    address: protocolAddress,
+    assets: { lovelace: bond },
+  };
+  const anchor: UTxO = {
+    txHash: "82".repeat(32),
+    outputIndex: 0,
+    address: protocolAddress,
+    assets: { lovelace: 2_000_000n },
+  };
+  const proof: UTxO = {
+    txHash: "83".repeat(32),
+    outputIndex: 0,
+    address: protocolAddress,
+    assets: { lovelace: 2_000_000n },
+  };
+  const ref = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex}`;
+  const { runner, policy } = runtimeFundingPolicyFixture({
+    deploymentFingerprint: DEPLOYMENT,
+    fundingPaymentKeyHash: fundingKey.to_public().hash().to_hex(),
+    contracts: [
+      {
+        address: protocolAddress,
+        scriptHash: "a5".repeat(28),
+        role: "protocol_state",
+      },
+    ],
+  });
+  const wallets = [
+    {
+      txHash: "71".repeat(32),
+      outputIndex: 0,
+      address: fundingAddress,
+      assets: { lovelace: 30_000_000n },
+    },
+    {
+      txHash: "76".repeat(32),
+      outputIndex: 0,
+      address: fundingAddress,
+      assets: { lovelace: 500_000_000n },
+    },
+    {
+      txHash: "77".repeat(32),
+      outputIndex: 0,
+      address: fundingAddress,
+      assets: { lovelace: 500_000_000n },
+    },
+  ];
+  let snapshot: WorkflowFundingReservationSnapshot = {
+    reservationId: "b1".repeat(32),
+    deploymentFingerprint: DEPLOYMENT,
+    decisionDigest: actuation.decisionDigest,
+    policyDigest: readWorkflowRuntimeFundingPolicy(policy).policyDigest,
+    reservationBasisDigest: "b2".repeat(32),
+    rollbackGeneration: "7",
+    revision: "0",
+    walletAddress: fundingAddress,
+    fundingPaymentKeyHash: fundingKey.to_public().hash().to_hex(),
+    state: "active",
+    activeInputs: wallets.map((utxo, index) => ({
+      outRef: ref(utxo),
+      role: index === 0 ? "funding" : "collateral",
+      lovelace: utxo.assets.lovelace.toString(),
+      assets: [],
+    })),
+  };
+  const inputByRef = new Map(
+    [operator, anchor, proof, ...wallets].map((utxo) => [ref(utxo), utxo]),
+  );
+  const prepare = vi.fn(async (_input: unknown) => {
+    snapshot = { ...snapshot, revision: "1" };
+    return snapshot;
+  });
+  const protocolAuthority = vi.fn(async ({ outRef }: { outRef: string }) => ({
+    deploymentFingerprint: options.foreignAuthority
+      ? "ff".repeat(32)
+      : DEPLOYMENT,
+    outRef,
+    semanticRole: "protocol_state",
+    resolvedOutputCborHex: utxoToCore(inputByRef.get(outRef)!)
+      .output()
+      .to_canonical_cbor_hex(),
+  }));
+  const permit = await createWorkflowFundingReservationPermit({
+    category: "doubleSpend",
+    runner,
+    policy,
+    actuationPermit: actuation.actuationPermit,
+    rollbackGeneration: "7",
+    port: {
+      load: async () => snapshot,
+      resolveInputs: async (outRefs) =>
+        outRefs.map((outRef) => inputByRef.get(outRef)!),
+      resolveConfirmedInput: async () => {
+        throw new Error("slash inputs must reacquire protocol authority");
+      },
+      resolveProtocolInputAuthority: protocolAuthority,
+      prepare,
+      confirm: async () => snapshot,
+      abandon: async () => snapshot,
+      markConflict: async () => snapshot,
+      release: async () => snapshot,
+    },
+  });
+  const journal = {};
+  bindWorkflowFundingReservationJournal({ journal, permit });
+  const action = {
+    actionId: "remove-current-target",
+    input: {
+      stage: options.actionStage ?? "remove",
+      category: "doubleSpend",
+      nextRemovalOutRef: ref(anchor),
+      fraudProofOutRef: ref(proof),
+    },
+  };
+  await beginWorkflowFundingReservationAction({ journal, action });
+  const collateral = (exactFee * 150n) / 100n;
+  const signed = signedFundingTransaction({
+    inputOutRefs: [
+      ref(operator),
+      ref(anchor),
+      ...(options.includeWalletInput ? [ref(wallets[0]!)] : []),
+    ].sort(),
+    referenceOutRefs: [ref(proof)],
+    outputLovelace: 400_000_000n + (options.rewardDelta ?? 0n),
+    additionalOutputs: [utxoToCore(anchor).output()],
+    fee: exactFee + (options.feeDelta ?? 0n),
+    collateral: {
+      outRefs: wallets.slice(1).map(ref),
+      total: collateral,
+      returned: 1_000_000_000n - collateral,
+    },
+    redeemerMemory: 1n,
+    nonCanonicalBody: true,
+  });
+  const authority: removalFunding.FraudSlashFundingAuthority = {
+    deploymentFingerprint: DEPLOYMENT,
+    economicsPolicyDigest:
+      readWorkflowRuntimeFundingPolicy(policy).economicsPolicyDigest,
+    category: "doubleSpend",
+    headerHash: actuation.headerHash,
+    fraudProofOutRef: ref(proof),
+    removedStateQueueOutRef: ref(anchor),
+    operatorOutRef: ref(operator),
+    operatorBondLovelace: bond.toString(),
+    tranche,
+    exactFeeLovelace: exactFee.toString(),
+    rewardLovelace: "400000000",
+    rewardAddress: fundingAddress,
+    transactionHash: signed.toHash(),
+    transactionBodySha256: createHash("sha256")
+      .update(Buffer.from(signed.toTransaction().body().to_cbor_hex(), "hex"))
+      .digest("hex"),
+    signedTransactionCborHex: signed.toTransaction().to_cbor_hex(),
+    inputs: [operator, anchor].map((utxo) => ({
+      outRef: ref(utxo),
+      resolvedOutputCborHex: utxoToCore(utxo).output().to_canonical_cbor_hex(),
+    })),
+  };
+  // The real minter is private to the evaluated removal builder. Isolate that
+  // builder seam while checking actual signed CML wire here.
+  const originalReader = removalFunding.readFraudSlashFundingAuthority;
+  expect(originalReader(signed)).toBeNull();
+  const reader = vi
+    .spyOn(removalFunding, "readFraudSlashFundingAuthority")
+    .mockImplementation((candidate) =>
+      candidate === signed && options.capability !== false
+        ? authority
+        : originalReader(candidate),
+    );
+  return {
+    signed,
+    journal,
+    action,
+    prepare,
+    policy,
+    protocolAuthority,
+    admit: () =>
+      prepareWorkflowFundingReservationTransaction({
+        journal,
+        action,
+        preflight: bindWorkflowPreflightTransaction(
+          { txHash: signed.toHash() },
+          signed,
+        ),
+      }),
+    close: () => reader.mockRestore(),
+  };
+};
+
 describe("compiled manifest-bound production runtime V1", () => {
+  it.each(["full", "partially-inactivity-slashed"] as const)(
+    "admits exact signed %s slash economics without spending ordinary wallet funds",
+    async (tranche) => {
+      const runtime = await slashFundingFixture({ tranche });
+      try {
+        await runtime.admit();
+        expect(runtime.protocolAuthority).toHaveBeenCalledTimes(2);
+        expect(runtime.prepare).toHaveBeenCalledOnce();
+        expect(runtime.prepare).toHaveBeenCalledWith(
+          expect.objectContaining({
+            transition: expect.objectContaining({
+              actionKind: "remove",
+              consumedOutRefs: [],
+              signedTransactionCborHex: runtime.signed
+                .toTransaction()
+                .to_cbor_hex(),
+              producedInputs: [
+                expect.objectContaining({ lovelace: "400000000" }),
+              ],
+            }),
+          }),
+        );
+        const policy = readWorkflowRuntimeFundingPolicy(runtime.policy);
+        expect(policy.maximumSlashCollateralLovelace).toBe("750000000");
+        expect(BigInt(policy.maximumFeeLovelace)).toBeLessThan(400_000_000n);
+        expect(BigInt(policy.maximumCollateralLovelace)).toBeLessThan(
+          600_000_000n,
+        );
+        await expect(
+          assertWorkflowFundingReservationReadyToSubmit({
+            journal: runtime.journal,
+            transactionHash: runtime.signed.toHash(),
+          }),
+        ).resolves.toBeUndefined();
+      } finally {
+        runtime.close();
+      }
+    },
+  );
+
+  it.each([
+    { label: "fee below tranche", feeDelta: -1n },
+    { label: "fee above tranche", feeDelta: 1n },
+    { label: "reward below release", rewardDelta: -1n },
+    { label: "reward above release", rewardDelta: 1n },
+    { label: "different action", actionStage: "step-one" },
+    { label: "missing private capability", capability: false },
+    { label: "ordinary high fee", capability: false, actionStage: "step-one" },
+    { label: "ordinary wallet input", includeWalletInput: true },
+    { label: "foreign protocol authority", foreignAuthority: true },
+  ])(
+    "rejects signed slash funding with $label before durable preparation",
+    async (options) => {
+      const runtime = await slashFundingFixture(options);
+      try {
+        await expect(runtime.admit()).rejects.toThrow();
+        expect(runtime.prepare).not.toHaveBeenCalled();
+      } finally {
+        runtime.close();
+      }
+    },
+  );
+
+  it("rechecks the exact signed slash bytes before submission", async () => {
+    const runtime = await slashFundingFixture();
+    try {
+      await runtime.admit();
+      const changed = signedFundingTransaction({
+        inputOutRefs: [],
+        outputLovelace: 400_000_001n,
+      });
+      runtime.signed.toTransaction = changed.toTransaction;
+      await expect(
+        assertWorkflowFundingReservationReadyToSubmit({
+          journal: runtime.journal,
+          transactionHash: runtime.signed.toHash(),
+        }),
+      ).rejects.toThrow("changed before submission");
+    } finally {
+      runtime.close();
+    }
+  });
+
+  it("prepares the exact signed wire and original body digest used by default submission", async () => {
+    const runtime = await runtimeFunding("step-one");
+    const signed = signedFundingTransaction({
+      inputOutRefs: runtime.selected.fundingOutRefs,
+      outputLovelace: 14_800_000n,
+      nonCanonicalBody: true,
+    });
+    const transaction = signed.toTransaction();
+    expect(transaction.to_cbor_hex()).not.toBe(
+      transaction.to_canonical_cbor_hex(),
+    );
+    await prepareRuntimeFunding(runtime, signed);
+    expect(runtime.prepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transition: expect.objectContaining({
+          signedTransactionCborHex: transaction.to_cbor_hex(),
+          transactionBodySha256: createHash("sha256")
+            .update(Buffer.from(transaction.body().to_cbor_hex(), "hex"))
+            .digest("hex"),
+        }),
+      }),
+    );
+  });
+
+  it("reserves the consumed signed subset while leaving unused leased candidates intact", async () => {
+    const runtime = await runtimeFunding("step-one");
+    const input = `${"73".repeat(32)}#0`;
+    await prepareRuntimeFunding(
+      runtime,
+      signedFundingTransaction({
+        inputOutRefs: [input],
+        outputLovelace: 9_800_000n,
+      }),
+    );
+    expect(runtime.prepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transition: expect.objectContaining({ consumedOutRefs: [input] }),
+      }),
+    );
+  });
+
+  it("defers live input resolution until after the durable pending intent can reconcile", async () => {
+    const runtime = await runtimeFunding("step-one", { begin: false });
+    expect(runtime.resolveInputs).not.toHaveBeenCalled();
+    await runtime.begin();
+    expect(runtime.resolveInputs).toHaveBeenCalledWith(
+      runtime.snapshot.activeInputs.map(({ outRef }) => outRef),
+    );
+  });
+
+  it.each(["foreign-wallet", "signature", "fee", "execution-units"] as const)(
+    "refuses actual signed %s before preparing any durable transition",
+    async (kind) => {
+      const runtime = await runtimeFunding("step-one");
+      const maximumFee = BigInt(
+        readWorkflowRuntimeFundingPolicy(runtime.policy).maximumFeeLovelace,
+      );
+      const otherKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x52));
+      const otherAddress = CML.EnterpriseAddress.new(
+        0,
+        CML.Credential.new_pub_key(otherKey.to_public().hash()),
+      )
+        .to_address()
+        .to_bech32();
+      const fee = kind === "fee" ? maximumFee + 1n : 200_000n;
+      const signed = signedFundingTransaction({
+        inputOutRefs: runtime.selected.fundingOutRefs,
+        outputLovelace: 15_000_000n - fee,
+        fee,
+        ...(kind === "foreign-wallet" ? { outputAddress: otherAddress } : {}),
+        ...(kind === "signature" ? { signingKey: otherKey } : {}),
+        ...(kind === "execution-units" ? { redeemerMemory: 14_000_001n } : {}),
+      });
+      await expect(prepareRuntimeFunding(runtime, signed)).rejects.toThrow(
+        kind === "foreign-wallet"
+          ? "escapes"
+          : kind === "signature"
+            ? "signature"
+            : kind === "fee"
+              ? "fee"
+              : "maxTxExUnits",
+      );
+      expect(runtime.prepare).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts exact min-Ada custody and refuses an extra wallet-funded lovelace", async () => {
+    for (const surplus of [0n, 1n]) {
+      const runtime = await runtimeFunding("step-one");
+      const policy = readWorkflowRuntimeFundingPolicy(runtime.policy);
+      const address = CML.Address.from_bech32(policy.contracts[0]!.address);
+      const datum = () =>
+        CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex("00"));
+      const minimum = CML.min_ada_required(
+        CML.TransactionOutput.new(
+          address,
+          CML.Value.from_coin(2_000_000n),
+          datum(),
+        ),
+        4310n,
+      );
+      const allocation = minimum + surplus;
+      const signed = signedFundingTransaction({
+        inputOutRefs: runtime.selected.fundingOutRefs,
+        outputLovelace: 14_800_000n - allocation,
+        additionalOutputs: [
+          CML.TransactionOutput.new(
+            address,
+            CML.Value.from_coin(allocation),
+            datum(),
+          ),
+        ],
+      });
+      if (surplus === 0n)
+        await expect(
+          prepareRuntimeFunding(runtime, signed),
+        ).resolves.toBeUndefined();
+      else
+        await expect(prepareRuntimeFunding(runtime, signed)).rejects.toThrow(
+          "custody allocation",
+        );
+    }
+  });
+
+  it("requires exact confirmed lineage before reusing locked workflow capital", async () => {
+    const sample = await runtimeFunding("step-one");
+    const address = readWorkflowRuntimeFundingPolicy(sample.policy)
+      .contracts[0]!.address;
+    const locked: UTxO = {
+      txHash: "77".repeat(32),
+      outputIndex: 0,
+      address,
+      assets: { lovelace: 3_000_000n },
+      datum: "00",
+    };
+    for (const lineage of ["exact", "missing", "changed"] as const) {
+      const runtime = await runtimeFunding("step-one", {
+        additionalInputs: [locked],
+        ...(lineage === "missing" ? {} : { confirmedInput: locked }),
+        changedLineage: lineage === "changed",
+      });
+      const signed = signedFundingTransaction({
+        inputOutRefs: [
+          ...runtime.selected.fundingOutRefs,
+          `${locked.txHash}#0`,
+        ],
+        outputLovelace: 14_800_000n,
+        additionalOutputs: [utxoToCore(locked).output()],
+      });
+      if (lineage === "exact")
+        await expect(
+          prepareRuntimeFunding(runtime, signed),
+        ).resolves.toBeUndefined();
+      else
+        await expect(prepareRuntimeFunding(runtime, signed)).rejects.toThrow(
+          "lineage",
+        );
+    }
+  });
+
+  it("keeps the collateral availability floor separate from exact failure forfeiture", async () => {
+    const runtime = await runtimeFunding("step-one", { collateral: true });
+    await expect(
+      prepareRuntimeFunding(
+        runtime,
+        signedFundingTransaction({
+          inputOutRefs: runtime.selected.fundingOutRefs,
+          outputLovelace: 14_800_000n,
+          redeemerMemory: 1n,
+          collateral: {
+            outRefs: runtime.selected.collateralOutRefs,
+            total: 300_000n,
+            returned: 4_700_000n,
+          },
+        }),
+      ),
+    ).resolves.toBeUndefined();
+    const insufficient = await runtimeFunding("step-one", { collateral: true });
+    await expect(
+      prepareRuntimeFunding(
+        insufficient,
+        signedFundingTransaction({
+          inputOutRefs: insufficient.selected.fundingOutRefs,
+          outputLovelace: 14_800_000n,
+          redeemerMemory: 1n,
+          collateral: {
+            outRefs: insufficient.selected.collateralOutRefs,
+            total: 299_999n,
+            returned: 4_700_001n,
+          },
+        }),
+      ),
+    ).rejects.toThrow("collateral");
+  });
+
+  it("uses the unchanged journal stage to prepare actual signed funding", async () => {
+    const runtime = await runtimeFunding("verify_source", {
+      useStage: true,
+    });
+    const preflight = bindWorkflowPreflightTransaction(
+      Object.freeze({ txHash: "stage-funded" }),
+      signedFundingTransaction({
+        inputOutRefs: runtime.selected.fundingOutRefs,
+        outputLovelace: 14_800_000n,
+      }),
+    );
+    await expect(
+      prepareWorkflowFundingReservationTransaction({
+        journal: runtime.journal,
+        action: {
+          actionId: "verify_source",
+          input: { stage: "verify_source" },
+        },
+        preflight,
+      }),
+    ).resolves.toBeUndefined();
+    expect(runtime.prepare).toHaveBeenCalledTimes(1);
+  });
+
   it("binds each funding reservation permit to exactly one workflow journal", async () => {
     const authority = await admittedActuation();
     const first = Object.freeze({ id: "first" });
@@ -466,12 +986,16 @@ describe("compiled manifest-bound production runtime V1", () => {
     ).toThrow("already bound to a workflow journal");
   });
 
-  it("leases and exposes only the deterministic action-specific funding subset", async () => {
-    await expect(measuredFundingSelection("step-one")).resolves.toEqual({
-      fundingOutRefs: [`${"73".repeat(32)}#0`],
+  it("exposes only durable leased candidates independently of action samples", async () => {
+    await expect(runtimeFundingSelection("step-one")).resolves.toEqual({
+      fundingOutRefs: [
+        `${"71".repeat(32)}#0`,
+        `${"72".repeat(32)}#0`,
+        `${"73".repeat(32)}#0`,
+      ],
       collateralOutRefs: [],
     });
-    await expect(measuredFundingSelection("step-three")).resolves.toEqual({
+    await expect(runtimeFundingSelection("step-three")).resolves.toEqual({
       fundingOutRefs: [
         `${"71".repeat(32)}#0`,
         `${"72".repeat(32)}#0`,
@@ -481,14 +1005,14 @@ describe("compiled manifest-bound production runtime V1", () => {
     });
   });
 
-  it("binds the actual signed body to the selected funding subset and measured shape", async () => {
-    const runtime = await measuredFundingRuntime("step-one");
+  it("binds the actual signed body to durable leased wallet inputs", async () => {
+    const runtime = await runtimeFunding("step-one");
     const action = { actionId: "step-one", input: { actionKind: "step-one" } };
     const validPreflight = bindWorkflowPreflightTransaction(
       Object.freeze({ txHash: "valid" }),
       signedFundingTransaction({
         inputOutRefs: runtime.selected.fundingOutRefs,
-        outputLovelace: 9n,
+        outputLovelace: 14_800_000n,
       }),
     );
     await expect(
@@ -500,15 +1024,15 @@ describe("compiled manifest-bound production runtime V1", () => {
     ).resolves.toBeUndefined();
     expect(runtime.prepare).toHaveBeenCalledTimes(1);
 
-    const hostile = await measuredFundingRuntime("step-one");
+    const hostile = await runtimeFunding("step-one");
     const substitutedPreflight = bindWorkflowPreflightTransaction(
       Object.freeze({ txHash: "substituted" }),
       signedFundingTransaction({
         inputOutRefs: [
           ...hostile.selected.fundingOutRefs,
-          `${"71".repeat(32)}#0`,
+          `${"75".repeat(32)}#0`,
         ],
-        outputLovelace: 12n,
+        outputLovelace: 15_800_000n,
       }),
     );
     await expect(
@@ -517,7 +1041,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         action,
         preflight: substitutedPreflight,
       }),
-    ).rejects.toThrow("transaction exceeds its admitted measured shape");
+    ).rejects.toThrow("unreserved wallet input");
     expect(hostile.prepare).not.toHaveBeenCalled();
   });
 
@@ -526,16 +1050,16 @@ describe("compiled manifest-bound production runtime V1", () => {
       type: "PlutusV3" as const,
       script: "4d01000033222220051200120012",
     });
-    const runtime = await measuredFundingRuntime("step-one", {
-      measuredReference: measuredReferenceScript,
+    const runtime = await runtimeFunding("step-one", {
+      governedReference: fundingReferenceScript,
       resolvedReference: substitutedScript,
     });
     const preflight = bindWorkflowPreflightTransaction(
       Object.freeze({ txHash: "reference-substitution" }),
       signedFundingTransaction({
         inputOutRefs: runtime.selected.fundingOutRefs,
-        outputLovelace: 9n,
-        referenceOutRefs: [measuredReferenceOutRef],
+        outputLovelace: 14_800_000n,
+        referenceOutRefs: [fundingReferenceOutRef],
       }),
     );
     await expect(
@@ -544,12 +1068,12 @@ describe("compiled manifest-bound production runtime V1", () => {
         action: { actionId: "step-one", input: { actionKind: "step-one" } },
         preflight,
       }),
-    ).rejects.toThrow("reference-script identity differs from measurement");
+    ).rejects.toThrow("ungoverned reference script");
     expect(runtime.prepare).not.toHaveBeenCalled();
   });
 
-  it("rechecks measured reservation input bounds after durable refresh", async () => {
-    const runtime = await measuredFundingRuntime("step-three");
+  it("rechecks exact reserved values after durable refresh", async () => {
+    const runtime = await runtimeFunding("step-three");
     runtime.setSnapshot(
       Object.freeze({
         ...runtime.snapshot,
@@ -558,7 +1082,7 @@ describe("compiled manifest-bound production runtime V1", () => {
           ...runtime.snapshot.activeInputs,
           Object.freeze({
             outRef: `${"75".repeat(32)}#0`,
-            role: "funding" as const,
+            role: "collateral" as const,
             lovelace: "1",
             assets: Object.freeze([]),
           }),
@@ -570,66 +1094,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         journal: runtime.journal,
         transactionHash: "00".repeat(32),
       }),
-    ).rejects.toThrow("exceeds its measured input bounds");
-  });
-
-  it("registers only the families with complete shared workflow drivers", () => {
-    expect(Object.keys(WORKFLOW_RUNNER_FACTORIES)).toEqual([
-      "doubleSpend",
-      "nonExistentInput",
-      "nonExistentInputNoIndex",
-      "invalidRange",
-      "zeroInput",
-      "daHashPreimage",
-      "noReferenceInput",
-      "referenceInputNoIdx",
-      "invalidSignature",
-      "fabricatedDeposit",
-      "fabricatedWithdrawal",
-      "withdrawnReferenceInput",
-      "canonicalDecodability",
-      "committedFieldShape",
-      "minFee",
-      "doubleWithdraw",
-      "l2TxMistag",
-      "withdrawnInput",
-      "missingSignature",
-      "missingNativeScriptTx",
-      "inputSetUniqueness",
-      "networkId",
-      "missingNativeScriptUtxo",
-      "mintAuthorization",
-      "nativeScriptInvalid",
-      "nativeScriptDecoding",
-      "crossBlockDuplicateEvent",
-      "withdrawalMistag",
-      "minAda",
-      "transitionTrace",
-      "valueNotPreserved",
-      "fieldPreimageLengthMismatch",
-      "fieldItemWidthIllegal",
-      "witnessScriptDecoding",
-      "scriptIntegrityHashMissing",
-      "transactionOutputNonCanonical",
-      "resolvedOutputNonCanonical",
-      "mintDeclaredAssetLimit",
-      "spendInputSignerMissing",
-      "protectedOutputSignerMissing",
-      "observersForbiddenOnUntaggedNetwork",
-      "observerOrderInvalid",
-      "redeemerCanonicity",
-      "outputReferenceScriptDecoding",
-      "executionSourceScriptDecoding",
-      "receivePurposeLanguage",
-      "unusedScriptWitness",
-      "missingScriptSource",
-      "missingRedeemer",
-      "unusedRedeemer",
-      "executionNativeScriptInvalid",
-      "scriptIntegrityHashMismatch",
-      "distinctAssetAccumulationLimit",
-      "validationTraceDispute",
-    ]);
+    ).rejects.toThrow("resolver changed reserved lovelace");
   });
 
   it("admits every fixed factory only for its exact application category", () => {
@@ -912,6 +1377,176 @@ describe("compiled manifest-bound production runtime V1", () => {
       ).resolves.toHaveLength(1);
     } finally {
       await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps one admitted runner session until pending work completes", async () => {
+    const actuation = await admittedActuation();
+    const close = vi.fn(async () => undefined);
+    const sources = [retainedDaSource()];
+    const workflow = {
+      binding: {
+        deploymentFingerprint: DEPLOYMENT,
+        definition: {
+          category: "doubleSpend" as const,
+          headerHash: actuation.headerHash,
+        },
+      },
+    };
+    const loadRuntimeConfig = vi.fn(async () => ({
+      schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+      config: {},
+      retainedDaSources: sources,
+      close,
+    }));
+    const constructWorkflow = vi.fn(async () => workflow);
+    const completed = { kind: "completed", workflowId: "existing-workflow" };
+    const execute =
+      vi.fn<
+        Parameters<
+          typeof createManifestBoundWorkflowRunner<
+            "doubleSpend",
+            Record<string, never>,
+            typeof workflow
+          >
+        >[0]["execute"]
+      >();
+    execute.mockImplementation(async () =>
+      execute.mock.calls.length < 3 ? { kind: "pending" } : completed,
+    );
+    const runner = createManifestBoundWorkflowRunner({
+      category: "doubleSpend",
+      loadRuntimeConfig,
+      constructWorkflow,
+      execute,
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const running = runner.runOrResume({
+        mode: "run",
+        category: "doubleSpend",
+        deploymentFingerprint: DEPLOYMENT,
+        headerHash: actuation.headerHash,
+        decisionDigest: actuation.decisionDigest,
+        actuationPermit: actuation.actuationPermit,
+        fundingReservationPermit: actuation.fundingReservationPermit,
+        journalDirectory: "/tmp/midgard-runtime-pending-session",
+        runtimeConfigPath: "/etc/midgard/runtime.json",
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(999);
+      expect(execute).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(running).resolves.toBe(completed);
+      expect(execute).toHaveBeenCalledTimes(3);
+      const calls = execute.mock.calls;
+      expect(calls.map(([input]) => input.mode)).toEqual([
+        "run",
+        "resume",
+        "resume",
+      ]);
+      for (const [input] of calls) {
+        expect(input.journal).toBe(calls[0]![0].journal);
+        expect(input.workflow).toBe(workflow);
+        expect(input.sources).toBe(sources);
+      }
+      expect(loadRuntimeConfig).toHaveBeenCalledOnce();
+      expect(constructWorkflow).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops pending continuation when authority is revoked and closes the session", async () => {
+    const actuation = await admittedActuation();
+    const close = vi.fn(async () => undefined);
+    const sources = [retainedDaSource()];
+    const execute = vi.fn(async () => ({ kind: "pending" }));
+    const runner = createManifestBoundWorkflowRunner({
+      category: "doubleSpend",
+      loadRuntimeConfig: async () => ({
+        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+        config: {},
+        retainedDaSources: sources,
+        close,
+      }),
+      constructWorkflow: async () => ({
+        binding: {
+          deploymentFingerprint: DEPLOYMENT,
+          definition: {
+            category: "doubleSpend" as const,
+            headerHash: actuation.headerHash,
+          },
+        },
+      }),
+      execute,
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const running = runner.runOrResume({
+        mode: "resume",
+        category: "doubleSpend",
+        deploymentFingerprint: DEPLOYMENT,
+        headerHash: actuation.headerHash,
+        decisionDigest: actuation.decisionDigest,
+        actuationPermit: actuation.actuationPermit,
+        fundingReservationPermit: actuation.fundingReservationPermit,
+        journalDirectory: "/tmp/midgard-runtime-pending-revocation",
+        runtimeConfigPath: "/etc/midgard/runtime.json",
+      });
+      const rejected = running.catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(execute).toHaveBeenCalledTimes(1);
+      actuation.revoke("canonical rollback observed during confirmation");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(isWorkflowActuationRevokedError(await rejected)).toBe(true);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns every non-pending continuation result unchanged", async () => {
+    const actuation = await admittedActuation();
+    const journal = bindWorkflowActuationJournal({
+      journal: new MemoryFraudProofWorkflowJournalStore(),
+      permit: actuation.actuationPermit,
+      decisionDigest: actuation.decisionDigest,
+      deploymentFingerprint: DEPLOYMENT,
+      category: "doubleSpend",
+      headerHash: actuation.headerHash,
+    });
+    const values = [
+      { kind: "stalled" },
+      { kind: "awaiting_counterparty" },
+      { kind: "unknown-result" },
+      { state: "pending" },
+      undefined,
+      null,
+      "pending",
+    ];
+    for (const value of values) {
+      const execute = vi.fn(async () => value);
+      await expect(
+        continuePendingWorkflow({
+          invocation: {
+            mode: "resume",
+            deploymentFingerprint: DEPLOYMENT,
+            category: "doubleSpend",
+            headerHash: actuation.headerHash,
+          },
+          journal,
+          execute,
+        }),
+      ).resolves.toBe(value);
+      expect(execute).toHaveBeenCalledExactlyOnceWith("resume");
     }
   });
 

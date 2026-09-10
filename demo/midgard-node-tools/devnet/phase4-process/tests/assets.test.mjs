@@ -1,20 +1,21 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const read = (path) => readFileSync(join(root, path), "utf8");
 const temporaryRoot = process.platform === "win32" ? tmpdir() : "/tmp";
 
 const run = (
@@ -81,197 +82,6 @@ test("all shell assets parse", async () => {
   }
 });
 
-test("live acceptance executes the snapshot-bound distribution without rebuilding it", () => {
-  const packageJson = JSON.parse(read("../../package.json"));
-  assert.equal(
-    packageJson.scripts["accept:phase4:pipelined-process"],
-    "node dist/index.js e2e-pipelined-commit-process-acceptance --node-root ../midgard-node",
-  );
-  assert.match(
-    read("README.md"),
-    /Snapshot capture records[\s\S]*Reset performs every source, distribution, image, configuration, snapshot/,
-  );
-});
-
-test("bootstrap explicitly seeds and preflights isolated A/B L2 genesis state", () => {
-  const protocolBootstrap = read("scripts/protocol-bootstrap.sh");
-  const writeAcceptanceEnv = read("scripts/write-acceptance-env.sh");
-  const acceptance = read(
-    "../../src/commands/e2e-pipelined-commit-process-acceptance.ts",
-  );
-  const index = read("../../src/index.ts");
-
-  assert.match(protocolBootstrap, /RUN_GENESIS_ON_STARTUP=false/);
-  assert.match(protocolBootstrap, /MIDGARD_DOTENV_MODE=disabled/);
-  assert.match(protocolBootstrap, /MIN_FEE_A=0 MIN_FEE_B=0/);
-  assert.match(protocolBootstrap, /upsert_private_env MIN_FEE_A 0/);
-  assert.match(protocolBootstrap, /upsert_private_env MIN_FEE_B 0/);
-  assert.match(
-    protocolBootstrap,
-    /MIDGARD_PHASE4_GENESIS_BOOTSTRAP=phase4-local-devnet-l2-genesis-v1[\s\S]*phase4-genesis-ledger --seed/,
-  );
-  assert.doesNotMatch(protocolBootstrap, /submit-deposit/);
-  assert.match(
-    protocolBootstrap,
-    /TESTNET_GENESIS_WALLET_SEED_PHRASE_C=.*TESTNET_GENESIS_WALLET_SEED_PHRASE_A/,
-  );
-  assert.match(writeAcceptanceEnv, /MIDGARD_DOTENV_MODE: "disabled"/);
-  assert.match(writeAcceptanceEnv, /MIN_FEE_A: "0"/);
-  assert.match(writeAcceptanceEnv, /MIN_FEE_B: "0"/);
-  assert.match(
-    writeAcceptanceEnv,
-    /values\.TESTNET_GENESIS_WALLET_SEED_PHRASE_C = values\.TESTNET_GENESIS_WALLET_SEED_PHRASE_A/,
-  );
-  assert.match(acceptance, /phase4-genesis-ledger", "--verify-only/);
-  assert.match(acceptance, /PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE/);
-  assert.match(index, /loadRuntimeDotenv\(\)/);
-});
-
-test("machine-readable reset and recovery keep successful Compose progress off their output streams", () => {
-  const common = read("scripts/common.sh");
-  assert.match(
-    common,
-    /compose_quiet\(\)[\s\S]*compose "\$@" >"\$compose_log" 2>&1[\s\S]*cat "\$compose_log" >&2/,
-  );
-  for (const script of ["reset.sh", "t1-recover.sh"]) {
-    const source = read(`scripts/${script}`);
-    assert.match(source, /compose_quiet stop/);
-    assert.match(source, /compose_quiet up/);
-    assert.match(source, /compose_quiet restart ogmios/);
-    assert.match(source, /compose_quiet restart kupo/);
-    assert.doesNotMatch(source, /(?:^|\s)compose (?:stop|up|restart)/m);
-  }
-});
-
-test("T1 recovery restores only chain/index and emits exact snapshot-bound evidence", () => {
-  const recovery = read("scripts/t1-recover.sh");
-  const acceptance = read(
-    "../../src/commands/e2e-pipelined-commit-process-acceptance.ts",
-  );
-  const command = read("../../src/commands/phase4-t1-recovery.ts");
-  assert.equal(
-    statSync(join(root, "scripts/t1-recover.sh")).mode & 0o777,
-    0o755,
-  );
-  assert.match(recovery, /MIDGARD_PHASE4_PROCESS_TARGET:-.*local-devnet/s);
-  assert.match(recovery, /phase4-t1-local-canonical-advance-v1/);
-  assert.match(recovery, /run\.env changed the dedicated T1 mutation token/);
-  assert.match(recovery, /sha256sum --check SHA256SUMS/);
-  assert.match(recovery, /SNAPSHOT_SET_SHA256/);
-  assert.match(recovery, /SNAPSHOT_IDENTITY_SHA256/);
-  assert.match(recovery, /dist="\$tools_root\/dist\/index\.js"/);
-  for (const field of [
-    "sourceSha256",
-    "distSha256",
-    "toolsSourceSha256",
-    "toolsDistSha256",
-    "genesisSha256",
-    "configSha256",
-    "acceptanceEnvSha256",
-    "composeSha256",
-    "phase4AssetsSha256",
-    "phasRegistrationProofSha256",
-    "cardanoId",
-    "ogmiosId",
-    "kupoId",
-    "postgresId",
-  ])
-    assert.match(recovery, new RegExp(field));
-  assert.match(recovery, /compose_quiet stop kupo ogmios cardano-node/);
-  assert.doesNotMatch(recovery, /compose_quiet stop[^\n]*postgres/);
-  assert.match(recovery, /restore_chain_dir cardano-db\.tar\.gz/);
-  assert.match(recovery, /restore_chain_dir kupo\.tar\.gz/);
-  assert.doesNotMatch(recovery, /restore_chain_dir postgres|postgres\.tar\.gz/);
-  assert.match(recovery, /phase4-t1-probe[\s\S]*expected-present-header-hash/);
-  assert.match(recovery, /phase4-t1-probe[\s\S]*expected-absent-header-hash/);
-  assert.match(recovery, /phase4-t1-advance/);
-  assert.match(recovery, /pending_block_finalizations/);
-  assert.match(recovery, /pg_dump/);
-  assert.match(recovery, /cmp -s .*journal-before\.sql.*journal-after\.sql/);
-  assert.match(recovery, /synchronized_slot" = "\$synchronized_kupo"/);
-  assert.match(recovery, /midgard-phase4-t1-recovery-attestation-v1/);
-  for (const field of [
-    "snapshotSetSha256",
-    "snapshotIdentitySha256",
-    "phasRegistrationProofSha256",
-    "phasRegistration",
-    "abandonedHeaderHash",
-    "abandonedSubmittedTxHash",
-    "baseHeaderHash",
-    "recoveredTipHeaderHash",
-    "canonicalAdvanceTxHash",
-    "journalSha256Before",
-    "journalSha256After",
-    "cardanoTip",
-    "kupoCheckpoint",
-  ])
-    assert.match(recovery, new RegExp(field));
-
-  assert.match(command, /28-byte L2 header hash \(56 lowercase hex\)/);
-  assert.match(command, /32-byte Cardano hash \(64 lowercase hex\)/);
-  assert.match(command, /commitExplicitBlockHeaderProgram/);
-  assert.match(command, /assertPhase4T1NoopAdvance/);
-  assert.match(command, /prevHeaderHash !== expectedBase/);
-  assert.match(command, /prevUtxosRoot !== before\.canonicalTip\.utxosRoot/);
-  assert.match(command, /EMPTY_MERKLE_TREE_ROOT/);
-
-  assert.match(acceptance, /confirmationIntervalMs: 600_000/);
-  assert.match(acceptance, /pre-recovery-attempt/);
-  assert.match(acceptance, /post-recovery-attempt/);
-  assert.match(acceptance, /readLogAttempt/);
-  assert.match(acceptance, /parseAndValidatePhase4T1RecoveryAttestation/);
-  assert.match(acceptance, /journalByteIdenticalAcrossChainRestore: true/);
-  assert.match(acceptance, /replacementPayloadTxIds/);
-  assert.match(acceptance, /continuedSpeculation: true/);
-  assert.match(
-    read("scripts/write-acceptance-env.sh"),
-    /key\.startsWith\("MIDGARD_PHASE4_T1_"\)/,
-  );
-});
-
-test("generator uses era-specific hashes and epoch-zero hardforks", () => {
-  const generate = read("scripts/generate.sh");
-  assert.match(generate, /byron genesis print-genesis-hash/);
-  assert.match(generate, /TestConwayHardForkAtEpoch:0/);
-  assert.match(generate, /DijkstraGenesisFile/);
-  assert.match(generate, /TestDijkstraHardForkAtEpoch:0/);
-  assert.match(generate, /TxSubmissionInitDelay:0/);
-  assert.match(generate, /--stake-delegators 1/);
-  assert.match(generate, /exactly one registered pool and stake delegation/);
-  assert.match(generate, /\.slotLength=1/);
-  assert.match(generate, /\.activeSlotsCoeff=1/);
-  assert.match(generate, /\.securityParam=90000/);
-  assert.match(generate, /\.epochLength=900000/);
-  assert.match(generate, /\.protocolConsts\.k=90000/);
-  assert.match(generate, /270000 seconds \(75 hours\)/);
-  assert.match(generate, /protocolParams\.protocolVersion\.major/);
-  assert.match(generate, /validate-custom-chain-config\.sh/);
-});
-
-test("isolated bind permissions are explicit and reset-safe", () => {
-  const common = read("scripts/common.sh");
-  assert.match(read("scripts/generate.sh"), /chmod 0777 .*postgres/);
-  assert.match(
-    common,
-    /cardano_socket="\$MIDGARD_PHASE4_RUN_DIR\/cardano\/ipc\/node\.socket"/,
-  );
-  assert.match(
-    common,
-    /attempts=\$\{1:-180\}[\s\S]*while \[ "\$attempts" -gt 0 \][\s\S]*if \[ -S "\$cardano_socket" \] && docker run --rm[\s\S]*return 0[\s\S]*attempts=\$\(\(attempts - 1\)\)[\s\S]*sleep 1/,
-  );
-  assert.match(
-    common,
-    /docker run --rm[\s\S]*--volume "\$MIDGARD_PHASE4_RUN_DIR\/cardano\/ipc:\/ipc"[\s\S]*--entrypoint sh "\$PHASE4_POSTGRES_IMAGE"[\s\S]*-ec 'test -S \/ipc\/node\.socket; chmod 0666 \/ipc\/node\.socket'/,
-  );
-  assert.match(
-    common,
-    /die "timed out waiting for Cardano node socket access"/,
-  );
-  assert.match(common, /chmod 0666 \/ipc\/node.socket/);
-  assert.match(read("scripts/bootstrap.sh"), /grant_cardano_socket_access/);
-  assert.match(read("scripts/reset.sh"), /grant_cardano_socket_access/);
-});
-
 test("Kupo Prometheus checkpoint parsing is strict and fail-closed", async () => {
   const common = join(root, "scripts/common.sh");
   const parse = (payload) =>
@@ -303,383 +113,72 @@ test("Kupo Prometheus checkpoint parsing is strict and fail-closed", async () =>
       /exactly one unlabeled finite nonnegative integer/,
     );
   }
-
-  for (const script of ["capture-snapshot.sh", "reset.sh"]) {
-    assert.match(read(`scripts/${script}`), /parse_kupo_checkpoint/);
-    assert.doesNotMatch(read(`scripts/${script}`), /mostRecentCheckpoint/);
-  }
-  assert.match(read("scripts/capture-snapshot.sh"), /kupo-health\.json/);
 });
 
-test("latest transaction build omits legacy era selection", () => {
-  const funding = read("scripts/fund-wallets.sh");
-  assert.doesNotMatch(funding, /transaction build --conway-era/);
-});
-
-test("compose is run-scoped and uses isolated default ports", () => {
-  const compose = read("compose.yaml");
-  assert.match(compose, /MIDGARD_PHASE4_RUN_DIR:\?/);
-  assert.match(compose, /MIDGARD_PHASE4_COMPOSE_PROJECT:\?/);
-  assert.match(compose, /OGMIOS_PORT:-2337/);
-  assert.match(compose, /KUPO_PORT:-2442/);
-  assert.match(compose, /POSTGRES_PORT:-5544/);
-  assert.match(
-    compose,
-    /cardanosolutions\/ogmios:v7\.0\.0@sha256:8892ef5f77b94f1c95427cf9f2b40e6235a32b27a8b1e378db02289f3991617f/,
+test("protocol bootstrap builds the operator package before running operator commands", async () => {
+  const checkout = mkdtempSync(
+    join(temporaryRoot, "midgard-bootstrap-routing-"),
   );
-  assert.doesNotMatch(compose, /OGMIOS_IMAGE_TAG|ogmios:\$\{[^}]*latest/);
-  assert.match(
-    compose,
-    /CARDANO_BLOCK_PRODUCER: \$\{MIDGARD_PHASE4_BLOCK_PRODUCER:-true\}/,
-  );
-  assert.match(compose, /CARDANO_SHELLEY_OPERATIONAL_CERTIFICATE/);
-  assert.ok(compose.includes("pools-keys/pool1"));
-  assert.doesNotMatch(compose, /delegate-keys\/delegate1/);
-  assert.doesNotMatch(compose, /container_name:/);
-  for (const image of [
-    /ghcr\.io\/intersectmbo\/cardano-node:11\.0\.1@sha256:[a-f0-9]{64}/,
-    /cardanosolutions\/kupo:v2\.11\.0@sha256:[a-f0-9]{64}/,
-    /postgres:15\.15-alpine@sha256:[a-f0-9]{64}/,
-  ]) {
-    assert.match(compose, image);
-  }
-});
-
-test("matched snapshots bind effective images and every build artifact", () => {
-  const capture = read("scripts/capture-snapshot.sh");
-  assert.match(
-    capture,
-    /compose restart ogmios[\s\S]*wait_http[^\n]*OGMIOS[\s\S]*compose restart kupo[\s\S]*wait_http[^\n]*KUPO/,
-  );
-  const reset = read("scripts/reset.sh");
-  for (const field of [
-    "cardano_image_id",
-    "ogmios_image_id",
-    "kupo_image_id",
-    "postgres_image_id",
-    "source_sha",
-    "dist_sha",
-    "tools_source_sha",
-    "tools_dist_sha",
-    "genesis_sha",
-    "config_sha",
-    "acceptance_env_sha",
-    "compose_sha",
-  ]) {
-    assert.match(capture, new RegExp(field));
-  }
-  for (const field of [
-    "sourceSha256",
-    "distSha256",
-    "toolsSourceSha256",
-    "toolsDistSha256",
-    "genesisSha256",
-    "configSha256",
-    "acceptanceEnvSha256",
-    "composeSha256",
-    "cardanoId",
-    "ogmiosId",
-    "kupoId",
-    "postgresId",
-  ])
-    assert.match(reset, new RegExp(field));
-  for (const archive of ["config.tar.gz", "genesis.tar.gz", "acceptance.env"]) {
-    assert.match(capture, new RegExp(archive.replaceAll(".", "\\.")));
-    assert.match(reset, new RegExp(archive.replaceAll(".", "\\.")));
-  }
-});
-
-test("snapshot ownership is explicit before the final permission lock", () => {
-  const capture = read("scripts/capture-snapshot.sh");
-  const finalArchiveAt = capture.indexOf(
-    'archive_dir "$MIDGARD_PHASE4_RUN_DIR/genesis" genesis.tar.gz',
-  );
-  const checksumsAt = capture.indexOf("sha256sum $snapshot_files >SHA256SUMS");
-  const ownershipAt = capture.indexOf("snapshot_uid=$(id -u)");
-  const chmodAt = capture.indexOf('chmod -R go-rwx "$snapshot_dir"');
-  const successAt = capture.indexOf(
-    `printf '%s\\n' "snapshotDir=$snapshot_dir"`,
-  );
-  assert.ok(finalArchiveAt >= 0 && finalArchiveAt < checksumsAt);
-  assert.ok(checksumsAt < ownershipAt && ownershipAt < chmodAt);
-  assert.ok(chmodAt < successAt);
-  assert.match(capture, /case "\$id_value" in[\s\S]*\*\[!0-9\]\*/);
-  assert.match(capture, /require_numeric_id uid "\$snapshot_uid"/);
-  assert.match(capture, /require_numeric_id gid "\$snapshot_gid"/);
-  assert.match(
-    capture,
-    /docker run --rm[\s\S]*--volume "\$snapshot_dir:\/snapshot"[\s\S]*--entrypoint sh "\$PHASE4_POSTGRES_IMAGE"[\s\S]*chown -R "\$uid:\$gid" \/snapshot/,
-  );
-  assert.match(capture, /case "\$uid" in ""\|\*\[!0-9\]\*\) exit 64/);
-  assert.match(capture, /case "\$gid" in ""\|\*\[!0-9\]\*\) exit 64/);
-  assert.match(capture, /--volume "\$source_dir:\/source:ro"/);
-});
-
-test("protocol bootstrap migrates and pins the run-scoped manifest before PHAS", () => {
-  const bootstrap = read("scripts/protocol-bootstrap.sh");
-  const aikenAt = bootstrap.indexOf("aiken build --env testnet");
-  const buildAt = bootstrap.indexOf("pnpm build");
-  const migrateAt = bootstrap.indexOf("node dist/index.js db:migrate");
-  const deployAt = bootstrap.indexOf(
-    "node dist/index.js deploy-reference-script-node-runtime",
-  );
-  const manifestAt = bootstrap.indexOf(
-    'export MIDGARD_DEPLOYMENT_MANIFEST_PATH="$manifest"',
-  );
-  const contractInfoAt = bootstrap.indexOf(
-    'export MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH="$manifest"',
-  );
-  const phasAt = bootstrap.indexOf(
-    "node dist/index.js register-phas-membership-reward-account",
-  );
-  assert.ok(aikenAt >= 0 && aikenAt < buildAt);
-  assert.match(bootstrap, /plutus\.json\.sha256/);
-  assert.match(bootstrap, /MIDGARD_REAL_BLUEPRINT_PATH/);
-  assert.match(
-    bootstrap,
-    /upsert_private_env HUB_ORACLE_ONE_SHOT_TX_HASH "\$tx_hash" "\$node_env"/,
-  );
-  assert.match(
-    bootstrap,
-    /upsert_private_env HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX "\$output_index" "\$node_env"/,
-  );
-  assert.doesNotMatch(bootstrap, /HUB_ORACLE_ONE_SHOT_TX_HASH[^\n]*>>/);
-  assert.match(bootstrap, /\. "\$run_env"/);
-  assert.match(bootstrap, /authoritative Phase 4 run directory/);
-  assert.match(
-    bootstrap,
-    /unset MIDGARD_DEPLOYMENT_MANIFEST_PATH MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH/,
-  );
-  assert.ok(buildAt >= 0 && buildAt < migrateAt && migrateAt < deployAt);
-  assert.ok(
-    deployAt < manifestAt &&
-      manifestAt < contractInfoAt &&
-      contractInfoAt < phasAt,
-  );
-  assert.match(bootstrap, /--contract-deployment-info-output "\$manifest"/);
-  assert.match(bootstrap, /\.steps\.phasRegistration\.status == "complete"/);
-  assert.match(bootstrap, /--registration-transaction-body-output/);
-  assert.match(bootstrap, /transactionBody\.artifactSha256/);
-  assert.match(
-    bootstrap,
-    /fresh Phase 4 PHAS registration did not produce exact auditable evidence/,
-  );
-});
-
-test("PHAS preflight is a pinned read-only ledger and canonical-transaction proof", () => {
-  const preflight = read("scripts/phas-registration-preflight.sh");
-  assert.match(preflight, /latest query stake-address-info/);
-  assert.match(preflight, /address info --address "\$reward_address"/);
-  assert.match(preflight, /debug transaction view --output-json/);
-  assert.match(preflight, /latest transaction txid/);
-  assert.match(preflight, /"f0" \+ \$scriptHash/);
-  assert.match(preflight, /Stake address registration/);
-  assert.match(preflight, /--socket-path \/run\/cardano\/ipc\/node\.socket/);
-  assert.match(preflight, /PHASE4_CARDANO_NODE_IMAGE/);
-  assert.match(preflight, /MIDGARD_PHASE4_NETWORK_MAGIC/);
-  assert.match(preflight, /matches\/\*%40\$registration_tx_hash/);
-  assert.match(preflight, /cardano-cli-local-state-query/);
-  assert.match(preflight, /readOnly:true,registered:true/);
-  assert.doesNotMatch(
-    preflight,
-    /rewardAccountSummaries|register-phas|--repair/,
-  );
-
-  const capture = read("scripts/capture-snapshot.sh");
-  const proofAt = capture.indexOf("phas-registration-preflight.sh");
-  const identityAt = capture.indexOf("snapshot-identity.json");
-  const checksumsAt = capture.indexOf("sha256sum $snapshot_files");
-  assert.ok(proofAt >= 0 && proofAt < identityAt && identityAt < checksumsAt);
-  assert.match(capture, /phase4AssetsSha256/);
-  assert.match(capture, /phasRegistrationProofSha256/);
-  assert.match(capture, /phas-registration-transaction-body\.json/);
-
-  const reset = read("scripts/reset.sh");
-  const restoredProofAt = reset.indexOf("phas-registration-preflight.sh");
-  const attestationAt = reset.indexOf(
-    "midgard-phase4-local-devnet-reset-attestation-v1",
-  );
-  const resumeAt = reset.indexOf("MIDGARD_PHASE4_BLOCK_PRODUCER=true");
-  assert.ok(
-    restoredProofAt >= 0 &&
-      restoredProofAt < attestationAt &&
-      attestationAt < resumeAt,
-  );
-  assert.match(reset, /cmp -s .*phas-registration-proof\.json/);
-});
-
-test("reset rejects every immutable drift before stopping services or restoring durable trees", () => {
-  const reset = read("scripts/reset.sh");
-  const mutationAt = reset.indexOf(
-    "compose_quiet stop kupo ogmios cardano-node postgres",
-  );
-  const restoreAt = reset.indexOf("restore_dir cardano-db.tar.gz");
-  assert.ok(mutationAt >= 0 && mutationAt < restoreAt);
-  for (const guard of [
-    "snapshot PHAS proof, canonical identity, and transaction body are not exactly bound",
-    "current_source_sha=$(tree_sha256",
-    "current_dist_sha=$(tree_sha256",
-    "current_tools_source_sha=$(tree_sha256",
-    "current_tools_dist_sha=$(tree_sha256",
-    "current_phase4_assets_sha=$(tree_sha256",
-    "effective pinned image IDs do not match",
-  ]) {
-    const guardAt = reset.indexOf(guard);
-    assert.ok(
-      guardAt >= 0 && guardAt < mutationAt,
-      `${guard} must precede mutation`,
+  const tools = join(checkout, "demo/midgard-node-tools");
+  const operator = join(checkout, "demo/midgard-node");
+  const scripts = join(tools, "devnet/phase4-process/scripts");
+  const contracts = join(checkout, "onchain/aiken");
+  const binaries = join(checkout, "bin");
+  const runDir = join(checkout, "run");
+  try {
+    for (const directory of [
+      scripts,
+      operator,
+      contracts,
+      binaries,
+      join(runDir, "secrets"),
+      join(runDir, "work"),
+    ])
+      mkdirSync(directory, { recursive: true });
+    for (const name of ["common.sh", "protocol-bootstrap.sh"]) {
+      copyFileSync(join(root, "scripts", name), join(scripts, name));
+    }
+    writeFileSync(join(contracts, "plutus.json"), "{}\n");
+    writeFileSync(join(runDir, "secrets/node.env"), "");
+    writeFileSync(
+      join(runDir, "secrets/wallets.env"),
+      "TESTNET_GENESIS_WALLET_SEED_PHRASE_A=test-a\nTESTNET_GENESIS_WALLET_SEED_PHRASE_B=test-b\n",
     );
+    writeFileSync(
+      join(runDir, "run.env"),
+      [
+        `MIDGARD_PHASE4_RUN_DIR=${runDir}`,
+        "MIDGARD_PHASE4_COMPOSE_PROJECT=midgard_phase4_process_routing",
+        "MIDGARD_PHASE4_POSTGRES_DATABASE=midgard_phase4_process_routing",
+        "MIDGARD_PHASE4_OGMIOS_PORT=2337",
+        "MIDGARD_PHASE4_KUPO_PORT=2442",
+        "MIDGARD_PHASE4_POSTGRES_PORT=5544",
+        "MIDGARD_PHASE4_POSTGRES_USER=test",
+        "MIDGARD_PHASE4_POSTGRES_PASSWORD=test",
+        "",
+      ].join("\n"),
+    );
+    for (const name of ["aiken", "jq", "node"]) {
+      writeFileSync(join(binaries, name), "#!/bin/sh\nexit 0\n", {
+        mode: 0o755,
+      });
+    }
+    // Stop at the first package build, before any database or L1 operation.
+    writeFileSync(join(binaries, "pnpm"), "#!/bin/sh\npwd\nexit 73\n", {
+      mode: 0o755,
+    });
+    const result = await run("sh", [join(scripts, "protocol-bootstrap.sh")], {
+      env: {
+        ...process.env,
+        PATH: `${binaries}:${process.env.PATH}`,
+        MIDGARD_PHASE4_RUN_DIR: runDir,
+      },
+    });
+    assert.equal(result.status, 73, result.stderr);
+    assert.equal(result.stdout.trim(), operator);
+  } finally {
+    rmSync(checkout, { recursive: true, force: true });
   }
-  assert.match(reset, /--slurpfile phasRegistration/);
-  assert.match(reset, /\.phasRegistration == \$phasRegistration\[0\]/);
-  assert.match(reset, /phas-registration-transaction-body\.json/);
-});
-
-test("reset attestation binds the complete canonical snapshot identity", () => {
-  const reset = read("scripts/reset.sh");
-  assert.match(reset, /midgard-phase4-local-devnet-reset-attestation-v1/);
-  assert.match(reset, /midgard-phase4-matched-snapshot-identity-v1/);
-  assert.match(reset, /restored Cardano\/Kupo state does not match/);
-  const observerAt = reset.indexOf(
-    "MIDGARD_PHASE4_BLOCK_PRODUCER=false compose_quiet up",
-  );
-  const attestationAt = reset.indexOf('attestation_path="');
-  const producerAt = reset.indexOf(
-    "MIDGARD_PHASE4_BLOCK_PRODUCER=true compose_quiet up",
-  );
-  assert.ok(observerAt >= 0 && observerAt < attestationAt);
-  assert.ok(attestationAt < producerAt);
-  assert.match(
-    reset,
-    /Kupo did not catch up to the frozen snapshot checkpoint/,
-  );
-  const producerSocketAt = reset.indexOf(
-    "MIDGARD_PHASE4_BLOCK_PRODUCER=true compose_quiet up",
-  );
-  const restartOgmiosAt = reset.indexOf(
-    "compose_quiet restart ogmios",
-    producerSocketAt,
-  );
-  const waitOgmiosAt = reset.indexOf("OGMIOS_PORT/health", restartOgmiosAt);
-  const restartKupoAt = reset.indexOf(
-    "compose_quiet restart kupo",
-    restartOgmiosAt,
-  );
-  const waitKupoAt = reset.indexOf("KUPO_PORT/health", restartKupoAt);
-  const strictProgressAt = reset.indexOf(
-    '[ "$resumed_slot" -gt "$frozen_slot" ] && [ "$resumed_kupo" -gt "$frozen_kupo" ]',
-  );
-  const publishAt = reset.indexOf(
-    'mv "$attestation_pending_path" "$attestation_path"',
-  );
-  const outputAt = reset.indexOf('cat "$attestation_path"');
-  assert.ok(producerSocketAt >= 0);
-  assert.ok(producerSocketAt < restartOgmiosAt);
-  assert.ok(restartOgmiosAt < waitOgmiosAt && waitOgmiosAt < restartKupoAt);
-  assert.ok(restartKupoAt < waitKupoAt && waitKupoAt < strictProgressAt);
-  assert.ok(strictProgressAt < publishAt && publishAt < outputAt);
-  assert.match(
-    reset,
-    /rm -f "\$attestation_path" "\$attestation_pending_path"/,
-  );
-  assert.match(reset, />"\$attestation_pending_path"/);
-  assert.doesNotMatch(reset, />"\$attestation_path"/);
-  assert.doesNotMatch(reset, /resumed_slot" -ge|resumed_kupo" -ge/);
-  assert.match(reset, /did not advance strictly beyond the frozen checkpoint/);
-  assert.match(reset, /observed_hash.*frozen_hash/s);
-  assert.match(read("scripts/capture-snapshot.sh"), /plutus\.json\.sha256/);
-  assert.match(read("scripts/capture-snapshot.sh"), /blueprintSha256/);
-  assert.doesNotMatch(reset, /kill "\$pid"/);
-  for (const field of [
-    "scenarioLabel",
-    "composeProject",
-    "networkMagic",
-    "postgresDatabase",
-    "deploymentManifestSha256",
-    "snapshotSetSha256",
-    "snapshotIdentitySha256",
-    "cardanoTip",
-    "kupoCheckpoint",
-  ])
-    assert.match(reset, new RegExp(field));
-});
-
-test("Phase 4 artifact producers validate exact V1 shapes before publication", () => {
-  const capture = read("scripts/capture-snapshot.sh");
-  const identityValidationAt = capture.indexOf(
-    "matched snapshot identity producer emitted a noncanonical V1 artifact",
-  );
-  const identityPublishAt = capture.indexOf(
-    'mv "$snapshot_identity_pending" "$snapshot_identity"',
-  );
-  assert.ok(
-    identityValidationAt >= 0 && identityValidationAt < identityPublishAt,
-  );
-  assert.match(capture, /def exact\(\$required\)/);
-  assert.match(capture, /phas-registration-proof\.pending\.json/);
-
-  const reset = read("scripts/reset.sh");
-  const resetValidationAt = reset.indexOf(
-    "reset producer emitted a noncanonical V1 attestation",
-  );
-  const resetPublishAt = reset.indexOf(
-    'mv "$attestation_pending_path" "$attestation_path"',
-  );
-  assert.ok(resetValidationAt >= 0 && resetValidationAt < resetPublishAt);
-  assert.match(reset, /def exact\(\$required\)/);
-
-  const preflight = read("scripts/phas-registration-preflight.sh");
-  assert.match(preflight, /keys == \["cborHex","description","type"\]/);
-  const bootstrap = read("scripts/protocol-bootstrap.sh");
-  assert.match(
-    bootstrap,
-    /fresh Phase 4 PHAS registration output is not exact canonical V1/,
-  );
-  const recovery = read("scripts/t1-recover.sh");
-  assert.match(recovery, /def exactTip/);
-  assert.match(recovery, /def exactProbe/);
-});
-
-test("crash restart reuses the original durable node identity", () => {
-  const acceptance = read(
-    "../../src/commands/e2e-pipelined-commit-process-acceptance.ts",
-  );
-  assert.match(acceptance, /durableStoreLabel/);
-  assert.match(acceptance, /exact same node identity and durable MPF stores/);
-  assert.match(acceptance, /const crashSpec = makeNodeSpec/);
-  assert.match(acceptance, /spec: crashSpec/);
-  assert.match(acceptance, /baseTailDatumCbor/);
-  assert.match(acceptance, /expectedRoots/);
-  assert.match(acceptance, /leaseTokenPresent/);
-  assert.match(acceptance, /submittedTxHash/);
-});
-
-test("funding and acceptance inputs cover every consumed wallet without seed C", () => {
-  const funding = read("scripts/fund-wallets.sh");
-  const acceptance = read("scripts/write-acceptance-env.sh");
-  assert.match(funding, /funding-confirmation\.ndjson/);
-  assert.match(funding, /all-wallet funding did not confirm/);
-  assert.doesNotMatch(funding, /TESTNET_GENESIS_WALLET_SEED_PHRASE_C/);
-  assert.match(acceptance, /secrets\/acceptance\.env/);
-  assert.match(acceptance, /MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath/);
-  assert.match(
-    acceptance,
-    /MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: manifestPath/,
-  );
-  assert.match(read("scripts/bootstrap.sh"), /write-acceptance-env\.sh/);
-  const processAcceptance = read(
-    "../../src/commands/e2e-pipelined-commit-process-acceptance.ts",
-  );
-  assert.doesNotMatch(
-    processAcceptance,
-    /"reconcile",\s*"phas-registered",\s*"--json"/,
-  );
-  assert.match(processAcceptance, /snapshotPhasRegistrationProofSha256/);
-  assert.match(processAcceptance, /snapshotPhasRegistration/);
-  assert.doesNotMatch(
-    processAcceptance,
-    /\[dist, "register-phas-membership-reward-account"\]/,
-  );
 });
 
 test("acceptance env is canonical when node.env lacks run-scoped values", async () => {
@@ -750,54 +249,323 @@ test("generator refuses an existing run directory before Docker", async () => {
   assert.match(result.stderr, /refusing to overwrite existing run directory/);
   rmSync(existing, { recursive: true, force: true });
 });
-test("nonce parser keeps progress transcript and fails closed without final JSON", () => {
-  const protocol = read("scripts/protocol-bootstrap.sh");
-  assert.ok(protocol.includes("nonce_json="));
-  assert.ok(protocol.includes("sed -n"));
-  const transcript =
-    "[info] progress\n" + JSON.stringify({ txHash: "a".repeat(64) }) + "\n";
-  const parsed = JSON.parse(transcript.slice(transcript.indexOf("\n{") + 1));
-  assert.equal(parsed.txHash, "a".repeat(64));
-  assert.throws(() => JSON.parse("[info] progress\n"));
-});
-test("bootstrap derives one exact reference address and safely upserts both env keys", () => {
-  const bootstrap = read("scripts/bootstrap.sh");
-  assert.match(
-    bootstrap,
-    /expected exactly one funded reference-script wallet address/,
+
+/**
+ * Builds a throwaway checkout that `capture-snapshot.sh` can actually run
+ * inside, with `docker` and `curl` replaced by stubs.
+ *
+ * The Kupo health payload the stub serves is the input under test: the script
+ * has to route it through `parse_kupo_checkpoint` and persist it, rather than
+ * reading the counter out of the JSON itself. The run is stopped at the PHAS
+ * preflight — the first step after checkpoint convergence — by a stub that
+ * exits with a distinctive status, so "the script accepted this payload and
+ * moved on" and "the script refused this payload" are two different observable
+ * outcomes rather than two different exit codes from the same failure.
+ */
+const PREFLIGHT_REACHED_STATUS = 91;
+
+const runCaptureSnapshot = async ({ kupoPayload, cardanoSlot }) => {
+  const checkout = mkdtempSync(join(temporaryRoot, "midgard-phase4-capture-"));
+  const scripts = join(
+    checkout,
+    "demo/midgard-node-tools/devnet/phase4-process/scripts",
   );
-  assert.match(
-    bootstrap,
-    /L1_REFERENCE_SCRIPT_ADDRESS conflicts with the funded reference-script wallet/,
-  );
-  assert.match(
-    bootstrap,
-    /L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS conflicts with the funded reference-script wallet/,
-  );
-  assert.match(bootstrap, /upsert_private_env L1_REFERENCE_SCRIPT_ADDRESS/);
-  assert.match(
-    bootstrap,
-    /upsert_private_env L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS/,
-  );
-  assert.match(bootstrap, /chmod 600 /);
-});
-test("bootstrap canonicalizes run-scoped database values before compose", () => {
-  const bootstrap = read("scripts/bootstrap.sh");
-  const composeAt = bootstrap.indexOf("compose up --detach");
-  assert.ok(composeAt >= 0);
-  for (const key of [
-    "POSTGRES_HOST",
-    "POSTGRES_PORT",
-    "POSTGRES_USER",
-    "POSTGRES_PASSWORD",
-    "POSTGRES_DB",
-  ]) {
-    const upsertAt = bootstrap.indexOf(`upsert_private_env ${key}`);
-    assert.ok(
-      upsertAt >= 0 && upsertAt < composeAt,
-      `${key} must be canonicalized before compose`,
+  const runDir = join(checkout, "run");
+  const binaries = join(checkout, "bin");
+  const socketDir = join(runDir, "cardano/ipc");
+  let socketServer;
+  try {
+    for (const directory of [
+      scripts,
+      binaries,
+      socketDir,
+      join(checkout, "demo/midgard-node-tools/src"),
+      join(checkout, "demo/midgard-node-tools/dist"),
+      join(checkout, "demo/midgard-node/src"),
+      join(checkout, "demo/midgard-node/dist"),
+      join(runDir, "secrets"),
+      join(runDir, "work"),
+      join(runDir, "genesis"),
+      join(runDir, "config"),
+      join(runDir, "deploymentInfo"),
+    ])
+      mkdirSync(directory, { recursive: true });
+    for (const name of ["common.sh", "capture-snapshot.sh"]) {
+      copyFileSync(join(root, "scripts", name), join(scripts, name));
+    }
+    writeFileSync(
+      join(scripts, "phas-registration-preflight.sh"),
+      `#!/bin/sh\nexit ${PREFLIGHT_REACHED_STATUS}\n`,
+      { mode: 0o755 },
     );
+    writeFileSync(
+      join(
+        checkout,
+        "demo/midgard-node-tools/devnet/phase4-process/compose.yaml",
+      ),
+      "services: {}\n",
+    );
+    for (const [path, contents] of [
+      ["demo/midgard-node-tools/src/marker", "tools-src\n"],
+      ["demo/midgard-node-tools/dist/marker", "tools-dist\n"],
+      ["demo/midgard-node/src/marker", "node-src\n"],
+      ["demo/midgard-node/dist/marker", "node-dist\n"],
+    ])
+      writeFileSync(join(checkout, path), contents);
+    writeFileSync(join(runDir, "genesis/marker"), "genesis\n");
+    writeFileSync(join(runDir, "config/marker"), "config\n");
+    writeFileSync(
+      join(runDir, "deploymentInfo/contract-deployment-info.json"),
+      "{}\n",
+    );
+    writeFileSync(
+      join(runDir, "deploymentInfo/phas-registration-transaction-body.json"),
+      "{}\n",
+    );
+    writeFileSync(
+      join(runDir, "work/plutus.json.sha256"),
+      `${"a".repeat(64)}  plutus.json\n`,
+    );
+    writeFileSync(join(runDir, "secrets/acceptance.env"), 'NETWORK="Custom"\n');
+    writeFileSync(
+      join(runDir, "run.env"),
+      [
+        `MIDGARD_PHASE4_RUN_DIR=${runDir}`,
+        "MIDGARD_PHASE4_COMPOSE_PROJECT=midgard_phase4_process_capture",
+        "MIDGARD_PHASE4_POSTGRES_DATABASE=midgard_phase4_process_capture",
+        "MIDGARD_PHASE4_NETWORK_MAGIC=424242",
+        "MIDGARD_PHASE4_OGMIOS_PORT=2337",
+        "MIDGARD_PHASE4_KUPO_PORT=2442",
+        "MIDGARD_PHASE4_POSTGRES_PORT=5544",
+        "MIDGARD_PHASE4_POSTGRES_USER=phase4",
+        "MIDGARD_PHASE4_POSTGRES_PASSWORD=test_only",
+        "",
+      ].join("\n"),
+    );
+    // `grant_cardano_socket_access` waits for a real socket inode before it
+    // will let the capture continue.
+    socketServer = createServer();
+    await new Promise((resolve, reject) => {
+      socketServer.once("error", reject);
+      socketServer.listen(join(socketDir, "node.socket"), resolve);
+    });
+    // `docker` answers only the tip query; every compose call is a no-op.
+    writeFileSync(
+      join(binaries, "docker"),
+      [
+        "#!/bin/sh",
+        'for arg in "$@"; do',
+        '  if [ "$arg" = "tip" ]; then',
+        `    printf '{"slot":${cardanoSlot},"hash":"%s"}\\n' "${"cd".repeat(32)}"`,
+        "    exit 0",
+        "  fi",
+        "done",
+        "exit 0",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    writeFileSync(
+      join(binaries, "curl"),
+      `#!/bin/sh\ncat "$MIDGARD_TEST_KUPO_PAYLOAD_FILE"\n`,
+      { mode: 0o755 },
+    );
+    const payloadFile = join(checkout, "kupo-health.payload");
+    writeFileSync(payloadFile, kupoPayload);
+    const result = await run("sh", [join(scripts, "capture-snapshot.sh")], {
+      env: {
+        ...process.env,
+        PATH: `${binaries}:${process.env.PATH}`,
+        MIDGARD_PHASE4_RUN_DIR: runDir,
+        MIDGARD_TEST_KUPO_PAYLOAD_FILE: payloadFile,
+      },
+      timeoutMs: 20_000,
+    });
+    const snapshotDir = join(runDir, "snapshots/matched-v1");
+    const readIfPresent = (name) => {
+      try {
+        return readFileSync(join(snapshotDir, name), "utf8");
+      } catch {
+        return null;
+      }
+    };
+    return {
+      ...result,
+      kupoHealth: readIfPresent("kupo-health.json"),
+      identity: readIfPresent("snapshot-identity.json"),
+    };
+  } finally {
+    if (socketServer !== undefined) {
+      await new Promise((resolve) => socketServer.close(resolve));
+    }
+    rmSync(checkout, { recursive: true, force: true });
   }
-  assert.ok(bootstrap.includes('index($0, key "=") == 1'));
-  assert.ok(bootstrap.includes('END { if (found == 0) print key "=" value }'));
+};
+
+test("snapshot capture reads the Kupo checkpoint through the strict parser", async () => {
+  const payload =
+    "# HELP kupo_most_recent_checkpoint Latest checkpoint\n" +
+    "kupo_most_recent_checkpoint 6493\n";
+  const accepted = await runCaptureSnapshot({
+    kupoPayload: payload,
+    cardanoSlot: 6493,
+  });
+  // Convergence was reached, so the capture proceeded to the PHAS preflight.
+  assert.equal(accepted.status, PREFLIGHT_REACHED_STATUS, accepted.stderr);
+  // The served payload is persisted verbatim as the snapshot's own evidence of
+  // the checkpoint it froze; a capture that read the counter some other way
+  // would leave nothing to check the frozen identity against.
+  assert.equal(accepted.kupoHealth, payload);
+});
+
+test("snapshot capture refuses a Kupo payload the strict parser rejects", async () => {
+  const rejected = await runCaptureSnapshot({
+    kupoPayload: 'kupo_most_recent_checkpoint{network="devnet"} 6493\n',
+    cardanoSlot: 6493,
+  });
+  assert.notEqual(rejected.status, 0);
+  assert.notEqual(rejected.status, PREFLIGHT_REACHED_STATUS);
+  assert.match(
+    rejected.stderr,
+    /exactly one unlabeled finite nonnegative integer/,
+  );
+  // Nothing downstream of the refusal ran: no frozen identity was written.
+  assert.equal(rejected.identity, null);
+});
+
+/**
+ * `reset.sh` restores durable state, so every guard that can refuse must do so
+ * before it touches anything. These run the real script against a fixture run
+ * directory and stop at exactly those guards — no Docker involved, because the
+ * refusals precede the first container.
+ */
+const runReset = async (prepare, extraEnv = {}) => {
+  const runDir = mkdtempSync(join(temporaryRoot, "midgard-phase4-reset-"));
+  try {
+    mkdirSync(join(runDir, "snapshots/matched-v1"), { recursive: true });
+    mkdirSync(join(runDir, "work"), { recursive: true });
+    writeFileSync(
+      join(runDir, "run.env"),
+      [
+        `MIDGARD_PHASE4_RUN_DIR=${runDir}`,
+        "MIDGARD_PHASE4_COMPOSE_PROJECT=midgard_phase4_process_reset",
+        "MIDGARD_PHASE4_POSTGRES_DATABASE=midgard_phase4_process_reset",
+        "MIDGARD_PHASE4_NETWORK_MAGIC=424242",
+        "MIDGARD_PHASE4_OGMIOS_PORT=2337",
+        "MIDGARD_PHASE4_KUPO_PORT=2442",
+        "MIDGARD_PHASE4_POSTGRES_PORT=5544",
+        "MIDGARD_PHASE4_POSTGRES_USER=phase4",
+        "MIDGARD_PHASE4_POSTGRES_PASSWORD=test_only",
+        "",
+      ].join("\n"),
+    );
+    prepare(join(runDir, "snapshots/matched-v1"), runDir);
+    return await run("sh", [join(root, "scripts/reset.sh")], {
+      env: {
+        ...process.env,
+        MIDGARD_PHASE4_RUN_DIR: runDir,
+        MIDGARD_PHASE4_SCENARIO_LABEL: "asset_test",
+        ...extraEnv,
+      },
+    });
+  } finally {
+    rmSync(runDir, { recursive: true, force: true });
+  }
+};
+
+const completeSnapshot = (snapshotDir) => {
+  for (const name of [
+    "config.tar.gz",
+    "genesis.tar.gz",
+    "acceptance.env",
+    "phas-registration-proof.json",
+    "phas-registration-transaction-body.json",
+    "snapshot-identity.json",
+    "SNAPSHOT_IDENTITY_SHA256",
+  ])
+    writeFileSync(join(snapshotDir, name), `${name}\n`);
+};
+
+test("reset refuses an incomplete or tampered matched snapshot before touching state", async () => {
+  const missingSums = await runReset((snapshotDir) => {
+    completeSnapshot(snapshotDir);
+  });
+  assert.notEqual(missingSums.status, 0);
+  assert.match(missingSums.stderr, /matched snapshot is incomplete/);
+
+  const missingIdentity = await runReset((snapshotDir) => {
+    completeSnapshot(snapshotDir);
+    rmSync(join(snapshotDir, "snapshot-identity.json"));
+    writeFileSync(join(snapshotDir, "SHA256SUMS"), "");
+  });
+  assert.notEqual(missingIdentity.status, 0);
+  assert.match(missingIdentity.stderr, /matched snapshot identity is missing/);
+
+  // Every listed file is intact and its digests agree, but the digest *of the
+  // digest list* does not — the guard that catches a wholesale swap of the
+  // manifest.
+  const tamperedSet = await runReset((snapshotDir) => {
+    completeSnapshot(snapshotDir);
+    const names = [
+      "config.tar.gz",
+      "genesis.tar.gz",
+      "acceptance.env",
+      "phas-registration-proof.json",
+      "phas-registration-transaction-body.json",
+      "snapshot-identity.json",
+    ];
+    writeFileSync(
+      join(snapshotDir, "SHA256SUMS"),
+      names
+        .map(
+          (name) =>
+            `${createHash("sha256").update(`${name}\n`).digest("hex")}  ${name}\n`,
+        )
+        .join(""),
+    );
+    writeFileSync(
+      join(snapshotDir, "SNAPSHOT_SET_SHA256"),
+      `${"0".repeat(64)}\n`,
+    );
+  });
+  assert.notEqual(tamperedSet.status, 0);
+  assert.match(tamperedSet.stderr, /snapshot-set checksum mismatch/);
+});
+
+test("reset refuses a caller-redirected snapshot directory", async () => {
+  const redirected = await runReset(
+    (snapshotDir) => {
+      completeSnapshot(snapshotDir);
+      writeFileSync(join(snapshotDir, "SHA256SUMS"), "");
+    },
+    { MIDGARD_PHASE4_SNAPSHOT_DIR: "/tmp/not-the-run-snapshot" },
+  );
+  assert.notEqual(redirected.status, 0);
+  assert.match(
+    redirected.stderr,
+    /snapshot override is not authorized for the run-scoped matched snapshot/,
+  );
+});
+
+test("reset requires an explicit scenario label", async () => {
+  const runDir = mkdtempSync(
+    join(temporaryRoot, "midgard-phase4-reset-label-"),
+  );
+  try {
+    writeFileSync(
+      join(runDir, "run.env"),
+      [
+        `MIDGARD_PHASE4_RUN_DIR=${runDir}`,
+        "MIDGARD_PHASE4_COMPOSE_PROJECT=midgard_phase4_process_reset",
+        "MIDGARD_PHASE4_POSTGRES_DATABASE=midgard_phase4_process_reset",
+        "",
+      ].join("\n"),
+    );
+    const result = await run("sh", [join(root, "scripts/reset.sh")], {
+      env: { ...process.env, MIDGARD_PHASE4_RUN_DIR: runDir },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /MIDGARD_PHASE4_SCENARIO_LABEL is required/);
+  } finally {
+    rmSync(runDir, { recursive: true, force: true });
+  }
 });

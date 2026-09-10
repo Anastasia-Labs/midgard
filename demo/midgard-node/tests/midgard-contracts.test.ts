@@ -33,17 +33,6 @@ import {
   assertDeploymentManifestMatchesConfig,
   buildRealTxOrderContracts,
   readRuntimeDeploymentManifestFile,
-  REAL_ACTIVE_OPERATORS_SCRIPT_TITLES,
-  REAL_DEPOSIT_SCRIPT_TITLES,
-  REAL_HUB_ORACLE_SCRIPT_TITLES,
-  REAL_PAYOUT_SCRIPT_TITLES,
-  REAL_REGISTERED_OPERATORS_SCRIPT_TITLES,
-  REAL_RESERVE_SCRIPT_TITLES,
-  REAL_RETIRED_OPERATORS_SCRIPT_TITLES,
-  REAL_SETTLEMENT_SCRIPT_TITLES,
-  REAL_STATE_QUEUE_SCRIPT_TITLES,
-  REAL_TX_ORDER_SCRIPT_TITLES,
-  REAL_WITHDRAWAL_SCRIPT_TITLES,
   withRealStateQueueAndOperatorContracts,
 } from "../src/services/midgard-contracts.js";
 import {
@@ -55,6 +44,10 @@ import {
   TEST_AVAILABILITY_PARAMETERS,
 } from "./helpers/availability-challenge.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./helpers/cardano-protocol-parameters.js";
+import {
+  collectScriptInventory,
+  scriptInventoryId,
+} from "./helpers/script-inventory.js";
 
 describe("midgard contracts registry", () => {
   const oneShotOutRef = {
@@ -92,8 +85,7 @@ describe("midgard contracts registry", () => {
         retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
-    proofEvidence: {
-      digest: null,
+    artifacts: {
       blueprintHash: "22".repeat(32),
     },
   };
@@ -111,138 +103,68 @@ describe("midgard contracts registry", () => {
         },
       );
 
-      expect(REAL_HUB_ORACLE_SCRIPT_TITLES.mint).toBe("hub_oracle.mint.mint");
-      expect(REAL_STATE_QUEUE_SCRIPT_TITLES.spend).toBe(
-        "state_queue.spend.spend",
+      // The always-succeeds stand-in is a real hazard here: it satisfies every
+      // spend, so a role that silently kept it would pass any behavioural test
+      // built on this registry. Rather than name a handful of roles and assert
+      // `not.toEqual(placeholder)` — which any non-placeholder value satisfies
+      // — take the whole reachable script inventory and pin the exact set that
+      // is still the stand-in.
+      const placeholderCbors = new Set(
+        collectScriptInventory(placeholderContracts).map(({ cbor }) => cbor),
       );
-      expect(REAL_STATE_QUEUE_SCRIPT_TITLES.mint).toBe("state_queue.mint.mint");
-      expect(REAL_DEPOSIT_SCRIPT_TITLES.mint).toBe(
-        "user_events/deposit.mint.mint",
-      );
-      expect(REAL_REGISTERED_OPERATORS_SCRIPT_TITLES.mint).toBe(
-        "operator_directory/registered_operators.mint.mint",
-      );
-      expect(REAL_ACTIVE_OPERATORS_SCRIPT_TITLES.mint).toBe(
-        "operator_directory/active_operators.mint.mint",
-      );
-      expect(REAL_RETIRED_OPERATORS_SCRIPT_TITLES.mint).toBe(
-        "operator_directory/retired_operators.mint.mint",
-      );
-      expect(REAL_TX_ORDER_SCRIPT_TITLES.mint).toBe(
-        "user_events/tx_order_v1.mint.mint",
-      );
-      // #579 ruling A: the receipt titles are gone. The certificate titles are
-      // what the tx-order family now resolves alongside the mint, so they are
-      // what this pin has to hold.
-      expect(REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateMint).toBe(
-        "field_preimage_certificate.field_preimage_certificate.mint",
-      );
-      expect(REAL_WITHDRAWAL_SCRIPT_TITLES.mint).toBe(
-        "user_events/withdrawal.mint.mint",
-      );
-      expect(REAL_SETTLEMENT_SCRIPT_TITLES.mint).toBe("settlement.mint.mint");
-      expect(REAL_RESERVE_SCRIPT_TITLES.spend).toBe("reserve.spend.spend");
-      expect(REAL_RESERVE_SCRIPT_TITLES.withdraw).toBe("reserve.withdraw.else");
-      expect(REAL_PAYOUT_SCRIPT_TITLES.mint).toBe("payout.mint.mint");
-      expect(REAL_PAYOUT_SCRIPT_TITLES.spend).toBe("payout.spend.spend");
+      const inventory = collectScriptInventory(resolved);
+      expect(inventory.length).toBeGreaterThan(500);
 
-      expect(resolved.hubOracle.mintingScriptCBOR).not.toEqual(
-        placeholderContracts.hubOracle.mintingScriptCBOR,
+      /**
+       * Reviewed contract, not a snapshot of current output:
+       *
+       * - `referenceScriptAuth:minting` is the stand-in this call site passes
+       *   in itself (a real deployment supplies the timelocked native policy).
+       * - `escapeHatch` has no compiled validator yet.
+       * - `hubOracle:spending` is not a script at all: the hub oracle UTxO
+       *   lives at the mint policy's own address, so the spending slot carries
+       *   the stand-in bytes and the real policy id (see the exception below).
+       *
+       * Every other role must resolve to a real applied validator.
+       */
+      const EXPECTED_STAND_INS = [
+        "escapeHatch:minting",
+        "escapeHatch:spending",
+        "hubOracle:spending",
+        "referenceScriptAuth:minting",
+      ];
+      expect(
+        inventory
+          .filter(({ cbor }) => placeholderCbors.has(cbor))
+          .map(scriptInventoryId)
+          .sort(),
+      ).toEqual(EXPECTED_STAND_INS);
+
+      // Script and declared hash must be the same script. `hubOracle:spending`
+      // is the one documented exception: it deliberately declares the mint
+      // policy id beside the stand-in bytes.
+      expect(
+        inventory
+          .filter(
+            (entry) =>
+              scriptInventoryId(entry) !== "hubOracle:spending" &&
+              validatorToScriptHash(entry.script) !== entry.declaredHash,
+          )
+          .map(scriptInventoryId),
+      ).toEqual([]);
+      expect(resolved.hubOracle.spendingScriptHash).toEqual(
+        resolved.hubOracle.policyId,
       );
+
       expect(resolved.hubOracle.policyId).toEqual(
         mintingPolicyToId(resolved.hubOracle.mintingScript),
-      );
-
-      expect(resolved.stateQueue.spendingScriptCBOR).not.toEqual(
-        placeholderContracts.stateQueue.spendingScriptCBOR,
-      );
-      expect(resolved.stateQueue.mintingScriptCBOR).not.toEqual(
-        placeholderContracts.stateQueue.mintingScriptCBOR,
       );
       expect(resolved.stateQueue.policyId).toEqual(
         mintingPolicyToId(resolved.stateQueue.mintingScript),
       );
 
-      expect(resolved.registeredOperators.policyId).not.toEqual(
-        placeholderContracts.registeredOperators.policyId,
-      );
-      expect(resolved.activeOperators.policyId).not.toEqual(
-        placeholderContracts.activeOperators.policyId,
-      );
-      expect(resolved.retiredOperators.policyId).not.toEqual(
-        placeholderContracts.retiredOperators.policyId,
-      );
-
-      expect(resolved.deposit.policyId).not.toEqual(
-        placeholderContracts.deposit.policyId,
-      );
-      expect(resolved.txOrder.policyId).not.toEqual(
-        placeholderContracts.txOrder.policyId,
-      );
-      expect(resolved.withdrawal.policyId).not.toEqual(
-        placeholderContracts.withdrawal.policyId,
-      );
-      expect(resolved.settlement.policyId).not.toEqual(
-        placeholderContracts.settlement.policyId,
-      );
-      expect(resolved.scheduler.policyId).not.toEqual(
-        placeholderContracts.scheduler.policyId,
-      );
-      expect(resolved.payout.policyId).not.toEqual(
-        placeholderContracts.payout.policyId,
-      );
-      expect(resolved.payout.spendingScriptCBOR).not.toEqual(
-        placeholderContracts.payout.spendingScriptCBOR,
-      );
-      expect(resolved.reserve.spendingScriptCBOR).not.toEqual(
-        placeholderContracts.reserve.spendingScriptCBOR,
-      );
-      expect(resolved.reserve.withdrawalScriptCBOR).not.toEqual(
-        placeholderContracts.reserve.withdrawalScriptCBOR,
-      );
-      expect(resolved.fraudProofs.doubleSpend.spendingScriptCBOR).not.toEqual(
-        placeholderContracts.fraudProofs.doubleSpend.spendingScriptCBOR,
-      );
-      expect(
-        resolved.fraudProofs.transitionTrace.spendingScriptCBOR,
-      ).not.toEqual(
-        placeholderContracts.fraudProofs.transitionTrace.spendingScriptCBOR,
-      );
-      expect(
-        resolved.fraudProofs.nonExistentInput.spendingScriptCBOR,
-      ).not.toEqual(
-        placeholderContracts.fraudProofs.nonExistentInput.spendingScriptCBOR,
-      );
-      expect(resolved.fraudProofs.zeroInput.spendingScriptCBOR).not.toEqual(
-        placeholderContracts.fraudProofs.zeroInput.spendingScriptCBOR,
-      );
-      expect(resolved.fraudProofContracts.missingSignature.steps).toHaveLength(
-        4,
-      );
-      // Eight, matching the eight `V1 fraud-proof missing-native-script-tx
-      // step-0N` roles the canonical manifest role map declares (step-07 and
-      // step-08 are the later additions this pin had not caught up with).
-      expect(
-        resolved.fraudProofContracts.missingNativeScriptTx.steps,
-      ).toHaveLength(8);
-      expect(resolved.fraudProofContracts.withdrawalMistag.steps).toHaveLength(
-        5,
-      );
-      expect(resolved.fraudProofContracts.withdrawnInput.steps).toHaveLength(3);
-      expect(resolved.fraudProofContracts.transitionTrace.finals).toHaveLength(
-        8,
-      );
-      expect(
-        resolved.fraudProofs.missingSignature.spendingScriptCBOR,
-      ).not.toEqual(
-        placeholderContracts.fraudProofs.missingSignature.spendingScriptCBOR,
-      );
-      expect(
-        resolved.fraudProofs.crossBlockDuplicateEvent.spendingScriptCBOR,
-      ).not.toEqual(
-        placeholderContracts.fraudProofs.crossBlockDuplicateEvent
-          .spendingScriptCBOR,
-      );
+      // The validation-trace dispute control scripts are six distinct roles;
+      // collapsing any two would let one leg's redeemer drive another's leg.
       const validationControlHashes = [
         resolved.fraudProofs.validationTraceDispute.spendingScriptHash,
         resolved.fraudProofs.validationTraceDispute.source.spendingScriptHash,
@@ -370,6 +292,7 @@ describe("midgard contracts registry", () => {
           now: new Date("2026-07-24T00:00:00.000Z"),
           steps: {
             initProtocol: { status: "complete" },
+            availabilityRegistration: { status: "complete" },
           },
         });
         const commonConfig = {
@@ -401,7 +324,10 @@ describe("midgard contracts registry", () => {
           hubOracleOneShotOutputIndex: 0,
           hubOracleOneShotStatus: "consumed_by_init",
           now: new Date("2026-07-24T00:00:00.000Z"),
-          steps: { initProtocol: { status: "complete" } },
+          steps: {
+            initProtocol: { status: "complete" },
+            availabilityRegistration: { status: "complete" },
+          },
         });
         expect(() =>
           assertDeploymentManifestMatchesConfig(publicManifest, tamperedPath, {

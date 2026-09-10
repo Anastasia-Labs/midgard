@@ -55,6 +55,7 @@ import {
   validateCorpusSlice,
   verifyCorpusArtifactIdentity,
 } from "./throughput-valid-stress-corpus.mjs";
+import { runDeadlineBatchedSchedule } from "./lib/deadline-batched-schedule.mjs";
 import { consumePhase3SoakCorpusPreflight } from "./phase3-architecture-g-soak-preflight.mjs";
 import { consumePhase3LoadGeneratorIsolation } from "./phase3-architecture-g-load-generator-isolation.mjs";
 import {
@@ -1557,122 +1558,6 @@ const runClosedLoopStage = async ({
     exhausted: remainingTxCount(cursors) <= 0,
   });
   return stage;
-};
-
-const waitForAnyInFlight = async (inFlight) => {
-  if (inFlight.size === 0) {
-    return;
-  }
-  await Promise.race(inFlight);
-};
-
-const scheduledStartCountDue = ({
-  nowPerfMs,
-  startedAtPerfMs,
-  intervalMs,
-  totalStarts,
-}) => {
-  if (nowPerfMs < startedAtPerfMs) {
-    return 0;
-  }
-  return Math.min(
-    totalStarts,
-    Math.floor((nowPerfMs - startedAtPerfMs) / intervalMs) + 1,
-  );
-};
-
-const runDeadlineBatchedSchedule = async ({
-  totalStarts,
-  startedAtPerfMs,
-  deadlinePerfMs,
-  intervalMs,
-  maxInFlight,
-  dispatchStart,
-  allowPostDeadlineCatchUp = false,
-}) => {
-  const inFlight = new Set();
-  let nextStartIndex = 0;
-  let maxObservedInFlight = 0;
-  let lastDispatchedAtPerfMs = null;
-  let stoppedWithoutCapacity = false;
-
-  while (nextStartIndex < totalStarts) {
-    while (
-      inFlight.size >= maxInFlight &&
-      (allowPostDeadlineCatchUp || performance.now() < deadlinePerfMs)
-    ) {
-      await waitForAnyInFlight(inFlight);
-    }
-
-    const nowPerfMs = performance.now();
-    const deadlineReached = nowPerfMs >= deadlinePerfMs;
-    const dueStarts = deadlineReached
-      ? totalStarts
-      : scheduledStartCountDue({
-          nowPerfMs,
-          startedAtPerfMs,
-          intervalMs,
-          totalStarts,
-        });
-    if (nextStartIndex >= dueStarts) {
-      const nextDueAtPerfMs = startedAtPerfMs + nextStartIndex * intervalMs;
-      const waitMs = Math.min(
-        nextDueAtPerfMs - nowPerfMs,
-        deadlinePerfMs - nowPerfMs,
-      );
-      if (waitMs > 0) {
-        // Node timers do not reliably resolve sub-millisecond deadlines. One
-        // coarse wake intentionally accumulates every start that becomes due;
-        // the next iteration dispatches that whole batch without more timers.
-        await sleep(Math.max(1, Math.ceil(waitMs)));
-      }
-      continue;
-    }
-
-    let dispatchedAny = false;
-    while (nextStartIndex < dueStarts && inFlight.size < maxInFlight) {
-      const startIndex = nextStartIndex;
-      const scheduledAtPerfMs = startedAtPerfMs + startIndex * intervalMs;
-      const dispatched = dispatchStart({ startIndex, scheduledAtPerfMs });
-      if (dispatched === null) {
-        break;
-      }
-      let tracked;
-      tracked = Promise.resolve(dispatched).finally(() => {
-        inFlight.delete(tracked);
-      });
-      inFlight.add(tracked);
-      nextStartIndex += 1;
-      dispatchedAny = true;
-      lastDispatchedAtPerfMs = performance.now();
-      maxObservedInFlight = Math.max(maxObservedInFlight, inFlight.size);
-    }
-
-    // A coarse timer may wake just beyond the hard deadline. Hard-deadline
-    // stages dispatch the already-due final batch only into immediately
-    // available capacity. Calibration may explicitly catch up instead: its
-    // last-dispatch rate and schedule-slip gates expose any real shortfall.
-    if (deadlineReached && !allowPostDeadlineCatchUp) {
-      break;
-    }
-
-    if (nextStartIndex < dueStarts && !dispatchedAny) {
-      if (inFlight.size === 0) {
-        stoppedWithoutCapacity = true;
-        break;
-      }
-      await waitForAnyInFlight(inFlight);
-    }
-  }
-
-  await Promise.all(inFlight);
-  return {
-    scheduledStarts: nextStartIndex,
-    missedStarts: totalStarts - nextStartIndex,
-    maxObservedInFlight,
-    lastDispatchedAtPerfMs,
-    stoppedWithoutCapacity,
-  };
 };
 
 const findAvailableCursor = (cursors, busy, startIndex) => {

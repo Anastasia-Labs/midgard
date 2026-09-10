@@ -1,7 +1,13 @@
 # Fault-Proof Completion Plan
 
-Active work only. Implemented catalogue families and retired historical waves
-are intentionally omitted.
+Status: Active
+
+Last reviewed: 2026-09-07 (remaining acceptance scope).
+
+Boundary: complete publication and independent-challenger acceptance for the
+current catalogue. Existing split/yield implementations and runner installation
+are not pending implementation tasks. This plan does not authorize protocol
+shortcuts or treat source inventory as passing release evidence.
 
 ## Goal
 
@@ -10,73 +16,25 @@ authentic proof inputs, construct and submit the complete proof within L1 limits
 resume after interruption, remove the fraudulent commitment, and verify the
 result before block maturity.
 
-## P0 — Make every lifecycle fit Van Rossem limits
+## P0 — Publication closure
 
-The standalone Lucid Evolution journeys for `missingNativeScriptUtxo`,
-`nativeScriptInvalid`, and both `minAda` polarities exist and pass under the
-shared limits. Fabricated deposit/withdrawal removal and value/mint
-cancellation/resume are also covered.
+Complete the [availability-challenge publication work](size-plans/availability-challenge.md).
+Closure requires a current pinned build, applied scripts, complete signed
+publication transactions, and matching lifecycle scenarios under L1 limits.
 
-The shared state-queue publication blocker is resolved. `InitV1` and `Deinit`
-remain in the minting policy; commit, unattested-timeout removal,
-unavailable-timeout removal, fraud removal, and merge dispatch to five
-authenticated rewarding scripts through exact zero withdrawals. The applied
-minting policy is 5,222 bytes and publishes in a 5,498-byte signed transaction.
-The rewarding scripts are 5,652–8,347 bytes and publish in signed transactions
-of 6,161–8,842 bytes, all below the 16,384-byte limit.
+For the split validation/transition resolvers, use the
+[installed validation-dispute workflow](validation-trace-dispute-installed-workflow.md)
+and [transition replay](transition-trace-installed-replay.md). Run their publication and lifecycle gates on the release identity.
 
-The former min-ADA blocker is resolved. Step 02 is a 3,319-byte authenticated
-dispatcher (`onchain/aiken/validators/fraud-proofs/min-ada/step-02.ak`) whose
-transaction and UTxO branches are separate withdraw-zero rewarding validators
-(`step-02-yields.ak`, 15,522 and 6,571 bytes in the generated blueprint) with
-their own reference-script role NFTs, and the standalone suite asserts that all
-three signed publications fit within 16,384 bytes. The native-script-invalid
-29-signer and 33-signer frontiers pass through the deterministic staged route
-with Van Rossem headroom, and both the direct and the staged
-missing-native-script-UTxO paths submit.
+## P1 — Preserve complete watcher coverage
 
-Remaining P0 work:
+The watcher source currently installs the complete catalogue. Keep that invariant
+as categories change, and verify deployment-bound admission, public retained-DA/L1
+authorities, action-specific funding, durable recovery, and reconciliation in
+acceptance. A source installation count is not evidence of a live deployment.
 
-- Split or redesign the 51 compiled scripts whose raw bodies exceed the
-  16,384-byte publication limit: 47 `validationTraceDispute` resolver bodies
-  (CEK step, script-sources, resolve-inputs, phase-A, and value-and-mint
-  semantics), the two `transitionTrace` finals, `withdrawalMistag` step 03,
-  and the availability challenge. Their Lucid lifecycles currently pass only
-  through the harness's raised-limit oversized publication path. One plan
-  per script, with the shared primer, is indexed in
-  [size-plans/README.md](size-plans/README.md).
-- Repair the fixture drift that keeps `inspect-contracts.test.ts` and
-  `submit-init-emulator-min-ada.test.ts` red after the reference-script
-  role-NFT change, so the catalogue-root pin and the validation-dispute
-  min-ADA journey are verified again.
-- Drive every other category's maximum supported shape through the same
-  limits (P2); the three final families are the only ones with explicit
-  maximum-frontier assertions today.
-
-Completion: every catalogue lifecycle passes using the shared Van Rossem
-limits, including its maximum supported shape, and finishes with the target
-header absent and the permanent proof token retained.
-
-## P1 — Production watcher coverage
-
-Install manifest-bound runners for the seven categories absent from
-`WATCHER_INSTALLED_WORKFLOW_CATEGORIES`:
-
-- `transitionTrace`
-- `validationTraceDispute`
-- `nativeScriptDecoding`
-- `withdrawalMistag`
-- `crossBlockDuplicateEvent`
-- `valueNotPreserved`
-- `mintAuthorization`
-
-Each installation must use public retained-DA/L1 authorities, the exact
-deployment manifest, durable action-specific funding reservations, restart-
-safe journals, and final-state reconciliation.
-
-Completion: the watcher application requires and installs all enabled launch
-categories and fails readiness if any runner or reference-script identity is
-missing.
+Completion: every enabled category is admitted with the release manifest and
+reference scripts; startup fails closed for missing identity or readiness.
 
 ## P2 — Van Rossem emulator closure
 
@@ -92,13 +50,26 @@ native-script nodes/depth, and field-preimage shapes must pass through those
 same transactions. If a direct transaction does not fit, use the protocol's
 deterministic staged route; do not relax the emulator.
 
+Include complete deterministic reason classification in both applicable
+directions, exact coordinates and honest refusal, maximum field/certificate,
+descriptor/MPF, native signer/evaluator, and CEK/ScriptSources/ResolveInputs
+continuation frontiers. Publication-only and atomic maximum rows do not replace
+registered provenance through mint/removal. Cancellation and recovery must cover
+each reachable continuation, including union folds and same-block-created inputs.
+The [fit evidence index](size-plans/README.md) identifies family-specific producers
+and verifiers; retain their required shape sets when regenerating evidence.
+
 Completion: all catalogue lifecycle tests pass with the shared Van Rossem
-limits and no category-specific size or ExUnit override.
+limits and no category-specific size or ExUnit override. Complete the frozen-tree classification sweep and independent review below.
 
 ## P3 — Correction and economics
 
-- Set non-zero deployment values for bonds, penalties, prover rewards, and
-  inactivity penalties.
+- Reconcile the technical specification's DOUBLE-WITHDRAW formula with the
+  implemented requirement that both withdrawal leaves are payable; see the
+  [family reference](family-reference.md#double-withdraw-fault).
+
+- Verify the configured non-zero bonds, penalties, prover rewards, and
+  inactivity penalties against the release manifest and balance-conservation tests.
 - Enforce duplicate-claim/idempotency behavior under concurrent challengers.
 - Run target and descendant removal across operator rotation against a real
   node.
@@ -112,15 +83,13 @@ prover exactly once, and leaves the node and L1 views reconciled.
 
 - Expose stable retained payload, proof artifact, membership witness, field
   opening, and verifier-version schemas to an unprivileged challenger.
-- Specify and accept the remedy for data withheld after attestation. The
-  implemented availability-challenge validator applies one 20,017-byte script
-  (19,927-byte raw blueprint body) to both its spending and minting roles, so
-  it cannot be published under the 16,384-byte limit; an authenticated
-  split/withdraw-zero redesign, new manifest roles, and matching builder ABI
-  changes are required before this remedy exists on chain.
+- Accept the remedy for data withheld after attestation, including publication
+  of the availability-challenge scripts and matching deployed manifest roles.
+  Use P0 for publication acceptance.
+
 - Keep all proof evidence available for at least maturity plus execution/retry
   margin.
-- Publish watcher and manual recovery runbooks.
+- Exercise the watcher and manual recovery runbooks during independent acceptance.
 
 Completion: a challenger with no node database access can reproduce every
 proof input and complete a supported challenge.
@@ -137,9 +106,8 @@ proof input and complete a supported challenge.
 
 ## Definition of done
 
-- 32/32 catalogue categories have complete local emulator lifecycle coverage or an
-  explicitly approved launch exclusion.
-- 32/32 enabled categories are installed in the production watcher.
+- Every enabled catalogue category has complete local emulator lifecycle coverage.
+- Every enabled category is admitted in the production watcher on the release identity.
 - Every family has positive, valid-block negative, resume/cancel, and
   correction emulator coverage appropriate to its shape under Van Rossem
   transaction limits.
@@ -147,3 +115,28 @@ proof input and complete a supported challenge.
 - Public retained proof inputs survive the challenge window.
 - Real-node and preprod acceptance artifacts are reproducible from a clean
   checkout.
+
+## Combined verification and independent review
+
+Freeze the intended source revision for combined verification. Rebuild the
+normal testnet blueprint, derive the catalogue/manifest/applied-script identity,
+and run contract inspection, every family's maximum registered lifecycle,
+durable watcher detect → prove → remove journeys, and the complete typed-reason
+classification sweep in both applicable directions. Only `PlutusExecutionFailed`
+may select the interactive dispute. Reconcile all raised-limit, oversized, and
+disabled-evaluation test routes; none establishes a positive release result.
+
+Review the completed on-chain and deployment diff independently after these
+gates pass. The original program review boundary is commit
+`815b703a99c26161cb735ab2f298bf0cbce4524d`; record the frozen final commit and
+verify that the chosen range covers every intended change. Review exact
+source/reason/coordinate binding, decisive predicates, honest non-convictability,
+field/item/MPF/checkpoint authentication, unique successors, cancellation,
+permanent mint and removal, malformed-byte behavior, substitution/replay, ABI
+parity, and complete signed byte/ExUnit evidence. Include shared libraries and
+parameter application, not only family validator files.
+
+Resolve findings and verify their fixes within the review. Rerun affected
+focused checks and combined closure after remediation. Completion requires no
+unresolved correctness, soundness, publishability, or evidence finding; source
+installation counts and historical green snapshots cannot close this gate.

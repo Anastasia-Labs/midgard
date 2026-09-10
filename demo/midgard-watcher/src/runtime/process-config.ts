@@ -31,7 +31,8 @@ const exactRecord = (
     typeof value !== "object" ||
     value === null ||
     Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype ||
+    (Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null) ||
     Reflect.ownKeys(value).length !== Object.keys(value).length
   ) {
     throw new Error(`${label} is not an exact plain object`);
@@ -137,12 +138,18 @@ export type WatcherProcessConfig = Readonly<{
   watcherConfig: WatcherConfig;
   watcherRuntimeConfigPath: string;
   deploymentAuthorityPath: string;
+  ruleBundlePath: string;
   fundingProfileBundlePath: string;
   nativeChainSyncBinaryPath: string;
   trustedHeadAuthorityEndpoint: string;
   operationsEndpoint: string;
   httpBearerSecretSource: WatcherWalletKeySource;
   workflowJournalDirectory: string;
+  availability: Readonly<{
+    keySource: WatcherWalletKeySource;
+    journalPath: string;
+    minimumFundingLovelace: string;
+  }>;
   readinessHeaderHash: string;
   faultProofInfrastructure: Readonly<{
     manifestPath: string;
@@ -327,12 +334,14 @@ export const parseWatcherProcessConfig = (
       "watcherConfig",
       "watcherRuntimeConfigPath",
       "deploymentAuthorityPath",
+      "ruleBundlePath",
       "fundingProfileBundlePath",
       "nativeChainSyncBinaryPath",
       "trustedHeadAuthorityEndpoint",
       "operationsEndpoint",
       "httpBearerSecretSource",
       "workflowJournalDirectory",
+      "availability",
       "readinessHeaderHash",
       "faultProofInfrastructure",
     ],
@@ -361,11 +370,36 @@ export const parseWatcherProcessConfig = (
   const infrastructure = faultProofInfrastructure(
     input.faultProofInfrastructure,
   );
+  const availabilityInput = exactRecord(
+    input.availability,
+    ["keySource", "journalPath", "minimumFundingLovelace"],
+    "watcher availability actor",
+  );
+  if (
+    typeof availabilityInput.minimumFundingLovelace !== "string" ||
+    !/^[1-9][0-9]*$/u.test(availabilityInput.minimumFundingLovelace)
+  ) {
+    throw new Error(
+      "watcher availability minimum funding must be positive lovelace",
+    );
+  }
+  const availability = Object.freeze({
+    keySource: secretSource(
+      availabilityInput.keySource,
+      "watcher availability wallet",
+    ),
+    journalPath: canonicalPath(
+      availabilityInput.journalPath,
+      "watcher availability journal",
+    ),
+    minimumFundingLovelace: availabilityInput.minimumFundingLovelace,
+  });
   assertDistinctSources([
     watcherConfig.storage.rollbackAuthorityKeySource,
     watcherConfig.proverWallet.keySource,
     httpBearerSecretSource,
     infrastructure.midgardNodeAdminKeySource,
+    availability.keySource,
   ]);
   if (
     typeof input.readinessHeaderHash !== "string" ||
@@ -397,6 +431,10 @@ export const parseWatcherProcessConfig = (
       input.deploymentAuthorityPath,
       "watcher deployment authority",
     ),
+    ruleBundlePath: canonicalPath(
+      input.ruleBundlePath,
+      "watcher release rule bundle",
+    ),
     fundingProfileBundlePath: canonicalPath(
       input.fundingProfileBundlePath,
       "watcher funding profile bundle",
@@ -414,6 +452,7 @@ export const parseWatcherProcessConfig = (
     ),
     readinessHeaderHash: input.readinessHeaderHash,
     faultProofInfrastructure: infrastructure,
+    availability,
   });
 };
 

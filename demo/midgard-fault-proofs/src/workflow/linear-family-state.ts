@@ -330,8 +330,8 @@ const sameRequiredAction = ({
 /**
  * Reconciles only against raw-derived L1 facts. A confirmed transaction must
  * produce the immediate content-addressed successor; skipped/reordered stages
- * are a conflict. A stale removal input that was never included may be rebuilt
- * under its new outref and therefore returns `not_found`.
+ * are a conflict. A known intended transaction remains pending until its
+ * inclusion is authenticated; finalized-history absence cannot permit a retry.
  */
 export const reconcileLinearFamilyAction = async ({
   category,
@@ -390,18 +390,17 @@ export const reconcileLinearFamilyAction = async ({
     stage: admittedStage,
     actionId: action.actionId,
   });
-  if (included && unchanged) {
+  // Absence from release-final history does not authorize rebuilding a
+  // submitted transaction whose inputs may already be spent at the live tip.
+  if (unchanged) {
     return { kind: "pending", txHash };
-  }
-  if (!included && unchanged) {
-    return { kind: "not_found" };
   }
   if (
     !included &&
     parsed.stage === "remove" &&
     admittedStage.kind === "proof_token"
   ) {
-    return { kind: "not_found" };
+    return { kind: "pending", txHash };
   }
   return {
     kind: "conflict",

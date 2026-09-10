@@ -10,7 +10,6 @@ import {
   buildFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   EMPTY_MERKLE_TREE_ROOT,
   FAULT_PROOF_SHARED_TITLES,
@@ -25,7 +24,7 @@ import {
   ScriptHashSchema,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   TRANSITION_TRACE_YIELD_TITLES,
-  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
+  VALIDATION_TRACE_DISPUTE_STEP_COUNT,
 } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -633,32 +632,17 @@ describe("fault-proof deployment contract resolution", () => {
   });
 
   it("resolves the required V1 validation-dispute category and rejects an incomplete catalogue", async () => {
-    const blueprint = filterBlueprint(readBlueprint(), [
-      ...Object.values(FAULT_PROOF_SHARED_TITLES),
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.canonicalDecodeItemStages,
-      ),
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.scriptSourcesStageOneRedeemerStages,
-      ),
-      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
-      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
-      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
-    ]);
+    const blueprint = readBlueprint();
     const contracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
-        referenceScriptAuthPolicyId: h28b,
+        referenceScriptAuthPolicyId: validatorToScriptHash({
+          type: "Native",
+          script: referenceScriptAuthNativeScript,
+        }),
       }),
     );
     const proofCatalogue = await catalogueFor({
@@ -689,7 +673,9 @@ describe("fault-proof deployment contract resolution", () => {
       network: "Preprod",
     });
     expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000006");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(139);
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(
+      VALIDATION_TRACE_DISPUTE_STEP_COUNT,
+    );
     expect(
       resolved.contracts.validationTraceDispute.semanticResolvers,
     ).toHaveLength(91);

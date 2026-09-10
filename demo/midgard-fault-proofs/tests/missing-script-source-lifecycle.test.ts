@@ -40,6 +40,7 @@ import {
   missingScriptSourceOnchainCheckpoint,
 } from "../src/missing-script-source/universe-scan.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   buildMissingScriptSourceFixture,
   buildMissingScriptSourceUniverse,
@@ -71,6 +72,12 @@ const LOCATIONS: readonly MissingScriptSourceLocation[] = [
 ];
 const SMALL_INLINE = 3;
 const SMALL_REFERENCE = 2;
+
+const measuredFit = createMeasuredFitRecorder(
+  "missing-script-source",
+  "lifecycle",
+  "all purpose/source directions; maximum retained source universe and resumed batched traversal",
+);
 
 describe("missingScriptSource retained fixtures", () => {
   it.each(PURPOSE_KINDS)(
@@ -188,6 +195,13 @@ describe("missingScriptSource real lifecycle", () => {
       expect(permanentProof?.txHash).toBe(final.txHash);
       await stages.remove();
       stages.assertFit(`kind-${purposeKind.toString()}-${presentAt}`);
+      stages.measurements.forEach(({ stage, measurement }, index) =>
+        measuredFit.record(
+          `${`kind-${purposeKind.toString()}-${presentAt}`}/${index}-${stage}`,
+          measurement,
+          measurement.executionMemory === 0n ? "publication" : "lifecycle",
+        ),
+      );
     },
     300_000,
   );
@@ -538,6 +552,13 @@ describe("missingScriptSource real lifecycle", () => {
     expect(final.fraudProofUnit).toBeTruthy();
     await stages.remove();
     stages.assertFit("seams");
+    stages.measurements.forEach(({ stage, measurement }, index) =>
+      measuredFit.record(
+        `${"seams"}/${index}-${stage}`,
+        measurement,
+        measurement.executionMemory === 0n ? "publication" : "lifecycle",
+      ),
+    );
   }, 600_000);
 
   it("cancels from every nonterminal physical step and resumes after a real checkpoint", async () => {
@@ -629,6 +650,13 @@ describe("missingScriptSource real lifecycle", () => {
     expect(final.fraudProofUnit).toBeTruthy();
     await stages.remove();
     stages.assertFit("resumable");
+    stages.measurements.forEach(({ stage, measurement }, index) =>
+      measuredFit.record(
+        `${"resumable"}/${index}-${stage}`,
+        measurement,
+        measurement.executionMemory === 0n ? "publication" : "lifecycle",
+      ),
+    );
   }, 600_000);
 
   it("pins the maximum supported frontier to the consensus field bounds", () => {
@@ -695,6 +723,13 @@ describe("missingScriptSource real lifecycle", () => {
       expect(final.fraudProofUnit).toBeTruthy();
       await stages.remove();
       stages.assertFit(`maximum-${direction}`);
+      stages.measurements.forEach(({ stage, measurement }, index) =>
+        measuredFit.record(
+          `${`maximum-${direction}`}/${index}-${stage}`,
+          measurement,
+          measurement.executionMemory === 0n ? "publication" : "lifecycle",
+        ),
+      );
     },
     1_800_000,
   );

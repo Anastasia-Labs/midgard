@@ -43,9 +43,11 @@ export const nativeDecodingFixture = async ({
   reasonName = "ResolvedReferenceScriptMalformed",
   now = 1_000_000,
   operatorVkey = "aa".repeat(28),
+  sourceKind = 1,
 }: {
   now?: number;
   operatorVkey?: string;
+  sourceKind?: 0 | 1;
   index?: bigint;
   consumed?: boolean;
   item?: Buffer;
@@ -53,7 +55,8 @@ export const nativeDecodingFixture = async ({
   reasonName?:
     | "ResolvedReferenceScriptMalformed"
     | "ResolvedReferenceScriptNodeLimit"
-    | "ResolvedReferenceScriptDepthLimit";
+    | "ResolvedReferenceScriptDepthLimit"
+    | "InputSpentOutputNonCanonical";
 } = {}) => {
   const base = await buildInvalidForcedTransitionTraceFixture({
     operatorVkey,
@@ -142,7 +145,7 @@ export const nativeDecodingFixture = async ({
     witness_cbor: "80",
     auxiliary: {
       ScheduledLedgerMembershipWitness: {
-        source_kind: 1n,
+        source_kind: BigInt(sourceKind),
         key: key.toString("hex"),
         next_schedule_hash: z,
         value: descriptor.toString("hex"),
@@ -189,7 +192,11 @@ export const nativeDecodingFixture = async ({
     payloadEnvelopeCbor: await reencodeFixturePayload(predecessorPayload),
   };
   const native = adjudicateMidgardNativeTxFullValidity(
-    makeNativeTx({ spendInputCbors: [], referenceInputCbors: [key], fee: 0n }),
+    makeNativeTx({
+      spendInputCbors: sourceKind === 0 ? [key] : [],
+      referenceInputCbors: sourceKind === 1 ? [key] : [],
+      fee: 0n,
+    }),
     direction === 1 ? "TxIsInvalid" : "TxIsValid",
   );
   const proofSource = deriveMidgardNativeTxProofSource(native);
@@ -207,7 +214,12 @@ export const nativeDecodingFixture = async ({
         ? "ForcedTxValid"
         : {
             ForcedTxInvalid: {
-              reason: { [reasonName]: { source_kind: 1n, input_index: index } },
+              reason: {
+                [reasonName]: {
+                  source_kind: BigInt(sourceKind),
+                  input_index: index,
+                },
+              },
             },
           },
   } as const;

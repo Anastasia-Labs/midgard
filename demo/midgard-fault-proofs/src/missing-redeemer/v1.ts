@@ -38,6 +38,7 @@ import {
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   createMissingRedeemerActuator,
@@ -639,10 +640,15 @@ export const createMissingRedeemerWorkflowRunnerSurface = ({
             headerHash: invocation.headerHash,
           }),
         });
-        return await executeManifestBoundMissingRedeemerWorkflow({
-          workflow,
-          sources: loaded.retainedDaSources,
-          journal,
+        return await continuePendingWorkflow({
+          invocation,
+          journal: journal,
+          execute: () =>
+            executeManifestBoundMissingRedeemerWorkflow({
+              workflow,
+              sources: loaded.retainedDaSources,
+              journal,
+            }),
         });
       } finally {
         await loaded.close();

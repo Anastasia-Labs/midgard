@@ -14,7 +14,7 @@ The intended package name is `@al-ft/lucid-midgard`. It is not yet on a public
 registry. In this repository it is consumed as a workspace package from
 `demo/lucid-midgard`.
 
-```ts
+```ts twoslash
 import {
   LucidMidgard,
   MidgardNodeProvider,
@@ -36,14 +36,16 @@ re-exported from the package root (`src/index.ts` re-exports `builder.js`,
 `MidgardNodeProvider.create(...)` is backed by the node HTTP API. It fetches
 `GET /protocol-info` during construction and **fails closed** when protocol info
 is unavailable, so the builder does not silently run against unknown protocol facts.
-Passing an explicit fallback overrides this, and you then own the correctness of the
-values you supplied.
+There is no fallback protocol configuration.
 
-```ts
+```ts twoslash
+import { MidgardNodeProvider } from "@al-ft/lucid-midgard";
+// ---cut---
 const provider = await MidgardNodeProvider.create({
   endpoint: "http://127.0.0.1:3000",
 });
 ```
+
 </Step>
 
 <Step>
@@ -53,7 +55,10 @@ const provider = await MidgardNodeProvider.create({
 returns the configured instance. The second argument is either a `Network`
 string or a config object.
 
-```ts
+```ts twoslash
+import { LucidMidgard, type MidgardProvider } from "@al-ft/lucid-midgard";
+declare const provider: MidgardProvider;
+// ---cut---
 const midgard = await LucidMidgard.new(provider, {
   network: "Preprod",
   networkId: 0,
@@ -62,23 +67,27 @@ const midgard = await LucidMidgard.new(provider, {
 
 The rest of these docs use `Preprod`, matching the
 [L1 backend](/docs/getting-started/l1-backend), which pins `cardano-node` to preprod.
+
 </Step>
 
 <Step>
 ### Select a wallet
 
 Wallet selection lives under `midgard.selectWallet`. For an external body-hash
-signer, build the wallet with `walletFromExternalSigner(...)` and hand it to
+signer, pass its address, key hash, and signing callback to
 `selectWallet.fromExternalSigner(...)`.
 
-```ts
-midgard.selectWallet.fromExternalSigner(
-  walletFromExternalSigner({
-    address,
-    keyHash,
-    signBodyHash,
-  }),
-);
+```ts twoslash
+import type {
+  LucidMidgard,
+  ExternalBodyHashSigner,
+} from "@al-ft/lucid-midgard";
+declare const midgard: LucidMidgard;
+declare const address: string;
+declare const keyHash: string;
+declare const signBodyHash: ExternalBodyHashSigner["signBodyHash"];
+// ---cut---
+midgard.selectWallet.fromExternalSigner({ address, keyHash, signBodyHash });
 ```
 
 The signing domain is explicit: an external signer's `signBodyHash` receives the
@@ -86,6 +95,7 @@ Midgard-native body hash, and `walletFromExternalSigner` verifies the returned
 witness key hash matches the wallet identity. Other adapters include
 `selectWallet.fromSeed`, `selectWallet.fromPrivateKey`, and `selectWallet.fromAddress`
 (read-only). See [Provider and Wallet](/docs/sdk/lucid-midgard/provider-and-wallet).
+
 </Step>
 
 <Step>
@@ -95,12 +105,17 @@ witness key hash matches the wallet identity. Other adapters include
 adds an output, and `complete()` canonicalizes, balances, computes roots, and
 derives the transaction id, returning a `CompleteTx`.
 
-```ts
+```ts twoslash
+import type { LucidMidgard } from "@al-ft/lucid-midgard";
+declare const midgard: LucidMidgard;
+declare const destination: string;
+// ---cut---
 const tx = await midgard
   .newTx()
   .pay.ToAddress(destination, { lovelace: 2_000_000n })
   .complete();
 ```
+
 </Step>
 
 <Step>
@@ -108,24 +123,32 @@ const tx = await midgard
 
 Signing is explicit about the Midgard hash domain. `tx.sign.withWallet()` returns
 a partial-sign builder whose `.complete()` assembles a submit-capable `CompleteTx`.
-`.submit()` posts the canonical CBOR to the node and returns a `SubmittedTx` with
+`.submit()` posts a proof-submission CBOR envelope containing the canonical
+transaction and its exact program-material sidecar to the node and returns a `SubmittedTx` with
 durable admission metadata. `awaitStatus` polls until the requested state.
 
-```ts
+```ts twoslash
+import type { CompleteTx } from "@al-ft/lucid-midgard";
+declare const tx: CompleteTx;
+// ---cut---
 const signed = await tx.sign.withWallet().complete();
 const submitted = await signed.submit();
-await submitted.awaitStatus({ until: "accepted" });
+const outcome = await submitted.awaitStatus();
+if (outcome.kind === "rejected") {
+  throw new Error(outcome.code);
+}
 ```
+
 </Step>
 
 </Steps>
 
 <Callout type="warn" title="Admission is not final validity">
-`submit()` returns durable admission, not validation acceptance. A `202` submit
-response means the transaction is `queued`. Use `status()` or `awaitStatus()` to
-observe the outcome. A rejection arrives as a `rejected` status carrying the node's
-reject code, not as a thrown error. See
-[Submission and Observability](/docs/sdk/lucid-midgard/submission-observability).
+  `submit()` returns durable admission, not validation acceptance. A `202`
+  submit response means the transaction is `queued`. Use `status()` or
+  `awaitStatus()` to observe the outcome. A rejection arrives as a `rejected`
+  status carrying the node's reject code, not as a thrown error. See [Submission
+  and Observability](/docs/sdk/lucid-midgard/submission-observability).
 </Callout>
 
 ## Where to go next

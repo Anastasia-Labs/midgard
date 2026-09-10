@@ -18,6 +18,7 @@
  * positive path below is asserted under the 13,200,000-memory /
  * 8,000,000,000-step basis the fit ledger enforces.
  */
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
@@ -28,6 +29,35 @@ import {
 
 const POSITIVE_PATH_MEMORY_BASIS = 13_200_000n;
 const POSITIVE_PATH_STEP_BASIS = 8_000_000_000n;
+
+const maximumOutputDatum = (): Buffer => {
+  // The fixture uses a 29-byte enterprise address and the same lovelace
+  // amount for its spent and produced outputs. Search the serialized output,
+  // including Plutus Data chunk framing, instead of subtracting an estimate.
+  for (let scalarCount = 0; scalarCount < 3; scalarCount += 1) {
+    let low = 0;
+    let high = 16_384;
+    while (low <= high) {
+      const width = Math.floor((low + high) / 2);
+      const datum = Buffer.from(
+        Data.to([
+          ...Array.from({ length: scalarCount }, () => 0n),
+          "ab".repeat(width),
+        ]),
+        "hex",
+      );
+      const output = encodeMidgardTxOutput({
+        address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 1)]),
+        value: { lovelace: 100_000_000n, assets: new Map() },
+        datum: { kind: "inline", cbor: datum },
+      });
+      if (output.length === 16_384) return datum;
+      if (output.length < 16_384) low = width + 1;
+      else high = width - 1;
+    }
+  }
+  throw new Error("Could not construct the exact 16,384-byte ledger output");
+};
 
 /**
  * Inline datum for the multi-yield lifecycles: a wide integer, a 150-byte
@@ -61,6 +91,20 @@ const expectPositiveBasis = (
   console.info(
     `${label}: semantic tx memory ${result.semanticMeasurement!.executionMemory.toString()} cpu ${result.semanticMeasurement!.executionSteps.toString()}`,
   );
+  if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+    console.info(
+      JSON.stringify(
+        {
+          ledgerOutputNecessityMeasurement: {
+            label,
+            ...result.semanticMeasurement,
+          },
+        },
+        (_key, value: unknown) =>
+          typeof value === "bigint" ? value.toString() : value,
+      ),
+    );
+  }
   expect(result.semanticMeasurement!.executionMemory).toBeLessThanOrEqual(
     POSITIVE_PATH_MEMORY_BASIS,
   );
@@ -68,6 +112,28 @@ const expectPositiveBasis = (
     POSITIVE_PATH_STEP_BASIS,
   );
 };
+
+it.each(["resolveInputs", "scriptSources"] as const)(
+  "proves the widest %s datum step at the exact 16,384-byte output maximum",
+  async (disputedPhase) => {
+    const result = await runForcedValidationDisputeScenario(
+      ({ operatorVkey, now }) =>
+        buildForgedOperatorSuccessorValidationDisputeFixture({
+          operatorVkey,
+          now,
+          disputedPhase,
+          ...(disputedPhase === "resolveInputs"
+            ? { resolveInputsKind: "membershipStep" as const }
+            : { scriptSourcesSemanticIndex: 2 }),
+          outputDatumCbor: maximumOutputDatum(),
+          outputLovelace: 100_000_000n,
+          worstCaseWitness: true,
+        }),
+    );
+    expectPositiveBasis(result, `${disputedPhase} exact 16,384-byte output`);
+  },
+  600_000,
+);
 
 it("proves resolve-inputs membershipStep through permanent proof and removal", async () => {
   const result = await runForcedValidationDisputeScenario(

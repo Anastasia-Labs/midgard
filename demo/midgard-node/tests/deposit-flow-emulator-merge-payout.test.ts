@@ -52,7 +52,6 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   SDK,
-  signWithdrawalBody,
   SqlClient,
   stateQueueFetchConfig,
   submitDepositWithDiagnostics,
@@ -628,7 +627,7 @@ describe.sequential("deposit flow emulator", () => {
     };
     const submittedWithdrawal = await submitWithdrawalWithDiagnostics(fixture, {
       body: withdrawalBody,
-      signature: signWithdrawalBody(withdrawalPrivateKey, withdrawalBody),
+      signature: SDK.signWithdrawalBody(withdrawalPrivateKey, withdrawalBody),
       refundAddress: l1AddressData,
       refundDatum: "NoDatum",
     });

@@ -190,6 +190,89 @@ export default tseslint.config(
     },
   },
   {
+    // Static architecture gate, reported as lint rather than as a test.
+    // `lucid-midgard` surfaces every builder failure through typed Effect
+    // errors (`BuilderInvariantError` and friends); an escape hatch that
+    // converts a typed failure into a defect, swallows a cause, or runs an
+    // Effect synchronously would silently change that contract. This used to
+    // be a `readFileSync` grep inside tests/safe-program.test.ts, which
+    // section 7 of docs/research/testing-best-practices.md prohibits as proof
+    // of runtime behavior.
+    files: ["lucid-midgard/src/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "MemberExpression[property.name=/^(orDie|orDieWith|catchAllDefect|catchAllCause|catchCause)$/]",
+          message:
+            "lucid-midgard surfaces builder failures through the typed Effect error channel. Do not convert a typed failure into a defect or swallow a Cause; add an error type instead.",
+        },
+        {
+          selector: "Identifier[name=/^unsafeRun/]",
+          message:
+            "Do not run an Effect synchronously inside lucid-midgard src: return the Effect (or a Promise-shaped safe variant) and let the caller run it.",
+        },
+      ],
+    },
+  },
+  {
+    // Static gate over the shipped examples, reported as lint. The package is
+    // a Midgard-L2 builder: an example that reaches for a Cardano L1 provider
+    // (the examples do use its CML crypto primitives, which is not a provider)
+    // or a local UPLC evaluator would document a submission shortcut that the
+    // package does not support. tests/documentation-examples.test.ts executes
+    // the examples; it must not also grep them.
+    files: ["lucid-midgard/examples/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "Identifier[name=/^(Blockfrost|Maestro|Kupmios|Koios|Emulator)$/]",
+          message:
+            "The lucid-midgard examples run against the Midgard provider only. A Cardano L1 provider in an example documents a submission path the package does not implement.",
+        },
+      ],
+    },
+  },
+  {
+    // Static import-boundary gate for the independent watcher command
+    // package, reported as lint rather than as a test. The watcher is an
+    // adversarial verifier: it must never link the operator's own node, its
+    // admin/database surface, or the DA committee service into its runtime.
+    // This used to be a `readFileSync` grep over src inside
+    // tests/runtime/scaffold.test.ts, which section 7 of
+    // docs/research/testing-best-practices.md prohibits as proof of runtime
+    // behavior.
+    files: ["midgard-watcher/src/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            workspacePackageBoundary,
+            {
+              group: [
+                "midgard-node",
+                "midgard-node/*",
+                "midgard-node-tools",
+                "midgard-node-tools/*",
+                "da-committee-node",
+                "da-committee-node/*",
+                "**/midgard-node/**",
+                "**/midgard-node-tools/**",
+                "**/da-committee-node/**",
+              ],
+              message:
+                "The watcher verifies the operator independently: its runtime must not import the operator's node, its tooling, or the DA committee service. Model the boundary it needs (an HTTP/libp2p client, a config field) instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["midgard-node/**/*.ts", "midgard-node-tools/**/*.ts"],
     rules: {
       "no-restricted-imports": [

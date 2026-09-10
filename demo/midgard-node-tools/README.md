@@ -2,9 +2,8 @@
 
 End-to-end, stress, and acceptance tooling that drives a Midgard node from the
 outside. It is a separate package with its own binary on purpose: none of these
-commands ship in the operator's `midgard-node/dist/index.js`, so demo and
-benchmark behavior can never leak into a running node (AGENTS.md: such behavior
-must be explicit, isolated, and unavailable by default).
+commands ship in the operator's `midgard-node/dist/index.js`, which keeps these entrypoints outside the operator CLI. Runtime benchmark
+options still require their explicit configuration gates.
 
 ## What This Package Holds
 
@@ -30,8 +29,7 @@ The tooling compiles the operator package from source. `midgard-node`'s
 (`midgard-node/<subpath>` for `src/`, `midgard-node/tests/<subpath>` for test
 helpers); tsc, typescript-eslint, and vitest resolve it directly, and `tsup`
 inlines every `midgard-node` module this bundle imports. The operator package
-never grows a per-module dist for anyone to resolve, and nothing here is
-reachable from the operator binary.
+never grows a per-module dist for anyone to resolve, and the operator CLI does not register these tooling commands.
 
 Neither package has a `@/` alias: use relative specifiers inside a package and
 `midgard-node/<subpath>` from here. ESLint enforces both.

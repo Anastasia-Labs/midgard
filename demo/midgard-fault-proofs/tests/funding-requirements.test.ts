@@ -5,7 +5,9 @@ import {
   admitWorkflowFundingRequirements,
   assertAdmittedWorkflowFundingRequirements,
   createWorkflowFundingRequirements,
+  isProtocolFundedWorkflowAction,
   workflowFundingRequirementsForRunner,
+  type WorkflowFundingRequirementsInput,
 } from "../src/workflow/funding-requirements.js";
 import { unsafeCreateMeasuredWorkflowRunnerForTest } from "../src/workflow/funding-requirements-test-support.js";
 import { createAdmittedWorkflowRunner } from "../src/workflow/runner-admission.js";
@@ -181,7 +183,157 @@ const input = () => ({
   ],
 });
 
+const protocolFundedInput = (): WorkflowFundingRequirementsInput => {
+  const inputs = CML.TransactionInputList.new();
+  inputs.add(
+    CML.TransactionInput.new(CML.TransactionHash.from_hex("66".repeat(32)), 0n),
+  );
+  const outputs = CML.TransactionOutputList.new();
+  outputs.add(
+    CML.TransactionOutput.new(
+      CML.Address.from_bech32(fundingAddress),
+      CML.Value.from_coin(3_000_000n),
+    ),
+  );
+  const body = CML.TransactionBody.new(inputs, outputs, 170_000n);
+  const vkeys = CML.VkeywitnessList.new();
+  vkeys.add(
+    CML.Vkeywitness.new(
+      signingKey.to_public(),
+      signingKey.sign(CML.hash_transaction(body).to_raw_bytes()),
+    ),
+  );
+  const witnesses = CML.TransactionWitnessSet.new();
+  witnesses.set_vkeywitnesses(vkeys);
+  return {
+    ...input(),
+    actions: [
+      {
+        actionKind: "remove",
+        signedTransactionCborHex: CML.Transaction.new(
+          body,
+          witnesses,
+          true,
+          undefined,
+        ).to_canonical_cbor_hex(),
+        fundingControlledInputs: [
+          {
+            outRef: `${"66".repeat(32)}#0`,
+            resolvedOutputCborHex: CML.TransactionOutput.new(
+              CML.Address.from_bech32(lockedAddress),
+              CML.Value.from_coin(3_170_000n),
+            ).to_canonical_cbor_hex(),
+            role: "protocol",
+            semanticRole: "protocol_state",
+            contractAddress: lockedAddress,
+            identityAssets: [],
+            fundingLovelace: "0",
+            fundingAssets: [],
+            sourceActionKind: null,
+            sourceOutputIndex: null,
+          },
+        ],
+        fundingControlledOutputs: [
+          {
+            outputIndex: 0,
+            role: "protocol_reward",
+            custodyRole: "none",
+            semanticRole: "prover_reward",
+            contractAddress: fundingAddress,
+            fundingLovelace: "0",
+            fundingAssets: [],
+          },
+        ],
+        referenceInputs: [],
+        referenceScriptBytes: 0,
+        requiredBondLovelace: "0",
+        requiredRewardCustodyLovelace: "0",
+        requiredNativeAssets: [],
+        collateralRequired: false,
+        conflictRetryCount: 0,
+      },
+    ],
+  };
+};
+
 describe("production workflow funding requirements V1", () => {
+  it("accounts for protocol-funded fee and reward without claiming prover capital", () => {
+    const profile = createWorkflowFundingRequirements(protocolFundedInput());
+    expect(isProtocolFundedWorkflowAction(profile.actions[0]!)).toBe(true);
+    expect(
+      profile.actions[0]!.fundingControlledInputs[0]!.fundingLovelace,
+    ).toBe("0");
+    expect(admitWorkflowFundingRequirements(profile)).toEqual(profile);
+  });
+
+  it("refuses an unfunded protocol reward and falsely attributed prover principal", () => {
+    const value = protocolFundedInput();
+    const action = value.actions[0]!;
+    expect(() =>
+      createWorkflowFundingRequirements({
+        ...value,
+        actions: [
+          {
+            ...action,
+            fundingControlledInputs: [
+              {
+                ...action.fundingControlledInputs[0]!,
+                resolvedOutputCborHex: CML.TransactionOutput.new(
+                  CML.Address.from_bech32(lockedAddress),
+                  CML.Value.from_coin(3_169_999n),
+                ).to_canonical_cbor_hex(),
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("protocol-funded Ada is not conserved");
+    expect(() =>
+      createWorkflowFundingRequirements({
+        ...value,
+        actions: [
+          {
+            ...action,
+            fundingControlledOutputs: [
+              {
+                ...action.fundingControlledOutputs[0]!,
+                fundingLovelace: "3000000",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("role differs from its exact output authority");
+  });
+
+  it("keeps mixed prover funding out of the protocol-only reward branch", () => {
+    const value = protocolFundedInput();
+    const action = value.actions[0]!;
+    expect(() =>
+      createWorkflowFundingRequirements({
+        ...value,
+        actions: [
+          {
+            ...action,
+            fundingControlledInputs: [
+              {
+                ...action.fundingControlledInputs[0]!,
+                role: "wallet_funding",
+                semanticRole: "wallet_funding",
+                contractAddress: fundingAddress,
+                fundingLovelace: "3170000",
+                resolvedOutputCborHex: CML.TransactionOutput.new(
+                  CML.Address.from_bech32(fundingAddress),
+                  CML.Value.from_coin(3_170_000n),
+                ).to_canonical_cbor_hex(),
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("protocol rewards require exclusively protocol-funded");
+  });
+
   it("derives exact canonical transaction/output measurements and re-admits the profile", () => {
     const profile = createWorkflowFundingRequirements(input());
     const transaction = CML.Transaction.from_cbor_hex(

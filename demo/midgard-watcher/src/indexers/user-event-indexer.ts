@@ -13,6 +13,8 @@ import {
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
+import { admitFraudProofRawL1Point } from "@al-ft/midgard-fault-proofs";
 import {
   DepositDatumSchema,
   DepositEventSchema,
@@ -42,21 +44,30 @@ import {
   WithdrawalOrderDatumSchema,
   WithdrawalSpendRedeemerSchema,
 } from "@al-ft/midgard-sdk";
-import { CML, Data } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  SLOT_CONFIG_NETWORK,
+  slotToBeginUnixTime,
+} from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
   evaluateWatcherFinality,
   parseWatcherFinalityPolicy,
+  readWatcherLocalBackfillFinalityObservation,
+  readWatcherLocalBackfillFinalityOriginalWitness,
   watcherFinalityConfiguredSource,
   type WatcherFinalityPolicy,
   type WatcherFinalityResult,
+  type WatcherLocalBackfillFinalityReceipt,
 } from "../l1/finality-engine.js";
 import {
   encodeWatcherNormalizedL1Block,
   normalizeWatcherL1Block,
   type WatcherL1TransportAttestationContext,
   watcherL1TransportAttestationDetails,
+  type WatcherLocalBackfillObservationReceipt,
   type WatcherNormalizedL1Block,
 } from "../l1/l1-adapter.js";
 import { evaluateWatcherMultiProviderConsistency } from "../l1/multi-provider-consistency.js";
@@ -69,20 +80,64 @@ import {
   type WatcherRollbackVerificationContext,
 } from "../l1/rollback-engine.js";
 import {
+  readWatcherUserEventScriptBinding,
   type VerifiedWatcherDeploymentIdentity,
   verifyWatcherDeploymentIdentity,
   type WatcherDeploymentIdentityPolicy,
   type WatcherDeploymentTrustRoot,
+  type WatcherUserEventScriptBinding,
 } from "../runtime/deployment-identity.js";
+import {
+  readWatcherProtectedUserEventCheckpoint,
+  readWatcherProtectedUserEventCheckpointReceipt,
+  type WatcherDurableRuntime,
+  type WatcherProtectedUserEventCheckpoint,
+} from "../storage/durable-runtime.js";
 import {
   encodeWatcherDurableStore,
   journalWatcherProtocolUtxoTransition,
+  makeEmptyWatcherDurableStore,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
   parseWatcherDurableStore,
+  watcherCanonicalJson,
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   watcherSameCanonicalJson,
   watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
+import {
+  makeWatcherUserEventCheckpoint,
+  WATCHER_USER_EVENT_CHECKPOINT_SCHEMA_VERSION,
+  WATCHER_USER_EVENT_VALIDATION_SCHEMA_VERSION,
+  type WatcherUserEventArchive,
+  type WatcherUserEventCheckpoint,
+  type WatcherUserEventValidation,
+} from "../storage/user-event-checkpoint.js";
+import {
+  assertWatcherStateQueueHeaderObservation,
+  type WatcherStateQueueHeaderObservation,
+} from "./authenticated-state-queue-observation.js";
+import {
+  findWatcherUserEventArchiveIndex,
+  findWatcherUserEventArchiveIndexForEntry,
+  makeWatcherUserEventArchiveIndex,
+  readWatcherUserEventArchiveIndex,
+  type WatcherUserEventArchiveIndexRead,
+} from "./user-event-history-archive.js";
+import {
+  readWatcherUserEventOrigin,
+  type WatcherUserEventOriginFacts,
+  type WatcherUserEventOriginReceipt,
+} from "./user-event-origin.js";
+import {
+  admitWatcherLocalBackfillUserEventReferenceEvidence,
+  admitWatcherUserEventReferenceEvidence,
+  readWatcherUserEventReferenceEvidence,
+  type WatcherUserEventReferenceAuthority,
+  type WatcherUserEventReferenceEvidence,
+  watcherUserEventReferenceOutput,
+} from "./user-event-reference-authority.js";
 
 export const WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION =
   "midgard-watcher-user-event-indexer-policy-v1" as const;
@@ -180,7 +235,7 @@ export type WatcherUserEventDeploymentAuthority = Readonly<{
 export type WatcherUserEventIndexerPolicy = Readonly<{
   schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION;
   network: WatcherUserEventNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   deposit: EventPolicyFields;
   withdrawal: EventPolicyFields;
@@ -266,7 +321,7 @@ export type WatcherUserEventObservation = Readonly<{
   schemaVersion: typeof WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION;
   policyDigest: string;
   network: WatcherUserEventNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   transitionKind: "apply_block" | "rollback";
   pointDigest: string | null;
@@ -314,6 +369,7 @@ export type WatcherUserEventPublicContext = Readonly<{
   schemaVersion: typeof WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION;
   authenticatedProvider: unknown | null;
   l1Observation: unknown | null;
+  referenceEvidence: WatcherUserEventReferenceEvidence | null;
   sourceDurableStore: unknown;
   durableStore: unknown;
   deploymentAuthority: WatcherUserEventDeploymentAuthority;
@@ -334,7 +390,7 @@ export type WatcherUserEventIndexerState = Readonly<{
   schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION;
   policyDigest: string;
   network: WatcherUserEventNetwork;
-  releaseEvidenceDigest: string;
+  blueprintHash: string;
   deploymentMarker: DeploymentMarker;
   durableStoreDigest: string;
   durableStoreRevision: string;
@@ -353,6 +409,33 @@ export type WatcherUserEventIndexerResult = Readonly<{
   state: WatcherUserEventIndexerState | null;
   resultDigest: string;
 }>;
+
+export type WatcherUserEventViewTransitionInput = Readonly<{
+  policy: unknown;
+  previousState: unknown;
+  sourceDurableStore: unknown;
+  authenticatedProvider: unknown;
+  l1Observation: unknown;
+  referenceEvidence: WatcherUserEventReferenceEvidence;
+  deploymentAuthority: WatcherUserEventDeploymentAuthority;
+  finalityAuthority: WatcherUserEventFinalityAuthority;
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[];
+}>;
+
+export type WatcherUserEventViewTransitionResult =
+  | Readonly<{
+      status: "derived";
+      sourceStore: WatcherDurableStore;
+      nextStore: WatcherDurableStore;
+      publicContext: WatcherUserEventPublicContext;
+      observation: WatcherUserEventObservation;
+      result: WatcherUserEventIndexerResult;
+    }>
+  | Readonly<{
+      status: "refused";
+      reason: WatcherUserEventIndexerReasonCode;
+    }>;
 
 type PlainRecord = Record<string, unknown>;
 type EventSchema = Parameters<typeof Data.from>[1];
@@ -741,7 +824,7 @@ const policyWithoutDigest = (
 ) => ({
   schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION,
   network: value.network,
-  releaseEvidenceDigest: value.releaseEvidenceDigest,
+  blueprintHash: value.blueprintHash,
   deploymentMarker: value.deploymentMarker,
   deposit: value.deposit,
   withdrawal: value.withdrawal,
@@ -777,7 +860,7 @@ export const parseWatcherUserEventIndexerPolicy = (
   const record = exactRecord(value, [
     "schemaVersion",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "deposit",
     "withdrawal",
@@ -802,7 +885,7 @@ export const parseWatcherUserEventIndexerPolicy = (
     forcedOrder === null ||
     record.schemaVersion !== WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION ||
     !isNetwork(record.network) ||
-    !isHex32(record.releaseEvidenceDigest) ||
+    !isHex32(record.blueprintHash) ||
     !isHex32(record.bootstrapStoreDigest) ||
     !isHex32(record.deploymentTrustRootId) ||
     !isNatural(record.eventWaitDurationMs) ||
@@ -843,7 +926,7 @@ export const parseWatcherUserEventIndexerPolicy = (
   const canonical = policyWithoutDigest({
     schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION,
     network: record.network,
-    releaseEvidenceDigest: record.releaseEvidenceDigest,
+    blueprintHash: record.blueprintHash,
     deploymentMarker: marker,
     deposit,
     withdrawal,
@@ -1097,44 +1180,35 @@ const referencedOutRefAt = (
   ) {
     return null;
   }
-  return outputReference(inputs.get(Number(index)));
+  // Plutus reference-input indices follow ledger ordering, independent of the
+  // order in the transaction body's CBOR set.
+  const ordered = Array.from({ length: inputs.len() }, (_, position) => {
+    const input = inputs.get(position);
+    return {
+      txHash: input.transaction_id().to_hex(),
+      outputIndex: Number(input.index()),
+    };
+  }).sort(compareOutRefs);
+  const input = ordered[Number(index)]!;
+  return `${input.txHash}#${input.outputIndex.toString()}`;
 };
 
 const inlineDatumCbor = (output: CML.TransactionOutput): string | null =>
   output.datum()?.as_datum()?.to_cbor_hex() ?? null;
 
-const durableOutputAt = (
-  store: WatcherDurableStore,
-  outRef: string | null,
-  role: WatcherDurableStore["protocolUtxos"][number]["role"],
-): CML.TransactionOutput | null => {
-  if (outRef === null) {
-    return null;
-  }
-  const matches = store.protocolUtxos.filter(
-    (candidate) => candidate.outRef === outRef && candidate.role === role,
-  );
-  if (matches.length !== 1) {
-    return null;
-  }
-  try {
-    const output = CML.TransactionOutput.from_cbor_hex(
-      matches[0]!.output.cborHex,
-    );
-    return output.to_cbor_hex() === matches[0]!.output.cborHex ? output : null;
-  } catch {
-    return null;
-  }
-};
-
 const decodeHubAt = (
-  store: WatcherDurableStore,
+  referenceEvidence: WatcherUserEventReferenceEvidence,
+  transactionHash: string,
   body: CML.TransactionBody,
   index: bigint,
-  deployment: WatcherDeploymentIdentityPolicy,
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
 ) => {
   const outRef = referencedOutRefAt(body, index);
-  const output = durableOutputAt(store, outRef, "hub_oracle");
+  const output = watcherUserEventReferenceOutput(
+    referenceEvidence,
+    transactionHash,
+    outRef,
+  );
   const datumHex = output === null ? null : inlineDatumCbor(output);
   return datumHex === null ||
     output!.script_ref() !== undefined ||
@@ -1200,19 +1274,28 @@ const canonicalDatumForOutput = (
     return null;
   }
   const cborHex = datum.to_cbor_hex();
+  const normalizedDatum = datum.to_canonical_cbor_hex();
   const l1Utxo = transaction.utxos.find(
     (candidate) => candidate.outputIndex === outputIndex.toString(),
   );
   if (
     l1Utxo === undefined ||
-    l1Utxo.output.bytesHex !== output.to_cbor_hex() ||
+    l1Utxo.output.bytesHex !== output.to_canonical_cbor_hex() ||
     l1Utxo.datum === null ||
-    l1Utxo.datum.bytes.bytesHex !== cborHex ||
-    l1Utxo.datum.datumHash !== CML.hash_plutus_data(datum).to_hex()
+    l1Utxo.datum.bytes.bytesHex !== normalizedDatum ||
+    l1Utxo.datum.datumHash !==
+      CML.hash_plutus_data(
+        CML.PlutusData.from_cbor_hex(normalizedDatum),
+      ).to_hex()
   ) {
     return null;
   }
-  return Object.freeze({ cborHex, digest: l1Utxo.datum.bytes.sha256 });
+  // The adapter descriptors are normalized; the event retains the original
+  // datum from the authenticated transaction body, together with its own digest.
+  return Object.freeze({
+    cborHex,
+    digest: sha256Bytes(Buffer.from(cborHex, "hex")),
+  });
 };
 
 const nonceAssetName = (input: CML.TransactionInput): string => {
@@ -1283,229 +1366,261 @@ const eventIdMatchesNonce = (
   );
 };
 
+const scanCreatedTransactionEvents = (
+  policy: WatcherUserEventIndexerPolicy,
+  block: WatcherNormalizedL1Block,
+  transaction: WatcherNormalizedL1Block["transactions"][number],
+  referenceEvidence: WatcherUserEventReferenceEvidence,
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
+  events: WatcherIndexedUserEvent[],
+): true | null => {
+  const failCreated = (_label: string): null => null;
+  if (!transaction.isValid) {
+    return true;
+  }
+  const body = canonicalBody(transaction.body.bytesHex);
+  if (body === null) {
+    return failCreated("body");
+  }
+  const outputs = body.outputs();
+  const inputs = body.inputs();
+  const mint = body.mint();
+  for (let outputIndex = 0; outputIndex < outputs.len(); outputIndex += 1) {
+    const output = outputs.get(outputIndex);
+    const knownPolicies = outputPolicies(output)
+      .map((policyId) => [policyId, kindForPolicy(policy, policyId)] as const)
+      .filter(
+        (entry): entry is readonly [string, WatcherUserEventKind] =>
+          entry[1] !== null,
+      );
+    if (knownPolicies.length === 0) {
+      continue;
+    }
+    if (knownPolicies.length !== 1 || mint === undefined) {
+      return failCreated("known-policy");
+    }
+    const [policyId, kind] = knownPolicies[0]!;
+    const fields = eventPolicy(policy, kind);
+    const nft = exactlyOneAsset(output, policyId);
+    const policyIndex = mintPolicyIndex(mint, policyId);
+    const redeemer =
+      policyIndex < 0
+        ? null
+        : matchingRedeemer(transaction, "mint", policyIndex);
+    const decoded =
+      redeemer === null
+        ? null
+        : decodeMintRedeemer(redeemer.bytes.bytesHex, kind);
+    if (
+      nft === null ||
+      nft.quantity !== 1n ||
+      policyIndex < 0 ||
+      mint.get(
+        CML.ScriptHash.from_hex(policyId),
+        CML.AssetName.from_hex(nft.assetNameHex),
+      ) !== 1n ||
+      mint.get_assets(CML.ScriptHash.from_hex(policyId))?.len() !== 1 ||
+      decoded === null ||
+      !("AuthenticateEvent" in decoded.event)
+    ) {
+      return failCreated("nft-or-mint");
+    }
+    const auth = decoded.event.AuthenticateEvent;
+    if (
+      auth.event_output_index !== BigInt(outputIndex) ||
+      auth.nonce_input_index < 0n ||
+      auth.nonce_input_index >= BigInt(inputs.len()) ||
+      auth.hub_ref_input_index < 0n ||
+      auth.witness_registration_redeemer_index < 0n
+    ) {
+      return failCreated("auth-indices");
+    }
+    const nonceInput = inputs.get(Number(auth.nonce_input_index));
+    const expectedAssetName = nonceAssetName(nonceInput);
+    const expectedWitness = userEventWitnessScriptHash(expectedAssetName);
+    const certificateRedeemer = redeemerAtGlobalIndex(
+      transaction,
+      auth.witness_registration_redeemer_index,
+    );
+    const certificateIndex =
+      certificateRedeemer?.purpose === "certificate" &&
+      isNatural(certificateRedeemer.index) &&
+      BigInt(certificateRedeemer.index) <= BigInt(Number.MAX_SAFE_INTEGER)
+        ? Number(certificateRedeemer.index)
+        : -1;
+    const witnessRedeemer =
+      certificateRedeemer === null
+        ? null
+        : decodeWitnessRedeemer(certificateRedeemer.bytes.bytesHex);
+    const datum = canonicalDatumForOutput(transaction, outputIndex, output);
+    const hubDatum = decodeHubAt(
+      referenceEvidence,
+      transaction.txHash,
+      body,
+      auth.hub_ref_input_index,
+      deployment,
+    );
+    const expectedHubPolicy =
+      kind === "deposit"
+        ? hubDatum?.deposit
+        : kind === "withdrawal"
+          ? hubDatum?.withdrawal
+          : hubDatum?.tx_order;
+    const expectedHubAddress =
+      kind === "deposit"
+        ? hubDatum?.deposit_addr
+        : kind === "withdrawal"
+          ? hubDatum?.withdrawal_addr
+          : hubDatum?.tx_order_addr;
+    if (
+      nft.assetNameHex !== expectedAssetName ||
+      output.address().to_hex() !== fields.addressHex ||
+      output.address().payment_cred()?.as_script()?.to_hex() !==
+        fields.spendScriptHash ||
+      datum === null ||
+      hubDatum === null ||
+      expectedHubPolicy !== policyId ||
+      !addressMatchesData(output.address(), expectedHubAddress) ||
+      registeredScriptHashAt(body, certificateIndex, true) !==
+        expectedWitness ||
+      witnessRedeemer === null ||
+      !("MintOrBurn" in witnessRedeemer) ||
+      witnessRedeemer.MintOrBurn.targetPolicy !== policyId
+    ) {
+      return failCreated(
+        `output-witness datum=${String(datum === null)} cert=${String(
+          registeredScriptHashAt(body, certificateIndex, true),
+        )} expected=${expectedWitness}`,
+      );
+    }
+    const parsedDatum = parseEventDatum(kind, datum.cborHex);
+    const ttl = body.ttl();
+    const forcedEvent = parsedDatum?.event as
+      | {
+          id?: { transactionId?: unknown; outputIndex?: unknown };
+          tx?: unknown;
+        }
+      | undefined;
+    if (
+      parsedDatum === null ||
+      ttl === undefined ||
+      ttl > BigInt(Number.MAX_SAFE_INTEGER) ||
+      parsedDatum.inclusionTime !==
+        BigInt(
+          resolveEventInclusionTime(
+            slotToBeginUnixTime(
+              Number(ttl),
+              SLOT_CONFIG_NETWORK[policy.network],
+            ),
+            policy.network,
+          ),
+        ) ||
+      parsedDatum.witness !== expectedWitness ||
+      !eventIdMatchesNonce(kind, parsedDatum.event, nonceInput) ||
+      (kind === "forced_order" &&
+        (!isHex32(forcedEvent?.id?.transactionId) ||
+          typeof forcedEvent.id.outputIndex !== "bigint" ||
+          !forcedPayloadMatchesNativeSource(forcedEvent.tx) ||
+          // #594's exhaustion rule, re-derived. The redeemer's carriage vector
+          // is positional over the payload's non-empty slots, so its length
+          // must equal their count exactly — a short vector leaves a field's
+          // material uncarried, a spare entry lets two distinct redeemers spell
+          // one order (§8.11). Both inputs are in hand here: the vector came
+          // out of the mint redeemer above and the count out of the payload
+          // whose binding the previous clause just verified. The per-field
+          // *hash* half is not reachable from this module — see
+          // `forcedPayloadMatchesNativeSource` — but this half is, so it is
+          // checked rather than deferred with it.
+          decoded.materialCarriage === null ||
+          decoded.materialCarriage.length !==
+            forcedOrderMaterialFieldCount(forcedEvent.tx)))
+    ) {
+      return failCreated(
+        `datum-time parsed=${String(parsedDatum === null)} ttl=${String(ttl)}`,
+      );
+    }
+    const policies = outputPolicies(output);
+    const nonNftAssetCount = policies.reduce((count, candidatePolicy) => {
+      if (candidatePolicy === policyId) {
+        return count;
+      }
+      return (
+        count +
+        (output
+          .amount()
+          .multi_asset()
+          .get_assets(CML.ScriptHash.from_hex(candidatePolicy))
+          ?.len() ?? 0)
+      );
+    }, 1);
+    if (
+      (kind === "deposit" &&
+        nonNftAssetCount >
+          WATCHER_USER_EVENT_INDEXER_BOUNDS.maximumDepositNonNftAssets) ||
+      (kind !== "deposit" && (policies.length !== 1 || nonNftAssetCount !== 1))
+    ) {
+      return failCreated("asset-count");
+    }
+    const outRef = `${transaction.txHash}#${outputIndex.toString()}`;
+    const outputCborHex = output.to_cbor_hex();
+    const eventId = outputReferenceToPlutusDataCbor({
+      txHash: nonceInput.transaction_id().to_hex(),
+      outputIndex: Number(nonceInput.index()),
+    });
+    events.push(
+      Object.freeze({
+        kind,
+        eventId,
+        outRef,
+        transactionHash: transaction.txHash,
+        outputIndex: outputIndex.toString(),
+        nonceOutRef: outputReference(nonceInput),
+        policyId,
+        spendScriptHash: fields.spendScriptHash,
+        addressHex: fields.addressHex,
+        assetNameHex: expectedAssetName,
+        witnessScriptHash: expectedWitness,
+        inclusionTime: parsedDatum.inclusionTime.toString(),
+        eventCborHex: parsedDatum.eventCborHex,
+        datumCborHex: datum.cborHex,
+        outputCborHex,
+        eventContentDigest: sha256Bytes(
+          Buffer.from(parsedDatum.eventCborHex, "hex"),
+        ),
+        datumDigest: datum.digest,
+        outputDigest: sha256Bytes(Buffer.from(outputCborHex, "hex")),
+        originPointDigest: block.chainPoint.pointDigest,
+        originChainPointId: block.chainPoint.chainPointId,
+        originBlockHash: block.chainPoint.blockHash,
+        originSlot: block.chainPoint.slot,
+        originBlockNo: block.chainPoint.blockNo,
+        finalityStatus: "pending",
+      }),
+    );
+  }
+  return true;
+};
+
 const scanCreatedEvents = (
   policy: WatcherUserEventIndexerPolicy,
   block: WatcherNormalizedL1Block,
-  sourceStore: WatcherDurableStore,
-  deployment: WatcherDeploymentIdentityPolicy,
+  referenceEvidence: WatcherUserEventReferenceEvidence,
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
 ): readonly WatcherIndexedUserEvent[] | null => {
   const failCreated = (_label: string): null => null;
   const events: WatcherIndexedUserEvent[] = [];
   for (const transaction of block.transactions) {
-    if (!transaction.isValid) {
-      continue;
-    }
-    const body = canonicalBody(transaction.body.bytesHex);
-    if (body === null) {
-      return failCreated("body");
-    }
-    const outputs = body.outputs();
-    const inputs = body.inputs();
-    const mint = body.mint();
-    for (let outputIndex = 0; outputIndex < outputs.len(); outputIndex += 1) {
-      const output = outputs.get(outputIndex);
-      const knownPolicies = outputPolicies(output)
-        .map((policyId) => [policyId, kindForPolicy(policy, policyId)] as const)
-        .filter(
-          (entry): entry is readonly [string, WatcherUserEventKind] =>
-            entry[1] !== null,
-        );
-      if (knownPolicies.length === 0) {
-        continue;
-      }
-      if (knownPolicies.length !== 1 || mint === undefined) {
-        return failCreated("known-policy");
-      }
-      const [policyId, kind] = knownPolicies[0]!;
-      const fields = eventPolicy(policy, kind);
-      const nft = exactlyOneAsset(output, policyId);
-      const policyIndex = mintPolicyIndex(mint, policyId);
-      const redeemer =
-        policyIndex < 0
-          ? null
-          : matchingRedeemer(transaction, "mint", policyIndex);
-      const decoded =
-        redeemer === null
-          ? null
-          : decodeMintRedeemer(redeemer.bytes.bytesHex, kind);
-      if (
-        nft === null ||
-        nft.quantity !== 1n ||
-        policyIndex < 0 ||
-        mint.get(
-          CML.ScriptHash.from_hex(policyId),
-          CML.AssetName.from_hex(nft.assetNameHex),
-        ) !== 1n ||
-        mint.get_assets(CML.ScriptHash.from_hex(policyId))?.len() !== 1 ||
-        decoded === null ||
-        !("AuthenticateEvent" in decoded.event)
-      ) {
-        return failCreated("nft-or-mint");
-      }
-      const auth = decoded.event.AuthenticateEvent;
-      if (
-        auth.event_output_index !== BigInt(outputIndex) ||
-        auth.nonce_input_index < 0n ||
-        auth.nonce_input_index >= BigInt(inputs.len()) ||
-        auth.hub_ref_input_index < 0n ||
-        auth.witness_registration_redeemer_index < 0n
-      ) {
-        return failCreated("auth-indices");
-      }
-      const nonceInput = inputs.get(Number(auth.nonce_input_index));
-      const expectedAssetName = nonceAssetName(nonceInput);
-      const expectedWitness = userEventWitnessScriptHash(expectedAssetName);
-      const certificateRedeemer = redeemerAtGlobalIndex(
+    if (
+      scanCreatedTransactionEvents(
+        policy,
+        block,
         transaction,
-        auth.witness_registration_redeemer_index,
-      );
-      const certificateIndex =
-        certificateRedeemer?.purpose === "certificate" &&
-        isNatural(certificateRedeemer.index) &&
-        BigInt(certificateRedeemer.index) <= BigInt(Number.MAX_SAFE_INTEGER)
-          ? Number(certificateRedeemer.index)
-          : -1;
-      const witnessRedeemer =
-        certificateRedeemer === null
-          ? null
-          : decodeWitnessRedeemer(certificateRedeemer.bytes.bytesHex);
-      const datum = canonicalDatumForOutput(transaction, outputIndex, output);
-      const hubDatum = decodeHubAt(
-        sourceStore,
-        body,
-        auth.hub_ref_input_index,
+        referenceEvidence,
         deployment,
-      );
-      const expectedHubPolicy =
-        kind === "deposit"
-          ? hubDatum?.deposit
-          : kind === "withdrawal"
-            ? hubDatum?.withdrawal
-            : hubDatum?.tx_order;
-      const expectedHubAddress =
-        kind === "deposit"
-          ? hubDatum?.deposit_addr
-          : kind === "withdrawal"
-            ? hubDatum?.withdrawal_addr
-            : hubDatum?.tx_order_addr;
-      if (
-        nft.assetNameHex !== expectedAssetName ||
-        output.address().to_hex() !== fields.addressHex ||
-        output.address().payment_cred()?.as_script()?.to_hex() !==
-          fields.spendScriptHash ||
-        datum === null ||
-        hubDatum === null ||
-        expectedHubPolicy !== policyId ||
-        !addressMatchesData(output.address(), expectedHubAddress) ||
-        registeredScriptHashAt(body, certificateIndex, true) !==
-          expectedWitness ||
-        witnessRedeemer === null ||
-        !("MintOrBurn" in witnessRedeemer) ||
-        witnessRedeemer.MintOrBurn.targetPolicy !== policyId
-      ) {
-        return failCreated(
-          `output-witness datum=${String(datum === null)} cert=${String(
-            registeredScriptHashAt(body, certificateIndex, true),
-          )} expected=${expectedWitness}`,
-        );
-      }
-      const parsedDatum = parseEventDatum(kind, datum.cborHex);
-      const ttl = body.ttl();
-      const forcedEvent = parsedDatum?.event as
-        | {
-            id?: { transactionId?: unknown; outputIndex?: unknown };
-            tx?: unknown;
-          }
-        | undefined;
-      if (
-        parsedDatum === null ||
-        ttl === undefined ||
-        ttl > BigInt(Number.MAX_SAFE_INTEGER) ||
-        parsedDatum.inclusionTime !==
-          BigInt(resolveEventInclusionTime(Number(ttl), policy.network)) ||
-        parsedDatum.witness !== expectedWitness ||
-        !eventIdMatchesNonce(kind, parsedDatum.event, nonceInput) ||
-        (kind === "forced_order" &&
-          (!isHex32(forcedEvent?.id?.transactionId) ||
-            typeof forcedEvent.id.outputIndex !== "bigint" ||
-            !forcedPayloadMatchesNativeSource(forcedEvent.tx) ||
-            // #594's exhaustion rule, re-derived. The redeemer's carriage vector
-            // is positional over the payload's non-empty slots, so its length
-            // must equal their count exactly — a short vector leaves a field's
-            // material uncarried, a spare entry lets two distinct redeemers spell
-            // one order (§8.11). Both inputs are in hand here: the vector came
-            // out of the mint redeemer above and the count out of the payload
-            // whose binding the previous clause just verified. The per-field
-            // *hash* half is not reachable from this module — see
-            // `forcedPayloadMatchesNativeSource` — but this half is, so it is
-            // checked rather than deferred with it.
-            decoded.materialCarriage === null ||
-            decoded.materialCarriage.length !==
-              forcedOrderMaterialFieldCount(forcedEvent.tx)))
-      ) {
-        return failCreated(
-          `datum-time parsed=${String(parsedDatum === null)} ttl=${String(ttl)}`,
-        );
-      }
-      const policies = outputPolicies(output);
-      const nonNftAssetCount = policies.reduce((count, candidatePolicy) => {
-        if (candidatePolicy === policyId) {
-          return count;
-        }
-        return (
-          count +
-          (output
-            .amount()
-            .multi_asset()
-            .get_assets(CML.ScriptHash.from_hex(candidatePolicy))
-            ?.len() ?? 0)
-        );
-      }, 1);
-      if (
-        (kind === "deposit" &&
-          nonNftAssetCount >
-            WATCHER_USER_EVENT_INDEXER_BOUNDS.maximumDepositNonNftAssets) ||
-        (kind !== "deposit" &&
-          (policies.length !== 1 || nonNftAssetCount !== 1))
-      ) {
-        return failCreated("asset-count");
-      }
-      const outRef = `${transaction.txHash}#${outputIndex.toString()}`;
-      const outputCborHex = output.to_cbor_hex();
-      const eventId = outputReferenceToPlutusDataCbor({
-        txHash: nonceInput.transaction_id().to_hex(),
-        outputIndex: Number(nonceInput.index()),
-      });
-      events.push(
-        Object.freeze({
-          kind,
-          eventId,
-          outRef,
-          transactionHash: transaction.txHash,
-          outputIndex: outputIndex.toString(),
-          nonceOutRef: outputReference(nonceInput),
-          policyId,
-          spendScriptHash: fields.spendScriptHash,
-          addressHex: fields.addressHex,
-          assetNameHex: expectedAssetName,
-          witnessScriptHash: expectedWitness,
-          inclusionTime: parsedDatum.inclusionTime.toString(),
-          eventCborHex: parsedDatum.eventCborHex,
-          datumCborHex: datum.cborHex,
-          outputCborHex,
-          eventContentDigest: sha256Bytes(
-            Buffer.from(parsedDatum.eventCborHex, "hex"),
-          ),
-          datumDigest: datum.digest,
-          outputDigest: sha256Bytes(Buffer.from(outputCborHex, "hex")),
-          originPointDigest: block.chainPoint.pointDigest,
-          originChainPointId: block.chainPoint.chainPointId,
-          originBlockHash: block.chainPoint.blockHash,
-          originSlot: block.chainPoint.slot,
-          originBlockNo: block.chainPoint.blockNo,
-          finalityStatus: "pending",
-        }),
-      );
+        events,
+      ) === null
+    ) {
+      return null;
     }
   }
   const sorted = events.sort((left, right) =>
@@ -1803,17 +1918,21 @@ const membershipWithdrawalCbor = (
 };
 
 const authenticReferenceDatum = (
-  store: WatcherDurableStore,
+  referenceEvidence: WatcherUserEventReferenceEvidence,
+  transactionHash: string,
   body: CML.TransactionBody,
   index: bigint,
-  role: "settlement" | "hub_oracle",
   policyId: string,
   schema: EventSchema,
 ): Readonly<{
   output: CML.TransactionOutput;
   datum: Record<string, unknown>;
 }> | null => {
-  const output = durableOutputAt(store, referencedOutRefAt(body, index), role);
+  const output = watcherUserEventReferenceOutput(
+    referenceEvidence,
+    transactionHash,
+    referencedOutRefAt(body, index),
+  );
   const datumCbor = output === null ? null : inlineDatumCbor(output);
   if (
     output === null ||
@@ -1871,14 +1990,12 @@ const authenticReferenceDatum = (
  * `forcedOrderMaterialFieldCount` and its caller. The burn's empty-vector rule is
  * likewise re-derived, in `scanConsumedEvents`.
  *
- * **What is genuinely not reachable is the per-field hash.** An `Inline` field's
- * preimage does ride the mint redeemer this module already reads, so tier 1 is
- * reachable in principle; a `RawUtxo`/`Certified` field's bytes live in a
- * reference input's *datum*, and this indexer sees reference inputs as output
- * references, not as the outputs they name. So tiers 2 and 3 have nothing to hash
- * and a complete re-derivation belongs with the resolved-input view rather than
- * here. Doing tier 1 alone would be a check whose coverage depends on the
- * creator's byte budget, which is not a property worth asserting.
+ * Per-field material hashes are not re-derived by this payload predicate.
+ * `Inline` preimages ride the mint redeemer, while `RawUtxo`/`Certified` bytes
+ * live in reference-input datums. The indexer now admits resolved reference
+ * evidence for its hub/settlement checks, but connecting material carriage to
+ * those bytes and validating every field remains a separate verification step.
+ * Admitting reference bytes does not itself establish those material hashes.
  *
  * **What this predicate is not.** It is not the first line of defence, but the
  * reason is narrower than "the mint already checked". The mint in *this tree*
@@ -2003,12 +2120,12 @@ const cardanoDatumMatches = (
 
 const verifyTerminalSemantics = (
   event: WatcherIndexedUserEvent,
-  sourceStore: WatcherDurableStore,
+  referenceEvidence: WatcherUserEventReferenceEvidence,
   transaction: WatcherNormalizedL1Block["transactions"][number],
   body: CML.TransactionBody,
   inputIndex: number,
   spend: DecodedTerminalSpend,
-  deployment: WatcherDeploymentIdentityPolicy,
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
 ): boolean => {
   const outputs = body.outputs();
   if (
@@ -2021,7 +2138,8 @@ const verifyTerminalSemantics = (
   const produced = outputs.get(Number(spend.outputIndex));
   const input = CML.TransactionOutput.from_cbor_hex(event.outputCborHex);
   const hubDatum = decodeHubAt(
-    sourceStore,
+    referenceEvidence,
+    transaction.txHash,
     body,
     spend.hubRefInputIndex,
     deployment,
@@ -2029,10 +2147,10 @@ const verifyTerminalSemantics = (
   const settlementPolicy = hubDatum?.settlement;
   const settlement = isHex28(settlementPolicy)
     ? authenticReferenceDatum(
-        sourceStore,
+        referenceEvidence,
+        transaction.txHash,
         body,
         spend.settlementRefInputIndex,
-        "settlement",
         settlementPolicy,
         asDataType<EventSchema>(SettlementDatumSchema),
       )
@@ -2227,11 +2345,149 @@ const verifyTerminalSemantics = (
   );
 };
 
+const scanConsumedTransactionEvents = (
+  block: WatcherNormalizedL1Block,
+  transaction: WatcherNormalizedL1Block["transactions"][number],
+  referenceEvidence: WatcherUserEventReferenceEvidence,
+  active: Map<string, WatcherIndexedUserEvent>,
+  terminal: WatcherTerminalUserEvent[],
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
+): true | null => {
+  if (!transaction.isValid) {
+    return true;
+  }
+  const body = canonicalBody(transaction.body.bytesHex);
+  if (body === null) {
+    return null;
+  }
+  const inputs = body.inputs();
+  const mint = body.mint();
+  for (let inputIndex = 0; inputIndex < inputs.len(); inputIndex += 1) {
+    const event = active.get(outputReference(inputs.get(inputIndex)));
+    if (event === undefined) {
+      continue;
+    }
+    const spendRedeemer = matchingRedeemer(transaction, "spend", inputIndex);
+    if (spendRedeemer === null || mint === undefined) {
+      return null;
+    }
+    const policyIndex = mintPolicyIndex(mint, event.policyId);
+    const terminalSpend =
+      policyIndex < 0
+        ? null
+        : decodeTerminalSpend(
+            event.kind,
+            spendRedeemer.bytes.bytesHex,
+            inputIndex,
+          );
+    const mintRedeemer =
+      terminalSpend === null
+        ? null
+        : redeemerAtGlobalIndex(transaction, terminalSpend.mintRedeemerIndex);
+    const decodedMint =
+      mintRedeemer === null
+        ? null
+        : decodeMintRedeemer(mintRedeemer.bytes.bytesHex, event.kind);
+    if (terminalSpend === null) {
+      return null;
+    }
+    if (
+      !verifyTerminalSemantics(
+        event,
+        referenceEvidence,
+        transaction,
+        body,
+        inputIndex,
+        terminalSpend,
+        deployment,
+      )
+    ) {
+      return null;
+    }
+    if (
+      policyIndex < 0 ||
+      mint.get(
+        CML.ScriptHash.from_hex(event.policyId),
+        CML.AssetName.from_hex(event.assetNameHex),
+      ) !== -1n ||
+      mint.get_assets(CML.ScriptHash.from_hex(event.policyId))?.len() !== 1 ||
+      decodedMint === null ||
+      !("BurnEventNFT" in decodedMint.event) ||
+      decodedMint.event.BurnEventNFT.nonce_asset_name !== event.assetNameHex ||
+      decodedMint.event.BurnEventNFT.witness_unregistration_redeemer_index <
+        0n ||
+      // #594: the tx-order policy requires a burn's carriage vector to be
+      // empty, because a burn reads no material and an unread wire field is a
+      // second spelling of the same transaction (§8.11, §6.1). `null` here is
+      // the three unwrapped policies, which have no vector to constrain.
+      (decodedMint.materialCarriage !== null &&
+        decodedMint.materialCarriage.length !== 0)
+    ) {
+      return null;
+    }
+    const certificateRedeemer = redeemerAtGlobalIndex(
+      transaction,
+      decodedMint.event.BurnEventNFT.witness_unregistration_redeemer_index,
+    );
+    const certificateIndex =
+      certificateRedeemer?.purpose === "certificate" &&
+      isNatural(certificateRedeemer.index) &&
+      BigInt(certificateRedeemer.index) <= BigInt(Number.MAX_SAFE_INTEGER)
+        ? Number(certificateRedeemer.index)
+        : -1;
+    const witnessRedeemer =
+      certificateRedeemer === null
+        ? null
+        : decodeWitnessRedeemer(certificateRedeemer.bytes.bytesHex);
+    if (
+      registeredScriptHashAt(body, certificateIndex, false) !==
+        event.witnessScriptHash ||
+      witnessRedeemer === null ||
+      !("MintOrBurn" in witnessRedeemer) ||
+      witnessRedeemer.MintOrBurn.targetPolicy !== event.policyId
+    ) {
+      return null;
+    }
+    const forcedOperatorValidity =
+      event.kind === "forced_order"
+        ? watcherForcedOperatorVerdict(terminalSpend.purpose)
+        : null;
+    if (event.kind === "forced_order" && forcedOperatorValidity === null) {
+      return null;
+    }
+    active.delete(event.outRef);
+    terminal.push(
+      Object.freeze({
+        ...event,
+        terminalStatus: terminalSpend.terminalStatus,
+        terminalTransactionHash: transaction.txHash,
+        terminalPointDigest: block.chainPoint.pointDigest,
+        terminalBlockHash: block.chainPoint.blockHash,
+        terminalSlot: block.chainPoint.slot,
+        terminalBlockNo: block.chainPoint.blockNo,
+        terminalFinalityStatus: "pending",
+        ...(forcedOperatorValidity === null
+          ? {}
+          : {
+              terminalClassification: Object.freeze({
+                schemaVersion:
+                  WATCHER_FORCED_TERMINAL_CLASSIFICATION_SCHEMA_VERSION,
+                operatorValidity: forcedOperatorValidity,
+                terminalTransactionHash: transaction.txHash,
+                terminalPointDigest: block.chainPoint.pointDigest,
+              }),
+            }),
+      }),
+    );
+  }
+  return true;
+};
+
 const scanConsumedEvents = (
   block: WatcherNormalizedL1Block,
-  sourceStore: WatcherDurableStore,
+  referenceEvidence: WatcherUserEventReferenceEvidence,
   activeEvents: readonly WatcherIndexedUserEvent[],
-  deployment: WatcherDeploymentIdentityPolicy,
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
 ): Readonly<{
   remaining: readonly WatcherIndexedUserEvent[];
   terminal: readonly WatcherTerminalUserEvent[];
@@ -2239,133 +2495,17 @@ const scanConsumedEvents = (
   const active = new Map(activeEvents.map((event) => [event.outRef, event]));
   const terminal: WatcherTerminalUserEvent[] = [];
   for (const transaction of block.transactions) {
-    if (!transaction.isValid) {
-      continue;
-    }
-    const body = canonicalBody(transaction.body.bytesHex);
-    if (body === null) {
-      return null;
-    }
-    const inputs = body.inputs();
-    const mint = body.mint();
-    for (let inputIndex = 0; inputIndex < inputs.len(); inputIndex += 1) {
-      const event = active.get(outputReference(inputs.get(inputIndex)));
-      if (event === undefined) {
-        continue;
-      }
-      const spendRedeemer = matchingRedeemer(transaction, "spend", inputIndex);
-      if (spendRedeemer === null || mint === undefined) {
-        return null;
-      }
-      const policyIndex = mintPolicyIndex(mint, event.policyId);
-      const terminalSpend =
-        policyIndex < 0
-          ? null
-          : decodeTerminalSpend(
-              event.kind,
-              spendRedeemer.bytes.bytesHex,
-              inputIndex,
-            );
-      const mintRedeemer =
-        terminalSpend === null
-          ? null
-          : redeemerAtGlobalIndex(transaction, terminalSpend.mintRedeemerIndex);
-      const decodedMint =
-        mintRedeemer === null
-          ? null
-          : decodeMintRedeemer(mintRedeemer.bytes.bytesHex, event.kind);
-      if (terminalSpend === null) {
-        return null;
-      }
-      if (
-        !verifyTerminalSemantics(
-          event,
-          sourceStore,
-          transaction,
-          body,
-          inputIndex,
-          terminalSpend,
-          deployment,
-        )
-      ) {
-        return null;
-      }
-      if (
-        policyIndex < 0 ||
-        mint.get(
-          CML.ScriptHash.from_hex(event.policyId),
-          CML.AssetName.from_hex(event.assetNameHex),
-        ) !== -1n ||
-        mint.get_assets(CML.ScriptHash.from_hex(event.policyId))?.len() !== 1 ||
-        decodedMint === null ||
-        !("BurnEventNFT" in decodedMint.event) ||
-        decodedMint.event.BurnEventNFT.nonce_asset_name !==
-          event.assetNameHex ||
-        decodedMint.event.BurnEventNFT.witness_unregistration_redeemer_index <
-          0n ||
-        // #594: the tx-order policy requires a burn's carriage vector to be
-        // empty, because a burn reads no material and an unread wire field is a
-        // second spelling of the same transaction (§8.11, §6.1). `null` here is
-        // the three unwrapped policies, which have no vector to constrain.
-        (decodedMint.materialCarriage !== null &&
-          decodedMint.materialCarriage.length !== 0)
-      ) {
-        return null;
-      }
-      const certificateRedeemer = redeemerAtGlobalIndex(
+    if (
+      scanConsumedTransactionEvents(
+        block,
         transaction,
-        decodedMint.event.BurnEventNFT.witness_unregistration_redeemer_index,
-      );
-      const certificateIndex =
-        certificateRedeemer?.purpose === "certificate" &&
-        isNatural(certificateRedeemer.index) &&
-        BigInt(certificateRedeemer.index) <= BigInt(Number.MAX_SAFE_INTEGER)
-          ? Number(certificateRedeemer.index)
-          : -1;
-      const witnessRedeemer =
-        certificateRedeemer === null
-          ? null
-          : decodeWitnessRedeemer(certificateRedeemer.bytes.bytesHex);
-      if (
-        registeredScriptHashAt(body, certificateIndex, false) !==
-          event.witnessScriptHash ||
-        witnessRedeemer === null ||
-        !("MintOrBurn" in witnessRedeemer) ||
-        witnessRedeemer.MintOrBurn.targetPolicy !== event.policyId
-      ) {
-        return null;
-      }
-      const forcedOperatorValidity =
-        event.kind === "forced_order"
-          ? watcherForcedOperatorVerdict(terminalSpend.purpose)
-          : null;
-      if (event.kind === "forced_order" && forcedOperatorValidity === null) {
-        return null;
-      }
-      active.delete(event.outRef);
-      terminal.push(
-        Object.freeze({
-          ...event,
-          terminalStatus: terminalSpend.terminalStatus,
-          terminalTransactionHash: transaction.txHash,
-          terminalPointDigest: block.chainPoint.pointDigest,
-          terminalBlockHash: block.chainPoint.blockHash,
-          terminalSlot: block.chainPoint.slot,
-          terminalBlockNo: block.chainPoint.blockNo,
-          terminalFinalityStatus: "pending",
-          ...(forcedOperatorValidity === null
-            ? {}
-            : {
-                terminalClassification: Object.freeze({
-                  schemaVersion:
-                    WATCHER_FORCED_TERMINAL_CLASSIFICATION_SCHEMA_VERSION,
-                  operatorValidity: forcedOperatorValidity,
-                  terminalTransactionHash: transaction.txHash,
-                  terminalPointDigest: block.chainPoint.pointDigest,
-                }),
-              }),
-        }),
-      );
+        referenceEvidence,
+        active,
+        terminal,
+        deployment,
+      ) === null
+    ) {
+      return null;
     }
   }
   return Object.freeze({
@@ -2445,15 +2585,21 @@ const topologyMatches = (
   );
 };
 
-type VerifiedBlockContext = Readonly<{
+type VerifiedBlockInputs = Readonly<{
   block: WatcherNormalizedL1Block;
   lineageBlocks: readonly WatcherNormalizedL1Block[];
+  referenceEvidence: WatcherUserEventReferenceEvidence;
   sourceStore: WatcherDurableStore;
-  store: WatcherDurableStore;
   finalityPolicy: WatcherFinalityPolicy;
   finalityResult: WatcherFinalityResult;
-  context: WatcherUserEventPublicContext;
+  context: Omit<WatcherUserEventPublicContext, "durableStore">;
 }>;
+
+type VerifiedBlockContext = VerifiedBlockInputs &
+  Readonly<{
+    store: WatcherDurableStore;
+    context: WatcherUserEventPublicContext;
+  }>;
 
 const transportAttestationForProvider = (
   provider: unknown,
@@ -2602,7 +2748,7 @@ const verifyDeploymentAuthority = (
     const applied = authority.policy.appliedScriptHashes;
     return same(verified, authority.result) &&
       verified.network === policy.network &&
-      verified.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+      verified.blueprintHash === policy.blueprintHash &&
       verified.trustRootId === policy.deploymentTrustRootId &&
       same(verified.durableMarker, policy.deploymentMarker) &&
       applied.depositMint === policy.deposit.policyId &&
@@ -2850,6 +2996,7 @@ const parsePublicContext = (
     "schemaVersion",
     "authenticatedProvider",
     "l1Observation",
+    "referenceEvidence",
     "sourceDurableStore",
     "durableStore",
     "deploymentAuthority",
@@ -2974,6 +3121,8 @@ const parsePublicContext = (
     schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: record.authenticatedProvider,
     l1Observation: record.l1Observation,
+    referenceEvidence:
+      record.referenceEvidence as WatcherUserEventReferenceEvidence | null,
     sourceDurableStore: record.sourceDurableStore,
     durableStore: record.durableStore,
     deploymentAuthority: {
@@ -3007,14 +3156,13 @@ const parsePublicContext = (
   });
 };
 
-const verifyBlockContext = (
+const verifyBlockInputs = (
   policy: WatcherUserEventIndexerPolicy,
-  rawContext: unknown,
+  context: Omit<WatcherUserEventPublicContext, "durableStore">,
   transportAttestations: readonly WatcherL1TransportAttestationContext[],
-): VerifiedBlockContext | null => {
-  const context = parsePublicContext(rawContext);
+  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
+): VerifiedBlockInputs | null => {
   if (
-    context === null ||
     context.authenticatedProvider === null ||
     context.l1Observation === null ||
     context.finalityAuthority === null ||
@@ -3034,15 +3182,18 @@ const verifyBlockContext = (
     }
     const block = normalizedBlock.block;
     const sourceStore = parseWatcherDurableStore(context.sourceDurableStore);
-    const store = parseWatcherDurableStore(context.durableStore);
     const finalityPolicy = parseWatcherFinalityPolicy(
       context.finalityAuthority.policy,
     );
+    const deploymentIdentity = verifyDeploymentAuthority(
+      policy,
+      context.deploymentAuthority,
+    );
     if (
       finalityPolicy === null ||
-      verifyDeploymentAuthority(policy, context.deploymentAuthority) === null ||
+      deploymentIdentity === null ||
       finalityPolicy.network !== policy.network ||
-      finalityPolicy.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+      finalityPolicy.blueprintHash !== policy.blueprintHash ||
       !same(finalityPolicy.deploymentMarker, policy.deploymentMarker) ||
       finalityPolicy.confirmationDepth !== policy.requiredFinalityDepth
     ) {
@@ -3161,6 +3312,56 @@ const verifyBlockContext = (
     ) {
       return null;
     }
+    if (
+      block.network !== policy.network ||
+      !same(sourceStore.deploymentMarker, policy.deploymentMarker)
+    ) {
+      return null;
+    }
+    const referenceEvidence = admitWatcherUserEventReferenceEvidence({
+      evidence: context.referenceEvidence,
+      targetBlock: block,
+      deploymentIdentity,
+      referenceAuthorities,
+    });
+    if (
+      referenceEvidence === null ||
+      (referenceEvidence.evidenceKind === "resolved_block" &&
+        referenceEvidence.confirmationDepth !== policy.requiredFinalityDepth)
+    )
+      return null;
+    return Object.freeze({
+      block,
+      referenceEvidence,
+      lineageBlocks: Object.freeze(lineageBlocks),
+      sourceStore,
+      finalityPolicy,
+      finalityResult,
+      context,
+    });
+  } catch {
+    return null;
+  }
+};
+
+const verifyBlockContext = (
+  policy: WatcherUserEventIndexerPolicy,
+  rawContext: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
+): VerifiedBlockContext | null => {
+  const context = parsePublicContext(rawContext);
+  if (context === null) return null;
+  const verified = verifyBlockInputs(
+    policy,
+    context,
+    transportAttestations,
+    referenceAuthorities,
+  );
+  if (verified === null) return null;
+  try {
+    const store = parseWatcherDurableStore(context.durableStore);
+    const { block, sourceStore } = verified;
     const persistedBytes =
       encodeWatcherNormalizedL1Block(block).toString("hex");
     if (
@@ -3186,15 +3387,7 @@ const verifyBlockContext = (
     ) {
       return null;
     }
-    return Object.freeze({
-      block,
-      lineageBlocks: Object.freeze(lineageBlocks),
-      sourceStore,
-      store,
-      finalityPolicy,
-      finalityResult,
-      context,
-    });
+    return Object.freeze({ ...verified, store, context });
   } catch {
     return null;
   }
@@ -3236,7 +3429,7 @@ const observationWithoutDigest = (
   schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
   policyDigest: value.policyDigest,
   network: value.network,
-  releaseEvidenceDigest: value.releaseEvidenceDigest,
+  blueprintHash: value.blueprintHash,
   deploymentMarker: value.deploymentMarker,
   transitionKind: value.transitionKind,
   pointDigest: value.pointDigest,
@@ -3263,20 +3456,83 @@ const makeObservation = (
   });
 };
 
-const deriveBlockObservation = (
+/** Fold an admitted whole block in native order; no partial block is constructed. */
+const deriveLocalBlockEventSnapshot = (
+  policy: WatcherUserEventIndexerPolicy,
+  previous: WatcherUserEventSnapshot,
+  block: WatcherNormalizedL1Block,
+  referenceEvidence: WatcherUserEventReferenceEvidence,
+  deployment: Pick<WatcherDeploymentIdentityPolicy, "appliedScriptHashes">,
+): WatcherUserEventSnapshot | null => {
+  if (previous.quarantined) return null;
+  const active = new Map(
+    previous.activeEvents.map((event) => [event.outRef, event]),
+  );
+  const terminal = [...previous.terminalEvents];
+  const eventIds = new Set(
+    [...previous.activeEvents, ...previous.terminalEvents].map(
+      (event) => event.eventId,
+    ),
+  );
+  for (const transaction of block.transactions) {
+    if (
+      scanConsumedTransactionEvents(
+        block,
+        transaction,
+        referenceEvidence,
+        active,
+        terminal,
+        deployment,
+      ) === null
+    )
+      return null;
+    const created: WatcherIndexedUserEvent[] = [];
+    if (
+      scanCreatedTransactionEvents(
+        policy,
+        block,
+        transaction,
+        referenceEvidence,
+        deployment,
+        created,
+      ) === null
+    )
+      return null;
+    for (const event of created) {
+      if (active.has(event.outRef) || eventIds.has(event.eventId)) return null;
+      active.set(
+        event.outRef,
+        Object.freeze({ ...event, finalityStatus: "final" }),
+      );
+      eventIds.add(event.eventId);
+    }
+    if (
+      active.size > WATCHER_USER_EVENT_INDEXER_BOUNDS.activeEvents ||
+      terminal.length > WATCHER_USER_EVENT_INDEXER_BOUNDS.terminalEvents
+    )
+      return null;
+  }
+  return makeSnapshot(
+    [...active.values()].sort((left, right) =>
+      left.outRef.localeCompare(right.outRef),
+    ),
+    withCurrentTerminalFinality(
+      block.chainPoint.pointDigest,
+      true,
+      terminal.sort((left, right) =>
+        `${left.terminalPointDigest}:${left.outRef}`.localeCompare(
+          `${right.terminalPointDigest}:${right.outRef}`,
+        ),
+      ),
+    ),
+  );
+};
+
+const deriveBlockSnapshot = (
   policy: WatcherUserEventIndexerPolicy,
   previous: WatcherUserEventIndexerState | null,
-  rawContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContext[],
-): WatcherUserEventObservation | null => {
-  const verified = verifyBlockContext(
-    policy,
-    rawContext,
-    transportAttestations,
-  );
-  if (verified === null) {
-    return null;
-  }
+  verified: VerifiedBlockInputs,
+): WatcherUserEventSnapshot | null => {
   if (previous?.snapshot.quarantined === true) {
     return null;
   }
@@ -3325,14 +3581,14 @@ const deriveBlockObservation = (
   const priorActive = previous?.snapshot.activeEvents ?? [];
   const consumed = scanConsumedEvents(
     verified.block,
-    verified.sourceStore,
+    verified.referenceEvidence,
     priorActive,
     verified.context.deploymentAuthority.policy,
   );
   const created = scanCreatedEvents(
     policy,
     verified.block,
-    verified.sourceStore,
+    verified.referenceEvidence,
     verified.context.deploymentAuthority.policy,
   );
   if (consumed === null || created === null) {
@@ -3394,6 +3650,26 @@ const deriveBlockObservation = (
     ),
   );
   const snapshot = makeSnapshot(active, terminal);
+  return snapshot;
+};
+
+const deriveBlockObservation = (
+  policy: WatcherUserEventIndexerPolicy,
+  previous: WatcherUserEventIndexerState | null,
+  rawContext: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
+): WatcherUserEventObservation | null => {
+  const verified = verifyBlockContext(
+    policy,
+    rawContext,
+    transportAttestations,
+    referenceAuthorities,
+  );
+  if (verified === null) {
+    return null;
+  }
+  const snapshot = deriveBlockSnapshot(policy, previous, verified);
   if (
     snapshot === null ||
     !storeTransitionMatches(
@@ -3409,7 +3685,7 @@ const deriveBlockObservation = (
     schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     transitionKind: "apply_block",
     pointDigest: verified.block.chainPoint.pointDigest,
@@ -3418,7 +3694,7 @@ const deriveBlockObservation = (
     blockNo: verified.block.chainPoint.blockNo,
     sourceObservationDigest: verified.block.observationDigest,
     chainPointId: verified.block.chainPoint.chainPointId,
-    sourceDurableStoreDigest: sourceDigest,
+    sourceDurableStoreDigest: storeDigest(verified.sourceStore),
     sourceDurableStoreRevision: verified.sourceStore.revision,
     durableStoreDigest: watcherDurableStoreBytesSha256(
       encodeWatcherDurableStore(verified.store),
@@ -3456,6 +3732,7 @@ const verifyRollbackContext = (
     context === null ||
     context.authenticatedProvider !== null ||
     context.l1Observation !== null ||
+    context.referenceEvidence !== null ||
     context.finalityAuthority !== null ||
     context.rollbackAuthority === null ||
     verifyDeploymentAuthority(policy, context.deploymentAuthority) === null
@@ -3504,8 +3781,7 @@ const verifyRollbackContext = (
           recoveryResult.recoveryState === null ||
           recoveryResult.resumableFinalityState === null ||
           recoveryResult.recoveryState.network !== policy.network ||
-          recoveryResult.recoveryState.releaseEvidenceDigest !==
-            policy.releaseEvidenceDigest ||
+          recoveryResult.recoveryState.blueprintHash !== policy.blueprintHash ||
           !same(
             recoveryResult.recoveryState.deploymentMarker,
             policy.deploymentMarker,
@@ -3589,7 +3865,7 @@ const deriveRollbackObservation = (
           schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
           policyDigest: policy.policyDigest,
           network: policy.network,
-          releaseEvidenceDigest: policy.releaseEvidenceDigest,
+          blueprintHash: policy.blueprintHash,
           deploymentMarker: policy.deploymentMarker,
           transitionKind: "rollback",
           pointDigest: null,
@@ -3719,7 +3995,7 @@ const deriveRollbackObservation = (
     schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     transitionKind: "rollback",
     pointDigest: null,
@@ -3744,6 +4020,7 @@ export const deriveWatcherUserEventObservation = (
   rawPreviousState: unknown,
   rawPublicContext: unknown,
   transportAttestations: readonly WatcherL1TransportAttestationContext[],
+  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
   rollbackTargetEntryDigest: string | null = null,
 ): WatcherUserEventObservation | null => {
   const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
@@ -3766,6 +4043,7 @@ export const deriveWatcherUserEventObservation = (
           rawPreviousState,
           policy,
           transportAttestations,
+          referenceAuthorities,
         );
   if (rawPreviousState !== null && previous === null) {
     return null;
@@ -3775,7 +4053,13 @@ export const deriveWatcherUserEventObservation = (
     return null;
   }
   return context.rollbackAuthority === null
-    ? deriveBlockObservation(policy, previous, context, transportAttestations)
+    ? deriveBlockObservation(
+        policy,
+        previous,
+        context,
+        transportAttestations,
+        referenceAuthorities,
+      )
     : previous === null
       ? null
       : deriveRollbackObservation(
@@ -3785,6 +4069,252 @@ export const deriveWatcherUserEventObservation = (
           rollbackTargetEntryDigest,
           transportAttestations,
         );
+};
+
+const authorityCollectionWithinBounds = (
+  value: unknown,
+): value is readonly unknown[] => {
+  if (
+    !Array.isArray(value) ||
+    isProxy(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    value.length > WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries
+  )
+    return false;
+  const keys = Reflect.ownKeys(value);
+  return (
+    keys.length === value.length + 1 &&
+    keys.every((key) => {
+      if (key === "length") return true;
+      if (
+        typeof key !== "string" ||
+        !NATURAL.test(key) ||
+        BigInt(key) >= BigInt(value.length)
+      )
+        return false;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      return (
+        descriptor !== undefined &&
+        descriptor.enumerable === true &&
+        descriptor.get === undefined &&
+        descriptor.set === undefined
+      );
+    })
+  );
+};
+
+/**
+ * Constructs one canonical apply-block candidate from admitted evidence.
+ * Existing verification still admits every representation allowed by its store
+ * predicates. This operation does not publish a store or mint durable authority.
+ */
+export const deriveWatcherUserEventViewTransition = (
+  input: WatcherUserEventViewTransitionInput,
+): WatcherUserEventViewTransitionResult => {
+  const refuse = (
+    reason: WatcherUserEventIndexerReasonCode,
+  ): WatcherUserEventViewTransitionResult =>
+    Object.freeze({ status: "refused", reason });
+  try {
+    if (typeof input === "object" && input !== null && isProxy(input)) {
+      return refuse("malformed_public_context");
+    }
+    const record = exactRecord(input, [
+      "policy",
+      "previousState",
+      "sourceDurableStore",
+      "authenticatedProvider",
+      "l1Observation",
+      "referenceEvidence",
+      "deploymentAuthority",
+      "finalityAuthority",
+      "transportAttestations",
+      "referenceAuthorities",
+    ]);
+    if (
+      record === null ||
+      !authorityCollectionWithinBounds(record.transportAttestations) ||
+      !authorityCollectionWithinBounds(record.referenceAuthorities)
+    ) {
+      return refuse("malformed_public_context");
+    }
+    // Parse the existing public context shape before a destination exists. The
+    // structural parser does not grant authority to this null placeholder.
+    const rawContext = {
+      schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
+      authenticatedProvider: record.authenticatedProvider,
+      l1Observation: record.l1Observation,
+      referenceEvidence: record.referenceEvidence,
+      sourceDurableStore: record.sourceDurableStore,
+      durableStore: null,
+      deploymentAuthority: record.deploymentAuthority,
+      rollbackRestoredEventUtxos: [],
+      finalityAuthority: record.finalityAuthority,
+      rollbackAuthority: null,
+    };
+    const budget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
+    if (!evidenceWithinBounds(record.policy, budget))
+      return refuse("malformed_policy");
+    if (
+      record.previousState !== null &&
+      !evidenceWithinBounds(record.previousState, budget)
+    )
+      return refuse("malformed_state");
+    if (!evidenceWithinBounds(rawContext, budget))
+      return refuse("malformed_public_context");
+    const policy = parseWatcherUserEventIndexerPolicy(record.policy);
+    if (policy === null) return refuse("malformed_policy");
+    const transportAttestations =
+      record.transportAttestations as readonly WatcherL1TransportAttestationContext[];
+    const referenceAuthorities =
+      record.referenceAuthorities as readonly WatcherUserEventReferenceAuthority[];
+    const previous =
+      record.previousState === null
+        ? null
+        : parseWatcherUserEventIndexerState(
+            record.previousState,
+            policy,
+            transportAttestations,
+            referenceAuthorities,
+          );
+    if (record.previousState !== null && previous === null)
+      return refuse("malformed_state");
+    const context = parsePublicContext(rawContext);
+    if (context === null) return refuse("malformed_public_context");
+    const verified = verifyBlockInputs(
+      policy,
+      context,
+      transportAttestations,
+      referenceAuthorities,
+    );
+    if (verified === null) return refuse("public_evidence_mismatch");
+    const snapshot = deriveBlockSnapshot(policy, previous, verified);
+    if (snapshot === null) return refuse("public_evidence_mismatch");
+    const { sourceStore, block } = verified;
+    const targetObservation = {
+      observationId: block.observationDigest,
+      providerId: block.provider.providerId,
+      chainPointId: block.chainPoint.chainPointId,
+      payload: makeWatcherDurablePayload(
+        encodeWatcherNormalizedL1Block(block).toString("hex"),
+      ),
+    };
+    const existingObservation = sourceStore.l1Observations.find(
+      ({ observationId }) => observationId === targetObservation.observationId,
+    );
+    if (
+      existingObservation !== undefined &&
+      !same(existingObservation, targetObservation)
+    ) {
+      return refuse("durable_evidence_mismatch");
+    }
+    const chainPoints = [
+      ...sourceStore.chainPoints.filter(
+        ({ chainPointId }) => chainPointId !== block.chainPoint.chainPointId,
+      ),
+      {
+        chainPointId: block.chainPoint.chainPointId,
+        providerId: block.provider.providerId,
+        blockHash: block.chainPoint.blockHash,
+        slot: block.chainPoint.slot,
+        blockNo: block.chainPoint.blockNo,
+        depth: block.chainPoint.depth,
+      },
+    ];
+    const protocolUtxos = [
+      ...sourceStore.protocolUtxos.filter(
+        ({ role }) =>
+          !["deposit", "withdrawal", "forced_transaction"].includes(role),
+      ),
+      ...snapshot.activeEvents.map((event) => ({
+        outRef: event.outRef,
+        role: protocolRole(event.kind),
+        chainPointId: event.originChainPointId,
+        output: makeWatcherDurablePayload(event.outputCborHex),
+      })),
+    ];
+    const journal = journalWatcherProtocolUtxoTransition({
+      sourceStore,
+      nextChainPoints: chainPoints,
+      nextProtocolUtxos: protocolUtxos,
+      spentAtChainPointId: block.chainPoint.chainPointId,
+    });
+    const nextStore = makeWatcherDurableStore({
+      deploymentMarker: sourceStore.deploymentMarker,
+      revision: (BigInt(sourceStore.revision) + 1n).toString(),
+      records: {
+        l1Observations:
+          existingObservation === undefined
+            ? [...sourceStore.l1Observations, targetObservation]
+            : sourceStore.l1Observations,
+        chainPoints,
+        ...journal,
+        daProofInputs: sourceStore.daProofInputs,
+        reconstructedStates: sourceStore.reconstructedStates,
+        decisions: sourceStore.decisions,
+        faults: sourceStore.faults,
+        submissions: sourceStore.submissions,
+        confirmations: sourceStore.confirmations,
+        retries: sourceStore.retries,
+        deadlines: sourceStore.deadlines,
+        correctionResults: sourceStore.correctionResults,
+      },
+    });
+    const candidateContext = { ...context, durableStore: nextStore };
+    // The generated destination and observation add wire evidence. Apply the
+    // existing cumulative budget before cloning the complete verification input.
+    const candidateBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
+    if (
+      !evidenceWithinBounds(policy, candidateBudget) ||
+      (previous !== null && !evidenceWithinBounds(previous, candidateBudget)) ||
+      !evidenceWithinBounds(candidateContext, candidateBudget)
+    ) {
+      return refuse("malformed_public_context");
+    }
+    const publicContext = immutableWireValue(candidateContext);
+    const observation = deriveWatcherUserEventObservation(
+      policy,
+      previous,
+      publicContext,
+      transportAttestations,
+      referenceAuthorities,
+    );
+    if (observation === null) return refuse("public_evidence_mismatch");
+    const indexed = evaluateWatcherUserEventIndexer(
+      policy,
+      previous,
+      observation,
+      publicContext,
+      transportAttestations,
+      referenceAuthorities,
+    );
+    const parsed = parseWatcherUserEventIndexerResult(indexed, {
+      policy,
+      previousState: previous,
+      observation,
+      publicContext,
+      transportAttestations,
+      referenceAuthorities,
+    });
+    if (
+      parsed === null ||
+      parsed.action !== "accept" ||
+      parsed.protocolDecision !== "indexed" ||
+      parsed.state === null
+    ) {
+      return refuse(indexed.reasonCodes[0] ?? "public_evidence_mismatch");
+    }
+    return Object.freeze({
+      status: "derived",
+      sourceStore: parseWatcherDurableStore(publicContext.sourceDurableStore),
+      nextStore: parseWatcherDurableStore(publicContext.durableStore),
+      publicContext,
+      observation,
+      result: parsed,
+    });
+  } catch {
+    return refuse("durable_evidence_mismatch");
+  }
 };
 
 const historyEntryWithoutDigest = (
@@ -3802,7 +4332,7 @@ const stateWithoutDigest = (
   schemaVersion: WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION,
   policyDigest: value.policyDigest,
   network: value.network,
-  releaseEvidenceDigest: value.releaseEvidenceDigest,
+  blueprintHash: value.blueprintHash,
   deploymentMarker: value.deploymentMarker,
   durableStoreDigest: value.durableStoreDigest,
   durableStoreRevision: value.durableStoreRevision,
@@ -3852,7 +4382,7 @@ const applyObservation = (
     schemaVersion: WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    blueprintHash: policy.blueprintHash,
     deploymentMarker: policy.deploymentMarker,
     durableStoreDigest: observation.durableStoreDigest,
     durableStoreRevision: observation.durableStoreRevision,
@@ -3873,7 +4403,7 @@ const parseObservationStructural = (
     "schemaVersion",
     "policyDigest",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "transitionKind",
     "pointDigest",
@@ -3895,7 +4425,7 @@ const parseObservationStructural = (
     record.schemaVersion !== WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION ||
     !isHex32(record.policyDigest) ||
     !isNetwork(record.network) ||
-    !isHex32(record.releaseEvidenceDigest) ||
+    !isHex32(record.blueprintHash) ||
     cloneMarker(record.deploymentMarker) === null ||
     !["apply_block", "rollback"].includes(String(record.transitionKind)) ||
     !isHex32(record.sourceDurableStoreDigest) ||
@@ -3918,6 +4448,7 @@ export const parseWatcherUserEventIndexerState = (
   value: unknown,
   rawPolicy: unknown,
   transportAttestations: readonly WatcherL1TransportAttestationContext[],
+  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
 ): WatcherUserEventIndexerState | null => {
   const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
   if (
@@ -3931,7 +4462,7 @@ export const parseWatcherUserEventIndexerState = (
     "schemaVersion",
     "policyDigest",
     "network",
-    "releaseEvidenceDigest",
+    "blueprintHash",
     "deploymentMarker",
     "durableStoreDigest",
     "durableStoreRevision",
@@ -3951,7 +4482,7 @@ export const parseWatcherUserEventIndexerState = (
     !isNatural(record.durableStoreRevision) ||
     record.policyDigest !== policy.policyDigest ||
     record.network !== policy.network ||
-    record.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    record.blueprintHash !== policy.blueprintHash ||
     !same(record.deploymentMarker, policy.deploymentMarker) ||
     !snapshotTerminalClassificationsAreExact(record.snapshot)
   ) {
@@ -3992,6 +4523,7 @@ export const parseWatcherUserEventIndexerState = (
             replay,
             publicContext,
             transportAttestations,
+            referenceAuthorities,
           )
         : replay === null
           ? null
@@ -4052,6 +4584,7 @@ export const evaluateWatcherUserEventIndexer = (
   rawObservation: unknown,
   rawPublicContext: unknown,
   transportAttestations: readonly WatcherL1TransportAttestationContext[],
+  referenceAuthorities: readonly WatcherUserEventReferenceAuthority[],
 ): WatcherUserEventIndexerResult => {
   const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
   if (!evidenceWithinBounds(rawPolicy, evidenceBudget)) {
@@ -4077,6 +4610,7 @@ export const evaluateWatcherUserEventIndexer = (
           rawState,
           policy,
           transportAttestations,
+          referenceAuthorities,
         );
   if (rawState !== null && previous === null) {
     return reject("malformed_state");
@@ -4092,7 +4626,7 @@ export const evaluateWatcherUserEventIndexer = (
   if (
     observation.policyDigest !== policy.policyDigest ||
     observation.network !== policy.network ||
-    observation.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
+    observation.blueprintHash !== policy.blueprintHash ||
     !same(observation.deploymentMarker, policy.deploymentMarker)
   ) {
     return reject("binding_mismatch", "watcher_user_event_binding_rejected");
@@ -4121,6 +4655,7 @@ export const evaluateWatcherUserEventIndexer = (
           previous,
           publicContext,
           transportAttestations,
+          referenceAuthorities,
         )
       : previous === null
         ? null
@@ -4173,6 +4708,7 @@ export const parseWatcherUserEventIndexerResult = (
     observation: unknown;
     publicContext: unknown;
     transportAttestations: readonly WatcherL1TransportAttestationContext[];
+    referenceAuthorities: readonly WatcherUserEventReferenceAuthority[];
   }>,
 ): WatcherUserEventIndexerResult | null => {
   if (typeof value === "object" && value !== null && isProxy(value)) {
@@ -4187,6 +4723,3353 @@ export const parseWatcherUserEventIndexerResult = (
     context.observation,
     context.publicContext,
     context.transportAttestations,
+    context.referenceAuthorities,
   );
   return same(expected, value) ? expected : null;
+};
+
+const localHistoryBrand = Symbol("watcher-local-user-event-history");
+const localTransitionBrand = Symbol("watcher-local-user-event-transition");
+export type WatcherLocalUserEventHistory = Readonly<{
+  [localHistoryBrand]: true;
+}>;
+export type WatcherLocalUserEventTransition = Readonly<{
+  [localTransitionBrand]: true;
+}>;
+type LocalPair = Readonly<{
+  finality: WatcherLocalBackfillFinalityReceipt;
+  observation: WatcherLocalBackfillObservationReceipt;
+  referenceAuthority: WatcherUserEventReferenceAuthority;
+}>;
+type LocalWitness = ReturnType<
+  typeof readWatcherLocalBackfillFinalityOriginalWitness
+>;
+type LocalArchiveObject = Readonly<{ digest: string; bytesHex: string }>;
+export type WatcherLocalUserEventEntry = Readonly<{
+  schemaVersion: "midgard-watcher-local-user-event-entry-v1";
+  sequence: string;
+  originDigest: string;
+  policyDigest: string;
+  predecessorEntryDigest: string | null;
+  predecessorStateDigest: string | null;
+  cursor: WatcherUserEventOriginFacts["parentPoint"];
+  parent: WatcherUserEventOriginFacts["parentPoint"];
+  sourceStoreDigest: string;
+  nextStoreDigest: string;
+  sourceStoreRevision: string;
+  nextStoreRevision: string;
+  observationDigest: string;
+  snapshotDigest: string;
+  evidenceDigest: string;
+  entryDigest: string;
+}>;
+type LocalPreparedRead = Readonly<{
+  sourceStore: WatcherDurableStore;
+  nextStore: WatcherDurableStore;
+  observation: WatcherUserEventObservation;
+  snapshot: WatcherUserEventSnapshot;
+  entry: WatcherLocalUserEventEntry;
+  archiveObjects: readonly LocalArchiveObject[];
+  nextCheckpoint: WatcherUserEventCheckpoint;
+  expectedCheckpointDigest: string | null;
+  expectedCheckpointSequence: string | null;
+}>;
+type LocalRetainedEvidence = Readonly<{
+  entry: WatcherLocalUserEventEntry;
+  entryArchiveDigest: string;
+  rawBlockCbor: string;
+  pointDigest: string;
+  chainPointId: string;
+}>;
+type LocalHistoryOwner = {
+  readonly origin: WatcherUserEventOriginFacts;
+  readonly originDigest: string;
+  readonly activationPair: Readonly<{
+    finality: WatcherLocalBackfillFinalityReceipt;
+    observation: WatcherLocalBackfillObservationReceipt;
+  }>;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly scriptBinding: WatcherUserEventScriptBinding;
+  readonly policy: WatcherUserEventIndexerPolicy;
+  readonly finalityPolicy: WatcherFinalityPolicy;
+  readonly originArchive: LocalArchiveObject;
+  store: WatcherDurableStore;
+  snapshot: WatcherUserEventSnapshot;
+  entries: readonly WatcherLocalUserEventEntry[];
+  acceptedEvidence: readonly LocalRetainedEvidence[];
+  pinnedEvidence: readonly LocalRetainedEvidence[];
+  archiveIndex: WatcherUserEventArchiveIndexRead | null;
+  anchorCandidate: WatcherLocalUserEventAnchor | null;
+  lastAccepted: WatcherLocalUserEventTransition | null;
+  archiveObjects: readonly LocalArchiveObject[];
+  checkpoint: WatcherUserEventCheckpoint | null;
+  candidate: WatcherLocalUserEventTransition | null;
+  generation: number;
+  acceptedAtMonotonicMs: number | null;
+  closed: boolean;
+  suspendedAt: number | null;
+  semanticReplay: boolean;
+};
+type LocalTransitionOwner = {
+  readonly history: WatcherLocalUserEventHistory;
+  readonly generation: number;
+  readonly pair: LocalPair;
+  readonly witness: LocalWitness;
+  readonly referenceEvidence: WatcherUserEventReferenceEvidence;
+  readonly value: LocalPreparedRead;
+  accepted: boolean;
+};
+const localHistories = new WeakMap<
+  WatcherLocalUserEventHistory,
+  LocalHistoryOwner
+>();
+const localTransitions = new WeakMap<
+  WatcherLocalUserEventTransition,
+  LocalTransitionOwner
+>();
+const localRefuse = (reason: string): never => {
+  throw new Error(`Local user-event history refused: ${reason}`);
+};
+const localOwner = (
+  history: WatcherLocalUserEventHistory,
+): LocalHistoryOwner => {
+  const owner =
+    localHistories.get(history) ??
+    localRefuse("history is not privately admitted");
+  if (owner.closed) return localRefuse("history is closed");
+  if (owner.suspendedAt !== null) return localRefuse("history is suspended");
+  return owner;
+};
+
+/** Archive schema encodes every number as its exact finite decimal string.
+ * Numeric field types belong to the evidence schema, never to a revived clock.
+ * These bytes are descriptive past-process facts, not reissued receipt authority.
+ */
+const localArchiveEvidence = (value: unknown): unknown => {
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "number") {
+    if (!Number.isFinite(value))
+      return localRefuse("non-finite archive number");
+    const decimal = Object.is(value, -0) ? "-0" : value.toString();
+    if (!Object.is(Number(decimal), value))
+      return localRefuse("inexact archive number");
+    return decimal;
+  }
+  if (Array.isArray(value)) return value.map(localArchiveEvidence);
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [
+        key,
+        localArchiveEvidence(child),
+      ]),
+    );
+  }
+  return value;
+};
+const localArchiveBudgets = new WeakMap<
+  LocalArchiveObject,
+  EvidenceGraphBudget
+>();
+const localArchiveObject = (value: unknown): LocalArchiveObject => {
+  const budget = { nodes: 0, bytes: 0 };
+  if (!evidenceWithinBounds(value, budget))
+    return localRefuse("archive evidence bound exceeded");
+  const bytes = Buffer.from(watcherCanonicalJson(value), "utf8");
+  if (
+    bytes.byteLength > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes
+  )
+    return localRefuse("archive byte bound exceeded");
+  const object = Object.freeze({
+    digest: sha256Bytes(bytes),
+    bytesHex: bytes.toString("hex"),
+  });
+  localArchiveBudgets.set(object, Object.freeze(budget));
+  return object;
+};
+const localHistoryAnchorDescriptor = (owner: LocalHistoryOwner) =>
+  owner.archiveIndex === null
+    ? {
+        kind: "activation_origin",
+        parent: owner.origin.parentPoint,
+        bootstrapStoreDigest: owner.policy.bootstrapStoreDigest,
+      }
+    : {
+        kind: "materialized_history",
+        indexDigest: owner.archiveIndex.digest,
+        indexSequence: owner.archiveIndex.index.indexSequence,
+        retainedSuffixEntries: "64",
+      };
+const localRetainedEvidence = (
+  owner: LocalHistoryOwner,
+): readonly LocalRetainedEvidence[] =>
+  [...owner.pinnedEvidence, ...owner.acceptedEvidence].sort((left, right) =>
+    BigInt(left.entry.sequence) < BigInt(right.entry.sequence)
+      ? -1
+      : BigInt(left.entry.sequence) > BigInt(right.entry.sequence)
+        ? 1
+        : 0,
+  );
+
+const localLivePair = (owner: LocalHistoryOwner, pair: LocalPair) => {
+  const scripts = readWatcherUserEventScriptBinding({
+    binding: owner.scriptBinding,
+    deploymentIdentity: owner.deploymentIdentity,
+  });
+  const current = readWatcherLocalBackfillFinalityObservation(pair);
+  const witness = readWatcherLocalBackfillFinalityOriginalWitness(pair);
+  const evidence = readWatcherUserEventReferenceEvidence(
+    pair.referenceAuthority,
+  );
+  const referenceEvidence = admitWatcherLocalBackfillUserEventReferenceEvidence(
+    {
+      ...pair,
+      evidence,
+      deploymentIdentity: owner.deploymentIdentity,
+    },
+  );
+  if (
+    scripts !== owner.origin.scripts ||
+    referenceEvidence !== evidence ||
+    witness.current.finality !== current.finality ||
+    witness.current.observation !== current.observation ||
+    !same(current.finality.policy, owner.finalityPolicy) ||
+    !same(
+      current.observation.capture.sourceBinding,
+      owner.origin.originalWitness.current.observation.capture.sourceBinding,
+    ) ||
+    current.observation.sourceIdentityDigest !==
+      owner.origin.originalWitness.current.observation.sourceIdentityDigest ||
+    witness.first.observation.capture.nativeBlock.rawBlockCbor !==
+      current.observation.capture.nativeBlock.rawBlockCbor ||
+    !same(
+      witness.first.observation.capture.predecessorPoint,
+      current.observation.capture.predecessorPoint,
+    )
+  ) {
+    return localRefuse("live finality/reference/source binding differs");
+  }
+  return { witness, referenceEvidence };
+};
+
+/** Empty initialization is available only at the authenticated whole activation block. */
+const createLocalUserEventHistory = (
+  input: Readonly<{
+    origin: WatcherUserEventOriginReceipt;
+    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+    scriptBinding: WatcherUserEventScriptBinding;
+    finality: WatcherLocalBackfillFinalityReceipt;
+    observation: WatcherLocalBackfillObservationReceipt;
+    publication: WatcherProtectedUserEventCheckpoint;
+    semanticReplay: boolean;
+  }>,
+): WatcherLocalUserEventHistory => {
+  const {
+    origin: originReceipt,
+    deploymentIdentity,
+    scriptBinding,
+    finality,
+    observation,
+    publication: publicationReceipt,
+  } = input;
+  const origin = readWatcherUserEventOrigin({
+    origin: originReceipt,
+    deploymentIdentity,
+    scriptBinding,
+    finality,
+    observation,
+  });
+  const publication =
+    readWatcherProtectedUserEventCheckpointReceipt(publicationReceipt);
+  const finalityPolicy = origin.originalWitness.current.finality.policy;
+  if (
+    (!input.semanticReplay &&
+      (publication.checkpoint !== null || publication.payload !== null)) ||
+    !same(
+      publication.trustedHead.deploymentMarker,
+      deploymentIdentity.durableMarker,
+    ) ||
+    !same(finalityPolicy.deploymentMarker, deploymentIdentity.durableMarker) ||
+    finalityPolicy.blueprintHash !== origin.blueprintHash ||
+    finalityPolicy.network !== origin.network
+  ) {
+    return localRefuse(
+      "empty origin requires an absent matching protected checkpoint",
+    );
+  }
+  const store = immutableWireValue(
+    makeEmptyWatcherDurableStore(deploymentIdentity.durableMarker),
+  );
+  const parsedPolicy = makeWatcherUserEventIndexerPolicy({
+    network: origin.network,
+    blueprintHash: origin.blueprintHash,
+    deploymentMarker: deploymentIdentity.durableMarker,
+    deposit: origin.scripts.deposit,
+    withdrawal: origin.scripts.withdrawal,
+    forcedOrder: origin.scripts.forcedOrder,
+    bootstrapStoreDigest: storeDigest(store),
+    deploymentTrustRootId: deploymentIdentity.trustRootId,
+    requiredFinalityDepth: finalityPolicy.confirmationDepth,
+    maximumActiveHistoryEntries:
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.activeHistoryEntries.toString(),
+    maximumAuditHistoryEntries:
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.auditHistoryEntries.toString(),
+  });
+  if (parsedPolicy === null)
+    return localRefuse("origin cannot establish the strict event policy");
+  const policy = immutableWireValue(parsedPolicy);
+  const snapshot = makeSnapshot([], []);
+  if (snapshot === null)
+    return localRefuse("empty snapshot construction failed");
+  const originArchive = localArchiveObject({
+    schemaVersion: "midgard-watcher-local-user-event-origin-archive-v1",
+    numericEncoding: "exact-decimal-strings",
+    facts: localArchiveEvidence(origin),
+    policy,
+    bootstrapStore: store,
+  });
+  const history = Object.freeze({ [localHistoryBrand]: true as const });
+  localHistories.set(history, {
+    origin,
+    originDigest: origin.originDigest,
+    activationPair: Object.freeze({
+      finality: finality,
+      observation: observation,
+    }),
+    deploymentIdentity: deploymentIdentity,
+    scriptBinding: scriptBinding,
+    policy,
+    finalityPolicy,
+    originArchive,
+    store,
+    snapshot: immutableWireValue(snapshot),
+    entries: Object.freeze([]),
+    acceptedEvidence: Object.freeze([]),
+    pinnedEvidence: Object.freeze([]),
+    archiveIndex: null,
+    anchorCandidate: null,
+    lastAccepted: null,
+    archiveObjects: Object.freeze([originArchive]),
+    checkpoint: null,
+    candidate: null,
+    generation: 0,
+    acceptedAtMonotonicMs: null,
+    closed: false,
+    suspendedAt: null,
+    semanticReplay: input.semanticReplay,
+  });
+  return history;
+};
+
+/** Empty initialization remains unavailable over a published checkpoint. */
+export const createWatcherLocalUserEventHistory = (
+  input: Omit<
+    Parameters<typeof createLocalUserEventHistory>[0],
+    "semanticReplay"
+  >,
+): WatcherLocalUserEventHistory =>
+  createLocalUserEventHistory({ ...input, semanticReplay: false });
+
+export const readWatcherLocalUserEventHistory = (
+  history: WatcherLocalUserEventHistory,
+) => {
+  const owner = localOwner(history);
+  return Object.freeze({
+    policy: owner.policy,
+    store: owner.store,
+    snapshot: owner.snapshot,
+    cursor: owner.entries.at(-1)?.cursor ?? null,
+    entryDigest: owner.entries.at(-1)?.entryDigest ?? null,
+    checkpoint: owner.checkpoint,
+    retainedEntries: owner.entries.length,
+    status:
+      owner.candidate !== null || owner.anchorCandidate !== null
+        ? ("publication_pending" as const)
+        : owner.entries.length >=
+            Number(owner.policy.maximumActiveHistoryEntries)
+          ? ("history_bound_hold" as const)
+          : ("ready" as const),
+  });
+};
+
+export const prepareWatcherLocalUserEventTransition = (
+  input: LocalPair &
+    Readonly<{
+      history: WatcherLocalUserEventHistory;
+      publication: WatcherProtectedUserEventCheckpoint;
+    }>,
+): WatcherLocalUserEventTransition => {
+  const {
+    history,
+    publication: receipt,
+    finality,
+    observation,
+    referenceAuthority,
+  } = input;
+  const owner = localOwner(history);
+  if (owner.semanticReplay)
+    return localRefuse("semantic replay has not been published");
+  const publication = readWatcherProtectedUserEventCheckpointReceipt(receipt);
+  if (!same(publication.checkpoint, owner.checkpoint))
+    return localRefuse(
+      "protected predecessor differs; semantic reconciliation required",
+    );
+  const transition = prepareLocalUserEventTransition(
+    history,
+    Object.freeze({ finality, observation, referenceAuthority }),
+  );
+  readWatcherProtectedUserEventCheckpointReceipt(receipt);
+  return transition;
+};
+
+const prepareLocalUserEventTransition = (
+  history: WatcherLocalUserEventHistory,
+  pair: LocalPair,
+): WatcherLocalUserEventTransition => {
+  const owner = localOwner(history);
+  if (owner.anchorCandidate !== null)
+    return localRefuse("anchor publication is unresolved");
+  const live = localLivePair(owner, pair);
+  if (owner.candidate !== null) {
+    const candidate = localTransitions.get(owner.candidate)!;
+    if (
+      candidate.pair.finality === pair.finality &&
+      candidate.pair.observation === pair.observation &&
+      candidate.pair.referenceAuthority === pair.referenceAuthority
+    )
+      return owner.candidate;
+    return localRefuse("a different publication is unresolved");
+  }
+  if (owner.lastAccepted !== null) {
+    const accepted = localTransitions.get(owner.lastAccepted)!;
+    if (
+      accepted.pair.finality === pair.finality &&
+      accepted.pair.observation === pair.observation &&
+      accepted.pair.referenceAuthority === pair.referenceAuthority
+    )
+      return owner.lastAccepted;
+  }
+  if (
+    owner.entries.length >= Number(owner.policy.maximumActiveHistoryEntries) ||
+    owner.entries.length >= Number(owner.policy.maximumAuditHistoryEntries)
+  ) {
+    return localRefuse(
+      "history bound reached; semantic anchor rotation required",
+    );
+  }
+  const { witness, referenceEvidence } = live;
+  const { native: block, capture } = witness.current.observation;
+  const predecessor = owner.entries.at(-1);
+  if (predecessor === undefined) {
+    if (
+      pair.finality !== owner.activationPair.finality ||
+      pair.observation !== owner.activationPair.observation ||
+      block !== owner.origin.block
+    )
+      return localRefuse("first block is not the exact activation pair");
+  } else if (
+    !same(capture.predecessorPoint, predecessor.cursor) ||
+    block.chainPoint.parentBlockHash !== predecessor.cursor.blockHash ||
+    BigInt(capture.point.blockNo) !== BigInt(predecessor.cursor.blockNo) + 1n ||
+    BigInt(capture.point.slot) <= BigInt(predecessor.cursor.slot)
+  ) {
+    return localRefuse("block is not the strict full-point successor");
+  }
+  const derivedSnapshot = deriveLocalBlockEventSnapshot(
+    owner.policy,
+    owner.snapshot,
+    block,
+    referenceEvidence,
+    {
+      appliedScriptHashes: { hubOracleMint: owner.origin.scripts.hub.policyId },
+    },
+  );
+  if (derivedSnapshot === null)
+    return localRefuse("whole-block event semantics differ");
+  const snapshot = immutableWireValue(derivedSnapshot);
+  const sourceStore = owner.store;
+  const chainPoints = [
+    ...sourceStore.chainPoints,
+    {
+      chainPointId: block.chainPoint.chainPointId,
+      providerId: block.provider.providerId,
+      blockHash: block.chainPoint.blockHash,
+      slot: block.chainPoint.slot,
+      blockNo: block.chainPoint.blockNo,
+      depth: block.chainPoint.depth,
+    },
+  ];
+  const journal = journalWatcherProtocolUtxoTransition({
+    sourceStore,
+    nextChainPoints: chainPoints,
+    spentAtChainPointId: block.chainPoint.chainPointId,
+    nextProtocolUtxos: [
+      ...sourceStore.protocolUtxos.filter(
+        ({ role }) =>
+          !["deposit", "withdrawal", "forced_transaction"].includes(role),
+      ),
+      ...snapshot.activeEvents.map((event) => ({
+        outRef: event.outRef,
+        role: protocolRole(event.kind),
+        chainPointId: event.originChainPointId,
+        output: makeWatcherDurablePayload(event.outputCborHex),
+      })),
+    ],
+  });
+  const nextStore = immutableWireValue(
+    makeWatcherDurableStore({
+      deploymentMarker: sourceStore.deploymentMarker,
+      revision: (BigInt(sourceStore.revision) + 1n).toString(),
+      records: {
+        ...sourceStore,
+        chainPoints,
+        ...journal,
+        l1Observations: [
+          ...sourceStore.l1Observations,
+          {
+            observationId: block.observationDigest,
+            providerId: block.provider.providerId,
+            chainPointId: block.chainPoint.chainPointId,
+            payload: makeWatcherDurablePayload(
+              encodeWatcherNormalizedL1Block(block).toString("hex"),
+            ),
+          },
+        ],
+      },
+    }),
+  );
+  if (!storeTransitionMatches(sourceStore, nextStore, block, snapshot))
+    return localRefuse("event view journal differs");
+  const observation = makeObservation({
+    schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
+    policyDigest: owner.policy.policyDigest,
+    network: owner.policy.network,
+    blueprintHash: owner.policy.blueprintHash,
+    deploymentMarker: owner.policy.deploymentMarker,
+    transitionKind: "apply_block",
+    pointDigest: block.chainPoint.pointDigest,
+    blockHash: block.chainPoint.blockHash,
+    slot: block.chainPoint.slot,
+    blockNo: block.chainPoint.blockNo,
+    sourceObservationDigest: block.observationDigest,
+    chainPointId: block.chainPoint.chainPointId,
+    sourceDurableStoreDigest: storeDigest(sourceStore),
+    sourceDurableStoreRevision: sourceStore.revision,
+    durableStoreDigest: storeDigest(nextStore),
+    durableStoreRevision: nextStore.revision,
+    rollbackTargetEntryDigest: null,
+    snapshot,
+  });
+  const evidence = localArchiveObject({
+    schemaVersion: "midgard-watcher-local-user-event-block-evidence-v1",
+    numericEncoding: "exact-decimal-strings",
+    witnesses: localArchiveEvidence(witness),
+    referenceEvidence,
+  });
+  const entryFields = {
+    schemaVersion: "midgard-watcher-local-user-event-entry-v1" as const,
+    sequence:
+      predecessor === undefined
+        ? "0"
+        : (BigInt(predecessor.sequence) + 1n).toString(),
+    originDigest: owner.originDigest,
+    policyDigest: owner.policy.policyDigest,
+    predecessorEntryDigest: predecessor?.entryDigest ?? null,
+    predecessorStateDigest: owner.checkpoint?.payloadDigest ?? null,
+    cursor: capture.point,
+    parent: capture.predecessorPoint,
+    sourceStoreDigest: observation.sourceDurableStoreDigest,
+    nextStoreDigest: observation.durableStoreDigest,
+    sourceStoreRevision: sourceStore.revision,
+    nextStoreRevision: nextStore.revision,
+    observationDigest: observation.observationDigest,
+    snapshotDigest: snapshot.snapshotDigest,
+    evidenceDigest: evidence.digest,
+  };
+  const entry = Object.freeze({
+    ...entryFields,
+    entryDigest: sha256Canonical(entryFields),
+  });
+  const entryArchive = localArchiveObject({ entry, observation });
+  const storeArchive = localArchiveObject(nextStore);
+  const payload = localArchiveObject({
+    schemaVersion: "midgard-watcher-local-user-event-checkpoint-payload-v1",
+    originArchiveDigest: owner.originArchive.digest,
+    originDigest: owner.originDigest,
+    policy: owner.policy,
+    anchor: localHistoryAnchorDescriptor(owner),
+    head: entry,
+    storeArchiveDigest: storeArchive.digest,
+    snapshot,
+    retainedEntries: [...owner.entries, entry],
+    requiredSemanticResume:
+      "authenticated_origin_replay_or_semantic_publication_receipt",
+  });
+  const archiveObjects = Object.freeze([
+    ...owner.archiveObjects,
+    evidence,
+    entryArchive,
+    storeArchive,
+    payload,
+  ]);
+  if (
+    archiveObjects.reduce(
+      (nodes, object) => nodes + localArchiveBudgets.get(object)!.nodes,
+      0,
+    ) > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceNodes ||
+    archiveObjects.length >
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries ||
+    archiveObjects.reduce(
+      (bytes, object) => bytes + object.bytesHex.length / 2,
+      0,
+    ) > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes
+  )
+    return localRefuse("retained archive bound reached");
+  const nextCheckpoint = makeWatcherUserEventCheckpoint({
+    schemaVersion: WATCHER_USER_EVENT_CHECKPOINT_SCHEMA_VERSION,
+    deploymentMarker: owner.policy.deploymentMarker,
+    network: owner.policy.network,
+    blueprintHash: owner.policy.blueprintHash,
+    finalityPolicyDigest: owner.finalityPolicy.policyDigest,
+    userEventPolicyDigest: owner.policy.policyDigest,
+    checkpointSequence:
+      owner.checkpoint === null
+        ? "0"
+        : (BigInt(owner.checkpoint.checkpointSequence) + 1n).toString(),
+    predecessorCheckpointDigest: owner.checkpoint?.checkpointDigest ?? null,
+    rollbackGeneration: owner.checkpoint?.rollbackGeneration ?? "0",
+    payloadDigest: payload.digest,
+    requiredArchiveDigests: [
+      ...new Set(archiveObjects.map(({ digest }) => digest)),
+    ].sort(),
+  });
+  const rechecked = localLivePair(owner, pair);
+  if (
+    rechecked.witness.first !== witness.first ||
+    rechecked.witness.current !== witness.current ||
+    rechecked.referenceEvidence !== referenceEvidence
+  )
+    return localRefuse("candidate evidence changed");
+  const transition = Object.freeze({ [localTransitionBrand]: true as const });
+  const value = Object.freeze({
+    sourceStore,
+    nextStore,
+    observation,
+    snapshot,
+    entry,
+    archiveObjects,
+    nextCheckpoint,
+    expectedCheckpointDigest: owner.checkpoint?.checkpointDigest ?? null,
+    expectedCheckpointSequence: owner.checkpoint?.checkpointSequence ?? null,
+  });
+  localTransitions.set(transition, {
+    history: history,
+    generation: owner.generation,
+    pair,
+    witness,
+    referenceEvidence,
+    value,
+    accepted: false,
+  });
+  owner.candidate = transition;
+  return transition;
+};
+
+export const readWatcherLocalUserEventTransition = (
+  transition: WatcherLocalUserEventTransition,
+): LocalPreparedRead => {
+  const prepared =
+    localTransitions.get(transition) ??
+    localRefuse("transition is not privately admitted");
+  const owner = localOwner(prepared.history);
+  if (prepared.accepted) {
+    if (
+      owner.lastAccepted !== transition ||
+      owner.checkpoint?.checkpointDigest !==
+        prepared.value.nextCheckpoint.checkpointDigest
+    )
+      return localRefuse("accepted transition is no longer the head");
+  } else if (
+    owner.generation !== prepared.generation ||
+    owner.candidate !== transition
+  )
+    return localRefuse("transition is no longer pending");
+  const live = localLivePair(owner, prepared.pair);
+  if (
+    live.witness.first !== prepared.witness.first ||
+    live.witness.current !== prepared.witness.current ||
+    live.referenceEvidence !== prepared.referenceEvidence
+  )
+    return localRefuse("prepared evidence differs");
+  return prepared.value;
+};
+
+/** Exact protected publication advances the private cursor once, never preparation. */
+export const acceptWatcherLocalUserEventPublication = (
+  input: Readonly<{
+    history: WatcherLocalUserEventHistory;
+    transition: WatcherLocalUserEventTransition;
+    publication: WatcherProtectedUserEventCheckpoint;
+  }>,
+) => {
+  const { history, transition, publication: publicationReceipt } = input;
+  const owner = localOwner(history);
+  const prepared =
+    localTransitions.get(transition) ??
+    localRefuse("transition is not privately admitted");
+  const publication =
+    readWatcherProtectedUserEventCheckpointReceipt(publicationReceipt);
+  if (
+    prepared.history !== history ||
+    !same(publication.checkpoint, prepared.value.nextCheckpoint) ||
+    publication.payload === null ||
+    sha256Bytes(publication.payload) !==
+      prepared.value.nextCheckpoint.payloadDigest
+  )
+    return localRefuse(
+      "publication does not match the exact prepared frame and payload",
+    );
+  if (prepared.accepted) {
+    if (
+      owner.checkpoint?.checkpointDigest !==
+      prepared.value.nextCheckpoint.checkpointDigest
+    )
+      return localRefuse("accepted publication is no longer the head");
+    return Object.freeze({
+      entryDigest: prepared.value.entry.entryDigest,
+      cursor: prepared.value.entry.cursor,
+    });
+  }
+  if (owner.semanticReplay)
+    return localRefuse("semantic replay requires readmission publication");
+  return commitLocalUserEventTransition(history, transition);
+};
+
+const commitLocalUserEventTransition = (
+  history: WatcherLocalUserEventHistory,
+  transition: WatcherLocalUserEventTransition,
+) => {
+  const owner = localOwner(history);
+  const prepared =
+    localTransitions.get(transition) ??
+    localRefuse("transition is not privately admitted");
+  if (prepared.history !== history || prepared.accepted)
+    return localRefuse("transition is not a pending step of this owner");
+  readWatcherLocalUserEventTransition(transition);
+  owner.store = prepared.value.nextStore;
+  owner.snapshot = prepared.value.snapshot;
+  owner.entries = Object.freeze([...owner.entries, prepared.value.entry]);
+  owner.acceptedEvidence = Object.freeze([
+    ...owner.acceptedEvidence,
+    Object.freeze({
+      entry: prepared.value.entry,
+      entryArchiveDigest: localArchiveObject({
+        entry: prepared.value.entry,
+        observation: prepared.value.observation,
+      }).digest,
+      rawBlockCbor:
+        prepared.witness.current.observation.capture.nativeBlock.rawBlockCbor,
+      pointDigest:
+        prepared.witness.current.observation.native.chainPoint.pointDigest,
+      chainPointId:
+        prepared.witness.current.observation.native.chainPoint.chainPointId,
+    }),
+  ]);
+  owner.lastAccepted = transition;
+  owner.archiveObjects = prepared.value.archiveObjects;
+  owner.checkpoint = prepared.value.nextCheckpoint;
+  owner.generation += 1;
+  owner.acceptedAtMonotonicMs = performance.now();
+  owner.candidate = null;
+  prepared.accepted = true;
+  return Object.freeze({
+    entryDigest: prepared.value.entry.entryDigest,
+    cursor: prepared.value.entry.cursor,
+  });
+};
+
+/** Closing an owner revokes every transition and event capability it issued. */
+export const closeWatcherLocalUserEventHistory = (
+  history: WatcherLocalUserEventHistory,
+): void => {
+  const owner =
+    localHistories.get(history) ??
+    localRefuse("history is not privately admitted");
+  owner.closed = true;
+};
+
+/** Retire every issued capability synchronously before rollback recovery awaits. */
+export const suspendWatcherLocalUserEventHistory = (
+  history: WatcherLocalUserEventHistory,
+): void => {
+  const owner = localHistories.get(history) ?? localRefuse("unknown history");
+  if (owner.closed) return localRefuse("history is closed");
+  owner.generation += 1;
+  owner.suspendedAt = performance.now();
+};
+
+/** Same-process recovery preserves the accepted fold only when new native W12
+ * evidence and a genuine protected read still identify that exact publication. */
+export const resumeWatcherLocalUserEventHistory = (
+  input: LocalPair &
+    Readonly<{
+      history: WatcherLocalUserEventHistory;
+      publication: WatcherProtectedUserEventCheckpoint;
+    }>,
+): void => {
+  const owner =
+    localHistories.get(input.history) ?? localRefuse("unknown history");
+  const head = owner.entries.at(-1);
+  const accepted = owner.acceptedEvidence.at(-1);
+  const protectedHead = readWatcherProtectedUserEventCheckpointReceipt(
+    input.publication,
+  );
+  if (
+    owner.closed ||
+    owner.suspendedAt === null ||
+    owner.semanticReplay ||
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null ||
+    head === undefined ||
+    accepted === undefined ||
+    owner.checkpoint === null ||
+    owner.snapshot.quarantined ||
+    !same(protectedHead.checkpoint, owner.checkpoint) ||
+    protectedHead.payload === null ||
+    sha256Bytes(protectedHead.payload) !== owner.checkpoint.payloadDigest
+  )
+    return localRefuse("suspended history requires restart reconciliation");
+  const { witness } = localLivePair(owner, input);
+  if (
+    witness.first.observation.capture.startedAtMonotonicMs <
+      owner.suspendedAt ||
+    !same(witness.current.observation.capture.point, head.cursor) ||
+    witness.current.observation.capture.nativeBlock.rawBlockCbor !==
+      accepted.rawBlockCbor
+  )
+    return localRefuse(
+      "rollback recovery does not freshly corroborate the accepted head",
+    );
+  readWatcherProtectedUserEventCheckpointReceipt(input.publication);
+  owner.generation += 1;
+  owner.acceptedAtMonotonicMs = performance.now();
+  owner.suspendedAt = null;
+};
+
+const localUnavailableErrors = new WeakSet<Error>();
+const localAuthorityUnavailable = (reason: string): never => {
+  const error = new Error(`Local user-event authority unavailable: ${reason}`);
+  localUnavailableErrors.add(error);
+  throw error;
+};
+/** Only an ordinary candidate's unavailable event/header membership is recoverable.
+ * Callers must still freshly fence protected-head, native lease and generation. */
+export const isWatcherLocalUserEventAuthorityUnavailable = (
+  error: unknown,
+): error is Error =>
+  error instanceof Error && localUnavailableErrors.has(error);
+
+/** Refresh the protected checkpoint without requiring any particular event. */
+export const assertWatcherLocalUserEventHeadCurrent = async (
+  input: LocalPair &
+    Readonly<{
+      history: WatcherLocalUserEventHistory;
+      runtime: WatcherDurableRuntime;
+    }>,
+): Promise<void> => {
+  const owner = localOwner(input.history);
+  const generation = owner.generation;
+  const checkpoint = owner.checkpoint;
+  const assertCurrent = () => {
+    const head = owner.entries.at(-1);
+    const accepted = owner.acceptedEvidence.at(-1);
+    const finality = input.runtime.read().currentFinalityState;
+    if (
+      localOwner(input.history) !== owner ||
+      owner.generation !== generation ||
+      owner.checkpoint !== checkpoint ||
+      checkpoint === null ||
+      owner.semanticReplay ||
+      owner.candidate !== null ||
+      owner.anchorCandidate !== null ||
+      owner.snapshot.quarantined ||
+      owner.acceptedAtMonotonicMs === null ||
+      head === undefined ||
+      accepted === undefined ||
+      finality.phase === "quarantined" ||
+      finality.incident !== null
+    )
+      return localRefuse("user-event protected head is no longer current");
+    const { witness } = localLivePair(owner, input);
+    if (
+      witness.first.observation.capture.startedAtMonotonicMs <
+        owner.acceptedAtMonotonicMs ||
+      !same(witness.current.observation.capture.point, head.cursor) ||
+      witness.current.observation.capture.nativeBlock.rawBlockCbor !==
+        accepted.rawBlockCbor
+    )
+      return localRefuse(
+        "user-event head lease is not fresh exact W12 evidence",
+      );
+  };
+  assertCurrent();
+  const receipt = await readWatcherProtectedUserEventCheckpoint(input.runtime);
+  assertCurrent();
+  const protectedHead = readWatcherProtectedUserEventCheckpointReceipt(receipt);
+  if (
+    checkpoint === null ||
+    !same(protectedHead.checkpoint, checkpoint) ||
+    protectedHead.payload === null ||
+    sha256Bytes(protectedHead.payload) !== checkpoint.payloadDigest
+  )
+    return localRefuse(
+      "user-event protected head differs after candidate refusal",
+    );
+};
+
+const localEventAuthorityBrand = Symbol("watcher-local-user-event-authority");
+export type WatcherLocalUserEventAuthority = Readonly<{
+  [localEventAuthorityBrand]: true;
+}>;
+export type WatcherLocalUserEventAuthorityRead = Readonly<{
+  deploymentManifestId: string;
+  blueprintHash: string;
+  network: WatcherUserEventIndexerPolicy["network"];
+  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
+  throughHeader: WatcherLocalUserEventHeaderCutoff | null;
+  checkpointDigest: string;
+  checkpointPayloadDigest: string;
+  snapshotDigest: string;
+  headEntryDigest: string;
+  historyEntryDigests: readonly string[];
+}>;
+type LocalEventAuthorityOwner = Readonly<{
+  history: WatcherLocalUserEventHistory;
+  header: WatcherStateQueueHeaderObservation | null;
+  runtime: WatcherDurableRuntime;
+  pair: LocalPair;
+  generation: number;
+  value: WatcherLocalUserEventAuthorityRead;
+  protectedRead: { receipt: WatcherProtectedUserEventCheckpoint | null };
+}>;
+const localEventAuthorities = new WeakMap<
+  WatcherLocalUserEventAuthority,
+  LocalEventAuthorityOwner
+>();
+
+export type WatcherLocalUserEventHeaderCutoff = Readonly<{
+  headerHash: string;
+  headerCborHex: string;
+  queueOutRef: string;
+  observedTransactionHash: string;
+  observedBlockHash: string;
+  observedSlot: string;
+  observedBlockNo: string;
+  transactionIndex: string;
+  historyEntryDigest: string;
+}>;
+
+const localHeaderFields = (header: WatcherStateQueueHeaderObservation) => {
+  assertWatcherStateQueueHeaderObservation(header);
+  return Object.freeze({
+    headerHash: header.headerHash,
+    headerCborHex: header.headerCborHex,
+    queueOutRef: header.queueOutRef,
+    observedTransactionHash: header.observedTransactionHash,
+    observedBlockHash: header.observedBlockHash,
+    observedSlot: header.observedSlot,
+    observedBlockNo: header.observedBlockNo,
+  });
+};
+
+const localReadArchivedValue = async (
+  archive: WatcherUserEventArchive,
+  digest: string,
+): Promise<unknown> => {
+  if (!isHex32(digest))
+    return localRefuse("historical cutoff archive digest differs");
+  const bytes = await archive.read(digest);
+  if (
+    bytes === null ||
+    bytes.byteLength >
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes ||
+    sha256Bytes(bytes) !== digest
+  )
+    return localRefuse("historical cutoff archive is absent or corrupt");
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    return localRefuse("historical cutoff archive is not JSON");
+  }
+  if (
+    !evidenceWithinBounds(value, { nodes: 0, bytes: 0 }) ||
+    localArchiveObject(value).digest !== digest
+  )
+    return localRefuse("historical cutoff archive encoding or bounds differ");
+  return value;
+};
+
+const localHeaderBlock = async (
+  owner: LocalHistoryOwner,
+  header: Pick<
+    ReturnType<typeof localHeaderFields>,
+    "observedBlockHash" | "observedBlockNo" | "observedSlot"
+  >,
+  archive: WatcherUserEventArchive,
+): Promise<
+  Readonly<{ entry: WatcherLocalUserEventEntry; rawBlockCbor: string }>
+> => {
+  const sequence =
+    BigInt(header.observedBlockNo) -
+    BigInt(owner.origin.block.chainPoint.blockNo);
+  const head = owner.entries.at(-1)!;
+  if (sequence < 0n || sequence > BigInt(head.sequence))
+    return localRefuse(
+      "header cutoff lies outside the published event history",
+    );
+  const root = owner.archiveIndex;
+  const originDigest = owner.originDigest;
+  const policyDigest = owner.policy.policyDigest;
+  const retained = localRetainedEvidence(owner).find(
+    ({ entry }) => BigInt(entry.sequence) === sequence,
+  );
+  let entry: WatcherLocalUserEventEntry;
+  let rawBlockCbor: unknown;
+  if (retained !== undefined) {
+    entry = retained.entry;
+    rawBlockCbor = retained.rawBlockCbor;
+  } else {
+    if (root === null)
+      return localRefuse("header cutoff entry is not retained or sealed");
+    const segment = await findWatcherUserEventArchiveIndexForEntry(
+      archive,
+      root,
+      sequence.toString(),
+    );
+    const payload = await localReadArchivedValue(
+      archive,
+      segment.index.sourcePayloadDigest,
+    );
+    const entriesValue = localArchiveField(payload, ["retainedEntries"]);
+    if (
+      !Array.isArray(entriesValue) ||
+      entriesValue.length > Number(owner.policy.maximumActiveHistoryEntries) ||
+      localArchiveField(payload, ["originDigest"]) !== originDigest ||
+      !same(localArchiveField(payload, ["policy"]), owner.policy)
+    )
+      return localRefuse("historical cutoff segment payload differs");
+    const entries = entriesValue.map(localArchivedEntry);
+    const matches = entries.filter(
+      (candidate) => BigInt(candidate.sequence) === sequence,
+    );
+    if (
+      matches.length !== 1 ||
+      !same(localArchiveField(payload, ["head"]), entries.at(-1))
+    )
+      return localRefuse("historical cutoff entry is not uniquely archived");
+    entry = matches[0]!;
+    if (!segment.index.sourceArchiveDigests.includes(entry.evidenceDigest))
+      return localRefuse(
+        "historical cutoff evidence is not in the sealed closure",
+      );
+    const evidence = await localReadArchivedValue(
+      archive,
+      entry.evidenceDigest,
+    );
+    if (
+      localArchiveField(evidence, ["schemaVersion"]) !==
+        "midgard-watcher-local-user-event-block-evidence-v1" ||
+      localArchiveField(evidence, ["numericEncoding"]) !==
+        "exact-decimal-strings"
+    )
+      return localRefuse("historical cutoff evidence framing differs");
+    rawBlockCbor = localArchiveField(evidence, [
+      "witnesses",
+      "current",
+      "observation",
+      "capture",
+      "nativeBlock",
+      "rawBlockCbor",
+    ]);
+    for (const step of ["first", "current"] as const) {
+      if (
+        localArchiveField(evidence, [
+          "witnesses",
+          step,
+          "observation",
+          "capture",
+          "nativeBlock",
+          "rawBlockCbor",
+        ]) !== rawBlockCbor ||
+        !same(
+          localArchiveField(evidence, [
+            "witnesses",
+            step,
+            "observation",
+            "capture",
+            "point",
+          ]),
+          entry.cursor,
+        ) ||
+        !same(
+          localArchiveField(evidence, [
+            "witnesses",
+            step,
+            "observation",
+            "capture",
+            "predecessorPoint",
+          ]),
+          entry.parent,
+        )
+      )
+        return localRefuse(
+          "historical cutoff original witness binding differs",
+        );
+    }
+  }
+  if (
+    entry.originDigest !== originDigest ||
+    entry.policyDigest !== policyDigest ||
+    entry.cursor.blockHash !== header.observedBlockHash ||
+    entry.cursor.slot !== header.observedSlot ||
+    entry.cursor.blockNo !== header.observedBlockNo ||
+    typeof rawBlockCbor !== "string" ||
+    !isHexBytes(rawBlockCbor)
+  )
+    return localRefuse("header cutoff is not the exact accepted block");
+  return Object.freeze({ entry, rawBlockCbor });
+};
+
+/** Pure decoding of the already admitted lineage's original bytes. This creates
+ * neither a native acquisition receipt nor fresh W12 finality authority.
+ */
+const localCutoffTransactionOrder = (
+  block: Readonly<{ entry: WatcherLocalUserEventEntry; rawBlockCbor: string }>,
+) => {
+  const decoded = CML.Block.from_cbor_hex(block.rawBlockCbor);
+  const header = decoded.header();
+  const body = header.header_body();
+  if (
+    decoded.to_cbor_hex() !== block.rawBlockCbor ||
+    Buffer.from(
+      blake2b(Buffer.from(header.to_cbor_hex(), "hex"), { dkLen: 32 }),
+    ).toString("hex") !== block.entry.cursor.blockHash ||
+    body.slot().toString() !== block.entry.cursor.slot ||
+    body.block_number().toString() !== block.entry.cursor.blockNo ||
+    body.prev_hash()?.to_hex() !== block.entry.parent.blockHash
+  )
+    return localRefuse("historical cutoff raw header differs");
+  const bodies = decoded.transaction_bodies();
+  const transactionIds = Array.from({ length: bodies.len() }, (_, index) =>
+    CML.hash_transaction(bodies.get(index)).to_hex(),
+  );
+  if (new Set(transactionIds).size !== transactionIds.length)
+    return localRefuse("historical cutoff transaction order is ambiguous");
+  return {
+    bodies,
+    transactionIds,
+    invalidTransactions: new Set(decoded.invalid_transactions()),
+  };
+};
+
+const localEventAtHeaderCutoff = async (
+  owner: LocalHistoryOwner,
+  event: WatcherIndexedUserEvent,
+  terminal: WatcherTerminalUserEvent | null,
+  originEvidence: LocalRetainedEvidence,
+  terminalEvidence: LocalRetainedEvidence,
+  header: WatcherStateQueueHeaderObservation,
+  archive: WatcherUserEventArchive,
+) => {
+  const fields = localHeaderFields(header);
+  const block = await localHeaderBlock(owner, fields, archive);
+  const ordered = localCutoffTransactionOrder(block);
+  const transactionIndex = ordered.transactionIds.indexOf(
+    fields.observedTransactionHash,
+  );
+  if (transactionIndex < 0 || ordered.invalidTransactions.has(transactionIndex))
+    return localRefuse("header cutoff transaction is not validly included");
+  const outRef = fields.queueOutRef.split("#");
+  if (
+    outRef.length !== 2 ||
+    outRef[0] !== fields.observedTransactionHash ||
+    !isNatural(outRef[1]) ||
+    BigInt(outRef[1]) >=
+      BigInt(ordered.bodies.get(transactionIndex).outputs().len())
+  )
+    return localRefuse("header cutoff output reference differs");
+  const output = ordered.bodies
+    .get(transactionIndex)
+    .outputs()
+    .get(Number(outRef[1]));
+  if (
+    output.datum()?.as_datum()?.to_canonical_cbor_hex() !==
+      header.linkedListDatumCborHex ||
+    Buffer.from(
+      blake2b(Buffer.from(fields.headerCborHex, "hex"), { dkLen: 28 }),
+    ).toString("hex") !== fields.headerHash
+  )
+    return localRefuse("header cutoff output or header bytes differ");
+  const occursThroughHeader = (
+    evidence: LocalRetainedEvidence,
+    transactionHash: string,
+  ): boolean => {
+    const entrySequence = BigInt(evidence.entry.sequence);
+    if (entrySequence !== BigInt(block.entry.sequence))
+      return entrySequence < BigInt(block.entry.sequence);
+    if (!same(evidence.entry, block.entry))
+      return localRefuse("event cutoff entry membership differs");
+    const index = ordered.transactionIds.indexOf(transactionHash);
+    if (index < 0 || ordered.invalidTransactions.has(index))
+      return localRefuse("event cutoff transaction is not validly included");
+    return index <= transactionIndex;
+  };
+  if (!occursThroughHeader(originEvidence, event.transactionHash))
+    return localAuthorityUnavailable(
+      "event origin occurs after the challenged header",
+    );
+  let selected: WatcherIndexedUserEvent | WatcherTerminalUserEvent = event;
+  let includeTerminal = false;
+  if (terminal !== null) {
+    includeTerminal = occursThroughHeader(
+      terminalEvidence,
+      terminal.terminalTransactionHash,
+    );
+    if (includeTerminal) selected = terminal;
+    else {
+      const {
+        terminalStatus: _status,
+        terminalTransactionHash: _tx,
+        terminalPointDigest: _point,
+        terminalBlockHash: _hash,
+        terminalSlot: _slot,
+        terminalBlockNo: _number,
+        terminalFinalityStatus: _finality,
+        terminalClassification: _classification,
+        ...origin
+      } = terminal;
+      selected = Object.freeze(origin);
+    }
+  }
+  if (!same(localHeaderFields(header), fields))
+    return localRefuse("header cutoff changed during its archive read");
+  return Object.freeze({
+    event: selected,
+    includeTerminal,
+    throughHeader: Object.freeze({
+      ...fields,
+      transactionIndex: transactionIndex.toString(),
+      historyEntryDigest: block.entry.entryDigest,
+    }),
+  });
+};
+
+const localEventAuthorityCurrent = (
+  authority: LocalEventAuthorityOwner,
+): LocalHistoryOwner => {
+  const owner = localOwner(authority.history);
+  if (authority.header !== null) {
+    const cutoff = authority.value.throughHeader;
+    if (cutoff === null) return localRefuse("event header cutoff is absent");
+    const {
+      transactionIndex: _index,
+      historyEntryDigest: _entry,
+      ...fields
+    } = cutoff;
+    if (!same(localHeaderFields(authority.header), fields))
+      return localRefuse("event header cutoff is no longer identical");
+  }
+  const head = owner.entries.at(-1);
+  const accepted = owner.acceptedEvidence.at(-1);
+  if (
+    owner.semanticReplay ||
+    owner.generation !== authority.generation ||
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null ||
+    owner.checkpoint === null ||
+    owner.acceptedAtMonotonicMs === null ||
+    owner.snapshot.quarantined ||
+    head === undefined ||
+    accepted === undefined ||
+    owner.checkpoint.checkpointDigest !== authority.value.checkpointDigest ||
+    head.entryDigest !== authority.value.headEntryDigest
+  )
+    return localRefuse(
+      "event authority no longer matches the published semantic head",
+    );
+  // This is a new corroboration, acquired after publication. Original archived
+  // W12 observations and depths remain unchanged and are never revived from JSON.
+  const { witness } = localLivePair(owner, authority.pair);
+  if (
+    witness.first.observation.capture.startedAtMonotonicMs <
+      owner.acceptedAtMonotonicMs ||
+    !same(witness.current.observation.capture.point, head.cursor) ||
+    witness.current.observation.capture.nativeBlock.rawBlockCbor !==
+      accepted.rawBlockCbor
+  )
+    return localRefuse(
+      "event authority requires a fresh post-publication capture of the exact head",
+    );
+  return owner;
+};
+
+/** Final synchronous fence after all asynchronous authority reads. This checks
+ * same-runtime protected-head changes as well as closure, source liveness and
+ * private owner generation. The async reader remains necessary for disk freshness.
+ */
+export const assertWatcherLocalUserEventAuthorityCurrent = (
+  receipt: WatcherLocalUserEventAuthority,
+): void => {
+  const authority =
+    localEventAuthorities.get(receipt) ??
+    localRefuse("event authority is not privately admitted");
+  const owner = localEventAuthorityCurrent(authority);
+  const publication = authority.protectedRead.receipt;
+  const finality = authority.runtime.read().currentFinalityState;
+  if (
+    publication === null ||
+    finality.phase === "quarantined" ||
+    finality.incident !== null ||
+    !same(
+      readWatcherProtectedUserEventCheckpointReceipt(publication).checkpoint,
+      owner.checkpoint,
+    )
+  )
+    return localRefuse(
+      "event authority protected checkpoint is no longer current",
+    );
+};
+
+/** Descriptive output is never accepted as authority. Each read refreshes the
+ * protected head and checks the still-live post-publication capture after await.
+ * The runtime owner must close this history on a source rollback or shutdown.
+ */
+export const readWatcherLocalUserEventAuthority = async (
+  receipt: WatcherLocalUserEventAuthority,
+): Promise<WatcherLocalUserEventAuthorityRead> => {
+  const authority =
+    localEventAuthorities.get(receipt) ??
+    localRefuse("event authority is not privately admitted");
+  localEventAuthorityCurrent(authority);
+  const publication = await readWatcherProtectedUserEventCheckpoint(
+    authority.runtime,
+  );
+  const owner = localEventAuthorityCurrent(authority);
+  const protectedHead =
+    readWatcherProtectedUserEventCheckpointReceipt(publication);
+  const finalityState = authority.runtime.read().currentFinalityState;
+  if (
+    finalityState.phase === "quarantined" ||
+    finalityState.incident !== null ||
+    !same(protectedHead.checkpoint, owner.checkpoint) ||
+    protectedHead.payload === null ||
+    sha256Bytes(protectedHead.payload) !==
+      authority.value.checkpointPayloadDigest
+  )
+    return localRefuse(
+      "event authority protected checkpoint is no longer current",
+    );
+  authority.protectedRead.receipt = publication;
+  return authority.value;
+};
+
+/** Verify an older stream intersection against the accepted private/archive
+ * lineage. A matching height alone never permits skipping native blocks. */
+export const assertWatcherLocalUserEventPointCovered = async (
+  input: Readonly<{
+    history: WatcherLocalUserEventHistory;
+    point: WatcherUserEventOriginFacts["parentPoint"];
+    runtime: WatcherDurableRuntime;
+    archive: WatcherUserEventArchive;
+  }>,
+): Promise<void> => {
+  const owner = localOwner(input.history);
+  const generation = owner.generation;
+  const checkpoint = owner.checkpoint;
+  if (
+    checkpoint === null ||
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null
+  )
+    return localRefuse("coverage requires a settled publication");
+  const point = admitFraudProofRawL1Point(input.point);
+  const block = await localHeaderBlock(
+    owner,
+    {
+      observedBlockHash: point.blockHash,
+      observedBlockNo: point.blockNo,
+      observedSlot: point.slot,
+    },
+    input.archive,
+  );
+  localCutoffTransactionOrder(block);
+  const publication = readWatcherProtectedUserEventCheckpointReceipt(
+    await readWatcherProtectedUserEventCheckpoint(input.runtime),
+  );
+  const finality = input.runtime.read().currentFinalityState;
+  if (
+    localOwner(input.history) !== owner ||
+    owner.generation !== generation ||
+    owner.checkpoint !== checkpoint ||
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null ||
+    finality.phase === "quarantined" ||
+    finality.incident !== null ||
+    !same(publication.checkpoint, checkpoint) ||
+    publication.payload === null ||
+    sha256Bytes(publication.payload) !== checkpoint.payloadDigest
+  )
+    return localRefuse("coverage changed during protected archive read");
+};
+
+/** Issues one retained event from the privately published whole-block fold. */
+export const admitWatcherLocalUserEventAuthority = async (
+  input: LocalPair &
+    Readonly<{
+      history: WatcherLocalUserEventHistory;
+      runtime: WatcherDurableRuntime;
+      eventId: string;
+      kind: WatcherUserEventKind;
+      throughHeader?: WatcherStateQueueHeaderObservation;
+      archive?: WatcherUserEventArchive;
+    }>,
+): Promise<WatcherLocalUserEventAuthority> => {
+  const {
+    history,
+    runtime,
+    eventId,
+    kind,
+    throughHeader,
+    archive,
+    finality,
+    observation,
+    referenceAuthority,
+  } = input;
+  const owner = localOwner(history);
+  const generation = owner.generation;
+  const checkpoint = owner.checkpoint;
+  const head = owner.entries.at(-1);
+  if (checkpoint === null || head === undefined)
+    return localRefuse("event authority requires a published history");
+  const matches = [
+    ...owner.snapshot.activeEvents,
+    ...owner.snapshot.terminalEvents,
+  ].filter((event) => event.eventId === eventId && event.kind === kind);
+  if (matches.length === 0)
+    return localAuthorityUnavailable("event is not retained");
+  if (matches.length !== 1)
+    return localRefuse("event is not uniquely retained");
+  const event = matches[0]!;
+  const retainedEvidence = localRetainedEvidence(owner);
+  const originIndex = retainedEvidence.findIndex(
+    ({ pointDigest }) => pointDigest === event.originPointDigest,
+  );
+  const terminalIndex =
+    "terminalPointDigest" in event
+      ? retainedEvidence.findIndex(
+          ({ pointDigest }) => pointDigest === event.terminalPointDigest,
+        )
+      : originIndex;
+  if (
+    originIndex < 0 ||
+    terminalIndex < originIndex ||
+    event.finalityStatus !== "final" ||
+    ("terminalFinalityStatus" in event &&
+      event.terminalFinalityStatus !== "final")
+  )
+    return localRefuse(
+      "event origin or terminal membership is absent from finalized history",
+    );
+  const terminal =
+    owner.snapshot.terminalEvents.find(
+      (candidate) => candidate.eventId === eventId && candidate.kind === kind,
+    ) ?? null;
+  const scoped =
+    throughHeader === undefined
+      ? null
+      : await localEventAtHeaderCutoff(
+          owner,
+          event,
+          terminal,
+          retainedEvidence[originIndex]!,
+          retainedEvidence[terminalIndex]!,
+          throughHeader,
+          archive ?? localRefuse("header cutoff requires the history archive"),
+        );
+  if (
+    localOwner(history) !== owner ||
+    owner.generation !== generation ||
+    owner.checkpoint !== checkpoint ||
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null
+  )
+    return localRefuse("history changed during header cutoff acquisition");
+  const receipt = Object.freeze({ [localEventAuthorityBrand]: true as const });
+  localEventAuthorities.set(
+    receipt,
+    Object.freeze({
+      history,
+      header: throughHeader ?? null,
+      runtime,
+      pair: Object.freeze({ finality, observation, referenceAuthority }),
+      generation,
+      protectedRead: { receipt: null },
+      value: Object.freeze({
+        deploymentManifestId: owner.origin.deploymentFingerprint,
+        blueprintHash: owner.policy.blueprintHash,
+        network: owner.policy.network,
+        event: scoped?.event ?? event,
+        throughHeader: scoped?.throughHeader ?? null,
+        checkpointDigest: checkpoint.checkpointDigest,
+        checkpointPayloadDigest: checkpoint.payloadDigest,
+        snapshotDigest: owner.snapshot.snapshotDigest,
+        headEntryDigest: head.entryDigest,
+        historyEntryDigests: Object.freeze([
+          ...new Set([
+            retainedEvidence[originIndex]!.entry.entryDigest,
+            ...(scoped === null || scoped.includeTerminal
+              ? [retainedEvidence[terminalIndex]!.entry.entryDigest]
+              : []),
+            ...(scoped === null
+              ? []
+              : [scoped.throughHeader.historyEntryDigest]),
+          ]),
+        ]),
+      }),
+    }),
+  );
+  await readWatcherLocalUserEventAuthority(receipt);
+  return receipt;
+};
+
+const localReadmissionBrand = Symbol("watcher-local-user-event-readmission");
+export type WatcherLocalUserEventReadmission = Readonly<{
+  [localReadmissionBrand]: true;
+}>;
+export type WatcherLocalUserEventReplaySource = (
+  point: WatcherUserEventOriginFacts["parentPoint"],
+) => Promise<LocalPair & Readonly<{ close(): Promise<void> }>>;
+type LocalReadmissionOwner = {
+  readonly runtime: WatcherDurableRuntime;
+  readonly history: WatcherLocalUserEventHistory;
+  readonly pair: LocalPair;
+  readonly generation: number;
+  readonly previousCheckpoint: WatcherUserEventCheckpoint;
+  readonly nextCheckpoint: WatcherUserEventCheckpoint;
+  readonly archiveObjects: readonly LocalArchiveObject[];
+  readonly release: () => Promise<void>;
+  accepted: boolean;
+};
+const localReadmissions = new WeakMap<
+  WatcherLocalUserEventReadmission,
+  LocalReadmissionOwner
+>();
+
+const localArchiveField = (
+  value: unknown,
+  keys: readonly string[],
+): unknown => {
+  let current = value;
+  for (const key of keys) {
+    if (
+      typeof current !== "object" ||
+      current === null ||
+      Array.isArray(current)
+    )
+      return localRefuse("archive field is absent");
+    const descriptor = Object.getOwnPropertyDescriptor(current, key);
+    if (descriptor === undefined || !("value" in descriptor))
+      return localRefuse("archive field is absent");
+    current = descriptor.value;
+  }
+  return current;
+};
+
+const localArchivedEntry = (value: unknown): WatcherLocalUserEventEntry => {
+  const record = exactRecord(value, [
+    "schemaVersion",
+    "sequence",
+    "originDigest",
+    "policyDigest",
+    "predecessorEntryDigest",
+    "predecessorStateDigest",
+    "cursor",
+    "parent",
+    "sourceStoreDigest",
+    "nextStoreDigest",
+    "sourceStoreRevision",
+    "nextStoreRevision",
+    "observationDigest",
+    "snapshotDigest",
+    "evidenceDigest",
+    "entryDigest",
+  ]);
+  if (
+    record === null ||
+    record.schemaVersion !== "midgard-watcher-local-user-event-entry-v1" ||
+    !isNatural(record.sequence) ||
+    record.sequence.length > 20 ||
+    !isNatural(record.sourceStoreRevision) ||
+    record.sourceStoreRevision.length > 20 ||
+    !isNatural(record.nextStoreRevision) ||
+    record.nextStoreRevision.length > 20 ||
+    !isHex32(record.originDigest) ||
+    !isHex32(record.policyDigest) ||
+    !(
+      record.predecessorEntryDigest === null ||
+      isHex32(record.predecessorEntryDigest)
+    ) ||
+    !(
+      record.predecessorStateDigest === null ||
+      isHex32(record.predecessorStateDigest)
+    ) ||
+    !isHex32(record.sourceStoreDigest) ||
+    !isHex32(record.nextStoreDigest) ||
+    !isHex32(record.observationDigest) ||
+    !isHex32(record.snapshotDigest) ||
+    !isHex32(record.evidenceDigest) ||
+    !isHex32(record.entryDigest)
+  )
+    return localRefuse("archive entry framing differs");
+  const entry = Object.freeze({
+    schemaVersion: record.schemaVersion,
+    sequence: record.sequence,
+    originDigest: record.originDigest,
+    policyDigest: record.policyDigest,
+    predecessorEntryDigest: record.predecessorEntryDigest,
+    predecessorStateDigest: record.predecessorStateDigest,
+    cursor: Object.freeze(admitFraudProofRawL1Point(record.cursor)),
+    parent: Object.freeze(admitFraudProofRawL1Point(record.parent)),
+    sourceStoreDigest: record.sourceStoreDigest,
+    nextStoreDigest: record.nextStoreDigest,
+    sourceStoreRevision: record.sourceStoreRevision,
+    nextStoreRevision: record.nextStoreRevision,
+    observationDigest: record.observationDigest,
+    snapshotDigest: record.snapshotDigest,
+    evidenceDigest: record.evidenceDigest,
+    entryDigest: record.entryDigest,
+  });
+  const { entryDigest, ...fields } = entry;
+  if (sha256Canonical(fields) !== entryDigest)
+    return localRefuse("archive entry digest differs");
+  return entry;
+};
+
+/** Compare only replay-stable semantics. The three original acquisition-derived
+ * point commitments remain checked/retained as archived values, and are never
+ * relabelled as commitments produced by the fresh W12 observations.
+ */
+const localStableSnapshot = (value: unknown): unknown => {
+  const snapshot = exactRecord(value, [
+    "schemaVersion",
+    "activeEvents",
+    "terminalEvents",
+    "quarantined",
+    "snapshotDigest",
+  ]);
+  if (
+    snapshot === null ||
+    snapshot.schemaVersion !== WATCHER_USER_EVENT_SNAPSHOT_SCHEMA_VERSION ||
+    snapshot.quarantined !== false ||
+    !Array.isArray(snapshot.activeEvents) ||
+    !Array.isArray(snapshot.terminalEvents) ||
+    snapshot.activeEvents.length >
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.activeEvents ||
+    snapshot.terminalEvents.length >
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.terminalEvents ||
+    !isHex32(snapshot.snapshotDigest)
+  )
+    return localRefuse("archive snapshot framing differs");
+  const { snapshotDigest, ...fields } = snapshot;
+  if (sha256Canonical(fields) !== snapshotDigest)
+    return localRefuse("archive snapshot digest differs");
+  const stableEvent = (value: unknown, terminal: boolean) => {
+    const baseKeys = [
+      "kind",
+      "eventId",
+      "outRef",
+      "transactionHash",
+      "outputIndex",
+      "nonceOutRef",
+      "policyId",
+      "spendScriptHash",
+      "addressHex",
+      "assetNameHex",
+      "witnessScriptHash",
+      "inclusionTime",
+      "eventCborHex",
+      "datumCborHex",
+      "outputCborHex",
+      "eventContentDigest",
+      "datumDigest",
+      "outputDigest",
+      "originPointDigest",
+      "originChainPointId",
+      "originBlockHash",
+      "originSlot",
+      "originBlockNo",
+      "finalityStatus",
+    ];
+    const classification =
+      typeof value === "object" &&
+      value !== null &&
+      Object.hasOwn(value, "terminalClassification");
+    const event = exactRecord(value, [
+      ...baseKeys,
+      ...(terminal
+        ? [
+            "terminalStatus",
+            "terminalTransactionHash",
+            "terminalPointDigest",
+            "terminalBlockHash",
+            "terminalSlot",
+            "terminalBlockNo",
+            "terminalFinalityStatus",
+            ...(classification ? ["terminalClassification"] : []),
+          ]
+        : []),
+    ]);
+    if (
+      event === null ||
+      !isHex32(event.originPointDigest) ||
+      !isHex32(event.originChainPointId) ||
+      event.finalityStatus !== "final" ||
+      (terminal &&
+        (!isHex32(event.terminalPointDigest) ||
+          event.terminalFinalityStatus !== "final"))
+    )
+      return localRefuse("archive event framing differs");
+    const {
+      originPointDigest: _originPointDigest,
+      originChainPointId: _originChainPointId,
+      terminalPointDigest: _terminalPointDigest,
+      terminalClassification,
+      ...stable
+    } = event;
+    if (classification) {
+      const decoded = exactRecord(terminalClassification, [
+        "schemaVersion",
+        "operatorValidity",
+        "terminalTransactionHash",
+        "terminalPointDigest",
+      ]);
+      if (
+        decoded === null ||
+        decoded.terminalPointDigest !== event.terminalPointDigest
+      )
+        return localRefuse("archive terminal classification differs");
+      const {
+        terminalPointDigest: _classificationPoint,
+        ...stableClassification
+      } = decoded;
+      return { ...stable, terminalClassification: stableClassification };
+    }
+    return stable;
+  };
+  return {
+    schemaVersion: snapshot.schemaVersion,
+    quarantined: false,
+    activeEvents: snapshot.activeEvents.map((event) =>
+      stableEvent(event, false),
+    ),
+    terminalEvents: snapshot.terminalEvents.map((event) =>
+      stableEvent(event, true),
+    ),
+  };
+};
+
+const localStableEventStore = (store: WatcherDurableStore): unknown => {
+  const points = new Map(
+    store.chainPoints.map((point) => [point.chainPointId, point]),
+  );
+  const stablePoint = (id: string) => {
+    const point =
+      points.get(id) ?? localRefuse("event store point dependency is absent");
+    return {
+      providerId: point.providerId,
+      blockHash: point.blockHash,
+      slot: point.slot,
+      blockNo: point.blockNo,
+    };
+  };
+  const {
+    chainPoints,
+    l1Observations,
+    protocolUtxos,
+    spentProtocolUtxos,
+    caches: _caches,
+    ...rest
+  } = store;
+  const order = (values: readonly unknown[]) =>
+    [...values].sort((a, b) =>
+      watcherCanonicalJson(a).localeCompare(watcherCanonicalJson(b)),
+    );
+  return {
+    ...rest,
+    chainPoints: order(
+      chainPoints.map((point) => stablePoint(point.chainPointId)),
+    ),
+    l1Observations: order(
+      l1Observations.map((row) => ({
+        providerId: row.providerId,
+        point: stablePoint(row.chainPointId),
+      })),
+    ),
+    protocolUtxos: protocolUtxos.map(({ chainPointId, ...utxo }) => ({
+      ...utxo,
+      point: stablePoint(chainPointId),
+    })),
+    spentProtocolUtxos: spentProtocolUtxos.map(
+      ({ chainPointId, spentAtChainPointId, ...utxo }) => ({
+        ...utxo,
+        point: stablePoint(chainPointId),
+        spentAt: stablePoint(spentAtChainPointId),
+      }),
+    ),
+  };
+};
+
+const localStableOrigin = (value: unknown): unknown => ({
+  schemaVersion: localArchiveField(value, ["schemaVersion"]),
+  deploymentFingerprint: localArchiveField(value, ["deploymentFingerprint"]),
+  blueprintHash: localArchiveField(value, ["blueprintHash"]),
+  blueprintSha256: localArchiveField(value, ["blueprintSha256"]),
+  network: localArchiveField(value, ["network"]),
+  canonicalOneShotOutRef: localArchiveField(value, ["canonicalOneShotOutRef"]),
+  scripts: localArchiveField(value, ["scripts"]),
+  parentPoint: localArchiveField(value, ["parentPoint"]),
+  activation: localArchiveField(value, ["activation"]),
+});
+
+/** A protected archive is descriptive input. Only the actual fresh W12 pairs
+ * drive this private fold; archived observations never become W12 receipts.
+ * Indexed sealed segments are replayed chronologically with bounded live state.
+ */
+export const prepareWatcherLocalUserEventReadmission = async (
+  input: Omit<
+    Parameters<typeof createWatcherLocalUserEventHistory>[0],
+    "publication"
+  > &
+    Readonly<{
+      referenceAuthority: WatcherUserEventReferenceAuthority;
+      runtime: WatcherDurableRuntime;
+      archive: WatcherUserEventArchive;
+      replayBlock: WatcherLocalUserEventReplaySource;
+    }>,
+): Promise<WatcherLocalUserEventReadmission> => {
+  const {
+    origin,
+    deploymentIdentity,
+    scriptBinding,
+    finality,
+    observation,
+    referenceAuthority,
+    runtime,
+    archive,
+    replayBlock,
+  } = input;
+  const firstPair = Object.freeze({
+    finality,
+    observation,
+    referenceAuthority,
+  });
+  const publication = await readWatcherProtectedUserEventCheckpoint(runtime);
+  const protectedHead =
+    readWatcherProtectedUserEventCheckpointReceipt(publication);
+  const previousCheckpoint = protectedHead.checkpoint;
+  const runtimeFinality = runtime.read().currentFinalityState;
+  if (
+    runtimeFinality.phase === "quarantined" ||
+    runtimeFinality.incident !== null
+  )
+    return localRefuse("semantic readmission runtime is quarantined");
+  if (previousCheckpoint === null || protectedHead.payload === null)
+    return localRefuse("semantic readmission requires a published checkpoint");
+  const history = createLocalUserEventHistory({
+    origin,
+    deploymentIdentity,
+    scriptBinding,
+    finality,
+    observation,
+    publication,
+    semanticReplay: true,
+  });
+  const owner = localOwner(history);
+  const replayState: {
+    retainedSource: Awaited<
+      ReturnType<WatcherLocalUserEventReplaySource>
+    > | null;
+    priorIndex: WatcherUserEventArchiveIndexRead | null;
+  } = { retainedSource: null, priorIndex: null };
+  try {
+    if (
+      previousCheckpoint.userEventPolicyDigest !== owner.policy.policyDigest ||
+      previousCheckpoint.finalityPolicyDigest !==
+        owner.finalityPolicy.policyDigest ||
+      previousCheckpoint.blueprintHash !== owner.policy.blueprintHash ||
+      previousCheckpoint.network !== owner.policy.network
+    )
+      return localRefuse("archived policy differs from the fresh deployment");
+    const bootstrapStore = owner.store;
+    const readClosure = async (requiredDigests: readonly string[]) => {
+      const objects = new Map<
+        string,
+        Readonly<{ object: LocalArchiveObject; value: unknown }>
+      >();
+      const budget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
+      let bytesRead = 0;
+      for (const digest of requiredDigests) {
+        const bytes = await archive.read(digest);
+        if (bytes === null || sha256Bytes(bytes) !== digest)
+          return localRefuse("archived closure is absent or corrupt");
+        bytesRead += bytes.byteLength;
+        if (
+          bytesRead > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes
+        )
+          return localRefuse("archived closure byte bound exceeded");
+        let value: unknown;
+        try {
+          value = JSON.parse(
+            new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+          );
+        } catch {
+          return localRefuse("archived closure is not canonical JSON");
+        }
+        if (!evidenceWithinBounds(value, budget))
+          return localRefuse("archived closure evidence bound exceeded");
+        const object = localArchiveObject(value);
+        if (object.digest !== digest)
+          return localRefuse("archived closure JSON encoding differs");
+        objects.set(digest, Object.freeze({ object, value }));
+      }
+      return objects;
+    };
+    const readValue = async (digest: string): Promise<unknown> => {
+      const objects = await readClosure([digest]);
+      return objects.get(digest)!.value;
+    };
+    const parsePayload = (payloadValue: unknown) => {
+      const hasReadmission =
+        typeof payloadValue === "object" &&
+        payloadValue !== null &&
+        Object.hasOwn(payloadValue, "readmission");
+      const payload = exactRecord(payloadValue, [
+        "schemaVersion",
+        "originArchiveDigest",
+        "originDigest",
+        "policy",
+        "anchor",
+        "head",
+        "storeArchiveDigest",
+        "snapshot",
+        "retainedEntries",
+        "requiredSemanticResume",
+        ...(hasReadmission ? ["readmission"] : []),
+      ]);
+      if (
+        payload === null ||
+        payload.schemaVersion !==
+          "midgard-watcher-local-user-event-checkpoint-payload-v1" ||
+        payload.requiredSemanticResume !==
+          "authenticated_origin_replay_or_semantic_publication_receipt" ||
+        !isHex32(payload.originArchiveDigest) ||
+        !isHex32(payload.originDigest) ||
+        !isHex32(payload.storeArchiveDigest) ||
+        !same(payload.policy, owner.policy) ||
+        !Array.isArray(payload.retainedEntries) ||
+        payload.retainedEntries.length === 0 ||
+        payload.retainedEntries.length >
+          Number(owner.policy.maximumActiveHistoryEntries)
+      )
+        return localRefuse("archived semantic payload framing differs");
+      return {
+        payload: {
+          schemaVersion: payload.schemaVersion,
+          originArchiveDigest: payload.originArchiveDigest,
+          originDigest: payload.originDigest,
+          policy: payload.policy,
+          anchor: payload.anchor,
+          head: payload.head,
+          storeArchiveDigest: payload.storeArchiveDigest,
+          snapshot: payload.snapshot,
+          retainedEntries: payload.retainedEntries,
+          requiredSemanticResume: payload.requiredSemanticResume,
+          readmission: payload.readmission,
+        },
+        hasReadmission,
+      };
+    };
+    const currentObjects = await readClosure(
+      previousCheckpoint.requiredArchiveDigests,
+    );
+    const currentPayloadValue =
+      currentObjects.get(previousCheckpoint.payloadDigest)?.value ??
+      localRefuse("current payload is absent");
+    const { payload } = parsePayload(currentPayloadValue);
+    const anchorDescriptor = exactRecord(payload.anchor, [
+      "kind",
+      "indexDigest",
+      "indexSequence",
+      "retainedSuffixEntries",
+    ]);
+    let rootIndex: WatcherUserEventArchiveIndexRead | null = null;
+    if (anchorDescriptor !== null) {
+      if (
+        anchorDescriptor.kind !== "materialized_history" ||
+        !isHex32(anchorDescriptor.indexDigest) ||
+        anchorDescriptor.retainedSuffixEntries !== "64"
+      )
+        return localRefuse("archive anchor descriptor differs");
+      rootIndex = await readWatcherUserEventArchiveIndex(
+        archive,
+        anchorDescriptor.indexDigest,
+      );
+      if (rootIndex.index.indexSequence !== anchorDescriptor.indexSequence)
+        return localRefuse("archive root sequence differs");
+    }
+    let lastProcessedSequence = -1n;
+    let lastProcessedEntry: WatcherLocalUserEventEntry | null = null;
+    let oldRetainedEntries: readonly WatcherLocalUserEventEntry[] = [];
+    let archivedSourceStore = bootstrapStore;
+    const writePrivateObjects = async (
+      objects: readonly LocalArchiveObject[],
+    ) => {
+      for (const object of objects) {
+        const digest = await archive.put(Buffer.from(object.bytesHex, "hex"));
+        if (digest !== object.digest)
+          return localRefuse("semantic replay archive write differs");
+      }
+    };
+    const replaySegment = async (
+      objects: Awaited<ReturnType<typeof readClosure>>,
+      payloadDigest: string,
+      sealedIndex: WatcherUserEventArchiveIndexRead | null,
+    ) => {
+      const archived = (digest: string): unknown =>
+        objects.get(digest)?.value ??
+        localRefuse("archive dependency is absent");
+      const { payload, hasReadmission } = parsePayload(archived(payloadDigest));
+      const expectedAnchor =
+        replayState.priorIndex === null
+          ? {
+              kind: "activation_origin",
+              parent: owner.origin.parentPoint,
+              bootstrapStoreDigest: owner.policy.bootstrapStoreDigest,
+            }
+          : {
+              kind: "materialized_history",
+              indexDigest: replayState.priorIndex.digest,
+              indexSequence: replayState.priorIndex.index.indexSequence,
+              retainedSuffixEntries: "64",
+            };
+      const oldOrigin = exactRecord(archived(payload.originArchiveDigest), [
+        "schemaVersion",
+        "numericEncoding",
+        "facts",
+        "policy",
+        "bootstrapStore",
+      ]);
+      if (
+        payload.originDigest !==
+          localArchiveField(currentPayloadValue, ["originDigest"]) ||
+        oldOrigin === null ||
+        oldOrigin.schemaVersion !==
+          "midgard-watcher-local-user-event-origin-archive-v1" ||
+        oldOrigin.numericEncoding !== "exact-decimal-strings" ||
+        !same(oldOrigin.policy, owner.policy) ||
+        !same(
+          localStableOrigin(oldOrigin.facts),
+          localArchiveEvidence(localStableOrigin(owner.origin)),
+        ) ||
+        localArchiveField(oldOrigin.facts, ["originDigest"]) !==
+          payload.originDigest ||
+        !same(oldOrigin.bootstrapStore, bootstrapStore) ||
+        !same(payload.anchor, expectedAnchor)
+      )
+        return localRefuse(
+          "archived activation origin differs from the fresh authenticated activation",
+        );
+      if (hasReadmission) {
+        const priorReadmission = exactRecord(payload.readmission, [
+          "kind",
+          "previousCheckpointDigest",
+          "previousPayloadDigest",
+          "archivedOriginDigest",
+          "freshOriginDigest",
+          "stableSnapshotDigest",
+        ]);
+        if (
+          priorReadmission === null ||
+          priorReadmission.kind !== "fresh_authenticated_origin_replay" ||
+          !isHex32(priorReadmission.previousCheckpointDigest) ||
+          !isHex32(priorReadmission.previousPayloadDigest) ||
+          !isHex32(priorReadmission.archivedOriginDigest) ||
+          priorReadmission.freshOriginDigest !== payload.originDigest ||
+          priorReadmission.stableSnapshotDigest !==
+            sha256Canonical(localStableSnapshot(payload.snapshot)) ||
+          localArchiveField(
+            await readValue(priorReadmission.previousPayloadDigest),
+            ["originDigest"],
+          ) !== priorReadmission.archivedOriginDigest
+        )
+          return localRefuse("archived semantic readmission linkage differs");
+      }
+      const entries = payload.retainedEntries.map(localArchivedEntry);
+      if (
+        entries.some(
+          (entry, index) =>
+            BigInt(entry.sequence) !==
+            BigInt(entries[0]!.sequence) + BigInt(index),
+        ) ||
+        entries[0]!.sequence !== (oldRetainedEntries[0]?.sequence ?? "0")
+      )
+        return localRefuse(
+          "archived retained entries are not the exact consecutive suffix",
+        );
+      if (
+        !same(payload.head, entries.at(-1)) ||
+        (replayState.priorIndex === null &&
+          payload.storeArchiveDigest !== entries.at(-1)!.nextStoreDigest)
+      )
+        return localRefuse("archived head differs");
+      const entryObservations = new Map<string, WatcherUserEventObservation>();
+      for (const { value } of objects.values()) {
+        const entryArchive = exactRecord(value, ["entry", "observation"]);
+        if (entryArchive === null) continue;
+        const entry = localArchivedEntry(entryArchive.entry);
+        localStableSnapshot(
+          localArchiveField(entryArchive.observation, ["snapshot"]),
+        );
+        const observed = parseObservationStructural(entryArchive.observation);
+        if (
+          observed === null ||
+          observed.observationDigest !== entry.observationDigest ||
+          entryObservations.has(entry.entryDigest)
+        )
+          return localRefuse("archived entry observation differs");
+        entryObservations.set(entry.entryDigest, observed);
+      }
+      const headStore = parseWatcherDurableStore(
+        archived(payload.storeArchiveDigest),
+      );
+      if (storeDigest(headStore) !== payload.storeArchiveDigest)
+        return localRefuse("archived head store digest differs");
+      for (const entry of entries) {
+        if (BigInt(entry.sequence) <= lastProcessedSequence) {
+          if (!oldRetainedEntries.some((retained) => same(retained, entry)))
+            return localRefuse(
+              "archived retained suffix differs from its materialization",
+            );
+          continue;
+        }
+        const previous: WatcherLocalUserEventEntry | null = lastProcessedEntry;
+
+        const oldObservation = entryObservations.get(entry.entryDigest);
+        if (
+          BigInt(entry.sequence) !== lastProcessedSequence + 1n ||
+          entry.originDigest !== payload.originDigest ||
+          entry.policyDigest !== owner.policy.policyDigest ||
+          entry.predecessorEntryDigest !== (previous?.entryDigest ?? null) ||
+          entry.sourceStoreDigest !== storeDigest(archivedSourceStore) ||
+          BigInt(entry.nextStoreRevision) !==
+            BigInt(entry.sourceStoreRevision) + 1n ||
+          entry.sourceStoreRevision !== archivedSourceStore.revision ||
+          oldObservation === undefined ||
+          oldObservation.transitionKind !== "apply_block" ||
+          oldObservation.policyDigest !== owner.policy.policyDigest ||
+          oldObservation.network !== owner.policy.network ||
+          oldObservation.blueprintHash !== owner.policy.blueprintHash ||
+          !same(
+            oldObservation.deploymentMarker,
+            owner.policy.deploymentMarker,
+          ) ||
+          oldObservation.snapshot.snapshotDigest !== entry.snapshotDigest ||
+          oldObservation.sourceDurableStoreDigest !== entry.sourceStoreDigest ||
+          oldObservation.durableStoreDigest !== entry.nextStoreDigest ||
+          oldObservation.sourceDurableStoreRevision !==
+            entry.sourceStoreRevision ||
+          oldObservation.durableStoreRevision !== entry.nextStoreRevision ||
+          oldObservation.blockHash !== entry.cursor.blockHash ||
+          oldObservation.blockNo !== entry.cursor.blockNo ||
+          oldObservation.slot !== entry.cursor.slot ||
+          (lastProcessedSequence === -1n
+            ? entry.predecessorStateDigest !== null
+            : entry.predecessorStateDigest === null)
+        )
+          return localRefuse("archived semantic entry chain differs");
+        if (
+          previous !== null &&
+          (entry.predecessorStateDigest === null ||
+            !same(
+              localArchiveField(archived(entry.predecessorStateDigest), [
+                "head",
+              ]),
+              previous,
+            ))
+        )
+          return localRefuse("archived predecessor state differs");
+        if (replayState.retainedSource !== null) {
+          await replayState.retainedSource.close();
+          replayState.retainedSource = null;
+        }
+        const source =
+          lastProcessedSequence === -1n
+            ? null
+            : await replayBlock(entry.cursor);
+        if (source !== null) replayState.retainedSource = source;
+        const pair =
+          source === null
+            ? firstPair
+            : Object.freeze({
+                finality: source.finality,
+                observation: source.observation,
+                referenceAuthority: source.referenceAuthority,
+              });
+        const live = localLivePair(owner, pair);
+        const oldEvidence = exactRecord(archived(entry.evidenceDigest), [
+          "schemaVersion",
+          "numericEncoding",
+          "witnesses",
+          "referenceEvidence",
+        ]);
+        if (
+          oldEvidence === null ||
+          oldEvidence.schemaVersion !==
+            "midgard-watcher-local-user-event-block-evidence-v1" ||
+          oldEvidence.numericEncoding !== "exact-decimal-strings" ||
+          !same(live.witness.current.observation.capture.point, entry.cursor) ||
+          !same(
+            live.witness.current.observation.capture.predecessorPoint,
+            entry.parent,
+          )
+        )
+          return localRefuse(
+            "fresh replay does not match the archived whole block",
+          );
+        for (const step of ["first", "current"] as const) {
+          if (
+            localArchiveField(oldEvidence.witnesses, [
+              step,
+              "observation",
+              "capture",
+              "nativeBlock",
+              "rawBlockCbor",
+            ]) !==
+              live.witness.current.observation.capture.nativeBlock
+                .rawBlockCbor ||
+            !same(
+              localArchiveField(oldEvidence.witnesses, [
+                step,
+                "observation",
+                "capture",
+                "point",
+              ]),
+              entry.cursor,
+            ) ||
+            !same(
+              localArchiveField(oldEvidence.witnesses, [
+                step,
+                "observation",
+                "capture",
+                "predecessorPoint",
+              ]),
+              entry.parent,
+            )
+          )
+            return localRefuse(
+              "archived original block bytes differ from fresh canonical replay",
+            );
+        }
+        const transition = prepareLocalUserEventTransition(history, pair);
+        const fresh = readWatcherLocalUserEventTransition(transition);
+        if (
+          !same(
+            localStableSnapshot(oldObservation.snapshot),
+            localStableSnapshot(fresh.snapshot),
+          )
+        )
+          return localRefuse(
+            "fresh semantic replay differs from the archived event fold",
+          );
+        const oldStore = parseWatcherDurableStore(
+          archived(entry.nextStoreDigest),
+        );
+        if (
+          storeDigest(oldStore) !== entry.nextStoreDigest ||
+          !topologyMatches(oldStore, oldObservation.snapshot)
+        )
+          return localRefuse("archived event store topology differs");
+        const oldNative = localArchiveField(oldEvidence.witnesses, [
+          "current",
+          "observation",
+          "native",
+        ]);
+        const oldPoint = oldStore.chainPoints.find(
+          (point) => point.chainPointId === oldObservation.chainPointId,
+        );
+        const oldRow = oldStore.l1Observations.find(
+          (row) => row.observationId === oldObservation.sourceObservationDigest,
+        );
+        if (
+          oldPoint === undefined ||
+          oldRow === undefined ||
+          oldRow.chainPointId !== oldPoint.chainPointId ||
+          oldPoint.blockHash !== entry.cursor.blockHash ||
+          oldPoint.blockNo !== entry.cursor.blockNo ||
+          oldPoint.slot !== entry.cursor.slot ||
+          oldPoint.chainPointId !==
+            localArchiveField(oldNative, ["chainPoint", "chainPointId"]) ||
+          oldPoint.depth !==
+            localArchiveField(oldNative, ["chainPoint", "depth"]) ||
+          oldPoint.providerId !==
+            localArchiveField(oldNative, ["provider", "providerId"]) ||
+          oldObservation.pointDigest !==
+            localArchiveField(oldNative, ["chainPoint", "pointDigest"]) ||
+          oldRow.observationId !==
+            localArchiveField(oldNative, ["observationDigest"]) ||
+          !same(
+            localArchiveEvidence(
+              JSON.parse(
+                Buffer.from(oldRow.payload.cborHex, "hex").toString("utf8"),
+              ),
+            ),
+            oldNative,
+          )
+        )
+          return localRefuse(
+            "archived original observation/store binding differs",
+          );
+        const oldPoints = [...archivedSourceStore.chainPoints, oldPoint];
+        const oldJournal = journalWatcherProtocolUtxoTransition({
+          sourceStore: archivedSourceStore,
+          nextChainPoints: oldPoints,
+          spentAtChainPointId: oldPoint.chainPointId,
+          nextProtocolUtxos: oldObservation.snapshot.activeEvents.map(
+            (event) => ({
+              outRef: event.outRef,
+              role: protocolRole(event.kind),
+              chainPointId: event.originChainPointId,
+              output: makeWatcherDurablePayload(event.outputCborHex),
+            }),
+          ),
+        });
+        const rebuiltOldStore = makeWatcherDurableStore({
+          deploymentMarker: owner.policy.deploymentMarker,
+          revision: entry.nextStoreRevision,
+          records: {
+            ...archivedSourceStore,
+            chainPoints: oldPoints,
+            ...oldJournal,
+            l1Observations: [...archivedSourceStore.l1Observations, oldRow],
+          },
+        });
+        if (
+          !same(oldStore, rebuiltOldStore) ||
+          !same(
+            localStableEventStore(oldStore),
+            localStableEventStore(fresh.nextStore),
+          )
+        )
+          return localRefuse(
+            "archived event journal differs from fresh semantic replay",
+          );
+        archivedSourceStore = oldStore;
+        lastProcessedSequence = BigInt(entry.sequence);
+        lastProcessedEntry = entry;
+        oldRetainedEntries = [...oldRetainedEntries, entry];
+        commitLocalUserEventTransition(history, transition);
+      }
+      if (
+        !same(
+          payload.snapshot,
+          entryObservations.get(entries.at(-1)!.entryDigest)!.snapshot,
+        ) ||
+        !same(
+          localStableSnapshot(payload.snapshot),
+          localStableSnapshot(owner.snapshot),
+        )
+      )
+        return localRefuse(
+          "fresh semantic head differs from archived snapshot",
+        );
+      if (!same(archivedSourceStore, headStore))
+        return localRefuse(
+          "archived payload materialization differs from the replayed head",
+        );
+      if (sealedIndex !== null) {
+        if (
+          sealedIndex.index.lastEntrySequence !==
+            lastProcessedEntry!.sequence ||
+          !same(
+            sealedIndex.index.retainedEntryDigests,
+            oldRetainedEntries.slice(-64).map((entry) => entry.entryDigest),
+          )
+        )
+          return localRefuse(
+            "archive segment does not seal the exact retained suffix",
+          );
+        const requiredPoints = new Set(
+          oldRetainedEntries.slice(-64).map((entry) => {
+            const observation = entryObservations.get(entry.entryDigest);
+            if (observation === undefined || observation.chainPointId === null)
+              return localRefuse("materialized suffix observation is absent");
+            return observation.chainPointId;
+          }),
+        );
+        const retainPoint = (
+          blockHash: string,
+          slot: string,
+          blockNo: string,
+        ) => {
+          const points = archivedSourceStore.chainPoints.filter(
+            (point) =>
+              point.blockHash === blockHash &&
+              point.slot === slot &&
+              point.blockNo === blockNo,
+          );
+          if (points.length !== 1)
+            return localRefuse(
+              "materialized event point is not uniquely retained",
+            );
+          requiredPoints.add(points[0]!.chainPointId);
+        };
+        for (const event of owner.snapshot.activeEvents)
+          retainPoint(
+            event.originBlockHash,
+            event.originSlot,
+            event.originBlockNo,
+          );
+        for (const event of owner.snapshot.terminalEvents) {
+          retainPoint(
+            event.originBlockHash,
+            event.originSlot,
+            event.originBlockNo,
+          );
+          retainPoint(
+            event.terminalBlockHash,
+            event.terminalSlot,
+            event.terminalBlockNo,
+          );
+        }
+        const materialized = localMaterializedStoreFromPoints(
+          archivedSourceStore,
+          requiredPoints,
+        );
+        const archivedMaterialized = parseWatcherDurableStore(
+          await readValue(sealedIndex.index.materializedStoreDigest),
+        );
+        if (!same(materialized, archivedMaterialized))
+          return localRefuse(
+            "archived materialization is not the exact dependency-preserving projection",
+          );
+        const pair =
+          replayState.retainedSource === null
+            ? firstPair
+            : replayState.retainedSource;
+        await writePrivateObjects(owner.archiveObjects);
+        const anchor = await prepareLocalUserEventAnchor(
+          history,
+          pair,
+          archive,
+        );
+        const freshMaterialized = localAnchors.get(anchor)!.value.nextStore;
+        if (
+          !same(
+            localStableEventStore(materialized),
+            localStableEventStore(freshMaterialized),
+          )
+        )
+          return localRefuse(
+            "fresh materialization differs from archived semantics",
+          );
+        await writePrivateObjects(
+          readWatcherLocalUserEventAnchor(anchor).archiveObjects,
+        );
+        commitLocalUserEventAnchor(anchor);
+        archivedSourceStore = materialized;
+        oldRetainedEntries = oldRetainedEntries.slice(-64);
+        replayState.priorIndex = sealedIndex;
+      }
+    };
+    if (rootIndex !== null) {
+      for (
+        let sequence = 0n;
+        sequence <= BigInt(rootIndex.index.indexSequence);
+        sequence += 1n
+      ) {
+        const segment = await findWatcherUserEventArchiveIndex(
+          archive,
+          rootIndex,
+          sequence.toString(),
+        );
+        if (
+          segment.index.previousIndexDigest !==
+            replayState.priorIndex?.digest &&
+          !(
+            replayState.priorIndex === null &&
+            segment.index.previousIndexDigest === null
+          )
+        )
+          return localRefuse("archive segment immediate predecessor differs");
+        if (
+          BigInt(segment.index.firstEntrySequence) !==
+          lastProcessedSequence + 1n
+        )
+          return localRefuse("archive segment entry boundary differs");
+        await replaySegment(
+          await readClosure(segment.index.sourceArchiveDigests),
+          segment.index.sourcePayloadDigest,
+          segment,
+        );
+      }
+      if (replayState.priorIndex?.digest !== rootIndex.digest)
+        return localRefuse("archive root is not the replayed segment head");
+    }
+    await replaySegment(currentObjects, previousCheckpoint.payloadDigest, null);
+    const replayHead = owner.entries.at(-1)!;
+    const replayPayload = owner.archiveObjects.find(
+      (object) => object.digest === owner.checkpoint!.payloadDigest,
+    )!;
+    const replayPayloadFields = exactRecord(
+      JSON.parse(Buffer.from(replayPayload.bytesHex, "hex").toString("utf8")),
+      [
+        "schemaVersion",
+        "originArchiveDigest",
+        "originDigest",
+        "policy",
+        "anchor",
+        "head",
+        "storeArchiveDigest",
+        "snapshot",
+        "retainedEntries",
+        "requiredSemanticResume",
+      ],
+    );
+    if (replayPayloadFields === null)
+      return localRefuse("private replay payload differs");
+    const readmissionPayload = localArchiveObject({
+      ...replayPayloadFields,
+      readmission: {
+        kind: "fresh_authenticated_origin_replay",
+        previousCheckpointDigest: previousCheckpoint.checkpointDigest,
+        previousPayloadDigest: previousCheckpoint.payloadDigest,
+        archivedOriginDigest: payload.originDigest,
+        freshOriginDigest: owner.originDigest,
+        stableSnapshotDigest: sha256Canonical(
+          localStableSnapshot(owner.snapshot),
+        ),
+      },
+    });
+    const archiveObjects = Object.freeze([
+      ...new Map([
+        ...[...currentObjects.values()].map(
+          ({ object }) => [object.digest, object] as const,
+        ),
+        ...owner.archiveObjects.map(
+          (object) => [object.digest, object] as const,
+        ),
+        [readmissionPayload.digest, readmissionPayload] as const,
+      ]).values(),
+    ]);
+    if (
+      archiveObjects.length >
+        WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries ||
+      archiveObjects.reduce(
+        (total, object) => total + object.bytesHex.length / 2,
+        0,
+      ) > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes ||
+      archiveObjects.reduce(
+        (total, object) => total + localArchiveBudgets.get(object)!.nodes,
+        0,
+      ) > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceNodes
+    )
+      return localRefuse("semantic readmission archive bound exceeded");
+    const nextCheckpoint = makeWatcherUserEventCheckpoint({
+      ...previousCheckpoint,
+      checkpointSequence: (
+        BigInt(previousCheckpoint.checkpointSequence) + 1n
+      ).toString(),
+      predecessorCheckpointDigest: previousCheckpoint.checkpointDigest,
+      payloadDigest: readmissionPayload.digest,
+      requiredArchiveDigests: archiveObjects.map(({ digest }) => digest).sort(),
+    });
+    const refreshed = readWatcherProtectedUserEventCheckpointReceipt(
+      await readWatcherProtectedUserEventCheckpoint(runtime),
+    );
+    if (!same(refreshed.checkpoint, previousCheckpoint))
+      return localRefuse("protected head changed during semantic replay");
+    const pair =
+      replayState.retainedSource === null
+        ? firstPair
+        : Object.freeze({
+            finality: replayState.retainedSource.finality,
+            observation: replayState.retainedSource.observation,
+            referenceAuthority: replayState.retainedSource.referenceAuthority,
+          });
+    if (
+      !same(
+        localLivePair(owner, pair).witness.current.observation.capture.point,
+        replayHead.cursor,
+      )
+    )
+      return localRefuse("semantic replay head is no longer live");
+    const retained = replayState.retainedSource;
+    const readmission = Object.freeze({
+      [localReadmissionBrand]: true as const,
+    });
+    localReadmissions.set(readmission, {
+      runtime,
+      history,
+      pair,
+      generation: owner.generation,
+      previousCheckpoint,
+      nextCheckpoint,
+      archiveObjects,
+      release: async () => {
+        await retained?.close();
+      },
+      accepted: false,
+    });
+    replayState.retainedSource = null;
+    return readmission;
+  } catch (error) {
+    closeWatcherLocalUserEventHistory(history);
+    await replayState.retainedSource?.close();
+    throw error;
+  }
+};
+
+export const readWatcherLocalUserEventReadmission = (
+  receipt: WatcherLocalUserEventReadmission,
+) => {
+  const readmission =
+    localReadmissions.get(receipt) ??
+    localRefuse("readmission is not privately admitted");
+  const owner = localOwner(readmission.history);
+  if (
+    readmission.accepted ||
+    !owner.semanticReplay ||
+    owner.generation !== readmission.generation ||
+    owner.candidate !== null
+  )
+    return localRefuse("readmission is no longer pending");
+  const live = localLivePair(owner, readmission.pair);
+  const finality = readmission.runtime.read().currentFinalityState;
+  if (
+    finality.phase === "quarantined" ||
+    finality.incident !== null ||
+    !same(
+      live.witness.current.observation.capture.point,
+      owner.entries.at(-1)!.cursor,
+    ) ||
+    live.witness.current.observation.capture.nativeBlock.rawBlockCbor !==
+      owner.acceptedEvidence.at(-1)!.rawBlockCbor
+  )
+    return localRefuse("semantic readmission head is no longer current");
+  return Object.freeze({
+    archiveObjects: readmission.archiveObjects,
+    nextCheckpoint: readmission.nextCheckpoint,
+    expectedCheckpointDigest: readmission.previousCheckpoint.checkpointDigest,
+    expectedCheckpointSequence:
+      readmission.previousCheckpoint.checkpointSequence,
+  });
+};
+
+export const acceptWatcherLocalUserEventReadmission = (
+  receipt: WatcherLocalUserEventReadmission,
+  publication: WatcherProtectedUserEventCheckpoint,
+): WatcherLocalUserEventHistory => {
+  const prepared = readWatcherLocalUserEventReadmission(receipt);
+  const observed = readWatcherProtectedUserEventCheckpointReceipt(publication);
+  if (
+    !same(observed.checkpoint, prepared.nextCheckpoint) ||
+    observed.payload === null ||
+    sha256Bytes(observed.payload) !== prepared.nextCheckpoint.payloadDigest
+  )
+    return localRefuse("semantic readmission publication differs");
+  const readmission = localReadmissions.get(receipt)!;
+  const owner = localOwner(readmission.history);
+  owner.checkpoint = readmission.nextCheckpoint;
+  owner.archiveObjects = readmission.archiveObjects;
+  owner.lastAccepted = null;
+  owner.semanticReplay = false;
+  owner.generation += 1;
+  owner.acceptedAtMonotonicMs = performance.now();
+  readmission.accepted = true;
+  return readmission.history;
+};
+
+export const closeWatcherLocalUserEventReadmission = async (
+  receipt: WatcherLocalUserEventReadmission,
+): Promise<void> => {
+  const readmission =
+    localReadmissions.get(receipt) ??
+    localRefuse("readmission is not privately admitted");
+  if (!readmission.accepted)
+    closeWatcherLocalUserEventHistory(readmission.history);
+  await readmission.release();
+};
+
+const localAnchorBrand = Symbol("watcher-local-user-event-anchor");
+export type WatcherLocalUserEventAnchor = Readonly<{
+  [localAnchorBrand]: true;
+}>;
+type LocalAnchorValue = Readonly<{
+  sourceStore: WatcherDurableStore;
+  nextStore: WatcherDurableStore;
+  archiveIndex: WatcherUserEventArchiveIndexRead;
+  archiveObjects: readonly LocalArchiveObject[];
+  retainedEntries: readonly WatcherLocalUserEventEntry[];
+  retainedEvidence: readonly LocalRetainedEvidence[];
+  pinnedEvidence: readonly LocalRetainedEvidence[];
+  nextCheckpoint: WatcherUserEventCheckpoint;
+  expectedCheckpointDigest: string;
+  expectedCheckpointSequence: string;
+}>;
+type LocalAnchorOwner = {
+  readonly history: WatcherLocalUserEventHistory;
+  readonly pair: LocalPair;
+  readonly generation: number;
+  readonly value: LocalAnchorValue;
+  accepted: boolean;
+};
+const localAnchors = new WeakMap<
+  WatcherLocalUserEventAnchor,
+  LocalAnchorOwner
+>();
+
+const localMaterializedStore = (
+  source: WatcherDurableStore,
+  retainedEvidence: readonly LocalRetainedEvidence[],
+): WatcherDurableStore => {
+  return localMaterializedStoreFromPoints(
+    source,
+    new Set(retainedEvidence.map(({ chainPointId }) => chainPointId)),
+  );
+};
+
+const localMaterializedStoreFromPoints = (
+  source: WatcherDurableStore,
+  requiredPoints: Set<string>,
+): WatcherDurableStore => {
+  for (const utxo of source.protocolUtxos)
+    requiredPoints.add(utxo.chainPointId);
+  for (const utxo of source.spentProtocolUtxos) {
+    requiredPoints.add(utxo.chainPointId);
+    requiredPoints.add(utxo.spentAtChainPointId);
+  }
+  const chainPoints = source.chainPoints.filter(({ chainPointId }) =>
+    requiredPoints.has(chainPointId),
+  );
+  if (chainPoints.length !== requiredPoints.size)
+    return localRefuse("materialization point dependency is absent");
+  return immutableWireValue(
+    makeWatcherDurableStore({
+      deploymentMarker: source.deploymentMarker,
+      revision: (BigInt(source.revision) + 1n).toString(),
+      records: {
+        ...source,
+        chainPoints,
+        l1Observations: source.l1Observations.filter(({ chainPointId }) =>
+          requiredPoints.has(chainPointId),
+        ),
+      },
+    }),
+  );
+};
+
+const localArchiveClosure = (
+  objects: readonly LocalArchiveObject[],
+): readonly LocalArchiveObject[] => {
+  const unique = Object.freeze([
+    ...new Map(objects.map((object) => [object.digest, object])).values(),
+  ]);
+  if (
+    unique.length >
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries ||
+    unique.reduce((total, object) => total + object.bytesHex.length / 2, 0) >
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes ||
+    unique.reduce(
+      (total, object) => total + localArchiveBudgets.get(object)!.nodes,
+      0,
+    ) > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceNodes
+  )
+    return localRefuse("materialized archive bound exceeded");
+  return unique;
+};
+
+const prepareLocalUserEventAnchor = async (
+  history: WatcherLocalUserEventHistory,
+  pair: LocalPair,
+  archive: WatcherUserEventArchive,
+  publication?: WatcherProtectedUserEventCheckpoint,
+): Promise<WatcherLocalUserEventAnchor> => {
+  const owner = localOwner(history);
+  const generation = owner.generation;
+  const sourceStore = owner.store;
+  const sourceCheckpoint = owner.checkpoint;
+  const sourceObjects = owner.archiveObjects;
+  const priorIndex = owner.archiveIndex;
+  const snapshot = owner.snapshot;
+  if (
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null ||
+    sourceCheckpoint === null ||
+    owner.entries.length <= 64
+  )
+    return localRefuse(
+      "anchor requires a published head with more than 64 retained blocks and no pending operation",
+    );
+  const current = localLivePair(owner, pair);
+  const head = owner.entries.at(-1)!;
+  if (
+    !same(current.witness.current.observation.capture.point, head.cursor) ||
+    current.witness.current.observation.capture.nativeBlock.rawBlockCbor !==
+      owner.acceptedEvidence.at(-1)!.rawBlockCbor
+  )
+    return localRefuse("anchor capture differs from the exact semantic head");
+  const retainedEntries = Object.freeze(owner.entries.slice(-64));
+  const retainedEvidence = Object.freeze(owner.acceptedEvidence.slice(-64));
+  const retainedIds = new Set(
+    retainedEntries.map(({ entryDigest }) => entryDigest),
+  );
+  const eventPoints = new Set(
+    [...snapshot.activeEvents, ...snapshot.terminalEvents].flatMap((event) =>
+      "terminalPointDigest" in event
+        ? [event.originPointDigest, event.terminalPointDigest]
+        : [event.originPointDigest],
+    ),
+  );
+  const allEvidence = localRetainedEvidence(owner);
+  if (
+    [...eventPoints].some(
+      (point) => !allEvidence.some(({ pointDigest }) => pointDigest === point),
+    )
+  )
+    return localRefuse("anchor event provenance is absent");
+  const pinnedEvidence = Object.freeze(
+    allEvidence.filter(
+      ({ entry, pointDigest }) =>
+        !retainedIds.has(entry.entryDigest) && eventPoints.has(pointDigest),
+    ),
+  );
+  const nextStore = localMaterializedStore(sourceStore, [
+    ...pinnedEvidence,
+    ...retainedEvidence,
+  ]);
+  if (!topologyMatches(nextStore, snapshot))
+    return localRefuse("anchor changes event topology");
+  const storeArchive = localArchiveObject(nextStore);
+  const index = await makeWatcherUserEventArchiveIndex(archive, {
+    previous: priorIndex,
+    firstEntrySequence:
+      priorIndex === null
+        ? "0"
+        : (BigInt(priorIndex.index.lastEntrySequence) + 1n).toString(),
+    lastEntrySequence: head.sequence,
+    sourcePayloadDigest: sourceCheckpoint.payloadDigest,
+    sourceArchiveDigests: sourceCheckpoint.requiredArchiveDigests,
+    materializedStoreDigest: storeArchive.digest,
+    retainedEntryDigests: retainedEntries.map(({ entryDigest }) => entryDigest),
+  });
+  const indexArchive = localArchiveObject(index);
+  const archiveIndex = Object.freeze({ digest: indexArchive.digest, index });
+  const payload = localArchiveObject({
+    schemaVersion: "midgard-watcher-local-user-event-checkpoint-payload-v1",
+    originArchiveDigest: owner.originArchive.digest,
+    originDigest: owner.originDigest,
+    policy: owner.policy,
+    anchor: {
+      kind: "materialized_history",
+      indexDigest: archiveIndex.digest,
+      indexSequence: index.indexSequence,
+      retainedSuffixEntries: "64",
+    },
+    head,
+    storeArchiveDigest: storeArchive.digest,
+    snapshot,
+    retainedEntries,
+    requiredSemanticResume:
+      "authenticated_origin_replay_or_semantic_publication_receipt",
+  });
+  const requiredEvidence = new Set(
+    [...pinnedEvidence, ...retainedEvidence].flatMap((record) => [
+      record.entry.evidenceDigest,
+      record.entryArchiveDigest,
+    ]),
+  );
+  const evidenceObjects = sourceObjects.filter(({ digest }) =>
+    requiredEvidence.has(digest),
+  );
+  if (evidenceObjects.length !== requiredEvidence.size)
+    return localRefuse("anchor retained archive dependency is absent");
+  const archiveObjects = localArchiveClosure([
+    owner.originArchive,
+    ...evidenceObjects,
+    storeArchive,
+    indexArchive,
+    payload,
+  ]);
+  const nextCheckpoint = makeWatcherUserEventCheckpoint({
+    ...sourceCheckpoint,
+    checkpointSequence: (
+      BigInt(sourceCheckpoint.checkpointSequence) + 1n
+    ).toString(),
+    predecessorCheckpointDigest: sourceCheckpoint.checkpointDigest,
+    payloadDigest: payload.digest,
+    requiredArchiveDigests: archiveObjects.map(({ digest }) => digest).sort(),
+  });
+  if (
+    owner.generation !== generation ||
+    owner.store !== sourceStore ||
+    owner.checkpoint !== sourceCheckpoint ||
+    owner.archiveObjects !== sourceObjects ||
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null
+  )
+    return localRefuse("history changed during anchor preparation");
+  if (publication !== undefined)
+    readWatcherProtectedUserEventCheckpointReceipt(publication);
+  localLivePair(owner, pair);
+  const receipt = Object.freeze({ [localAnchorBrand]: true as const });
+  const value = Object.freeze({
+    sourceStore,
+    nextStore,
+    archiveIndex,
+    archiveObjects,
+    retainedEntries,
+    retainedEvidence,
+    pinnedEvidence,
+    nextCheckpoint,
+    expectedCheckpointDigest: sourceCheckpoint.checkpointDigest,
+    expectedCheckpointSequence: sourceCheckpoint.checkpointSequence,
+  });
+  localAnchors.set(receipt, {
+    history,
+    pair,
+    generation,
+    value,
+    accepted: false,
+  });
+  owner.anchorCandidate = receipt;
+  return receipt;
+};
+
+export const prepareWatcherLocalUserEventAnchor = async (
+  input: LocalPair &
+    Readonly<{
+      history: WatcherLocalUserEventHistory;
+      archive: WatcherUserEventArchive;
+      publication: WatcherProtectedUserEventCheckpoint;
+    }>,
+): Promise<WatcherLocalUserEventAnchor> => {
+  const {
+    history,
+    archive,
+    publication,
+    finality,
+    observation,
+    referenceAuthority,
+  } = input;
+  const owner = localOwner(history);
+  if (
+    owner.semanticReplay ||
+    !same(
+      readWatcherProtectedUserEventCheckpointReceipt(publication).checkpoint,
+      owner.checkpoint,
+    )
+  )
+    return localRefuse("anchor protected predecessor differs");
+  return await prepareLocalUserEventAnchor(
+    history,
+    Object.freeze({ finality, observation, referenceAuthority }),
+    archive,
+    publication,
+  );
+};
+
+export const readWatcherLocalUserEventAnchor = (
+  receipt: WatcherLocalUserEventAnchor,
+) => {
+  const anchor =
+    localAnchors.get(receipt) ??
+    localRefuse("anchor is not privately admitted");
+  const owner = localOwner(anchor.history);
+  if (
+    anchor.accepted ||
+    owner.anchorCandidate !== receipt ||
+    owner.generation !== anchor.generation ||
+    owner.store !== anchor.value.sourceStore ||
+    owner.candidate !== null
+  )
+    return localRefuse("anchor is no longer pending");
+  const current = localLivePair(owner, anchor.pair);
+  if (
+    !same(
+      current.witness.current.observation.capture.point,
+      owner.entries.at(-1)!.cursor,
+    ) ||
+    current.witness.current.observation.capture.nativeBlock.rawBlockCbor !==
+      owner.acceptedEvidence.at(-1)!.rawBlockCbor
+  )
+    return localRefuse("anchor head is no longer current");
+  return Object.freeze({
+    archiveObjects: anchor.value.archiveObjects,
+    nextCheckpoint: anchor.value.nextCheckpoint,
+    expectedCheckpointDigest: anchor.value.expectedCheckpointDigest,
+    expectedCheckpointSequence: anchor.value.expectedCheckpointSequence,
+  });
+};
+
+const commitLocalUserEventAnchor = (
+  receipt: WatcherLocalUserEventAnchor,
+): WatcherLocalUserEventHistory => {
+  readWatcherLocalUserEventAnchor(receipt);
+  const anchor = localAnchors.get(receipt)!;
+  const owner = localOwner(anchor.history);
+  owner.store = anchor.value.nextStore;
+  owner.entries = anchor.value.retainedEntries;
+  owner.acceptedEvidence = anchor.value.retainedEvidence;
+  owner.pinnedEvidence = anchor.value.pinnedEvidence;
+  owner.archiveIndex = anchor.value.archiveIndex;
+  owner.archiveObjects = anchor.value.archiveObjects;
+  owner.checkpoint = anchor.value.nextCheckpoint;
+  owner.anchorCandidate = null;
+  owner.lastAccepted = null;
+  owner.generation += 1;
+  owner.acceptedAtMonotonicMs = performance.now();
+  anchor.accepted = true;
+  return anchor.history;
+};
+
+export const acceptWatcherLocalUserEventAnchor = (
+  receipt: WatcherLocalUserEventAnchor,
+  publication: WatcherProtectedUserEventCheckpoint,
+): WatcherLocalUserEventHistory => {
+  const prepared = readWatcherLocalUserEventAnchor(receipt);
+  const anchor = localAnchors.get(receipt)!;
+  if (localOwner(anchor.history).semanticReplay)
+    return localRefuse("provisional anchor requires semantic readmission");
+  const observed = readWatcherProtectedUserEventCheckpointReceipt(publication);
+  if (
+    !same(observed.checkpoint, prepared.nextCheckpoint) ||
+    observed.payload === null ||
+    sha256Bytes(observed.payload) !== prepared.nextCheckpoint.payloadDigest
+  )
+    return localRefuse(
+      "anchor publication differs from the exact materialization",
+    );
+  return commitLocalUserEventAnchor(receipt);
+};
+
+/** The durable owner records semantic completion only for a live candidate
+ * admitted by this module. Descriptive JSON and copied handles cannot mint it. */
+export const readWatcherLocalUserEventValidation = (
+  candidate: unknown,
+  checkpoint: WatcherUserEventCheckpoint,
+): WatcherUserEventValidation => {
+  if (typeof candidate !== "object" || candidate === null)
+    return localRefuse("semantic validation candidate is absent");
+  const next = localTransitions.has(
+    candidate as WatcherLocalUserEventTransition,
+  )
+    ? readWatcherLocalUserEventTransition(
+        candidate as WatcherLocalUserEventTransition,
+      ).nextCheckpoint
+    : localAnchors.has(candidate as WatcherLocalUserEventAnchor)
+      ? readWatcherLocalUserEventAnchor(
+          candidate as WatcherLocalUserEventAnchor,
+        ).nextCheckpoint
+      : localReadmissions.has(candidate as WatcherLocalUserEventReadmission)
+        ? readWatcherLocalUserEventReadmission(
+            candidate as WatcherLocalUserEventReadmission,
+          ).nextCheckpoint
+        : localRefuse("semantic validation candidate was not admitted");
+  if (!same(next, checkpoint))
+    return localRefuse("semantic validation candidate checkpoint differs");
+  return Object.freeze({
+    schemaVersion: WATCHER_USER_EVENT_VALIDATION_SCHEMA_VERSION,
+    checkpointDigest: next.checkpointDigest,
+    payloadDigest: next.payloadDigest,
+    policyDigest: next.userEventPolicyDigest,
+  });
+};
+
+/** Restore a completed fold. Original archive facts remain historical data;
+ * only the newly acquired head pair supplies current source/finality authority. */
+export const restoreWatcherLocalUserEventHistory = async (
+  input: Omit<
+    Parameters<typeof createWatcherLocalUserEventHistory>[0],
+    "publication"
+  > &
+    Readonly<{
+      runtime: WatcherDurableRuntime;
+      archive: WatcherUserEventArchive;
+      readHead: WatcherLocalUserEventReplaySource;
+      referenceAuthority: WatcherUserEventReferenceAuthority;
+    }>,
+): Promise<WatcherLocalUserEventHistory> => {
+  const publication = await readWatcherProtectedUserEventCheckpoint(
+    input.runtime,
+  );
+  const published = readWatcherProtectedUserEventCheckpointReceipt(publication);
+  const checkpoint = published.checkpoint;
+  if (
+    checkpoint === null ||
+    published.payload === null ||
+    published.validation?.schemaVersion !==
+      WATCHER_USER_EVENT_VALIDATION_SCHEMA_VERSION ||
+    published.validation.checkpointDigest !== checkpoint.checkpointDigest ||
+    published.validation.payloadDigest !== checkpoint.payloadDigest ||
+    published.validation.policyDigest !== checkpoint.userEventPolicyDigest
+  )
+    return localRefuse(
+      "restart requires durable semantic validation; explicit recovery is required",
+    );
+  const runtimeFinality = input.runtime.readFinality();
+  if (
+    runtimeFinality.phase === "quarantined" ||
+    runtimeFinality.incident !== null
+  )
+    return localRefuse("restart runtime is quarantined");
+  const history = createLocalUserEventHistory({
+    ...input,
+    publication,
+    semanticReplay: true,
+  });
+  const provisional = localOwner(history);
+  let headPair:
+    | Awaited<ReturnType<WatcherLocalUserEventReplaySource>>
+    | undefined;
+  try {
+    const payload = objectForLocalRestart(published.payload);
+    if (
+      payload.schemaVersion !==
+        "midgard-watcher-local-user-event-checkpoint-payload-v1" ||
+      !same(payload.policy, provisional.policy) ||
+      checkpoint.userEventPolicyDigest !== provisional.policy.policyDigest ||
+      !isHex32(payload.originArchiveDigest) ||
+      !isHex32(payload.originDigest) ||
+      !isHex32(payload.storeArchiveDigest) ||
+      !Array.isArray(payload.retainedEntries) ||
+      payload.retainedEntries.length === 0 ||
+      payload.retainedEntries.length >
+        Number(provisional.policy.maximumActiveHistoryEntries)
+    )
+      return localRefuse("saved semantic state dependencies differ");
+    const objects = new Map<
+      string,
+      Readonly<{ object: LocalArchiveObject; value: unknown }>
+    >();
+    let retainedBytes = 0;
+    let retainedNodes = 0;
+    // Only the bounded current closure is loaded. Sealed historical segments
+    // are left in the archive; no block is replayed or semantically revalidated.
+    for (const key of checkpoint.requiredArchiveDigests) {
+      const bytes = await input.archive.read(key);
+      if (bytes === null || sha256Bytes(bytes) !== key)
+        return localRefuse("saved semantic state archive is absent or corrupt");
+      retainedBytes += bytes.length;
+      if (
+        retainedBytes >
+        WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes
+      )
+        return localRefuse("saved semantic state archive exceeds its bound");
+      const value: unknown = JSON.parse(
+        new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      );
+      const archived = localArchiveObject(value);
+      retainedNodes += localArchiveBudgets.get(archived)!.nodes;
+      if (
+        archived.digest !== key ||
+        retainedNodes >
+          WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceNodes
+      )
+        return localRefuse("saved semantic state archive framing differs");
+      objects.set(key, { object: archived, value });
+    }
+    const originArchive = objects.get(payload.originArchiveDigest);
+    const savedOrigin = originArchive?.value;
+    if (
+      originArchive === undefined ||
+      localArchiveField(savedOrigin, ["schemaVersion"]) !==
+        "midgard-watcher-local-user-event-origin-archive-v1" ||
+      !same(
+        localStableOrigin(localArchiveField(savedOrigin, ["facts"])),
+        localArchiveEvidence(localStableOrigin(provisional.origin)),
+      ) ||
+      localArchiveField(savedOrigin, ["facts", "originDigest"]) !==
+        payload.originDigest
+    )
+      return localRefuse("saved origin differs from the admitted deployment");
+    const stored = objects.get(payload.storeArchiveDigest)?.value;
+    if (stored === undefined)
+      return localRefuse("saved materialized event state is absent");
+    const entries = Object.freeze(
+      payload.retainedEntries.map(localArchivedEntry),
+    );
+    const head = entries.at(-1)!;
+    if (
+      !same(payload.head, head) ||
+      entries.some(
+        (entry, index) =>
+          entry.originDigest !== payload.originDigest ||
+          entry.policyDigest !== provisional.policy.policyDigest ||
+          (index > 0 &&
+            entry.predecessorEntryDigest !== entries[index - 1]!.entryDigest),
+      )
+    )
+      return localRefuse("saved semantic progress marker differs");
+    const snapshot = immutableWireValue(
+      payload.snapshot,
+    ) as WatcherUserEventSnapshot;
+    const retainedIds = new Set(entries.map((entry) => entry.entryDigest));
+    const pinnedPoints = new Set(
+      [...snapshot.activeEvents, ...snapshot.terminalEvents].flatMap((event) =>
+        "terminalPointDigest" in event
+          ? [event.originPointDigest, event.terminalPointDigest]
+          : [event.originPointDigest],
+      ),
+    );
+    const evidence: LocalRetainedEvidence[] = [];
+    for (const [entryArchiveDigest, archived] of objects) {
+      const candidate = exactRecord(archived.value, ["entry", "observation"]);
+      if (candidate === null) continue;
+      const entry = localArchivedEntry(candidate.entry);
+      if (
+        entry.originDigest !== payload.originDigest ||
+        entry.policyDigest !== provisional.policy.policyDigest
+      )
+        continue;
+      const original = objects.get(entry.evidenceDigest)?.value;
+      if (original === undefined) continue;
+      const rawBlockCbor = localArchiveField(original, [
+        "witnesses",
+        "current",
+        "observation",
+        "capture",
+        "nativeBlock",
+        "rawBlockCbor",
+      ]);
+      const pointDigest = localArchiveField(original, [
+        "witnesses",
+        "current",
+        "observation",
+        "native",
+        "chainPoint",
+        "pointDigest",
+      ]);
+      const chainPointId = localArchiveField(original, [
+        "witnesses",
+        "current",
+        "observation",
+        "native",
+        "chainPoint",
+        "chainPointId",
+      ]);
+      if (
+        !isHex32(pointDigest) ||
+        !isHex32(chainPointId) ||
+        !isHexBytes(rawBlockCbor)
+      )
+        return localRefuse("saved historical block facts are malformed");
+      if (retainedIds.has(entry.entryDigest) || pinnedPoints.has(pointDigest))
+        evidence.push(
+          Object.freeze({
+            entry,
+            entryArchiveDigest,
+            rawBlockCbor,
+            pointDigest,
+            chainPointId,
+          }),
+        );
+    }
+    const acceptedEvidence = Object.freeze(
+      entries.map((entry) => {
+        const matches = evidence.filter(
+          (record) => record.entry.entryDigest === entry.entryDigest,
+        );
+        if (matches.length !== 1)
+          return localRefuse("saved progress evidence is absent or ambiguous");
+        return matches[0]!;
+      }),
+    );
+    const pinnedEvidence = Object.freeze(
+      evidence.filter(({ entry }) => !retainedIds.has(entry.entryDigest)),
+    );
+    if (
+      [...pinnedPoints].some(
+        (point) => !evidence.some((record) => record.pointDigest === point),
+      )
+    )
+      return localRefuse("saved event provenance is absent");
+    const anchor = objectForLocalRestart(
+      Buffer.from(watcherCanonicalJson(payload.anchor), "utf8"),
+    );
+    const archiveIndex =
+      anchor.kind === "activation_origin"
+        ? null
+        : anchor.kind === "materialized_history" && isHex32(anchor.indexDigest)
+          ? await readWatcherUserEventArchiveIndex(
+              input.archive,
+              anchor.indexDigest,
+            )
+          : localRefuse("saved history anchor is invalid");
+    if (
+      archiveIndex !== null &&
+      archiveIndex.index.indexSequence !== anchor.indexSequence
+    )
+      return localRefuse("saved history anchor sequence differs");
+    headPair = await input.readHead(head.cursor);
+    const live = localLivePair(provisional, headPair);
+    if (
+      !same(live.witness.current.observation.capture.point, head.cursor) ||
+      live.witness.current.observation.capture.nativeBlock.rawBlockCbor !==
+        acceptedEvidence.at(-1)!.rawBlockCbor
+    )
+      return localRefuse(
+        "saved head is no longer canonical; explicit recovery is required",
+      );
+    const fresh = readWatcherProtectedUserEventCheckpointReceipt(
+      await readWatcherProtectedUserEventCheckpoint(input.runtime),
+    );
+    localLivePair(provisional, headPair);
+    if (
+      !same(fresh.checkpoint, checkpoint) ||
+      !same(fresh.validation, published.validation)
+    )
+      return localRefuse("saved semantic progress changed during restart");
+    localHistories.set(history, {
+      ...provisional,
+      originDigest: payload.originDigest,
+      originArchive: originArchive.object,
+      store: immutableWireValue(stored) as WatcherDurableStore,
+      snapshot,
+      entries,
+      acceptedEvidence,
+      pinnedEvidence,
+      archiveIndex,
+      archiveObjects: Object.freeze(
+        [...objects.values()].map(({ object }) => object),
+      ),
+      checkpoint,
+      semanticReplay: false,
+      acceptedAtMonotonicMs: performance.now(),
+    });
+    return history;
+  } catch (cause) {
+    closeWatcherLocalUserEventHistory(history);
+    throw cause;
+  } finally {
+    await headPair?.close();
+  }
+};
+
+const objectForLocalRestart = (bytes: Uint8Array): PlainRecord => {
+  const value: unknown = JSON.parse(
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+  );
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return localRefuse("saved semantic state is not an object");
+  return value as PlainRecord;
 };

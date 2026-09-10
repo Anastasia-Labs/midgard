@@ -13,7 +13,6 @@
 import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
-  EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCanonical,
@@ -55,6 +54,10 @@ export type FixtureTransactionInput = {
   readonly networkId?: bigint;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
+  readonly scriptIntegrityHash?: Buffer;
+  readonly requiredSigners?: readonly Buffer[];
+  readonly scriptWitnesses?: readonly Buffer[];
+  readonly redeemerWitnesses?: readonly Buffer[];
   readonly addressWitnesses?: readonly SDK.MidgardAddressWitness[];
 };
 
@@ -77,6 +80,10 @@ export const buildFixtureTransaction = ({
   validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
   validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
   addressWitnesses = [],
+  scriptIntegrityHash = EMPTY_NULL_ROOT,
+  requiredSigners = [],
+  scriptWitnesses = [],
+  redeemerWitnesses = [],
 }: FixtureTransactionInput): FixtureTransaction => {
   const canonical: MidgardNativeTxCanonical = {
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -89,9 +96,9 @@ export const buildFixtureTransaction = ({
       validityIntervalStart,
       validityIntervalEnd,
       requiredObserversPreimageCbor: encodeCbor([...requiredObservers]),
-      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: encodeCbor([...requiredSigners]),
       mintPreimageCbor: encodeCbor([...mintPolicyItems]),
-      scriptIntegrityHash: EMPTY_NULL_ROOT,
+      scriptIntegrityHash,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
       networkId,
     },
@@ -101,8 +108,8 @@ export const buildFixtureTransaction = ({
           SDK.encodeMidgardAddressWitnessCanonical(witness),
         ),
       ),
-      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimageCbor: encodeCbor([...scriptWitnesses]),
+      redeemerTxWitsPreimageCbor: encodeCbor([...redeemerWitnesses]),
     },
   };
   const full = materializeMidgardNativeTxFromCanonical(canonical);
@@ -335,8 +342,10 @@ export const buildCanonicalBlockFixture = async ({
   };
 };
 
-export const authenticatedHeaderObservation = (
-  fixture: CanonicalBlockFixture,
+export const authenticatedHeaderObservation = <
+  Fixture extends Pick<CanonicalBlockFixture, "header" | "headerHash">,
+>(
+  fixture: Fixture,
   overrides: Partial<SDK.AuthenticatedStateQueueHeaderObservation> = {},
 ): SDK.AuthenticatedStateQueueHeaderObservation => ({
   schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,

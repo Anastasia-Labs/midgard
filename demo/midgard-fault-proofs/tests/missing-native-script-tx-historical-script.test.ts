@@ -39,7 +39,7 @@ const policy = {
 const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
-  releaseIdentityDigest: RELEASE,
+  blueprintHash: RELEASE,
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
 };
@@ -83,7 +83,7 @@ const fixture = () => {
   const response = {
     schemaVersion: HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT,
-    releaseIdentityDigest: RELEASE,
+    blueprintHash: RELEASE,
     finalityPolicyDigest: releaseFinality.policyDigest,
     expectedScriptHash,
     sourceMode: "local_node" as const,
@@ -122,7 +122,7 @@ const source = ({
     sourceId,
     operatorIdentitySha256,
     deploymentIdentityDigest: request.deploymentIdentityDigest,
-    releaseIdentityDigest: request.releaseIdentityDigest,
+    blueprintHash: request.blueprintHash,
     finalityPolicyDigest: request.finalityPolicyDigest,
     expectedScriptHash: request.expectedScriptHash,
     throughPoint: request.throughPoint,
@@ -408,7 +408,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
             sourceId,
             operatorIdentitySha256,
             deploymentIdentityDigest: body.deploymentIdentityDigest,
-            releaseIdentityDigest: body.releaseIdentityDigest,
+            blueprintHash: body.blueprintHash,
             finalityPolicyDigest: body.finalityPolicyDigest,
             expectedScriptHash: body.expectedScriptHash,
             throughPoint: body.throughPoint,

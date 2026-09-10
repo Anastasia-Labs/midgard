@@ -31,9 +31,10 @@ aiken build --env testnet
 
 ## Focused Checks
 
-The project and CI compiler version in `aiken.toml` remains authoritative.
-Record the actual local `aiken --version`; a newer diagnostic binary does not
-replace the pinned CI or release check.
+Use the fork repository and revision pinned in
+`.github/workflows/aiken-ci.yml`; `aiken.toml` records the base version, which
+alone cannot identify the patched compiler. Record the actual local
+`aiken --version` and match the CI pin before producing release evidence.
 
 Run large Midgard vectors one compiler process at a time. Use the repository
 guard for one exact test:
@@ -58,9 +59,12 @@ The guard constructs one module-qualified exact selector per name and fails
 unless exactly that many tests are collected and all pass. Do not combine a
 bare test name with `aiken check -e`: Aiken can collect zero tests and still
 exit successfully.
-For a dotted test filename, pass the source module before its first dotted
-test suffix; for example, tests in `cek-data-traverse.max-cardano.test.ak` use
-`midgard/cek_data_traverse` plus the exact test name.
+For a dotted test filename, pass the full source module without `.ak`; for
+example, tests in `cek-data-traverse.max-cardano.test.ak` use
+`midgard/cek-data-traverse.max-cardano.test` plus the exact test name. The guard
+constructs the shortened Aiken selector internally and checks the full reported
+module identity. Use the prefix before the first dot only for a direct
+`aiken check -m` selector, where it can also select sibling test modules.
 When invoking Aiken directly, use:
 
 ```bash
