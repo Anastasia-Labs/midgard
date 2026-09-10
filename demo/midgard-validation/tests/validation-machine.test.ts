@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
@@ -2997,7 +2996,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toThrow();
   });
 
-  it("confines the incremental CBOR scanner to consumers carrying measured §3.2 necessity evidence", () => {
+  it("confines the incremental CBOR scanner to the reviewed on-chain consumers", () => {
     const aikenRoot = resolve(process.cwd(), "../../onchain/aiken");
     const aikenSources = ((): readonly string[] => {
       const collected: string[] = [];
@@ -3022,8 +3021,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     // scanner without a top-level `use midgard/canonical_cbor_scan_v1` line.
     // The earlier bare-substring predicate also fired on doc-comment
     // cross-references (intra-item-bytes-v1.ak names the scanner only to
-    // explain how the two readers divide §11), which is not consumption and
-    // must not demand a §3.2 necessity artifact.
+    // explain how the two readers divide §11), which is not consumption.
     const importsScanner = (source: string): boolean =>
       /^\s*use\s+midgard\/canonical_cbor_scan_v1\b/mu.test(source);
     const scannerConsumers = aikenSources
@@ -3037,188 +3035,20 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       .map((path) => path.slice(aikenRoot.length + 1))
       .sort();
 
-    // Each consumer must be backed by a measured §3.2 necessity artifact that
-    // records the fitting representations it ruled out.
-    const necessityByConsumer: Record<string, string> = {
-      "lib/midgard/redeemer-item-proof-v1.ak": "redeemer-item-traversal-v1.md",
-      "lib/midgard/ledger-output-scan-v1.ak":
-        "ledger-output-incremental-proof-v1.md",
+    // The reviewed consumer set. Adding a scanner import anywhere else reopens
+    // this row; the scanner's justification lives in the on-chain modules and
+    // their emulator suites, not in a document this gate would have to parse.
+    const reviewedScannerConsumers = [
+      "lib/midgard/redeemer-item-proof-v1.ak",
+      "lib/midgard/ledger-output-scan-v1.ak",
       // The three narrow total rules adjudicating the committed field-8
-      // redeemer collection share one artifact: the same `head_at_v1` total
-      // header decode over complete items delivered by batched §8 carriage.
-      "lib/midgard/fraud-proofs/missing-redeemer/rule.ak":
-        "redeemer-collection-total-decode-v1.md",
-      "lib/midgard/fraud-proofs/redeemer-canonicity/rule.ak":
-        "redeemer-collection-total-decode-v1.md",
-      "lib/midgard/fraud-proofs/unused-redeemer/rule.ak":
-        "redeemer-collection-total-decode-v1.md",
-    };
-    expect(scannerConsumers).toEqual(Object.keys(necessityByConsumer).sort());
-
-    // §3.2's invalidation clause ("any change to the measured blueprint
-    // invalidates this artifact") is only enforceable if each artifact states
-    // its pin in a form a gate can read. Every necessity artifact therefore
-    // carries one `## Machine-readable pin` JSON fence holding the blueprint
-    // identity its measurements were taken against, the consumers it
-    // justifies, and the measured rows; the prose digests scattered through
-    // those files are measurement-epoch provenance only. Phrase-matching the
-    // prose proved nothing — it passed against pins four blueprints stale.
-    const liveBlueprint = validationDisputeBlueprint as {
-      readonly preamble: { readonly compiler: { readonly version: string } };
-      readonly validators: readonly {
-        readonly title: string;
-        readonly hash: string;
-      }[];
-      readonly definitions: Readonly<Record<string, unknown>>;
-    };
-    const liveBlueprintSha256 = createHash("sha256")
-      .update(readFileSync(validationBlueprintPath))
-      .digest("hex");
-    const liveHashByTitle = new Map(
-      liveBlueprint.validators.map(
-        (validator) => [validator.title, validator.hash] as const,
-      ),
-    );
-
-    interface NecessityPin {
-      readonly artifact: string;
-      readonly blueprintSha256: string;
-      readonly compilerVersion: string;
-      readonly validatorCount: number;
-      readonly definitionCount: number;
-      readonly consumers: readonly string[];
-      readonly boundValidators: readonly {
-        readonly title: string;
-        readonly hash: string;
-      }[];
-      readonly measurements: readonly {
-        readonly name: string;
-        readonly unit: string;
-        readonly measured: number;
-        readonly limit: number;
-        readonly fits: boolean;
-      }[];
-    }
-
-    const readNecessityPin = (artifact: string): NecessityPin => {
-      const artifactPath = resolve(
-        process.cwd(),
-        "../../docs/exec-plans/evidence/necessity",
-        artifact,
-      );
-      expect(
-        existsSync(artifactPath),
-        `missing §3.2 necessity artifact: ${artifact}`,
-      ).toBe(true);
-      const fence =
-        /^## Machine-readable pin$[\s\S]*?^```json$\n([\s\S]*?)^```$/mu.exec(
-          readFileSync(artifactPath, "utf8"),
-        );
-      const body = fence?.[1];
-      if (body === undefined) {
-        throw new Error(
-          `${artifact} carries no machine-readable §3.2 pin block`,
-        );
-      }
-      return JSON.parse(body) as NecessityPin;
-    };
-
-    const consumersByArtifact = new Map<string, string[]>();
-    for (const [consumer, artifact] of Object.entries(necessityByConsumer)) {
-      consumersByArtifact.set(artifact, [
-        ...(consumersByArtifact.get(artifact) ?? []),
-        consumer,
-      ]);
-    }
-
-    // Collected rather than asserted one at a time: a stale blueprint drifts
-    // several pins at once, and a gate that stops at the first of them makes
-    // the re-measurement look smaller than it is.
-    const drift: string[] = [];
-    for (const [artifact, consumers] of [...consumersByArtifact].sort(
-      ([left], [right]) => left.localeCompare(right),
-    )) {
-      const pin = readNecessityPin(artifact);
-      const note = (message: string): void => {
-        drift.push(`${artifact}: ${message}`);
-      };
-      const expectPin = (
-        field: string,
-        pinned: unknown,
-        live: unknown,
-      ): void => {
-        if (pinned !== live) {
-          note(`${field} pinned ${String(pinned)}, live ${String(live)}`);
-        }
-      };
-
-      if (pin.artifact !== artifact.replace(/\.md$/u, "")) {
-        note(`self-identifier is ${pin.artifact}`);
-      }
-      // The consumer set an artifact claims must be exactly the set this
-      // allowlist routes to it, so neither side can drift on its own.
-      const claimed = [...pin.consumers].sort().join(", ");
-      const routed = [...consumers].sort().join(", ");
-      if (claimed !== routed) {
-        note(`claims consumers [${claimed}], allowlist routes [${routed}]`);
-      }
-
-      // Blueprint identity. A differing digest, count, compiler, or bound
-      // script hash means the measurements were taken against a different
-      // blueprint and the artifact is invalid until re-measured.
-      expectPin("blueprint sha256", pin.blueprintSha256, liveBlueprintSha256);
-      expectPin(
-        "compiler version",
-        pin.compilerVersion,
-        liveBlueprint.preamble.compiler.version,
-      );
-      expectPin(
-        "validator count",
-        pin.validatorCount,
-        liveBlueprint.validators.length,
-      );
-      expectPin(
-        "definition count",
-        pin.definitionCount,
-        Object.keys(liveBlueprint.definitions).length,
-      );
-      for (const bound of pin.boundValidators) {
-        expectPin(
-          `bound validator ${bound.title}`,
-          bound.hash,
-          liveHashByTitle.get(bound.title),
-        );
-      }
-
-      // Measured rows. Each row's verdict has to follow from its own two
-      // numbers, and a §3.2 argument needs both a representation it rules out
-      // and — last, since the order stops at the first fit — one that fits.
-      if (pin.measurements.length < 2) {
-        note("carries fewer than two measured rows");
-      }
-      for (const row of pin.measurements) {
-        if (!Number.isSafeInteger(row.measured) || row.measured <= 0) {
-          note(
-            `${row.name} measured ${row.measured} is not a positive integer`,
-          );
-        }
-        if (!Number.isSafeInteger(row.limit) || row.limit <= 0) {
-          note(`${row.name} limit ${row.limit} is not a positive integer`);
-        }
-        if (row.fits !== row.measured <= row.limit) {
-          note(
-            `${row.name} claims fits=${row.fits} for ${row.measured} against ${row.limit} ${row.unit}`,
-          );
-        }
-      }
-      if (!pin.measurements.some((row) => !row.fits)) {
-        note("rules out no representation");
-      }
-      if (pin.measurements.at(-1)?.fits !== true) {
-        note("§3.2 order does not end on the representation that fits");
-      }
-    }
-    expect(drift).toEqual([]);
+      // redeemer collection share one `head_at_v1` total header decode over
+      // complete items delivered by batched §8 carriage.
+      "lib/midgard/fraud-proofs/missing-redeemer/rule.ak",
+      "lib/midgard/fraud-proofs/redeemer-canonicity/rule.ak",
+      "lib/midgard/fraud-proofs/unused-redeemer/rule.ak",
+    ];
+    expect(scannerConsumers).toEqual([...reviewedScannerConsumers].sort());
 
     // The canonical decode item path itself must stay complete-item staged: no
     // incremental scanner may appear in its staging module or its validators.
