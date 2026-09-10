@@ -40,6 +40,17 @@
  *
  * Typecheck runs first, workspace-wide, exactly as the previous `test`
  * script did — a red typecheck fails the pass before any lane starts.
+ *
+ * Typecheck builds nothing: every package resolves its workspace siblings
+ * from source (the `midgard-source` export condition), so `tsc --noEmit`
+ * needs no `dist`. The one consumer of built output is lane B — midgard-node's
+ * crash-probe child processes and midgard-node-tools' `node --test` files run
+ * under plain node, which resolves the `@al-ft/*` workspace packages to
+ * `dist/`. midgard-node and midgard-node-tools own that build in their
+ * `pretest` scripts (lucid-midgard's prebuild chain covers validation and
+ * core, then the SDK), which lane B runs serially; no other lane builds or
+ * reads `dist`, so no two `tsup --clean` runs can ever unlink the same chunk
+ * again (the race that used to sit inside the typecheck scripts themselves).
  */
 
 import { spawn } from "node:child_process";

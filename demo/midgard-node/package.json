@@ -18,7 +18,7 @@
   "scripts": {
     "clean": "rimraf dist node_modules",
     "build": "tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm",
-    "typecheck": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "quick-test": "pnpm run build && node dist/index.js --help",
@@ -107,6 +107,7 @@
     "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/transactions-utils.test.ts tests/commit-end-time.test.ts tests/scheduler-refresh.test.ts tests/da-payload.test.ts --reporter=basic --disable-console-intercept",
     "test:da-canonical-v1-e2e": "export NODE_ENV='emulator' && export MIDGARD_RUN_DA_PHASE5_JOINED_E2E='1' && vitest run tests/da-hardening.test.ts tests/da-payload-libp2p-producer.test.ts tests/da-multi-peer-integration.test.ts tests/da-multi-process-10k-integration.test.ts tests/da-publication-reconciler-e2e.test.ts --reporter=default",
     "test:da-phase5-10k-smoke": "export NODE_ENV='emulator' && vitest run tests/da-multi-process-10k-integration.test.ts --reporter=default",
+    "pretest": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build",
     "test": "export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
   },
   "keywords": [

@@ -329,6 +329,15 @@ cd midgard-node
 pnpm test
 ```
 
+The suite needs a Postgres server it can create sharded databases on
+(`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_USER`/`POSTGRES_PASSWORD`, default
+`127.0.0.1:5433`, `postgres`/`postgres`). `scripts/start-test-postgres.sh` at
+the repository root starts one with the settings the tests assert
+(`synchronous_commit=on`), reusing any server already listening on the port.
+`pnpm test` builds the workspace packages' `dist/` first because the
+crash-probe tests spawn plain `node` child processes that load those packages
+from `dist/`.
+
 ## Submit A Midgard L2 Transfer
 
 Build and submit a key-signed Midgard-native transfer directly against the
