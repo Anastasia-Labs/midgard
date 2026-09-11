@@ -36,7 +36,10 @@ import {
   type WatcherConfig,
   type WatcherDaPeerConfig,
 } from "../runtime/config.js";
-import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import {
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
+} from "../runtime/deployment-identity.js";
 import {
   makeWatcherDurablePayload,
   type WatcherDaProofInput,
@@ -58,6 +61,11 @@ export type WatcherPublicDaRequest = Readonly<{
   requestCbor: Buffer;
   timeoutMs: number;
   signal: AbortSignal;
+  /** Explicit Custom config and its existing verified identity; never a boolean bypass. */
+  customNetwork?: Readonly<{
+    watcherConfig: WatcherConfig;
+    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  }>;
 }>;
 
 /**
@@ -243,6 +251,7 @@ export class WatcherPublicDaClient {
   private readonly deploymentFingerprintBytes: Buffer;
   private readonly transport: WatcherPublicDaLibp2pTransportV1;
   private readonly clock: WatcherPublicDaClock;
+  private readonly customNetwork?: WatcherPublicDaRequest["customNetwork"];
   private activeRequests = 0;
   private readonly permitWaiters: PermitWaiter[] = [];
 
@@ -266,6 +275,13 @@ export class WatcherPublicDaClient {
       );
       if (this.config.targetNetwork !== options.deploymentIdentity.network) {
         throw new Error("target network mismatch");
+      }
+      if (this.config.targetNetwork === "Custom") {
+        assertVerifiedWatcherDeploymentIdentity(options.deploymentIdentity);
+        this.customNetwork = Object.freeze({
+          watcherConfig: this.config,
+          deploymentIdentity: options.deploymentIdentity,
+        });
       }
       if (
         typeof options.transport !== "object" ||
@@ -904,6 +920,11 @@ export class WatcherPublicDaClient {
           requestCbor: Buffer.from(requestCbor),
           timeoutMs,
           signal: controller.signal,
+          ...(this.customNetwork === undefined
+            ? {}
+            : {
+                customNetwork: this.customNetwork,
+              }),
         }),
         timeout,
       ]);

@@ -353,14 +353,15 @@ export const parseWatcherProcessConfig = (
   const watcherConfig = parseWatcherConfig(input.watcherConfig);
   if (
     watcherConfig.mode !== "acceptance" ||
-    watcherConfig.targetNetwork !== "Preprod" ||
+    (watcherConfig.targetNetwork !== "Preprod" &&
+      watcherConfig.targetNetwork !== "Custom") ||
     watcherConfig.l1.source.sourceMode !== "local_node" ||
     watcherConfig.l1.finality.depth !== 30 ||
     watcherConfig.l1.finality.rollback.maxDepth !== 30 ||
     watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth !== 2160
   ) {
     throw new Error(
-      "watcher production process requires acceptance Preprod local_node authority",
+      "watcher production process requires acceptance Preprod or Custom local_node authority",
     );
   }
   const httpBearerSecretSource = secretSource(
@@ -490,7 +491,7 @@ export const parseWatcherTrustedHeadAuthorityProcessConfig = (
   if (policy === null)
     throw new Error("trusted-head authority policy is invalid");
   if (
-    policy.network !== "Preprod" ||
+    (policy.network !== "Preprod" && policy.network !== "Custom") ||
     policy.sourceMode !== "local_node" ||
     policy.authorityNodeId === null ||
     policy.authorityGenesisIdentitySha256 === null ||
@@ -500,7 +501,7 @@ export const parseWatcherTrustedHeadAuthorityProcessConfig = (
     policy.maximumPostFinalityRecoveryDepth !== "2160"
   ) {
     throw new Error(
-      "trusted-head authority policy requires Preprod local_node authority",
+      "trusted-head authority policy requires Preprod or Custom local_node authority",
     );
   }
   const recordAuthenticationKeySource = secretSource(

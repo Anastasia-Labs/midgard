@@ -3,6 +3,7 @@ import {
   computeFraudProofRawL1PointId,
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
+  LocalKupmiosCheckpointChangedError,
   LocalKupmiosExactPointNotCanonicalError,
   type LocalKupmiosFraudProofRawSource,
   localKupmiosHttpOgmiosRawSourceDetails,
@@ -1531,11 +1532,28 @@ export const createWatcherStateQueueObservationSource = ({
         point,
       }),
   };
+  // All four entry points begin by pinning a new boundary and publish their
+  // observation only after acquisition succeeds. A moving provider head can
+  // therefore retry the whole read while retaining exclusive source ownership.
+  const capture = <T>(read: () => Promise<T>): Promise<T> =>
+    withLocalKupmiosSourceCapture(rawSource, async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          return await read();
+        } catch (error) {
+          if (
+            !(error instanceof LocalKupmiosCheckpointChangedError) ||
+            attempt >= 2
+          )
+            throw error;
+        }
+      }
+    });
   let latestFinalized: WatcherAuthenticatedStateQueueObservation | null = null;
   const source = Object.freeze({
     latestFinalizedObservation: () => latestFinalized,
     observe: ({ nativeBlock, localObservation, previous }) =>
-      withLocalKupmiosSourceCapture(rawSource, async () => {
+      capture(async () => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -1591,7 +1609,7 @@ export const createWatcherStateQueueObservationSource = ({
         return latestFinalized;
       }),
     bootstrap: () =>
-      withLocalKupmiosSourceCapture(rawSource, async () => {
+      capture(async () => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -1629,7 +1647,7 @@ export const createWatcherStateQueueObservationSource = ({
         });
       }),
     restore: ({ persistedObservations }) =>
-      withLocalKupmiosSourceCapture(rawSource, async () => {
+      capture(async () => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -1658,7 +1676,7 @@ export const createWatcherStateQueueObservationSource = ({
         });
       }),
     resolveRetainedHeader: ({ headerHash }) =>
-      withLocalKupmiosSourceCapture(rawSource, async () => {
+      capture(async () => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }

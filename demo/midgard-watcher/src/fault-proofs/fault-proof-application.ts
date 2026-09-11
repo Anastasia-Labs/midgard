@@ -62,6 +62,7 @@ import {
   createManifestBoundMinFeeWorkflow,
   createManifestBoundMintAuthorizationWorkflow,
   createManifestBoundMintDeclaredAssetLimitWorkflow,
+  createManifestBoundMintItemNonCanonicalWorkflow,
   createManifestBoundMissingNativeScriptTxWorkflow,
   createManifestBoundMissingNativeScriptUtxoWorkflow,
   createManifestBoundMissingRedeemerWorkflow,
@@ -96,6 +97,7 @@ import {
   createMinFeeWorkflowRunner,
   createMintAuthorizationWorkflowRunner,
   createMintDeclaredAssetLimitWorkflowRunner,
+  createMintItemNonCanonicalWorkflowRunner,
   createMissingNativeScriptTxWorkflowRunner,
   createMissingNativeScriptUtxoWorkflowRunner,
   createMissingRedeemerWorkflowRunner,
@@ -156,6 +158,7 @@ import {
   type ManifestBoundMinFeeWorkflowConfig,
   type ManifestBoundMintAuthorizationWorkflowConfig,
   type ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
+  type ManifestBoundMintItemNonCanonicalWorkflowConfig,
   type ManifestBoundMissingNativeScriptTxWorkflowConfig,
   type ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
   type ManifestBoundMissingRedeemerWorkflowConfig,
@@ -326,6 +329,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "executionNativeScriptInvalid",
   "scriptIntegrityHashMismatch",
   "distinctAssetAccumulationLimit",
+  "mintItemNonCanonical",
 ] as const);
 
 export type WatcherInstalledWorkflowCategory =
@@ -572,6 +576,10 @@ type TaggedWorkflowConfig =
       config: ManifestBoundTransactionOutputNonCanonicalWorkflowConfig;
     }>
   | Readonly<{
+      category: "mintItemNonCanonical";
+      config: ManifestBoundMintItemNonCanonicalWorkflowConfig;
+    }>
+  | Readonly<{
       category: "resolvedOutputNonCanonical";
       config: ManifestBoundResolvedOutputNonCanonicalWorkflowConfig;
     }>
@@ -686,6 +694,9 @@ export type WatcherFaultProofApplicationDependencies = Readonly<{
     readonly network: WatcherConfig["targetNetwork"];
     readonly kupoHttpUrl: string;
     readonly ogmiosUrl: string;
+    readonly slotConfig?: NonNullable<
+      WatcherConfig["customNetwork"]
+    >["slotConfig"];
   }): Promise<LucidEvolution>;
   resolveSigner(input: {
     readonly network: WatcherConfig["targetNetwork"];
@@ -740,6 +751,10 @@ const constructProductionWorkflow = async (
       );
     case "transactionOutputNonCanonical":
       return await createManifestBoundTransactionOutputNonCanonicalWorkflow(
+        input.config,
+      );
+    case "mintItemNonCanonical":
+      return await createManifestBoundMintItemNonCanonicalWorkflow(
         input.config,
       );
     case "resolvedOutputNonCanonical":
@@ -871,11 +886,12 @@ const productionDependencies: WatcherFaultProofApplicationDependencies =
   Object.freeze({
     readText: async (path) => await readFile(path, "utf8"),
     canonicalPath: realpath,
-    makeLucid: async ({ network, kupoHttpUrl, ogmiosUrl }) =>
+    makeLucid: async ({ network, kupoHttpUrl, ogmiosUrl, slotConfig }) =>
       await makeLucidForSubmit(
         {
           network,
           provider: "Kupmios",
+          slotConfig,
           kupoUrl: kupoHttpUrl,
           ogmiosUrl,
         },
@@ -1573,6 +1589,15 @@ const referenceContracts = (
         ...base,
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
       });
+    case "mintItemNonCanonical":
+      return Object.freeze({
+        step01: "fraudProofMintItemNonCanonical",
+        step02: "fraudProofMintItemNonCanonicalStep02",
+        step03: "fraudProofMintItemNonCanonicalStep03",
+        step04: "fraudProofMintItemNonCanonicalStep04",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
     case "resolvedOutputNonCanonical":
       return Object.freeze({
         step01: "fraudProofResolvedOutputNonCanonical",
@@ -2019,6 +2044,7 @@ const buildCommonInfrastructure = async ({
   const deploymentInfo = parseContractDeploymentInfo(deploymentInfoValue);
   const lucid = await dependencies.makeLucid({
     network: watcherConfig.targetNetwork,
+    slotConfig: watcherConfig.customNetwork?.slotConfig,
     kupoHttpUrl: kupo.endpoint,
     ogmiosUrl: ogmios.endpoint,
   });
@@ -2293,6 +2319,10 @@ function taggedConfig(
   TaggedWorkflowConfig,
   { readonly category: "transactionOutputNonCanonical" }
 >;
+function taggedConfig(
+  category: "mintItemNonCanonical",
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "mintItemNonCanonical" }>;
 function taggedConfig(
   category: "resolvedOutputNonCanonical",
   common: CommonInfrastructure,
@@ -3280,6 +3310,26 @@ function taggedConfig(
           }),
         }),
       });
+    case "mintItemNonCanonical":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          stateQueueMutationLeaseCoordinator:
+            common.stateQueueMutationLeaseCoordinator,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            step04: reference("step04"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
     case "resolvedOutputNonCanonical":
       return Object.freeze({
         category,
@@ -3906,6 +3956,15 @@ const taggedReferenceOutRefs = (
           ...Object.values(tagged.config.referenceScripts.witnesses),
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
         ];
+      case "mintItemNonCanonical":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02,
+          tagged.config.referenceScripts.step03,
+          tagged.config.referenceScripts.step04,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
       case "resolvedOutputNonCanonical":
         return [
           tagged.config.referenceScripts.step01,
@@ -4323,6 +4382,9 @@ const createApplication = ({
     category: "transactionOutputNonCanonical",
   ): TaggedWorkflowLoaderFor<"transactionOutputNonCanonical">;
   function makeTaggedLoader(
+    category: "mintItemNonCanonical",
+  ): TaggedWorkflowLoaderFor<"mintItemNonCanonical">;
+  function makeTaggedLoader(
     category: "resolvedOutputNonCanonical",
   ): TaggedWorkflowLoaderFor<"resolvedOutputNonCanonical">;
   function makeTaggedLoader(
@@ -4441,6 +4503,7 @@ const createApplication = ({
     transactionOutputNonCanonical: makeTaggedLoader(
       "transactionOutputNonCanonical",
     ),
+    mintItemNonCanonical: makeTaggedLoader("mintItemNonCanonical"),
     resolvedOutputNonCanonical: makeTaggedLoader("resolvedOutputNonCanonical"),
     mintDeclaredAssetLimit: makeTaggedLoader("mintDeclaredAssetLimit"),
     spendInputSignerMissing: makeTaggedLoader("spendInputSignerMissing"),
@@ -4968,6 +5031,20 @@ const createApplication = ({
       tagged: loaded.config,
     });
   };
+  const mintItemNonCanonicalLoader = async (
+    input: Parameters<(typeof taggedLoaders)["mintItemNonCanonical"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.mintItemNonCanonical(input);
+    if (loaded.config.category !== "mintItemNonCanonical") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
   const resolvedOutputNonCanonicalLoader = async (
     input: Parameters<(typeof taggedLoaders)["resolvedOutputNonCanonical"]>[0],
   ) => {
@@ -5418,6 +5495,10 @@ const createApplication = ({
         transactionOutputNonCanonicalLoader,
         fundingProfile("transactionOutputNonCanonical"),
       ),
+    mintItemNonCanonical: createMintItemNonCanonicalWorkflowRunner(
+      mintItemNonCanonicalLoader,
+      fundingProfile("mintItemNonCanonical"),
+    ),
     resolvedOutputNonCanonical: createResolvedOutputNonCanonicalWorkflowRunner(
       resolvedOutputNonCanonicalLoader,
       fundingProfile("resolvedOutputNonCanonical"),
@@ -5599,6 +5680,7 @@ const createApplication = ({
       });
       const lucid = await dependencies.makeLucid({
         network: watcherConfig.targetNetwork,
+        slotConfig: watcherConfig.customNetwork?.slotConfig,
         kupoHttpUrl: kupo.endpoint,
         ogmiosUrl: ogmios.endpoint,
       });

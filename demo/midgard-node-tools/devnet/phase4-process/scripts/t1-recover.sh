@@ -207,6 +207,7 @@ node "$dist" phase4-t1-probe \
 # This is the only destructive section: restore Cardano and Kupo from their
 # matched archives while keeping Postgres, its container, and every journal
 # byte untouched. The Midgard listen process is already stopped by the caller.
+node "$script_dir/check-recovery-window.mjs" "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" "$snapshot_dir/cardano-tip.json"
 compose_quiet stop kupo ogmios cardano-node
 restore_chain_dir() {
   archive=$1
@@ -247,6 +248,7 @@ done
 cmp -s "$snapshot_dir/phas-registration-proof.json" "$evidence_dir/restored-phas-registration-proof.json" \
   || die "T1 chain restore changed the frozen PHAS registration proof"
 
+node "$script_dir/check-recovery-window.mjs" "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" "$snapshot_dir/cardano-tip.json"
 MIDGARD_PHASE4_BLOCK_PRODUCER=true compose_quiet up --detach --force-recreate cardano-node
 grant_cardano_socket_access
 compose_quiet restart ogmios

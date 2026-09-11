@@ -6,6 +6,7 @@ import {
   credentialToAddress,
   scriptHashToCredential,
 } from "@lucid-evolution/lucid";
+import JSONBig from "json-bigint";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -95,6 +96,7 @@ const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
 class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
   readonly listeners = new Map<string, ((event: never) => void)[]>();
   nextCount = 0;
+  originIntersection = false;
   intersection = { slot: 380, id: ANCESTOR };
   closeCount = 0;
   readonly frames: string[] = [];
@@ -105,10 +107,12 @@ class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
     private readonly parentHeight = 70,
     private readonly behavior: Readonly<{
       open?: boolean;
+      close?: boolean;
       respond?: boolean;
       responseText?: string;
       sendError?: boolean;
       childHeight?: number;
+      tipHeight?: number;
     }> = {},
   ) {
     if (behavior.open !== false) queueMicrotask(() => this.emit("open", {}));
@@ -135,17 +139,25 @@ class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
       readonly id: number;
       readonly method: string;
       readonly params?: {
-        readonly points: readonly { slot: number; id: string }[];
+        readonly points: readonly ({ slot: number; id: string } | "origin")[];
       };
     };
     if (request.method === "findIntersection") {
-      this.intersection = request.params!.points[0]!;
+      const point = request.params!.points[0]!;
+      this.originIntersection = point === "origin";
+      if (point !== "origin") this.intersection = point;
     }
     const result =
       request.method === "findIntersection"
         ? {
-            intersection: this.intersection,
-            tip: { slot: 1000, id: TIP },
+            intersection: this.originIntersection
+              ? "origin"
+              : this.intersection,
+            tip: {
+              slot: 1000,
+              id: TIP,
+              height: this.behavior.tipHeight ?? 100,
+            },
           }
         : this.nextCount++ === 0
           ? { direction: "backward", point: this.intersection }
@@ -181,6 +193,8 @@ class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
 
   close(): void {
     this.closeCount += 1;
+    if (this.behavior.close !== false)
+      this.emit("close", { code: 1000, reason: "", wasClean: true });
   }
 
   emit(type: string, event: unknown): void {
@@ -196,20 +210,19 @@ const response = (
   oversized = false,
   headHash = KUP0_HEAD,
 ): Response =>
-  new Response(JSON.stringify(value), {
+  new Response(JSONBig.stringify(value), {
     status: 200,
     headers: checkpointHeaders
       ? {
           "content-type": "application/json",
           "x-most-recent-checkpoint": "990",
-          etag: `"${headHash}"`,
+          etag: headHash,
           ...(oversized ? { "content-length": "67108865" } : {}),
         }
       : { "content-type": "application/json" },
   });
 
 const sourceFixture = ({
-  numericCoin = false,
   oversizedKupo = false,
   blockTransactions = [],
   kupoMatches = [],
@@ -224,7 +237,6 @@ const sourceFixture = ({
   fetchOverride,
   beforeFetch,
 }: {
-  readonly numericCoin?: boolean;
   readonly oversizedKupo?: boolean;
   readonly blockTransactions?: readonly unknown[];
   readonly kupoMatches?: readonly unknown[];
@@ -267,7 +279,7 @@ const sourceFixture = ({
       const override = checkpointOverride?.(slot);
       const checkpoint =
         override ??
-        (slot === 400
+        (slot >= 400
           ? { slot_no: 400, header_hash: TARGET }
           : slot === 399 || slot === 380
             ? { slot_no: 380, header_hash: ANCESTOR }
@@ -278,33 +290,13 @@ const sourceFixture = ({
         return response(
           { slot_no: checkpoint.slot_no, header_hash: checkpoint.header_hash },
           true,
-          oversizedKupo && slot === 400,
+          oversizedKupo,
           override?.headHash,
         );
       }
     }
     if (url.includes("/matches/")) {
-      return response(
-        numericCoin
-          ? [
-              {
-                transaction_index: 0,
-                transaction_id: hash(7),
-                output_index: 0,
-                address:
-                  "addr_test1wzj2e2d2x6ns5w50z3h2zlaurqu4h9tpuv7zpkg6dj6xefcp4x24g",
-                value: { coins: 3_000_000, assets: {} },
-                datum_hash: null,
-                script_hash: null,
-                created_at: { slot_no: 390, header_hash: hash(8) },
-                spent_at: null,
-                datum: null,
-                script: null,
-              },
-            ]
-          : kupoMatches,
-        true,
-      );
+      return response(kupoMatches, true);
     }
     throw new Error(`unexpected request ${url}`);
   };
@@ -327,7 +319,7 @@ const sourceFixture = ({
         blockTransactions,
         childAncestor,
         parentHeight,
-        socketBehavior,
+        { ...socketBehavior, tipHeight },
       );
       sockets.push(socket);
       resolveSocket(socket);
@@ -350,10 +342,8 @@ describe("shared concrete Kupmios snapshot captures", () => {
         scanStarted = resolve;
       });
       let firstScan = true;
-      let tipQueries = 0;
       const fixture = sourceFixture({
         beforeFetch: async (url) => {
-          if (url === "http://127.0.0.1:1337") tipQueries += 1;
           if (url.includes("/matches/") && firstScan) {
             firstScan = false;
             scanStarted();
@@ -390,13 +380,17 @@ describe("shared concrete Kupmios snapshot captures", () => {
       await started;
       const second = secondAuthority.capture(request);
       await new Promise<void>((resolve) => setImmediate(resolve));
-      const tipQueriesWhilePending = tipQueries;
+      const tipQueriesWhilePending = fixture.sockets.filter(
+        (socket) => socket.originIntersection,
+      ).length;
       releaseScan();
       const snapshots = await Promise.all([first, second]);
       expect(tipQueriesWhilePending).toBe(1);
       expect(snapshots[0]).toEqual(snapshots[1]);
       // Each capture independently establishes and finally rechecks its boundary.
-      expect(tipQueries).toBe(4);
+      expect(
+        fixture.sockets.filter((socket) => socket.originIntersection),
+      ).toHaveLength(4);
       expect(snapshots[0]).toMatchObject({
         cursor: { point: chainPoint(), confirmationDepth: 30 },
       });
@@ -453,7 +447,7 @@ describe("admitted historical Kupmios page contexts", () => {
         complete: true,
       });
       expect(
-        fixture.requests.filter(({ url }) => url === "http://127.0.0.1:1337"),
+        fixture.sockets.filter((socket) => socket.originIntersection),
       ).toHaveLength(1);
     },
   );
@@ -535,6 +529,79 @@ describe("admitted historical Kupmios page contexts", () => {
   });
 });
 
+describe("release-final boundary selection", () => {
+  it.each([1, 20])(
+    "selects the most recent final block with %i slots per block",
+    async (spacing) => {
+      const tipSlot = 1000;
+      const pointHash = (slot: number) => slot.toString(16).padStart(64, "0");
+      const tip = {
+        slot: tipSlot,
+        id: pointHash(tipSlot),
+        height: tipSlot / spacing,
+      };
+      const source = createLocalKupmiosHttpOgmiosRawSource({
+        sourceId: `boundary-spacing-${spacing}`,
+        kupoHttpUrl: "http://127.0.0.1:1442",
+        ogmiosUrl: "http://127.0.0.1:1337",
+        releaseFinality,
+        fetchImpl: async (url) => {
+          const requestedSlot = Number(new URL(url).pathname.split("/").at(-1));
+          const slot = Math.floor(requestedSlot / spacing) * spacing;
+          return response(
+            { slot_no: slot, header_hash: pointHash(slot) },
+            true,
+          );
+        },
+        webSocketFactory: () => {
+          const socket = new OgmiosBoundarySocket();
+          let intersection: "origin" | { slot: number; id: string } = "origin";
+          let acknowledge = true;
+          socket.send = (data) => {
+            const request = JSON.parse(data);
+            let result: unknown;
+            if (request.method === "findIntersection") {
+              intersection = request.params.points[0];
+              acknowledge = true;
+              result = { intersection, tip };
+            } else if (acknowledge) {
+              acknowledge = false;
+              result = { direction: "backward", point: intersection };
+            } else {
+              if (intersection === "origin")
+                throw new Error("Expected exact intersection");
+              const slot = intersection.slot + spacing;
+              result = {
+                direction: "forward",
+                block: {
+                  slot,
+                  id: pointHash(slot),
+                  height: slot / spacing,
+                  ancestor: intersection.id,
+                  transactions: [],
+                },
+              };
+            }
+            queueMicrotask(() =>
+              socket.emit("message", {
+                data: JSON.stringify({
+                  jsonrpc: "2.0",
+                  id: request.id,
+                  result,
+                }),
+              }),
+            );
+          };
+          return socket;
+        },
+      });
+      const boundary = await readAdmittedLocalKupmiosBoundary({ source });
+      expect(boundary.kupoCheckpoint.blockNo).toBe(String(tip.height - 29));
+      expect(boundary.kupoCheckpoint.slot).toBe(String(tipSlot - 29 * spacing));
+    },
+  );
+});
+
 describe("concrete Kupmios transport cancellation and response bounds", () => {
   it("rejects invalid bounds and a non-platform signal before acquisition", () => {
     for (const maxResponseBytes of [0, -1, 1.5, Number.NaN, 67_108_865]) {
@@ -585,7 +652,8 @@ describe("concrete Kupmios transport cancellation and response bounds", () => {
     controller.abort();
     expect(await outcome).toMatchObject({ name: "AbortError" });
     expect(requestSignal?.aborted).toBe(true);
-    expect(fixture.sockets).toHaveLength(0);
+    expect(fixture.sockets).toHaveLength(1);
+    expect(fixture.sockets[0]!.closeCount).toBe(1);
     expect(remove).toHaveBeenCalledWith("abort", add.mock.calls[0]![1]);
     await expect(fixture.source.readBoundary()).rejects.toThrow("aborted");
     expect(fixture.requests).toHaveLength(1);
@@ -626,14 +694,15 @@ describe("concrete Kupmios transport cancellation and response bounds", () => {
     for (const declared of [false, true]) {
       const cancel = vi.fn();
       const body = new ReadableStream<Uint8Array>({
-        start: (stream) => stream.enqueue(new TextEncoder().encode("{} ")),
+        start: (stream) =>
+          stream.enqueue(new TextEncoder().encode(" ".repeat(1025))),
         cancel,
       });
       const fixture = sourceFixture({
-        maxResponseBytes: 2,
+        maxResponseBytes: 1024,
         fetchOverride: async () =>
           new Response(body, {
-            headers: declared ? { "content-length": "3" } : {},
+            headers: declared ? { "content-length": "1025" } : {},
           }),
       });
       await expect(fixture.source.readBoundary()).rejects.toThrow(
@@ -643,10 +712,146 @@ describe("concrete Kupmios transport cancellation and response bounds", () => {
       expect(body.locked).toBe(false);
     }
     const exact = sourceFixture({
-      maxResponseBytes: 2,
-      fetchOverride: async () => new Response("{}"),
+      maxResponseBytes: 1024,
+      fetchOverride: async () => new Response("{}" + " ".repeat(1022)),
     });
-    await expect(exact.source.readBoundary()).rejects.toThrow("Ogmios tip");
+    await expect(exact.source.readBoundary()).rejects.toThrow(
+      "Kupo response omitted",
+    );
+  });
+
+  it("bounds physical Ogmios sessions across simultaneous source instances", async () => {
+    const controllers = Array.from({ length: 9 }, () => new AbortController());
+    const fixtures = controllers.map((controller) =>
+      sourceFixture({
+        signal: controller.signal,
+        socketBehavior: { respond: false },
+      }),
+    );
+    const outcomes = fixtures.map((fixture) =>
+      fixture.source.readBoundary().catch((error: unknown) => error),
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(
+          fixtures.flatMap(({ sockets }) => sockets).length,
+        ).toBeGreaterThanOrEqual(4),
+      );
+      expect(fixtures.flatMap(({ sockets }) => sockets)).toHaveLength(4);
+    } finally {
+      controllers.forEach((controller) => controller.abort());
+      await Promise.all(outcomes);
+    }
+  });
+
+  it("holds capacity through delayed physical close and cancels queued acquisition", async () => {
+    const controllers = Array.from({ length: 6 }, () => new AbortController());
+    const fixtures = controllers.map((controller) =>
+      sourceFixture({
+        signal: controller.signal,
+        socketBehavior: { respond: false, close: false },
+      }),
+    );
+    const outcomes = fixtures.map((fixture) =>
+      fixture.source.readBoundary().catch((error: unknown) => error),
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(fixtures.flatMap(({ sockets }) => sockets)).toHaveLength(4),
+      );
+      controllers[5]!.abort();
+      expect(await outcomes[5]).toMatchObject({ name: "AbortError" });
+      controllers[0]!.abort();
+      await vi.waitFor(() =>
+        expect(fixtures[0]!.sockets[0]!.closeCount).toBe(1),
+      );
+      expect(fixtures.flatMap(({ sockets }) => sockets)).toHaveLength(4);
+      fixtures[0]!.sockets[0]!.emit("close", { code: 1000 });
+      await vi.waitFor(() => expect(fixtures[4]!.sockets).toHaveLength(1));
+      expect(fixtures[5]!.sockets).toHaveLength(0);
+    } finally {
+      controllers.forEach((controller) => controller.abort());
+      fixtures
+        .flatMap(({ sockets }) => sockets)
+        .forEach((socket) => socket.emit("close", { code: 1000 }));
+      await Promise.all(outcomes);
+    }
+    expect(
+      fixtures
+        .flatMap(({ sockets }) => sockets)
+        .every((socket) => [...socket.listeners.values()].flat().length === 0),
+    ).toBe(true);
+  });
+
+  it("fails boundedly without releasing physically unclosed capacity", async () => {
+    vi.useFakeTimers();
+    const fixtures = Array.from({ length: 5 }, () =>
+      sourceFixture({ timeoutMs: 25, socketBehavior: { close: false } }),
+    );
+    const outcomes = fixtures.map((fixture) =>
+      fixture.source.readBoundary().catch((error: unknown) => error),
+    );
+    try {
+      await vi.advanceTimersByTimeAsync(25);
+      const failures = await Promise.all(outcomes);
+      expect(
+        failures.slice(0, 4).map((error) => (error as Error).message),
+      ).toEqual(Array(4).fill("Ogmios physical socket close timed out"));
+      expect(failures[4]).toMatchObject({
+        message: "Ogmios session capacity wait timed out",
+      });
+      expect(fixtures.flatMap(({ sockets }) => sockets)).toHaveLength(4);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      fixtures
+        .flatMap(({ sockets }) => sockets)
+        .forEach((socket) => socket.emit("close", { code: 1000 }));
+      await Promise.all(outcomes);
+      vi.useRealTimers();
+    }
+    await expect(sourceFixture().source.readBoundary()).resolves.toBeDefined();
+  });
+
+  it("retains close diagnostics and rejects the failed RPC without retrying", async () => {
+    const fixture = sourceFixture({ socketBehavior: { respond: false } });
+    const outcome = fixture.source
+      .readBoundary()
+      .catch((error: unknown) => error);
+    await fixture.socketCreated;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    fixture.sockets[0]!.emit("close", {
+      code: 1011,
+      reason: "node connection resource exhausted",
+      wasClean: true,
+    });
+    const error = await outcome;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(
+      '"pendingMethods":["findIntersection"]',
+    );
+    expect((error as Error).message).toContain('"code":1011');
+    expect((error as Error).message).toContain(
+      "node connection resource exhausted",
+    );
+    expect(fixture.sockets).toHaveLength(1);
+    expect([...fixture.sockets[0]!.listeners.values()].flat()).toHaveLength(0);
+  });
+
+  it("deduplicates concurrent reads of one exact block before taking session capacity", async () => {
+    const fixture = sourceFixture();
+    const blocks = await Promise.all(
+      Array.from({ length: 9 }, () =>
+        readAdmittedLocalKupmiosRawBlockAtPoint({
+          source: fixture.source,
+          point: chainPoint(),
+        }),
+      ),
+    );
+    expect(blocks.every((block) => block.point.blockHash === TARGET)).toBe(
+      true,
+    );
+    expect(fixture.sockets).toHaveLength(1);
+    expect(fixture.sockets[0]!.closeCount).toBe(1);
   });
 
   it.each(["opening", "request"] as const)(
@@ -856,25 +1061,69 @@ describe("production local Kupmios raw source V1", () => {
     );
   });
 
-  it("rejects Kupo's numeric default rather than losing asset precision", async () => {
-    const fixture = sourceFixture({ numericCoin: true });
-    const boundary = (await fixture.source.readBoundary()) as {
-      readonly kupoCheckpoint: {
-        readonly slot: string;
-        readonly blockHash: string;
-        readonly blockNo: string;
-        readonly pointId: string;
+  it.each([3_000_000n, 9_007_199_254_740_993n])(
+    "preserves exact numeric Kupo lovelace %s through raw CBOR admission",
+    async (coins) => {
+      const address = credentialToAddress(
+        "Preprod",
+        scriptHashToCredential("31".repeat(28)),
+      );
+      const output = CML.TransactionOutput.new(
+        CML.Address.from_bech32(address),
+        CML.Value.from_coin(coins),
+      );
+      const outputs = CML.TransactionOutputList.new();
+      outputs.add(output);
+      const body = CML.TransactionBody.new(
+        CML.TransactionInputList.new(),
+        outputs,
+        0n,
+      );
+      const transaction = CML.Transaction.new(
+        body,
+        CML.TransactionWitnessSet.new(),
+        true,
+      );
+      const id = CML.hash_transaction(body).to_hex();
+      const match = {
+        transaction_index: 0,
+        transaction_id: id,
+        output_index: 0,
+        address,
+        value: { coins, assets: {} },
+        datum_hash: null,
+        script_hash: null,
+        created_at: { slot_no: 400, header_hash: TARGET },
+        spent_at: null,
+        datum: null,
+        script: null,
       };
-    };
-    await expect(
-      fixture.source.scanAddressPage({
-        address:
-          "addr_test1wzj2e2d2x6ns5w50z3h2zlaurqu4h9tpuv7zpkg6dj6xefcp4x24g",
-        throughPoint: boundary.kupoCheckpoint,
-        after: null,
-      }),
-    ).rejects.toThrow(/coins must be canonical lovelace/u);
-  });
+      const fixture = sourceFixture({
+        blockTransactions: [{ id, cbor: transaction.to_canonical_cbor_hex() }],
+        kupoMatches: [match],
+      });
+      const boundary = await readAdmittedLocalKupmiosBoundary({
+        source: fixture.source,
+      });
+      await expect(
+        fixture.source.scanAddressPage({
+          address,
+          throughPoint: boundary.kupoCheckpoint,
+          after: null,
+        }),
+      ).resolves.toMatchObject({
+        utxos: [{ outputCbor: output.to_canonical_cbor_hex() }],
+      });
+      if (coins > BigInt(Number.MAX_SAFE_INTEGER)) {
+        expect(() =>
+          admitKupoMatchAgainstTransactionOutput({
+            match: { ...match, value: { coins: Number(coins), assets: {} } },
+            outputCbor: output.to_canonical_cbor_hex(),
+          }),
+        ).toThrow("exact nonnegative quantity");
+      }
+    },
+  );
 
   it("binds Kupo value and reference-script identity to raw output CBOR", () => {
     const script = CML.Script.new_plutus_v3(
@@ -902,7 +1151,12 @@ describe("production local Kupmios raw source V1", () => {
       created_at: { slot_no: 390, header_hash: hash(8) },
       spent_at: null,
       datum: null,
-      script: outputScript.to_canonical_cbor_hex(),
+      script: {
+        language: "plutus:v3",
+        script: Buffer.from(
+          outputScript.as_plutus_v3()!.to_raw_bytes(),
+        ).toString("hex"),
+      },
     };
     expect(() =>
       admitKupoMatchAgainstTransactionOutput({
@@ -920,9 +1174,7 @@ describe("production local Kupmios raw source V1", () => {
       admitKupoMatchAgainstTransactionOutput({
         match: {
           ...match,
-          script: CML.Script.new_plutus_v3(
-            CML.PlutusV3Script.from_raw_bytes(Uint8Array.from([9])),
-          ).to_canonical_cbor_hex(),
+          script: { language: "plutus:v3", script: "09" },
         },
         outputCbor: output.to_canonical_cbor_hex(),
       }),
@@ -1259,6 +1511,50 @@ describe("production local Kupmios raw source V1", () => {
         point: chainPoint(),
       }),
     ).rejects.toBeInstanceOf(LocalKupmiosExactPointNotCanonicalError);
+  });
+
+  it("preserves a changed response head during final canonical confirmation", async () => {
+    let advanceHead = false;
+    const fixture = sourceFixture({
+      checkpointOverride: (slot) =>
+        advanceHead && slot === 399
+          ? { slot_no: 380, header_hash: ANCESTOR, headHash: hash(0xef) }
+          : undefined,
+    });
+    await fixture.source.readBoundary();
+    advanceHead = true;
+    await expect(
+      fixture.source.confirmCanonicalPoint({ point: chainPoint() }),
+    ).rejects.toThrow(
+      "Kupo advanced or rolled back during raw snapshot capture",
+    );
+  });
+
+  it("propagates final canonical-read failure without inventing a rollback", async () => {
+    let fail = false;
+    const originalError = new Error(
+      "ordinary final checkpoint transport failure",
+    );
+    const fixture = sourceFixture({
+      beforeFetch: async (url) => {
+        if (fail && url.endsWith("/checkpoints/399")) throw originalError;
+      },
+    });
+    await fixture.source.readBoundary();
+    fail = true;
+    await expect(
+      fixture.source.confirmCanonicalPoint({ point: chainPoint() }),
+    ).rejects.toBe(originalError);
+  });
+
+  it("reports a successfully observed point mismatch as noncanonical", async () => {
+    const behavior = { childHeight: 71 };
+    const fixture = sourceFixture({ socketBehavior: behavior });
+    await fixture.source.readBoundary();
+    behavior.childHeight = 72;
+    await expect(
+      fixture.source.confirmCanonicalPoint({ point: chainPoint() }),
+    ).resolves.toEqual({ canonical: false, point: chainPoint() });
   });
 
   it("preserves capture-head refusal during predecessor acquisition", async () => {
@@ -1671,7 +1967,7 @@ describe("captured reference-body reader bounds", () => {
             });
           const headers = {
             "x-most-recent-checkpoint": "990",
-            etag: `"${KUP0_HEAD}"`,
+            etag: KUP0_HEAD,
           };
           if (!fallback) return new Response(text, { headers });
           const bytes = new TextEncoder().encode(text);
@@ -1710,7 +2006,7 @@ describe("captured reference-body reader bounds", () => {
           {
             headers: {
               "x-most-recent-checkpoint": "990",
-              etag: `"${KUP0_HEAD}"`,
+              etag: KUP0_HEAD,
             },
           },
         );

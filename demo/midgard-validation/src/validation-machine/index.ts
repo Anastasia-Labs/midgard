@@ -40,7 +40,10 @@ export {
   redeemerPointerMatchesPurpose,
   redeemerTagForPurposeKind,
 } from "./redeemer-purpose.js";
-export { buildDeterministicValidationMachineTrace } from "./trace-builder.js";
+export {
+  buildDeterministicValidationMachineTrace,
+  DirectValidationTraceUnavailable,
+} from "./trace-builder.js";
 export {
   type DeterministicValidationMachineTrace,
   type ValidationMachineReplayInput,

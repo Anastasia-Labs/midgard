@@ -29,6 +29,7 @@ import { expect, it, vi } from "vitest";
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import { makeWatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
+import { WatcherLocalKupmios } from "../../src/l1/native-reward-account.js";
 import {
   parseWatcherProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -310,6 +311,10 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     vi.spyOn(Kupmios.prototype, "getRewardAccount").mockImplementation(
       (address) => provider.getRewardAccount(address),
     );
+    vi.spyOn(
+      WatcherLocalKupmios.prototype,
+      "getRewardAccount",
+    ).mockImplementation((address) => provider.getRewardAccount(address));
     vi.spyOn(Kupmios.prototype, "submitTx").mockImplementation((cbor) =>
       provider.submitTx(cbor),
     );

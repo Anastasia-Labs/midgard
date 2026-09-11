@@ -476,9 +476,13 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
   "fraudProofScriptIntegrityHashMissingStep04",
   "fraudProofTransactionOutputNonCanonical",
+  "fraudProofMintItemNonCanonical",
   "fraudProofTransactionOutputNonCanonicalStep02",
+  "fraudProofMintItemNonCanonicalStep02",
   "fraudProofTransactionOutputNonCanonicalStep03",
+  "fraudProofMintItemNonCanonicalStep03",
   "fraudProofTransactionOutputNonCanonicalStep04",
+  "fraudProofMintItemNonCanonicalStep04",
   "fraudProofResolvedOutputNonCanonical",
   "fraudProofResolvedOutputNonCanonicalStep02",
   "fraudProofResolvedOutputNonCanonicalStep03",
@@ -643,6 +647,7 @@ export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
     "executionNativeScriptInvalid",
     "scriptIntegrityHashMismatch",
     "distinctAssetAccumulationLimit",
+    "mintItemNonCanonical",
   ] as const);
 
 export type DeploymentManifestFraudProofCatalogueCategory =
@@ -688,6 +693,7 @@ export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY =
     witnessScriptDecoding: "fraudProofWitnessScriptDecoding",
     scriptIntegrityHashMissing: "fraudProofScriptIntegrityHashMissing",
     transactionOutputNonCanonical: "fraudProofTransactionOutputNonCanonical",
+    mintItemNonCanonical: "fraudProofMintItemNonCanonical",
     resolvedOutputNonCanonical: "fraudProofResolvedOutputNonCanonical",
     mintDeclaredAssetLimit: "fraudProofMintDeclaredAssetLimit",
     spendInputSignerMissing: "fraudProofSpendInputSignerMissing",
@@ -751,6 +757,7 @@ export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS =
     witnessScriptDecoding: "00000022",
     scriptIntegrityHashMissing: "00000023",
     transactionOutputNonCanonical: "00000029",
+    mintItemNonCanonical: "00000036",
     resolvedOutputNonCanonical: "00000026",
     mintDeclaredAssetLimit: "0000002c",
     spendInputSignerMissing: "00000027",
@@ -1537,12 +1544,20 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofScriptIntegrityHashMissingStep04",
     "V1 fraud-proof transaction-output-non-canonical step-01":
       "fraudProofTransactionOutputNonCanonical",
+    "V1 fraud-proof mint-item-non-canonical step-01":
+      "fraudProofMintItemNonCanonical",
     "V1 fraud-proof transaction-output-non-canonical step-02":
       "fraudProofTransactionOutputNonCanonicalStep02",
+    "V1 fraud-proof mint-item-non-canonical step-02":
+      "fraudProofMintItemNonCanonicalStep02",
     "V1 fraud-proof transaction-output-non-canonical step-03":
       "fraudProofTransactionOutputNonCanonicalStep03",
+    "V1 fraud-proof mint-item-non-canonical step-03":
+      "fraudProofMintItemNonCanonicalStep03",
     "V1 fraud-proof transaction-output-non-canonical step-04":
       "fraudProofTransactionOutputNonCanonicalStep04",
+    "V1 fraud-proof mint-item-non-canonical step-04":
+      "fraudProofMintItemNonCanonicalStep04",
     "V1 fraud-proof resolved-output-non-canonical step-01":
       "fraudProofResolvedOutputNonCanonical",
     "V1 fraud-proof resolved-output-non-canonical step-02":
@@ -2326,12 +2341,20 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1FpIntegrityMissingS04",
   "V1 fraud-proof transaction-output-non-canonical step-01":
     "V1FpTxOutputCanonicalS01",
+  "V1 fraud-proof mint-item-non-canonical step-01":
+    "V1FpMintItemNonCanonicalS01",
   "V1 fraud-proof transaction-output-non-canonical step-02":
     "V1FpTxOutputCanonicalS02",
+  "V1 fraud-proof mint-item-non-canonical step-02":
+    "V1FpMintItemNonCanonicalS02",
   "V1 fraud-proof transaction-output-non-canonical step-03":
     "V1FpTxOutputCanonicalS03",
+  "V1 fraud-proof mint-item-non-canonical step-03":
+    "V1FpMintItemNonCanonicalS03",
   "V1 fraud-proof transaction-output-non-canonical step-04":
     "V1FpTxOutputCanonicalS04",
+  "V1 fraud-proof mint-item-non-canonical step-04":
+    "V1FpMintItemNonCanonicalS04",
   "V1 fraud-proof resolved-output-non-canonical step-01":
     "V1FpResolvedOutputS01",
   "V1 fraud-proof resolved-output-non-canonical step-02":

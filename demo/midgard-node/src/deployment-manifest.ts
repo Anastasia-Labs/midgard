@@ -485,9 +485,13 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
   "fraudProofScriptIntegrityHashMissingStep04",
   "fraudProofTransactionOutputNonCanonical",
+  "fraudProofMintItemNonCanonical",
   "fraudProofTransactionOutputNonCanonicalStep02",
+  "fraudProofMintItemNonCanonicalStep02",
   "fraudProofTransactionOutputNonCanonicalStep03",
+  "fraudProofMintItemNonCanonicalStep03",
   "fraudProofTransactionOutputNonCanonicalStep04",
+  "fraudProofMintItemNonCanonicalStep04",
   "fraudProofResolvedOutputNonCanonical",
   "fraudProofResolvedOutputNonCanonicalStep02",
   "fraudProofResolvedOutputNonCanonicalStep03",
@@ -1340,12 +1344,20 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofScriptIntegrityHashMissingStep04",
     "V1 fraud-proof transaction-output-non-canonical step-01":
       "fraudProofTransactionOutputNonCanonical",
+    "V1 fraud-proof mint-item-non-canonical step-01":
+      "fraudProofMintItemNonCanonical",
     "V1 fraud-proof transaction-output-non-canonical step-02":
       "fraudProofTransactionOutputNonCanonicalStep02",
+    "V1 fraud-proof mint-item-non-canonical step-02":
+      "fraudProofMintItemNonCanonicalStep02",
     "V1 fraud-proof transaction-output-non-canonical step-03":
       "fraudProofTransactionOutputNonCanonicalStep03",
+    "V1 fraud-proof mint-item-non-canonical step-03":
+      "fraudProofMintItemNonCanonicalStep03",
     "V1 fraud-proof transaction-output-non-canonical step-04":
       "fraudProofTransactionOutputNonCanonicalStep04",
+    "V1 fraud-proof mint-item-non-canonical step-04":
+      "fraudProofMintItemNonCanonicalStep04",
     "V1 fraud-proof resolved-output-non-canonical step-01":
       "fraudProofResolvedOutputNonCanonical",
     "V1 fraud-proof resolved-output-non-canonical step-02":
@@ -2032,6 +2044,7 @@ const validateFraudProofCatalogue = (
     witnessScriptDecoding: "fraudProofWitnessScriptDecoding",
     scriptIntegrityHashMissing: "fraudProofScriptIntegrityHashMissing",
     transactionOutputNonCanonical: "fraudProofTransactionOutputNonCanonical",
+    mintItemNonCanonical: "fraudProofMintItemNonCanonical",
     resolvedOutputNonCanonical: "fraudProofResolvedOutputNonCanonical",
     mintDeclaredAssetLimit: "fraudProofMintDeclaredAssetLimit",
     spendInputSignerMissing: "fraudProofSpendInputSignerMissing",

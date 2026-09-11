@@ -1,4 +1,5 @@
 import {
+  assertWorkflowActuationPermitIdentity,
   createWorkflowFundingReservationPermit,
   createWorkflowRuntimeFundingPolicy,
   type WorkflowActuationPermit,
@@ -28,6 +29,7 @@ import {
 } from "./prover-funding.js";
 import type { WatcherRuntimeProverFundingCalculation } from "./prover-funding-calculation.js";
 import { calculateWatcherRuntimeProverFunding } from "./prover-funding-calculation.js";
+import { authorizeWatcherProverFundingRecovery } from "./prover-funding-recovery.js";
 import {
   parseWatcherProverFundingReservationRecord,
   planWatcherProverFundingReservation,
@@ -242,16 +244,21 @@ export const createWatcherProverFundingAuthority = async (input: {
       transactionHash,
     }: Parameters<WorkflowFundingReservationPort["confirm"]>[0]) => {
       const current = await load();
-      const pending = current.pendingTransition;
-      if (pending?.transactionHash !== transactionHash) {
-        throw new Error("prover funding confirmation changed transaction hash");
+      const transitionDigest =
+        current.pendingTransition?.transitionDigest ??
+        current.lastConfirmedTransitionDigest;
+      if (transitionDigest === null) {
+        throw new Error(
+          "prover funding confirmation has no recorded transition",
+        );
       }
       return snapshot({
         plan,
         record: await input.store.confirmTransition({
           plan,
           expectedRevision,
-          transitionDigest: pending.transitionDigest,
+          transactionHash,
+          transitionDigest,
         }),
         rollbackGeneration: input.rollbackGeneration,
       });
@@ -317,6 +324,7 @@ export const createWatcherProverFundingAuthority = async (input: {
  * current protocol parameters, and exact wallet leases.
  */
 export const createWatcherProverFundingAuthorityFactory = (input: {
+  readonly journalRoot: string;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
   readonly store: WatcherProverFundingReservationStore;
@@ -408,6 +416,23 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         protocolParameters: input.protocolParameters,
         policy,
       });
+      await authorizeWatcherProverFundingRecovery({
+        journalRoot: input.journalRoot,
+        deploymentIdentity: input.deploymentIdentity,
+        actuationPermit: request.actuationPermit,
+        category: request.category,
+        rollbackGeneration: request.rollbackGeneration,
+        store: input.store,
+      });
+      const execution = assertWorkflowActuationPermitIdentity({
+        permit: request.actuationPermit,
+        category: request.category,
+        rollbackGeneration: request.rollbackGeneration,
+      });
+      if (execution.decisionDigest !== request.decisionDigest)
+        throw new Error(
+          "prover funding invocation changed its authorizing decision",
+        );
       const authority = await createWatcherProverFundingAuthority({
         category: request.category,
         runner: request.runner,
@@ -416,7 +441,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         deploymentIdentity: input.deploymentIdentity,
         calculation,
         policy,
-        decisionDigest: request.decisionDigest,
+        decisionDigest: execution.executionDecisionDigest,
         walletAddress: request.walletAddress,
         walletUtxos: request.walletUtxos,
         store: input.store,

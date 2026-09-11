@@ -2,6 +2,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Data,
   Emulator,
   generateEmulatorAccount,
@@ -298,6 +299,7 @@ describe("initialization emulator", () => {
 
   it("deploys the canonical real protocol roots atomically", async () => {
     const {
+      emulator,
       lucid,
       referenceScriptsLucid,
       nonceUtxo,
@@ -312,6 +314,7 @@ describe("initialization emulator", () => {
       referenceScriptAuth,
     );
 
+    emulator.awaitSlot(120);
     const initTx = await buildAtomicInitializationTx(
       lucid,
       referenceScriptsLucid,
@@ -322,6 +325,10 @@ describe("initialization emulator", () => {
     const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
       .complete();
+    const body = CML.Transaction.from_cbor_hex(signed.toCBOR()).body();
+    const validFrom = body.validity_interval_start()!;
+    expect(validFrom).toBeLessThanOrEqual(BigInt(lucid.currentSlot() - 60));
+    expect(body.ttl()! - validFrom).toBe(7n * 60n);
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash);
 

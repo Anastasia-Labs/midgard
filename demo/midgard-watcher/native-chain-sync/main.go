@@ -55,10 +55,11 @@ type wireBlockPoint struct {
 }
 
 type wireOperation struct {
-	Kind               string          `json:"kind"`
-	PredecessorBlockNo string          `json:"predecessorBlockNo,omitempty"`
-	Target             *wireBlockPoint `json:"target,omitempty"`
-	TimeoutMs          uint64          `json:"timeoutMs,omitempty"`
+	Credential         *wireStakeCredential `json:"credential,omitempty"`
+	Kind               string               `json:"kind"`
+	PredecessorBlockNo string               `json:"predecessorBlockNo,omitempty"`
+	Target             *wireBlockPoint      `json:"target,omitempty"`
+	TimeoutMs          uint64               `json:"timeoutMs,omitempty"`
 }
 
 // Fields are declared in canonical lexicographic JSON-key order.
@@ -172,7 +173,13 @@ func validateStartup(config startupConfig) error {
 		return errors.New("startup authority identity is invalid")
 	}
 	expectedMagic, ok := networkMagic[config.Network]
-	if !ok || expectedMagic != config.NetworkMagic {
+	if config.Network == "Custom" {
+		for _, publicMagic := range networkMagic {
+			if config.NetworkMagic == publicMagic {
+				return errors.New("custom network uses public network magic")
+			}
+		}
+	} else if !ok || expectedMagic != config.NetworkMagic {
 		return errors.New("startup network magic differs from named network")
 	}
 	if !filepath.IsAbs(config.SocketPath) || filepath.Clean(config.SocketPath) != config.SocketPath || config.SocketPath == "/" {
@@ -204,6 +211,17 @@ func parseUint64(value string) (uint64, error) {
 
 func validateOperation(config startupConfig) error {
 	op := config.Operation
+	if op.Kind == "reward_account" {
+		if op.Credential == nil || !regexp.MustCompile(`^[0-9a-f]{56}$`).MatchString(op.Credential.Hash) ||
+			(op.Credential.Type != "Key" && op.Credential.Type != "Script") ||
+			op.TimeoutMs < 100 || op.TimeoutMs > 120000 || op.Target != nil || op.PredecessorBlockNo != "" || config.Intersection.Kind != "origin" {
+			return errors.New("reward-account operation is invalid")
+		}
+		return nil
+	}
+	if op.Credential != nil {
+		return errors.New("chain-sync operation carries a reward credential")
+	}
 	if op.Kind == "stream" {
 		if op.Target != nil || op.PredecessorBlockNo != "" || op.TimeoutMs != 0 {
 			return errors.New("stream operation carries exact-query fields")
@@ -372,12 +390,16 @@ func makeChainSyncConfig(config startupConfig, writer *canonicalWriter, readyGat
 			if err := query.checkForward(block); err != nil {
 				return err
 			}
+			prevHash := block.PrevHash().String()
+			if block.BlockNumber() == 0 && prevHash == fmt.Sprintf("%064d", 0) {
+				prevHash = ""
+			}
 			if err := writer.write(rollForwardEvent{
 				BlockHash:     block.Hash().String(),
 				BlockNo:       fmt.Sprintf("%d", block.BlockNumber()),
 				BlockType:     fmt.Sprintf("%d", blockType),
 				Kind:          "roll_forward",
-				PrevHash:      block.PrevHash().String(),
+				PrevHash:      prevHash,
 				RawBlockCBOR:  hex.EncodeToString(raw),
 				SchemaVersion: schemaVersion,
 				Slot:          fmt.Sprintf("%d", block.SlotNumber()),
@@ -426,6 +448,14 @@ func main() {
 	if err != nil {
 		_ = writer.write(errorEvent{Code: "invalid_startup", Kind: "error", SchemaVersion: schemaVersion})
 		os.Exit(64)
+	}
+	if config.Operation.Kind == "reward_account" {
+		if err := writeRewardAccount(config, startupCanonical, writer); err != nil {
+			_ = writer.write(errorEvent{Code: "reward_account_query_failed", Kind: "error", SchemaVersion: schemaVersion})
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(69)
+		}
+		return
 	}
 
 	errorChannel := make(chan error, 4)

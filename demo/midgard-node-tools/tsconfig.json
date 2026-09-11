@@ -22,6 +22,12 @@
     "target": "es2020",
     "outDir": "dist"
   },
-  "include": ["src", "tests", "../midgard-node/src/types"],
+  "include": [
+    "src",
+    "tests",
+    "devnet/watcher-journeys",
+    "vitest.watcher-journeys.config.ts",
+    "../midgard-node/src/types"
+  ],
   "exclude": ["node_modules", "dist"]
 }

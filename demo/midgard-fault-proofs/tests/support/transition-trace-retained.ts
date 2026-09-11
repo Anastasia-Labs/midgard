@@ -15,6 +15,170 @@ import {
 } from "../helpers/canonical-block-evidence-fixture.js";
 import { buildAcceptedClaimTransitionFixture } from "./transition-trace-final-fixtures.js";
 
+const sealDepositPayload = async (payload: SDK.DaPayload) => {
+  const header = payload.block_body.header;
+  const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
+    "hex",
+  );
+  const sealed = {
+    ...payload,
+    block_body: { ...payload.block_body, header_hash: headerHash },
+  };
+  return {
+    payload: sealed,
+    header,
+    headerHash,
+    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(sealed), {
+      mode: "identity",
+    }),
+  };
+};
+
+export type RetainedDepositEvent = {
+  event: UTxO;
+  depositPolicyId: string;
+  assetName: string;
+  honest: boolean;
+};
+
+/** Build deposit transitions from actual event outputs and the retained prior ledger. */
+export const depositEventsRetainedBlock = async (input: {
+  operatorVkey: string;
+  startTime: bigint;
+  endTime: bigint;
+  blockSlot: bigint;
+  prevHeaderHash: string;
+  prevUtxosRoot: string;
+  priorLedger: readonly SDK.DaPayloadEntry[];
+  events: readonly RetainedDepositEvent[];
+}) => {
+  const ledger = new Map(input.priorLedger);
+  const buildLedger = () =>
+    buildCanonicalBlockFixture({
+      transactions: [],
+      utxos: [...ledger].map(([key, value]) => ({
+        key: Buffer.from(key, "hex"),
+        value: Buffer.from(value, "hex"),
+      })),
+      startTime: input.startTime,
+      endTime: input.endTime,
+      prevHeaderHash: input.prevHeaderHash,
+      prevUtxosRoot: input.prevUtxosRoot,
+    });
+  let base = await buildLedger();
+  if (base.header.utxosRoot !== input.prevUtxosRoot)
+    throw new Error("Retained prior ledger differs from the predecessor root");
+  const entries: Record<
+    "deposits" | "event_to_step" | "transition_trace",
+    SDK.DaPayloadEntry[]
+  > = { deposits: [], event_to_step: [], transition_trace: [] };
+  const events = input.events
+    .map((event) => ({
+      ...event,
+      datum: Data.from(event.event.datum!, SDK.DepositDatum),
+    }))
+    .sort((a, b) =>
+      Data.to(a.datum.event.id, SDK.OutputReference).localeCompare(
+        Data.to(b.datum.event.id, SDK.OutputReference),
+      ),
+    );
+  for (const [index, item] of events.entries()) {
+    const { id, info } = item.datum.event;
+    const effect = deriveCanonicalDepositTransitionEffect({
+      configuredNetwork: "Custom",
+      eventId: id,
+      l2Address: info.l2_address,
+      l2NetworkId: info.l2_network_id,
+      l2DatumCbor:
+        info.l2_datum === null
+          ? null
+          : Buffer.from(Data.to(info.l2_datum), "hex"),
+      l1Assets: {
+        ...item.event.assets,
+        lovelace: item.event.assets.lovelace! + (item.honest ? 0n : 1n),
+      },
+      depositPolicyId: item.depositPolicyId,
+      depositAssetNameHex: item.assetName,
+    });
+    const operation = effect.operations[0];
+    if (operation?.type !== "insert")
+      throw new Error("Deposit fixture has no insertion");
+    const key = encodeMidgardSpendInputItem({
+      txId: Buffer.from(id.transactionId, "hex"),
+      outputIndex: Number(id.outputIndex),
+    }).toString("hex");
+    if (ledger.has(key))
+      throw new Error("Deposit fixture repeats an existing ledger output");
+    const preRoot = base.header.utxosRoot;
+    ledger.set(key, operation.outputCbor.toString("hex"));
+    base = await buildLedger();
+    const eventKey: SDK.EventKey = { DepositEventKey: { deposit_id: id } };
+    const stepIndex = BigInt(index);
+    entries.deposits.push([
+      Data.to(id, SDK.OutputReference),
+      Data.to(info, SDK.DepositInfo),
+    ]);
+    entries.event_to_step.push([
+      Data.to(eventKey, SDK.EventKey),
+      Data.to(
+        { step_index: stepIndex, phase: "Deposit" },
+        SDK.EventToStepValue,
+      ),
+    ]);
+    entries.transition_trace.push([
+      Data.to(stepIndex),
+      Data.to(
+        {
+          schema_version: 1n,
+          step_index: stepIndex,
+          event_key: eventKey,
+          phase: "Deposit",
+          pre_utxos_root: preRoot,
+          post_utxos_root: base.header.utxosRoot,
+        },
+        SDK.TransitionStep,
+      ),
+    ]);
+  }
+  for (const values of Object.values(entries))
+    values.sort(([a], [b]) => a.localeCompare(b));
+  const root = async (domain: SDK.RootDomain, values: SDK.DaPayloadEntry[]) =>
+    (
+      await buildCountedRoot(
+        domain,
+        values.map(([key, value]) => ({
+          key: Buffer.from(key, "hex"),
+          value: Buffer.from(value, "hex"),
+        })),
+      )
+    ).root;
+  const counts = {
+    ...base.payload.block_body.counts,
+    depositCount: BigInt(events.length),
+    totalEventCount: BigInt(events.length),
+    transitionStepCount: BigInt(events.length),
+  };
+  const header = {
+    ...base.header,
+    ...counts,
+    operatorVkey: input.operatorVkey,
+    blockSlot: input.blockSlot,
+    depositsRoot: await root(SDK.ROOT_DOMAINS.deposits, entries.deposits),
+    eventToStepRoot: await root(
+      SDK.ROOT_DOMAINS.eventToStep,
+      entries.event_to_step,
+    ),
+    transitionTraceRoot: await root(
+      SDK.ROOT_DOMAINS.transitionTrace,
+      entries.transition_trace,
+    ),
+  };
+  return sealDepositPayload({
+    ...base.payload,
+    block_body: { ...base.payload.block_body, ...entries, counts, header },
+  });
+};
+
 export const transitionTraceDepositRetainedFixture = async ({
   operatorVkey,
   now,
@@ -30,136 +194,25 @@ export const transitionTraceDepositRetainedFixture = async ({
   assetName: string;
   honest?: boolean;
 }) => {
-  const first = await buildCanonicalBlockFixture({
-    transactions: [],
+  const predecessor = await depositEventsRetainedBlock({
+    operatorVkey,
     startTime: BigInt(now),
-    endTime: BigInt(now + 60000),
+    endTime: BigInt(now + 60_000),
+    blockSlot: 9n,
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+    prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    priorLedger: [],
+    events: [],
   });
-  const seal = async (payload: SDK.DaPayload) => {
-    const headerHash = computeHash28(
-      SDK.encodeHeaderCbor(payload.block_body.header),
-    ).toString("hex");
-    const sealed = {
-      ...payload,
-      block_body: { ...payload.block_body, header_hash: headerHash },
-    };
-    return {
-      payload: sealed,
-      header: sealed.block_body.header,
-      headerHash,
-      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(sealed), {
-        mode: "identity",
-      }),
-    };
-  };
-  const predecessor = await seal({
-    ...first.payload,
-    block_body: {
-      ...first.payload.block_body,
-      header: { ...first.header, operatorVkey, blockSlot: 9n },
-    },
-  });
-  const datum = Data.from(event.datum!, SDK.DepositDatum);
-  const id = datum.event.id,
-    info = datum.event.info;
-  const effect = deriveCanonicalDepositTransitionEffect({
-    configuredNetwork: "Custom",
-    eventId: id,
-    l2Address: info.l2_address,
-    l2NetworkId: info.l2_network_id,
-    l2DatumCbor:
-      info.l2_datum === null
-        ? null
-        : Buffer.from(Data.to(info.l2_datum), "hex"),
-    l1Assets: {
-      ...event.assets,
-      lovelace: event.assets.lovelace! + (honest ? 0n : 1n),
-    },
-    depositPolicyId,
-    depositAssetNameHex: assetName,
-  });
-  const operation = effect.operations[0];
-  if (operation?.type !== "insert")
-    throw new Error("deposit fixture has no output");
-  const base = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [
-      {
-        key: encodeMidgardSpendInputItem({
-          txId: Buffer.from(id.transactionId, "hex"),
-          outputIndex: Number(id.outputIndex),
-        }),
-        value: operation.outputCbor,
-      },
-    ],
-    startTime: BigInt(now + 60000),
-    endTime: BigInt(now + 120000),
+  const current = await depositEventsRetainedBlock({
+    operatorVkey,
+    startTime: predecessor.header.endTime,
+    endTime: BigInt(now + 120_000),
+    blockSlot: 10n,
     prevHeaderHash: predecessor.headerHash,
     prevUtxosRoot: predecessor.header.utxosRoot,
-  });
-  const eventKey: SDK.EventKey = { DepositEventKey: { deposit_id: id } };
-  const entries = {
-    deposits: [
-      [Data.to(id, SDK.OutputReference), Data.to(info, SDK.DepositInfo)],
-    ],
-    event_to_step: [
-      [
-        Data.to(eventKey, SDK.EventKey),
-        Data.to({ step_index: 0n, phase: "Deposit" }, SDK.EventToStepValue),
-      ],
-    ],
-    transition_trace: [
-      [
-        Data.to(0n),
-        Data.to(
-          {
-            schema_version: 1n,
-            step_index: 0n,
-            event_key: eventKey,
-            phase: "Deposit",
-            pre_utxos_root: predecessor.header.utxosRoot,
-            post_utxos_root: base.header.utxosRoot,
-          },
-          SDK.TransitionStep,
-        ),
-      ],
-    ],
-  } satisfies Record<string, SDK.DaPayloadEntry[]>;
-  const root = async (domain: SDK.RootDomain, values: SDK.DaPayloadEntry[]) =>
-    (
-      await buildCountedRoot(
-        domain,
-        values.map(([key, value]) => ({
-          key: Buffer.from(key, "hex"),
-          value: Buffer.from(value, "hex"),
-        })),
-      )
-    ).root;
-  const counts = {
-    ...base.payload.block_body.counts,
-    depositCount: 1n,
-    totalEventCount: 1n,
-    transitionStepCount: 1n,
-  };
-  const header = {
-    ...base.header,
-    ...counts,
-    operatorVkey,
-    blockSlot: 10n,
-    depositsRoot: await root(SDK.ROOT_DOMAINS.deposits, entries.deposits),
-    eventToStepRoot: await root(
-      SDK.ROOT_DOMAINS.eventToStep,
-      entries.event_to_step,
-    ),
-    transitionTraceRoot: await root(
-      SDK.ROOT_DOMAINS.transitionTrace,
-      entries.transition_trace,
-    ),
-  };
-  const current = await seal({
-    ...base.payload,
-    block_body: { ...base.payload.block_body, ...entries, counts, header },
+    priorLedger: predecessor.payload.block_body.utxos,
+    events: [{ event, depositPolicyId, assetName, honest }],
   });
   return { predecessor, current };
 };

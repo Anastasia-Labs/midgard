@@ -154,7 +154,11 @@ export type WatcherStateQueueIndexerReasonCode =
   (typeof WATCHER_STATE_QUEUE_INDEXER_REASON_CODES)[number];
 export type WatcherStateQueueIndexerAlertCode =
   (typeof WATCHER_STATE_QUEUE_INDEXER_ALERT_CODES)[number];
-export type WatcherStateQueueNetwork = "Mainnet" | "Preprod" | "Preview";
+export type WatcherStateQueueNetwork =
+  | "Mainnet"
+  | "Preprod"
+  | "Preview"
+  | "Custom";
 export type WatcherStateQueueTransitionKind =
   | "bootstrap"
   | "append"
@@ -411,7 +415,7 @@ const HEX_32 = /^[0-9a-f]{64}$/u;
 const HEX_4 = /^[0-9a-f]{8}$/u;
 const HEX_BYTES = /^(?:[0-9a-f]{2})+$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 const EMPTY_MERKLE_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 

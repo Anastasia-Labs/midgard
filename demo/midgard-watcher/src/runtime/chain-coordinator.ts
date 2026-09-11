@@ -62,8 +62,10 @@ const depthAtTip = (
     throw new Error("native roll-forward cannot have Origin as its tip");
   }
   const depth = BigInt(event.tip.blockNo) - BigInt(block.blockNo) + 1n;
-  if (depth <= 0n || depth > 2_160n) {
-    throw new Error("native block depth is outside the release recovery bound");
+  // A cold replay can be arbitrarily far behind the live tip. Recovery bounds
+  // constrain replacement paths, not a canonical block's confirmation depth.
+  if (depth <= 0n) {
+    throw new Error("native block is ahead of its advertised tip");
   }
   return depth.toString();
 };

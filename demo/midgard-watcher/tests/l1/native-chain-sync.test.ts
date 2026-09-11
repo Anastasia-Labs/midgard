@@ -151,6 +151,87 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 };
 
 describe("native Cardano node-to-client chain-sync supervisor", () => {
+  it.each(["matching", "magic", "zeroTime", "slotLength", "hardFork"])(
+    "binds a custom chain clock and magic to its actual genesis: %s",
+    async (variant) => {
+      const customNetwork = {
+        networkMagic: 424242,
+        slotConfig: { zeroTime: 1789041600000, zeroSlot: 0, slotLength: 1000 },
+      };
+      const genesisBytes = new TextEncoder().encode(
+        JSON.stringify({
+          networkMagic: variant === "magic" ? 424243 : 424242,
+          networkId: "Testnet",
+          systemStart: new Date(
+            customNetwork.slotConfig.zeroTime +
+              (variant === "zeroTime" ? 1000 : 0),
+          ).toISOString(),
+          slotLength: variant === "slotLength" ? 2 : 1,
+        }),
+      );
+      const nodeBytes = new TextEncoder().encode(
+        JSON.stringify({
+          ShelleyGenesisFile: GENESIS_CONFIG_PATH,
+          TestShelleyHardForkAtEpoch: 0,
+          TestConwayHardForkAtEpoch: variant === "hardFork" ? 1 : 0,
+        }),
+      );
+      const base = config();
+      if (base.l1.source.sourceMode !== "local_node")
+        throw new Error("local fixture required");
+      const genesisIdentitySha256 = createHash("sha256")
+        .update(genesisBytes)
+        .digest("hex");
+      let spawned = false;
+      const pending = startWatcherNativeChainSync({
+        binaryPath: "/test/native-chain-sync",
+        watcherConfig: {
+          ...base,
+          targetNetwork: "Custom",
+          customNetwork,
+          l1: {
+            ...base.l1,
+            source: {
+              ...base.l1.source,
+              chainSync: { ...base.l1.source.chainSync, genesisIdentitySha256 },
+            },
+          },
+        },
+        intersection: INTERSECTION,
+        startupTimeoutMs: 2000,
+        onEvent: async () => {},
+        unsafeSpawnForTest: () => {
+          spawned = true;
+          return spawnFixture("honest")();
+        },
+        unsafeReadIdentityFileForTest: async (path) => {
+          if (path === NODE_CONFIG_PATH) return nodeBytes;
+          if (path === GENESIS_CONFIG_PATH) return genesisBytes;
+          throw new Error("unexpected identity path");
+        },
+      });
+      if (variant === "matching") {
+        const runtime = await pending;
+        try {
+          expect(
+            watcherNativeChainSyncAuthorityDetails(runtime.authority),
+          ).toMatchObject({
+            network: "Custom",
+            genesisIdentitySha256,
+          });
+        } finally {
+          await runtime.close();
+        }
+        expect(spawned).toBe(true);
+      } else {
+        await expect(pending).rejects.toThrow(
+          variant === "magic" ? "network magic differs" : "slot clock differs",
+        );
+        expect(spawned).toBe(false);
+      }
+    },
+  );
+
   it("seals the exact startup identity and admits ordered roll-forward/rollback", async () => {
     const events: WatcherNativeChainSyncEvent[] = [];
     const receipts: WatcherNativeChainSyncEventReceipt[] = [];
@@ -212,6 +293,7 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         {
           network: "Preprod",
           authorityNodeId: "watcher-node",
+          operation: { kind: "stream" },
           genesisIdentitySha256: GENESIS,
           socketPath: "/run/cardano/node.socket",
           startupDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),

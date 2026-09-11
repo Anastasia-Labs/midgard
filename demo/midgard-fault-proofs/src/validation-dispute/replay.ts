@@ -35,6 +35,7 @@ import {
 import {
   applyUTxOStatePatch,
   deriveCanonicalDepositTransitionEffect,
+  DirectValidationTraceUnavailable,
   RejectCodes,
   replayValidationMachineEvent,
   type ValidationMachineEventReplay,
@@ -75,6 +76,11 @@ import {
   completeCanonicalReplayPredecessorEvidence,
 } from "../workflow/complete-replay.js";
 import { TYPED_REASON_DISPOSITIONS } from "../workflow/reason-disposition.js";
+import {
+  completeReplayFindings,
+  type ReplayPrerequisiteFailure,
+  replayPrerequisiteFailure,
+} from "../workflow/replay-prerequisite.js";
 
 export const VALIDATION_TRACE_REPLAY_CONTEXT =
   "midgard-validation-trace-replay-context-v1" as const;
@@ -109,6 +115,7 @@ type ReplayAuthority = Readonly<{
   evidence: CanonicalBlockEvidence;
   material: readonly ReplayMaterial[];
   detections: readonly CanonicalViolationDetection[];
+  prerequisites: readonly ReplayPrerequisiteFailure[];
 }>;
 
 const authorities = new WeakMap<
@@ -417,6 +424,7 @@ export const admitValidationTraceReplayContext = async ({
     throw new Error("validation replay prior ledger differs from its header");
   const seen = new Set<string>();
   const material: ReplayMaterial[] = [];
+  const prerequisites: ReplayPrerequisiteFailure[] = [];
   for (const [stepIndex, step] of steps.entries()) {
     const fingerprint = eventKeyFingerprint(step.value.event_key);
     const source = reconstruction.sourceEventsByFingerprint.get(fingerprint);
@@ -557,30 +565,50 @@ export const admitValidationTraceReplayContext = async ({
         reachable.has(Buffer.from(root).toString("hex")),
       ),
     );
-    const replay = await Effect.runPromise(
-      replayValidationMachineEvent({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-        eventKeyCbor: Buffer.from(eventKeyCbor, "hex"),
-        canonicalTransactionCbor: transaction,
-        programMaterialSidecarCbor: sidecar,
-        ...(source.phase === "L2Transaction"
-          ? { sourceKind: "normal" as const }
-          : {
-              sourceKind: "forced" as const,
-              committedForcedVerdict:
-                source.entry.value.verdict === "ForcedTxValid"
-                  ? ("accepted" as const)
-                  : ("rejected" as const),
-            }),
-        ledgerWitnessEntries: ledgerEntries(),
-        priorUtxosRoot: priorRoot,
-        blockEndTimeMs: Number(current.header.endTime),
-        expectedNetworkId: current.header.expectedNetworkId,
-        minFeeA: current.header.minFeeA,
-        minFeeB: current.header.minFeeB,
-        blockSlot: current.header.blockSlot,
-      }),
+    const replayResult = await Effect.runPromise(
+      Effect.either(
+        replayValidationMachineEvent({
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+          eventKeyCbor: Buffer.from(eventKeyCbor, "hex"),
+          canonicalTransactionCbor: transaction,
+          programMaterialSidecarCbor: sidecar,
+          ...(source.phase === "L2Transaction"
+            ? { sourceKind: "normal" as const }
+            : {
+                sourceKind: "forced" as const,
+                committedForcedVerdict:
+                  source.entry.value.verdict === "ForcedTxValid"
+                    ? ("accepted" as const)
+                    : ("rejected" as const),
+              }),
+          ledgerWitnessEntries: ledgerEntries(),
+          priorUtxosRoot: priorRoot,
+          blockEndTimeMs: Number(current.header.endTime),
+          expectedNetworkId: current.header.expectedNetworkId,
+          minFeeA: current.header.minFeeA,
+          minFeeB: current.header.minFeeB,
+          blockSlot: current.header.blockSlot,
+        }),
+      ),
     );
+    if (replayResult._tag === "Left") {
+      if (replayResult.left instanceof DirectValidationTraceUnavailable) {
+        prerequisites.push(
+          ...replayPrerequisiteFailure(
+            evidence.headerHash,
+            source.eventKey,
+            replayResult.left.rejectionCode === RejectCodes.InvalidFieldType
+              ? "representable_field_shape"
+              : "representable_validity_flag",
+          ).failures,
+        );
+        // The canonical validator rejected before any ledger mutation. Keep
+        // its unchanged ledger and continue scanning later events for faults.
+        continue;
+      }
+      throw replayResult.left;
+    }
+    const replay = replayResult.right;
     material.push({
       transactionIndex,
       stepIndex: step.key,
@@ -647,6 +675,7 @@ export const admitValidationTraceReplayContext = async ({
           current.payloadSha256,
           predecessor ?? null,
           eventEvidenceDigest ?? null,
+          prerequisites,
           material.map((entry) => [
             entry.transactionIndex,
             entry.sourceKind,
@@ -669,6 +698,7 @@ export const admitValidationTraceReplayContext = async ({
     evidence: current,
     material,
     detections,
+    prerequisites,
   });
   return context;
 };
@@ -710,7 +740,8 @@ export const detectValidationTraceReplay = (
   input: Parameters<typeof requireValidationTraceReplayContext>[0],
 ): readonly CanonicalViolationDetection[] => {
   requireValidationTraceReplayContext(input);
-  return authorities.get(input.context)!.detections;
+  const authority = authorities.get(input.context)!;
+  return completeReplayFindings(authority.detections, authority.prerequisites);
 };
 
 type ReplaySelectionInput = Parameters<

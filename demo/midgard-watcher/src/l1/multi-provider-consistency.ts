@@ -26,7 +26,7 @@ export const WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS = Object.freeze({
   compatibleBlockLag: 64,
 });
 
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 

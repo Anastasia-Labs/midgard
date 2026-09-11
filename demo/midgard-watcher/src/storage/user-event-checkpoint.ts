@@ -39,7 +39,7 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 
 export type WatcherUserEventCheckpointBinding = Readonly<{
   deploymentMarker: DeploymentMarker;
-  network: "Mainnet" | "Preprod" | "Preview";
+  network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   blueprintHash: string;
   finalityPolicyDigest: string;
 }>;
@@ -158,7 +158,7 @@ export const parseWatcherUserEventCheckpoint = (
   if (
     record.schemaVersion !== WATCHER_USER_EVENT_CHECKPOINT_SCHEMA_VERSION ||
     typeof record.network !== "string" ||
-    !["Mainnet", "Preprod", "Preview"].includes(record.network) ||
+    !["Mainnet", "Preprod", "Preview", "Custom"].includes(record.network) ||
     !watcherSameCanonicalJson(deploymentMarker, binding.deploymentMarker) ||
     record.network !== binding.network ||
     record.blueprintHash !== binding.blueprintHash ||

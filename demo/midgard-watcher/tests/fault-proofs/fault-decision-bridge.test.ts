@@ -11,7 +11,12 @@ import { describe, expect, it, vi } from "vitest";
 import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/fault-decision-bridge.js";
 import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
+import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
+import {
+  createWatcherOperationsObservability,
+  type WatcherOperationsSink,
+} from "../../src/runtime/operations-observability.js";
 
 const DEPLOYMENT = "dd".repeat(32);
 const OBSERVATION_DIGEST = "11".repeat(32);
@@ -151,6 +156,9 @@ const harness = (input: {
     value: ReturnType<typeof decision>,
   ) => ReturnType<typeof decision> | Promise<ReturnType<typeof decision>>;
   readonly enqueueError?: Error;
+  readonly operationsSink?: WatcherOperationsSink;
+  readonly nowMs?: () => bigint;
+  readonly monotonicNowMs?: () => number;
   readonly pendingAvailabilityHeaders?: () => ReadonlySet<string>;
   readonly resolvePredecessorOverride?: () => Promise<undefined>;
   readonly decisionUsesLocalEventHistory?: boolean;
@@ -184,6 +192,13 @@ const harness = (input: {
     runtimeConfigPath: "/var/lib/midgard/watcher.json",
     maximumClassificationConcurrency: 2,
     dependencies: Object.freeze({
+      ...(input.operationsSink === undefined
+        ? {}
+        : { operationsSink: input.operationsSink }),
+      ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
+      ...(input.monotonicNowMs === undefined
+        ? {}
+        : { monotonicNowMs: input.monotonicNowMs }),
       ...(input.pendingAvailabilityHeaders === undefined
         ? {}
         : { pendingAvailabilityHeaders: input.pendingAvailabilityHeaders }),
@@ -248,6 +263,83 @@ const harness = (input: {
 };
 
 describe("production fault decision bridge", () => {
+  it.each([
+    { wallAfter: 90_000n, fails: false },
+    { wallAfter: 900_000n, fails: false },
+    { wallAfter: 90_000n, fails: true },
+    { wallAfter: 900_000n, fails: true },
+  ])(
+    "preserves classification and its original error across wall movement to $wallAfter, failure=$fails",
+    async ({ wallAfter, fails }) => {
+      let wall = 100_000n;
+      let monotonic = 100;
+      const originalError = new Error("original classifier failure");
+      const observability = createWatcherOperationsObservability({
+        deploymentFingerprint: DEPLOYMENT,
+        supervisor: {
+          status: () => ({
+            phase: "accepting",
+            recovered: true,
+            queuedJobCount: 0,
+            activeJob: null,
+            blockedJob: null,
+            deadlineHealth: "safe",
+            earliestDeadlineJob: null,
+            remainingSafeStartMs: "1000",
+          }),
+        } as unknown as WatcherFaultProofSupervisor,
+        launchScopeStatus: () => ({
+          installedCategoryCount: 54,
+          requiredCategoryCount: 54,
+        }),
+        durableProofQueueStatus: () => ({
+          queuedJobCount: 0,
+          oldestQueuedAtMs: null,
+        }),
+        nowMs: () => wall,
+        monotonicNowMs: () => monotonic,
+      });
+      const current = observation([headerFixture("01")]);
+      const first = current.finalizedHeaders[0]!;
+      const subject = harness({
+        current,
+        categoryByHeader: { [first.headerHash]: "doubleSpend" },
+        operationsSink: observability.sink,
+        nowMs: () => wall,
+        monotonicNowMs: () => monotonic,
+        classifyOverride: (result) => {
+          wall = wallAfter;
+          monotonic += 2128.43;
+          if (fails) throw originalError;
+          return result;
+        },
+      });
+      if (fails)
+        await expect(subject.bridge.reconcileAndDispatch(current)).rejects.toBe(
+          originalError,
+        );
+      else
+        expect(
+          (await subject.bridge.reconcileAndDispatch(current)).target
+            ?.headerHash,
+        ).toBe(first.headerHash);
+      expect(
+        observability.api.diagnostics({ kind: "verification" }).records,
+      ).toEqual([
+        expect.objectContaining({
+          startedAtMs: "100000",
+          completedAtMs: wallAfter.toString(),
+          elapsedMs: "2129",
+          outcome: fails ? "failed" : "fault_detected",
+        }),
+      ]);
+      expect(observability.api.metrics().verificationLatencyMs).toMatchObject({
+        sampleCount: "1",
+        maximum: "2129",
+      });
+    },
+  );
+
   it("keeps attested public-DA failures pending without manufacturing a classifier decision", async () => {
     const original = observation([headerFixture("01")]);
     const first = original.finalizedHeaders[0]!;

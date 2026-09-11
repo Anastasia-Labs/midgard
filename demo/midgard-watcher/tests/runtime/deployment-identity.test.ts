@@ -24,6 +24,7 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_STEP_NAMES,
   makeDeploymentMarker,
+  verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
@@ -198,7 +199,6 @@ const canonicalIdentity = (): MutableRecord => {
     },
     artifacts: {
       blueprintHash: BLUEPRINT_HASH,
-      fundingProfileBundleDigest: "ab".repeat(32),
     },
     steps: Object.fromEntries(
       DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
@@ -207,7 +207,8 @@ const canonicalIdentity = (): MutableRecord => {
           status:
             stepName === "prepareHubOracleNonce" ||
             stepName === "deployNodeRuntimeReferenceScripts" ||
-            stepName === "initProtocol"
+            stepName === "initProtocol" ||
+            stepName === "availabilityRegistration"
               ? "complete"
               : "pending",
         },
@@ -313,6 +314,7 @@ const cataloguePolicy = (manifest: MutableRecord) => {
 
 const makeFixture = () => {
   const manifest = withManifestId(canonicalIdentity());
+  verifyFinalizedDeploymentManifest(manifest);
   const programCommitments = {
     "validation-machine-v1": "88".repeat(32),
     "transition-order-v1": "99".repeat(32),
@@ -328,7 +330,6 @@ const makeFixture = () => {
     },
     artifacts: {
       blueprintHash: BLUEPRINT_HASH,
-      fundingProfileBundleDigest: "ab".repeat(32),
     },
   };
   const { privateKey, trustRoot } = makeTrustRoot();
@@ -630,7 +631,6 @@ describe("watcher deployment identity", () => {
     ).resolves.toMatchObject({
       deploymentIdentityDigest: identity.manifestId,
       blueprintHash: BLUEPRINT_HASH,
-      fundingProfileBundleDigest: "ab".repeat(32),
       policy: DEPLOYMENT_MANIFEST_L1_FINALITY,
       policyDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
@@ -666,7 +666,6 @@ describe("watcher deployment identity", () => {
     ).resolves.toMatchObject({
       deploymentIdentityDigest: identity.manifestId,
       blueprintHash: BLUEPRINT_HASH,
-      fundingProfileBundleDigest: "ab".repeat(32),
       policy: {
         profile: "bounded-acceptance-v1",
         proverCollateralFloorLovelace: "5000000",

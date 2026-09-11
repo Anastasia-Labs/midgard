@@ -285,6 +285,32 @@ const waitForQuery = async (
 };
 
 describe("user-event runtime native acquisition batching", () => {
+  it("retains every first capture when the native tip advances across a startup batch", async () => {
+    const context = await setup();
+    let runtime:
+      | Awaited<ReturnType<typeof createWatcherUserEventRuntime>>
+      | undefined;
+    try {
+      runtime = await createWatcherUserEventRuntime(context.input);
+      const blocks = [context.fixture.emptySuccessorBlock];
+      for (let index = 0; index < 3; index += 1)
+        blocks.push(await context.fixture.makeBlock({ transactions: [] }));
+      const before = (await context.fixture.readNativeQueries()).length;
+      await runtime.advanceThrough(blocks.at(-1)!.point);
+      expect(runtime.read().currentPoint).toEqual(blocks.at(-1)!.point);
+      const queries = (await context.fixture.readNativeQueries()).slice(before);
+      for (const block of blocks)
+        expect(
+          queries.filter(
+            (query) => query.target.blockHash === block.point.blockHash,
+          ),
+        ).toHaveLength(4);
+    } finally {
+      await runtime?.close();
+      await context.close();
+    }
+  });
+
   it("prefetches first observations while publishing each requested block only and discards them on rollback", async () => {
     const context = await setup("controlled");
     const { fixture } = context;

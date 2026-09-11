@@ -31,6 +31,92 @@ const supervisor = () => {
 };
 
 describe("production operations observability V1", () => {
+  it("ages known observations monotonically and keeps future-origin ages unknown", () => {
+    let wall = 100_000n;
+    let monotonic = 1000;
+    let queuedAt = "99000";
+    const observability = createWatcherOperationsObservability({
+      deploymentFingerprint: "11".repeat(32),
+      supervisor: supervisor().runtime,
+      launchScopeStatus: () => ({
+        installedCategoryCount: 54,
+        requiredCategoryCount: 54,
+      }),
+      durableProofQueueStatus: () => ({
+        queuedJobCount: 1,
+        oldestQueuedAtMs: queuedAt,
+      }),
+      nowMs: () => wall,
+      monotonicNowMs: () => monotonic,
+      l1FreshnessMaximumAgeMs: 10_000,
+    });
+    const source = {
+      sourceIdentityDigest: "22".repeat(32),
+      sourceMode: "local_node" as const,
+      status: "consistent" as const,
+      blockHash: "33".repeat(32),
+      blockNo: "50",
+      slot: "500",
+      observedAtMs: "99000",
+    };
+    const event = {
+      eventDigest: "44".repeat(32),
+      eventKind: "deposit" as const,
+      status: "unprocessed" as const,
+      inclusionAtMs: "99000",
+      updatedAtMs: "100000",
+    };
+    observability.sink.recordL1Source(source);
+    observability.sink.recordEvent(event);
+    expect(observability.api.metrics().oldestQueuedProofAgeMs).toBe("1000");
+    wall = 90_000n;
+    monotonic += 10_000;
+    observability.sink.recordEvent({ ...event, updatedAtMs: wall.toString() });
+    observability.sink.recordProofStep({
+      decisionDigest: "55".repeat(32),
+      actionIdentityDigest: "66".repeat(32),
+      stage: "prepare",
+      status: "queued",
+      updatedAtMs: "100000",
+    });
+    observability.sink.setAlert({
+      code: "da_fetch_failure",
+      subjectDigest: "44".repeat(32),
+      active: false,
+      observedAtMs: "100000",
+    });
+    expect(observability.api.metrics()).toMatchObject({
+      oldestQueuedProofAgeMs: "11000",
+      oldestUnprocessedEventAgeMs: "11000",
+      l1Sources: { stale: "1", fresh: "0", maximumFreshnessAgeMs: "11000" },
+    });
+    expect(observability.api.status().readinessReasons).toContain(
+      "l1_source_stale",
+    );
+    wall = 10_000_000n;
+    monotonic += 500;
+    expect(observability.api.metrics()).toMatchObject({
+      oldestQueuedProofAgeMs: "11500",
+      oldestUnprocessedEventAgeMs: "11500",
+      l1Sources: { maximumFreshnessAgeMs: "11500" },
+    });
+    wall = 80_000n;
+    queuedAt = "90000";
+    observability.sink.recordL1Source({ ...source, observedAtMs: "90000" });
+    observability.sink.recordEvent({ ...event, inclusionAtMs: "90000" });
+    expect(observability.api.metrics()).toMatchObject({
+      oldestQueuedProofAgeMs: null,
+      oldestUnprocessedEventAgeMs: null,
+      l1Sources: { stale: "1", fresh: "0", maximumFreshnessAgeMs: null },
+    });
+    wall = 200_000n;
+    monotonic += 100;
+    expect(observability.api.metrics().oldestQueuedProofAgeMs).toBeNull();
+    expect(
+      observability.api.diagnostics({ kind: "event" }).records.at(-1),
+    ).toMatchObject({ inclusionAtMs: "90000", updatedAtMs: "100000" });
+  });
+
   it("reports bounded secret-safe W38 status, metrics, and alerts", async () => {
     const proofSupervisor = supervisor();
     let now = 100_000n;
@@ -46,6 +132,7 @@ describe("production operations observability V1", () => {
         oldestQueuedAtMs: "97000",
       }),
       nowMs: () => now,
+      monotonicNowMs: () => Number(now),
       l1FreshnessMaximumAgeMs: 10_000,
       maximumRetainedDiagnostics: 100,
     });
@@ -64,12 +151,14 @@ describe("production operations observability V1", () => {
       queuedAtMs: "90000",
       startedAtMs: "92000",
       completedAtMs: "96000",
+      elapsedMs: "4000",
       outcome: "fault_detected",
     });
     observability.sink.recordDaFetch({
       subjectDigest: "44".repeat(32),
       startedAtMs: "92000",
       completedAtMs: "95000",
+      elapsedMs: "3000",
       outcome: "succeeded",
     });
     observability.sink.recordProofStep({
@@ -246,7 +335,7 @@ describe("production operations observability V1", () => {
         status: "failed",
         updatedAtMs: "100001",
       }),
-    ).toThrow("is in the future");
+    ).not.toThrow();
     expect(() =>
       createWatcherOperationsObservability({
         deploymentFingerprint: "11".repeat(32),

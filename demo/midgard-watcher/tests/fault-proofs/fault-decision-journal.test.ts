@@ -81,6 +81,29 @@ afterEach(async () => {
 });
 
 describe("production fault decision journal", () => {
+  it("admits out-ref detection identifiers without relaxing violation identifiers", async () => {
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
+      directory: await directory(),
+      deploymentFingerprint: DEPLOYMENT,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    });
+    const envelope = faultDecision({
+      detectionId: `double-spend:0:1:0:${DIGEST}#0`,
+    });
+    expect(
+      (await journal.unsafeAppendDecisionEnvelopeForTest(envelope)).decision,
+    ).toEqual(envelope);
+    await expect(
+      journal.unsafeAppendDecisionEnvelopeForTest(
+        faultDecision({ violationId: "double-spend#0" }),
+      ),
+    ).rejects.toThrow("violation id is invalid");
+    await expect(
+      journal.unsafeAppendDecisionEnvelopeForTest(
+        faultDecision({ detectionId: "double-spend:bad input#0" }),
+      ),
+    ).rejects.toThrow("detection id is invalid");
+  });
   it("persists exact envelopes but never recreates runnable authority", async () => {
     const root = await directory();
     const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({

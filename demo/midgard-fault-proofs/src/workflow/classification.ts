@@ -310,6 +310,10 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
       "mint-asset-accumulation-limit",
     ],
   },
+  {
+    category: "mintItemNonCanonical",
+    violationIds: ["mint-item-non-canonical"],
+  },
 ] as const satisfies readonly FraudProofClassificationRule[]);
 
 type RegisteredClassificationRule =
@@ -359,6 +363,8 @@ export type CanonicalViolationDetection = {
   readonly position: bigint;
   /** Public diagnostic text only; never used to select a proof family. */
   readonly diagnostic?: string;
+  /** Exact event authenticated by a semantic transition proof, when available. */
+  readonly provenTransitionEventKeyCbor?: string;
 };
 
 export type UnprovableGap = CanonicalViolationDetection & {

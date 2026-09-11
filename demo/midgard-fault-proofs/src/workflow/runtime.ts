@@ -45,6 +45,10 @@ import {
   type LoadMintDeclaredAssetLimitWorkflow,
 } from "../mint-declared-asset-limit/v1.js";
 import {
+  createMintItemNonCanonicalWorkflowRunnerSurface,
+  type LoadMintItemNonCanonicalWorkflow,
+} from "../mint-item-non-canonical/workflow.js";
+import {
   createManifestBoundMissingNativeScriptTxWorkflow,
   type ManifestBoundMissingNativeScriptTxWorkflow,
   type ManifestBoundMissingNativeScriptTxWorkflowConfig,
@@ -540,6 +544,20 @@ export const createTransactionOutputNonCanonicalWorkflowRunner = (
   });
   return createAdmittedWorkflowRunner({
     category: "transactionOutputNonCanonical",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: surface.runOrResume,
+  });
+};
+
+export const createMintItemNonCanonicalWorkflowRunner = (
+  loadRuntimeConfig: LoadMintItemNonCanonicalWorkflow,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner => {
+  const surface = createMintItemNonCanonicalWorkflowRunnerSurface({
+    loadRuntimeConfig,
+  });
+  return createAdmittedWorkflowRunner({
+    category: "mintItemNonCanonical",
     ...runnerFunding(fundingRequirements),
     runOrResume: surface.runOrResume,
   });
@@ -1460,6 +1478,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   scriptIntegrityHashMissing: createScriptIntegrityHashMissingWorkflowRunner,
   transactionOutputNonCanonical:
     createTransactionOutputNonCanonicalWorkflowRunner,
+  mintItemNonCanonical: createMintItemNonCanonicalWorkflowRunner,
   resolvedOutputNonCanonical: createResolvedOutputNonCanonicalWorkflowRunner,
   mintDeclaredAssetLimit: createMintDeclaredAssetLimitWorkflowRunner,
   spendInputSignerMissing: createSpendInputSignerMissingWorkflowRunner,

@@ -441,6 +441,16 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY = Object.freeze({
       "fraudProofTransactionOutputNonCanonicalStep04",
     ],
   },
+  mintItemNonCanonical: {
+    familyId: "mint-item-non-canonical",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofMintItemNonCanonical",
+      "fraudProofMintItemNonCanonicalStep02",
+      "fraudProofMintItemNonCanonicalStep03",
+      "fraudProofMintItemNonCanonicalStep04",
+    ],
+  },
   resolvedOutputNonCanonical: {
     familyId: "resolved-output-non-canonical",
     stepCount: 5,
@@ -690,7 +700,11 @@ export type WatcherProofThreadReasonCode =
   (typeof WATCHER_PROOF_THREAD_REASON_CODES)[number];
 export type WatcherProofThreadAlertCode =
   (typeof WATCHER_PROOF_THREAD_ALERT_CODES)[number];
-export type WatcherProofThreadNetwork = "Mainnet" | "Preprod" | "Preview";
+export type WatcherProofThreadNetwork =
+  | "Mainnet"
+  | "Preprod"
+  | "Preview"
+  | "Custom";
 export type WatcherProofThreadTransitionKind =
   | "init"
   | "step"
@@ -912,7 +926,7 @@ const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const STABLE_NAME = /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$/u;
 const CATALOGUE_CATEGORY = /^[a-z][A-Za-z0-9]*$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 
 const sha256Bytes = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
@@ -1168,8 +1182,10 @@ const parseFamily = (value: unknown): WatcherProofThreadFamily | null => {
             !isNatural(nextIndex) ||
             (BigInt(nextIndex) <= BigInt(currentIndex) &&
               !(
-                record.catalogueCategory === "transitionTrace" &&
-                (currentIndex === 5 || currentIndex === 6) &&
+                ((record.catalogueCategory === "transitionTrace" &&
+                  (currentIndex === 5 || currentIndex === 6)) ||
+                  (record.catalogueCategory === "mintItemNonCanonical" &&
+                    (currentIndex === 1 || currentIndex === 2))) &&
                 BigInt(nextIndex) === BigInt(currentIndex)
               )) ||
             BigInt(nextIndex) >= BigInt(steps.length),
@@ -1212,6 +1228,24 @@ const parseFamily = (value: unknown): WatcherProofThreadFamily | null => {
   });
 };
 
+/** Physical continuations accepted by the deployed family validators. */
+export const watcherProofThreadNextStepIndexes = (
+  category: DeploymentManifestFraudProofCatalogueCategory,
+): readonly (readonly string[])[] => {
+  const count = WATCHER_PROOF_THREAD_FAMILY_AUTHORITY[category].stepCount;
+  return Array.from({ length: count }, (_, index) => {
+    if (category === "transitionTrace")
+      return index === 0
+        ? Array.from({ length: count - 1 }, (_, next) => (next + 1).toString())
+        : index === 5 || index === 6
+          ? [index.toString()]
+          : [];
+    if (category === "mintItemNonCanonical" && (index === 1 || index === 2))
+      return [index.toString(), (index + 1).toString()];
+    return index === count - 1 ? [] : [(index + 1).toString()];
+  });
+};
+
 const familyMatchesRegisteredAuthority = (
   family: WatcherProofThreadFamily,
 ): boolean => {
@@ -1234,23 +1268,11 @@ const familyMatchesRegisteredAuthority = (
   ) {
     return false;
   }
-  if (category === "transitionTrace") {
-    return family.nextStepIndexes.every((next, index) =>
-      index === 0
-        ? next.length === authority.stepCount - 1 &&
-          next.every(
-            (nextIndex, nextIndexOffset) =>
-              nextIndex === (nextIndexOffset + 1).toString(),
-          )
-        : index === 5 || index === 6
-          ? next.length === 1 && next[0] === index.toString()
-          : next.length === 0,
-    );
-  }
-  return family.nextStepIndexes.every((next, index) =>
-    index === authority.stepCount - 1
-      ? next.length === 0
-      : next.length === 1 && next[0] === (index + 1).toString(),
+  const expected = watcherProofThreadNextStepIndexes(category);
+  return family.nextStepIndexes.every(
+    (next, index) =>
+      next.length === expected[index]!.length &&
+      next.every((value, ordinal) => value === expected[index]![ordinal]),
   );
 };
 
@@ -3909,6 +3931,9 @@ const verifyLifecycle = (
         expectedSourceJournal,
         family,
       );
+      // The verifier binds proposed.stepIndex to the actual output script
+      // and the registered outgoing graph, including bounded self-loops.
+      if (!transactionValid) return null;
       expected = expectedJournal(
         expectedSourceJournal,
         proposed,
@@ -3917,7 +3942,7 @@ const verifyLifecycle = (
         observation.confirmationId,
         {
           phase: "active",
-          stepIndex: (BigInt(expectedSourceJournal.stepIndex!) + 1n).toString(),
+          stepIndex: proposed.stepIndex,
           threadOutRef: `${verified.transaction.txHash}#${observation.layout.threadOutputIndex!}`,
           proofTokenOutRef: null,
           correctionId: null,

@@ -90,7 +90,7 @@ export const WATCHER_ROLLBACK_BOUNDS = Object.freeze({
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const ROLLBACK_AUTHORITY_KEY_BYTES = 32;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 const isNetwork = (value: unknown): value is (typeof NETWORKS)[number] =>
   typeof value === "string" &&
   NETWORKS.includes(value as (typeof NETWORKS)[number]);

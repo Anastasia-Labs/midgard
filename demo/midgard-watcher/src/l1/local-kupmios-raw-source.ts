@@ -63,7 +63,8 @@ export const createWatcherLocalKupmiosRawSource = (
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   if (
     watcherConfig.mode !== "acceptance" ||
-    watcherConfig.targetNetwork !== "Preprod" ||
+    (watcherConfig.targetNetwork !== "Preprod" &&
+      watcherConfig.targetNetwork !== "Custom") ||
     input.deploymentIdentity.network !== watcherConfig.targetNetwork ||
     watcherConfig.l1.source.sourceMode !== "local_node" ||
     watcherConfig.l1.finality.depth !== 30 ||

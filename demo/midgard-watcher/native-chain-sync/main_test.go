@@ -67,6 +67,19 @@ func TestValidateStartupAuthority(t *testing.T) {
 		t.Fatal("network-magic substitution admitted")
 	}
 
+	custom := config
+	custom.Network = "Custom"
+	custom.NetworkMagic = 424242
+	if err := validateStartup(custom); err != nil {
+		t.Fatalf("custom local network rejected: %v", err)
+	}
+	for _, magic := range []uint32{1, 2, 764824073} {
+		custom.NetworkMagic = magic
+		if err := validateStartup(custom); err == nil {
+			t.Fatalf("public network magic %d admitted as Custom", magic)
+		}
+	}
+
 	implicitOrigin := config
 	implicitOrigin.Intersection = wirePoint{}
 	if err := validateStartup(implicitOrigin); err == nil {

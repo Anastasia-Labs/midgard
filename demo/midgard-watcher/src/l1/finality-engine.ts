@@ -15,6 +15,10 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
+import {
+  parseWatcherCustomNetwork,
+  type WatcherCustomNetwork,
+} from "../runtime/custom-network.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
   readWatcherLocalBackfillObservation,
@@ -44,7 +48,7 @@ export const WATCHER_FINALITY_BOUNDS = Object.freeze({
   uint64Maximum: 18_446_744_073_709_551_615n,
 });
 
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const SOURCE_AUTHORITY_ID = /^[a-z][a-z0-9-]{0,62}$/u;
@@ -124,6 +128,7 @@ export type WatcherFinalityAction =
   | "quarantine_incident";
 
 export type WatcherFinalityPolicy = Readonly<{
+  customNetwork?: WatcherCustomNetwork;
   schemaVersion: typeof WATCHER_FINALITY_POLICY_SCHEMA_VERSION;
   network: (typeof NETWORKS)[number];
   sourceMode: "local_node" | "external_providers";
@@ -532,6 +537,9 @@ const makePolicy = (
   const canonical = {
     schemaVersion: WATCHER_FINALITY_POLICY_SCHEMA_VERSION,
     network: value.network,
+    ...(value.customNetwork === undefined
+      ? {}
+      : { customNetwork: parseWatcherCustomNetwork(value.customNetwork) }),
     sourceMode: value.sourceMode,
     authorityNodeId: value.authorityNodeId,
     authorityGenesisIdentitySha256: value.authorityGenesisIdentitySha256,
@@ -556,9 +564,14 @@ export const parseWatcherFinalityPolicy = (
   value: unknown,
 ): WatcherFinalityPolicy | null => {
   try {
+    const custom =
+      typeof value === "object" &&
+      value !== null &&
+      Object.getOwnPropertyDescriptor(value, "network")?.value === "Custom";
     const policy = exactPlainRecord(value, [
       "schemaVersion",
       "network",
+      ...(custom ? ["customNetwork"] : []),
       "sourceMode",
       "authorityNodeId",
       "authorityGenesisIdentitySha256",
@@ -588,6 +601,7 @@ export const parseWatcherFinalityPolicy = (
       policy === null ||
       policy.schemaVersion !== WATCHER_FINALITY_POLICY_SCHEMA_VERSION ||
       !isNetwork(policy.network) ||
+      (custom && policy.sourceMode !== "local_node") ||
       !["local_node", "external_providers"].includes(
         policy.sourceMode as string,
       ) ||
@@ -626,6 +640,9 @@ export const parseWatcherFinalityPolicy = (
     const canonical = makePolicy({
       schemaVersion: WATCHER_FINALITY_POLICY_SCHEMA_VERSION,
       network: policy.network,
+      ...(custom
+        ? { customNetwork: parseWatcherCustomNetwork(policy.customNetwork) }
+        : {}),
       sourceMode: policy.sourceMode as WatcherFinalityPolicy["sourceMode"],
       authorityNodeId: policy.authorityNodeId as string | null,
       authorityGenesisIdentitySha256: policy.authorityGenesisIdentitySha256 as
@@ -752,6 +769,9 @@ export const makeWatcherFinalityPolicy = (
     return makePolicy({
       schemaVersion: WATCHER_FINALITY_POLICY_SCHEMA_VERSION,
       network: config.targetNetwork,
+      ...(config.customNetwork === undefined
+        ? {}
+        : { customNetwork: config.customNetwork }),
       sourceMode: source.sourceMode,
       ...sourceAuthority,
       confirmationDepth: config.l1.finality.depth.toString(),

@@ -34,7 +34,9 @@ const expectedCount = Object.keys(
 ).length;
 
 beforeAll(async () => {
-  installed = await publishWorkflowDeployment().catch((cause: unknown) => {
+  installed = await publishWorkflowDeployment({
+    publicationMaxTargetsPerBatch: 8,
+  }).catch((cause: unknown) => {
     throw new Error(inspect(cause, { depth: 12 }));
   });
   directory = await mkdtemp(join(tmpdir(), "midgard-published-workflow-"));
@@ -72,6 +74,16 @@ it("publishes every role, initializes genesis and reopens the finalized deployme
   ).not.toThrow();
   expect(restored.manifestId).toBe(installed.manifest.manifestId);
   expect(installed.receipts).toHaveLength(expectedCount);
+  expect(
+    installed.publicationMetrics.peakUnconfirmedTransactions,
+  ).toBeLessThanOrEqual(8);
+  expect(installed.publicationMetrics.peakUnconfirmedBytes).toBeLessThanOrEqual(
+    100_000,
+  );
+  expect(installed.publicationMetrics.rejectedTransactions).toBe(0);
+  expect(
+    new Set(installed.receipts.map(({ outRef }) => outRef.txHash)).size,
+  ).toBeLessThan(expectedCount);
   expect(installed.availabilityRegistrations).toHaveLength(5);
   expect(installed.initialization).toMatchObject({
     nonceConsumed: true,
@@ -119,6 +131,8 @@ it("publishes every role, initializes genesis and reopens the finalized deployme
           sourceHashes,
           roleCount: expectedCount,
           publications: installed.receipts,
+          publicationMetrics: installed.publicationMetrics,
+          publicationJournalPath: installed.publicationJournalPath,
           initialization: installed.initialization,
           availabilityRegistrations: installed.availabilityRegistrations,
           publicationAuthorityExpired: true,

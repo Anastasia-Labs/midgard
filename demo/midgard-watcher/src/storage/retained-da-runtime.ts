@@ -27,6 +27,7 @@ import {
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
+import type { WatcherPublicDaRequest } from "./public-da-client.js";
 import {
   createWatcherPublicDaLibp2pTransport,
   WatcherPublicDaLibp2pTransport,
@@ -191,6 +192,7 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
     private readonly transport: WatcherPublicDaLibp2pTransport,
     private readonly configuredTimeoutMs: number,
     private readonly operationsSink: WatcherOperationsSink | undefined,
+    private readonly customNetwork: WatcherPublicDaRequest["customNetwork"],
   ) {
     this.peerById = new Map(peers.map((peer) => [peer.peerId, peer]));
   }
@@ -215,6 +217,7 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
       .update(args.payload)
       .digest("hex");
     const startedAtMs = Date.now().toString();
+    const startedMonotonicMs = performance.now();
     try {
       const response = await this.transport.request({
         peerIdentity: peer.identity,
@@ -228,12 +231,18 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
         requestCbor: args.payload,
         timeoutMs: this.configuredTimeoutMs,
         signal: AbortSignal.timeout(this.configuredTimeoutMs),
+        ...(this.customNetwork === undefined
+          ? {}
+          : {
+              customNetwork: this.customNetwork,
+            }),
       });
       const completedAtMs = Date.now().toString();
       this.operationsSink?.recordDaFetch({
         subjectDigest,
         startedAtMs,
         completedAtMs,
+        elapsedMs: Math.ceil(performance.now() - startedMonotonicMs).toString(),
         outcome: "succeeded",
       });
       this.operationsSink?.setAlert({
@@ -245,27 +254,38 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
       return response;
     } catch (error) {
       const completedAtMs = Date.now().toString();
-      this.operationsSink?.recordDaFetch({
-        subjectDigest,
-        startedAtMs,
-        completedAtMs,
-        outcome:
-          error instanceof DOMException && error.name === "TimeoutError"
-            ? "timed_out"
-            : "failed",
-      });
-      this.operationsSink?.setAlert({
-        code: "da_fetch_failure",
-        subjectDigest,
-        active: true,
-        observedAtMs: completedAtMs,
-      });
+      try {
+        this.operationsSink?.recordDaFetch({
+          subjectDigest,
+          startedAtMs,
+          completedAtMs,
+          elapsedMs: Math.ceil(
+            performance.now() - startedMonotonicMs,
+          ).toString(),
+          outcome:
+            error instanceof DOMException && error.name === "TimeoutError"
+              ? "timed_out"
+              : "failed",
+        });
+        this.operationsSink?.setAlert({
+          code: "da_fetch_failure",
+          subjectDigest,
+          active: true,
+          observedAtMs: completedAtMs,
+        });
+      } catch (diagnosticError) {
+        throw new AggregateError(
+          [error, diagnosticError],
+          "DA fetch and failure diagnostics failed",
+          { cause: error },
+        );
+      }
       throw error;
     }
   }
 }
 
-class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSource {
+export class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSource {
   constructor(
     options: ConstructorParameters<typeof DaLibp2pRetainedDaSource>[0],
     private readonly l1Source: RetainedDaPayloadSource,
@@ -275,17 +295,20 @@ class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSource {
 
   override async fetchPayloadByHeaderHash(headerHash: string) {
     const result = await super.fetchPayloadByHeaderHash(headerHash);
-    return result.ok
-      ? result
-      : await this.l1Source.fetchPayloadByHeaderHash(headerHash);
+    if (result.ok) return result;
+    const fallback = await this.l1Source.fetchPayloadByHeaderHash(headerHash);
+    return {
+      ...fallback,
+      attempts: [...result.attempts, ...fallback.attempts],
+    };
   }
 }
 
 /**
  * Compiled public-DA authority for production fault-proof workflows.
  *
- * The watcher config parser admits only direct public DNS TCP multiaddrs with
- * embedded peer identities. The signed deployment identity supplies the
+ * The watcher config parser admits direct public DNS TCP peers, plus explicit
+ * Custom-chain ip4 peers. The signed deployment identity supplies the
  * protocol namespace. One source is created per peer so the shared evidence
  * layer can preserve independent attempts instead of silently treating an
  * operator-private endpoint or local file as public evidence.
@@ -327,6 +350,12 @@ const createRuntimeFromAdmittedConfig = async (
       transport,
       config.da.requestTimeoutMs,
       operationsSinkByDeploymentIdentity.get(options.deploymentIdentity),
+      config.targetNetwork === "Custom"
+        ? Object.freeze({
+            watcherConfig: config,
+            deploymentIdentity: options.deploymentIdentity,
+          })
+        : undefined,
     );
     const l1Source = l1AvailabilitySourceByDeploymentIdentity.get(
       options.deploymentIdentity,

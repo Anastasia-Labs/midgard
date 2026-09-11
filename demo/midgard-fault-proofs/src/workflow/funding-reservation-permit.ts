@@ -281,8 +281,9 @@ const parseSnapshot = (value: unknown): WorkflowFundingReservationSnapshot => {
   if (record.state === "active" && activeInputs.length === 0) {
     throw new Error("active production funding reservation has no inputs");
   }
-  if (record.state !== "active" && activeInputs.length !== 0) {
-    throw new Error("inactive production funding reservation retains inputs");
+  // Conflicted leases stay quarantined until canonical lineage is resolved.
+  if (record.state === "released" && activeInputs.length !== 0) {
+    throw new Error("released production funding reservation retains inputs");
   }
   return Object.freeze({
     reservationId: record.reservationId,
@@ -562,7 +563,7 @@ export const createWorkflowFundingReservationPermit = async ({
   if (
     snapshot.deploymentFingerprint !== actuation.deploymentFingerprint ||
     snapshot.deploymentFingerprint !== funding.deploymentFingerprint ||
-    snapshot.decisionDigest !== actuation.decisionDigest ||
+    snapshot.decisionDigest !== actuation.executionDecisionDigest ||
     snapshot.rollbackGeneration !== rollbackGeneration ||
     snapshot.policyDigest !== funding.policyDigest ||
     snapshot.fundingPaymentKeyHash !== funding.fundingPaymentKeyHash ||

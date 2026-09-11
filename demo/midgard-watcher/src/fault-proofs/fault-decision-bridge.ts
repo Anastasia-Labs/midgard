@@ -132,6 +132,7 @@ type BridgeDependencies = Readonly<{
   ): Promise<WatcherStateQueueHeaderObservation | undefined>;
   operationsSink?: WatcherOperationsSink;
   nowMs?(): bigint;
+  monotonicNowMs?(): number;
   enqueue(
     decision: HeaderDecision,
     actuationPermit: WorkflowActuationPermit,
@@ -442,7 +443,10 @@ const createBridge = (input: {
           continue;
         }
         const nowMs = input.dependencies.nowMs ?? (() => BigInt(Date.now()));
+        const monotonicNowMs =
+          input.dependencies.monotonicNowMs ?? (() => performance.now());
         const queuedAtMs = nowMs().toString();
+        let startedMonotonicMs = monotonicNowMs();
         let startedAtMs = queuedAtMs;
         let verificationSubjectDigest: string | null = null;
         try {
@@ -451,6 +455,7 @@ const createBridge = (input: {
             await input.dependencies.observationDigest(admitted);
           verificationSubjectDigest = authenticatedObservationDigest;
           startedAtMs = nowMs().toString();
+          startedMonotonicMs = monotonicNowMs();
           const predecessor =
             await input.dependencies.resolvePredecessorHeader?.(header);
           if (token !== classificationEpoch) {
@@ -501,6 +506,9 @@ const createBridge = (input: {
             queuedAtMs,
             startedAtMs,
             completedAtMs: nowMs().toString(),
+            elapsedMs: Math.ceil(
+              monotonicNowMs() - startedMonotonicMs,
+            ).toString(),
             outcome:
               decision.decision === "fault_detected"
                 ? "fault_detected"
@@ -510,18 +518,28 @@ const createBridge = (input: {
           });
           classifications[index] = decision;
         } catch (error) {
-          if (verificationSubjectDigest !== null) {
-            const failedAtMs = nowMs().toString();
-            input.dependencies.operationsSink?.recordVerification({
-              subjectDigest: verificationSubjectDigest,
-              queuedAtMs,
-              startedAtMs,
-              completedAtMs: failedAtMs,
-              outcome: "failed",
-            });
-          }
           classificationFailed = true;
           classificationFailure = error;
+          if (verificationSubjectDigest !== null) {
+            try {
+              input.dependencies.operationsSink?.recordVerification({
+                subjectDigest: verificationSubjectDigest,
+                queuedAtMs,
+                startedAtMs,
+                completedAtMs: nowMs().toString(),
+                elapsedMs: Math.ceil(
+                  monotonicNowMs() - startedMonotonicMs,
+                ).toString(),
+                outcome: "failed",
+              });
+            } catch (diagnosticError) {
+              classificationFailure = new AggregateError(
+                [error, diagnosticError],
+                "fault classification and failure diagnostics failed",
+                { cause: error },
+              );
+            }
+          }
         }
       }
     };

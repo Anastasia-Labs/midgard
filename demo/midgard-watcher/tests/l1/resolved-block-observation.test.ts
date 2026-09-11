@@ -34,6 +34,7 @@ const upstream = vi.hoisted(() => ({
   localObservation: null as object | null,
   nativeBlock: null as object | null,
   live: true,
+  closedSurface: null as object | null,
   kupo: {},
   ogmios: {},
 }));
@@ -70,7 +71,7 @@ vi.mock(
 vi.mock("../../src/l1/l1-adapter.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/l1/l1-adapter.js")>()),
   watcherL1TransportAttestationDetails: (context: object) => {
-    if (!upstream.live) return null;
+    if (!upstream.live || context === upstream.closedSurface) return null;
     if (context === upstream.kupo)
       return {
         provider: { source: { sourceMode: "local_node", surface: "kupo" } },
@@ -233,6 +234,7 @@ const fixture = async () => {
 
 beforeEach(() => {
   upstream.live = true;
+  upstream.closedSurface = null;
   vi.mocked(readAdmittedLocalKupmiosRawBlockAtPoint).mockReset();
   vi.mocked(readAdmittedLocalKupmiosRawTransaction).mockReset();
 });
@@ -437,16 +439,27 @@ describe("shared resolved block observation owner", () => {
     );
   });
 
+  it.each(["kupo", "ogmios"] as const)(
+    "identifies a closed %s authority separately from endpoint substitution",
+    async (surface) => {
+      const current = await fixture();
+      upstream.closedSurface = upstream[surface];
+      await expect(current.source.observe(current.input)).rejects.toThrow(
+        `transport authority is closed or absent: ${surface}`,
+      );
+    },
+  );
+
   it("rechecks live authority after asynchronous reads and before later use", async () => {
     const current = await fixture();
     const observation = await current.source.observe(current.input);
     upstream.live = false;
     expect(() => readWatcherResolvedBlockObservation(observation)).toThrow(
-      "differs from admitted watcher transports",
+      "transport authority is closed or absent: kupo, ogmios",
     );
     await expect(
       resolveWatcherBlockObservationTransactions(observation, []),
-    ).rejects.toThrow("differs from admitted watcher transports");
+    ).rejects.toThrow("transport authority is closed or absent: kupo, ogmios");
     upstream.live = true;
     vi.mocked(readAdmittedLocalKupmiosRawTransaction).mockImplementation(
       async () => {
@@ -458,7 +471,7 @@ describe("shared resolved block observation owner", () => {
       resolveWatcherBlockObservationTransactions(observation, [
         current.rawTransactions[0]!.txHash,
       ]),
-    ).rejects.toThrow("differs from admitted watcher transports");
+    ).rejects.toThrow("transport authority is closed or absent: kupo, ogmios");
     upstream.live = true;
     vi.mocked(readAdmittedLocalKupmiosRawBlockAtPoint).mockImplementation(
       async () => {
@@ -467,7 +480,7 @@ describe("shared resolved block observation owner", () => {
       },
     );
     await expect(current.source.observe(current.input)).rejects.toThrow(
-      "differs from admitted watcher transports",
+      "transport authority is closed or absent: kupo, ogmios",
     );
   });
 });

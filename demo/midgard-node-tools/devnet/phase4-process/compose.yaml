@@ -2,7 +2,7 @@ name: ${MIDGARD_PHASE4_COMPOSE_PROJECT:?MIDGARD_PHASE4_COMPOSE_PROJECT is requir
 
 services:
   cardano-node:
-    image: ghcr.io/intersectmbo/cardano-node:11.0.1@sha256:33378c806485729154e6652ffc6813748949ae049180788b94018a709f5a0400
+    image: ghcr.io/intersectmbo/cardano-node:11.1.0@sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a
     entrypoint: ["entrypoint"]
     environment:
       CARDANO_BLOCK_PRODUCER: ${MIDGARD_PHASE4_BLOCK_PRODUCER:-true}

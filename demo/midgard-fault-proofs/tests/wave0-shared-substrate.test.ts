@@ -95,6 +95,39 @@ describe("Wave 0 shared off-chain substrate", () => {
     }
   });
 
+  it("ignores safe literals, types and quoted examples, and requires actual diagnostic comments", () => {
+    const examples = [
+      "// publish({ oversized: true });",
+      'const example = "publish({ oversized: true });";',
+      "type Options = { oversized: boolean; localUPLCEval: boolean };",
+      "complete({ oversized: false, localUPLCEval: (true as const), maxTxSize: 16_384 });",
+    ];
+    for (const source of examples) {
+      expect(scanFaultProofLimitEscapes({ path: "safe.ts", source })).toEqual(
+        [],
+      );
+    }
+    const source = [
+      'const marker = "MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_BEGIN";',
+      "parameters['maxTxSize'] = 2.62144e5;",
+      "parameters.maxTxExSteps = 10_000_000_001n;",
+    ].join("\n");
+    expect(scanFaultProofLimitEscapes({ path: "limits.ts", source })).toEqual([
+      {
+        path: "limits.ts",
+        line: 2,
+        kind: "raised_tx_bytes",
+        diagnosticOnly: false,
+      },
+      {
+        path: "limits.ts",
+        line: 3,
+        kind: "raised_tx_cpu",
+        diagnosticOnly: false,
+      },
+    ]);
+  });
+
   it("finds no positive limit escape across the fault-proof TypeScript surface", async () => {
     const roots = [join(process.cwd(), "src"), join(process.cwd(), "tests")];
     const files = (await Promise.all(roots.map(typescriptFilesBelow))).flat();

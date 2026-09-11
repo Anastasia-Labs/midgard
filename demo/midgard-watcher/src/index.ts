@@ -147,6 +147,7 @@ export {
   type WatcherProofThreadJournalPhase,
   type WatcherProofThreadLayout,
   type WatcherProofThreadNetwork,
+  watcherProofThreadNextStepIndexes,
   type WatcherProofThreadObservation,
   type WatcherProofThreadPending,
   type WatcherProofThreadPolicy,
@@ -407,6 +408,11 @@ export {
   type WatcherNativeChainSyncRollForward,
   type WatcherNativeChainSyncRuntime,
 } from "./l1/native-chain-sync.js";
+export {
+  queryWatcherNativeRewardAccount,
+  WatcherLocalKupmios,
+  type WatcherNativeRewardAccountQuery,
+} from "./l1/native-reward-account.js";
 export {
   createWatcherResolvedBlockObservationSource,
   type WatcherResolvedBlockObservation,

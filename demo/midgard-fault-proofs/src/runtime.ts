@@ -30,6 +30,7 @@ import {
   buildMinFeeFaultProofContracts,
   buildMintAuthorizationFaultProofContracts,
   buildMintDeclaredAssetLimitFaultProofContracts,
+  buildMintItemNonCanonicalFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
   buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingRedeemerFaultProofContracts,
@@ -95,6 +96,7 @@ import {
   type OutRef,
   type PrivateKey,
   type Script,
+  type SlotConfig,
   type UTxO,
   validatorToScriptHash,
   walletFromSeed,
@@ -116,6 +118,7 @@ export const DEFAULT_CONFIRMATION_POLL_MS = 5_000;
 export type ProviderKind = "Blockfrost" | "Kupmios";
 
 export type SubmitProviderConfig = {
+  readonly slotConfig?: SlotConfig;
   readonly network: Network;
   readonly provider?: ProviderKind;
   readonly blockfrostApiUrl?: string;
@@ -201,6 +204,7 @@ export const makeLucidForSubmit = async (
         ),
       ),
       config.network,
+      { slotConfig: config.slotConfig },
     );
   }
 
@@ -215,6 +219,7 @@ export const makeLucidForSubmit = async (
       ),
     ),
     config.network,
+    { slotConfig: config.slotConfig },
   );
 };
 
@@ -745,6 +750,12 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofTransactionOutputNonCanonicalStep03",
     "fraudProofTransactionOutputNonCanonicalStep04",
   ],
+  mintItemNonCanonical: [
+    "fraudProofMintItemNonCanonical",
+    "fraudProofMintItemNonCanonicalStep02",
+    "fraudProofMintItemNonCanonicalStep03",
+    "fraudProofMintItemNonCanonicalStep04",
+  ],
   resolvedOutputNonCanonical: [
     "fraudProofResolvedOutputNonCanonical",
     "fraudProofResolvedOutputNonCanonicalStep02",
@@ -956,6 +967,8 @@ const categoryLabel = (
       return "script-integrity-hash-missing";
     case "transactionOutputNonCanonical":
       return "transaction-output-non-canonical";
+    case "mintItemNonCanonical":
+      return "mint-item-non-canonical";
     case "resolvedOutputNonCanonical":
       return "resolved-output-non-canonical";
     case "mintDeclaredAssetLimit":
@@ -1163,6 +1176,10 @@ const buildOneCategoryFaultProofContracts = async ({
     case "transactionOutputNonCanonical":
       return await Effect.runPromise(
         buildTransactionOutputNonCanonicalFaultProofContracts(params),
+      );
+    case "mintItemNonCanonical":
+      return await Effect.runPromise(
+        buildMintItemNonCanonicalFaultProofContracts(params),
       );
     case "resolvedOutputNonCanonical":
       return await Effect.runPromise(

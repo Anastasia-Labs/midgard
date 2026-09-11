@@ -1,7 +1,9 @@
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
+import JSONBig from "json-bigint";
 
 import {
   LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
+  LocalKupmiosCheckpointChangedError,
   type LocalKupmiosFraudProofRawSource,
   settleLocalKupmiosReads,
 } from "./local-kupmios-raw-l1-authority.js";
@@ -22,6 +24,8 @@ export const LOCAL_KUPMIOS_HTTP_OGMIOS_SOURCE =
   "midgard-local-kupo-http-ogmios-ws-source-v1" as const;
 export const LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT =
   "midgard-local-kupmios-raw-block-at-point-v1" as const;
+
+export { LocalKupmiosCheckpointChangedError } from "./local-kupmios-raw-l1-authority.js";
 
 /** Exact Kupo canonical-chain refusal; safe for bounded rollback-prefix search. */
 export class LocalKupmiosExactPointNotCanonicalError extends Error {
@@ -180,6 +184,8 @@ type OgmiosRawTransactionAtPoint = {
   readonly transactionCbor: string;
   readonly point: FraudProofRawL1Point;
 };
+
+const losslessJson = JSONBig({ useNativeBigInt: true, strict: true });
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_BLOCK_SCAN_LIMIT = 2_000;
@@ -509,7 +515,7 @@ const fetchJson = async ({
           checkpointSlot === null ||
           !NATURAL.test(checkpointSlot) ||
           checkpointEtag === null ||
-          !/^"[0-9a-f]{64}"$/u.test(checkpointEtag)
+          !HEX_32.test(checkpointEtag)
         ) {
           throw new Error(
             `response from ${url} has malformed Kupo checkpoint headers`,
@@ -517,11 +523,11 @@ const fetchJson = async ({
         }
         checkpointHeaders = {
           slot: Number(checkpointSlot),
-          blockHash: checkpointEtag.slice(1, -1),
+          blockHash: checkpointEtag,
         };
       }
       return {
-        value: JSON.parse(body) as unknown,
+        value: losslessJson.parse(body) as unknown,
         checkpointHeaders,
       };
     } catch (cause) {
@@ -570,6 +576,14 @@ const parseKupoSpentPoint = (
   };
 };
 
+const kupoQuantity = (value: unknown, label: string): bigint => {
+  if (typeof value === "bigint" && value >= 0n) return value;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
+    return BigInt(value);
+  if (typeof value === "string" && NATURAL.test(value)) return BigInt(value);
+  throw new Error(`${label} must be an exact nonnegative quantity`);
+};
+
 const parseKupoMatch = (value: unknown, label: string): KupoMatch => {
   const parsed = exactKeys(
     value,
@@ -596,25 +610,18 @@ const parseKupoMatch = (value: unknown, label: string): KupoMatch => {
     [],
     `${label}.value`,
   );
-  if (
-    typeof valueRecord.coins !== "string" ||
-    !NATURAL.test(valueRecord.coins)
-  ) {
-    throw new Error(`${label}.value.coins must be canonical lovelace`);
-  }
   const assets = record(valueRecord.assets, `${label}.value.assets`);
   const normalizedAssets: Record<string, bigint> = {
-    lovelace: BigInt(valueRecord.coins as string),
+    lovelace: kupoQuantity(valueRecord.coins, `${label}.value.coins`),
   };
   for (const [unit, quantity] of Object.entries(assets)) {
-    if (
-      !/^[0-9a-f]{56}\.(?:[0-9a-f]{2}){0,32}$/u.test(unit) ||
-      typeof quantity !== "string" ||
-      !NATURAL.test(quantity)
-    ) {
+    if (!/^[0-9a-f]{56}\.(?:[0-9a-f]{2}){0,32}$/u.test(unit)) {
       throw new Error(`${label}.value.assets is not canonical Kupo value JSON`);
     }
-    normalizedAssets[unit.replace(".", "")] = BigInt(quantity);
+    normalizedAssets[unit.replace(".", "")] = kupoQuantity(
+      quantity,
+      `${label}.value.assets.${unit}`,
+    );
   }
   const datumHash = nullableDigest(parsed.datum_hash, `${label}.datum_hash`);
   let datumType: "hash" | "inline" | null = null;
@@ -680,16 +687,7 @@ const rawPoint = ({
 };
 
 const parseOgmiosTip = (value: unknown, label: string): OgmiosTip => {
-  const envelope = exactKeys(value, ["jsonrpc", "id", "result"], [], label);
-  if (envelope.jsonrpc !== "2.0") {
-    throw new Error(`${label}.jsonrpc is unsupported`);
-  }
-  const result = exactKeys(
-    envelope.result,
-    ["slot", "id", "height"],
-    [],
-    `${label}.result`,
-  );
+  const result = exactKeys(value, ["slot", "id", "height"], [], label);
   return {
     slot: naturalNumber(result.slot, `${label}.result.slot`),
     blockHash: digest(result.id, `${label}.result.id`),
@@ -702,11 +700,68 @@ type OgmiosSession = {
     method: string,
     params: Readonly<Record<string, unknown>>,
   ): Promise<unknown>;
-  close(): void;
+  close(): Promise<void>;
 };
 
 const defaultWebSocketFactory: FraudProofRawL1WebSocketFactory = (url) =>
   new WebSocket(url) as unknown as FraudProofRawL1WebSocketLike;
+
+// Each Ogmios WebSocket opens node-to-client connections. Bound physical
+// sessions across captures/sources; closing sockets still consume their permit.
+const MAXIMUM_OGMIOS_SESSIONS = 4;
+const ogmiosSessionBudgets = new Map<
+  string,
+  { active: number; waiting: Set<() => void> }
+>();
+const acquireOgmiosSession = async (
+  url: string,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<() => void> => {
+  throwIfSourceAborted(signal);
+  const endpoint = new URL(url).origin;
+  let budget = ogmiosSessionBudgets.get(endpoint);
+  if (budget === undefined) {
+    budget = { active: 0, waiting: new Set() };
+    ogmiosSessionBudgets.set(endpoint, budget);
+  }
+  const selected = budget;
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      selected.waiting.delete(admit);
+    };
+    const fail = (error: Error): void => {
+      cleanup();
+      reject(error);
+    };
+    const onAbort = (): void =>
+      fail(new DOMException("local Kupmios raw source aborted", "AbortError"));
+    const admit = (): void => {
+      cleanup();
+      selected.active += 1;
+      resolve();
+    };
+    const timer = setTimeout(
+      () => fail(new Error("Ogmios session capacity wait timed out")),
+      timeoutMs,
+    );
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal !== undefined && abortSignalAborted.call(signal)) onAbort();
+    else if (selected.active < MAXIMUM_OGMIOS_SESSIONS) admit();
+    else selected.waiting.add(admit);
+  });
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    selected.active -= 1;
+    selected.waiting.values().next().value?.();
+    if (selected.active === 0 && selected.waiting.size === 0)
+      ogmiosSessionBudgets.delete(endpoint);
+  };
+};
 
 const openOgmiosSession = async ({
   url,
@@ -728,11 +783,30 @@ const openOgmiosSession = async ({
     maxResponseBytes ?? MAX_RESPONSE_BYTES,
     referenceScope,
   );
-  const socket = webSocketFactory(url);
+  const releaseCapacity = await acquireOgmiosSession(url, timeoutMs, signal);
+  let socket: FraudProofRawL1WebSocketLike;
+  try {
+    throwIfSourceAborted(signal);
+    socket = webSocketFactory(url);
+  } catch (error) {
+    releaseCapacity();
+    throw error;
+  }
+  const openedMonotonicMs = performance.now();
+  let physicallyClosed = false;
+  let resolveClosed!: () => void;
+  const closed = new Promise<void>((resolve) => {
+    resolveClosed = resolve;
+  });
   const pending = new Map<
     number,
-    { resolve(value: unknown): void; reject(error: Error): void }
+    {
+      method: string;
+      resolve(value: unknown): void;
+      reject(error: Error): void;
+    }
   >();
+  let lastMethod: string | null = null;
   let nextId = 0;
   let terminal: Error | null = null;
   let opening = true;
@@ -765,6 +839,7 @@ const openOgmiosSession = async ({
     }
     for (const waiter of pending.values()) waiter.reject(error);
     pending.clear();
+    if (physicallyClosed) return;
     try {
       socket.close();
     } catch {
@@ -837,9 +912,30 @@ const openOgmiosSession = async ({
         opening ? "Ogmios socket failed while opening" : "Ogmios socket failed",
       ),
     )) as (event: never) => void);
-  listen("close", (() => terminate(new Error("Ogmios socket closed"))) as (
-    event: never,
-  ) => void);
+  // Keep the close listener until the physical transport ends, including after
+  // local termination removed all RPC listeners. Do not release on close().
+  const onClose = ((event: {
+    code?: number;
+    reason?: string;
+    wasClean?: boolean;
+  }) => {
+    if (physicallyClosed) return;
+    physicallyClosed = true;
+    socket.removeEventListener("close", onClose);
+    releaseCapacity();
+    resolveClosed();
+    const detail = {
+      phase: opening ? "opening" : "active",
+      pendingMethods: [...pending.values()].map(({ method }) => method),
+      lastMethod,
+      elapsedMs: Math.ceil(performance.now() - openedMonotonicMs),
+      code: event.code,
+      reason: event.reason?.slice(0, 256),
+      wasClean: event.wasClean,
+    };
+    terminate(new Error(`Ogmios socket closed: ${JSON.stringify(detail)}`));
+  }) as (event: never) => void;
+  socket.addEventListener("close", onClose);
   listen("open", (() => {
     if (terminal !== null || !opening) return;
     opening = false;
@@ -871,7 +967,9 @@ const openOgmiosSession = async ({
         const timer = setTimeout(() => {
           terminate(new Error(`Ogmios ${method} timed out`));
         }, timeoutMs);
+        lastMethod = method;
         pending.set(id, {
+          method,
           resolve: (value) => {
             clearTimeout(timer);
             resolve(value);
@@ -894,7 +992,29 @@ const openOgmiosSession = async ({
       assertSessionOpen();
       return result;
     },
-    close: () => terminate(new Error("Ogmios session closed")),
+    close: async () => {
+      terminate(new Error("Ogmios session closed"));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          closed,
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  Object.assign(
+                    new Error("Ogmios physical socket close timed out"),
+                    { cause: terminal },
+                  ),
+                ),
+              timeoutMs,
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
   };
 };
 
@@ -1611,20 +1731,41 @@ const assertMatchOutput = ({
     );
   }
   if (actualScript !== undefined) {
-    if (
-      actualScript.hash().to_hex() !== match.scriptHash ||
-      typeof match.script !== "string" ||
-      !EVEN_HEX.test(match.script)
-    ) {
+    if (actualScript.hash().to_hex() !== match.scriptHash)
       throw new Error(`${label} Kupo reference-script identity is malformed`);
-    }
+    const resolved = exactKeys(
+      match.script,
+      ["language", "script"],
+      [],
+      `${label}.script`,
+    );
+    const scriptCbor = cbor(resolved.script, `${label}.script.script`);
     let kupoScript: CML.Script;
-    try {
-      kupoScript = CML.Script.from_cbor_hex(match.script);
-    } catch {
-      throw new Error(
-        `${label} Kupo reference script is not canonical CML CBOR`,
-      );
+    switch (resolved.language) {
+      case "native":
+        kupoScript = CML.Script.new_native(
+          CML.NativeScript.from_cbor_hex(scriptCbor),
+        );
+        break;
+      case "plutus:v1":
+        kupoScript = CML.Script.new_plutus_v1(
+          CML.PlutusV1Script.from_raw_bytes(Buffer.from(scriptCbor, "hex")),
+        );
+        break;
+      case "plutus:v2":
+        kupoScript = CML.Script.new_plutus_v2(
+          CML.PlutusV2Script.from_raw_bytes(Buffer.from(scriptCbor, "hex")),
+        );
+        break;
+      case "plutus:v3":
+        kupoScript = CML.Script.new_plutus_v3(
+          CML.PlutusV3Script.from_raw_bytes(Buffer.from(scriptCbor, "hex")),
+        );
+        break;
+      default:
+        throw new Error(
+          `${label} Kupo reference script has an unsupported language`,
+        );
     }
     if (
       kupoScript.hash().to_hex() !== match.scriptHash ||
@@ -1743,42 +1884,46 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       if (referenceScope.head === undefined)
         referenceScope.head = Object.freeze({ ...response.checkpointHeaders });
       else if (!sameKupoPoint(referenceScope.head, response.checkpointHeaders))
-        throw new Error("Kupo changed during reference acquisition");
+        throw new LocalKupmiosCheckpointChangedError(
+          "Kupo changed during reference acquisition",
+        );
     }
     if (pinnedKupoResponseHead === undefined) {
       pinnedKupoResponseHead = response.checkpointHeaders;
     } else if (
       !sameKupoPoint(pinnedKupoResponseHead, response.checkpointHeaders)
     ) {
-      throw new Error(
-        "Kupo advanced or rolled back during raw snapshot capture",
+      throw new LocalKupmiosCheckpointChangedError(
+        `Kupo advanced or rolled back during raw snapshot capture: ${path} (${pinnedKupoResponseHead.slot} -> ${response.checkpointHeaders.slot})`,
       );
     }
     return response.value;
   };
 
-  const queryTip = async (): Promise<OgmiosTip> =>
-    parseOgmiosTip(
-      (
-        await fetchJson({
-          fetchImpl,
-          url: ogmiosHttpUrl,
-          timeoutMs,
-          signal,
-          maxResponseBytes: maxResponseBytes ?? MAX_RESPONSE_BYTES,
-          init: {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              method: "queryNetwork/tip",
-              id: "midgard-fraud-proof-raw-tip-v1",
-            }),
-          },
-        })
-      ).value,
-      "Ogmios tip",
-    );
+  const queryTip = async (): Promise<OgmiosTip> => {
+    // queryNetwork/tip omits height. Chain-sync returns one atomic tip with
+    // its actual block number, avoiding a race between separate tip queries.
+    const session = await openOgmiosSession({
+      url: ogmiosWebSocketUrl,
+      timeoutMs,
+      webSocketFactory,
+      signal,
+      maxResponseBytes,
+    });
+    try {
+      const result = exactKeys(
+        await session.request("findIntersection", { points: ["origin"] }),
+        ["intersection", "tip"],
+        [],
+        "Ogmios tip intersection",
+      );
+      if (result.intersection !== "origin")
+        throw new Error("Ogmios tip query did not intersect origin");
+      return parseOgmiosTip(result.tip, "Ogmios chain-sync tip");
+    } finally {
+      await session.close();
+    }
+  };
 
   const getKupoCheckpoint = async (
     slot: number,
@@ -1892,7 +2037,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
         }
         throw new Error("Ogmios block scan exceeded its safety bound");
       } finally {
-        session.close();
+        await session.close();
       }
     })();
     cache.set(key, read);
@@ -2622,21 +2767,45 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       const tip = await queryTip();
       const minimum = config.releaseFinality.policy.confirmationDepth;
       const maximum = config.releaseFinality.policy.automaticRecoveryMaxDepth;
-      let lookbackSlots = Math.max(64, minimum * 20);
+      let lookbackSlots = Math.max(1, minimum - 1);
+      let newerSlot = tip.slot + 1;
       for (let attempt = 0; attempt < 12; attempt += 1) {
         const lookupSlot = Math.max(0, tip.slot - lookbackSlots);
         const checkpoint = await getKupoCheckpoint(lookupSlot);
         const point = await admittedPoint(checkpoint);
         throwIfSourceAborted(signal);
         const depth = tip.blockNo - Number(point.blockNo) + 1;
-        if (depth >= minimum && depth <= maximum) {
-          activeBoundary = { point, tip: rawPoint(tip) };
+        if (depth >= minimum) {
+          // Slot density varies by chain and by leader election. Refine the
+          // bracket by observed block height instead of treating seconds as
+          // confirmations; an unnecessarily old boundary can predate activation.
+          let selected = point;
+          let lower = checkpoint.slot;
+          let upper = newerSlot - 1;
+          while (depth !== minimum && lower < upper) {
+            const probe = Math.floor(lower + (upper - lower + 1) / 2);
+            const candidate = await admittedPoint(
+              await getKupoCheckpoint(probe),
+            );
+            throwIfSourceAborted(signal);
+            const candidateDepth = tip.blockNo - Number(candidate.blockNo) + 1;
+            if (candidateDepth >= minimum) {
+              selected = candidate;
+              lower = probe;
+              if (candidateDepth === minimum) break;
+            } else {
+              upper = probe - 1;
+            }
+          }
+          if (tip.blockNo - Number(selected.blockNo) + 1 > maximum) break;
+          activeBoundary = { point: selected, tip: rawPoint(tip) };
           return {
             kupoCheckpoint: activeBoundary.point,
             ogmiosTip: activeBoundary.tip,
           };
         }
-        if (depth > maximum) break;
+        if (lookupSlot === 0) break;
+        newerSlot = lookupSlot;
         lookbackSlots *= 2;
       }
       throw new Error(
@@ -2731,17 +2900,13 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
         blockHash: point.blockHash,
       });
       if (canonical) {
-        try {
-          rawBlockCache.delete(`${point.slot}:${point.blockHash}`);
-          pointCache.delete(`${point.slot}:${point.blockHash}`);
-          const block = await readBlock({
-            slot: Number(point.slot),
-            blockHash: point.blockHash,
-          });
-          canonical = sameRawPoint(rawPoint(block.point), point);
-        } catch {
-          canonical = false;
-        }
+        rawBlockCache.delete(`${point.slot}:${point.blockHash}`);
+        pointCache.delete(`${point.slot}:${point.blockHash}`);
+        const block = await readBlock({
+          slot: Number(point.slot),
+          blockHash: point.blockHash,
+        });
+        canonical = sameRawPoint(rawPoint(block.point), point);
       }
       throwIfSourceAborted(signal);
       if (tip.blockNo < Number(point.blockNo)) canonical = false;

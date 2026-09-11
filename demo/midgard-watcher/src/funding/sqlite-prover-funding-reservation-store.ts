@@ -841,8 +841,34 @@ const openInternal = async (
         if (
           current.state !== "active" ||
           current.revision !== confirmation.expectedRevision ||
-          current.pendingTransition?.transitionDigest !==
-            confirmation.transitionDigest
+          !HEX_32.test(confirmation.transactionHash)
+        ) {
+          throw new Error("prover reservation confirmation mismatch");
+        }
+        if (current.pendingTransition === null) {
+          // SQLite confirmation can commit before its acknowledgement reaches
+          // the workflow journal. Reconciliation may acknowledge that exact
+          // committed transition again, without rotating leases or revision.
+          const row = selectConfirmedLineage.get(
+            current.reservationId,
+            `${confirmation.transactionHash}#0`,
+          ) as LineageRow | undefined;
+          if (
+            current.lastConfirmedTransitionDigest !== null &&
+            current.lastConfirmedTransitionDigest ===
+              confirmation.transitionDigest &&
+            row !== undefined &&
+            parseLineageRow(row).transitionDigest ===
+              confirmation.transitionDigest
+          )
+            return current;
+          throw new Error("prover reservation confirmation mismatch");
+        }
+        if (
+          current.pendingTransition.transitionDigest !==
+            confirmation.transitionDigest ||
+          current.pendingTransition.transactionHash !==
+            confirmation.transactionHash
         ) {
           throw new Error("prover reservation confirmation mismatch");
         }

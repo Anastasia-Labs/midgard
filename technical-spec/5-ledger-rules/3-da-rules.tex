@@ -26,6 +26,11 @@ Before signing an attestation, a committee node must verify:
       \code{validation\_traces\_root} recompute to the roots in the header.
     \item Every compact normal or forced transaction source has one
       same-key canonical full preimage and regenerates exactly from it.
+    \item Every normal and forced transaction's canonical full preimage and
+      each of its committed field preimages are within the canonical V1 size
+      limits, and the aggregate canonical transaction bytes are within the
+      per-block limit. These are DA-attestation admission rules, not standalone
+      non-interactive fault-proof categories.
     \item The declared counts equal the member-array counts and the header counts.
     \item \code{total\_event\_count} equals the sum of the per-source counts.
     \item \code{transition\_step\_count} equals \code{total\_event\_count}.

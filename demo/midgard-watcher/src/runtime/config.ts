@@ -1,4 +1,10 @@
+import { isIP } from "node:net";
 import { isAbsolute, normalize } from "node:path";
+
+import {
+  parseWatcherCustomNetwork,
+  type WatcherCustomNetwork,
+} from "./custom-network.js";
 
 export const WATCHER_CONFIG_SCHEMA_VERSION =
   "midgard-watcher-config-v1" as const;
@@ -22,7 +28,7 @@ export const WATCHER_CONFIG_BOUNDS = {
 } as const;
 
 export type WatcherConfigMode = "development" | "acceptance";
-export type WatcherTargetNetwork = "Mainnet" | "Preprod" | "Preview";
+export type WatcherTargetNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
 export type WatcherL1SourceMode = "local_node" | "external_providers";
 
 export type WatcherL1ProviderConfig = Readonly<{
@@ -87,6 +93,7 @@ export type WatcherConfig = Readonly<{
   schemaVersion: typeof WATCHER_CONFIG_SCHEMA_VERSION;
   mode: WatcherConfigMode;
   targetNetwork: WatcherTargetNetwork;
+  customNetwork?: WatcherCustomNetwork;
   l1: WatcherL1Config;
   da: Readonly<{
     peers: readonly WatcherDaPeerConfig[];
@@ -373,11 +380,28 @@ const parseExternalProviderEndpoint = (
 const DA_MULTIADDR_PATTERN =
   /^\/dns(4|6)\/([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)\/tcp\/([1-9][0-9]{0,4})\/p2p\/([1-9A-HJ-NP-Za-km-z]{20,128})$/u;
 
-const parsePublicDaMultiaddr = (
+const parseDaMultiaddr = (
   value: unknown,
   path: string,
-): Readonly<{ multiaddr: string; aliasKey: string }> => {
+  network: WatcherTargetNetwork,
+): Readonly<{ multiaddr: string; aliasKey: string; peerId: string }> => {
   const multiaddr = exactString(value, path, { maxLength: 512 });
+  if (network === "Custom") {
+    const local =
+      /^\/ip4\/([0-9.]+)\/tcp\/([1-9][0-9]{0,4})\/p2p\/([1-9A-HJ-NP-Za-km-z]{20,128})$/u.exec(
+        multiaddr,
+      );
+    if (local !== null) {
+      const [, address, portText, peerId] = local;
+      const port = Number(portText);
+      if (isIP(address!) !== 4 || port > 65_535) fail("invalid_endpoint", path);
+      return {
+        multiaddr,
+        peerId: peerId!,
+        aliasKey: `${address}:${port}:${peerId}`,
+      };
+    }
+  }
   const match = DA_MULTIADDR_PATTERN.exec(multiaddr);
   if (match === null) {
     fail("invalid_endpoint", path);
@@ -395,6 +419,7 @@ const parsePublicDaMultiaddr = (
   }
   return {
     multiaddr,
+    peerId,
     aliasKey: `${hostname}:${port.toString()}:${peerId}`,
   };
 };
@@ -533,7 +558,10 @@ const parseLocalNodeQueryServices = (
   return Object.freeze(parsed);
 };
 
-const parseDaPeers = (value: unknown): readonly WatcherDaPeerConfig[] => {
+const parseDaPeers = (
+  value: unknown,
+  network: WatcherTargetNetwork,
+): readonly WatcherDaPeerConfig[] => {
   const values = boundedArray(
     value,
     "$.da.peers",
@@ -549,16 +577,17 @@ const parseDaPeers = (value: unknown): readonly WatcherDaPeerConfig[] => {
         maxLength: 32,
         pattern: IDENTITY_PATTERN,
       });
-      const endpoint = parsePublicDaMultiaddr(
+      const endpoint = parseDaMultiaddr(
         record.multiaddr,
         `${path}.multiaddr`,
+        network,
       );
       if (identities.has(identity) || endpoints.has(endpoint.aliasKey)) {
         fail("provider_alias", path);
       }
       identities.add(identity);
       endpoints.add(endpoint.aliasKey);
-      const peerId = endpoint.aliasKey.split(":")[2]!;
+      const peerId = endpoint.peerId;
       return Object.freeze({ identity, peerId, multiaddr: endpoint.multiaddr });
     }),
   );
@@ -702,10 +731,12 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
   ) {
     return value as WatcherConfig;
   }
-  const root = exactRecord(value, "$", [
+  const preliminary = plainRecord(value, "$");
+  const root = exactRecord(preliminary, "$", [
     "schemaVersion",
     "mode",
     "targetNetwork",
+    ...(preliminary.targetNetwork === "Custom" ? ["customNetwork"] : []),
     "l1",
     "da",
     "storage",
@@ -723,6 +754,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     "Mainnet",
     "Preprod",
     "Preview",
+    "Custom",
   ] as const);
 
   const l1 = exactRecord(root.l1, "$.l1", [
@@ -847,12 +879,20 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     fail("secret_source_alias", "$.storage.rollbackAuthorityKeySource");
   }
 
+  const source = parseL1Source(l1.source, mode);
+  const customNetwork =
+    targetNetwork === "Custom"
+      ? parseWatcherCustomNetwork(root.customNetwork)
+      : undefined;
+  if (customNetwork !== undefined && source.sourceMode !== "local_node")
+    fail("invalid_configuration", "$.l1.source");
   const admitted = Object.freeze({
     schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
     mode,
     targetNetwork,
+    ...(customNetwork === undefined ? {} : { customNetwork }),
     l1: Object.freeze({
-      source: parseL1Source(l1.source, mode),
+      source,
       requestTimeoutMs: l1RequestTimeoutMs,
       maxConcurrency: boundedInteger(
         l1.maxConcurrency,
@@ -878,7 +918,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
       }),
     }),
     da: Object.freeze({
-      peers: parseDaPeers(da.peers),
+      peers: parseDaPeers(da.peers, targetNetwork),
       requestTimeoutMs: daRequestTimeoutMs,
       maxConcurrency: boundedInteger(
         da.maxConcurrency,
@@ -956,10 +996,7 @@ class StrictJsonReader {
   #parseObject(path: string): Record<string, unknown> {
     this.#position += 1;
     this.#skipWhitespace();
-    const result: Record<string, unknown> = Object.create(null) as Record<
-      string,
-      unknown
-    >;
+    const result: Record<string, unknown> = {};
     const keys = new Set<string>();
     if (this.#source[this.#position] === "}") {
       this.#position += 1;
@@ -979,7 +1016,14 @@ class StrictJsonReader {
         fail("malformed_json", path);
       }
       this.#position += 1;
-      result[key] = this.#parseValue(path);
+      // Match JSON.parse's ordinary data objects without invoking inherited
+      // setters (in particular __proto__) for untrusted field names.
+      Object.defineProperty(result, key, {
+        value: this.#parseValue(path),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
       this.#skipWhitespace();
       const delimiter = this.#source[this.#position];
       if (delimiter === "}") {

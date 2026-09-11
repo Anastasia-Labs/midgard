@@ -15,6 +15,7 @@ import {
 } from "../../src/runtime/config.js";
 import {
   loadWatcherProcessConfigFile,
+  loadWatcherTrustedHeadAuthorityProcessConfigFile,
   parseWatcherProcessConfig,
   parseWatcherTrustedHeadAuthorityProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -195,7 +196,7 @@ describe("production process authority separation", () => {
     await expect(loadWatcherProcessConfigFile(path)).resolves.toEqual(config);
   });
 
-  it("admits only acceptance Preprod local-node watcher topology", () => {
+  it("admits only acceptance Preprod or Custom local-node watcher topology", () => {
     expect(productionConfig().watcherConfig.l1.source.sourceMode).toBe(
       "local_node",
     );
@@ -205,7 +206,7 @@ describe("production process authority separation", () => {
         ...base,
         watcherConfig: { ...watcherConfigValue(), mode: "development" },
       }),
-    ).toThrow("requires acceptance Preprod local_node authority");
+    ).toThrow("requires acceptance Preprod or Custom local_node authority");
     expect(() =>
       parseWatcherProcessConfig({
         ...base,
@@ -323,7 +324,7 @@ describe("production process authority separation", () => {
     });
   });
 
-  it("keeps authority config structurally unable to receive watcher rollback or proof signer sources", () => {
+  it("loads authority config from JSON and keeps signer sources separate", async () => {
     const input = {
       schemaVersion:
         WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -340,6 +341,13 @@ describe("production process authority separation", () => {
       },
     };
     expect(parseWatcherTrustedHeadAuthorityProcessConfig(input)).toEqual(input);
+    const directory = await mkdtemp("/var/tmp/midgard-authority-config-");
+    directories.push(directory);
+    const path = join(directory, "authority.json");
+    await writeFile(path, JSON.stringify(input));
+    expect(
+      await loadWatcherTrustedHeadAuthorityProcessConfigFile(path),
+    ).toEqual(input);
     expect(() =>
       parseWatcherTrustedHeadAuthorityProcessConfig({
         ...input,

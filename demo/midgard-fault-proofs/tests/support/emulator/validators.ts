@@ -480,6 +480,7 @@ export const makeAlwaysSucceedsContracts = (
       redeemerGrammar: appendedFamilyFallback,
     },
     transactionOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 4),
+    mintItemNonCanonical: scaffoldChain(appendedFamilyFallback, 4),
     resolvedOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 5),
     mintDeclaredAssetLimit: scaffoldChain(appendedFamilyFallback, 4),
     spendInputSignerMissing: scaffoldChain(appendedFamilyFallback, 5),

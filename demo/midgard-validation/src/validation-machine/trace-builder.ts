@@ -153,6 +153,18 @@ import {
 import { txOutRefData } from "../tx-out-ref.js";
 import type { QueuedTx, RejectCode, RejectedTx } from "../types.js";
 import { RejectCodes } from "../types.js";
+
+/** Canonical rejection has a direct proof, but no validation-machine trace. */
+export class DirectValidationTraceUnavailable extends Error {
+  constructor(
+    readonly rejectionCode:
+      | typeof RejectCodes.InvalidFieldType
+      | typeof RejectCodes.IsValidFalseForbidden,
+  ) {
+    super(`Canonical rejection ${rejectionCode} requires its direct proof`);
+    this.name = "DirectValidationTraceUnavailable";
+  }
+}
 import { outputCborMeetsMinAda } from "../value-accounting.js";
 import {
   canonicalCborArgumentHeaderSize,
@@ -1536,6 +1548,13 @@ export const buildDeterministicValidationMachineTrace = (
       }
     }
     if (rejection !== null && terminalPhase === "canonicalDecode") {
+      if (
+        rejection.code === RejectCodes.InvalidFieldType ||
+        rejection.code === RejectCodes.IsValidFalseForbidden
+      )
+        return yield* Effect.fail(
+          new DirectValidationTraceUnavailable(rejection.code),
+        );
       return yield* Effect.fail(
         new Error(
           `V1 canonical rejection ${rejection.code} is not representable by the bounded canonical source`,

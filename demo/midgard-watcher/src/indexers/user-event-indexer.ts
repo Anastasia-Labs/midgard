@@ -1,3 +1,7 @@
+import {
+  parseWatcherCustomNetwork,
+  type WatcherCustomNetwork,
+} from "../runtime/custom-network.js";
 import { createHash } from "node:crypto";
 import { isProxy } from "node:util/types";
 
@@ -210,7 +214,11 @@ export type WatcherUserEventIndexerReasonCode =
   (typeof WATCHER_USER_EVENT_INDEXER_REASON_CODES)[number];
 export type WatcherUserEventIndexerAlertCode =
   (typeof WATCHER_USER_EVENT_INDEXER_ALERT_CODES)[number];
-export type WatcherUserEventNetwork = "Mainnet" | "Preprod" | "Preview";
+export type WatcherUserEventNetwork =
+  | "Mainnet"
+  | "Preprod"
+  | "Preview"
+  | "Custom";
 export type WatcherUserEventKind = "deposit" | "withdrawal" | "forced_order";
 export type WatcherUserEventFinalityStatus = "pending" | "final";
 export type WatcherUserEventTerminalStatus =
@@ -233,6 +241,7 @@ export type WatcherUserEventDeploymentAuthority = Readonly<{
 }>;
 
 export type WatcherUserEventIndexerPolicy = Readonly<{
+  customNetwork?: WatcherCustomNetwork;
   schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION;
   network: WatcherUserEventNetwork;
   blueprintHash: string;
@@ -448,7 +457,7 @@ const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const HEX_BYTES = /^(?:[0-9a-f]{2})*$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 
 const immutableWireValue = <T>(value: T): T => {
   const clone = JSON.parse(JSON.stringify(value)) as T;
@@ -824,6 +833,9 @@ const policyWithoutDigest = (
 ) => ({
   schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION,
   network: value.network,
+  ...(value.customNetwork === undefined
+    ? {}
+    : { customNetwork: value.customNetwork }),
   blueprintHash: value.blueprintHash,
   deploymentMarker: value.deploymentMarker,
   deposit: value.deposit,
@@ -857,9 +869,14 @@ export const makeWatcherUserEventIndexerPolicy = (
 export const parseWatcherUserEventIndexerPolicy = (
   value: unknown,
 ): WatcherUserEventIndexerPolicy | null => {
+  const custom =
+    typeof value === "object" &&
+    value !== null &&
+    Object.getOwnPropertyDescriptor(value, "network")?.value === "Custom";
   const record = exactRecord(value, [
     "schemaVersion",
     "network",
+    ...(custom ? ["customNetwork"] : []),
     "blueprintHash",
     "deploymentMarker",
     "deposit",
@@ -923,9 +940,18 @@ export const parseWatcherUserEventIndexerPolicy = (
       return null;
     }
   }
+  let customNetwork: WatcherCustomNetwork | undefined;
+  if (custom) {
+    try {
+      customNetwork = parseWatcherCustomNetwork(record.customNetwork);
+    } catch {
+      return null;
+    }
+  }
   const canonical = policyWithoutDigest({
     schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION,
     network: record.network,
+    ...(customNetwork === undefined ? {} : { customNetwork }),
     blueprintHash: record.blueprintHash,
     deploymentMarker: marker,
     deposit,
@@ -1510,7 +1536,8 @@ const scanCreatedTransactionEvents = (
           resolveEventInclusionTime(
             slotToBeginUnixTime(
               Number(ttl),
-              SLOT_CONFIG_NETWORK[policy.network],
+              policy.customNetwork?.slotConfig ??
+                SLOT_CONFIG_NETWORK[policy.network],
             ),
             policy.network,
           ),
@@ -5001,6 +5028,9 @@ const createLocalUserEventHistory = (
   );
   const parsedPolicy = makeWatcherUserEventIndexerPolicy({
     network: origin.network,
+    ...(finalityPolicy.customNetwork === undefined
+      ? {}
+      : { customNetwork: finalityPolicy.customNetwork }),
     blueprintHash: origin.blueprintHash,
     deploymentMarker: deploymentIdentity.durableMarker,
     deposit: origin.scripts.deposit,

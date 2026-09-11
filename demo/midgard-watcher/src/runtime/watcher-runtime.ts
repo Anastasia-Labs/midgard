@@ -92,6 +92,10 @@ import {
   type WatcherProcessConfig,
 } from "./process-config.js";
 import {
+  createWatcherStartupProgress,
+  type WatcherStartupProgress,
+} from "./startup-progress.js";
+import {
   createWatcherStateQueueRuntime,
   type WatcherStateQueueRuntime,
 } from "./state-queue-runtime.js";
@@ -368,13 +372,19 @@ const prepareJournalDirectory = async (path: string): Promise<void> => {
  */
 export const createWatcherRuntime = async (input: {
   readonly config: WatcherProcessConfig;
+  readonly onStartupProgress?: (progress: WatcherStartupProgress) => void;
 }): Promise<WatcherRuntime> => {
-  await requireWatcherRuntimeConfig(input.config);
+  const startup = createWatcherStartupProgress(input.onStartupProgress);
+  await startup("runtime_configuration", () =>
+    requireWatcherRuntimeConfig(input.config),
+  );
   await prepareJournalDirectory(input.config.workflowJournalDirectory);
-  const deploymentAuthority = await loadWatcherVerifiedDeploymentAuthority({
-    path: input.config.deploymentAuthorityPath,
-    ruleBundlePath: input.config.ruleBundlePath,
-  });
+  const deploymentAuthority = await startup("deployment_authority", () =>
+    loadWatcherVerifiedDeploymentAuthority({
+      path: input.config.deploymentAuthorityPath,
+      ruleBundlePath: input.config.ruleBundlePath,
+    }),
+  );
   const { deploymentIdentity } = deploymentAuthority;
   const policy = makeWatcherFinalityPolicy(
     input.config.watcherConfig,
@@ -382,7 +392,7 @@ export const createWatcherRuntime = async (input: {
   );
   if (
     policy === null ||
-    policy.network !== "Preprod" ||
+    (policy.network !== "Preprod" && policy.network !== "Custom") ||
     policy.sourceMode !== "local_node" ||
     policy.confirmationDepth !== "30" ||
     policy.maximumPreFinalityRollbackDepth !== "30" ||
@@ -526,54 +536,59 @@ export const createWatcherRuntime = async (input: {
       authenticationKey: trusted.rollbackAuthenticationKey,
       client: trusted.client,
     });
-    const eventHistory = await createWatcherUserEventRuntime({
-      watcherConfig: input.config.watcherConfig,
-      deploymentAuthority,
-      blueprintBytes: await readFile(
-        input.config.faultProofInfrastructure.blueprintPath,
-      ),
-      nativeChainSyncBinaryPath: input.config.nativeChainSyncBinaryPath,
-      runtime: durable,
-      archive: sqlite.userEventArchive,
-    });
+    const eventHistory = await startup("user_event_runtime", async () =>
+      createWatcherUserEventRuntime({
+        watcherConfig: input.config.watcherConfig,
+        deploymentAuthority,
+        blueprintBytes: await readFile(
+          input.config.faultProofInfrastructure.blueprintPath,
+        ),
+        nativeChainSyncBinaryPath: input.config.nativeChainSyncBinaryPath,
+        runtime: durable,
+        archive: sqlite.userEventArchive,
+      }),
+    );
     userEventRuntime = eventHistory;
     const retireEventHistory = () =>
       faultDecisionBridge?.invalidateForHistoryChange();
     void eventHistory.done.then(retireEventHistory, retireEventHistory);
-    const { faultProofApplication, faultProofReadiness } = await (async () => {
-      const faultProofApplication = createWatcherFaultProofApplication({
-        deploymentAuthority,
-        replayTranscriptStore: sqlite.replayTranscripts,
-        userEventRuntime: eventHistory,
-        infrastructure: input.config.faultProofInfrastructure,
-        historicalNativeScriptCheckpointStore,
-        fundingProfileOverlay,
-      });
-      assertWatcherFaultProofLaunchScope(
-        faultProofApplication.installedCategories,
-      );
-      const faultProofReadiness: WatcherFaultProofStartupReadiness[] = [];
-      for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
-        const journalDirectory = join(
-          input.config.workflowJournalDirectory,
-          "readiness",
-          category,
-          input.config.readinessHeaderHash,
+    const { faultProofApplication, faultProofReadiness } = await startup(
+      "workflow_readiness",
+      async () => {
+        const faultProofApplication = createWatcherFaultProofApplication({
+          deploymentAuthority,
+          replayTranscriptStore: sqlite.replayTranscripts,
+          userEventRuntime: eventHistory,
+          infrastructure: input.config.faultProofInfrastructure,
+          historicalNativeScriptCheckpointStore,
+          fundingProfileOverlay,
+        });
+        assertWatcherFaultProofLaunchScope(
+          faultProofApplication.installedCategories,
         );
-        await prepareJournalDirectory(journalDirectory);
-        faultProofReadiness.push(
-          await faultProofApplication.assertStartupReady({
-            mode: "resume",
+        const faultProofReadiness: WatcherFaultProofStartupReadiness[] = [];
+        for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
+          const journalDirectory = join(
+            input.config.workflowJournalDirectory,
+            "readiness",
             category,
-            deploymentFingerprint: deploymentIdentity.manifestId,
-            headerHash: input.config.readinessHeaderHash,
-            journalDirectory,
-            runtimeConfigPath: input.config.watcherRuntimeConfigPath,
-          }),
-        );
-      }
-      return { faultProofApplication, faultProofReadiness };
-    })();
+            input.config.readinessHeaderHash,
+          );
+          await prepareJournalDirectory(journalDirectory);
+          faultProofReadiness.push(
+            await faultProofApplication.assertStartupReady({
+              mode: "resume",
+              category,
+              deploymentFingerprint: deploymentIdentity.manifestId,
+              headerHash: input.config.readinessHeaderHash,
+              journalDirectory,
+              runtimeConfigPath: input.config.watcherRuntimeConfigPath,
+            }),
+          );
+        }
+        return { faultProofApplication, faultProofReadiness };
+      },
+    );
 
     const rawSource = createWatcherLocalKupmiosRawSource({
       watcherConfig: input.config.watcherConfig,
@@ -583,10 +598,12 @@ export const createWatcherRuntime = async (input: {
       deploymentIdentity,
       rawSource,
     });
-    const stateQueueRuntime = await createWatcherStateQueueRuntime({
-      store: sqlite.stateQueueObservations,
-      source: stateQueueSource,
-    });
+    const stateQueueRuntime = await startup("state_queue_recovery", () =>
+      createWatcherStateQueueRuntime({
+        store: sqlite.stateQueueObservations,
+        source: stateQueueSource,
+      }),
+    );
     const kupoService = localL1Source.queryServices.find(
       ({ kind }) => kind === "kupo",
     );
@@ -609,6 +626,7 @@ export const createWatcherRuntime = async (input: {
       });
     const proverFundingAuthorityFactory =
       createWatcherProverFundingAuthorityFactory({
+        journalRoot: input.config.workflowJournalDirectory,
         deploymentIdentity,
         protocolParameters: proverFundingProtocolParameters,
         store: proverFundingStore.store,
@@ -756,7 +774,9 @@ export const createWatcherRuntime = async (input: {
       rawSource,
       proverWalletAddress,
     });
-    await availability.reconcile(stateQueueRuntime.current(), false);
+    await startup("availability_reconciliation", () =>
+      availability!.reconcile(stateQueueRuntime.current(), false),
+    );
     faultDecisionBridge = await createWatcherFaultDecisionBridge({
       application: faultProofApplication,
       supervisor: faultProofSupervisor,
@@ -770,15 +790,21 @@ export const createWatcherRuntime = async (input: {
     // Capture the full finalized backlog in bounded batches before recovering
     // older queue headers. Their event views remain scoped to each header.
     const restoredQueuePoint = stateQueueRuntime.catchupBoundary;
-    await eventHistory.advanceThrough({
-      blockHash: restoredQueuePoint.blockHash,
-      blockNo: restoredQueuePoint.blockNo,
-      slot: restoredQueuePoint.slot,
-      pointId: computeFraudProofRawL1PointId(restoredQueuePoint),
-    });
-    await faultDecisionBridge.prepareForRecovery(stateQueueRuntime.current());
-    const recoveredFaultProofWorkflowCount =
-      await faultDecisionBridge.recoverExisting();
+    await startup("user_event_catchup", () =>
+      eventHistory.advanceThrough({
+        blockHash: restoredQueuePoint.blockHash,
+        blockNo: restoredQueuePoint.blockNo,
+        slot: restoredQueuePoint.slot,
+        pointId: computeFraudProofRawL1PointId(restoredQueuePoint),
+      }),
+    );
+    await startup("header_classification", () =>
+      faultDecisionBridge!.prepareForRecovery(stateQueueRuntime.current()),
+    );
+    const recoveredFaultProofWorkflowCount = await startup(
+      "workflow_recovery",
+      () => faultDecisionBridge!.recoverExisting(),
+    );
     operationsHttp = await startWatcherOperationsHttpServer({
       endpoint: input.config.operationsEndpoint,
       observability: operations,

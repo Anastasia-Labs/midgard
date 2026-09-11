@@ -11,7 +11,10 @@ type WatcherCommandDependencies = Readonly<{
   runAuthority(
     configPath: string,
   ): Promise<Readonly<{ close(): Promise<void> }>>;
-  runWatcher(configPath: string): Promise<
+  runWatcher(
+    configPath: string,
+    onStartupProgress: (progress: WatcherStartupProgress) => void,
+  ): Promise<
     Readonly<{
       done: Promise<void>;
       caughtUp: Promise<void>;
@@ -60,7 +63,7 @@ const productionDependencies: WatcherCommandDependencies = Object.freeze({
         await loadWatcherTrustedHeadAuthorityProcessConfigFile(configPath),
     });
   },
-  runWatcher: async (configPath) => {
+  runWatcher: async (configPath, onStartupProgress) => {
     const [{ loadWatcherProcessConfigFile }, { createWatcherRuntime }] =
       await Promise.all([
         import("./process-config.js"),
@@ -68,6 +71,7 @@ const productionDependencies: WatcherCommandDependencies = Object.freeze({
       ]);
     return await createWatcherRuntime({
       config: await loadWatcherProcessConfigFile(configPath),
+      onStartupProgress,
     });
   },
   waitForShutdown,
@@ -92,7 +96,16 @@ const execute = async (
     }
     return 0;
   }
-  const runtime = await dependencies.runWatcher(configPath);
+  const runtime = await dependencies.runWatcher(configPath, (progress) =>
+    io.writeError(
+      commandStatus({
+        command,
+        state: "starting",
+        productionReady: false,
+        ...progress,
+      }),
+    ),
+  );
   const supervisor = runtime.faultProofSupervisor.status();
   if (
     runtime.faultProofReadiness.length === 0 ||
@@ -167,3 +180,4 @@ export const unsafeRunWatcherCommandForTest = async (
   io: WatcherCommandIo,
   dependencies: WatcherCommandDependencies,
 ): Promise<number> => await execute(command, configPath, io, dependencies);
+import type { WatcherStartupProgress } from "./startup-progress.js";

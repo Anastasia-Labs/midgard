@@ -13,6 +13,7 @@ import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
 } from "../transition-trace/reconstruct.js";
+import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
 import { prepareWithdrawalMistag } from "./prepare-withdrawal-mistag.js";
 
 const membership = async <K, V>(
@@ -130,22 +131,23 @@ export const detectWithdrawalMistagReplay = async ({
   block: CanonicalBlockEvidence;
   predecessor?: CanonicalBlockEvidence;
 }) => {
-  const findings = [];
-  for (const index of block.reconstruction.withdrawals.keys()) {
-    const prepared = await prepareWithdrawalMistagReplay({
-      current: block.reconstruction,
-      predecessor: predecessor?.reconstruction,
-      index,
-    });
-    if (prepared !== null)
-      findings.push({
-        violationId: SDK.WITHDRAWAL_MISTAG_VIOLATION_ID,
-        headerHash: block.headerHash,
-        detectionId: withdrawalMistagDetectionId(index),
-        position: BigInt(index),
+  return collectReplayFindings(
+    block.reconstruction.withdrawals.map(async (_, index) => {
+      const prepared = await prepareWithdrawalMistagReplay({
+        current: block.reconstruction,
+        predecessor: predecessor?.reconstruction,
         index,
-        prepared,
       });
-  }
-  return findings;
+      return prepared === null
+        ? null
+        : {
+            violationId: SDK.WITHDRAWAL_MISTAG_VIOLATION_ID,
+            headerHash: block.headerHash,
+            detectionId: withdrawalMistagDetectionId(index),
+            position: BigInt(index),
+            index,
+            prepared,
+          };
+    }),
+  );
 };

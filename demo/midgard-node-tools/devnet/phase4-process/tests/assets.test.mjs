@@ -82,36 +82,29 @@ test("all shell assets parse", async () => {
   }
 });
 
-test("Kupo Prometheus checkpoint parsing is strict and fail-closed", async () => {
+test("Kupo JSON health requires a connected exact checkpoint", async () => {
   const common = join(root, "scripts/common.sh");
-  const parse = (payload) =>
+  const parse = (value) =>
     run("sh", ["-c", '. "$0"; parse_kupo_checkpoint', common], {
-      input: payload,
+      input: JSON.stringify(value),
     });
-  const valid = await parse(
-    "# HELP kupo_most_recent_checkpoint Latest checkpoint\n" +
-      "other_metric 1\n" +
-      "kupo_most_recent_checkpoint  6493\n",
-  );
+  const valid = await parse({
+    connection_status: "connected",
+    most_recent_checkpoint: 6493,
+  });
   assert.equal(valid.status, 0);
   assert.equal(valid.stdout, "6493\n");
-
-  for (const payload of [
-    "other_metric 1\n",
-    "kupo_most_recent_checkpoint 1\nkupo_most_recent_checkpoint 2\n",
-    'kupo_most_recent_checkpoint{network="devnet"} 6493\n',
-    'kupo_most_recent_checkpoint 6493\nkupo_most_recent_checkpoint{network="devnet"} 6493\n',
-    "kupo_most_recent_checkpoint 6493.0\n",
-    "kupo_most_recent_checkpoint -1\n",
-    "kupo_most_recent_checkpoint NaN\n",
-    "kupo_most_recent_checkpoint +Inf\n",
+  for (const value of [
+    {},
+    { connection_status: "disconnected", most_recent_checkpoint: 6493 },
+    ...[null, -1, 1.5, "6493"].map((checkpoint) => ({
+      connection_status: "connected",
+      most_recent_checkpoint: checkpoint,
+    })),
   ]) {
-    const invalid = await parse(payload);
-    assert.notEqual(invalid.status, 0, payload);
-    assert.match(
-      invalid.stderr,
-      /exactly one unlabeled finite nonnegative integer/,
-    );
+    const invalid = await parse(value);
+    assert.notEqual(invalid.status, 0);
+    assert.match(invalid.stderr, /connected nonnegative integer checkpoint/);
   }
 });
 
@@ -402,9 +395,10 @@ const runCaptureSnapshot = async ({ kupoPayload, cardanoSlot }) => {
 };
 
 test("snapshot capture reads the Kupo checkpoint through the strict parser", async () => {
-  const payload =
-    "# HELP kupo_most_recent_checkpoint Latest checkpoint\n" +
-    "kupo_most_recent_checkpoint 6493\n";
+  const payload = JSON.stringify({
+    connection_status: "connected",
+    most_recent_checkpoint: 6493,
+  });
   const accepted = await runCaptureSnapshot({
     kupoPayload: payload,
     cardanoSlot: 6493,
@@ -419,15 +413,15 @@ test("snapshot capture reads the Kupo checkpoint through the strict parser", asy
 
 test("snapshot capture refuses a Kupo payload the strict parser rejects", async () => {
   const rejected = await runCaptureSnapshot({
-    kupoPayload: 'kupo_most_recent_checkpoint{network="devnet"} 6493\n',
+    kupoPayload: JSON.stringify({
+      connection_status: "disconnected",
+      most_recent_checkpoint: 6493,
+    }),
     cardanoSlot: 6493,
   });
   assert.notEqual(rejected.status, 0);
   assert.notEqual(rejected.status, PREFLIGHT_REACHED_STATUS);
-  assert.match(
-    rejected.stderr,
-    /exactly one unlabeled finite nonnegative integer/,
-  );
+  assert.match(rejected.stderr, /connected nonnegative integer checkpoint/);
   // Nothing downstream of the refusal ran: no frozen identity was written.
   assert.equal(rejected.identity, null);
 });

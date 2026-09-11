@@ -30,6 +30,10 @@ import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
 } from "../transition-trace/reconstruct.js";
+import {
+  collectReplayFindings,
+  replayPrerequisiteFailure,
+} from "../workflow/replay-prerequisite.js";
 import { buildNativeScriptDecodingScanPlan } from "./scan-plan.js";
 
 function failure(message: string): never {
@@ -141,7 +145,11 @@ export const nativeScriptDecodingPriorLedger = async (
       failure("deposit precedes a transaction outside canonical phase order");
     root = await rootOf();
     if (root.root !== step.post_utxos_root)
-      failure("prior effect root mismatch");
+      throw replayPrerequisiteFailure(
+        current.headerHash,
+        step.event_key,
+        "prior_transition_effect",
+      );
   }
   return { root, outputs };
 };
@@ -387,21 +395,22 @@ export const detectNativeScriptDecodingReplay = async ({
       }
     }
   }
-  const findings = [];
-  for (const coordinate of candidates) {
-    const prepared = await prepareNativeScriptDecodingReplay({
-      current: block.reconstruction,
-      predecessor: predecessor?.reconstruction,
-      coordinate,
-    });
-    if (prepared !== null)
-      findings.push({
-        detectionId: nativeScriptDecodingDetectionId(coordinate),
-        headerHash: block.headerHash,
-        violationId: SDK.NATIVE_SCRIPT_DECODING_VIOLATION_ID,
-        position: BigInt(coordinate.sourceIndex),
-        prepared,
+  return collectReplayFindings(
+    candidates.map(async (coordinate) => {
+      const prepared = await prepareNativeScriptDecodingReplay({
+        current: block.reconstruction,
+        predecessor: predecessor?.reconstruction,
+        coordinate,
       });
-  }
-  return findings;
+      return prepared === null
+        ? null
+        : {
+            detectionId: nativeScriptDecodingDetectionId(coordinate),
+            headerHash: block.headerHash,
+            violationId: SDK.NATIVE_SCRIPT_DECODING_VIOLATION_ID,
+            position: BigInt(coordinate.sourceIndex),
+            prepared,
+          };
+    }),
+  );
 };

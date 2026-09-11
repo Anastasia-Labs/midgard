@@ -275,7 +275,6 @@ export const createWatcherUserEventRuntime = async (
   const acquireFirst = async (
     plans: readonly FirstObservation["plan"][],
     operationSignal: AbortSignal,
-    requireSharedTip: boolean,
   ): Promise<
     Readonly<{ observations: readonly FirstObservation[]; bytes: number }>
   > => {
@@ -297,12 +296,6 @@ export const createWatcherUserEventRuntime = async (
           throw new Error(
             "Native enumeration and W12 whole-block bytes differ",
           );
-        if (
-          requireSharedTip &&
-          first.length > 0 &&
-          !same(first[0]!.tip, read.observedNativeTip)
-        )
-          break;
         const observation = admitWatcherLocalBackfillObservation(
           capture.receipt,
         );
@@ -430,7 +423,7 @@ export const createWatcherUserEventRuntime = async (
     plans: readonly FirstObservation["plan"][],
     operationSignal: AbortSignal,
   ): Promise<Pair[]> => {
-    const first = await acquireFirst(plans, operationSignal, true);
+    const first = await acquireFirst(plans, operationSignal);
     return await completeFirst(
       first.observations,
       first.bytes,
@@ -810,7 +803,7 @@ export const createWatcherUserEventRuntime = async (
                   through,
                   operationSignal,
                 );
-                const first = await acquireFirst(ahead, operationSignal, false);
+                const first = await acquireFirst(ahead, operationSignal);
                 operationSignal.throwIfAborted();
                 prefetched = first.observations;
                 prefetchedBytes = first.bytes;

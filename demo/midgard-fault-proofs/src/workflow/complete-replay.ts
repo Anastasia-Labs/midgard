@@ -80,6 +80,7 @@ import { detectMinAdaForcedReplay } from "../min-ada/forced.js";
 import { detectMinFeeForcedReplay } from "../min-fee-forced.js";
 import { detectMintAuthorizationReplay } from "../mint-authorization/replay.js";
 import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset-limit/replay.js";
+import { detectMintItemNonCanonicalCompleteReplay } from "../mint-item-non-canonical/replay.js";
 import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
 import { detectMissingScriptSourceCanonicalViolations } from "../missing-script-source/authenticated-replay.js";
 import { detectMissingSignatureWrongfulRejections } from "../missing-signature/wrongful-rejection.js";
@@ -116,6 +117,7 @@ import {
 } from "../transition-trace/l1-events.js";
 import {
   computeTransitionTraceL1EventEvidenceDigest,
+  provenTransitionEventKeyCbor,
   replayTransitionTraceFromRetainedHistory,
   transitionTraceDetectionId,
 } from "../transition-trace/replay-authority.js";
@@ -155,6 +157,13 @@ import {
   detectMissingNativeScriptUtxoFromHistoricalCorpus,
   type HistoricalNativeScriptCorpus,
 } from "./historical-native-script-corpus.js";
+import {
+  assertReplayPrerequisiteCovered,
+  CanonicalReplayPrerequisiteError,
+  completeReplayFindings,
+  type ReplayPrerequisiteFailure,
+  replayPrerequisiteFailure,
+} from "./replay-prerequisite.js";
 
 export const COMPLETE_CANONICAL_REPLAY =
   "midgard-complete-canonical-replay-v1" as const;
@@ -885,21 +894,6 @@ const detectCanonicalDecodability = (
     );
   });
 
-const canonicalSignerHashes = (
-  preimageCbor: Uint8Array,
-  label: string,
-): readonly string[] =>
-  decodeMidgardNativeByteListPreimage(preimageCbor, label).map(
-    (bytes, index) => {
-      if (bytes.length !== 28) {
-        throw new Error(
-          `${label}[${index.toString()}] is ${bytes.length.toString()} bytes, expected 28`,
-        );
-      }
-      return Buffer.from(bytes).toString("hex");
-    },
-  );
-
 /**
  * Complete Phase-A required-signer scan over every normal transaction leaf.
  *
@@ -915,10 +909,24 @@ const detectMissingSignatures = async (
   const transactions = await Promise.all(
     evidence.transactions.map(decodeTransactionMaterial),
   );
-  return transactions.flatMap((transaction, transactionIndex) => {
-    const requiredSignerHashes = canonicalSignerHashes(
+  const prerequisites: ReplayPrerequisiteFailure[] = [];
+  const detections = transactions.flatMap((transaction, transactionIndex) => {
+    const signers = decodeMidgardNativeByteListPreimage(
       transaction.nativeTx.body.requiredSignersPreimageCbor,
       `transaction ${transaction.nodeTxId} required_signers`,
+    );
+    if (signers.some((signer) => signer.length !== 28)) {
+      prerequisites.push(
+        ...replayPrerequisiteFailure(
+          evidence.headerHash,
+          { L2TransactionEventKey: { tx_id: transaction.nodeTxId } },
+          "representable_field_shape",
+        ).failures,
+      );
+      return [];
+    }
+    const requiredSignerHashes = signers.map((signer) =>
+      Buffer.from(signer).toString("hex"),
     );
     const witnessSignerHashes = new Set(
       decodeAddressWitnessPreimage(
@@ -939,6 +947,7 @@ const detectMissingSignatures = async (
           ],
     );
   });
+  return completeReplayFindings(detections, prerequisites);
 };
 
 /**
@@ -1669,8 +1678,8 @@ export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 /** Complete transaction-output and introducing post-state min-Ada scan. */
 export const MIN_ADA_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["minAda"],
-  async (evidence) => [
-    ...(await detectMinAda(evidence, undefined)),
+  async (evidence, context) => [
+    ...(await detectMinAda(evidence, context)),
     ...detectMinAdaForcedReplay(evidence),
   ],
 );
@@ -1983,17 +1992,27 @@ export const createCompleteCanonicalReplayUnion = (
     Object.freeze(categories),
     async (evidence, context) => {
       const detections: CanonicalViolationDetection[] = [];
+      const prerequisites: CanonicalReplayPrerequisiteError[] = [];
       for (const member of members) {
-        const decision = await member.replay(evidence, context);
-        detections.push(
-          ...requireCompleteCanonicalReplayDecision({
-            evidence,
-            replayer: member,
-            decision,
-            ...(context === undefined ? {} : { context }),
-          }),
-        );
+        try {
+          const decision = await member.replay(evidence, context);
+          detections.push(
+            ...requireCompleteCanonicalReplayDecision({
+              evidence,
+              replayer: member,
+              decision,
+              ...(context === undefined ? {} : { context }),
+            }),
+          );
+        } catch (error) {
+          if (!(error instanceof CanonicalReplayPrerequisiteError)) throw error;
+          prerequisites.push(error);
+          detections.push(...error.detections);
+        }
       }
+      for (const prerequisite of prerequisites)
+        for (const failure of prerequisite.failures)
+          assertReplayPrerequisiteCovered(evidence, failure, detections);
       return detections;
     },
   );
@@ -2114,6 +2133,7 @@ export const createTransitionTraceCompleteCanonicalReplayFromRetainedHistory = (
       headerHash: evidence.headerHash,
       detectionId: transitionTraceDetectionId(index, detection.kind),
       position: BigInt(index),
+      provenTransitionEventKeyCbor: provenTransitionEventKeyCbor(detection),
     }));
   });
 
@@ -2135,6 +2155,13 @@ export const TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
       headerHash: evidence.headerHash,
       detectionId: transitionTraceDetectionId(index, detection.kind),
       position: BigInt(index),
+      provenTransitionEventKeyCbor: provenTransitionEventKeyCbor(detection),
     }));
   },
 );
+
+/** Accepted mint grammar and ordering, disjoint from field shape and width. */
+export const MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
+  completeReplayer(["mintItemNonCanonical"], async (evidence) =>
+    detectMintItemNonCanonicalCompleteReplay(evidence),
+  );

@@ -6,19 +6,18 @@ import type { WatcherNativeChainSyncRollForward } from "./native-chain-sync.js";
 export const WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION =
   "midgard-watcher-native-block-admission-v1" as const;
 
-const BLOCK_TYPE_BY_PROTOCOL_MAJOR = Object.freeze({
-  "2": "2",
-  "3": "3",
-  "4": "4",
-  "5": "5",
-  "6": "5",
-  "7": "6",
-  "8": "6",
-  "9": "7",
-  "10": "7",
-  "11": "7",
-  "12": "8",
-  "13": "8",
+// The native node-to-client codec supplies the era discriminator. Header
+// protocol versions advertise what the issuer supports and can precede a
+// hard fork: Cardano node 11.0.1 emits major-12 headers in the major-11 Conway
+// ledger. They constrain the era, but cannot select it unambiguously.
+const MIN_PROTOCOL_MAJOR_BY_BLOCK_TYPE = Object.freeze({
+  "2": 2n,
+  "3": 3n,
+  "4": 4n,
+  "5": 5n,
+  "6": 7n,
+  "7": 9n,
+  "8": 12n,
 } as const);
 
 export type WatcherNativeBlockAdmission = Readonly<{
@@ -38,7 +37,8 @@ export type WatcherNativeBlockAdmission = Readonly<{
 /**
  * Independently decodes the raw node block before durable dispatch. The Go
  * helper's metadata is treated only as a claim: CML re-derives the header,
- * protocol-era discriminator, block identity, ancestry and transaction order.
+ * block identity, ancestry and transaction order, and checks that the native
+ * era discriminator is compatible with the issuer's protocol advertisement.
  */
 export const admitWatcherNativeRollForwardBlock = (
   event: WatcherNativeChainSyncRollForward,
@@ -64,15 +64,20 @@ export const admitWatcherNativeRollForwardBlock = (
     const slot = headerBody.slot().toString();
     const blockNo = headerBody.block_number().toString();
     const protocolMajor = headerBody.protocol_version().major().toString();
-    const blockType =
-      BLOCK_TYPE_BY_PROTOCOL_MAJOR[
-        protocolMajor as keyof typeof BLOCK_TYPE_BY_PROTOCOL_MAJOR
+    const blockType = event.blockType;
+    const minimumProtocolMajor =
+      MIN_PROTOCOL_MAJOR_BY_BLOCK_TYPE[
+        blockType as keyof typeof MIN_PROTOCOL_MAJOR_BY_BLOCK_TYPE
       ];
-    if (blockType === undefined) {
-      throw new Error("native block protocol version has no admitted era");
+    if (
+      minimumProtocolMajor === undefined ||
+      BigInt(protocolMajor) < minimumProtocolMajor
+    ) {
+      throw new Error(
+        "native block era differs from its protocol advertisement",
+      );
     }
     if (
-      blockType !== event.blockType ||
       blockHash !== event.blockHash ||
       prevHash !== event.prevHash ||
       slot !== event.slot ||

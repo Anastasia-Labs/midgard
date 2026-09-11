@@ -7,6 +7,9 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./tests/*": {
+      "midgard-source": "./tests/*.ts"
+    },
     ".": {
       "midgard-source": "./src/index.ts",
       "types": "./dist/index.d.ts",

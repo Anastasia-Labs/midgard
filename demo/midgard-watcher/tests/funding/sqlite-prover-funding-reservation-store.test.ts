@@ -130,6 +130,73 @@ const plan = (
   });
 
 describe("SQLite prover funding reservation store V1", () => {
+  it("acknowledges only the exact last confirmed hash, digest and current revision after restart", async () => {
+    const opened = await openStore();
+    const currentPlan = plan("aa", "66");
+    const signed = signedTransition();
+    await opened.runtime.store.reserve(currentPlan);
+    const pending = await opened.runtime.store.prepareTransition({
+      plan: currentPlan,
+      expectedRevision: "0",
+      actionKind: "proof.init",
+      ...signed,
+      consumedOutRefs: [`${"11".repeat(32)}#0`],
+    });
+    const confirmation = {
+      plan: currentPlan,
+      expectedRevision: pending.revision,
+      transactionHash: signed.transactionHash,
+      transitionDigest: pending.pendingTransition!.transitionDigest,
+    };
+    await expect(
+      opened.runtime.store.confirmTransition({
+        ...confirmation,
+        transactionHash: "ff".repeat(32),
+      }),
+    ).rejects.toThrow("confirmation mismatch");
+    const confirmed =
+      await opened.runtime.store.confirmTransition(confirmation);
+    opened.runtime.close();
+    const restarted =
+      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+        { path: opened.path },
+        () => undefined,
+      );
+    try {
+      const acknowledged = {
+        ...confirmation,
+        expectedRevision: confirmed.revision,
+      };
+      expect(await restarted.store.confirmTransition(acknowledged)).toEqual(
+        confirmed,
+      );
+      for (const changed of [
+        { transactionHash: "ff".repeat(32) },
+        { transitionDigest: "ff".repeat(32) },
+        { expectedRevision: pending.revision },
+      ]) {
+        await expect(
+          restarted.store.confirmTransition({ ...acknowledged, ...changed }),
+        ).rejects.toThrow("confirmation mismatch");
+        expect(await restarted.store.readAll()).toEqual([confirmed]);
+      }
+      const conflict = await restarted.store.markConflict({
+        plan: currentPlan,
+        expectedRevision: confirmed.revision,
+        code: "unexpected_spend",
+      });
+      await expect(
+        restarted.store.confirmTransition({
+          ...acknowledged,
+          expectedRevision: conflict.revision,
+        }),
+      ).rejects.toThrow("confirmation mismatch");
+      expect(await restarted.store.readAll()).toEqual([conflict]);
+    } finally {
+      restarted.close();
+    }
+  });
+
   it("persists protocol-funded income without consuming reserved wallet inputs", async () => {
     const opened = await openStore();
     const currentPlan = plan("aa", "66");
@@ -168,12 +235,14 @@ describe("SQLite prover funding reservation store V1", () => {
         reopened.store.confirmTransition({
           plan: currentPlan,
           expectedRevision: pending.revision,
+          transactionHash: pending.pendingTransition!.transactionHash,
           transitionDigest: "ff".repeat(32),
         }),
       ).rejects.toThrow("confirmation mismatch");
       const confirmed = await reopened.store.confirmTransition({
         plan: currentPlan,
         expectedRevision: pending.revision,
+        transactionHash: pending.pendingTransition!.transactionHash,
         transitionDigest: pending.pendingTransition!.transitionDigest,
       });
       expect(confirmed.pendingTransition).toBeNull();
@@ -301,12 +370,14 @@ describe("SQLite prover funding reservation store V1", () => {
       restarted.store.confirmTransition({
         plan: currentPlan,
         expectedRevision: "0",
+        transactionHash: prepared.pendingTransition!.transactionHash,
         transitionDigest: prepared.pendingTransition!.transitionDigest,
       }),
     ).rejects.toThrow("confirmation mismatch");
     const confirmed = await restarted.store.confirmTransition({
       plan: currentPlan,
       expectedRevision: "1",
+      transactionHash: prepared.pendingTransition!.transactionHash,
       transitionDigest: prepared.pendingTransition!.transitionDigest,
     });
     expect(confirmed).toMatchObject({
@@ -360,6 +431,7 @@ describe("SQLite prover funding reservation store V1", () => {
     const secondConfirmed = await restarted.store.confirmTransition({
       plan: currentPlan,
       expectedRevision: "3",
+      transactionHash: secondPrepared.pendingTransition!.transactionHash,
       transitionDigest: secondPrepared.pendingTransition!.transitionDigest,
     });
     expect(secondConfirmed).toMatchObject({
@@ -440,6 +512,7 @@ describe("SQLite prover funding reservation store V1", () => {
         const firstConfirmed = await runtime.store.confirmTransition({
           plan: currentPlan,
           expectedRevision: firstPrepared.revision,
+          transactionHash: firstPrepared.pendingTransition!.transactionHash,
           transitionDigest: firstPrepared.pendingTransition!.transitionDigest,
         });
         const secondSigned = signedTransition({
@@ -479,12 +552,14 @@ describe("SQLite prover funding reservation store V1", () => {
           runtime.store.confirmTransition({
             plan: currentPlan,
             expectedRevision: secondPrepared.revision,
+            transactionHash: secondPrepared.pendingTransition!.transactionHash,
             transitionDigest: firstPrepared.pendingTransition!.transitionDigest,
           }),
         ).rejects.toThrow("confirmation mismatch");
         const secondConfirmed = await runtime.store.confirmTransition({
           plan: currentPlan,
           expectedRevision: secondPrepared.revision,
+          transactionHash: secondPrepared.pendingTransition!.transactionHash,
           transitionDigest: secondPrepared.pendingTransition!.transitionDigest,
         });
         expect(

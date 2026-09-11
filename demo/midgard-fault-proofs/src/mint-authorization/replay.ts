@@ -17,6 +17,7 @@ import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
+import { collectReplayFindingBatches } from "../workflow/replay-prerequisite.js";
 import { scanMintAuthorization } from "./prover.js";
 
 export type MintAuthorizationCoordinate = Readonly<{
@@ -149,26 +150,21 @@ export const detectMintAuthorizationReplay = async ({
   block: CanonicalBlockEvidence;
   predecessor?: CanonicalBlockEvidence;
 }) => {
-  const findings = [];
-  for (
-    let sourceIndex = 0;
-    sourceIndex < block.reconstruction.transactions.length;
-    sourceIndex++
-  ) {
-    const prepared = await prepareMintAuthorizationReplay({
-      current: block.reconstruction,
-      predecessor: predecessor?.reconstruction,
-      sourceIndex,
-    });
-    for (const item of prepared)
-      findings.push({
+  return collectReplayFindingBatches(
+    block.reconstruction.transactions.map(async (_, sourceIndex) => {
+      const prepared = await prepareMintAuthorizationReplay({
+        current: block.reconstruction,
+        predecessor: predecessor?.reconstruction,
+        sourceIndex,
+      });
+      return prepared.map((item) => ({
         detectionId: mintAuthorizationDetectionId(item.coordinate),
         headerHash: block.headerHash,
         violationId: SDK.MINT_AUTHORIZATION_VIOLATION_ID,
         position: BigInt(sourceIndex),
         diagnostic: `accepted transaction ${item.txInclusion.nativeTxId} has unauthorized mint policy ${item.finding.policyIdHex}`,
         prepared: item,
-      });
-  }
-  return findings;
+      }));
+    }),
+  );
 };

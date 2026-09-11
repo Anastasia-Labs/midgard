@@ -16,6 +16,7 @@ import {
 import { computeFraudProofRawL1SnapshotEvidenceDigest } from "../workflow/raw-l1-snapshot.js";
 import {
   detectTransitionTraceFaults,
+  type TransitionTraceDetection,
   type TransitionTraceDetectionEvidence,
 } from "./detect.js";
 import {
@@ -305,3 +306,30 @@ export const replayTransitionTraceFromRetainedHistory = async ({
 
 export const transitionTraceDetectionId = (index: number, kind: string) =>
   `transition-trace:${index}:${kind}`;
+
+/** Only semantic proofs authenticate the exact event whose ledger effect is false. */
+export const provenTransitionEventKeyCbor = (
+  detection: TransitionTraceDetection,
+): string | undefined => {
+  if (!detection.buildable) return undefined;
+  const fault = detection.fault;
+  if ("AcceptedTransactionTransitionMismatch" in fault)
+    return Data.to(
+      fault.AcceptedTransactionTransitionMismatch.witness.claim
+        .transition_step_membership.value.event_key,
+      SDK.EventKey,
+    );
+  if (!("InvalidOneStepTransition" in fault)) return undefined;
+  const witness = fault.InvalidOneStepTransition.witness;
+  const step =
+    "L2TransactionTransition" in witness
+      ? witness.L2TransactionTransition.trace_proof
+      : "ValidDepositTransition" in witness
+        ? witness.ValidDepositTransition.trace_proof
+        : "ValidWithdrawalTransition" in witness
+          ? witness.ValidWithdrawalTransition.trace_proof
+          : "InvalidWithdrawalNoOpTransition" in witness
+            ? witness.InvalidWithdrawalNoOpTransition.trace_proof
+            : witness.InvalidForcedTransactionNoOpTransition.trace_proof;
+  return Data.to(step.value.event_key, SDK.EventKey);
+};

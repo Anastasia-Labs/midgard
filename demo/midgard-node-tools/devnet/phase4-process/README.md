@@ -30,7 +30,7 @@ Bootstrap deterministically overwrites run-scoped Postgres fields from `run.env`
 It also pins `MIN_FEE_A=0` and `MIN_FEE_B=0` in both the private node inputs
 and immutable acceptance environment. This makes the fixed 50,000-lovelace A/B
 funding proof exact; the genesis mutation command rejects any fee or isolated
-Postgres-port drift before opening SQL.
+Postgres-port drift before opening SQL. These are L2 fixture fees; Cardano L1 fees use the verified Preprod profile.
 
 Generation uses `cardano-cli latest genesis create-testnet-data` with exactly
 one pool and renders Compose configuration, but starts no service. Defaults are
@@ -48,20 +48,41 @@ major matches exactly and the node config forces Conway at epoch zero. Treat a
 target-network protocol upgrade as an explicit fixture update, and never reuse
 a run generated under a different major.
 
-Matched snapshots also pin the consensus parameters that bound how long a
-frozen chain can be restarted. Shelley computes the stability/forecast window
-as `ceil(3k/f)` slots, where `k` is `securityParam` and `f` is
-`activeSlotsCoeff`. This devnet uses `k=90000`, `f=1`, and one-second slots, so
-the window is `ceil(3*90000/1) * 1s = 270000s = 75h`. The generated
-`epochLength=900000` retains the conventional `10k/f` relationship. The
-75-hour horizon gives a snapshot reset started up to 72 hours after capture a
-three-hour safety margin for the node's approximately one-minute forge startup
-and provider catch-up. Snapshots older than 72 hours are outside the supported
-reuse contract and should be recaptured rather than relied upon.
+The shared generator reads `../preprod/configuration.json`: a dated profile
+verified against the connected Preprod node through both cardano-cli and Ogmios,
+with consensus values corroborated by the official Shelley genesis. It applies
+all active protocol parameters, execution limits, and cost models before hashing
+genesis. The watcher wrapper only supplies host paths; it does not override a
+second set of protocol parameters. The isolated chain retains its own magic,
+start time, keys, genesis funding and initial delegation.
 
-Cardano-node 11.0.1, Ogmios v7.0.0, Kupo v2.11.0, and Postgres 15.15 are all
-fixed to official immutable image digests. The generated run records the
-effective image IDs; reset refuses any image or artifact drift.
+Consensus uses one-second slots, `activeSlotsCoeff=0.05`, `securityParam=2160`,
+`epochLength=432000`, and `GenesisMode`. Blocks are probabilistic. Timeouts and
+confirmation checks must count actual blocks, not treat one slot as one block.
+The generated initial committee terms obey the current maximum term length.
+
+Recovery scenarios follow the chain's actual behavior:
+
+| Scenario | Chain behavior | Required evidence |
+| --- | --- | --- |
+| Watcher/operator restart | Cardano continues producing blocks; preserve all workflow and transaction journals | Reconnect from the recorded point, replay the canonical suffix, reconcile submissions and process new blocks |
+| Indexer or follower outage | The canonical producer remains online | Recover from retained history or synchronize from a canonical peer; verify exact checkpoint and hash agreement before accepting observations |
+| Short local rollback (T1) | Restore a recent isolated fork and preserve the abandoned operator journal | Prove the abandoned header disappeared, the replacement canonical branch advanced, and no double spend or duplicate workflow occurred |
+| Frozen fork beyond forecast | No peer supplies missing history | Refuse isolated forging before restoring state; use peer synchronization or a fresh isolated chain |
+
+The ledger forecast horizon with these parameters is `ceil(3k/f)=129600` slots
+(36 hours). This bounds how far a frozen isolated node can forecast; it is **not**
+a maximum supported outage for a follower of a continuing network. See the
+[consensus forecast explanation](https://ouroboros-consensus.cardano.intersectmbo.org/docs/references/miscellaneous/hard_won_wisdom/).
+`check-recovery-window.mjs` guards the destructive local-fork restore and checks
+again before forging resumes. A passing age check alone is insufficient: the
+existing canonical identity, checkpoint, registration and post-resume progress
+checks still apply. There is no 72-hour matched-snapshot reuse contract.
+
+Cardano-node 11.1.0, Ogmios v7.0.0, Kupo v2.11.0, and Postgres 15.15 are
+fixed to official immutable image digests. The node pin includes the genesis
+cost-model override fix. The generated run records the effective image IDs;
+reset refuses any image or artifact drift.
 
 The workspace uses Lucid Evolution 0.6, whose provider package natively
 supports Ogmios v7's canonical `maxReferenceScriptsSizePerTransaction`

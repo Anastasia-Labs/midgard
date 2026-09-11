@@ -10,15 +10,12 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
   captureTransitionTraceL1Events,
+  createTransitionTraceEventAuthority,
   readFreshTransitionTraceL1Events,
   requireTransitionTraceL1Events,
 } from "../src/transition-trace/l1-events.js";
 import { computeTransitionTraceL1EventEvidenceDigest } from "../src/transition-trace/replay-authority.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  admitValidationTraceReplayContext,
-  VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+import { VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import * as rawSnapshot from "../src/workflow/raw-l1-snapshot.js";
 import {
   computeFraudProofRawL1PointId,
@@ -38,6 +35,18 @@ import {
   classifyRetainedReasonFixture,
 } from "./support/retained-reason-classifier.js";
 
+const transport = vi.hoisted(() => ({ raw: undefined as unknown }));
+vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
+  const actual =
+    await load<typeof import("../src/workflow/family-l1-observation.js")>();
+  return {
+    ...actual,
+    createFraudProofFamilyLocalKupmiosL1ObservationPort: () => ({
+      rawL1: transport.raw,
+    }),
+  };
+});
+
 let seed: FraudProofRawL1Snapshot;
 let retained: Awaited<ReturnType<typeof buildRetainedPlutusIdentityFixture>>;
 beforeAll(async () => {
@@ -50,7 +59,7 @@ beforeAll(async () => {
   ).snapshot;
 });
 
-const capture = (snapshot: FraudProofRawL1Snapshot) => {
+const captureInput = (snapshot: FraudProofRawL1Snapshot) => {
   const hubScope = snapshot.scopes.find(({ role }) => role === "hub_oracle")!;
   const authority: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
@@ -67,6 +76,7 @@ const capture = (snapshot: FraudProofRawL1Snapshot) => {
     }),
   };
   const binding = {
+    deploymentFingerprint: snapshot.deploymentIdentityDigest,
     network: "Preprod",
     releaseFinality: {
       schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
@@ -85,8 +95,11 @@ const capture = (snapshot: FraudProofRawL1Snapshot) => {
     },
     definition: { headerHash: snapshot.headerHash },
   } as Parameters<typeof captureTransitionTraceL1Events>[0]["binding"];
-  return captureTransitionTraceL1Events({ binding, authority });
+  return { binding, authority };
 };
+
+const capture = (snapshot: FraudProofRawL1Snapshot) =>
+  captureTransitionTraceL1Events(captureInput(snapshot));
 
 const advance = (
   snapshot: FraudProofRawL1Snapshot,
@@ -290,16 +303,6 @@ describe("transition trace immutable L1 evidence", () => {
       daProvenance,
       minimumConfirmationDepth: 30,
     });
-    const predecessor = await admitCompleteCanonicalReplayPredecessor({
-      value: {
-        observation: authenticatedHeaderObservation(retained.predecessor),
-        payloadEnvelopeCborHex:
-          retained.predecessor.payloadEnvelopeCbor.toString("hex"),
-        daProvenance,
-      },
-      currentEvidence: evidence,
-      minimumConfirmationDepth: 30,
-    });
     const first = await capture(seed);
     const later = await capture(withLaterEvent(advance(seed)));
     expect(later.snapshotDigest).not.toBe(first.snapshotDigest);
@@ -316,11 +319,16 @@ describe("transition trace immutable L1 evidence", () => {
       }),
     );
     const classify = async (transitionTraceEvents: typeof first) => {
-      const validationTraceReplay = await admitValidationTraceReplayContext({
-        evidence,
-        predecessor,
-        transitionTraceEvents,
-      });
+      const { binding, authority } = captureInput(
+        requireTransitionTraceL1Events(transitionTraceEvents).snapshot,
+      );
+      transport.raw = authority;
+      const transitionTraceEventAuthority = createTransitionTraceEventAuthority(
+        {
+          binding,
+          source: {} as never,
+        },
+      );
       return (
         await classifyRetainedReasonFixture({
           observation,
@@ -341,15 +349,17 @@ describe("transition trace immutable L1 evidence", () => {
             }),
           },
           replayer: VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
-          replayContext: {
-            predecessor,
-            transitionTraceEvents,
-            validationTraceReplay,
+          transitionTraceEventAuthority,
+          predecessor: {
+            observation: authenticatedHeaderObservation(retained.predecessor),
+            payloadEnvelopeCbor: retained.predecessor.payloadEnvelopeCbor,
           },
         })
       ).decision;
     };
-    expect(await classify(later)).toEqual(await classify(first));
+    const firstDecision = await classify(first);
+    expect(firstDecision.decision).toBe("healthy");
+    expect(await classify(later)).toEqual(firstDecision);
     const due = await capture(
       withLaterEvent(advance(seed), retained.block.header.endTime),
     );

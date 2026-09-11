@@ -211,7 +211,8 @@ const canonicalManifestIdentity = (): MutableRecord => {
           status:
             stepName === "prepareHubOracleNonce" ||
             stepName === "deployNodeRuntimeReferenceScripts" ||
-            stepName === "initProtocol"
+            stepName === "initProtocol" ||
+            stepName === "availabilityRegistration"
               ? "complete"
               : "pending",
         },
@@ -327,8 +328,8 @@ type SignedAuthorityFixture = Readonly<{
   durableMarker: ReturnType<typeof makeDeploymentMarker>;
 }>;
 
-const fixture = () => {
-  const manifest = withManifestId(canonicalManifestIdentity());
+const fixture = (network: "Preprod" | "Custom" = "Preprod") => {
+  const manifest = withManifestId({ ...canonicalManifestIdentity(), network });
   const programCommitments = Object.freeze({
     "transition-order-v1": h32("8"),
     "validation-machine-v1": h32("9"),
@@ -336,7 +337,7 @@ const fixture = () => {
   const bundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
       manifestId: manifest.manifestId,
-      network: "Preprod",
+      network,
       blueprintHash: BLUEPRINT_HASH,
       programCommitments,
     },
@@ -368,7 +369,7 @@ const fixture = () => {
     },
   };
   const policy: WatcherDeploymentIdentityPolicy = {
-    network: "Preprod",
+    network,
     hubOracleOneShotOutRef: manifest.hubOracleOneShot.outRef,
     appliedScriptHashes: appliedScriptHashes(manifest),
     referenceScripts: referenceScriptPolicy(manifest),
@@ -446,49 +447,52 @@ const authorityRejected = (
 };
 
 describe("watcher canonical V1 rule bundle", () => {
-  it("loads the one exact W02-bound V1 profile, features, parameters, priorities, and programs", () => {
-    const { authority, bundle, verifiedIdentity } = fixture();
-    const loaded = loadWatcherRuleBundle({
-      ...authority,
-      ruleBundle: bundle,
-    });
+  it.each(["Preprod", "Custom"] as const)(
+    "loads the exact W02-bound profile on %s",
+    (network) => {
+      const { authority, bundle, verifiedIdentity } = fixture(network);
+      const loaded = loadWatcherRuleBundle({
+        ...authority,
+        ruleBundle: bundle,
+      });
 
-    expect(loaded.ruleBundleCommitment).toBe(
-      verifiedIdentity.ruleBundleCommitment,
-    );
-    expect(loaded.ruleBundle.consensusProfileDigest).toBe(
-      MIDGARD_CONSENSUS_PROFILE_DIGEST,
-    );
-    expect(loaded.ruleBundle.features).toEqual(
-      MIDGARD_CONSENSUS_FEATURES.map((featureId) => ({
-        featureId,
-        enabled: true,
-      })),
-    );
-    expect(loaded.ruleBundle.limits).toBe(MIDGARD_CONSENSUS_LIMITS);
-    expect(loaded.ruleBundle.targetParameters).toEqual({
-      snapshot: TARGET_PARAMETERS,
-      digest: computeDeploymentManifestJsonDigest(TARGET_PARAMETERS),
-    });
-    expect(loaded.ruleBundle.transitionPriority).toBe(
-      WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
-    );
-    expect(loaded.ruleBundle.validation.phasePriority).toBe(
-      WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
-    );
-    expect(loaded.ruleBundle.validation.rejectionSelection).toBe(
-      WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
-    );
-    expect(loaded.ruleBundle.programCommitments).toEqual(
-      verifiedIdentity.programCommitments,
-    );
-    expect(Object.isFrozen(loaded)).toBe(true);
-    expect(Object.isFrozen(loaded.ruleBundle)).toBe(true);
-    expect(Object.isFrozen(loaded.ruleBundle.features)).toBe(true);
-    expect(Object.isFrozen(loaded.ruleBundle.targetParameters.snapshot)).toBe(
-      true,
-    );
-  });
+      expect(loaded.ruleBundleCommitment).toBe(
+        verifiedIdentity.ruleBundleCommitment,
+      );
+      expect(loaded.ruleBundle.consensusProfileDigest).toBe(
+        MIDGARD_CONSENSUS_PROFILE_DIGEST,
+      );
+      expect(loaded.ruleBundle.features).toEqual(
+        MIDGARD_CONSENSUS_FEATURES.map((featureId) => ({
+          featureId,
+          enabled: true,
+        })),
+      );
+      expect(loaded.ruleBundle.limits).toBe(MIDGARD_CONSENSUS_LIMITS);
+      expect(loaded.ruleBundle.targetParameters).toEqual({
+        snapshot: TARGET_PARAMETERS,
+        digest: computeDeploymentManifestJsonDigest(TARGET_PARAMETERS),
+      });
+      expect(loaded.ruleBundle.transitionPriority).toBe(
+        WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
+      );
+      expect(loaded.ruleBundle.validation.phasePriority).toBe(
+        WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
+      );
+      expect(loaded.ruleBundle.validation.rejectionSelection).toBe(
+        WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+      );
+      expect(loaded.ruleBundle.programCommitments).toEqual(
+        verifiedIdentity.programCommitments,
+      );
+      expect(Object.isFrozen(loaded)).toBe(true);
+      expect(Object.isFrozen(loaded.ruleBundle)).toBe(true);
+      expect(Object.isFrozen(loaded.ruleBundle.features)).toBe(true);
+      expect(Object.isFrozen(loaded.ruleBundle.targetParameters.snapshot)).toBe(
+        true,
+      );
+    },
+  );
 
   it("has deterministic bytes and survives exact JSON restart serialization", () => {
     const { authority, bundle, verifiedIdentity } = fixture();

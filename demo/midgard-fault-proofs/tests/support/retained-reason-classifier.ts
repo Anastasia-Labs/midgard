@@ -233,6 +233,8 @@ export const buildRetainedValidationBlockFixture = async ({
   blockEndTimeMs,
   blockStartTimeMs = blockEndTimeMs - 60_000,
   blockSlot = 100n,
+  minFeeA = 0n,
+  minFeeB = 0n,
   operatorVkey = "b1".repeat(28),
   prevHeaderHash,
   programMaterialEntries,
@@ -245,6 +247,8 @@ export const buildRetainedValidationBlockFixture = async ({
   readonly blockEndTimeMs: number;
   readonly blockStartTimeMs?: number;
   readonly blockSlot?: bigint;
+  readonly minFeeA?: bigint;
+  readonly minFeeB?: bigint;
   readonly operatorVkey?: string;
   readonly prevHeaderHash?: string;
   readonly programMaterialEntries?: readonly DaPayloadEntry[];
@@ -305,6 +309,8 @@ export const buildRetainedValidationBlockFixture = async ({
     ...base.header,
     endTime: BigInt(blockEndTimeMs),
     blockSlot,
+    minFeeA,
+    minFeeB,
     prevUtxosRoot: priorLedgerRoot,
     ...(prevHeaderHash === undefined ? {} : { prevHeaderHash }),
     validationTracesRoot: root.root,
@@ -535,7 +541,11 @@ export const captureRetainedPlutusIdentityOrigins = async (
     Awaited<ReturnType<typeof buildRetainedPlutusIdentityFixture>>,
     "block" | "transaction" | "orderKey"
   >,
-  options: Readonly<{ omitEvent?: boolean; advanceCapture?: boolean }> = {},
+  options: Readonly<{
+    omitEvent?: boolean;
+    advanceCapture?: boolean;
+    inclusionTime?: bigint;
+  }> = {},
 ) => {
   const hubPolicy = "61".repeat(28);
   const depositPolicy = "62".repeat(28);
@@ -597,7 +607,7 @@ export const captureRetainedPlutusIdentityOrigins = async (
         },
       },
     },
-    inclusion_time: 1_749_999_999_000n,
+    inclusion_time: options.inclusionTime ?? 1_749_999_999_000n,
     witness: dummy,
     refund_address: addressData(dummy),
     refund_datum: "NoDatum",
@@ -762,14 +772,27 @@ export const classifyRetainedReasonFixture = async ({
   releaseFinalityAuthority,
   replayer,
   predecessor,
+  history = [],
   replayContext,
+  transitionTraceEventAuthority,
+  settlementAuthority,
 }: {
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Buffer;
   readonly deploymentFingerprint: string;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly replayer: CompleteCanonicalReplay;
+  readonly history?: readonly {
+    readonly headerHash: string;
+    readonly payloadEnvelopeCbor: Buffer;
+  }[];
   readonly replayContext?: CompleteCanonicalReplayContext;
+  readonly transitionTraceEventAuthority?: Parameters<
+    typeof createHeaderClassifier
+  >[0]["transitionTraceEventAuthority"];
+  readonly settlementAuthority?: Parameters<
+    typeof createHeaderClassifier
+  >[0]["settlementAuthority"];
   readonly predecessor?: {
     readonly observation: AuthenticatedStateQueueHeaderObservation;
     readonly payloadEnvelopeCbor: Buffer;
@@ -784,7 +807,8 @@ export const classifyRetainedReasonFixture = async ({
             ? payloadEnvelopeCbor
             : headerHash === predecessor?.observation.headerHash
               ? predecessor.payloadEnvelopeCbor
-              : undefined;
+              : history.find((block) => block.headerHash === headerHash)
+                  ?.payloadEnvelopeCbor;
         if (bytes === undefined)
           throw new Error("Retained fixture requested another header");
         return {
@@ -807,6 +831,8 @@ export const classifyRetainedReasonFixture = async ({
       "resolvedOutputNonCanonical",
       "spendInputSignerMissing",
       "executionNativeScriptInvalid",
+      "missingNativeScriptUtxo",
+      "transitionTrace",
     ].includes(category),
   );
   const checkpointDirectory = requiresHistory
@@ -846,6 +872,8 @@ export const classifyRetainedReasonFixture = async ({
       replayer,
       releaseFinalityAuthority,
       historicalReplayAuthority,
+      transitionTraceEventAuthority,
+      settlementAuthority,
     });
     const policy = await releaseFinalityAuthority.verifyForWorkflow({
       deploymentFingerprint,

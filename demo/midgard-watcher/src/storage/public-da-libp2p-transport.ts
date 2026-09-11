@@ -1,4 +1,7 @@
-import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import {
+  DA_TRANSPORT_LIMITS,
+  daRequestResponseProtocolId,
+} from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { peerIdFromString } from "@libp2p/peer-id";
@@ -6,6 +9,8 @@ import { tcp } from "@libp2p/tcp";
 import { multiaddr } from "@multiformats/multiaddr";
 import { createLibp2p, type Libp2pOptions } from "libp2p";
 
+import { parseWatcherConfig } from "../runtime/config.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type {
   WatcherPublicDaLibp2pTransportV1,
   WatcherPublicDaRequest,
@@ -224,9 +229,29 @@ const parseExpectedPeer = (
   const address = multiaddr(request.multiaddr);
   const components = address.getComponents();
   const names = components.map((component) => component.name);
+  let customIp4 = false;
+  if (names[0] === "ip4" && request.customNetwork !== undefined) {
+    const { deploymentIdentity } = request.customNetwork;
+    assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+    const config = parseWatcherConfig(request.customNetwork.watcherConfig);
+    customIp4 =
+      config.targetNetwork === "Custom" &&
+      deploymentIdentity.network === "Custom" &&
+      request.protocolId ===
+        daRequestResponseProtocolId(
+          deploymentIdentity.manifestId,
+          request.protocol,
+        ) &&
+      config.da.peers.some(
+        (peer) =>
+          peer.identity === request.peerIdentity &&
+          peer.peerId === request.peerId &&
+          peer.multiaddr === request.multiaddr,
+      );
+  }
   if (
     names.length !== 3 ||
-    (names[0] !== "dns4" && names[0] !== "dns6") ||
+    (names[0] !== "dns4" && names[0] !== "dns6" && !customIp4) ||
     names[1] !== "tcp" ||
     names[2] !== "p2p"
   ) {

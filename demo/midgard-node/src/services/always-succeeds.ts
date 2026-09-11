@@ -630,6 +630,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         redeemerGrammar: zeroInput,
       },
       transactionOutputNonCanonical: repeatedFaultProofChain(zeroInput, 4),
+      mintItemNonCanonical: repeatedFaultProofChain(zeroInput, 4),
       resolvedOutputNonCanonical: repeatedFaultProofChain(zeroInput, 5),
       mintDeclaredAssetLimit: repeatedFaultProofChain(zeroInput, 4),
       spendInputSignerMissing: repeatedFaultProofChain(zeroInput, 5),

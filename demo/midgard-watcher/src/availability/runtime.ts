@@ -6,7 +6,6 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   calculateMinLovelaceFromUTxO,
-  Kupmios,
   Lucid,
   paymentCredentialOf,
   type TxSignBuilder,
@@ -20,6 +19,7 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
+import { WatcherLocalKupmios } from "../l1/native-reward-account.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
   loadWatcherSecretText,
@@ -144,9 +144,16 @@ export const createWatcherAvailabilityRuntime = async (input: {
     "Ogmios source",
   );
   const lucid = await Lucid(
-    new Kupmios(kupo.endpoint, ogmios.endpoint),
+    new WatcherLocalKupmios(kupo.endpoint, ogmios.endpoint, {
+      watcherConfig: input.config.watcherConfig,
+      binaryPath: input.config.nativeChainSyncBinaryPath,
+      timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+    }),
     input.identity.network,
-    { evaluator: createScalusEvaluator() },
+    {
+      evaluator: createScalusEvaluator(),
+      slotConfig: input.config.watcherConfig.customNetwork?.slotConfig,
+    },
   );
   const secret = await loadWatcherSecretText(
     input.config.availability.keySource,

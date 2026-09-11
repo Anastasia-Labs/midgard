@@ -92,6 +92,7 @@ export type WatcherProverFundingReservationStore = Readonly<{
   confirmTransition(input: {
     readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
+    readonly transactionHash: string;
     readonly transitionDigest: string;
   }): Promise<WatcherProverFundingReservationRecord>;
   abandonPendingTransition(input: {

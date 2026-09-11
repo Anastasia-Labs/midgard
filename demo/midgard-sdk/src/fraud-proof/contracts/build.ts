@@ -52,6 +52,7 @@ import { buildScriptIntegrityHashMismatchChain } from "./families/script-integri
 import { buildScriptIntegrityHashMissingChain } from "./families/script-integrity-hash-missing.js";
 import { buildSpendInputSignerMissingChain } from "./families/spend-input-signer-missing.js";
 import { buildTransactionOutputNonCanonicalChain } from "./families/transaction-output-non-canonical.js";
+import { buildMintItemNonCanonicalChain } from "./families/mint-item-non-canonical.js";
 import { buildTransitionTraceChain } from "./families/transition-trace.js";
 import { buildUnusedRedeemerChain } from "./families/unused-redeemer.js";
 import { buildUnusedScriptWitnessChain } from "./families/unused-script-witness.js";
@@ -206,6 +207,10 @@ export const buildFaultProofContracts = (
       yield* buildScriptIntegrityHashMissingChain({ ...params, ...shared });
     const transactionOutputNonCanonical =
       yield* buildTransactionOutputNonCanonicalChain({ ...params, ...shared });
+    const mintItemNonCanonical = yield* buildMintItemNonCanonicalChain({
+      ...params,
+      ...shared,
+    });
     const resolvedOutputNonCanonical =
       yield* buildResolvedOutputNonCanonicalChain({ ...params, ...shared });
     const mintDeclaredAssetLimit = yield* buildMintDeclaredAssetLimitChain({
@@ -306,6 +311,7 @@ export const buildFaultProofContracts = (
       witnessScriptDecoding,
       scriptIntegrityHashMissing,
       transactionOutputNonCanonical,
+      mintItemNonCanonical,
       resolvedOutputNonCanonical,
       mintDeclaredAssetLimit,
       spendInputSignerMissing,
@@ -375,6 +381,7 @@ export const fraudProofContractsToFirstSteps = (
   scriptIntegrityHashMissing: contracts.scriptIntegrityHashMissing.firstStep,
   transactionOutputNonCanonical:
     contracts.transactionOutputNonCanonical.firstStep,
+  mintItemNonCanonical: contracts.mintItemNonCanonical.firstStep,
   resolvedOutputNonCanonical: contracts.resolvedOutputNonCanonical.firstStep,
   mintDeclaredAssetLimit: contracts.mintDeclaredAssetLimit.firstStep,
   spendInputSignerMissing: contracts.spendInputSignerMissing.firstStep,

@@ -4,7 +4,11 @@ import {
   type HeaderFaultDecision,
   requireRunnableHeaderFault,
 } from "./header-classifier.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
+import {
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
+  normalizeJournalJson,
+} from "./journal.js";
 
 export const WORKFLOW_ACTUATION_PERMIT =
   "midgard-production-workflow-actuation-permit-v1" as const;
@@ -32,7 +36,10 @@ export type WorkflowActuationPermitController = Readonly<{
 }>;
 
 type PermitState = {
+  readonly decision: HeaderFaultDecision;
   readonly decisionDigest: string;
+  executionDecisionDigest: string;
+  executionBound: boolean;
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
@@ -71,6 +78,7 @@ const journalPermits = new WeakMap<
   Readonly<{
     permit: WorkflowActuationPermit;
     decisionDigest: string;
+    executionDecisionDigest: string;
     deploymentFingerprint: string;
     category: FraudProofCatalogueCategoryName;
     headerHash: string;
@@ -101,6 +109,9 @@ export const createWorkflowActuationPermitController = ({
     permitVersion: WORKFLOW_ACTUATION_PERMIT,
   });
   const state: PermitState = {
+    decision: admitted,
+    executionDecisionDigest: admitted.decisionDigest,
+    executionBound: false,
     decisionDigest: admitted.decisionDigest,
     deploymentFingerprint: admitted.deploymentFingerprint,
     category: admitted.category,
@@ -188,6 +199,8 @@ export const assertWorkflowActuationPermitIdentity = ({
   readonly rollbackGeneration: string;
 }): Readonly<{
   decisionDigest: string;
+  executionDecisionDigest: string;
+  launchScope: HeaderFaultDecision["launchScope"];
   deploymentFingerprint: string;
   headerHash: string;
 }> => {
@@ -217,9 +230,52 @@ export const assertWorkflowActuationPermitIdentity = ({
   }
   return Object.freeze({
     decisionDigest: state.decisionDigest,
+    executionDecisionDigest: state.executionDecisionDigest,
+    launchScope: state.decision.launchScope,
     deploymentFingerprint: state.deploymentFingerprint,
     headerHash: state.headerHash,
   });
+};
+
+/** Preserve an existing execution only when fresh classification proves the
+ * identical fault. Historical envelopes never become runnable authorities. */
+export const bindWorkflowActuationRecoveryIdentity = (input: {
+  readonly permit: WorkflowActuationPermit;
+  readonly category: FraudProofCatalogueCategoryName;
+  readonly rollbackGeneration: string;
+  readonly originalDecision: HeaderFaultDecision;
+}): void => {
+  assertWorkflowActuationPermitIdentity(input);
+  const state = admittedPermits.get(input.permit)!;
+  const original = input.originalDecision;
+  const { decisionDigest, ...unsealed } = original;
+  if (
+    !/^[0-9a-f]{64}$/u.test(original.authenticatedObservationDigest) ||
+    journalJsonDigest(normalizeJournalJson(unsealed)) !== decisionDigest ||
+    journalJsonDigest(normalizeJournalJson(original)) !==
+      journalJsonDigest(
+        normalizeJournalJson({
+          ...state.decision,
+          authenticatedObservationDigest:
+            original.authenticatedObservationDigest,
+          decisionDigest,
+        }),
+      )
+  )
+    throw new Error("workflow recovery changed the classified fault evidence");
+  if (
+    state.executionDecisionDigest !== state.decisionDigest &&
+    state.executionDecisionDigest !== decisionDigest
+  ) {
+    throw new Error(
+      "workflow recovery attempted to replace its execution identity",
+    );
+  }
+  if (state.executionBound && state.executionDecisionDigest !== decisionDigest)
+    throw new Error(
+      "workflow recovery cannot change an execution after journal binding",
+    );
+  state.executionDecisionDigest = decisionDigest;
 };
 
 /** Bind an opaque live permit to the exact journal object passed downstream. */
@@ -253,11 +309,14 @@ export const bindWorkflowActuationJournal = <
       "production workflow journal already has actuation authority",
     );
   }
+  admittedPermits.get(permit)!.executionBound = true;
   journalPermits.set(
     journal,
     Object.freeze({
       permit,
       decisionDigest,
+      executionDecisionDigest:
+        admittedPermits.get(permit)!.executionDecisionDigest,
       deploymentFingerprint,
       category,
       headerHash,
@@ -268,7 +327,9 @@ export const bindWorkflowActuationJournal = <
 
 export const workflowActuationDecisionDigest = (
   journal: FraudProofWorkflowJournalStore,
-): string | undefined => journalPermits.get(journal)?.decisionDigest;
+): string | undefined => {
+  return journalPermits.get(journal)?.executionDecisionDigest;
+};
 
 /**
  * Shared checkpoint used by the orchestrator. An unbound journal is retained

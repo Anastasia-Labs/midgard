@@ -366,6 +366,7 @@ export const detectSpendInputSignerMissingCompleteReplay = ({
       );
       // An in-range input the prior ledger does not hold is `InputNotFound`
       // territory: this family carries no non-membership proof.
+      if (replayed === undefined && subject.source_kind === 0n) return;
       if (replayed === undefined)
         return fail(
           "complete predecessor replay omitted a resolved spend input",
