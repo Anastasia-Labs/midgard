@@ -211,17 +211,7 @@ pcertify
                   pfromData $
                     punsafeCoerce @(PAsData PFieldPreimageCertificateV1) (pto poutputDatum'outputDatum)
                 _ -> perror
-            PFieldPreimageCertificateV1 {pcert'txId, pcert'fieldIndex} <- pmatch certificate
-            -- 6. §8.6's deterministic name, derived from the certificate's own
-            --    `(tx_id, field_index)` rather than from anything the redeemer
-            --    says. The derivation is what bounds `field_index` to 0..8 and
-            --    `tx_id` to 32 bytes, so an out-of-range certificate fails here
-            --    before its content is ever looked at.
-            assetName <-
-              plet $
-                pfieldPreimageCertificateAssetName
-                  # pfromData pcert'txId
-                  # pfromData pcert'fieldIndex
+            assetName <- plet pfieldPreimageCertificateAssetName
             -- 7. Exactly one token of this policy in the whole transaction, and
             --    it is the one the certificate names. Without the single-pair
             --    check a second, unexamined asset name of this policy could
@@ -320,13 +310,12 @@ fieldPreimageCertificateSpendValidator = plam $ \ctx -> P.do
           pmatch paddress'credential $ \case
             PScriptCredential scriptHash -> punsafeCoerce @PCurrencySymbol (pfromData scriptHash)
             _ -> perror
-  PFieldPreimageCertificateV1 {pcert'owner, pcert'txId, pcert'fieldIndex} <- pmatch certificate
-  -- 4. The same §8.6 derivation the mint handler used, over the datum this UTxO
-  --    actually carries.
+  PFieldPreimageCertificateV1 {pcert'owner} <- pmatch certificate
+  -- 4. The same §8.6 constant name the mint handler pinned.
   assetName <-
     plet $
       punsafeCoerce @PTokenName $
-        pfieldPreimageCertificateAssetName # pfromData pcert'txId # pfromData pcert'fieldIndex
+        pfieldPreimageCertificateAssetName
   -- 5. The token must not survive the transaction. Stated over outputs rather
   --    than over `tx.mint`, because that is the form that cannot be
   --    double-satisfied: a burn count is a sum over the whole transaction, so

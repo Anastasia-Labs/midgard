@@ -41,7 +41,6 @@ module Midgard.ValidationMerkle (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 import Plutarch.Builtin.Crypto (pblake2b_256)
-import Plutarch.Builtin.Data (pserialiseData)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.Prelude
 import Plutarch.Repr.Scott (DeriveAsScottRec (..))

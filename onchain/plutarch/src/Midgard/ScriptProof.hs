@@ -27,19 +27,19 @@ module Midgard.ScriptProof (
 
 import Plutarch.Builtin.Crypto (pblake2b_224, pblake2b_256)
 import Plutarch.Core.Internal.Builtins (pconsBS')
-import Plutarch.Core.Utils (pand'List)
 import Plutarch.Prelude
 
 import Aiken.Cbor (pdeserialise)
 import Midgard.BoundedItem qualified as Bounded
-import Midgard.FraudProofs.NativeTx.Codec (pcborInt, pencodeDefiniteBytes)
+import Midgard.FraudProofs.NativeTx.Codec (pbyteAt, pcborInt, pencodeDefiniteBytes)
 import Midgard.FraudProofs.NativeTx.Components (
-  pencodeMidgardRedeemerWitness, pencodeMidgardVersionedScript,
+  pdecodeMidgardTxInputCbor, pencodeMidgardRedeemerWitness, pencodeMidgardTxInput,
+  pencodeMidgardVersionedScript,
   pmidgardScriptLanguageToTag,
  )
 import Midgard.FraudProofs.NativeTx.Types (
   PMidgardRedeemerPurpose (..), PMidgardRedeemerWitness, PMidgardScriptLanguage,
-  PMidgardVersionedScript (..),
+  PMidgardTxInput (..), PMidgardVersionedScript (..),
  )
 
 planguageTag :: forall s. Term s (PMidgardScriptLanguage :--> PInteger)
@@ -75,28 +75,21 @@ pexecutionLeafDomain = pconstant "MidgardScriptExecutionLeafV1"
 pcontextItemLeafDomain = pconstant "MidgardScriptContextItemLeafV1"
 presolvedContextItemLeafDomain = pconstant "MidgardResolvedContextItemLeafV1"
 
-pdataIsList, pdataIsInteger, pdataIsBytes :: forall s. Term s (PData :--> PBool)
-pdataIsList = phoistAcyclic $ plam $ \d -> pchooseData # d # pconstant False # pconstant False # pconstant True # pconstant False # pconstant False
-pdataIsInteger = phoistAcyclic $ plam $ \d -> pchooseData # d # pconstant False # pconstant False # pconstant False # pconstant True # pconstant False
-pdataIsBytes = phoistAcyclic $ plam $ \d -> pchooseData # d # pconstant False # pconstant False # pconstant False # pconstant False # pconstant True
-
+-- | The sole V1 reference-script source key is §5.3's fixed-width input item.
 pcanonicalReferenceSourceKey :: forall s. Term s (PByteString :--> PBool)
 pcanonicalReferenceSourceKey = phoistAcyclic $ plam $ \sourceKey ->
-  pmatch (pdeserialise # sourceKey) $ \case
-    PNothing -> pconstant False
-    PJust dat -> pif (pdataIsList # dat)
-      (plet (pasList # dat) $ \fields -> pif (plength # fields #== 2)
-        (plet (pelemAt # 0 # fields) $ \txIdData -> plet (pelemAt # 1 # fields) $ \indexData ->
-          pif (pdataIsBytes # txIdData #&& pdataIsInteger # indexData)
-            (plet (pasByteStr # txIdData) $ \txId -> plet (pasInt # indexData) $ \outputIndex ->
-              pand'List
-                [ plengthBS # txId #== 32
-                , outputIndex #>= 0, outputIndex #<= 65_535
-                , pconstant "\x82\x58\x20" <> txId <> pcborInt outputIndex #== sourceKey
-                ])
-            (pconstant False))
-        (pconstant False))
-      (pconstant False)
+  pif (plengthBS # sourceKey #== 38)
+    ( pencodeMidgardTxInput
+        # pcon
+          ( PMidgardTxInput
+              { ptxInput'txId = pdata (psliceBS # 3 # 32 # sourceKey)
+              , ptxInput'outputIndex =
+                  pdata (pbyteAt # sourceKey # 36 * 256 + pbyteAt # sourceKey # 37)
+              }
+          )
+        #== sourceKey
+    )
+    (pconstant False)
 
 planguageTagIsValid :: forall s. Term s PInteger -> Term s PBool
 planguageTagIsValid tag = tag #== 0 #|| tag #== 3 #|| tag #== 128
@@ -141,13 +134,12 @@ psourceLeafHash = phoistAcyclic $ plam $ \origin sourceKey script ->
             # (pversionedScriptHash # script) # (plengthBS # scriptCbor)
             # (Bounded.pfromBytes # 6 # index # scriptCbor)) perror)
     (pif (origin #== 1)
-      (plet (pasList # pexpectJustData sourceKey) $ \fields -> plet (pasInt # (pelemAt # 1 # fields)) $ \outputIndex ->
-        preferenceSourceLeafHash # sourceKey # (planguageTag # pfromData (pversionedScript'language s))
-          # (pversionedScriptHash # script) # (plengthBS # scriptCbor)
-          # (Bounded.pfromBytes # 2 # outputIndex # scriptCbor))
+      (plet (pdecodeMidgardTxInputCbor # sourceKey) $ \input ->
+        pmatch input $ \PMidgardTxInput {ptxInput'outputIndex} ->
+          preferenceSourceLeafHash # sourceKey # (planguageTag # pfromData (pversionedScript'language s))
+            # (pversionedScriptHash # script) # (plengthBS # scriptCbor)
+            # (Bounded.pfromBytes # 2 # pfromData ptxInput'outputIndex # scriptCbor))
       perror)
-  where
-    pexpectJustData sourceKey = pmatch (pdeserialise # sourceKey) $ \case PNothing -> perror; PJust dat -> dat
 
 predeemerPurposeTag :: forall s. Term s (PMidgardRedeemerPurpose :--> PInteger)
 predeemerPurposeTag = phoistAcyclic $ plam $ \purpose -> pmatch purpose $ \case

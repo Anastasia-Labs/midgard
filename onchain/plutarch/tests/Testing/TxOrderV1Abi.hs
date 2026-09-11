@@ -5,19 +5,18 @@ Module      : Testing.TxOrderV1Abi
 Description : Exact wire vectors from
               @lib/midgard/user-events/tx-order-v1.test.ak@.
 
-This module stops at the public transaction-order ABI and its content-addressed
-material. Receipt-chain behaviour is covered separately by "Testing.TxOrderFields".
+This module covers the public transaction-order ABI and its content-addressed
+material carriage.
 -}
 module Testing.TxOrderV1Abi (tests) where
 
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
 import Plutarch.Core.Utils (pand'List)
-import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (PAddress, POutputDatum (..), PScriptHash, PTxOutRef)
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
-import PlutusLedgerApi.V1.Value (CurrencySymbol (..))
+import PlutusLedgerApi.V1.Value (TokenName (..))
 import PlutusLedgerApi.V3 (
   Address (..),
   Credential (..),
@@ -35,21 +34,25 @@ import Midgard.CekProof (phashBlobChunkV1)
 import Midgard.LedgerState (
   PCekProgramMaterialDatumV1 (..),
   PForcedInclusionTxV1 (..),
-  PMidgardTxValidity (..),
   PNativeTxProofSourceV1 (..),
   PTxOrderEventV1 (..),
   PTxOrderPayloadV1 (..),
  )
 import Midgard.MpfProof.Types (PProof (..))
+import Midgard.RejectionReason (
+  POperatorVerdictV1 (..),
+  PRejectionReasonV1 (..),
+ )
 import Midgard.TransitionTrace (
   PRootDomain (..),
   PRootMembershipProof (..),
  )
-import Midgard.UserEvents.TxFieldReceipt (PMintRedeemer (..))
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1 (..))
+import Midgard.UserEvents qualified as UserEvents
 import Midgard.UserEvents.TxOrder (
+  PMintRedeemer (..),
   PSpendRedeemer (..),
   PTxOrderDatum (..),
-  pfieldReceiptAssetName,
   pforcedInclusionKeyValue,
  )
 import Testing.Eval (passertEval, pfails)
@@ -62,16 +65,14 @@ tests =
         passertEval canonicalAbiVectors
     , testCase "forced_inclusion_key_value_matches_the_canonical_v1_vectors" $
         passertEval forcedInclusionKeyValueVectors
-    , testCase "tx_field_receipt_redeemers_match_the_canonical_typescript_abi_vectors" $
-        passertEval fieldReceiptRedeemerVectors
+    , testCase "tx_order_mint_redeemer_wire_form_is_the_event_plus_the_carriage_vector" $
+        passertEval mintRedeemerVectors
     , testCase "tx_order_payload_rejects_an_unknown_outer_constructor" $
         pfails $ strictPayloadHasExpectedTxId payloadUnknownConstructorCbor
     , testCase "tx_order_payload_rejects_an_extra_field" $
         pfails $ strictPayloadHasExpectedTxId payloadExtraFieldCbor
     , testCase "cek_program_material_v1_matches_the_typed_blob_chunk_hash_vector" $
         passertEval cekProgramMaterialVector
-    , testCase "field_receipt_asset_name_matches_core_vector" $
-        passertEval fieldReceiptAssetNameVector
     ]
 
 canonicalAbiVectors :: forall s. Term s PBool
@@ -90,14 +91,36 @@ forcedInclusionKeyValueVectors =
   let (key, value) =
         pforcedInclusionKeyValue
           (pforgetData $ pdata vectorEvent)
-          (pdata $ pcon PFailedScript)
+          (pdata plutusFailureVerdict)
    in pserialiseData # key #== pconstant vectorOrderIdCbor
         #&& pserialiseData # value #== pconstant vectorForcedInclusionCbor
 
-fieldReceiptRedeemerVectors :: forall s. Term s PBool
-fieldReceiptRedeemerVectors =
-  serialisesTo publishFieldRedeemer publishFieldRedeemerCbor
-    #&& serialisesTo burnReceiptsRedeemer burnReceiptsRedeemerCbor
+mintRedeemerVectors :: forall s. Term s PBool
+mintRedeemerVectors =
+  serialisesTo
+    (pcon $ PMintRedeemer (pdata authenticateEvent) (pdata pnil))
+    authenticateMintRedeemerCbor
+    #&& serialisesTo
+      (pcon $ PMintRedeemer (pdata burnEvent) (pdata pnil))
+      burnMintRedeemerCbor
+    #&& serialisesTo
+      ( pcon $
+          PMintRedeemer
+            (pdata authenticateEvent)
+            ( pdata $
+                pcons # pdata (pcon $ PInline $ pdata $ pconstant "\x80")
+                  #$ pcons # pdata (pcon $ PRawUtxo $ pdata 5)
+                  #$ pcons
+                    # pdata
+                      ( pcon $
+                          PCertified
+                            (pdata 6)
+                            (pdata $ pcons # pdata 7 #$ pcons # pdata 8 # pnil)
+                      )
+                    # pnil
+            )
+      )
+      carriedMintRedeemerCbor
 
 cekProgramMaterialVector :: forall s. Term s PBool
 cekProgramMaterialVector =
@@ -113,25 +136,12 @@ cekProgramMaterialVector =
         )
         cekMaterialDatumCbor
 
-fieldReceiptAssetNameVector :: forall s. Term s PBool
-fieldReceiptAssetNameVector =
-  pto
-    ( pfieldReceiptAssetName
-        # pdata (pconstant txOrderPolicyId)
-        # pdata (pconstant orderId)
-        # pconstant zeroHash
-        # 0
-        # 0
-        # 0
-    )
-    #== pconstant fieldReceiptAssetName
-
 strictPayloadHasExpectedTxId :: forall s. BS.ByteString -> Term s PBool
 strictPayloadHasExpectedTxId source =
   withDecoded source $ \raw ->
     pmatch (pasConstr # raw) $ \(PBuiltinPair tag fields) ->
       pif
-        (tag #== 0 #&& plength # fields #== 4)
+        (tag #== 0 #&& plength # fields #== 3)
         ( plet
             (pfromData $ punsafeCoerce @(PAsData PTxOrderPayloadV1) raw)
             $ \payload ->
@@ -172,8 +182,6 @@ vectorPayload =
       { ptxOrderPayload'txId = pdata (pconstant orderTransactionId)
       , ptxOrderPayload'transactionCommitment = pdata (pconstant fieldTransactionId)
       , ptxOrderPayload'source = pdata vectorSource
-      , ptxOrderPayload'terminalReceiptReference =
-          pforgetData (pdata (pcon PDNothing :: Term s (PMaybeData PTxOutRef)))
       }
 
 vectorEvent :: forall s. Term s PTxOrderEventV1
@@ -201,7 +209,7 @@ vectorForcedInclusion =
     PForcedInclusionTxV1
       { pforcedTx'txId = pdata (pconstant orderTransactionId)
       , pforcedTx'source = pdata vectorSource
-      , pforcedTx'operatorValidity = pdata (pcon PFailedScript)
+      , pforcedTx'verdict = pdata plutusFailureVerdict
       }
 
 vectorSpendRedeemer :: forall s. Term s PSpendRedeemer
@@ -215,8 +223,12 @@ vectorSpendRedeemer =
       , ptxOrderSpend'burnRedeemerIndex = pdata 4
       , ptxOrderSpend'membershipProof = pdata vectorMembershipProof
       , ptxOrderSpend'inclusionProofScriptWithdrawRedeemerIndex = pdata 5
-      , ptxOrderSpend'validityOverride = pdata (pcon PFailedScript)
+      , ptxOrderSpend'validityOverride = pdata plutusFailureVerdict
       }
+
+plutusFailureVerdict :: forall s. Term s POperatorVerdictV1
+plutusFailureVerdict =
+  pcon $ PForcedTxInvalid $ pforgetData $ pdata $ pcon $ PPlutusExecutionFailed $ pdata 0
 
 vectorMembershipProof :: forall s. Term s PRootMembershipProof
 vectorMembershipProof =
@@ -231,30 +243,26 @@ vectorMembershipProof =
       , prootMembership'proof = pdata (pcon $ PProof pnil)
       }
 
-publishFieldRedeemer :: forall s. Term s PMintRedeemer
-publishFieldRedeemer =
+authenticateEvent :: forall s. Term s UserEvents.PMintRedeemer
+authenticateEvent =
   pcon $
-    PPublishField
-      { ppublishField'fieldReferenceInputIndex = pdata 0
-      , ppublishField'predecessorReceiptReferenceInputIndex = pdata (-1)
-      , ppublishField'receiptOutputIndex = pdata 1
-      , ppublishField'transactionId = pdata (pconstant orderTransactionId)
-      , ppublishField'source = pdata vectorSource
+    UserEvents.PAuthenticateEvent
+      { UserEvents.pauthenticate'nonceInputIndex = pdata 0
+      , UserEvents.pauthenticate'eventOutputIndex = pdata 1
+      , UserEvents.pauthenticate'hubRefInputIndex = pdata 2
+      , UserEvents.pauthenticate'witnessRegistrationRedeemerIndex = pdata 3
       }
 
-burnReceiptsRedeemer :: forall s. Term s PMintRedeemer
-burnReceiptsRedeemer =
+burnEvent :: forall s. Term s UserEvents.PMintRedeemer
+burnEvent =
   pcon $
-    PBurnReceipts
-      { pburnReceipts'receiptInputIndices =
-          pdata $ pcons # pdata 0 #$ pcons # pdata 2 # pnil
+    UserEvents.PBurnEventNFT
+      { UserEvents.pburnEvent'nonceAssetName = pdata (pconstant $ TokenName "\xaa\xbb")
+      , UserEvents.pburnEvent'witnessUnregistrationRedeemerIndex = pdata 4
       }
 
 vectorOrderIdHost :: TxOutRef
 vectorOrderIdHost = TxOutRef (TxId $ toBuiltin $ BS.replicate 32 0x33) 4
-
-orderId :: TxOutRef
-orderId = TxOutRef (TxId $ toBuiltin orderTransactionId) 7
 
 refundAddress :: Address
 refundAddress =
@@ -265,36 +273,33 @@ refundAddress =
 witnessScriptHash :: ScriptHash
 witnessScriptHash = ScriptHash $ toBuiltin $ BS.replicate 28 0x66
 
-txOrderPolicyId :: CurrencySymbol
-txOrderPolicyId = CurrencySymbol $ toBuiltin $ BS.replicate 28 0x11
-
 orderTransactionId, fieldTransactionId, zeroHash, phasRoot :: BS.ByteString
 orderTransactionId = BS.replicate 32 0x44
 fieldTransactionId = BS.replicate 32 0x55
 zeroHash = BS.replicate 32 0x00
 phasRoot = BS.replicate 32 0x11
 
-cekMaterialRoot, fieldReceiptAssetName :: BS.ByteString
+cekMaterialRoot :: BS.ByteString
 cekMaterialRoot = hex "941de596141f044be570fb7b579b3fc520db7cacdbccd020cdb7618ba124380c"
-fieldReceiptAssetName = hex "7bc0ae911756007cc44a1e956fedc08d67af38ce19778405ab040faa77b60123"
 
 vectorOrderIdCbor, vectorPayloadCbor, vectorEventCbor, vectorDatumCbor :: BS.ByteString
 vectorOrderIdCbor = hex "d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff"
-vectorPayloadCbor = hex "d8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a80ff"
-vectorEventCbor = hex "d8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333304ffd8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a80ffff"
-vectorDatumCbor = hex "d8799fd8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333304ffd8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a80ffff187b581c66666666666666666666666666666666666666666666666666666666d8799fd8799f581c77777777777777777777777777777777777777777777777777777777ffd87a80ffd87980ff"
+vectorPayloadCbor = hex "d8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffff"
+vectorEventCbor = hex "d8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333304ffd8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffffff"
+vectorDatumCbor = hex "d8799fd8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333304ffd8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffffff187b581c66666666666666666666666666666666666666666666666666666666d8799fd8799f581c77777777777777777777777777777777777777777777777777777777ffd87a80ffd87980ff"
 
 vectorForcedInclusionCbor, vectorSpendRedeemerCbor :: BS.ByteString
-vectorForcedInclusionCbor = hex "d8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87c80ff"
-vectorSpendRedeemerCbor = hex "d8799f0001020304d8799fd87a805820000000000000000000000000000000000000000000000000000000000000000058201111111111111111111111111111111111111111111111111111111111111111015827d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff5834d8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87c80ff80ff05d87c80ff"
+vectorForcedInclusionCbor = hex "d8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87a9fd905229f00ffffff"
+vectorSpendRedeemerCbor = hex "d8799f0001020304d8799fd87a805820000000000000000000000000000000000000000000000000000000000000000058201111111111111111111111111111111111111111111111111111111111111111015827d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff583bd8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87a9fd905229f00ffffff80ff05d87a9fd905229f00ffffff"
 
-publishFieldRedeemerCbor, burnReceiptsRedeemerCbor :: BS.ByteString
-publishFieldRedeemerCbor = hex "d8799f00200158204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffff"
-burnReceiptsRedeemerCbor = hex "d87a9f9f0002ffff"
+authenticateMintRedeemerCbor, burnMintRedeemerCbor, carriedMintRedeemerCbor :: BS.ByteString
+authenticateMintRedeemerCbor = hex "d8799fd8799f00010203ff80ff"
+burnMintRedeemerCbor = hex "d8799fd87a9f42aabb04ff80ff"
+carriedMintRedeemerCbor = hex "d8799fd8799f00010203ff9fd8799f4180ffd87a9f05ffd87b9f069f0708ffffffff"
 
 payloadUnknownConstructorCbor, payloadExtraFieldCbor, cekMaterialDatumCbor :: BS.ByteString
-payloadUnknownConstructorCbor = hex "d87a9f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a80ff"
-payloadExtraFieldCbor = hex "d8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a8000ff"
+payloadUnknownConstructorCbor = hex "d87a9f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffff"
+payloadExtraFieldCbor = hex "d8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ff00ff"
 cekMaterialDatumCbor = hex "d8799f035820941de596141f044be570fb7b579b3fc520db7cacdbccd020cdb7618ba124380c49486d6174657269616cff"
 
 hex :: BS.ByteString -> BS.ByteString

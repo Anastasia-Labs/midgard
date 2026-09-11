@@ -116,9 +116,9 @@ data PStep04State (s :: S) = PStep04State
 data PStep04Args (s :: S) = PStep04Args
   { pstep04Args'inputIndex :: Term s (PAsData PInteger)
   , pstep04Args'outputIndex :: Term s (PAsData PInteger)
+  , pstep04Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
   , -- | The prover's chosen carriage for the transactions-root absence proof.
     pstep04Args'nonMembershipInTxs :: Term s (PAsData PNonMembershipCarriage)
-  , pstep04Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)

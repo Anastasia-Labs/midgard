@@ -50,7 +50,6 @@ import Plutarch.LedgerApi.V3 (
   PTxInfo (..),
   PTxOutRef (..),
  )
-import Plutarch.Builtin.Data (pserialiseData)
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
@@ -61,7 +60,11 @@ import Midgard.FraudProofs.FieldOpening (
   popenedFieldView,
   preferenceInputsFieldIndex,
  )
-import Midgard.FraudProofs.NativeTx.Types (PMidgardTxInput (..))
+import Midgard.FraudProofs.NativeTx.Types (
+  PMidgardTxInput (..),
+  PNativeTxCompact (..),
+  PVerifiedMidgardNativeTxCompact (..),
+ )
 import Midgard.FraudProofs.WithdrawnReferenceInput (
   PStep02Args (..),
   PStep02State (..),
@@ -128,25 +131,28 @@ withdrawnReferenceInputStep01Validator = plam $
                outputStateData
                header
                badTxId
-               _badTxView -> P.do
+               badTxView -> P.do
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
+                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
                 PHeaderV1 {pheader'withdrawalsRoot, pheader'withdrawalCount} <-
                   pmatch (pfromData header)
-                pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
-                  pexpecting
-                    ( outputStateData
-                        #== pforgetData
-                          ( pdata
-                              ( pcon
-                                  ( PStep02State
-                                      { pstep02State'badTxId = pdata badTxId
-                                      , pstep02State'blocksWithdrawalsRoot = pheader'withdrawalsRoot
-                                      , pstep02State'blocksWithdrawalCount = pheader'withdrawalCount
-                                      }
-                                  )
-                              )
-                          )
-                    )
-                    (pconstant True)
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+                    pexpecting
+                      ( outputStateData
+                          #== pforgetData
+                            ( pdata
+                                ( pcon
+                                    ( PStep02State
+                                        { pstep02State'badTxId = pdata badTxId
+                                        , pstep02State'blocksWithdrawalsRoot = pheader'withdrawalsRoot
+                                        , pstep02State'blocksWithdrawalCount = pheader'withdrawalCount
+                                        }
+                                    )
+                                )
+                            )
+                      )
+                      (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 02
@@ -274,8 +280,8 @@ withdrawnReferenceInputStep03Validator = plam $
             PStep03Args
               { pstep03Args'inputIndex
               , pstep03Args'outputIndex
-              , pstep03Args'withdrawalMembership
               , pstep03Args'fraudProofMintRedeemerIndex
+              , pstep03Args'withdrawalMembership
               } <-
               pmatch args
             PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo

@@ -23,8 +23,9 @@ step reaches a transaction inside a committed block. It is worth reading closely
 because everything that makes a family's evidence trustworthy is here and
 nowhere else:
 
-  * the prover's @native_tx_compact_cbor@ must decode canonically and hash to
-    the @native_tx_id@ it claims (the codec precondition);
+  * the prover's canonical @L2TransactionSourceV1@ leaf must name the claimed
+    @native_tx_id@, and its compact transaction, witness set, and field-length
+    record must verify together (the codec precondition);
   * the hub oracle names the state queue policy, so the block being challenged
     cannot be read from an impostor UTxO;
   * the queue node's key must equal the thread token's asset name with the
@@ -69,8 +70,10 @@ module Midgard.FraudProofs.Common (
   PPublishedChunkInclusionArgs (..),
   PNativeTxInclusionCarriage (..),
   PNonMembershipCarriage (..),
+  PMembershipCarriage (..),
   pcarriageTransactionsPhasRoot,
   pverifyNonMembershipCarried,
+  pverifyMembershipCarried,
 
   -- * First steps
   ppassNativeTxToNextStepCarried,
@@ -132,7 +135,11 @@ import Midgard.FraudProofs.ChunkedInclusion (
   pdelegatedChunkMembership,
   pdelegatedChunkNonMembership,
  )
-import Midgard.FraudProofs.NativeTx.Compact (pverifyNativeTxCompactCborV1)
+import Midgard.FraudProofs.DaHashPreimage (
+  PSourceEnvelopeV1 (..),
+  pinspectSourceEnvelopeV1,
+ )
+import Midgard.FraudProofs.NativeTx.Compact (pverifyNativeTxProofSourceV1)
 import Midgard.FraudProofs.NativeTx.Types (PVerifiedMidgardNativeTxCompact (..))
 import Midgard.HubOracle (PHubOracleDatum (..))
 import Midgard.HubOracle qualified as Hub
@@ -229,6 +236,23 @@ data PNonMembershipCarriage (s :: S)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PNonMembershipCarriage)
 
+{- | Aiken @fraud_proofs/common.MembershipCarriage@.
+
+The exact membership twin of 'PNonMembershipCarriage': a fitting proof travels
+through the shared @phas@ withdrawal, while a deep proof names published
+chunks verified by the shared merkelized validator.
+-}
+data PMembershipCarriage (s :: S)
+  = PRedeemerCarriedMembership
+      { pmembership'proof :: Term s (PAsData PProof)
+      , pmembership'scriptRedeemerIndex :: Term s (PAsData PInteger)
+      }
+  | PPublishedChunkMembership
+      {ppublishedMembership'carriage :: Term s (PAsData PPublishedProofCarriage)}
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PMembershipCarriage)
+
 --------------------------------------------------------------------------------
 -- Carriage accessors
 --------------------------------------------------------------------------------
@@ -291,6 +315,35 @@ pverifyNonMembershipCarried carriage merkleRoot keyBytes _referenceInputs redeem
         # merkleRoot
         # keyBytes
 
+{- | Aiken @fraud_proofs/common.verify_membership_carried@.
+
+Verifies @(key_bytes, value_bytes)@ under an already-authenticated root by the
+route selected in the carriage. As in Aiken, @reference_inputs@ is retained in
+the interface even though the delegated verifier reads its published claim via
+the unique withdrawal redeemer.
+-}
+pverifyMembershipCarried ::
+  forall (s :: S).
+  Term s PMembershipCarriage ->
+  Term s PByteString ->
+  Term s PByteString ->
+  Term s PByteString ->
+  Term s (PBuiltinList (PAsData PTxInInfo)) ->
+  Term s (PBuiltinList (PBuiltinPair (PAsData PScriptPurpose) (PAsData PRedeemer))) ->
+  Term s PBool
+pverifyMembershipCarried carriage merkleRoot keyBytes valueBytes _referenceInputs redeemers =
+  pmatch carriage $ \case
+    PRedeemerCarriedMembership {pmembership'proof} ->
+      pplutarchPhasRaw merkleRoot keyBytes valueBytes (pforgetData pmembership'proof) redeemers
+    PPublishedChunkMembership {ppublishedMembership'carriage} ->
+      pdelegatedChunkMembership
+        # Env.pmpfChunkedVerifyValidatorHash
+        # redeemers
+        # pfromData ppublishedMembership'carriage
+        # merkleRoot
+        # keyBytes
+        # valueBytes
+
 --------------------------------------------------------------------------------
 -- Evidence
 --------------------------------------------------------------------------------
@@ -348,7 +401,7 @@ pverifyNativeTxInStateQueueNodeWith ::
   Term s r
 pverifyNativeTxInStateQueueNodeWith
   nativeTxId
-  nativeTxCompactCbor
+  l2TransactionSourceCbor
   transactionsPhasRoot
   computationThreadTokenAssetName
   hubOracle
@@ -357,8 +410,26 @@ pverifyNativeTxInStateQueueNodeWith
   referenceInputs
   membershipCheck
   k = P.do
-    nativeTxView <-
-      plet $ pverifyNativeTxCompactCborV1 # nativeTxId # nativeTxCompactCbor
+    sourceEnvelope <-
+      plet $
+        pmatch (pinspectSourceEnvelopeV1 # l2TransactionSourceCbor) $ \case
+          PNothing -> perror
+          PJust source -> source
+    PSourceEnvelopeV1
+      { psourceEnvelope'embeddedTxId
+      , psourceEnvelope'compactCbor
+      , psourceEnvelope'witnessSetCompactCbor
+      , psourceEnvelope'fieldPreimageLengthsCbor
+      } <-
+      pmatch sourceEnvelope
+    PPair nativeTxView _witnessSet <-
+      pmatch
+        ( pverifyNativeTxProofSourceV1
+            # nativeTxId
+            # psourceEnvelope'compactCbor
+            # psourceEnvelope'witnessSetCompactCbor
+            # psourceEnvelope'fieldPreimageLengthsCbor
+        )
     PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch nativeTxView
 
     PHubOracleDatum {phubOracle'stateQueue} <-
@@ -369,7 +440,9 @@ pverifyNativeTxInStateQueueNodeWith
         PHeaderV1 {pheader'transactionsRoot, pheader'l2TransactionCount} <-
           pmatch (pfromData header)
         pif
-          ( pverified'txId
+          ( psourceEnvelope'embeddedTxId
+              #== nativeTxId
+              #&& pverified'txId
               #== nativeTxId
               #&& stateQueueNodeKey
               #== (FraudProof.passetNameToHeaderHash # computationThreadTokenAssetName)
@@ -377,7 +450,7 @@ pverifyNativeTxInStateQueueNodeWith
                 pheader'transactionsRoot
                 pheader'l2TransactionCount
                 transactionsPhasRoot
-              #&& membershipCheck transactionsPhasRoot nativeTxId nativeTxCompactCbor
+              #&& membershipCheck transactionsPhasRoot nativeTxId l2TransactionSourceCbor
           )
           (k nativeTxId header nativeTxView)
           perror

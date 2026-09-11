@@ -122,6 +122,10 @@ tests =
           testCase "permits the fraud-proof token minted alongside" $
             psucceeds $
               runSuccess (toMint (threadToken (-1) <> singleton otherPolicy (TokenName "fp") 1))
+        , testCase "ct_success_rejects_surplus_own_policy_mint" $
+            pfails $
+              runSuccess $
+                toMint (threadToken (-1) <> singleton threadPolicy (TokenName "unregistered-thread") 1)
         ]
     , testGroup
         "mint / BurnForCancellation"

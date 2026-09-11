@@ -9,8 +9,6 @@ import Plutarch.Prelude
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase)
 
-import Midgard.BoundedCollection qualified as Collection
-import Midgard.BoundedItem qualified as Bounded
 import Midgard.FraudProofs.NativeTx.Codec qualified as Codec
 import Midgard.FraudProofs.NativeTx.Compact qualified as Compact
 import Midgard.FraudProofs.NativeTx.Types
@@ -56,36 +54,40 @@ maximumGeneralFieldBoundedChunkInstructionEvidenceIsBounded =
         (phashWorkWitness # pcon PCanonicalDecode # 1 # nextWorkCbor) hA
     )
     $ \post ->
-  plet maximumCollectionFrontier $ \collectionFrontier ->
-  plet maximumChunkFrontier $ \chunkFrontier ->
-  plet (preplicateBS # Bounded.pchunkBytes # (pintegerToByte # 0)) $ \maximumChunk ->
+  plet (preplicateBS # NativeField.pmaxTier1RedeemerPreimageBytes # (pintegerToByte # 0)) $ \maximumPreimage ->
   plet
-    ( pcon $ Collection.PItemProofV1
-        (pdata Collection.pboundedCollectionVersion)
-        (pdata 8) (pdata 16_383) (pdata 16_382) (pdata 16_384)
-        (pdata hA) (pdata collectionFrontier)
-        (pdata $ repeatedByteStrings 14 zero32)
+    ( pcons # pdata 1 #$ pcons # pdata 2 #$ pcons # pdata 3 # pnil
     )
-    $ \collectionProof ->
-  plet
-    ( pcon $ Bounded.PChunkProofV1
-        (pdata Bounded.pversion) (pdata 8) (pdata 16_382) (pdata 16_384)
-        (pdata 3) (pdata maximumChunk) (pdata chunkFrontier)
-        (pdata $ repeatedByteStrings 3 zero32)
-    )
-    $ \chunkProof ->
+    $ \maximumChunkIndices ->
   plet (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post)) $ \transition ->
   plet
     ( pcon $ PValidationOneStepEvidenceV1
         (pdata transition)
-        (pdata $ pcon $ PTransactionFieldChunkWitness (pdata collectionProof) (pdata chunkProof))
+        ( pdata $ pcon $ PTransactionFieldChunkWitness
+            (pdata 8)
+            (pdata 16_382)
+            (pdata $ pcon $ NativeField.PInline (pdata maximumPreimage))
+        )
     )
-    $ \evidence ->
+    $ \tier1Evidence ->
+  plet
+    ( pcon $ PValidationOneStepEvidenceV1
+        (pdata transition)
+        ( pdata $ pcon $ PTransactionFieldChunkWitness
+            (pdata 8)
+            (pdata 16_382)
+            ( pdata $ pcon $ NativeField.PCertified
+                (pdata 0)
+                (pdata maximumChunkIndices)
+            )
+        )
+    )
+    $ \tier3Evidence ->
     pand'List
-      [ plengthBS # maximumChunk #== Bounded.pchunkBytes
-      , plength # collectionFrontier #== 14
-      , plength # chunkFrontier #== 2
-      , plengthBS # (pserialiseData # pforgetData (pdata evidence)) #< 16_384
+      [ plengthBS # maximumPreimage #== NativeField.pmaxTier1RedeemerPreimageBytes
+      , plength # maximumChunkIndices #== NativeField.pmaxTier3ChunkCount
+      , plengthBS # (pserialiseData # pforgetData (pdata tier1Evidence)) #< 16_384
+      , plengthBS # (pserialiseData # pforgetData (pdata tier3Evidence)) #< 1_024
       ]
 
 maximumScriptProgramInstructionEvidenceIsBounded :: forall s. Term s PBool
@@ -241,15 +243,6 @@ validationContextCbor =
     <> (Codec.pencodeDefiniteBytes # pconstant "midgard-consensus-v1")
     <> Codec.pcborInt 100 <> Codec.pcborInt 0 <> Codec.pcborInt 0
     <> Codec.pcborInt 0 <> Codec.pcborInt 100
-
-maximumCollectionFrontier :: forall s. Term s (PBuiltinList (PAsData Merkle.PFrontierPeak))
-maximumCollectionFrontier = peakList
-  [ (0, zero32), (1, hA), (2, hB), (3, hC), (4, zero32), (5, hA), (6, hB)
-  , (7, hC), (8, zero32), (9, hA), (10, hB), (11, hC), (12, zero32), (13, hA)
-  ]
-
-maximumChunkFrontier :: forall s. Term s (PBuiltinList (PAsData Merkle.PFrontierPeak))
-maximumChunkFrontier = peakList [(0, hB), (2, hC)]
 
 denseFrontierFour, denseFrontierSix, denseFrontierSeven :: forall s.
   Term s (PBuiltinList (PAsData Merkle.PFrontierPeak))

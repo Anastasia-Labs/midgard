@@ -58,6 +58,7 @@ import Plutarch.LedgerApi.V3 (
   PTxInfo (..),
   PTxOut,
  )
+import Plutarch.LedgerApi.Value qualified as Value
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
@@ -174,7 +175,12 @@ schedulerMintValidator = plam $ \hubOracleScriptHash ctx -> P.do
   -- rather than a strict conjunction.
   amount <-
     plet $ plam $ \n ->
-      (pgetSingletonAssetWithPolicy # mint # hubOracleScriptHash #== hubPair n)
+      ( Value.pvalueOf
+          # pto mint
+          # pfromData hubOracleScriptHash
+          # pfromData Hub.passetName
+          #== n
+      )
         #&& (pgetSingletonAssetWithPolicy # mint # ownPolicyId #== ownPair n)
   pif
     ( pmatch redeemer $ \case
@@ -184,7 +190,6 @@ schedulerMintValidator = plam $ \hubOracleScriptHash ctx -> P.do
     (pconstant ())
     perror
   where
-    hubPair n = ppairDataBuiltin # Hub.passetName # pdata n
     ownPair n = ppairDataBuiltin # passetName # pdata n
 
 --------------------------------------------------------------------------------

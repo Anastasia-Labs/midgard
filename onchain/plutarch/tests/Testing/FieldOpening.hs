@@ -27,17 +27,24 @@ opening must be refused at 0–5. Both directions are asserted against the handl
 that a multi-field step would hold, which is the shape the single-field entry
 points could not get wrong and the handle can.
 
-__Tier 3 does not reach the anchor for a witness-set field.__ The §8.6
-certificate names @(tx_id, field_index)@ and is minted against a
-@witness_set_hash@ the minter's own caller supplied, so it certifies nothing
-about fields 6–8 of the disputed transaction. The refusal is an abort, not a
-fallback to a lower tier.
+__Tier 3 reaches witness-set fields through the certificate weld.__ The §8.6
+certificate carries the field commitment computed by its minting policy. The
+door compares that value with the commitment selected from the anchored compact
+transaction, so a certificate minted against a caller-chosen witness set cannot
+be borrowed for fields 6–8 of the disputed transaction.
 
 The reference encoders below are written from the format — §2.5's positional
 table, §3's body-alone id preimage, §5.1's envelope — rather than from the port,
 so a change on either side fails a test instead of two copies agreeing.
 -}
-module Testing.FieldOpening (tests) where
+module Testing.FieldOpening (
+  tests,
+  certificatePolicy,
+  certifiedCarriageFor,
+  certifiedReferenceInputs,
+  chunksOf,
+  inputsT,
+) where
 
 import Data.ByteString qualified as BS
 import PlutusCore.Data qualified as PD
@@ -115,7 +122,7 @@ tests =
     , testGroup "anchored_native_tx" anchorTests
     , testGroup "handle accessors" accessorTests
     , testGroup "field_pairs_with / §2.5 half" halfTests
-    , testGroup "field_pairs_with / carriage_reaches_the_anchor" tierTests
+    , testGroup "field_pairs_with / certificate weld" tierTests
     , testGroup "anchored_field_view" viewTests
     , testGroup "anchored_field_walk" walkTests
     , testGroup "opened_field_view / opened_field_walk" singleFieldTests
@@ -337,12 +344,10 @@ halfTests =
 --------------------------------------------------------------------------------
 
 {- | Tiers 1 and 2 hand the door the whole preimage and the door hashes it
-against a commitment this module already pinned to thread state. Tier 3 cannot:
-the door never hashes the preimage and the §8.6 certificate is the binding
-instead — and that certificate is minted against a @witness_set_hash@ its own
-caller supplied, which §3's id does not cover. So tier 3 is admissible for a
-body field and inadmissible for a witness-set one, and the refusal is an abort
-rather than a silent fallback to a lower tier.
+against a commitment this module already pinned to thread state. Tier 3 binds
+the chunks to the same commitment through the certificate's mint-welded
+@field_hash@. The forged rows exercise the equality at all three witness-set
+slots; the welded rows prove that the repair did not become a blanket ban.
 -}
 tierTests :: [TestTree]
 tierTests =
@@ -350,32 +355,37 @@ tierTests =
       passertEval $ bodyOpensAt 3 observersPreimage
   , testCase "tier 1 reaches the anchor for a witness-set field" $
       passertEval $ witnessOpensAt 7 addressWitnessPreimage
-  , -- Tier 3 at a body field: refused here for a reason that is *not* the tier
-    -- rule — the fixture carries no certificate reference input, so the door
-    -- itself aborts. What the pair of cases below establishes is that the body
-    -- field gets as far as the door and the witness-set field does not.
-    testCase "tier 3 at a body field is refused by the door, not by the tier rule" $
+  , -- These fixtures deliberately carry no reference inputs, so both halves
+    -- reach the door and abort while resolving the named certificate.
+    testCase "tier 3 at a body field reaches the certificate door" $
       pfails $ pfieldItemCount #$ bodyViewWith 3 certifiedCarriage
-  , testCase "tier 3 at a witness-set field is refused before the door" $
+  , testCase "tier 3 at a witness-set field reaches the certificate door" $
       pfails $ pfieldItemCount #$ witnessViewWith 7 certifiedCarriage
-  , {- The distinguishing test. `field_pairs_with` asserts the tier guard first
-       and the §2.5 half second, so a tier-3 *body* opening on a *witness*
-       handle must fail the half rule — and a tier-3 witness opening fails the
-       tier rule whichever handle it is on. Neither reaches the door, and the
-       one thing this can show without a certificate fixture is that no tier-3
-       witness-set opening is ever admissible on either handle. -}
-    testCase "tier 3 at a witness-set field is refused on a body handle too" $
+  , testCase "the body/witness half rule still precedes the certificate door" $
       pfails $ pfieldItemCount #$ bodyViewWith 7 certifiedCarriage
-  , testCase "tier 3 is refused at every witness-set index" $
+  , testCase "tier 3 reaches the script-witness certificate door" $
       pfails $ pfieldItemCount #$ witnessViewWith 6 certifiedCarriage
-  , testCase "tier 3 is refused at the redeemers index" $
+  , testCase "tier 3 reaches the redeemer certificate door" $
       pfails $ pfieldItemCount #$ witnessViewWith 8 certifiedCarriage
-  , -- The Aiken neutralisation twin: tier 3 is scoped away from witness-set
-    -- fields, not disabled altogether. Supply a real certificate and both
-    -- chunks so the identical oversized carriage reaches a body field.
+  , -- Supply a real certificate and both chunks so the oversized carriage
+    -- reaches a body field whose commitment is the certificate's welded hash.
     testCase "certified_carriage_still_opens_on_a_body_field" $
       passertEval $
         pfieldItemAt # certifiedBodyView # 0 #== pconstant addressWitnessItem
+  , testCase "certified_carriage_opens_the_address_witness_field_with_the_welded_hash" $
+      passertEval $
+        pfieldItemCount # openedWeldedCertifiedWitnessView 7 #== 256
+  , testCase "certified_carriage_opens_the_script_witness_field_with_the_welded_hash" $
+      passertEval $
+        pfieldItemAt # openedWeldedCertifiedWitnessView 6 # 0
+          #== pconstant addressWitnessItem
+  , testCase "certified_carriage_opens_the_redeemer_field_with_the_welded_hash" $
+      passertEval $
+        pfieldItemAt # openedWeldedCertifiedWitnessView 8 # 0
+          #== pconstant addressWitnessItem
+  , testCase "certified_carriage_walks_the_address_witness_field_with_the_welded_hash" $
+      passertEval $
+        pfieldItemCount # openedWeldedCertifiedWitnessWalkView 7 #== 256
   ]
 
 --------------------------------------------------------------------------------
@@ -407,8 +417,8 @@ viewTests =
           [ pfieldItemCount # bodyViewWith 3 (inlineCarriage observersPreimage) #== 3
           , pfieldItemCount # bodyViewWith 4 (inlineCarriage signersPreimage) #== 2
           ]
-  , -- Aiken's live-handle regression: prove the witness handle works under
-    -- tier 1, then reuse that same anchor and refuse tier 3 on field 7.
+  , -- Prove the witness handle works under tier 1, then reuse that same anchor
+    -- with a certificate welded to a different field commitment.
     testCase "one_anchor_refuses_certified_carriage_at_a_witness_field_on_the_second_open" $
       pfails $
         plet witnessHandle $ \anchored ->
@@ -422,13 +432,15 @@ viewTests =
                       # pdata (pconstant certificatePolicy)
                   )
                 #== 1
-            , pfieldItemCount # certifiedViewAt anchored 7 #== 256
+            , pfieldItemCount
+                # certifiedViewAt anchored txId 7 forgedWitnessPreimage
+                #== 256
             ]
-  , -- Neutralisation twin for the handle route: accepting certified carriage
-    -- is scoped to body fields even when it is the handle's second opening.
+  , -- Neutralisation twin for the handle route: the same carriage succeeds
+    -- when the body field genuinely carries the welded commitment.
     testCase "one_anchor_still_opens_certified_carriage_on_a_body_field_second" $
       passertEval $
-        plet bodyHandle $ \anchored ->
+        plet weldedBodyHandle $ \anchored ->
           pand'List
             [ pfieldItemAt
                 # ( panchoredFieldView
@@ -440,7 +452,9 @@ viewTests =
                   )
                 # 0
                 #== pconstant (head spendInputItems)
-            , pfieldItemAt # certifiedViewAt anchored 5 # 0
+            , pfieldItemAt
+                # certifiedViewAt anchored weldedBodyTxId 5 forgedWitnessPreimage
+                # 0
                 #== pconstant addressWitnessItem
             ]
   , testCase "a preimage the body does not commit is refused" $
@@ -470,7 +484,7 @@ walkTests =
     -- nothing else.
     testCase "the walk applies the §2.5 half rule" $
       pfails $ pwalkFieldIndex #$ bodyCheckpointAt 7 addressWitnessPreimage
-  , testCase "the walk applies the tier rule" $
+  , testCase "the walk reaches the certificate door" $
       pfails $
         pwalkFieldIndex
           #$ psnd
@@ -481,8 +495,8 @@ walkTests =
                 # inputsT []
                 # pdata (pconstant certificatePolicy)
             )
-  , -- `anchored_field_walk` owns a separate pairing guard. First prove the
-    -- handle is live, then exercise that guard with authenticated tier 3.
+  , -- First prove the handle is live, then exercise the welded-hash guard
+    -- through the walk entry point with a forged certificate.
     testCase "one_anchor_walk_refuses_certified_carriage_at_a_witness_field_on_the_second_open" $
       pfails $
         plet witnessHandle $ \anchored ->
@@ -501,7 +515,10 @@ walkTests =
                     # anchored
                     # 7
                     # certifiedCarriageFor forgedWitnessChunks
-                    # inputsT (certificateRefInput 7 : map chunkRefInput forgedWitnessChunks)
+                    # inputsT
+                      ( certificateRefInput txId 7 forgedWitnessPreimage
+                          : map chunkRefInput forgedWitnessChunks
+                      )
                     # pdata (pconstant certificatePolicy)
                 )
                 $ \(PPair view _) -> pfieldItemCount # view #== 256
@@ -577,7 +594,7 @@ singleFieldTests =
       pfails $
         pfieldItemCount # openedCertifiedWitnessView 7 #== 256
   , -- Fields 6 and 8 are variable-width, so read the forged first item just as
-    -- Aiken does; counting would abort at a separate tier-3 E2 restriction.
+    -- Aiken does; counting the lazy tier-3 view remains outside its budget.
     testCase "certified_carriage_is_refused_at_the_script_witness_field" $
       pfails $
         pfieldItemAt # openedCertifiedWitnessView 6 # 0
@@ -653,6 +670,21 @@ opensWitness anchoredId anchoredWsHash ws =
 -- | The handle every body test opens against.
 bodyHandle :: forall s. Term s PAnchoredNativeTxV1
 bodyHandle = handleOf compactCbor
+
+weldedBodyHandle :: forall s. Term s PAnchoredNativeTxV1
+weldedBodyHandle =
+  panchoredNativeTx
+    # bodyTxOpeningT weldedBodyCbor
+    # bodyAnchorT weldedBodyTxId
+
+weldedBodyCbor :: BS.ByteString
+weldedBodyCbor = compactOfBody weldedBody (wsHashOf defaultWitnessSet) 3
+
+weldedBodyTxId :: BS.ByteString
+weldedBodyTxId = txIdOfBody weldedBody
+
+weldedBody :: Body
+weldedBody = bodyCommitting 5 forgedWitnessPreimage
 
 handleOf :: forall s. BS.ByteString -> Term s PAnchoredNativeTxV1
 handleOf cbor = panchoredNativeTx # bodyTxOpeningT cbor # bodyAnchorT txId
@@ -775,7 +807,7 @@ openedCertifiedWitnessView fieldIndex =
     # witnessOpeningT compactCbor defaultWitnessSet (certifiedCarriageFor forgedWitnessChunks)
     # witnessAnchorT txId (wsHashOf defaultWitnessSet)
     # pconstant fieldIndex
-    # inputsT (certifiedReferenceInputs fieldIndex)
+    # inputsT (certifiedReferenceInputs txId fieldIndex forgedWitnessPreimage)
     # pdata (pconstant certificatePolicy)
 
 openedCertifiedWitnessWalkView :: forall s. Integer -> Term s PFieldViewV1
@@ -785,8 +817,33 @@ openedCertifiedWitnessWalkView fieldIndex =
       # witnessOpeningT compactCbor defaultWitnessSet (certifiedCarriageFor forgedWitnessChunks)
       # witnessAnchorT txId (wsHashOf defaultWitnessSet)
       # pconstant fieldIndex
-      # inputsT (certifiedReferenceInputs fieldIndex)
+      # inputsT (certifiedReferenceInputs txId fieldIndex forgedWitnessPreimage)
       # pdata (pconstant certificatePolicy)
+
+openedWeldedCertifiedWitnessView :: forall s. Integer -> Term s PFieldViewV1
+openedWeldedCertifiedWitnessView fieldIndex =
+  popenedFieldView
+    # witnessOpeningT cbor ws (certifiedCarriageFor forgedWitnessChunks)
+    # witnessAnchorT txId (wsHashOf ws)
+    # pconstant fieldIndex
+    # inputsT (certifiedReferenceInputs txId fieldIndex forgedWitnessPreimage)
+    # pdata (pconstant certificatePolicy)
+  where
+    ws = witnessSetCommitting fieldIndex forgedWitnessPreimage
+    cbor = compactOfBody defaultBody (wsHashOf ws) 3
+
+openedWeldedCertifiedWitnessWalkView :: forall s. Integer -> Term s PFieldViewV1
+openedWeldedCertifiedWitnessWalkView fieldIndex =
+  pfst $
+    popenedFieldWalk
+      # witnessOpeningT cbor ws (certifiedCarriageFor forgedWitnessChunks)
+      # witnessAnchorT txId (wsHashOf ws)
+      # pconstant fieldIndex
+      # inputsT (certifiedReferenceInputs txId fieldIndex forgedWitnessPreimage)
+      # pdata (pconstant certificatePolicy)
+  where
+    ws = witnessSetCommitting fieldIndex forgedWitnessPreimage
+    cbor = compactOfBody defaultBody (wsHashOf ws) 3
 
 pfst :: forall a b s. Term s (PPair a b) -> Term s a
 pfst pair = pmatch pair $ \(PPair a _) -> a
@@ -888,16 +945,29 @@ certifiedCarriage =
     )
 
 certifiedBodyView :: forall s. Term s PFieldViewV1
-certifiedBodyView = certifiedViewAt bodyHandle 5
+certifiedBodyView =
+  certifiedViewAt
+    (panchoredNativeTx # bodyTxOpeningT cbor # bodyAnchorT committedTxId)
+    committedTxId
+    5
+    forgedWitnessPreimage
+  where
+    body = bodyCommitting 5 forgedWitnessPreimage
+    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 3
+    committedTxId = txIdOfBody body
 
-certifiedViewAt :: forall s. Term s PAnchoredNativeTxV1 -> Integer -> Term s PFieldViewV1
-certifiedViewAt anchored fieldIndex =
+certifiedViewAt ::
+  forall s.
+  Term s PAnchoredNativeTxV1 -> BS.ByteString -> Integer -> BS.ByteString -> Term s PFieldViewV1
+certifiedViewAt anchored certificateTxId fieldIndex preimage =
   panchoredFieldView
     # anchored
     # pconstant fieldIndex
-    # certifiedCarriageFor forgedWitnessChunks
-    # inputsT (certificateRefInput fieldIndex : map chunkRefInput forgedWitnessChunks)
+    # certifiedCarriageFor chunks
+    # inputsT (certificateRefInput certificateTxId fieldIndex preimage : map chunkRefInput chunks)
     # pdata (pconstant certificatePolicy)
+  where
+    chunks = chunksOf preimage
 
 certifiedCarriageFor :: forall s. [BS.ByteString] -> Term s PFieldCarriageV1
 certifiedCarriageFor chunks =
@@ -909,9 +979,11 @@ certifiedCarriageFor chunks =
         }
     )
 
-certifiedReferenceInputs :: Integer -> [TxInInfo]
-certifiedReferenceInputs fieldIndex =
-  certificateRefInput fieldIndex : map chunkRefInput forgedWitnessChunks
+certifiedReferenceInputs :: BS.ByteString -> Integer -> BS.ByteString -> [TxInInfo]
+certifiedReferenceInputs certificateTxId fieldIndex preimage =
+  certificateRefInput certificateTxId fieldIndex preimage : map chunkRefInput chunks
+  where
+    chunks = chunksOf preimage
 
 inputsT :: forall s. [TxInInfo] -> Term s (PBuiltinList (PAsData PTxInInfo))
 inputsT = pconstant
@@ -937,6 +1009,16 @@ defaultWitnessSet =
     , wScript = blake2b256 scriptWitnessPreimage
     , wRedeemer = blake2b256 redeemerPreimage
     }
+
+-- | The witness set with one positional field commitment replaced.
+witnessSetCommitting :: Integer -> BS.ByteString -> Ws
+witnessSetCommitting fieldIndex preimage = case fieldIndex of
+  6 -> defaultWitnessSet {wScript = commitment}
+  7 -> defaultWitnessSet {wAddr = commitment}
+  8 -> defaultWitnessSet {wRedeemer = commitment}
+  _ -> defaultWitnessSet
+  where
+    commitment = blake2b256 preimage
 
 {- | A witness set that still commits 'addressWitnessPreimage' at slot 7 but
 re-derives to a different @witness_set_hash@ — so the preimage would pass its
@@ -1207,8 +1289,8 @@ cborInt n
 certificatePolicy :: CurrencySymbol
 certificatePolicy = CurrencySymbol (toBuiltin (BS.replicate 28 0x91))
 
-certificateRefInput :: Integer -> TxInInfo
-certificateRefInput fieldIndex =
+certificateRefInput :: BS.ByteString -> Integer -> BS.ByteString -> TxInInfo
+certificateRefInput certificateTxId fieldIndex preimage =
   TxInInfo
     (outRefN 0)
     ( TxOut
@@ -1216,7 +1298,7 @@ certificateRefInput fieldIndex =
         ( adaValue 2_000_000
             <> singleton
               certificatePolicy
-              (TokenName (toBuiltin (referenceAssetName txId fieldIndex)))
+              (TokenName (toBuiltin ("MIDGARD_FIELD_PREIMAGE_CERT" :: BS.ByteString)))
               1
         )
         (OutputDatum (Datum (dataToBuiltinData certificateDatum)))
@@ -1227,11 +1309,13 @@ certificateRefInput fieldIndex =
       PD.Constr
         0
         [ PD.B (BS.replicate 28 0x31)
-        , PD.B txId
+        , PD.B certificateTxId
         , PD.I fieldIndex
-        , PD.I (fromIntegral (BS.length forgedWitnessPreimage))
-        , PD.List (map (PD.B . blake2b256) forgedWitnessChunks)
+        , PD.B (blake2b256 preimage)
+        , PD.I (fromIntegral (BS.length preimage))
+        , PD.List (map (PD.B . blake2b256) chunks)
         ]
+    chunks = chunksOf preimage
 
 chunkRefInput :: BS.ByteString -> TxInInfo
 chunkRefInput bytes =
@@ -1244,14 +1328,11 @@ chunkRefInput bytes =
         Nothing
     )
 
-referenceAssetName :: BS.ByteString -> Integer -> BS.ByteString
-referenceAssetName tid index = blake2b256 (BS.cons (fromIntegral index) tid)
-
 chunksOf :: BS.ByteString -> [BS.ByteString]
 chunksOf bytes
   | BS.null bytes = []
-  | BS.length bytes <= 15_900 = [bytes]
-  | otherwise = BS.take 15_900 bytes : chunksOf (BS.drop 15_900 bytes)
+  | BS.length bytes <= 15_148 = [bytes]
+  | otherwise = BS.take 15_148 bytes : chunksOf (BS.drop 15_148 bytes)
 
 adaValue :: Integer -> Value
 adaValue = singleton (CurrencySymbol "") (TokenName "")

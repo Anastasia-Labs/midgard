@@ -77,9 +77,9 @@ tests =
         , testCase "expectNonNegative rejects minus one" $
             pfails $ pexpectNonNegative # (-1)
         , testCase "expectValidityCode admits the whole range" $
-            holds $ pall' [(pexpectValidityCode # pconstant c) #== pconstant c | c <- [0 .. 5]]
-        , testCase "expectValidityCode rejects six and minus one" $ do
-            pfails $ pexpectValidityCode # 6
+            holds $ pall' [(pexpectValidityCode # pconstant c) #== pconstant c | c <- [0 .. 1]]
+        , testCase "expectValidityCode rejects two and minus one" $ do
+            pfails $ pexpectValidityCode # 2
             pfails $ pexpectValidityCode # (-1)
         , -- 255 is the ledger's "unspecified" marker, not a network.
           testCase "expectNetworkId admits zero, one and 255" $
@@ -115,18 +115,18 @@ tests =
         ]
     , testGroup
         "verdict codes"
-        [ testCase "the code round trip is the identity on all six verdicts" $
+        [ testCase "the code round trip is the identity on both verdicts" $
             holds $
               pall'
                 [ (pvalidityToCode #$ pvalidityFromCode # pconstant c) #== pconstant c
-                | c <- [0 .. 5]
+                | c <- [0 .. 1]
                 ]
-        , testCase "validityFromCode rejects six and minus one" $ do
-            pfails $ pvalidityFromCode # 6
+        , testCase "validityFromCode rejects two and minus one" $ do
+            pfails $ pvalidityFromCode # 2
             pfails $ pvalidityFromCode # (-1)
-        , -- Two encodings of the same six verdicts, kept aligned only by this
+        , -- Two encodings of the same two verdicts, kept aligned only by this
           -- pair of functions.
-          testCase "the PlutusData round trip is the identity on all six verdicts" $
+          testCase "the PlutusData round trip is the identity on both verdicts" $
             holds $
               pall'
                 [ ( pvalidityToCode
@@ -136,20 +136,20 @@ tests =
                       # pconstant c
                   )
                     #== pconstant c
-                | c <- [0 .. 5]
+                | c <- [0 .. 1]
                 ]
         , testCase "validityToPlutusData builds a nullary constructor" $
             holds $
               pall'
                 [ (pvalidityToPlutusData #$ pvalidityFromCode # pconstant c)
                     #== pconstant @PData (PD.Constr c [])
-                | c <- [0 .. 5]
+                | c <- [0 .. 1]
                 ]
         , -- A verdict must not be smuggled in alongside a payload.
           testCase "validityFromPlutusData rejects a constructor carrying fields" $
             pfails $ pvalidityFromPlutusData # pconstant @PData (PD.Constr 0 [PD.I 1])
         , testCase "validityFromPlutusData rejects an out-of-range constructor" $
-            pfails $ pvalidityFromPlutusData # pconstant @PData (PD.Constr 6 [])
+            pfails $ pvalidityFromPlutusData # pconstant @PData (PD.Constr 2 [])
         ]
     , testGroup
         "unsigned integers"

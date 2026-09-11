@@ -96,6 +96,8 @@ step01Tests =
             }
   , testCase "rejects a raw root the header does not commit" $
       pfails $ runStep01 defaultStep01 {s1PhasRoot = otherRoot}
+  , testCase "rejects a transaction marked invalid" $
+      pfails $ runStep01 defaultStep01 {s1SourceCbor = sourceCborOf tx1}
   , testCase "a cancel burning the thread token succeeds" $
       psucceeds $ runCancel True
   , testCase "a cancel that does not burn the thread token fails" $
@@ -231,6 +233,7 @@ data Step01 = Step01
   { s1OutputScript :: BS.ByteString
   , s1OutputState :: Maybe PD.Data
   , s1PhasRoot :: BS.ByteString
+  , s1SourceCbor :: BS.ByteString
   }
 
 defaultStep01 :: Step01
@@ -239,6 +242,7 @@ defaultStep01 =
     { s1OutputScript = nextScript
     , s1OutputState = Just (state02 tx1Id prevUtxosRoot phasRoot)
     , s1PhasRoot = phasRoot
+    , s1SourceCbor = sourceCborWithValidity tx1 0
     }
 
 runStep01 :: forall s. Step01 -> Term s PUnit
@@ -256,11 +260,11 @@ contextStep01 :: Step01 -> ScriptContext
 contextStep01 s =
   spendContext
     (stepDatum Nothing)
-    (PD.Constr 1 [inclusionArgs tx1Id tx1Cbor (s1PhasRoot s)])
+    (PD.Constr 1 [inclusionArgs tx1Id (s1SourceCbor s) (s1PhasRoot s)])
     [threadInput]
     [stepOutput (s1OutputScript s) (s1OutputState s)]
     referenceInputs
-    [phasEntry (s1PhasRoot s) tx1Id tx1Cbor]
+    [phasEntry (s1PhasRoot s) tx1Id (s1SourceCbor s)]
     mempty
 
 runCancel :: forall s. Bool -> Term s PUnit
@@ -291,7 +295,7 @@ data Step02 = Step02
 defaultStep02 :: Step02
 defaultStep02 =
   Step02
-    { s2OpeningCbor = tx1Cbor
+    { s2OpeningCbor = compactWithValidity tx1 (witnessSetHashOf tx1) 0
     , s2Preimage = spendInputsPreimage tx1
     , s2BadInputIndex = 0
     , s2OutputScript = nextScript
@@ -393,7 +397,7 @@ runStep04 s =
     # pconstant
       ( spendContext
           (stepDatum (Just (state04 (fst sharedInputRef) phasRoot)))
-          (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, redeemerCarriedNonMembership, PD.I 0]])
+          (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, redeemerCarriedNonMembership]])
           [threadInput]
           [convictionOutput (s4FraudProofAddress s) (s4FraudProofName s)]
           referenceInputs

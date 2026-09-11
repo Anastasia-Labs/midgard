@@ -12,6 +12,8 @@ import Plutarch.MerkleTree.Merkling (pnull_hash)
 import Plutarch.Prelude
 import Plutarch.Script (Script)
 import PlutusCore.Data qualified as PD
+import PlutusLedgerApi.V1.Value (CurrencySymbol (..))
+import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertEqual, assertFailure, testCase)
 
@@ -28,6 +30,7 @@ import Midgard.MpfProof.Types (PProof (..))
 import Midgard.MpfProofFold qualified as ProofFold
 import Midgard.NativeTxFieldAccess qualified as NativeField
 import Midgard.ValidationMachine
+import Midgard.ValidationMachineFieldDoor qualified as FieldDoor
 import Midgard.ValidationMerkle qualified as Merkle
 import Midgard.ValidationTrace (
   PValidationMachineStateV1 (..),
@@ -211,7 +214,16 @@ minFeeStepIsProvable fee claimsAdvance =
       (rejectionSuccessor pre (pconstant "E_MIN_FEE")))
     $ \post ->
   plet (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post)) $ \witness ->
-    pverifyOneStep # pre # witness
+    pverifyOneStep # pre # witness # inlineFieldDoor
+
+inlineFieldDoor :: forall s. Term s FieldDoor.PMachineFieldDoorV1
+inlineFieldDoor =
+  pcon $
+    FieldDoor.PMachineFieldDoorV1
+      { FieldDoor.pmachineDoor'referenceInputs = pnil
+      , FieldDoor.pmachineDoor'certificatePolicyId =
+          pdata (pconstant $ CurrencySymbol $ toBuiltin BS.empty)
+      }
 
 inputSetsSuccessor :: forall s.
   Term s PValidationMachineStateV1 ->

@@ -75,8 +75,8 @@ pfromAssetList = phoistAcyclic $
       pfoldr
         # plam
           ( \entry acc ->
-              plet (pfromData (psndBuiltin # entry)) $ \tokens ->
-                plet (pfromData (pfstBuiltin # entry)) $ \policy ->
+              plet (pfromData (pmatch entry $ \(PBuiltinPair _ pairSecond) -> pairSecond)) $ \tokens ->
+                plet (pfromData (pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst)) $ \policy ->
                   pif
                     (pnull # pto tokens)
                     (ptraceInfoError "from_asset_list: empty assets")
@@ -111,12 +111,12 @@ pisAscendingNonZero = phoistAcyclic $
             pelimList
               ( \x rest ->
                   pand'
-                    # (pnot # (pfromData (psndBuiltin # x) #== 0))
+                    # (pnot # (pfromData (pmatch x $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 0))
                     #$ pelimList
                       ( \y _ ->
                           pand'
-                            # ( pto (pfromData (pfstBuiltin # x))
-                                  #< pto (pfromData (pfstBuiltin # y))
+                            # ( pto (pfromData (pmatch x $ \(PBuiltinPair pairFirst _) -> pairFirst))
+                                  #< pto (pfromData (pmatch y $ \(PBuiltinPair pairFirst _) -> pairFirst))
                               )
                             # (self # rest)
                       )
@@ -172,13 +172,13 @@ pdropZeroEntries = phoistAcyclic $
                   # plam
                     ( \policyEntry ->
                         ppairDataBuiltin
-                          # (pfstBuiltin # policyEntry)
+                          # (pmatch policyEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
                           # pdata
                             ( punsafeDowncast
                                 ( punsafeDowncast
                                     ( pfilter
-                                        # plam (\t -> pnot # (pfromData (psndBuiltin # t) #== 0))
-                                        # pto (pto (pfromData (psndBuiltin # policyEntry)))
+                                        # plam (\t -> pnot # (pfromData (pmatch t $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 0))
+                                        # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
                                     )
                                 )
                             )
@@ -189,8 +189,8 @@ pdropZeroEntries = phoistAcyclic $
                           pnot
                             #$ pnull
                             #$ pfilter
-                              # plam (\t -> pnot # (pfromData (psndBuiltin # t) #== 0))
-                              # pto (pto (pfromData (psndBuiltin # policyEntry)))
+                              # plam (\t -> pnot # (pfromData (pmatch t $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 0))
+                              # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
                       )
                     # pto (pto (pto value))
               )
@@ -208,8 +208,8 @@ pvalueIsNonNegative = phoistAcyclic $
       # plam
         ( \policyEntry ->
             pall
-              # plam (\tokenEntry -> pfromData (psndBuiltin # tokenEntry) #>= 0)
-              # pto (pto (pfromData (psndBuiltin # policyEntry)))
+              # plam (\tokenEntry -> pfromData (pmatch tokenEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #>= 0)
+              # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
         )
       # pto (pto (pto value))
 
@@ -226,8 +226,8 @@ pvalueIsPositive = phoistAcyclic $
       # plam
         ( \policyEntry ->
             pany
-              # plam (\tokenEntry -> pfromData (psndBuiltin # tokenEntry) #> 0)
-              # pto (pto (pfromData (psndBuiltin # policyEntry)))
+              # plam (\tokenEntry -> pfromData (pmatch tokenEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #> 0)
+              # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
         )
       # pto (pto (pto value))
 
@@ -256,14 +256,14 @@ pvalueWithoutNft = phoistAcyclic $
                   # plam
                     ( \policyEntry ->
                         pif
-                          (pfstBuiltin # policyEntry #== policyId)
+                          ((pmatch policyEntry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== policyId)
                           -- The policy survives only if a name other than this
                           -- one remains under it.
                           ( pnot
                               #$ pnull
                               #$ pfilter
-                                # plam (\t -> pnot # (pfstBuiltin # t #== assetName))
-                                # pto (pto (pfromData (psndBuiltin # policyEntry)))
+                                # plam (\t -> pnot # ((pmatch t $ \(PBuiltinPair pairFirst _) -> pairFirst) #== assetName))
+                                # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
                           )
                           (pconstant True)
                     )
@@ -300,11 +300,11 @@ pvalueWithoutAsset = phoistAcyclic $
                   # plam
                     ( \policyEntry acc ->
                         pif
-                          (pfstBuiltin # policyEntry #== policyId)
+                          ((pmatch policyEntry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== policyId)
                           ( plet
                               ( pfilter
-                                  # plam (\t -> pnot # (pfstBuiltin # t #== assetName))
-                                  # pto (pto (pfromData (psndBuiltin # policyEntry)))
+                                  # plam (\t -> pnot # ((pmatch t $ \(PBuiltinPair pairFirst _) -> pairFirst) #== assetName))
+                                  # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
                               )
                               $ \remaining ->
                                 pif
@@ -345,16 +345,16 @@ pnoChangeForStillNeededAssets = phoistAcyclic $
               # plam
                 ( \tokenEntry ->
                     pif
-                      (pfromData (psndBuiltin # tokenEntry) #> 0)
+                      (pfromData (pmatch tokenEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #> 0)
                       ( pquantityOfValue
                           # stillNeeded
-                          # (pfstBuiltin # policyEntry)
-                          # (pfstBuiltin # tokenEntry)
+                          # (pmatch policyEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
+                          # (pmatch tokenEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
                           #== 0
                       )
                       (pconstant True)
                 )
-              # pto (pto (pfromData (psndBuiltin # policyEntry)))
+              # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
         )
       # pto (pto (pto change))
 

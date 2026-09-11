@@ -190,7 +190,7 @@ withdrawalSpendValidator = plam $ \hubOracle ctx -> P.do
     , W.pwithdrawalSpend'burnRedeemerIndex
     , W.pwithdrawalSpend'payoutMintRedeemerIndex
     , W.pwithdrawalSpend'membershipProof
-    , W.pwithdrawalSpend'inclusionProofScriptWithdrawRedeemerIndex
+    , W.pwithdrawalSpend'inclusionProofScriptWithdrawRedeemerIndex = _
     , W.pwithdrawalSpend'purpose
     } <-
     pmatch (pfromData (punsafeCoerce @(PAsData W.PSpendRedeemer) (pto pscriptContext'redeemer)))
@@ -491,7 +491,7 @@ prefundBranch
   ownValueRaw
   outPlusWithdrawalNft
   outAddress
-  outValue
+  _outValue
   outDatum
   refundAddress
   refundDatum

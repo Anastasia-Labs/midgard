@@ -19,7 +19,6 @@ import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.Interval (PInterval)
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (
-  PAddress,
   PCurrencySymbol,
   PMintValue,
   PPubKeyHash,
@@ -738,7 +737,7 @@ activeOperatorsMintValidator =
                                   ( pand'List
                                       [ strikes #>= Env.pmaxInactivityStrikes
                                       , pto (pfromData ptxInfo'fee)
-                                          #>= Env.pinactivitySlashingPenalty
+                                          #== Env.pinactivitySlashingPenalty
                                       ]
                                   )
                                   -- Voluntary retirement: below the strike

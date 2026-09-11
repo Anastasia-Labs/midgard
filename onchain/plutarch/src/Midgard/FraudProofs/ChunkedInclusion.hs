@@ -58,6 +58,8 @@ module Midgard.FraudProofs.ChunkedInclusion (
   ppublishedChunkMembership,
   ppublishedChunkMembershipByDigest,
   ppublishedChunkNonMembership,
+  ppublishedChunkMembershipFourChunks,
+  ppublishedChunkNonMembershipFourChunks,
 ) where
 
 import GHC.Generics (Generic)
@@ -336,3 +338,37 @@ ppublishedChunkNonMembership = phoistAcyclic $
     pmatch (ppublishedProof # referenceInputs # carriage) $ \case
       PNothing -> pconstant False
       PJust proof -> pdoesNotHave # merkleRoot # keyBytes # proof
+
+-- | Aiken's bounded four-index guard. Chunk decoding supplies the per-chunk
+-- sixteen-step bound, so no separate traversal of the assembled proof is needed.
+patMostFourDistinctIndices :: forall s. Term s (PBuiltinList (PAsData PInteger) :--> PBool)
+patMostFourDistinctIndices = phoistAcyclic $ plam $ \indices ->
+  let go :: forall s'. Term s' (PInteger :--> PBuiltinList (PAsData PInteger) :--> PBool)
+      go = pfix $ \self -> plam $ \remaining items ->
+        pelimList
+          (\index rest -> remaining #> 0 #&& self # (remaining - 1) # rest #&& pnot # (pelem # index # rest))
+          (pconstant True)
+          items
+   in go # 4 # indices
+
+-- | Aiken @published_chunk_non_membership_four_chunks@.
+ppublishedChunkNonMembershipFourChunks :: forall s.
+  Term s (PBuiltinList (PAsData PTxInInfo) :--> PPublishedProofCarriage :--> PByteString :--> PByteString :--> PBool)
+ppublishedChunkNonMembershipFourChunks = phoistAcyclic $ plam $ \referenceInputs carriage root key ->
+  pmatch carriage $ \PPublishedProofCarriage {pcarriage'orderedChunkReferenceInputIndices} ->
+    plet (pfromData pcarriage'orderedChunkReferenceInputIndices) $ \indices ->
+      patMostFourDistinctIndices # indices
+        #&& pmatch (pconcatenatePublishedSteps # referenceInputs # indices) (\case
+          PNothing -> pconstant False
+          PJust proof -> pdoesNotHave # root # key # proof)
+
+-- | Aiken @published_chunk_membership_four_chunks@.
+ppublishedChunkMembershipFourChunks :: forall s.
+  Term s (PBuiltinList (PAsData PTxInInfo) :--> PPublishedProofCarriage :--> PByteString :--> PByteString :--> PByteString :--> PBool)
+ppublishedChunkMembershipFourChunks = phoistAcyclic $ plam $ \referenceInputs carriage root key value ->
+  pmatch carriage $ \PPublishedProofCarriage {pcarriage'orderedChunkReferenceInputIndices} ->
+    plet (pfromData pcarriage'orderedChunkReferenceInputIndices) $ \indices ->
+      patMostFourDistinctIndices # indices
+        #&& pmatch (pconcatenatePublishedSteps # referenceInputs # indices) (\case
+          PNothing -> pconstant False
+          PJust proof -> phasValueHash # root # key # (pblake2b_256 # value) # proof)

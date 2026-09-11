@@ -55,7 +55,6 @@ import Plutarch.LedgerApi.V3 (
   PTxInInfo (..),
   PTxInfo (..),
   PTxOut (..),
-  PTxOutRef,
   PLedgerValue,
  )
 import Plutarch.Monadic qualified as P
@@ -178,8 +177,8 @@ payoutMintValidator = plam $ \hubOracle ctx -> P.do
 
             payoutEntry <- plet $ psingletonTokenOfPolicy mintMap ownPolicy
             withdrawalEntry <- plet $ psingletonTokenOfPolicy mintMap phubOracle'withdrawal
-            payoutAssetName <- plet $ pfstBuiltin # payoutEntry
-            withdrawalAssetName <- plet $ pfstBuiltin # withdrawalEntry
+            payoutAssetName <- plet $ (pmatch payoutEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
+            withdrawalAssetName <- plet $ (pmatch withdrawalEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
 
             withdrawalInput <-
               plet $ pfromData (pelemAt # pfromData pmintPayout'withdrawalInputIndex # inputs)
@@ -193,8 +192,8 @@ payoutMintValidator = plam $ \hubOracle ctx -> P.do
               , -- The conversion. Same name on both sides is what carries the
                 -- withdrawal's identity into the payout.
                 payoutAssetName #== withdrawalAssetName
-              , pfromData (psndBuiltin # payoutEntry) #== 1
-              , pfromData (psndBuiltin # withdrawalEntry) #== (-1)
+              , pfromData (pmatch payoutEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1
+              , pfromData (pmatch withdrawalEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== (-1)
               , -- Exactly those two entries and nothing else, so no second
                 -- payout can ride along on one withdrawal's authority. The two
                 -- singleton reads above already pin one name per policy; this
@@ -245,8 +244,8 @@ payoutMintValidator = plam $ \hubOracle ctx -> P.do
               , -- The whole mint field is this one burn: a burn redeemer must
                 -- not be able to bring anything into existence.
                 plength # pto (pto mintMap) #== 1
-              , pfstBuiltin # mintEntry #== pburnPayout'payoutAssetName
-              , pfromData (psndBuiltin # mintEntry) #== (-1)
+              , (pmatch mintEntry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== pburnPayout'payoutAssetName
+              , pfromData (pmatch mintEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== (-1)
               , -- The token being burnt is the one actually being spent.
                 pquantityOf ptxOut'value ownPolicy pburnPayout'payoutAssetName #== 1
               , -- Both scripts must mean the same payout and the same hub.
@@ -625,7 +624,7 @@ psingletonNameOfPolicy value policyId =
     PNothing -> perror
     PJust tokenMap -> P.do
       entry <- plet $ psingletonPair (pto (pto tokenMap))
-      pif (pfromData (psndBuiltin # entry) #== 1) (pfstBuiltin # entry) perror
+      pif (pfromData (pmatch entry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1) (pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst) perror
 
 {- | Aiken @reserve_change_value@.
 

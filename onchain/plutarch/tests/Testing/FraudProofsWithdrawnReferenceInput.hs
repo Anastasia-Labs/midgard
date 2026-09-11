@@ -97,6 +97,8 @@ step01Tests :: [TestTree]
 step01Tests =
   [ testCase "binds the transaction and picks up the counted withdrawals commitment" $
       psucceeds $ step01 (context01 default01)
+  , testCase "rejects a transaction committed with validity code one" $
+      pfails $ step01 (context01 default01 {w1Cbor = sourceCborOf tx1})
   , testCase "rejects an output at a script that is not step-02's" $
       pfails $ step01 (context01 default01 {w1OutputScript = otherScript})
   , -- Both halves travel, and a state carrying only one of them is refused.
@@ -277,6 +279,7 @@ data Step01 = Step01
   { w1OutputScript :: BS.ByteString
   , w1OutputState :: Maybe PD.Data
   , w1PhasRoot :: BS.ByteString
+  , w1Cbor :: BS.ByteString
   }
 
 default01 :: Step01
@@ -285,17 +288,18 @@ default01 =
     { w1OutputScript = nextScript
     , w1OutputState = Just (state02 tx1Id headerWithdrawalsRoot withdrawalCount)
     , w1PhasRoot = phasRoot
+    , w1Cbor = sourceCborWithValidity tx1 0
     }
 
 context01 :: Step01 -> ScriptContext
 context01 s =
   spendContext
     (stepDatum Nothing)
-    (PD.Constr 1 [bareInclusionArgs tx1Id tx1Cbor (w1PhasRoot s)])
+    (PD.Constr 1 [bareInclusionArgs tx1Id (w1Cbor s) (w1PhasRoot s)])
     [threadInput]
     [stepOutput (w1OutputScript s) (w1OutputState s)]
     referenceInputs
-    [phasEntry (w1PhasRoot s) tx1Id tx1Cbor]
+    [phasEntry (w1PhasRoot s) tx1Id (w1Cbor s)]
     mempty
 
 --------------------------------------------------------------------------------
@@ -315,7 +319,7 @@ default02 :: Step02
 default02 =
   Step02
     { w2StateTxId = tx1Id
-    , w2OpeningCbor = tx1Cbor
+    , w2OpeningCbor = compactWithValidity tx1 (witnessSetHashOf tx1) 0
     , w2Preimage = Nothing
     , w2InputIndex = 0
     , w2OutputScript = nextScript
@@ -393,6 +397,7 @@ context03 s =
             0
             [ PD.I 0
             , PD.I 0
+            , PD.I 0
             , membershipProof
                 (w3Domain s)
                 (maybe (w3StateRoot s) id (w3WitnessRoot s))
@@ -400,7 +405,6 @@ context03 s =
                 (maybe withdrawalCount id (w3WitnessCount s))
                 withdrawalId
                 (w3Event s)
-            , PD.I 0
             ]
         ]
     )

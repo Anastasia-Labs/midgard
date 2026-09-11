@@ -36,35 +36,43 @@ tests =
     [ testCase "q1x_f6_no_input_step_02_control_at_one_spend_input" $
         spendControl minimalSpendFixture
     , testCase "q1x_f6_no_input_step_02_at_one_spend_input" $
-        psucceeds $ runNoInputStep02 minimalSpendFixture
+        psucceeds $
+          runNoInputStep02 minimalSpendFixture
     , testCase "q1x_f6_no_input_step_02_control_at_the_admissible_maximum" $
         spendControl maximalSpendFixture
     , testCase "q1x_f6_no_input_step_02_at_the_admissible_maximum" $
-        psucceeds $ runNoInputStep02 maximalSpendFixture
+        psucceeds $
+          runNoInputStep02 maximalSpendFixture
     , testCase "q1x_f6_double_spend_step_04_control_at_one_spend_input" $
         spendControl minimalSpendFixture
     , testCase "q1x_f6_double_spend_step_04_at_one_spend_input" $
-        psucceeds $ runDoubleSpendStep04 minimalSpendFixture Nothing
+        psucceeds $
+          runDoubleSpendStep04 minimalSpendFixture Nothing
     , testCase "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum" $
         spendControl maximalSpendFixture
     , testCase "q1x_f6_double_spend_step_04_at_the_admissible_maximum" $
-        psucceeds $ runDoubleSpendStep04 maximalSpendFixture Nothing
+        psucceeds $
+          runDoubleSpendStep04 maximalSpendFixture Nothing
     , testCase "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness" $
         scriptControl minimalScriptFixture
     , testCase "q1x_f6_missing_native_script_tx_step_06_at_one_script_witness" $
-        psucceeds $ runMissingNativeScriptStep06 minimalScriptFixture absentScriptHash
+        psucceeds $
+          runMissingNativeScriptStep06 minimalScriptFixture absentScriptHash
     , testCase "q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum" $
         scriptControl maximalScriptFixture
     , testCase "q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum" $
-        psucceeds $ runMissingNativeScriptStep06 maximalScriptFixture absentScriptHash
+        psucceeds $
+          runMissingNativeScriptStep06 maximalScriptFixture absentScriptHash
     , testCase "q1x_f6_missing_signature_step_04_control_at_one_address_witness" $
         addressControl minimalAddressFixture
     , testCase "q1x_f6_missing_signature_step_04_at_one_address_witness" $
-        psucceeds $ runMissingSignatureStep04 minimalAddressFixture absentVerificationKey
+        psucceeds $
+          runMissingSignatureStep04 minimalAddressFixture absentVerificationKey
     , testCase "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum" $
         addressControl maximalAddressFixture
     , testCase "q1x_f6_missing_signature_step_04_at_the_admissible_maximum" $
-        psucceeds $ runMissingSignatureStep04 maximalAddressFixture absentVerificationKey
+        psucceeds $
+          runMissingSignatureStep04 maximalAddressFixture absentVerificationKey
     , testCase "q1x_f6_fixture_sits_at_the_admissible_cardinality" maximalSpendFixtureControl
     , testCase "q1x_f6_step_at_the_admissible_maximum_refuses_a_tampered_preimage" $
         pfails $
@@ -95,7 +103,7 @@ admissibleSpendInputCount = 296
 minimalSpendInputCount = 1
 
 admissibleScriptWitnessCount, minimalScriptWitnessCount :: Int
-admissibleScriptWitnessCount = 224
+admissibleScriptWitnessCount = 64
 minimalScriptWitnessCount = 1
 
 admissibleAddressWitnessCount, minimalAddressWitnessCount :: Int
@@ -272,6 +280,7 @@ scriptControl fixture = do
 runMissingNativeScriptStep06 :: forall s. ScriptFixture -> BS.ByteString -> Term s PUnit
 runMissingNativeScriptStep06 fixture expectedMissingHash =
   missingNativeScriptTxStep06Validator
+    # pdata (pconstant (ScriptHash (toBuiltin nextScript)))
     # pdata (pconstant ctPolicy)
     # pdata (pconstant fpPolicy)
     # pdata (pconstant fraudProofAddress)
@@ -297,7 +306,14 @@ runMissingNativeScriptStep06 fixture expectedMissingHash =
           (singleton fpPolicy (TokenName (toBuiltin threadName)) 1)
       )
   where
-    state = PD.Constr 0 [PD.B expectedMissingHash, PD.B (scTxId fixture), PD.B (scWitnessSetHash fixture)]
+    state =
+      PD.Constr
+        0
+        [ PD.B expectedMissingHash
+        , PD.B (scTxId fixture)
+        , PD.B (scWitnessSetHash fixture)
+        , PD.Constr 0 []
+        ]
 
 --------------------------------------------------------------------------------
 -- Address-witness cardinality (Q16 step-04)

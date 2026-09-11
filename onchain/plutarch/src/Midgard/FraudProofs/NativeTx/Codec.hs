@@ -75,7 +75,6 @@ import Plutarch.Builtin.ByteString (
   pmostSignificantFirst,
  )
 import Plutarch.Builtin.Crypto (pblake2b_256)
-import Plutarch.Builtin.Data (pasConstr, pconstrBuiltin, pserialiseData)
 import Plutarch.Core.Internal.Builtins (pconsBS', pindexBS')
 import Plutarch.Prelude
 
@@ -105,11 +104,11 @@ pexpectNonNegative :: forall (s :: S). Term s (PInteger :--> PInteger)
 pexpectNonNegative = phoistAcyclic $
   plam $ \value -> pif (0 #<= value) value perror
 
--- | Aiken @codec.expect_validity_code@ — a verdict code is @0..5@.
+-- | Aiken @codec.expect_validity_code@ — a verdict code is @0..1@.
 pexpectValidityCode :: forall (s :: S). Term s (PInteger :--> PInteger)
 pexpectValidityCode = phoistAcyclic $
   plam $ \value ->
-    pif (0 #<= value #&& value #<= 5) value perror
+    pif (0 #<= value #&& value #<= 1) value perror
 
 {- | Aiken @codec.expect_network_id@.
 
@@ -164,11 +163,7 @@ pvalidityFromCode :: forall (s :: S). Term s (PInteger :--> PMidgardTxValidity)
 pvalidityFromCode = phoistAcyclic $
   plam $ \value ->
     plet (pexpectValidityCode # value) $ \code ->
-      pif (code #== 0) (pcon PTxIsValid) $
-        pif (code #== 1) (pcon PNonExistentInputUtxo) $
-          pif (code #== 2) (pcon PInvalidSignature) $
-            pif (code #== 3) (pcon PFailedScript) $
-              pif (code #== 4) (pcon PFeeTooLow) (pcon PUnbalancedTx)
+      pif (code #== 0) (pcon PTxIsValid) (pcon PTxIsInvalid)
 
 -- | Aiken @codec.validity_to_code@.
 pvalidityToCode :: forall (s :: S). Term s (PMidgardTxValidity :--> PInteger)
@@ -176,18 +171,14 @@ pvalidityToCode = phoistAcyclic $
   plam $ \validity ->
     pmatch validity $ \case
       PTxIsValid -> 0
-      PNonExistentInputUtxo -> 1
-      PInvalidSignature -> 2
-      PFailedScript -> 3
-      PFeeTooLow -> 4
-      PUnbalancedTx -> 5
+      PTxIsInvalid -> 1
 
 {- | Aiken @codec.validity_to_plutus_data@.
 
 The explicit bridge between the scalar language the compact encoding uses and
 the nullary-constructor language the datums use. Both directions are spelled out
 rather than relying on the two happening to agree, because they are two separate
-encodings of the same six verdicts and nothing but this pair keeps them aligned.
+encodings of the same two verdicts and nothing but this pair keeps them aligned.
 -}
 pvalidityToPlutusData :: forall (s :: S). Term s (PMidgardTxValidity :--> PData)
 pvalidityToPlutusData = phoistAcyclic $
@@ -204,8 +195,8 @@ pvalidityFromPlutusData = phoistAcyclic $
   plam $ \dat ->
     plet (pasConstr # dat) $ \constr ->
       pif
-        (pnull # (psndBuiltin # constr))
-        (pvalidityFromCode # (pfstBuiltin # constr))
+        (pnull # (pmatch constr $ \(PBuiltinPair _ pairSecond) -> pairSecond))
+        (pvalidityFromCode # (pmatch constr $ \(PBuiltinPair pairFirst _) -> pairFirst))
         perror
 
 --------------------------------------------------------------------------------

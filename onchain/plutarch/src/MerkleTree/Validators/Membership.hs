@@ -18,6 +18,7 @@ import Plutarch.Unsafe (punsafeCoerce)
 import MerkleTree.Types.Membership (PMerkleMembershipRedeemer (..), PMerkleNonMembershipRedeemer (..))
 import Midgard.MpfProof (pdoExcluding, pdoIncludingByHash)
 import Midgard.MpfProof.Types (PProof)
+import Midgard.Env qualified as Env
 
 -- | 'Withdraw zero' validator to ensure the merkle tree contains a specific entry.
 membershipStakeValidator :: (forall s. Term s (PScriptContext :--> PUnit))
@@ -82,4 +83,4 @@ pexcludes = phoistAcyclic $ plam $ \self key proof ->
   pmatch self $ \(PMerklePatriciaForestry root) ->
     plengthBS # root #== 32
       #&& (pdoExcluding # (pblake2b_256 # key) # 0 # pto proof)
-      #== root
+      #== pif (root #== Env.pemptyMerkleTreeRoot) (pconstant $ mconcat $ replicate 32 "\x00") root

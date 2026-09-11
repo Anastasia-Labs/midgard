@@ -441,7 +441,7 @@ membershipPath leaves leafIndex = path subLeaves (leafIndex - offset) []
 
     locate [] _ = error "reference membershipPath: index outside the frontier"
     locate ((h, _) : rest) off
-      | leafIndex < off + 2 ^ h = (fromIntegral h, off)
+      | leafIndex < off + 2 ^ h = (h, off)
       | otherwise = locate rest (off + 2 ^ h)
 
     subLeaves = take (2 ^ height) (drop offset leaves)

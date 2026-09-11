@@ -90,10 +90,10 @@ decoded from its bytes at the call site. See 'Midgard.TransitionTrace'.
 data PStep03Args (s :: S) = PStep03Args
   { pstep03Args'inputIndex :: Term s (PAsData PInteger)
   , pstep03Args'outputIndex :: Term s (PAsData PInteger)
+  , pstep03Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
   , -- | Counted-root membership witness for the withdrawal event under the
     -- header's @withdrawals_root@ (@WithdrawalsRootDomain@).
     pstep03Args'withdrawalMembership :: Term s (PAsData PRootMembershipProof)
-  , pstep03Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)

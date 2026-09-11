@@ -38,7 +38,6 @@ module Midgard.TransitionTrace (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 import Plutarch.Builtin.Crypto (pblake2b_256)
-import Plutarch.Builtin.Data (pasInt, pserialiseData)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.MerkleTree.PatriciaForestry (
   PMerklePatriciaForestry,

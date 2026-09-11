@@ -29,6 +29,7 @@ module Midgard.NativeTxScriptPushdown (
   pnativeScriptWalkIsComplete,
   pnativeScriptVerdict,
   pnativeScriptRun,
+  pnativeScriptRunWithSignerVerdict,
   pencodeNativeScriptFrame,
   pencodeNativeScriptCursor,
   pnativeScriptCursorHash,
@@ -119,19 +120,21 @@ pmakeWalk ::
   Term s PInteger ->
   Term s PNativeScriptWalkV1
 pmakeWalk digest len offset frames roots visited pending =
-  pcon $ PNativeScriptWalkV1
-    (pdata digest)
-    (pdata len)
-    (pdata offset)
-    (pdata frames)
-    (pdata roots)
-    (pdata visited)
-    (pdata pending)
+  pcon $
+    PNativeScriptWalkV1
+      (pdata digest)
+      (pdata len)
+      (pdata offset)
+      (pdata frames)
+      (pdata roots)
+      (pdata visited)
+      (pdata pending)
 
 popenNativeScriptWalk :: forall s. Term s (PByteString :--> PNativeScriptWalkV1)
 popenNativeScriptWalk = phoistAcyclic $ plam $ \payload ->
   plet (plengthBS # payload) $ \len ->
-    pif (len #> 0 #&& len #<= 0xffffff)
+    pif
+      (len #> 0 #&& len #<= 0xffffff)
       (pmakeWalk (pblake2b_256 # payload) len 0 pnil pnil 0 ppendingNone)
       perror
 
@@ -152,11 +155,14 @@ pnativeScriptWalkIsComplete = phoistAcyclic $ plam $ \walk -> pmatch walk $ \w -
 
 pnativeScriptVerdict :: forall s. Term s (PNativeScriptWalkV1 :--> PMaybe PBool)
 pnativeScriptVerdict = phoistAcyclic $ plam $ \walk ->
-  pif (pnativeScriptWalkIsComplete # walk)
-    (pmatch walk $ \w ->
-      pif (pfromData (pnativeWalk'offset w) #== pfromData (pnativeWalk'scriptLength w))
-        (pcon $ PJust $ pfromData (pnativeWalk'pending w) #== ppendingTrue)
-        perror)
+  pif
+    (pnativeScriptWalkIsComplete # walk)
+    ( pmatch walk $ \w ->
+        pif
+          (pfromData (pnativeWalk'offset w) #== pfromData (pnativeWalk'scriptLength w))
+          (pcon $ PJust $ pfromData (pnativeWalk'pending w) #== ppendingTrue)
+          perror
+    )
     (pcon PNothing)
 
 pnativeScriptRun ::
@@ -164,15 +170,82 @@ pnativeScriptRun ::
   Term s (PNativeScriptWalkV1 :--> PByteString :--> PNativeScriptContextV1 :--> PInteger :--> PNativeScriptWalkV1)
 pnativeScriptRun = phoistAcyclic $ plam $ \walk payload context budget ->
   pmatch walk $ \w ->
-    pif (budget #>= 0 #&& pblake2b_256 # payload #== pfromData (pnativeWalk'scriptDigest w))
+    pif
+      (budget #>= 0 #&& pblake2b_256 # payload #== pfromData (pnativeWalk'scriptDigest w))
       (prunSteps # walk # payload # context # budget)
       perror
+
+{- | Run the canonical pushdown with signer membership supplied by an
+authenticated predicate instead of a materialised signer list.
+-}
+pnativeScriptRunWithSignerVerdict ::
+  forall s.
+  Term
+    s
+    ( PNativeScriptWalkV1
+        :--> PByteString
+        :--> PInteger
+        :--> PInteger
+        :--> PInteger
+        :--> (PByteString :--> PBool)
+        :--> PNativeScriptWalkV1
+    )
+pnativeScriptRunWithSignerVerdict = phoistAcyclic $ plam $ \walk payload validityStart validityEnd budget signerIsPresent ->
+  pmatch walk $ \w ->
+    pif
+      (budget #>= 0 #&& pblake2b_256 # payload #== pfromData (pnativeWalk'scriptDigest w))
+      (prunStepsWithSignerVerdict # walk # payload # validityStart # validityEnd # signerIsPresent # budget)
+      perror
+
+prunStepsWithSignerVerdict ::
+  forall s.
+  Term
+    s
+    ( PNativeScriptWalkV1
+        :--> PByteString
+        :--> PInteger
+        :--> PInteger
+        :--> (PByteString :--> PBool)
+        :--> PInteger
+        :--> PNativeScriptWalkV1
+    )
+prunStepsWithSignerVerdict = pfix $ \self -> plam $ \walk payload validityStart validityEnd signerIsPresent budget ->
+  pif
+    (budget #== 0 #|| pnativeScriptWalkIsComplete # walk)
+    walk
+    ( self
+        # (pnativeScriptStepWithSignerVerdict # walk # payload # validityStart # validityEnd # signerIsPresent)
+        # payload
+        # validityStart
+        # validityEnd
+        # signerIsPresent
+        # (budget - 1)
+    )
+
+pnativeScriptStepWithSignerVerdict ::
+  forall s.
+  Term
+    s
+    ( PNativeScriptWalkV1
+        :--> PByteString
+        :--> PInteger
+        :--> PInteger
+        :--> (PByteString :--> PBool)
+        :--> PNativeScriptWalkV1
+    )
+pnativeScriptStepWithSignerVerdict = phoistAcyclic $ plam $ \walk payload validityStart validityEnd signerIsPresent ->
+  pmatch walk $ \w ->
+    pif
+      (pfromData (pnativeWalk'pending w) #/= ppendingNone)
+      (pfoldIntoParent # walk)
+      (preadNodeWithSignerVerdict # walk # payload # validityStart # validityEnd # signerIsPresent)
 
 prunSteps ::
   forall s.
   Term s (PNativeScriptWalkV1 :--> PByteString :--> PNativeScriptContextV1 :--> PInteger :--> PNativeScriptWalkV1)
 prunSteps = pfix $ \self -> plam $ \walk payload context budget ->
-  pif (budget #== 0 #|| pnativeScriptWalkIsComplete # walk)
+  pif
+    (budget #== 0 #|| pnativeScriptWalkIsComplete # walk)
     walk
     (self # (pnativeScriptStep # walk # payload # context) # payload # context # (budget - 1))
 
@@ -180,7 +253,8 @@ pnativeScriptStep ::
   forall s.
   Term s (PNativeScriptWalkV1 :--> PByteString :--> PNativeScriptContextV1 :--> PNativeScriptWalkV1)
 pnativeScriptStep = phoistAcyclic $ plam $ \walk payload context -> pmatch walk $ \w ->
-  pif (pfromData (pnativeWalk'pending w) #/= ppendingNone)
+  pif
+    (pfromData (pnativeWalk'pending w) #/= ppendingNone)
     (pfoldIntoParent # walk)
     (preadNode # walk # payload # context)
 
@@ -192,32 +266,43 @@ pfoldIntoParent = phoistAcyclic $ plam $ \walk -> pmatch walk $ \w ->
       PNil -> perror
       PCons _ restRoots -> pmatch (pfromData frameData) $ \frame ->
         plet
-          (pfromData (pnativeFrame'satisfied frame)
-            + pif (pfromData (pnativeWalk'pending w) #== ppendingTrue) 1 0)
+          ( pfromData (pnativeFrame'satisfied frame)
+              + pif (pfromData (pnativeWalk'pending w) #== ppendingTrue) 1 0
+          )
           $ \satisfied ->
             plet (pfromData (pnativeFrame'remaining frame) - 1) $ \remaining ->
-              pif (remaining #>= 0)
-                (pif (remaining #== 0)
-                  (pmakeWalk
-                    (pfromData $ pnativeWalk'scriptDigest w)
-                    (pfromData $ pnativeWalk'scriptLength w)
-                    (pfromData $ pnativeWalk'offset w)
-                    restFrames restRoots
-                    (pfromData $ pnativeWalk'nodesVisited w)
-                    (pverdictOf $ satisfied #>= pfromData (pnativeFrame'required frame)))
-                  (ppushFrame
-                    (pmakeWalk
-                      (pfromData $ pnativeWalk'scriptDigest w)
-                      (pfromData $ pnativeWalk'scriptLength w)
-                      (pfromData $ pnativeWalk'offset w)
-                      restFrames restRoots
-                      (pfromData $ pnativeWalk'nodesVisited w)
-                      ppendingNone)
-                    (pcon $ PNativeScriptFrameV1
-                      (pnativeFrame'kind frame)
-                      (pdata remaining)
-                      (pdata satisfied)
-                      (pnativeFrame'required frame))))
+              pif
+                (remaining #>= 0)
+                ( pif
+                    (remaining #== 0)
+                    ( pmakeWalk
+                        (pfromData $ pnativeWalk'scriptDigest w)
+                        (pfromData $ pnativeWalk'scriptLength w)
+                        (pfromData $ pnativeWalk'offset w)
+                        restFrames
+                        restRoots
+                        (pfromData $ pnativeWalk'nodesVisited w)
+                        (pverdictOf $ satisfied #>= pfromData (pnativeFrame'required frame))
+                    )
+                    ( ppushFrame
+                        ( pmakeWalk
+                            (pfromData $ pnativeWalk'scriptDigest w)
+                            (pfromData $ pnativeWalk'scriptLength w)
+                            (pfromData $ pnativeWalk'offset w)
+                            restFrames
+                            restRoots
+                            (pfromData $ pnativeWalk'nodesVisited w)
+                            ppendingNone
+                        )
+                        ( pcon $
+                            PNativeScriptFrameV1
+                              (pnativeFrame'kind frame)
+                              (pdata remaining)
+                              (pdata satisfied)
+                              (pnativeFrame'required frame)
+                        )
+                    )
+                )
                 perror
 
 pverdictOf :: forall s. Term s PBool -> Term s PInteger
@@ -226,16 +311,18 @@ pverdictOf valid = pif valid ppendingTrue ppendingFalse
 ppushFrame :: forall s. Term s PNativeScriptWalkV1 -> Term s PNativeScriptFrameV1 -> Term s PNativeScriptWalkV1
 ppushFrame walk frame = pmatch walk $ \w ->
   plet (pfromData $ pnativeWalk'frames w) $ \frames ->
-    pif (plength # frames #< pmaxNativeScriptFrames)
-      (plet (pchainFrame (pstackRoot walk) frame) $ \root ->
-        pmakeWalk
-          (pfromData $ pnativeWalk'scriptDigest w)
-          (pfromData $ pnativeWalk'scriptLength w)
-          (pfromData $ pnativeWalk'offset w)
-          (pcons # pdata frame # frames)
-          (pcons # pdata root # pfromData (pnativeWalk'roots w))
-          (pfromData $ pnativeWalk'nodesVisited w)
-          (pfromData $ pnativeWalk'pending w))
+    pif
+      (plength # frames #< pmaxNativeScriptFrames)
+      ( plet (pchainFrame (pstackRoot walk) frame) $ \root ->
+          pmakeWalk
+            (pfromData $ pnativeWalk'scriptDigest w)
+            (pfromData $ pnativeWalk'scriptLength w)
+            (pfromData $ pnativeWalk'offset w)
+            (pcons # pdata frame # frames)
+            (pcons # pdata root # pfromData (pnativeWalk'roots w))
+            (pfromData $ pnativeWalk'nodesVisited w)
+            (pfromData $ pnativeWalk'pending w)
+      )
       perror
 
 pchainFrame :: forall s. Term s PByteString -> Term s PNativeScriptFrameV1 -> Term s PByteString
@@ -248,10 +335,23 @@ pencodeNativeScriptFrame = phoistAcyclic $ plam $ \frame -> pmatch frame $ \f ->
       plet (pfromData $ pnativeFrame'satisfied f) $ \satisfied ->
         plet (pfromData $ pnativeFrame'required f) $ \required ->
           pif
-            (kind #>= pallNode #&& kind #<= patLeastNode
-              #&& remaining #> 0 #&& remaining #<= pmaxNativeScriptNodeCount
-              #&& satisfied #>= 0 #&& satisfied #<= pmaxNativeScriptNodeCount
-              #&& required #>= 0 #&& required #<= punsatisfiableRequired)
+            ( kind
+                #>= pallNode
+                #&& kind
+                #<= patLeastNode
+                #&& remaining
+                #> 0
+                #&& remaining
+                #<= pmaxNativeScriptNodeCount
+                #&& satisfied
+                #>= 0
+                #&& satisfied
+                #<= pmaxNativeScriptNodeCount
+                #&& required
+                #>= 0
+                #&& required
+                #<= punsatisfiableRequired
+            )
             (pbigEndian 1 kind <> pbigEndian 3 remaining <> pbigEndian 3 satisfied <> pbigEndian 3 required)
             perror
 
@@ -260,12 +360,15 @@ preadNode ::
   Term s (PNativeScriptWalkV1 :--> PByteString :--> PNativeScriptContextV1 :--> PNativeScriptWalkV1)
 preadNode = phoistAcyclic $ plam $ \walk payload context -> pmatch walk $ \w ->
   plet (pfromData (pnativeWalk'nodesVisited w) + 1) $ \visited ->
-    pif (visited #<= pmaxNativeScriptNodeCount)
-      (pmatch (pheadAt # payload # pfromData (pnativeWalk'offset w) # 4) $ \(PPair afterArray arity) ->
-        pmatch (pheadAt # payload # afterArray # 0) $ \(PPair afterTag tag) ->
-          pif (arity #== pif (tag #== patLeastNode) 3 2)
-            (preadTaggedNode w payload context visited afterTag tag)
-            perror)
+    pif
+      (visited #<= pmaxNativeScriptNodeCount)
+      ( pmatch (pheadAt # payload # pfromData (pnativeWalk'offset w) # 4) $ \(PPair afterArray arity) ->
+          pmatch (pheadAt # payload # afterArray # 0) $ \(PPair afterTag tag) ->
+            pif
+              (arity #== pif (tag #== patLeastNode) 3 2)
+              (preadTaggedNode w payload context visited afterTag tag)
+              perror
+      )
       perror
 
 preadTaggedNode ::
@@ -278,36 +381,152 @@ preadTaggedNode ::
   Term s PInteger ->
   Term s PNativeScriptWalkV1
 preadTaggedNode w payload context visited afterTag tag =
-  pif (tag #== psignatureNode)
-    (pmatch (pheadAt # payload # afterTag # 2) $ \(PPair keyOffset keyLength) ->
-      pif (keyLength #== 28)
-        (plet (psliceExact # payload # keyOffset # keyLength) $ \keyHash ->
-          pmatch context $ \ctx ->
-            pmakeWalkFrom w (keyOffset + keyLength) visited
-              (pverdictOf $ pelem # pdata keyHash # pfromData (pnativeContext'signers ctx)))
-        perror)
-    (pif (tag #== pafterNode #|| tag #== pbeforeNode)
-      (pmatch (pheadAt # payload # afterTag # 0) $ \(PPair next slot) ->
-        pmatch context $ \ctx ->
-          pmakeWalkFrom w next visited $ pverdictOf $
-            pif (tag #== pafterNode)
-              (pfromData (pnativeContext'validityIntervalStart ctx) #>= 0
-                #&& pfromData (pnativeContext'validityIntervalStart ctx) #>= slot)
-              (pfromData (pnativeContext'validityIntervalEnd ctx) #>= 0
-                #&& pfromData (pnativeContext'validityIntervalEnd ctx) #<= slot))
-      (pif (tag #== patLeastNode)
-        (pmatch (pheadAt # payload # afterTag # 0) $ \(PPair afterRequired required) ->
-          pmatch (pheadAt # payload # afterRequired # 4) $ \(PPair childrenOffset childCount) ->
-            popenCompound
-              (pmakeWalkFrom w (pfromData $ pnativeWalk'offset w) visited ppendingNone)
-              childrenOffset tag childCount required)
-        (pif (tag #== pallNode #|| tag #== panyNode)
-          (pmatch (pheadAt # payload # afterTag # 4) $ \(PPair childrenOffset childCount) ->
-            popenCompound
-              (pmakeWalkFrom w (pfromData $ pnativeWalk'offset w) visited ppendingNone)
-              childrenOffset tag childCount
-              (pif (tag #== pallNode) childCount 1))
-          perror)))
+  pif
+    (tag #== psignatureNode)
+    ( pmatch (pheadAt # payload # afterTag # 2) $ \(PPair keyOffset keyLength) ->
+        pif
+          (keyLength #== 28)
+          ( plet (psliceExact # payload # keyOffset # keyLength) $ \keyHash ->
+              pmatch context $ \ctx ->
+                pmakeWalkFrom
+                  w
+                  (keyOffset + keyLength)
+                  visited
+                  (pverdictOf $ pelem # pdata keyHash # pfromData (pnativeContext'signers ctx))
+          )
+          perror
+    )
+    ( pif
+        (tag #== pafterNode #|| tag #== pbeforeNode)
+        ( pmatch (pheadAt # payload # afterTag # 0) $ \(PPair next slot) ->
+            pmatch context $ \ctx ->
+              pmakeWalkFrom w next visited $
+                pverdictOf $
+                  pif
+                    (tag #== pafterNode)
+                    ( pfromData (pnativeContext'validityIntervalStart ctx)
+                        #>= 0
+                        #&& pfromData (pnativeContext'validityIntervalStart ctx)
+                        #>= slot
+                    )
+                    ( pfromData (pnativeContext'validityIntervalEnd ctx)
+                        #>= 0
+                        #&& pfromData (pnativeContext'validityIntervalEnd ctx)
+                        #<= slot
+                    )
+        )
+        ( pif
+            (tag #== patLeastNode)
+            ( pmatch (pheadAt # payload # afterTag # 0) $ \(PPair afterRequired required) ->
+                pmatch (pheadAt # payload # afterRequired # 4) $ \(PPair childrenOffset childCount) ->
+                  popenCompound
+                    (pmakeWalkFrom w (pfromData $ pnativeWalk'offset w) visited ppendingNone)
+                    childrenOffset
+                    tag
+                    childCount
+                    required
+            )
+            ( pif
+                (tag #== pallNode #|| tag #== panyNode)
+                ( pmatch (pheadAt # payload # afterTag # 4) $ \(PPair childrenOffset childCount) ->
+                    popenCompound
+                      (pmakeWalkFrom w (pfromData $ pnativeWalk'offset w) visited ppendingNone)
+                      childrenOffset
+                      tag
+                      childCount
+                      (pif (tag #== pallNode) childCount 1)
+                )
+                perror
+            )
+        )
+    )
+
+preadNodeWithSignerVerdict ::
+  forall s.
+  Term
+    s
+    ( PNativeScriptWalkV1
+        :--> PByteString
+        :--> PInteger
+        :--> PInteger
+        :--> (PByteString :--> PBool)
+        :--> PNativeScriptWalkV1
+    )
+preadNodeWithSignerVerdict = phoistAcyclic $ plam $ \walk payload validityStart validityEnd signerIsPresent ->
+  pmatch walk $ \w ->
+    plet (pfromData (pnativeWalk'nodesVisited w) + 1) $ \visited ->
+      pif
+        (visited #<= pmaxNativeScriptNodeCount)
+        ( pmatch (pheadAt # payload # pfromData (pnativeWalk'offset w) # 4) $ \(PPair afterArray arity) ->
+            pmatch (pheadAt # payload # afterArray # 0) $ \(PPair afterTag tag) ->
+              pif
+                (arity #== pif (tag #== patLeastNode) 3 2)
+                (preadTaggedNodeWithSignerVerdict w payload validityStart validityEnd signerIsPresent visited afterTag tag)
+                perror
+        )
+        perror
+
+preadTaggedNodeWithSignerVerdict ::
+  forall s.
+  PNativeScriptWalkV1 s ->
+  Term s PByteString ->
+  Term s PInteger ->
+  Term s PInteger ->
+  Term s (PByteString :--> PBool) ->
+  Term s PInteger ->
+  Term s PInteger ->
+  Term s PInteger ->
+  Term s PNativeScriptWalkV1
+preadTaggedNodeWithSignerVerdict w payload validityStart validityEnd signerIsPresent visited afterTag tag =
+  pif
+    (tag #== psignatureNode)
+    ( pmatch (pheadAt # payload # afterTag # 2) $ \(PPair keyOffset keyLength) ->
+        pif
+          (keyLength #== 28)
+          ( plet (psliceExact # payload # keyOffset # keyLength) $ \keyHash ->
+              pmakeWalkFrom
+                w
+                (keyOffset + keyLength)
+                visited
+                (pverdictOf $ signerIsPresent # keyHash)
+          )
+          perror
+    )
+    ( pif
+        (tag #== pafterNode #|| tag #== pbeforeNode)
+        ( pmatch (pheadAt # payload # afterTag # 0) $ \(PPair next slot) ->
+            pmakeWalkFrom w next visited $
+              pverdictOf $
+                pif
+                  (tag #== pafterNode)
+                  (validityStart #>= 0 #&& validityStart #>= slot)
+                  (validityEnd #>= 0 #&& validityEnd #<= slot)
+        )
+        ( pif
+            (tag #== patLeastNode)
+            ( pmatch (pheadAt # payload # afterTag # 0) $ \(PPair afterRequired required) ->
+                pmatch (pheadAt # payload # afterRequired # 4) $ \(PPair childrenOffset childCount) ->
+                  popenCompound
+                    (pmakeWalkFrom w (pfromData $ pnativeWalk'offset w) visited ppendingNone)
+                    childrenOffset
+                    tag
+                    childCount
+                    required
+            )
+            ( pif
+                (tag #== pallNode #|| tag #== panyNode)
+                ( pmatch (pheadAt # payload # afterTag # 4) $ \(PPair childrenOffset childCount) ->
+                    popenCompound
+                      (pmakeWalkFrom w (pfromData $ pnativeWalk'offset w) visited ppendingNone)
+                      childrenOffset
+                      tag
+                      childCount
+                      (pif (tag #== pallNode) childCount 1)
+                )
+                perror
+            )
+        )
+    )
 
 pmakeWalkFrom ::
   forall s.
@@ -335,19 +554,28 @@ popenCompound ::
   Term s PInteger ->
   Term s PNativeScriptWalkV1
 popenCompound walk offset kind childCount required =
-  pif (childCount #>= 0 #&& childCount #<= pmaxNativeScriptNodeCount #&& required #>= 0)
-    (pmatch walk $ \w ->
-      plet (pmakeWalkFrom w offset (pfromData $ pnativeWalk'nodesVisited w) (pfromData $ pnativeWalk'pending w)) $ \positioned ->
-        pif (childCount #== 0)
-          (pmatch positioned $ \positionedFields ->
-            pmakeWalkFrom positionedFields offset
-              (pfromData $ pnativeWalk'nodesVisited positionedFields)
-              (pverdictOf $ 0 #>= required))
-          (ppushFrame positioned $ pcon $ PNativeScriptFrameV1
-            (pdata kind)
-            (pdata childCount)
-            (pdata 0)
-            (pdata $ pif (required #> pmaxNativeScriptNodeCount) punsatisfiableRequired required)))
+  pif
+    (childCount #>= 0 #&& childCount #<= pmaxNativeScriptNodeCount #&& required #>= 0)
+    ( pmatch walk $ \w ->
+        plet (pmakeWalkFrom w offset (pfromData $ pnativeWalk'nodesVisited w) (pfromData $ pnativeWalk'pending w)) $ \positioned ->
+          pif
+            (childCount #== 0)
+            ( pmatch positioned $ \positionedFields ->
+                pmakeWalkFrom
+                  positionedFields
+                  offset
+                  (pfromData $ pnativeWalk'nodesVisited positionedFields)
+                  (pverdictOf $ 0 #>= required)
+            )
+            ( ppushFrame positioned $
+                pcon $
+                  PNativeScriptFrameV1
+                    (pdata kind)
+                    (pdata childCount)
+                    (pdata 0)
+                    (pdata $ pif (required #> pmaxNativeScriptNodeCount) punsatisfiableRequired required)
+            )
+    )
     perror
 
 pencodeNativeScriptCursor :: forall s. Term s (PNativeScriptWalkV1 :--> PByteString)
@@ -360,20 +588,48 @@ pencodeNativeScriptCursor = phoistAcyclic $ plam $ \walk -> pmatch walk $ \w ->
             plet (pfromData $ pnativeWalk'nodesVisited w) $ \visited ->
               plet (pfromData $ pnativeWalk'pending w) $ \pending ->
                 pif
-                  (plengthBS # digest #== 32
-                    #&& scriptLength #> 0 #&& scriptLength #<= 0xffffff
-                    #&& offset #>= 0 #&& offset #<= scriptLength
-                    #&& depth #>= 0 #&& depth #<= pmaxNativeScriptFrames
-                    #&& plength # pfromData (pnativeWalk'roots w) #== depth
-                    #&& visited #>= 0 #&& visited #<= pmaxNativeScriptNodeCount
-                    #&& pending #>= ppendingNone #&& pending #<= ppendingTrue)
-                  (pconstant "\x87\x58\x20" <> digest
-                    <> pconstant "\x58\x20" <> pstackRoot walk
-                    <> pconstant "\x43" <> pbigEndian 3 scriptLength
-                    <> pconstant "\x43" <> pbigEndian 3 offset
-                    <> pconstant "\x43" <> pbigEndian 3 depth
-                    <> pconstant "\x43" <> pbigEndian 3 visited
-                    <> pconstant "\x41" <> pbigEndian 1 pending)
+                  ( plengthBS
+                      # digest
+                      #== 32
+                      #&& scriptLength
+                      #> 0
+                      #&& scriptLength
+                      #<= 0xffffff
+                      #&& offset
+                      #>= 0
+                      #&& offset
+                      #<= scriptLength
+                      #&& depth
+                      #>= 0
+                      #&& depth
+                      #<= pmaxNativeScriptFrames
+                      #&& plength
+                      # pfromData (pnativeWalk'roots w)
+                      #== depth
+                      #&& visited
+                      #>= 0
+                      #&& visited
+                      #<= pmaxNativeScriptNodeCount
+                      #&& pending
+                      #>= ppendingNone
+                      #&& pending
+                      #<= ppendingTrue
+                  )
+                  ( pconstant "\x87\x58\x20"
+                      <> digest
+                      <> pconstant "\x58\x20"
+                      <> pstackRoot walk
+                      <> pconstant "\x43"
+                      <> pbigEndian 3 scriptLength
+                      <> pconstant "\x43"
+                      <> pbigEndian 3 offset
+                      <> pconstant "\x43"
+                      <> pbigEndian 3 depth
+                      <> pconstant "\x43"
+                      <> pbigEndian 3 visited
+                      <> pconstant "\x41"
+                      <> pbigEndian 1 pending
+                  )
                   perror
 
 pnativeScriptCursorHash :: forall s. Term s (PNativeScriptWalkV1 :--> PByteString)
@@ -388,9 +644,10 @@ prootsOf = pfix $ \self -> plam $ \frames -> pmatch frames $ \case
   PCons frameData rest ->
     plet (self # rest) $ \below ->
       plet
-        (pmatch below $ \case
-          PNil -> pemptyStackRoot
-          PCons root _ -> pfromData root)
+        ( pmatch below $ \case
+            PNil -> pemptyStackRoot
+            PCons root _ -> pfromData root
+        )
         $ \belowRoot ->
           pcons # pdata (pchainFrame belowRoot (pfromData frameData)) # below
 
@@ -400,22 +657,26 @@ pdecodeNativeScriptCursor ::
   Term s (PBuiltinList (PAsData PNativeScriptFrameV1)) ->
   Term s PNativeScriptWalkV1
 pdecodeNativeScriptCursor bytes frames =
-  pif (plengthBS # bytes #== pnativeScriptCursorBytes)
-    (plet
-      (pmakeWalk
-        (psliceBS # 3 # 32 # bytes)
-        (preadBigEndian bytes 70 3)
-        (preadBigEndian bytes 74 3)
-        frames
-        (prootsOf # frames)
-        (preadBigEndian bytes 82 3)
-        (pindexBS' # bytes # 86))
-      $ \walk -> pif (pencodeNativeScriptCursor # walk #== bytes) walk perror)
+  pif
+    (plengthBS # bytes #== pnativeScriptCursorBytes)
+    ( plet
+        ( pmakeWalk
+            (psliceBS # 3 # 32 # bytes)
+            (preadBigEndian bytes 70 3)
+            (preadBigEndian bytes 74 3)
+            frames
+            (prootsOf # frames)
+            (preadBigEndian bytes 82 3)
+            (pindexBS' # bytes # 86)
+        )
+        $ \walk -> pif (pencodeNativeScriptCursor # walk #== bytes) walk perror
+    )
     perror
 
 presumeNativeScriptWalkFromCommitment ::
   forall s.
-  Term s
+  Term
+    s
     ( PByteString
         :--> PByteString
         :--> PBuiltinList (PAsData PNativeScriptFrameV1)
@@ -425,9 +686,16 @@ presumeNativeScriptWalkFromCommitment ::
 presumeNativeScriptWalkFromCommitment = phoistAcyclic $ plam $ \committed cursorBytes frames payload ->
   plet (pdecodeNativeScriptCursor cursorBytes frames) $ \walk -> pmatch walk $ \w ->
     pif
-      (pnativeScriptCursorHash # walk #== committed
-        #&& pblake2b_256 # payload #== pfromData (pnativeWalk'scriptDigest w)
-        #&& plengthBS # payload #== pfromData (pnativeWalk'scriptLength w))
+      ( pnativeScriptCursorHash
+          # walk
+          #== committed
+          #&& pblake2b_256
+          # payload
+          #== pfromData (pnativeWalk'scriptDigest w)
+          #&& plengthBS
+          # payload
+          #== pfromData (pnativeWalk'scriptLength w)
+      )
       walk
       perror
 

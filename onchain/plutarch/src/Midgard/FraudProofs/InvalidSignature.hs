@@ -43,11 +43,11 @@ data PStep02State (s :: S) = PStep02State
 data PStep02Args (s :: S) = PStep02Args
   { pstep02Args'inputIndex :: Term s (PAsData PInteger)
   , pstep02Args'outputIndex :: Term s (PAsData PInteger)
+  , pstep02Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
   , -- | The prover's chosen §8 carriage for field 7's preimage, together with
     -- the witness set the door checks against the anchored hash.
     pstep02Args'addrTxWitsOpening :: Term s (PAsData PFieldOpeningV1)
   , pstep02Args'badAddrTxWitIndex :: Term s (PAsData PInteger)
-  , pstep02Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)

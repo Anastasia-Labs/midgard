@@ -19,7 +19,7 @@ import Midgard.FraudProofs.NativeTx.Types (
   PMidgardValue (..),
   PMidgardVersionedScript (..),
  )
-import Midgard.LedgerOutput (pdecodeCanonicalOutput)
+import Midgard.LedgerOutput (pdecodeCanonicalAddressBytes, pdecodeCanonicalOutput)
 import Testing.Eval (passertEvalNoTrace)
 
 tests :: TestTree
@@ -44,6 +44,13 @@ tests = testGroup "Midgard.LedgerOutput"
       pdecodeCanonicalOutput # bytes
         "a300581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a00382184140"
         #== pcon PNothing
+  , testCase "foreign address network ids remain decodable for fraud proofs" $ passertEvalNoTrace $
+      pdecodeCanonicalAddressBytes # (pconstant $ BS.pack [0x62] <> BS.replicate 28 0xaa)
+        #== pcon (PJust $ pcon $ PMidgardAddress
+          (pdata $ pconstant False)
+          (pdata 2)
+          (pdata $ pcon $ PMidgardPubKeyCredential $ pdata $ pconstant $ BS.replicate 28 0xaa)
+          (pdata $ pcon PDNothing))
   ]
 
 simpleOutput :: forall (s :: S). Term s PMidgardTxOutput

@@ -39,9 +39,10 @@ happens inside it, and the read that follows is a slice.
     1 — which matters precisely because §4 removed the domain separation that
     used to make that impossible.
   * The __carriage tier__ is the prover's choice among §8's three, and the door
-    verifies whichever is named — except that a __witness-set field may not name
-    tier 3__. See 'pcarriageReachesTheAnchor' for why, and note that it is a
-    limit rather than a repair.
+    verifies whichever is named. For tier 3 the certificate carries the field
+    commitment welded by the minting policy, and the door requires it to equal
+    the commitment reached from these anchored structures. This applies to all
+    fields, including witness-set fields 6–8.
 
 === The two-arm split, twice
 
@@ -69,8 +70,8 @@ arrives from.
 A step that opens __more than one field__ of the same transaction says so once.
 'panchoredNativeTx' verifies the anchor and hands back a 'PAnchoredNativeTxV1';
 'panchoredFieldView' and 'panchoredFieldWalk' then open each field against it,
-one carriage per field, with the §2.5 pairing and the tier check re-run every
-time. The single-field 'popenedFieldView' and 'popenedFieldWalk' are exactly
+one carriage per field, with the §2.5 pairing re-run every time. The
+single-field 'popenedFieldView' and 'popenedFieldWalk' are exactly
 that sequence with one field in it.
 
 Why the split is worth a type: re-deriving the transaction id costs roughly 211k
@@ -124,15 +125,18 @@ module Midgard.FraudProofs.FieldOpening (
   -- * Single-field openings
   popenedFieldView,
   popenedFieldWalk,
+  presumeOpenedFieldWalk,
+  popenedFieldGrammarCertification,
+  presumeOpenedFieldGrammarCertification,
+  popenedCertifiedFieldWalkFromGrammar,
 
   -- * Folding a whole field
   pfoldOpenedField,
 ) where
 
-{- $opacity
-'PAnchoredNativeTxV1' is exported without its constructor on purpose; see the
-module header. Do not add @(..)@ here.
--}
+-- \$opacity
+-- 'PAnchoredNativeTxV1' is exported without its constructor on purpose; see the
+-- module header. Do not add @(..)@ here.
 
 import Data.Kind (Type)
 import GHC.Generics (Generic)
@@ -149,14 +153,19 @@ import Midgard.FraudProofs.NativeTx.Types (
   PVerifiedMidgardNativeTxCompact (..),
  )
 import Midgard.NativeTxFieldAccess (
-  PFieldCarriageV1 (..),
+  PFieldCarriageV1,
   PFieldViewV1,
   pauthenticatedFieldView,
   pfieldItemCount,
  )
 import Midgard.NativeTxMachineWalk (
+  PFieldGrammarCheckpointV1,
   PFieldWalkCheckpointV1,
+  popenCertifiedFieldWalkFromGrammarCommitment,
+  popenFieldGrammarCertification,
   popenFieldWalk,
+  presumeFieldGrammarCertificationFromCommitment,
+  presumeFieldWalkFromCommitment,
   pwalkFold,
   pwalkIsComplete,
  )
@@ -232,16 +241,18 @@ validators — so @BodyFieldOpening@ is @Constr 0@ and @WitnessFieldOpening@
 @Constr 1@.
 -}
 data PFieldOpeningV1 (s :: S)
-  = -- | Fields 0–5. No witness set is consulted, so none is carried: a step
-    -- reading the body cannot be handed one to ignore.
+  = {- | Fields 0–5. No witness set is consulted, so none is carried: a step
+    reading the body cannot be handed one to ignore.
+    -}
     PBodyFieldOpening
       { pbodyOpening'nativeTxCompactCbor :: Term s (PAsData PByteString)
       , pbodyOpening'carriage :: Term s (PAsData PFieldCarriageV1)
       }
-  | -- | Fields 6–8. The witness set is unauthenticated on arrival, and so — for
-    -- these fields — is the compact CBOR's trailing @witness_set_hash@: the
-    -- transaction id does not commit it. Both are checked against the thread's
-    -- @WitnessAnchor@ before anything is read.
+  | {- | Fields 6–8. The witness set is unauthenticated on arrival, and so — for
+    these fields — is the compact CBOR's trailing @witness_set_hash@: the
+    transaction id does not commit it. Both are checked against the thread's
+    @WitnessAnchor@ before anything is read.
+    -}
     PWitnessFieldOpening
       { pwitnessOpening'nativeTxCompactCbor :: Term s (PAsData PByteString)
       , pwitnessOpening'witnessSet :: Term s (PAsData PNativeTxWitnessSetCompact)
@@ -273,8 +284,9 @@ on it.
 data PNativeTxOpeningV1 (s :: S)
   = -- | Fields 0–5. No witness set is consulted, so none is carried.
     PBodyTxOpening {pbodyTxOpening'nativeTxCompactCbor :: Term s PByteString}
-  | -- | Fields 6–8. Both members are unauthenticated on arrival and are checked
-    -- against the thread's @WitnessAnchor@ before anything is read.
+  | {- | Fields 6–8. Both members are unauthenticated on arrival and are checked
+    against the thread's @WitnessAnchor@ before anything is read.
+    -}
     PWitnessTxOpening
       { pwitnessTxOpening'nativeTxCompactCbor :: Term s PByteString
       , pwitnessTxOpening'witnessSet :: Term s PNativeTxWitnessSetCompact
@@ -306,9 +318,10 @@ Constructor order is wire format: @BodyAnchor@ is @Constr 0@, @WitnessAnchor@
 data PNativeTxAnchorV1 (s :: S)
   = -- | Fields 0–5. 32 bytes of thread state.
     PBodyAnchor {pbodyAnchor'txId :: Term s (PAsData PByteString)}
-  | -- | Fields 6–8. 64 bytes of thread state — the same width the retired
-    -- per-collection-hash idiom cost, spent on a value that covers all three
-    -- witness-set fields instead of one.
+  | {- | Fields 6–8. 64 bytes of thread state — the same width the retired
+    per-collection-hash idiom cost, spent on a value that covers all three
+    witness-set fields instead of one.
+    -}
     PWitnessAnchor
       { pwitnessAnchor'txId :: Term s (PAsData PByteString)
       , pwitnessAnchor'witnessSetHash :: Term s (PAsData PByteString)
@@ -520,7 +533,7 @@ panchoredFieldView ::
     )
 panchoredFieldView = phoistAcyclic $
   plam $ \anchored fieldIndex carriage referenceInputs certificatePolicyId ->
-    pexpecting (pfieldPairsWith # anchored # fieldIndex # carriage) $
+    pexpecting (pfieldPairsWith # anchored # fieldIndex) $
       pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
         pauthenticatedFieldView
           # panchored'verified
@@ -552,7 +565,7 @@ panchoredFieldWalk ::
     )
 panchoredFieldWalk = phoistAcyclic $
   plam $ \anchored fieldIndex carriage referenceInputs certificatePolicyId ->
-    pexpecting (pfieldPairsWith # anchored # fieldIndex # carriage) $
+    pexpecting (pfieldPairsWith # anchored # fieldIndex) $
       pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
         popenFieldWalk
           # panchored'verified
@@ -621,89 +634,147 @@ popenedFieldWalk = phoistAcyclic $
       # referenceInputs
       # certificatePolicyId
 
+{- | Aiken @field_opening_v1.resume_opened_field_walk@.
+
+Re-authenticate the transaction and field opening in the current L1 context,
+then admit the supplied checkpoint bytes only through the digest committed by
+the preceding computation-thread state.
+-}
+presumeOpenedFieldWalk ::
+  forall (s :: S).
+  Term
+    s
+    ( PFieldOpeningV1
+        :--> PNativeTxAnchorV1
+        :--> PInteger
+        :--> PByteString
+        :--> PByteString
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PFieldViewV1 PFieldWalkCheckpointV1
+    )
+presumeOpenedFieldWalk = phoistAcyclic $
+  plam $ \opening anchor fieldIndex committed checkpointBytes referenceInputs certificatePolicyId -> P.do
+    anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
+    pexpecting (pfieldPairsWith # anchored # fieldIndex) $
+      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+        presumeFieldWalkFromCommitment
+          # panchored'verified
+          # panchored'witnessSet
+          # committed
+          # checkpointBytes
+          # (pcarriageOf # opening)
+          # referenceInputs
+          # certificatePolicyId
+
+popenedFieldGrammarCertification ::
+  forall (s :: S).
+  Term
+    s
+    ( PFieldOpeningV1
+        :--> PNativeTxAnchorV1
+        :--> PInteger
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PFieldViewV1 PFieldGrammarCheckpointV1
+    )
+popenedFieldGrammarCertification = phoistAcyclic $
+  plam $ \opening anchor fieldIndex referenceInputs certificatePolicyId -> P.do
+    anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
+    pexpecting (pfieldPairsWith # anchored # fieldIndex) $
+      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+        popenFieldGrammarCertification
+          # panchored'verified
+          # panchored'witnessSet
+          # fieldIndex
+          # (pcarriageOf # opening)
+          # referenceInputs
+          # certificatePolicyId
+
+presumeOpenedFieldGrammarCertification ::
+  forall (s :: S).
+  Term
+    s
+    ( PFieldOpeningV1
+        :--> PNativeTxAnchorV1
+        :--> PInteger
+        :--> PByteString
+        :--> PByteString
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PFieldViewV1 PFieldGrammarCheckpointV1
+    )
+presumeOpenedFieldGrammarCertification = phoistAcyclic $
+  plam $ \opening anchor fieldIndex committed checkpointBytes referenceInputs certificatePolicyId -> P.do
+    anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
+    pexpecting (pfieldPairsWith # anchored # fieldIndex) $
+      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+        presumeFieldGrammarCertificationFromCommitment
+          # panchored'verified
+          # panchored'witnessSet
+          # committed
+          # checkpointBytes
+          # (pcarriageOf # opening)
+          # referenceInputs
+          # certificatePolicyId
+
+popenedCertifiedFieldWalkFromGrammar ::
+  forall (s :: S).
+  Term
+    s
+    ( PFieldOpeningV1
+        :--> PNativeTxAnchorV1
+        :--> PInteger
+        :--> PByteString
+        :--> PByteString
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PFieldViewV1 PFieldWalkCheckpointV1
+    )
+popenedCertifiedFieldWalkFromGrammar = phoistAcyclic $
+  plam $ \opening anchor fieldIndex committed checkpointBytes referenceInputs certificatePolicyId -> P.do
+    anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
+    pexpecting (pfieldPairsWith # anchored # fieldIndex) $
+      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+        popenCertifiedFieldWalkFromGrammarCommitment
+          # panchored'verified
+          # panchored'witnessSet
+          # committed
+          # checkpointBytes
+          # (pcarriageOf # opening)
+          # referenceInputs
+          # certificatePolicyId
+
 --------------------------------------------------------------------------------
 -- The two per-field guards
 --------------------------------------------------------------------------------
 
 {- | Aiken @field_opening_v1.field_pairs_with@.
 
-Asserts that this field, carried this way, may be opened against this handle.
+Asserts that this field may be opened against this handle.
 
-Two things pair up, and both are per-field rather than per-anchor, which is why
-neither can live in 'panchoredNativeTx'. They are asserted __one at a time__
-rather than folded into a single conjunction: both refusals are forgery attempts
-of different shapes, and a trace that says only "the field did not pair" tells
-the reader neither which shape it was nor which guard held.
-
-The second is the §2.5 half. An opening that carries no witness set may not be
+One thing pairs up, and it is per-field rather than per-anchor, which is why it
+cannot live in 'panchoredNativeTx': the §2.5 half. An opening that carries no witness set may not be
 read at a witness-set index — the door would otherwise be handed this module's
 internal 'punreadWitnessSet' as if it were the transaction's real witness set —
 and an opening that carries one may not be read at a body index, where it would
 be silently ignored. Neither direction is reachable from an honest family, which
-is exactly why both are asserted rather than assumed.
+is exactly why it is asserted rather than assumed.
+
+Before the certificate field-hash weld a second guard rejected tier-3 carriage
+at witness-set fields. The mint now welds the certificate's @field_hash@ to the
+verified chunks and the field-access door compares it to the anchored positional
+commitment, so every tier reaches every field and that blanket guard is gone.
 -}
 pfieldPairsWith ::
   forall (s :: S).
-  Term s (PAnchoredNativeTxV1 :--> PInteger :--> PFieldCarriageV1 :--> PBool)
+  Term s (PAnchoredNativeTxV1 :--> PInteger :--> PBool)
 pfieldPairsWith = phoistAcyclic $
-  plam $ \anchored fieldIndex carriage ->
-    pexpecting (pcarriageReachesTheAnchor # carriage # fieldIndex) $
-      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'opensWitnessSetFields} ->
-        pexpecting
-          (panchored'opensWitnessSetFields #== (fieldIndex #>= pfirstWitnessSetFieldIndex))
-          (pconstant True)
-
-{- | Aiken @field_opening_v1.carriage_reaches_the_anchor@.
-
-Whether @carriage@ can be authenticated back to the thread's anchor for
-@fieldIndex@. True for tiers 1–2 always; for tier 3 only on a __body__ field.
-
-__Why tier 3 does not reach the anchor for fields 6–8.__ Tiers 1 and 2 hand the
-door the whole preimage, and the door hashes it against the commitment at
-@field_index@ — a value derived from structures this module has already pinned
-to thread state, so the content is bound to the disputed transaction by the door
-itself. Tier 3 cannot do that: §8.4 exists precisely because the preimage is too
-large to hold, so the door never hashes it and the /certificate/ is the binding
-instead. The certificate's authority is a §8.6 token named
-@(tx_id, field_index)@, and what stands behind that name is the minting policy's
-own check that the chunks hash to the commitment at that index for the
-transaction it re-derived.
-
-That check is sound for fields 0–5 and unsound for 6–8, for the same reason
-'PNativeTxAnchorV1' has two arms. The minter re-derives the transaction id from
-/its own redeemer's/ compact CBOR and takes the @witness_set_hash@ off the tail
-of those same bytes — and §3's id preimage is the body alone, so that tail is the
-minter's caller's to choose. A certifier may therefore present the genuine body,
-so the token gets the committed transaction's name, followed by the
-@witness_set_hash@ of any witness set it likes, and certify a field-6, -7 or -8
-preimage that transaction never committed. The token then names the honest
-transaction while the digest manifest under it describes a fabricated field, and
-the door — which discards its own expected hash on the certified arm — has
-nothing left to catch it with. The useful forgeries are both directions of the
-§2.5 absence rules: an empty field 7 makes "the required signature is absent"
-true of every transaction, and a fabricated 256-item field 7 makes an "invalid
-signature" fault provable against a signature the transaction never carried.
-
-So a witness-set field is refused tier 3 here, at the one place every family step
-reaches the door through. __This is a limit, not a repair__: it costs fields 6–8
-the ability to be carried above the §8.3 tier-2 bound, which is recorded as limit
-3 of the spec's §8.3 erratum E2. The repair is to fold the field commitment into
-the §8.6 asset name so the token cannot be borrowed for a preimage the
-transaction did not commit; that is a change to a frozen wire format and to a
-landed minting policy, and it is assigned to issue #579.
-
-The abort is unconditional. Nothing here falls back to tier 1 or 2 on the
-prover's behalf: a step handed an inadmissible carriage fails, which is §7.3's
-abort-never-clamp rule applied to the tier ladder.
--}
-pcarriageReachesTheAnchor ::
-  forall (s :: S). Term s (PFieldCarriageV1 :--> PInteger :--> PBool)
-pcarriageReachesTheAnchor = phoistAcyclic $
-  plam $ \carriage fieldIndex ->
-    pmatch carriage $ \case
-      PInline {} -> pconstant True
-      PRawUtxo {} -> pconstant True
-      PCertified {} -> fieldIndex #< pfirstWitnessSetFieldIndex
+  plam $ \anchored fieldIndex ->
+    pmatch anchored $ \PAnchoredNativeTxV1 {panchored'opensWitnessSetFields} ->
+      pexpecting
+        (panchored'opensWitnessSetFields #== (fieldIndex #>= pfirstWitnessSetFieldIndex))
+        (pconstant True)
 
 -- | Aiken @field_opening_v1.tx_opening_of@ — the carriage-free half of a single-field opening.
 ptxOpeningOf :: forall (s :: S). Term s (PFieldOpeningV1 :--> PNativeTxOpeningV1)
@@ -713,7 +784,8 @@ ptxOpeningOf = phoistAcyclic $
       PBodyFieldOpening {pbodyOpening'nativeTxCompactCbor} ->
         pcon
           ( PBodyTxOpening
-              {pbodyTxOpening'nativeTxCompactCbor = pfromData pbodyOpening'nativeTxCompactCbor}
+              { pbodyTxOpening'nativeTxCompactCbor = pfromData pbodyOpening'nativeTxCompactCbor
+              }
           )
       PWitnessFieldOpening {pwitnessOpening'nativeTxCompactCbor, pwitnessOpening'witnessSet} ->
         pcon

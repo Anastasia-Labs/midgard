@@ -6,8 +6,8 @@ Module      : Testing.FraudProofsInvalidRange
 Description : Behavioural tests for the Plutarch port of
               @validators/fraud-proofs/invalid-range/step-0{1,2}.ak@.
 
-A committed transaction whose validity interval is not covered by the block's, or
-whose interval is unsatisfiable outright.
+A committed transaction whose validity interval excludes the block's canonical
+replay slot, or whose interval is unsatisfiable outright.
 
 Two steps, and almost all the content is in the normalisation between them, so
 that is what the suite is built around.
@@ -28,8 +28,7 @@ that is what the suite is built around.
   refuse, which is faithful to Aiken's @fail@ — a thread that got there was built
   on a premise this family cannot be about.
 
-The fixture's block runs from 100 to 200, and its transactions carry
-@[0, 65536)@, so the default fixture transaction is already convictable.
+The fixture used here commits replay slot 10.
 -}
 module Testing.FraudProofsInvalidRange (tests) where
 
@@ -105,19 +104,21 @@ normalisationTests =
 
 step01Tests :: [TestTree]
 step01Tests =
-  [ testCase "binds the transaction and pairs the block's bounds with its range" $
+  [ testCase "binds the transaction and pairs the block's replay slot with its range" $
       psucceeds $ step01 (context01 default01)
   , testCase "rejects an output at a script that is not step-02's" $
       pfails $ step01 (context01 default01 {r1OutputScript = otherScript})
-  , testCase "rejects a state naming bounds the header does not carry" $
+  , testCase "rejects a state naming a replay slot the header does not carry" $
       pfails $
-        step01 (context01 default01 {r1OutputState = Just (state02 0 200 (closedRange 0 65535))})
+        step01 (context01 default01 {r1OutputState = Just (state02 11 (closedRange 0 65535))})
   , -- Aiken writes `expect None = m_input_state_data` here, where the other
     -- families bind that field and ignore it.
     testCase "rejects a thread whose state is already written" $
-      pfails $ step01 (context01 default01 {r1InputState = Just (state02 100 200 always)})
+      pfails $ step01 (context01 default01 {r1InputState = Just (state02 blockSlot always)})
   , testCase "rejects an inclusion proof against a root the header does not commit" $
       pfails $ step01 (context01 default01 {r1PhasRoot = otherRoot})
+  , testCase "rejects a transaction marked invalid" $
+      pfails $ step01 (context01 default01 {r1ValidityCode = 1})
   ]
 
 --------------------------------------------------------------------------------
@@ -126,29 +127,24 @@ step01Tests =
 
 step02Tests :: [TestTree]
 step02Tests =
-  [ -- The block runs [100, 200).
-    testCase "convicts a range starting before the block" $
-      psucceeds $ step02 (context02 (verdict (closedRange 99 150)))
-  , testCase "convicts a range ending at or after the block's end" $
-      psucceeds $ step02 (context02 (verdict (closedRange 150 200)))
-  , testCase "refuses a range strictly inside the block" $
-      pfails $ step02 (context02 (verdict (closedRange 100 199)))
-  , {- The two boundaries, which is where an inclusive/exclusive mix-up lives.
-       The lower is inclusive so 100 is inside; the upper is exclusive so 199 is
-       the last covered tick and 200 is not. -}
-    testCase "the block's lower bound is inside it" $
-      pfails $ step02 (context02 (verdict (closedRange 100 150)))
-  , testCase "the tick before the block's upper bound is inside it" $
-      pfails $ step02 (context02 (verdict (closedRange 150 199)))
-  , -- Unbounded ends are not adjudicated: only the end that exists is compared.
-    testCase "convicts a FromNegInf reaching past the block's end" $
-      psucceeds $ step02 (context02 (verdict (fromNegInf 200)))
-  , testCase "refuses a FromNegInf ending inside the block" $
-      pfails $ step02 (context02 (verdict (fromNegInf 199)))
-  , testCase "convicts a ToPosInf starting before the block" $
-      psucceeds $ step02 (context02 (verdict (toPosInf 99)))
-  , testCase "refuses a ToPosInf starting inside the block" $
-      pfails $ step02 (context02 (verdict (toPosInf 100)))
+  [ testCase "convicts a closed range ending before the replay slot" $
+      psucceeds $ step02 (context02 (verdict (closedRange 0 9)))
+  , testCase "convicts a closed range starting after the replay slot" $
+      psucceeds $ step02 (context02 (verdict (closedRange 11 20)))
+  , testCase "refuses a closed range containing the replay slot" $
+      pfails $ step02 (context02 (verdict (closedRange 0 20)))
+  , testCase "the closed range lower boundary is included" $
+      pfails $ step02 (context02 (verdict (closedRange 10 20)))
+  , testCase "the closed range upper boundary is included" $
+      pfails $ step02 (context02 (verdict (closedRange 0 10)))
+  , testCase "convicts a FromNegInf ending before the replay slot" $
+      psucceeds $ step02 (context02 (verdict (fromNegInf 9)))
+  , testCase "refuses a FromNegInf ending at the replay slot" $
+      pfails $ step02 (context02 (verdict (fromNegInf 10)))
+  , testCase "convicts a ToPosInf starting after the replay slot" $
+      psucceeds $ step02 (context02 (verdict (toPosInf 11)))
+  , testCase "refuses a ToPosInf starting at the replay slot" $
+      pfails $ step02 (context02 (verdict (toPosInf 10)))
   , -- An unsatisfiable range is a fault whatever the block's bounds are.
     testCase "convicts an unsatisfiable range" $
       psucceeds $ step02 (context02 (verdict invalidRange))
@@ -177,13 +173,11 @@ always = PD.Constr 3 []
 invalidRange = PD.Constr 4 []
 
 --------------------------------------------------------------------------------
--- The block's bounds, and transactions with chosen intervals
+-- The block's replay slot, and transactions with chosen intervals
 --------------------------------------------------------------------------------
 
--- | Slots 16 and 17 of the fixture's header.
-blockValidFrom, blockValidTo :: Integer
-blockValidFrom = 100
-blockValidTo = 200
+blockSlot :: Integer
+blockSlot = 10
 
 {- | A fixture transaction with a named interval.
 
@@ -199,8 +193,8 @@ ranged n start end =
 -- Thread state
 --------------------------------------------------------------------------------
 
-state02 :: Integer -> Integer -> PD.Data -> PD.Data
-state02 validFrom validTo range = PD.Constr 0 [PD.I validFrom, PD.I validTo, range]
+state02 :: Integer -> PD.Data -> PD.Data
+state02 slot range = PD.Constr 0 [PD.I slot, range]
 
 --------------------------------------------------------------------------------
 -- Driving the validators
@@ -230,6 +224,7 @@ data Step01 = Step01
   , r1OutputScript :: BS.ByteString
   , r1OutputState :: Maybe PD.Data
   , r1PhasRoot :: BS.ByteString
+  , r1ValidityCode :: Integer
   }
 
 default01 :: Step01
@@ -242,8 +237,9 @@ binding tx range =
     { r1Tx = tx
     , r1InputState = Nothing
     , r1OutputScript = nextScript
-    , r1OutputState = Just (state02 blockValidFrom blockValidTo range)
+    , r1OutputState = Just (state02 blockSlot range)
     , r1PhasRoot = phasRoot
+    , r1ValidityCode = 0
     }
 
 context01 :: Step01 -> ScriptContext
@@ -253,12 +249,12 @@ context01 s =
     (PD.Constr 1 [inclusionArgs txId cbor (r1PhasRoot s)])
     [threadInput]
     [stepOutput (r1OutputScript s) (r1OutputState s)]
-    referenceInputs
+    (referenceInputsWithBlockSlot blockSlot)
     [phasEntry (r1PhasRoot s) txId cbor]
     mempty
   where
     txId = txIdOf (r1Tx s)
-    cbor = compactOf (r1Tx s)
+    cbor = sourceCborWithValidity (r1Tx s) (r1ValidityCode s)
 
 --------------------------------------------------------------------------------
 -- step-02's context
@@ -270,7 +266,7 @@ data Step02 = Step02
   , r2FraudProofName :: BS.ByteString
   }
 
--- | A step-02 case adjudicating the named range against the block's bounds.
+-- | A step-02 case adjudicating the named range against the block's replay slot.
 verdict :: PD.Data -> Step02
 verdict range =
   Step02
@@ -282,10 +278,10 @@ verdict range =
 context02 :: Step02 -> ScriptContext
 context02 s =
   spendContext
-    (stepDatum (Just (state02 blockValidFrom blockValidTo (r2Range s))))
+    (stepDatum (Just (state02 blockSlot (r2Range s))))
     (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0]])
     [threadInput]
     [convictionOutput (r2FraudProofAddress s) (r2FraudProofName s)]
-    referenceInputs
+    (referenceInputsWithBlockSlot blockSlot)
     [fraudProofMintEntry (r2FraudProofName s)]
     (singleton fpPolicy (TokenName (toBuiltin (r2FraudProofName s))) 1)

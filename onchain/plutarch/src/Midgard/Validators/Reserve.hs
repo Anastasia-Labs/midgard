@@ -23,7 +23,6 @@ import Plutarch.LedgerApi.V3 (
   PTxInInfo (..),
   PTxInfo (..),
   PTxOut (..),
-  PTxOutRef,
  )
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude

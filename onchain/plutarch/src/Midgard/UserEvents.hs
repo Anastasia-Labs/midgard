@@ -25,7 +25,6 @@ module Midgard.UserEvents (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 import Plutarch.Builtin.Crypto (pblake2b_256)
-import Plutarch.Builtin.Data (pasConstr, pserialiseData)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (
@@ -221,7 +220,7 @@ pauthenticateNewEvent
       plet $ pmatch ptxOut'datum $ \case
         POutputDatum {poutputDatum'outputDatum} -> pto poutputDatum'outputDatum
         _ -> perror
-    datumFields <- plet $ psndBuiltin # (pasConstr # eventDatumData)
+    datumFields <- plet $ (pmatch (pasConstr # eventDatumData) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
     eventData <- plet $ phead # datumFields
     let (eventId, eventInfo) = punsafeEventToKeyValuePair eventData
     pand'List

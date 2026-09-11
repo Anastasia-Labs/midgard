@@ -18,6 +18,7 @@ import Plutarch.LedgerApi.V3 (
   PScriptInfo (..),
   PTxInfo (..),
  )
+import Plutarch.LedgerApi.Value qualified as Value
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 
@@ -31,7 +32,7 @@ import Midgard.HubOracle qualified as Hub
 mint(_redeemer: Redeemer, own_policy_id: PolicyId, self: Transaction) {
   let Transaction { mint, .. } = self
   and {
-    Pair(hub.asset_name, 1) == get_singleton_asset_with_policy(mint, hub_oracle_script_hash),
+    quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == 1,
     Pair(asset_name, 1) == get_singleton_asset_with_policy(mint, own_policy_id),
   }
 }
@@ -44,9 +45,9 @@ can only ever be minted at genesis. A standalone re-mint later — which would l
 a deployed catalogue reference be substituted — has no hub oracle NFT to offer
 and so fails.
 
-@get_singleton_asset_with_policy@ fails outright if a policy contributes more
-than one token name, and the quantity comparison rejects anything other than
-exactly one token.
+The hub conjunct checks only the required hub token's quantity, while
+@get_singleton_asset_with_policy@ keeps the catalogue policy exact: no second
+catalogue-policy token name is admitted, and its quantity must be one.
 
 The Aiken validator parameter becomes a leading argument.
 -}
@@ -68,8 +69,11 @@ fraudProofCatalogueMintValidator = plam $ \hubOracleScriptHash ctx -> P.do
   mint <- plet $ pfromData ptxInfo'mint
   pif
     ( pand'
-        # ( (pgetSingletonAssetWithPolicy # mint # hubOracleScriptHash)
-              #== (ppairDataBuiltin # Hub.passetName # pdata 1)
+        # ( Value.pvalueOf
+              # pto mint
+              # pfromData hubOracleScriptHash
+              # pfromData Hub.passetName
+              #== 1
           )
         # ( (pgetSingletonAssetWithPolicy # mint # ownPolicyId)
               #== (ppairDataBuiltin # Catalogue.passetName # pdata 1)

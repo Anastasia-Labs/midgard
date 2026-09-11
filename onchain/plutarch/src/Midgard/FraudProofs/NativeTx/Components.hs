@@ -287,7 +287,7 @@ pencodeMidgardAddress = phoistAcyclic $
       } <-
       pmatch address
     networkId <- plet (pfromData paddress'networkId)
-    pif (networkId #!= 0 #&& networkId #!= 1) perror $ P.do
+    pif (networkId #< 0 #|| networkId #> 7) perror $ P.do
       paymentCredential <- plet (pfromData paddress'paymentCredential)
       stakeCredential <- plet (pfromData paddress'stakeCredential)
       paymentIsScript <- plet (pmidgardCredentialIsScript # paymentCredential)
@@ -329,7 +329,7 @@ pdecodeMidgardAddressPayload = phoistAcyclic $
       networkNibble <- plet (header - addressType * 16)
       protected <- plet (8 #<= networkNibble)
       networkId <- plet (pif protected (networkNibble - 8) networkNibble)
-      pif (networkId #!= 0 #&& networkId #!= 1) perror $ P.do
+      pif (networkId #< 0 #|| networkId #> 7) perror $ P.do
         paymentIsScript <-
           plet (addressType #== 1 #|| addressType #== 3 #|| addressType #== 7)
         paymentCredential <-

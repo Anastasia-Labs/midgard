@@ -60,6 +60,7 @@ module Midgard.FraudProofs.NativeTx.Preimages (
   pmintPolicyItems,
   pencodeMintPreimage,
   pdecodeMidgardTxMintPreimageCbor,
+  pdecodeMintPolicyItemCbor,
   pverifyCanonicalMintPreimageCbor,
 
   -- * Canonical CBOR primitives
