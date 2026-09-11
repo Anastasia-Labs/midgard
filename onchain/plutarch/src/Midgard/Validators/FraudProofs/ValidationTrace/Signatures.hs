@@ -24,14 +24,13 @@ import Plutarch.LedgerApi.V3 (
   PCurrencySymbol,
   PScriptContext,
   PScriptHash,
-  PTxInfo,
+  PTxInfo (..),
   PTxOutRef,
  )
 import Plutarch.Prelude
 
-import Midgard.BoundedCollection (PItemProofV1)
-import Midgard.BoundedItem (PChunkProofV1)
 import Midgard.ComputationThread (PStepDatum)
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
 import Midgard.ValidationMachine (
   PSignerSetProofV1,
   PValidationAuxiliaryWitnessV1 (..),
@@ -43,6 +42,7 @@ import Midgard.ValidationMachine (
  )
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PSignatures))
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 import Midgard.Validators.FraudProofs.ValidationTrace.Preparation (
   pprepareSelectedValidator,
@@ -73,8 +73,9 @@ data PSignaturesAddressItemActionV1 (s :: S)
       { paddressItem'inputIndex :: Term s (PAsData PInteger)
       , paddressItem'outputIndex :: Term s (PAsData PInteger)
       , paddressItem'transition :: Term s (PAsData PValidationOneStepWitnessV1)
-      , paddressItem'collectionProof :: Term s (PAsData PItemProofV1)
-      , paddressItem'chunkProof :: Term s (PAsData PChunkProofV1)
+      , paddressItem'fieldIndex :: Term s (PAsData PInteger)
+      , paddressItem'itemIndex :: Term s (PAsData PInteger)
+      , paddressItem'carriage :: Term s (PAsData PFieldCarriageV1)
       }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -85,8 +86,7 @@ data PSignaturesRequiredItemActionV1 (s :: S)
       { prequiredItem'inputIndex :: Term s (PAsData PInteger)
       , prequiredItem'outputIndex :: Term s (PAsData PInteger)
       , prequiredItem'transition :: Term s (PAsData PValidationOneStepWitnessV1)
-      , prequiredItem'collectionProof :: Term s (PAsData PItemProofV1)
-      , prequiredItem'chunkProof :: Term s (PAsData PChunkProofV1)
+      , prequiredItem'carriage :: Term s (PAsData PFieldCarriageV1)
       , prequiredItem'signerProof :: Term s (PAsData PSignerSetProofV1)
       }
   deriving stock (Generic)
@@ -148,44 +148,51 @@ signaturesHandoffSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
           ownOutRef txInfo
 
 signaturesAddressItemSemanticV1Validator :: forall s.
-  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
-signaturesAddressItemSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    )
+signaturesAddressItemSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PSignaturesAddressItemActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyAddressItem inputIndex outputIndex transitionD collectionProofD chunkProofD) ->
+    \action -> pmatch action $ \(PVerifyAddressItem inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD) ->
       plet (pfromData transitionD) $ \transition ->
-      plet (pfromData collectionProofD) $ \collectionProof ->
-      plet (pfromData chunkProofD) $ \chunkProof ->
-      plet (pcon $ PTransactionFieldChunkWitness collectionProofD chunkProofD) $ \auxiliary ->
+      plet (pcon $ PTransactionFieldChunkWitness fieldIndexD itemIndexD carriageD) $ \auxiliary ->
+      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
         pcontinueWinning
           (pcon PSignatures) awardScriptHash policyId datum
           (pfromData inputIndex) (pfromData outputIndex) transition
           (pforgetData $ pdata auxiliary)
           ( pverifySignatureAddressItemSemanticsV1
               # pvalidationSemanticPreState datum
-              # transition # collectionProof # chunkProof
+              # transition # door # pfromData fieldIndexD # pfromData itemIndexD
+              # pfromData carriageD
           )
           ownOutRef txInfo
 
 signaturesRequiredItemSemanticV1Validator :: forall s.
-  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
-signaturesRequiredItemSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    )
+signaturesRequiredItemSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PSignaturesRequiredItemActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyRequiredItem inputIndex outputIndex transitionD collectionProofD chunkProofD signerProofD) ->
+    \action -> pmatch action $ \(PVerifyRequiredItem inputIndex outputIndex transitionD carriageD signerProofD) ->
       plet (pfromData transitionD) $ \transition ->
-      plet (pfromData collectionProofD) $ \collectionProof ->
-      plet (pfromData chunkProofD) $ \chunkProof ->
       plet (pfromData signerProofD) $ \signerProof ->
       plet
-        (pcon $ PRequiredSignerItemWitness collectionProofD chunkProofD signerProofD)
+        (pcon $ PRequiredSignerItemWitness carriageD signerProofD)
         $ \auxiliary ->
-          pcontinueWinning
-            (pcon PSignatures) awardScriptHash policyId datum
-            (pfromData inputIndex) (pfromData outputIndex) transition
-            (pforgetData $ pdata auxiliary)
-            ( pverifyRequiredSignerItemSemanticsV1
-                # pvalidationSemanticPreState datum
-                # transition # collectionProof # chunkProof # signerProof
-            )
-            ownOutRef txInfo
+          pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+          plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
+            pcontinueWinning
+              (pcon PSignatures) awardScriptHash policyId datum
+              (pfromData inputIndex) (pfromData outputIndex) transition
+              (pforgetData $ pdata auxiliary)
+              ( pverifyRequiredSignerItemSemanticsV1
+                  # pvalidationSemanticPreState datum
+                  # transition # door # pfromData carriageD # signerProof
+              )
+              ownOutRef txInfo

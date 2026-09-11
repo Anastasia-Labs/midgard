@@ -1924,7 +1924,7 @@ pverifySemanticListSimpleV1 tag arguments result witness = pmatch witness $ \w -
       let finish source branches =
             pmatch (psemanticPartsV1 source) $ \(PSemanticPartsV1 constantType payload memory) ->
               pmatch constantType $ \case
-                PListConstant element ->
+                PListConstant _element ->
                   pif (ptopNodeMatchesV1 payload node first (pcon PDNothing)
                     #&& psemanticListMemoryMatchesV1 source constantType node memory)
                     (plet (psequenceFromListNodeV1 node) $ \sequence -> pmatch sequence $ \seqParts ->
@@ -1982,7 +1982,7 @@ pverifySemanticListHeadV1 tag source result witness = pmatch witness $ \w ->
               $ \tailLink ->
               pif (ptopNodeMatchesV1 payload sourceNode (pcon $ PDJust firstLink) (pcon PDNothing))
                 (pmatch sourceNode $ \case
-                  PListDataNode {pnode'itemsCount, pnode'memory} ->
+                  PListDataNode {pnode'itemsCount, pnode'memory = _} ->
                     pmatch (pfromData firstLink) $ \link ->
                     pif (psemanticListMemoryMatchesV1 source constantType sourceNode memory
                       #&& pfromData (plistNode'length link) #== pfromData pnode'itemsCount

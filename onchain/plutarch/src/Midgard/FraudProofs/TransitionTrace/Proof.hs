@@ -165,7 +165,6 @@ import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
 import Plutarch.Builtin.Crypto (pblake2b_224)
-import Plutarch.Builtin.Data (pasByteStr, pasConstr, pasInt, pasList, pconstrBuiltin, pserialiseData)
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
@@ -181,6 +180,7 @@ import Plutarch.LedgerApi.V3 (
   PTokenName,
   PTxInInfo (..),
   PTxOut (..),
+  PTxOutRef (..),
  )
 import Plutarch.LedgerApi.Value (padaSymbolData, padaToken)
 import Plutarch.LedgerApi.Value qualified as Value
@@ -209,7 +209,6 @@ import Midgard.NativeTxFieldAccess (PFieldCarriageV1 (..))
 import Midgard.FraudProofs.NativeTx.Compact (pverifyNativeTxCompactCborV1)
 import Midgard.FraudProofs.NativeTx.Components (
   pdecodeMidgardTxInputCbor,
-  pdecodeMidgardTxOutputCbor,
   pencodeMidgardTxInput,
   pencodeMidgardTxOutput,
  )
@@ -225,13 +224,13 @@ import Midgard.FraudProofs.NativeTx.Types (
   PMidgardValue (..),
  )
 import Midgard.HubOracle (PHubOracleDatum (..))
+import Midgard.LedgerOutputDescriptor qualified as LedgerOutputDescriptor
 import Midgard.LedgerState (
   PDepositInfo (..),
   PHeaderHash,
   PEventToStepValue (..),
   PForcedInclusionTxV1 (..),
   PHeaderV1 (..),
-  PMidgardTxValidity (..),
   PNativeTxProofSourceV1 (..),
   PTransitionPhase,
   PTransitionStep (..),
@@ -243,6 +242,7 @@ import Midgard.LedgerState (
   PWithdrawalValidity (..),
   punsafeEventToKeyValuePair,
  )
+import Midgard.RejectionReason (POperatorVerdictV1 (..))
 import Midgard.TransitionTrace (
   PAdjacentTraceProof (..),
   PEventToStepProof (..),
@@ -398,7 +398,9 @@ pconstrOfData ::
   forall (s :: S). Term s PData -> (Term s PInteger, Term s (PBuiltinList PData))
 pconstrOfData d =
   let pair = pasConstr # d
-   in (pfstBuiltin # pair, psndBuiltin # pair)
+   in ( pmatch pair $ \(PBuiltinPair tag _) -> tag
+      , pmatch pair $ \(PBuiltinPair _ fields) -> fields
+      )
 
 -- | Reinterpret raw @Data@ as a known data-encoded type.
 pcoerceData ::
@@ -520,7 +522,7 @@ side reads it under.
 -}
 peventKeyPhase :: forall (s :: S). Term s PData -> Term s (PAsData PTransitionPhase)
 peventKeyPhase eventKey =
-  pnullaryOfTag (pphaseTagForEventKeyTag (pfstBuiltin #$ pasConstr # eventKey))
+  pnullaryOfTag (pphaseTagForEventKeyTag (pmatch (pasConstr # eventKey) $ \(PBuiltinPair pairFirst _) -> pairFirst))
 
 --------------------------------------------------------------------------------
 -- Reading a source proof
@@ -998,7 +1000,7 @@ pvalidateSourceMembershipMismatch header witness = P.do
 {- | Aiken @proof.ledger_outref_key@.
 
 A UTxO's key in the ledger trie is the __native-transaction encoding__ of the
-output reference — @82 ‖ definite(tx_id) ‖ cbor(index)@ — and not a serialised
+output reference — @82 ‖ 58 20 ‖ tx_id ‖ 19 ‖ index_be16@ — and not a serialised
 Plutus constructor. The same encoding keys the input sets a transaction's field
 preimages are built from, which is what lets a spend witness and a ledger
 deletion be about the same UTxO without either side re-deriving the other's key.
@@ -1010,7 +1012,7 @@ pledgerOutrefKey outref =
       #$ pcon
       $ PMidgardTxInput
         { ptxInput'txId =
-            pdata (pasByteStr #$ phead #$ snd (pconstrOfData (phead # fields)))
+            pdata (pasByteStr #$ phead # fields)
         , ptxInput'outputIndex = pdata (pasInt #$ phead #$ ptail # fields)
         }
 
@@ -1298,14 +1300,13 @@ pvalidateInvalidForcedTransactionNoOpTransition header traceProof eventToStep so
   PRootMembershipProof {prootMembership'value = forcedValue} <- pmatch sourceMembership
   PTransitionStep {ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
     pmatch (pcoerceData stepValue)
-  PForcedInclusionTxV1 {pforcedTx'operatorValidity} <- pmatch (pcoerceData forcedValue)
-  pif
-    (pnot # (pforcedTx'operatorValidity #== pdata (pcon PTxIsValid)))
-    ( pvalidateForcedTransactionOneStepBinding header traceProof eventToStep sourceMembership
+  PForcedInclusionTxV1 {pforcedTx'verdict} <- pmatch (pcoerceData forcedValue)
+  pmatch (pfromData pforcedTx'verdict) $ \case
+    PForcedTxInvalid _ ->
+      pvalidateForcedTransactionOneStepBinding header traceProof eventToStep sourceMembership
         #&& pnot
         # (ptransitionStep'preUtxosRoot #== ptransitionStep'postUtxosRoot)
-    )
-    perror
+    PForcedTxValid -> perror
 
 {- | Aiken @proof.validate_duplicate_trace_event@.
 
@@ -1647,9 +1648,9 @@ transaction's own id and the output's position. The index counts from zero and
 climbs with the list, so an output's ledger key is fixed by where it sits in
 field 2 — not by anything the witness says.
 
-Both the key and the value are pinned here, where a spend pins only the key: an
-output's ledger value /is/ the encoded output, and there is nothing else it could
-be.
+Both the key and the value are pinned here, where a spend pins only the key. The
+value is the output's section 5.3 ledger descriptor, derived from the authenticated
+output bytes rather than accepted from the witness.
 -}
 papplyL2Outputs ::
   forall (s :: S).
@@ -1677,7 +1678,10 @@ papplyL2Outputs = phoistAcyclic $
                   , ptxInput'outputIndex = pdata outputIndex
                   }
           expectedValue <-
-            plet (pencodeMidgardTxOutput #$ pdecodeMidgardTxOutputCbor # item)
+            plet $
+              pmatch (LedgerOutputDescriptor.pledgerValueV1 # outputIndex # item) $ \case
+                PNothing -> perror
+                PJust value -> value
           pif
             ( pfromData pledgerInsert'key
                 #== expectedKey
@@ -1891,12 +1895,12 @@ pcardanoAssetPairsToMidgard = phoistAcyclic $
       pfoldr
         # plam
           ( \policyEntry acc -> P.do
-              policyId <- plet (pto (pfromData (pfstBuiltin # policyEntry)))
+              policyId <- plet (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)))
               pfoldr
                 # plam
                   ( \tokenEntry inner -> P.do
-                      assetName <- plet (pto (pfromData (pfstBuiltin # tokenEntry)))
-                      quantity <- plet (psndBuiltin # tokenEntry)
+                      assetName <- plet (pto (pfromData (pmatch tokenEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)))
+                      quantity <- plet (pmatch tokenEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)
                       pif
                         ( plengthBS
                             # policyId
@@ -1916,7 +1920,7 @@ pcardanoAssetPairsToMidgard = phoistAcyclic $
                         )
                   )
                 # acc
-                # pto (pto (pfromData (psndBuiltin # policyEntry)))
+                # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
           )
         # pcon PNil
         # pto (pto (pto value))
@@ -2064,7 +2068,7 @@ pgetAuthenticatedDepositReference = phoistAcyclic $
         )
     value <- plet (pto (pfromData ptxOut'value))
     pif (pquantityOfValue # value # depositPolicyId # eventAssetName #== 1) `flip` perror $ P.do
-      fields <- plet (psndBuiltin # (pasConstr # datumData))
+      fields <- plet (pmatch (pasConstr # datumData) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
       let (depositIdData, depositInfoData) =
             punsafeEventToKeyValuePair (phead # fields)
       pcon $
@@ -2149,13 +2153,22 @@ pvalidateValidDepositTransition
             # eventRefInputIndex
         )
     expectedKey <- plet (pledgerOutrefKey sourceKey)
+    PTxOutRef {ptxOutRef'idx = sourceOutputIndex} <- pmatch (pcoerceData sourceKey)
     expectedValue <-
       plet
-        ( pprojectedDepositOutputCbor
-            (pcoerceData sourceValue)
-            pauthDeposit'value
-            phubOracle'deposit
-            eventAssetName
+        ( pmatch
+            ( LedgerOutputDescriptor.pledgerValueV1
+                # pfromData sourceOutputIndex
+                # ( pprojectedDepositOutputCbor
+                      (pcoerceData sourceValue)
+                      pauthDeposit'value
+                      phubOracle'deposit
+                      eventAssetName
+                  )
+            )
+            $ \case
+              PNothing -> perror
+              PJust value -> value
         )
     checkedProjectedUtxo <-
       plet $
@@ -2353,7 +2366,7 @@ data POmittedDueL1EventWitness (s :: S)
   | POmittedDueForcedTransaction
       { pomittedForced'eventRefInputIndex :: Term s (PAsData PInteger)
       , pomittedForced'eventAssetName :: Term s (PAsData PTokenName)
-      , pomittedForced'validityOverride :: Term s (PAsData PMidgardTxValidity)
+      , pomittedForced'validityOverride :: Term s (PAsData POperatorVerdictV1)
       , pomittedForced'sourceNonMembership :: Term s (PAsData PRootNonMembershipProof)
       }
   deriving stock (Generic)
@@ -2384,7 +2397,7 @@ data POutOfWindowSourceEventWitness (s :: S)
   | POutOfWindowForcedTransaction
       { poutOfWindowForced'eventRefInputIndex :: Term s (PAsData PInteger)
       , poutOfWindowForced'eventAssetName :: Term s (PAsData PTokenName)
-      , poutOfWindowForced'validityOverride :: Term s (PAsData PMidgardTxValidity)
+      , poutOfWindowForced'validityOverride :: Term s (PAsData POperatorVerdictV1)
       , poutOfWindowForced'sourceMembership :: Term s (PAsData PRootMembershipProof)
       }
   deriving stock (Generic)
@@ -2620,7 +2633,7 @@ pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
                 PForcedInclusionTxV1
                   { pforcedTx'txId = ptxOrderPayload'txId
                   , pforcedTx'source = ptxOrderPayload'source
-                  , pforcedTx'operatorValidity = poutOfWindowForced'validityOverride
+                  , pforcedTx'verdict = poutOfWindowForced'validityOverride
                   }
         PRootMembershipProof {prootMembership'key, prootMembership'value} <-
           pmatch (pfromData poutOfWindowForced'sourceMembership)

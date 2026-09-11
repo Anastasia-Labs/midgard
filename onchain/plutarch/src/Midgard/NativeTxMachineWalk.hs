@@ -80,10 +80,15 @@ module Midgard.NativeTxMachineWalk (
   -- $opacity
   PFieldWalkCheckpointV1,
   pfieldWalkCheckpointBytes,
+  PFieldGrammarCheckpointV1,
+  pfieldGrammarCheckpointBytes,
 
   -- * Opening and resuming
   popenFieldWalk,
   presumeFieldWalkFromCommitment,
+  popenFieldGrammarCertification,
+  presumeFieldGrammarCertificationFromCommitment,
+  popenCertifiedFieldWalkFromGrammarCommitment,
 
   -- * Reading a position
   pwalkIsComplete,
@@ -96,6 +101,8 @@ module Midgard.NativeTxMachineWalk (
   pwalkNext,
   pwalkFold,
   pwalkSkip,
+  pcertifyFieldGrammar,
+  pfieldGrammarIsComplete,
 
   -- * The fixed-stride shortcut
   pspendInputAt,
@@ -104,12 +111,13 @@ module Midgard.NativeTxMachineWalk (
   -- * Wire form
   pencodeFieldWalkCheckpoint,
   pfieldWalkCheckpointHash,
+  pencodeFieldGrammarCheckpoint,
+  pfieldGrammarCheckpointHash,
 ) where
 
-{- $opacity
-'PFieldWalkCheckpointV1' is exported without its constructor on purpose; see the
-module header. Do not add @(..)@ here.
--}
+-- \$opacity
+-- 'PFieldWalkCheckpointV1' is exported without its constructor on purpose; see the
+-- module header. Do not add @(..)@ here.
 
 import Data.Kind (Type)
 import GHC.Generics (Generic)
@@ -136,7 +144,9 @@ import Midgard.NativeTxFieldAccess (
   PFieldCarriageV1,
   PFieldViewV1,
   pauthenticatedFieldView,
+  pauthenticatedResumableFieldViewWithCommitment,
   pfieldCount,
+  pfieldCountRequiresCertification,
   pfieldHeaderLen,
   pfieldItemAt,
   pfieldItemCount,
@@ -147,6 +157,7 @@ import Midgard.NativeTxFieldAccess (
   pfixedItemWrapperBytes,
   pmaxFieldItemCount,
   pmaxTransactionAggregateFieldBytes,
+  pprovisionalFieldItemCountForCertification,
   pspendInputItemBytes,
   pspendInputStride,
   pwalkDerivedStride,
@@ -176,29 +187,46 @@ Scott-encoded: it never crosses a data boundary. Its /thread-carriable/ form is
 -}
 data PFieldWalkCheckpointV1 (s :: S) = PFieldWalkCheckpointV1
   { pcheckpoint'txId :: Term s PByteString
-  -- ^ The L2 transaction whose field this walks. Bound to the tx-id-verified
-  -- compact structures at open and at resume, so a checkpoint cannot be
-  -- replayed against another transaction.
+  {- ^ The L2 transaction whose field this walks. Bound to the tx-id-verified
+  compact structures at open and at resume, so a checkpoint cannot be
+  replayed against another transaction.
+  -}
   , pcheckpoint'fieldIndex :: Term s PInteger
-  -- ^ §2.5's positional field index. Plain hashing (§4) removed field-index
-  -- domain separation, so fields 0/1 and 3/4 alias on identical content: the
-  -- index is what tells them apart and it therefore travels with the position.
+  {- ^ §2.5's positional field index. Plain hashing (§4) removed field-index
+  domain separation, so fields 0/1 and 3/4 alias on identical content: the
+  index is what tells them apart and it therefore travels with the position.
+  -}
   , pcheckpoint'totalLength :: Term s PInteger
   -- ^ The authenticated preimage length the walk was opened against.
   , pcheckpoint'itemCount :: Term s PInteger
-  -- ^ The authenticated item count (§5.2). A field whose count is /not/
-  -- authenticated — a variable-width field under tier 3 — cannot be walked at
-  -- all: 'pfieldItemCount' aborts rather than hand back the header's
-  -- self-asserted number, and this module does not work around it.
+  {- ^ The authenticated item count (§5.2). A field whose count is /not/
+  authenticated — a variable-width field under tier 3 — cannot be walked at
+  all: 'pfieldItemCount' aborts rather than hand back the header's
+  self-asserted number, and this module does not work around it.
+  -}
   , pcheckpoint'nextItemIndex :: Term s PInteger
   -- ^ Items @[0, nextItemIndex)@ are done.
   , pcheckpoint'nextOffset :: Term s PInteger
-  -- ^ Byte offset of item @nextItemIndex@'s §5.1 wrapper; equals
-  -- @totalLength@ exactly when the walk is complete.
+  {- ^ Byte offset of item @nextItemIndex@'s §5.1 wrapper; equals
+  @totalLength@ exactly when the walk is complete.
+  -}
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic)
   deriving (PlutusType) via (DeriveAsScottRec PFieldWalkCheckpointV1)
+
+data PFieldGrammarCheckpointV1 (s :: S) = PFieldGrammarCheckpointV1
+  { pgrammarCheckpoint'txId :: Term s PByteString
+  , pgrammarCheckpoint'fieldIndex :: Term s PInteger
+  , pgrammarCheckpoint'fieldCommitment :: Term s PByteString
+  , pgrammarCheckpoint'totalLength :: Term s PInteger
+  , pgrammarCheckpoint'declaredCount :: Term s PInteger
+  , pgrammarCheckpoint'nextItemIndex :: Term s PInteger
+  , pgrammarCheckpoint'nextOffset :: Term s PInteger
+  }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic)
+  deriving (PlutusType) via (DeriveAsScottRec PFieldGrammarCheckpointV1)
 
 {- | Aiken @native_tx_machine_walk_v1.checkpoint_domain@ — ASCII
 @MidgardFieldWalkCheckpointV1@.
@@ -207,6 +235,9 @@ New surface: none of §4's prohibited counted-scheme domains is reused.
 -}
 pcheckpointDomain :: forall (s :: S). Term s PByteString
 pcheckpointDomain = phexByteStr "4d6964676172644669656c6457616c6b436865636b706f696e745631"
+
+pgrammarCheckpointDomain :: forall (s :: S). Term s PByteString
+pgrammarCheckpointDomain = phexByteStr "4d6964676172644669656c644772616d6d6172436865636b706f696e745631"
 
 {- | Aiken @native_tx_machine_walk_v1.field_walk_checkpoint_bytes@ — @53@.
 
@@ -217,9 +248,215 @@ carriage tier, the preimage and the position. That is the property that makes
 pfieldWalkCheckpointBytes :: forall (s :: S). Term s PInteger
 pfieldWalkCheckpointBytes = 53
 
+pfieldGrammarCheckpointBytes :: forall (s :: S). Term s PInteger
+pfieldGrammarCheckpointBytes = 87
+
 --------------------------------------------------------------------------------
 -- §10.1 / §10.2 opening and resuming
 --------------------------------------------------------------------------------
+
+popenFieldGrammarCertification ::
+  forall (s :: S).
+  Term
+    s
+    ( PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PInteger
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PFieldViewV1 PFieldGrammarCheckpointV1
+    )
+popenFieldGrammarCertification = phoistAcyclic $
+  plam $ \verified witnessSet fieldIndex carriage referenceInputs certificatePolicyId -> P.do
+    PPair fieldCommitment view <-
+      pmatch $
+        pauthenticatedResumableFieldViewWithCommitment
+          # verified
+          # witnessSet
+          # fieldIndex
+          # carriage
+          # referenceInputs
+          # certificatePolicyId
+    PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch verified
+    pexpecting (pfieldCountRequiresCertification # view) $
+      pcon $
+        PPair
+          view
+          ( pcon $
+              PFieldGrammarCheckpointV1
+                pverified'txId
+                fieldIndex
+                fieldCommitment
+                (pfieldTotalLength # view)
+                (pprovisionalFieldItemCountForCertification # view)
+                0
+                (pfieldHeaderLen # view)
+          )
+
+pcertifyFieldGrammar ::
+  forall (s :: S).
+  Term s (PFieldViewV1 :--> PFieldGrammarCheckpointV1 :--> PInteger :--> PFieldGrammarCheckpointV1)
+pcertifyFieldGrammar = phoistAcyclic $
+  pfix $ \self -> plam $ \view checkpoint budget ->
+    pexpecting (budget #>= 0) $
+      pif
+        (budget #== 0 #|| pfieldGrammarIsComplete # checkpoint)
+        checkpoint
+        ( pmatch checkpoint $
+            \PFieldGrammarCheckpointV1
+               { pgrammarCheckpoint'txId = txId
+               , pgrammarCheckpoint'fieldIndex = fieldIndex
+               , pgrammarCheckpoint'fieldCommitment = fieldCommitment
+               , pgrammarCheckpoint'totalLength = totalLength
+               , pgrammarCheckpoint'declaredCount = declaredCount
+               , pgrammarCheckpoint'nextItemIndex = nextItemIndex
+               , pgrammarCheckpoint'nextOffset = nextOffset
+               } ->
+                pexpecting (nextItemIndex #< declaredCount) $ P.do
+                  PPair payloadOffset len <- pmatch $ pfieldItemHeaderAt # view # nextOffset
+                  nextOffset' <- plet $ payloadOffset + len
+                  nextItemIndex' <- plet $ nextItemIndex + 1
+                  pexpecting (nextOffset' #<= totalLength)
+                    $ pexpecting
+                      ( pif
+                          (nextItemIndex' #== declaredCount)
+                          (nextOffset' #== totalLength)
+                          (nextOffset' #< totalLength)
+                      )
+                    $ self
+                      # view
+                      # pcon
+                        ( PFieldGrammarCheckpointV1
+                            txId
+                            fieldIndex
+                            fieldCommitment
+                            totalLength
+                            declaredCount
+                            nextItemIndex'
+                            nextOffset'
+                        )
+                      # (budget - 1)
+        )
+
+pfieldGrammarIsComplete :: forall (s :: S). Term s (PFieldGrammarCheckpointV1 :--> PBool)
+pfieldGrammarIsComplete = phoistAcyclic $
+  plam $ \checkpoint ->
+    pmatch checkpoint $
+      \PFieldGrammarCheckpointV1
+         { pgrammarCheckpoint'totalLength = totalLength
+         , pgrammarCheckpoint'declaredCount = declaredCount
+         , pgrammarCheckpoint'nextItemIndex = nextItemIndex
+         , pgrammarCheckpoint'nextOffset = nextOffset
+         } ->
+          nextItemIndex #== declaredCount #&& nextOffset #== totalLength
+
+presumeFieldGrammarCertificationFromCommitment ::
+  forall (s :: S).
+  Term
+    s
+    ( PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PByteString
+        :--> PByteString
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PFieldViewV1 PFieldGrammarCheckpointV1
+    )
+presumeFieldGrammarCertificationFromCommitment = phoistAcyclic $
+  plam $ \verified witnessSet committed checkpointBytes carriage referenceInputs certificatePolicyId -> P.do
+    checkpoint <- plet $ pdecodeFieldGrammarCheckpoint # checkpointBytes
+    pexpecting (pfieldGrammarCheckpointHash # checkpoint #== committed) $ P.do
+      PFieldGrammarCheckpointV1 {pgrammarCheckpoint'fieldIndex = fieldIndex} <- pmatch checkpoint
+      PPair fieldCommitment view <-
+        pmatch $
+          pauthenticatedResumableFieldViewWithCommitment
+            # verified
+            # witnessSet
+            # fieldIndex
+            # carriage
+            # referenceInputs
+            # certificatePolicyId
+      PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch verified
+      pexpecting (pfieldCountRequiresCertification # view) $
+        pexpecting
+          (pgrammarCheckpointIsBoundToView # pverified'txId # fieldCommitment # view # checkpoint)
+          (pcon $ PPair view checkpoint)
+
+pgrammarCheckpointIsBoundToView ::
+  forall (s :: S).
+  Term s (PByteString :--> PByteString :--> PFieldViewV1 :--> PFieldGrammarCheckpointV1 :--> PBool)
+pgrammarCheckpointIsBoundToView = phoistAcyclic $
+  plam $ \txId fieldCommitment view checkpoint ->
+    pmatch checkpoint $
+      \PFieldGrammarCheckpointV1
+         { pgrammarCheckpoint'txId = checkpointTxId
+         , pgrammarCheckpoint'fieldCommitment = checkpointFieldCommitment
+         , pgrammarCheckpoint'totalLength = totalLength
+         , pgrammarCheckpoint'declaredCount = declaredCount
+         , pgrammarCheckpoint'nextItemIndex = nextItemIndex
+         , pgrammarCheckpoint'nextOffset = nextOffset
+         } ->
+          plet (pprovisionalFieldItemCountForCertification # view) $ \viewDeclaredCount ->
+            plet (pfieldHeaderLen # view) $ \headerLen ->
+              checkpointTxId
+                #== txId
+                #&& checkpointFieldCommitment
+                #== fieldCommitment
+                #&& totalLength
+                #== (pfieldTotalLength # view)
+                #&& declaredCount
+                #== viewDeclaredCount
+                #&& nextItemIndex
+                #>= 0
+                #&& nextItemIndex
+                #<= declaredCount
+                #&& nextOffset
+                #>= headerLen
+                #&& nextOffset
+                #<= totalLength
+                #&& pif
+                  (nextItemIndex #== declaredCount)
+                  (nextOffset #== totalLength)
+                  ( pmatch (pfieldItemHeaderAt # view # nextOffset) $ \(PPair payloadOffset len) ->
+                      payloadOffset + len #<= totalLength
+                  )
+
+popenCertifiedFieldWalkFromGrammarCommitment ::
+  forall (s :: S).
+  Term
+    s
+    ( PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PByteString
+        :--> PByteString
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PFieldViewV1 PFieldWalkCheckpointV1
+    )
+popenCertifiedFieldWalkFromGrammarCommitment = phoistAcyclic $
+  plam $ \verified witnessSet committed checkpointBytes carriage referenceInputs certificatePolicyId -> P.do
+    PPair view grammar <-
+      pmatch $
+        presumeFieldGrammarCertificationFromCommitment
+          # verified
+          # witnessSet
+          # committed
+          # checkpointBytes
+          # carriage
+          # referenceInputs
+          # certificatePolicyId
+    pmatch grammar $
+      \PFieldGrammarCheckpointV1
+         { pgrammarCheckpoint'txId = txId
+         , pgrammarCheckpoint'fieldIndex = fieldIndex
+         , pgrammarCheckpoint'declaredCount = declaredCount
+         } ->
+          pexpecting (pfieldGrammarIsComplete # grammar) $
+            pcon $
+              PPair view (pwalkAtStartWithCount # txId # fieldIndex # view # declaredCount)
 
 {- | Aiken @native_tx_machine_walk_v1.open_field_walk@.
 
@@ -263,12 +500,19 @@ pwalkAtStart ::
   Term s (PByteString :--> PInteger :--> PFieldViewV1 :--> PFieldWalkCheckpointV1)
 pwalkAtStart = phoistAcyclic $
   plam $ \txId fieldIndex view ->
+    pwalkAtStartWithCount # txId # fieldIndex # view # (pfieldItemCount # view)
+
+pwalkAtStartWithCount ::
+  forall (s :: S).
+  Term s (PByteString :--> PInteger :--> PFieldViewV1 :--> PInteger :--> PFieldWalkCheckpointV1)
+pwalkAtStartWithCount = phoistAcyclic $
+  plam $ \txId fieldIndex view itemCount ->
     pcon
       ( PFieldWalkCheckpointV1
           { pcheckpoint'txId = txId
           , pcheckpoint'fieldIndex = fieldIndex
           , pcheckpoint'totalLength = pfieldTotalLength # view
-          , pcheckpoint'itemCount = pfieldItemCount # view
+          , pcheckpoint'itemCount = itemCount
           , pcheckpoint'nextItemIndex = 0
           , pcheckpoint'nextOffset = pfieldHeaderLen # view
           }
@@ -309,9 +553,9 @@ presumeFieldWalk = phoistAcyclic $
     PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch verified
     PFieldWalkCheckpointV1 {pcheckpoint'txId, pcheckpoint'fieldIndex} <- pmatch checkpoint
     pexpecting (pcheckpoint'txId #== pverified'txId) $ P.do
-      view <-
-        plet $
-          pauthenticatedFieldView
+      PPair _fieldCommitment view <-
+        pmatch $
+          pauthenticatedResumableFieldViewWithCommitment
             # verified
             # witnessSet
             # pcheckpoint'fieldIndex
@@ -404,10 +648,16 @@ pcheckpointIsBoundToView = phoistAcyclic $
       pmatch checkpoint
     stride <- plet $ pfieldViewStride # view
     headerLen <- plet $ pfieldHeaderLen # view
+    itemCount <-
+      plet $
+        pif
+          (pfieldCountRequiresCertification # view)
+          (pprovisionalFieldItemCountForCertification # view)
+          (pfieldItemCount # view)
     pcheckpoint'totalLength
       #== (pfieldTotalLength # view)
       #&& pcheckpoint'itemCount
-      #== (pfieldItemCount # view)
+      #== itemCount
       #&& pcheckpoint'nextItemIndex
       #>= 0
       #&& pcheckpoint'nextItemIndex
@@ -547,9 +797,11 @@ pwalkNext = phoistAcyclic $
           ( stride
               #== pwalkDerivedStride
               #|| ( payloadOffset
-                      #== pcheckpoint'nextOffset + pfixedItemWrapperBytes
-                      #&& len
-                      #== stride - pfixedItemWrapperBytes
+                      #== pcheckpoint'nextOffset
+                      + pfixedItemWrapperBytes
+                        #&& len
+                        #== stride
+                      - pfixedItemWrapperBytes
                   )
           )
             -- §7.3 abort, never clamp — and §5.1's no-trailing-bytes rule at
@@ -775,6 +1027,88 @@ pencodeFieldWalkCheckpoint = phoistAcyclic $
           <> pconstant "\x43"
           <> pbigEndian 3 pcheckpoint'nextOffset
       )
+
+pencodeFieldGrammarCheckpoint ::
+  forall (s :: S). Term s (PFieldGrammarCheckpointV1 :--> PByteString)
+pencodeFieldGrammarCheckpoint = phoistAcyclic $
+  plam $ \checkpoint ->
+    pmatch checkpoint $
+      \PFieldGrammarCheckpointV1
+         { pgrammarCheckpoint'txId = txId
+         , pgrammarCheckpoint'fieldIndex = fieldIndex
+         , pgrammarCheckpoint'fieldCommitment = fieldCommitment
+         , pgrammarCheckpoint'totalLength = totalLength
+         , pgrammarCheckpoint'declaredCount = declaredCount
+         , pgrammarCheckpoint'nextItemIndex = nextItemIndex
+         , pgrammarCheckpoint'nextOffset = nextOffset
+         } ->
+          pexpecting
+            ( plengthBS
+                # txId
+                #== 32
+                #&& fieldIndex
+                #>= 0
+                #&& fieldIndex
+                #< pfieldCount
+                #&& plengthBS
+                # fieldCommitment
+                #== 32
+                #&& totalLength
+                #> 0
+                #&& totalLength
+                #<= pmaxTransactionAggregateFieldBytes
+                #&& declaredCount
+                #>= 0
+                #&& declaredCount
+                #<= pmaxFieldItemCount
+                #&& nextItemIndex
+                #>= 0
+                #&& nextItemIndex
+                #<= declaredCount
+                #&& nextOffset
+                #>= 0
+                #&& nextOffset
+                #<= totalLength
+            )
+            ( pconstant "\x87\x58\x20"
+                <> txId
+                <> pconstant "\x41"
+                <> pbigEndian 1 fieldIndex
+                <> pconstant "\x58\x20"
+                <> fieldCommitment
+                <> pconstant "\x43"
+                <> pbigEndian 3 totalLength
+                <> pconstant "\x43"
+                <> pbigEndian 3 declaredCount
+                <> pconstant "\x43"
+                <> pbigEndian 3 nextItemIndex
+                <> pconstant "\x43"
+                <> pbigEndian 3 nextOffset
+            )
+
+pdecodeFieldGrammarCheckpoint ::
+  forall (s :: S). Term s (PByteString :--> PFieldGrammarCheckpointV1)
+pdecodeFieldGrammarCheckpoint = phoistAcyclic $
+  plam $ \bytes ->
+    pexpecting (plengthBS # bytes #== pfieldGrammarCheckpointBytes) $ P.do
+      checkpoint <-
+        plet $
+          pcon $
+            PFieldGrammarCheckpointV1
+              (psliceLen # bytes # 3 # 32)
+              (pbyteAt # bytes # 36)
+              (psliceLen # bytes # 39 # 32)
+              (pbeInt bytes 72)
+              (pbeInt bytes 76)
+              (pbeInt bytes 80)
+              (pbeInt bytes 84)
+      pexpecting (pencodeFieldGrammarCheckpoint # checkpoint #== bytes) checkpoint
+
+pfieldGrammarCheckpointHash ::
+  forall (s :: S). Term s (PFieldGrammarCheckpointV1 :--> PByteString)
+pfieldGrammarCheckpointHash = phoistAcyclic $
+  plam $ \checkpoint ->
+    pblake2b_256 #$ pgrammarCheckpointDomain <> (pencodeFieldGrammarCheckpoint # checkpoint)
 
 {- | Aiken @native_tx_machine_walk_v1.decode_field_walk_checkpoint@.
 

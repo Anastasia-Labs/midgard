@@ -11,7 +11,6 @@ module Midgard.LedgerOutputScan (
 
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
-import Plutarch.Builtin.Data (pserialiseData)
 import Plutarch.Core.Utils (pand'List, (#/=))
 import Plutarch.Prelude
 

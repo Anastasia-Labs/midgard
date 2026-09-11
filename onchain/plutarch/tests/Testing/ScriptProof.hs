@@ -40,7 +40,9 @@ tests = testGroup "Midgard.ScriptProof"
           [ testCase "accepts canonical" $ passertEvalNoTrace $ pcanonicalReferenceSourceKey # preferenceKey
           , testCase "rejects short transaction id" $ passertEvalNoTrace $ pnot # (pcanonicalReferenceSourceKey # pshortReferenceKey)
           , testCase "rejects trailing bytes" $ passertEvalNoTrace $ pnot # (pcanonicalReferenceSourceKey # (preferenceKey <> bytes "00"))
-          , testCase "rejects nonminimal index" $ passertEvalNoTrace $ pnot # (pcanonicalReferenceSourceKey # pnonminimalReferenceKey)
+          , testCase "rejects retired minimal index" $ passertEvalNoTrace $ pnot # (pcanonicalReferenceSourceKey # pminimalReferenceKey)
+          , testCase "rejects one-byte-argument index" $ passertEvalNoTrace $ pnot # (pcanonicalReferenceSourceKey # poneByteArgumentReferenceKey)
+          , testCase "rejects wider uint32 index" $ passertEvalNoTrace $ pnot # (pcanonicalReferenceSourceKey # pwideReferenceKey)
           , testCase "rejects uint16 overflow" $ passertEvalNoTrace $ pnot # (pcanonicalReferenceSourceKey # poverflowReferenceKey)
           ]
       ]
@@ -69,11 +71,14 @@ ppurposeLeaf :: forall s. Term s PByteString
 ppurposeLeaf = ppurposeLeafHash # 0 # 2 # (pversionedScriptHash # pscript) # bytes "0102"
 
 preferenceKey :: forall s. Term s PByteString
-preferenceKey = bytes "825820444444444444444444444444444444444444444444444444444444444444444402"
+preferenceKey = bytes "8258204444444444444444444444444444444444444444444444444444444444444444190002"
 
-pshortReferenceKey, pnonminimalReferenceKey, poverflowReferenceKey :: forall s. Term s PByteString
-pshortReferenceKey = bytes "82581f4444444444444444444444444444444444444444444444444444444444444402"
-pnonminimalReferenceKey = bytes "82582044444444444444444444444444444444444444444444444444444444444444441802"
+pshortReferenceKey, pminimalReferenceKey, poneByteArgumentReferenceKey,
+  pwideReferenceKey, poverflowReferenceKey :: forall s. Term s PByteString
+pshortReferenceKey = bytes "82581f44444444444444444444444444444444444444444444444444444444444444190002"
+pminimalReferenceKey = bytes "825820444444444444444444444444444444444444444444444444444444444444444402"
+poneByteArgumentReferenceKey = bytes "82582044444444444444444444444444444444444444444444444444444444444444441802"
+pwideReferenceKey = bytes "82582044444444444444444444444444444444444444444444444444444444444444441a0002"
 poverflowReferenceKey = bytes "82582044444444444444444444444444444444444444444444444444444444444444441a00010000"
 
 referenceSourceAgrees :: forall s. Term s PBool

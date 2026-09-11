@@ -1,158 +1,379 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- |
-Module      : Midgard.FraudProofs.DaHashPreimage
-Description : Plutarch port of @lib/midgard/fraud-proofs/da-hash-preimage/{rule,step-01,step-02}.ak@.
-
-The normative rule, the thread state and the redeemer payloads of the
-da-hash-preimage family (GOAL_SPEC.md Q44).
-
-=== The rule
-
-Every leaf of a committed block's @transactions_root@ is a @(key, value)@ pair in
-which the key is the canonical native-V1 transaction id /of that value/: a
-producer commits @(native_tx_id_v1(body_cbor(value)), value)@ and nothing else.
-
-The violation is a committed leaf whose key is __not__ the hash of its own
-value's body preimage. Such a leaf breaks hash/preimage correspondence, and no
-other family can ever open it: every native family runs
-@verify_native_tx_compact_cbor_v1@, which requires
-@native_tx_id_for_version(version, body_cbor) == key@. The block therefore hides
-a transaction nothing can dispute — which is why the catalogue records this row's
-severity as /provability/ rather than as a ledger fault.
-
-=== Why the check needs no decoder
-
-This is the one family whose step-01 must __not__ run the native codec
-precondition, because that precondition is exactly the property in dispute. What
-replaces it is arithmetic. The canonical compact encoding is fixed-framed at both
-ends:
-
-@
-0x84 ‖ serialise(version) ‖ body_cbor ‖ 0x58 0x20 ‖ wsh32 ‖ validity
-\\___________  ___________/            \\____________  ____________/
-            2 bytes                              35 bytes
-@
-
-so the body preimage of an honest leaf is exactly
-@slice(value, 2, len(value) - 37)@. The verifier re-hashes that slice and compares
-it with the committed key.
-
-The soundness argument runs in both directions and neither needs the leaf to be
-decodable. For an /honest/ leaf the slice __is__ the encoder's @body_cbor@, so the
-derived id always equals the key and the challenge can never finalize. For a
-/faulty/ leaf the same total computation convicts, whether the value is a
-well-formed transaction committed under a foreign key or arbitrary bytes.
--}
 module Midgard.FraudProofs.DaHashPreimage (
-  -- * The rule
-  pcompactV1HeadByteCount,
-  pcompactV1TailByteCount,
-  pcompactV1FrameByteCount,
-  pcommittedLeafBodyCborV1,
-  pderiveCommittedLeafTxIdV1,
-  pcommittedLeafIsUnderframedV1,
+  PSourceEnvelopeV1 (..),
+  PCompactInspectionV1 (..),
+  PVerdictV1 (..),
+  pinspectSourceEnvelopeV1,
+  pinspectCompactV1,
+  pwitnessSetIsCanonicalV1,
+  pfieldLengthsAreCanonicalV1,
+  padjudicateCommittedSourceLeafV1,
   pisDaHashPreimageViolationV1,
-
-  -- * The thread
   PStep02State (..),
   PStep02Args (..),
 ) where
 
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
-
+import Plutarch.Builtin.Crypto (pblake2b_256)
+import Plutarch.Core.Utils ((#/=))
 import Plutarch.Prelude
+import Plutarch.Repr.Scott (DeriveAsScottRec (..))
 
-import Midgard.FraudProofs.NativeTx.Codec (psliceLen)
-import Midgard.FraudProofs.NativeTx.Compact (pnativeTxIdForVersion)
-import Midgard.FraudProofs.NativeTx.Types (pnativeTxVersionV1)
+import Aiken.Cbor (pdeserialise)
+import Midgard.FraudProofs.NativeTx.Compact (
+  pencodeNativeTxBodyCompact,
+  pencodeNativeTxCompactV1,
+  pencodeNativeTxFieldPreimageLengthsV1,
+  pencodeNativeTxWitnessSetCompact,
+  pnativeTxIdForVersion,
+ )
+import Midgard.FraudProofs.NativeTx.Types (
+  PNativeTxBodyCompact (..),
+  PNativeTxCompact (..),
+  PNativeTxFieldPreimageLengthsV1 (..),
+  PNativeTxWitnessSetCompact (..),
+  pnativeTxVersionV1,
+ )
 
--- | Aiken @rule.compact_v1_head_byte_count@ — @0x84@ plus the canonical version byte.
-pcompactV1HeadByteCount :: forall (s :: S). Term s PInteger
-pcompactV1HeadByteCount = 2
+-- | Aiken @rule.SourceEnvelopeV1@. Internal Scott representation.
+data PSourceEnvelopeV1 (s :: S) = PSourceEnvelopeV1
+  { psourceEnvelope'embeddedTxId :: Term s PByteString
+  , psourceEnvelope'compactCbor :: Term s PByteString
+  , psourceEnvelope'witnessSetCompactCbor :: Term s PByteString
+  , psourceEnvelope'fieldPreimageLengthsCbor :: Term s PByteString
+  }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic)
+  deriving (PlutusType) via (DeriveAsScottRec PSourceEnvelopeV1)
 
-{- | Aiken @rule.compact_v1_tail_byte_count@.
+-- | Aiken @rule.CompactInspectionV1@. Internal Scott representation.
+data PCompactInspectionV1 (s :: S) = PCompactInspectionV1
+  { pcompactInspection'derivedTxId :: Term s PByteString
+  , pcompactInspection'witnessSetHash :: Term s PByteString
+  }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic)
+  deriving (PlutusType) via (DeriveAsScottRec PCompactInspectionV1)
 
-The definite 32-byte witness-set hash (@0x58 0x20@ plus 32) and the single-byte
-canonical validity code, which @expect_validity_code@ bounds to @0..=5@ and so
-never widens past one byte.
--}
-pcompactV1TailByteCount :: forall (s :: S). Term s PInteger
-pcompactV1TailByteCount = 35
+-- | Ordered Aiken @rule.VerdictV1@ constructors; constructor order is ABI.
+data PVerdictV1 (s :: S)
+  = PMalformedSource
+  | PKeyMismatch
+  | PMalformedProofSource
+  | PDerivedIdMismatch
+  | PNoViolation
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PVerdictV1)
 
-{- | Aiken @rule.compact_v1_frame_byte_count@ — the shortest a canonical leaf can
-be, which is the framing alone around an empty body.
--}
-pcompactV1FrameByteCount :: forall (s :: S). Term s PInteger
-pcompactV1FrameByteCount = pcompactV1HeadByteCount + pcompactV1TailByteCount
+pdataIsConstr, pdataIsList, pdataIsInt, pdataIsBytes :: forall s. Term s (PData :--> PBool)
+pdataIsConstr = phoistAcyclic $ plam $ \d ->
+  pchooseData # d # pconstant True # pconstant False # pconstant False # pconstant False # pconstant False
+pdataIsList = phoistAcyclic $ plam $ \d ->
+  pchooseData # d # pconstant False # pconstant False # pconstant True # pconstant False # pconstant False
+pdataIsInt = phoistAcyclic $ plam $ \d ->
+  pchooseData # d # pconstant False # pconstant False # pconstant False # pconstant True # pconstant False
+pdataIsBytes = phoistAcyclic $ plam $ \d ->
+  pchooseData # d # pconstant False # pconstant False # pconstant False # pconstant False # pconstant True
 
-{- | Aiken @rule.committed_leaf_body_cbor_v1@.
+-- | Total structural decoder for exact @Data(L2TransactionSourceV1)@.
+pinspectSourceEnvelopeV1 :: forall s. Term s (PByteString :--> PMaybe PSourceEnvelopeV1)
+pinspectSourceEnvelopeV1 = phoistAcyclic $ plam $ \sourceCbor ->
+  pmatch (pdeserialise # sourceCbor) $ \case
+    PNothing -> pcon PNothing
+    PJust sourceData ->
+      pif (pdataIsConstr # sourceData)
+        ( pmatch (pasConstr # sourceData) $ \(PBuiltinPair sourceTag sourceFields) ->
+            pif (sourceTag #== 0 #&& plength # sourceFields #== 2)
+              ( plet (pelemAt # 0 # sourceFields) $ \txIdData ->
+                plet (pelemAt # 1 # sourceFields) $ \proofSourceData ->
+                pif (pdataIsConstr # proofSourceData)
+                  ( pmatch (pasConstr # proofSourceData) $ \(PBuiltinPair proofTag proofFields) ->
+                      pif (proofTag #== 0 #&& plength # proofFields #== 3)
+                        ( plet (pelemAt # 0 # proofFields) $ \compactData ->
+                          plet (pelemAt # 1 # proofFields) $ \witnessData ->
+                          plet (pelemAt # 2 # proofFields) $ \lengthsData ->
+                          pif
+                            ( pdataIsBytes # txIdData
+                                #&& pdataIsBytes # compactData
+                                #&& pdataIsBytes # witnessData
+                                #&& pdataIsBytes # lengthsData
+                            )
+                            ( plet (pasByteStr # txIdData) $ \txId ->
+                              pif
+                                (plengthBS # txId #== 32 #&& pserialiseData # sourceData #== sourceCbor)
+                                ( pcon $ PJust $ pcon $
+                                    PSourceEnvelopeV1
+                                      txId
+                                      (pasByteStr # compactData)
+                                      (pasByteStr # witnessData)
+                                      (pasByteStr # lengthsData)
+                                )
+                                (pcon PNothing)
+                            )
+                            (pcon PNothing)
+                        )
+                        (pcon PNothing)
+                  )
+                  (pcon PNothing)
+              )
+              (pcon PNothing)
+        )
+        (pcon PNothing)
 
-__Total.__ A leaf shorter than the canonical frame clamps to the empty slice
-rather than erroring — and that clamp is not a §7.3 violation, because it is not
-standing in for a value the caller will act on: such a leaf is convicted outright
-by 'pcommittedLeafIsUnderframedV1' before the derived id is ever compared.
--}
-pcommittedLeafBodyCborV1 :: forall (s :: S). Term s (PByteString :--> PByteString)
-pcommittedLeafBodyCborV1 = phoistAcyclic $
-  plam $ \committedLeafValue ->
-    plet (plengthBS # committedLeafValue - pcompactV1FrameByteCount) $ \bodyByteCount ->
-      pif
-        (bodyByteCount #<= 0)
-        (pconstant "")
-        (psliceLen # committedLeafValue # pcompactV1HeadByteCount # bodyByteCount)
+-- | Total decoder for the exact twelve-field compact body Data list.
+pinspectCompactBodyV1 :: forall s. Term s (PData :--> PMaybe PNativeTxBodyCompact)
+pinspectCompactBodyV1 = phoistAcyclic $ plam $ \bodyData ->
+  pif (pdataIsList # bodyData)
+    ( plet (pasList # bodyData) $ \fields ->
+      pif (plength # fields #== 12)
+        ( plet (pelemAt # 0 # fields) $ \spendData ->
+          plet (pelemAt # 1 # fields) $ \referenceData ->
+          plet (pelemAt # 2 # fields) $ \outputsData ->
+          plet (pelemAt # 3 # fields) $ \feeData ->
+          plet (pelemAt # 4 # fields) $ \startData ->
+          plet (pelemAt # 5 # fields) $ \endData ->
+          plet (pelemAt # 6 # fields) $ \observersData ->
+          plet (pelemAt # 7 # fields) $ \signersData ->
+          plet (pelemAt # 8 # fields) $ \mintData ->
+          plet (pelemAt # 9 # fields) $ \integrityData ->
+          plet (pelemAt # 10 # fields) $ \auxiliaryData ->
+          plet (pelemAt # 11 # fields) $ \networkData ->
+          pif
+            ( pdataIsBytes # spendData
+                #&& pdataIsBytes # referenceData
+                #&& pdataIsBytes # outputsData
+                #&& pdataIsInt # feeData
+                #&& pdataIsInt # startData
+                #&& pdataIsInt # endData
+                #&& pdataIsBytes # observersData
+                #&& pdataIsBytes # signersData
+                #&& pdataIsBytes # mintData
+                #&& pdataIsBytes # integrityData
+                #&& pdataIsBytes # auxiliaryData
+                #&& pdataIsInt # networkData
+            )
+            ( plet (pasByteStr # spendData) $ \spend ->
+              plet (pasByteStr # referenceData) $ \reference ->
+              plet (pasByteStr # outputsData) $ \outputs ->
+              plet (pasInt # feeData) $ \fee ->
+              plet (pasByteStr # observersData) $ \observers ->
+              plet (pasByteStr # signersData) $ \signers ->
+              plet (pasByteStr # mintData) $ \mint ->
+              plet (pasByteStr # integrityData) $ \integrity ->
+              plet (pasByteStr # auxiliaryData) $ \auxiliary ->
+              plet (pasInt # networkData) $ \network ->
+              pif
+                ( plengthBS # spend #== 32
+                    #&& plengthBS # reference #== 32
+                    #&& plengthBS # outputs #== 32
+                    #&& fee #>= 0
+                    #&& plengthBS # observers #== 32
+                    #&& plengthBS # signers #== 32
+                    #&& plengthBS # mint #== 32
+                    #&& plengthBS # integrity #== 32
+                    #&& plengthBS # auxiliary #== 32
+                    #&& (network #== 0 #|| network #== 1 #|| network #== 255)
+                )
+                ( pcon $ PJust $ pcon $
+                    PNativeTxBodyCompact
+                      spend
+                      reference
+                      outputs
+                      fee
+                      (pasInt # startData)
+                      (pasInt # endData)
+                      observers
+                      signers
+                      mint
+                      integrity
+                      auxiliary
+                      network
+                )
+                (pcon PNothing)
+            )
+            (pcon PNothing)
+        )
+        (pcon PNothing)
+    )
+    (pcon PNothing)
 
-{- | Aiken @rule.derive_committed_leaf_tx_id_v1@.
+-- | Total compact inspection followed by exact V1 native re-encoding.
+pinspectCompactV1 :: forall s. Term s (PByteString :--> PMaybe PCompactInspectionV1)
+pinspectCompactV1 = phoistAcyclic $ plam $ \compactCbor ->
+  pmatch (pdeserialise # compactCbor) $ \case
+    PNothing -> pcon PNothing
+    PJust compactData ->
+      pif (pdataIsList # compactData)
+        ( plet (pasList # compactData) $ \fields ->
+          pif (plength # fields #== 4)
+            ( plet (pelemAt # 0 # fields) $ \versionData ->
+              plet (pelemAt # 1 # fields) $ \bodyData ->
+              plet (pelemAt # 2 # fields) $ \witnessHashData ->
+              plet (pelemAt # 3 # fields) $ \validityData ->
+              pif
+                (pdataIsInt # versionData #&& pdataIsBytes # witnessHashData #&& pdataIsInt # validityData)
+                ( pmatch (pinspectCompactBodyV1 # bodyData) $ \case
+                    PNothing -> pcon PNothing
+                    PJust body ->
+                      plet (pasInt # versionData) $ \version ->
+                      plet (pasByteStr # witnessHashData) $ \witnessHash ->
+                      plet (pasInt # validityData) $ \validity ->
+                      pif
+                        ( version #== pnativeTxVersionV1
+                            #&& plengthBS # witnessHash #== 32
+                            #&& (validity #== 0 #|| validity #== 1)
+                        )
+                        ( plet (pcon $ PNativeTxCompact body witnessHash validity) $ \compact ->
+                          pif (pencodeNativeTxCompactV1 # compact #== compactCbor)
+                            ( pcon $ PJust $ pcon $
+                                PCompactInspectionV1
+                                  (pnativeTxIdForVersion # pnativeTxVersionV1 # (pencodeNativeTxBodyCompact # body))
+                                  witnessHash
+                            )
+                            (pcon PNothing)
+                        )
+                        (pcon PNothing)
+                )
+                (pcon PNothing)
+            )
+            (pcon PNothing)
+        )
+        (pcon PNothing)
 
-The canonical native-V1 transaction id the committed leaf value actually commits
-to. Never fails.
--}
-pderiveCommittedLeafTxIdV1 :: forall (s :: S). Term s (PByteString :--> PByteString)
-pderiveCommittedLeafTxIdV1 = phoistAcyclic $
-  plam $ \committedLeafValue ->
-    pnativeTxIdForVersion
-      # pnativeTxVersionV1
-      # (pcommittedLeafBodyCborV1 # committedLeafValue)
+-- | Exact canonical compact witness-set inspection.
+pwitnessSetIsCanonicalV1 :: forall s. Term s (PByteString :--> PBool)
+pwitnessSetIsCanonicalV1 = phoistAcyclic $ plam $ \witnessCbor ->
+  pmatch (pdeserialise # witnessCbor) $ \case
+    PNothing -> pconstant False
+    PJust witnessData ->
+      pif (pdataIsList # witnessData)
+        ( plet (pasList # witnessData) $ \fields ->
+          pif (plength # fields #== 3)
+            ( plet (pelemAt # 0 # fields) $ \addressData ->
+              plet (pelemAt # 1 # fields) $ \scriptData ->
+              plet (pelemAt # 2 # fields) $ \redeemerData ->
+              pif
+                (pdataIsBytes # addressData #&& pdataIsBytes # scriptData #&& pdataIsBytes # redeemerData)
+                ( plet (pasByteStr # addressData) $ \address ->
+                  plet (pasByteStr # scriptData) $ \script ->
+                  plet (pasByteStr # redeemerData) $ \redeemer ->
+                  pif
+                    (plengthBS # address #== 32 #&& plengthBS # script #== 32 #&& plengthBS # redeemer #== 32)
+                    ( pencodeNativeTxWitnessSetCompact
+                        # pcon (PNativeTxWitnessSetCompact (pdata address) (pdata script) (pdata redeemer))
+                        #== witnessCbor
+                    )
+                    (pconstant False)
+                )
+                (pconstant False)
+            )
+            (pconstant False)
+        )
+        (pconstant False)
 
-{- | Aiken @rule.committed_leaf_is_underframed_v1@.
+-- | Exact canonical nine-field preimage-length inspection.
+pfieldLengthsAreCanonicalV1 :: forall s. Term s (PByteString :--> PBool)
+pfieldLengthsAreCanonicalV1 = phoistAcyclic $ plam $ \lengthsCbor ->
+  pmatch (pdeserialise # lengthsCbor) $ \case
+    PNothing -> pconstant False
+    PJust lengthsData ->
+      pif (pdataIsList # lengthsData)
+        ( plet (pasList # lengthsData) $ \fields ->
+          pif (plength # fields #== 9)
+            ( plet (pelemAt # 0 # fields) $ \spendData ->
+              plet (pelemAt # 1 # fields) $ \referenceData ->
+              plet (pelemAt # 2 # fields) $ \outputsData ->
+              plet (pelemAt # 3 # fields) $ \observersData ->
+              plet (pelemAt # 4 # fields) $ \signersData ->
+              plet (pelemAt # 5 # fields) $ \mintData ->
+              plet (pelemAt # 6 # fields) $ \scriptData ->
+              plet (pelemAt # 7 # fields) $ \addressData ->
+              plet (pelemAt # 8 # fields) $ \redeemersData ->
+              pif
+                ( pdataIsInt # spendData
+                    #&& pdataIsInt # referenceData
+                    #&& pdataIsInt # outputsData
+                    #&& pdataIsInt # observersData
+                    #&& pdataIsInt # signersData
+                    #&& pdataIsInt # mintData
+                    #&& pdataIsInt # scriptData
+                    #&& pdataIsInt # addressData
+                    #&& pdataIsInt # redeemersData
+                )
+                ( plet (pasInt # spendData) $ \spend ->
+                  plet (pasInt # referenceData) $ \reference ->
+                  plet (pasInt # outputsData) $ \outputs ->
+                  plet (pasInt # observersData) $ \observers ->
+                  plet (pasInt # signersData) $ \signers ->
+                  plet (pasInt # mintData) $ \mint ->
+                  plet (pasInt # scriptData) $ \script ->
+                  plet (pasInt # addressData) $ \address ->
+                  plet (pasInt # redeemersData) $ \redeemers ->
+                  pif
+                    ( spend #>= 0
+                        #&& reference #>= 0
+                        #&& outputs #>= 0
+                        #&& observers #>= 0
+                        #&& signers #>= 0
+                        #&& mint #>= 0
+                        #&& script #>= 0
+                        #&& address #>= 0
+                        #&& redeemers #>= 0
+                    )
+                    ( pencodeNativeTxFieldPreimageLengthsV1
+                        # pcon
+                          ( PNativeTxFieldPreimageLengthsV1
+                              spend
+                              reference
+                              outputs
+                              observers
+                              signers
+                              mint
+                              address
+                              script
+                              redeemers
+                          )
+                        #== lengthsCbor
+                    )
+                    (pconstant False)
+                )
+                (pconstant False)
+            )
+            (pconstant False)
+        )
+        (pconstant False)
 
-A leaf too short to carry the canonical frame cannot be a transaction at all, so
-its key cannot be a hash-preimage commitment of it.
--}
-pcommittedLeafIsUnderframedV1 :: forall (s :: S). Term s (PInteger :--> PBool)
-pcommittedLeafIsUnderframedV1 = phoistAcyclic $
-  plam $ \committedLeafByteCount -> committedLeafByteCount #< pcompactV1FrameByteCount
+-- | Total Q44 verdict, in the Aiken rule's stable precedence order.
+padjudicateCommittedSourceLeafV1 :: forall s. Term s (PByteString :--> PByteString :--> PVerdictV1)
+padjudicateCommittedSourceLeafV1 = phoistAcyclic $ plam $ \committedTxId committedLeafValue ->
+  pmatch (pinspectSourceEnvelopeV1 # committedLeafValue) $ \case
+    PNothing -> pcon PMalformedSource
+    PJust source -> pmatch source $ \PSourceEnvelopeV1 {psourceEnvelope'embeddedTxId, psourceEnvelope'compactCbor, psourceEnvelope'witnessSetCompactCbor, psourceEnvelope'fieldPreimageLengthsCbor} ->
+      pif (psourceEnvelope'embeddedTxId #/= committedTxId) (pcon PKeyMismatch) $
+        pmatch (pinspectCompactV1 # psourceEnvelope'compactCbor) $ \case
+          PNothing -> pcon PMalformedProofSource
+          PJust compact -> pmatch compact $ \PCompactInspectionV1 {pcompactInspection'derivedTxId, pcompactInspection'witnessSetHash} ->
+            pif
+              ( pnot # (pwitnessSetIsCanonicalV1 # psourceEnvelope'witnessSetCompactCbor)
+                  #|| pblake2b_256 # psourceEnvelope'witnessSetCompactCbor #/= pcompactInspection'witnessSetHash
+                  #|| pnot # (pfieldLengthsAreCanonicalV1 # psourceEnvelope'fieldPreimageLengthsCbor)
+              )
+              (pcon PMalformedProofSource)
+              ( pif
+                  (pcompactInspection'derivedTxId #/= psourceEnvelope'embeddedTxId)
+                  (pcon PDerivedIdMismatch)
+                  (pcon PNoViolation)
+              )
 
-{- | Aiken @rule.is_da_hash_preimage_violation_v1@.
+pisDaHashPreimageViolationV1 :: forall s. Term s (PVerdictV1 :--> PBool)
+pisDaHashPreimageViolationV1 = phoistAcyclic $ plam $ \verdict -> verdict #/= pcon PNoViolation
 
-The adjudicated predicate, stated over the three values step-01 commits into the
-thread. Underframing is checked first and short-circuits: for a leaf too short to
-frame, the derived id is a hash of the empty slice and comparing it would be
-comparing against nothing.
--}
-pisDaHashPreimageViolationV1 ::
-  forall (s :: S). Term s (PByteString :--> PByteString :--> PInteger :--> PBool)
-pisDaHashPreimageViolationV1 = phoistAcyclic $
-  plam $ \committedTxId derivedTxId committedLeafByteCount ->
-    pif
-      (pcommittedLeafIsUnderframedV1 # committedLeafByteCount)
-      (pconstant True)
-      (pnot # (derivedTxId #== committedTxId))
-
-{- | Aiken @da_hash_preimage/step_02.State@ — the evidence triple.
-
-Every component is derived in step-01 from authenticated bytes, so step-02
-adjudicates committed values only. The byte count travels alongside the two ids
-because the underframed case has no meaningful derived id to compare.
--}
+-- | Aiken @da_hash_preimage/step_02.State@.
 data PStep02State (s :: S) = PStep02State
-  { -- | MPF key the block committed the leaf under.
-    pstep02State'committedTxId :: Term s (PAsData PByteString)
-  , -- | Canonical native-V1 id the committed leaf value itself commits to.
-    pstep02State'derivedTxId :: Term s (PAsData PByteString)
-  , -- | Byte length of the committed leaf value.
-    pstep02State'committedLeafByteCount :: Term s (PAsData PInteger)
+  { pstep02State'verdict :: Term s (PAsData PVerdictV1)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)

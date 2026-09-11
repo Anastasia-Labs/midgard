@@ -22,12 +22,15 @@ module Testing.HeaderValidity (tests) where
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
 import PlutusCore.Data qualified as PD
+import PlutusLedgerApi.V3 (TokenName (..), TxId (..), TxOutRef (..))
+import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import Plutarch.Prelude
 import Plutarch.Builtin.Crypto (pblake2b_224)
 import Plutarch.Core.Utils (pand'List)
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.LedgerState (
@@ -41,6 +44,7 @@ import Midgard.LedgerState (
   pheaderValidationContextScalarsV1AreValid,
   prootMatchesCountV1,
  )
+import Midgard.AvailabilityChallenge (PStateQueueStatusV1 (..))
 import Midgard.StateQueue qualified as StateQueue
 import Testing.Eval (passertEval)
 
@@ -303,7 +307,11 @@ exactStateQueueNodeVector =
         pcon $
           StateQueue.PStateQueueNode
             (pdata (headerTerm vectorHeader))
-            (pdata (pconstant "\xaa"))
+            ( pdata $
+                pcon $
+                  PAttested
+                    (pdata $ pconstant $ TokenName $ toBuiltin $ "DABN" <> BS.replicate 28 0xaa)
+            )
    in pserialiseData # pforgetData (pdata node) #== pconstant vectorStateQueueNodeCbor
 
 exactStateQueueRedeemerVectors :: forall s. Term s PBool
@@ -312,24 +320,24 @@ exactStateQueueRedeemerVectors =
       mergeRedeemer =
         pcon $
           StateQueue.PMergeToConfirmedStateV1
-            (pconstant $ PD.B (BS.replicate 28 0x11))
-            (pconstant $ PD.Constr 0 [PD.B (BS.replicate 32 0x44), PD.I 0])
-            (pconstant $ PD.I 0)
-            (pconstant $ PD.Constr 0 [PD.I 1])
-            (pconstant $ PD.B (BS.replicate 32 0x21))
-            (pconstant $ PD.B (BS.replicate 32 0x22))
-            (pconstant $ PD.B (BS.replicate 32 0x23))
-            (pconstant $ PD.B (BS.replicate 32 0x24))
-            (pconstant $ PD.B (BS.replicate 32 0x25))
-            (pconstant $ PD.B (BS.replicate 32 0x26))
-            (pconstant $ PD.B (BS.replicate 32 0x27))
-            (pconstant $ PD.I 1)
-            (pconstant $ PD.I 2)
-            (pconstant $ PD.I 3)
-            (pconstant $ PD.I 4)
-            (pconstant $ PD.I 10)
-            (pconstant $ PD.I 10)
-            (pconstant $ PD.I 5)
+            (pdata $ pconstant $ BS.replicate 28 0x11)
+            (pdata $ pconstant $ TxOutRef (TxId $ toBuiltin $ BS.replicate 32 0x44) 0)
+            (pdata 0)
+            (pdata $ pcon $ PDJust $ pdata 1)
+            (pdata $ pconstant $ BS.replicate 32 0x21)
+            (pdata $ pconstant $ BS.replicate 32 0x22)
+            (pdata $ pconstant $ BS.replicate 32 0x23)
+            (pdata $ pconstant $ BS.replicate 32 0x24)
+            (pdata $ pconstant $ BS.replicate 32 0x25)
+            (pdata $ pconstant $ BS.replicate 32 0x26)
+            (pdata $ pconstant $ BS.replicate 32 0x27)
+            (pdata 1)
+            (pdata 2)
+            (pdata 3)
+            (pdata 4)
+            (pdata 10)
+            (pdata 10)
+            (pdata 5)
    in pand'List
         [ pserialiseData # pforgetData (pdata initRedeemer) #== pconstant (hex "d8799f02ff")
         , pserialiseData # pforgetData (pdata mergeRedeemer) #== pconstant vectorMergeRedeemerCbor
@@ -448,11 +456,11 @@ vectorCommitmentsCbor = hex $
     <> "00000100010101ff"
 
 vectorStateQueueNodeCbor :: BS.ByteString
-vectorStateQueueNodeCbor = hex "d8799f" <> vectorHeaderCbor <> hex "41aaff"
+vectorStateQueueNodeCbor = hex "d8799f" <> vectorHeaderCbor <> hex "d87a9f58204441424e" <> BS.replicate 28 0xaa <> hex "ffff"
 
 vectorMergeRedeemerCbor :: BS.ByteString
 vectorMergeRedeemerCbor = hex $
-  "d87d9f581c11111111111111111111111111111111111111111111111111111111"
+  "d87f9f581c11111111111111111111111111111111111111111111111111111111"
     <> "d8799f5820444444444444444444444444444444444444444444444444444444444444444400ff"
     <> "00d8799f01ff"
     <> "58202121212121212121212121212121212121212121212121212121212121212121"

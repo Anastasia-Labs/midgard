@@ -38,6 +38,7 @@ import PlutusLedgerApi.V3 (
   scriptContextTxInfo,
   toBuiltinData,
   txInfoInputs,
+  txInfoFee,
   txInfoMint,
   txInfoOutputs,
   txInfoRedeemers,
@@ -51,6 +52,7 @@ import PlutusTx.Builtins (BuiltinData, builtinDataToData, dataToBuiltinData, fro
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Midgard.Env (environmentName)
 import Plutarch.Prelude
 
 import Midgard.Validators.RegisteredOperators (
@@ -76,6 +78,10 @@ tests =
         "mint / RegisterOperator"
         [ testCase "accepts a registration keyed to the derived activation time" $
             psucceeds $ runRegister operator activationKey operator [signer operator]
+        , testCase "rejects a registration that overfunds the exact bond tranche" $
+            pfails $ runRegisterWithBond (requiredBond + 1) operator activationKey operator [signer operator]
+        , testCase "rejects a registration that underfunds the exact bond tranche" $
+            pfails $ runRegisterWithBond (requiredBond - 1) operator activationKey operator [signer operator]
         , -- 70 + registration_duration is 100, so 200 is a key the operator
           -- chose rather than one the validity range implies.
           testCase "rejects a node key that is not the derived activation time" $
@@ -112,9 +118,13 @@ tests =
     , testGroup
         "mint / SlashDuplicateOperator"
         [ testCase "accepts a slash backed by a duplicate registered node" $
-            psucceeds $ runSlashDuplicate operator operator
+            psucceeds $ runSlashDuplicate slashingPenalty operator operator
+        , testCase "rejects duplicate slashing fee overpayment" $
+            pfails $ runSlashDuplicate (slashingPenalty + 1) operator operator
+        , testCase "rejects duplicate slashing fee underpayment" $
+            pfails $ runSlashDuplicate (slashingPenalty - 1) operator operator
         , testCase "rejects a duplicate node naming a different operator" $
-            pfails $ runSlashDuplicate operator "zz"
+            pfails $ runSlashDuplicate slashingPenalty operator "zz"
         ]
     ]
 
@@ -173,9 +183,13 @@ registeredKey = activationKey
 
 mkElemOut :: CurrencySymbol -> TokenName -> BuiltinData -> TxOut
 mkElemOut policy tn dat =
+  mkElemOutWithLovelace 2_000_000 policy tn dat
+
+mkElemOutWithLovelace :: Int -> CurrencySymbol -> TokenName -> BuiltinData -> TxOut
+mkElemOutWithLovelace lovelace policy tn dat =
   TxOut
     (scriptHashAddress (ScriptHash (unCurrencySymbol policy)))
-    (mkAdaValue 2_000_000 <> singleton policy tn 1)
+    (mkAdaValue lovelace <> singleton policy tn 1)
     (OutputDatum (Datum dat))
     Nothing
 
@@ -188,7 +202,15 @@ regRootOut link = mkElemOut regPolicy regRootName (rootDatum link)
 -- | A registered-set node: its key is an activation time, its data an operator.
 regNodeOut :: BS.ByteString -> BS.ByteString -> PD.Data -> TxOut
 regNodeOut key op link =
-  mkElemOut regPolicy (nodeName "MREG" key) (nodeDatum (nodeData op) link)
+  regNodeOutWithBond requiredBond key op link
+
+regNodeOutWithBond :: Int -> BS.ByteString -> BS.ByteString -> PD.Data -> TxOut
+regNodeOutWithBond lovelace key op link =
+  mkElemOutWithLovelace lovelace regPolicy (nodeName "MREG" key) (nodeDatum (nodeData op) link)
+
+requiredBond, slashingPenalty :: Int
+requiredBond = if environmentName == "testnet" then 900_000_000 else 100_000_000_000
+slashingPenalty = if environmentName == "testnet" then 500_000_000 else 25_000_000_000
 
 outRefN :: Integer -> TxOutRef
 outRefN = TxOutRef (TxId "0101010101010101010101010101010101010101010101010101010101010101")
@@ -301,7 +323,22 @@ mintCtx ::
   , [(ScriptPurpose, Redeemer)]
   ) ->
   Term s PUnit
-mintCtx redeemer (ins, outs, refs, mint, validRange, signatories, redeemers) =
+mintCtx = mintCtxWithFee 0
+
+mintCtxWithFee ::
+  forall s.
+  Int ->
+  BuiltinData ->
+  ( [TxInInfo]
+  , [TxOut]
+  , [TxInInfo]
+  , MintValue
+  , Interval POSIXTime
+  , [PubKeyHash]
+  , [(ScriptPurpose, Redeemer)]
+  ) ->
+  Term s PUnit
+mintCtxWithFee fee redeemer (ins, outs, refs, mint, validRange, signatories, redeemers) =
   registeredOperatorsMintValidator
     # pdata (pconstant retiredPolicy)
     # pdata (pconstant hubPolicy)
@@ -317,6 +354,7 @@ mintCtx redeemer (ins, outs, refs, mint, validRange, signatories, redeemers) =
         , txInfoValidRange = validRange
         , txInfoSignatories = signatories
         , txInfoRedeemers = Map.unsafeFromList redeemers
+        , txInfoFee = fromIntegral fee
         }
     ctx = ScriptContext txInfo (Redeemer redeemer) (MintingScript regPolicy)
 
@@ -346,10 +384,21 @@ runRegister ::
   [PubKeyHash] ->
   Term s PUnit
 runRegister registeringOperator nodeKey nodeOperator signatories =
+  runRegisterWithBond requiredBond registeringOperator nodeKey nodeOperator signatories
+
+runRegisterWithBond ::
+  forall s.
+  Int ->
+  BS.ByteString ->
+  BS.ByteString ->
+  BS.ByteString ->
+  [PubKeyHash] ->
+  Term s PUnit
+runRegisterWithBond bond registeringOperator nodeKey nodeOperator signatories =
   mintCtx
     registerRedeemer
     ( [TxInInfo (outRefN 0) (regRootOut linkNone)]
-    , [regRootOut (linkTo nodeKey), regNodeOut nodeKey nodeOperator linkNone]
+    , [regRootOut (linkTo nodeKey), regNodeOutWithBond bond nodeKey nodeOperator linkNone]
     , [hubRefIn, emptyRootRef 1 activePolicy activeRootName, emptyRootRef 2 retiredPolicy retiredRootName]
     , mintNode nodeKey 1
     , registrationRange
@@ -450,9 +499,9 @@ runDeregister deregisteringOperator signatories =
 {- | A duplicate slash: the operator's node is removed, and a second registered
 node naming the same operator is referenced as the evidence.
 -}
-runSlashDuplicate :: forall s. BS.ByteString -> BS.ByteString -> Term s PUnit
-runSlashDuplicate slashedOperator duplicateNodeOperator =
-  mintCtx
+runSlashDuplicate :: forall s. Int -> BS.ByteString -> BS.ByteString -> Term s PUnit
+runSlashDuplicate fee slashedOperator duplicateNodeOperator =
+  mintCtxWithFee fee
     slashRedeemer
     ( [ TxInInfo (outRefN 0) (regRootOut (linkTo activationKey))
       , TxInInfo (outRefN 1) (regNodeOut activationKey operator linkNone)

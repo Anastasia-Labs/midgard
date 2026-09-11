@@ -34,7 +34,9 @@ module Midgard.Common.Utils (
   pauthenticateInputOutputAndGetOutputDatumData,
   pgetAuthenticInputWithPolicyAt,
   pgetAuthenticInputDatumWithPolicyAt,
+  pgetAuthenticInputDatumAndAssetNameWithPolicyAt,
   pgetUniqueWithdrawRedeemer,
+  pheadSingleton,
   pplutarchPhasRaw,
   pplutarchPhas,
   pplutarchPexcludesRaw,
@@ -44,7 +46,6 @@ module Midgard.Common.Utils (
 import Data.Kind (Type)
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
-import Plutarch.Builtin.Data (pasConstr, pasInt)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.AssocMap qualified as AssocMap
 import Plutarch.LedgerApi.V3 (
@@ -111,7 +112,9 @@ pconstrOf ::
   (Term s PInteger, Term s (PBuiltinList PData))
 pconstrOf x =
   let pair = pasConstr # pforgetData x
-   in (pfstBuiltin # pair, psndBuiltin # pair)
+   in ( pmatch pair $ \(PBuiltinPair tag _) -> tag
+      , pmatch pair $ \(PBuiltinPair _ fields) -> fields
+      )
 
 {- | Aiken @utils.zip_foldl@. Folds two lists from the head and stops as soon
 as either list is exhausted.
@@ -244,16 +247,16 @@ pgetSingleAssetFromValueApartFromAda = phoistAcyclic $
     nonAda <-
       plet $
         pif
-          (pnot # (pnull # entries) #&& pfromData (pfstBuiltin # (phead # entries)) #== padaSymbol)
+          (pnot # (pnull # entries) #&& pfromData (pmatch (phead # entries) $ \(PBuiltinPair pairFirst _) -> pairFirst) #== padaSymbol)
           (ptail # entries)
           entries
     policyEntry <- plet $ pheadSingleton # nonAda
-    tokenEntry <- plet $ pheadSingleton #$ pto (pto (pfromData (psndBuiltin # policyEntry)))
+    tokenEntry <- plet $ pheadSingleton #$ pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
     pcon $
       PAssetTriplet
-        { passetTriplet'policy = pfstBuiltin # policyEntry
-        , passetTriplet'name = pfstBuiltin # tokenEntry
-        , passetTriplet'amount = psndBuiltin # tokenEntry
+        { passetTriplet'policy = (pmatch policyEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
+        , passetTriplet'name = (pmatch tokenEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
+        , passetTriplet'amount = (pmatch tokenEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)
         }
 
 {- | Aiken @utils.get_authentic_input_of@.
@@ -430,8 +433,8 @@ pgetRedeemerAt = phoistAcyclic $
   plam $ \redeemers expectedPurpose redeemerIndex -> P.do
     redeemerPair <- plet $ pelemAt # redeemerIndex # redeemers
     pif
-      (pfstBuiltin # redeemerPair #== expectedPurpose)
-      (psndBuiltin # redeemerPair)
+      ((pmatch redeemerPair $ \(PBuiltinPair pairFirst _) -> pairFirst) #== expectedPurpose)
+      (pmatch redeemerPair $ \(PBuiltinPair _ pairSecond) -> pairSecond)
       perror
 
 {- | Aiken @utils.quantity_of_policy_id@.
@@ -452,7 +455,7 @@ pquantityOfPolicyId = phoistAcyclic $
       PNothing -> 0
       PJust tokenMap ->
         pfoldr
-          # plam (\entry acc -> pfromData (psndBuiltin # entry) + acc)
+          # plam (\entry acc -> pfromData (pmatch entry $ \(PBuiltinPair _ pairSecond) -> pairSecond) + acc)
           # 0
           # pto (pto tokenMap)
 
@@ -564,12 +567,12 @@ pgetSingleAssetFromValue ::
 pgetSingleAssetFromValue = phoistAcyclic $
   plam $ \value -> P.do
     policyEntry <- plet $ pheadSingleton #$ pto (pto (pto (pto value)))
-    tokenEntry <- plet $ pheadSingleton #$ pto (pto (pfromData (psndBuiltin # policyEntry)))
+    tokenEntry <- plet $ pheadSingleton #$ pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
     pcon $
       PAssetTriplet
-        { passetTriplet'policy = pfstBuiltin # policyEntry
-        , passetTriplet'name = pfstBuiltin # tokenEntry
-        , passetTriplet'amount = psndBuiltin # tokenEntry
+        { passetTriplet'policy = (pmatch policyEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
+        , passetTriplet'name = (pmatch tokenEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
+        , passetTriplet'amount = (pmatch tokenEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)
         }
 
 {- | Aiken @utils.plutarch_phas@.
@@ -672,6 +675,32 @@ pgetAuthenticInputDatumWithPolicyAt = phoistAcyclic $
       POutputDatum {poutputDatum'outputDatum} -> pto poutputDatum'outputDatum
       _ -> perror
 
+{- | Aiken @utils.get_authentic_input_datum_and_asset_name_with_policy_at@.
+
+Authenticates the sole non-Ada NFT by policy and quantity, then returns both
+its unconstrained asset name and the input's inline datum.  The callback form
+matches the Aiken helper and avoids authenticating or decoding the input twice.
+-}
+pgetAuthenticInputDatumAndAssetNameWithPolicyAt ::
+  forall (s :: S) (r :: S -> Type).
+  Term s (PBuiltinList (PAsData PTxInInfo)) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s PInteger ->
+  (Term s (PAsData PTokenName) -> Term s PData -> Term s r) ->
+  Term s r
+pgetAuthenticInputDatumAndAssetNameWithPolicyAt inputs nftPolicyId inputIndex k = P.do
+  PTxInInfo {ptxInInfo'resolved} <- pmatch $ pfromData (pelemAt # inputIndex # inputs)
+  PTxOut {ptxOut'value, ptxOut'datum} <- pmatch ptxInInfo'resolved
+  PAssetTriplet {passetTriplet'policy, passetTriplet'name, passetTriplet'amount} <-
+    pmatch $ pgetSingleAssetFromValueApartFromAda # pfromData ptxOut'value
+  pif
+    (passetTriplet'policy #== nftPolicyId #&& pfromData passetTriplet'amount #== 1)
+    ( pmatch ptxOut'datum $ \case
+        POutputDatum {poutputDatum'outputDatum} -> k passetTriplet'name (pto poutputDatum'outputDatum)
+        _ -> perror
+    )
+    perror
+
 {- | Aiken @utils.get_unique_withdraw_redeemer@.
 
 The redeemer of the /one/ withdrawal by @withdraw_script_hash@ in this
@@ -695,7 +724,7 @@ pgetUniqueWithdrawRedeemer = phoistAcyclic $
         pfilter
           # plam
             ( \entry ->
-                pmatch (pfromData (pfstBuiltin # entry)) $ \case
+                pmatch (pfromData (pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst)) $ \case
                   PRewarding credential ->
                     pmatch credential $ \case
                       PScriptCredential h -> pto (pfromData h) #== withdrawScriptHash
@@ -703,7 +732,7 @@ pgetUniqueWithdrawRedeemer = phoistAcyclic $
                   _ -> pconstant False
             )
           # redeemers
-    psndBuiltin # (pheadSingleton # matching)
+    (pmatch (pheadSingleton # matching) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
 
 {- | Aiken @utils.plutarch_phas_raw@.
 
@@ -899,14 +928,14 @@ pnormalizedBoundAt ::
   Term s PInteger
 pnormalizedBoundAt normalized closedFieldIndex singletonTag =
   plet (pasConstr # pforgetData (pdata normalized)) $ \pair ->
-    plet (pfstBuiltin # pair) $ \tag ->
-      plet (psndBuiltin # pair) $ \fields ->
+    plet (pmatch pair $ \(PBuiltinPair pairFirst _) -> pairFirst) $ \tag ->
+      plet (pmatch pair $ \(PBuiltinPair _ pairSecond) -> pairSecond) $ \fields ->
         pif
           (tag #== pconstant closedRangeTag)
           (pasInt #$ pfieldAt fields closedFieldIndex)
           ( pif
               (tag #== pconstant singletonTag)
-              (pasInt #$ pfieldAt fields 0)
+              (pasInt #$ pfieldAt fields (0 :: Integer))
               perror
           )
   where

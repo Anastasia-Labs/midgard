@@ -154,7 +154,7 @@ fieldAccessGoldenTests =
             , pmaxTransactionAggregateFieldBytes #== 32_768
             , pmaxSpendInputsPreimageBytes #== 32_768
             , pmaximumCardanoSpendRedeemerCount #== 296
-            , pchunkBytesK #== 15_900
+            , pchunkBytesK #== 15_148
             , pmaxTier1RedeemerPreimageBytes #== 14_336
             , pmaxTier3ChunkCount #== 3
             , pspendInputItemBytes #== 38
@@ -197,37 +197,34 @@ fieldAccessGoldenTests =
     , testCase "golden_expected_chunk_counts_match_typescript" $
         passertEval $
           pand'List
-            [ pexpectedChunkCount # 15_900 #== 1
-            , pexpectedChunkCount # 15_901 #== 2
-            , pexpectedChunkCount # 31_800 #== 2
-            , pexpectedChunkCount # 31_801 #== 3
+            [ pexpectedChunkCount # 15_148 #== 1
+            , pexpectedChunkCount # 15_149 #== 2
+            , pexpectedChunkCount # 30_296 #== 2
+            , pexpectedChunkCount # 30_297 #== 3
             , pexpectedChunkCount # 32_768 #== 3
             ]
     , testCase "golden_tier3_chunk_digests_match_typescript" $
         passertEval $
           pand'List
-            [ plengthBS # pconstant goldenTier3Preimage #== 16_417
-            , plengthBS # pconstant (head goldenTier3Chunks) #== 15_900
+            [ plengthBS # pconstant goldenTier3Preimage #== 15_665
+            , plengthBS # pconstant (head goldenTier3Chunks) #== 15_148
             , plengthBS # pconstant (goldenTier3Chunks !! 1) #== 517
             , pblake2b_256 # pconstant (head goldenTier3Chunks)
                 #== pconstant (head goldenTier3ChunkDigests)
             , pblake2b_256 # pconstant (goldenTier3Chunks !! 1)
                 #== pconstant (goldenTier3ChunkDigests !! 1)
             ]
-    , testCase "golden_certificate_asset_names_match_typescript" $
+    , testCase "golden_certificate_asset_name_matches_typescript" $
         passertEval $
-          pand'List
-            [ pfieldPreimageCertificateAssetName # pconstant goldenCertificateTxId # pconstant index
-                #== pconstant assetName
-            | (index, assetName) <- zip [0 .. 8] goldenCertificateAssetNames
-            ]
+          pfieldPreimageCertificateAssetName #== pconstant certificateAssetName
+            #&& plengthBS # pfieldPreimageCertificateAssetName #== 27
     , testCase "golden_tier3_certificate_shape_matches_typescript" $
         passertEval $
           pand'List
-            [ pexpectedChunkCount # 16_417 #== 2
+            [ pexpectedChunkCount # 15_665 #== 2
             , pconstant @PInteger (fromIntegral (length goldenTier3ChunkDigests)) #== 2
-            , pfieldPreimageCertificateAssetName # pconstant goldenCertificateTxId # 0
-                #== pconstant (head goldenCertificateAssetNames)
+            , pfieldCommitment # pconstant goldenTier3Preimage
+                #== pconstant (goldenHex "45e6ca4f8a5676fba50a9a43b6d8757b1c683a7796531ccf89331adb46003683")
             ]
     , goldenFieldCase "golden_empty_envelope_matches_typescript" goldenEmptyEnvelope
     , goldenFieldCase "golden_single_item_payload_0_matches_typescript" goldenPayload0
@@ -295,9 +292,8 @@ pbyteStringList = foldr (\value rest -> pcons # pconstant value # rest) pnil
 goldenHex :: String -> BS.ByteString
 goldenHex = Base16.decodeLenient . BS8.pack
 
-goldenEmptyCommitment, goldenCertificateTxId :: BS.ByteString
+goldenEmptyCommitment :: BS.ByteString
 goldenEmptyCommitment = goldenHex "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
-goldenCertificateTxId = goldenHex "1920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2"
 
 goldenArrayHeaders :: [(Integer, BS.ByteString)]
 goldenArrayHeaders =
@@ -330,31 +326,21 @@ goldenWrapperVectors =
 
 goldenTier3Block, goldenTier3Preimage :: BS.ByteString
 goldenTier3Block = goldenHex "565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f"
-goldenTier3Preimage = BS.take 16_417 (BS.concat (replicate 65 goldenTier3Block))
+goldenTier3Preimage = BS.take 15_665 (BS.concat (replicate 65 goldenTier3Block))
 
 goldenTier3Chunks :: [BS.ByteString]
-goldenTier3Chunks = [BS.take 15_900 goldenTier3Preimage, BS.drop 15_900 goldenTier3Preimage]
+goldenTier3Chunks = [BS.take 15_148 goldenTier3Preimage, BS.drop 15_148 goldenTier3Preimage]
 
 goldenTier3ChunkDigests :: [BS.ByteString]
 goldenTier3ChunkDigests =
   map
     goldenHex
-    [ "eabb6cf3843972474294c28713974f244be7335cd05559417f1f5bd061a72e74"
-    , "c7e754df8126357f25157e78b1b1612e400921e11ab80d82c7a55f025e0fbfed"
+    [ "c3b785d45ea8ca1a1d8c825057ffbc73fbc845640c9606e43d7fc2c7b5ae24c4"
+    , "78e30bbc64277987b3c51c26ec62345bfe64e7e4018112b24e1ecff83dd8f9ec"
     ]
 
-goldenCertificateAssetNames :: [BS.ByteString]
-goldenCertificateAssetNames = map goldenHex
-  [ "7df7bbbe2ab0d3756058cf13f94dc275c78dfbd057eb33687a7eb64206e7f170"
-  , "3ff0bc572fec1f90b658fdab128993e808c96a42265f2a7b86da5eac63bd9abb"
-  , "3a71c99091cec28b2cad280faa69795803cf130389440088958d634139d9d3ea"
-  , "73be379009d9471e07389ecf7bf5404604e8ba58f976a06f17e923d259b9c823"
-  , "48103981c2ff91dd4167c8cd21d7b64bd67c38573104a1dbc72e3472962c5510"
-  , "e80980b7a92b8bf56f467fed395348354f50982695dc48393236ddfe961a7b53"
-  , "d147537e4f5c52949346ef1de32ff8458f1f9c243d3484ea140cb42361afb451"
-  , "e4a72ac556e7c0b406a28b899d801d47bdfa4c5507afe561cf9753dced5f1c5e"
-  , "fad6ed39a10e33fa1b9fbcab5da89cf7ddf4b5dcf188d3f2d7768126c5a0d798"
-  ]
+certificateAssetName :: BS.ByteString
+certificateAssetName = "MIDGARD_FIELD_PREIMAGE_CERT"
 
 goldenEmptyEnvelope, goldenPayload0, goldenPayload1, goldenPayload23, goldenPayload24, goldenPayload255, goldenPayload256 :: GoldenField
 goldenEmptyEnvelope = GoldenField [] (goldenHex "80") goldenEmptyCommitment 1 0 []
@@ -511,10 +497,8 @@ constantTests =
           ]
   , testCase "expected_chunk_count aborts on an empty field" $
       pfails $ pexpectedChunkCount # 0
-  , -- The E1 divergence, pinned so that re-cutting K is a deliberate edit and
-    -- not a silent one. See the module header of the port.
-    testCase "chunk_bytes_k is still the pre-erratum 15900" $
-      passertEval $ pchunkBytesK #== 15900
+  , testCase "chunk_bytes_k is the E1-repaired 15148" $
+      passertEval $ pchunkBytesK #== 15148
   ]
 
 --------------------------------------------------------------------------------
@@ -551,34 +535,11 @@ referenceStrides = [40, 40, 0, 30, 30, 0, 0, 103, 0]
 
 assetNameTests :: [TestTree]
 assetNameTests =
-  [ testCase "is blake2b_256 of the field index byte followed by the tx id" $
+  [ testCase "is the constant certificate asset name" $
       passertEval $
-        pand'List
-          [ (pfieldPreimageCertificateAssetName # pconstant txId # pconstant (fromIntegral i))
-            #== pconstant (referenceAssetName txId (fromIntegral i))
-          | i <- [0 .. 8 :: Int]
-          ]
-  , -- The single-byte prefix is domain separation: two fields of one
-    -- transaction must not share a certificate token.
-    testCase "differs between two field indices of the same transaction" $
-      passertEval $
-        pnot
-          #$ (pfieldPreimageCertificateAssetName # pconstant txId # 0)
-          #== (pfieldPreimageCertificateAssetName # pconstant txId # 1)
-  , -- Both bounds are what make the 33-byte preimage unambiguous, so both are
-    -- enforced rather than assumed of the caller.
-    testCase "aborts on a transaction id that is not 32 bytes" $
-      pfails $
-        pfieldPreimageCertificateAssetName # pconstant (BS.replicate 31 0x01) # 0
-  , testCase "aborts on a field index of nine" $
-      pfails $ pfieldPreimageCertificateAssetName # pconstant txId # 9
-  , testCase "aborts on a negative field index" $
-      pfails $ pfieldPreimageCertificateAssetName # pconstant txId # (-1)
+        pfieldPreimageCertificateAssetName #== pconstant certificateAssetName
+          #&& plengthBS # pfieldPreimageCertificateAssetName #== 27
   ]
-
--- | @blake2b_256(field_index_byte ‖ tx_id)@, recomputed from §8.6's erratum.
-referenceAssetName :: BS.ByteString -> Integer -> BS.ByteString
-referenceAssetName tid index = blake2b256 (BS.cons (fromIntegral index) tid)
 
 --------------------------------------------------------------------------------
 -- Positional identity
@@ -892,10 +853,10 @@ tier3Tests =
       pfails $ pfieldItemCount # openCertified defaultCert {cDatumTxId = Just otherTxId}
   , testCase "aborts when the certificate names another field" $
       pfails $ pfieldItemCount # openCertified defaultCert {cDatumFieldIndex = Just 4}
+  , testCase "aborts when the certificate welds another field hash" $
+      pfails $ pfieldItemCount # openCertified defaultCert {cDatumFieldHash = Just (hash32 0x42)}
   , testCase "aborts when the certificate input holds no certificate token" $
       pfails $ pfieldItemCount # openCertified defaultCert {cTokenPolicy = Just otherPolicy}
-  , testCase "aborts when the certificate token names another field" $
-      pfails $ pfieldItemCount # openCertified defaultCert {cTokenFieldIndex = Just 4}
   , testCase "aborts when the certificate input has no inline datum" $
       pfails $ pfieldItemCount # openCertified defaultCert {cInlineDatum = False}
   , testCase "aborts on a negative certificate reference-input index" $
@@ -1120,7 +1081,7 @@ verifiedT body =
             PNativeTxCompact
               { pcompact'body = bodyT body
               , pcompact'witnessSetHash = pconstant (wsHashOf defaultWitnessSet)
-              , pcompact'validityCode = 3
+              , pcompact'validityCode = 1
               }
       }
 
@@ -1262,8 +1223,8 @@ data Cert = Cert
   , cCertIndex :: Integer
   , cDatumTxId :: Maybe BS.ByteString
   , cDatumFieldIndex :: Maybe Integer
+  , cDatumFieldHash :: Maybe BS.ByteString
   , cTokenPolicy :: Maybe CurrencySymbol
-  , cTokenFieldIndex :: Maybe Integer
   , cInlineDatum :: Bool
   }
 
@@ -1279,8 +1240,8 @@ certFor fieldIndex preimage =
     , cCertIndex = 0
     , cDatumTxId = Nothing
     , cDatumFieldIndex = Nothing
+    , cDatumFieldHash = Nothing
     , cTokenPolicy = Nothing
-    , cTokenFieldIndex = Nothing
     , cInlineDatum = True
     }
 
@@ -1342,12 +1303,7 @@ certRefIn c =
             <> singleton
               (maybe certificatePolicy id (cTokenPolicy c))
               ( TokenName
-                  ( toBuiltin
-                      ( referenceAssetName
-                          txId
-                          (maybe (cFieldIndex c) id (cTokenFieldIndex c))
-                      )
-                  )
+                  (toBuiltin certificateAssetName)
               )
               1
         )
@@ -1364,6 +1320,7 @@ certRefIn c =
         [ PD.B (BS.replicate 28 0x31)
         , PD.B (maybe txId id (cDatumTxId c))
         , PD.I (maybe (cFieldIndex c) id (cDatumFieldIndex c))
+        , PD.B (maybe (blake2b256 (cPreimage c)) id (cDatumFieldHash c))
         , PD.I
             ( maybe (fromIntegral (BS.length (cPreimage c))) id (cTotalLength c)
             )
@@ -1587,7 +1544,7 @@ chunksOf bytes
 
 -- | @env@-free copy of K, so the fixtures do not read the constant under test.
 pchunkBytesKRef :: Integer
-pchunkBytesKRef = 15900
+pchunkBytesKRef = 15148
 
 --------------------------------------------------------------------------------
 -- Reference CBOR and hashing

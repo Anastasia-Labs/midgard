@@ -25,7 +25,6 @@ import Plutarch.LedgerApi.V3 (
   PTxInInfo (..),
   PTxInfo (..),
   PTxOut (..),
-  PTxOutRef,
  )
 import Plutarch.LedgerApi.Value qualified as Value
 import Plutarch.Monadic qualified as P
@@ -37,36 +36,38 @@ import Midgard.Common.Utils (PAssetTriplet (..), pgetRedeemerAt, pgetSingleAsset
 import Midgard.HubOracle (PHubOracleDatum (..))
 import Midgard.HubOracle qualified as Hub
 import Midgard.LedgerState (PTxOrderPayloadV1)
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
 import Midgard.Settlement (PSettlementDatum (..), pvalidCountedMembership)
 import Midgard.Settlement qualified as Settlement
 import Midgard.TransitionTrace (PRootDomain (..))
-import Midgard.UserEvents (PMintRedeemer (..), pvalidateMint)
+import Midgard.UserEvents (pvalidateMint)
+import Midgard.UserEvents qualified as UserEvents
 import Midgard.UserEvents.TxOrder (
+  PMintRedeemer (..),
   PSpendRedeemer (..),
   PTxOrderDatum (..),
   pforcedInclusionKeyValue,
-  pverifyOrderReceipts,
+  pmaterialCarriageMatchesEvent,
+  pverifyOrderMaterial,
  )
 
 {- | Aiken @validators/user-events/tx-order-v1.ak@ — @mint@.
 
 The shared user-event policy authenticates the nonce, witness registration,
-hub-selected address and output datum. The order-specific callback pins the
-output to its single event NFT and requires either an empty material directory
-or the exact terminal receipt named by the payload.
+hub-selected address and output datum. The order-specific wrapper additionally
+carries §8 material carriage for every non-empty transaction field.
 -}
 txOrderMintValidator ::
   forall (s :: S).
   Term
     s
     ( PAsData PScriptHash
-        :--> PAsData PScriptHash
         :--> PAsData PCurrencySymbol
         :--> PScriptContext
         :--> PUnit
     )
 txOrderMintValidator =
-  plam $ \hubOracle receiptScriptHash fieldReceiptPolicyId ctx -> P.do
+  plam $ \hubOracle fieldPreimageCertificatePolicyId ctx -> P.do
     PScriptContext {pscriptContext'txInfo, pscriptContext'redeemer, pscriptContext'scriptInfo} <-
       pmatch ctx
     ownPolicy <-
@@ -87,36 +88,31 @@ txOrderMintValidator =
     redeemer <-
       plet $
         pfromData (punsafeCoerce @(PAsData PMintRedeemer) (pto pscriptContext'redeemer))
-    nonceInputIndex <-
-      plet $
-        pmatch redeemer $ \case
-          PAuthenticateEvent {pauthenticate'nonceInputIndex} ->
-            pfromData pauthenticate'nonceInputIndex
-          _ -> perror
-    PTxInInfo {ptxInInfo'outRef = txOrderId} <-
-      pmatch $ pfromData (pelemAt # nonceInputIndex # inputs)
+    PMintRedeemer {ptxOrderMint'event, ptxOrderMint'materialCarriage} <- pmatch redeemer
+    event <- plet (pfromData ptxOrderMint'event)
+    materialCarriage <- plet (pfromData ptxOrderMint'materialCarriage)
     pif
-      ( pvalidateMint
-          hubOracle
-          ( \hubDatum ->
-              pmatch hubDatum $ \PHubOracleDatum {phubOracle'txOrderAddr} ->
-                phubOracle'txOrderAddr
-          )
-          redeemer
-          ownPolicy
-          inputs
-          (pfromData ptxInfo'outputs)
-          referenceInputs
-          ptxInfo'validRange
-          (pfromData ptxInfo'mint)
-          (pto (pto (pfromData ptxInfo'redeemers)))
-          ( ptxOrderEventValidator
-              ownPolicy
-              referenceInputs
-              receiptScriptHash
-              fieldReceiptPolicyId
-              (pdata txOrderId)
-          )
+      ( pmaterialCarriageMatchesEvent # event # materialCarriage
+          #&& pvalidateMint
+            hubOracle
+            ( \hubDatum ->
+                pmatch hubDatum $ \PHubOracleDatum {phubOracle'txOrderAddr} ->
+                  phubOracle'txOrderAddr
+            )
+            event
+            ownPolicy
+            inputs
+            (pfromData ptxInfo'outputs)
+            referenceInputs
+            ptxInfo'validRange
+            (pfromData ptxInfo'mint)
+            (pto (pto (pfromData ptxInfo'redeemers)))
+            ( ptxOrderEventValidator
+                ownPolicy
+                referenceInputs
+                fieldPreimageCertificatePolicyId
+                materialCarriage
+            )
       )
       (pconstant ())
       perror
@@ -125,9 +121,8 @@ ptxOrderEventValidator ::
   forall (s :: S).
   Term s (PAsData PCurrencySymbol) ->
   Term s (PBuiltinList (PAsData PTxInInfo)) ->
-  Term s (PAsData PScriptHash) ->
   Term s (PAsData PCurrencySymbol) ->
-  Term s (PAsData PTxOutRef) ->
+  Term s (PBuiltinList (PAsData PFieldCarriageV1)) ->
   Term s (PAsData PTokenName) ->
   Term s PData ->
   Term s PData ->
@@ -135,9 +130,8 @@ ptxOrderEventValidator ::
 ptxOrderEventValidator
   ownPolicy
   referenceInputs
-  receiptScriptHash
-  fieldReceiptPolicyId
-  txOrderId
+  fieldPreimageCertificatePolicyId
+  materialCarriage
   l1Id
   outputValueData
   txOrderPayloadData = P.do
@@ -152,13 +146,11 @@ ptxOrderEventValidator
       [ passetTriplet'policy #== ownPolicy
       , passetTriplet'name #== l1Id
       , pfromData passetTriplet'amount #== 1
-      , pverifyOrderReceipts
-          # referenceInputs
-          # receiptScriptHash
-          # fieldReceiptPolicyId
-          # ownPolicy
-          # txOrderId
+      , pverifyOrderMaterial
           # payload
+          # materialCarriage
+          # referenceInputs
+          # fieldPreimageCertificatePolicyId
       ]
 
 {- | Aiken @validators/user-events/tx-order-v1.ak@ — @spend@.
@@ -234,7 +226,7 @@ txOrderSpendValidator = plam $ \hubOracle ctx -> P.do
     plet $
       pmatch
         ( pfromData
-            ( punsafeCoerce @(PAsData PMintRedeemer)
+            ( punsafeCoerce @(PAsData UserEvents.PMintRedeemer)
                 ( pto
                     ( pfromData
                         ( pgetRedeemerAt
@@ -247,7 +239,8 @@ txOrderSpendValidator = plam $ \hubOracle ctx -> P.do
             )
         )
         $ \case
-          PBurnEventNFT {pburnEvent'nonceAssetName} -> pburnEvent'nonceAssetName
+          UserEvents.PBurnEventNFT {UserEvents.pburnEvent'nonceAssetName} ->
+            pburnEvent'nonceAssetName
           _ -> perror
 
   let (txOrderId, forcedInclusionTx) =

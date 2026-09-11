@@ -5,7 +5,6 @@
 module Types.Classes where
 
 import Data.Kind (Type)
-import Plutarch.Internal.Term (S)
 import Plutarch.Prelude
 
 class ScottConvertible (a :: S -> Type) where

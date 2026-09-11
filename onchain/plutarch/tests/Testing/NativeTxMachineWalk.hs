@@ -57,8 +57,8 @@ import PlutusLedgerApi.V3 (
   TxOut (..),
   TxOutRef (..),
  )
-import PlutusTx.Builtins qualified as Builtins
 import PlutusTx.Builtins (dataToBuiltinData, fromBuiltin, toBuiltin)
+import PlutusTx.Builtins qualified as Builtins
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -80,18 +80,26 @@ import Midgard.FraudProofs.NativeTx.Types (
 import Midgard.NativeTxFieldAccess (
   PFieldCarriageV1 (..),
   PFieldViewV1,
-  pfieldItemExtent,
   pfieldItemCount,
+  pfieldItemExtent,
   pmaximumCardanoSpendRedeemerCount,
   pspendInputItemBytes,
   pspendInputStride,
  )
 import Midgard.NativeTxMachineWalk (
+  PFieldGrammarCheckpointV1,
   PFieldWalkCheckpointV1,
+  pcertifyFieldGrammar,
+  pencodeFieldGrammarCheckpoint,
   pencodeFieldWalkCheckpoint,
+  pfieldGrammarCheckpointBytes,
+  pfieldGrammarIsComplete,
   pfieldWalkCheckpointBytes,
   pfieldWalkCheckpointHash,
+  popenCertifiedFieldWalkFromGrammarCommitment,
+  popenFieldGrammarCertification,
   popenFieldWalk,
+  presumeFieldGrammarCertificationFromCommitment,
   presumeFieldWalkFromCommitment,
   pspendInputAt,
   pspendInputCount,
@@ -119,6 +127,7 @@ tests =
     , testGroup "§10.3 the checkpoint wire form" wireTests
     , testGroup "§10.1 opening" openTests
     , testGroup "§10.4 advancing" advanceTests
+    , testGroup "§10.2 grammar certification" grammarTests
     , testGroup "§10.2 resuming through the commitment" resumeTests
     , testGroup "§10.4 the step's own guards" stepGuardTests
     , testGroup "§10.5 the spend-input shortcut" spendInputTests
@@ -147,94 +156,106 @@ authenticateOnceTests =
 authenticateOnceOneOpenOneRead :: forall s. Term s PBool
 authenticateOnceOneOpenOneRead =
   pmatch aikenAuthenticateSource $ \(PPair verified witnessSet) ->
-  pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
-  pmatch (pwalkNext # view # start) $ \(PPair item next) ->
-    item #== pconstant (aikenInputItem 0x44 0)
-      #&& pwalkRemaining # next #== 63
+    pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
+      pmatch (pwalkNext # view # start) $ \(PPair item next) ->
+        item
+          #== pconstant (aikenInputItem 0x44 0)
+          #&& pwalkRemaining
+          # next
+          #== 63
 
 authenticateOnceOneOpenEveryRead :: forall s. Term s PBool
 authenticateOnceOneOpenEveryRead =
   pmatch aikenAuthenticateSource $ \(PPair verified witnessSet) ->
-  pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
-  pmatch (walkFoldAiken view start 64 0) $ \(PPair total done) ->
-    pwalkIsComplete # done
-      #&& total #== (expectedAuthenticateTally # 0 # 0 # 64)
+    pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
+      pmatch (walkFoldAiken view start 64 0) $ \(PPair total done) ->
+        pwalkIsComplete
+          # done
+          #&& total
+          #== (expectedAuthenticateTally # 0 # 0 # 64)
 
 authenticateOnceReopenPerItem :: forall s. Term s PBool
 authenticateOnceReopenPerItem =
   pmatch aikenAuthenticateSource $ \(PPair verified witnessSet) ->
-  plet
-    ( pfix $ \self -> plam $ \index state ->
-        pif
-          (index #>= 64)
-          state
-          ( pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
-            plet (pwalkSkip # view # start # index) $ \checkpoint ->
-            pmatch (pwalkNext # view # checkpoint) $ \(PPair item _next) ->
-              self # (index + 1) # (aikenWalkTally state index item)
-          )
-    )
-    $ \reopenEach ->
-      reopenEach # 0 # 0 #== (expectedAuthenticateTally # 0 # 0 # 64)
+    plet
+      ( pfix $ \self -> plam $ \index state ->
+          pif
+            (index #>= 64)
+            state
+            ( pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
+                plet (pwalkSkip # view # start # index) $ \checkpoint ->
+                  pmatch (pwalkNext # view # checkpoint) $ \(PPair item _next) ->
+                    self # (index + 1) # (aikenWalkTally state index item)
+            )
+      )
+      $ \reopenEach ->
+        reopenEach # 0 # 0 #== (expectedAuthenticateTally # 0 # 0 # 64)
 
 authenticateOnceOneOpenEveryRelocation :: forall s. Term s PBool
 authenticateOnceOneOpenEveryRelocation =
   pmatch aikenAuthenticateSource $ \(PPair verified witnessSet) ->
-  pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
-  plet
-    ( pfix $ \self -> plam $ \index state ->
-        pif
-          (index #>= 64)
-          state
-          ( plet (pwalkSkip # view # start # index) $ \checkpoint ->
-            pmatch (pwalkNext # view # checkpoint) $ \(PPair item _next) ->
-              self # (index + 1) # (aikenWalkTally state index item)
-          )
-    )
-    $ \relocateEach ->
-      relocateEach # 0 # 0 #== (expectedAuthenticateTally # 0 # 0 # 64)
+    pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
+      plet
+        ( pfix $ \self -> plam $ \index state ->
+            pif
+              (index #>= 64)
+              state
+              ( plet (pwalkSkip # view # start # index) $ \checkpoint ->
+                  pmatch (pwalkNext # view # checkpoint) $ \(PPair item _next) ->
+                    self # (index + 1) # (aikenWalkTally state index item)
+              )
+        )
+        $ \relocateEach ->
+          relocateEach # 0 # 0 #== (expectedAuthenticateTally # 0 # 0 # 64)
 
 authenticateOnceHoldsUnderTierTwo :: forall s. Term s PBool
 authenticateOnceHoldsUnderTierTwo =
   pmatch aikenAuthenticateSource $ \(PPair verified witnessSet) ->
-  pmatch
-    ( popenFieldWalk
-        # verified # witnessSet # 0
-        # pcon (PRawUtxo (pdata 0))
-        # inputsT aikenTierTwoReferenceInputs
-        # pdata (pconstant aikenCertificatePolicy)
-    )
-    $ \(PPair view start) ->
-  pmatch (walkFoldAiken view start 64 0) $ \(PPair total done) ->
-    pwalkIsComplete # done
-      #&& total #== (expectedAuthenticateTally # 0 # 0 # 64)
+    pmatch
+      ( popenFieldWalk
+          # verified
+          # witnessSet
+          # 0
+          # pcon (PRawUtxo (pdata 0))
+          # inputsT aikenTierTwoReferenceInputs
+          # pdata (pconstant aikenCertificatePolicy)
+      )
+      $ \(PPair view start) ->
+        pmatch (walkFoldAiken view start 64 0) $ \(PPair total done) ->
+          pwalkIsComplete
+            # done
+            #&& total
+            #== (expectedAuthenticateTally # 0 # 0 # 64)
 
 authenticateOnceHoldsUnderTierThree :: forall s. Term s PBool
 authenticateOnceHoldsUnderTierThree =
   pmatch (aikenInputSource aikenTierThreePreimage) $ \(PPair verified witnessSet) ->
-  pmatch
-    ( popenFieldWalk
-        # verified # witnessSet # 0
-        # pcon
-          ( PCertified
-              { pcertified'certRefInputIndex = pdata 0
-              , pcertified'chunkRefInputIndices = pdata (pconstant [1, 2 :: Integer])
-              }
-          )
-        # inputsT aikenTierThreeReferenceInputs
-        # pdata (pconstant aikenCertificatePolicy)
-    )
-    $ \(PPair view start) ->
-  plet (pwalkSkip # view # start # (pconstant aikenTierThreeItemCount - 1)) $ \checkpoint ->
-  pmatch (pwalkNext # view # checkpoint) $ \(PPair item done) ->
-    pand'List
-      [ (plengthBS # pconstant aikenTierThreePreimage) #> pconstant (fromIntegral chunkBytesK :: Integer)
-      , (pspendInputCount # view) #== pconstant aikenTierThreeItemCount
-      , item #== pconstant (aikenInputItem 0x44 0)
-      , pwalkIsComplete # done
-      ]
+    pmatch
+      ( popenFieldWalk
+          # verified
+          # witnessSet
+          # 0
+          # pcon
+            ( PCertified
+                { pcertified'certRefInputIndex = pdata 0
+                , pcertified'chunkRefInputIndices = pdata (pconstant [1, 2 :: Integer])
+                }
+            )
+          # inputsT aikenTierThreeReferenceInputs
+          # pdata (pconstant aikenCertificatePolicy)
+      )
+      $ \(PPair view start) ->
+        plet (pwalkSkip # view # start # (pconstant aikenTierThreeItemCount - 1)) $ \checkpoint ->
+          pmatch (pwalkNext # view # checkpoint) $ \(PPair item done) ->
+            pand'List
+              [ (plengthBS # pconstant aikenTierThreePreimage) #> pconstant (fromIntegral chunkBytesK :: Integer)
+              , (pspendInputCount # view) #== pconstant aikenTierThreeItemCount
+              , item #== pconstant (aikenInputItem 0x44 0)
+              , pwalkIsComplete # done
+              ]
 
-expectedAuthenticateTally :: forall s.
+expectedAuthenticateTally ::
+  forall s.
   Term s (PInteger :--> PInteger :--> PInteger :--> PInteger)
 expectedAuthenticateTally = phoistAcyclic $
   pfix $ \self -> plam $ \state index remaining ->
@@ -256,59 +277,85 @@ expectedAuthenticateTally = phoistAcyclic $
               # (remaining - 1)
       )
 
-aikenWalkTally :: forall s.
+aikenWalkTally ::
+  forall s.
   Term s PInteger -> Term s PInteger -> Term s PByteString -> Term s PInteger
 aikenWalkTally state index item =
   state * 31 + (index + 1) * (plengthBS # item) + (pbyteAt # item # 0)
 
-aikenAuthenticateSource :: forall s.
+aikenAuthenticateSource ::
+  forall s.
   Term s (PPair PVerifiedMidgardNativeTxCompact PNativeTxWitnessSetCompact)
 aikenAuthenticateSource = aikenInputSource (fPreimage aikenAuthenticateField)
 
-aikenInputSource :: forall s.
+aikenInputSource ::
+  forall s.
   BS.ByteString ->
   Term s (PPair PVerifiedMidgardNativeTxCompact PNativeTxWitnessSetCompact)
 aikenInputSource preimage =
   plet (pconstant preimage) $ \preimageCbor ->
-  plet (pblake2b_256 # preimageCbor) $ \fieldCommitment ->
-  plet
-    ( pcon $ PNativeTxWitnessSetCompact
-        (pdata aikenZero32) (pdata aikenZero32) (pdata aikenZero32)
-    )
-    $ \witnessSet ->
-  plet (Compact.pencodeNativeTxWitnessSetCompact # witnessSet) $ \witnessSetCbor ->
-  plet
-    ( pcon $ PNativeTxBodyCompact
-        fieldCommitment aikenZero32 aikenZero32 0 (-1) (-1)
-        aikenZero32 aikenZero32 aikenZero32 aikenZero32 aikenZero32 255
-    )
-    $ \body ->
-  plet
-    (pcon $ PNativeTxCompact body (pblake2b_256 # witnessSetCbor) 0)
-    $ \compact ->
-      pcon $ PPair
-        ( pcon $ PVerifiedMidgardNativeTxCompact
-            (pconstant aikenSampleTxId) 1 compact
+    plet (pblake2b_256 # preimageCbor) $ \fieldCommitment ->
+      plet
+        ( pcon $
+            PNativeTxWitnessSetCompact
+              (pdata aikenZero32)
+              (pdata aikenZero32)
+              (pdata aikenZero32)
         )
-        witnessSet
+        $ \witnessSet ->
+          plet (Compact.pencodeNativeTxWitnessSetCompact # witnessSet) $ \witnessSetCbor ->
+            plet
+              ( pcon $
+                  PNativeTxBodyCompact
+                    fieldCommitment
+                    aikenZero32
+                    aikenZero32
+                    0
+                    (-1)
+                    (-1)
+                    aikenZero32
+                    aikenZero32
+                    aikenZero32
+                    aikenZero32
+                    aikenZero32
+                    255
+              )
+              $ \body ->
+                plet
+                  (pcon $ PNativeTxCompact body (pblake2b_256 # witnessSetCbor) 0)
+                  $ \compact ->
+                    pcon $
+                      PPair
+                        ( pcon $
+                            PVerifiedMidgardNativeTxCompact
+                              (pconstant aikenSampleTxId)
+                              1
+                              compact
+                        )
+                        witnessSet
 
-aikenAuthenticateOpenFrom :: forall s.
+aikenAuthenticateOpenFrom ::
+  forall s.
   Term s PVerifiedMidgardNativeTxCompact ->
   Term s PNativeTxWitnessSetCompact ->
   Term s (PPair PFieldViewV1 PFieldWalkCheckpointV1)
 aikenAuthenticateOpenFrom verified witnessSet =
   aikenInputOpenFrom (fPreimage aikenAuthenticateField) verified witnessSet
 
-aikenInputOpenFrom :: forall s.
+aikenInputOpenFrom ::
+  forall s.
   BS.ByteString ->
   Term s PVerifiedMidgardNativeTxCompact ->
   Term s PNativeTxWitnessSetCompact ->
   Term s (PPair PFieldViewV1 PFieldWalkCheckpointV1)
 aikenInputOpenFrom preimage verified witnessSet =
   popenFieldWalk
-    # verified # witnessSet # 0
+    # verified
+    # witnessSet
+    # 0
     # pcon (PInline (pdata $ pconstant preimage))
-    # pnil # pdata (pconstant aikenCertificatePolicy)
+    # pnil
+    # pdata (pconstant aikenCertificatePolicy)
 
 aikenZero32 :: forall s. Term s PByteString
 aikenZero32 = pconstant $ BS.replicate 32 0
@@ -332,7 +379,7 @@ wireTests =
       passertEval $
         pand'List
           [ (plengthBS # (pencodeFieldWalkCheckpoint # checkpoint))
-            #== pfieldWalkCheckpointBytes
+              #== pfieldWalkCheckpointBytes
           | checkpoint <- assortedCheckpoints
           ]
   , testCase "checkpoint_wire_form_is_constant_at_the_spend_input_maximum" $
@@ -370,32 +417,32 @@ noPreimageBytesReachFixedCheckpoint =
   pmatch
     (walkFoldAiken (viewOf aikenDisjointInputFieldA) (startOf aikenDisjointInputFieldA) 5 0)
     $ \(PPair _ pausedA) ->
-  pmatch
-    (walkFoldAiken (viewOf aikenDisjointInputFieldB) (startOf aikenDisjointInputFieldB) 5 0)
-    $ \(PPair _ pausedB) ->
-    pand'List
-      [ pconstant inputItemsAreContentDisjoint
-      , (plengthBS # pconstant (fPreimage aikenDisjointInputFieldA))
-          #== (plengthBS # pconstant (fPreimage aikenDisjointInputFieldB))
-      , (pencodeFieldWalkCheckpoint # pausedA)
-          #== (pencodeFieldWalkCheckpoint # pausedB)
-      , (pfieldWalkCheckpointHash # pausedA)
-          #== (pfieldWalkCheckpointHash # pausedB)
-      ]
+      pmatch
+        (walkFoldAiken (viewOf aikenDisjointInputFieldB) (startOf aikenDisjointInputFieldB) 5 0)
+        $ \(PPair _ pausedB) ->
+          pand'List
+            [ pconstant inputItemsAreContentDisjoint
+            , (plengthBS # pconstant (fPreimage aikenDisjointInputFieldA))
+                #== (plengthBS # pconstant (fPreimage aikenDisjointInputFieldB))
+            , (pencodeFieldWalkCheckpoint # pausedA)
+                #== (pencodeFieldWalkCheckpoint # pausedB)
+            , (pfieldWalkCheckpointHash # pausedA)
+                #== (pfieldWalkCheckpointHash # pausedB)
+            ]
 
 noPreimageBytesReachVariableCheckpoint :: forall s. Term s PBool
 noPreimageBytesReachVariableCheckpoint =
   pmatch (foldAikenWalk (startOf aikenWalkField) 11 0) $ \(PPair _ pausedA) ->
-  pmatch
-    (walkFoldAiken (viewOf aikenOtherWalkField) (startOf aikenOtherWalkField) 11 0)
-    $ \(PPair _ pausedB) ->
-    pand'List
-      [ pconstant scriptItemsAreContentDisjoint
-      , (plengthBS # pconstant (fPreimage aikenWalkField))
-          #== (plengthBS # pconstant (fPreimage aikenOtherWalkField))
-      , (pencodeFieldWalkCheckpoint # pausedA)
-          #== (pencodeFieldWalkCheckpoint # pausedB)
-      ]
+    pmatch
+      (walkFoldAiken (viewOf aikenOtherWalkField) (startOf aikenOtherWalkField) 11 0)
+      $ \(PPair _ pausedB) ->
+        pand'List
+          [ pconstant scriptItemsAreContentDisjoint
+          , (plengthBS # pconstant (fPreimage aikenWalkField))
+              #== (plengthBS # pconstant (fPreimage aikenOtherWalkField))
+          , (pencodeFieldWalkCheckpoint # pausedA)
+              #== (pencodeFieldWalkCheckpoint # pausedB)
+          ]
 
 -- | Checkpoints from four fields under two tiers, at assorted positions.
 assortedCheckpoints :: forall s. [Term s PFieldWalkCheckpointV1]
@@ -434,7 +481,8 @@ openTests =
           , pnot #$ pwalkIsComplete # startOf hash28Field
           ]
   , testCase "carries the field index the walk was opened on" $
-      passertEval $ (pwalkFieldIndex # startOf variableField) #== 6
+      passertEval $
+        (pwalkFieldIndex # startOf variableField) #== 6
   , -- An empty field is complete the moment it opens: §5.1 leaves no trailing
     -- bytes, so its one admissible offset is already `total_length`.
     testCase "an empty field opens complete" $
@@ -446,9 +494,11 @@ openTests =
   , -- A variable-width field under tier-3 carriage has no authenticated item
     -- count, and the walk does not work around it.
     testCase "aborts opening a variable-width field under tier 3" $
-      pfails $ pwalkNextItemIndex #$ startOf bigVariableCertifiedField
+      pfails $
+        pwalkNextItemIndex #$ startOf bigVariableCertifiedField
   , testCase "opens a fixed-stride field under tier 3" $
-      passertEval $ (pwalkRemaining # startOf bigCertifiedField) #== 600
+      passertEval $
+        (pwalkRemaining # startOf bigCertifiedField) #== 600
   ]
 
 --------------------------------------------------------------------------------
@@ -470,9 +520,11 @@ advanceTests =
           | i <- [0 .. 1]
           ]
   , testCase "the last advance lands complete" $
-      passertEval $ pwalkIsComplete #$ advancedBy 3 hash28Field
+      passertEval $
+        pwalkIsComplete #$ advancedBy 3 hash28Field
   , testCase "aborts on a step past the last item" $
-      pfails $ advancedBy 4 hash28Field
+      pfails $
+        advancedBy 4 hash28Field
   , -- The budget is what makes a walk interruptible.
     testCase "a zero budget returns the state and the position unchanged" $
       passertEval $
@@ -504,7 +556,8 @@ advanceTests =
             , pwalkIsComplete # checkpoint
             ]
   , testCase "aborts on a negative budget" $
-      pfails $ foldFrom hash28Field (startOf hash28Field) (-1)
+      pfails $
+        foldFrom hash28Field (startOf hash28Field) (-1)
   , -- §10.4: for a fixed-stride field relocation is one multiplication, and it
     -- has to land exactly where walking would.
     testCase "an arithmetic skip lands where walking lands" $
@@ -516,17 +569,21 @@ advanceTests =
         (pencodeFieldWalkCheckpoint #$ pwalkSkip # viewOf variableField # startOf variableField # 2)
           #== (pencodeFieldWalkCheckpoint #$ advancedBy 2 variableField)
   , testCase "variable_width_skip_to_index_1" $
-      passertEval $ variableWidthSkipTo 1
+      passertEval $
+        variableWidthSkipTo 1
   , testCase "variable_width_skip_to_index_19" $
-      passertEval $ variableWidthSkipTo 19
+      passertEval $
+        variableWidthSkipTo 19
   , testCase "a zero skip is the identity" $
       passertEval $
         (pencodeFieldWalkCheckpoint #$ pwalkSkip # viewOf hash28Field # startOf hash28Field # 0)
           #== (pencodeFieldWalkCheckpoint # startOf hash28Field)
   , testCase "aborts on a skip past the last item" $
-      pfails $ pwalkSkip # viewOf hash28Field # startOf hash28Field # 4
+      pfails $
+        pwalkSkip # viewOf hash28Field # startOf hash28Field # 4
   , testCase "aborts on a negative skip" $
-      pfails $ pwalkSkip # viewOf hash28Field # startOf hash28Field # (-1)
+      pfails $
+        pwalkSkip # viewOf hash28Field # startOf hash28Field # (-1)
   ]
 
 variableWidthSkipTo :: forall s. Integer -> Term s PBool
@@ -590,44 +647,56 @@ resumeTests =
   , -- §10.6: the digest is what pins the position, so bytes that do not hash to
     -- the thread's commitment are not a position at all.
     testCase "rejects wire bytes that do not hash to the commitment" $
-      pfails $ resumeWithCommitment hash28Field honestMidWalk (BS.replicate 32 0xff)
+      pfails $
+        resumeWithCommitment hash28Field honestMidWalk (BS.replicate 32 0xff)
   , testCase "rejects wire bytes of the wrong length" $
-      pfails $ resume hash28Field (BS.take 52 honestMidWalk)
+      pfails $
+        resume hash28Field (BS.take 52 honestMidWalk)
   , -- §6.1: re-encoding the decoded value and demanding the input back is both
     -- the canonicity check and the range check.
     testCase "rejects a non-canonical wire form" $
-      pfails $ resume hash28Field (patchByte 0 0x87 honestMidWalk)
+      pfails $
+        resume hash28Field (patchByte 0 0x87 honestMidWalk)
   , testCase "rejects a wire form whose scalar wrappers are wrong" $
-      pfails $ resume hash28Field (patchByte 37 0x44 honestMidWalk)
+      pfails $
+        resume hash28Field (patchByte 37 0x44 honestMidWalk)
   , -- Identity: a checkpoint cannot be replayed against another transaction or
     -- pointed at another of §2.5's nine slots.
     testCase "rejects a checkpoint for another transaction" $
-      pfails $ resume hash28Field (patchTxId otherTxId honestMidWalk)
+      pfails $
+        resume hash28Field (patchTxId otherTxId honestMidWalk)
   , testCase "rejects a checkpoint naming another field index" $
-      pfails $ resume hash28Field (patchScalar wireFieldIndexAt 1 4 honestMidWalk)
+      pfails $
+        resume hash28Field (patchScalar wireFieldIndexAt 1 4 honestMidWalk)
   , -- Shape: a checkpoint from a differently-shaped carriage of the same field
     -- cannot be resumed.
     testCase "rejects a total length that is not the view's" $
-      pfails $ resume hash28Field (patchScalar wireTotalLengthAt 3 92 honestMidWalk)
+      pfails $
+        resume hash28Field (patchScalar wireTotalLengthAt 3 92 honestMidWalk)
   , testCase "rejects an item count that is not the view's" $
-      pfails $ resume hash28Field (patchScalar wireItemCountAt 3 4 honestMidWalk)
+      pfails $
+        resume hash28Field (patchScalar wireItemCountAt 3 4 honestMidWalk)
   , -- §10.2: on a fixed-stride field the offset is a function of the index
     -- alone, so a forged one cannot survive.
     testCase "resume_rejects_a_forged_fixed_stride_offset" $
-      pfails $ resume hash28Field (patchScalar wireNextOffsetAt 3 32 honestMidWalk)
+      pfails $
+        resume hash28Field (patchScalar wireNextOffsetAt 3 32 honestMidWalk)
   , -- The live one of the four bounds. The header of this field is two bytes
     -- and its second byte is itself a decodable §5.1 head, so a position aimed
     -- inside the array header would otherwise find something to read.
     testCase "resume_rejects_an_offset_inside_the_array_header" $
-      pfails $ resume headerAliasField headerAliasForged
+      pfails $
+        resume headerAliasField headerAliasForged
   , -- §5.1 leaves no trailing bytes, so a finished walk has exactly one
     -- admissible offset. This branch reads no bytes at all.
     testCase "resume_rejects_a_walk_that_declares_itself_finished_early" $
-      pfails $ resume hash28Field (patchScalar wireNextOffsetAt 3 61 finishedWalk)
+      pfails $
+        resume hash28Field (patchScalar wireNextOffsetAt 3 61 finishedWalk)
   , -- The O(1) half of what a variable-width position can be held to: the head
     -- at the offset must decode and its item must end inside the field.
     testCase "resume_rejects_a_position_whose_item_runs_past_the_field" $
-      pfails $ resume overrunField overrunForged
+      pfails $
+        resume overrunField overrunForged
   , testCase "accepts the same variable-width position at an honest offset" $
       passertEval $
         pmatch (resume overrunField (walkBytes overrunField 1)) $ \(PPair _view checkpoint) ->
@@ -637,67 +706,69 @@ resumeTests =
 resumeFinishesAcrossCarriageChange :: forall s. Term s PBool
 resumeFinishesAcrossCarriageChange =
   pmatch (foldAikenWalk (startOf aikenWalkField) 7 0) $ \(PPair partial paused) ->
-  pmatch (resumeRawAt aikenWalkField paused) $ \(PPair resumedView resumed) ->
-  pmatch
-    ( walkFoldAiken resumedView resumed 13 partial )
-    $ \(PPair total done) ->
-  pmatch (foldAikenWalk (startOf aikenWalkField) 20 0) $ \(PPair uninterrupted uninterruptedDone) ->
-    pand'List
-      [ pnot #$ pwalkIsComplete # paused
-      , pwalkRemaining # paused #== 13
-      , pwalkIsComplete # done
-      , pwalkIsComplete # uninterruptedDone
-      , total #== uninterrupted
-      ]
+    pmatch (resumeRawAt aikenWalkField paused) $ \(PPair resumedView resumed) ->
+      pmatch
+        (walkFoldAiken resumedView resumed 13 partial)
+        $ \(PPair total done) ->
+          pmatch (foldAikenWalk (startOf aikenWalkField) 20 0) $ \(PPair uninterrupted uninterruptedDone) ->
+            pand'List
+              [ pnot #$ pwalkIsComplete # paused
+              , pwalkRemaining # paused #== 13
+              , pwalkIsComplete # done
+              , pwalkIsComplete # uninterruptedDone
+              , total #== uninterrupted
+              ]
 
 resumeSurvivesTwoInterruptions :: forall s. Term s PBool
 resumeSurvivesTwoInterruptions =
   pmatch (foldAikenWalk (startOf aikenWalkField) 4 0) $ \(PPair stateOne pauseOne) ->
-  pmatch (resumeAtTerm aikenWalkField pauseOne) $ \(PPair viewTwo resumeOne) ->
-  pmatch (walkFoldAiken viewTwo resumeOne 9 stateOne) $ \(PPair stateTwo pauseTwo) ->
-  pmatch (resumeAtTerm aikenWalkField pauseTwo) $ \(PPair viewThree resumeTwo) ->
-  pmatch (walkFoldAiken viewThree resumeTwo 7 stateTwo) $ \(PPair total done) ->
-  pmatch (foldAikenWalk (startOf aikenWalkField) 20 0) $ \(PPair uninterrupted uninterruptedDone) ->
-    pand'List
-      [ pwalkRemaining # pauseOne #== 16
-      , pwalkRemaining # pauseTwo #== 7
-      , pwalkIsComplete # done
-      , pwalkIsComplete # uninterruptedDone
-      , total #== uninterrupted
-      ]
+    pmatch (resumeAtTerm aikenWalkField pauseOne) $ \(PPair viewTwo resumeOne) ->
+      pmatch (walkFoldAiken viewTwo resumeOne 9 stateOne) $ \(PPair stateTwo pauseTwo) ->
+        pmatch (resumeAtTerm aikenWalkField pauseTwo) $ \(PPair viewThree resumeTwo) ->
+          pmatch (walkFoldAiken viewThree resumeTwo 7 stateTwo) $ \(PPair total done) ->
+            pmatch (foldAikenWalk (startOf aikenWalkField) 20 0) $ \(PPair uninterrupted uninterruptedDone) ->
+              pand'List
+                [ pwalkRemaining # pauseOne #== 16
+                , pwalkRemaining # pauseTwo #== 7
+                , pwalkIsComplete # done
+                , pwalkIsComplete # uninterruptedDone
+                , total #== uninterrupted
+                ]
 
 resumeDoesNotRereadCompletedItems :: forall s. Term s PBool
 resumeDoesNotRereadCompletedItems =
   pmatch (foldAikenWalk (startOf aikenWalkField) 7 0) $ \(PPair _partial paused) ->
-  pmatch (resumeAtTerm aikenWalkField paused) $ \(PPair resumedView resumed) ->
-  pmatch (walkFoldAiken resumedView resumed 13 0) $ \(PPair _ exact) ->
-  pmatch (walkFoldAiken resumedView resumed 12 0) $ \(PPair _ oneShort) ->
-    pand'List
-      [ pwalkIsComplete # exact
-      , pnot #$ pwalkIsComplete # oneShort
-      , pwalkRemaining # oneShort #== 1
-      ]
+    pmatch (resumeAtTerm aikenWalkField paused) $ \(PPair resumedView resumed) ->
+      pmatch (walkFoldAiken resumedView resumed 13 0) $ \(PPair _ exact) ->
+        pmatch (walkFoldAiken resumedView resumed 12 0) $ \(PPair _ oneShort) ->
+          pand'List
+            [ pwalkIsComplete # exact
+            , pnot #$ pwalkIsComplete # oneShort
+            , pwalkRemaining # oneShort #== 1
+            ]
 
 resumeWorksOnFixedStrideField :: forall s. Term s PBool
 resumeWorksOnFixedStrideField =
   pmatch
     (walkFoldAiken (viewOf aikenAuthenticateField) (startOf aikenAuthenticateField) 40 0)
     $ \(PPair _partial paused) ->
-  pmatch (resumeAtTerm aikenAuthenticateField paused) $ \(PPair resumedView resumed) ->
-  pmatch (pwalkNext # resumedView # resumed) $ \(PPair item _next) ->
-    pand'List
-      [ pwalkRemaining # resumed #== 24
-      , item #== pconstant (aikenInputItem 0x44 40)
-      ]
+      pmatch (resumeAtTerm aikenAuthenticateField paused) $ \(PPair resumedView resumed) ->
+        pmatch (pwalkNext # resumedView # resumed) $ \(PPair item _next) ->
+          pand'List
+            [ pwalkRemaining # resumed #== 24
+            , item #== pconstant (aikenInputItem 0x44 40)
+            ]
 
-foldAikenWalk :: forall s.
+foldAikenWalk ::
+  forall s.
   Term s PFieldWalkCheckpointV1 ->
   Term s PInteger ->
   Term s PInteger ->
   Term s (PPair PInteger PFieldWalkCheckpointV1)
 foldAikenWalk = walkFoldAiken (viewOf aikenWalkField)
 
-walkFoldAiken :: forall s.
+walkFoldAiken ::
+  forall s.
   Term s PFieldViewV1 ->
   Term s PFieldWalkCheckpointV1 ->
   Term s PInteger ->
@@ -705,7 +776,10 @@ walkFoldAiken :: forall s.
   Term s (PPair PInteger PFieldWalkCheckpointV1)
 walkFoldAiken view checkpoint budget state =
   pwalkFold
-    # view # checkpoint # budget # state
+    # view
+    # checkpoint
+    # budget
+    # state
     # plam
       ( \accumulator index item ->
           accumulator * 31
@@ -713,25 +787,30 @@ walkFoldAiken view checkpoint budget state =
             + (pbyteAt # item # 0)
       )
 
-resumeAtTerm :: forall s.
+resumeAtTerm ::
+  forall s.
   Field ->
   Term s PFieldWalkCheckpointV1 ->
   Term s (PPair PFieldViewV1 PFieldWalkCheckpointV1)
 resumeAtTerm field checkpoint =
   presumeFieldWalkFromCommitment
-    # verifiedT field # witnessSetT field
+    # verifiedT field
+    # witnessSetT field
     # (pfieldWalkCheckpointHash # checkpoint)
     # (pencodeFieldWalkCheckpoint # checkpoint)
-    # carriageOf field # inputsT (referenceInputsOf field)
+    # carriageOf field
+    # inputsT (referenceInputsOf field)
     # pdata (pconstant certificatePolicy)
 
-resumeRawAt :: forall s.
+resumeRawAt ::
+  forall s.
   Field ->
   Term s PFieldWalkCheckpointV1 ->
   Term s (PPair PFieldViewV1 PFieldWalkCheckpointV1)
 resumeRawAt field checkpoint =
   presumeFieldWalkFromCommitment
-    # verifiedT field # witnessSetT field
+    # verifiedT field
+    # witnessSetT field
     # (pfieldWalkCheckpointHash # checkpoint)
     # (pencodeFieldWalkCheckpoint # checkpoint)
     # pcon (PRawUtxo (pdata 0))
@@ -758,9 +837,11 @@ stepGuardTests =
     -- §7.4's count check is arithmetic over the total length, which this
     -- satisfies — so the step's own check is the only thing left.
     testCase "walk_next_refuses_a_wrapper_whose_length_misses_the_stride" $
-      pfails $ itemAt miswrappedField 0
+      pfails $
+        itemAt miswrappedField 0
   , testCase "walk_next_refuses_a_one_byte_wrapper_on_a_fixed_stride_field" $
-      pfails $ itemAt oneByteMiswrappedField 0
+      pfails $
+        itemAt oneByteMiswrappedField 0
   , testCase "the same field's canonical second slot is unaffected by that" $
       passertEval $
         pmatch (resume miswrappedField (walkBytes' miswrappedField 1 31)) $
@@ -796,33 +877,192 @@ stepGuardTests =
 spendInputTests :: [TestTree]
 spendInputTests =
   [ testCase "spend_input_lookup_at_index_0" $
-      passertEval $ maximumSpendInputLookup 0
+      passertEval $
+        maximumSpendInputLookup 0
   , testCase "spend_input_lookup_at_index_295" $
-      passertEval $ maximumSpendInputLookup 295
+      passertEval $
+        maximumSpendInputLookup 295
   , testCase "spend_input_extent_is_pure_arithmetic" $
       passertEval maximumSpendInputExtent
   , testCase "decodes an input item by arithmetic" $
       passertEval $
         pand'List
           [ pmatch (pspendInputAt # viewOf spendField # pconstant (fromIntegral i)) $
-            \PMidgardTxInput {ptxInput'txId, ptxInput'outputIndex} ->
-              pand'List
-                [ pfromData ptxInput'txId #== pconstant (inputTxId i)
-                , pfromData ptxInput'outputIndex #== pconstant (fromIntegral i)
-                ]
+              \PMidgardTxInput {ptxInput'txId, ptxInput'outputIndex} ->
+                pand'List
+                  [ pfromData ptxInput'txId #== pconstant (inputTxId i)
+                  , pfromData ptxInput'outputIndex #== pconstant (fromIntegral i)
+                  ]
           | i <- [0, 1 :: Int]
           ]
   , testCase "the count is the field's authenticated item count" $
       passertEval $
         (pspendInputCount # viewOf spendField) #== (pfieldItemCount # viewOf spendField)
   , testCase "aborts on an index past the last input" $
-      pfails $ pspendInputAt # viewOf spendField # 2
+      pfails $
+        pspendInputAt # viewOf spendField # 2
   , -- The stride guard is what refuses. This field's items are input-shaped to
     -- the byte, and it is still not a field-0/1 view.
     testCase "spend_input_at_refuses_a_variable_width_view_of_input_shaped_items" $
-      pfails $ pspendInputAt # viewOf inputShapedVariableField # 0
+      pfails $
+        pspendInputAt # viewOf inputShapedVariableField # 0
   , testCase "spend_input_count refuses the same view" $
-      pfails $ pspendInputCount # viewOf inputShapedVariableField
+      pfails $
+        pspendInputCount # viewOf inputShapedVariableField
+  ]
+
+--------------------------------------------------------------------------------
+-- §10.2 grammar certification
+--------------------------------------------------------------------------------
+
+grammarTests :: [TestTree]
+grammarTests =
+  [ testCase "grammar_maximum_inline_open_and_32_fit" $
+      passertEval $
+        pmatch (grammarOpen maximumGrammarField) $ \(PPair view start) ->
+          plet (pcertifyFieldGrammar # view # start # 32) $ \paused ->
+            pand'List
+              [ plengthBS # (pencodeFieldGrammarCheckpoint # paused) #== pfieldGrammarCheckpointBytes
+              , pencodeFieldGrammarCheckpoint # paused #== pconstant (maximumGrammarWire 32)
+              , pnot #$ pfieldGrammarIsComplete # paused
+              ]
+  , testCase "grammar_maximum_inline_middle_32_fit_without_prefix_replay" $
+      passertEval $
+        pmatch (grammarResume maximumGrammarField (maximumGrammarWire 96)) $ \(PPair view resumed) ->
+          plet (pcertifyFieldGrammar # view # resumed # 32) $ \paused ->
+            pencodeFieldGrammarCheckpoint
+              # paused
+              #== pconstant (maximumGrammarWire 128)
+              #&& pnot
+              # (pfieldGrammarIsComplete # paused)
+  , testCase "grammar_maximum_inline_terminal_32_fit" $
+      passertEval $
+        pmatch (grammarResume maximumGrammarField (maximumGrammarWire 192)) $ \(PPair view resumed) ->
+          plet (pcertifyFieldGrammar # view # resumed # 32) $ \terminal ->
+            pencodeFieldGrammarCheckpoint
+              # terminal
+              #== pconstant (maximumGrammarWire 224)
+              #&& pfieldGrammarIsComplete
+              # terminal
+  , testCase "grammar_maximum_raw_utxo_middle_32_fit"
+      $ passertEval
+      $ pmatch
+        ( grammarResumeWith
+            maximumGrammarField
+            (maximumGrammarWire 96)
+            (pcon $ PRawUtxo (pdata 0))
+            [bytesRefIn maximumScriptPreimage]
+        )
+      $ \(PPair view resumed) ->
+        pencodeFieldGrammarCheckpoint
+          # (pcertifyFieldGrammar # view # resumed # 32)
+          #== pconstant (maximumGrammarWire 128)
+  , testCase "grammar_maximum_certified_carriage_is_inadmissible_below_k"
+      $ pfails
+      $ pmatch
+        ( grammarOpenWith
+            maximumGrammarField
+            (carriageOf $ certifiedField 6 maximumScriptPreimage)
+            (referenceInputsOf $ certifiedField 6 maximumScriptPreimage)
+        )
+      $ \(PPair view start) -> pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # start # 32
+  , testCase "grammar_tier_three_variable_field_open_and_32_fit" $
+      passertEval $
+        pmatch (grammarOpen tierThreeGrammarField) $ \(PPair view start) ->
+          plet (pcertifyFieldGrammar # view # start # 32) $ \paused ->
+            plengthBS
+              # (pencodeFieldGrammarCheckpoint # paused)
+              #== pfieldGrammarCheckpointBytes
+              #&& pnot
+              # (pfieldGrammarIsComplete # paused)
+  , testCase "grammar_maximum_terminal_opens_semantic_first_32_fit" $
+      passertEval $
+        pmatch grammarToSemanticOpen $ \(PPair view start) ->
+          pmatch (countWalk view start 32) $ \(PPair count paused) ->
+            pand'List
+              [ count #== 32
+              , pwalkNextItemIndex # paused #== 32
+              , pnot #$ pwalkIsComplete # paused
+              ]
+  , testCase "grammar_maximum_semantic_middle_32_fit_without_prefix_replay" $
+      passertEval $
+        pmatch (resume maximumGrammarField $ maximumSemanticWire 96) $ \(PPair view resumed) ->
+          pmatch (countWalk view resumed 32) $ \(PPair count paused) ->
+            pand'List
+              [ count #== 32
+              , pwalkNextItemIndex # paused #== 128
+              , pwalkRemaining # paused #== 96
+              ]
+  , testCase "grammar_maximum_semantic_terminal_32_fit" $
+      passertEval $
+        pmatch (resume maximumGrammarField $ maximumSemanticWire 192) $ \(PPair view resumed) ->
+          pmatch (countWalk view resumed 32) $ \(PPair count terminal) ->
+            pand'List
+              [ count #== 32
+              , pwalkIsComplete # terminal
+              , pwalkNextItemIndex # terminal #== pconstant maximumScriptItemCount
+              ]
+  , testCase "grammar_maximum_resumed_semantics_equal_uninterrupted" $
+      passertEval $
+        pmatch (openOf maximumGrammarField) $ \(PPair directView directStart) ->
+          pmatch (countWalk directView directStart $ pconstant maximumScriptItemCount) $ \(PPair directCount directDone) ->
+            pmatch grammarToSemanticOpen $ \(PPair stagedView stagedStart) ->
+              pmatch (countWalk stagedView stagedStart $ pconstant maximumScriptItemCount) $ \(PPair stagedCount stagedDone) ->
+                pand'List
+                  [ pwalkIsComplete # directDone
+                  , pwalkIsComplete # stagedDone
+                  , directCount #== pconstant maximumScriptItemCount
+                  , stagedCount #== directCount
+                  ]
+  , testCase "grammar_rejects_a_short_declared_count_at_terminal" $
+      pfails $
+        pmatch (grammarOpen shortCountGrammarField) $ \(PPair view start) ->
+          pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # start # 223
+  , testCase "grammar_rejects_an_inflated_declared_count_at_the_real_end" $
+      pfails $
+        pmatch (grammarOpen inflatedCountGrammarField) $ \(PPair view start) ->
+          pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # start # 224
+  , testCase "grammar_refuses_a_checkpoint_from_another_transaction" $
+      pfails $
+        pmatch (grammarResume maximumGrammarField $ patchGrammarTxId otherTxId $ maximumGrammarWire 96) $
+          \(PPair view resumed) -> pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # resumed # 1
+  , testCase "grammar_refuses_a_forged_field_commitment" $
+      pfails $
+        pmatch (grammarResume maximumGrammarField forgedGrammarCommitmentWire) $
+          \(PPair view resumed) -> pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # resumed # 1
+  , testCase "grammar_refuses_a_forged_total_length" $
+      pfails $
+        pmatch (grammarResume maximumGrammarField $ patchScalar 72 3 (maximumScriptFieldBytes - 1) $ maximumGrammarWire 96) $
+          \(PPair view resumed) -> pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # resumed # 1
+  , testCase "grammar_refuses_a_forged_declared_count" $
+      pfails $
+        pmatch (grammarResume maximumGrammarField $ patchScalar 76 3 (maximumScriptItemCount - 1) $ maximumGrammarWire 96) $
+          \(PPair view resumed) -> pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # resumed # 1
+  , testCase "grammar_refuses_checkpoint_bytes_the_thread_did_not_commit"
+      $ pfails
+      $ pmatch
+        ( grammarResumeWithCommitment
+            maximumGrammarField
+            forgedGrammarOffsetWire
+            (grammarReferenceHash $ maximumGrammarWire 96)
+        )
+      $ \(PPair view resumed) -> pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # resumed # 1
+  , testCase "grammar_refuses_same_shape_content_under_the_wrong_root" $
+      pfails $
+        pmatch grammarResumeWrongRoot $ \(PPair view resumed) ->
+          pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # resumed # 1
+  , testCase "grammar_checkpoint_cannot_resume_as_a_semantic_checkpoint" $
+      pfails $
+        pmatch (resume maximumGrammarField $ maximumGrammarWire 96) $ \(PPair view resumed) ->
+          pwalkNextItemIndex #$ pwalkSkip # view # resumed # 1
+  , testCase "semantic_checkpoint_cannot_resume_as_a_grammar_checkpoint" $
+      pfails $
+        pmatch (grammarResume maximumGrammarField $ maximumSemanticWire 96) $ \(PPair view resumed) ->
+          pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # resumed # 1
+  , testCase "grammar_noncanonical_checkpoint_wire_is_rejected" $
+      pfails $
+        pmatch (grammarResume maximumGrammarField malformedGrammarWire) $ \(PPair view resumed) ->
+          pfieldGrammarIsComplete #$ pcertifyFieldGrammar # view # resumed # 1
   ]
 
 maximumSpendCheckpointWidth :: forall s. Term s PBool
@@ -834,12 +1074,12 @@ maximumSpendCheckpointWidth =
 maximumSpendInputLookup :: forall s. Integer -> Term s PBool
 maximumSpendInputLookup index =
   pmatch aikenMaximumSpendOpen $ \(PPair view _start) ->
-  pmatch (pspendInputAt # view # pconstant index) $
-    \PMidgardTxInput {ptxInput'txId, ptxInput'outputIndex} ->
-      pand'List
-        [ pfromData ptxInput'outputIndex #== pconstant index
-        , pfromData ptxInput'txId #== pconstant (BS.replicate 32 0x44)
-        ]
+    pmatch (pspendInputAt # view # pconstant index) $
+      \PMidgardTxInput {ptxInput'txId, ptxInput'outputIndex} ->
+        pand'List
+          [ pfromData ptxInput'outputIndex #== pconstant index
+          , pfromData ptxInput'txId #== pconstant (BS.replicate 32 0x44)
+          ]
 
 maximumSpendInputExtent :: forall s. Term s PBool
 maximumSpendInputExtent =
@@ -848,14 +1088,15 @@ maximumSpendInputExtent =
       [ (pspendInputCount # view) #== pmaximumCardanoSpendRedeemerCount
       ]
         <> [ pmatch (pfieldItemExtent # view # pconstant index) $ \(PPair offset len) ->
-              pand'List
-                [ offset #== 3 + pspendInputStride * pconstant index + 2
-                , len #== pspendInputItemBytes
-                ]
+               pand'List
+                 [ offset #== 3 + pspendInputStride * pconstant index + 2
+                 , len #== pspendInputItemBytes
+                 ]
            | index <- [0, 1, 147, 295]
            ]
 
-aikenMaximumSpendOpen :: forall s.
+aikenMaximumSpendOpen ::
+  forall s.
   Term s (PPair PFieldViewV1 PFieldWalkCheckpointV1)
 aikenMaximumSpendOpen =
   pmatch (aikenInputSource aikenMaximumSpendPreimage) $ \(PPair verified witnessSet) ->
@@ -904,6 +1145,47 @@ aikenWalkField = inlineField 6 (fieldPreimage aikenWalkItems)
 
 aikenOtherWalkField :: Field
 aikenOtherWalkField = inlineField 6 (fieldPreimage aikenOtherWalkItems)
+
+maximumScriptItemCount, maximumScriptFieldBytes, maximumScriptItemStride :: Integer
+maximumScriptItemCount = 224
+maximumScriptFieldBytes = 10_306
+maximumScriptItemStride = 46
+
+-- The exact C20.6 maximum native-script witness: 224 identical 44-byte
+-- versioned scripts, each under a two-byte §5.1 bytestring wrapper.
+maximumScriptItem :: BS.ByteString
+maximumScriptItem =
+  BS.concat
+    [ "\x82\x00\x58\x28\x82\x01\x82\x82\x00\x58\x1c"
+    , aikenOwnerHash
+    , "\x82\x05\x19\x4e\x20"
+    ]
+
+maximumScriptPreimage :: BS.ByteString
+maximumScriptPreimage =
+  arrayHeader (fromIntegral maximumScriptItemCount)
+    <> BS.concat
+      ( replicate
+          (fromIntegral maximumScriptItemCount)
+          (wrapItem maximumScriptItem)
+      )
+
+maximumGrammarField :: Field
+maximumGrammarField = inlineField 6 maximumScriptPreimage
+
+tierThreeGrammarField :: Field
+tierThreeGrammarField =
+  certifiedField
+    6
+    ( arrayHeader 330
+        <> BS.concat (replicate 330 $ wrapItem maximumScriptItem)
+    )
+
+shortCountGrammarField, inflatedCountGrammarField :: Field
+shortCountGrammarField =
+  inlineField 6 ("\x98\xdf" <> BS.drop 2 maximumScriptPreimage)
+inflatedCountGrammarField =
+  inlineField 6 ("\x98\xe1" <> BS.drop 2 maximumScriptPreimage)
 
 aikenAuthenticateField :: Field
 aikenAuthenticateField =
@@ -966,7 +1248,7 @@ aikenCertificateInput preimage chunks =
         ( adaValue 2_000_000
             <> singleton
               aikenCertificatePolicy
-              (TokenName $ toBuiltin $ certificateAssetName aikenSampleTxId 0)
+              (TokenName $ toBuiltin ("MIDGARD_FIELD_PREIMAGE_CERT" :: BS.ByteString))
               1
         )
         (OutputDatum $ Datum $ dataToBuiltinData datum)
@@ -979,6 +1261,7 @@ aikenCertificateInput preimage chunks =
         [ PD.B aikenOwnerHash
         , PD.B aikenSampleTxId
         , PD.I 0
+        , PD.B (blake2b256 preimage)
         , PD.I (fromIntegral $ BS.length preimage)
         , PD.List (map (PD.B . blake2b256) chunks)
         ]
@@ -1152,6 +1435,90 @@ viewOf field = pmatch (openOf field) $ \(PPair view _checkpoint) -> view
 startOf :: forall s. Field -> Term s PFieldWalkCheckpointV1
 startOf field = pmatch (openOf field) $ \(PPair _view checkpoint) -> checkpoint
 
+grammarOpen :: forall s. Field -> Term s (PPair PFieldViewV1 PFieldGrammarCheckpointV1)
+grammarOpen field = grammarOpenWith field (carriageOf field) (referenceInputsOf field)
+
+grammarOpenWith ::
+  forall s.
+  Field ->
+  Term s PFieldCarriageV1 ->
+  [TxInInfo] ->
+  Term s (PPair PFieldViewV1 PFieldGrammarCheckpointV1)
+grammarOpenWith field carriage referenceInputs =
+  popenFieldGrammarCertification
+    # verifiedT field
+    # witnessSetT field
+    # pconstant (fIndex field)
+    # carriage
+    # inputsT referenceInputs
+    # pdata (pconstant certificatePolicy)
+
+grammarResume ::
+  forall s.
+  Field ->
+  BS.ByteString ->
+  Term s (PPair PFieldViewV1 PFieldGrammarCheckpointV1)
+grammarResume field bytes =
+  grammarResumeWithCommitment field bytes (grammarReferenceHash bytes)
+
+grammarResumeWithCommitment ::
+  forall s.
+  Field ->
+  BS.ByteString ->
+  BS.ByteString ->
+  Term s (PPair PFieldViewV1 PFieldGrammarCheckpointV1)
+grammarResumeWithCommitment field bytes committed =
+  presumeFieldGrammarCertificationFromCommitment
+    # verifiedT field
+    # witnessSetT field
+    # pconstant committed
+    # pconstant bytes
+    # carriageOf field
+    # inputsT (referenceInputsOf field)
+    # pdata (pconstant certificatePolicy)
+
+grammarResumeWith ::
+  forall s.
+  Field ->
+  BS.ByteString ->
+  Term s PFieldCarriageV1 ->
+  [TxInInfo] ->
+  Term s (PPair PFieldViewV1 PFieldGrammarCheckpointV1)
+grammarResumeWith field bytes carriage referenceInputs =
+  presumeFieldGrammarCertificationFromCommitment
+    # verifiedT field
+    # witnessSetT field
+    # pconstant (grammarReferenceHash bytes)
+    # pconstant bytes
+    # carriage
+    # inputsT referenceInputs
+    # pdata (pconstant certificatePolicy)
+
+countWalk ::
+  forall s.
+  Term s PFieldViewV1 ->
+  Term s PFieldWalkCheckpointV1 ->
+  Term s PInteger ->
+  Term s (PPair PInteger PFieldWalkCheckpointV1)
+countWalk view checkpoint budget =
+  pwalkFold
+    # view
+    # checkpoint
+    # budget
+    # 0
+    # plam (\count _index _item -> count + 1)
+
+grammarToSemanticOpen :: forall s. Term s (PPair PFieldViewV1 PFieldWalkCheckpointV1)
+grammarToSemanticOpen =
+  popenCertifiedFieldWalkFromGrammarCommitment
+    # verifiedT maximumGrammarField
+    # witnessSetT maximumGrammarField
+    # pconstant (grammarReferenceHash terminalGrammarWire)
+    # pconstant terminalGrammarWire
+    # carriageOf maximumGrammarField
+    # inputsT []
+    # pdata (pconstant certificatePolicy)
+
 -- | The checkpoint reached by @n@ single steps from the opening position.
 advancedBy :: forall s. Integer -> Field -> Term s PFieldWalkCheckpointV1
 advancedBy n field = go n (startOf field)
@@ -1222,6 +1589,98 @@ checkpointDomain = "MidgardFieldWalkCheckpointV1"
 
 referenceHash :: BS.ByteString -> BS.ByteString
 referenceHash bytes = blake2b256 (checkpointDomain <> bytes)
+
+grammarCheckpointDomain :: BS.ByteString
+grammarCheckpointDomain = "MidgardFieldGrammarCheckpointV1"
+
+grammarReferenceHash :: BS.ByteString -> BS.ByteString
+grammarReferenceHash bytes = blake2b256 (grammarCheckpointDomain <> bytes)
+
+referenceGrammarCheckpoint ::
+  BS.ByteString ->
+  Integer ->
+  BS.ByteString ->
+  Integer ->
+  Integer ->
+  Integer ->
+  Integer ->
+  BS.ByteString
+referenceGrammarCheckpoint tid fieldIndex fieldCommitment totalLength declaredCount nextIndex nextOffset =
+  BS.concat
+    [ "\x87\x58\x20"
+    , tid
+    , "\x41"
+    , be 1 fieldIndex
+    , "\x58\x20"
+    , fieldCommitment
+    , "\x43"
+    , be 3 totalLength
+    , "\x43"
+    , be 3 declaredCount
+    , "\x43"
+    , be 3 nextIndex
+    , "\x43"
+    , be 3 nextOffset
+    ]
+
+maximumGrammarWire :: Integer -> BS.ByteString
+maximumGrammarWire nextIndex =
+  referenceGrammarCheckpoint
+    txId
+    6
+    (blake2b256 maximumScriptPreimage)
+    maximumScriptFieldBytes
+    maximumScriptItemCount
+    nextIndex
+    (2 + maximumScriptItemStride * nextIndex)
+
+maximumSemanticWire :: Integer -> BS.ByteString
+maximumSemanticWire nextIndex =
+  referenceCheckpoint
+    txId
+    6
+    maximumScriptFieldBytes
+    maximumScriptItemCount
+    nextIndex
+    (2 + maximumScriptItemStride * nextIndex)
+
+terminalGrammarWire :: BS.ByteString
+terminalGrammarWire = maximumGrammarWire maximumScriptItemCount
+
+patchGrammarTxId :: BS.ByteString -> BS.ByteString -> BS.ByteString
+patchGrammarTxId = patchTxId
+
+forgedGrammarCommitmentWire :: BS.ByteString
+forgedGrammarCommitmentWire =
+  BS.concat
+    [ BS.take 39 honest
+    , otherTxId
+    , BS.drop 71 honest
+    ]
+  where
+    honest = maximumGrammarWire 96
+
+forgedGrammarOffsetWire :: BS.ByteString
+forgedGrammarOffsetWire =
+  patchScalar 84 3 (2 + maximumScriptItemStride * 95) (maximumGrammarWire 96)
+
+malformedGrammarWire :: BS.ByteString
+malformedGrammarWire = BS.cons 0x86 (BS.drop 1 $ maximumGrammarWire 96)
+
+alteredMaximumScriptPreimage :: BS.ByteString
+alteredMaximumScriptPreimage =
+  BS.take (fromIntegral maximumScriptFieldBytes - 1) maximumScriptPreimage <> "\x00"
+
+grammarResumeWrongRoot :: forall s. Term s (PPair PFieldViewV1 PFieldGrammarCheckpointV1)
+grammarResumeWrongRoot =
+  presumeFieldGrammarCertificationFromCommitment
+    # verifiedT maximumGrammarField
+    # witnessSetT maximumGrammarField
+    # pconstant (grammarReferenceHash $ maximumGrammarWire 96)
+    # pconstant (maximumGrammarWire 96)
+    # pcon (PInline $ pdata $ pconstant alteredMaximumScriptPreimage)
+    # inputsT []
+    # pdata (pconstant certificatePolicy)
 
 -- | Wire offsets of the scalars the negative cases move.
 wireFieldIndexAt, wireTotalLengthAt, wireItemCountAt, wireNextOffsetAt :: Int
@@ -1364,7 +1823,7 @@ verifiedT field =
             PNativeTxCompact
               { pcompact'body = bodyT field
               , pcompact'witnessSetHash = pconstant (wsHashOf (witnessSetOf field))
-              , pcompact'validityCode = 3
+              , pcompact'validityCode = 1
               }
       }
 
@@ -1425,7 +1884,7 @@ inputsT = pconstant
 --------------------------------------------------------------------------------
 
 chunkBytesK :: Int
-chunkBytesK = 15900
+chunkBytesK = 15148
 
 chunksOf :: BS.ByteString -> [BS.ByteString]
 chunksOf bytes
@@ -1442,7 +1901,7 @@ certRefIn field =
         ( adaValue 2_000_000
             <> singleton
               certificatePolicy
-              (TokenName (toBuiltin (certificateAssetName txId (fIndex field))))
+              (TokenName (toBuiltin ("MIDGARD_FIELD_PREIMAGE_CERT" :: BS.ByteString)))
               1
         )
         (OutputDatum (Datum (dataToBuiltinData datum)))
@@ -1456,13 +1915,10 @@ certRefIn field =
         [ PD.B (BS.replicate 28 0x31)
         , PD.B txId
         , PD.I (fIndex field)
+        , PD.B (blake2b256 preimage)
         , PD.I (fromIntegral (BS.length preimage))
         , PD.List (map (PD.B . blake2b256) (chunksOf preimage))
         ]
-
--- | §8.6's derivation: @blake2b_256(field_index_byte ‖ tx_id)@.
-certificateAssetName :: BS.ByteString -> Integer -> BS.ByteString
-certificateAssetName tid index = blake2b256 (BS.cons (fromIntegral index) tid)
 
 bytesRefIn :: BS.ByteString -> TxInInfo
 bytesRefIn bytes =

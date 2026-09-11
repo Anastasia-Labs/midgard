@@ -58,7 +58,6 @@ import Plutarch.LedgerApi.V3 (
  )
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
-import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.FraudProofs.Common (
   pcontinue,
@@ -76,6 +75,10 @@ import Midgard.FraudProofs.FieldOpening (
   PNativeTxAnchorV1 (..),
   popenedFieldView,
   pspendInputsFieldIndex,
+ )
+import Midgard.FraudProofs.NativeTx.Types (
+  PNativeTxCompact (..),
+  PVerifiedMidgardNativeTxCompact (..),
  )
 import Midgard.NativeTxMachineWalk (pspendInputAt)
 import Midgard.Validators.FraudProofs.Step (
@@ -135,20 +138,26 @@ doubleSpendStep01Validator = plam $
                outputStateData
                _header
                badTxId
-               _badTxView ->
+               badTxView -> P.do
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
+                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
                 -- 1. This is the first step, so there is no prior state.
                 pexpecting (pstateIsAbsent mInputStateData) $
-                  -- 2. The next step's UTxO carries the verified id, and nothing
-                  --    else: step-03 re-opens field 0 through the door, which
-                  --    extracts the commitment positionally from the compact
-                  --    structures this id authenticates.
-                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
-                    pexpecting
-                      ( outputStateData
-                          #== pforgetData
-                            (pdata (pcon (PStep02State {pstep02State'verifiedTx1Id = pdata badTxId})))
-                      )
-                      (pconstant True)
+                  -- A double-spend fault is defined over a transaction whose
+                  -- claimed phase-A verdict is valid. Invalid transactions are
+                  -- adjudicated by the mistag family instead.
+                  pexpecting (pcompact'validityCode #== 0) $
+                    -- 2. The next step's UTxO carries the verified id, and nothing
+                    --    else: step-03 re-opens field 0 through the door, which
+                    --    extracts the commitment positionally from the compact
+                    --    structures this id authenticates.
+                    pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+                      pexpecting
+                        ( outputStateData
+                            #== pforgetData
+                              (pdata (pcon (PStep02State {pstep02State'verifiedTx1Id = pdata badTxId})))
+                        )
+                        (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 02
@@ -195,30 +204,33 @@ doubleSpendStep02Validator = plam $
                outputStateData
                _header
                tx2Id
-               _tx2View -> P.do
+               tx2View -> P.do
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch tx2View
+                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
                 PStep02State {pstep02State'verifiedTx1Id} <-
                   pmatch (pexpectStateAs @PStep02State mInputStateData)
                 verifiedTx1Id <- plet pstep02State'verifiedTx1Id
-                -- 2. The two transactions must be different. Identical bytes are
-                --    one transaction and one leaf, so without this a prover
-                --    could bind the same transaction twice.
-                pexpecting (pnot #$ pfromData verifiedTx1Id #== tx2Id) $
-                  -- 3. Both verified ids go forward.
-                  pexpecting (outputScriptHash #== step03ValidatorScriptHash) $
-                    pexpecting
-                      ( outputStateData
-                          #== pforgetData
-                            ( pdata
-                                ( pcon
-                                    ( PStep03State
-                                        { pstep03State'verifiedTx1Id = verifiedTx1Id
-                                        , pstep03State'verifiedTx2Id = pdata tx2Id
-                                        }
-                                    )
-                                )
-                            )
-                      )
-                      (pconstant True)
+                pexpecting (pcompact'validityCode #== 0) $
+                  -- 2. The two transactions must be different. Identical bytes are
+                  --    one transaction and one leaf, so without this a prover
+                  --    could bind the same transaction twice.
+                  pexpecting (pnot #$ pfromData verifiedTx1Id #== tx2Id) $
+                    -- 3. Both verified ids go forward.
+                    pexpecting (outputScriptHash #== step03ValidatorScriptHash) $
+                      pexpecting
+                        ( outputStateData
+                            #== pforgetData
+                              ( pdata
+                                  ( pcon
+                                      ( PStep03State
+                                          { pstep03State'verifiedTx1Id = verifiedTx1Id
+                                          , pstep03State'verifiedTx2Id = pdata tx2Id
+                                          }
+                                      )
+                                  )
+                              )
+                        )
+                        (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 03

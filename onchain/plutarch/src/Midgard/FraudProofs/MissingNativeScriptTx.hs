@@ -1,6 +1,6 @@
 {- |
 Module      : Midgard.FraudProofs.MissingNativeScriptTx
-Description : Plutarch port of @lib/midgard/fraud-proofs/missing-native-script-tx/step-0{1..6}.ak@.
+Description : Plutarch port of @lib/midgard/fraud-proofs/missing-native-script-tx/step-0{1..8}.ak@.
 
 The thread state and redeemer payloads of the missing-native-script-tx family
 (spec §5.1.1): a committed transaction spending a script-locked output whose
@@ -48,8 +48,13 @@ module Midgard.FraudProofs.MissingNativeScriptTx (
   PStep04Args (..),
   PStep05State (..),
   PStep05Args (..),
+  PStep06PhaseV1 (..),
   PStep06State (..),
   PStep06Args (..),
+  PStep07Args (..),
+  PStep08Args (..),
+  pdirectScriptWitnessLimit,
+  pstagedScriptWitnessBatchLimit,
 ) where
 
 import GHC.Generics (Generic)
@@ -76,9 +81,10 @@ data PStep02Args (s :: S) = PStep02Args
   { pstep02Args'inputIndex :: Term s (PAsData PInteger)
   , pstep02Args'outputIndex :: Term s (PAsData PInteger)
   , pstep02Args'badInputIndex :: Term s (PAsData PInteger)
-  , -- | The prover's chosen §8 carriage for the bad transaction's field-0
-    -- preimage.
-    pstep02Args'spendInputsOpening :: Term s (PAsData PFieldOpeningV1)
+  , pstep02Args'spendInputsOpening :: Term s (PAsData PFieldOpeningV1)
+  {- ^ The prover's chosen §8 carriage for the bad transaction's field-0
+  preimage.
+  -}
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -116,9 +122,10 @@ data PStep04State (s :: S) = PStep04State
 data PStep04Args (s :: S) = PStep04Args
   { pstep04Args'inputIndex :: Term s (PAsData PInteger)
   , pstep04Args'outputIndex :: Term s (PAsData PInteger)
-  , -- | The prover's chosen §8 carriage for the producing transaction's field-2
-    -- preimage.
-    pstep04Args'outputsOpening :: Term s (PAsData PFieldOpeningV1)
+  , pstep04Args'outputsOpening :: Term s (PAsData PFieldOpeningV1)
+  {- ^ The prover's chosen §8 carriage for the producing transaction's field-2
+  preimage.
+  -}
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -148,29 +155,77 @@ data PStep05Args (s :: S) = PStep05Args
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep05Args)
 
-{- | Aiken @missing_native_script_tx/step_06.State@ — identical in shape to
-step-05's, and deliberately so: step-05 changes nothing, it only /proves/ that
-what it carries is a native script hash.
--}
+data PStep06PhaseV1 (s :: S)
+  = PReady
+  | PGrammarCertification (Term s (PAsData PByteString))
+  | PSemanticScan (Term s (PAsData PByteString)) (Term s (PAsData PBool))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep06PhaseV1)
+
+-- | Aiken @missing_native_script_tx/step_06.State@.
 data PStep06State (s :: S) = PStep06State
   { pstep06State'expectedMissingScriptHash :: Term s (PAsData PByteString)
   , pstep06State'badTxId :: Term s (PAsData PByteString)
   , pstep06State'badTxWitnessSetHash :: Term s (PAsData PByteString)
+  , pstep06State'phase :: Term s (PAsData PStep06PhaseV1)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep06State)
 
--- | Aiken @missing_native_script_tx/step_06.Args@.
-data PStep06Args (s :: S) = PStep06Args
-  { pstep06Args'inputIndex :: Term s (PAsData PInteger)
-  , pstep06Args'outputIndex :: Term s (PAsData PInteger)
-  , pstep06Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
-  , -- | The prover's chosen §8 carriage for the bad transaction's field-6
-    -- preimage, plus the witness set the door checks against its committed
-    -- @witness_set_hash@.
-    pstep06Args'scriptTxWitsOpening :: Term s (PAsData PFieldOpeningV1)
-  }
+data PStep06Args (s :: S)
+  = PDirectFinalize
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+  | PStartGrammarCertification
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+      (Term s (PAsData PInteger))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep06Args)
+
+data PStep07Args (s :: S)
+  = PResumeGrammarCertification
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PInteger))
+  | PStartSemanticScan
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep07Args)
+
+data PStep08Args (s :: S)
+  = PResumeSemanticScan
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PInteger))
+  | PFinalizeSemanticScan
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep08Args)
+
+pdirectScriptWitnessLimit :: forall s. Term s PInteger
+pdirectScriptWitnessLimit = 64
+
+pstagedScriptWitnessBatchLimit :: forall s. Term s PInteger
+pstagedScriptWitnessBatchLimit = 32

@@ -39,47 +39,46 @@ challenged root. So 'pchunkIndicesAreWellFormed' bounds the count from above
 only.
 -}
 module Midgard.MpfChunkedProof (
-  -- * Bounds
-  pdigestByteCount,
-  pheaderHashByteCount,
-  pmaximumChunkProofStepCount,
-  pmaximumChunkDatumByteCount,
-  pmaximumTotalProofStepCount,
-  pmaximumChunkCount,
+    -- * Bounds
+    pdigestByteCount,
+    pheaderHashByteCount,
+    pmaximumChunkProofStepCount,
+    pmaximumChunkDatumByteCount,
+    pmaximumTotalProofStepCount,
+    pmaximumChunkCount,
 
-  -- * Types
-  PProofMode (..),
-  PProofChallengeDatum (..),
-  PProofChunkDatum (..),
-  PFinalizeProofRedeemer (..),
-  PChallengeMintRedeemer (..),
+    -- * Types
+    PProofMode (..),
+    PProofChallengeDatum (..),
+    PProofChunkDatum (..),
+    PFinalizeProofRedeemer (..),
+    PChallengeMintRedeemer (..),
 
-  -- * Header binding
-  pheaderCountedCommitment,
-  pchallengeMatchesHeader,
+    -- * Header binding
+    pheaderCountedCommitment,
+    pchallengeMatchesHeader,
 
-  -- * Named invariants
-  pchallengeDatumIsWellFormed,
-  pchunkDatumIsWellFormed,
-  pchunkIndicesAreWellFormed,
+    -- * Named invariants
+    pchallengeDatumIsWellFormed,
+    pchunkDatumIsWellFormed,
+    pchunkIndicesAreWellFormed,
 
-  -- * Reassembly and verification
-  pchunkDatumAt,
-  pconcatenatePublishedSteps,
-  pproofReachesChallengedTerminal,
-  pverifyPublishedProof,
+    -- * Reassembly and verification
+    pchunkDatumAt,
+    pconcatenatePublishedSteps,
+    pproofReachesChallengedTerminal,
+    pverifyPublishedProof,
 ) where
 
 import Data.Kind (Type)
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
-import Plutarch.Builtin.Data (pserialiseData)
 import Plutarch.LedgerApi.V3 (
-  PDatum (..),
-  POutputDatum (..),
-  PTxInInfo (..),
-  PTxOut (..),
+    PDatum (..),
+    POutputDatum (..),
+    PTxInInfo (..),
+    PTxOut (..),
  )
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
@@ -88,16 +87,16 @@ import Plutarch.Unsafe (punsafeCoerce)
 import Midgard.Common.Types (PH28, PH32)
 import Midgard.LedgerState (PHeaderV1 (..))
 import Midgard.MpfProof (
-  pdoesNotHave,
-  phasValueHash,
-  pmaximumProofStepCount,
-  pproofHasAtMostSteps,
+    pdoesNotHave,
+    phasValueHash,
+    pmaximumProofStepCount,
+    pproofHasAtMostSteps,
  )
 import Midgard.MpfProof.Types (PProof (..), PProofStep)
 import Midgard.TransitionTrace (
-  PRootCountProof (..),
-  PRootDomain (..),
-  pverifyRootCountProof,
+    PRootCountProof (..),
+    PRootDomain (..),
+    pverifyRootCountProof,
  )
 
 --------------------------------------------------------------------------------
@@ -153,11 +152,11 @@ pmaximumChunkCount = 8
 
 -- | Aiken @mpf_chunked_proof_v1.ProofMode@.
 data PProofMode (s :: S)
-  = PMembership
-  | PNonMembership
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PProofMode)
+    = PMembership
+    | PNonMembership
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PProofMode)
 
 {- | Aiken @mpf_chunked_proof_v1.ProofChallengeDatum@.
 
@@ -172,18 +171,18 @@ header's seven roots was challenged. It is not advisory —
 commitment was reproduced under.
 -}
 data PProofChallengeDatum (s :: S) = PProofChallengeDatum
-  { pchallenge'proofOwner :: Term s (PAsData PH28)
-  , pchallenge'challengedHeaderHash :: Term s (PAsData PH28)
-  , pchallenge'challengedRootDomain :: Term s (PAsData PRootDomain)
-  , pchallenge'targetKey :: Term s (PAsData PH32)
-  , pchallenge'targetValueHash :: Term s (PAsData PH32)
-  , pchallenge'expectedRoot :: Term s (PAsData PH32)
-  , pchallenge'expectedLeafCount :: Term s (PAsData PInteger)
-  , pchallenge'mode :: Term s (PAsData PProofMode)
-  }
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PProofChallengeDatum)
+    { pchallenge'proofOwner :: Term s (PAsData PH28)
+    , pchallenge'challengedHeaderHash :: Term s (PAsData PH28)
+    , pchallenge'challengedRootDomain :: Term s (PAsData PRootDomain)
+    , pchallenge'targetKey :: Term s (PAsData PH32)
+    , pchallenge'targetValueHash :: Term s (PAsData PH32)
+    , pchallenge'expectedRoot :: Term s (PAsData PH32)
+    , pchallenge'expectedLeafCount :: Term s (PAsData PInteger)
+    , pchallenge'mode :: Term s (PAsData PProofMode)
+    }
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PProofChallengeDatum)
 
 {- | Aiken @mpf_chunked_proof_v1.ProofChunkDatum@.
 
@@ -192,19 +191,19 @@ comes from the finalizing redeemer, which is what lets publication be
 permissionless.
 -}
 data PProofChunkDatum (s :: S) = PProofChunkDatum
-  { pchunk'proofSteps :: Term s (PAsData (PBuiltinList (PAsData PProofStep)))
-  }
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PProofChunkDatum)
+    { pchunk'proofSteps :: Term s (PAsData (PBuiltinList (PAsData PProofStep)))
+    }
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PProofChunkDatum)
 
 -- | Aiken @mpf_chunked_proof_v1.FinalizeProofRedeemer@.
 data PFinalizeProofRedeemer (s :: S) = PFinalizeProofRedeemer
-  { pfinalize'orderedChunkReferenceInputIndices :: Term s (PAsData (PBuiltinList (PAsData PInteger)))
-  }
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PFinalizeProofRedeemer)
+    { pfinalize'orderedChunkReferenceInputIndices :: Term s (PAsData (PBuiltinList (PAsData PInteger)))
+    }
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PFinalizeProofRedeemer)
 
 {- | Aiken @mpf_chunked_proof_v1.ChallengeMintRedeemer@.
 
@@ -212,19 +211,19 @@ data PFinalizeProofRedeemer (s :: S) = PFinalizeProofRedeemer
 the spending handler carries the real conditions.
 -}
 data PChallengeMintRedeemer (s :: S)
-  = PInitChallenge
-      { pinit'nonceInputIndex :: Term s (PAsData PInteger)
-      , pinit'challengeOutputIndex :: Term s (PAsData PInteger)
-      , pinit'hubOracleRefInputIndex :: Term s (PAsData PInteger)
-      , pinit'challengedBlockRefInputIndex :: Term s (PAsData PInteger)
-      , pinit'challengedRootDomain :: Term s (PAsData PRootDomain)
-      }
-  | PBurnChallenge
-      { pburn'challengeInputIndex :: Term s (PAsData PInteger)
-      }
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PChallengeMintRedeemer)
+    = PInitChallenge
+        { pinit'nonceInputIndex :: Term s (PAsData PInteger)
+        , pinit'challengeOutputIndex :: Term s (PAsData PInteger)
+        , pinit'hubOracleRefInputIndex :: Term s (PAsData PInteger)
+        , pinit'challengedBlockRefInputIndex :: Term s (PAsData PInteger)
+        , pinit'challengedRootDomain :: Term s (PAsData PRootDomain)
+        }
+    | PBurnChallenge
+        { pburn'challengeInputIndex :: Term s (PAsData PInteger)
+        }
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PChallengeMintRedeemer)
 
 --------------------------------------------------------------------------------
 -- Header binding
@@ -238,39 +237,39 @@ count, so a challenge's @expected_root@ / @expected_leaf_count@ pair is
 authenticated against the header by reproducing that commitment.
 -}
 pheaderCountedCommitment ::
-  forall (s :: S).
-  Term s (PHeaderV1 :--> PRootDomain :--> PPair PByteString PInteger)
+    forall (s :: S).
+    Term s (PHeaderV1 :--> PRootDomain :--> PPair PByteString PInteger)
 pheaderCountedCommitment = phoistAcyclic $
-  plam $ \header domain -> P.do
-    PHeaderV1
-      { pheader'withdrawalsRoot
-      , pheader'forcedTransactionsRoot
-      , pheader'transactionsRoot
-      , pheader'depositsRoot
-      , pheader'transitionTraceRoot
-      , pheader'eventToStepRoot
-      , pheader'validationTracesRoot
-      , pheader'withdrawalCount
-      , pheader'forcedTransactionCount
-      , pheader'l2TransactionCount
-      , pheader'depositCount
-      , pheader'transitionStepCount
-      , pheader'totalEventCount
-      , pheader'validationTraceCount
-      } <-
-      pmatch header
-    let commitment root count = pcon (PPair (pfromData root) (pfromData count))
-    pmatch domain $ \case
-      PWithdrawalsRootDomain -> commitment pheader'withdrawalsRoot pheader'withdrawalCount
-      PForcedTransactionsV1RootDomain ->
-        commitment pheader'forcedTransactionsRoot pheader'forcedTransactionCount
-      PTransactionsV1RootDomain -> commitment pheader'transactionsRoot pheader'l2TransactionCount
-      PDepositsRootDomain -> commitment pheader'depositsRoot pheader'depositCount
-      PTransitionTraceRootDomain ->
-        commitment pheader'transitionTraceRoot pheader'transitionStepCount
-      PEventToStepRootDomain -> commitment pheader'eventToStepRoot pheader'totalEventCount
-      PValidationTracesRootDomain ->
-        commitment pheader'validationTracesRoot pheader'validationTraceCount
+    plam $ \header domain -> P.do
+        PHeaderV1
+            { pheader'withdrawalsRoot
+            , pheader'forcedTransactionsRoot
+            , pheader'transactionsRoot
+            , pheader'depositsRoot
+            , pheader'transitionTraceRoot
+            , pheader'eventToStepRoot
+            , pheader'validationTracesRoot
+            , pheader'withdrawalCount
+            , pheader'forcedTransactionCount
+            , pheader'l2TransactionCount
+            , pheader'depositCount
+            , pheader'transitionStepCount
+            , pheader'totalEventCount
+            , pheader'validationTraceCount
+            } <-
+            pmatch header
+        let commitment root count = pcon (PPair (pfromData root) (pfromData count))
+        pmatch domain $ \case
+            PWithdrawalsRootDomain -> commitment pheader'withdrawalsRoot pheader'withdrawalCount
+            PForcedTransactionsV1RootDomain ->
+                commitment pheader'forcedTransactionsRoot pheader'forcedTransactionCount
+            PTransactionsV1RootDomain -> commitment pheader'transactionsRoot pheader'l2TransactionCount
+            PDepositsRootDomain -> commitment pheader'depositsRoot pheader'depositCount
+            PTransitionTraceRootDomain ->
+                commitment pheader'transitionTraceRoot pheader'transitionStepCount
+            PEventToStepRootDomain -> commitment pheader'eventToStepRoot pheader'totalEventCount
+            PValidationTracesRootDomain ->
+                commitment pheader'validationTracesRoot pheader'validationTraceCount
 
 {- | Aiken @mpf_chunked_proof_v1.challenge_matches_header@.
 
@@ -278,46 +277,46 @@ The challenge's target commitment is exactly what the challenged header commits
 for the named domain, and the datum names that same domain.
 -}
 pchallengeMatchesHeader ::
-  forall (s :: S).
-  Term
-    s
-    ( PProofChallengeDatum
-        :--> PHeaderV1
-        :--> PByteString
-        :--> PAsData PRootDomain
-        :--> PBool
-    )
-pchallengeMatchesHeader = phoistAcyclic $
-  plam $ \challenge header headerHash domain -> P.do
-    PProofChallengeDatum
-      { pchallenge'challengedHeaderHash
-      , pchallenge'challengedRootDomain
-      , pchallenge'expectedRoot
-      , pchallenge'expectedLeafCount
-      } <-
-      pmatch challenge
-    PPair countedRoot leafCount <-
-      pmatch (pheaderCountedCommitment # header #$ pfromData domain)
-    pfromData pchallenge'challengedHeaderHash
-      #== headerHash
-      -- The datum's own record of which root was challenged is bound to the
-      -- domain this commitment was reproduced under, so it survives the
-      -- redeemer.
-      #&& pchallenge'challengedRootDomain
-      #== domain
-      #&& pverifyRootCountProof
-        ( pcon
-            ( PRootCountProof
-                { prootCount'domain = domain
-                , prootCount'root = pdata countedRoot
-                , prootCount'phasRoot = pchallenge'expectedRoot
-                , prootCount'count = pdata leafCount
-                }
-            )
+    forall (s :: S).
+    Term
+        s
+        ( PProofChallengeDatum
+            :--> PHeaderV1
+            :--> PByteString
+            :--> PAsData PRootDomain
+            :--> PBool
         )
-        domain
-        countedRoot
-        leafCount
+pchallengeMatchesHeader = phoistAcyclic $
+    plam $ \challenge header headerHash domain -> P.do
+        PProofChallengeDatum
+            { pchallenge'challengedHeaderHash
+            , pchallenge'challengedRootDomain
+            , pchallenge'expectedRoot
+            , pchallenge'expectedLeafCount
+            } <-
+            pmatch challenge
+        PPair countedRoot leafCount <-
+            pmatch (pheaderCountedCommitment # header #$ pfromData domain)
+        pfromData pchallenge'challengedHeaderHash
+            #== headerHash
+            -- The datum's own record of which root was challenged is bound to the
+            -- domain this commitment was reproduced under, so it survives the
+            -- redeemer.
+            #&& pchallenge'challengedRootDomain
+            #== domain
+            #&& pverifyRootCountProof
+                ( pcon
+                    ( PRootCountProof
+                        { prootCount'domain = domain
+                        , prootCount'root = pdata countedRoot
+                        , prootCount'phasRoot = pchallenge'expectedRoot
+                        , prootCount'count = pchallenge'expectedLeafCount
+                        }
+                    )
+                )
+                domain
+                countedRoot
+                leafCount
 
 --------------------------------------------------------------------------------
 -- Named invariants
@@ -329,43 +328,43 @@ Every hash field at its exact protocol width, and a membership challenge naming
 a non-empty trie — nothing is a member of an empty trie.
 -}
 pchallengeDatumIsWellFormed ::
-  forall (s :: S). Term s (PProofChallengeDatum :--> PBool)
+    forall (s :: S). Term s (PProofChallengeDatum :--> PBool)
 pchallengeDatumIsWellFormed = phoistAcyclic $
-  plam $ \challenge -> P.do
-    PProofChallengeDatum
-      { pchallenge'proofOwner
-      , pchallenge'challengedHeaderHash
-      , pchallenge'targetKey
-      , pchallenge'targetValueHash
-      , pchallenge'expectedRoot
-      , pchallenge'expectedLeafCount
-      , pchallenge'mode
-      } <-
-      pmatch challenge
-    leafCount <- plet (pfromData pchallenge'expectedLeafCount)
-    plengthBS
-      # pfromData pchallenge'proofOwner
-      #== pheaderHashByteCount
-      #&& plengthBS
-      # pfromData pchallenge'challengedHeaderHash
-      #== pheaderHashByteCount
-      #&& plengthBS
-      # pfromData pchallenge'targetKey
-      #== pdigestByteCount
-      #&& plengthBS
-      # pfromData pchallenge'targetValueHash
-      #== pdigestByteCount
-      #&& plengthBS
-      # pfromData pchallenge'expectedRoot
-      #== pdigestByteCount
-      #&& 0
-      #<= leafCount
-      #&& pmatch
-        (pfromData pchallenge'mode)
-        ( \case
-            PMembership -> 0 #< leafCount
-            PNonMembership -> pconstant True
-        )
+    plam $ \challenge -> P.do
+        PProofChallengeDatum
+            { pchallenge'proofOwner
+            , pchallenge'challengedHeaderHash
+            , pchallenge'targetKey
+            , pchallenge'targetValueHash
+            , pchallenge'expectedRoot
+            , pchallenge'expectedLeafCount
+            , pchallenge'mode
+            } <-
+            pmatch challenge
+        leafCount <- plet (pfromData pchallenge'expectedLeafCount)
+        plengthBS
+            # pfromData pchallenge'proofOwner
+            #== pheaderHashByteCount
+            #&& plengthBS
+            # pfromData pchallenge'challengedHeaderHash
+            #== pheaderHashByteCount
+            #&& plengthBS
+            # pfromData pchallenge'targetKey
+            #== pdigestByteCount
+            #&& plengthBS
+            # pfromData pchallenge'targetValueHash
+            #== pdigestByteCount
+            #&& plengthBS
+            # pfromData pchallenge'expectedRoot
+            #== pdigestByteCount
+            #&& 0
+            #<= leafCount
+            #&& pmatch
+                (pfromData pchallenge'mode)
+                ( \case
+                    PMembership -> 0 #< leafCount
+                    PNonMembership -> pconstant True
+                )
 
 {- | Aiken @mpf_chunked_proof_v1.chunk_datum_is_well_formed@.
 
@@ -376,26 +375,26 @@ does not see.
 -}
 pchunkDatumIsWellFormed :: forall (s :: S). Term s (PProofChunkDatum :--> PBool)
 pchunkDatumIsWellFormed = phoistAcyclic $
-  plam $ \chunk -> P.do
-    PProofChunkDatum {pchunk'proofSteps} <- pmatch chunk
-    stepCount <- plet (plength # pfromData pchunk'proofSteps)
-    1
-      #<= stepCount
-      #&& stepCount
-      #<= pmaximumChunkProofStepCount
-      #&& plengthBS
-      # (pserialiseData #$ pforgetData (pdata chunk))
-      #<= pmaximumChunkDatumByteCount
+    plam $ \chunk -> P.do
+        PProofChunkDatum{pchunk'proofSteps} <- pmatch chunk
+        stepCount <- plet (plength # pfromData pchunk'proofSteps)
+        1
+            #<= stepCount
+            #&& stepCount
+            #<= pmaximumChunkProofStepCount
+            #&& plengthBS
+            # (pserialiseData #$ pforgetData (pdata chunk))
+            #<= pmaximumChunkDatumByteCount
 
 -- | Aiken @mpf_chunked_proof_v1.indices_are_distinct@.
 pindicesAreDistinct ::
-  forall (s :: S). Term s (PBuiltinList (PAsData PInteger) :--> PBool)
+    forall (s :: S). Term s (PBuiltinList (PAsData PInteger) :--> PBool)
 pindicesAreDistinct = phoistAcyclic $
-  pfix $ \self -> plam $ \indices ->
-    pelimList
-      (\index rest -> pnot # (pelem # index # rest) #&& self # rest)
-      (pconstant True)
-      indices
+    pfix $ \self -> plam $ \indices ->
+        pelimList
+            (\index rest -> pnot # (pelem # index # rest) #&& self # rest)
+            (pconstant True)
+            indices
 
 {- | Aiken @mpf_chunked_proof_v1.chunk_indices_are_well_formed@.
 
@@ -407,32 +406,32 @@ one-leaf trie, and like every other shape it still has to reconstruct the
 challenged root.
 -}
 pchunkIndicesAreWellFormed ::
-  forall (s :: S).
-  Term s (PBuiltinList (PAsData PInteger) :--> PInteger :--> PBool)
+    forall (s :: S).
+    Term s (PBuiltinList (PAsData PInteger) :--> PInteger :--> PBool)
 pchunkIndicesAreWellFormed = phoistAcyclic $
-  plam $ \indices referenceInputCount ->
-    plength
-      # indices
-      #<= pmaximumChunkCount
-      #&& pallInRange
-      # indices
-      # referenceInputCount
-      #&& pindicesAreDistinct
-      # indices
+    plam $ \indices referenceInputCount ->
+        plength
+            # indices
+            #<= pmaximumChunkCount
+            #&& pallInRange
+            # indices
+            # referenceInputCount
+            #&& pindicesAreDistinct
+            # indices
 
 -- | @list.all(indices, fn(i) { i >= 0 && i < reference_input_count })@.
 pallInRange ::
-  forall (s :: S).
-  Term s (PBuiltinList (PAsData PInteger) :--> PInteger :--> PBool)
+    forall (s :: S).
+    Term s (PBuiltinList (PAsData PInteger) :--> PInteger :--> PBool)
 pallInRange = phoistAcyclic $
-  pfix $ \self -> plam $ \indices referenceInputCount ->
-    pelimList
-      ( \index rest ->
-          plet (pfromData index) $ \i ->
-            0 #<= i #&& i #< referenceInputCount #&& self # rest # referenceInputCount
-      )
-      (pconstant True)
-      indices
+    pfix $ \self -> plam $ \indices referenceInputCount ->
+        pelimList
+            ( \index rest ->
+                plet (pfromData index) $ \i ->
+                    0 #<= i #&& i #< referenceInputCount #&& self # rest # referenceInputCount
+            )
+            (pconstant True)
+            indices
 
 --------------------------------------------------------------------------------
 -- Reassembly and verification
@@ -449,21 +448,21 @@ different route: the coerced value is read through @pmatch@, whose @unConstrData
 errors on anything that is not a constructor.
 -}
 pchunkDatumAt ::
-  forall (s :: S).
-  Term s (PBuiltinList (PAsData PTxInInfo) :--> PInteger :--> PMaybe PProofChunkDatum)
+    forall (s :: S).
+    Term s (PBuiltinList (PAsData PTxInInfo) :--> PInteger :--> PMaybe PProofChunkDatum)
 pchunkDatumAt = phoistAcyclic $
-  plam $ \referenceInputs index ->
-    pmatch (pelemAtMaybe # index # referenceInputs) $ \case
-      PNothing -> pcon PNothing
-      PJust referenceInput -> P.do
-        PTxInInfo {ptxInInfo'resolved} <- pmatch (pfromData referenceInput)
-        PTxOut {ptxOut'datum} <- pmatch ptxInInfo'resolved
-        pmatch ptxOut'datum $ \case
-          POutputDatum datum -> P.do
-            PDatum chunkData <- pmatch datum
-            chunk <- plet (pfromData (punsafeCoerce @(PAsData PProofChunkDatum) (pdata chunkData)))
-            pif (pchunkDatumIsWellFormed # chunk) (pcon (PJust chunk)) (pcon PNothing)
-          _ -> pcon PNothing
+    plam $ \referenceInputs index ->
+        pmatch (pelemAtMaybe # index # referenceInputs) $ \case
+            PNothing -> pcon PNothing
+            PJust referenceInput -> P.do
+                PTxInInfo{ptxInInfo'resolved} <- pmatch (pfromData referenceInput)
+                PTxOut{ptxOut'datum} <- pmatch ptxInInfo'resolved
+                pmatch ptxOut'datum $ \case
+                    POutputDatum datum -> P.do
+                        PDatum chunkData <- pmatch datum
+                        chunk <- plet (pfromData (punsafeCoerce @(PAsData PProofChunkDatum) (pdata chunkData)))
+                        pif (pchunkDatumIsWellFormed # chunk) (pcon (PJust chunk)) (pcon PNothing)
+                    _ -> pcon PNothing
 
 {- | Aiken's @list.at@ — the element at an index, or @None@ past the end.
 
@@ -471,16 +470,16 @@ Written here because a negative index must also give @None@ rather than walking
 off the front.
 -}
 pelemAtMaybe ::
-  forall (s :: S) (a :: S -> Type).
-  PIsListLike PBuiltinList a =>
-  Term s (PInteger :--> PBuiltinList a :--> PMaybe a)
+    forall (s :: S) (a :: S -> Type).
+    (PIsListLike PBuiltinList a) =>
+    Term s (PInteger :--> PBuiltinList a :--> PMaybe a)
 pelemAtMaybe = phoistAcyclic $
-  pfix $ \self -> plam $ \index items ->
-    pif (index #< 0) (pcon PNothing) $
-      pelimList
-        (\item rest -> pif (index #== 0) (pcon (PJust item)) (self # (index - 1) # rest))
-        (pcon PNothing)
-        items
+    pfix $ \self -> plam $ \index items ->
+        pif (index #< 0) (pcon PNothing) $
+            pelimList
+                (\item rest -> pif (index #== 0) (pcon (PJust item)) (self # (index - 1) # rest))
+                (pcon PNothing)
+                items
 
 {- | Aiken @mpf_chunked_proof_v1.concatenate_published_steps@.
 
@@ -489,52 +488,52 @@ the redeemer gave. Any missing or malformed chunk collapses the whole result to
 @Nothing@ rather than yielding a shorter proof.
 -}
 pconcatenatePublishedSteps ::
-  forall (s :: S).
-  Term
-    s
-    ( PBuiltinList (PAsData PTxInInfo)
-        :--> PBuiltinList (PAsData PInteger)
-        :--> PMaybe PProof
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PBuiltinList (PAsData PTxInInfo)
+            :--> PBuiltinList (PAsData PInteger)
+            :--> PMaybe PProof
+        )
 pconcatenatePublishedSteps = phoistAcyclic $
-  plam $ \referenceInputs indices ->
-    pmatch (pconcatSteps # referenceInputs # indices) $ \case
-      PNothing -> pcon PNothing
-      PJust steps -> pcon (PJust (pcon (PProof steps)))
+    plam $ \referenceInputs indices ->
+        pmatch (pconcatSteps # referenceInputs # indices) $ \case
+            PNothing -> pcon PNothing
+            PJust steps -> pcon (PJust (pcon (PProof steps)))
 
 -- | The step run behind 'pconcatenatePublishedSteps'.
 pconcatSteps ::
-  forall (s :: S).
-  Term
-    s
-    ( PBuiltinList (PAsData PTxInInfo)
-        :--> PBuiltinList (PAsData PInteger)
-        :--> PMaybe (PBuiltinList (PAsData PProofStep))
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PBuiltinList (PAsData PTxInInfo)
+            :--> PBuiltinList (PAsData PInteger)
+            :--> PMaybe (PBuiltinList (PAsData PProofStep))
+        )
 pconcatSteps = phoistAcyclic $
-  pfix $ \self -> plam $ \referenceInputs indices ->
-    pelimList
-      ( \index rest ->
-          pmatch (pchunkDatumAt # referenceInputs # pfromData index) $ \case
-            PNothing -> pcon PNothing
-            PJust chunk -> P.do
-              PProofChunkDatum {pchunk'proofSteps} <- pmatch chunk
-              pmatch (self # referenceInputs # rest) $ \case
-                PNothing -> pcon PNothing
-                PJust remaining ->
-                  pcon (PJust (pconcatList # pfromData pchunk'proofSteps # remaining))
-      )
-      (pcon (PJust pnil))
-      indices
+    pfix $ \self -> plam $ \referenceInputs indices ->
+        pelimList
+            ( \index rest ->
+                pmatch (pchunkDatumAt # referenceInputs # pfromData index) $ \case
+                    PNothing -> pcon PNothing
+                    PJust chunk -> P.do
+                        PProofChunkDatum{pchunk'proofSteps} <- pmatch chunk
+                        pmatch (self # referenceInputs # rest) $ \case
+                            PNothing -> pcon PNothing
+                            PJust remaining ->
+                                pcon (PJust (pconcatList # pfromData pchunk'proofSteps # remaining))
+            )
+            (pcon (PJust pnil))
+            indices
 
 -- | Aiken @list.concat@.
 pconcatList ::
-  forall (s :: S) (a :: S -> Type).
-  PIsListLike PBuiltinList a =>
-  Term s (PBuiltinList a :--> PBuiltinList a :--> PBuiltinList a)
+    forall (s :: S) (a :: S -> Type).
+    (PIsListLike PBuiltinList a) =>
+    Term s (PBuiltinList a :--> PBuiltinList a :--> PBuiltinList a)
 pconcatList = phoistAcyclic $
-  pfix $ \self -> plam $ \left right ->
-    pelimList (\item rest -> pcons # item # (self # rest # right)) right left
+    pfix $ \self -> plam $ \left right ->
+        pelimList (\item rest -> pcons # item # (self # rest # right)) right left
 
 {- | Aiken @mpf_chunked_proof_v1.proof_reaches_challenged_terminal@.
 
@@ -544,53 +543,57 @@ digest, or the canonical absence witness. A missing, reordered, substituted,
 duplicated or trailing step changes the reconstructed root and is rejected.
 -}
 pproofReachesChallengedTerminal ::
-  forall (s :: S). Term s (PProofChallengeDatum :--> PProof :--> PBool)
+    forall (s :: S). Term s (PProofChallengeDatum :--> PProof :--> PBool)
 pproofReachesChallengedTerminal = phoistAcyclic $
-  plam $ \challenge proof -> P.do
-    PProofChallengeDatum
-      {pchallenge'targetKey, pchallenge'targetValueHash, pchallenge'expectedRoot, pchallenge'mode} <-
-      pmatch challenge
-    pmatch (pfromData pchallenge'mode) $ \case
-      PMembership ->
-        phasValueHash
-          # pfromData pchallenge'expectedRoot
-          # pfromData pchallenge'targetKey
-          # pfromData pchallenge'targetValueHash
-          # proof
-      PNonMembership ->
-        pdoesNotHave
-          # pfromData pchallenge'expectedRoot
-          # pfromData pchallenge'targetKey
-          # proof
+    plam $ \challenge proof -> P.do
+        PProofChallengeDatum
+            { pchallenge'targetKey
+            , pchallenge'targetValueHash
+            , pchallenge'expectedRoot
+            , pchallenge'mode
+            } <-
+            pmatch challenge
+        pmatch (pfromData pchallenge'mode) $ \case
+            PMembership ->
+                phasValueHash
+                    # pfromData pchallenge'expectedRoot
+                    # pfromData pchallenge'targetKey
+                    # pfromData pchallenge'targetValueHash
+                    # proof
+            PNonMembership ->
+                pdoesNotHave
+                    # pfromData pchallenge'expectedRoot
+                    # pfromData pchallenge'targetKey
+                    # proof
 
 -- | Aiken @mpf_chunked_proof_v1.verify_published_proof@ — every named invariant, in order.
 pverifyPublishedProof ::
-  forall (s :: S).
-  Term
-    s
-    ( PBuiltinList (PAsData PTxInInfo)
-        :--> PProofChallengeDatum
-        :--> PFinalizeProofRedeemer
-        :--> PBool
-    )
-pverifyPublishedProof = phoistAcyclic $
-  plam $ \referenceInputs challenge redeemer -> P.do
-    PFinalizeProofRedeemer {pfinalize'orderedChunkReferenceInputIndices} <- pmatch redeemer
-    indices <- plet (pfromData pfinalize'orderedChunkReferenceInputIndices)
-    pchallengeDatumIsWellFormed
-      # challenge
-      #&& pchunkIndicesAreWellFormed
-      # indices
-      # (plength # referenceInputs)
-      #&& pmatch
-        (pconcatenatePublishedSteps # referenceInputs # indices)
-        ( \case
-            PNothing -> pconstant False
-            PJust proof ->
-              pproofHasAtMostSteps
-                # proof
-                # pmaximumTotalProofStepCount
-                #&& pproofReachesChallengedTerminal
-                # challenge
-                # proof
+    forall (s :: S).
+    Term
+        s
+        ( PBuiltinList (PAsData PTxInInfo)
+            :--> PProofChallengeDatum
+            :--> PFinalizeProofRedeemer
+            :--> PBool
         )
+pverifyPublishedProof = phoistAcyclic $
+    plam $ \referenceInputs challenge redeemer -> P.do
+        PFinalizeProofRedeemer{pfinalize'orderedChunkReferenceInputIndices} <- pmatch redeemer
+        indices <- plet (pfromData pfinalize'orderedChunkReferenceInputIndices)
+        pchallengeDatumIsWellFormed
+            # challenge
+            #&& pchunkIndicesAreWellFormed
+            # indices
+            # (plength # referenceInputs)
+            #&& pmatch
+                (pconcatenatePublishedSteps # referenceInputs # indices)
+                ( \case
+                    PNothing -> pconstant False
+                    PJust proof ->
+                        pproofHasAtMostSteps
+                            # proof
+                            # pmaximumTotalProofStepCount
+                            #&& pproofReachesChallengedTerminal
+                            # challenge
+                            # proof
+                )

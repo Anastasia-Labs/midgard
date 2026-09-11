@@ -29,7 +29,6 @@ matters.
 -}
 module Midgard.DaAttestation.Signatures (
   pattestationAssetName,
-  pattestationMessage,
   psignerBitMask,
   psignerBitIsClear,
   psetAttestedSigner,
@@ -64,18 +63,6 @@ pattestationAssetName = phoistAcyclic $
       (plengthBS # headerHash #== 28)
       (pdata (pcon (PTokenName (pattestationAssetNamePrefix <> headerHash))))
       perror
-
-{- | Aiken @attestation_message@.
-
-@"MidgardDAAttestationV1" ++ header_hash@ — what the committee actually signs.
-
-The domain-separating prefix is load-bearing: without it a signature over a bare
-header hash could be replayed anywhere else in the protocol that asks a
-committee member to sign a hash.
--}
-pattestationMessage :: forall (s :: S). Term s (PByteString :--> PByteString)
-pattestationMessage = phoistAcyclic $
-  plam $ \headerHash -> pconstant "MidgardDAAttestationV1" <> headerHash
 
 {- | Aiken @signer_bit_mask@.
 

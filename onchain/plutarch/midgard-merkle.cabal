@@ -19,12 +19,26 @@ maintainer:    colll78@colll78
 -- A copyright notice.
 -- copyright:
 -- category:
-extra-source-files: CHANGELOG.md
+extra-source-files:
+  CHANGELOG.md
+  scripts/check-environments.py
+  scripts/generate-aiken-split-fixtures.py
+  scripts/summarize-execution-ledger.py
+  SECOND-WAVE-PARITY.md
+  tests/fixtures/second-wave-execution-ledger.json
+
 data-files:
+  tests/fixtures/aiken-split-validators.json
   tests/fixtures/native-c20-field7-maximum.json
   tests/fixtures/native-high-cardinality.json
   tests/fixtures/native-size-balanced-15_5k.json
-  tests/fixtures/proof-v1-fragment-envelope.json
+
+flag testnet
+  description:
+    Compile the exact Aiken testnet environment into the validators.
+
+  default:     False
+  manual:      True
 
 common lang
   ghc-options:
@@ -117,6 +131,7 @@ common dependencies
     , cborg
     , data-default
     , directory
+    , filepath
     , generics-sop
     , plutarch
     , plutarch-ledger-api
@@ -129,6 +144,10 @@ common dependencies
 
 library
   import:          lang, dependencies
+
+  if flag(testnet)
+    cpp-options: -DMIDGARD_TESTNET
+
   exposed-modules:
     Aiken.Cbor
     DesignPatterns.MerkelizedValidator
@@ -141,6 +160,7 @@ library
     MerkleTree.Types.Constants
     MerkleTree.Types.Membership
     MerkleTree.Validators.Membership
+    Midgard.AvailabilityChallenge
     Midgard.Blake2b224Trace
     Midgard.Blake2b256Trace
     Midgard.BoundedBlob
@@ -166,6 +186,7 @@ library
     Midgard.Common.Utils
     Midgard.Common.Value
     Midgard.ComputationThread
+    Midgard.CorrectionLock
     Midgard.DaAttestation
     Midgard.DaAttestation.Operations
     Midgard.DaAttestation.Readers
@@ -173,34 +194,57 @@ library
     Midgard.Env
     Midgard.FraudProof
     Midgard.FraudProofCatalogue
+    Midgard.FraudProofs.CanonicalDecodability
     Midgard.FraudProofs.ChunkedInclusion
+    Midgard.FraudProofs.CommittedFieldShape
     Midgard.FraudProofs.Common
+    Midgard.FraudProofs.CrossBlockDuplicateEvent
     Midgard.FraudProofs.DaHashPreimage
     Midgard.FraudProofs.DoubleSpend
+    Midgard.FraudProofs.DoubleWithdraw
+    Midgard.FraudProofs.FabricatedDeposit
+    Midgard.FraudProofs.FabricatedWithdrawal
     Midgard.FraudProofs.FieldOpening
     Midgard.FraudProofs.InputNoIdx
+    Midgard.FraudProofs.InputSetUniqueness
     Midgard.FraudProofs.InvalidRange
     Midgard.FraudProofs.InvalidSignature
+    Midgard.FraudProofs.L2TxMistag
+    Midgard.FraudProofs.MinAda
     Midgard.FraudProofs.MinFee
+    Midgard.FraudProofs.MintAuthorization
+    Midgard.FraudProofs.MintAuthorization.Engine
     Midgard.FraudProofs.MissingNativeScriptTx
+    Midgard.FraudProofs.MissingNativeScriptUtxo
     Midgard.FraudProofs.MissingSignature
+    Midgard.FraudProofs.NativeScriptDecoding.Engine
+    Midgard.FraudProofs.NativeScriptDecoding.Step01
+    Midgard.FraudProofs.NativeScriptDecoding.Step02
+    Midgard.FraudProofs.NativeScriptDecoding.Step03
+    Midgard.FraudProofs.NativeScriptDecoding.Step04
+    Midgard.FraudProofs.NativeScriptInvalid
     Midgard.FraudProofs.NativeTx.Codec
     Midgard.FraudProofs.NativeTx.Compact
     Midgard.FraudProofs.NativeTx.Components
     Midgard.FraudProofs.NativeTx.Preimages
     Midgard.FraudProofs.NativeTx.Transaction
     Midgard.FraudProofs.NativeTx.Types
+    Midgard.FraudProofs.NetworkId
     Midgard.FraudProofs.NoInput
     Midgard.FraudProofs.NoReferenceInput
     Midgard.FraudProofs.ReferenceInputNoIdx
     Midgard.FraudProofs.TransitionTrace.FinalV1
     Midgard.FraudProofs.TransitionTrace.Proof
+    Midgard.FraudProofs.ValueNotPreserved
+    Midgard.FraudProofs.WithdrawalMistag
+    Midgard.FraudProofs.WithdrawnInput
     Midgard.FraudProofs.WithdrawnReferenceInput
     Midgard.FraudProofs.ZeroInput
     Midgard.HubOracle
     Midgard.IntraItemBytes
     Midgard.LedgerOutput
     Midgard.LedgerOutputCommitment
+    Midgard.LedgerOutputDescriptor
     Midgard.LedgerOutputProof
     Midgard.LedgerOutputScan
     Midgard.LedgerOutputValue
@@ -211,6 +255,7 @@ library
     Midgard.MpfProofFold
     Midgard.NativeScript
     Midgard.NativeScriptScan
+    Midgard.NativeScriptScanOneShot
     Midgard.NativeTxCarriage
     Midgard.NativeTxFaultStatement
     Midgard.NativeTxFieldAccess
@@ -223,6 +268,7 @@ library
     Midgard.OperatorDirectory.RetiredOperators
     Midgard.Payout
     Midgard.RedeemerItemProof
+    Midgard.RejectionReason
     Midgard.Reserve
     Midgard.Scheduler
     Midgard.ScriptContext
@@ -236,7 +282,6 @@ library
     Midgard.Types.StateCommitment
     Midgard.UserEvents
     Midgard.UserEvents.Deposit
-    Midgard.UserEvents.TxFieldReceipt
     Midgard.UserEvents.TxOrder
     Midgard.UserEvents.Withdrawal
     Midgard.UserEvents.Witness
@@ -245,28 +290,53 @@ library
     Midgard.ValidationDispute
     Midgard.ValidationGame
     Midgard.ValidationMachine
+    Midgard.ValidationMachine.CekSemantics
+    Midgard.ValidationMachine.ValueAndMintSemantics
+    Midgard.ValidationMachineFieldDoor
     Midgard.ValidationMerkle
     Midgard.ValidationResolution
     Midgard.ValidationResolver
     Midgard.ValidationSemantic
     Midgard.ValidationTrace
     Midgard.Validators.ActiveOperators
+    Midgard.Validators.AvailabilityChallenge
     Midgard.Validators.CekProgramMaterial
     Midgard.Validators.ComputationThread
+    Midgard.Validators.CorrectionLock
     Midgard.Validators.DaAttestation
     Midgard.Validators.DaParamsGovernor
     Midgard.Validators.Deposit
     Midgard.Validators.FieldPreimageCertificate
     Midgard.Validators.FraudProof
     Midgard.Validators.FraudProofCatalogue
+    Midgard.Validators.FraudProofs.CanonicalDecodability
+    Midgard.Validators.FraudProofs.CommittedFieldShape
+    Midgard.Validators.FraudProofs.CrossBlockDuplicateEvent
     Midgard.Validators.FraudProofs.DaHashPreimage
     Midgard.Validators.FraudProofs.DoubleSpend
+    Midgard.Validators.FraudProofs.DoubleWithdraw
+    Midgard.Validators.FraudProofs.FabricatedDeposit
+    Midgard.Validators.FraudProofs.FabricatedWithdrawal
     Midgard.Validators.FraudProofs.InputNoIdx
+    Midgard.Validators.FraudProofs.InputSetUniqueness
     Midgard.Validators.FraudProofs.InvalidRange
     Midgard.Validators.FraudProofs.InvalidSignature
+    Midgard.Validators.FraudProofs.L2TxMistag
+    Midgard.Validators.FraudProofs.MinAda
     Midgard.Validators.FraudProofs.MinFee
+    Midgard.Validators.FraudProofs.MintAuthorization
     Midgard.Validators.FraudProofs.MissingNativeScriptTx
+    Midgard.Validators.FraudProofs.MissingNativeScriptUtxo
     Midgard.Validators.FraudProofs.MissingSignature
+    Midgard.Validators.FraudProofs.MpfChunkedChallenge
+    Midgard.Validators.FraudProofs.NativeScriptDecoding.AdvanceOrClose
+    Midgard.Validators.FraudProofs.NativeScriptDecoding.BindDescriptor
+    Midgard.Validators.FraudProofs.NativeScriptDecoding.OpenSubject
+    Midgard.Validators.FraudProofs.NativeScriptDecoding.Step01
+    Midgard.Validators.FraudProofs.NativeScriptDecoding.Step02
+    Midgard.Validators.FraudProofs.NativeScriptDecoding.Step04
+    Midgard.Validators.FraudProofs.NativeScriptInvalid
+    Midgard.Validators.FraudProofs.NetworkId
     Midgard.Validators.FraudProofs.NoInput
     Midgard.Validators.FraudProofs.NoReferenceInput
     Midgard.Validators.FraudProofs.ReferenceInputNoIdx
@@ -279,6 +349,7 @@ library
     Midgard.Validators.FraudProofs.ValidationTrace.CanonicalDecodeItemEvidence
     Midgard.Validators.FraudProofs.ValidationTrace.CanonicalDecodePrepare
     Midgard.Validators.FraudProofs.ValidationTrace.Cek
+    Midgard.Validators.FraudProofs.ValidationTrace.CekSemantics
     Midgard.Validators.FraudProofs.ValidationTrace.CompactBinding
     Midgard.Validators.FraudProofs.ValidationTrace.Dispute
     Midgard.Validators.FraudProofs.ValidationTrace.Game
@@ -290,7 +361,6 @@ library
     Midgard.Validators.FraudProofs.ValidationTrace.PhaseANativeSignatures
     Midgard.Validators.FraudProofs.ValidationTrace.PhaseAScriptPreconditions
     Midgard.Validators.FraudProofs.ValidationTrace.Preparation
-    Midgard.Validators.FraudProofs.ValidationTrace.Resolution
     Midgard.Validators.FraudProofs.ValidationTrace.ResolveInputs
     Midgard.Validators.FraudProofs.ValidationTrace.ScriptIntegrity
     Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesRedeemerNormalization
@@ -307,6 +377,10 @@ library
     Midgard.Validators.FraudProofs.ValidationTrace.Source
     Midgard.Validators.FraudProofs.ValidationTrace.StaticLedgerRules
     Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMint
+    Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMintSemantics
+    Midgard.Validators.FraudProofs.ValueNotPreserved
+    Midgard.Validators.FraudProofs.WithdrawalMistag
+    Midgard.Validators.FraudProofs.WithdrawnInput
     Midgard.Validators.FraudProofs.WithdrawnReferenceInput
     Midgard.Validators.FraudProofs.ZeroInput
     Midgard.Validators.HubOracle
@@ -318,9 +392,7 @@ library
     Midgard.Validators.Scheduler
     Midgard.Validators.Settlement
     Midgard.Validators.StateQueue
-    Midgard.Validators.TxFieldReceipt
     Midgard.Validators.TxOrder
-    Midgard.Validators.TxOrderFields
     Midgard.Validators.Withdrawal
     Midgard.Validators.Witness
     Profile
@@ -360,6 +432,9 @@ test-suite helpers-tests
   other-modules:
     Testing.ActiveOperatorsValidator
     Testing.AikenCbor
+    Testing.AikenSplitVectors
+    Testing.AvailabilityChallenge
+    Testing.AvailabilityChallengeValidator
     Testing.Blake2b224Trace
     Testing.Blake2b256Trace
     Testing.BoundedBlob
@@ -385,6 +460,8 @@ test-suite helpers-tests
     Testing.CommonUtils
     Testing.CommonValue
     Testing.ComputationThreadValidator
+    Testing.CorrectionLock
+    Testing.CorrectionLockValidator
     Testing.CountedMembership
     Testing.Crypto
     Testing.DaAttestationHandlers
@@ -394,26 +471,54 @@ test-suite helpers-tests
     Testing.DaParamsGovernor
     Testing.DepositValidator
     Testing.DesignPatterns
+    Testing.Environment
     Testing.Eval
     Testing.EventInclusion
     Testing.EventV1Abi
+    Testing.ExecutionFrontiers
     Testing.FieldOpening
     Testing.FieldPreimageCertificateValidator
-    Testing.FragmentEnvelopeV1
     Testing.FraudProofCatalogueValidator
+    Testing.FraudProofsCanonicalDecodability
+    Testing.FraudProofsCommittedFieldShape
     Testing.FraudProofsCommon
+    Testing.FraudProofsCrossBlockDuplicateEvent
     Testing.FraudProofsDaHashPreimage
     Testing.FraudProofsDoubleSpend
+    Testing.FraudProofsDoubleWithdraw
+    Testing.FraudProofsFabricatedDeposit
+    Testing.FraudProofsFabricatedWithdrawal
     Testing.FraudProofsFixture
     Testing.FraudProofsInputNoIdx
+    Testing.FraudProofsInputSetUniqueness
     Testing.FraudProofsInvalidRange
+    Testing.FraudProofsL2TxMistag
+    Testing.FraudProofsMinAda
     Testing.FraudProofsMinFee
+    Testing.FraudProofsMintAuthorizationEndpoints
+    Testing.FraudProofsMintAuthorizationEngine
+    Testing.FraudProofsMintAuthorizationStep02
+    Testing.FraudProofsMintAuthorizationStep03
+    Testing.FraudProofsMintAuthorizationStep04
     Testing.FraudProofsMissingNativeScriptTx
+    Testing.FraudProofsMissingNativeScriptUtxo
+    Testing.FraudProofsNativeScriptDecodingAdvanceOrClose
+    Testing.FraudProofsNativeScriptDecodingBindDescriptor
+    Testing.FraudProofsNativeScriptDecodingEngine
+    Testing.FraudProofsNativeScriptDecodingOpenSubject
+    Testing.FraudProofsNativeScriptDecodingStep01
+    Testing.FraudProofsNativeScriptDecodingStep02
+    Testing.FraudProofsNativeScriptDecodingStep04
+    Testing.FraudProofsNativeScriptInvalid
+    Testing.FraudProofsNetworkId
     Testing.FraudProofsNoInput
     Testing.FraudProofsNoReferenceInput
     Testing.FraudProofsQ1xSpendInputCardinality
     Testing.FraudProofsSignature
     Testing.FraudProofsTransitionTrace
+    Testing.FraudProofsValueNotPreserved
+    Testing.FraudProofsWithdrawalMistag
+    Testing.FraudProofsWithdrawnInput
     Testing.FraudProofsWithdrawnReferenceInput
     Testing.FraudProofsZeroInput
     Testing.FraudProofValidator
@@ -422,6 +527,7 @@ test-suite helpers-tests
     Testing.IntraItemBytes
     Testing.LedgerOutput
     Testing.LedgerOutputCommitment
+    Testing.LedgerOutputDescriptor
     Testing.LedgerOutputProof
     Testing.LedgerOutputScan
     Testing.LedgerOutputValue
@@ -429,6 +535,7 @@ test-suite helpers-tests
     Testing.LinkedList
     Testing.MembershipValidator
     Testing.MerklePatriciaForestry
+    Testing.MpfChunkedChallengeValidator
     Testing.MpfChunkedProof
     Testing.MpfChunkedVerifyValidator
     Testing.MpfProof
@@ -456,6 +563,7 @@ test-suite helpers-tests
     Testing.PayoutValidator
     Testing.RedeemerItemProof
     Testing.RegisteredOperatorsValidator
+    Testing.RejectionReason
     Testing.ReserveValidator
     Testing.RetiredOperatorsValidator
     Testing.SchedulerValidator
@@ -473,19 +581,20 @@ test-suite helpers-tests
     Testing.TransactionRootV1GoldenFixture
     Testing.TransitionTraceAiken
     Testing.TransitionTraceProof
-    Testing.TxFieldReceipt
-    Testing.TxOrderFields
+    Testing.TxOrderMaterial
     Testing.TxOrderV1Abi
     Testing.TxOrderValidator
     Testing.ValidationClaim
     Testing.ValidationDispute
     Testing.ValidationInstructionEvidenceBounds
     Testing.ValidationMachine
+    Testing.ValidationMachineFieldDoor
     Testing.ValidationMerkle
     Testing.ValidationOneStepCrossLanguage
     Testing.ValidationResolution
     Testing.ValidationTrace
     Testing.ValidationTraceCanonicalDecode
+    Testing.ValidationTraceCekSplit
     Testing.ValidationTraceCompactBinding
     Testing.ValidationTraceInputSets
     Testing.ValidationTracePhaseANativeScripts
@@ -494,6 +603,7 @@ test-suite helpers-tests
     Testing.ValidationTraceScriptSourcesStageZero
     Testing.ValidationTraceSignatures
     Testing.ValidationTraceStaticLedgerRules
+    Testing.ValidationTraceValueAndMintSplit
     Testing.WithdrawalValidator
     Testing.WitnessValidator
 

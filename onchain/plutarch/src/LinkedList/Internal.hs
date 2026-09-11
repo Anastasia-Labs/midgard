@@ -79,20 +79,18 @@ pgetLovelaceAndSingleNftName value nftPolicyId k = P.do
   lovelace <-
     plet $
       pfromData
-        ( psndBuiltin
-            #$ phead
-            #$ pto (pto (pfromData (psndBuiltin # adaEntry)))
+        ( (pmatch (phead #$ pto (pto (pfromData (pmatch adaEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
         )
   nftEntry <- plet $ pheadSingleton # restOfPolicies
-  nameQty <- plet $ pheadSingleton #$ pto (pto (pfromData (psndBuiltin # nftEntry)))
+  nameQty <- plet $ pheadSingleton #$ pto (pto (pfromData (pmatch nftEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
   pif
     ( pand'List
-        [ pfromData (pfstBuiltin # adaEntry) #== padaSymbol
-        , pfstBuiltin # nftEntry #== nftPolicyId
-        , pfromData (psndBuiltin # nameQty) #== 1
+        [ pfromData (pmatch adaEntry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== padaSymbol
+        , (pmatch nftEntry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== nftPolicyId
+        , pfromData (pmatch nameQty $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1
         ]
     )
-    (k lovelace (pfstBuiltin # nameQty))
+    (k lovelace (pmatch nameQty $ \(PBuiltinPair pairFirst _) -> pairFirst))
     perror
 
 {- | Aiken @internal.authenticate_element_utxo_and_get_info_helper@.
@@ -150,8 +148,8 @@ pisOnlyMintUnderPolicy = phoistAcyclic $
       PJust nameQtyMap -> P.do
         entry <- plet $ pheadSingleton #$ pto (pto nameQtyMap)
         pand'List
-          [ pfstBuiltin # entry #== assetName
-          , pfromData (psndBuiltin # entry) #== expectedQuantity
+          [ (pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== assetName
+          , pfromData (pmatch entry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== expectedQuantity
           ]
 
 {- | Aiken @internal.validate_list_nft_and_get_other_list_assets@.
@@ -205,9 +203,9 @@ pexpectPop = phoistAcyclic $
           pelimList
             ( \entry rest ->
                 pif
-                  (pfstBuiltin # entry #== name)
+                  ((pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== name)
                   ( pif
-                      (pfromData (psndBuiltin # entry) #== expectedQty)
+                      (pfromData (pmatch entry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== expectedQty)
                       rest
                       perror
                   )
@@ -239,7 +237,7 @@ pvalidateNoReservedListAssetChanges = phoistAcyclic $
     pall
       # plam
         ( \entry -> P.do
-            name <- plet $ pfstBuiltin # entry
+            name <- plet $ (pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst)
             pand'List
               [ pnot # (name #== rootKey)
               , pnot
@@ -329,17 +327,15 @@ pinternalInputProcessor currentDatum currentValuePairs namesQtyPairs k = P.do
   lovelace <-
     plet $
       pfromData
-        ( psndBuiltin
-            #$ phead
-            #$ pto (pto (pfromData (psndBuiltin # (phead # currentValuePairs))))
+        ( (pmatch (phead #$ pto (pto (pfromData (pmatch (phead # currentValuePairs) $ \(PBuiltinPair _ pairSecond) -> pairSecond)))) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
         )
   datumData <-
     plet $ pmatch currentDatum $ \case
       POutputDatum d -> pto d
       _ -> perror
   pif
-    (pfromData (psndBuiltin # nameQty) #== 1)
-    (k lovelace (pfstBuiltin # nameQty) datumData)
+    (pfromData (pmatch nameQty $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1)
+    (k lovelace (pmatch nameQty $ \(PBuiltinPair pairFirst _) -> pairFirst) datumData)
     perror
 
 {- | Aiken @internal.validate_singular_authentic_input_helper@.
@@ -387,7 +383,7 @@ pvalidateSingularAuthenticInputHelper inputs nftPolicyId return_ =
             ( pif
                 isSingleNonAda
                 ( pif
-                    (pfstBuiltin # (phead # nonAda) #== nftPolicyId)
+                    ((pmatch (phead # nonAda) $ \(PBuiltinPair pairFirst _) -> pairFirst) #== nftPolicyId)
                     perror
                     inputFound
                 )
@@ -396,11 +392,11 @@ pvalidateSingularAuthenticInputHelper inputs nftPolicyId return_ =
             ( pif
                 isSingleNonAda
                 ( pif
-                    (pfstBuiltin # (phead # nonAda) #== nftPolicyId)
+                    ((pmatch (phead # nonAda) $ \(PBuiltinPair pairFirst _) -> pairFirst) #== nftPolicyId)
                     ( pinternalInputProcessor
                         ptxOut'datum
                         valuePairs
-                        (psndBuiltin # (phead # nonAda))
+                        (pmatch (phead # nonAda) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
                         ( \lovelace nftName datumData ->
                             pif
                               (return_ inputD lovelace nftName datumData)
@@ -482,11 +478,11 @@ pvalidateDualAuthenticInputsHelper anchorInputOutref inputs nftPolicyId with_ =
                         (pnull # (ptail # nonAda))
                     )
                     ( pif
-                        (pfstBuiltin # (phead # nonAda) #== nftPolicyId)
+                        ((pmatch (phead # nonAda) $ \(PBuiltinPair pairFirst _) -> pairFirst) #== nftPolicyId)
                         ( pinternalInputProcessor
                             ptxOut'datum
                             valuePairs
-                            (psndBuiltin # (phead # nonAda))
+                            (pmatch (phead # nonAda) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
                             ( \lovelace nftName datumData ->
                                 pcon (POneFound inputD paddress'credential lovelace nftName datumData)
                             )
@@ -500,11 +496,11 @@ pvalidateDualAuthenticInputsHelper anchorInputOutref inputs nftPolicyId with_ =
                     ( P.do
                         entry <- plet $ pheadSingleton # nonAda
                         pif
-                          (pfstBuiltin # entry #== nftPolicyId)
+                          ((pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== nftPolicyId)
                           ( pinternalInputProcessor
                               ptxOut'datum
                               valuePairs
-                              (psndBuiltin # entry)
+                              (pmatch entry $ \(PBuiltinPair _ pairSecond) -> pairSecond)
                               ( \lovelace nftName datumData -> P.do
                                   PTxInInfo {ptxInInfo'outRef = firstOutRef} <-
                                     pmatch $ pfromData firstInput

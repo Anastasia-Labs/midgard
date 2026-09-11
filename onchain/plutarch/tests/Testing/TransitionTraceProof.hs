@@ -40,6 +40,8 @@ module Testing.TransitionTraceProof (
 ) where
 
 import Data.ByteString qualified as BS
+import Data.ByteString.Base16 qualified as Base16
+import Data.ByteString.Char8 qualified as BS8
 import Data.Kind (Type)
 import PlutusCore.Data qualified as PD
 import Test.Tasty
@@ -131,8 +133,10 @@ import Testing.FraudProofsFixture (
   commitCountedRoot,
   compactWithValidity,
   encodedInput,
+  keyHashFor,
+  midgardOutputCbor,
   outputItem,
-  outputsPreimage,
+  pubKeyAddressBytes,
   serialise,
   sharedInputRef,
   spendInputsPreimage,
@@ -177,7 +181,7 @@ eventToStepDomain = 5
 --------------------------------------------------------------------------------
 
 outRef :: Integer -> PD.Data
-outRef n = PD.Constr 0 [PD.Constr 0 [PD.B (BS.replicate 32 (fromIntegral n))], PD.I n]
+outRef n = PD.Constr 0 [PD.B (BS.replicate 32 (fromIntegral n)), PD.I n]
 
 -- | A @WithdrawalEventKey@ — constructor 0, so phase @Withdrawal@.
 withdrawalKey :: PD.Data
@@ -987,7 +991,7 @@ two-byte form for anything under 256 and a key that addresses a different slot �
 which is how this reference was wrong before the ledger tests caught it.
 -}
 ledgerKey :: PD.Data -> BS.ByteString
-ledgerKey (PD.Constr _ [PD.Constr _ [PD.B txId], PD.I index]) =
+ledgerKey (PD.Constr _ [PD.B txId, PD.I index]) =
   BS.concat
     [ "\x82"
     , "\x58\x20"
@@ -1026,7 +1030,9 @@ ledgerTests =
   , testCase "aborts on a transaction id that is not 32 bytes" $
       pfails $
         pledgerOutrefKey
-          (pconstant (PD.Constr 0 [PD.Constr 0 [PD.B (BS.replicate 31 0x01)], PD.I 0]))
+          (pconstant (PD.Constr 0 [PD.B (BS.replicate 31 0x01), PD.I 0]))
+  , testCase "rejects the retired wrapped transaction-id encoding" $
+      pfails $ pledgerOutrefKey (pconstant (PD.Constr 0 [PD.Constr 0 [PD.B (BS.replicate 32 0x01)], PD.I 0]))
   , testCase "a one-entry trie holds its entry" $
       passertEval $
         pverifyLedgerMembership
@@ -1492,16 +1498,47 @@ duplicateTests =
 
 {- | The transaction the L2 fault is about.
 
-'tx1' out of the shared fixture, re-compacted with §2.5 validity code 0: this
-rule only fires on a transaction the block declared /valid/, and every fixture
-transaction carries code 3 by default. The id is unaffected — §3's preimage is
-the body alone.
+'tx1' out of the shared fixture, with its second output retaken to carry a
+canonical datum and re-compacted with §2.5 validity code 0: this rule only fires
+on a transaction the block declared /valid/. The transaction id is therefore
+re-derived from the adjusted body.
 -}
 l2TxId, l2Compact, l2WitnessSet, l2Lengths :: BS.ByteString
-l2TxId = txIdOf tx1
-l2Compact = compactWithValidity tx1 (blake2b256 (witnessSetCborOf tx1)) 0
+l2TxId = txIdForCompact l2Compact
+l2Compact = compactWithL2Outputs 0
 l2WitnessSet = witnessSetCborOf tx1
 l2Lengths = BS.concat ("\x89" : replicate 9 "\x00")
+
+compactWithL2Outputs :: Integer -> BS.ByteString
+compactWithL2Outputs validity =
+  BS.take 73 base <> blake2b256 l2OutputsPreimage <> BS.drop 105 base
+  where
+    base = compactWithValidity tx1 (blake2b256 l2WitnessSet) validity
+
+-- | This arm needs materialisable output data; the shared fixture deliberately
+-- carries arbitrary datum bytes in slot 1 for field-walk tests.
+l2OutputItem :: Int -> BS.ByteString
+l2OutputItem 0 = outputItem 0
+l2OutputItem 1 =
+  midgardOutputCbor
+    (pubKeyAddressBytes (keyHashFor 1))
+    2_000_001
+    (Just (serialise (PD.B (BS.replicate 4 0xc1))))
+l2OutputItem _ = error "l2OutputItem: expected output index 0 or 1"
+
+l2OutputsPreimage :: BS.ByteString
+l2OutputsPreimage =
+  arrayHeader 2 <> wrapItem (l2OutputItem 0) <> wrapItem (l2OutputItem 1)
+
+l2LedgerValue :: Int -> BS.ByteString
+l2LedgerValue 0 =
+  hexBytes "90010018295820dda860a40cf826708c54bf3f022e2757f78dc17dcc02b2dbc43a33a8ca666147581d700861a5328e50b6e9c2c2836d267da7781b5a6022864c108f4db451b31a001e8480005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358203099fcf80bce873fc04c7e7ba02f8b1edd1cb8fac5b6ab62ecb935b44ef8f9e4183c18518358203099fcf80bce873fc04c7e7ba02f8b1edd1cb8fac5b6ab62ecb935b44ef8f9e4183c18518358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+l2LedgerValue 1 =
+  hexBytes "900101183058200fd23dcdce305968c7b9af1c66a2fe269c330d5acd7f931ac9b8fff5efdf9899581d600d6a577e9441ad8ed9663931906e4d43ece8f82c712b1d0235affb061a001e8481005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd0520400040835820cbc440aab7cd944e329ef92ef5d5d52e1768f245fc858a96a5ab4d8c49b03d9418421859835820cbc440aab7cd944e329ef92ef5d5d52e1768f245fc858a96a5ab4d8c49b03d9418421859835820799761b9c7ccf481ba19372dac59bce4056ae510ccce112aca20ae362dbdbd79090c"
+l2LedgerValue _ = error "l2LedgerValue: expected output index 0 or 1"
+
+hexBytes :: String -> BS.ByteString
+hexBytes = Base16.decodeLenient . BS8.pack
 
 -- | @ledger_state.NativeTxProofSourceV1@, and the leaf the block commits.
 l2Triple :: PD.Data
@@ -1528,10 +1565,10 @@ expected post-root is the two-leaf trie over the outputs.
 -}
 spentKey, spentValue :: BS.ByteString
 spentKey = encodedInput sharedInputRef
-spentValue = BS.replicate 40 0x8a
+spentValue = l2LedgerValue 0
 
 outputEntry :: Integer -> (BS.ByteString, BS.ByteString)
-outputEntry i = (ledgerKey (outRefAt l2TxId i), outputItem (fromIntegral i))
+outputEntry i = (ledgerKey (outRefAt l2TxId i), l2LedgerValue (fromIntegral i))
 
 outputEntriesFor :: BS.ByteString -> [BS.ByteString] -> [(BS.ByteString, BS.ByteString)]
 outputEntriesFor txId =
@@ -1539,7 +1576,7 @@ outputEntriesFor txId =
 
 -- | An output reference under a chosen transaction id.
 outRefAt :: BS.ByteString -> Integer -> PD.Data
-outRefAt txId index = PD.Constr 0 [PD.Constr 0 [PD.B txId], PD.I index]
+outRefAt txId index = PD.Constr 0 [PD.B txId, PD.I index]
 
 l2PreRoot, l2PostRoot :: BS.ByteString
 l2PreRoot = singleEntryRoot spentKey spentValue
@@ -1555,7 +1592,7 @@ two outputs rather than one.
 -}
 l2SpendWitnesses, l2OutputWitnesses :: [PD.Data]
 l2SpendWitnesses = [deleteWitness spentKey spentValue]
-l2OutputWitnesses = outputWitnessesFor l2TxId [outputItem 0, outputItem 1]
+l2OutputWitnesses = outputWitnessesFor l2TxId [l2LedgerValue 0, l2LedgerValue 1]
 
 outputWitnessesFor :: BS.ByteString -> [BS.ByteString] -> [PD.Data]
 outputWitnessesFor txId values =
@@ -1640,7 +1677,7 @@ l2Tests =
             acceptedL2Fault
               substitutedSpendStep
               substitutedSpendInputsPreimage
-              (outputsPreimage tx1)
+              l2OutputsPreimage
               [deleteWitness substitutedSpentKey spentValue]
               l2OutputWitnesses
       , testCase "rejects_l2_transaction_with_a_substituted_outputs_preimage" $
@@ -1659,7 +1696,7 @@ l2Tests =
               wrongAuthenticatedLeaf
               wrongAuthenticatedStep
               (spendInputsPreimage tx1)
-              (outputsPreimage tx1)
+              l2OutputsPreimage
               l2SpendWitnesses
               wrongAuthenticatedOutputWitnesses
       , testCase "rejects_l2_transaction_with_uncommitted_spend_preimage" $
@@ -1667,7 +1704,7 @@ l2Tests =
             acceptedL2Fault
               substitutedOutputStep
               substitutedSpendInputsPreimage
-              (outputsPreimage tx1)
+              l2OutputsPreimage
               l2SpendWitnesses
               l2OutputWitnesses
       , testCase "rejects_l2_transaction_with_a_miscounted_committed_spend_inputs_preimage" $
@@ -1678,7 +1715,7 @@ l2Tests =
               miscountedLeaf
               miscountedStep
               miscountedSpendInputsPreimage
-              (outputsPreimage tx1)
+              l2OutputsPreimage
               l2SpendWitnesses
               miscountedOutputWitnesses
       ]
@@ -1688,8 +1725,8 @@ l2Tests =
           #== pconstant [encodedInput sharedInputRef]
   , testCase "…and field 2 into its outputs" $
       passertEval $
-        pdoorBodyFieldItems anchoredT 2 (pconstant (outputsPreimage tx1))
-          #== pconstant [outputItem 0, outputItem 1]
+        pdoorBodyFieldItems anchoredT 2 (pconstant l2OutputsPreimage)
+          #== pconstant [l2OutputItem 0, l2OutputItem 1]
   , testCase "aborts on a preimage the transaction does not commit to" $
       pfails $
         pdoorBodyFieldItems
@@ -1697,7 +1734,7 @@ l2Tests =
           0
           (pconstant (spendInputsPreimage tx1 <> "\x00"))
   , testCase "aborts opening field 0 with field 2's preimage" $
-      pfails (pdoorBodyFieldItems anchoredT 0 (pconstant (outputsPreimage tx1)))
+      pfails (pdoorBodyFieldItems anchoredT 0 (pconstant l2OutputsPreimage))
   , testCase "spending the declared input empties the ledger" $
       passertEval $
         papplyL2Spends
@@ -1726,7 +1763,7 @@ l2Tests =
           # pconstant libraryNullHash
           # pconstant l2TxId
           # 0
-          # pconstant [outputItem 0, outputItem 1]
+          # pconstant [l2OutputItem 0, l2OutputItem 1]
           # witnessList l2OutputWitnesses
           #== pconstant l2PostRoot
   , testCase "aborts when an output witness claims another index" $
@@ -1735,7 +1772,7 @@ l2Tests =
           # pconstant libraryNullHash
           # pconstant l2TxId
           # 1
-          # pconstant [outputItem 0]
+          # pconstant [l2OutputItem 0]
           # witnessList [head l2OutputWitnesses]
   , testCase "aborts when an output witness names a value that is not the output" $
       pfails $
@@ -1743,8 +1780,16 @@ l2Tests =
           # pconstant libraryNullHash
           # pconstant l2TxId
           # 0
-          # pconstant [outputItem 0]
+          # pconstant [l2OutputItem 0]
           # witnessList [insertWitness (fst (outputEntry 0)) (BS.replicate 20 0x8c)]
+  , testCase "aborts replaying full output bytes into a descriptor ledger" $
+      pfails $
+        papplyL2Outputs
+          # pconstant libraryNullHash
+          # pconstant l2TxId
+          # 0
+          # pconstant [l2OutputItem 0]
+          # witnessList [insertWitness (fst (outputEntry 0)) (l2OutputItem 0)]
   , testCase "a step that applied the transaction is no fault" $
       prefuses (transition (l2Step l2PostRoot) l2Leaf)
   , testCase "a step that published another root is" $
@@ -1768,7 +1813,7 @@ l2Tests =
           (fromData (l2SourceMembership invalidLeaf))
           (asDataTerm invalidTriple)
           (pconstant (spendInputsPreimage tx1))
-          (pconstant (outputsPreimage tx1))
+          (pconstant l2OutputsPreimage)
           (witnessList l2SpendWitnesses)
           (witnessList l2OutputWitnesses)
   , testCase "the source is in the block's transactions tree" $
@@ -1805,11 +1850,11 @@ l2Tests =
         (fromData (l2SourceMembership leaf))
         (asDataTerm l2Triple)
         (pconstant (spendInputsPreimage tx1))
-        (pconstant (outputsPreimage tx1))
+        (pconstant l2OutputsPreimage)
         (witnessList l2SpendWitnesses)
         (witnessList l2OutputWitnesses)
     invalidTriple = PD.Constr 0 [PD.B invalidCompact, PD.B l2WitnessSet, PD.B l2Lengths]
-    invalidCompact = compactWithValidity tx1 (blake2b256 l2WitnessSet) 4
+    invalidCompact = compactWithL2Outputs 1
     invalidLeaf = serialise (PD.Constr 0 [PD.B l2TxId, invalidTriple])
     wrongClassStep = stepWith 0 (PD.Constr 0 [outRef 0x8e]) 2 l2PreRoot l2PostRoot
 
@@ -1892,11 +1937,11 @@ substitutedSpendStep =
 
 substitutedOutputsPreimage :: BS.ByteString
 substitutedOutputsPreimage =
-  arrayHeader 2 <> wrapItem dpOutputCbor <> wrapItem (outputItem 1)
+  arrayHeader 2 <> wrapItem dpOutputCbor <> wrapItem (l2OutputItem 1)
 
 substitutedOutputEntries :: [(BS.ByteString, BS.ByteString)]
 substitutedOutputEntries =
-  [ (fst (outputEntry 0), dpOutputCbor)
+  [ (fst (outputEntry 0), dpOutputLedgerValueAtZero)
   , outputEntry 1
   ]
 
@@ -1937,7 +1982,7 @@ wrongAuthenticatedStep =
 
 wrongAuthenticatedOutputWitnesses :: [PD.Data]
 wrongAuthenticatedOutputWitnesses =
-  outputWitnessesFor wrongAuthenticatedTxId [outputItem 0, outputItem 1]
+  outputWitnessesFor wrongAuthenticatedTxId [l2LedgerValue 0, l2LedgerValue 1]
 
 miscountedSpendInputsPreimage :: BS.ByteString
 miscountedSpendInputsPreimage =
@@ -1980,7 +2025,7 @@ miscountedStep =
 
 miscountedOutputWitnesses :: [PD.Data]
 miscountedOutputWitnesses =
-  outputWitnessesFor miscountedTxId [outputItem 0, outputItem 1]
+  outputWitnessesFor miscountedTxId [l2LedgerValue 0, l2LedgerValue 1]
 
 -- | A witness list as the builtin list of data-encoded values a walker expects.
 witnessList :: forall (a :: S -> Type) s. [PD.Data] -> Term s (PBuiltinList (PAsData a))
@@ -2089,6 +2134,12 @@ dpOutputCbor =
     , wrapItem (serialise (PD.I 42))
     ]
 
+dpOutputLedgerValue, dpOutputLedgerValueAtZero :: BS.ByteString
+dpOutputLedgerValue =
+  hexBytes "90011893186d582061d612db120eb5fab097dd2746ce972e151d9fb6ac99f9a5f2f2ba181f47537c583901b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b21a004c4b400158203572d169bc3cc47d31aae5d126d4a1864ae44a1b61585242415c0cc998867940182b204000408358202618a138dcebce53200f2c5e1ca4e51e7f181f273189eb02d32c1eeb7f2bfc9f188a18ae8358202618a138dcebce53200f2c5e1ca4e51e7f181f273189eb02d32c1eeb7f2bfc9f188a18ae8358200b895effa880f558c158596fd72fdea5299d72a523679c80c1f054e2ed945d8a0609"
+dpOutputLedgerValueAtZero =
+  hexBytes "900100186d58201a7c775dfab2a278899e53d18f7ccf5bc3e43d9ba4130aab1192d01ff648c415583901b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b21a004c4b400158203572d169bc3cc47d31aae5d126d4a1864ae44a1b61585242415c0cc998867940182b204000408358202618a138dcebce53200f2c5e1ca4e51e7f181f273189eb02d32c1eeb7f2bfc9f188a18ae8358202618a138dcebce53200f2c5e1ca4e51e7f181f273189eb02d32c1eeb7f2bfc9f188a18ae8358200b895effa880f558c158596fd72fdea5299d72a523679c80c1f054e2ed945d8a0609"
+
 --------------------------------------------------------------------------------
 -- The deposit's place in the block
 --------------------------------------------------------------------------------
@@ -2107,7 +2158,7 @@ post-root is determined by the projection alone.
 -}
 dpPreRoot, dpPostRoot :: BS.ByteString
 dpPreRoot = emptyMerkleRoot
-dpPostRoot = singleEntryRoot dpLedgerKey dpOutputCbor
+dpPostRoot = singleEntryRoot dpLedgerKey dpOutputLedgerValue
 
 dpEventKey :: PD.Data
 dpEventKey = PD.Constr 3 [dpId]
@@ -2382,17 +2433,23 @@ depositTests =
         dpTransition
           (dpStep dpPostRoot)
           dpHonestRefInput
-          (insertWitness (ledgerKey (outRef 0x96)) dpOutputCbor)
+          (insertWitness (ledgerKey (outRef 0x96)) dpOutputLedgerValue)
   , testCase "refuses a witness that names a value other than the projection" $
       prefuses $
         dpTransition (dpStep dpPostRoot) dpHonestRefInput (insertWitness dpLedgerKey "junk")
+  , testCase "refuses replaying the projected full-output bytes" $
+      prefuses $
+        dpTransition
+          (dpStep dpPostRoot)
+          dpHonestRefInput
+          (insertWitness dpLedgerKey dpOutputCbor)
   , testCase "a deposit landing something other than its projection is a fault" $
       passertEval $
         dpTransitionWith
           (dpStep (singleEntryRoot dpLedgerKey "junk"))
           dpInfo
           dpHonestRefInput
-          (insertWitness dpLedgerKey dpOutputCbor)
+          (insertWitness dpLedgerKey dpOutputLedgerValue)
   , testCase "aborts when the L1 value does not hold the deposit NFT" $
       pfails $
         dpTransition
@@ -2408,7 +2465,7 @@ depositTests =
           (fromData (dpMembership dpInfo))
   ]
   where
-    dpWitness = insertWitness dpLedgerKey dpOutputCbor
+    dpWitness = insertWitness dpLedgerKey dpOutputLedgerValue
     dpReference :: forall s. PD.Data -> Term s PAuthenticatedDepositReference
     dpReference refInput =
       pgetAuthenticatedDepositReference
@@ -2918,7 +2975,7 @@ oneStepDispatchTests =
         , dpMembership dpInfo
         , PD.I 0
         , PD.B dpAssetName
-        , insertWitness dpLedgerKey dpOutputCbor
+        , insertWitness dpLedgerKey dpOutputLedgerValue
         ]
     l2Arm s0 =
       PD.Constr
@@ -2927,7 +2984,7 @@ oneStepDispatchTests =
         , l2MapMembership
         , l2SourceMembership l2Leaf
         , PD.B (spendInputsPreimage tx1)
-        , PD.B (outputsPreimage tx1)
+        , PD.B l2OutputsPreimage
         , PD.List l2SpendWitnesses
         , PD.List l2OutputWitnesses
         , l2Triple
@@ -3119,7 +3176,7 @@ l2Arm s0 =
     , l2MapMembership
     , l2SourceMembership l2Leaf
     , PD.B (spendInputsPreimage tx1)
-    , PD.B (outputsPreimage tx1)
+    , PD.B l2OutputsPreimage
     , PD.List l2SpendWitnesses
     , PD.List l2OutputWitnesses
     , l2Triple
@@ -3142,7 +3199,7 @@ depositArm s0 =
     , dpMembership dpInfo
     , PD.I 0
     , PD.B dpAssetName
-    , insertWitness dpLedgerKey dpOutputCbor
+    , insertWitness dpLedgerKey dpOutputLedgerValue
     ]
 
 {- | A deposit the block included though its inclusion time is outside the
@@ -3167,11 +3224,9 @@ depositReferenceInput = dpHonestRefInput
 
 {- | Its resolved half on its own.
 
-The dispatch tests put this deposit UTxO into a real @ScriptContext@ and so need
-a @TxInInfo@ that decodes, which 'depositReferenceInput' is not: the fixture's
-output references carry a @TxId@ wrapped in a constructor, as V1 and V2 encode
-it, and nothing in this module ever reads one. The output is the half that is
-read, so that is the half the dispatch tests take.
+The rule fixture uses a canonical V3 output reference. The dispatch tests reuse
+the resolved output and supply their own reference when building a real
+@ScriptContext@.
 -}
 depositReferenceOutput :: PD.Data
 depositReferenceOutput = dpRefOutput dpValue (dpDatum dpId dpInfo)

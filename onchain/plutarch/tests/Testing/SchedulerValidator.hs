@@ -21,6 +21,7 @@ rather than reused from the term.
 -}
 module Testing.SchedulerValidator (tests) where
 
+import Midgard.Env (environmentName)
 import Data.ByteString qualified as BS
 import Data.Maybe (fromMaybe)
 import PlutusCore.Data qualified as PD
@@ -181,8 +182,16 @@ mintTests =
     "mint"
     [ testCase "Init mints the scheduler NFT alongside the hub's" $
         psucceeds $ runMint initRedeemer $ toMint (hubMint 1 <> schedMint 1)
+    , testCase "Init permits another asset under the hub policy" $
+        psucceeds $
+          runMint initRedeemer $
+            toMint (hubMint 1 <> schedMint 1 <> singleton hubPolicy (TokenName "X") 7)
     , testCase "Deinit burns both" $
         psucceeds $ runMint deinitRedeemer $ toMint (hubMint (-1) <> schedMint (-1))
+    , testCase "Deinit permits another asset under the hub policy" $
+        psucceeds $
+          runMint deinitRedeemer $
+            toMint (hubMint (-1) <> schedMint (-1) <> singleton hubPolicy (TokenName "X") (-7))
     , -- The pairing is the whole point: a scheduler cannot appear beside a hub
       -- that is not itself being created.
       testCase "Init rejects a scheduler NFT minted without the hub's" $
@@ -233,6 +242,13 @@ runMint redeemer mint =
 {- | The ordinary case: the shift ended, and the turn steps to the node that
 anchors the outgoing operator.
 -}
+-- Preserve each boundary's offset from the end of a shift starting at 100.
+afterShift :: Integer -> Integer
+afterShift time = time + (if environmentName == "testnet" then 3_600_000 else 30) - 30
+
+assertSkipped :: (forall s. Term s a) -> Assertion
+assertSkipped term = if environmentName == "testnet" then psucceeds term else pfails term
+
 endOfShiftTests :: TestTree
 endOfShiftTests =
   testGroup
@@ -242,16 +258,16 @@ endOfShiftTests =
     , -- The new shift starts at the *lower* bound, so a stale schedule catches
       -- up in one transaction instead of replaying every missed shift.
       testCase "starts the new shift at the validity range's lower bound" $
-        psucceeds $ runEndOfShift defaultEnd {eosRange = closed 900 950, eosNewStart = 900}
+        psucceeds $ runEndOfShift defaultEnd {eosRange = closed (afterShift 900) (afterShift 950), eosNewStart = afterShift 900}
     , testCase "rejects a new shift start other than the lower bound" $
-        pfails $ runEndOfShift defaultEnd {eosNewStart = 901}
+        pfails $ runEndOfShift defaultEnd {eosNewStart = afterShift 901}
     , testCase "rejects a new shift start taken from the upper bound" $
-        pfails $ runEndOfShift defaultEnd {eosRange = closed 900 950, eosNewStart = 950}
-    , -- shift_duration is 30ms, so a shift starting at 100 ends at 130.
+        pfails $ runEndOfShift defaultEnd {eosRange = closed (afterShift 900) (afterShift 950), eosNewStart = afterShift 950}
+    , -- The exact end of the selected source environment's shift.
       testCase "accepts a range beginning exactly at the shift's end" $
-        psucceeds $ runEndOfShift defaultEnd {eosRange = closed 130 150, eosNewStart = 130}
+        psucceeds $ runEndOfShift defaultEnd {eosRange = closed (afterShift 130) (afterShift 150), eosNewStart = afterShift 130}
     , testCase "rejects a range beginning before the shift has ended" $
-        pfails $ runEndOfShift defaultEnd {eosRange = closed 129 150, eosNewStart = 129}
+        pfails $ runEndOfShift defaultEnd {eosRange = closed (afterShift 129) (afterShift 150), eosNewStart = afterShift 129}
     , -- The referenced node proves both halves of "is next" at once.
       testCase "rejects a node keyed by an operator other than the incoming one" $
         pfails $ runEndOfShift defaultEnd {eosNodeKey = operatorC}
@@ -270,7 +286,7 @@ endOfShiftTests =
       testCase "rejects an output without the scheduler NFT" $
         pfails $ runEndOfShift defaultEnd {eosOutputHasNft = False}
     , testCase "rejects an unbounded validity range" $
-        pfails $ runEndOfShift defaultEnd {eosRange = fromNegInf 950}
+        pfails $ runEndOfShift defaultEnd {eosRange = fromNegInf (afterShift 950)}
     ]
 
 data EndOfShift = EndOfShift
@@ -287,10 +303,10 @@ data EndOfShift = EndOfShift
 defaultEnd :: EndOfShift
 defaultEnd =
   EndOfShift
-    { eosRange = closed 200 250
+    { eosRange = closed (afterShift 200) (afterShift 250)
     , eosInDatum = appointed operatorA 100
-    , eosOutDatum = appointed operatorB 200
-    , eosNewStart = 200
+    , eosOutDatum = appointed operatorB (afterShift 200)
+    , eosNewStart = afterShift 200
     , eosNodeKey = operatorB
     , eosNodeLink = linkTo operatorA
     , eosNodeIsRoot = False
@@ -341,14 +357,14 @@ rewindEndOfShiftTests =
       testCase "rejects a wrap when a registered operator can already activate" $
         pfails $ runRewindEnd defaultRewindEnd {reRegisteredActivation = 100}
     , testCase "accepts a registered operator whose activation is still ahead" $
-        psucceeds $ runRewindEnd defaultRewindEnd {reRegisteredActivation = 10_000}
+        psucceeds $ runRewindEnd defaultRewindEnd {reRegisteredActivation = afterShift 10_000}
     , -- Only the last registered element proves anything about the rest.
       testCase "rejects a registered element that is not the last" $
         pfails $ runRewindEnd defaultRewindEnd {reRegisteredLink = linkTo operatorC}
     , testCase "accepts the registered set's root, which means no registrations" $
         psucceeds $ runRewindEnd defaultRewindEnd {reRegisteredIsRoot = True}
     , testCase "rejects a range beginning before the shift has ended" $
-        pfails $ runRewindEnd defaultRewindEnd {reRange = closed 129 150, reNewStart = 129}
+        pfails $ runRewindEnd defaultRewindEnd {reRange = closed (afterShift 129) (afterShift 150), reNewStart = afterShift 129}
     ]
 
 data RewindEnd = RewindEnd
@@ -366,13 +382,13 @@ data RewindEnd = RewindEnd
 defaultRewindEnd :: RewindEnd
 defaultRewindEnd =
   RewindEnd
-    { reRange = closed 200 250
-    , reNewStart = 200
+    { reRange = closed (afterShift 200) (afterShift 250)
+    , reNewStart = afterShift 200
     , reRootLink = linkTo operatorA
     , reRootIsNode = False
     , reLastKey = operatorB
     , reLastLink = linkNone
-    , reRegisteredActivation = 10_000
+    , reRegisteredActivation = afterShift 10_000
     , reRegisteredLink = linkNone
     , reRegisteredIsRoot = False
     }
@@ -405,8 +421,8 @@ skippedOperatorTests :: TestTree
 skippedOperatorTests =
   testGroup
     "spend / GoToNextDueToSkippedOperator"
-    [ testCase "rejects a well-formed skip: unreachable under env/default.ak" $
-        pfails $ runSkipped defaultSkipped
+    [ testCase "skip acceptance matches the selected environment's inactivity window" $
+        assertSkipped $ runSkipped defaultSkipped
     ]
 
 {- $unreachable
@@ -434,8 +450,8 @@ lasts thirty milliseconds, so the threshold always lands past the end of the
 shift it is meant to fall inside.
 
 This is a consequence of the environment, not a defect in the branch.
-@env/default.ak@ and @env/testnet.ak@ differ in this one constant and nothing
-else: 30 against @60 * 60 * 1000@. An hour clears the five-minute grace period,
+The selected shift duration is 30 against @60 * 60 * 1000@.
+An hour clears the five-minute grace period,
 so a testnet build reaches both branches normally.
 
 Everything else in the branch was verified by temporarily replacing that one
@@ -561,8 +577,8 @@ rewindSkippedOperatorTests =
   testGroup
     "spend / RewindDueToSkippedOperator"
     [ -- Same gate, same reason; see the note above 'skippedOperatorTests'.
-      testCase "rejects a well-formed wrap: unreachable under env/default.ak" $
-        pfails $ runRewindSkipped defaultRewindSkipped
+      testCase "wrap acceptance matches the selected environment's inactivity window" $
+        assertSkipped $ runRewindSkipped defaultRewindSkipped
     ]
 
 data RewindSkipped = RewindSkipped

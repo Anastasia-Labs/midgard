@@ -51,6 +51,8 @@ import Midgard.Validators.FraudProofs.MissingNativeScriptTx (
   missingNativeScriptTxStep04Validator,
   missingNativeScriptTxStep05Validator,
   missingNativeScriptTxStep06Validator,
+  missingNativeScriptTxStep07Validator,
+  missingNativeScriptTxStep08Validator,
  )
 import Testing.Eval (pfails, psucceeds)
 import Testing.FraudProofsFixture
@@ -71,6 +73,7 @@ tests =
     , testGroup "step-04" step04Tests
     , testGroup "step-05" step05Tests
     , testGroup "step-06" step06Tests
+    , testGroup "staged steps 06-08" stagedTests
     , testGroup "the two forgeries" forgeryTests
     ]
 
@@ -126,6 +129,14 @@ fixtureTests =
         witnessSetHashOf txWitnessed /= witnessSetHashOf txScriptSpend
   ]
 
+badAcceptedCbor, producingAcceptedCbor :: BS.ByteString
+badAcceptedCbor = compactWithValidity txScriptSpend (witnessSetHashOf txScriptSpend) 0
+producingAcceptedCbor = compactWithValidity tx3 (witnessSetHashOf tx3) 0
+
+badAcceptedSourceCbor, producingAcceptedSourceCbor :: BS.ByteString
+badAcceptedSourceCbor = sourceCborWithValidity txScriptSpend 0
+producingAcceptedSourceCbor = sourceCborWithValidity tx3 0
+
 --------------------------------------------------------------------------------
 -- step-01
 --------------------------------------------------------------------------------
@@ -133,9 +144,11 @@ fixtureTests =
 step01Tests :: [TestTree]
 step01Tests =
   [ testCase "binds the transaction and writes both halves of the anchor" $
-      psucceeds $ step01 (context01 default01)
+      psucceeds $
+        step01 (context01 default01)
   , testCase "rejects an output at a script that is not step-02's" $
-      pfails $ step01 (context01 default01 {s1OutputScript = otherScript})
+      pfails $
+        step01 (context01 default01 {s1OutputScript = otherScript})
   , -- The half only step-01 can supply honestly: it is read off the compact
     -- structure the block's counted root committed, not taken from a redeemer.
     testCase "rejects a state naming another witness-set hash" $
@@ -143,14 +156,18 @@ step01Tests =
         step01
           ( context01
               default01
-                {s1OutputState = Just (state02 txScriptSpendId (witnessSetHashOf tx1))}
+                { s1OutputState = Just (state02 txScriptSpendId (witnessSetHashOf tx1))
+                }
           )
   , testCase "rejects a state naming another transaction" $
       pfails $
         step01
           (context01 default01 {s1OutputState = Just (state02 tx1Id badWsHash)})
   , testCase "rejects an inclusion proof against a root the header does not commit" $
-      pfails $ step01 (context01 default01 {s1PhasRoot = otherRoot})
+      pfails $
+        step01 (context01 default01 {s1PhasRoot = otherRoot})
+  , testCase "rejects a bad transaction marked invalid" $
+      pfails $ step01 (context01 default01 {s1SourceCbor = sourceCborOf txScriptSpend})
   , {- Recorded because the opposite is the natural guess. Step-01 binds its
        input state and never looks at it — Aiken's does the same, naming it
        @_m_input_state_data@ — so a thread arriving with state already written
@@ -170,7 +187,8 @@ step01Tests =
 step02Tests :: [TestTree]
 step02Tests =
   [ testCase "forwards the spent input alongside both halves of the anchor" $
-      psucceeds $ step02 (context02 default02)
+      psucceeds $
+        step02 (context02 default02)
   , testCase "rejects a preimage the transaction never committed" $
       pfails $
         step02
@@ -184,9 +202,11 @@ step02Tests =
     -- argument rather than anything the preimage says about itself. Handing it
     -- the reference-input collection is a read of the wrong §2.5 slot.
     testCase "rejects field 1's preimage in field 0's slot" $
-      pfails $ step02 (context02 default02 {s2Preimage = Just (referenceInputsPreimage tx3)})
+      pfails $
+        step02 (context02 default02 {s2Preimage = Just (referenceInputsPreimage tx3)})
   , testCase "rejects an index past the end of the collection" $
-      pfails $ step02 (context02 default02 {s2InputIndex = 1})
+      pfails $
+        step02 (context02 default02 {s2InputIndex = 1})
   , testCase "rejects a state that drops the witness-set hash" $
       pfails $
         step02
@@ -197,7 +217,8 @@ step02Tests =
                 }
           )
   , testCase "rejects an output at a script that is not step-03's" $
-      pfails $ step02 (context02 default02 {s2OutputScript = otherScript})
+      pfails $
+        step02 (context02 default02 {s2OutputScript = otherScript})
   ]
 
 --------------------------------------------------------------------------------
@@ -207,7 +228,8 @@ step02Tests =
 step03Tests :: [TestTree]
 step03Tests =
   [ testCase "binds the producing transaction and carries the disputed index" $
-      psucceeds $ step03 (context03 default03)
+      psucceeds $
+        step03 (context03 default03)
   , -- The check that makes the change of subject sound. Without it a prover
     -- binds any committed transaction and step-04 reads its slot 0 instead.
     testCase "rejects a bound transaction that is not the one the input names" $
@@ -216,7 +238,7 @@ step03Tests =
           ( context03
               default03
                 { s3ProducingId = tx1Id
-                , s3ProducingCbor = tx1Cbor
+                , s3ProducingCbor = sourceCborWithValidity tx1 0
                 , s3OutputState = Just (state04 tx1Id 0 txScriptSpendId badWsHash)
                 }
           )
@@ -228,10 +250,14 @@ step03Tests =
         step03
           ( context03
               default03
-                {s3OutputState = Just (state04 tx3Id 0 tx3Id (witnessSetHashOf tx3))}
+                { s3OutputState = Just (state04 tx3Id 0 tx3Id (witnessSetHashOf tx3))
+                }
           )
   , testCase "rejects an output at a script that is not step-04's" $
-      pfails $ step03 (context03 default03 {s3OutputScript = otherScript})
+      pfails $
+        step03 (context03 default03 {s3OutputScript = otherScript})
+  , testCase "rejects a producing transaction marked invalid" $
+      pfails $ step03 (context03 default03 {s3ProducingCbor = sourceCborOf tx3})
   ]
 
 --------------------------------------------------------------------------------
@@ -241,7 +267,8 @@ step03Tests =
 step04Tests :: [TestTree]
 step04Tests =
   [ testCase "reads the spent output's script credential out of field 2" $
-      psucceeds $ step04 (context04 default04)
+      psucceeds $
+        step04 (context04 default04)
   , -- The claim is about a /script/-locked output. A key-locked one has no
     -- script to be missing, so the family has nothing to say about it.
     testCase "refuses a key-locked output" $
@@ -254,18 +281,22 @@ step04Tests =
                 }
           )
   , testCase "rejects a preimage the producing transaction never committed" $
-      pfails $ step04 (context04 default04 {s4Preimage = Just (outputsPreimage tx1)})
+      pfails $
+        step04 (context04 default04 {s4Preimage = Just (outputsPreimage tx1)})
   , testCase "rejects an opening of a transaction the thread did not bind" $
-      pfails $ step04 (context04 default04 {s4OpeningCbor = tx1Cbor})
+      pfails $
+        step04 (context04 default04 {s4OpeningCbor = tx1Cbor})
   , testCase "rejects a state naming a credential the output does not carry" $
       pfails $
         step04
           ( context04
               default04
-                {s4OutputState = Just (state05 (keyHashFor 1) txScriptSpendId badWsHash)}
+                { s4OutputState = Just (state05 (keyHashFor 1) txScriptSpendId badWsHash)
+                }
           )
   , testCase "rejects an output at a script that is not step-05's" $
-      pfails $ step04 (context04 default04 {s4OutputScript = otherScript})
+      pfails $
+        step04 (context04 default04 {s4OutputScript = otherScript})
   ]
 
 --------------------------------------------------------------------------------
@@ -275,9 +306,11 @@ step04Tests =
 step05Tests :: [TestTree]
 step05Tests =
   [ testCase "accepts script bytes hashing to the credential under the native tag" $
-      psucceeds $ step05 (context05 default05)
+      psucceeds $
+        step05 (context05 default05)
   , testCase "rejects other script bytes" $
-      pfails $ step05 (context05 default05 {s5ScriptBytes = otherNativeScriptBytes})
+      pfails $
+        step05 (context05 default05 {s5ScriptBytes = otherNativeScriptBytes})
   , {- The step's whole purpose. The credential is a bare 28-byte hash and says
        nothing about which language produced it; a family that skipped this step
        would convict a transaction for not witnessing a /Plutus/ script, which is
@@ -303,10 +336,12 @@ step05Tests =
         step05
           ( context05
               default05
-                {s5OutputState = Just (state06 (keyHashFor 1) txScriptSpendId badWsHash)}
+                { s5OutputState = Just (state06 (keyHashFor 1) txScriptSpendId badWsHash)
+                }
           )
   , testCase "rejects an output at a script that is not step-06's" $
-      pfails $ step05 (context05 default05 {s5OutputScript = otherScript})
+      pfails $
+        step05 (context05 default05 {s5OutputScript = otherScript})
   ]
 
 --------------------------------------------------------------------------------
@@ -316,7 +351,8 @@ step05Tests =
 step06Tests :: [TestTree]
 step06Tests =
   [ testCase "convicts a transaction whose field 6 is empty" $
-      psucceeds $ step06 (context06 default06)
+      psucceeds $
+        step06 (context06 default06)
   , -- Absence, not emptiness: a field carrying some other script is still a
     -- field the required one is absent from.
     testCase "convicts a transaction witnessing some other script" $
@@ -344,17 +380,266 @@ step06Tests =
        prefix and says nothing about bytes after it, so an item with a tail
        decodes to a script the field did not commit. -}
     testCase "refuses an item carrying trailing bytes" $
-      pfails $ step06 (context06 (nonCanonical (versionedScriptItem 0 nativeScriptBytes <> "\xff")))
+      pfails $
+        step06 (context06 (nonCanonical (versionedScriptItem 0 nativeScriptBytes <> "\xff")))
   , -- The other half of the same guard: @58 05@ where @45@ was canonical.
     testCase "refuses an item with a non-minimal length prefix" $
-      pfails $ step06 (context06 (nonCanonical ("\x82\x00\x58\x05" <> shortScript)))
+      pfails $
+        step06 (context06 (nonCanonical ("\x82\x00\x58\x05" <> shortScript)))
   , testCase "rejects a preimage the witness set does not commit" $
-      pfails $ step06 (context06 default06 {s6Preimage = Just (scriptWitnessesPreimage txWitnessed)})
+      pfails $
+        step06 (context06 default06 {s6Preimage = Just (scriptWitnessesPreimage txWitnessed)})
   , testCase "rejects a conviction parked anywhere but the fraud-proof address" $
-      pfails $ step06 (context06 default06 {s6FraudProofAddress = otherAddress})
+      pfails $
+        step06 (context06 default06 {s6FraudProofAddress = otherAddress})
   , testCase "rejects a conviction under a name that is not the thread's" $
-      pfails $ step06 (context06 default06 {s6FraudProofName = otherThreadName})
+      pfails $
+        step06 (context06 default06 {s6FraudProofName = otherThreadName})
   ]
+
+--------------------------------------------------------------------------------
+-- staged steps 06-08
+--------------------------------------------------------------------------------
+
+stagedTests :: [TestTree]
+stagedTests =
+  [ testCase "q17_staged_step_06_starts_only_above_the_direct_limit" $
+      psucceeds $
+        startGrammar 65 nextScript
+  , testCase "q17_staged_step_06_rejects_a_direct_sized_field" $
+      pfails $
+        startGrammar 64 nextScript
+  , testCase "q17_staged_step_06_rejects_the_wrong_successor" $
+      pfails $
+        startGrammar 65 stepScript
+  , testCase "q17_staged_step_06_exact_maximum_fit" $
+      psucceeds $
+        startGrammar 224 nextScript
+  , testCase "q17_staged_step_07_resumes_grammar_only_at_step_07" $
+      psucceeds $
+        resumeGrammarOnce False False
+  , testCase "q17_staged_step_07_rejects_ready_phase_skip" $
+      pfails $
+        resumeGrammarOnce True False
+  , testCase "q17_staged_step_07_rejects_wrong_successor_during_grammar" $
+      pfails $
+        resumeGrammarOnce False True
+  , testCase "q17_staged_step_07_terminal_grammar_starts_semantic_scan" $
+      psucceeds $
+        startSemanticScan 65 True False
+  , testCase "q17_staged_step_07_rejects_semantic_start_before_grammar_terminal" $
+      pfails $
+        startSemanticScan 65 False False
+  , testCase "q17_staged_step_07_rejects_wrong_semantic_successor" $
+      pfails $
+        startSemanticScan 65 True True
+  , testCase "q17_staged_step_07_exact_maximum_semantic_start_fit" $
+      psucceeds $
+        startSemanticScan 224 True False
+  , testCase "q17_staged_step_08_resumes_only_semantic_state_at_step_08" $
+      psucceeds $
+        resumeSemanticScan 65 False False
+  , testCase "q17_staged_step_08_rejects_grammar_phase_skip" $
+      pfails $
+        resumeSemanticScan 65 True False
+  , testCase "q17_staged_step_08_rejects_wrong_successor" $
+      pfails $
+        resumeSemanticScan 65 False True
+  , testCase "q17_staged_step_08_exact_maximum_resume_fit" $
+      psucceeds $
+        resumeSemanticScan 224 False False
+  , testCase "q17_staged_step_08_finalizes_only_at_semantic_terminal" $
+      psucceeds $
+        finalizeSemanticScan 65 64 False
+  , testCase "q17_staged_step_08_rejects_a_valid_block_accumulator" $
+      pfails $
+        finalizeSemanticScan 65 64 True
+  , testCase "q17_staged_step_08_exact_maximum_terminal_fit" $
+      psucceeds $
+        finalizeSemanticScan 224 192 False
+  , testCase "q17_staged_step_06_preserves_prover_cancellation" $
+      psucceeds $
+        cancelStep06 65
+  , testCase "q17_staged_step_07_preserves_prover_cancellation" $
+      psucceeds $
+        cancelStep07 65
+  , testCase "q17_staged_step_08_preserves_prover_cancellation" $
+      psucceeds $
+        cancelStep08 65
+  ]
+
+startGrammar :: forall s. Int -> BS.ByteString -> Term s PUnit
+startGrammar count outputScript =
+  missingNativeScriptTxStep06Validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant fpPolicy)
+    # pdata (pconstant fraudProofAddress)
+    # pdata (pconstant certificatePolicy)
+    # pconstant
+      ( spendContext
+          (stepDatum $ Just $ stagedState count readyPhase)
+          (continueAction $ PD.Constr 1 [PD.I 0, PD.I 0, stagedOpening count, PD.I 32])
+          [threadInput]
+          [stepOutput outputScript $ Just $ stagedState count $ grammarPhase count 32]
+          referenceInputs
+          []
+          mempty
+      )
+
+resumeGrammarOnce :: forall s. Bool -> Bool -> Term s PUnit
+resumeGrammarOnce inputPhaseIsReady wrongSuccessor =
+  missingNativeScriptTxStep07Validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant certificatePolicy)
+    # pconstant
+      ( spendContext
+          (stepDatum $ Just $ stagedState count inputPhase)
+          ( continueAction $
+              PD.Constr
+                0
+                [ PD.I 0
+                , PD.I 0
+                , stagedOpening count
+                , PD.B (grammarWire count 32)
+                , PD.I 32
+                ]
+          )
+          [threadInput]
+          [stepOutput outputScript $ Just $ stagedState count $ grammarPhase count 64]
+          referenceInputs
+          []
+          mempty
+      )
+  where
+    count = 65
+    inputPhase = if inputPhaseIsReady then readyPhase else grammarPhase count 32
+    outputScript = if wrongSuccessor then nextScript else stepScript
+
+startSemanticScan :: forall s. Int -> Bool -> Bool -> Term s PUnit
+startSemanticScan count grammarIsTerminal wrongSuccessor =
+  missingNativeScriptTxStep07Validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant certificatePolicy)
+    # pconstant
+      ( spendContext
+          (stepDatum $ Just $ stagedState count $ grammarPhase count committedIndex)
+          ( continueAction $
+              PD.Constr
+                1
+                [ PD.I 0
+                , PD.I 0
+                , stagedOpening count
+                , PD.B (grammarWire count committedIndex)
+                , PD.I 32
+                ]
+          )
+          [threadInput]
+          [stepOutput outputScript $ Just $ stagedState count $ semanticPhase count 32 False]
+          referenceInputs
+          []
+          mempty
+      )
+  where
+    committedIndex = if grammarIsTerminal then count else 32
+    outputScript = if wrongSuccessor then stepScript else nextScript
+
+resumeSemanticScan :: forall s. Int -> Bool -> Bool -> Term s PUnit
+resumeSemanticScan count inputPhaseIsGrammar wrongSuccessor =
+  missingNativeScriptTxStep08Validator
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant fpPolicy)
+    # pdata (pconstant fraudProofAddress)
+    # pdata (pconstant certificatePolicy)
+    # pconstant
+      ( spendContext
+          (stepDatum $ Just $ stagedState count inputPhase)
+          ( continueAction $
+              PD.Constr
+                0
+                [ PD.I 0
+                , PD.I 0
+                , stagedOpening count
+                , PD.B (semanticWire count 32)
+                , PD.I 32
+                ]
+          )
+          [threadInput]
+          [stepOutput outputScript $ Just $ stagedState count $ semanticPhase count 64 False]
+          referenceInputs
+          []
+          mempty
+      )
+  where
+    inputPhase =
+      if inputPhaseIsGrammar
+        then PD.Constr 1 [PD.B $ BS.replicate 32 0]
+        else semanticPhase count 32 False
+    outputScript = if wrongSuccessor then nextScript else stepScript
+
+finalizeSemanticScan :: forall s. Int -> Int -> Bool -> Term s PUnit
+finalizeSemanticScan count alreadyScanned carriedPresent =
+  missingNativeScriptTxStep08Validator
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant fpPolicy)
+    # pdata (pconstant fraudProofAddress)
+    # pdata (pconstant certificatePolicy)
+    # pconstant
+      ( spendContext
+          (stepDatum $ Just $ stagedState count $ semanticPhase count alreadyScanned carriedPresent)
+          ( continueAction $
+              PD.Constr
+                1
+                [ PD.I 0
+                , PD.I 0
+                , PD.I 0
+                , stagedOpening count
+                , PD.B (semanticWire count alreadyScanned)
+                , PD.I (fromIntegral $ count - alreadyScanned)
+                ]
+          )
+          [threadInput]
+          [convictionOutput fraudProofAddress threadName]
+          referenceInputs
+          [fraudProofMintEntry threadName]
+          (singleton fpPolicy (TokenName $ toBuiltin threadName) 1)
+      )
+
+cancelStep06, cancelStep07, cancelStep08 :: forall s. Int -> Term s PUnit
+cancelStep06 count =
+  missingNativeScriptTxStep06Validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant fpPolicy)
+    # pdata (pconstant fraudProofAddress)
+    # pdata (pconstant certificatePolicy)
+    # pconstant (stagedCancelContext count)
+cancelStep07 count =
+  missingNativeScriptTxStep07Validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant certificatePolicy)
+    # pconstant (stagedCancelContext count)
+cancelStep08 count =
+  missingNativeScriptTxStep08Validator
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant fpPolicy)
+    # pdata (pconstant fraudProofAddress)
+    # pdata (pconstant certificatePolicy)
+    # pconstant (stagedCancelContext count)
+
+stagedCancelContext :: Int -> ScriptContext
+stagedCancelContext count =
+  spendContext
+    (stepDatum $ Just $ stagedState count readyPhase)
+    cancelRedeemer
+    [threadInput]
+    []
+    []
+    [cancelMintEntry threadName]
+    mempty
 
 --------------------------------------------------------------------------------
 -- The two forgeries
@@ -385,7 +670,8 @@ forgeryTests =
     -- something about the compact bytes: the same empty witness set under its
     -- own anchor convicts.
     testCase "the same witness set convicts under its own anchor" $
-      psucceeds $ step06 (context06 default06)
+      psucceeds $
+        step06 (context06 default06)
   , -- The id is genuinely no help here, which is the point: the bytes the
     -- forgery hands the door are the honest transaction's own compact structure.
     testCase "the forged opening is the honest twin's compact structure" $
@@ -407,6 +693,110 @@ txWitnessed = txScriptSpend {tScripts = [(0, nativeScriptBytes)]}
 -- | A transaction witnessing a script, but not the one the output requires.
 txOtherScript :: Tx
 txOtherScript = txScriptSpend {tScripts = [(0, otherNativeScriptBytes)]}
+
+stagedTx :: Int -> Tx
+stagedTx count =
+  txScriptSpend
+    { tScripts = [(0, stagedScriptBytes index) | index <- [1 .. count]]
+    }
+
+stagedScriptBytes :: Int -> BS.ByteString
+stagedScriptBytes index =
+  BS.concat
+    [ "\x82\x01\x82\x82\x00\x58\x1c"
+    , prover
+    , "\x82\x05\x19"
+    , bigEndian 2 (20_000 + fromIntegral index)
+    ]
+
+stagedOpening :: Int -> PD.Data
+stagedOpening count =
+  witnessOpeningRaw
+    (compactOf tx)
+    (witnessSetHashesOf tx)
+    (scriptWitnessesPreimage tx)
+  where
+    tx = stagedTx count
+
+readyPhase :: PD.Data
+readyPhase = PD.Constr 0 []
+
+grammarPhase :: Int -> Int -> PD.Data
+grammarPhase count nextIndex =
+  PD.Constr 1 [PD.B $ grammarCheckpointHash $ grammarWire count nextIndex]
+
+semanticPhase :: Int -> Int -> Bool -> PD.Data
+semanticPhase count nextIndex found =
+  PD.Constr
+    2
+    [ PD.B $ semanticCheckpointHash $ semanticWire count nextIndex
+    , PD.Constr (if found then 1 else 0) []
+    ]
+
+stagedState :: Int -> PD.Data -> PD.Data
+stagedState count phase =
+  PD.Constr
+    0
+    [ PD.B lockedScriptHash
+    , PD.B (txIdOf tx)
+    , PD.B (witnessSetHashOf tx)
+    , phase
+    ]
+  where
+    tx = stagedTx count
+
+grammarWire :: Int -> Int -> BS.ByteString
+grammarWire count nextIndex =
+  BS.concat
+    [ "\x87\x58\x20"
+    , txIdOf tx
+    , "\x41\x06\x58\x20"
+    , blake2b256 preimage
+    , "\x43"
+    , bigEndian 3 totalLength
+    , "\x43"
+    , bigEndian 3 (fromIntegral count)
+    , "\x43"
+    , bigEndian 3 (fromIntegral nextIndex)
+    , "\x43"
+    , bigEndian 3 (2 + 46 * fromIntegral nextIndex)
+    ]
+  where
+    tx = stagedTx count
+    preimage = scriptWitnessesPreimage tx
+    totalLength = fromIntegral $ BS.length preimage
+
+semanticWire :: Int -> Int -> BS.ByteString
+semanticWire count nextIndex =
+  BS.concat
+    [ "\x86\x58\x20"
+    , txIdOf tx
+    , "\x41\x06\x43"
+    , bigEndian 3 totalLength
+    , "\x43"
+    , bigEndian 3 (fromIntegral count)
+    , "\x43"
+    , bigEndian 3 (fromIntegral nextIndex)
+    , "\x43"
+    , bigEndian 3 (2 + 46 * fromIntegral nextIndex)
+    ]
+  where
+    tx = stagedTx count
+    totalLength = fromIntegral $ BS.length $ scriptWitnessesPreimage tx
+
+grammarCheckpointHash, semanticCheckpointHash :: BS.ByteString -> BS.ByteString
+grammarCheckpointHash wire = blake2b256 ("MidgardFieldGrammarCheckpointV1" <> wire)
+semanticCheckpointHash wire = blake2b256 ("MidgardFieldWalkCheckpointV1" <> wire)
+
+bigEndian :: Int -> Integer -> BS.ByteString
+bigEndian width value =
+  BS.pack
+    [ fromIntegral (value `div` (256 ^ exponent) `mod` 256)
+    | exponent <- [width - 1, width - 2 .. 0]
+    ]
+
+continueAction :: PD.Data -> PD.Data
+continueAction action = PD.Constr 1 [action]
 
 txWitnessedId :: BS.ByteString
 txWitnessedId = txIdOf txWitnessed
@@ -435,14 +825,20 @@ state04 producingId index txId wsHash =
 
 state05, state06 :: BS.ByteString -> BS.ByteString -> BS.ByteString -> PD.Data
 state05 scriptHash txId wsHash = PD.Constr 0 [PD.B scriptHash, PD.B txId, PD.B wsHash]
-state06 = state05
+state06 scriptHash txId wsHash =
+  PD.Constr 0 [PD.B scriptHash, PD.B txId, PD.B wsHash, PD.Constr 0 []]
 
 --------------------------------------------------------------------------------
 -- Driving the validators
 --------------------------------------------------------------------------------
 
-step01, step02, step03, step04, step05, step06 ::
-  forall s. ScriptContext -> Term s PUnit
+step01
+  , step02
+  , step03
+  , step04
+  , step05
+  , step06 ::
+    forall s. ScriptContext -> Term s PUnit
 step01 ctx =
   missingNativeScriptTxStep01Validator
     # pdata (pconstant (ScriptHash (toBuiltin nextScript)))
@@ -474,6 +870,7 @@ step05 ctx =
     # pconstant ctx
 step06 ctx =
   missingNativeScriptTxStep06Validator
+    # pdata (pconstant (ScriptHash (toBuiltin nextScript)))
     # pdata (pconstant ctPolicy)
     # pdata (pconstant fpPolicy)
     # pdata (pconstant fraudProofAddress)
@@ -489,6 +886,7 @@ data Step01 = Step01
   , s1OutputScript :: BS.ByteString
   , s1OutputState :: Maybe PD.Data
   , s1PhasRoot :: BS.ByteString
+  , s1SourceCbor :: BS.ByteString
   }
 
 default01 :: Step01
@@ -498,17 +896,18 @@ default01 =
     , s1OutputScript = nextScript
     , s1OutputState = Just (state02 txScriptSpendId badWsHash)
     , s1PhasRoot = phasRoot
+    , s1SourceCbor = badAcceptedSourceCbor
     }
 
 context01 :: Step01 -> ScriptContext
 context01 s =
   spendContext
     (stepDatum (s1InputState s))
-    (PD.Constr 1 [bareInclusionArgs txScriptSpendId txScriptSpendCbor (s1PhasRoot s)])
+    (PD.Constr 1 [bareInclusionArgs txScriptSpendId (s1SourceCbor s) (s1PhasRoot s)])
     [threadInput]
     [stepOutput (s1OutputScript s) (s1OutputState s)]
     referenceInputs
-    [phasEntry (s1PhasRoot s) txScriptSpendId txScriptSpendCbor]
+    [phasEntry (s1PhasRoot s) txScriptSpendId (s1SourceCbor s)]
     mempty
 
 --------------------------------------------------------------------------------
@@ -526,7 +925,7 @@ data Step02 = Step02
 default02 :: Step02
 default02 =
   Step02
-    { s2OpeningCbor = txScriptSpendCbor
+    { s2OpeningCbor = badAcceptedCbor
     , s2Preimage = Nothing
     , s2InputIndex = 0
     , s2OutputScript = nextScript
@@ -571,7 +970,7 @@ default03 :: Step03
 default03 =
   Step03
     { s3ProducingId = tx3Id
-    , s3ProducingCbor = tx3Cbor
+    , s3ProducingCbor = producingAcceptedSourceCbor
     , s3OutputScript = nextScript
     , s3OutputState = Just (state04 tx3Id 0 txScriptSpendId badWsHash)
     }
@@ -603,7 +1002,7 @@ default04 :: Step04
 default04 =
   Step04
     { s4StateIndex = 0
-    , s4OpeningCbor = tx3Cbor
+    , s4OpeningCbor = producingAcceptedCbor
     , s4Preimage = Nothing
     , s4OutputScript = nextScript
     , s4OutputState = Just (state05 lockedScriptHash txScriptSpendId badWsHash)
@@ -676,7 +1075,7 @@ default06 =
   Step06
     { s6StateHash = lockedScriptHash
     , s6StateWsHash = badWsHash
-    , s6OpeningCbor = txScriptSpendCbor
+    , s6OpeningCbor = badAcceptedCbor
     , s6WitnessSetOf = txScriptSpend
     , s6WitnessSetHashes = Nothing
     , s6Preimage = Nothing

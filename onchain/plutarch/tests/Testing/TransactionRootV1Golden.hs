@@ -171,7 +171,7 @@ forcedSourceIsExact fixture =
     withDecoded (forcedKey fixture) $ \orderData ->
       pmatch
         (pfromData (punsafeCoerce @(PAsData PForcedInclusionTxV1) valueData))
-        $ \PForcedInclusionTxV1 {pforcedTx'txId, pforcedTx'source, pforcedTx'operatorValidity} ->
+        $ \PForcedInclusionTxV1 {pforcedTx'txId, pforcedTx'source, pforcedTx'verdict} ->
           pmatch (pfromData pforcedTx'source) $
             \PNativeTxProofSourceV1
               { pnativeSource'compactCbor
@@ -189,7 +189,7 @@ forcedSourceIsExact fixture =
                   , pfromData pnativeSource'compactCbor #== pconstant (forcedCompact fixture)
                   , pfromData pnativeSource'witnessSetCompactCbor #== pconstant (forcedWitnessSet fixture)
                   , pfromData pnativeSource'fieldPreimageLengthsCbor #== pconstant (forcedLengths fixture)
-                  , pforgetData pforcedTx'operatorValidity
+                  , pforgetData pforcedTx'verdict
                       #== pconstant (PD.Constr (forcedVerdict fixture) [])
                   ]
 

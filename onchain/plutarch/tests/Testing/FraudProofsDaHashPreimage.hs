@@ -1,34 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- |
-Module      : Testing.FraudProofsDaHashPreimage
-Description : Behavioural tests for the Plutarch port of
-              @validators/fraud-proofs/da-hash-preimage/step-0{1,2}.ak@.
-
-The family that proves a block committed a leaf nothing else can open: a
-@transactions_root@ entry whose key is not the canonical native-V1 transaction id
-of its own value.
-
-It is the odd one out in two ways, and the suite is organised around both.
-
-__Step-01 must not run the codec precondition.__ Every other native family opens
-its transaction through @verify_native_tx_compact_cbor_v1@, which requires
-@derived_id == key@. Here that equality is the thing in dispute, so running it
-would make a violating leaf /abort/ the step rather than be convicted by it. The
-cases below therefore include leaves that no other family's step-01 would accept
-— a genuine transaction committed under a foreign key, and bytes that are not a
-transaction at all — and both are expected to bind.
-
-__The derivation is arithmetic, not decoding.__ The canonical compact encoding is
-fixed-framed: two bytes of head, thirty-five of tail, so an honest leaf's body
-preimage is exactly @slice(value, 2, len - 37)@. The framing constants are pinned
-against the fixture's own encoder below rather than trusted, because the whole
-soundness argument rests on them: get the tail wrong and an honest leaf derives a
-foreign id, which would convict every operator in the network.
--}
 module Testing.FraudProofsDaHashPreimage (tests) where
 
 import Data.ByteString qualified as BS
+import Data.ByteString.Base16 qualified as Base16
+import Data.ByteString.Char8 qualified as BS8
 import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V1.Value (singleton)
 import PlutusLedgerApi.V3 (Address, ScriptContext, ScriptHash (..), TokenName (..))
@@ -38,189 +14,159 @@ import Test.Tasty.HUnit
 
 import Plutarch.Prelude
 
+import Midgard.FraudProofs.DaHashPreimage (
+  PCompactInspectionV1,
+  PVerdictV1 (..),
+  pfieldLengthsAreCanonicalV1,
+  pinspectCompactV1,
+  pwitnessSetIsCanonicalV1,
+ )
 import Midgard.Validators.FraudProofs.DaHashPreimage (
   daHashPreimageStep01Validator,
   daHashPreimageStep02Validator,
  )
-import Testing.Eval (pfails, psucceeds)
+import Testing.Eval (passertEval, pfails, psucceeds)
 import Testing.FraudProofsFixture
 
---------------------------------------------------------------------------------
--- The suite
---------------------------------------------------------------------------------
-
--- | Collects the tests defined in this module.
 tests :: TestTree
 tests =
   testGroup
     "DA Hash Preimage Fraud Proof Tests"
-    [ testGroup "the framing constants" framingTests
+    [ testGroup "total source rule" ruleTests
     , testGroup "step-01" step01Tests
     , testGroup "step-02" step02Tests
     ]
 
---------------------------------------------------------------------------------
--- The framing constants
---------------------------------------------------------------------------------
-
-{- | Both constants pinned against the fixture's canonical encoder, which is
-written from §3 and not taken from the port.
--}
-framingTests :: [TestTree]
-framingTests =
-  [ {- @0x84@ and the version byte in front, @0x58 0x20@ plus 32 bytes of
-       witness-set hash plus the one-byte validity code behind. The validity code
-       is bounded to @0..=5@, so it never widens past one byte and the tail is a
-       constant rather than a parse. -}
-    testCase "the canonical frame is 2 + 35 bytes around the body" $
-      BS.length tx1Cbor @?= BS.length (compactBodyOf tx1) + 37
-  , testCase "the framed slice recovers the encoder's body preimage" $
-      leafBody tx1Cbor @?= compactBodyOf tx1
-  , testCase "so the derived id is the genuine transaction id" $
-      derivedId tx1Cbor @?= tx1Id
-  , -- Every fixture transaction, because the body length varies between them and
-    -- a constant that happened to fit one would be worth nothing.
-    testCase "and likewise for every fixture transaction" $
-      map derivedId [tx1Cbor, tx2Cbor, tx3Cbor, txEmptyCbor, txScriptSpendCbor]
-        @?= [tx1Id, tx2Id, tx3Id, txEmptyId, txScriptSpendId]
-  , testCase "a leaf shorter than the frame clamps to the empty body" $
-      leafBody (BS.replicate 36 0x00) @?= ""
+ruleTests :: [TestTree]
+ruleTests =
+  [ testCase "maximum Cardano compact is canonical" $
+      psucceeds (compactInspection maximumCardanoCompactCbor)
+  , testCase "maximum Cardano witness set is canonical" $
+      passertEval $ pwitnessSetIsCanonicalV1 # pconstant maximumCardanoWitnessSetCbor
+  , testCase "maximum Cardano field lengths are canonical" $
+      passertEval $ pfieldLengthsAreCanonicalV1 # pconstant maximumCardanoFieldLengthsCbor
+  , testCase "noncanonical compact encoding is rejected" $
+      pfails (compactInspection noncanonicalCompactCbor)
+  , testCase "malformed witness set is rejected without aborting" $
+      passertEval $ pnot # (pwitnessSetIsCanonicalV1 # pconstant "deadbeef")
+  , testCase "malformed field lengths are rejected without aborting" $
+      passertEval $ pnot # (pfieldLengthsAreCanonicalV1 # pconstant "deadbeef")
   ]
-
---------------------------------------------------------------------------------
--- step-01
---------------------------------------------------------------------------------
+  where
+    compactInspection :: forall s. BS.ByteString -> Term s PUnit
+    compactInspection bytes =
+      pmatch (pinspectCompactV1 # pconstant bytes) $ \case
+        PNothing -> perror
+        PJust (_ :: Term s PCompactInspectionV1) -> pconstant ()
 
 step01Tests :: [TestTree]
 step01Tests =
-  [ testCase "binds an honest leaf and forwards the evidence triple" $
+  [ testCase "binds a miskeyed source leaf" $
+      psucceeds $ step01 (context01 $ leafUnder foreignKey (sourceCbor tx1Id tx1Cbor validWitness validLengths))
+  , testCase "binds a malformed source leaf" $
+      psucceeds $ step01 (context01 $ leafUnder foreignKey "deadbeef")
+  , testCase "binds a noncanonical source leaf" $
+      psucceeds $ step01 (context01 $ leafUnder tx1Id noncanonicalSourceCbor)
+  , testCase "binds a malformed compact proof source" $
+      psucceeds $ step01 (context01 $ leafUnder tx1Id (sourceCbor tx1Id "deadbeef" validWitness validLengths))
+  , testCase "binds a malformed witness proof source" $
+      psucceeds $ step01 (context01 $ leafUnder tx1Id (sourceCbor tx1Id tx1Cbor "deadbeef" validLengths))
+  , testCase "binds a forged witness-set hash" $
+      psucceeds $ step01 (context01 $ leafUnder tx1Id (sourceCbor tx1Id tx1Cbor forgedWitness validLengths))
+  , testCase "binds malformed field lengths" $
+      psucceeds $ step01 (context01 $ leafUnder tx1Id (sourceCbor tx1Id tx1Cbor validWitness "deadbeef"))
+  , testCase "binds a derived-id mismatch" $
+      psucceeds $ step01 (context01 $ leafUnder foreignKey (sourceCbor foreignKey tx1Cbor validWitness validLengths))
+  , testCase "binds a valid leaf without convicting" $
       psucceeds $ step01 (context01 default01)
-  , {- The case that separates this family from every other native one. A leaf
-       committed under a key that is not its own id would fail
-       @verify_native_tx_compact_cbor_v1@, so no other step-01 could bind it —
-       and this one must, or the fault would be unprovable. -}
-    testCase "binds a genuine transaction committed under a foreign key" $
-      psucceeds $ step01 (context01 (leafUnder foreignKey tx1Cbor))
-  , -- …and bytes that are not a transaction at all, for the same reason.
-    testCase "binds arbitrary bytes committed as a leaf" $
-      psucceeds $ step01 (context01 (leafUnder foreignKey junkLeaf))
-  , -- …including a leaf too short to carry the frame, whose body clamps empty.
-    testCase "binds an underframed leaf" $
-      psucceeds $ step01 (context01 (leafUnder foreignKey shortLeaf))
-  , testCase "rejects a state naming a derived id the leaf does not commit" $
-      pfails $
-        step01
-          (context01 default01 {d1OutputState = Just (state02 tx1Id tx2Id (leafLength tx1Cbor))})
-  , testCase "rejects a state naming a committed key that is not the leaf's" $
-      pfails $
-        step01
-          (context01 default01 {d1OutputState = Just (state02 tx2Id tx1Id (leafLength tx1Cbor))})
-  , testCase "rejects a state naming the wrong byte count" $
-      pfails $
-        step01
-          (context01 default01 {d1OutputState = Just (state02 tx1Id tx1Id (leafLength tx1Cbor - 1))})
-  , testCase "rejects a leaf the block's transactions root does not commit" $
+  , testCase "accepts the maximum valid source leaf" $
+      psucceeds $ step01 (context01 maximum01)
+  , testCase "rejects a fabricated verdict" $
+      pfails $ step01 (context01 default01 {d1OutputState = Just (state02 PKeyMismatch)})
+  , testCase "rejects a forged transactions root" $
       pfails $ step01 (context01 default01 {d1PhasRoot = otherRoot})
   , testCase "rejects an output at a script that is not step-02's" $
       pfails $ step01 (context01 default01 {d1OutputScript = otherScript})
   ]
 
---------------------------------------------------------------------------------
--- step-02
---------------------------------------------------------------------------------
-
 step02Tests :: [TestTree]
 step02Tests =
-  [ testCase "convicts a leaf committed under a key that is not its own id" $
-      psucceeds $ step02 (context02 (adjudicate foreignKey tx1Id (leafLength tx1Cbor)))
-  , {- Underframing convicts on its own, and short-circuits: a leaf too short to
-       frame has no meaningful derived id, so the two ids agreeing here is not
-       evidence of anything and must not rescue it. -}
-    testCase "convicts an underframed leaf even when the two ids agree" $
-      psucceeds $ step02 (context02 (adjudicate tx1Id tx1Id 36))
-  , testCase "convicts an empty leaf" $
-      psucceeds $ step02 (context02 (adjudicate tx1Id tx1Id 0))
-  , -- Where an honest block survives the challenge. This is the direction that
-    -- matters most: a wrong tail constant would convict here.
-    testCase "refuses an honest leaf" $
-      pfails $ step02 (context02 (adjudicate tx1Id tx1Id (leafLength tx1Cbor)))
-  , testCase "refuses an honest leaf at exactly the frame length" $
-      pfails $ step02 (context02 (adjudicate tx1Id tx1Id 37))
-  , testCase "rejects a conviction parked anywhere but the fraud-proof address" $
-      pfails $
-        step02
-          ( context02
-              (adjudicate foreignKey tx1Id (leafLength tx1Cbor)) {d2FraudProofAddress = otherAddress}
-          )
-  , testCase "rejects a conviction under a name that is not the thread's" $
-      pfails $
-        step02
-          ( context02
-              (adjudicate foreignKey tx1Id (leafLength tx1Cbor)) {d2FraudProofName = otherThreadName}
-          )
+  [ testCase "convicts malformed source" $ psucceeds $ step02 (context02 $ adjudicate PMalformedSource)
+  , testCase "convicts key mismatch" $ psucceeds $ step02 (context02 $ adjudicate PKeyMismatch)
+  , testCase "convicts malformed proof source" $ psucceeds $ step02 (context02 $ adjudicate PMalformedProofSource)
+  , testCase "convicts derived-id mismatch" $ psucceeds $ step02 (context02 $ adjudicate PDerivedIdMismatch)
+  , testCase "rejects a valid-block challenge" $ pfails $ step02 (context02 $ adjudicate PNoViolation)
+  , testCase "rejects a conviction parked outside the fraud-proof address" $
+      pfails $ step02 (context02 (adjudicate PKeyMismatch) {d2FraudProofAddress = otherAddress})
+  , testCase "rejects a conviction under a name other than the thread's" $
+      pfails $ step02 (context02 (adjudicate PKeyMismatch) {d2FraudProofName = otherThreadName})
   ]
 
 --------------------------------------------------------------------------------
--- The rule, reimplemented from the format
+-- Canonical source fixtures
 --------------------------------------------------------------------------------
 
--- | @rule.compact_v1_frame_byte_count@: 2 bytes of head, 35 of tail.
-frameByteCount :: Int
-frameByteCount = 37
+validWitness, validLengths :: BS.ByteString
+validWitness = witnessSetCborOf tx1
+validLengths = "\x89\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
--- | @rule.committed_leaf_body_cbor_v1@, clamping rather than erroring.
-leafBody :: BS.ByteString -> BS.ByteString
-leafBody value
-  | bodyLength <= 0 = ""
-  | otherwise = BS.take bodyLength (BS.drop 2 value)
+forgedWitness :: BS.ByteString
+forgedWitness = witnessSetCborFrom (foreignKey, foreignKey, foreignKey)
+
+sourceCbor :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString
+sourceCbor txId compact witness lengths =
+  serialise $ PD.Constr 0 [PD.B txId, PD.Constr 0 [PD.B compact, PD.B witness, PD.B lengths]]
+
+-- Same Data as 'sourceCbor', with definite constructor-field lists instead of
+-- the canonical serialiseData spelling.
+noncanonicalSourceCbor :: BS.ByteString
+noncanonicalSourceCbor =
+  "\xd8\x79\x82"
+    <> definiteBytes tx1Id
+    <> "\xd8\x79\x83"
+    <> definiteBytes tx1Cbor
+    <> definiteBytes validWitness
+    <> definiteBytes validLengths
+
+definiteBytes :: BS.ByteString -> BS.ByteString
+definiteBytes bytes
+  | n <= 23 = BS.cons (fromIntegral $ 0x40 + n) bytes
+  | n <= 255 = BS.pack [0x58, fromIntegral n] <> bytes
+  | otherwise = BS.pack [0x59, fromIntegral (n `div` 256), fromIntegral n] <> bytes
   where
-    bodyLength = BS.length value - frameByteCount
+    n = BS.length bytes
 
--- | @rule.derive_committed_leaf_tx_id_v1@ — §3's id over the framed slice.
-derivedId :: BS.ByteString -> BS.ByteString
-derivedId value = blake2b256 ("MidgardNativeTxBodyV1" <> cborInt 1 <> leafBody value)
+noncanonicalCompactCbor :: BS.ByteString
+noncanonicalCompactCbor = "\x9f" <> BS.drop 1 tx1Cbor <> "\xff"
 
-leafLength :: BS.ByteString -> Integer
-leafLength = fromIntegral . BS.length
-
-{- | The fixture's compact body, recovered from the compact bytes it builds.
-
-Taken this way rather than exported separately so that the framing assertion
-above is a statement about the /encoder's/ output and not about a second copy of
-the same arithmetic.
--}
-compactBodyOf :: Tx -> BS.ByteString
-compactBodyOf tx = BS.take (BS.length cbor - frameByteCount) (BS.drop 2 cbor)
-  where
-    cbor = compactOf tx
-
---------------------------------------------------------------------------------
--- Leaves
---------------------------------------------------------------------------------
-
--- | A key no fixture transaction hashes to.
 foreignKey :: BS.ByteString
 foreignKey = BS.replicate 32 0x99
 
--- | Bytes long enough to frame, and not a transaction.
-junkLeaf :: BS.ByteString
-junkLeaf = BS.replicate 80 0x5a
+maximumCardanoTxId, maximumCardanoCompactCbor, maximumCardanoWitnessSetCbor, maximumCardanoFieldLengthsCbor :: BS.ByteString
+maximumCardanoTxId = hex "7b4e4657e0083544359f4398fb092c482766220cd53ad99b598239297d1e9813"
+maximumCardanoCompactCbor = hex "84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820095c12f5790acc50dbbf52c0b47fe4ebd1dfd9ab308b14701543d6d4d78a06ae1a000d59492020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820e2d5bb3b4c4475d516516e5396ec041b553ada06379a53f665b47e1485e0451f582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ad12ff89400f2f7975c77231241032e6a7bf49d0f2ab388425b3de0cefef003000"
+maximumCardanoWitnessSetCbor = hex "835820689afcab7a4406fa8da9a4f97b325f34458bd2114d6b2ae9eb357e681acc0e97582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+maximumCardanoFieldLengthsCbor = hex "89182901183001190e8a01011931e601"
 
--- | Too short to carry the canonical frame at all.
-shortLeaf :: BS.ByteString
-shortLeaf = BS.replicate 20 0x5b
-
---------------------------------------------------------------------------------
--- Thread state
---------------------------------------------------------------------------------
-
-state02 :: BS.ByteString -> BS.ByteString -> Integer -> PD.Data
-state02 committed derived byteCount =
-  PD.Constr 0 [PD.B committed, PD.B derived, PD.I byteCount]
+hex :: String -> BS.ByteString
+hex = Base16.decodeLenient . BS8.pack
 
 --------------------------------------------------------------------------------
--- Driving the validators
+-- Validator contexts
 --------------------------------------------------------------------------------
+
+state02 :: PVerdictV1 s -> PD.Data
+state02 verdict = PD.Constr 0 [verdictData verdict]
+
+verdictData :: PVerdictV1 s -> PD.Data
+verdictData verdict = PD.Constr tag []
+  where
+    tag = case verdict of
+      PMalformedSource -> 0
+      PKeyMismatch -> 1
+      PMalformedProofSource -> 2
+      PDerivedIdMismatch -> 3
+      PNoViolation -> 4
 
 step01, step02 :: forall s. ScriptContext -> Term s PUnit
 step01 ctx =
@@ -236,10 +182,6 @@ step02 ctx =
     # pdata (pconstant ctPolicy)
     # pconstant ctx
 
---------------------------------------------------------------------------------
--- step-01's context
---------------------------------------------------------------------------------
-
 data Step01 = Step01
   { d1Key :: BS.ByteString
   , d1Value :: BS.ByteString
@@ -248,21 +190,32 @@ data Step01 = Step01
   , d1PhasRoot :: BS.ByteString
   }
 
-default01 :: Step01
-default01 = leafUnder tx1Id tx1Cbor
+default01, maximum01 :: Step01
+default01 = leafUnder tx1Id (sourceCbor tx1Id tx1Cbor validWitness validLengths)
+maximum01 =
+  leafUnder
+    maximumCardanoTxId
+    (sourceCbor maximumCardanoTxId maximumCardanoCompactCbor maximumCardanoWitnessSetCbor maximumCardanoFieldLengthsCbor)
 
-{- | A step-01 case binding the given @(key, value)@ leaf, with the state step-01
-is supposed to write for it.
--}
 leafUnder :: BS.ByteString -> BS.ByteString -> Step01
 leafUnder key value =
   Step01
     { d1Key = key
     , d1Value = value
     , d1OutputScript = nextScript
-    , d1OutputState = Just (state02 key (derivedId value) (leafLength value))
+    , d1OutputState = Just (stateForLeaf key value)
     , d1PhasRoot = phasRoot
     }
+
+stateForLeaf :: BS.ByteString -> BS.ByteString -> PD.Data
+stateForLeaf committed value
+  | value == "deadbeef" = state02 PMalformedSource
+  | value == noncanonicalSourceCbor = state02 PMalformedSource
+  | committed == foreignKey && value == sourceCbor tx1Id tx1Cbor validWitness validLengths = state02 PKeyMismatch
+  | committed == foreignKey = state02 PDerivedIdMismatch
+  | value == sourceCbor tx1Id tx1Cbor validWitness validLengths = state02 PNoViolation
+  | value == sourceCbor maximumCardanoTxId maximumCardanoCompactCbor maximumCardanoWitnessSetCbor maximumCardanoFieldLengthsCbor = state02 PNoViolation
+  | otherwise = state02 PMalformedProofSource
 
 context01 :: Step01 -> ScriptContext
 context01 s =
@@ -275,21 +228,16 @@ context01 s =
     [phasEntry (d1PhasRoot s) (d1Key s) (d1Value s)]
     mempty
 
---------------------------------------------------------------------------------
--- step-02's context
---------------------------------------------------------------------------------
-
 data Step02 = Step02
   { d2State :: PD.Data
   , d2FraudProofAddress :: Address
   , d2FraudProofName :: BS.ByteString
   }
 
--- | A step-02 case adjudicating the given evidence triple.
-adjudicate :: BS.ByteString -> BS.ByteString -> Integer -> Step02
-adjudicate committed derived byteCount =
+adjudicate :: PVerdictV1 s -> Step02
+adjudicate verdict =
   Step02
-    { d2State = state02 committed derived byteCount
+    { d2State = state02 verdict
     , d2FraudProofAddress = fraudProofAddress
     , d2FraudProofName = threadName
     }

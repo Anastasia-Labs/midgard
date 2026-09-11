@@ -18,7 +18,7 @@ module Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesStagesTwoToSi
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
-import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash)
+import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo (..))
 import Plutarch.Prelude
 
 import Midgard.LedgerOutputProof (PLedgerOutputProofWitnessV1)
@@ -35,6 +35,7 @@ import Midgard.ValidationMachine (
  )
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PScriptSources))
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 
 data PScriptSourcesNonOutputActionV1 (s :: S)
@@ -91,19 +92,24 @@ data PScriptSourcesOutputProofFinishActionV1 (s :: S)
   deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesOutputProofFinishActionV1)
 
 scriptSourcesNonOutputSemanticV1Validator :: forall s.
-  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
-scriptSourcesNonOutputSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    )
+scriptSourcesNonOutputSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PScriptSourcesNonOutputActionV1 policyId datum redeemer ownOutRef txInfo $
     \action -> pmatch action $ \(PVerifyNonOutput inputIndex outputIndex transitionD auxiliaryD) ->
       plet (pfromData transitionD) $ \transition ->
       plet (pcon $ PValidationOneStepEvidenceV1 transitionD auxiliaryD) $ \evidence ->
+      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
         pcontinueWinning
           (pcon PScriptSources)
           awardScriptHash policyId datum
           (pfromData inputIndex) (pfromData outputIndex) transition
           (pforgetData auxiliaryD)
-          (pverifyScriptSourcesNonOutputSemanticsV1 # pvalidationSemanticPreState datum # evidence)
+          (pverifyScriptSourcesNonOutputSemanticsV1 # pvalidationSemanticPreState datum # evidence # door)
           ownOutRef txInfo
 
 scriptSourcesOutputProofBeginSemanticV1Validator :: forall s.

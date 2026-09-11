@@ -48,7 +48,7 @@ import Midgard.FraudProofs.Common (pfinalize, ppassCommittedTransactionsLeafToNe
 import Midgard.FraudProofs.DaHashPreimage (
   PStep02Args (..),
   PStep02State (..),
-  pderiveCommittedLeafTxIdV1,
+  padjudicateCommittedSourceLeafV1,
   pisDaHashPreimageViolationV1,
  )
 import Midgard.Validators.FraudProofs.Step (
@@ -59,11 +59,7 @@ import Midgard.Validators.FraudProofs.Step (
   pstep,
  )
 
-{- | Aiken @validators/fraud-proofs/da-hash-preimage/step-01.ak@.
-
-Binds one raw committed leaf and forwards the evidence triple: the committed key,
-the id the leaf value itself commits to, and the leaf's byte length.
--}
+-- | Binds one raw committed leaf and forwards its total adjudication verdict.
 daHashPreimageStep01Validator ::
   forall (s :: S).
   Term
@@ -107,11 +103,12 @@ daHashPreimageStep01Validator = plam $
                           ( pdata
                               ( pcon
                                   ( PStep02State
-                                      { pstep02State'committedTxId = pdata committedTxId
-                                      , pstep02State'derivedTxId =
-                                          pdata (pderiveCommittedLeafTxIdV1 # committedLeafValue)
-                                      , pstep02State'committedLeafByteCount =
-                                          pdata (plengthBS # committedLeafValue)
+                                      { pstep02State'verdict =
+                                          pdata
+                                            ( padjudicateCommittedSourceLeafV1
+                                                # committedTxId
+                                                # committedLeafValue
+                                            )
                                       }
                                   )
                               )
@@ -119,12 +116,7 @@ daHashPreimageStep01Validator = plam $
                     )
                     (pconstant True)
 
-{- | Aiken @validators/fraud-proofs/da-hash-preimage/step-02.ak@.
-
-The conviction: the committed leaf is either too short to carry the canonical
-frame at all, or the id its own body preimage hashes to is not the key the block
-committed it under.
--}
+-- | Finalizes every adjudicated verdict except @NoViolation@.
 daHashPreimageStep02Validator ::
   forall (s :: S).
   Term
@@ -161,15 +153,8 @@ daHashPreimageStep02Validator = plam $
             (pto (pto (pfromData ptxInfo'redeemers)))
             $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
               PStep02State
-                { pstep02State'committedTxId
-                , pstep02State'derivedTxId
-                , pstep02State'committedLeafByteCount
-                } <-
+                { pstep02State'verdict } <-
                 pmatch (pexpectStateAs @PStep02State mInputStateData)
               pexpecting
-                ( pisDaHashPreimageViolationV1
-                    # pfromData pstep02State'committedTxId
-                    # pfromData pstep02State'derivedTxId
-                    # pfromData pstep02State'committedLeafByteCount
-                )
+                (pisDaHashPreimageViolationV1 # pfromData pstep02State'verdict)
                 (pconstant True)

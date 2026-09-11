@@ -43,7 +43,9 @@ import Plutarch.LedgerApi.V3 (
  )
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
+import Plutarch.Internal.Term (punsafeBuiltin)
 import Plutarch.Unsafe (punsafeCoerce)
+import PlutusCore qualified as PLC
 
 import Midgard.Common.Utils (pquantityOfMint)
 import Midgard.UserEvents.Witness (PPublishRedeemer (..))
@@ -160,25 +162,15 @@ pproveNotRegisteredFromUnregistration certificate certificates index = P.do
 -- Helpers
 --------------------------------------------------------------------------------
 
-{- | Aiken @list.drop@.
+{- | Drop elements using the Plutus V3 @dropList@ builtin.
 
-Faithful to the stdlib definition, including its two edge cases: a non-positive
-count returns the list untouched, and running off the end returns the empty list
-rather than failing. Both matter, because the caller's @expect@ on the result is
-what rejects — a negative index is /not/ an error here, it simply leaves the
-caller looking at the head of the list.
+The builtin treats a negative count as zero, so a negative index retains the
+existing caller behavior: the caller's @expect@ checks the resulting list.
 -}
 pdropList ::
   forall (s :: S) (a :: S -> Type).
-  PIsListLike PBuiltinList a =>
   Term s (PInteger :--> PBuiltinList a :--> PBuiltinList a)
-pdropList = phoistAcyclic $
-  pfix $ \self ->
-    plam $ \n xs ->
-      pif
-        (n #<= 0)
-        xs
-        (pelimList (\_ rest -> self # (n - 1) # rest) xs xs)
+pdropList = phoistAcyclic $ pforce $ punsafeBuiltin PLC.DropList
 
 -- | The head of a list, erroring when it is empty — Aiken's @expect [x, ..]@.
 pheadOrError ::

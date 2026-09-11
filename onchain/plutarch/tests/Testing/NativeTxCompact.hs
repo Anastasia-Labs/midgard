@@ -118,7 +118,7 @@ tests =
         , testCase "the body encoder rejects a network id that is not 0, 1 or 255" $
             pfails $ pencodeNativeTxCompactV1 # compactT defaultTx {tNetworkId = 2}
         , testCase "the compact encoder rejects an out-of-range validity code" $
-            pfails $ pencodeNativeTxCompactV1 # compactT defaultTx {tValidityCode = 6}
+            pfails $ pencodeNativeTxCompactV1 # compactT defaultTx {tValidityCode = 2}
         , testCase "the lengths encoder rejects a negative length" $
             pfails $
               pencodeNativeTxFieldPreimageLengthsV1
@@ -348,7 +348,7 @@ defaultTx =
     , tAuxiliaryDataHash = hash 0x08
     , tNetworkId = 1
     , tWitnessSetHash = wsHashOf defaultWs
-    , tValidityCode = 3
+    , tValidityCode = 1
     }
 
 otherTx :: Tx

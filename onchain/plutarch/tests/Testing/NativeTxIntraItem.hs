@@ -153,8 +153,8 @@ pmaterialisedQuantity unit assets =
         pelimList
           ( \entry rest ->
               pif
-                (pfromData (pfstBuiltin # entry) #== unit)
-                (pfromData (psndBuiltin # entry))
+                (pfromData (pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== unit)
+                (pfromData (pmatch entry $ \(PBuiltinPair _ pairSecond) -> pairSecond))
                 (self # rest)
           )
           0

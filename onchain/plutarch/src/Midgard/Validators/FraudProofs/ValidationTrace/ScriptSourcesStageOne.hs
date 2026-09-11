@@ -17,7 +17,7 @@ import Plutarch.LedgerApi.V3 (
   PCurrencySymbol,
   PScriptContext,
   PScriptHash,
-  PTxInfo,
+  PTxInfo (..),
   PTxOutRef,
  )
 import Plutarch.Prelude
@@ -32,6 +32,7 @@ import Midgard.ValidationMachine (
  )
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PScriptSources))
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 
 data PScriptSourcesStageOneFinishActionV1 (s :: S)
@@ -87,18 +88,23 @@ scriptSourcesStageOneFinishSemanticV1Validator = plam $ \awardScriptHash policyI
           ownOutRef txInfo
 
 scriptSourcesStageOneRedeemerSemanticV1Validator :: forall s.
-  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
-scriptSourcesStageOneRedeemerSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    )
+scriptSourcesStageOneRedeemerSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PScriptSourcesStageOneRedeemerActionV1 policyId datum redeemer ownOutRef txInfo $
     \action -> pmatch action $ \(PVerifyRedeemer inputIndex outputIndex transitionD auxiliaryD) ->
       plet (pfromData transitionD) $ \transition ->
       plet (pvalidationAuxiliaryWitnessFromData # pforgetData auxiliaryD) $ \auxiliary ->
+      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
         pcontinueScriptSources
           awardScriptHash policyId datum
           (pfromData inputIndex) (pfromData outputIndex) transition
           (pforgetData auxiliaryD)
           ( pverifyScriptSourcesStageOneRedeemerSemanticsV1
-              # pvalidationSemanticPreState datum # transition # auxiliary
+              # pvalidationSemanticPreState datum # transition # auxiliary # door
           )
           ownOutRef txInfo
