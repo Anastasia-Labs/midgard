@@ -53,7 +53,7 @@ import Plutarch.LedgerApi.V3 (
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 
-import Midgard.FraudProofs.Common (pcontinue, pfinalize, ppassNativeTxToNextStep)
+import Midgard.FraudProofs.Common (pcontinue, pfinalize, ppassNativeTxToNextStepCarried)
 import Midgard.FraudProofs.FieldOpening (
   PNativeTxAnchorV1 (..),
   popenedFieldView,
@@ -67,7 +67,11 @@ import Midgard.FraudProofs.ReferenceInputNoIdx (
   PStep04Args (..),
   PStep04State (..),
  )
-import Midgard.FraudProofs.NativeTx.Types (PMidgardTxInput (..))
+import Midgard.FraudProofs.NativeTx.Types (
+  PMidgardTxInput (..),
+  PNativeTxCompact (..),
+  PVerifiedMidgardNativeTxCompact (..),
+ )
 import Midgard.NativeTxFieldAccess (pfieldItemCount)
 import Midgard.NativeTxMachineWalk (pspendInputAt)
 import Midgard.Validators.FraudProofs.Step (
@@ -100,7 +104,7 @@ referenceInputNoIdxStep01Validator = plam $
         \args -> P.do
           PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
             pmatch txInfo
-          ppassNativeTxToNextStep
+          ppassNativeTxToNextStepCarried
             computationThreadTokenPolicyId
             hubOracle
             datum
@@ -118,8 +122,11 @@ referenceInputNoIdxStep01Validator = plam $
                outputStateData
                _header
                badTxId
-               _badTxView ->
-                pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+               badTxView -> P.do
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
+                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
                   pexpecting
                     ( outputStateData
                         #== pforgetData
@@ -235,7 +242,7 @@ referenceInputNoIdxStep03Validator = plam $
         \args -> P.do
           PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
             pmatch txInfo
-          ppassNativeTxToNextStep
+          ppassNativeTxToNextStepCarried
             computationThreadTokenPolicyId
             hubOracle
             datum
@@ -253,13 +260,16 @@ referenceInputNoIdxStep03Validator = plam $
                outputStateData
                _header
                producingTxId
-               _producingTxView -> P.do
+               producingTxView -> P.do
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch producingTxView
+                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
                 PStep03State {pstep03State'badReferenceInputTxId, pstep03State'badReferenceInputOutputIndex} <-
                   pmatch (pexpectStateAs @PStep03State mInputStateData)
                 -- 2. The transaction just bound must be the one the disputed
                 --    reference input names. This is where a challenge against a
                 --    valid block dies.
-                pexpecting (producingTxId #== pfromData pstep03State'badReferenceInputTxId) $
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (producingTxId #== pfromData pstep03State'badReferenceInputTxId) $
                   pexpecting (outputScriptHash #== step04ValidatorScriptHash) $
                     pexpecting
                       ( outputStateData

@@ -53,6 +53,7 @@ module Midgard.FraudProofs.NativeTx.Compact (
   pencodeNativeTxFieldPreimageLengthsV1,
   pdecodeNativeTxFieldPreimageLengthsV1,
   pnativeTxCanonicalSizeV1,
+  pminFeeLovelaceV1,
 
   -- * Verification
   pverifyNativeTxCompactV1,
@@ -273,7 +274,7 @@ pdecodeNativeTxCompactV1 = phoistAcyclic $
     PPair o2 witnessSetHash <- pmatch (pdecodeHash32At # cbor # o1)
     PPair o3 validityCode <- pmatch (pdecodeCanonicalUintAt # cbor # o2)
     pif
-      (o3 #== plengthBS # cbor #&& validityCode #<= 5)
+      (o3 #== plengthBS # cbor #&& validityCode #<= 1)
       ( pcon
           ( PNativeTxCompact
               { pcompact'body = body
@@ -513,6 +514,18 @@ pnativeTxCanonicalSizeV1 = phoistAcyclic $
       + witnessSetSize
       + (scalar # pcompact'validityCode)
 
+{- | Aiken @compact.min_fee_lovelace_v1@.
+
+The shared native-V1 fee rule.  Both the validation machine and the standalone
+min-fee fraud proof call this helper so the two adjudicators cannot drift.
+-}
+pminFeeLovelaceV1 ::
+  forall (s :: S).
+  Term s (PInteger :--> PInteger :--> PInteger :--> PInteger)
+pminFeeLovelaceV1 = phoistAcyclic $
+  plam $ \minFeeA minFeeB canonicalTxSize ->
+    minFeeA * canonicalTxSize + minFeeB
+
 --------------------------------------------------------------------------------
 -- Verification
 --------------------------------------------------------------------------------
@@ -586,7 +599,7 @@ pverifyNativeTxCompactCborV1 = phoistAcyclic $
           #&& afterCode
           #== plengthBS # cbor
           #&& validityCode
-          #<= 5
+          #<= 1
       )
       ( pcon
           ( PVerifiedMidgardNativeTxCompact

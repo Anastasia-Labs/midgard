@@ -24,14 +24,14 @@ import Plutarch.LedgerApi.V3 (
   PCurrencySymbol,
   PScriptContext,
   PScriptHash,
-  PTxInfo,
+  PTxInfo (..),
   PTxOutRef,
  )
 import Plutarch.Prelude
 
-import Midgard.BoundedCollection (PItemProofV1)
 import Midgard.BoundedItem (PChunkProofV1)
 import Midgard.ComputationThread (PStepDatum)
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepWitnessV1,
@@ -43,6 +43,7 @@ import Midgard.ValidationMachine (
  )
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PScriptSources))
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 import Midgard.Validators.FraudProofs.ValidationTrace.Preparation (
   pprepareSelectedValidator,
@@ -62,8 +63,9 @@ data PScriptSourcesStageZeroBeginActionV1 (s :: S)
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PValidationOneStepWitnessV1))
-      (Term s (PAsData PItemProofV1))
-      (Term s (PAsData PChunkProofV1))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldCarriageV1))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesStageZeroBeginActionV1)
@@ -140,19 +142,25 @@ scriptSourcesStageZeroFinishSemanticV1Validator = plam $ \awardScriptHash policy
           ownOutRef txInfo
 
 scriptSourcesStageZeroBeginSemanticV1Validator :: forall s.
-  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
-scriptSourcesStageZeroBeginSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    )
+scriptSourcesStageZeroBeginSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PScriptSourcesStageZeroBeginActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyBegin inputIndex outputIndex transitionD collectionProofD chunkProofD) ->
+    \action -> pmatch action $ \(PVerifyBegin inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD) ->
       plet (pfromData transitionD) $ \transition ->
+      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
         pcontinueScriptSources
           awardScriptHash policyId datum
           (pfromData inputIndex) (pfromData outputIndex) transition
-          (pcon $ PTransactionFieldChunkWitness collectionProofD chunkProofD)
+          (pcon $ PTransactionFieldChunkWitness fieldIndexD itemIndexD carriageD)
           ( pverifyScriptSourcesStageZeroBeginSemanticsV1
               # pvalidationSemanticPreState datum # transition
-              # pfromData collectionProofD # pfromData chunkProofD
+              # door # pfromData fieldIndexD # pfromData itemIndexD
+              # pfromData carriageD
           )
           ownOutRef txInfo
 

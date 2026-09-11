@@ -30,7 +30,7 @@ import PlutusLedgerApi.V3 (
   toBuiltinData,
  )
 import PlutusLedgerApi.V3.MintValue (MintValue (UnsafeMintValue))
-import PlutusTx.Builtins (builtinDataToData, dataToBuiltinData, fromBuiltin, toBuiltin)
+import PlutusTx.Builtins (builtinDataToData, dataToBuiltinData, fromBuiltin, serialiseData, toBuiltin)
 import PlutusTx.Builtins qualified as Builtins
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -95,10 +95,14 @@ addSignaturesTests =
     , -- Identity fields carry over untouched.
       testCase "rejects a changed header hash" $
         pfails $ addSigs defaultAdd {aOutHeaderHash = Just otherHeaderHash}
+    , testCase "rejects a changed availability commitment" $
+        pfails $ addSigs defaultAdd {aOutCommitmentChanged = True}
     , testCase "rejects a changed threshold" $
         pfails $ addSigs defaultAdd {aOutThreshold = Just 3}
     , testCase "rejects a changed committee hash" $
         pfails $ addSigs defaultAdd {aOutCommitteeHash = Just (blake2b256 otherCommittee)}
+    , testCase "rejects a changed rescue beneficiary" $
+        pfails $ addSigs defaultAdd {aOutRescueAddress = Just otherAddress}
     , -- A rotation retires an in-progress attestation rather than letting it
       -- continue under keys the protocol no longer trusts.
       testCase "rejects params whose committee has been rotated away" $
@@ -171,6 +175,8 @@ rescueRefundTests =
       -- needs the token, and the token is being burnt.
       testCase "rejects a refund back to the attestation script" $
         pfails $ refund (addressOf attestationPolicy) (mkAdaValue 2_000_000)
+    , testCase "rejects a refund redirected from the datum beneficiary" $
+        pfails $ refund otherAddress (mkAdaValue 2_000_000)
     , testCase "rejects a refund short of the attestation's value" $
         pfails $ refund userAddress (mkAdaValue 1_000_000)
     , testCase "rejects a refund still carrying the burnt token" $
@@ -185,6 +191,7 @@ rescueRefundTests =
         (punsafeCoerce (pconstant @PData (toPD attestationValue)))
         (pdata (pconstant attestationPolicy))
         (pdata (pcon (PTokenName (pconstant attNameBytes))))
+        (pdata (pconstant userAddress))
 
 --------------------------------------------------------------------------------
 -- Assertions
@@ -205,8 +212,10 @@ data Add = Add
   , aOutBitmap :: Maybe BS.ByteString
   , aOutCount :: Maybe Integer
   , aOutHeaderHash :: Maybe BS.ByteString
+  , aOutCommitmentChanged :: Bool
   , aOutThreshold :: Maybe Integer
   , aOutCommitteeHash :: Maybe BS.ByteString
+  , aOutRescueAddress :: Maybe Address
   , aParamsCommittee :: BS.ByteString
   , aOutExtraAda :: Bool
   , aOutAddress :: Maybe Address
@@ -226,8 +235,10 @@ defaultAdd =
     , aOutBitmap = Nothing
     , aOutCount = Nothing
     , aOutHeaderHash = Nothing
+    , aOutCommitmentChanged = False
     , aOutThreshold = Nothing
     , aOutCommitteeHash = Nothing
+    , aOutRescueAddress = Nothing
     , aParamsCommittee = committee
     , aOutExtraAda = False
     , aOutAddress = Nothing
@@ -267,12 +278,14 @@ addSigs a =
     inBitmap = bitmapWith (aInBits a)
     outBits = aInBits a <> aSigners a
     committeeHash = blake2b256 (aCommittee a)
-    inDatumData = attDatumData headerHash (aThreshold a) committeeHash inBitmap (length (aInBits a))
+    inDatumData = attDatumData headerHash availabilityCommitmentData (aThreshold a) committeeHash userAddress inBitmap (length (aInBits a))
     outDatumData =
       attDatumData
         (maybe headerHash id (aOutHeaderHash a))
+        (if aOutCommitmentChanged a then otherAvailabilityCommitmentData else availabilityCommitmentData)
         (maybe (aThreshold a) id (aOutThreshold a))
         (maybe committeeHash id (aOutCommitteeHash a))
+        (maybe userAddress id (aOutRescueAddress a))
         (maybe (bitmapWith outBits) id (aOutBitmap a))
         (maybe (length outBits) fromInteger (aOutCount a))
     attValue =
@@ -284,7 +297,7 @@ addSigs a =
         attValue
         ( OutputDatum . Datum . dataToBuiltinData $
             if aInDatumMismatch a
-              then attDatumData otherHeaderHash (aThreshold a) committeeHash inBitmap (length (aInBits a))
+              then attDatumData otherHeaderHash availabilityCommitmentData (aThreshold a) committeeHash userAddress inBitmap (length (aInBits a))
               else inDatumData
         )
         Nothing
@@ -295,9 +308,18 @@ addSigs a =
         (OutputDatum (Datum (dataToBuiltinData outDatumData)))
         (if aOutRefScript a then Just (ScriptHash (unCurrencySymbol otherPolicy)) else Nothing)
 
-attDatumData :: BS.ByteString -> Integer -> BS.ByteString -> BS.ByteString -> Int -> PD.Data
-attDatumData hh threshold cHash bitmap count =
-  PD.Constr 0 [PD.B hh, PD.I threshold, PD.B cHash, PD.B bitmap, PD.I (fromIntegral count)]
+attDatumData :: BS.ByteString -> PD.Data -> Integer -> BS.ByteString -> Address -> BS.ByteString -> Int -> PD.Data
+attDatumData hh commitment threshold cHash rescueAddress bitmap count =
+  PD.Constr
+    0
+    [ PD.B hh
+    , commitment
+    , PD.I threshold
+    , PD.B cHash
+    , builtinDataToData (toBuiltinData rescueAddress)
+    , PD.B bitmap
+    , PD.I (fromIntegral count)
+    ]
 
 attDatumTerm :: forall s. PD.Data -> Term s PDaAttestationDatum
 attDatumTerm d = pfromData (punsafeCoerce (pconstant @PData d))
@@ -343,6 +365,33 @@ headerHash, otherHeaderHash :: BS.ByteString
 headerHash = BS.replicate 28 0xaa
 otherHeaderHash = BS.replicate 28 0xbb
 
+availabilityCommitmentData, otherAvailabilityCommitmentData :: PD.Data
+availabilityCommitmentData = commitmentData headerHash
+otherAvailabilityCommitmentData = commitmentData otherHeaderHash
+
+commitmentData :: BS.ByteString -> PD.Data
+commitmentData hh =
+  PD.Constr
+    0
+    [ PD.I 1
+    , PD.B (BS.replicate 28 0x31)
+    , PD.B hh
+    , PD.I 1
+    , PD.Constr 0 [PD.I 4_096, PD.I (4 * 1024 * 1024), PD.I 16]
+    , PD.List
+        [ PD.Constr
+            0
+            [ PD.I 0
+            , PD.I 0
+            , PD.I 1
+            , PD.I 1
+            , PD.B (BS.replicate 32 0xac)
+            , PD.B (BS.replicate 32 0xab)
+            ]
+        ]
+    , PD.B (BS.replicate 28 0x41)
+    ]
+
 attNameBytes, otherAttNameBytes :: BS.ByteString
 attNameBytes = "DAAT" <> headerHash
 otherAttNameBytes = "DAAT" <> otherHeaderHash
@@ -386,7 +435,11 @@ verKeyFor :: Int -> BS.ByteString
 verKeyFor = DSIGN.rawSerialiseVerKeyDSIGN . DSIGN.deriveVerKeyDSIGN . signKeyFor
 
 attestedMessage :: BS.ByteString
-attestedMessage = "MidgardDAAttestationV1" <> headerHash
+attestedMessage =
+  fromBuiltin $
+    Builtins.blake2b_256 $
+      toBuiltin ("MidgardDaAvailabilityAttestationV1" :: BS.ByteString)
+        <> serialiseData (dataToBuiltinData availabilityCommitmentData)
 
 signWith :: Int -> BS.ByteString
 signWith i = DSIGN.rawSerialiseSigDSIGN (DSIGN.signDSIGN () attestedMessage (signKeyFor i))

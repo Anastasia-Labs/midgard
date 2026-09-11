@@ -61,21 +61,27 @@ tests =
     "Hub Oracle Validator Tests"
     [ testGroup
         "mint"
-        [ testCase "mints one when the init UTxO is spent" $
+        [ testCase "hub_policy_accepts_equal_correction_lock_and_hub_quantities" $
             psucceeds $
-              runMint (mintCtx (hubNft 1) True)
+              runMint (mintCtx (hubMint 1) True)
         , testCase "rejects minting one without the init UTxO" $
             pfails $
-              runMint (mintCtx (hubNft 1) False)
+              runMint (mintCtx (hubMint 1) False)
         , testCase "burns one without requiring the init UTxO" $
             psucceeds $
-              runMint (mintCtx (hubNft (-1)) False)
+              runMint (mintCtx (hubMint (-1)) False)
         , testCase "rejects minting two" $
             pfails $
-              runMint (mintCtx (hubNft 2) True)
-        , testCase "rejects a second token name under the same policy" $
+              runMint (mintCtx (hubMint 2) True)
+        , testCase "hub_policy_rejects_unequal_correction_lock_quantity" $
             pfails $
-              runMint (mintCtx (hubNft 1 <> singleton hubPolicy (TokenName "IMPOSTOR") 1) True)
+              runMint (mintCtx (hubNft 1 <> correctionLock 2) True)
+        , testCase "hub_policy_rejects_missing_correction_lock" $
+            pfails $
+              runMint (mintCtx (hubNft 1) True)
+        , testCase "hub_policy_rejects_extra_asset_name" $
+            pfails $
+              runMint (mintCtx (hubMint 1 <> singleton hubPolicy (TokenName "IMPOSTOR") 1) True)
         , testCase "rejects a non-minting script purpose" $
             pfails $
               runMint rewardingCtx
@@ -137,6 +143,9 @@ stateQueuePolicy = policyFor 3
 hubAssetName :: TokenName
 hubAssetName = TokenName "MIDGARD_HUB_ORACLE"
 
+correctionLockAssetName :: TokenName
+correctionLockAssetName = TokenName "MIDGARD_CORRECTION_LOCK"
+
 -- | The UTxO whose consumption authorises the single mint.
 initUtxo :: TxOutRef
 initUtxo = TxOutRef (TxId "0000000000000000000000000000000000000000000000000000000000000001") 0
@@ -147,6 +156,12 @@ userAddress = pubKeyHashAddress (PubKeyHash "00000000000000000000000000000000000
 -- | @qty@ of the hub oracle NFT.
 hubNft :: Integer -> Value
 hubNft = singleton hubPolicy hubAssetName
+
+correctionLock :: Integer -> Value
+correctionLock = singleton hubPolicy correctionLockAssetName
+
+hubMint :: Integer -> Value
+hubMint quantity = hubNft quantity <> correctionLock quantity
 
 --------------------------------------------------------------------------------
 -- Contexts

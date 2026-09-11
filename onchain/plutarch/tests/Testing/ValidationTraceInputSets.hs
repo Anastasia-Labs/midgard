@@ -28,9 +28,9 @@ tests =
     , testCase "empty semantic validator cancels its own computation thread" $
         psucceeds $ cancelledSemanticWith inputSetsEmptySemanticV1Validator threadName
     , testCase "item semantic validator cancels its own computation thread" $
-        psucceeds $ cancelledSemanticWith inputSetsItemSemanticV1Validator threadName
+        psucceeds $ cancelledFieldSemanticWith inputSetsItemSemanticV1Validator threadName
     , testCase "item semantic validator rejects cancellation of another thread" $
-        pfails $ cancelledSemanticWith inputSetsItemSemanticV1Validator otherThreadName
+        pfails $ cancelledFieldSemanticWith inputSetsItemSemanticV1Validator otherThreadName
     ]
 
 cancelledPreparationWith :: forall s. BS.ByteString -> Term s PUnit
@@ -50,6 +50,20 @@ cancelledSemanticWith :: forall s.
 cancelledSemanticWith validator cancellationName =
   validator
     # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pconstant (cancelContext cancellationName)
+
+cancelledFieldSemanticWith :: forall s.
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    ) ->
+  BS.ByteString ->
+  Term s PUnit
+cancelledFieldSemanticWith validator cancellationName =
+  validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
     # pdata (pconstant ctPolicy)
     # pconstant (cancelContext cancellationName)
 

@@ -53,6 +53,7 @@ import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
+import Midgard.AvailabilityChallenge qualified as Availability
 import Midgard.Common.Utils (pgetRedeemerAt)
 import Midgard.DaAttestation (
   PDaAttestationDatum (..),
@@ -164,7 +165,8 @@ pvalidateBurnBinding inputs redeemers ownRef mintRedeemerIndex expectRescue = P.
 
 {- | Aiken @validators/da-attestation.ak@ — @mint@.
 
-Two parameters: the DA params policy and the reference-script authenticating
+Four parameters: the DA params policy, the reference-script authenticating
+policy, the availability policy, and the canonical availability parameters
 policy.
 -}
 daAttestationMintValidator ::
@@ -173,22 +175,26 @@ daAttestationMintValidator ::
     s
     ( PAsData PCurrencySymbol -- DA params policy id
         :--> PAsData PCurrencySymbol -- reference script auth policy id
+        :--> PAsData PCurrencySymbol -- availability policy id
+        :--> PAsData Availability.PParametersV1
         :--> PScriptContext
         :--> PUnit
     )
-daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx -> P.do
+daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId availabilityPolicyId availabilityParametersData ctx -> P.do
   PScriptContext {pscriptContext'txInfo, pscriptContext'redeemer, pscriptContext'scriptInfo} <-
     pmatch ctx
   ownPolicyId <-
     plet $ pmatch pscriptContext'scriptInfo $ \case
       PMintingScript cs -> cs
       _ -> perror
-  PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs, ptxInfo'mint} <-
+  PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs, ptxInfo'mint, ptxInfo'redeemers, ptxInfo'validRange} <-
     pmatch pscriptContext'txInfo
   inputs <- plet $ pfromData ptxInfo'inputs
   outputs <- plet $ pfromData ptxInfo'outputs
   referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
   mint <- plet $ pfromData ptxInfo'mint
+  txRedeemers <- plet $ pto (pto (pfromData ptxInfo'redeemers))
+  availabilityParameters <- plet $ pfromData availabilityParametersData
   redeemer <-
     plet $ pfromData (punsafeCoerceOwnRedeemer @PMintRedeemer pscriptContext'redeemer)
 
@@ -227,6 +233,7 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx 
                       # pfromData (pelemAt # pfromData pdaInit'outputIndex # outputs)
                       # ownPolicyId
                       # params
+                      # availabilityParameters
                       # headerHash
                 pand'List
                   [ pstateQueueNode'daAttestation #== pnoDaAttestation
@@ -240,6 +247,7 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx 
           , papply'stateQueueInputIndex
           , papply'stateQueueOutputIndex
           , papply'stateQueueMintRefScriptInputIndex
+          , papply'availabilityMintRedeemerIndex
           } ->
             pgetAttestationInputDatum
               (presolvedAt inputs (pfromData papply'daAttestationInputIndex))
@@ -269,6 +277,27 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx 
                       # referenceInputs
                       # refScriptAuthPolicyId
                       # pfromData papply'stateQueueMintRefScriptInputIndex
+                attestationInputRef <-
+                  plet $
+                    pmatch (pfromData $ pelemAt # pfromData papply'daAttestationInputIndex # inputs) $ \PTxInInfo {ptxInInfo'outRef} ->
+                      ptxInInfo'outRef
+                daBondAssetName <- plet $ pdata $ Availability.pdaBondAssetNameV1 attestationInputRef
+                availabilityRedeemer <-
+                  plet $
+                    pfromData $
+                      punsafeCoerceRedeemer @Availability.PMintRedeemerV1 $
+                        pgetRedeemerAt
+                          # txRedeemers
+                          # pdata (pcon $ PMinting availabilityPolicyId)
+                          # pfromData papply'availabilityMintRedeemerIndex
+                availabilityBindingIsValid <-
+                  plet $
+                    pmatch availabilityRedeemer $ \case
+                      Availability.PMintBondFromAttestation _ availabilityAttestationInputIndex _ _ availabilityStateQueueInputIndex availabilityStateQueueOutputIndex ->
+                        pfromData availabilityAttestationInputIndex #== pfromData papply'daAttestationInputIndex
+                          #&& pfromData availabilityStateQueueInputIndex #== pfromData papply'stateQueueInputIndex
+                          #&& pfromData availabilityStateQueueOutputIndex #== pfromData papply'stateQueueOutputIndex
+                      _ -> perror
                 pand'List
                   [ -- Both frozen values must still be the governed ones. This
                     -- is what makes committee rotation retroactive: a quorum
@@ -281,6 +310,7 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx 
                       # mint
                       # ownPolicyId
                       # (pattestationAssetName # pfromData pdaAttestation'headerHash)
+                  , availabilityBindingIsValid
                   , pvalidateDaAttestationAttachment
                       inputs
                       outputs
@@ -288,7 +318,8 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx 
                       (pfromData papply'stateQueueInputIndex)
                       (pfromData papply'stateQueueOutputIndex)
                       (pfromData pdaAttestation'headerHash)
-                      ownPolicyId
+                      daBondAssetName
+                      ptxInfo'validRange
                   ]
         ------------------------------------------------------------------
         PRescueStrandedAttestation
@@ -304,6 +335,7 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx 
                   { pdaAttestation'headerHash
                   , pdaAttestation'daThreshold
                   , pdaAttestation'committeeSignersHash
+                  , pdaAttestation'rescueBeneficiary
                   } <-
                   pmatch attestationDatum
                 params <-
@@ -334,6 +366,7 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx 
                       attestationValue
                       ownPolicyId
                       attestationAsset
+                      pdaAttestation'rescueBeneficiary
                   ]
     )
     (pconstant ())
@@ -348,8 +381,8 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx 
             pand'List
               [ pnot # (pnull # entries)
               , pnull # (ptail # entries)
-              , pfstBuiltin # (phead # entries) #== name
-              , pfromData (psndBuiltin # (phead # entries)) #== quantity
+              , (pmatch (phead # entries) $ \(PBuiltinPair pairFirst _) -> pairFirst) #== name
+              , pfromData (pmatch (phead # entries) $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== quantity
               ]
 
 {- | Aiken @validators/da-attestation.ak@ — @spend@.
@@ -367,13 +400,6 @@ daAttestationSpendValidator = plam $ \daParamsPolicyId ctx -> P.do
     plet $ pmatch pscriptContext'scriptInfo $ \case
       PSpendingScript outRef _ -> outRef
       _ -> perror
-  datum <-
-    plet $ pmatch pscriptContext'scriptInfo $ \case
-      PSpendingScript _ mDatum ->
-        pmatch mDatum $ \case
-          PDJust d -> pfromData (punsafeCoerce @(PAsData PDaAttestationDatum) (pto (pfromData d)))
-          PDNothing -> perror
-      _ -> perror
   PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs, ptxInfo'redeemers} <-
     pmatch pscriptContext'txInfo
   inputs <- plet $ pfromData ptxInfo'inputs
@@ -383,7 +409,14 @@ daAttestationSpendValidator = plam $ \daParamsPolicyId ctx -> P.do
 
   pif
     ( pmatch redeemer $ \case
-        PAddSignatures {paddSigs'outputIndex, paddSigs'daParamsRefInputIndex, paddSigs'signatures} ->
+        PAddSignatures {paddSigs'outputIndex, paddSigs'daParamsRefInputIndex, paddSigs'signatures} -> P.do
+          datum <-
+            plet $ pmatch pscriptContext'scriptInfo $ \case
+              PSpendingScript _ mDatum ->
+                pmatch mDatum $ \case
+                  PDJust d -> pfromData (punsafeCoerce @(PAsData PDaAttestationDatum) (pto (pfromData d)))
+                  PDNothing -> perror
+              _ -> perror
           pvalidateAddSignatures
             datum
             (presolvedOwn inputs ownRef)
@@ -437,16 +470,20 @@ daAttestationValidator ::
     s
     ( PAsData PCurrencySymbol
         :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol
+        :--> PAsData Availability.PParametersV1
         :--> PScriptContext
         :--> PUnit
     )
-daAttestationValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx -> P.do
+daAttestationValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId availabilityPolicyId availabilityParameters ctx -> P.do
   PScriptContext {pscriptContext'scriptInfo} <- pmatch ctx
   pmatch pscriptContext'scriptInfo $ \case
     PMintingScript _ ->
       daAttestationMintValidator
         # daParamsPolicyId
         # refScriptAuthPolicyId
+        # availabilityPolicyId
+        # availabilityParameters
         # ctx
     PSpendingScript _ _ ->
       daAttestationSpendValidator

@@ -258,7 +258,7 @@ registeredOperatorsMintValidator =
                         ( \_anchorInput anchorLovelaceChange _mAnchorKey _anchorData insertedLovelace insertedKey insertedData _insertedLink ->
                             pand'List
                               [ anchorLovelaceChange #>= 0
-                              , insertedLovelace #>= Env.prequiredBond
+                              , insertedLovelace #== Env.prequiredBond
                               , insertedKey
                                   #== ( pactivationTimeToNodeKey
                                           #$ Env.pregistrationDuration
@@ -378,7 +378,7 @@ registeredOperatorsMintValidator =
                 [ -- The penalty is paid as transaction fee, to the treasury.
                   -- The remainder of the bond goes wherever the signer sends
                   -- it, which is the incentive to report duplicates.
-                  pto (pfromData ptxInfo'fee) #>= Env.pslashingPenalty
+                  pto (pfromData ptxInfo'fee) #== Env.pslashingPenalty
                 , premoveOperatorAndGetNodeInfo
                     ownPolicyId
                     pslashDuplicate'duplicateOperator

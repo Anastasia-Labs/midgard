@@ -7,7 +7,7 @@ The thread state and redeemer payloads of the invalid-range family (spec
 block's.
 
 Two steps. Step-01 binds the transaction, normalises its interval and pairs it
-with the block's; step-02 adjudicates the pair.
+with the block's canonical replay slot; step-02 adjudicates the pair.
 
 === The normalised range is thread state, and therefore wire format
 
@@ -33,14 +33,13 @@ import DesignPatterns.ValidityRangeNormalization (PNormalizedTimeRange)
 
 {- | Aiken @invalid_range/step_02.State@.
 
-The block's two bounds and the transaction's normalised range. The block's bounds
-are read off the header in step-01, which is the only step that authenticated a
-header — the same reason the counted commitment travels in
+The block's replay slot and the transaction's normalised range. The slot is read
+off the header in step-01, which is the only step that authenticated a header —
+the same reason the counted commitment travels in
 'Midgard.FraudProofs.WithdrawnReferenceInput'.
 -}
 data PStep02State (s :: S) = PStep02State
-  { pstep02State'blockValidFrom :: Term s (PAsData PInteger)
-  , pstep02State'blockValidTo :: Term s (PAsData PInteger)
+  { pstep02State'blockSlot :: Term s (PAsData PInteger)
   , pstep02State'badTxNormalizedValidityRange ::
       Term s (PAsData PNormalizedTimeRange)
   }

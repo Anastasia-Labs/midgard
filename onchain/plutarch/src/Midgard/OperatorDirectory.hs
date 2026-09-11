@@ -15,6 +15,8 @@ module Midgard.OperatorDirectory (
   pinit,
   pdeinit,
   poperatorIsNotAMember,
+  ptransferredOperatorBondTrancheIsExactV1,
+  pfraudulentOperatorSlashEconomicsAreExactV1,
   pvalidateTransferredOperatorInsertion,
   pslashFraudulentOperatorAndGetInfo,
   pcrossValidateSlashingReason,
@@ -31,7 +33,6 @@ import Plutarch.LedgerApi.V3 (
   PRedeemer,
   PScriptHash (..),
   PScriptPurpose (..),
-  PTokenName,
   PTxInInfo (..),
   PTxOut,
   PTxOutRef,
@@ -188,9 +189,31 @@ sorted insert keyed by that operator; and the bond must carry across.
 
 @must_penalize@ comes from the origin redeemer, not from this caller: an
 operator retired for inactivity keeps its bond less the inactivity penalty,
-while a voluntary retirement keeps it whole. Note that in the @default@
-environment both constants are zero, so neither check bites as configured.
+while a voluntary retirement keeps it whole.
 -}
+ptransferredOperatorBondTrancheIsExactV1 ::
+  forall (s :: S).
+  Term s PInteger ->
+  Term s PBool ->
+  Term s PBool
+ptransferredOperatorBondTrancheIsExactV1 nodeLovelace penalizeForInactivity =
+  nodeLovelace
+    #== pif
+      penalizeForInactivity
+      (Env.prequiredBond - Env.pinactivitySlashingPenalty)
+      Env.prequiredBond
+
+pfraudulentOperatorSlashEconomicsAreExactV1 ::
+  forall (s :: S).
+  Term s PInteger ->
+  Term s PInteger ->
+  Term s PBool
+pfraudulentOperatorSlashEconomicsAreExactV1 nodeLovelace fee =
+  (nodeLovelace #== Env.prequiredBond #&& fee #== Env.pslashingPenalty)
+    #|| ( nodeLovelace #== Env.prequiredBond - Env.pinactivitySlashingPenalty
+            #&& fee #== Env.pslashingPenalty - Env.pinactivitySlashingPenalty
+        )
+
 pvalidateTransferredOperatorInsertion ::
   forall (s :: S).
   Term s (PAsData PPubKeyHash) ->
@@ -247,10 +270,7 @@ pvalidateTransferredOperatorInsertion
             ( \_anchorInput anchorLovelaceChange mAnchorKey _anchorData insertedLovelace insertedKey insertedData insertedLink ->
                 pand'List
                   [ anchorLovelaceChange #>= 0
-                  , pif
-                      mustPenalize
-                      (insertedLovelace #>= Env.prequiredBond - Env.pinactivitySlashingPenalty)
-                      (insertedLovelace #>= Env.prequiredBond)
+                  , ptransferredOperatorBondTrancheIsExactV1 insertedLovelace mustPenalize
                   , insertedKey #== pto (pfromData operator)
                   , validateTargetInsertion insertedData mAnchorKey insertedLink
                   ]
@@ -342,12 +362,7 @@ pslashFraudulentOperatorAndGetInfo
             pand'List
               [ anchorLovelaceChange #>= 0
               , removedKey #== pto (pfromData pslashArgs'slashedOperator)
-              , -- Partial slashing is already paid as fee, so a node that has
-                -- less than the full bond owes only the remainder.
-                pif
-                  (removedLovelace #< Env.prequiredBond)
-                  (fee #>= Env.pslashingPenalty - Env.pinactivitySlashingPenalty)
-                  (fee #>= Env.pslashingPenalty)
+              , pfraudulentOperatorSlashEconomicsAreExactV1 removedLovelace fee
               , furtherValidations pslashArgs'slashedOperator mAnchorKey removedLink hubDatum
               , pmatch (pfromData pslashArgs'slashingReason) $ \case
                   PSlashOperatorForBadState {pslashBadState'stateQueueRedeemerIndex} ->

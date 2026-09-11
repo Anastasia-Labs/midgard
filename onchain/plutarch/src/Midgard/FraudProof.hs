@@ -10,15 +10,20 @@ module Midgard.FraudProof (
   PFraudProofDatum (..),
   PMintRedeemer (..),
   passetNameToHeaderHash,
-  pgetProvenFraudulentBlocksHeaderHash,
+  pgetProvenFraudRecord,
+  pgetProvenFraudRecordWithIdentity,
 ) where
 
+import Data.Kind (Type)
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 import Plutarch.LedgerApi.V3 (PCurrencySymbol, PTokenName (..), PTxInInfo)
 import Plutarch.Prelude
+import Plutarch.Unsafe (punsafeCoerce)
 
-import Midgard.Common.Utils (pgetAuthenticInputAssetNameWithPolicyAt)
+import Midgard.Common.Utils (
+  pgetAuthenticInputDatumAndAssetNameWithPolicyAt,
+ )
 import Midgard.FraudProofCatalogue (pidByteCount)
 import Midgard.LedgerState (PHeaderHash)
 
@@ -62,27 +67,49 @@ passetNameToHeaderHash = phoistAcyclic $
     plet (pto (pfromData assetName)) $ \bytes ->
       psliceBS # pidByteCount # (plengthBS # bytes - pidByteCount) # bytes
 
-{- | Aiken @fraud_proof.get_proven_fraudulent_blocks_header_hash@.
+{- | Aiken @fraud_proof.get_proven_fraud_record@.
 
-Reads the fraud proof token held by the reference input at the given index and
-returns the header hash of the block it convicts.
-
-Authenticity here is by policy id alone — the asset name is the payload being
-read out, so it cannot also be a constraint.
+Returns the authenticated header-hash suffix and the immutable fraud prover
+stored in the proof UTxO's inline datum.
 -}
-pgetProvenFraudulentBlocksHeaderHash ::
-  forall (s :: S).
-  Term
-    s
-    ( PBuiltinList (PAsData PTxInInfo)
-        :--> PAsData PCurrencySymbol
-        :--> PInteger
-        :--> PHeaderHash
+pgetProvenFraudRecord ::
+  forall (s :: S) (r :: S -> Type).
+  Term s (PBuiltinList (PAsData PTxInInfo)) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s PInteger ->
+  (Term s PHeaderHash -> Term s PByteString -> Term s r) ->
+  Term s r
+pgetProvenFraudRecord referenceInputs fraudProofPolicyId fraudProofRefInputIndex k =
+  pgetProvenFraudRecordWithIdentity
+    referenceInputs
+    fraudProofPolicyId
+    fraudProofRefInputIndex
+    (\headerHash fraudProver _assetName -> k headerHash fraudProver)
+
+{- | Aiken @fraud_proof.get_proven_fraud_record_with_identity@.
+
+The complete proof asset name is preserved because its category prefix is part
+of the correction identity; two categories may convict the same header but may
+not resume one another's in-flight correction.
+-}
+pgetProvenFraudRecordWithIdentity ::
+  forall (s :: S) (r :: S -> Type).
+  Term s (PBuiltinList (PAsData PTxInInfo)) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s PInteger ->
+  (Term s PHeaderHash -> Term s PByteString -> Term s (PAsData PTokenName) -> Term s r) ->
+  Term s r
+pgetProvenFraudRecordWithIdentity referenceInputs fraudProofPolicyId fraudProofRefInputIndex k =
+  pgetAuthenticInputDatumAndAssetNameWithPolicyAt
+    referenceInputs
+    fraudProofPolicyId
+    fraudProofRefInputIndex
+    ( \assetName datumData ->
+        pmatch
+          (pfromData $ punsafeCoerce @(PAsData PFraudProofDatum) datumData)
+          $ \PFraudProofDatum {pfraudProof'fraudProver} ->
+            k
+              (passetNameToHeaderHash # assetName)
+              (pfromData pfraudProof'fraudProver)
+              assetName
     )
-pgetProvenFraudulentBlocksHeaderHash = phoistAcyclic $
-  plam $ \referenceInputs fraudProofPolicyId fraudProofRefInputIndex ->
-    passetNameToHeaderHash
-      #$ pgetAuthenticInputAssetNameWithPolicyAt
-      # referenceInputs
-      # fraudProofPolicyId
-      # fraudProofRefInputIndex

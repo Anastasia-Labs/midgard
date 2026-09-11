@@ -45,24 +45,24 @@ not a port. The two are pinned against each other in
 @Neighbor@ keeps Aiken's @Constr 0@ wire representation.
 -}
 module Midgard.MpfProof (
-  -- * Bounds
-  pdigestByteCount,
-  pmaximumProofStepCount,
-  pproofHasAtMostSteps,
+    -- * Bounds
+    pdigestByteCount,
+    pmaximumProofStepCount,
+    pproofHasAtMostSteps,
 
-  -- * Total verification
-  phasV1,
-  phasValueHash,
-  pdoesNotHave,
+    -- * Total verification
+    phasV1,
+    phasValueHash,
+    pdoesNotHave,
 
-  -- * Total root transitions
-  pinsertRoot,
-  pupdateRoot,
-  pdeleteRoot,
+    -- * Total root transitions
+    pinsertRoot,
+    pupdateRoot,
+    pdeleteRoot,
 
-  -- * The Aiken-faithful walk
-  pdoExcluding,
-  pdoIncludingByHash,
+    -- * The Aiken-faithful walk
+    pdoExcluding,
+    pdoIncludingByHash,
 ) where
 
 import Data.Kind (Type)
@@ -72,6 +72,7 @@ import Plutarch.MerkleTree.Helpers (pcombine, pnibble, pnibbles, psuffix)
 import Plutarch.MerkleTree.Merkling (pmerkle_16, pnull_hash, psparse_merkle_16)
 import Plutarch.Prelude
 
+import Midgard.Env qualified as Env
 import Midgard.MpfProof.Types (PNeighbor (..), PProof, PProofStep (..))
 
 --------------------------------------------------------------------------------
@@ -97,10 +98,10 @@ pmaximumProofStepCount = 64
 
 -- | Aiken @mpf_proof_v1.proof_has_at_most_steps@.
 pproofHasAtMostSteps ::
-  forall (s :: S). Term s (PProof :--> PInteger :--> PBool)
+    forall (s :: S). Term s (PProof :--> PInteger :--> PBool)
 pproofHasAtMostSteps = phoistAcyclic $
-  plam $ \proof maximum' ->
-    0 #<= maximum' #&& plength # pto proof #<= maximum'
+    plam $ \proof maximum' ->
+        0 #<= maximum' #&& plength # pto proof #<= maximum'
 
 --------------------------------------------------------------------------------
 -- Well-formedness
@@ -109,17 +110,17 @@ pproofHasAtMostSteps = phoistAcyclic $
 -- | Aiken @mpf_proof_v1.neighbor_is_well_formed@.
 pneighborIsWellFormed :: forall (s :: S). Term s (PNeighbor :--> PBool)
 pneighborIsWellFormed = phoistAcyclic $
-  plam $ \neighbor -> pwithNeighbor neighbor $ \nibbleValue prefix root ->
-    0
-      #<= nibbleValue
-      #&& nibbleValue
-      #< 16
-      #&& plengthBS
-      # prefix
-      #<= pdigestByteCount
-      #&& plengthBS
-      # root
-      #== pdigestByteCount
+    plam $ \neighbor -> pwithNeighbor neighbor $ \nibbleValue prefix root ->
+        0
+            #<= nibbleValue
+            #&& nibbleValue
+            #< 16
+            #&& plengthBS
+            # prefix
+            #<= pdigestByteCount
+            #&& plengthBS
+            # root
+            #== pdigestByteCount
 
 {- | Aiken @mpf_proof_v1.common_step_is_well_formed@.
 
@@ -128,21 +129,21 @@ below total: @cursor + 1 + skip <= 64@ bounds @next_cursor - 1@ inside a
 64-nibble path.
 -}
 pcommonStepIsWellFormed ::
-  forall (s :: S). Term s (PInteger :--> PInteger :--> PInteger :--> PBool)
+    forall (s :: S). Term s (PInteger :--> PInteger :--> PInteger :--> PBool)
 pcommonStepIsWellFormed = phoistAcyclic $
-  plam $ \cursor skip remainingStepCount ->
-    0
-      #<= cursor
-      #&& 0
-      #<= skip
-      #&& cursor
-      + 1
-      + skip
-      #<= ppathNibbleCount
-      #&& 0
-      #<= remainingStepCount
-      #&& remainingStepCount
-      #<= pmaximumProofStepCount
+    plam $ \cursor skip remainingStepCount ->
+        0
+            #<= cursor
+            #&& 0
+            #<= skip
+            #&& cursor
+            + 1
+            + skip
+                #<= ppathNibbleCount
+                #&& 0
+                #<= remainingStepCount
+                #&& remainingStepCount
+                #<= pmaximumProofStepCount
 
 {- | Aiken @mpf_proof_v1.membership_proof_is_well_formed@.
 
@@ -152,70 +153,70 @@ case for a negative step budget, so a strict @and@ would fail the script where
 Aiken returns @False@.
 -}
 pmembershipProofIsWellFormed ::
-  forall (s :: S).
-  Term
-    s
-    ( PByteString
-        :--> PInteger
-        :--> PBuiltinList (PAsData PProofStep)
-        :--> PInteger
-        :--> PBool
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PByteString
+            :--> PInteger
+            :--> PBuiltinList (PAsData PProofStep)
+            :--> PInteger
+            :--> PBool
+        )
 pmembershipProofIsWellFormed = phoistAcyclic $
-  pfix $ \self -> plam $ \path cursor proof remainingStepCount ->
-    pelimList
-      ( \step steps ->
-          pmatch (pfromData step) $ \case
-            PBranch {pproofStep'skip, pproofStep'neighbors} ->
-              plet (pfromData pproofStep'skip) $ \skip ->
-                pcommonStepIsWellFormed
-                  # cursor
-                  # skip
-                  # remainingStepCount
-                  #&& plengthBS
-                  # pfromData pproofStep'neighbors
-                  #== 4
-                  * pdigestByteCount
-                  #&& self
-                  # path
-                  # (cursor + 1 + skip)
-                  # steps
-                  # (remainingStepCount - 1)
-            PFork {pproofStep'skip, pproofStep'neighbor} ->
-              plet (pfromData pproofStep'skip) $ \skip ->
-                plet (cursor + 1 + skip) $ \nextCursor ->
-                  plet (pfromData pproofStep'neighbor) $ \neighbor ->
-                    pcommonStepIsWellFormed
-                      # cursor
-                      # skip
-                      # remainingStepCount
-                      #&& pneighborIsWellFormed
-                      # neighbor
-                      #&& pforkNibbleDiffers path nextCursor neighbor
-                      #&& self
-                      # path
-                      # nextCursor
-                      # steps
-                      # (remainingStepCount - 1)
-            PLeaf {pproofStep'skip, pproofStep'key, pproofStep'value} ->
-              plet (pfromData pproofStep'skip) $ \skip ->
-                plet (cursor + 1 + skip) $ \nextCursor ->
-                  plet (pfromData pproofStep'key) $ \key ->
-                    pcommonStepIsWellFormed
-                      # cursor
-                      # skip
-                      # remainingStepCount
-                      #&& pleafWidthsAreRight key (pfromData pproofStep'value)
-                      #&& (pnibble # path # (nextCursor - 1))
-                      #/== (pnibble # key # (nextCursor - 1))
-                      #&& self
-                      # path
-                      # nextCursor
-                      # steps
-                      # (remainingStepCount - 1)
-      )
-      (0 #<= cursor #&& cursor #<= ppathNibbleCount)
-      proof
+    pfix $ \self -> plam $ \path cursor proof remainingStepCount ->
+        pelimList
+            ( \step steps ->
+                pmatch (pfromData step) $ \case
+                    PBranch{pproofStep'skip, pproofStep'neighbors} ->
+                        plet (pfromData pproofStep'skip) $ \skip ->
+                            pcommonStepIsWellFormed
+                                # cursor
+                                # skip
+                                # remainingStepCount
+                                #&& plengthBS
+                                # pfromData pproofStep'neighbors
+                                #== 4
+                                * pdigestByteCount
+                                    #&& self
+                                    # path
+                                    # (cursor + 1 + skip)
+                                    # steps
+                                    # (remainingStepCount - 1)
+                    PFork{pproofStep'skip, pproofStep'neighbor} ->
+                        plet (pfromData pproofStep'skip) $ \skip ->
+                            plet (cursor + 1 + skip) $ \nextCursor ->
+                                plet (pfromData pproofStep'neighbor) $ \neighbor ->
+                                    pcommonStepIsWellFormed
+                                        # cursor
+                                        # skip
+                                        # remainingStepCount
+                                        #&& pneighborIsWellFormed
+                                        # neighbor
+                                        #&& pforkNibbleDiffers path nextCursor neighbor
+                                        #&& self
+                                        # path
+                                        # nextCursor
+                                        # steps
+                                        # (remainingStepCount - 1)
+                    PLeaf{pproofStep'skip, pproofStep'key, pproofStep'value} ->
+                        plet (pfromData pproofStep'skip) $ \skip ->
+                            plet (cursor + 1 + skip) $ \nextCursor ->
+                                plet (pfromData pproofStep'key) $ \key ->
+                                    pcommonStepIsWellFormed
+                                        # cursor
+                                        # skip
+                                        # remainingStepCount
+                                        #&& pleafWidthsAreRight key (pfromData pproofStep'value)
+                                        #&& (pnibble # path # (nextCursor - 1))
+                                        #/== (pnibble # key # (nextCursor - 1))
+                                        #&& self
+                                        # path
+                                        # nextCursor
+                                        # steps
+                                        # (remainingStepCount - 1)
+            )
+            (0 #<= cursor #&& cursor #<= ppathNibbleCount)
+            proof
 
 {- | Aiken @mpf_proof_v1.non_membership_proof_is_well_formed@.
 
@@ -227,108 +228,108 @@ compares @nibble(path, next_cursor - 1)@ against @nibble(key, next_cursor - 1)@,
 while the non-terminal one compares it against @nibble(key, cursor)@.
 -}
 pnonMembershipProofIsWellFormed ::
-  forall (s :: S).
-  Term
-    s
-    ( PByteString
-        :--> PInteger
-        :--> PBuiltinList (PAsData PProofStep)
-        :--> PInteger
-        :--> PBool
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PByteString
+            :--> PInteger
+            :--> PBuiltinList (PAsData PProofStep)
+            :--> PInteger
+            :--> PBool
+        )
 pnonMembershipProofIsWellFormed = phoistAcyclic $
-  pfix $ \self -> plam $ \path cursor proof remainingStepCount ->
-    pelimList
-      ( \step steps ->
-          pmatch (pfromData step) $ \case
-            PBranch {pproofStep'skip, pproofStep'neighbors} ->
-              plet (pfromData pproofStep'skip) $ \skip ->
-                pcommonStepIsWellFormed
-                  # cursor
-                  # skip
-                  # remainingStepCount
-                  #&& plengthBS
-                  # pfromData pproofStep'neighbors
-                  #== 4
-                  * pdigestByteCount
-                  #&& self
-                  # path
-                  # (cursor + 1 + skip)
-                  # steps
-                  # (remainingStepCount - 1)
-            PFork {pproofStep'skip, pproofStep'neighbor} ->
-              plet (pfromData pproofStep'skip) $ \skip ->
-                plet (cursor + 1 + skip) $ \nextCursor ->
-                  plet (pfromData pproofStep'neighbor) $ \neighbor ->
-                    plet
-                      ( pcommonStepIsWellFormed
-                          # cursor
-                          # skip
-                          # remainingStepCount
-                          #&& pneighborIsWellFormed
-                          # neighbor
-                          #&& pforkNibbleDiffers path nextCursor neighbor
-                      )
-                      $ \here ->
-                        pelimList
-                          ( \_ _ ->
-                              here
-                                #&& self
-                                # path
-                                # nextCursor
-                                # steps
-                                # (remainingStepCount - 1)
-                          )
-                          here
-                          steps
-            PLeaf {pproofStep'skip, pproofStep'key, pproofStep'value} ->
-              plet (pfromData pproofStep'skip) $ \skip ->
-                plet (cursor + 1 + skip) $ \nextCursor ->
-                  plet (pfromData pproofStep'key) $ \key ->
-                    plet
-                      ( pcommonStepIsWellFormed
-                          # cursor
-                          # skip
-                          # remainingStepCount
-                          #&& pleafWidthsAreRight key (pfromData pproofStep'value)
-                      )
-                      $ \here ->
-                        pelimList
-                          ( \_ _ ->
-                              here
-                                #&& (pnibble # path # (nextCursor - 1))
-                                #/== (pnibble # key # cursor)
-                                #&& self
-                                # path
-                                # nextCursor
-                                # steps
-                                # (remainingStepCount - 1)
-                          )
-                          ( here
-                              #&& (pnibble # path # (nextCursor - 1))
-                              #/== (pnibble # key # (nextCursor - 1))
-                          )
-                          steps
-      )
-      (0 #<= cursor #&& cursor #<= ppathNibbleCount)
-      proof
+    pfix $ \self -> plam $ \path cursor proof remainingStepCount ->
+        pelimList
+            ( \step steps ->
+                pmatch (pfromData step) $ \case
+                    PBranch{pproofStep'skip, pproofStep'neighbors} ->
+                        plet (pfromData pproofStep'skip) $ \skip ->
+                            pcommonStepIsWellFormed
+                                # cursor
+                                # skip
+                                # remainingStepCount
+                                #&& plengthBS
+                                # pfromData pproofStep'neighbors
+                                #== 4
+                                * pdigestByteCount
+                                    #&& self
+                                    # path
+                                    # (cursor + 1 + skip)
+                                    # steps
+                                    # (remainingStepCount - 1)
+                    PFork{pproofStep'skip, pproofStep'neighbor} ->
+                        plet (pfromData pproofStep'skip) $ \skip ->
+                            plet (cursor + 1 + skip) $ \nextCursor ->
+                                plet (pfromData pproofStep'neighbor) $ \neighbor ->
+                                    plet
+                                        ( pcommonStepIsWellFormed
+                                            # cursor
+                                            # skip
+                                            # remainingStepCount
+                                            #&& pneighborIsWellFormed
+                                            # neighbor
+                                            #&& pforkNibbleDiffers path nextCursor neighbor
+                                        )
+                                        $ \here ->
+                                            pelimList
+                                                ( \_ _ ->
+                                                    here
+                                                        #&& self
+                                                        # path
+                                                        # nextCursor
+                                                        # steps
+                                                        # (remainingStepCount - 1)
+                                                )
+                                                here
+                                                steps
+                    PLeaf{pproofStep'skip, pproofStep'key, pproofStep'value} ->
+                        plet (pfromData pproofStep'skip) $ \skip ->
+                            plet (cursor + 1 + skip) $ \nextCursor ->
+                                plet (pfromData pproofStep'key) $ \key ->
+                                    plet
+                                        ( pcommonStepIsWellFormed
+                                            # cursor
+                                            # skip
+                                            # remainingStepCount
+                                            #&& pleafWidthsAreRight key (pfromData pproofStep'value)
+                                        )
+                                        $ \here ->
+                                            pelimList
+                                                ( \_ _ ->
+                                                    here
+                                                        #&& (pnibble # path # (nextCursor - 1))
+                                                        #/== (pnibble # key # cursor)
+                                                        #&& self
+                                                        # path
+                                                        # nextCursor
+                                                        # steps
+                                                        # (remainingStepCount - 1)
+                                                )
+                                                ( here
+                                                    #&& (pnibble # path # (nextCursor - 1))
+                                                    #/== (pnibble # key # (nextCursor - 1))
+                                                )
+                                                steps
+            )
+            (0 #<= cursor #&& cursor #<= ppathNibbleCount)
+            proof
 
 -- | @nibble(path, next_cursor - 1) != neighbor.nibble@.
 pforkNibbleDiffers ::
-  forall (s :: S).
-  Term s PByteString ->
-  Term s PInteger ->
-  Term s PNeighbor ->
-  Term s PBool
+    forall (s :: S).
+    Term s PByteString ->
+    Term s PInteger ->
+    Term s PNeighbor ->
+    Term s PBool
 pforkNibbleDiffers path nextCursor neighbor =
-  pwithNeighbor neighbor $ \nibbleValue _ _ ->
-    (pnibble # path # (nextCursor - 1)) #/== nibbleValue
+    pwithNeighbor neighbor $ \nibbleValue _ _ ->
+        (pnibble # path # (nextCursor - 1)) #/== nibbleValue
 
 -- | A leaf step's key and value are both a digest wide.
 pleafWidthsAreRight ::
-  forall (s :: S). Term s PByteString -> Term s PByteString -> Term s PBool
+    forall (s :: S). Term s PByteString -> Term s PByteString -> Term s PBool
 pleafWidthsAreRight key value =
-  plengthBS # key #== pdigestByteCount #&& plengthBS # value #== pdigestByteCount
+    plengthBS # key #== pdigestByteCount #&& plengthBS # value #== pdigestByteCount
 
 {- | Destructures a neighbour into its three unwrapped components.
 
@@ -336,16 +337,16 @@ Written once because every use site wants all three at once and none of them
 wants the @Data@ wrappers.
 -}
 pwithNeighbor ::
-  forall (s :: S) (r :: S -> Type).
-  Term s PNeighbor ->
-  (Term s PInteger -> Term s PByteString -> Term s PByteString -> Term s r) ->
-  Term s r
+    forall (s :: S) (r :: S -> Type).
+    Term s PNeighbor ->
+    (Term s PInteger -> Term s PByteString -> Term s PByteString -> Term s r) ->
+    Term s r
 pwithNeighbor neighbor k =
-  pmatch neighbor $ \PNeighbor {pneighbor'nibble, pneighbor'prefix, pneighbor'root} ->
-    k (pfromData pneighbor'nibble) (pfromData pneighbor'prefix) (pfromData pneighbor'root)
+    pmatch neighbor $ \PNeighbor{pneighbor'nibble, pneighbor'prefix, pneighbor'root} ->
+        k (pfromData pneighbor'nibble) (pfromData pneighbor'prefix) (pfromData pneighbor'root)
 
 -- | Inequality; Plutarch has @#==@ but no negated form.
-(#/==) :: forall (s :: S) (a :: S -> Type). PEq a => Term s a -> Term s a -> Term s PBool
+(#/==) :: forall (s :: S) (a :: S -> Type). (PEq a) => Term s a -> Term s a -> Term s PBool
 x #/== y = pnot # (x #== y)
 
 infix 4 #/==
@@ -363,65 +364,68 @@ arithmetic here is what makes the port a replacement rather than a change of
 consensus.
 -}
 pdoExcluding ::
-  forall (s :: S).
-  Term s (PByteString :--> PInteger :--> PBuiltinList (PAsData PProofStep) :--> PByteString)
+    forall (s :: S).
+    Term s (PByteString :--> PInteger :--> PBuiltinList (PAsData PProofStep) :--> PByteString)
 pdoExcluding = phoistAcyclic $
-  pfix $ \self -> plam $ \path cursor proof ->
-    pelimList
-      ( \step steps ->
-          pmatch (pfromData step) $ \case
-            PBranch {pproofStep'skip, pproofStep'neighbors} ->
-              plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
-                pdoBranch
-                  # path
-                  # cursor
-                  # nextCursor
-                  # (self # path # nextCursor # steps)
-                  # pfromData pproofStep'neighbors
-            PFork {pproofStep'skip, pproofStep'neighbor} ->
-              plet (pfromData pproofStep'neighbor) $ \neighbor ->
-                pelimList
-                  ( \_ _ ->
-                      plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
-                        pdoFork
-                          # path
-                          # cursor
-                          # nextCursor
-                          # (self # path # nextCursor # steps)
-                          # neighbor
-                  )
-                  -- Aiken drops the skipped nibbles here; the Plutarch library
-                  -- prepends them. This line is divergence (1).
-                  ( pwithNeighbor neighbor $ \nibbleValue prefix root ->
-                      pcombine # (pconsBS' # nibbleValue # prefix) # root
-                  )
-                  steps
-            PLeaf {pproofStep'skip, pproofStep'key, pproofStep'value} ->
-              plet (pfromData pproofStep'key) $ \key ->
-                pelimList
-                  ( \_ _ ->
-                      plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
-                        pdoFork
-                          # path
-                          # cursor
-                          # nextCursor
-                          # (self # path # nextCursor # steps)
-                          #$ pcon
-                            ( PNeighbor
-                                { pneighbor'prefix = pdata (psuffix # key # nextCursor)
-                                , -- Aiken reads the nibble at `cursor`, the
-                                  -- Plutarch library at `next_cursor - 1`.
-                                  -- This line is divergence (2).
-                                  pneighbor'nibble = pdata (pnibble # key # cursor)
-                                , pneighbor'root = pproofStep'value
-                                }
-                            )
-                  )
-                  (pcombine # (psuffix # key # cursor) # pfromData pproofStep'value)
-                  steps
-      )
-      pnull_hash
-      proof
+    pfix $ \self -> plam $ \path cursor proof ->
+        pelimList
+            ( \step steps ->
+                pmatch (pfromData step) $ \case
+                    PBranch{pproofStep'skip, pproofStep'neighbors} ->
+                        plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
+                            pdoBranch
+                                # path
+                                # cursor
+                                # nextCursor
+                                # (self # path # nextCursor # steps)
+                                # pfromData pproofStep'neighbors
+                    PFork{pproofStep'skip, pproofStep'neighbor} ->
+                        plet (pfromData pproofStep'neighbor) $ \neighbor ->
+                            pelimList
+                                ( \_ _ ->
+                                    plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
+                                        pdoFork
+                                            # path
+                                            # cursor
+                                            # nextCursor
+                                            # (self # path # nextCursor # steps)
+                                            # neighbor
+                                )
+                                -- Aiken drops the skipped nibbles here; the Plutarch library
+                                -- prepends them. This line is divergence (1).
+                                ( pwithNeighbor neighbor $ \nibbleValue prefix root ->
+                                    pcombine # (pconsBS' # nibbleValue # prefix) # root
+                                )
+                                steps
+                    PLeaf{pproofStep'skip, pproofStep'key, pproofStep'value} ->
+                        plet (pfromData pproofStep'key) $ \key ->
+                            pelimList
+                                ( \_ _ ->
+                                    plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
+                                        pdoFork
+                                            # path
+                                            # cursor
+                                            # nextCursor
+                                            # (self # path # nextCursor # steps)
+                                            #$ pcon
+                                                ( PNeighbor
+                                                    { pneighbor'prefix = pdata (psuffix # key # nextCursor)
+                                                    , -- Aiken reads the nibble at `cursor`, the
+                                                      -- Plutarch library at `next_cursor - 1`.
+                                                      -- This line is divergence (2).
+                                                      pneighbor'nibble = pdata (pnibble # key # cursor)
+                                                    , pneighbor'root = pproofStep'value
+                                                    }
+                                                )
+                                )
+                                (pcombine # (psuffix # key # cursor) # pfromData pproofStep'value)
+                                steps
+            )
+            -- Aiken's underlying MPF walk terminates at the library null hash.
+            -- Midgard's distinct empty-tree sentinel is translated only when a
+            -- claimed root is compared below.
+            pnull_hash
+            proof
 
 {- | Aiken @mpf_proof_v1.do_including@ — the library's @including@ specialised to
 take the /hash/ of the proved value rather than its preimage.
@@ -433,126 +437,126 @@ unusable for that. The recursion is otherwise identical, which
 @Testing.MpfProof@ pins.
 -}
 pdoIncludingByHash ::
-  forall (s :: S).
-  Term
-    s
-    ( PByteString
-        :--> PByteString
-        :--> PInteger
-        :--> PBuiltinList (PAsData PProofStep)
-        :--> PByteString
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PByteString
+            :--> PByteString
+            :--> PInteger
+            :--> PBuiltinList (PAsData PProofStep)
+            :--> PByteString
+        )
 pdoIncludingByHash = phoistAcyclic $
-  pfix $ \self -> plam $ \path valueHash cursor proof ->
-    pelimList
-      ( \step steps ->
-          pmatch (pfromData step) $ \case
-            PBranch {pproofStep'skip, pproofStep'neighbors} ->
-              plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
-                pdoBranch
-                  # path
-                  # cursor
-                  # nextCursor
-                  # (self # path # valueHash # nextCursor # steps)
-                  # pfromData pproofStep'neighbors
-            PFork {pproofStep'skip, pproofStep'neighbor} ->
-              plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
-                pdoFork
-                  # path
-                  # cursor
-                  # nextCursor
-                  # (self # path # valueHash # nextCursor # steps)
-                  # pfromData pproofStep'neighbor
-            PLeaf {pproofStep'skip, pproofStep'key, pproofStep'value} ->
-              plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
-                plet (pfromData pproofStep'key) $ \key ->
-                  pdoFork
-                    # path
-                    # cursor
-                    # nextCursor
-                    # (self # path # valueHash # nextCursor # steps)
-                    #$ pcon
-                      ( PNeighbor
-                          { pneighbor'prefix = pdata (psuffix # key # nextCursor)
-                          , pneighbor'nibble = pdata (pnibble # key # (nextCursor - 1))
-                          , pneighbor'root = pproofStep'value
-                          }
-                      )
-      )
-      (pcombine # (psuffix # path # cursor) # valueHash)
-      proof
+    pfix $ \self -> plam $ \path valueHash cursor proof ->
+        pelimList
+            ( \step steps ->
+                pmatch (pfromData step) $ \case
+                    PBranch{pproofStep'skip, pproofStep'neighbors} ->
+                        plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
+                            pdoBranch
+                                # path
+                                # cursor
+                                # nextCursor
+                                # (self # path # valueHash # nextCursor # steps)
+                                # pfromData pproofStep'neighbors
+                    PFork{pproofStep'skip, pproofStep'neighbor} ->
+                        plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
+                            pdoFork
+                                # path
+                                # cursor
+                                # nextCursor
+                                # (self # path # valueHash # nextCursor # steps)
+                                # pfromData pproofStep'neighbor
+                    PLeaf{pproofStep'skip, pproofStep'key, pproofStep'value} ->
+                        plet (cursor + 1 + pfromData pproofStep'skip) $ \nextCursor ->
+                            plet (pfromData pproofStep'key) $ \key ->
+                                pdoFork
+                                    # path
+                                    # cursor
+                                    # nextCursor
+                                    # (self # path # valueHash # nextCursor # steps)
+                                    #$ pcon
+                                        ( PNeighbor
+                                            { pneighbor'prefix = pdata (psuffix # key # nextCursor)
+                                            , pneighbor'nibble = pdata (pnibble # key # (nextCursor - 1))
+                                            , pneighbor'root = pproofStep'value
+                                            }
+                                        )
+            )
+            (pcombine # (psuffix # path # cursor) # valueHash)
+            proof
 
 -- | Aiken MPF branch reconstruction, shared by both proof walks.
 pdoBranch ::
-  forall (s :: S).
-  Term
-    s
-    ( PByteString
-        :--> PInteger
-        :--> PInteger
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PByteString
+            :--> PInteger
+            :--> PInteger
+            :--> PByteString
+            :--> PByteString
+            :--> PByteString
+        )
 pdoBranch = phoistAcyclic $
-  plam $ \path cursor nextCursor root neighbors ->
-    plet (pnibble # path # (nextCursor - 1)) $ \branch ->
-      plet (pnibbles # path # cursor # (nextCursor - 1)) $ \prefix ->
-        pcombine
-          # prefix
-          # ( pmerkle_16
-                # branch
-                # root
-                # (psliceBS # 0 # pdigestByteCount # neighbors)
-                # (psliceBS # 32 # pdigestByteCount # neighbors)
-                # (psliceBS # 64 # pdigestByteCount # neighbors)
-                # (psliceBS # 96 # pdigestByteCount # neighbors)
-            )
+    plam $ \path cursor nextCursor root neighbors ->
+        plet (pnibble # path # (nextCursor - 1)) $ \branch ->
+            plet (pnibbles # path # cursor # (nextCursor - 1)) $ \prefix ->
+                pcombine
+                    # prefix
+                    # ( pmerkle_16
+                            # branch
+                            # root
+                            # (psliceBS # 0 # pdigestByteCount # neighbors)
+                            # (psliceBS # 32 # pdigestByteCount # neighbors)
+                            # (psliceBS # 64 # pdigestByteCount # neighbors)
+                            # (psliceBS # 96 # pdigestByteCount # neighbors)
+                      )
 
 -- | Aiken MPF fork reconstruction over Midgard's Aiken-compatible neighbour.
 pdoFork ::
-  forall (s :: S).
-  Term
-    s
-    ( PByteString
-        :--> PInteger
-        :--> PInteger
-        :--> PByteString
-        :--> PNeighbor
-        :--> PByteString
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PByteString
+            :--> PInteger
+            :--> PInteger
+            :--> PByteString
+            :--> PNeighbor
+            :--> PByteString
+        )
 pdoFork = phoistAcyclic $
-  plam $ \path cursor nextCursor root neighbor ->
-    pwithNeighbor neighbor $ \neighborNibble neighborPrefix neighborRoot ->
-      plet (pnibble # path # (nextCursor - 1)) $ \branch ->
-        plet (pnibbles # path # cursor # (nextCursor - 1)) $ \prefix ->
-          pif
-            (branch #== neighborNibble)
-            perror
-            ( pcombine
-                # prefix
-                # ( psparse_merkle_16
-                      # branch
-                      # root
-                      # neighborNibble
-                      # (pcombine # neighborPrefix # neighborRoot)
-                  )
-            )
+    plam $ \path cursor nextCursor root neighbor ->
+        pwithNeighbor neighbor $ \neighborNibble neighborPrefix neighborRoot ->
+            plet (pnibble # path # (nextCursor - 1)) $ \branch ->
+                plet (pnibbles # path # cursor # (nextCursor - 1)) $ \prefix ->
+                    pif
+                        (branch #== neighborNibble)
+                        perror
+                        ( pcombine
+                            # prefix
+                            # ( psparse_merkle_16
+                                    # branch
+                                    # root
+                                    # neighborNibble
+                                    # (pcombine # neighborPrefix # neighborRoot)
+                              )
+                        )
 
 -- | Aiken @mpf.do_including@, starting from a value preimage.
 pdoIncluding ::
-  forall (s :: S).
-  Term
-    s
-    ( PByteString
-        :--> PByteString
-        :--> PInteger
-        :--> PBuiltinList (PAsData PProofStep)
-        :--> PByteString
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PByteString
+            :--> PByteString
+            :--> PInteger
+            :--> PBuiltinList (PAsData PProofStep)
+            :--> PByteString
+        )
 pdoIncluding = phoistAcyclic $
-  plam $ \path value cursor proof ->
-    pdoIncludingByHash # path # (pblake2b_256 # value) # cursor # proof
+    plam $ \path value cursor proof ->
+        pdoIncludingByHash # path # (pblake2b_256 # value) # cursor # proof
 
 --------------------------------------------------------------------------------
 -- Total verification
@@ -565,23 +569,23 @@ walk itself is the library's; what this adds is the width and well-formedness
 gate that makes it total.
 -}
 phasV1 ::
-  forall (s :: S).
-  Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PBool)
+    forall (s :: S).
+    Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PBool)
 phasV1 = phoistAcyclic $
-  plam $ \root key value proof ->
-    plet (pblake2b_256 # key) $ \path ->
-      pif
-        ( plengthBS
-            # root
-            #== pdigestByteCount
-            #&& pmembershipProofIsWellFormed
-            # path
-            # 0
-            # pto proof
-            # pmaximumProofStepCount
-        )
-        ((pdoIncluding # path # value # 0 # pto proof) #== root)
-        (pconstant False)
+    plam $ \root key value proof ->
+        plet (pblake2b_256 # key) $ \path ->
+            pif
+                ( plengthBS
+                    # root
+                    #== pdigestByteCount
+                    #&& pmembershipProofIsWellFormed
+                    # path
+                    # 0
+                    # pto proof
+                    # pmaximumProofStepCount
+                )
+                ((pdoIncluding # path # value # 0 # pto proof) #== root)
+                (pconstant False)
 
 {- | Aiken @mpf_proof_v1.has_value_hash@.
 
@@ -590,26 +594,26 @@ Membership against a 32-byte value digest. Equivalent to 'phasV1' whenever
 digest itself.
 -}
 phasValueHash ::
-  forall (s :: S).
-  Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PBool)
+    forall (s :: S).
+    Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PBool)
 phasValueHash = phoistAcyclic $
-  plam $ \root key valueHash proof ->
-    plet (pblake2b_256 # key) $ \path ->
-      pif
-        ( plengthBS
-            # root
-            #== pdigestByteCount
-            #&& plengthBS
-            # valueHash
-            #== pdigestByteCount
-            #&& pmembershipProofIsWellFormed
-            # path
-            # 0
-            # pto proof
-            # pmaximumProofStepCount
-        )
-        ((pdoIncludingByHash # path # valueHash # 0 # pto proof) #== root)
-        (pconstant False)
+    plam $ \root key valueHash proof ->
+        plet (pblake2b_256 # key) $ \path ->
+            pif
+                ( plengthBS
+                    # root
+                    #== pdigestByteCount
+                    #&& plengthBS
+                    # valueHash
+                    #== pdigestByteCount
+                    #&& pmembershipProofIsWellFormed
+                    # path
+                    # 0
+                    # pto proof
+                    # pmaximumProofStepCount
+                )
+                ((pdoIncludingByHash # path # valueHash # 0 # pto proof) #== root)
+                (pconstant False)
 
 {- | Aiken @mpf_proof_v1.does_not_have@.
 
@@ -621,22 +625,32 @@ Uses 'pdoExcluding' rather than the library's @pexcluding@ — see the module
 header.
 -}
 pdoesNotHave ::
-  forall (s :: S). Term s (PByteString :--> PByteString :--> PProof :--> PBool)
+    forall (s :: S). Term s (PByteString :--> PByteString :--> PProof :--> PBool)
 pdoesNotHave = phoistAcyclic $
-  plam $ \root key proof ->
-    plet (pblake2b_256 # key) $ \path ->
-      pif
-        ( plengthBS
-            # root
-            #== pdigestByteCount
-            #&& pnonMembershipProofIsWellFormed
-            # path
-            # 0
-            # pto proof
-            # pmaximumProofStepCount
-        )
-        ((pdoExcluding # path # 0 # pto proof) #== root)
-        (pconstant False)
+    plam $ \root key proof ->
+        plet (pblake2b_256 # key) $ \path ->
+            pif
+                ( plengthBS
+                    # root
+                    #== pdigestByteCount
+                    #&& pnonMembershipProofIsWellFormed
+                    # path
+                    # 0
+                    # pto proof
+                    # pmaximumProofStepCount
+                )
+                ((pdoExcluding # path # 0 # pto proof) #== plibraryRoot root)
+                (pconstant False)
+
+{- | Aiken @mpf_proof_v1.library_root@.
+
+Midgard commits @blake2b_256("")@ for an empty trie, while the MPF library
+reconstructs an empty proof as its all-zero null hash. Only the Midgard
+sentinel is translated; every populated root remains unchanged.
+-}
+plibraryRoot :: forall (s :: S). Term s PByteString -> Term s PByteString
+plibraryRoot root =
+    pif (root #== Env.pemptyMerkleTreeRoot) pnull_hash root
 
 --------------------------------------------------------------------------------
 -- Total root transitions
@@ -654,41 +668,41 @@ library's @pinsert@ would re-check it under the /other/ arithmetic and could
 abort where Aiken succeeds.
 -}
 pinsertRoot ::
-  forall (s :: S).
-  Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PMaybe PByteString)
+    forall (s :: S).
+    Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PMaybe PByteString)
 pinsertRoot = phoistAcyclic $
-  plam $ \root key value proof ->
-    pif
-      (pdoesNotHave # root # key # proof)
-      (pcon (PJust (pdoIncluding # (pblake2b_256 # key) # value # 0 # pto proof)))
-      (pcon PNothing)
+    plam $ \root key value proof ->
+        pif
+            (pdoesNotHave # root # key # proof)
+            (pcon (PJust (pdoIncluding # (pblake2b_256 # key) # value # 0 # pto proof)))
+            (pcon PNothing)
 
 -- | Aiken @mpf_proof_v1.update_root@.
 pupdateRoot ::
-  forall (s :: S).
-  Term
-    s
-    ( PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PProof
-        :--> PMaybe PByteString
-    )
+    forall (s :: S).
+    Term
+        s
+        ( PByteString
+            :--> PByteString
+            :--> PByteString
+            :--> PByteString
+            :--> PProof
+            :--> PMaybe PByteString
+        )
 pupdateRoot = phoistAcyclic $
-  plam $ \root key oldValue newValue proof ->
-    pif
-      (phasV1 # root # key # oldValue # proof)
-      (pcon (PJust (pdoIncluding # (pblake2b_256 # key) # newValue # 0 # pto proof)))
-      (pcon PNothing)
+    plam $ \root key oldValue newValue proof ->
+        pif
+            (phasV1 # root # key # oldValue # proof)
+            (pcon (PJust (pdoIncluding # (pblake2b_256 # key) # newValue # 0 # pto proof)))
+            (pcon PNothing)
 
 -- | Aiken @mpf_proof_v1.delete_root@.
 pdeleteRoot ::
-  forall (s :: S).
-  Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PMaybe PByteString)
+    forall (s :: S).
+    Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PMaybe PByteString)
 pdeleteRoot = phoistAcyclic $
-  plam $ \root key value proof ->
-    pif
-      (phasV1 # root # key # value # proof)
-      (pcon (PJust (pdoExcluding # (pblake2b_256 # key) # 0 # pto proof)))
-      (pcon PNothing)
+    plam $ \root key value proof ->
+        pif
+            (phasV1 # root # key # value # proof)
+            (pcon (PJust (pdoExcluding # (pblake2b_256 # key) # 0 # pto proof)))
+            (pcon PNothing)

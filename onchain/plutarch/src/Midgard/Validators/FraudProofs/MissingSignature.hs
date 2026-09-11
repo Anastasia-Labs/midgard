@@ -28,13 +28,13 @@ the compact structure the block's counted @transactions_root@ committed. It read
 the real @witness_set_hash@ there and the value is carried, unchanged, through
 every state of the family.
 
-=== The absence is a fold, and it must complete
+=== The absence is a bounded fold, and it must complete
 
 Step-04 is one of the two rules in the whole machine that genuinely has to see
 every item — "no witness carries this key" is only true of a walk that reached the
-end. 'pfoldOpenedField' asserts completion, so a fold that stopped early cannot
-report absence. It costs one pass over authenticated bytes, which is what the
-walk exists for: no reproduction of the collection and no re-hash of it.
+end. It consumes fixed 32-item batches, commits each intermediate checkpoint in
+thread state, and permits the conviction only for a terminal suffix no longer
+than one batch. No transaction therefore performs an unbounded witness scan.
 
 === Three steps, three different shapes of evidence
 
@@ -57,18 +57,21 @@ import Plutarch.LedgerApi.V3 (
   PCurrencySymbol,
   PScriptContext,
   PScriptHash,
+  PTxInInfo,
   PTxInfo (..),
  )
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 
 import Midgard.FraudProofs.Common (pcontinue, pfinalize, ppassNativeTxToNextStep)
 import Midgard.FraudProofs.FieldOpening (
+  PFieldOpeningV1,
   PNativeTxAnchorV1 (..),
   paddressWitnessesFieldIndex,
-  pfoldOpenedField,
   popenedFieldView,
   popenedFieldWalk,
+  presumeOpenedFieldWalk,
   prequiredSignersFieldIndex,
  )
 import Midgard.FraudProofs.MissingSignature (
@@ -85,7 +88,13 @@ import Midgard.FraudProofs.NativeTx.Types (
   PNativeTxCompact (..),
   PVerifiedMidgardNativeTxCompact (..),
  )
-import Midgard.NativeTxFieldAccess (pfieldItemAt)
+import Midgard.NativeTxFieldAccess (PFieldViewV1, pfieldItemAt)
+import Midgard.NativeTxMachineWalk (
+  PFieldWalkCheckpointV1,
+  pfieldWalkCheckpointHash,
+  pwalkFold,
+  pwalkRemaining,
+ )
 import Midgard.Validators.FraudProofs.Step (
   pdispatch,
   pexpectDatum,
@@ -140,8 +149,9 @@ missingSignatureStep01Validator = plam $
                badTxId
                badTxView -> P.do
                 PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-                PNativeTxCompact {pcompact'witnessSetHash} <- pmatch pverified'txCompact
-                pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+                PNativeTxCompact {pcompact'witnessSetHash, pcompact'validityCode} <- pmatch pverified'txCompact
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
                   pexpecting
                     ( outputStateData
                         #== pforgetData
@@ -313,6 +323,7 @@ missingSignatureStep03Validator = plam $
                                     , pstep04State'verifiedTxId = pstep03State'verifiedTxId
                                     , pstep04State'verifiedWitnessSetHash =
                                         pstep03State'verifiedWitnessSetHash
+                                    , pstep04State'fieldWalkCheckpointHash = pdata (pconstant "")
                                     }
                                 )
                             )
@@ -351,65 +362,163 @@ missingSignatureStep04Validator = plam $
    ctx ->
       pstep ctx $ \datum redeemer ownOutRef txInfo ->
         pdispatch @_ @PStep04Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-          \args -> P.do
-            PStep04Args
-              { pstep04Args'inputIndex
-              , pstep04Args'outputIndex
-              , pstep04Args'fraudProofMintRedeemerIndex
-              , pstep04Args'addrTxWitsOpening
-              } <-
-              pmatch args
-            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
-              pmatch txInfo
-            referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
-            pfinalize
-              computationThreadTokenPolicyId
-              fraudProofTokenPolicyId
-              fraudProofTokenAddress
-              (pexpectDatum datum)
-              (pfromData pstep04Args'inputIndex)
-              (pfromData pstep04Args'outputIndex)
-              (pfromData pstep04Args'fraudProofMintRedeemerIndex)
-              ownOutRef
-              (pfromData ptxInfo'inputs)
-              (pfromData ptxInfo'outputs)
-              (pto (pto (pfromData ptxInfo'redeemers)))
-              $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
-                PStep04State
-                  { pstep04State'missingRequiredSignerVkey
-                  , pstep04State'verifiedTxId
-                  , pstep04State'verifiedWitnessSetHash
-                  } <-
-                  pmatch (pexpectStateAs @PStep04State mInputStateData)
-                missingVkey <- plet $ pfromData pstep04State'missingRequiredSignerVkey
-                addrTxWitsWalk <-
-                  plet $
-                    popenedFieldWalk
-                      # pfromData pstep04Args'addrTxWitsOpening
-                      # pcon
-                        ( PWitnessAnchor
-                            { pwitnessAnchor'txId = pstep04State'verifiedTxId
-                            , pwitnessAnchor'witnessSetHash = pstep04State'verifiedWitnessSetHash
-                            }
-                        )
-                      # paddressWitnessesFieldIndex
-                      # referenceInputs
-                      # fieldPreimageCertificatePolicyId
-                -- 3. The key must be in no witness. The fold sees every item
-                --    and asserts completion, which is what makes an absence
-                --    claim mean anything.
-                requiredSignatureIsPresent <-
-                  plet $
-                    pfoldOpenedField
-                      # addrTxWitsWalk
-                      # pconstant False
-                      # plam
-                        ( \found _index item ->
-                            found
-                              #|| pmatch
-                                (pdecodeMidgardAddressWitnessCbor # item)
-                                ( \PMidgardAddressWitness {paddressWitness'verificationKey} ->
-                                    pfromData paddressWitness'verificationKey #== missingVkey
-                                )
-                        )
-                pexpecting (pnot # requiredSignatureIsPresent) (pconstant True)
+          \args -> pmatch args $ \case
+            PScan inputIndex outputIndex opening checkpointCbor -> P.do
+              PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+              pcontinue
+                computationThreadTokenPolicyId
+                (pexpectDatum datum)
+                (pfromData inputIndex)
+                (pfromData outputIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                $ \ownScriptHash _threadTokenAssetName _fraudProver mInputStateData outputScriptHash outputStateData -> P.do
+                  state <- plet $ pexpectStateAs @PStep04State mInputStateData
+                  PPair view checkpoint <-
+                    pmatch $
+                      popenOrResumeWitnessWalk
+                        state
+                        (pfromData opening)
+                        (pfromData checkpointCbor)
+                        (pfromData ptxInfo'referenceInputs)
+                        fieldPreimageCertificatePolicyId
+                  pexpecting (pwalkRemaining # checkpoint #> pwitnessScanBatchSize) $ P.do
+                    PStep04State {pstep04State'missingRequiredSignerVkey} <- pmatch state
+                    PPair found next <-
+                      pmatch $
+                        pwalkFold @PBool
+                          # view
+                          # checkpoint
+                          # pwitnessScanBatchSize
+                          # pconstant False
+                          # (pwitnessPresenceFold # pfromData pstep04State'missingRequiredSignerVkey)
+                    pexpecting (pnot # found) $
+                      pexpecting (outputScriptHash #== ownScriptHash) $
+                        pexpecting
+                          ( outputStateData
+                              #== pforgetData
+                                (pdata $ pstateWithCheckpointHash # state # (pfieldWalkCheckpointHash # next))
+                          )
+                          (pconstant True)
+            PFinalize inputIndex outputIndex mintRedeemerIndex opening checkpointCbor -> P.do
+              PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
+                pmatch txInfo
+              pfinalize
+                computationThreadTokenPolicyId
+                fraudProofTokenPolicyId
+                fraudProofTokenAddress
+                (pexpectDatum datum)
+                (pfromData inputIndex)
+                (pfromData outputIndex)
+                (pfromData mintRedeemerIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                (pto (pto (pfromData ptxInfo'redeemers)))
+                $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
+                  state <- plet $ pexpectStateAs @PStep04State mInputStateData
+                  PPair view checkpoint <-
+                    pmatch $
+                      popenOrResumeWitnessWalk
+                        state
+                        (pfromData opening)
+                        (pfromData checkpointCbor)
+                        (pfromData ptxInfo'referenceInputs)
+                        fieldPreimageCertificatePolicyId
+                  remaining <- plet $ pwalkRemaining # checkpoint
+                  pexpecting (remaining #<= pwitnessScanBatchSize) $ P.do
+                    PStep04State {pstep04State'missingRequiredSignerVkey} <- pmatch state
+                    PPair found terminal <-
+                      pmatch $
+                        pwalkFold @PBool
+                          # view
+                          # checkpoint
+                          # remaining
+                          # pconstant False
+                          # (pwitnessPresenceFold # pfromData pstep04State'missingRequiredSignerVkey)
+                    pexpecting (pnot # found) $
+                      pexpecting (pwalkRemaining # terminal #== 0) (pconstant True)
+
+-- | Aiken @witness_scan_batch_size@.
+pwitnessScanBatchSize :: forall (s :: S). Term s PInteger
+pwitnessScanBatchSize = pconstant 32
+
+popenOrResumeWitnessWalk ::
+  forall (s :: S).
+  Term s PStep04State ->
+  Term s PFieldOpeningV1 ->
+  Term s (PMaybeData PByteString) ->
+  Term s (PBuiltinList (PAsData PTxInInfo)) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s (PPair PFieldViewV1 PFieldWalkCheckpointV1)
+popenOrResumeWitnessWalk state opening checkpointCbor referenceInputs certificatePolicyId = P.do
+  PStep04State
+    { pstep04State'verifiedTxId
+    , pstep04State'verifiedWitnessSetHash
+    , pstep04State'fieldWalkCheckpointHash
+    } <-
+    pmatch state
+  let anchor =
+        pcon
+          ( PWitnessAnchor
+              { pwitnessAnchor'txId = pstep04State'verifiedTxId
+              , pwitnessAnchor'witnessSetHash = pstep04State'verifiedWitnessSetHash
+              }
+          )
+  pif
+    (pfromData pstep04State'fieldWalkCheckpointHash #== pconstant "")
+    ( pmatch checkpointCbor $ \case
+        PDNothing ->
+          popenedFieldWalk
+            # opening
+            # anchor
+            # paddressWitnessesFieldIndex
+            # referenceInputs
+            # certificatePolicyId
+        PDJust _ -> perror
+    )
+    ( pmatch checkpointCbor $ \case
+        PDNothing -> perror
+        PDJust checkpointBytes ->
+          presumeOpenedFieldWalk
+            # opening
+            # anchor
+            # paddressWitnessesFieldIndex
+            # pfromData pstep04State'fieldWalkCheckpointHash
+            # pfromData checkpointBytes
+            # referenceInputs
+            # certificatePolicyId
+    )
+
+pwitnessPresenceFold ::
+  forall (s :: S).
+  Term s (PByteString :--> PBool :--> PInteger :--> PByteString :--> PBool)
+pwitnessPresenceFold = phoistAcyclic $
+  plam $ \missingVkey found _index item ->
+    found
+      #|| pmatch
+        (pdecodeMidgardAddressWitnessCbor # item)
+        ( \PMidgardAddressWitness {paddressWitness'verificationKey} ->
+            pfromData paddressWitness'verificationKey #== missingVkey
+        )
+
+pstateWithCheckpointHash ::
+  forall (s :: S).
+  Term s (PStep04State :--> PByteString :--> PStep04State)
+pstateWithCheckpointHash = phoistAcyclic $
+  plam $ \state checkpointHash ->
+    pmatch state $
+      \PStep04State
+         { pstep04State'missingRequiredSignerVkey
+         , pstep04State'verifiedTxId
+         , pstep04State'verifiedWitnessSetHash
+         } ->
+          pcon
+            ( PStep04State
+                { pstep04State'missingRequiredSignerVkey
+                , pstep04State'verifiedTxId
+                , pstep04State'verifiedWitnessSetHash
+                , pstep04State'fieldWalkCheckpointHash = pdata checkpointHash
+                }
+            )

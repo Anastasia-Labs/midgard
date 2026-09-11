@@ -84,6 +84,15 @@ fixtureTests =
       tOutputCount tx1 @?= 2
   ]
 
+acceptedCborOf :: Tx -> BS.ByteString
+acceptedCborOf tx = compactWithValidity tx (witnessSetHashOf tx) 0
+
+tx1AcceptedCbor, tx3AcceptedCbor, tx1AcceptedSourceCbor, tx3AcceptedSourceCbor :: BS.ByteString
+tx1AcceptedCbor = acceptedCborOf tx1
+tx3AcceptedCbor = acceptedCborOf tx3
+tx1AcceptedSourceCbor = sourceCborWithValidity tx1 0
+tx3AcceptedSourceCbor = sourceCborWithValidity tx3 0
+
 --------------------------------------------------------------------------------
 -- One family, described by what differs
 --------------------------------------------------------------------------------
@@ -183,6 +192,8 @@ familyTests f =
             fStep01 f (context01 defaultStep01 {s1OutputState = Just (state02 tx3Id)})
       , testCase "rejects a raw root the header does not commit" $
           pfails $ fStep01 f (context01 defaultStep01 {s1PhasRoot = otherRoot})
+      , testCase "rejects a disputed transaction marked invalid" $
+          pfails $ fStep01 f (context01 defaultStep01 {s1Cbor = sourceCborOf tx1})
       , testCase "a cancel burning the thread token succeeds" $
           psucceeds $ fStep01 f (cancelContext True)
       , testCase "a cancel that does not burn the thread token fails" $
@@ -242,7 +253,7 @@ familyTests f =
           pfails $
             fStep03
               f
-              (context03 defaultStep03 {s3BoundTxId = tx3Id, s3BoundCbor = tx3Cbor})
+              (context03 defaultStep03 {s3BoundTxId = tx3Id, s3BoundCbor = tx3AcceptedSourceCbor})
       , testCase "rejects an output at a script that is not step-04's" $
           pfails $ fStep03 f (context03 defaultStep03 {s3OutputScript = otherScript})
       , testCase "rejects a state that alters the challenged output index" $
@@ -252,6 +263,8 @@ familyTests f =
               (context03 defaultStep03 {s3OutputState = Just (state04 tx1Id 9)})
       , testCase "rejects a raw root the header does not commit" $
           pfails $ fStep03 f (context03 defaultStep03 {s3PhasRoot = otherRoot})
+      , testCase "rejects a producing transaction marked invalid" $
+          pfails $ fStep03 f (context03 defaultStep03 {s3BoundCbor = sourceCborOf tx1})
       ]
   , testGroup
       "step-04"
@@ -319,7 +332,7 @@ tx3Opening f preimage forwardedTxId =
     f
     defaultStep02
       { s2StateTxId = tx3Id
-      , s2OpeningCbor = tx3Cbor
+      , s2OpeningCbor = tx3AcceptedCbor
       , s2Preimage = Just preimage
       , s2OutputState = Just (state03 forwardedTxId 0)
       }
@@ -345,6 +358,7 @@ data Step01 = Step01
   { s1OutputScript :: BS.ByteString
   , s1OutputState :: Maybe PD.Data
   , s1PhasRoot :: BS.ByteString
+  , s1Cbor :: BS.ByteString
   }
 
 defaultStep01 :: Step01
@@ -353,20 +367,21 @@ defaultStep01 =
     { s1OutputScript = nextScript
     , s1OutputState = Just (state02 tx1Id)
     , s1PhasRoot = phasRoot
+    , s1Cbor = tx1AcceptedSourceCbor
     }
 
-{- | Steps 01 and 03 take bare @NativeTxInclusionArgs@ rather than a carriage, so
-the @Continue@ payload is the args record itself.
+{- | Steps 01 and 03 take @NativeTxInclusionCarriage@. The fixtures exercise its
+redeemer-carried arm.
 -}
 context01 :: Step01 -> ScriptContext
 context01 s =
   spendContext
     (stepDatum Nothing)
-    (PD.Constr 1 [bareInclusionArgs tx1Id tx1Cbor (s1PhasRoot s)])
+    (PD.Constr 1 [inclusionArgs tx1Id (s1Cbor s) (s1PhasRoot s)])
     [threadInput]
     [stepOutput (s1OutputScript s) (s1OutputState s)]
     referenceInputs
-    [phasEntry (s1PhasRoot s) tx1Id tx1Cbor]
+    [phasEntry (s1PhasRoot s) tx1Id (s1Cbor s)]
     mempty
 
 cancelContext :: Bool -> ScriptContext
@@ -397,7 +412,7 @@ defaultStep02 :: Step02
 defaultStep02 =
   Step02
     { s2StateTxId = tx1Id
-    , s2OpeningCbor = tx1Cbor
+    , s2OpeningCbor = tx1AcceptedCbor
     , s2Preimage = Nothing
     , s2BadIndex = 0
     , s2OutputScript = nextScript
@@ -451,7 +466,7 @@ defaultStep03 :: Step03
 defaultStep03 =
   Step03
     { s3BoundTxId = tx1Id
-    , s3BoundCbor = tx1Cbor
+    , s3BoundCbor = tx1AcceptedSourceCbor
     , s3PhasRoot = phasRoot
     , s3OutputScript = nextScript
     , s3OutputState = Just (state04 tx1Id 2)
@@ -461,7 +476,7 @@ context03 :: Step03 -> ScriptContext
 context03 s =
   spendContext
     (stepDatum (Just (state03 tx1Id 2)))
-    (PD.Constr 1 [bareInclusionArgs (s3BoundTxId s) (s3BoundCbor s) (s3PhasRoot s)])
+    (PD.Constr 1 [inclusionArgs (s3BoundTxId s) (s3BoundCbor s) (s3PhasRoot s)])
     [threadInput]
     [stepOutput (s3OutputScript s) (s3OutputState s)]
     referenceInputs
@@ -484,7 +499,7 @@ defaultStep04 :: Step04
 defaultStep04 =
   Step04
     { s4BadIndex = 2
-    , s4OpeningCbor = tx1Cbor
+    , s4OpeningCbor = tx1AcceptedCbor
     , s4Preimage = Nothing
     , s4FraudProofAddress = fraudProofAddress
     , s4FraudProofName = threadName

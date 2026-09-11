@@ -18,7 +18,7 @@ module Testing.DaAttestationReaders (tests) where
 import Data.ByteString qualified as BS
 import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V1.Address (scriptHashAddress)
-import PlutusLedgerApi.V1.Value (CurrencySymbol (..), TokenName (..), Value, singleton)
+import PlutusLedgerApi.V1.Value (CurrencySymbol (..), TokenName (..), singleton)
 import PlutusLedgerApi.V3 (
   Address,
   Datum (..),
@@ -39,6 +39,7 @@ import Plutarch.LedgerApi.V3 (PCurrencySymbol, PTokenName (..), PTxInInfo, PTxOu
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
+import Midgard.AvailabilityChallenge (PParametersV1)
 import Midgard.DaAttestation (PDaParamsDatum)
 import Midgard.DaAttestation.Readers (
   pgetAuthenticatedStateQueuePolicyId,
@@ -145,6 +146,12 @@ initOutputTests =
         pfails $ initOutput defaultInit {diCount = 1}
     , testCase "rejects a header hash other than the block's" $
         pfails $ initOutput defaultInit {diHeaderHash = otherHeaderHash}
+    , testCase "rejects a commitment for another header" $
+        pfails $ initOutput defaultInit {diCommitmentHeaderHash = otherHeaderHash}
+    , testCase "rejects a non-canonical commitment geometry" $
+        pfails $ initOutput defaultInit {diChunkByteLength = 4_097}
+    , testCase "rejects the DA script as rescue beneficiary" $
+        pfails $ initOutput defaultInit {diRescueAddress = addressOf attestationPolicy}
     , -- The name is derived from the datum, so the token cannot name a
       -- different block than the datum does.
       testCase "rejects a token whose name is not derived from the datum" $
@@ -155,6 +162,8 @@ initOutputTests =
         pfails $ initOutput defaultInit {diRefScript = True}
     , testCase "rejects an output holding no attestation token" $
         pfails $ initOutput defaultInit {diHasNft = False}
+    , testCase "rejects an output above the exact DA bond" $
+        pfails $ initOutput defaultInit {diExtraAda = True}
     ]
 
 --------------------------------------------------------------------------------
@@ -327,28 +336,36 @@ refScriptPolicy r =
 
 data Init = Init
   { diHeaderHash :: BS.ByteString
+  , diCommitmentHeaderHash :: BS.ByteString
+  , diChunkByteLength :: Integer
   , diThreshold :: Integer
   , diCommitteeHash :: Maybe BS.ByteString
+  , diRescueAddress :: Address
   , diBitmap :: Maybe BS.ByteString
   , diCount :: Integer
   , diAddress :: Address
   , diRefScript :: Bool
   , diHasNft :: Bool
   , diAssetName :: Maybe TokenName
+  , diExtraAda :: Bool
   }
 
 defaultInit :: Init
 defaultInit =
   Init
     { diHeaderHash = headerHash
+    , diCommitmentHeaderHash = headerHash
+    , diChunkByteLength = 4_096
     , diThreshold = 2
     , diCommitteeHash = Nothing
+    , diRescueAddress = otherAddress
     , diBitmap = Nothing
     , diCount = 0
     , diAddress = addressOf attestationPolicy
     , diRefScript = False
     , diHasNft = True
     , diAssetName = Nothing
+    , diExtraAda = False
     }
 
 initOutput :: forall s. Init -> Term s (PAsData PTokenName)
@@ -357,6 +374,7 @@ initOutput i =
     # txOutT out
     # pdata (pconstant attestationPolicy)
     # paramsDatumTerm committee 2
+    # availabilityParametersTerm
     # pconstant headerHash
   where
     derivedName = TokenName (toBuiltin ("DAAT" <> diHeaderHash i))
@@ -365,8 +383,10 @@ initOutput i =
       PD.Constr
         0
         [ PD.B (diHeaderHash i)
+        , commitmentData (diCommitmentHeaderHash i) (diChunkByteLength i)
         , PD.I (diThreshold i)
         , PD.B (maybe (blake2b256 committee) id (diCommitteeHash i))
+        , builtinDataToData (toBuiltinData (diRescueAddress i))
         , PD.B (maybe emptyBitmap id (diBitmap i))
         , PD.I (diCount i)
         ]
@@ -374,7 +394,53 @@ initOutput i =
       TxOut
         (diAddress i)
         ( mkAdaValue 2_000_000
-            <> if diHasNft i then singleton attestationPolicy name 1 else mempty
+            <> (if diHasNft i then singleton attestationPolicy name 1 else mempty)
+            <> (if diExtraAda i then mkAdaValue 1 else mempty)
         )
         (OutputDatum (Datum (dataToBuiltinData datumData)))
         (if diRefScript i then Just (ScriptHash (unCurrencySymbol otherPolicy)) else Nothing)
+
+availabilityParametersTerm :: forall s. Term s PParametersV1
+availabilityParametersTerm =
+  pfromData (punsafeCoerce (pconstant @PData availabilityParametersData))
+
+availabilityParametersData :: PD.Data
+availabilityParametersData =
+  PD.Constr
+    0
+    [ responseGeometryData 4_096
+    , PD.I 2_000_000
+    , PD.I 2_000_000
+    , PD.I 1
+    , PD.I 1
+    , PD.I 1
+    , PD.I 1
+    , PD.I 1
+    ]
+
+commitmentData :: BS.ByteString -> Integer -> PD.Data
+commitmentData hh chunkByteLength =
+  PD.Constr
+    0
+    [ PD.I 1
+    , PD.B (BS.replicate 28 0x31)
+    , PD.B hh
+    , PD.I 1
+    , responseGeometryData chunkByteLength
+    , PD.List
+        [ PD.Constr
+            0
+            [ PD.I 0
+            , PD.I 0
+            , PD.I 1
+            , PD.I 1
+            , PD.B (BS.replicate 32 0xac)
+            , PD.B (BS.replicate 32 0xab)
+            ]
+        ]
+    , PD.B (BS.replicate 28 0x41)
+    ]
+
+responseGeometryData :: Integer -> PD.Data
+responseGeometryData chunkByteLength =
+  PD.Constr 0 [PD.I chunkByteLength, PD.I (4 * 1024 * 1024), PD.I 16]

@@ -273,7 +273,7 @@ malformedActiveLink =
             [field 1, field 2, PD.B (BS.replicate 28 0x11), field 4, field 5, field 6, field 7]
    in pif
         (isTagArity source 3 7)
-        ( pmatch (pasConstr # (pelemAt # 3 #$ psndBuiltin # (pasConstr # source))) $
+        ( pmatch (pasConstr # (pelemAt # 3 #$ (pmatch (pasConstr # source) $ \(PBuiltinPair _ pairSecond) -> pairSecond))) $
             \(PBuiltinPair tag linkFields) ->
               pif
                 (tag #== 0 #&& plength # linkFields #== 1)
@@ -287,7 +287,7 @@ malformedRetiredSlashPayload =
   let source = pconstant $ PD.Constr 4 [field 1]
    in pif
         (isTagArity source 4 1)
-        (expectTagArities (phead #$ psndBuiltin # (pasConstr # source)) [(0, 5)])
+        (expectTagArities (phead #$ (pmatch (pasConstr # source) $ \(PBuiltinPair _ pairSecond) -> pairSecond)) [(0, 5)])
         perror
 
 malformedSettlementEventTag :: forall s. Term s PBool

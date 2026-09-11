@@ -87,27 +87,11 @@ pnativeTxVersionV1 = 1
 
 {- | Aiken @native_tx/types.MidgardTxValidity@.
 
-An operator's verdict on an L2 transaction. Tags: @TxIsValid@ 0,
-@NonExistentInputUtxo@ 1, @InvalidSignature@ 2, @FailedScript@ 3, @FeeTooLow@ 4,
-@UnbalancedTx@ 5.
-
-/This is a second declaration of the same type./ Aiken declares it here and again
-in @lib/midgard/ledger-state.ak@, with the same six constructors in the same
-order, and the port keeps both rather than collapsing them: they have identical
-@Data@ encodings and are interchangeable across that boundary, but the
-duplication is the Aiken tree's and hiding it here would make the two files stop
-corresponding. See 'Midgard.LedgerState.PMidgardTxValidity'.
-
-Collapsing them is also not currently possible — @Midgard.LedgerState@ sits
-above this module in the import graph, so depending on it from here would cycle.
+The compact scalar has exactly two meanings: @TxIsValid@ 0 and @TxIsInvalid@ 1.
 -}
 data PMidgardTxValidity (s :: S)
   = PTxIsValid
-  | PNonExistentInputUtxo
-  | PInvalidSignature
-  | PFailedScript
-  | PFeeTooLow
-  | PUnbalancedTx
+  | PTxIsInvalid
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PMidgardTxValidity)

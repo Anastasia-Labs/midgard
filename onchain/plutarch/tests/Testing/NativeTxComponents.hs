@@ -192,10 +192,16 @@ addressTests =
             [ (pdecodeMidgardAddressBytes # pconstant (encodeAddress a)) #== addrT a
             | a <- allAddresses
             ]
-    , testCase "the encoder rejects a network id that is not 0 or 1" $
-        pfails $ pencodeMidgardAddress # addrT (Addr False 2 (PubKey h28a) Nothing)
-    , testCase "the decoder rejects a network id that is not 0 or 1" $
-        pfails $ pdecodeMidgardAddressBytes # pconstant (BS.pack [0x62] <> h28a)
+    , testCase "foreign logical network ids remain encodable for fraud proofs" $
+        holds $
+          pall'
+            [ (pdecodeMidgardAddressBytes # (pencodeMidgardAddress # addrT address)) #== addrT address
+            | address <- [Addr False 2 (PubKey h28a) Nothing, Addr True 7 (Script h28a) Nothing]
+            ]
+    , testCase "the encoder rejects a network id outside the logical nibble range" $
+        mapM_
+          (\network -> pfails $ pencodeMidgardAddress # addrT (Addr False network (PubKey h28a) Nothing))
+          [-1, 8]
     , testCase "the encoder rejects a credential hash that is not 28 bytes" $
         pfails $ pencodeMidgardAddress # addrT (Addr False 0 (PubKey (BS.replicate 27 0x01)) Nothing)
     , -- Both directions of the length/type cross-check.
@@ -684,12 +690,7 @@ defaultInput = Input (bytes32 1) 7
 data Cred = PubKey BS.ByteString | Script BS.ByteString
 
 -- | A Midgard address.
-data Addr = Addr
-  { aProtected :: Bool
-  , aNetwork :: Integer
-  , aPayment :: Cred
-  , aStake :: Maybe Cred
-  }
+data Addr = Addr Bool Integer Cred (Maybe Cred)
 
 {- | Every address shape: both credential kinds on both sides, both networks,
 and the protected bit on and off.
@@ -698,7 +699,7 @@ allAddresses :: [Addr]
 allAddresses =
   [ Addr protected net payment stake
   | protected <- [False, True]
-  , net <- [0, 1]
+  , net <- [0 .. 7]
   , payment <- [PubKey h28a, Script h28a]
   , stake <- [Nothing, Just (PubKey h28b), Just (Script h28b)]
   ]
@@ -707,7 +708,7 @@ defaultAddr :: Addr
 defaultAddr = Addr False 0 (PubKey h28a) Nothing
 
 -- | A Midgard value: lovelace plus a flat unit-keyed asset list.
-data Val = Val {vLovelace :: Integer, vAssets :: [(BS.ByteString, Integer)]}
+data Val = Val Integer [(BS.ByteString, Integer)]
 
 twoTokensOnePolicy :: Val
 twoTokensOnePolicy = Val 7 [(pidA <> "\x01", 5), (pidA <> "\x02", 6)]
@@ -733,7 +734,7 @@ allValues =
 data Lang = NativeCardano | PlutusV3 | MidgardV1
 
 -- | A versioned script.
-data Scr = Scr {sLang :: Lang, sBytes :: BS.ByteString}
+data Scr = Scr Lang BS.ByteString
 
 allScripts :: [Scr]
 allScripts =
@@ -776,7 +777,7 @@ defaultAw = Aw key32 sig64
 data Rw = Rw
   { rPurpose :: Integer
   , rIndex :: Integer
-  , rCbor :: BS.ByteString
+  , _rCbor :: BS.ByteString
   , rMemory :: Integer
   , rSteps :: Integer
   }

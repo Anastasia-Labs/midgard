@@ -19,7 +19,7 @@ import Data.ByteString qualified as BS
 import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V1.Address (scriptHashAddress)
 import PlutusLedgerApi.V1.Interval (Extended (..), Interval (..), LowerBound (..), UpperBound (..))
-import PlutusLedgerApi.V1.Value (CurrencySymbol (..), TokenName (..), singleton)
+import PlutusLedgerApi.V1.Value (CurrencySymbol (..), TokenName (..), Value (..), singleton)
 import PlutusLedgerApi.V3 (
   Address,
   Datum (..),
@@ -33,17 +33,20 @@ import PlutusLedgerApi.V3 (
   TxOutRef (..),
   toBuiltinData,
  )
-import PlutusTx.Builtins (builtinDataToData, dataToBuiltinData, toBuiltin)
+import PlutusLedgerApi.V3.MintValue (MintValue (UnsafeMintValue))
+import PlutusTx.Builtins (blake2b_224, builtinDataToData, dataToBuiltinData, fromBuiltin, serialiseData, toBuiltin)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import Plutarch.LedgerApi.Interval (PInterval)
-import Plutarch.LedgerApi.V3 (PCurrencySymbol, PPosixTime, PTxInInfo)
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
+import Plutarch.LedgerApi.V3 (PCurrencySymbol, PMintValue, PPosixTime, PTxInInfo)
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.LedgerState (PConfirmedState, PHeaderV1)
 import Midgard.StateQueue (
+  PStateQueueNode,
   pcommitBoundHeaderTimeIsValid,
   pdecodeHeaderView,
   pgetBlockDatumV1,
@@ -51,6 +54,15 @@ import Midgard.StateQueue (
   pgetPrevHeaderHashOfNodeV1,
   pgetStateQueueNode,
   pvalidateDaAttestationAttachment,
+ )
+import Midgard.Validators.StateQueue (
+  pauthenticatedQueueHeadForAppendV1,
+  ppruneTimedOutBlockDescendantV1,
+  ppruneUnavailableBlockDescendantV1,
+  premoveFraudulentBlocksLinkV1,
+  premoveLastFraudulentBlockV1,
+  premoveUnattestedHeadAfterTimeoutV1,
+  premoveUnavailableHeadV1,
  )
 import Testing.Eval (passertEval, pfails)
 import Testing.ScriptContextBuilder (currencySymbolFromHex, mkAdaValue)
@@ -153,12 +165,76 @@ tests =
         , -- One-shot: a block that already carries an attestation cannot have
           -- that attestation swapped for another.
           testCase "rejects a block that is already attested" $
-            pfails $ attach unattested {nodeAttestation = daPolicyBytes} attested
+            pfails $ attach unattested {nodeAttestation = attestedStatus otherDaBondAssetNameBytes} attested
         , testCase "rejects a changed header" $
             pfails $ attach unattested attested {nodePrevHash = otherPrevHash}
-        , testCase "rejects a wrong attestation policy id" $
-            pfails $ attach unattested attested {nodeAttestation = otherDaPolicyBytes}
+        , testCase "rejects a wrong DA bond asset name" $
+            pfails $ attach unattested attested {nodeAttestation = attestedStatus otherDaBondAssetNameBytes}
+        , testCase "accepts a window ending at the attachment deadline" $
+            passertEval $ attachWithin (closed 3_599_200 3_600_200) unattested attested
+        , testCase "rejects a window ending after the attachment deadline" $
+            passertEval $ pnot #$ attachWithin (closed 3_599_201 3_600_201) unattested attested
         ]
+    , testGroup
+        "authenticatedQueueHeadForAppendV1"
+        [ testCase "uses the authenticated anchor for a one-node queue" $
+            passertEval $
+              authenticatedHead hashA (nodeData unattested) (pcon PDNothing)
+                #== stateQueueNodeTerm unattested
+        , testCase "reads the separately authenticated head for a deeper queue" $
+            passertEval $
+              authenticatedHead hashB (nodeData unattested {nodeKey = hashB}) (pcon $ PDJust $ pdata 1)
+                #== stateQueueNodeTerm unattested
+        , testCase "rejects a missing deep-head reference" $
+            pfails $ authenticatedHead hashB (nodeData unattested {nodeKey = hashB}) (pcon PDNothing)
+        , testCase "rejects a reference whose NFT key is not the root head" $
+            pfails $
+              authenticatedHead hashB (nodeData unattested {nodeKey = hashB}) (pcon $ PDJust $ pdata 2)
+        ]
+    , timeoutRemovalTests
+    , fraudulentRemovalTests
+    ]
+
+fraudulentRemovalTests :: TestTree
+fraudulentRemovalTests =
+  testGroup
+    "fraudulent removal helpers"
+    [ testCase "prunes a transitive descendant committed by a rotated operator" $
+        passertEval $ removeFraudLink hashA rotatedDescendant
+    , testCase "rejects a descendant prune from the wrong fraud-proved anchor" $
+        pfails $ removeFraudLink hashC rotatedDescendant
+    , testCase "removes the terminal fraud-proved target" $
+        passertEval $ removeLastFraudulent defaultOperator fraudTail
+    , testCase "rejects a target naming another operator" $
+        pfails $ removeLastFraudulent rotatedOperator fraudTail
+    , testCase "rejects removing a nonterminal fraud-proved target" $
+        pfails $ removeLastFraudulent defaultOperator fraudTail {nodeLink = linkTo hashC}
+    ]
+
+timeoutRemovalTests :: TestTree
+timeoutRemovalTests =
+  testGroup
+    "timeout removal helpers"
+    [ testCase "prunes a descendant of the current unattested head" $
+        passertEval $ pruneUnattested (rootOutWithLink $ linkTo hashA) timedOutHead
+    , testCase "rejects pruning from an unattested node that is not the head" $
+        pfails $ pruneUnattested (rootOutWithLink $ linkTo hashB) timedOutHead
+    , testCase "removes the terminal unattested head at the boundary" $
+        passertEval $ removeUnattested timedOutTerminal hashA
+    , testCase "rejects an attested head after the attachment race" $
+        pfails $ removeUnattested attested hashA
+    , testCase "rejects removing a nonterminal unattested head" $
+        pfails $ removeUnattested timedOutHead hashA
+    , testCase "rejects a wrong unattested-header identity" $
+        pfails $ removeUnattested timedOutTerminal hashB
+    , testCase "prunes a descendant of the exact challenged head" $
+        passertEval $ pruneUnavailable challengedHead challengeAssetNameBytes
+    , testCase "removes the terminal exact challenged head" $
+        passertEval $ removeUnavailable challengedTerminal challengeAssetNameBytes
+    , testCase "rejects a substituted challenge identity" $
+        pfails $ removeUnavailable challengedTerminal otherChallengeAssetNameBytes
+    , testCase "rejects an attested but unchallenged head" $
+        pfails $ removeUnavailable attested challengeAssetNameBytes
     ]
 
 --------------------------------------------------------------------------------
@@ -197,16 +273,28 @@ Twenty-five fields; only two are varied, but the arity has to be right or the
 positional read lands elsewhere.
 -}
 headerData :: Integer -> BS.ByteString -> PD.Data
-headerData protocolVersion prev =
+headerData protocolVersion prev = headerDataWithOperator protocolVersion prev defaultOperator
+
+headerDataWithOperator :: Integer -> BS.ByteString -> BS.ByteString -> PD.Data
+headerDataWithOperator protocolVersion prev blockOperator =
   PD.Constr
     0
-    ( replicate 9 (PD.B (BS.replicate 32 0x01)) -- nine roots
+    ( replicate 9 (PD.B emptyRoot) -- nine empty counted roots
         <> replicate 7 (PD.I 0) -- seven counts
         <> [PD.I 100, PD.I 200, PD.I 0, PD.I 0, PD.I 0, PD.I 0] -- times and fees
         <> [PD.B prev]
-        <> [PD.B (BS.replicate 28 0x03)] -- operator_vkey
+        <> [PD.B blockOperator]
         <> [PD.I protocolVersion]
     )
+
+emptyRoot :: BS.ByteString
+emptyRoot =
+  BS.pack
+    [ 0x0e, 0x57, 0x51, 0xc0, 0x26, 0xe5, 0x43, 0xb2
+    , 0xe8, 0xab, 0x2e, 0xb0, 0x60, 0x99, 0xda, 0xa1
+    , 0xd1, 0xe5, 0xdf, 0x47, 0x77, 0x8f, 0x77, 0x87
+    , 0xfa, 0xab, 0x45, 0xcd, 0xf1, 0x2f, 0xe3, 0xa8
+    ]
 
 decodes :: forall s. Integer -> Term s (PAsData PHeaderV1)
 decodes protocolVersion = pdecodeHeaderView # headerTerm protocolVersion
@@ -228,20 +316,42 @@ sqPolicySymbol = currencySymbolFromHex sqPolicyHex
 sqPolicy :: forall s. Term s (PAsData PCurrencySymbol)
 sqPolicy = pdata (pconstant sqPolicySymbol)
 
-daPolicyBytes :: BS.ByteString
-daPolicyBytes = BS.replicate 28 0x77
+daBondAssetNameBytes :: BS.ByteString
+daBondAssetNameBytes = "DABN" <> BS.replicate 28 0x77
 
-otherDaPolicyBytes :: BS.ByteString
-otherDaPolicyBytes = BS.replicate 28 0x78
+otherDaBondAssetNameBytes :: BS.ByteString
+otherDaBondAssetNameBytes = "DABN" <> BS.replicate 28 0x78
 
-daPolicy :: forall s. Term s (PAsData PCurrencySymbol)
-daPolicy = pdata (pconstant (CurrencySymbol (toBuiltin daPolicyBytes)))
+challengeAssetNameBytes, otherChallengeAssetNameBytes :: BS.ByteString
+challengeAssetNameBytes = "DACH" <> BS.replicate 28 0x88
+otherChallengeAssetNameBytes = "DACH" <> BS.replicate 28 0x89
+
+unattestedStatus :: PD.Data
+unattestedStatus = PD.Constr 0 []
+
+attestedStatus :: BS.ByteString -> PD.Data
+attestedStatus assetName = PD.Constr 1 [PD.B assetName]
+
+challengedStatus :: BS.ByteString -> BS.ByteString -> PD.Data
+challengedStatus bondAssetName challengeAssetName =
+  PD.Constr 2 [PD.B bondAssetName, PD.B challengeAssetName]
 
 hashA :: BS.ByteString
-hashA = BS.replicate 28 0xaa
+hashA =
+  fromBuiltin $
+    blake2b_224 $
+      serialiseData $
+        dataToBuiltinData (headerData 1 prevHash)
 
 hashB :: BS.ByteString
 hashB = BS.replicate 28 0xbb
+
+hashC :: BS.ByteString
+hashC = BS.replicate 28 0xcc
+
+defaultOperator, rotatedOperator :: BS.ByteString
+defaultOperator = BS.replicate 28 0x03
+rotatedOperator = BS.replicate 28 0x04
 
 queueAddress :: Address
 queueAddress = scriptHashAddress (ScriptHash (unCurrencySymbol sqPolicySymbol))
@@ -266,7 +376,8 @@ data Node = Node
   , nodeKey :: BS.ByteString
   , nodePrevHash :: BS.ByteString
   , nodeVersion :: Integer
-  , nodeAttestation :: BS.ByteString
+  , nodeOperator :: BS.ByteString
+  , nodeAttestation :: PD.Data
   , nodeLink :: PD.Data
   }
 
@@ -278,12 +389,19 @@ unattested =
     , nodeKey = hashA
     , nodePrevHash = prevHash
     , nodeVersion = 1
-    , nodeAttestation = "" -- no_da_attestation
+    , nodeOperator = defaultOperator
+    , nodeAttestation = unattestedStatus
     , nodeLink = linkNone
     }
 
 attested :: Node
-attested = unattested {nodeAttestation = daPolicyBytes}
+attested = unattested {nodeAttestation = attestedStatus daBondAssetNameBytes}
+
+timedOutHead, timedOutTerminal, challengedHead, challengedTerminal :: Node
+timedOutHead = unattested {nodeLink = linkTo hashB}
+timedOutTerminal = unattested {nodeLink = linkNone}
+challengedHead = timedOutHead {nodeAttestation = challengedStatus daBondAssetNameBytes challengeAssetNameBytes}
+challengedTerminal = timedOutTerminal {nodeAttestation = challengedStatus daBondAssetNameBytes challengeAssetNameBytes}
 
 -- | @Element { data: Node(StateQueueNode { header, da_attestation }), link }@.
 nodeOut :: Node -> TxOut
@@ -293,18 +411,32 @@ nodeOut n =
     (mkAdaValue (nodeLovelace n) <> singleton sqPolicySymbol (blockName (nodeKey n)) 1)
     ( OutputDatum . Datum . dataToBuiltinData $
         element
-          (PD.Constr 1 [PD.Constr 0 [headerData (nodeVersion n) (nodePrevHash n), PD.B (nodeAttestation n)]])
+          (PD.Constr 1 [nodeData n])
           (nodeLink n)
     )
     Nothing
 
+nodeData :: Node -> PD.Data
+nodeData n =
+  PD.Constr
+    0
+    [ headerDataWithOperator (nodeVersion n) (nodePrevHash n) (nodeOperator n)
+    , nodeAttestation n
+    ]
+
+stateQueueNodeTerm :: forall s. Node -> Term s PStateQueueNode
+stateQueueNodeTerm n = pfromData (punsafeCoerce (pconstant @PData (nodeData n)))
+
 -- | The root: @Element { data: Root(ConfirmedState), link }@.
 rootOut :: TxOut
-rootOut =
+rootOut = rootOutWithLink (linkTo hashA)
+
+rootOutWithLink :: PD.Data -> TxOut
+rootOutWithLink rootLink =
   TxOut
     queueAddress
     (mkAdaValue 2_000_000 <> singleton sqPolicySymbol (TokenName (toBuiltin ("MIDGARD_CONFIRMED_STATE" :: BS.ByteString))) 1)
-    (OutputDatum . Datum . dataToBuiltinData $ element (PD.Constr 0 [confirmedStateData]) (linkTo hashA))
+    (OutputDatum . Datum . dataToBuiltinData $ element (PD.Constr 0 [confirmedStateData]) rootLink)
     Nothing
 
 confirmedStateTerm :: forall s. Term s PConfirmedState
@@ -342,7 +474,10 @@ refInputs =
     ]
 
 attach :: forall s. Node -> Node -> Term s PBool
-attach inputNode outputNode =
+attach = attachWithin (closed 3_599_200 3_600_200)
+
+attachWithin :: forall s. Interval POSIXTime -> Node -> Node -> Term s PBool
+attachWithin validityRange inputNode outputNode =
   pvalidateDaAttestationAttachment
     (dataList [toPD (TxInInfo (outRefN 0) (nodeOut inputNode))])
     (dataList [toPD (nodeOut outputNode)])
@@ -350,7 +485,159 @@ attach inputNode outputNode =
     0
     0
     (pconstant hashA)
-    daPolicy
+    (pdata (pconstant (TokenName (toBuiltin daBondAssetNameBytes))))
+    (pconstant validityRange)
+
+authenticatedHead ::
+  forall s.
+  BS.ByteString ->
+  PD.Data ->
+  Term s (PMaybeData PInteger) ->
+  Term s PStateQueueNode
+authenticatedHead appendAnchorHash appendAnchorData mHeadRefIndex =
+  pauthenticatedQueueHeadForAppendV1
+    refInputs
+    sqPolicy
+    (pconstant appendAnchorHash)
+    (pconstant appendAnchorData)
+    0
+    mHeadRefIndex
+
+pruneUnattested :: forall s. TxOut -> Node -> Term s PBool
+pruneUnattested rootReference headNode =
+  ppruneTimedOutBlockDescendantV1
+    sqPolicy
+    ( dataList
+        [ toPD (TxInInfo (outRefN 1) (nodeOut headNode))
+        , toPD (TxInInfo (outRefN 2) (nodeOut descendantNode))
+        ]
+    )
+    (dataList [toPD (nodeOut headNode {nodeLink = linkNone})])
+    (dataList [toPD (TxInInfo (outRefN 0) rootReference)])
+    (pmint $ burnNode hashB)
+    (pconstant $ closed 3_600_200 3_601_200)
+    (pconstant hashA)
+    0
+    (pconstant $ outRefN 1)
+    0
+
+removeUnattested :: forall s. Node -> BS.ByteString -> Term s PBool
+removeUnattested headNode requestedHeaderHash =
+  premoveUnattestedHeadAfterTimeoutV1
+    sqPolicy
+    ( dataList
+        [ toPD (TxInInfo (outRefN 0) rootOut)
+        , toPD (TxInInfo (outRefN 1) (nodeOut headNode))
+        ]
+    )
+    (dataList [toPD (rootOutWithLink linkNone)])
+    (pmint $ burnNode hashA)
+    (pconstant $ closed 3_600_200 3_601_200)
+    (pconstant requestedHeaderHash)
+    (pconstant $ outRefN 0)
+    0
+
+pruneUnavailable :: forall s. Node -> BS.ByteString -> Term s PBool
+pruneUnavailable headNode challengeName =
+  ppruneUnavailableBlockDescendantV1
+    sqPolicy
+    ( dataList
+        [ toPD (TxInInfo (outRefN 1) (nodeOut headNode))
+        , toPD (TxInInfo (outRefN 2) (nodeOut descendantNode))
+        ]
+    )
+    (dataList [toPD (nodeOut headNode {nodeLink = linkNone})])
+    (dataList [toPD (TxInInfo (outRefN 0) rootOut)])
+    (pmint $ burnNode hashB)
+    (pconstant hashA)
+    (pconstant challengeName)
+    0
+    (pconstant $ outRefN 1)
+    0
+
+removeUnavailable :: forall s. Node -> BS.ByteString -> Term s PBool
+removeUnavailable headNode challengeName =
+  premoveUnavailableHeadV1
+    sqPolicy
+    ( dataList
+        [ toPD (TxInInfo (outRefN 0) rootOut)
+        , toPD (TxInInfo (outRefN 1) (nodeOut headNode))
+        ]
+    )
+    (dataList [toPD (rootOutWithLink linkNone)])
+    (pmint $ burnNode hashA)
+    (pconstant hashA)
+    (pconstant challengeName)
+    (pconstant $ outRefN 0)
+    0
+
+descendantNode :: Node
+descendantNode =
+  unattested
+    { nodeKey = hashB
+    , nodePrevHash = hashA
+    , nodeLink = linkNone
+    }
+
+burnNode :: BS.ByteString -> MintValue
+burnNode key = UnsafeMintValue (getValue $ singleton sqPolicySymbol (blockName key) (-1))
+
+pmint :: forall s. MintValue -> Term s PMintValue
+pmint value = pfromData (pconstant @(PAsData PMintValue) value)
+
+fraudAnchor, rotatedDescendant, fraudParent, fraudTail :: Node
+fraudAnchor = unattested {nodeKey = hashA, nodeLink = linkTo hashB}
+rotatedDescendant =
+  unattested
+    { nodeKey = hashB
+    , nodePrevHash = hashA
+    , nodeOperator = rotatedOperator
+    , nodeLink = linkNone
+    }
+fraudParent =
+  unattested
+    { nodeKey = hashA
+    , nodeOperator = rotatedOperator
+    , nodeLink = linkTo hashB
+    }
+fraudTail =
+  unattested
+    { nodeKey = hashB
+    , nodePrevHash = hashA
+    , nodeOperator = defaultOperator
+    , nodeLink = linkNone
+    }
+
+removeFraudLink :: forall s. BS.ByteString -> Node -> Term s PBool
+removeFraudLink requestedAnchorHash removedNode =
+  premoveFraudulentBlocksLinkV1
+    sqPolicy
+    ( dataList
+        [ toPD (TxInInfo (outRefN 1) (nodeOut fraudAnchor))
+        , toPD (TxInInfo (outRefN 2) (nodeOut removedNode))
+        ]
+    )
+    (dataList [toPD (nodeOut fraudAnchor {nodeLink = nodeLink removedNode})])
+    (pmint $ burnNode $ nodeKey removedNode)
+    (pconstant requestedAnchorHash)
+    (pconstant $ outRefN 1)
+    0
+
+removeLastFraudulent :: forall s. BS.ByteString -> Node -> Term s PBool
+removeLastFraudulent expectedOperator removedNode =
+  premoveLastFraudulentBlockV1
+    sqPolicy
+    ( dataList
+        [ toPD (TxInInfo (outRefN 1) (nodeOut fraudParent))
+        , toPD (TxInInfo (outRefN 2) (nodeOut removedNode))
+        ]
+    )
+    (dataList [toPD (nodeOut fraudParent {nodeLink = nodeLink removedNode})])
+    (pmint $ burnNode $ nodeKey removedNode)
+    (punsafeCoerce $ pconstant @PData $ PD.B expectedOperator)
+    (pconstant $ nodeKey removedNode)
+    (pconstant $ outRefN 1)
+    0
 
 outRefN :: Integer -> TxOutRef
 outRefN = TxOutRef (TxId "0101010101010101010101010101010101010101010101010101010101010101")

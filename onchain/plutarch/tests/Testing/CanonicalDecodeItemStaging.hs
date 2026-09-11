@@ -9,7 +9,6 @@ import Test.Tasty.HUnit
 import Plutarch.Prelude
 
 import Midgard.CanonicalDecodeItemStaging
-import Midgard.LedgerState (PItemProofV1 (..))
 import Midgard.ValidationMachine hiding (pverifyCanonicalDecodeItem)
 import Midgard.ValidationResolution
 import Midgard.ValidationTrace
@@ -52,11 +51,8 @@ proof = pcon $ PCanonicalDecodeItemProofV1 (pdata 1) (pdata $ pconstant True) (p
 
 observation :: forall s. Term s PCanonicalDecodeItemObservationV1
 observation = pcon $ PCanonicalDecodeItemObservationV1
-  (pdata $ pcon $ PItemProofV1
-    (pdata 1) (pdata 0) (pdata 1) (pdata 0) (pdata 1)
-    (pdata $ hash 12) (pdata pnil) (pdata pnil))
   (pdata 1)
-  (pdata $ hash 12)
+  (pdata 32)
 
 machineState :: forall s. PValidationPhase s -> Term s PValidationMachineStateV1
 machineState phase = pcon $ PValidationMachineStateV1

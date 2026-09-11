@@ -25,8 +25,10 @@ module Midgard.DaAttestation (
 import Data.ByteString qualified as BS
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
-import Plutarch.LedgerApi.V3 (PPubKeyHash, PTokenName (..))
+import Plutarch.LedgerApi.V3 (PAddress, PPubKeyHash, PTokenName (..))
 import Plutarch.Prelude
+
+import Midgard.AvailabilityChallenge (PCommitmentV1)
 
 {- | Aiken @da_attestation.MintRedeemer@.
 
@@ -47,6 +49,7 @@ data PMintRedeemer (s :: S)
       , papply'stateQueueInputIndex :: Term s (PAsData PInteger)
       , papply'stateQueueOutputIndex :: Term s (PAsData PInteger)
       , papply'stateQueueMintRefScriptInputIndex :: Term s (PAsData PInteger)
+      , papply'availabilityMintRedeemerIndex :: Term s (PAsData PInteger)
       }
   | PRescueStrandedAttestation
       { prescue'daAttestationInputIndex :: Term s (PAsData PInteger)
@@ -141,8 +144,10 @@ population, carried separately so a consumer need not count bits.
 -}
 data PDaAttestationDatum (s :: S) = PDaAttestationDatum
   { pdaAttestation'headerHash :: Term s (PAsData PByteString)
+  , pdaAttestation'availabilityCommitment :: Term s (PAsData PCommitmentV1)
   , pdaAttestation'daThreshold :: Term s (PAsData PInteger)
   , pdaAttestation'committeeSignersHash :: Term s (PAsData PByteString)
+  , pdaAttestation'rescueBeneficiary :: Term s (PAsData PAddress)
   , pdaAttestation'attestedSigners :: Term s (PAsData PByteString)
   , pdaAttestation'attestationCount :: Term s (PAsData PInteger)
   }

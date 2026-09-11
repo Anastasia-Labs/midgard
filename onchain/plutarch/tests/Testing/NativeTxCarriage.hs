@@ -61,7 +61,6 @@ import Midgard.NativeTxCarriage (
 import Midgard.NativeTxFieldAccess (
   PFieldPreimageCertificateV1 (..),
   pfieldCommitment,
-  pfieldPreimageCertificateAssetName,
  )
 import Testing.Eval (passertEval, pfails)
 import Testing.FraudProofsFixture (
@@ -152,6 +151,10 @@ buildTests =
       holds $
         pmatch builtCertificate (\PFieldPreimageCertificateV1 {pcert'chunkDigests} -> pcert'chunkDigests)
           #== pdata (chunksT (map blake2b256 (splitRef preimage)))
+  , testCase "the producer welds the field commitment" $
+      holds $
+        pmatch builtCertificate $ \PFieldPreimageCertificateV1 {pcert'fieldHash} ->
+          pfromData pcert'fieldHash #== pfieldCommitment # pconstant preimage
   , {- The tier boundary is a partition, not a preference: a preimage that fits
        tier 1 or tier 2 cannot have a tier-3 certificate brought into existence
        at all. -}
@@ -228,7 +231,14 @@ certifyTests =
           # pconstant (witnessSetCborFrom (h 0x01, h 0x02, h 0x03))
           # chunksT (splitRef preimage)
   , testCase "a preimage the field does not commit is refused" $
-      refuses $ certify 8 otherPreimage certifiedCase
+      pfails $ certify 8 otherPreimage certifiedCase
+  , testCase "a certificate welding another field hash aborts" $
+      pfails $
+        pverifyFieldPreimageCertificateV1
+          # certificateWithFieldHash preimage (BS.replicate 32 0)
+          # pconstant (cCompact certifiedCase)
+          # pconstant (cWitnessSet certifiedCase)
+          # chunksT (splitRef preimage)
   , testCase "certification_rejects_a_reordered_chunk_vector" $
       refuses $
         verifyWith
@@ -281,31 +291,15 @@ republishedCarriageCertifies =
   plet (pconstant healingPreimage) $ \preimage' ->
     plet (buildWith healingOwner (cTxId healingCase) 8 healingPreimage) $ \original ->
       plet (buildWith healer (cTxId healingCase) 8 healingPreimage) $ \healed ->
-        plet
-          ( pcons
-              # pdata (psliceBS # 0 # 15_900 # preimage')
-              #$ pcons
-                # pdata
-                  ( psliceBS
-                      # 15_900
-                      # (plengthBS # preimage' - 15_900)
-                      # preimage'
-                  )
-                # pnil
-          )
+        plet (psplitFieldPreimage # preimage')
           $ \republishedChunks ->
-            pmatch original $ \PFieldPreimageCertificateV1 {pcert'txId = originalTxId, pcert'fieldIndex = originalFieldIndex, pcert'totalLength = originalLength, pcert'chunkDigests = originalDigests} ->
-              pmatch healed $ \PFieldPreimageCertificateV1 {pcert'txId = healedTxId, pcert'fieldIndex = healedFieldIndex, pcert'totalLength = healedLength, pcert'chunkDigests = healedDigests} ->
+            pmatch original $ \PFieldPreimageCertificateV1 {pcert'txId = originalTxId, pcert'fieldIndex = originalFieldIndex, pcert'fieldHash = originalFieldHash, pcert'totalLength = originalLength, pcert'chunkDigests = originalDigests} ->
+              pmatch healed $ \PFieldPreimageCertificateV1 {pcert'txId = healedTxId, pcert'fieldIndex = healedFieldIndex, pcert'fieldHash = healedFieldHash, pcert'totalLength = healedLength, pcert'chunkDigests = healedDigests} ->
                 originalDigests #== healedDigests
                   #&& originalLength #== healedLength
-                  #&& ( pfieldPreimageCertificateAssetName
-                          # pfromData originalTxId
-                          # pfromData originalFieldIndex
-                      )
-                    #== ( pfieldPreimageCertificateAssetName
-                            # pfromData healedTxId
-                            # pfromData healedFieldIndex
-                        )
+                  #&& originalFieldHash #== healedFieldHash
+                  #&& originalTxId #== healedTxId
+                  #&& originalFieldIndex #== healedFieldIndex
                   #&& ( pverifyFieldPreimageCertificateV1
                           # original
                           # pconstant (cCompact healingCase)
@@ -334,22 +328,24 @@ transpositionTests =
   [ testCase "the script preimage certifies under field 6" $
       holds $ certify 6 preimage (scriptSlotCase preimage)
   , testCase "…and not under field 7" $
-      refuses $ certify 7 preimage (scriptSlotCase preimage)
+      pfails $ certify 7 preimage (scriptSlotCase preimage)
   , testCase "the address preimage certifies under field 7" $
       holds $ certify 7 preimage (addressSlotCase preimage)
   , testCase "…and not under field 6" $
-      refuses $ certify 6 preimage (addressSlotCase preimage)
+      pfails $ certify 6 preimage (addressSlotCase preimage)
   , testCase "the redeemer preimage certifies under field 8" $
       holds $ certify 8 preimage (redeemerSlotCase preimage)
   , testCase "…and not under either witness slot below it" $
-      refuses $ certify 6 preimage (redeemerSlotCase preimage)
+      pfails $ certify 6 preimage (redeemerSlotCase preimage)
   , -- The body half of the table must not alias the witness half.
     testCase "a witness preimage does not certify under a body index" $
-      refuses $ certify 0 preimage (redeemerSlotCase preimage)
-  , testCase "…at any body index" $
-      holds $
-        pall'
-          [pnot #$ certify i preimage (redeemerSlotCase preimage) | i <- [0 .. 5]]
+      pfails $ certify 0 preimage (redeemerSlotCase preimage)
+  , testGroup
+      "a witness preimage does not certify at any body index"
+      [ testCase ("field " <> show i) $
+          pfails $ certify i preimage (redeemerSlotCase preimage)
+      | i <- [0 .. 5]
+      ]
   , testCase "a field index outside 0..8 aborts" $
       pfails $ certify 9 preimage (redeemerSlotCase preimage)
   ]
@@ -360,7 +356,7 @@ transpositionTests =
 
 -- | @native_tx_field_access_v1.chunk_bytes_k@.
 chunkK :: Int
-chunkK = 15900
+chunkK = 15148
 
 -- | @max_transaction_aggregate_field_bytes@.
 aggregateCap :: Int
@@ -391,8 +387,8 @@ straddleVectorMatches =
         PCons second trailing ->
           plengthBS # pconstant straddlePreimage #== 16_003
             #&& pfieldCommitment # pconstant straddlePreimage #== pconstant straddleCommitment
-            #&& plengthBS # pfromData first #== 15_900
-            #&& plengthBS # pfromData second #== 103
+            #&& plengthBS # pfromData first #== 15_148
+            #&& plengthBS # pfromData second #== 855
             #&& pnull # trailing
             #&& pfieldPreimageChunkDigests # pconstant straddlePreimage
               #== chunksT straddleChunkDigests
@@ -405,8 +401,8 @@ straddleCommitment = hex "c33cac158cd252aeb86e3fafb6776fd03e7afacffa7923c05878af
 
 straddleChunkDigests :: [BS.ByteString]
 straddleChunkDigests = map hex
-  [ "3d472a8b6608fd6572a3de26a9f95a37c86c9ba739c39b5b8314f860bc908806"
-  , "7243f0ea84ad415d83212fc24569d54be7e81f50198a257f93de50cfcb3d7cb2"
+  [ "aca116dea52dcd7df1d81db0f89b6538c62f12a9a058bb2a9746aafe80ca4282"
+  , "2a5f24003a2f2ea29bd7bb3e2a8d305772011e94ccc2f862c2f19d2cb93fd8a4"
   ]
 
 preimage, otherPreimage, bigPreimage, healingPreimage :: BS.ByteString
@@ -599,15 +595,21 @@ certificateFor ::
   BS.ByteString ->
   Term s PFieldPreimageCertificateV1
 certificateFor txId fieldIndex p =
-  certificateOf txId fieldIndex (fromIntegral (BS.length p)) (map blake2b256 (splitRef p))
+  certificateOf txId fieldIndex (blake2b256 p) (fromIntegral (BS.length p)) (map blake2b256 (splitRef p))
 
 certificateWithLength ::
   forall (s :: S). BS.ByteString -> Integer -> Term s PFieldPreimageCertificateV1
-certificateWithLength p len = certificateOf (txIdOf tx1) 8 len (map blake2b256 (splitRef p))
+certificateWithLength p len =
+  certificateOf (txIdOf tx1) 8 (blake2b256 p) len (map blake2b256 (splitRef p))
+
+certificateWithFieldHash ::
+  forall (s :: S). BS.ByteString -> BS.ByteString -> Term s PFieldPreimageCertificateV1
+certificateWithFieldHash p fieldHash =
+  certificateOf (txIdOf tx1) 8 fieldHash (fromIntegral (BS.length p)) (map blake2b256 (splitRef p))
 
 lopsidedCertificate :: forall (s :: S). BS.ByteString -> Term s PFieldPreimageCertificateV1
 lopsidedCertificate p =
-  certificateOf (txIdOf tx1) 8 (fromIntegral (BS.length p)) (map blake2b256 (lopsided p))
+  certificateOf (txIdOf tx1) 8 (blake2b256 p) (fromIntegral (BS.length p)) (map blake2b256 (lopsided p))
 
 reorderedCertificate :: forall (s :: S). Term s PFieldPreimageCertificateV1
 reorderedCertificate =
@@ -615,6 +617,7 @@ reorderedCertificate =
     healingOwner
     reorderedTxId
     0
+    (blake2b256 reorderedPreimage)
     (fromIntegral (BS.length reorderedPreimage))
     (map blake2b256 (reverse (splitRef reorderedPreimage)))
 
@@ -622,6 +625,7 @@ certificateOf ::
   forall (s :: S).
   BS.ByteString ->
   Integer ->
+  BS.ByteString ->
   Integer ->
   [BS.ByteString] ->
   Term s PFieldPreimageCertificateV1
@@ -632,15 +636,17 @@ certificateOfWithOwner ::
   BS.ByteString ->
   BS.ByteString ->
   Integer ->
+  BS.ByteString ->
   Integer ->
   [BS.ByteString] ->
   Term s PFieldPreimageCertificateV1
-certificateOfWithOwner certificateOwner txId fieldIndex totalLength digests =
+certificateOfWithOwner certificateOwner txId fieldIndex fieldHash totalLength digests =
   pcon $
     PFieldPreimageCertificateV1
       { pcert'owner = pdata (punsafeCoerce (pconstant @PByteString certificateOwner))
       , pcert'txId = pdata (pconstant txId)
       , pcert'fieldIndex = pdata (pconstant fieldIndex)
+      , pcert'fieldHash = pdata (pconstant fieldHash)
       , pcert'totalLength = pdata (pconstant totalLength)
       , pcert'chunkDigests = pdata (chunksT digests)
       }
@@ -722,9 +728,6 @@ holds = passertEval
 
 refuses :: (forall (s :: S). Term s PBool) -> Assertion
 refuses p = passertEval (pnot # p)
-
-pall' :: forall (s :: S). [Term s PBool] -> Term s PBool
-pall' = foldr (#&&) (pconstant True)
 
 hex :: BS.ByteString -> BS.ByteString
 hex = Base16.decodeLenient

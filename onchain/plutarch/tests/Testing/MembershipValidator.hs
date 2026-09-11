@@ -20,7 +20,6 @@ import Plutarch.MerkleTree.PatriciaForestry (MerklePatriciaForestry (..), ProofS
 import Plutarch.Prelude
 import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V3 hiding (POSIXTime)
-import PlutusTx.Builtins (fromBuiltin, toBuiltin)
 import PlutusTx.Builtins qualified as Builtins
 import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import PlutusTx.IsData qualified as PlutusTx

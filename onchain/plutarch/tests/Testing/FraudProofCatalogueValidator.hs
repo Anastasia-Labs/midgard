@@ -70,6 +70,9 @@ tests =
         [ testCase "accepts genesis coupled with hub oracle" $
             psucceeds $
               runMint (hubNft 1 <> catalogueNft 1)
+        , testCase "accepts another asset under the hub policy" $
+            psucceeds $
+              runMint (hubNft 1 <> singleton hubPolicy (TokenName "OTHER_HUB_ASSET") 7 <> catalogueNft 1)
         , testCase "rejects standalone catalogue mint" $
             pfails $
               runMint (catalogueNft 1)

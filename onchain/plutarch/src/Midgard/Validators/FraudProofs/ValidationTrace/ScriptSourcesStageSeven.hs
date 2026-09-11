@@ -14,11 +14,10 @@ module Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesStageSeven (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
-import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash)
+import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo (..))
 import Plutarch.Prelude
 
-import Midgard.BoundedCollection (PItemProofV1)
-import Midgard.BoundedItem (PChunkProofV1)
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepWitnessV1,
@@ -28,6 +27,7 @@ import Midgard.ValidationMachine (
  )
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PScriptSources))
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 
 data PScriptSourcesStageSevenObserverActionV1 (s :: S)
@@ -35,8 +35,9 @@ data PScriptSourcesStageSevenObserverActionV1 (s :: S)
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PValidationOneStepWitnessV1))
-      (Term s (PAsData PItemProofV1))
-      (Term s (PAsData PChunkProofV1))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldCarriageV1))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesStageSevenObserverActionV1)
@@ -65,13 +66,18 @@ data PScriptSourcesStageSevenFinishActionV1 (s :: S)
   deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesStageSevenFinishActionV1)
 
 scriptSourcesStageSevenObserverSemanticV1Validator :: forall s.
-  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
-scriptSourcesStageSevenObserverSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    )
+scriptSourcesStageSevenObserverSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PScriptSourcesStageSevenObserverActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyObserver inputIndex outputIndex transitionD collectionProofD chunkProofD) ->
+    \action -> pmatch action $ \(PVerifyObserver inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD) ->
       plet (pfromData transitionD) $ \transition ->
-      plet (pcon $ PTransactionFieldChunkWitness collectionProofD chunkProofD) $ \auxiliary ->
+      plet (pcon $ PTransactionFieldChunkWitness fieldIndexD itemIndexD carriageD) $ \auxiliary ->
+      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
         pcontinueWinning
           (pcon PScriptSources)
           awardScriptHash policyId datum
@@ -79,7 +85,8 @@ scriptSourcesStageSevenObserverSemanticV1Validator = plam $ \awardScriptHash pol
           (pforgetData $ pdata auxiliary)
           ( pverifyScriptSourcesStageSevenObserverSemanticsV1
               # pvalidationSemanticPreState datum # transition
-              # pfromData collectionProofD # pfromData chunkProofD
+              # door # pfromData fieldIndexD # pfromData itemIndexD
+              # pfromData carriageD
           )
           ownOutRef txInfo
 

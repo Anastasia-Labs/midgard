@@ -9,6 +9,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Midgard.NativeScriptScan
+import Midgard.NativeScriptScanOneShot
 import Testing.Eval (passertEvalNoTrace)
 
 tests :: TestTree
@@ -18,6 +19,14 @@ tests = testGroup "Midgard.NativeScriptScan"
   , testCase "one_token_successor_is_bounded" $ passertEvalNoTrace oneTokenBounded
   , testCase "reports_authenticated_malformed_and_trailing_syntax" $ passertEvalNoTrace reportsMalformed
   , testCase "fails_closed_for_a_wrong_frame_preimage" $ passertEvalNoTrace wrongFrameFails
+  , testCase "one_shot_admits_the_cross_language_script" $ passertEvalNoTrace $ ppayloadStructureIsCanonicalV1 # crossLanguageScript
+  , testCase "one_shot_fails_closed_for_an_empty_payload" $ passertEvalNoTrace $ pnot # (ppayloadStructureIsCanonicalV1 # pconstant "")
+  , testCase "one_shot_fails_closed_for_a_malformed_payload" $ passertEvalNoTrace $ pnot # (ppayloadStructureIsCanonicalV1 # malformedPayload)
+  , testCase "one_shot_fails_closed_for_a_trailing_byte" $ passertEvalNoTrace oneShotTrailing
+  , testCase "one_shot_fails_closed_for_a_truncated_child_list" $ passertEvalNoTrace oneShotTruncated
+  , testCase "one_shot_fails_closed_at_the_node_bound_edge" $ passertEvalNoTrace oneShotNodeBound
+  , testCase "one_shot_fails_closed_at_the_depth_bound_edge" $ passertEvalNoTrace oneShotDepthBound
+  , testCase "one_shot_default_bounds_are_the_staged_machine_bounds" $ passertEvalNoTrace oneShotDefaultBounds
   ]
 
 scansTree :: forall s. Term s PBool
@@ -65,6 +74,34 @@ wrongFrameFails =
   plet (advanced $ pstructureTokenStepV1 # root # crossLanguageScript # cursor root) $ \signature ->
     pstructureFrameStepV1 # signature # rootFrame 1 #== pcon PNothing
 
+oneShotTrailing :: forall s. Term s PBool
+oneShotTrailing =
+  ppayloadStructureIsCanonicalV1 # timelockLeaf
+    #&& pnot # (ppayloadStructureIsCanonicalV1 # trailingPayload)
+
+oneShotTruncated :: forall s. Term s PBool
+oneShotTruncated =
+  ppayloadStructureIsCanonicalV1 # widePayload 2
+    #&& pnot # (ppayloadStructureIsCanonicalV1 # truncatedPayload)
+
+oneShotNodeBound :: forall s. Term s PBool
+oneShotNodeBound =
+  ppayloadStructureIsCanonicalAtBoundsV1 # widePayload 8 # 9 # pmaxNativeScriptDepth
+    #&& pnot # (ppayloadStructureIsCanonicalAtBoundsV1 # widePayload 8 # 8 # pmaxNativeScriptDepth)
+
+oneShotDepthBound :: forall s. Term s PBool
+oneShotDepthBound =
+  ppayloadStructureIsCanonicalAtBoundsV1 # deepPayload 27 # pmaxNativeScriptNodes # 8
+    #&& pnot # (ppayloadStructureIsCanonicalAtBoundsV1 # deepPayload 27 # pmaxNativeScriptNodes # 7)
+
+oneShotDefaultBounds :: forall s. Term s PBool
+oneShotDefaultBounds =
+  pmaxNativeScriptNodes #== 16_384
+    #&& pmaxNativeScriptDepth #== 16_384
+    #&& ppayloadStructureIsCanonicalV1 # widePayload 8
+      #== ppayloadStructureIsCanonicalAtBoundsV1 # widePayload 8 # pmaxNativeScriptNodes # pmaxNativeScriptDepth
+    #&& pmaxNativeScriptNodes * 3 #> 16_341
+
 rootFrame :: forall s. Term s PInteger -> Term s PNativeScriptFrameV1
 rootFrame remaining = pcon $ PNativeScriptFrameV1
   (pdata $ pconstant "") (pdata patLeastNode) (pdata 2) (pdata remaining) (pdata 0) (pdata 1)
@@ -84,6 +121,20 @@ crossLanguageScript = bytes "830301828200581c44444444444444444444444444444444444
 terminalControl = bytes "8801030018281828400003"
 malformedScript = bytes "82004144"
 validWithTrailing = bytes "8200581c4444444444444444444444444444444444444444444444444444444400"
+
+timelockLeaf, malformedPayload, trailingPayload, truncatedPayload :: forall s. Term s PByteString
+timelockLeaf = bytes "820400"
+malformedPayload = bytes "820700"
+trailingPayload = bytes "82040000"
+truncatedPayload = bytes "820182820400"
+
+widePayload :: forall s. Int -> Term s PByteString
+widePayload n = pconstant $ "\x82\x01" <> BS.singleton (fromIntegral $ 0x80 + n) <> BS.concat (replicate n "\x82\x04\x00")
+
+deepPayload :: forall s. Int -> Term s PByteString
+deepPayload byteBudget = pconstant $ BS.concat (replicate containers "\x82\x01\x81") <> "\x82\x04\x00"
+  where
+    containers = (byteBudget - 3) `div` 3
 
 bytes :: forall s. BS.ByteString -> Term s PByteString
 bytes = pconstant . Base16.decodeLenient

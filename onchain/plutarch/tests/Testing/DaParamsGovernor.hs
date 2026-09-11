@@ -11,30 +11,51 @@ names are carried over where they correspond.
 
 Two properties are worth more than the rest, and both get tested as properties
 rather than as single points: no threshold below the governed floor is ever
-admitted, and no owner set can be drained to one.
+admitted, and the floor remains satisfiable down to a one-member set.
 -}
 module Testing.DaParamsGovernor (tests) where
 
 import Data.ByteString qualified as BS
 import PlutusCore.Data qualified as PD
+import PlutusLedgerApi.V1.Address (pubKeyHashAddress, scriptHashAddress)
+import PlutusLedgerApi.V1.Value (CurrencySymbol (..), TokenName (..), Value, singleton)
+import PlutusLedgerApi.V3 (Address, PubKeyHash (..), ScriptHash (..), TxId (..), TxOutRef (..), toBuiltinData)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import PlutusTx.Builtins qualified as Builtins
-import PlutusTx.Builtins (fromBuiltin, toBuiltin)
+import PlutusTx.Builtins (dataToBuiltinData, fromBuiltin, toBuiltin)
 import Plutarch.LedgerApi.V3 (PPubKeyHash)
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.DaAttestation (PDaParamsDatum)
 import Midgard.Validators.DaParamsGovernor (
+  daParamsGovernorMintValidator,
+  daParamsGovernorSpendValidator,
   pgovernedThresholdFloor,
   pownerQuorumMet,
   psortedUniqueLenAtMost,
   psortedUniquePackedLenAtMost,
   pvalidDatum,
  )
-import Testing.Eval (passertEval, pfails)
+import Testing.Eval (passertEval, pfails, psucceeds)
+import Testing.ScriptContextBuilder (
+  buildScriptContext,
+  mkAdaValue,
+  withAddress,
+  withInlineDatum,
+  withInput,
+  withMintingScript,
+  withOutRef,
+  withOutput,
+  withSigner,
+  withSpendingScript,
+  withTxOutAddress,
+  withTxOutInlineDatum,
+  withTxOutValue,
+  withValue,
+ )
 
 -- | Collects the tests defined in this module.
 tests :: TestTree
@@ -46,23 +67,25 @@ tests =
     , listTests
     , quorumTests
     , datumTests
+    , handlerTests
     ]
 
 --------------------------------------------------------------------------------
 -- governed_threshold_floor
 --------------------------------------------------------------------------------
 
-{- | @max(2, ceil(2n/3))@.
-
-The clamp and the two-thirds term defend different attacks, so both ends are
-pinned: small sets by the clamp, large sets by the ratio.
--}
+-- | @ceil(2n/3)@, including the owner-approved one-member case.
 floorTests :: TestTree
 floorTests =
   testGroup
     "governedThresholdFloor"
-    [ testCase "clamps small sets at two" $
-        holds $ pall # plam (\n -> (pgovernedThresholdFloor # n) #== 2) # intsT [0, 1, 2, 3]
+    [ testCase "da_params_governor_invariant_da_threshold_majority_floor" $
+        holds $
+          pand'ListT
+            [ (pgovernedThresholdFloor # 1) #== 1
+            , (pgovernedThresholdFloor # 2) #== 2
+            , (pgovernedThresholdFloor # 3) #== 2
+            ]
     , -- ceil(2n/3): 4->3, 5->4, 6->4, 9->6, 16->11
       testCase "is the two-thirds ceiling above the clamp" $
         holds $
@@ -75,18 +98,18 @@ floorTests =
             ]
     , -- The floor must always be reachable, or the parameters would be
       -- unsatisfiable for that set size.
-      testCase "never exceeds the set it bounds, for sets of two or more" $
+      testCase "da_params_governor_invariant_update_threshold_floor" $
         holds $
           pall
             # plam (\n -> (pgovernedThresholdFloor # n) #<= n)
-            # intsT [2 .. 64]
+            # intsT [1 .. 64]
     , -- da_params_governor_invariant_da_threshold_majority_floor: a floor at or
       -- below half would let a bare majority — or less — rotate the committee.
-      testCase "always exceeds half the set" $
+      testCase "da_params_governor_invariant_owner_set_drain_protection" $
         holds $
           pall
             # plam (\n -> pdiv # n # 2 #< (pgovernedThresholdFloor # n))
-            # intsT [2 .. 64]
+            # intsT [1 .. 64]
     ]
 
 --------------------------------------------------------------------------------
@@ -190,11 +213,16 @@ datumTests =
       -- it, so a datum whose hash does not match its committee is meaningless.
       testCase "rejects a committee hash that is not the committee's" $
         fails $ valid control {pHashOverride = Just (BS.replicate 32 0x99)}
-    , -- da_params_governor_invariant_owner_set_drain_protection
-      testCase "da_params_governor_rejects_single_member_committee_datum" $
-        fails $ valid control {pOwners = [1], pUpdateThreshold = 1}
-    , testCase "rejects a single-key committee, whose floor exceeds it" $
-        fails $ valid control {pCommittee = [1], pDaThreshold = 1}
+    , testCase "da_params_governor_rejects_empty_owner_set" $
+        fails $ valid control {pOwners = [], pUpdateThreshold = 1}
+    , testCase "da_params_governor_accepts_single_member_committee_datum" $
+        holds $ valid control {pCommittee = [1], pDaThreshold = 1}
+    , testCase "da_params_governor_rejects_single_member_committee_threshold_above_size" $
+        fails $ valid control {pCommittee = [1], pDaThreshold = 2}
+    , testCase "da_params_governor_accepts_single_owner_datum" $
+        holds $ valid control {pOwners = [1], pUpdateThreshold = 1}
+    , testCase "da_params_governor_rejects_single_owner_threshold_above_size" $
+        fails $ valid control {pOwners = [1], pUpdateThreshold = 2}
     , testCase "rejects a duplicated committee key" $
         fails $ valid control {pCommittee = [1, 1, 2]}
     , testCase "rejects duplicated owners" $
@@ -214,6 +242,109 @@ datumTests =
     , testCase "rejects a six-owner set one below its floor" $
         fails $ valid control {pOwners = [1 .. 6], pUpdateThreshold = 3}
     ]
+
+handlerTests :: TestTree
+handlerTests =
+  testGroup
+    "handlers"
+    [ testCase "da_params_governor_accepts_single_member_committee_thresholds" $
+        holds $ (pgovernedThresholdFloor # 1) #== 1
+    , testCase "da_params_governor_accepts_single_owner_governance_rotation" $
+        psucceeds $
+          runGovernorSpend
+            control {pCommittee = [1 .. 6], pDaThreshold = 4, pOwners = [1], pUpdateThreshold = 1}
+            control {pOwners = [1], pUpdateThreshold = 1}
+            [1]
+    , testCase "da_params_governor_mint_control_initial_params_at_floor_accepted" $
+        psucceeds $
+          runGovernorMint control {pCommittee = [1 .. 6], pDaThreshold = 4}
+    , testCase "da_params_governor_mint_rejects_initial_datum_below_floor" $
+        pfails $
+          runGovernorMint control {pCommittee = [1 .. 6], pDaThreshold = 3}
+    , testCase "da_params_governor_spend_control_quorum_signed_update_accepted" $
+        psucceeds $
+          runGovernorSpend
+            control {pCommittee = [1 .. 6], pDaThreshold = 4}
+            control {pCommittee = [1 .. 6], pDaThreshold = 5}
+            [1, 2]
+    , testCase "da_params_governor_spend_rejects_continued_datum_below_floor" $
+        pfails $
+          runGovernorSpend
+            control {pCommittee = [1 .. 6], pDaThreshold = 4}
+            control {pCommittee = [1 .. 6], pDaThreshold = 3}
+            [1, 2]
+    ]
+
+runGovernorMint :: forall s. Params -> Term s PUnit
+runGovernorMint params =
+  daParamsGovernorMintValidator
+    # pdata (pconstant governorInitRef)
+    # pdata 16
+    # pdata 16
+    # pconstant ctx
+  where
+    ctx =
+      buildScriptContext $
+        withMintingScript (singleton governorPolicy daParamsAsset 1) (toBuiltinData ())
+          <> withInput
+            ( withOutRef governorInitRef
+                <> withAddress governorInitAddress
+                <> withValue (mkAdaValue governorLovelace)
+            )
+          <> withOutput
+            ( withTxOutAddress governorAddress
+                <> withTxOutValue governorParamsValue
+                <> withTxOutInlineDatum (dataToBuiltinData (datumData params))
+            )
+
+runGovernorSpend :: forall s. Params -> Params -> [Integer] -> Term s PUnit
+runGovernorSpend inputParams outputParams signers =
+  daParamsGovernorSpendValidator
+    # pdata 16
+    # pdata 16
+    # pconstant ctx
+  where
+    ctx =
+      buildScriptContext $
+        withSpendingScript
+          (toBuiltinData ())
+          ( withOutRef governorOwnRef
+              <> withAddress governorAddress
+              <> withValue governorParamsValue
+              <> withInlineDatum (dataToBuiltinData (datumData inputParams))
+          )
+          <> withOutput
+            ( withTxOutAddress governorAddress
+                <> withTxOutValue governorParamsValue
+                <> withTxOutInlineDatum (dataToBuiltinData (datumData outputParams))
+            )
+          <> foldMap (withSigner . signerFor) signers
+
+governorPolicy :: CurrencySymbol
+governorPolicy = CurrencySymbol (toBuiltin (BS.replicate 28 0x7a))
+
+governorAddress :: Address
+governorAddress = scriptHashAddress (ScriptHash (unCurrencySymbol governorPolicy))
+
+governorInitAddress :: Address
+governorInitAddress = pubKeyHashAddress (PubKeyHash (toBuiltin (BS.replicate 28 0x09)))
+
+governorOwnRef, governorInitRef :: TxOutRef
+governorOwnRef = TxOutRef (TxId (toBuiltin (BS.replicate 32 0x01))) 0
+governorInitRef = TxOutRef (TxId (toBuiltin (BS.replicate 32 0x02))) 1
+
+daParamsAsset :: TokenName
+daParamsAsset = TokenName "MIDGARD_DA_PARAMS"
+
+governorLovelace :: Int
+governorLovelace = 2_000_000
+
+governorParamsValue :: Value
+governorParamsValue =
+  mkAdaValue governorLovelace <> singleton governorPolicy daParamsAsset 1
+
+signerFor :: Integer -> PubKeyHash
+signerFor = PubKeyHash . toBuiltin . ownerHash
 
 --------------------------------------------------------------------------------
 -- Assertions
@@ -284,18 +415,20 @@ the hash check meaningful: if the port hashed the wrong field, these fixtures
 would disagree with it.
 -}
 datumTerm :: forall s. Params -> Term s PDaParamsDatum
-datumTerm p = pfromData (punsafeCoerce (pconstant @PData dat))
+datumTerm p = pfromData (punsafeCoerce (pconstant @PData (datumData p)))
+
+datumData :: Params -> PD.Data
+datumData p =
+  PD.Constr
+    0
+    [ PD.B committeeBytes
+    , PD.B (maybe (blake2b256 committeeBytes) id (pHashOverride p))
+    , PD.I (pDaThreshold p)
+    , PD.List (map (PD.B . ownerHash) (pOwners p))
+    , PD.I (pUpdateThreshold p)
+    ]
   where
     committeeBytes = packed (pCommittee p)
-    dat =
-      PD.Constr
-        0
-        [ PD.B committeeBytes
-        , PD.B (maybe (blake2b256 committeeBytes) id (pHashOverride p))
-        , PD.I (pDaThreshold p)
-        , PD.List (map (PD.B . ownerHash) (pOwners p))
-        , PD.I (pUpdateThreshold p)
-        ]
 
 -- | Blake2b-256, computed in Haskell rather than taken from the term.
 blake2b256 :: BS.ByteString -> BS.ByteString

@@ -51,6 +51,7 @@ import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
+import Midgard.AvailabilityChallenge (pattestationMessageV1)
 import Midgard.Common.Value (pvalueWithoutNft)
 import Midgard.DaAttestation (
   PDaAttestationDatum (..),
@@ -59,7 +60,6 @@ import Midgard.DaAttestation (
  )
 import Midgard.DaAttestation.Signatures (
   pattestationAssetName,
-  pattestationMessage,
   pverifyIndexedSignatures,
  )
 
@@ -124,8 +124,8 @@ pexpectSoleBurn = phoistAcyclic $
             ( pand'List
                 [ pnot # (pnull # entries)
                 , pnull # (ptail # entries)
-                , pfstBuiltin # (phead # entries) #== asset
-                , pfromData (psndBuiltin # (phead # entries)) #== (-1)
+                , (pmatch (phead # entries) $ \(PBuiltinPair pairFirst _) -> pairFirst) #== asset
+                , pfromData (pmatch (phead # entries) $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== (-1)
                 ]
             )
             (pconstant True)
@@ -147,8 +147,9 @@ pvalidateRescueRefund ::
   Term s (PAsData PLedgerValue) ->
   Term s (PAsData PCurrencySymbol) ->
   Term s (PAsData PTokenName) ->
+  Term s (PAsData PAddress) ->
   Term s PBool
-pvalidateRescueRefund refundOutput attestationValue ownPolicyId attestationAsset = P.do
+pvalidateRescueRefund refundOutput attestationValue ownPolicyId attestationAsset rescueBeneficiary = P.do
   PTxOut {ptxOut'address, ptxOut'value} <- pmatch refundOutput
   -- Aiken writes this as `merge(value, from_asset(policy, asset, -1))`. The
   -- attestation holds exactly one of that asset, so the merge drops the entry —
@@ -159,7 +160,8 @@ pvalidateRescueRefund refundOutput attestationValue ownPolicyId attestationAsset
   -- An `expect` chain in Aiken, so this fails rather than returning False.
   pif
     ( pand'List
-        [ pmatch ptxOut'address $ \PAddress {paddress'credential} ->
+        [ pdata ptxOut'address #== rescueBeneficiary
+        , pmatch ptxOut'address $ \PAddress {paddress'credential} ->
             pmatch paddress'credential $ \case
               PScriptCredential h -> pnot # (pto (pfromData h) #== pto (pfromData ownPolicyId))
               PPubKeyCredential _ -> pconstant True
@@ -212,8 +214,10 @@ pvalidateAddSignatures inputDatum ownInput output params signatures = P.do
     pmatch output
   PDaAttestationDatum
     { pdaAttestation'headerHash = inHeaderHash
+    , pdaAttestation'availabilityCommitment = inCommitment
     , pdaAttestation'daThreshold = inThreshold
     , pdaAttestation'committeeSignersHash = inCommitteeHash
+    , pdaAttestation'rescueBeneficiary = inRescueBeneficiary
     , pdaAttestation'attestedSigners = inAttested
     , pdaAttestation'attestationCount = inCount
     } <-
@@ -228,8 +232,10 @@ pvalidateAddSignatures inputDatum ownInput output params signatures = P.do
         )
   PDaAttestationDatum
     { pdaAttestation'headerHash = outHeaderHash
+    , pdaAttestation'availabilityCommitment = outCommitment
     , pdaAttestation'daThreshold = outThreshold
     , pdaAttestation'committeeSignersHash = outCommitteeHash
+    , pdaAttestation'rescueBeneficiary = outRescueBeneficiary
     , pdaAttestation'attestedSigners = outAttested
     , pdaAttestation'attestationCount = outCount
     } <-
@@ -246,7 +252,7 @@ pvalidateAddSignatures inputDatum ownInput output params signatures = P.do
     plet $
       pverifyIndexedSignatures
         # signatures
-        # (pattestationMessage # pfromData inHeaderHash)
+        # pattestationMessageV1 (pfromData inCommitment)
         # pfromData pdaParams'committee
         # pfromData inAttested
         # 0
@@ -276,8 +282,10 @@ pvalidateAddSignatures inputDatum ownInput output params signatures = P.do
         PDNothing -> pconstant True
         PDJust _ -> pconstant False
         , outHeaderHash #== inHeaderHash
+        , outCommitment #== inCommitment
         , outThreshold #== inThreshold
         , outCommitteeHash #== inCommitteeHash
+        , outRescueBeneficiary #== inRescueBeneficiary
         , -- A rotation retires an in-progress attestation rather than letting it
       -- continue under keys the protocol no longer trusts.
       pdaParams'committeeSignersHash #== inCommitteeHash
@@ -317,5 +325,5 @@ phasNftStrict value policyId tokenName =
         pnot
           # (pnull # entries)
           #&& pnull # (ptail # entries)
-          #&& pfstBuiltin # (phead # entries) #== tokenName
-          #&& pfromData (psndBuiltin # (phead # entries)) #== 1
+          #&& (pmatch (phead # entries) $ \(PBuiltinPair pairFirst _) -> pairFirst) #== tokenName
+          #&& pfromData (pmatch (phead # entries) $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1

@@ -42,7 +42,8 @@ import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
 import Aiken.Cbor (pdeserialise)
-import Midgard.LedgerState (PHeaderV1, PMidgardTxValidity, PNativeTxProofSourceV1)
+import Midgard.LedgerState (PHeaderV1, PNativeTxProofSourceV1)
+import Midgard.RejectionReason (POperatorVerdictV1)
 import Midgard.FraudProofs.TransitionTrace.Proof (
   PTransitionFaultProof,
   pvalidateAcceptedTransactionFaultProof,
@@ -64,7 +65,7 @@ import Midgard.ValidationClaim (
   pvalidationContextIsExact,
  )
 import Midgard.ValidationMachine (pencodeTransactionFieldScanWitness)
-import Midgard.ValidationTrace (PValidationMachineStateV1, PValidationVerdict)
+import Midgard.ValidationTrace (PValidationMachineStateV1)
 
 import Testing.Eval (passertEval, pfails)
 import Testing.FraudProofsFixture (
@@ -72,11 +73,12 @@ import Testing.FraudProofsFixture (
   blake2b224,
   cborInt,
   commitCountedRoot,
-  compactOf,
+  compactWithValidity,
   serialise,
   singleEntryPhasRoot,
   tx1,
   txIdOf,
+  witnessSetHashOf,
   witnessSetCborOf,
  )
 
@@ -224,7 +226,7 @@ prefuses p = passertEval (pnot # p)
 
 txId, compactCbor, wsCbor, lengthsCbor :: BS.ByteString
 txId = txIdOf tx1
-compactCbor = compactOf tx1
+compactCbor = compactWithValidity tx1 (witnessSetHashOf tx1) 0
 wsCbor = witnessSetCborOf tx1
 
 {- | Nine zero lengths. The proof-source verifier only requires the lengths to
@@ -233,19 +235,41 @@ re-encode to the bytes supplied; nothing in a claim reads their values.
 lengthsCbor = BS.concat ("\x89" : replicate 9 (cborInt 0))
 
 sourceData :: PD.Data
-sourceData = PD.Constr 0 [PD.B compactCbor, PD.B wsCbor, PD.B lengthsCbor]
+sourceData = sourceDataFor 0
+
+sourceDataFor :: Integer -> PD.Data
+sourceDataFor validityCode =
+  PD.Constr
+    0
+    [ PD.B (compactWithValidity tx1 (witnessSetHashOf tx1) validityCode)
+    , PD.B wsCbor
+    , PD.B lengthsCbor
+    ]
 
 -- | Aiken @compact.native_tx_proof_commitment_v1@.
 proofCommitment :: BS.ByteString
-proofCommitment =
+proofCommitment = proofCommitmentOf sourceData
+
+proofCommitmentOf :: PD.Data -> BS.ByteString
+proofCommitmentOf (PD.Constr 0 [PD.B compact, PD.B witnessSet, PD.B lengths]) =
   blake2b256 . BS.concat $
     [ "MidgardNativeTxProofSourceV1"
     , cborInt 1
     , "\x83"
-    , definiteBytes compactCbor
-    , definiteBytes wsCbor
-    , definiteBytes lengthsCbor
+    , definiteBytes compact
+    , definiteBytes witnessSet
+    , definiteBytes lengths
     ]
+proofCommitmentOf value = error ("proofCommitmentOf: unexpected source " <> show value)
+
+proofSourceOfValue :: PD.Data -> PD.Data
+proofSourceOfValue (PD.Constr 0 (_txId : source : _)) = source
+proofSourceOfValue value = error ("proofSourceOfValue: unexpected source value " <> show value)
+
+proofSourceParts :: PD.Data -> (BS.ByteString, BS.ByteString, BS.ByteString)
+proofSourceParts (PD.Constr 0 [PD.B compact, PD.B witnessSet, PD.B lengths]) =
+  (compact, witnessSet, lengths)
+proofSourceParts value = error ("proofSourceParts: unexpected source " <> show value)
 
 --------------------------------------------------------------------------------
 -- The validation context
@@ -278,7 +302,7 @@ preRoot = BS.replicate 32 0x51
 postRoot = BS.replicate 32 0x52
 deltaRoot = BS.replicate 32 0x53
 zeros32 = BS.replicate 32 0x00
-rejectionHash = blake2b256 "MidgardValidationRejectCodeV1fee-too-low"
+rejectionHash = blake2b256 "MidgardValidationRejectCodeV1E_MIN_FEE"
 
 {- | A claim, in the pieces a test wants to move independently.
 
@@ -346,9 +370,11 @@ buildClaim sourceTag eventKey sourceKey sourceKeyBytes sourceValue verdict =
     sourceKind = if sourceTag == 0 then 1 else 0 -- Forced 1, Normal 0
     phaseTag = eventKeyPhase eventKey
     eventKeyHash = blake2b256 (serialise eventKey)
+    proofSource = proofSourceOfValue sourceValue
+    (sourceCompactCbor, sourceWsCbor, sourceLengthsCbor) = proofSourceParts proofSource
     workRoot =
       workWitnessHash 0 0 $
-        scanWitness compactCbor wsCbor lengthsCbor contextCbor 0 0 0 (-1) 0
+        scanWitness sourceCompactCbor sourceWsCbor sourceLengthsCbor contextCbor 0 0 0 (-1) 0
     rejection = if rejected then rejectionHash else zeros32
     stateOf phase counter verdict' rejection' =
       PD.Constr
@@ -356,7 +382,7 @@ buildClaim sourceTag eventKey sourceKey sourceKeyBytes sourceValue verdict =
         [ PD.I 1
         , PD.B eventKeyHash
         , PD.B txId
-        , PD.B proofCommitment
+        , PD.B (proofCommitmentOf proofSource)
         , PD.B (contextHash contextCbor)
         , PD.Constr sourceKind []
         , PD.B preRoot
@@ -406,13 +432,16 @@ txOrderId :: PD.Data
 txOrderId = PD.Constr 0 [PD.B (BS.replicate 32 0x71), PD.I 3]
 
 normalClaim :: Claim
-normalClaim =
+normalClaim = normalClaimWithCode 0
+
+normalClaimWithCode :: Integer -> Claim
+normalClaimWithCode validityCode =
   buildClaim
     1
     (PD.Constr 2 [PD.B txId])
     (PD.B txId)
     txId
-    (PD.Constr 0 [PD.B txId, sourceData])
+    (PD.Constr 0 [PD.B txId, sourceDataFor validityCode])
     1
 
 {- | A normal L2 transaction whose descriptor claims a rejection.
@@ -433,13 +462,22 @@ normalRejectingClaim =
 
 forcedClaim :: Integer -> Integer -> Claim
 forcedClaim validity verdict =
+  forcedClaimWithCode validity (if validity == 0 then 0 else 1) verdict
+
+forcedClaimWithCode :: Integer -> Integer -> Integer -> Claim
+forcedClaimWithCode validity validityCode verdict =
   buildClaim
     0
     (PD.Constr 1 [txOrderId])
     txOrderId
     (serialise txOrderId)
-    (PD.Constr 0 [PD.B txId, sourceData, PD.Constr validity []])
+    (PD.Constr 0 [PD.B txId, sourceDataFor validityCode, operatorVerdict])
     verdict
+  where
+    operatorVerdict =
+      if validity == 0
+        then PD.Constr 0 []
+        else PD.Constr 1 [PD.Constr 6 []]
 
 --------------------------------------------------------------------------------
 -- Header and witness
@@ -630,6 +668,7 @@ tests =
     , testGroup "the phase map" phaseTests
     , testGroup "the source commitment" commitmentTests
     , testGroup "the source membership ABI" sourceMembershipAbiTests
+    , testGroup "source authoritativeness" sourceAuthoritativenessTests
     , testGroup "a whole claim" claimTests
     , testGroup "the cross-ties" tieTests
     , testGroup "the accepted-transaction transition mismatch" acceptedMismatchTests
@@ -641,6 +680,14 @@ sourceMembershipAbiTests =
       passertEval sourceMembershipAbiVectors
   , testCase "validation_source_membership_v1_rejects_adjacent_tag" $
       pfails $ forceSourceMembershipData $ PD.Constr 2 []
+  , testCase "validation_source_membership_v1_rejects_non_integer_reason_coordinate" $
+      pfails $ forceSourceMembershipData $
+        PD.Constr 0 [PD.Constr 0
+          [ PD.Constr 1 [], PD.B "", PD.B "", PD.I 1
+          , PD.Constr 0 [PD.B "", PD.I 0]
+          , PD.Constr 0 [PD.B "", PD.Constr 0 [PD.B "", PD.B "", PD.B ""], PD.Constr 1 [PD.Constr 0 [PD.B "not-an-integer"]]]
+          , PD.List []
+          ]]
   , testCase "validation_source_membership_v1_rejects_wrong_arity" $
       pfails $ forceSourceMembershipData $ PD.Constr 0 []
   , testCase "validation_source_membership_v1_rejects_wrong_nesting" $
@@ -709,7 +756,7 @@ canonicalSourceMembershipProofData =
 
 sourceMembershipAbiVectors :: forall s. Term s PBool
 sourceMembershipAbiVectors =
-  plet (phexByteStr "d8799fd8799fd87a80582011111111111111111111111111111111111111111111111111111111111111115820121212121212121212121212121212121212121212121212121212121212121201d8799f5820131313131313131313131313131313131313131313131313131313131313131304ffd8799f58201414141414141414141414141414141414141414141414141414141414141414d8799f428101428102428103ffd87c80ff80ffff") $ \forcedCbor ->
+  plet (phexByteStr "d8799fd8799fd87a80582011111111111111111111111111111111111111111111111111111111111111115820121212121212121212121212121212121212121212121212121212121212121201d8799f5820131313131313131313131313131313131313131313131313131313131313131304ffd8799f58201414141414141414141414141414141414141414141414141414141414141414d8799f428101428102428103ffd87a9fd905229f00ffffff80ffff") $ \forcedCbor ->
   plet (phexByteStr "d87a9fd8799fd87b8058202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222220158202323232323232323232323232323232323232323232323232323232323232323d8799f58202323232323232323232323232323232323232323232323232323232323232323d8799f43820102428104428105ffff80ffff") $ \normalCbor ->
   pmatch (pdeserialise # forcedCbor) $ \case
     PNothing -> pconstant False
@@ -728,8 +775,26 @@ sourceMembershipAbiVectors =
                   # ( pserialiseData
                         # (plistData # (pcons # forcedData #$ pcons # normalData # pnil))
                     )
-                  #== phexByteStr "5cba4fd71994ac1a802cd3a6edcda14f6acc7be43f7c1993839a65665b856f32"
+                  #== phexByteStr "b5b9145726bab81ec5920f168df2c176d56b45e64cc00b6cae07dbbcf0f94f3d"
               ]
+
+sourceAuthoritativenessTests :: [TestTree]
+sourceAuthoritativenessTests =
+  [ testCase "forced valid accepts compact validity code zero" $
+      passertEval $ authenticates $ forcedClaimWithCode 0 0 1
+  , testCase "forced valid rejects compact validity code one" $
+      prefuses $ authenticates $ forcedClaimWithCode 0 1 1
+  , testCase "forced invalid accepts compact validity code one" $
+      passertEval $ authenticates $ forcedClaimWithCode 4 1 2
+  , testCase "forced invalid rejects compact validity code zero" $
+      prefuses $ authenticates $ forcedClaimWithCode 4 0 2
+  , testCase "normal source accepts compact validity code zero" $
+      passertEval $ authenticates $ normalClaimWithCode 0
+  , testCase "normal source rejects compact validity code one" $
+      prefuses $ authenticates $ normalClaimWithCode 1
+  ]
+  where
+    authenticates c = pcommittedClaimSourceIsAuthenticated (headerT c) (witnessT c)
 
 acceptedMismatchTests :: [TestTree]
 acceptedMismatchTests =
@@ -1040,35 +1105,38 @@ immutableTests =
 verdictTests :: [TestTree]
 verdictTests =
   [ testCase "a valid transaction must have been accepted" $
-      passertEval (matches 0 1)
+      passertEval (matches validVerdict 1 zeros32)
   , testCase "…and must not have been rejected" $
-      prefuses (matches 0 2)
+      prefuses (matches validVerdict 2 rejectionHash)
   , testCase "…and must not be left pending" $
-      prefuses (matches 0 0)
+      prefuses (matches validVerdict 0 zeros32)
+  , testCase "an invalid transaction must have been rejected with its exact code" $
+      passertEval (matches invalidFeeVerdict 2 rejectionHash)
+  , testCase "an invalid transaction must not have been accepted" $
+      prefuses (matches invalidFeeVerdict 1 zeros32)
+  , testCase "a rejection under another code does not match" $
+      prefuses (matches invalidFeeVerdict 2 (BS.replicate 32 0x99))
   ]
-    <> [ testCase ("an operator verdict of " <> name <> " must have been rejected") $
-        passertEval (matches validity 2)
-       | (validity, name) <-
-          [ (1, "non-existent input")
-          , (2, "invalid signature")
-          , (3, "failed script")
-          , (4, "fee too low")
-          , (5, "unbalanced")
-          ]
-       ]
-    <> [ testCase ("…and " <> name <> " must not have been accepted") $
-        prefuses (matches validity 1)
-       | (validity, name) <-
-          [ (1, "non-existent input")
-          , (4, "fee too low")
-          ]
-       ]
   where
-    matches :: forall s. Integer -> Integer -> Term s PBool
-    matches validity verdict =
+    validVerdict = PD.Constr 0 []
+    invalidFeeVerdict = PD.Constr 1 [PD.Constr 6 []]
+    matches :: forall s. PD.Data -> Integer -> BS.ByteString -> Term s PBool
+    matches leafVerdict descriptorVerdict rejectionCodeHash =
       pforcedVerdictMatches
-        (asDataTerm @PMidgardTxValidity (PD.Constr validity []))
-        (asDataTerm @PValidationVerdict (PD.Constr verdict []))
+        (asDataTerm @POperatorVerdictV1 leafVerdict)
+        ( fromData $
+            PD.Constr
+              0
+              [ PD.I 1
+              , PD.I 1
+              , PD.B zeros32
+              , PD.I 1
+              , PD.B zeros32
+              , PD.B zeros32
+              , PD.Constr descriptorVerdict []
+              , PD.B rejectionCodeHash
+              ]
+        )
 
 --------------------------------------------------------------------------------
 
@@ -1136,9 +1204,19 @@ claimTests =
   , testCase "the source half holds on its own" $
       passertEval $
         pcommittedClaimSourceIsAuthenticated (headerT normalClaim) (witnessT normalClaim)
+  , testCase "the rejected forced source half holds on its own" $
+      passertEval $
+        pcommittedClaimSourceIsAuthenticated
+          (headerT $ forcedClaim 4 2)
+          (witnessT $ forcedClaim 4 2)
   , testCase "the endpoint half holds on its own" $
       passertEval $
         pcommittedClaimEndpointsAndSourceAreValid (headerT normalClaim) (witnessT normalClaim)
+  , testCase "the rejected forced endpoint half holds on its own" $
+      passertEval $
+        pcommittedClaimEndpointsAndSourceAreValid
+          (headerT $ forcedClaim 4 2)
+          (witnessT $ forcedClaim 4 2)
   , testCase "refuses a claim under another claim version" $
       prefuses (claimHolds normalClaim {cVersion = 2})
   , testCase "refuses a claim under another protocol version" $

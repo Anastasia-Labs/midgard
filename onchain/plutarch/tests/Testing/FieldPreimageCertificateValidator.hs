@@ -112,8 +112,8 @@ fixtureTests =
       map BS.length (splitRef preimage) @?= [chunkK, 1]
   , testCase "the certificate carries one digest per chunk" $
       length chunkDigests @?= 2
-  , testCase "the content address is a 32-byte digest" $
-      BS.length assetName @?= 32
+  , testCase "the constant certificate asset name is 27 bytes" $
+      BS.length assetName @?= 27
   ]
 
 --------------------------------------------------------------------------------
@@ -125,7 +125,7 @@ maximumCornerTests =
   [ testCase "certificate_corner_fixture_sits_at_the_three_chunk_corner" $ do
       BS.length cornerPreimage @?= 32_763
       BS.length cornerPreimage + 5 @?= 32_768
-      map BS.length cornerChunks @?= [chunkK, chunkK, 963]
+      map BS.length cornerChunks @?= [chunkK, chunkK, 2467]
       length (chunkDigestsFor cornerPreimage) @?= 3
       length (aikenChunkInputs cornerPreimage) @?= 3
   , testCase "certificate_mint_fixture_only_smallest_tier3" $ do
@@ -218,13 +218,21 @@ certificationTests =
   , -- §8.6's name is derived from `(tx_id, field_index)` so a consuming step can
     -- require the exact token for the field it is disputing. A token minted
     -- under any other name is a certificate nobody can ask for by name.
-    testCase "rejects an asset name that is not the content address" $
+    testCase "rejects an asset name that is not the constant" $
       pfails $
         runMint $
           certificationTx
             (certifyRedeemer [0, 1] 0)
-            [certificateOutput (certificateFor publisherHash) (certificateValue foreignName 1)]
+            [honestCertificateOutput]
             (mintOf foreignName 1)
+            (chunkInputs publisherHash carriageUtxoId)
+  , testCase "rejects a datum with a foreign field hash" $
+      pfails $
+        runMint $
+          certificationTx
+            (certifyRedeemer [0, 1] 0)
+            [certificateOutput (certificateWithFieldHash publisherHash (BS.replicate 32 0)) (certificateValue assetName 1)]
+            (mintOf assetName 1)
             (chunkInputs publisherHash carriageUtxoId)
   , -- Quantity 1 (§8.6). A second unit of the same name is a certificate that
     -- can be split away from the output whose datum was proved.
@@ -234,6 +242,18 @@ certificationTests =
           certificationTx
             (certifyRedeemer [0, 1] 0)
             [certificateOutput (certificateFor publisherHash) (certificateValue assetName 2)]
+            (mintOf assetName 2)
+            (chunkInputs publisherHash carriageUtxoId)
+  , testCase "field_preimage_certificate_handler_mint_rejects_two_certificates_in_one_transaction" $
+      pfails $
+        runMint $
+          certificationTx
+            (certifyRedeemer [0, 1] 0)
+            [ honestCertificateOutput
+            , certificateOutput
+                (certificateWithFieldHash healerHash (BS.replicate 32 0))
+                (certificateValue assetName 1)
+            ]
             (mintOf assetName 2)
             (chunkInputs publisherHash carriageUtxoId)
   , -- One certification proves one certificate. A second asset name of this
@@ -342,8 +362,10 @@ healingTests :: [TestTree]
 healingTests =
   [ testCase "the healed certificate is the same content under a different owner" $
       assertBool "digests match and owners differ" $
-        certificateField 4 (certificateFor healerHash)
-          == certificateField 4 (certificateFor publisherHash)
+        certificateField 5 (certificateFor healerHash)
+          == certificateField 5 (certificateFor publisherHash)
+          && certificateField 3 (certificateFor healerHash)
+            == certificateField 3 (certificateFor publisherHash)
           && certificateField 0 (certificateFor healerHash)
             /= certificateField 0 (certificateFor publisherHash)
   , testCase "heals a yanked publication from an unrelated party" $
@@ -383,6 +405,13 @@ retirementTests =
           burnTx
             (Just (certificateFor publisherHash))
             [certificateOutput (certificateFor publisherHash) (certificateValue assetName 1)]
+            [PubKeyHash (toBuiltin publisherHash)]
+  , testCase "field_preimage_certificate_handler_spend_rejects_the_token_migrating_onto_a_fresh_datum" $
+      pfails $
+        runSpend $
+          burnTx
+            (Just (certificateFor publisherHash))
+            [certificateOutput (certificateFor healerHash) (certificateValue assetName 1)]
             [PubKeyHash (toBuiltin publisherHash)]
   , -- A UTxO at this address with no inline datum is not a certificate: nothing
     -- names the asset that has to stop existing or the owner who may authorise
@@ -619,7 +648,7 @@ splitRef bytes
 
 -- | @native_tx_field_access_v1.chunk_bytes_k@.
 chunkK :: Int
-chunkK = 15900
+chunkK = 15148
 
 {- | One byte over @K@: the smallest preimage that is legally tier 3, so the
 fixture is the cheapest transaction that can carry a certificate at all.
@@ -644,18 +673,13 @@ compactCbor = compactWith tx1 (blake2b256 witnessSetCbor)
 disputedTxId :: BS.ByteString
 disputedTxId = txIdOf tx1
 
-{- | §8.6's deterministic name: @blake2b_256(field_index ‖ tx_id)@.
-
-Derived from the certificate's own @(tx_id, field_index)@ and from nothing the
-publisher chooses, which is what makes a republished certificate answer to the
-name the yanked one had — the healing test is that claim as a transaction.
--}
+-- | §8.6's constant certificate token name (#606).
 assetName :: BS.ByteString
-assetName = blake2b256 (BS.singleton (fromIntegral disputedField) <> disputedTxId)
+assetName = "MIDGARD_FIELD_PREIMAGE_CERT"
 
 -- | The name of a certificate for the next field along — a real name, wrong token.
 foreignName :: BS.ByteString
-foreignName = blake2b256 (BS.singleton (fromIntegral (disputedField - 1)) <> disputedTxId)
+foreignName = "\xde\xad\xbe\xef"
 
 chunkDigests :: [BS.ByteString]
 chunkDigests = map blake2b256 (splitRef preimage)
@@ -668,9 +692,16 @@ certificateFor owner =
     [ PD.B owner
     , PD.B disputedTxId
     , PD.I disputedField
+    , PD.B (blake2b256 preimage)
     , PD.I (fromIntegral (BS.length preimage))
     , PD.List (map PD.B chunkDigests)
     ]
+
+certificateWithFieldHash :: BS.ByteString -> BS.ByteString -> PD.Data
+certificateWithFieldHash owner fieldHash =
+  case certificateFor owner of
+    PD.Constr tag fields -> PD.Constr tag (take 3 fields <> [PD.B fieldHash] <> drop 4 fields)
+    _ -> error "not a certificate"
 
 -- | The maximum-profile fixtures below reproduce the Aiken suite byte for byte.
 aikenSmallPreimage, cornerPreimage :: BS.ByteString
@@ -722,8 +753,7 @@ aikenDisputedField :: Integer
 aikenDisputedField = 0
 
 aikenAssetName :: BS.ByteString -> BS.ByteString
-aikenAssetName fieldPreimage =
-  blake2b256 (BS.singleton (fromIntegral aikenDisputedField) <> aikenTxId fieldPreimage)
+aikenAssetName _ = assetName
 
 chunkDigestsFor :: BS.ByteString -> [BS.ByteString]
 chunkDigestsFor = map blake2b256 . splitRef
@@ -735,6 +765,7 @@ aikenCertificateFor owner fieldPreimage =
     [ PD.B owner
     , PD.B (aikenTxId fieldPreimage)
     , PD.I aikenDisputedField
+    , PD.B (blake2b256 fieldPreimage)
     , PD.I (fromIntegral (BS.length fieldPreimage))
     , PD.List (map PD.B (chunkDigestsFor fieldPreimage))
     ]

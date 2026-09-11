@@ -45,9 +45,9 @@ tests =
     , testCase "item settlement validator cancels its own computation thread" $
         psucceeds $ cancelledWith canonicalDecodeItemSettlementV1Validator threadName
     , testCase "item observation validator cancels its own computation thread" $
-        psucceeds $ cancelledEvidenceWith canonicalDecodeItemObserveV1Validator threadName
+        psucceeds $ cancelledObserveWith canonicalDecodeItemObserveV1Validator threadName
     , testCase "item semantic validator cancels its own computation thread" $
-        psucceeds $ cancelledEvidenceWith canonicalDecodeItemSemanticV1Validator threadName
+        psucceeds $ cancelledWith canonicalDecodeItemSemanticV1Validator threadName
     , testCase "proof-item validator is append-only" $
         pfails $ canonicalDecodeProofItemV1Validator # pconstant proofItemSpendContext
     , testCase "CanonicalDecode preparation validator cancels its own computation thread" $
@@ -92,18 +92,20 @@ cancelledPrepareWith cancellationName =
           mempty
       )
 
-cancelledEvidenceWith :: forall s.
+cancelledObserveWith :: forall s.
   Term s
     ( PAsData PScriptHash :--> PAsData PCurrencySymbol
-        :--> PAsData PScriptHash :--> PScriptContext :--> PUnit
+        :--> PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PScriptContext :--> PUnit
     ) ->
   BS.ByteString ->
   Term s PUnit
-cancelledEvidenceWith validator cancellationName =
+cancelledObserveWith validator cancellationName =
   validator
     # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
     # pdata (pconstant ctPolicy)
     # pdata (pconstant $ ScriptHash $ toBuiltin otherScript)
+    # pdata (pconstant ctPolicy)
     # pconstant
       ( spendContext
           (stepDatum Nothing)

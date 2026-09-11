@@ -9,21 +9,10 @@ The thread state and redeemer payloads of the non-existent-reference-input famil
 and the same two absences: not in the block's initial ledger, and not produced by
 any transaction of the block.
 
-=== The carriage difference is real, and it is the Aiken tree's
-
-@no-input@'s absence steps take a
-'Midgard.FraudProofs.Common.PNonMembershipCarriage', so a prover may publish the
-proof beforehand as chunks (issue #545). This family's take a bare @Proof@ and a
-withdrawal index instead, which means the proof must ride in the step
-transaction's own redeemers. The port reproduces that difference rather than
-levelling it: the two families' redeemers are wire format, and an SDK built
-against a levelled one would produce bytes neither validator decodes.
-
-The index is vestigial on both sides. Aiken's @plutarch_pexcludes_raw@ binds it
-with @expect _withdraw_redeemer_index = withdraw_redeemer_index@ and then finds
-the redeemer by script hash, requiring it to be unique; the port's
-'Midgard.Common.Utils.pplutarchPexcludesRaw' drops the parameter for the same
-reason. It stays in the redeemer type because the redeemer type is the interface.
+Both absence steps use the shared non-membership carriage. A fitting proof may
+travel in the transaction's withdrawal redeemer, while a deep proof may be
+published as authenticated chunks; both routes establish the same root/key
+absence predicate.
 -}
 module Midgard.FraudProofs.NoReferenceInput (
   PStep02State (..),
@@ -39,9 +28,9 @@ import Generics.SOP qualified as SOP
 
 import Plutarch.Prelude
 
+import Midgard.FraudProofs.Common (PNonMembershipCarriage)
 import Midgard.FraudProofs.FieldOpening (PFieldOpeningV1)
 import Midgard.FraudProofs.NativeTx.Types (PMidgardTxInput)
-import Midgard.MpfProof.Types (PProof)
 
 -- | Aiken @no_reference_input/step_02.State@.
 data PStep02State (s :: S) = PStep02State
@@ -80,9 +69,7 @@ data PStep03State (s :: S) = PStep03State
 data PStep03Args (s :: S) = PStep03Args
   { pstep03Args'inputIndex :: Term s (PAsData PInteger)
   , pstep03Args'outputIndex :: Term s (PAsData PInteger)
-  , pstep03Args'nonMembershipProofInLedger :: Term s (PAsData PProof)
-  , -- | Vestigial; see the module header.
-    pstep03Args'nonMembershipProofScriptRedeemerIndex :: Term s (PAsData PInteger)
+  , pstep03Args'nonMembershipInLedger :: Term s (PAsData PNonMembershipCarriage)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -101,10 +88,8 @@ data PStep04State (s :: S) = PStep04State
 data PStep04Args (s :: S) = PStep04Args
   { pstep04Args'inputIndex :: Term s (PAsData PInteger)
   , pstep04Args'outputIndex :: Term s (PAsData PInteger)
-  , pstep04Args'nonMembershipProofInTxs :: Term s (PAsData PProof)
-  , -- | Vestigial; see the module header.
-    pstep04Args'nonMembershipProofScriptRedeemerIndex :: Term s (PAsData PInteger)
   , pstep04Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
+  , pstep04Args'nonMembershipInTxs :: Term s (PAsData PNonMembershipCarriage)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)

@@ -51,6 +51,7 @@ import PlutusTx.Builtins (BuiltinData, builtinDataToData, dataToBuiltinData, fro
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Midgard.Env (environmentName)
 import Plutarch.Prelude
 
 import Midgard.Validators.ActiveOperators (
@@ -150,6 +151,10 @@ tests =
             pfails $ runRetire 0 False [] noHold noHold schedulerIdle
         , testCase "accepts a forced retirement at the strike ceiling" $
             psucceeds $ runRetire 5 True [] noHold noHold schedulerIdle
+        , testCase "rejects a forced retirement that overpays the exact penalty" $
+            pfails $ runRetireWithFee (inactivitySlashingPenalty + 1) 5 True [] noHold noHold schedulerIdle
+        , testCase "rejects a forced retirement that underpays the exact penalty" $
+            pfails $ runRetireWithFee (inactivitySlashingPenalty - 1) 5 True [] noHold noHold schedulerIdle
         , testCase "rejects a forced retirement below the strike ceiling" $
             pfails $ runRetire 0 True [] noHold noHold schedulerIdle
         , testCase "rejects a voluntary retirement at the strike ceiling" $
@@ -228,9 +233,13 @@ laterHold = freshHold + 1_000
 
 mkElemOut :: CurrencySymbol -> TokenName -> BuiltinData -> TxOut
 mkElemOut policy tn dat =
+  mkElemOutWithLovelace 2_000_000 policy tn dat
+
+mkElemOutWithLovelace :: Int -> CurrencySymbol -> TokenName -> BuiltinData -> TxOut
+mkElemOutWithLovelace lovelace policy tn dat =
   TxOut
     (scriptHashAddress (ScriptHash (unCurrencySymbol policy)))
-    (mkAdaValue 2_000_000 <> singleton policy tn 1)
+    (mkAdaValue lovelace <> singleton policy tn 1)
     (OutputDatum (Datum dat))
     Nothing
 
@@ -241,7 +250,12 @@ activeRootOut :: PD.Data -> TxOut
 activeRootOut link = mkElemOut activePolicy activeRootName (rootDatum link)
 
 activeNodeOut :: BS.ByteString -> PD.Data -> PD.Data -> TxOut
-activeNodeOut key d link = mkElemOut activePolicy (nodeName key) (nodeDatum d link)
+activeNodeOut key d link =
+  mkElemOutWithLovelace requiredBond activePolicy (nodeName key) (nodeDatum d link)
+
+requiredBond, inactivitySlashingPenalty :: Int
+requiredBond = if environmentName == "testnet" then 900_000_000 else 100_000_000_000
+inactivitySlashingPenalty = if environmentName == "testnet" then 100_000_000 else 10_000_000_000
 
 outRefN :: Integer -> TxOutRef
 outRefN = TxOutRef (TxId "0101010101010101010101010101010101010101010101010101010101010101")
@@ -641,7 +655,21 @@ mintCtx ::
   , [(ScriptPurpose, Redeemer)]
   ) ->
   Term s PUnit
-mintCtx redeemer (ins, outs, refs, mint, signatories, redeemers) =
+mintCtx = mintCtxWithFee 0
+
+mintCtxWithFee ::
+  forall s.
+  Int ->
+  BuiltinData ->
+  ( [TxInInfo]
+  , [TxOut]
+  , [TxInInfo]
+  , MintValue
+  , [PubKeyHash]
+  , [(ScriptPurpose, Redeemer)]
+  ) ->
+  Term s PUnit
+mintCtxWithFee fee redeemer (ins, outs, refs, mint, signatories, redeemers) =
   activeOperatorsMintValidator
     # pdata (pconstant hubPolicy)
     # pdata (pconstant regPolicy)
@@ -658,7 +686,7 @@ mintCtx redeemer (ins, outs, refs, mint, signatories, redeemers) =
         , txInfoValidRange = holdRange
         , txInfoSignatories = signatories
         , txInfoRedeemers = Map.unsafeFromList redeemers
-        , txInfoFee = 0
+        , txInfoFee = fromIntegral fee
         }
     ctx = ScriptContext txInfo (Redeemer redeemer) (MintingScript activePolicy)
 
@@ -705,7 +733,27 @@ runRetire ::
   PD.Data ->
   Term s PUnit
 runRetire strikes penalize signatories nodeHold retiredRedeemerHold schedulerDatum =
-  mintCtx
+  runRetireWithFee
+    (if penalize then inactivitySlashingPenalty else 0)
+    strikes
+    penalize
+    signatories
+    nodeHold
+    retiredRedeemerHold
+    schedulerDatum
+
+runRetireWithFee ::
+  forall s.
+  Int ->
+  Integer ->
+  Bool ->
+  [PubKeyHash] ->
+  PD.Data ->
+  PD.Data ->
+  PD.Data ->
+  Term s PUnit
+runRetireWithFee fee strikes penalize signatories nodeHold retiredRedeemerHold schedulerDatum =
+  mintCtxWithFee fee
     retireRedeemer
     ( [ TxInInfo (outRefN 0) (activeRootOut (linkTo operator))
       , TxInInfo (outRefN 1) (activeNodeOut operator (nodeData nodeHold strikes) linkNone)

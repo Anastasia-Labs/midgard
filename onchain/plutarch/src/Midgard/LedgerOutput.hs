@@ -8,7 +8,6 @@ module Midgard.LedgerOutput (
 ) where
 
 import Data.Kind (Type)
-import Plutarch.Builtin.Data (pasByteStr, pasInt, pasList, pasMap)
 import Plutarch.LedgerApi.AssocMap (PAssocMap (..))
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.Prelude
@@ -189,8 +188,7 @@ pdecodeCanonicalAddressBytes = phoistAcyclic $ plam $ \bytes ->
           (pcon $ PMidgardPubKeyCredential $ pdata paymentHash))
         $ \paymentCredential ->
         pif
-          ( (networkId #== 0 #|| networkId #== 1)
-              #&& pif (length #== 29)
+          ( pif (length #== 29)
                 (addressType #== 6 #|| addressType #== 7)
                 (addressType #>= 0 #&& addressType #<= 3)
           )

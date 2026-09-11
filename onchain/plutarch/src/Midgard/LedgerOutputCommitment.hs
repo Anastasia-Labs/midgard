@@ -5,6 +5,7 @@ module Midgard.LedgerOutputCommitment (
   pledgerOutputCommitmentVersion,
   poutputFieldIndex,
   pmaxCardanoValueCborBytes,
+  pdescriptorIsWellFormed,
   pencodeLedgerOutputCommitment,
   pdecodeLedgerOutputCommitment,
   poutputItemCommitment,
@@ -17,7 +18,6 @@ module Midgard.LedgerOutputCommitment (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 import Plutarch.Builtin.Crypto (pblake2b_256)
-import Plutarch.Builtin.Data (pasByteStr, pasInt, pasList)
 import Plutarch.Core.Utils (pand'List, (#/=))
 import Plutarch.Prelude
 

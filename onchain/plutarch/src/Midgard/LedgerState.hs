@@ -17,17 +17,14 @@ module Midgard.LedgerState (
   PWithdrawalBody (..),
   PWithdrawalInfo (..),
   PWithdrawalEvent (..),
-  PMidgardTxValidity (..),
   PNativeTxProofSourceV1 (..),
   PTxOrderId,
   PTxOrderPayloadV1 (..),
   PTxOrderEventV1 (..),
   PForcedInclusionTxV1 (..),
   PL2TransactionSourceV1 (..),
-  PTxFieldPreimageV1 (..),
-  PTxFieldReceiptV1 (..),
   PCekProgramMaterialDatumV1 (..),
-  PFrontierPeak (..),
+  PFrontierPeak,
   PItemProofV1 (..),
   PChunkProofV1 (..),
   PHeaderV1 (..),
@@ -57,15 +54,15 @@ module Midgard.LedgerState (
 import Data.ByteString qualified as BS
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
-import Plutarch.Builtin.Data (pasConstr)
 import Plutarch.Core.Utils (pand'List)
-import Plutarch.LedgerApi.V3 (PAddress, PCurrencySymbol, POutputDatum, PPubKeyHash, PTxOutRef)
+import Plutarch.LedgerApi.V3 (PAddress, POutputDatum, PPubKeyHash, PTxOutRef)
 import Plutarch.Prelude
 
 import Midgard.Common.Types (PH28, PMerkleRoot, PPosixTime, PValuePairs)
 import Midgard.BoundedItem (PChunkProofV1 (..))
 import Midgard.ValidationMerkle (PFrontierPeak)
 import Midgard.Env qualified as Env
+import Midgard.RejectionReason (POperatorVerdictV1)
 
 {- | Aiken @ledger_state.HeaderHash = H28<HeaderV1>@.
 
@@ -116,7 +113,7 @@ fields; malformed data with no first field fails at 'phead'.
 -}
 punsafeEventToIdData :: forall (s :: S). Term s PData -> Term s PData
 punsafeEventToIdData eventDatumData =
-  phead #$ psndBuiltin # (pasConstr # eventDatumData)
+  phead #$ (pmatch (pasConstr # eventDatumData) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
 
 {- | Aiken @ledger_state.unsafe_event_to_key_value_pair@.
 
@@ -136,7 +133,7 @@ Returned as a Haskell pair; both call sites consume it immediately.
 punsafeEventToKeyValuePair ::
   forall (s :: S). Term s PData -> (Term s PData, Term s PData)
 punsafeEventToKeyValuePair eventDatumData =
-  let fields = psndBuiltin # (pasConstr # eventDatumData)
+  let fields = (pmatch (pasConstr # eventDatumData) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
    in (phead # fields, phead #$ ptail # fields)
 
 {- | Aiken @ledger_state.WithdrawalId = OutputReference@.
@@ -208,23 +205,6 @@ data PWithdrawalEvent (s :: S) = PWithdrawalEvent
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PWithdrawalEvent)
 
-{- | Aiken @ledger_state.MidgardTxValidity@.
-
-An operator's verdict on an L2 transaction. Tags: @TxIsValid@ 0,
-@NonExistentInputUtxo@ 1, @InvalidSignature@ 2, @FailedScript@ 3, @FeeTooLow@ 4,
-@UnbalancedTx@ 5.
--}
-data PMidgardTxValidity (s :: S)
-  = PTxIsValid
-  | PNonExistentInputUtxo
-  | PInvalidSignature
-  | PFailedScript
-  | PFeeTooLow
-  | PUnbalancedTx
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PMidgardTxValidity)
-
 {- | Aiken @ledger_state.NativeTxProofSourceV1@.
 
 The compact CBOR an L2 transaction is reconstructed from during a fault proof.
@@ -247,7 +227,6 @@ data PTxOrderPayloadV1 (s :: S) = PTxOrderPayloadV1
   { ptxOrderPayload'txId :: Term s (PAsData PByteString)
   , ptxOrderPayload'transactionCommitment :: Term s (PAsData PByteString)
   , ptxOrderPayload'source :: Term s (PAsData PNativeTxProofSourceV1)
-  , ptxOrderPayload'terminalReceiptReference :: Term s PData
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -261,51 +240,6 @@ data PTxOrderEventV1 (s :: S) = PTxOrderEventV1
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PTxOrderEventV1)
-
-{- | Aiken @ledger_state.TxFieldPreimageV1@.
-
-One chunk of one field of a forced transaction, published on L1 while the
-transaction's material is still going up piecewise. It is filed under the
-transaction commitment rather than the transaction id, because the id is not
-known until every field is published.
-
-@collection_proof@ is carried but unread by the spend path — see
-'Midgard.Validators.TxOrderFields'.
--}
-data PTxFieldPreimageV1 (s :: S) = PTxFieldPreimageV1
-  { ptxFieldPreimage'fieldReceiptPolicyId :: Term s (PAsData PCurrencySymbol)
-  , ptxFieldPreimage'txOrderPolicyId :: Term s (PAsData PCurrencySymbol)
-  , ptxFieldPreimage'txOrderId :: Term s (PAsData PTxOrderId)
-  , ptxFieldPreimage'transactionCommitment :: Term s (PAsData PByteString)
-  , ptxFieldPreimage'collectionProof :: Term s (PAsData PItemProofV1)
-  , ptxFieldPreimage'proof :: Term s (PAsData PChunkProofV1)
-  }
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PTxFieldPreimageV1)
-
-{- | Aiken @ledger_state.TxFieldReceiptV1@.
-
-The receipt acknowledging a published field chunk. Where the preimage carries
-the chunk proof itself, the receipt carries only the chunk's /index/ alongside
-the collection proof, plus the links that chain receipts into an order:
-@field_reference@ names the preimage it acknowledges and
-@predecessor_receipt_reference@ the receipt before it.
--}
-data PTxFieldReceiptV1 (s :: S) = PTxFieldReceiptV1
-  { ptxFieldReceipt'fieldReceiptPolicyId :: Term s (PAsData PCurrencySymbol)
-  , ptxFieldReceipt'txOrderPolicyId :: Term s (PAsData PCurrencySymbol)
-  , ptxFieldReceipt'txOrderId :: Term s (PAsData PTxOrderId)
-  , ptxFieldReceipt'transactionCommitment :: Term s (PAsData PByteString)
-  , ptxFieldReceipt'collectionProof :: Term s (PAsData PItemProofV1)
-  , ptxFieldReceipt'chunkIndex :: Term s (PAsData PInteger)
-  , ptxFieldReceipt'fieldReference :: Term s (PAsData PTxOutRef)
-  , ptxFieldReceipt'predecessorReceiptReference :: Term s PData
-  , ptxFieldReceipt'fieldEncodedSize :: Term s (PAsData PInteger)
-  }
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PTxFieldReceiptV1)
 
 {- | Aiken @ledger_state.CekProgramMaterialDatumV1@.
 
@@ -369,7 +303,7 @@ why a settlement proof has to substitute it before checking membership.
 data PForcedInclusionTxV1 (s :: S) = PForcedInclusionTxV1
   { pforcedTx'txId :: Term s (PAsData PByteString)
   , pforcedTx'source :: Term s (PAsData PNativeTxProofSourceV1)
-  , pforcedTx'operatorValidity :: Term s (PAsData PMidgardTxValidity)
+  , pforcedTx'verdict :: Term s (PAsData POperatorVerdictV1)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)

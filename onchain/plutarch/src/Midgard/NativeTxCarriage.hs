@@ -93,8 +93,8 @@ import Midgard.NativeTxFieldAccess (
   PFieldPreimageCertificateV1 (..),
   pchunkBytesK,
   pexpectedChunkCount,
+  pfieldCount,
   pfieldCommitment,
-  pfieldPreimageCertificateAssetName,
   pmaxTier3ChunkCount,
   pmaxTransactionAggregateFieldBytes,
  )
@@ -227,12 +227,11 @@ pfieldPreimageCertificateV1 = phoistAcyclic $
   plam $ \owner txId fieldIndex preimage ->
     plet (plengthBS # preimage) $ \totalLength ->
       pif
-        ( pchunkBytesK
-            #< totalLength
+        ( pchunkBytesK #< totalLength
             #&& (plengthBS # pto owner #== 28)
-            #&& ( (plengthBS #$ pfieldPreimageCertificateAssetName # txId # fieldIndex)
-                    #== 32
-                )
+            #&& (0 #<= fieldIndex)
+            #&& (fieldIndex #< pfieldCount)
+            #&& (plengthBS # txId #== 32)
         )
         `flip` perror
         $ pcon
@@ -240,6 +239,7 @@ pfieldPreimageCertificateV1 = phoistAcyclic $
             { pcert'owner = pdata owner
             , pcert'txId = pdata txId
             , pcert'fieldIndex = pdata fieldIndex
+            , pcert'fieldHash = pdata (pfieldCommitment # preimage)
             , pcert'totalLength = pdata totalLength
             , pcert'chunkDigests = pdata (pfieldPreimageChunkDigests # preimage)
             }
@@ -360,6 +360,7 @@ pverifyFieldPreimageCertificateV1 = phoistAcyclic $
       { pcert'owner
       , pcert'txId
       , pcert'fieldIndex
+      , pcert'fieldHash
       , pcert'totalLength
       , pcert'chunkDigests
       } <-
@@ -377,7 +378,8 @@ pverifyFieldPreimageCertificateV1 = phoistAcyclic $
         plet (pdecodeNativeTxWitnessSetCompact # witnessSetCompactCbor) $ \witnessSet ->
           plet (pfieldCommitmentAt pcompact'body witnessSet (pfromData pcert'fieldIndex)) $
             \expectedHash ->
-              plet (plength # chunkDigests) $ \chunkCount ->
+              pif (pfromData pcert'fieldHash #== expectedHash) `flip` perror $
+                plet (plength # chunkDigests) $ \chunkCount ->
                 pif
                   ( pchunkBytesK
                       #< totalLength

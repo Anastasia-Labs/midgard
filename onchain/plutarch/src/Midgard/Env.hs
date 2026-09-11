@@ -1,14 +1,11 @@
-{- |
-Module      : Midgard.Env
-Description : Plutarch port of the constants in @env/default.ak@ that the
-              ported modules read.
+{-# LANGUAGE CPP #-}
 
-Aiken resolves @env@ per build target (@default@, @testnet@, …). This module
-mirrors the @default@ environment; a target-specific build would need the
-equivalent of Aiken's environment selection, which does not exist here yet.
-Only the constants the ported code actually reads are present.
+{- | Compiled Aiken environment. Cabal's explicit @-ftestnet@ flag selects
+@env/testnet.ak@; the ordinary build selects @env/default.ak@. Environment
+selection changes validator hashes and is never read from a transaction.
 -}
 module Midgard.Env (
+  environmentName,
   pemptyData,
   pslashingPenalty,
   pfraudProverReward,
@@ -16,6 +13,7 @@ module Midgard.Env (
   pinactivitySlashingPenalty,
   pregistrationDuration,
   pmaxInactivityStrikes,
+  pcoinsPerUtxoByte,
   pplutusVersion,
   peventWaitDuration,
   pmaxTokensAllowedInDeposits,
@@ -33,6 +31,14 @@ module Midgard.Env (
 ) where
 
 import Plutarch.Prelude
+
+-- | The environment compiled into this library and its exported validators.
+environmentName :: String
+#ifdef MIDGARD_TESTNET
+environmentName = "testnet"
+#else
+environmentName = "default"
+#endif
 
 {- | Aiken @env.empty_data@ — @""@ as @Data@.
 
@@ -53,25 +59,31 @@ pposixTimeNone = -1
 
 -- | Aiken @env.slashing_penalty@.
 pslashingPenalty :: forall (s :: S). Term s PInteger
-pslashingPenalty = 0
+#ifdef MIDGARD_TESTNET
+pslashingPenalty = 500_000_000
+#else
+pslashingPenalty = 25_000_000_000
+#endif
 
 -- | Aiken @env.fraud_prover_reward@.
 pfraudProverReward :: forall (s :: S). Term s PInteger
-pfraudProverReward = 0
+#ifdef MIDGARD_TESTNET
+pfraudProverReward = 400_000_000
+#else
+pfraudProverReward = 75_000_000_000
+#endif
 
-{- | Aiken @env.required_bond = slashing_penalty + fraud_prover_reward@.
-
-Zero in the default environment, so the bond checks in
-'Midgard.OperatorDirectory.pvalidateTransferredOperatorInsertion' are vacuous as
-configured. They are ported anyway, because a deployment environment that sets a
-real penalty is the point of the constant.
--}
+-- | Aiken @env.required_bond = slashing_penalty + fraud_prover_reward@.
 prequiredBond :: forall (s :: S). Term s PInteger
 prequiredBond = pslashingPenalty + pfraudProverReward
 
 -- | Aiken @env.inactivity_slashing_penalty@.
 pinactivitySlashingPenalty :: forall (s :: S). Term s PInteger
-pinactivitySlashingPenalty = 0
+#ifdef MIDGARD_TESTNET
+pinactivitySlashingPenalty = 100_000_000
+#else
+pinactivitySlashingPenalty = 10_000_000_000
+#endif
 
 {- | Aiken @env.registration_duration@ — a @PosixTimeDuration@, so milliseconds.
 
@@ -92,27 +104,17 @@ striking it forever.
 pmaxInactivityStrikes :: forall (s :: S). Term s PInteger
 pmaxInactivityStrikes = 5
 
-{- | Aiken @env.shift_duration@ — a @PosixTimeDuration@, so milliseconds.
+-- | Aiken @env.coins_per_utxo_byte@, pinned to the target-chain snapshot.
+pcoinsPerUtxoByte :: forall (s :: S). Term s PInteger
+pcoinsPerUtxoByte = 4_310
 
-How long one operator's turn at committing blocks lasts.
-
-/This is the one constant that differs between Aiken's two environments./
-@env/default.ak@ says 30 — thirty milliseconds — and @env/testnet.ak@ says
-@60 * 60 * 1000@, one hour. The two files are otherwise identical, so raising
-this to an hour is the entire reason the second environment exists.
-
-This module mirrors @env/default.ak@, as the rest of the port does, so the value
-here is the development one.
-
-That has a consequence worth knowing before changing it. The scheduler's
-inactivity check requires the inactivity threshold to fall before the end of the
-shift being judged, and that threshold is at least
-@shift_start + new_shift_inactivity_grace_period@ — five minutes. At 30ms the
-shift ends long before that, so both skipped-operator branches are unreachable;
-at an hour they behave normally. See "Midgard.Validators.Scheduler".
--}
+-- | Aiken @env.shift_duration@: 30 milliseconds in default, one hour in testnet.
 pshiftDuration :: forall (s :: S). Term s PInteger
+#ifdef MIDGARD_TESTNET
+pshiftDuration = 60 * 60 * 1000
+#else
 pshiftDuration = 30
+#endif
 
 {- | Aiken @env.user_events_negligence_timeout@ — five minutes.
 
@@ -174,7 +176,7 @@ nonce to this prefix and hashing — see
 'DesignPatterns.ParameterValidation.papplyPrehashedParam'. That is what binds an
 event NFT one-to-one with a staking credential the transaction must register.
 
-687 bytes, copied verbatim from @env/default.ak@. It is an opaque constant here:
+Copied verbatim from @env/default.ak@. It is an opaque constant here:
 this package does not compile the witness script, so a change on the Aiken side
 must be copied across or the derived hashes diverge.
 -}
@@ -182,26 +184,25 @@ puserEventsWitnessScriptPrefix :: forall (s :: S). Term s PByteString
 puserEventsWitnessScriptPrefix =
   phexByteStr $
     concat
-      [ "5902ce0101003229800aba2aba1aab9faab9eaab9dab9a9bae0024888888966002646530"
-      , "01300800198041804800cc0200092225980099b8748018c020dd500146600260126ea800"
-      , "a6e1d20029b874800260106ea800d222232332259800980280244c8c966002602a005004"
-      , "8b2026375c602600260206ea802a2b30013006004899192cc004c05400a00916404c6eb4"
-      , "c04c004c040dd5005456600266e1d2004004899192cc004c05400a00916404c6eb4c04c0"
-      , "04c040dd500545900e201c40382653001300100198071baa009918091809980998099809"
-      , "9809800a444b3001300700289919912cc004c028006260160051598009805800c4cdc380"
-      , "12400314a0809901319199119801001000912cc004006007132325980099b910150018ac"
-      , "c004cdc780a800c4dd6980c001401501644cc010010c06c00d0161bae301600130180014"
-      , "05c6464660020026eacc060c064c064c064c064c058dd5007112cc004006007132325980"
-      , "099b910070018acc004cdc7803800c4dd5980c801401501744cc010010c07000d0171bae"
-      , "301700130190014060297adef6c60148000c048dd50031bae30143012375401915980098"
-      , "0400144c8c96600266ebc00401e2b3001300930133754003132598009805980a1baa0018"
-      , "acc004cdd7980b980a9baa00230173015375400314a316404d16404c602c602e00516404"
-      , "9164048602a002660066eb0c004c048dd50051bad301430123754019159800980418089b"
-      , "aa0058992cc004c020c048dd5000c56600266ebcc054c04cdd5000980a98099baa0068a5"
-      , "18b20228b20223014330033758600260246ea8028dd6980a18091baa00c8b20204040808"
-      , "0444b30013371200290004400a2b30010028a5eb8233001003980a0014cdc0000a400280"
-      , "19012201e375a602000a601e60200088b200e180400098021baa0088a4d1365640084c01"
-      , "225820"
+      [ "5902e20101003229800aba2aba1aab9faab9eaab9dab9a9bae00248888889660026465300130"
+      , "0800198041804800cc0200092225980099b8748018c020dd500146600260126ea800a6e1d200"
+      , "29b874800260106ea800d222232332259800980280244c8c966002602a0050048b2026375c60"
+      , "2600260206ea802a2b30013006004899192cc004c05400a00916404c6eb4c04c004c040dd500"
+      , "5456600266e1d2004004899192cc004c05400a00916404c6eb4c04c004c040dd500545900e20"
+      , "1c40382653001300100198071baa0099180918099809980998099809800a444b300130070028"
+      , "9919912cc004c028006260160051598009805800c4cdc3a400200514a0809901319199119801"
+      , "001000912cc004006007132325980099b910150018acc004cdc780a800c4dd6980c001401501"
+      , "644cc010010c06c00d0161bae30160013018001405c6464660020026eacc060c064c064c064c"
+      , "064c058dd5007112cc004006007132325980099b910070018acc004cdc7803800c4dd5980c80"
+      , "1401501744cc010010c07000d0171bae301700130190014060297adef6c60148000c048dd500"
+      , "31bae301430123754019159800980400144c8c966002003168992cc004cdd780080445660026"
+      , "01460286ea8006264b3001300c3015375400315980099baf3018301637540046030602c6ea80"
+      , "0629462c80a22c80a0c05c00a2c809a2c8098c058009015180b000998019bac3001301237540"
+      , "146eb4c050c048dd50064566002601060226ea8016264b30010018b44c966002601260266ea8"
+      , "0062b30013375e602c60286ea8004c058c050dd5003c528c59012459012180a800a028330033"
+      , "758600260246ea8028dd6980a18091baa00c8b202040408080444b30013371200290004400a2"
+      , "b30010028a5eb8233001003980a0014cdc0240020028019012201e375a602000a601e6020008"
+      , "8b200e180400098021baa0088a4d1365640084c1225820"
       ]
 
 {- | Aiken @env.empty_merkle_tree_root@.
@@ -242,7 +243,7 @@ what "MerkleTree.Validators.Membership" would compile to today.
 -}
 pplutarchPexcludesValidatorHash :: forall (s :: S). Term s PByteString
 pplutarchPexcludesValidatorHash =
-  phexByteStr "a9ec251d6476217b1abccd5f035dec1272a4b04f640f503fca9e734d"
+  phexByteStr "03adaadf3154dafde48eea40030cecf5690b07c495f4c74029e4ab6a"
 
 {- | Aiken @env.mpf_chunked_verify_validator_hash@.
 
@@ -253,7 +254,7 @@ own script, rather than inside every step that wants a proof.
 -}
 pmpfChunkedVerifyValidatorHash :: forall (s :: S). Term s PByteString
 pmpfChunkedVerifyValidatorHash =
-  phexByteStr "cb5a7ec4def35ce3ec75c40919992e1b4e8839b4f6b6a2d3b06e7469"
+  phexByteStr "dfd0e01fe351bd1d6f75a1ba728d06fb8b11d56bc3bf9ee98e025040"
 
 {- | Aiken @env.max_validity_range_length@.
 

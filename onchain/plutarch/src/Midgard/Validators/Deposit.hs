@@ -130,9 +130,9 @@ pdepositEventValidator ownPolicy nonce outputValueData _depositInfo = P.do
         # plam
           ( \entry acc ->
               pif
-                (pfstBuiltin # entry #== ownPolicy)
+                ((pmatch entry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== ownPolicy)
                 acc
-                (acc + (plength #$ pto (pto (pfromData (psndBuiltin # entry)))))
+                (acc + (plength #$ pto (pto (pfromData (pmatch entry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))))
           )
         # 0
         # entries
@@ -187,7 +187,7 @@ depositSpendValidator = plam $ \hubOracle ctx -> P.do
     , pdepositSpend'settlementRefInputIndex
     , pdepositSpend'mintRedeemerIndex
     , pdepositSpend'membershipProof
-    , pdepositSpend'inclusionProofScriptWithdrawRedeemerIndex
+    , pdepositSpend'inclusionProofScriptWithdrawRedeemerIndex = _
     } <-
     pmatch (pfromData (punsafeCoerce @(PAsData PSpendRedeemer) (pto pscriptContext'redeemer)))
 

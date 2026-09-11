@@ -79,12 +79,12 @@ pvalidateWitnessRedeemer
   redeemers = P.do
     redeemerPair <- plet $ pelemAt # witnessRedeemerIndex # redeemers
     presentHash <-
-      plet $ pmatch (pfromData (pfstBuiltin # redeemerPair)) $ \case
+      plet $ pmatch (pfromData (pmatch redeemerPair $ \(PBuiltinPair pairFirst _) -> pairFirst)) $ \case
         PCertifying _ cert -> pcertifiedScriptHash forRegistration cert
         _ -> perror
     pand'List
       [ presentHash #== expectedWitnessScriptHash
-      , pto (pfromData (psndBuiltin # redeemerPair))
+      , pto (pfromData (pmatch redeemerPair $ \(PBuiltinPair _ pairSecond) -> pairSecond))
           #== pforgetData (pdata (pcon (PMintOrBurn eventPolicyId)))
       ]
 

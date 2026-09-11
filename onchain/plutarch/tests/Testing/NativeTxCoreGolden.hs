@@ -52,13 +52,10 @@ tests :: TestTree
 tests =
   testGroup
     "Native Tx Core Golden Aiken Parity"
-    [ -- This checked-in Aiken fixture still carries the retired minimal input
-      -- indices (`58 24 ... 00/01`). Current §5.3 requires the fixed-width
-      -- `58 26 ... 19 0000/0001` spelling, and the Aiken test itself aborts at
-      -- `decode_fixed_output_index_at`. Keep the exact literal and rejection
-      -- pinned without weakening the production decoder.
-      testCase "golden_midgard_core_native_full_tx_decodes" $
-        pfails $ pencodeMidgardTransactionV1 # (pdecodeMidgardTransactionV1 # pconstant fullTxCbor)
+    [ testCase "golden_midgard_core_native_full_tx_decodes" $
+        passertEval $
+          pencodeMidgardTransactionV1 # (pdecodeMidgardTransactionV1 # pconstant fullTxCbor)
+            #== pconstant fullTxCbor
     , testCase "golden_midgard_core_native_preimage_cbor_decoders" $
         passertEval preimageDecodersGolden
     , testCase "golden_midgard_core_native_compact_tx_decodes" $
@@ -151,10 +148,10 @@ compactFieldsMatch compact =
     pmatch pcompact'body $ \PNativeTxBodyCompact {pbodyCompact'spendInputsHash, pbodyCompact'referenceInputsHash, pbodyCompact'outputsHash} ->
       pall'
         [ pcompact'validityCode #== 0
-        , pbodyCompact'spendInputsHash #== phex "5e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d92"
-        , pbodyCompact'referenceInputsHash #== phex "6a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a2042"
-        , pbodyCompact'outputsHash #== phex "fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3"
-        , pcompact'witnessSetHash #== phex "6ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d9643"
+        , pbodyCompact'spendInputsHash #== phex "214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795"
+        , pbodyCompact'referenceInputsHash #== phex "c7d58dc93d2a5850ba53d9c3b54199c68bb009fc43d808d98860416d2e3bc6e0"
+        , pbodyCompact'outputsHash #== phex "90c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb"
+        , pcompact'witnessSetHash #== phex "52408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c"
         ]
 
 pall' :: forall s. [Term s PBool] -> Term s PBool
@@ -176,9 +173,9 @@ unsortedOutputCbor =
     <> "\xa2\x41\x02\x01\x41\x01\x02"
 
 fullTxCbor, compactTxCbor, goldenTxId, spendPreimageCbor, referencePreimageCbor, outputsPreimageCbor, goldenOutputCbor, emptyPreimageCbor, emptyPreimageHash :: BS.ByteString
-fullTxCbor = Base16.decodeLenient "84018c58278158248258201111111111111111111111111111111111111111111111111111111111111111005827815824825820222222222222222222222222222222222222222222222222222222222222222201585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
-compactTxCbor = Base16.decodeLenient "84018c58205e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d9258206a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a20425820fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3182a2018645820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58203333333333333333333333333333333333333333333333333333333333333333582044444444444444444444444444444444444444444444444444444444444444440058206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d964300"
-goldenTxId = Base16.decodeLenient "2037f7a4728ac05582798cf49151c13a6350dbd88215da18db9d829974fa4eac"
+fullTxCbor = Base16.decodeLenient "84018c5829815826825820111111111111111111111111111111111111111111111111111111111111111119000058298158268258202222222222222222222222222222222222222222222222222222222222222222190001585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
+compactTxCbor = Base16.decodeLenient "84018c5820214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df97955820c7d58dc93d2a5850ba53d9c3b54199c68bb009fc43d808d98860416d2e3bc6e0582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
+goldenTxId = Base16.decodeLenient "f0edf52dff58dd7fac556b76007da81ed62655351622f4ce9c8ec492d66a22ec"
 spendPreimageCbor = Base16.decodeLenient "8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
 referencePreimageCbor = Base16.decodeLenient "8158268258202222222222222222222222222222222222222222222222222222222222222222190001"
 outputsPreimageCbor = Base16.decodeLenient "81584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405"

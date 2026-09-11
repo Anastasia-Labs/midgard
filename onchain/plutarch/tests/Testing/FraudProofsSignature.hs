@@ -30,11 +30,13 @@ Both are refused for the same reason: the door re-derives the supplied witness
 set against the hash the /thread/ carries, and a witness set the transaction
 never committed does not hash to it.
 
-__The absence is a fold and the fault is an index.__ "No witness carries this
-key" is only true of a walk that reached the end, so @missing-signature@'s
-step-04 folds the whole field and asserts completion. "This witness's signature
-is bad" is a claim about one named item, so @invalid-signature@ reaches it by
-arithmetic at §5.3's fixed 101-byte stride and never sees the rest.
+__The absence is a bounded resumable fold and the fault is an index.__ "No
+witness carries this key" is only true of a walk that reached the end, so
+@missing-signature@'s step-04 consumes deterministic 32-item batches, commits
+each intermediate checkpoint, and convicts only after the terminal suffix.
+"This witness's signature is bad" is a claim about one named item, so
+@invalid-signature@ reaches it by arithmetic at §5.3's fixed 101-byte stride
+and never sees the rest.
 
 Signatures are real Ed25519, generated in "Testing.FraudProofsFixture" over each
 transaction's own §3 id — which is what makes the negative case that matters
@@ -109,6 +111,14 @@ fixtureTests =
       BS.length (requiredSignersPreimage tx1) @?= 1 + (2 + 28)
   ]
 
+unsignedAcceptedCbor, badSigAcceptedCbor :: BS.ByteString
+unsignedAcceptedCbor = compactWithValidity txUnsigned (witnessSetHashOf txUnsigned) 0
+badSigAcceptedCbor = compactWithValidity txBadSig (witnessSetHashOf txBadSig) 0
+
+unsignedAcceptedSourceCbor, badSigAcceptedSourceCbor :: BS.ByteString
+unsignedAcceptedSourceCbor = sourceCborWithValidity txUnsigned 0
+badSigAcceptedSourceCbor = sourceCborWithValidity txBadSig 0
+
 --------------------------------------------------------------------------------
 -- missing-signature
 --------------------------------------------------------------------------------
@@ -136,6 +146,8 @@ missingTests =
               (mContext01 defaultMissing01 {m1OutputState = Just (PD.Constr 0 [PD.B txUnsignedId])})
       , testCase "rejects a raw root the header does not commit" $
           pfails $ missing01 (mContext01 defaultMissing01 {m1PhasRoot = otherRoot})
+      , testCase "rejects a transaction marked invalid" $
+          pfails $ missing01 (mContext01 defaultMissing01 {m1SourceCbor = sourceCborOf txUnsigned})
       , testCase "a cancel burning the thread token succeeds" $
           psucceeds $ missing01 (cancelContext True)
       , testCase "a cancel that does not burn the thread token fails" $
@@ -197,6 +209,32 @@ missingTests =
       "step-04"
       [ testCase "convicts when no witness carries the required key" $
           psucceeds $ missing04 (mContext04 defaultMissing04)
+      , testCase "scans exactly one bounded non-terminal batch" $
+          psucceeds $ missing04 (scanContext batched40 "" Nothing expectedBatched40CheckpointHash)
+      , testCase "resumes from the committed checkpoint and finalizes the suffix" $
+          psucceeds $
+            missing04
+              ( finalizeBatchedContext
+                  batched40
+                  expectedBatched40CheckpointHash
+                  (Just $ witnessCheckpointWire batched40 32)
+              )
+      , testCase "rejects finalize while more than one batch remains" $
+          pfails $ missing04 (finalizeBatchedContext batched40 "" Nothing)
+      , testCase "rejects scan when the terminal batch is already reachable" $
+          pfails $ missing04 (scanContext batched32 "" Nothing expectedBatched32CheckpointHash)
+      , testCase "rejects a checkpoint not committed by thread state" $
+          pfails $
+            missing04
+              ( finalizeBatchedContext
+                  batched40
+                  (BS.replicate 32 0xff)
+                  (Just $ witnessCheckpointWire batched40 32)
+              )
+      , testCase "rejects a scan output that skips the derived checkpoint digest" $
+          pfails $ missing04 (scanContext batched40 "" Nothing (BS.replicate 32 0xee))
+      , testCase "rejects a required key found in a scan batch" $
+          pfails $ missing04 (scanContext batchedFound "" Nothing (witnessCheckpointHash batchedFound 32))
       , -- Where a challenge against an honestly witnessed transaction dies.
         testCase "rejects a transaction whose required signer did witness it" $
           pfails $
@@ -244,6 +282,8 @@ invalidTests =
               )
       , testCase "rejects a raw root the header does not commit" $
           pfails $ invalid01 (iContext01 defaultInvalid01 {i1PhasRoot = otherRoot})
+      , testCase "rejects a transaction marked invalid" $
+          pfails $ invalid01 (iContext01 defaultInvalid01 {i1SourceCbor = sourceCborOf txBadSig})
       ]
   , testGroup
       "step-02"
@@ -348,7 +388,11 @@ mState03 :: BS.ByteString -> BS.ByteString -> BS.ByteString -> PD.Data
 mState03 signerHash txId wsHash = PD.Constr 0 [PD.B signerHash, PD.B txId, PD.B wsHash]
 
 mState04 :: BS.ByteString -> BS.ByteString -> BS.ByteString -> PD.Data
-mState04 vkey txId wsHash = PD.Constr 0 [PD.B vkey, PD.B txId, PD.B wsHash]
+mState04 vkey txId wsHash = PD.Constr 0 [PD.B vkey, PD.B txId, PD.B wsHash, PD.B ""]
+
+mState04At :: Tx -> BS.ByteString -> PD.Data
+mState04At tx checkpointHash =
+  PD.Constr 0 [PD.B (verKeyFor 1), PD.B (txIdOf tx), PD.B (witnessSetHashOf tx), PD.B checkpointHash]
 
 -- | 'txUnsigned''s own witness-set hash, which its thread carries throughout.
 unsignedWsHash :: BS.ByteString
@@ -388,6 +432,7 @@ data Missing01 = Missing01
   { m1OutputScript :: BS.ByteString
   , m1OutputState :: Maybe PD.Data
   , m1PhasRoot :: BS.ByteString
+  , m1SourceCbor :: BS.ByteString
   }
 
 defaultMissing01 :: Missing01
@@ -396,17 +441,18 @@ defaultMissing01 =
     { m1OutputScript = nextScript
     , m1OutputState = Just (mState02 txUnsignedId unsignedWsHash)
     , m1PhasRoot = phasRoot
+    , m1SourceCbor = unsignedAcceptedSourceCbor
     }
 
 mContext01 :: Missing01 -> ScriptContext
 mContext01 s =
   spendContext
     (stepDatum Nothing)
-    (PD.Constr 1 [bareInclusionArgs txUnsignedId txUnsignedCbor (m1PhasRoot s)])
+    (PD.Constr 1 [bareInclusionArgs txUnsignedId (m1SourceCbor s) (m1PhasRoot s)])
     [threadInput]
     [stepOutput (m1OutputScript s) (m1OutputState s)]
     referenceInputs
-    [phasEntry (m1PhasRoot s) txUnsignedId txUnsignedCbor]
+    [phasEntry (m1PhasRoot s) txUnsignedId (m1SourceCbor s)]
     mempty
 
 cancelContext :: Bool -> ScriptContext
@@ -431,7 +477,7 @@ data Missing02 = Missing02
 defaultMissing02 :: Missing02
 defaultMissing02 =
   Missing02
-    { m2OpeningCbor = txUnsignedCbor
+    { m2OpeningCbor = unsignedAcceptedCbor
     , m2Preimage = Nothing
     , m2SignerIndex = 0
     , m2OutputScript = nextScript
@@ -503,7 +549,7 @@ defaultMissing04 =
     { m4StateVkey = verKeyFor 1
     , m4StateTxId = txUnsignedId
     , m4StateWsHash = unsignedWsHash
-    , m4OpeningCbor = txUnsignedCbor
+    , m4OpeningCbor = unsignedAcceptedCbor
     , m4WitnessSetOf = txUnsigned
     , m4Preimage = Nothing
     , m4FraudProofAddress = fraudProofAddress
@@ -517,11 +563,12 @@ mContext04 s =
     ( PD.Constr
         1
         [ PD.Constr
-            0
+            1
             [ PD.I 0
             , PD.I 0
             , PD.I 0
             , witnessOpening (m4OpeningCbor s) (m4WitnessSetOf s) preimage
+            , PD.Constr 1 []
             ]
         ]
     )
@@ -532,6 +579,91 @@ mContext04 s =
     (singleton fpPolicy (TokenName (toBuiltin (m4FraudProofName s))) 1)
   where
     preimage = maybe (addressWitnessesPreimage (m4WitnessSetOf s)) id (m4Preimage s)
+
+-- The current Aiken step-04 is a fixed 32-item checkpointed scan. These
+-- fixtures construct the checkpoint independently from the Plutarch encoder.
+batched32, batched40, batchedFound :: Tx
+batched32 = txUnsigned {tWitnesses = replicate 32 (Witness 0 True)}
+batched40 = txUnsigned {tWitnesses = replicate 40 (Witness 0 True)}
+batchedFound = txUnsigned {tWitnesses = Witness 1 True : replicate 39 (Witness 0 True)}
+
+expectedBatched32CheckpointHash, expectedBatched40CheckpointHash :: BS.ByteString
+expectedBatched32CheckpointHash = witnessCheckpointHash batched32 32
+expectedBatched40CheckpointHash = witnessCheckpointHash batched40 32
+
+witnessCheckpointHash :: Tx -> Int -> BS.ByteString
+witnessCheckpointHash tx nextIndex =
+  blake2b256 ("MidgardFieldWalkCheckpointV1" <> witnessCheckpointWire tx nextIndex)
+
+witnessCheckpointWire :: Tx -> Int -> BS.ByteString
+witnessCheckpointWire tx nextIndex =
+  BS.concat
+    [ "\x86\x58\x20"
+    , txIdOf tx
+    , "\x41\x07"
+    , fixedScalar3 totalLength
+    , fixedScalar3 (fromIntegral count)
+    , fixedScalar3 (fromIntegral nextIndex)
+    , fixedScalar3 nextOffset
+    ]
+  where
+    count = length (tWitnesses tx)
+    totalLength = fromIntegral $ BS.length $ addressWitnessesPreimage tx
+    nextOffset = fromIntegral (BS.length $ arrayHeader count) + 103 * fromIntegral nextIndex
+
+fixedScalar3 :: Integer -> BS.ByteString
+fixedScalar3 value =
+  "\x43"
+    <> BS.pack
+      [ fromIntegral (value `div` 65536 `mod` 256)
+      , fromIntegral (value `div` 256 `mod` 256)
+      , fromIntegral (value `mod` 256)
+      ]
+
+checkpointOption :: Maybe BS.ByteString -> PD.Data
+checkpointOption Nothing = PD.Constr 1 []
+checkpointOption (Just bytes) = PD.Constr 0 [PD.B bytes]
+
+openingFor :: Tx -> PD.Data
+openingFor tx =
+  witnessOpening
+    (compactWithValidity tx (witnessSetHashOf tx) 0)
+    tx
+    (addressWitnessesPreimage tx)
+
+scanContext :: Tx -> BS.ByteString -> Maybe BS.ByteString -> BS.ByteString -> ScriptContext
+scanContext tx checkpointHash checkpointCbor expectedCheckpointHash =
+  spendContext
+    (stepDatum $ Just $ mState04At tx checkpointHash)
+    ( PD.Constr
+        1
+        [ PD.Constr
+            0
+            [PD.I 0, PD.I 0, openingFor tx, checkpointOption checkpointCbor]
+        ]
+    )
+    [threadInput]
+    [stepOutput stepScript $ Just $ mState04At tx expectedCheckpointHash]
+    referenceInputs
+    []
+    mempty
+
+finalizeBatchedContext :: Tx -> BS.ByteString -> Maybe BS.ByteString -> ScriptContext
+finalizeBatchedContext tx checkpointHash checkpointCbor =
+  spendContext
+    (stepDatum $ Just $ mState04At tx checkpointHash)
+    ( PD.Constr
+        1
+        [ PD.Constr
+            1
+            [PD.I 0, PD.I 0, PD.I 0, openingFor tx, checkpointOption checkpointCbor]
+        ]
+    )
+    [threadInput]
+    [convictionOutput fraudProofAddress threadName]
+    referenceInputs
+    [fraudProofMintEntry threadName]
+    (singleton fpPolicy (TokenName (toBuiltin threadName)) 1)
 
 --------------------------------------------------------------------------------
 -- Driving invalid-signature
@@ -556,6 +688,7 @@ data Invalid01 = Invalid01
   { i1OutputScript :: BS.ByteString
   , i1OutputState :: Maybe PD.Data
   , i1PhasRoot :: BS.ByteString
+  , i1SourceCbor :: BS.ByteString
   }
 
 defaultInvalid01 :: Invalid01
@@ -564,17 +697,18 @@ defaultInvalid01 =
     { i1OutputScript = nextScript
     , i1OutputState = Just (mState02 txBadSigId (witnessSetHashOf txBadSig))
     , i1PhasRoot = phasRoot
+    , i1SourceCbor = badSigAcceptedSourceCbor
     }
 
 iContext01 :: Invalid01 -> ScriptContext
 iContext01 s =
   spendContext
     (stepDatum Nothing)
-    (PD.Constr 1 [bareInclusionArgs txBadSigId txBadSigCbor (i1PhasRoot s)])
+    (PD.Constr 1 [inclusionArgs txBadSigId (i1SourceCbor s) (i1PhasRoot s)])
     [threadInput]
     [stepOutput (i1OutputScript s) (i1OutputState s)]
     referenceInputs
-    [phasEntry (i1PhasRoot s) txBadSigId txBadSigCbor]
+    [phasEntry (i1PhasRoot s) txBadSigId (i1SourceCbor s)]
     mempty
 
 data Invalid02 = Invalid02
@@ -593,7 +727,7 @@ defaultInvalid02 =
   Invalid02
     { i2StateTxId = txBadSigId
     , i2StateWsHash = witnessSetHashOf txBadSig
-    , i2OpeningCbor = txBadSigCbor
+    , i2OpeningCbor = badSigAcceptedCbor
     , i2WitnessSetOf = txBadSig
     , i2Preimage = Nothing
     , i2WitnessIndex = 0
@@ -611,9 +745,9 @@ iContext02 s =
             0
             [ PD.I 0
             , PD.I 0
+            , PD.I 0
             , witnessOpening (i2OpeningCbor s) (i2WitnessSetOf s) preimage
             , PD.I (i2WitnessIndex s)
-            , PD.I 0
             ]
         ]
     )

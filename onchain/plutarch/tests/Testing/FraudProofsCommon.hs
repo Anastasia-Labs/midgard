@@ -83,6 +83,7 @@ import Midgard.FraudProofs.ChunkedInclusion (
 import Midgard.FraudProofs.Common (
   PNativeTxInclusionArgs (..),
   PNativeTxInclusionCarriage (..),
+  PMembershipCarriage (..),
   PNonMembershipCarriage (..),
   PPublishedChunkInclusionArgs (..),
   pcancel,
@@ -96,6 +97,7 @@ import Midgard.FraudProofs.Common (
   pverifyCommittedTransactionsLeafInStateQueueNode,
   pverifyNativeTxInStateQueueNode,
   pverifyNativeTxInStateQueueNodeWith,
+  pverifyMembershipCarried,
   pverifyNonMembershipCarried,
  )
 import Midgard.FraudProofs.NativeTx.Types (PVerifiedMidgardNativeTxCompact (..))
@@ -114,6 +116,7 @@ tests =
     [ testGroup "wire format" wireFormatTests
     , testGroup "carriage accessors" carriageTests
     , testGroup "validate_output_to_fraud_prover" payoutTests
+    , testGroup "verify_membership_carried" membershipTests
     , testGroup "verify_non_membership_carried" nonMembershipTests
     , testGroup "cancel" cancelTests
     , testGroup "continue" continueTests
@@ -166,6 +169,26 @@ wireFormatTests =
           ( pcon
               ( PPublishedChunkNonMembership
                   {ppublishedNonMembership'carriage = pdata (chunkCarriageT [3, 4])}
+              )
+          )
+          (PD.Constr 1 [PD.Constr 0 [PD.List [PD.I 3, PD.I 4]]])
+  , testCase "RedeemerCarriedMembership is Constr 0 with proof then index" $
+      passertEval $
+        pencodes
+          ( pcon
+              ( PRedeemerCarriedMembership
+                  { pmembership'proof = punsafeCoerce (pconstant @PData emptyProof)
+                  , pmembership'scriptRedeemerIndex = pdata (pconstant @PInteger 7)
+                  }
+              )
+          )
+          (PD.Constr 0 [emptyProof, PD.I 7])
+  , testCase "PublishedChunkMembership is Constr 1 wrapping the chunk carriage" $
+      passertEval $
+        pencodes
+          ( pcon
+              ( PPublishedChunkMembership
+                  {ppublishedMembership'carriage = pdata (chunkCarriageT [3, 4])}
               )
           )
           (PD.Constr 1 [PD.Constr 0 [PD.List [PD.I 3, PD.I 4]]])
@@ -236,6 +259,65 @@ payoutTests =
 payoutTo :: Credential -> TxOut
 payoutTo cred =
   TxOut (addressOf cred) (adaValue 2_000_000) NoOutputDatum Nothing
+
+--------------------------------------------------------------------------------
+-- verify_membership_carried
+--------------------------------------------------------------------------------
+
+membershipTests :: [TestTree]
+membershipTests =
+  [ testCase "accepts a redeemer-carried member attested by phas" $
+      passertEval $ runMembership redeemerCarriedMembership [phasEntry phasRoot presentKey leafValue emptyProof]
+  , testCase "aborts when the phas redeemer names another root" $
+      pfails $ runMembership redeemerCarriedMembership [phasEntry otherRoot presentKey leafValue emptyProof]
+  , testCase "aborts when the phas redeemer names another key" $
+      pfails $ runMembership redeemerCarriedMembership [phasEntry phasRoot absentKey leafValue emptyProof]
+  , testCase "aborts when the phas redeemer names another value" $
+      pfails $ runMembership redeemerCarriedMembership [phasEntry phasRoot presentKey otherLeafValue emptyProof]
+  , testCase "aborts when no phas withdrawal is present" $
+      pfails $ runMembership redeemerCarriedMembership []
+  , testCase "accepts a published-chunk member attested by the chunked verifier" $
+      passertEval $ runMembership publishedMembership [chunkEntry membershipClaimData]
+  , testCase "returns False when the published member names another root" $
+      passertEval $ pnot #$ runMembership publishedMembership
+        [chunkEntry (claimData 0 otherRoot presentKey (blake2b256 leafValue) [5, 6])]
+  , testCase "returns False when the published member is an absence claim" $
+      passertEval $ pnot #$ runMembership publishedMembership
+        [chunkEntry (claimData 1 phasRoot presentKey (blake2b256 leafValue) [5, 6])]
+  , testCase "returns False when the published member names other chunks" $
+      passertEval $ pnot #$ runMembership publishedMembership
+        [chunkEntry (claimData 0 phasRoot presentKey (blake2b256 leafValue) [7])]
+  ]
+
+redeemerCarriedMembership :: forall s. Term s PMembershipCarriage
+redeemerCarriedMembership =
+  pcon
+    ( PRedeemerCarriedMembership
+        { pmembership'proof = punsafeCoerce (pconstant @PData emptyProof)
+        , pmembership'scriptRedeemerIndex = pdata (pconstant @PInteger 0)
+        }
+    )
+
+publishedMembership :: forall s. Term s PMembershipCarriage
+publishedMembership =
+  pcon (PPublishedChunkMembership {ppublishedMembership'carriage = pdata (chunkCarriageT [5, 6])})
+
+membershipClaimData :: PD.Data
+membershipClaimData = claimData 0 phasRoot presentKey (blake2b256 leafValue) [5, 6]
+
+runMembership ::
+  forall s.
+  (forall s'. Term s' PMembershipCarriage) ->
+  [(ScriptPurpose, Redeemer)] ->
+  Term s PBool
+runMembership carriage rs =
+  pverifyMembershipCarried
+    carriage
+    (pconstant phasRoot)
+    (pconstant presentKey)
+    (pconstant leafValue)
+    (inputsT [])
+    (redeemersT rs)
 
 --------------------------------------------------------------------------------
 -- verify_non_membership_carried
@@ -794,28 +876,50 @@ nativeTxTests =
             , pmatch view $
                 \PVerifiedMidgardNativeTxCompact {pverified'version} -> pverified'version #== 1
             ]
-  , -- The codec precondition: the value opened must be a canonical native V1
-    -- transaction whose id is the key.
-    testCase "aborts when the leaf value is not canonical native CBOR" $
+  , -- The codec precondition: the value opened must be an exact canonical
+    -- L2TransactionSourceV1 whose embedded id and proof source agree with the
+    -- trie key.
+    testCase "aborts when the leaf value is not canonical source data" $
       pfails $
         runNativeTx
           nativeEvidence
             { eLeafValue = "not a transaction"
             , eWithdrawal = Just (phasRoot, nativeTxId, "not a transaction")
             }
-  , testCase "aborts when the leaf value hashes to another transaction id" $
+  , testCase "aborts when the source embeds another transaction id" $
       pfails $
         runNativeTx
           nativeEvidence
-            { eLeafValue = otherCompactCbor
-            , eWithdrawal = Just (phasRoot, nativeTxId, otherCompactCbor)
+            { eLeafValue = foreignIdSourceCbor
+            , eWithdrawal = Just (phasRoot, nativeTxId, foreignIdSourceCbor)
             }
-  , testCase "aborts when trailing bytes follow the compact transaction" $
+  , testCase "aborts when the source compact derives another transaction id" $
       pfails $
         runNativeTx
           nativeEvidence
-            { eLeafValue = compactCbor <> "\x00"
-            , eWithdrawal = Just (phasRoot, nativeTxId, compactCbor <> "\x00")
+            { eLeafValue = otherCompactSourceCbor
+            , eWithdrawal = Just (phasRoot, nativeTxId, otherCompactSourceCbor)
+            }
+  , testCase "aborts when source witness bytes do not verify" $
+      pfails $
+        runNativeTx
+          nativeEvidence
+            { eLeafValue = forgedWitnessSourceCbor
+            , eWithdrawal = Just (phasRoot, nativeTxId, forgedWitnessSourceCbor)
+            }
+  , testCase "aborts when source field lengths do not verify" $
+      pfails $
+        runNativeTx
+          nativeEvidence
+            { eLeafValue = forgedLengthsSourceCbor
+            , eWithdrawal = Just (phasRoot, nativeTxId, forgedLengthsSourceCbor)
+            }
+  , testCase "aborts when trailing bytes follow the source envelope" $
+      pfails $
+        runNativeTx
+          nativeEvidence
+            { eLeafValue = sourceCbor <> "\x00"
+            , eWithdrawal = Just (phasRoot, nativeTxId, sourceCbor <> "\x00")
             }
   , -- The rest of the chain is shared with the codec-free twin, so one case
     -- each is enough to show it is wired the same way.
@@ -837,12 +941,12 @@ nativeTxTests =
       pfails $
         runNativeTxChunkedWithClaim
           nativeEvidence
-          (claimData 0 otherRoot nativeTxId (blake2b256 compactCbor) [5, 6])
+          (claimData 0 otherRoot nativeTxId (blake2b256 sourceCbor) [5, 6])
   , testCase "the published-chunk arm aborts on a non-membership claim" $
       pfails $
         runNativeTxChunkedWithClaim
           nativeEvidence
-          (claimData 1 phasRoot nativeTxId (blake2b256 compactCbor) [5, 6])
+          (claimData 1 phasRoot nativeTxId (blake2b256 sourceCbor) [5, 6])
   , testCase "the published-chunk arm still enforces the codec precondition" $
       pfails $ runNativeTxChunked nativeEvidence {eLeafValue = "not a transaction"}
   , testCase "the published-chunk arm still enforces the counted root" $
@@ -1009,8 +1113,8 @@ including both shows that neither arm is disturbed by the other's redeemer.
 -}
 passRedeemers :: [(ScriptPurpose, Redeemer)]
 passRedeemers =
-  [ phasEntry phasRoot nativeTxId compactCbor emptyProof
-  , chunkEntry (claimData 0 phasRoot nativeTxId (blake2b256 compactCbor) [5, 6])
+  [ phasEntry phasRoot nativeTxId sourceCbor emptyProof
+  , chunkEntry (claimData 0 phasRoot nativeTxId (blake2b256 sourceCbor) [5, 6])
   ]
 
 runPass :: forall s. Args -> Step -> NativeValidation s -> Term s PBool
@@ -1129,11 +1233,11 @@ phasHash = unhexed "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"
 
 -- | @env.plutarch_pexcludes_validator_hash@.
 pexcludesHash :: BS.ByteString
-pexcludesHash = unhexed "a9ec251d6476217b1abccd5f035dec1272a4b04f640f503fca9e734d"
+pexcludesHash = unhexed "03adaadf3154dafde48eea40030cecf5690b07c495f4c74029e4ab6a"
 
 -- | @env.mpf_chunked_verify_validator_hash@.
 chunkedVerifyHash :: BS.ByteString
-chunkedVerifyHash = unhexed "cb5a7ec4def35ce3ec75c40919992e1b4e8839b4f6b6a2d3b06e7469"
+chunkedVerifyHash = unhexed "dfd0e01fe351bd1d6f75a1ba728d06fb8b11d56bc3bf9ee98e025040"
 
 unhexed :: String -> BS.ByteString
 unhexed = BS.pack . go
@@ -1141,6 +1245,7 @@ unhexed = BS.pack . go
     go (a : b : rest) = fromIntegral (digit a * 16 + digit b) : go rest
     go [] = []
     go _ = error "unhexed: odd length"
+    digit :: Char -> Integer
     digit c = maybe (error "unhexed: bad digit") id (lookup c (zip "0123456789abcdef" [0 ..]))
 
 -- | @env.empty_merkle_tree_root@.
@@ -1262,14 +1367,34 @@ compactBody fee =
 
 compactOf :: Integer -> BS.ByteString
 compactOf fee =
-  BS.concat ["\x84", cborInt 1, compactBody fee, defBytes32 (hash32 0x09), cborInt 3]
+  BS.concat ["\x84", cborInt 1, compactBody fee, defBytes32 (blake2b256 proofWitnessSetCbor), cborInt 0]
 
 txIdOf :: Integer -> BS.ByteString
 txIdOf fee = blake2b256 ("MidgardNativeTxBodyV1" <> cborInt 1 <> compactBody fee)
 
-compactCbor, otherCompactCbor :: BS.ByteString
+compactCbor, otherCompactCbor, sourceCbor :: BS.ByteString
 compactCbor = compactOf 1000000
 otherCompactCbor = compactOf 999999
+sourceCbor = sourceFor nativeTxId compactCbor
+
+foreignIdSourceCbor, otherCompactSourceCbor, forgedWitnessSourceCbor, forgedLengthsSourceCbor :: BS.ByteString
+foreignIdSourceCbor = sourceFor otherNativeTxId compactCbor
+otherCompactSourceCbor = sourceFor nativeTxId otherCompactCbor
+forgedWitnessSourceCbor = sourceForParts nativeTxId compactCbor "\x80" proofFieldLengthsCbor
+forgedLengthsSourceCbor = sourceForParts nativeTxId compactCbor proofWitnessSetCbor "\x80"
+
+proofWitnessSetCbor :: BS.ByteString
+proofWitnessSetCbor = "\x83" <> defBytes32 (hash32 0x11) <> defBytes32 (hash32 0x12) <> defBytes32 (hash32 0x13)
+
+proofFieldLengthsCbor :: BS.ByteString
+proofFieldLengthsCbor = "\x89" <> BS.concat (replicate 9 $ cborInt 0)
+
+sourceFor :: BS.ByteString -> BS.ByteString -> BS.ByteString
+sourceFor txId compact = sourceForParts txId compact proofWitnessSetCbor proofFieldLengthsCbor
+
+sourceForParts :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString
+sourceForParts txId compact witnessSet fieldLengths =
+  serialise $ PD.Constr 0 [PD.B txId, PD.Constr 0 [PD.B compact, PD.B witnessSet, PD.B fieldLengths]]
 
 nativeTxId, otherNativeTxId :: BS.ByteString
 nativeTxId = txIdOf 1000000
@@ -1356,8 +1481,8 @@ difference the two exercise.
 nativeEvidence :: Evidence
 nativeEvidence =
   defaultEvidence
-    { eLeafValue = compactCbor
-    , eWithdrawal = Just (phasRoot, nativeTxId, compactCbor)
+    { eLeafValue = sourceCbor
+    , eWithdrawal = Just (phasRoot, nativeTxId, sourceCbor)
     }
 
 evidenceRedeemers :: Evidence -> [(ScriptPurpose, Redeemer)]
@@ -1463,7 +1588,7 @@ data Args = Args
   }
 
 defaultArgs :: Args
-defaultArgs = Args nativeTxId compactCbor phasRoot
+defaultArgs = Args nativeTxId sourceCbor phasRoot
 
 inclusionArgsData :: Args -> PD.Data
 inclusionArgsData a =
@@ -1503,7 +1628,7 @@ data Published = Published
   }
 
 defaultPublished :: Published
-defaultPublished = Published nativeTxId compactCbor phasRoot [5, 6]
+defaultPublished = Published nativeTxId sourceCbor phasRoot [5, 6]
 
 publishedArgsData :: Published -> PD.Data
 publishedArgsData p =

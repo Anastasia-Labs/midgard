@@ -13,25 +13,32 @@ is a separate slice.
 module Midgard.StateQueue (
   PMintRedeemer (..),
   PSpendRedeemer (..),
+  PSlashingApproach (..),
+  PBlockRemovalApproach (..),
+  PAttestationTimeoutRemovalApproach (..),
   PDatum,
   pconfirmedStateAssetName,
   pblockAssetNamePrefix,
   pblockAssetNamePrefixLength,
   pnoDaAttestation,
+  pdaAttestationTimeoutV1,
   PStateQueueNode (..),
   pdecodeHeaderView,
   pcommitBoundHeaderTimeIsValid,
   pgetConfirmedState,
+  pgetConfirmedStateRoot,
   pgetStateQueueNode,
   pgetBlockDatumV1,
   pgetPrevHeaderHashOfNodeV1,
   pvalidateDaAttestationAttachment,
+  pvalidateDaAvailabilityStatusTransition,
   pfinalizeLinkedList,
 ) where
 
 import Data.Kind (Type)
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
+import Plutarch.Builtin.Crypto (pblake2b_224)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.Interval (PInterval)
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
@@ -42,6 +49,7 @@ import Plutarch.LedgerApi.V3 (
   PTokenName (..),
   PTxInInfo (..),
   PTxOut (..),
+  PTxOutRef,
  )
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
@@ -50,6 +58,7 @@ import Plutarch.Unsafe (punsafeCoerce)
 import LinkedList (pgetElementInfo)
 import LinkedList.Types (PElement, PLink, PRootKey)
 import Midgard.Common.Utils (pgetInclusiveBoundsOfAShortValidityRange)
+import Midgard.AvailabilityChallenge (PStateQueueStatusV1 (..))
 import Midgard.LedgerState (
   PConfirmedState,
   PHeaderHash,
@@ -78,6 +87,11 @@ data PSpendRedeemer (s :: S)
       { psqAttach'stateQueueInputIndex :: Term s (PAsData PInteger)
       , psqAttach'daAttestationMintRedeemerIndex :: Term s (PAsData PInteger)
       }
+  | PAvailabilityStatusUpdate
+      { psqAvailabilityUpdate'stateQueueInputIndex :: Term s (PAsData PInteger)
+      , psqAvailabilityUpdate'stateQueueOutputIndex :: Term s (PAsData PInteger)
+      , psqAvailabilityUpdate'availabilityMintRedeemerIndex :: Term s (PAsData PInteger)
+      }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PSpendRedeemer)
@@ -86,20 +100,58 @@ data PSpendRedeemer (s :: S)
 
 Constructor order fixes the on-chain tag: @InitV1@ 0, @Deinit@ 1,
 @CommitBlockHeader@ 2, @RemoveFraudulentBlockHeader@ 3,
-@MergeToConfirmedStateV1@ 4. The directory's slashing path matches on tag 3, so
-this ordering is load-bearing.
+@RemoveUnattestedBlockAfterTimeout@ 4,
+@RemoveUnavailableBlockAfterTimeout@ 5, and @MergeToConfirmedStateV1@ 6. The
+directory's slashing path matches on tag 3, so this ordering is load-bearing.
 
-Fields this consumer does not read are typed 'PData' rather than being given
-their real types, which would drag in @SlashingApproach@,
-@BlockRemovalApproach@ and the seven root/count types of the merge redeemer.
-
-That is a deliberate, and small, departure from Aiken. Aiken's
-@expect RemoveFraudulentBlockHeader { fraudulent_operator, .. } = data@
-structurally validates the /whole/ redeemer; reading one field positionally out
-of a 'DeriveAsDataStruct' does not. The lost check is redundant in practice: the
-state queue's own minting policy runs in the same transaction against the same
-redeemer and validates it properly. Revisit this if that ever stops being true.
+Every field has its real wire type. This matters to consumers such as the
+correction lock: Aiken's typed redeemer decode validates the whole value, even
+when a consumer only reads a subset of its fields.
 -}
+data PSlashingApproach (s :: S)
+  = PSlashActiveOperator
+      { pslashActive'activeOperatorsRedeemerIndex :: Term s (PAsData PInteger)
+      , pslashActive'mFraudProverRewardOutputIndex :: Term s (PAsData (PMaybeData PInteger))
+      }
+  | PSlashRetiredOperator
+      { pslashRetired'retiredOperatorsRedeemerIndex :: Term s (PAsData PInteger)
+      , pslashRetired'mFraudProverRewardOutputIndex :: Term s (PAsData (PMaybeData PInteger))
+      }
+  | POperatorAlreadySlashed
+      { palreadySlashed'activeElementRefInputIndex :: Term s (PAsData PInteger)
+      , palreadySlashed'retiredElementRefInputIndex :: Term s (PAsData PInteger)
+      }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PSlashingApproach)
+
+data PBlockRemovalApproach (s :: S)
+  = PRemoveLastFraudulentBlock
+      { premoveLast'anchorElementInputOutref :: Term s (PAsData PTxOutRef)
+      , premoveLast'anchorElementOutputIndex :: Term s (PAsData PInteger)
+      }
+  | PRemoveFraudulentBlocksLink
+      { premoveLink'fraudulentNodeInputOutref :: Term s (PAsData PTxOutRef)
+      , premoveLink'fraudulentNodeOutputIndex :: Term s (PAsData PInteger)
+      }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PBlockRemovalApproach)
+
+data PAttestationTimeoutRemovalApproach (s :: S)
+  = PPruneTimedOutBlockDescendant
+      { ppruneTimedOut'confirmedStateRefInputIndex :: Term s (PAsData PInteger)
+      , ppruneTimedOut'timedOutNodeInputOutref :: Term s (PAsData PTxOutRef)
+      , ppruneTimedOut'timedOutNodeOutputIndex :: Term s (PAsData PInteger)
+      }
+  | PRemoveTimedOutHead
+      { premoveTimedOutHead'confirmedStateInputOutref :: Term s (PAsData PTxOutRef)
+      , premoveTimedOutHead'confirmedStateOutputIndex :: Term s (PAsData PInteger)
+      }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PAttestationTimeoutRemovalApproach)
+
 data PMintRedeemer (s :: S)
   = PInitV1 {psqInit'outputIndex :: Term s (PAsData PInteger)}
   | PDeinit
@@ -110,33 +162,44 @@ data PMintRedeemer (s :: S)
       , psqCommit'schedulerRefInputIndex :: Term s (PAsData PInteger)
       , psqCommit'activeOperatorsInputIndex :: Term s (PAsData PInteger)
       , psqCommit'activeOperatorsRedeemerIndex :: Term s (PAsData PInteger)
+      , psqCommit'mConfirmedStateRefInputIndex :: Term s (PAsData (PMaybeData PInteger))
+      , psqCommit'mHeadStateQueueNodeRefInputIndex :: Term s (PAsData (PMaybeData PInteger))
       }
   | PRemoveFraudulentBlockHeader
       { psqRemove'fraudulentOperator :: Term s (PAsData PPubKeyHash)
-      , psqRemove'fraudulentBlocksHeaderHash :: Term s PData
-      , psqRemove'slashingApproach :: Term s PData
-      , psqRemove'fraudProofRefInputIndex :: Term s PData
-      , psqRemove'blockRemovalApproach :: Term s PData
+      , psqRemove'fraudulentBlocksHeaderHash :: Term s (PAsData PHeaderHash)
+      , psqRemove'slashingApproach :: Term s (PAsData PSlashingApproach)
+      , psqRemove'fraudProofRefInputIndex :: Term s (PAsData PInteger)
+      , psqRemove'blockRemovalApproach :: Term s (PAsData PBlockRemovalApproach)
+      }
+  | PRemoveUnattestedBlockAfterTimeout
+      { psqRemoveUnattested'timedOutHeaderHash :: Term s (PAsData PHeaderHash)
+      , psqRemoveUnattested'removalApproach :: Term s (PAsData PAttestationTimeoutRemovalApproach)
+      }
+  | PRemoveUnavailableBlockAfterTimeout
+      { psqRemoveUnavailable'unavailableHeaderHash :: Term s (PAsData PHeaderHash)
+      , psqRemoveUnavailable'challengeAssetName :: Term s (PAsData PTokenName)
+      , psqRemoveUnavailable'removalApproach :: Term s (PAsData PAttestationTimeoutRemovalApproach)
       }
   | PMergeToConfirmedStateV1
-      { psqMerge'headerNodeKey :: Term s PData
-      , psqMerge'confirmedStateInputOutref :: Term s PData
-      , psqMerge'confirmedStateOutputIndex :: Term s PData
-      , psqMerge'mSettlementRedeemerIndex :: Term s PData
-      , psqMerge'withdrawalsRoot :: Term s PData
-      , psqMerge'forcedTransactionsRoot :: Term s PData
-      , psqMerge'transactionsRoot :: Term s PData
-      , psqMerge'depositsRoot :: Term s PData
-      , psqMerge'transitionTraceRoot :: Term s PData
-      , psqMerge'eventToStepRoot :: Term s PData
-      , psqMerge'validationTracesRoot :: Term s PData
-      , psqMerge'withdrawalCount :: Term s PData
-      , psqMerge'forcedTransactionCount :: Term s PData
-      , psqMerge'l2TransactionCount :: Term s PData
-      , psqMerge'depositCount :: Term s PData
-      , psqMerge'totalEventCount :: Term s PData
-      , psqMerge'transitionStepCount :: Term s PData
-      , psqMerge'validationTraceCount :: Term s PData
+      { psqMerge'headerNodeKey :: Term s (PAsData PByteString)
+      , psqMerge'confirmedStateInputOutref :: Term s (PAsData PTxOutRef)
+      , psqMerge'confirmedStateOutputIndex :: Term s (PAsData PInteger)
+      , psqMerge'mSettlementRedeemerIndex :: Term s (PAsData (PMaybeData PInteger))
+      , psqMerge'withdrawalsRoot :: Term s (PAsData PByteString)
+      , psqMerge'forcedTransactionsRoot :: Term s (PAsData PByteString)
+      , psqMerge'transactionsRoot :: Term s (PAsData PByteString)
+      , psqMerge'depositsRoot :: Term s (PAsData PByteString)
+      , psqMerge'transitionTraceRoot :: Term s (PAsData PByteString)
+      , psqMerge'eventToStepRoot :: Term s (PAsData PByteString)
+      , psqMerge'validationTracesRoot :: Term s (PAsData PByteString)
+      , psqMerge'withdrawalCount :: Term s (PAsData PInteger)
+      , psqMerge'forcedTransactionCount :: Term s (PAsData PInteger)
+      , psqMerge'l2TransactionCount :: Term s (PAsData PInteger)
+      , psqMerge'depositCount :: Term s (PAsData PInteger)
+      , psqMerge'totalEventCount :: Term s (PAsData PInteger)
+      , psqMerge'transitionStepCount :: Term s (PAsData PInteger)
+      , psqMerge'validationTraceCount :: Term s (PAsData PInteger)
       }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -170,7 +233,7 @@ Aiken names that @no_da_attestation@.
 -}
 data PStateQueueNode (s :: S) = PStateQueueNode
   { pstateQueueNode'header :: Term s (PAsData PHeaderV1)
-  , pstateQueueNode'daAttestation :: Term s (PAsData PByteString)
+  , pstateQueueNode'daAttestation :: Term s (PAsData PStateQueueStatusV1)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -229,8 +292,12 @@ A node carries this until a data-availability attestation is attached. It is
 what @validate_da_attestation_attachment@ requires of the input side, so an
 attestation can be attached exactly once.
 -}
-pnoDaAttestation :: forall (s :: S). Term s (PAsData PByteString)
-pnoDaAttestation = pdata (pconstant "")
+pnoDaAttestation :: forall (s :: S). Term s (PAsData PStateQueueStatusV1)
+pnoDaAttestation = pdata (pcon PUnattested)
+
+-- | Aiken @state_queue.da_attestation_timeout_v1@.
+pdaAttestationTimeoutV1 :: forall (s :: S). Term s PInteger
+pdaAttestationTimeoutV1 = 3_600_000
 
 {- | Aiken @state_queue.get_confirmed_state@.
 
@@ -253,6 +320,32 @@ pgetConfirmedState referenceInputs stateQueuePolicy refInputIndex =
         \_address _lovelace mKey elementData _link ->
           pmatch mKey $ \case
             PDNothing -> pfromData (punsafeCoerce @(PAsData PConfirmedState) elementData)
+            PDJust _ -> perror
+    )
+    stateQueuePolicy
+
+{- | Aiken @state_queue.get_confirmed_state_root@.
+
+Authenticate the singleton root and expose both its confirmed-state payload and
+current head link. Append and timeout-correction paths use this reader to agree
+on one queue head without consuming the root during an ordinary append.
+-}
+pgetConfirmedStateRoot ::
+  forall (s :: S) (r :: S -> Type).
+  Term s (PBuiltinList (PAsData PTxInInfo)) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s PInteger ->
+  (Term s PConfirmedState -> Term s PLink -> Term s r) ->
+  Term s r
+pgetConfirmedStateRoot referenceInputs stateQueuePolicy refInputIndex k =
+  pfinalizeLinkedList
+    ( pgetElementInfo (presolvedOutputAt referenceInputs refInputIndex) $
+        \_address _lovelace mKey elementData headLink ->
+          pmatch mKey $ \case
+            PDNothing ->
+              k
+                (pfromData (punsafeCoerce @(PAsData PConfirmedState) elementData))
+                headLink
             PDJust _ -> perror
     )
     stateQueuePolicy
@@ -354,7 +447,8 @@ pvalidateDaAttestationAttachment ::
   Term s PInteger ->
   Term s PInteger ->
   Term s PByteString ->
-  Term s (PAsData PCurrencySymbol) ->
+  Term s (PAsData PTokenName) ->
+  Term s (PInterval PPosixTime) ->
   Term s PBool
 pvalidateDaAttestationAttachment
   inputs
@@ -363,7 +457,50 @@ pvalidateDaAttestationAttachment
   stateQueueInputIndex
   stateQueueOutputIndex
   expectedHeaderHash
-  daAttestationPolicyId = P.do
+  daBondAssetName
+  validityRange = P.do
+    _ <-
+      plet $
+        pif
+          ( pvalidateDaAvailabilityStatusTransition
+              inputs
+              outputs
+              stateQueuePolicy
+              stateQueueInputIndex
+              stateQueueOutputIndex
+              expectedHeaderHash
+              (pcon PUnattested)
+              (pcon $ PAttested daBondAssetName)
+          )
+          (pconstant @PUnit ())
+          perror
+    inputOutput <- plet $ presolvedOutputAt inputs stateQueueInputIndex
+    pgetNodeInfo inputOutput stateQueuePolicy $ \_ _ inputBlock _ ->
+      pmatch inputBlock $ \PStateQueueNode {pstateQueueNode'header} ->
+        pmatch (pfromData pstateQueueNode'header) $ \PHeaderV1 {pheader'endTime} ->
+          let (_, inclusiveUpperBound) = pgetInclusiveBoundsOfAShortValidityRange validityRange
+           in inclusiveUpperBound #<= pfromData pheader'endTime + pdaAttestationTimeoutV1
+
+pvalidateDaAvailabilityStatusTransition ::
+  forall (s :: S).
+  Term s (PBuiltinList (PAsData PTxInInfo)) ->
+  Term s (PBuiltinList (PAsData PTxOut)) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s PInteger ->
+  Term s PInteger ->
+  Term s PByteString ->
+  Term s PStateQueueStatusV1 ->
+  Term s PStateQueueStatusV1 ->
+  Term s PBool
+pvalidateDaAvailabilityStatusTransition
+  inputs
+  outputs
+  stateQueuePolicy
+  stateQueueInputIndex
+  stateQueueOutputIndex
+  expectedHeaderHash
+  expectedInputStatus
+  expectedOutputStatus = P.do
     inputOutput <- plet $ presolvedOutputAt inputs stateQueueInputIndex
     output <- plet $ pfromData (pelemAt # stateQueueOutputIndex # outputs)
     PTxOut {ptxOut'address = inputAddress} <- pmatch inputOutput
@@ -392,11 +529,12 @@ pvalidateDaAttestationAttachment
               ( pand'List
                   [ inputHeaderHash #== expectedHeaderHash
                   , outputHeaderHash #== expectedHeaderHash
+                  , inputHeaderHash #== pblake2b_224 # (pserialiseData # pforgetData inputHeader)
                   , inputLovelace #<= outputLovelace
                   , outputLink #== inputLink
-                  , inputAttestation #== pnoDaAttestation
+                  , inputAttestation #== pdata expectedInputStatus
                   , outputHeader #== inputHeader
-                  , outputAttestation #== pdata (pto (pfromData daAttestationPolicyId))
+                  , outputAttestation #== pdata expectedOutputStatus
                   ]
               )
               (pconstant True)

@@ -15,6 +15,7 @@ import Data.Aeson (FromJSON, eitherDecodeFileStrict')
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Char8 qualified as BSC
+import Data.List (find)
 import GHC.Generics (Generic)
 import Plutarch.Builtin.ByteString (pintegerToByteString, pmostSignificantFirst)
 import Plutarch.Builtin.Crypto (pblake2b_256)
@@ -41,6 +42,7 @@ import Midgard.FraudProofs.NativeTx.Preimages (
  )
 import Midgard.FraudProofs.NativeTx.Transaction (
   pdecodeMidgardTransactionV1,
+  pencodeMidgardTransactionV1,
   pverifyMidgardTransactionFieldPreimageV1,
  )
 import Midgard.FraudProofs.NativeTx.Types (
@@ -55,6 +57,7 @@ import Midgard.FraudProofs.NativeTx.Types (
 import Midgard.BoundedCollection qualified as BoundedCollection
 import Midgard.BoundedItem qualified as BoundedItem
 import Midgard.NativeTxFieldAccess qualified as NativeField
+import Midgard.ValidationMachineFieldDoor qualified as FieldDoor
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepEvidenceV1 (..),
@@ -75,6 +78,7 @@ import Midgard.ValidationTrace (
   pmachineVersion,
  )
 import Testing.Eval (passertEvalNoTraceWithoutHoistChecks, pfails)
+import Testing.FieldOpening qualified as FieldFixture
 
 data Fixture = Fixture
   { fullTxCborHex :: String
@@ -196,6 +200,26 @@ data C20AddressFixture = C20AddressFixture
   deriving stock (Eq, Generic, Show)
   deriving anyclass (FromJSON)
 
+data MaximumFoldVector = MaximumFoldVector
+  { maximumLabel :: String
+  , maximumTransactionId :: String
+  , maximumTransactionCommitment :: String
+  , maximumCompactCbor :: String
+  , maximumWitnessSetCbor :: String
+  , maximumLengthsCbor :: String
+  , maximumFieldPreimage :: String
+  , maximumContextCbor :: String
+  , maximumFieldIndex :: Integer
+  , maximumItemCount :: Integer
+  , maximumItemIndex :: Integer
+  , maximumTerminalChunkIndex :: Integer
+  , maximumEncodedLength :: Integer
+  , maximumPreWorkRoot :: String
+  , maximumPostWorkRoot :: String
+  }
+  deriving stock (Eq, Generic, Show)
+  deriving anyclass (FromJSON)
+
 tests :: TestTree
 tests =
   testGroup "Native Tx Maximum Profiles"
@@ -207,20 +231,16 @@ tests =
         "size_balanced_lucid_midgard_native_tx_decodes"
         "tests/fixtures/native-size-balanced-15_5k.json"
         sizeBalancedExpected
-    , testCase "maximum_cardano_inline_datum_terminal_fold_matches_typescript" $ do
+    , maximumFoldCase "maximum_cardano_inline_datum_terminal_fold_matches_typescript" "maximum-inline-datum" $ \vector -> do
         BS.length maximumInlineDatumTerminalChunk @?= 3_936
-        passertEvalNoTraceWithoutHoistChecks maximumInlineDatumTerminalFold
-    , testCase "maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment" $ do
+        passertEvalNoTraceWithoutHoistChecks (maximumInlineDatumTerminalFold vector)
+    , maximumFoldCase "maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment" "maximum-spend-redeemers" $ \vector -> do
         passertEvalNoTraceWithoutHoistChecks maximumSpendRedeemerDecodeRoundTrip
         passertEvalNoTraceWithoutHoistChecks maximumSpendRedeemerShape
-        -- The final three Aiken assertions currently fail too: fixed-width
-        -- output indices changed the field bytes without refreshing this TS
-        -- vector. Pin the executable behavior until the shared generator is
-        -- regenerated, while the independent terminal proof below stays live.
-        passertEvalNoTraceWithoutHoistChecks $ pnot # maximumSpendRedeemerPreimageVector
-        passertEvalNoTraceWithoutHoistChecks $ pnot # maximumSpendRedeemerCommitment
-    , testCase "maximum_cardano_spend_redeemer_terminal_fold_matches_typescript" $
-        passertEvalNoTraceWithoutHoistChecks maximumSpendRedeemerTerminalFold
+        passertEvalNoTraceWithoutHoistChecks (maximumSpendRedeemerPreimageVector vector)
+        passertEvalNoTraceWithoutHoistChecks (maximumSpendRedeemerCommitment vector)
+    , maximumFoldCase "maximum_cardano_spend_redeemer_terminal_fold_matches_typescript" "maximum-spend-redeemers" $
+        \vector -> passertEvalNoTraceWithoutHoistChecks (maximumSpendRedeemerTerminalFold vector)
     , testGroup "C20 field 7 Cardano maximum TypeScript fixture"
         [ c20AddressCase "v1_c20_7_maximum_fixture_decodes_and_round_trips" $
             \fixture -> passertEvalNoTraceWithoutHoistChecks (c20AddressDecodeRoundTrip fixture)
@@ -238,6 +258,17 @@ tests =
             \fixture -> passertEvalNoTraceWithoutHoistChecks (c20AddressAdjacentCount fixture)
         ]
     ]
+
+maximumFoldCase :: String -> String -> (MaximumFoldVector -> Assertion) -> TestTree
+maximumFoldCase name label assertion = testCase name $ do
+  decoded <-
+    eitherDecodeFileStrict' "tests/fixtures/validation-machine-field-terminal-v1.json"
+      :: IO (Either String [MaximumFoldVector])
+  case decoded of
+    Left err -> assertFailure err
+    Right vectors -> case find ((== label) . maximumLabel) vectors of
+      Nothing -> assertFailure $ "missing maximum fold vector: " <> label
+      Just vector -> assertion vector
 
 profileCase :: String -> FilePath -> Expected -> TestTree
 profileCase caseName fixturePath expected = testCase caseName $ do
@@ -268,10 +299,9 @@ profileCase caseName fixturePath expected = testCase caseName $ do
         expected.expectedSizes.fullTxCborBytes >= target - tolerance
           && expected.expectedSizes.fullTxCborBytes <= target + tolerance
     _ -> assertFailure "target and tolerance must either both be present or both be absent"
-  -- These exact generated fixtures also fail in the current Aiken suite at
-  -- the fixed-width output-index decoder (expected byte 0x19).  Preserve that
-  -- observable behavior instead of silently accepting stale preimages.
-  pfails $ pdecodeMidgardTransactionV1 # pconstant fullTx
+  passertEvalNoTraceWithoutHoistChecks $
+    pencodeMidgardTransactionV1 # (pdecodeMidgardTransactionV1 # pconstant fullTx)
+      #== pconstant fullTx
 
 assertPreimageVectors :: Fixture -> Assertion
 assertPreimageVectors fixture = do
@@ -458,31 +488,44 @@ hex = Base16.decodeLenient . BSC.pack
 -- Cardano maximum inline datum and redeemer profiles
 --------------------------------------------------------------------------------
 
-maximumInlineDatumTerminalFold :: forall s. Term s PBool
-maximumInlineDatumTerminalFold =
+maximumInlineDatumTerminalFold :: forall s. MaximumFoldVector -> Term s PBool
+maximumInlineDatumTerminalFold vector =
+  let transactionId = phex $ maximumTransactionId vector
+      transactionCommitment = phex $ maximumTransactionCommitment vector
+      compactCbor = phex $ maximumCompactCbor vector
+      witnessSetCbor = phex $ maximumWitnessSetCbor vector
+      lengthsCbor = phex $ maximumLengthsCbor vector
+      contextCbor = phex $ maximumContextCbor vector
+      fieldPreimage = hex $ maximumFieldPreimage vector
+      carriage = FieldFixture.certifiedCarriageFor $ FieldFixture.chunksOf fieldPreimage
+      door = pcon $ FieldDoor.PMachineFieldDoorV1
+        (FieldFixture.inputsT $ FieldFixture.certifiedReferenceInputs
+          (hex $ maximumTransactionId vector) 2 fieldPreimage)
+        (pdata $ pconstant FieldFixture.certificatePolicy)
+   in
   plet
     ( pencodeTransactionFieldScanWitness
-        # phex maximumInlineCompactCbor
-        # phex maximumInlineWitnessSetCompactCbor
-        # phex maximumInlineFieldLengthsCbor
-        # phex maximumValidationContextCbor
+        # compactCbor
+        # witnessSetCbor
+        # lengthsCbor
+        # contextCbor
         # 2 # 0 # 3 # 1 # 1
     )
     $ \workCbor ->
   plet
     ( pencodeTransactionFieldScanWitness
-        # phex maximumInlineCompactCbor
-        # phex maximumInlineWitnessSetCompactCbor
-        # phex maximumInlineFieldLengthsCbor
-        # phex maximumValidationContextCbor
+        # compactCbor
+        # witnessSetCbor
+        # lengthsCbor
+        # contextCbor
         # 3 # 0 # 0 # (-1) # 0
     )
     $ \successorWorkCbor ->
   plet
     ( maximumState
-        (phex maximumInlineTransactionId)
-        (phex maximumInlineTransactionCommitment)
-        (phex maximumValidationContextCbor)
+        transactionId
+        transactionCommitment
+        contextCbor
         (pcon PCanonicalDecode)
         40
         workCbor
@@ -490,9 +533,9 @@ maximumInlineDatumTerminalFold =
     $ \pre ->
   plet
     ( maximumState
-        (phex maximumInlineTransactionId)
-        (phex maximumInlineTransactionCommitment)
-        (phex maximumValidationContextCbor)
+        transactionId
+        transactionCommitment
+        contextCbor
         (pcon PCanonicalDecode)
         41
         successorWorkCbor
@@ -512,7 +555,7 @@ maximumInlineDatumTerminalFold =
         )
         (pdata pnil)
     )
-    $ \collectionProof ->
+    $ \_collectionProof ->
   plet
     ( pcon $ BoundedItem.PChunkProofV1
         (pdata BoundedItem.pversion)
@@ -531,14 +574,14 @@ maximumInlineDatumTerminalFold =
             ]
         )
     )
-    $ \chunkProof ->
-  plet (maximumEvidence workCbor post collectionProof chunkProof) $ \evidence ->
+    $ \_chunkProof ->
+  plet (maximumEvidence workCbor post 2 0 carriage) $ \evidence ->
   pmatch pre $ \preState ->
   pmatch post $ \postState ->
     pfromData (pmachineState'workRoot preState)
-      #== phex maximumInlinePreWorkRoot
-      #&& (pfromData (pmachineState'workRoot postState) #== phex maximumInlinePostWorkRoot)
-      #&& (pverifyCanonicalDecodeOneStepV1 # pre # evidence)
+      #== phex (maximumPreWorkRoot vector)
+      #&& (pfromData (pmachineState'workRoot postState) #== phex (maximumPostWorkRoot vector))
+      #&& (pverifyCanonicalDecodeOneStepV1 # pre # evidence # door)
 
 maximumSpendRedeemerDecodeRoundTrip :: forall s. Term s PBool
 maximumSpendRedeemerDecodeRoundTrip =
@@ -554,15 +597,15 @@ maximumSpendRedeemerShape =
   plet (pdecodeMidgardTxRedeemerWitnessesPreimageCbor #$ pencodeRedeemerWitnessPreimage # maximumSpendRedeemers) $ \decoded ->
     maximumRedeemersAreSequential # decoded # 1
 
-maximumSpendRedeemerPreimageVector :: forall s. Term s PBool
-maximumSpendRedeemerPreimageVector =
+maximumSpendRedeemerPreimageVector :: forall s. MaximumFoldVector -> Term s PBool
+maximumSpendRedeemerPreimageVector vector =
   plet (pencodeRedeemerWitnessPreimage # maximumSpendRedeemers) $ \preimage ->
     plengthBS # preimage
-      #== 5_053
-      #&& (pblake2b_256 # preimage #== phex "680079f9aebb6ab20240bf0a4b46a9b607181843413e0cdfbb293942aebe3d0a")
+      #== pconstant (fromIntegral $ BS.length $ hex $ maximumFieldPreimage vector)
+      #&& (preimage #== pconstant (hex $ maximumFieldPreimage vector))
 
-maximumSpendRedeemerCommitment :: forall s. Term s PBool
-maximumSpendRedeemerCommitment =
+maximumSpendRedeemerCommitment :: forall s. MaximumFoldVector -> Term s PBool
+maximumSpendRedeemerCommitment vector =
   plet maximumSpendRedeemers $ \redeemers ->
   plet
     ( pmap
@@ -571,34 +614,46 @@ maximumSpendRedeemerCommitment =
     )
     $ \itemCbors ->
     NativeField.pfieldCommitmentFromItems # itemCbors
-      #== phex "07da3c8aea4dd252510b18f872268ea7b7d752fe9d6874f3321286ec6d8c4133"
+      #== (pblake2b_256 # pconstant (hex $ maximumFieldPreimage vector))
 
-maximumSpendRedeemerTerminalFold :: forall s. Term s PBool
-maximumSpendRedeemerTerminalFold =
+maximumSpendRedeemerTerminalFold :: forall s. MaximumFoldVector -> Term s PBool
+maximumSpendRedeemerTerminalFold vector =
+  let transactionId = phex $ maximumTransactionId vector
+      transactionCommitment = phex $ maximumTransactionCommitment vector
+      compactCbor = phex $ maximumCompactCbor vector
+      witnessSetCbor = phex $ maximumWitnessSetCbor vector
+      lengthsCbor = phex $ maximumLengthsCbor vector
+      contextCbor = phex $ maximumContextCbor vector
+      carriage = pcon $ NativeField.PInline
+        (pdata $ pencodeRedeemerWitnessPreimage # maximumSpendRedeemers)
+      door = pcon $ FieldDoor.PMachineFieldDoorV1
+        pnil
+        (pdata $ pconstant FieldFixture.certificatePolicy)
+   in
   plet
     ( pencodeTransactionFieldScanWitness
-        # phex maximumRedeemerCompactCbor
-        # phex maximumRedeemerWitnessSetCompactCbor
-        # phex maximumRedeemerFieldLengthsCbor
-        # phex maximumValidationContextCbor
-        # 8 # 295 # 0 # 296 # 5_035
+        # compactCbor
+        # witnessSetCbor
+        # lengthsCbor
+        # contextCbor
+        # 8 # 295 # 0 # 296 # pconstant (maximumEncodedLength vector)
     )
     $ \workCbor ->
   plet
     ( pencodeCompactBindingWitness
-        # phex maximumRedeemerTransactionId
-        # phex maximumRedeemerTransactionCommitment
-        # phex maximumRedeemerCompactCbor
-        # phex maximumRedeemerWitnessSetCompactCbor
-        # phex maximumRedeemerFieldLengthsCbor
-        # phex maximumValidationContextCbor
+        # transactionId
+        # transactionCommitment
+        # compactCbor
+        # witnessSetCbor
+        # lengthsCbor
+        # contextCbor
     )
     $ \successorWorkCbor ->
   plet
     ( maximumState
-        (phex maximumRedeemerTransactionId)
-        (phex maximumRedeemerTransactionCommitment)
-        (phex maximumValidationContextCbor)
+        transactionId
+        transactionCommitment
+        contextCbor
         (pcon PCanonicalDecode)
         40
         workCbor
@@ -606,9 +661,9 @@ maximumSpendRedeemerTerminalFold =
     $ \pre ->
   plet
     ( maximumState
-        (phex maximumRedeemerTransactionId)
-        (phex maximumRedeemerTransactionCommitment)
-        (phex maximumValidationContextCbor)
+        transactionId
+        transactionCommitment
+        contextCbor
         (pcon PCompactBinding)
         41
         successorWorkCbor
@@ -635,7 +690,7 @@ maximumSpendRedeemerTerminalFold =
             ]
         )
     )
-    $ \collectionProof ->
+    $ \_collectionProof ->
   plet
     ( pcon $ BoundedItem.PChunkProofV1
         (pdata BoundedItem.pversion)
@@ -650,14 +705,14 @@ maximumSpendRedeemerTerminalFold =
         )
         (pdata pnil)
     )
-    $ \chunkProof ->
-  plet (maximumEvidence workCbor post collectionProof chunkProof) $ \evidence ->
+    $ \_chunkProof ->
+  plet (maximumEvidence workCbor post 8 295 carriage) $ \evidence ->
   pmatch pre $ \preState ->
   pmatch post $ \postState ->
     pfromData (pmachineState'workRoot preState)
-      #== phex maximumRedeemerPreWorkRoot
-      #&& (pfromData (pmachineState'workRoot postState) #== phex maximumRedeemerPostWorkRoot)
-      #&& (pverifyCanonicalDecodeOneStepV1 # pre # evidence)
+      #== phex (maximumPreWorkRoot vector)
+      #&& (pfromData (pmachineState'workRoot postState) #== phex (maximumPostWorkRoot vector))
+      #&& (pverifyCanonicalDecodeOneStepV1 # pre # evidence # door)
 
 maximumState :: forall s.
   Term s PByteString ->
@@ -688,13 +743,15 @@ maximumState transactionId transactionCommitment context phase counter workCbor 
 maximumEvidence :: forall s.
   Term s PByteString ->
   Term s PValidationMachineStateV1 ->
-  Term s BoundedCollection.PItemProofV1 ->
-  Term s BoundedItem.PChunkProofV1 ->
+  Term s PInteger ->
+  Term s PInteger ->
+  Term s NativeField.PFieldCarriageV1 ->
   Term s PValidationOneStepEvidenceV1
-maximumEvidence workCbor post collectionProof chunkProof =
+maximumEvidence workCbor post fieldIndex itemIndex carriage =
   pcon $ PValidationOneStepEvidenceV1
     (pdata $ pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post))
-    (pdata $ pcon $ PTransactionFieldChunkWitness (pdata collectionProof) (pdata chunkProof))
+    (pdata $ pcon $ PTransactionFieldChunkWitness
+      (pdata fieldIndex) (pdata itemIndex) (pdata carriage))
 
 maximumSpendRedeemers :: forall s. Term s (PBuiltinList (PAsData PMidgardRedeemerWitness))
 maximumSpendRedeemers =
@@ -748,34 +805,9 @@ maximumInlineDatumTerminalChunk =
 zeroHash :: BS.ByteString
 zeroHash = BS.replicate 32 0
 
-maximumValidationContextCbor :: String
-maximumValidationContextCbor = "8701546d6964676172642d636f6e73656e7375732d763118640000001864"
-
-maximumInlineTransactionId, maximumInlineTransactionCommitment, maximumInlineCompactCbor,
-  maximumInlineWitnessSetCompactCbor, maximumInlineFieldLengthsCbor,
-  maximumInlinePreWorkRoot, maximumInlinePostWorkRoot :: String
-maximumInlineTransactionId = "112edbb37e44d39825d1e33830c942032ecbaca605ddc11c3931cc948a8d02f2"
-maximumInlineTransactionCommitment = "db89b9cc814dab98a1e84bc5a765756d14771347cfa09dd58d598d073473e3c4"
-maximumInlineCompactCbor = "84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820d40dc24540734968ab6b8212814ab280ab51e0102c18294b1abf2c9e21db5a871a000d5ec920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58206295d6e5a837fa5a95389ebbd7ad38ffa316e09cd29d28a9e71639cae906aa2c00"
-maximumInlineWitnessSetCompactCbor = "835820650b4c39edb0d2b447c9d9f25b892ef1b1e272201ddae9519989ed3ee927f4815820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3"
-maximumInlineFieldLengthsCbor = "89182701193f6101010101186801"
-maximumInlinePreWorkRoot = "30a0cfd405d4de73e8df567ed13877bf8ec5f71a6a96955c32e998102e5075c7"
-maximumInlinePostWorkRoot = "b95fcde8d062d0a4f60b0f9db1e1b3d5b690ce0e00608b31c158912c4c4456ce"
-
-maximumRedeemerTransactionId, maximumRedeemerTransactionCommitment, maximumRedeemerCompactCbor,
-  maximumRedeemerWitnessSetCompactCbor, maximumRedeemerFieldLengthsCbor,
-  maximumRedeemerPreWorkRoot, maximumRedeemerPostWorkRoot :: String
-maximumRedeemerTransactionId = "82c56f324a18a66255e3d48ddcf80a86f5b7db89dd8f5b1e0c3d3cce02668b40"
-maximumRedeemerTransactionCommitment = "d44e343be6c481bf241cc393197ddbba3e8909f2d01ba9501486585bd412a04c"
-maximumRedeemerCompactCbor = "84018c58207fac00ce59ee1a8c6f84fe48c8ff61af01e76a9f4cfe210a6245f0cbbe7781265820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58205581fd909e08e4dea9336a8928f0d2731f2f31e1ce31a16cb1f5b2ebc2c9dccf1a000de2ec20205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d5820e650a24c14c0e6a48877805b4185f8ff2ee711e964e6aa63ce05c29ddeb1bd26582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820723dfb187dd11e5d8b44a3ebc9b44da9037807f5ff794e07f962798509df1f6100"
-maximumRedeemerWitnessSetCompactCbor = "83582047e04a3a41997bc4fc6c3ad161b44ccdee9caa0f5ff5d1fa76d3b071108629e958207f31164435b45870b2761140e4ed3e5ee4535de19f223b22f2ba21735503b386582007da3c8aea4dd252510b18f872268ea7b7d752fe9d6874f3321286ec6d8c4133"
-maximumRedeemerFieldLengthsCbor = "89192d550118300101011618681913bd"
-maximumRedeemerPreWorkRoot = "e8d2c995785e73b5f3d4343d33adf421bd003019c9116f689a1478e5e886400a"
-maximumRedeemerPostWorkRoot = "c95c88e209891c909d9a4d8ac18883caa51d432efd150613ed904c0cb74f7036"
-
 highCardinalityExpected :: Expected
 highCardinalityExpected = Expected
-  { expectedTxIdHex = "c8d85f6a8a5117b7a6db068ad455dffba3174ac766f58181152b06e8832acbe8"
+  { expectedTxIdHex = "9bfe8f0ec50ab4b1822452f6fa1f881e6ae280d03e00ee2592a08abf9bf84bea"
   , expectedCounts = ProfileCounts
       { spendInputs = 8
       , referenceInputs = 4
@@ -791,20 +823,20 @@ highCardinalityExpected = Expected
       , scriptWitnesses = Nothing
       }
   , expectedSizes = ProfileSizes
-      { fullTxCborBytes = 2_855
+      { fullTxCborBytes = 2_936
       , compactTxCborBytes = 314
       , compactBodyCborBytes = 277
       , fee = "0"
       , preimages = ProfilePreimageSizes
-          { spendInputs = 305
-          , referenceInputs = 153
+          { spendInputs = 321
+          , referenceInputs = 161
           , outputs = 1_132
           , requiredObservers = 61
           , requiredSigners = 31
-          , mint = 235
+          , mint = 253
           , addrTxWits = 104
-          , scriptTxWits = 614
-          , redeemerTxWits = 122
+          , scriptTxWits = 640
+          , redeemerTxWits = 135
           }
       }
   , expectedMintPolicyIds =
@@ -821,16 +853,16 @@ highCardinalityExpected = Expected
       , "3:0", "3:1", "6:0", "6:1"
       ]
   , expectedHashes = ProfileHashes
-      { spendInputsHashHex = "7c407a424644eee95cbce2b7980d7717059c1445271afbcebbddd69a977bd959"
-      , referenceInputsHashHex = "0163d3464a8e04f7045abdef5be8dc55b69a7d7cd7179c21eab6dbc06482023b"
-      , outputsHashHex = "6964e9026802c8033a265f2e2b5a7547dd24fb203b3c874242fcc2585fc426cd"
-      , requiredObserversHashHex = "f9e0d6e641d40f55e7b4451d8d843876853c175474c09d4f61eaeabac0ff4000"
-      , requiredSignersHashHex = "453dfb0d91ede6f16748af7c53dd089e3c66b793e029cf6ee93ac71d4c4adca9"
-      , mintHashHex = "f35ee4999365b55237cbfe126a77ef8dfc525f96fb884a3cf7a9e34c629a5208"
-      , addrTxWitsHashHex = "53098ac6503b1aee0d2a1bf2978504eb707318a82606ae93c886f29012c8a316"
-      , scriptTxWitsHashHex = "2e404579b15728257e2af56f360c0ae9248a67c372dd08885d4ea4dfbcddede3"
-      , redeemerTxWitsHashHex = "eae134cc09135ef11b605ed1551b772e9f8b15631b0b8fc98b4d41af19fb0e5c"
-      , witnessSetHashHex = "5ade743c42928720553c96e40a004cd9eda294022272374376ed9f93b6e6c184"
+      { spendInputsHashHex = "99272cc37b5ef7d39d69a25f035251d47bf8b2ba5037cca8c80e83062e129795"
+      , referenceInputsHashHex = "71ccf64e13bf69772ad3d039a7b98df9df56cf72507fab67d250f4f3bfa96289"
+      , outputsHashHex = "c7d0ae52b0b329f17db87ecd9606869e58d255ddd5d6abdf1d9ddb49c659df11"
+      , requiredObserversHashHex = "6970d0585775a9435729f42623c7474df384fe7a93358131a4d530183d8c4896"
+      , requiredSignersHashHex = "ddc9251016435006deab0c3aeab4defff8a4fc6847122e046f6b25d529fa5bfc"
+      , mintHashHex = "7424389d0cc642a47af1e29a1da80de5c92935e4ed49123adb1757c4376a8ef0"
+      , addrTxWitsHashHex = "d14987c4b00e9a65f67f19ce4dae270f49a5dd1341db181a1d0a381a1c0e4715"
+      , scriptTxWitsHashHex = "a23d592d41138b395b6e5a05221f347d63ec995ffb180a2c4e7b9435b6bc59f1"
+      , redeemerTxWitsHashHex = "28fc840d662bb07dbd0f8f029674915d7b2a1e77d16ebf588e547882509a6f50"
+      , witnessSetHashHex = "774348f5a59cb13a14ce8d2b7cd8d7e6e8be482493fcc783ec474d9f542dc51f"
       }
   , expectedTargetBytes = Nothing
   , expectedToleranceBytes = Nothing
@@ -840,7 +872,7 @@ highCardinalityExpected = Expected
 
 sizeBalancedExpected :: Expected
 sizeBalancedExpected = Expected
-  { expectedTxIdHex = "85ef77a651190c8bb44624a3951709197d9954afe6c7475e8c45924425ece054"
+  { expectedTxIdHex = "bae88529bd16928b3651b517a9a2e786a7ac772413b23c0515708bd02ba66299"
   , expectedCounts = ProfileCounts
       { spendInputs = 48
       , referenceInputs = 32
@@ -856,47 +888,47 @@ sizeBalancedExpected = Expected
       , scriptWitnesses = Just 68
       }
   , expectedSizes = ProfileSizes
-      { fullTxCborBytes = 16_126
+      { fullTxCborBytes = 16_176
       , compactTxCborBytes = 318
       , compactBodyCborBytes = 281
       , fee = "5000000"
       , preimages = ProfilePreimageSizes
-          { spendInputs = 1_826
-          , referenceInputs = 1_218
-          , outputs = 3_873
+          { spendInputs = 1_922
+          , referenceInputs = 1_282
+          , outputs = 4_371
           , requiredObservers = 541
           , requiredSigners = 511
-          , mint = 963
+          , mint = 1_035
           , addrTxWits = 1_752
-          , scriptTxWits = 4_644
-          , redeemerTxWits = 690
+          , scriptTxWits = 3_896
+          , redeemerTxWits = 758
           }
       }
   , expectedMintPolicyIds =
-      [ "15465871b9eb344f0f7277dc7e46453f7ca2ddb061cf10283c5c6326"
-      , "15ab5b8ec4de39a54a2e0a7bf15560ef31cb485effb731790ff2eed4"
-      , "1df6006e4b13b9e8c95a6af85c16966278f02eab9cc0965b029a6a58"
-      , "2345b50693d24fc89a2c696499e9d28b0943a86e5467014cec55aa41"
-      , "23751cbaf26e4bc47c22b5fa880d1a3755726c16b0c0bf663d6b5365"
-      , "38582811f3072fd5d0345e58e536e199502e0fe646ab219f2899683a"
-      , "41319b215276c8c0ca0bf88c1fe714b48525d60771e798abd7dc0f5f"
-      , "58b92ecf99b51df507cdfa5a712034816fd93ef0ef9e59669580fbc6"
-      , "687756665d1a5a868138935ed4131f18adc9e2202be8e673e7d9093a"
-      , "76f25a7542a92113c3fd4a594ad3c5375f7a96ecbbfab7b4d90d8a5e"
-      , "78d7a0c34a790590ed1685e3d7f6edebd807a683664acd238e1dd8b8"
-      , "797c4592ad0d3f9b52bb1bee9116358396c40acbc3af2e0db31a6134"
-      , "91ec722937d978b0bcbd26a896a96066a7d17460c10449c51518b2ed"
-      , "973453c3b1532f8537234cb6b6d590cb252eaf8f7b6b365a3384bcf5"
-      , "9a02c8de77a235ea9be3bb71d6df2d6cde21de215127b33b61b63c90"
-      , "b59419c2b5e22b8378453d8df1b96ca3fde37d75c9c04d7bca4393a4"
-      , "bc6923879cfd211207e98ac78a9b482a341b6c8aab9e0beb899711f3"
-      , "cd6b70dffabdf02ca792d40b478629ba73eaf59a529b96a652557377"
-      , "d262439a9943f8226b634416f24b3eaae7d7f39e432d485de75d4f88"
-      , "d879fc7075e6ca7778dc2e61cc6f2b5ad250332ca93fef01513916e9"
-      , "daf8b2f5390b719c559a03920f89df02144bc01b2d0602612528e2b0"
-      , "f3147762799df983aea815e924d5bea2aa7c63c926652ffa09e9f5ef"
-      , "fa65ff6bc5ed15cff04737eee498267330b9e73c55337f75fad66ece"
-      , "fbd5f3e75a4a768b24ed66d3dfb4027f271e5dab2782d07b334e57a9"
+      [ "13495cddfa3f76c2b61db08debe7436dde852483a259a28fecbce523"
+      , "225b4b1401614c6570fe24713245f766ebd010d83ef3b656ecea525a"
+      , "2a08243fe21da6635e6f5944757ec87381bcc50c1ef23065944adab1"
+      , "3114815749ea2205e6a019fb12c32c31dd19a3c1c338ef77a0510c24"
+      , "32009a8d48d57459d8ac81bb25aee8a8e3d9dd8c62b6059c298af7b4"
+      , "33573af50e11f8cc800326cb7a0ebf75f9ad183d1e2fbc9d7fd858d3"
+      , "40a0003944d5d0fd52c524486559f44a1b31b5f29b8027326489fb64"
+      , "4e58ccbf6836164904505373c78977fb5e07e7edbdfe02bcb8895162"
+      , "4f2652177ca58e8ddce164863596611967fad0ef227a4d4b9820d3c8"
+      , "609d5a4d16f0e2369d220994840523a1e43671c3aeee97dfaa9e194d"
+      , "6cb7f19594cd456e7ada909053e4eee93af7d5666f0e72f5482567be"
+      , "831bbb60ca6687e168a87db1b1df0d1aefe06063520e500c27db35d7"
+      , "84d6e094405ff5f7aeef6d6ede3307dcf958a62e344ad65ecc1c667b"
+      , "8519882cc348c15d228a0d21941efa4d8d2fa12133f3262edb933f36"
+      , "8cde7ceea1325bd7c26a019b1f11224b6ba227599257e7751956449f"
+      , "9c069bfd6f028262c78c16c0ec6a9742e1bf347a4268b27ac3dba91b"
+      , "c0bfde0cd6bbb2d7cac51689bc3bb7803418c4a1201e20d9fe6b61dc"
+      , "e276e3153393fa5851b37f5fa6de0c4123fba9bc8fecc114e080a617"
+      , "e45b5eb0149232ee9438ee676396b133a060d041693aa6b67cf8fd7f"
+      , "e97c2c6330990eca8e58ca215634be4a0973b2ec20fe39b7d334330e"
+      , "ef967c1f236616b1d26f2995282173a91d9d02337efa95c14c35400a"
+      , "f281143eaa25332f84b0bd91b9917f93ea96a80605bc24e7bfb79472"
+      , "f4166dea635550bd3a4bec029269ae32c3462aea297e4f4ee093c6aa"
+      , "fd5eb0e838e645b1715745c602e984d0d877904bd6faeb3f4bc21250"
       ]
   , expectedRedeemerPointers =
       pointerRange "0" 40 47
@@ -904,19 +936,19 @@ sizeBalancedExpected = Expected
         <> pointerRange "3" 0 17
         <> pointerRange "6" 0 17
   , expectedHashes = ProfileHashes
-      { spendInputsHashHex = "8168ff7795127695f6329704cad14745a1f2e6545fb087046ae4759628cd66a3"
-      , referenceInputsHashHex = "f8071594b2d46393e2683bf1f82634044d45fd7c465f05c5dff06b760277724e"
-      , outputsHashHex = "0d6b0d43999816434a199d877b9718e5fa36007ad2196fec98bdbe54e49bb420"
-      , requiredObserversHashHex = "36d372e9ce6874b7067d2d0247efe6cd5aa734c6f0d49bcd0a0d6d4222daa946"
-      , requiredSignersHashHex = "fb91d7e6d48124321f87798e778c2d15d8c2fe0f7e045221f3e4732a46bfb0a2"
-      , mintHashHex = "79ede6092dbe2a35aa24948e50e23805c6537dfdd10d435cab3110cba197f877"
-      , addrTxWitsHashHex = "3575b39aaca660098455f60a830ce5b8d056ae0fa6ff8eebc213667671b0aff5"
-      , scriptTxWitsHashHex = "992696e58fa33519d3785090b60bb42ffab2c46edb21819c9305e62a80b479d0"
-      , redeemerTxWitsHashHex = "f95e4d5837f61811f46245098195876412cebd817f4e2640500495e858dfe7cc"
-      , witnessSetHashHex = "20aef22362c2f28e4cdfed98f50451848f62f685caf0812e42d660f56b56f0b6"
+      { spendInputsHashHex = "eb7a16d70ae555416ffca6da2a0eec46dff3ddbb66fe26f961ad9b2d248d666e"
+      , referenceInputsHashHex = "d499d5e4a101dc2c505403598f5bd80fa1f5c1562e5c94ce226fdaef4345e135"
+      , outputsHashHex = "59430a79bca7b5b29f12a7d17cf3bb42d3d499e85eff7bfa5a68132eb71bc78f"
+      , requiredObserversHashHex = "744a1689162fd10c5cfe48d675fe921e38358947f6869c11cda679d1a2a26008"
+      , requiredSignersHashHex = "588f11ee838626ba103a91e54ea682d5ee3232348b66d37740779a71e87e40b9"
+      , mintHashHex = "32b6b7ef38a2a065daad7fe9fa3b7e27ed0c744b6a1af02bf75d07e7115ccca9"
+      , addrTxWitsHashHex = "d46f7b76594c72003b5827f34613dc63f394f32ba0315f26afdeb07dcbd56e49"
+      , scriptTxWitsHashHex = "1987e4154ac5b40418359cf940d9cc5f0b4506d954f394b3c55d36f94a414099"
+      , redeemerTxWitsHashHex = "d781aff72da9f7bb3739bb85dd58e0305ebce50db65dfb3b76e35245226ff506"
+      , witnessSetHashHex = "450fee2a8f7384896d2552016257597c62a5e0d4aee28877fb89372793025ce6"
       }
-  , expectedTargetBytes = Just 15_872
-  , expectedToleranceBytes = Just 256
+  , expectedTargetBytes = Just 16_128
+  , expectedToleranceBytes = Just 128
   , expectedMaxFee = Just "10000000"
   , expectedMaxListLength = Just 255
   }

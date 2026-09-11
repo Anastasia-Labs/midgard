@@ -45,6 +45,10 @@ import Midgard.FraudProofs.FieldOpening (
   popenedFieldView,
   pspendInputsFieldIndex,
  )
+import Midgard.FraudProofs.NativeTx.Types (
+  PNativeTxCompact (..),
+  PVerifiedMidgardNativeTxCompact (..),
+ )
 import Midgard.FraudProofs.ZeroInput (PStep02Args (..), PStep02State (..))
 import Midgard.NativeTxFieldAccess (pfieldItemCount)
 import Midgard.Validators.FraudProofs.Step (
@@ -101,8 +105,11 @@ zeroInputStep01Validator = plam $
                outputStateData
                _header
                badTxId
-               _badTxView ->
-                pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+               badTxView -> P.do
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
+                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
                   pexpecting
                     ( outputStateData
                         #== pforgetData

@@ -12,7 +12,6 @@ released UTxO. The Aiken file has no @test@ blocks, so none of these mirror one.
 -}
 module Testing.TxOrderValidator (tests) where
 
-import Data.Bits (shiftR, (.&.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Char8 qualified as BS8
@@ -74,19 +73,13 @@ tests =
         "mint"
         [ testCase "authenticates an order whose transaction has no field material" $
             psucceeds $ runMint mintDefaults
-        , testCase "authenticates non-empty material through its terminal receipt" $
+        , testCase "authenticates non-empty material through inline carriage" $
             psucceeds $
-              runMint mintDefaults {mEmptyMaterial = False, mTerminalReceipt = True}
-        , testCase "rejects non-empty transaction material without a terminal receipt" $
-            pfails $ runMint mintDefaults {mEmptyMaterial = False}
-        , testCase "rejects a terminal receipt locked by another script" $
-            pfails $
-              runMint
-                mintDefaults
-                  { mEmptyMaterial = False
-                  , mTerminalReceipt = True
-                  , mReceiptScriptMatches = False
-                  }
+              runMint mintDefaults {mMaterial = InlineCorrect}
+        , testCase "rejects non-empty transaction material without carriage" $
+            pfails $ runMint mintDefaults {mMaterial = Missing}
+        , testCase "rejects inline carriage with the wrong bytes" $
+            pfails $ runMint mintDefaults {mMaterial = InlineWrong}
         , testCase "rejects an order output carrying an asset beyond its NFT" $
             pfails $ runMint mintDefaults {mExtraAsset = True}
         ]
@@ -186,7 +179,7 @@ addrData cs =
 
 txValid, txFailedScript :: PD.Data
 txValid = PD.Constr 0 []
-txFailedScript = PD.Constr 3 []
+txFailedScript = PD.Constr 1 [PD.Constr 41 [PD.I 0]]
 
 orderId :: PD.Data
 orderId = builtinDataToData (toBuiltinData (outRefN 4))
@@ -194,7 +187,7 @@ orderId = builtinDataToData (toBuiltinData (outRefN 4))
 nativeSource :: PD.Data
 nativeSource = PD.Constr 0 [PD.B "cbor", PD.B "wits", PD.B "lens"]
 
--- | @TxOrderPayloadV1 { tx_id, transaction_commitment, source, terminal_ref }@.
+-- | @TxOrderPayloadV1 { tx_id, transaction_commitment, source }@.
 orderPayload :: BS.ByteString -> PD.Data
 orderPayload txId = PD.Constr 0 [PD.B txId, PD.B "commit", nativeSource, PD.Constr 1 []]
 
@@ -202,19 +195,17 @@ orderPayload txId = PD.Constr 0 [PD.B txId, PD.B "commit", nativeSource, PD.Cons
 -- Mint transaction assembly
 --------------------------------------------------------------------------------
 
+data MaterialCarriage = Empty | InlineCorrect | Missing | InlineWrong
+
 data Mint = Mint
-  { mEmptyMaterial :: Bool
-  , mTerminalReceipt :: Bool
-  , mReceiptScriptMatches :: Bool
+  { mMaterial :: MaterialCarriage
   , mExtraAsset :: Bool
   }
 
 mintDefaults :: Mint
 mintDefaults =
   Mint
-    { mEmptyMaterial = True
-    , mTerminalReceipt = False
-    , mReceiptScriptMatches = True
+    { mMaterial = Empty
     , mExtraAsset = False
     }
 
@@ -222,16 +213,15 @@ runMint :: forall s. Mint -> Term s PUnit
 runMint mintCase =
   txOrderMintValidator
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
-    # pdata (pconstant receiptScriptHash)
     # pdata (pconstant fieldReceiptPolicy)
     # pconstant ctx
   where
-    bodyCbor = emptyBodyCbor (mEmptyMaterial mintCase)
+    bodyCbor = emptyBodyCbor spendCommitment
     witnessCbor = emptyWitnessSetCbor
     lengthsCbor =
-      if mEmptyMaterial mintCase
-        then "\x89\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-        else "\x89\x03\x01\x01\x01\x01\x01\x01\x01\x01"
+      if hasMaterial
+        then "\x89\x18\x29\x01\x01\x01\x01\x01\x01\x01\x01"
+        else "\x89\x01\x01\x01\x01\x01\x01\x01\x01\x01"
     compactCbor =
       "\x84\x01"
         <> bodyCbor
@@ -251,9 +241,6 @@ runMint mintCase =
         [ PD.B transactionId
         , PD.B transactionCommitment
         , source
-        , if mTerminalReceipt mintCase
-            then PD.Constr 0 [builtinDataToData (toBuiltinData receiptRef)]
-            else PD.Constr 1 []
         ]
     datum =
       dataToBuiltinData $
@@ -282,14 +269,22 @@ runMint mintCase =
         )
     witnessRedeemer =
       dataToBuiltinData (PD.Constr 0 [PD.B (fromBuiltin (unCurrencySymbol txOrderPolicy))])
-    mintRedeemer = dataToBuiltinData (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0])
+    eventRedeemer = PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0]
+    materialCarriage = case mMaterial mintCase of
+      Empty -> []
+      Missing -> []
+      InlineCorrect -> [PD.Constr 0 [PD.B spendPreimage]]
+      InlineWrong -> [PD.Constr 0 [PD.B "wrong"]]
+    mintRedeemer = dataToBuiltinData (PD.Constr 0 [eventRedeemer, PD.List materialCarriage])
+    hasMaterial = case mMaterial mintCase of
+      Empty -> False
+      _ -> True
+    spendCommitment = if hasMaterial then hash256 spendPreimage else emptyFieldCommitment
     base = buildScriptContext mempty
     txInfo =
       (scriptContextTxInfo base)
         { txInfoInputs = [nonceInput]
-        , txInfoReferenceInputs =
-            [hubRefIn]
-              <> if mTerminalReceipt mintCase then [terminalReceiptInput] else []
+        , txInfoReferenceInputs = [hubRefIn]
         , txInfoOutputs =
             [ TxOut
                 (scriptHashAddress (ScriptHash (unCurrencySymbol txOrderPolicy)))
@@ -310,48 +305,11 @@ runMint mintCase =
               ]
         }
     ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript txOrderPolicy)
-    terminalReceiptInput =
-      TxInInfo
-        receiptRef
-        ( TxOut
-            ( scriptHashAddress $
-                if mReceiptScriptMatches mintCase
-                  then receiptScriptHash
-                  else ScriptHash (unCurrencySymbol auxiliaryPolicy)
-            )
-            (mkAdaValue 2_000_000 <> singleton fieldReceiptPolicy receiptAssetName 1)
-            (OutputDatum (Datum (dataToBuiltinData receiptDatum)))
-            Nothing
-        )
-    receiptDatum =
-      PD.Constr
-        0
-        [ PD.B (fromBuiltin (unCurrencySymbol fieldReceiptPolicy))
-        , PD.B (fromBuiltin (unCurrencySymbol txOrderPolicy))
-        , builtinDataToData (toBuiltinData nonceRef)
-        , PD.B transactionCommitment
-        , collectionProof
-        , PD.I 0
-        , builtinDataToData (toBuiltinData fieldRef)
-        , PD.Constr 1 []
-        , PD.I 3
-        ]
-    receiptAssetName =
-      TokenName . toBuiltin . hash256 $
-        "MidgardTxFieldReceiptV1"
-          <> fromBuiltin (unCurrencySymbol txOrderPolicy)
-          <> txIdBytes nonceRef
-          <> bigEndian 8 (txOutRefIdx nonceRef)
-          <> transactionCommitment
-          <> "\x00"
-          <> bigEndian 8 0
-          <> bigEndian 8 0
-
-emptyBodyCbor :: Bool -> BS.ByteString
-emptyBodyCbor isEmpty =
+emptyBodyCbor :: BS.ByteString -> BS.ByteString
+emptyBodyCbor spendCommitment =
   BS.concat
     [ "\x8c"
-    , definiteBytes32 (if isEmpty then emptyFieldCommitment else countedCollectionCommitment)
+    , definiteBytes32 spendCommitment
     , definiteBytes32 emptyFieldCommitment
     , definiteBytes32 emptyFieldCommitment
     , "\x00\x00\x00"
@@ -394,54 +352,11 @@ definiteBytes bytes
         <> bytes
   | otherwise = error "test fixture byte string is too large"
 
-receiptScriptHash :: ScriptHash
-receiptScriptHash = ScriptHash (toBuiltin (BS.replicate 28 0x66))
-
 fieldReceiptPolicy :: CurrencySymbol
 fieldReceiptPolicy = repeatedByte 0x77
 
-receiptRef, fieldRef :: TxOutRef
-receiptRef = outRefN 12
-fieldRef = outRefN 13
-
-countedItemCommitment, countedLeaf, countedFrontierCommitment, countedCollectionCommitment :: BS.ByteString
-countedItemCommitment = BS.replicate 32 0xab
-countedLeaf =
-  hash256 $
-    "MidgardBoundedCollectionItemV1\x85\x01\x00\x00\x01"
-      <> definiteBytes32 countedItemCommitment
-countedFrontierCommitment =
-  hash256 $
-    "MidgardValidationMerkleFrontierV1\x01\x81\x82\x00"
-      <> definiteBytes32 countedLeaf
-countedCollectionCommitment =
-  hash256 $
-    "MidgardBoundedCollectionCommitmentV1\x84\x01\x00\x01"
-      <> definiteBytes32 countedFrontierCommitment
-
-collectionProof :: PD.Data
-collectionProof =
-  PD.Constr
-    0
-    [ PD.I 1
-    , PD.I 0
-    , PD.I 1
-    , PD.I 0
-    , PD.I 1
-    , PD.B countedItemCommitment
-    , PD.List [PD.Constr 0 [PD.I 0, PD.B countedLeaf]]
-    , PD.List []
-    ]
-
-txIdBytes :: TxOutRef -> BS.ByteString
-txIdBytes (TxOutRef (TxId bytes) _) = fromBuiltin bytes
-
-bigEndian :: Int -> Integer -> BS.ByteString
-bigEndian width n =
-  BS.pack
-    [ fromIntegral ((n `shiftR` (8 * i)) .&. 0xff)
-    | i <- [width - 1, width - 2 .. 0]
-    ]
+spendPreimage :: BS.ByteString
+spendPreimage = "\x81\x58\x26\x82\x58\x20" <> BS.replicate 32 0x44 <> "\x19\x00\x00"
 
 -- | @ForcedInclusionTxV1 { tx_id, source, operator_validity }@.
 forcedInclusionTx :: BS.ByteString -> PD.Data -> PD.Data

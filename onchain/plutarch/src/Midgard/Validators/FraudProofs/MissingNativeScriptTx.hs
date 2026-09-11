@@ -1,6 +1,6 @@
 {- |
 Module      : Midgard.Validators.FraudProofs.MissingNativeScriptTx
-Description : Plutarch port of @validators/fraud-proofs/missing-native-script-tx/step-0{1..6}.ak@.
+Description : Plutarch port of @validators/fraud-proofs/missing-native-script-tx/step-0{1..8}.ak@.
 
 The missing-native-script-tx fraud proof (spec §5.1.1): a committed transaction
 spending a script-locked output whose required native script it never witnessed.
@@ -47,6 +47,8 @@ module Midgard.Validators.FraudProofs.MissingNativeScriptTx (
   missingNativeScriptTxStep04Validator,
   missingNativeScriptTxStep05Validator,
   missingNativeScriptTxStep06Validator,
+  missingNativeScriptTxStep07Validator,
+  missingNativeScriptTxStep08Validator,
 ) where
 
 import Plutarch.LedgerApi.V3 (
@@ -63,9 +65,13 @@ import Midgard.FraudProofs.Common (pcontinue, pfinalize, ppassNativeTxToNextStep
 import Midgard.FraudProofs.FieldOpening (
   PNativeTxAnchorV1 (..),
   pfoldOpenedField,
+  popenedCertifiedFieldWalkFromGrammar,
+  popenedFieldGrammarCertification,
   popenedFieldView,
   popenedFieldWalk,
   poutputsFieldIndex,
+  presumeOpenedFieldGrammarCertification,
+  presumeOpenedFieldWalk,
   pscriptWitnessesFieldIndex,
   pspendInputsFieldIndex,
  )
@@ -78,7 +84,12 @@ import Midgard.FraudProofs.MissingNativeScriptTx (
   PStep05Args (..),
   PStep05State (..),
   PStep06Args (..),
+  PStep06PhaseV1 (..),
   PStep06State (..),
+  PStep07Args (..),
+  PStep08Args (..),
+  pdirectScriptWitnessLimit,
+  pstagedScriptWitnessBatchLimit,
  )
 import Midgard.FraudProofs.NativeTx.Components (
   pdecodeMidgardTxOutputCbor,
@@ -88,15 +99,28 @@ import Midgard.FraudProofs.NativeTx.Components (
 import Midgard.FraudProofs.NativeTx.Types (
   PMidgardAddress (..),
   PMidgardCredential (..),
+  PMidgardScriptLanguage (..),
   PMidgardTxInput (..),
   PMidgardTxOutput (..),
   PMidgardVersionedScript (..),
-  PMidgardScriptLanguage (..),
   PNativeTxCompact (..),
   PVerifiedMidgardNativeTxCompact (..),
  )
-import Midgard.NativeTxFieldAccess (pfieldItemAt)
-import Midgard.NativeTxMachineWalk (pspendInputAt)
+import Midgard.NativeTxFieldAccess (
+  pfieldItemAt,
+  pfieldItemCount,
+  pprovisionalFieldItemCountForCertification,
+ )
+import Midgard.NativeTxMachineWalk (
+  pcertifyFieldGrammar,
+  pfieldGrammarCheckpointHash,
+  pfieldGrammarIsComplete,
+  pfieldWalkCheckpointHash,
+  pspendInputAt,
+  pwalkFold,
+  pwalkIsComplete,
+  pwalkRemaining,
+ )
 import Midgard.ScriptProof (pversionedScriptHash)
 import Midgard.Validators.FraudProofs.Step (
   pdispatch,
@@ -155,8 +179,9 @@ missingNativeScriptTxStep01Validator = plam $
                badTxId
                badTxView -> P.do
                 PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-                PNativeTxCompact {pcompact'witnessSetHash} <- pmatch pverified'txCompact
-                pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+                PNativeTxCompact {pcompact'witnessSetHash, pcompact'validityCode} <- pmatch pverified'txCompact
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
                   pexpecting
                     ( outputStateData
                         #== pforgetData
@@ -195,70 +220,71 @@ missingNativeScriptTxStep02Validator ::
         :--> PScriptContext
         :--> PUnit
     )
-missingNativeScriptTxStep02Validator = plam $
-  \step03ValidatorScriptHash
-   computationThreadTokenPolicyId
-   fieldPreimageCertificatePolicyId
-   ctx ->
-      pstep ctx $ \datum redeemer ownOutRef txInfo ->
-        pdispatch @_ @PStep02Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-          \args -> P.do
-            PStep02Args
-              { pstep02Args'inputIndex
-              , pstep02Args'outputIndex
-              , pstep02Args'badInputIndex
-              , pstep02Args'spendInputsOpening
-              } <-
-              pmatch args
-            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
-            referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
-            pcontinue
-              computationThreadTokenPolicyId
-              (pexpectDatum datum)
-              (pfromData pstep02Args'inputIndex)
-              (pfromData pstep02Args'outputIndex)
-              ownOutRef
-              (pfromData ptxInfo'inputs)
-              (pfromData ptxInfo'outputs)
-              $ \_ownScriptHash
-                 _threadTokenAssetName
-                 _fraudProver
-                 mInputStateData
-                 outputScriptHash
-                 outputStateData -> P.do
-                  PStep02State {pstep02State'badTxId, pstep02State'badTxWitnessSetHash} <-
-                    pmatch (pexpectStateAs @PStep02State mInputStateData)
-                  spendInputsView <-
-                    plet $
-                      popenedFieldView
-                        # pfromData pstep02Args'spendInputsOpening
-                        # pcon (PBodyAnchor {pbodyAnchor'txId = pstep02State'badTxId})
-                        # pspendInputsFieldIndex
-                        # referenceInputs
-                        # fieldPreimageCertificatePolicyId
-                  inputWithMissingScript <-
-                    plet $
-                      pspendInputAt
-                        # spendInputsView
-                        # pfromData pstep02Args'badInputIndex
-                  pexpecting (outputScriptHash #== step03ValidatorScriptHash) $
-                    pexpecting
-                      ( outputStateData
-                          #== pforgetData
-                            ( pdata
-                                ( pcon
-                                    ( PStep03State
-                                        { pstep03State'inputWithMissingScript =
-                                            pdata inputWithMissingScript
-                                        , pstep03State'badTxId = pstep02State'badTxId
-                                        , pstep03State'badTxWitnessSetHash =
-                                            pstep02State'badTxWitnessSetHash
-                                        }
-                                    )
-                                )
-                            )
-                      )
-                      (pconstant True)
+missingNativeScriptTxStep02Validator =
+  plam $
+    \step03ValidatorScriptHash
+     computationThreadTokenPolicyId
+     fieldPreimageCertificatePolicyId
+     ctx ->
+        pstep ctx $ \datum redeemer ownOutRef txInfo ->
+          pdispatch @_ @PStep02Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+            \args -> P.do
+              PStep02Args
+                { pstep02Args'inputIndex
+                , pstep02Args'outputIndex
+                , pstep02Args'badInputIndex
+                , pstep02Args'spendInputsOpening
+                } <-
+                pmatch args
+              PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+              referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+              pcontinue
+                computationThreadTokenPolicyId
+                (pexpectDatum datum)
+                (pfromData pstep02Args'inputIndex)
+                (pfromData pstep02Args'outputIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                $ \_ownScriptHash
+                   _threadTokenAssetName
+                   _fraudProver
+                   mInputStateData
+                   outputScriptHash
+                   outputStateData -> P.do
+                    PStep02State {pstep02State'badTxId, pstep02State'badTxWitnessSetHash} <-
+                      pmatch (pexpectStateAs @PStep02State mInputStateData)
+                    spendInputsView <-
+                      plet $
+                        popenedFieldView
+                          # pfromData pstep02Args'spendInputsOpening
+                          # pcon (PBodyAnchor {pbodyAnchor'txId = pstep02State'badTxId})
+                          # pspendInputsFieldIndex
+                          # referenceInputs
+                          # fieldPreimageCertificatePolicyId
+                    inputWithMissingScript <-
+                      plet $
+                        pspendInputAt
+                          # spendInputsView
+                          # pfromData pstep02Args'badInputIndex
+                    pexpecting (outputScriptHash #== step03ValidatorScriptHash) $
+                      pexpecting
+                        ( outputStateData
+                            #== pforgetData
+                              ( pdata
+                                  ( pcon
+                                      ( PStep03State
+                                          { pstep03State'inputWithMissingScript =
+                                              pdata inputWithMissingScript
+                                          , pstep03State'badTxId = pstep02State'badTxId
+                                          , pstep03State'badTxWitnessSetHash =
+                                              pstep02State'badTxWitnessSetHash
+                                          }
+                                      )
+                                  )
+                              )
+                        )
+                        (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 03
@@ -309,7 +335,9 @@ missingNativeScriptTxStep03Validator = plam $
                outputStateData
                _header
                producingTxId
-               _producingTxView -> P.do
+               producingTxView -> P.do
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch producingTxView
+                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
                 PStep03State
                   { pstep03State'inputWithMissingScript
                   , pstep03State'badTxId
@@ -318,7 +346,8 @@ missingNativeScriptTxStep03Validator = plam $
                   pmatch (pexpectStateAs @PStep03State mInputStateData)
                 PMidgardTxInput {ptxInput'txId, ptxInput'outputIndex} <-
                   pmatch (pfromData pstep03State'inputWithMissingScript)
-                pexpecting (producingTxId #== pfromData ptxInput'txId) $
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (producingTxId #== pfromData ptxInput'txId) $
                   pexpecting (outputScriptHash #== step04ValidatorScriptHash) $
                     pexpecting
                       ( outputStateData
@@ -362,80 +391,84 @@ missingNativeScriptTxStep04Validator ::
         :--> PScriptContext
         :--> PUnit
     )
-missingNativeScriptTxStep04Validator = plam $
-  \step05ValidatorScriptHash
-   computationThreadTokenPolicyId
-   fieldPreimageCertificatePolicyId
-   ctx ->
-      pstep ctx $ \datum redeemer ownOutRef txInfo ->
-        pdispatch @_ @PStep04Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-          \args -> P.do
-            PStep04Args
-              {pstep04Args'inputIndex, pstep04Args'outputIndex, pstep04Args'outputsOpening} <-
-              pmatch args
-            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
-            referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
-            pcontinue
-              computationThreadTokenPolicyId
-              (pexpectDatum datum)
-              (pfromData pstep04Args'inputIndex)
-              (pfromData pstep04Args'outputIndex)
-              ownOutRef
-              (pfromData ptxInfo'inputs)
-              (pfromData ptxInfo'outputs)
-              $ \_ownScriptHash
-                 _threadTokenAssetName
-                 _fraudProver
-                 mInputStateData
-                 outputScriptHash
-                 outputStateData -> P.do
-                  PStep04State
-                    { pstep04State'producingTxId
-                    , pstep04State'badInputOutputIndex
-                    , pstep04State'badTxId
-                    , pstep04State'badTxWitnessSetHash
-                    } <-
-                    pmatch (pexpectStateAs @PStep04State mInputStateData)
-                  outputsView <-
-                    plet $
-                      popenedFieldView
-                        # pfromData pstep04Args'outputsOpening
-                        # pcon (PBodyAnchor {pbodyAnchor'txId = pstep04State'producingTxId})
-                        # poutputsFieldIndex
-                        # referenceInputs
-                        # fieldPreimageCertificatePolicyId
-                  PMidgardTxOutput {ptxOutput'address} <-
-                    pmatch
-                      ( pdecodeMidgardTxOutputCbor
-                          #$ pfieldItemAt
-                          # outputsView
-                          # pfromData pstep04State'badInputOutputIndex
-                      )
-                  PMidgardAddress {paddress'paymentCredential} <-
-                    pmatch (pfromData ptxOutput'address)
-                  expectedMissingScriptHash <-
-                    plet $
-                      pmatch (pfromData paddress'paymentCredential) $ \case
-                        PMidgardScriptCredential scriptHash -> scriptHash
-                        PMidgardPubKeyCredential _ -> perror
-                  pexpecting (outputScriptHash #== step05ValidatorScriptHash) $
-                    pexpecting
-                      ( outputStateData
-                          #== pforgetData
-                            ( pdata
-                                ( pcon
-                                    ( PStep05State
-                                        { pstep05State'expectedMissingScriptHash =
-                                            expectedMissingScriptHash
-                                        , pstep05State'badTxId = pstep04State'badTxId
-                                        , pstep05State'badTxWitnessSetHash =
-                                            pstep04State'badTxWitnessSetHash
-                                        }
-                                    )
-                                )
-                            )
-                      )
-                      (pconstant True)
+missingNativeScriptTxStep04Validator =
+  plam $
+    \step05ValidatorScriptHash
+     computationThreadTokenPolicyId
+     fieldPreimageCertificatePolicyId
+     ctx ->
+        pstep ctx $ \datum redeemer ownOutRef txInfo ->
+          pdispatch @_ @PStep04Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+            \args -> P.do
+              PStep04Args
+                { pstep04Args'inputIndex
+                , pstep04Args'outputIndex
+                , pstep04Args'outputsOpening
+                } <-
+                pmatch args
+              PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+              referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+              pcontinue
+                computationThreadTokenPolicyId
+                (pexpectDatum datum)
+                (pfromData pstep04Args'inputIndex)
+                (pfromData pstep04Args'outputIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                $ \_ownScriptHash
+                   _threadTokenAssetName
+                   _fraudProver
+                   mInputStateData
+                   outputScriptHash
+                   outputStateData -> P.do
+                    PStep04State
+                      { pstep04State'producingTxId
+                      , pstep04State'badInputOutputIndex
+                      , pstep04State'badTxId
+                      , pstep04State'badTxWitnessSetHash
+                      } <-
+                      pmatch (pexpectStateAs @PStep04State mInputStateData)
+                    outputsView <-
+                      plet $
+                        popenedFieldView
+                          # pfromData pstep04Args'outputsOpening
+                          # pcon (PBodyAnchor {pbodyAnchor'txId = pstep04State'producingTxId})
+                          # poutputsFieldIndex
+                          # referenceInputs
+                          # fieldPreimageCertificatePolicyId
+                    PMidgardTxOutput {ptxOutput'address} <-
+                      pmatch
+                        ( pdecodeMidgardTxOutputCbor
+                            #$ pfieldItemAt
+                            # outputsView
+                            # pfromData pstep04State'badInputOutputIndex
+                        )
+                    PMidgardAddress {paddress'paymentCredential} <-
+                      pmatch (pfromData ptxOutput'address)
+                    expectedMissingScriptHash <-
+                      plet $
+                        pmatch (pfromData paddress'paymentCredential) $ \case
+                          PMidgardScriptCredential scriptHash -> scriptHash
+                          PMidgardPubKeyCredential _ -> perror
+                    pexpecting (outputScriptHash #== step05ValidatorScriptHash) $
+                      pexpecting
+                        ( outputStateData
+                            #== pforgetData
+                              ( pdata
+                                  ( pcon
+                                      ( PStep05State
+                                          { pstep05State'expectedMissingScriptHash =
+                                              expectedMissingScriptHash
+                                          , pstep05State'badTxId = pstep04State'badTxId
+                                          , pstep05State'badTxWitnessSetHash =
+                                              pstep04State'badTxWitnessSetHash
+                                          }
+                                      )
+                                  )
+                              )
+                        )
+                        (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 05
@@ -488,40 +521,41 @@ missingNativeScriptTxStep05Validator = plam $
                mInputStateData
                outputScriptHash
                outputStateData -> P.do
-              PStep05State
-                { pstep05State'expectedMissingScriptHash
-                , pstep05State'badTxId
-                , pstep05State'badTxWitnessSetHash
-                } <-
-                pmatch (pexpectStateAs @PStep05State mInputStateData)
-              pexpecting
-                ( pfromData pstep05State'expectedMissingScriptHash
-                    #== pversionedScriptHash
-                    # pcon
-                      ( PMidgardVersionedScript
-                          { pversionedScript'language = pdata (pcon PNativeCardanoScript)
-                          , pversionedScript'scriptBytes = pstep05Args'missingNativeScriptBytes
-                          }
-                      )
-                )
-                $ pexpecting (outputScriptHash #== step06ValidatorScriptHash)
-                $ pexpecting
-                  ( outputStateData
-                      #== pforgetData
-                        ( pdata
-                            ( pcon
-                                ( PStep06State
-                                    { pstep06State'expectedMissingScriptHash =
-                                        pstep05State'expectedMissingScriptHash
-                                    , pstep06State'badTxId = pstep05State'badTxId
-                                    , pstep06State'badTxWitnessSetHash =
-                                        pstep05State'badTxWitnessSetHash
-                                    }
-                                )
-                            )
+                PStep05State
+                  { pstep05State'expectedMissingScriptHash
+                  , pstep05State'badTxId
+                  , pstep05State'badTxWitnessSetHash
+                  } <-
+                  pmatch (pexpectStateAs @PStep05State mInputStateData)
+                pexpecting
+                  ( pfromData pstep05State'expectedMissingScriptHash
+                      #== pversionedScriptHash
+                      # pcon
+                        ( PMidgardVersionedScript
+                            { pversionedScript'language = pdata (pcon PNativeCardanoScript)
+                            , pversionedScript'scriptBytes = pstep05Args'missingNativeScriptBytes
+                            }
                         )
                   )
-                  (pconstant True)
+                  $ pexpecting (outputScriptHash #== step06ValidatorScriptHash)
+                  $ pexpecting
+                    ( outputStateData
+                        #== pforgetData
+                          ( pdata
+                              ( pcon
+                                  ( PStep06State
+                                      { pstep06State'expectedMissingScriptHash =
+                                          pstep05State'expectedMissingScriptHash
+                                      , pstep06State'badTxId = pstep05State'badTxId
+                                      , pstep06State'badTxWitnessSetHash =
+                                          pstep05State'badTxWitnessSetHash
+                                      , pstep06State'phase = pdata (pcon PReady)
+                                      }
+                                  )
+                              )
+                          )
+                    )
+                    (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 06
@@ -547,77 +581,368 @@ missingNativeScriptTxStep06Validator ::
   forall (s :: S).
   Term
     s
-    ( PAsData PCurrencySymbol -- computation thread token policy
+    ( PAsData PScriptHash -- step-07's script hash
+        :--> PAsData PCurrencySymbol -- computation thread token policy
         :--> PAsData PCurrencySymbol -- fraud proof token policy
         :--> PAsData PAddress -- fraud proof token address
         :--> PAsData PCurrencySymbol -- field preimage certificate policy
         :--> PScriptContext
         :--> PUnit
     )
-missingNativeScriptTxStep06Validator = plam $
-  \computationThreadTokenPolicyId
-   fraudProofTokenPolicyId
-   fraudProofTokenAddress
-   fieldPreimageCertificatePolicyId
-   ctx ->
-      pstep ctx $ \datum redeemer ownOutRef txInfo ->
-        pdispatch @_ @PStep06Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-          \args -> P.do
-            PStep06Args
-              { pstep06Args'inputIndex
-              , pstep06Args'outputIndex
-              , pstep06Args'fraudProofMintRedeemerIndex
-              , pstep06Args'scriptTxWitsOpening
-              } <-
-              pmatch args
-            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
-              pmatch txInfo
-            referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
-            pfinalize
-              computationThreadTokenPolicyId
-              fraudProofTokenPolicyId
-              fraudProofTokenAddress
-              (pexpectDatum datum)
-              (pfromData pstep06Args'inputIndex)
-              (pfromData pstep06Args'outputIndex)
-              (pfromData pstep06Args'fraudProofMintRedeemerIndex)
-              ownOutRef
-              (pfromData ptxInfo'inputs)
-              (pfromData ptxInfo'outputs)
-              (pto (pto (pfromData ptxInfo'redeemers)))
-              $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
-                PStep06State
-                  { pstep06State'expectedMissingScriptHash
-                  , pstep06State'badTxId
-                  , pstep06State'badTxWitnessSetHash
-                  } <-
-                  pmatch (pexpectStateAs @PStep06State mInputStateData)
-                expectedMissingScriptHash <-
-                  plet $ pfromData pstep06State'expectedMissingScriptHash
-                scriptTxWitsWalk <-
-                  plet $
-                    popenedFieldWalk
-                      # pfromData pstep06Args'scriptTxWitsOpening
-                      # pcon
-                        ( PWitnessAnchor
-                            { pwitnessAnchor'txId = pstep06State'badTxId
-                            , pwitnessAnchor'witnessSetHash = pstep06State'badTxWitnessSetHash
-                            }
-                        )
+missingNativeScriptTxStep06Validator =
+  plam $
+    \step07ValidatorScriptHash
+     computationThreadTokenPolicyId
+     fraudProofTokenPolicyId
+     fraudProofTokenAddress
+     fieldPreimageCertificatePolicyId
+     ctx ->
+        pstep ctx $ \datum redeemer ownOutRef txInfo ->
+          pdispatch @_ @PStep06Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+            \action ->
+              pmatch action $ \case
+                PDirectFinalize inputIndexD outputIndexD mintRedeemerIndexD openingD -> P.do
+                  PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
+                    pmatch txInfo
+                  pfinalize
+                    computationThreadTokenPolicyId
+                    fraudProofTokenPolicyId
+                    fraudProofTokenAddress
+                    (pexpectDatum datum)
+                    (pfromData inputIndexD)
+                    (pfromData outputIndexD)
+                    (pfromData mintRedeemerIndexD)
+                    ownOutRef
+                    (pfromData ptxInfo'inputs)
+                    (pfromData ptxInfo'outputs)
+                    (pto (pto (pfromData ptxInfo'redeemers)))
+                    $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
+                      state <- plet $ pexpectStateAs @PStep06State mInputStateData
+                      PStep06State {pstep06State'expectedMissingScriptHash, pstep06State'phase} <- pmatch state
+                      pexpecting (pfromData pstep06State'phase #== pcon PReady) $ P.do
+                        scriptTxWitsWalk <-
+                          plet $
+                            popenedFieldWalk
+                              # pfromData openingD
+                              # (pscriptTxWitnessAnchor # state)
+                              # pscriptWitnessesFieldIndex
+                              # pfromData ptxInfo'referenceInputs
+                              # fieldPreimageCertificatePolicyId
+                        PPair view _start <- pmatch scriptTxWitsWalk
+                        pexpecting (pfieldItemCount # view #<= pdirectScriptWitnessLimit) $ P.do
+                          requiredScriptIsPresent <-
+                            plet $
+                              pfoldOpenedField @PBool
+                                # scriptTxWitsWalk
+                                # pconstant False
+                                # (pscanScriptWitness # pfromData pstep06State'expectedMissingScriptHash)
+                          pexpecting (pnot # requiredScriptIsPresent) (pconstant True)
+                PStartGrammarCertification inputIndexD outputIndexD openingD itemBudgetD -> P.do
+                  PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+                  itemBudget <- plet $ pfromData itemBudgetD
+                  pexpecting (pvalidStagedBudget # itemBudget)
+                    $ pcontinue
+                      computationThreadTokenPolicyId
+                      (pexpectDatum datum)
+                      (pfromData inputIndexD)
+                      (pfromData outputIndexD)
+                      ownOutRef
+                      (pfromData ptxInfo'inputs)
+                      (pfromData ptxInfo'outputs)
+                    $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData outputScriptHash outputStateData -> P.do
+                      state <- plet $ pexpectStateAs @PStep06State mInputStateData
+                      PStep06State {pstep06State'phase} <- pmatch state
+                      pexpecting (pfromData pstep06State'phase #== pcon PReady) $ P.do
+                        PPair view start <-
+                          pmatch $
+                            popenedFieldGrammarCertification
+                              # pfromData openingD
+                              # (pscriptTxWitnessAnchor # state)
+                              # pscriptWitnessesFieldIndex
+                              # pfromData ptxInfo'referenceInputs
+                              # fieldPreimageCertificatePolicyId
+                        pexpecting
+                          (pprovisionalFieldItemCountForCertification # view #> pdirectScriptWitnessLimit)
+                          $ plet (pcertifyFieldGrammar # view # start # itemBudget)
+                          $ \next ->
+                            pexpecting (pnot #$ pfieldGrammarIsComplete # next) $
+                              pexpecting (outputScriptHash #== step07ValidatorScriptHash) $
+                                pexpecting
+                                  ( outputStateData
+                                      #== pforgetData
+                                        ( pdata
+                                            ( pstateWithPhase
+                                                # state
+                                                # (pcon $ PGrammarCertification $ pdata $ pfieldGrammarCheckpointHash # next)
+                                            )
+                                        )
+                                  )
+                                  (pconstant True)
+
+--------------------------------------------------------------------------------
+-- Step 07
+--------------------------------------------------------------------------------
+
+missingNativeScriptTxStep07Validator ::
+  forall s.
+  Term
+    s
+    ( PAsData PScriptHash
+        :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol
+        :--> PScriptContext
+        :--> PUnit
+    )
+missingNativeScriptTxStep07Validator = plam $
+  \step08ValidatorScriptHash computationThreadTokenPolicyId fieldPreimageCertificatePolicyId ctx ->
+    pstep ctx $ \datum redeemer ownOutRef txInfo ->
+      pdispatch @_ @PStep07Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $ \action -> P.do
+        PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+        pcontinue
+          computationThreadTokenPolicyId
+          (pexpectDatum datum)
+          (pstep07InputIndex # action)
+          (pstep07OutputIndex # action)
+          ownOutRef
+          (pfromData ptxInfo'inputs)
+          (pfromData ptxInfo'outputs)
+          $ \ownScriptHash _threadTokenAssetName _fraudProver mInputStateData outputScriptHash outputStateData -> P.do
+            state <- plet $ pexpectStateAs @PStep06State mInputStateData
+            grammarCheckpointHash <- plet $ pgrammarCheckpointHashOf # state
+            itemBudget <- plet $ pstep07ItemBudget # action
+            pexpecting (pvalidStagedBudget # itemBudget) $
+              pmatch action $ \case
+                PResumeGrammarCertification _ _ openingD checkpointBytesD _ -> P.do
+                  PPair view resumed <-
+                    pmatch $
+                      presumeOpenedFieldGrammarCertification
+                        # pfromData openingD
+                        # (pscriptTxWitnessAnchor # state)
+                        # pscriptWitnessesFieldIndex
+                        # grammarCheckpointHash
+                        # pfromData checkpointBytesD
+                        # pfromData ptxInfo'referenceInputs
+                        # fieldPreimageCertificatePolicyId
+                  pexpecting (pnot #$ pfieldGrammarIsComplete # resumed) $
+                    plet (pcertifyFieldGrammar # view # resumed # itemBudget) $ \next ->
+                      pexpecting (outputScriptHash #== ownScriptHash) $
+                        pexpecting
+                          ( outputStateData
+                              #== pforgetData
+                                ( pdata
+                                    ( pstateWithPhase
+                                        # state
+                                        # (pcon $ PGrammarCertification $ pdata $ pfieldGrammarCheckpointHash # next)
+                                    )
+                                )
+                          )
+                          (pconstant True)
+                PStartSemanticScan _ _ openingD grammarCheckpointBytesD _ -> P.do
+                  PPair view start <-
+                    pmatch $
+                      popenedCertifiedFieldWalkFromGrammar
+                        # pfromData openingD
+                        # (pscriptTxWitnessAnchor # state)
+                        # pscriptWitnessesFieldIndex
+                        # grammarCheckpointHash
+                        # pfromData grammarCheckpointBytesD
+                        # pfromData ptxInfo'referenceInputs
+                        # fieldPreimageCertificatePolicyId
+                  pexpecting (pwalkRemaining # start #> pdirectScriptWitnessLimit) $ P.do
+                    PStep06State {pstep06State'expectedMissingScriptHash} <- pmatch state
+                    PPair found next <-
+                      pmatch $
+                        pwalkFold @PBool
+                          # view
+                          # start
+                          # itemBudget
+                          # pconstant False
+                          # (pscanScriptWitness # pfromData pstep06State'expectedMissingScriptHash)
+                    pexpecting (pnot #$ pwalkIsComplete # next) $
+                      pexpecting (outputScriptHash #== step08ValidatorScriptHash) $
+                        pexpecting
+                          ( outputStateData
+                              #== pforgetData
+                                ( pdata
+                                    ( pstateWithPhase
+                                        # state
+                                        # (pcon $ PSemanticScan (pdata $ pfieldWalkCheckpointHash # next) (pdata found))
+                                    )
+                                )
+                          )
+                          (pconstant True)
+
+--------------------------------------------------------------------------------
+-- Step 08
+--------------------------------------------------------------------------------
+
+missingNativeScriptTxStep08Validator ::
+  forall s.
+  Term
+    s
+    ( PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol
+        :--> PAsData PAddress
+        :--> PAsData PCurrencySymbol
+        :--> PScriptContext
+        :--> PUnit
+    )
+missingNativeScriptTxStep08Validator = plam $
+  \computationThreadTokenPolicyId fraudProofTokenPolicyId fraudProofTokenAddress fieldPreimageCertificatePolicyId ctx ->
+    pstep ctx $ \datum redeemer ownOutRef txInfo ->
+      pdispatch @_ @PStep08Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $ \action ->
+        pmatch action $ \case
+          PResumeSemanticScan inputIndexD outputIndexD openingD checkpointBytesD itemBudgetD -> P.do
+            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+            itemBudget <- plet $ pfromData itemBudgetD
+            pexpecting (pvalidStagedBudget # itemBudget)
+              $ pcontinue
+                computationThreadTokenPolicyId
+                (pexpectDatum datum)
+                (pfromData inputIndexD)
+                (pfromData outputIndexD)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+              $ \ownScriptHash _threadTokenAssetName _fraudProver mInputStateData outputScriptHash outputStateData -> P.do
+                state <- plet $ pexpectStateAs @PStep06State mInputStateData
+                PPair checkpointHash foundBefore <- pmatch $ psemanticPhaseOf # state
+                PPair view resumed <-
+                  pmatch $
+                    presumeOpenedFieldWalk
+                      # pfromData openingD
+                      # (pscriptTxWitnessAnchor # state)
                       # pscriptWitnessesFieldIndex
-                      # referenceInputs
+                      # checkpointHash
+                      # pfromData checkpointBytesD
+                      # pfromData ptxInfo'referenceInputs
                       # fieldPreimageCertificatePolicyId
-                requiredScriptIsPresent <-
-                  plet $
-                    pfoldOpenedField @PBool
-                      # scriptTxWitsWalk
-                      # pconstant False
-                      # plam
-                        ( \found _index item -> P.do
-                            PPair _offset scriptWit <-
-                              pmatch (pdecodeMidgardVersionedScriptAt # item # 0)
-                            pexpecting (pencodeMidgardVersionedScript # scriptWit #== item) $
-                              found
-                                #|| (pversionedScriptHash # scriptWit #== expectedMissingScriptHash)
-                        )
-                pexpecting (pnot # requiredScriptIsPresent) (pconstant True)
+                PStep06State {pstep06State'expectedMissingScriptHash} <- pmatch state
+                PPair found next <-
+                  pmatch $
+                    pwalkFold @PBool
+                      # view
+                      # resumed
+                      # itemBudget
+                      # foundBefore
+                      # (pscanScriptWitness # pfromData pstep06State'expectedMissingScriptHash)
+                pexpecting (pnot #$ pwalkIsComplete # next) $
+                  pexpecting (outputScriptHash #== ownScriptHash) $
+                    pexpecting
+                      ( outputStateData
+                          #== pforgetData
+                            ( pdata
+                                ( pstateWithPhase
+                                    # state
+                                    # (pcon $ PSemanticScan (pdata $ pfieldWalkCheckpointHash # next) (pdata found))
+                                )
+                            )
+                      )
+                      (pconstant True)
+          PFinalizeSemanticScan inputIndexD outputIndexD mintRedeemerIndexD openingD checkpointBytesD itemBudgetD -> P.do
+            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
+            itemBudget <- plet $ pfromData itemBudgetD
+            pexpecting (pvalidStagedBudget # itemBudget)
+              $ pfinalize
+                computationThreadTokenPolicyId
+                fraudProofTokenPolicyId
+                fraudProofTokenAddress
+                (pexpectDatum datum)
+                (pfromData inputIndexD)
+                (pfromData outputIndexD)
+                (pfromData mintRedeemerIndexD)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                (pto (pto (pfromData ptxInfo'redeemers)))
+              $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
+                state <- plet $ pexpectStateAs @PStep06State mInputStateData
+                PPair checkpointHash foundBefore <- pmatch $ psemanticPhaseOf # state
+                PPair view resumed <-
+                  pmatch $
+                    presumeOpenedFieldWalk
+                      # pfromData openingD
+                      # (pscriptTxWitnessAnchor # state)
+                      # pscriptWitnessesFieldIndex
+                      # checkpointHash
+                      # pfromData checkpointBytesD
+                      # pfromData ptxInfo'referenceInputs
+                      # fieldPreimageCertificatePolicyId
+                PStep06State {pstep06State'expectedMissingScriptHash} <- pmatch state
+                PPair found terminal <-
+                  pmatch $
+                    pwalkFold @PBool
+                      # view
+                      # resumed
+                      # itemBudget
+                      # foundBefore
+                      # (pscanScriptWitness # pfromData pstep06State'expectedMissingScriptHash)
+                pexpecting (pwalkIsComplete # terminal) $
+                  pexpecting (pnot # found) (pconstant True)
+
+pscriptTxWitnessAnchor :: forall s. Term s (PStep06State :--> PNativeTxAnchorV1)
+pscriptTxWitnessAnchor = phoistAcyclic $ plam $ \state ->
+  pmatch state $ \PStep06State {pstep06State'badTxId, pstep06State'badTxWitnessSetHash} ->
+    pcon $
+      PWitnessAnchor
+        { pwitnessAnchor'txId = pstep06State'badTxId
+        , pwitnessAnchor'witnessSetHash = pstep06State'badTxWitnessSetHash
+        }
+
+pscanScriptWitness :: forall s. Term s (PByteString :--> PBool :--> PInteger :--> PByteString :--> PBool)
+pscanScriptWitness = phoistAcyclic $ plam $ \expectedMissingScriptHash found _index item -> P.do
+  PPair _offset scriptWit <- pmatch $ pdecodeMidgardVersionedScriptAt # item # 0
+  pexpecting (pencodeMidgardVersionedScript # scriptWit #== item) $
+    found #|| (pversionedScriptHash # scriptWit #== expectedMissingScriptHash)
+
+pvalidStagedBudget :: forall s. Term s (PInteger :--> PBool)
+pvalidStagedBudget = phoistAcyclic $ plam $ \budget ->
+  pexpecting (budget #> 0) $
+    pexpecting (budget #<= pstagedScriptWitnessBatchLimit) (pconstant True)
+
+pstateWithPhase :: forall s. Term s (PStep06State :--> PStep06PhaseV1 :--> PStep06State)
+pstateWithPhase = phoistAcyclic $ plam $ \state phase ->
+  pmatch state $
+    \PStep06State
+       { pstep06State'expectedMissingScriptHash
+       , pstep06State'badTxId
+       , pstep06State'badTxWitnessSetHash
+       } ->
+        pcon $
+          PStep06State
+            pstep06State'expectedMissingScriptHash
+            pstep06State'badTxId
+            pstep06State'badTxWitnessSetHash
+            (pdata phase)
+
+pgrammarCheckpointHashOf :: forall s. Term s (PStep06State :--> PByteString)
+pgrammarCheckpointHashOf = phoistAcyclic $ plam $ \state ->
+  pmatch state $ \PStep06State {pstep06State'phase} ->
+    pmatch (pfromData pstep06State'phase) $ \case
+      PGrammarCertification checkpointHashD -> pfromData checkpointHashD
+      _ -> perror
+
+psemanticPhaseOf :: forall s. Term s (PStep06State :--> PPair PByteString PBool)
+psemanticPhaseOf = phoistAcyclic $ plam $ \state ->
+  pmatch state $ \PStep06State {pstep06State'phase} ->
+    pmatch (pfromData pstep06State'phase) $ \case
+      PSemanticScan checkpointHashD foundD -> pcon $ PPair (pfromData checkpointHashD) (pfromData foundD)
+      _ -> perror
+
+pstep07InputIndex :: forall s. Term s (PStep07Args :--> PInteger)
+pstep07InputIndex = phoistAcyclic $ plam $ \action ->
+  pmatch action $ \case
+    PResumeGrammarCertification inputIndexD _ _ _ _ -> pfromData inputIndexD
+    PStartSemanticScan inputIndexD _ _ _ _ -> pfromData inputIndexD
+
+pstep07OutputIndex :: forall s. Term s (PStep07Args :--> PInteger)
+pstep07OutputIndex = phoistAcyclic $ plam $ \action ->
+  pmatch action $ \case
+    PResumeGrammarCertification _ outputIndexD _ _ _ -> pfromData outputIndexD
+    PStartSemanticScan _ outputIndexD _ _ _ -> pfromData outputIndexD
+
+pstep07ItemBudget :: forall s. Term s (PStep07Args :--> PInteger)
+pstep07ItemBudget = phoistAcyclic $ plam $ \action ->
+  pmatch action $ \case
+    PResumeGrammarCertification _ _ _ _ itemBudgetD -> pfromData itemBudgetD
+    PStartSemanticScan _ _ _ _ itemBudgetD -> pfromData itemBudgetD

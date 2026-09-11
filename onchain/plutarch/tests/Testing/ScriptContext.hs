@@ -34,6 +34,14 @@ tests = testGroup "Midgard.ScriptContext"
   , canonicalOutputCase "offchain_reference_output_vector_is_canonical" referenceOutputCbor
   , canonicalOutputCase "offchain_output_vector_is_canonical" outputCbor
   , testCase "offchain_tx_out_semantic_roots_match" $ passertEvalNoTrace txOutSemanticRootsMatch
+  , testCase "consolidated_ledger_output_summaries_match_the_separate_entry_points" $
+      passertEvalNoTrace consolidatedLedgerOutputSummariesAgree
+  , testCase "empty_byte_string_datum_is_materialised" $ passertEvalNoTrace $
+      let output = bytes $ outputWithDatum $ hex "40"
+       in pisJust (pspendDatumSummaryV1 # output)
+            #&& pisJust (ptxOutDataV1 # output # pconstant False)
+            #&& pisJust (ptxOutDataV1 # output # pconstant True)
+            #&& pisJust (pledgerOutputSummariesV1 # output)
   , testCase "malformed_tx_out_fails_closed" $ passertEvalNoTrace malformedTxOutFailsClosed
   , testCase "offchain_tx_in_info_semantic_roots_match" $ passertEvalNoTrace txInInfoSemanticRootsMatch
   , testCase "authenticated_item_is_prepended_in_reverse_index_order" $ passertEvalNoTrace authenticatedItemPrepends
@@ -80,6 +88,34 @@ txOutSemanticRootsMatch =
           #&& pfromData (psummary'root m) #== bytes (hex "65951e5653516caf350b2cd750bab349fbd1a48811a4c278859dd825868c2d32")
           #&& pfromData (psummary'cborLength m) #== 133
           #&& pfromData (psummary'memory m) #== 169
+
+consolidatedLedgerOutputSummariesAgree :: forall s. Term s PBool
+consolidatedLedgerOutputSummariesAgree = pand'List
+  [ pagrees simpleOutputCbor
+  , pagrees datumOutputCbor
+  , pagrees referenceOutputCbor
+  , pagrees outputCbor
+  , pagrees $ outputWithDatum $ hex "c249010000000000000000"
+  , pagrees $ hex "a0"
+  ]
+  where
+    pagrees output =
+      pledgerOutputSummariesV1 # bytes output #== pseparate output
+    pseparate output =
+      pmatch (ptxOutSummaryV1 # bytes output # pconstant False) $ \case
+        PNothing -> pcon PNothing
+        PJust cardanoTxOut ->
+          pmatch (ptxOutSummaryV1 # bytes output # pconstant True) $ \case
+            PNothing -> pcon PNothing
+            PJust midgardTxOut ->
+              pmatch (pspendDatumSummaryV1 # bytes output) $ \case
+                PNothing -> pcon PNothing
+                PJust cardanoSpendDatum ->
+                  pcon $ PJust $
+                    pcon $
+                      PPair
+                        cardanoTxOut
+                        (pcon $ PPair midgardTxOut cardanoSpendDatum)
 
 malformedTxOutFailsClosed :: forall s. Term s PBool
 malformedTxOutFailsClosed = pisNothing $ ptxOutSummaryV1 # bytes (hex "a0") # pconstant False

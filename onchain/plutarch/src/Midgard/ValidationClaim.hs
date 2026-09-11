@@ -123,7 +123,6 @@ import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
 import Plutarch.Builtin.Crypto (pblake2b_256)
-import Plutarch.Builtin.Data (pasByteStr, pasConstr, pasInt, plistData, pserialiseData)
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
@@ -133,17 +132,23 @@ import Midgard.FraudProofs.NativeTx.Compact (
   pnativeTxProofCommitmentV1,
   pverifyNativeTxProofSourceV1,
  )
-import Midgard.FraudProofs.NativeTx.Types (PVerifiedMidgardNativeTxCompact (..))
+import Midgard.FraudProofs.NativeTx.Types (
+  PNativeTxCompact (..),
+  PVerifiedMidgardNativeTxCompact (..),
+ )
 import Midgard.LedgerState (
   PEventToStepValue (..),
   PForcedInclusionTxV1 (..),
   PHeaderV1 (..),
   PL2TransactionSourceV1 (..),
-  PMidgardTxValidity (..),
   PNativeTxProofSourceV1 (..),
   PTransitionStep (..),
   pprotocolVersionV1,
   ptransitionStepSchemaVersionV1,
+ )
+import Midgard.RejectionReason (
+  POperatorVerdictV1 (..),
+  prejectionCodeOf,
  )
 import Midgard.TransitionTrace (
   PRootDomain (..),
@@ -158,6 +163,7 @@ import Midgard.ValidationTrace (
   PValidationTraceDescriptorV1 (..),
   PValidationTraceProof (..),
   PValidationVerdict (..),
+  phashRejectionCode,
   phashMachineState,
   phashValidationContext,
   phashWorkWitness,
@@ -253,8 +259,14 @@ pforcedSourceValueIsValid = phoistAcyclic $ plam $ \dat ->
       #&& plength # fields #== 3
       #&& pdataIsBytes # (pelemAt # 0 # fields)
       #&& pnativeTxProofSourceDataIsValid # (pelemAt # 1 # fields)
-      #&& pmatch (pasConstr # (pelemAt # 2 # fields)) (\(PBuiltinPair validityTag validityFields) ->
-            validityTag #>= 0 #&& validityTag #<= 5 #&& pnull # validityFields)
+      #&& pmatch (pasConstr # (pelemAt # 2 # fields)) (\(PBuiltinPair verdictTag verdictFields) ->
+            pif
+              (verdictTag #== 0)
+              (pnull # verdictFields)
+              ( verdictTag #== 1
+                  #&& plength # verdictFields #== 1
+                  #&& plengthBS # (prejectionCodeOf # (phead # verdictFields)) #>= 0
+              ))
 
 pnormalSourceValueIsValid :: forall s. Term s (PData :--> PBool)
 pnormalSourceValueIsValid = phoistAcyclic $ plam $ \dat ->
@@ -367,7 +379,9 @@ pconstrOfData ::
   (Term s PInteger, Term s (PBuiltinList PData))
 pconstrOfData d =
   let pair = pasConstr # d
-   in (pfstBuiltin # pair, psndBuiltin # pair)
+   in ( pmatch pair $ \(PBuiltinPair tag _) -> tag
+      , pmatch pair $ \(PBuiltinPair _ fields) -> fields
+      )
 
 -- | Whether a source membership is the forced-inclusion arm (tag 0).
 psourceIsForced ::
@@ -544,20 +558,27 @@ pimmutableContextMatches initial terminal = P.do
 
 {- | Aiken @validation_claim_v1.forced_verdict_matches@.
 
-A forced-inclusion transaction's descriptor verdict must reproduce the verdict
-the operator already recorded for it in the block. Anything the operator called
-invalid — for any of the five reasons — must have been rejected.
+A forced-inclusion transaction's descriptor must reproduce both the verdict and
+the frozen rejection-code hash committed by the operator's reason.
 -}
 pforcedVerdictMatches ::
   forall (s :: S).
-  Term s (PAsData PMidgardTxValidity) ->
-  Term s (PAsData PValidationVerdict) ->
+  Term s (PAsData POperatorVerdictV1) ->
+  Term s PValidationTraceDescriptorV1 ->
   Term s PBool
-pforcedVerdictMatches validity verdict =
-  pif
-    (validity #== pdata (pcon PTxIsValid))
-    (verdict #== pdata (pcon PAccepted))
-    (verdict #== pdata (pcon PRejected))
+pforcedVerdictMatches leafVerdict descriptor =
+  pmatch descriptor $ \PValidationTraceDescriptorV1
+    { pdescriptor'verdict
+    , pdescriptor'rejectionCodeHash
+    } ->
+      pmatch (pfromData leafVerdict) $ \case
+        PForcedTxValid -> pdescriptor'verdict #== pdata (pcon PAccepted)
+        PForcedTxInvalid reason ->
+          pdescriptor'verdict
+            #== pdata (pcon PRejected)
+            #&& phashRejectionCode
+              # (prejectionCodeOf # reason)
+            #== pfromData pdescriptor'rejectionCodeHash
 
 {- | Aiken @validation_claim_v1.phase_for_event_key@, as a tag map.
 
@@ -708,13 +729,18 @@ pverifySourceAuthentication header eventKey source = P.do
     ( P.do
         -- @expect ForcedTransactionEventKey { tx_order_id } = event_key@.
         txOrderId <- plet (pexpectTag eventKeyTag 1 (phead # eventKeyFields))
-        PForcedInclusionTxV1 {pforcedTx'txId, pforcedTx'source} <-
+        PForcedInclusionTxV1 {pforcedTx'txId, pforcedTx'source, pforcedTx'verdict} <-
           pmatch (pcoerceData prootMembership'value)
+        expectedValidityCode <- plet $
+          pmatch (pfromData pforcedTx'verdict) $ \case
+            PForcedTxValid -> 0
+            PForcedTxInvalid _ -> 1
         verified <-
           plet $
             pverifiedSource
               (pfromData pforcedTx'txId)
               (pfromData pforcedTx'source)
+              expectedValidityCode
         pverifyRootMembershipWithBytes
           membership
           (pdata (pcon PForcedTransactionsV1RootDomain))
@@ -732,7 +758,7 @@ pverifySourceAuthentication header eventKey source = P.do
         PL2TransactionSourceV1 {pl2Source'txId, pl2Source'source} <-
           pmatch (pcoerceData prootMembership'value)
         leafTxId <- plet (pfromData pl2Source'txId)
-        verified <- plet $ pverifiedSource txId (pfromData pl2Source'source)
+        verified <- plet $ pverifiedSource txId (pfromData pl2Source'source) 0
         pverifyRootMembershipWithBytes
           membership
           (pdata (pcon PTransactionsV1RootDomain))
@@ -749,9 +775,8 @@ pverifySourceAuthentication header eventKey source = P.do
   where
     -- Aiken's @expect Ctor { .. } = value@: a wrong constructor aborts.
     pexpectTag tag expected value = pif (tag #== pconstant expected) value perror
-    -- @verify_native_tx_proof_source_v1@ reconstructs and aborts on any
-    -- mismatch; all that is left to check is the version it reports.
-    pverifiedSource txId source' = pmatch source' $
+    -- The source's own compact scalar must agree with the tree's verdict.
+    pverifiedSource txId source' expectedValidityCode = pmatch source' $
       \( PNativeTxProofSourceV1
           { pnativeSource'compactCbor
           , pnativeSource'witnessSetCompactCbor
@@ -765,8 +790,10 @@ pverifySourceAuthentication header eventKey source = P.do
               # pfromData pnativeSource'fieldPreimageLengthsCbor
           )
           $ \(PPair compact _witnessSet) ->
-            pmatch compact $ \PVerifiedMidgardNativeTxCompact {pverified'version} ->
-              pverified'version #== 1
+            pmatch compact $ \PVerifiedMidgardNativeTxCompact {pverified'version, pverified'txCompact} ->
+              pmatch pverified'txCompact $ \PNativeTxCompact {pcompact'validityCode} ->
+                pverified'version #== 1
+                  #&& pcompact'validityCode #== expectedValidityCode
 
 {- | Aiken @validation_claim_v1.source_binding_is_exact@.
 
@@ -798,7 +825,7 @@ psourceBindingIsExact descriptor initialState source = P.do
         PForcedInclusionTxV1
           { pforcedTx'txId
           , pforcedTx'source
-          , pforcedTx'operatorValidity
+          , pforcedTx'verdict
           } <-
           pmatch (pcoerceData prootMembership'value)
         pforcedTx'txId
@@ -807,7 +834,7 @@ psourceBindingIsExact descriptor initialState source = P.do
           #== pfromData pmachineState'transactionCommitment
           #&& pmachineState'sourceKind
           #== pdata (pcon PForced)
-          #&& pforcedVerdictMatches pforcedTx'operatorValidity pdescriptor'verdict
+          #&& pforcedVerdictMatches pforcedTx'verdict descriptor
     )
     ( P.do
         PL2TransactionSourceV1 {pl2Source'txId, pl2Source'source} <-

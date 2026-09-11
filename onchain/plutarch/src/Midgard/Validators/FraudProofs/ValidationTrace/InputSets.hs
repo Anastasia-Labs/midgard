@@ -16,11 +16,10 @@ module Midgard.Validators.FraudProofs.ValidationTrace.InputSets (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
-import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash)
+import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo (..))
 import Plutarch.Prelude
 
-import Midgard.BoundedCollection (PItemProofV1)
-import Midgard.BoundedItem (PChunkProofV1)
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepWitnessV1,
@@ -29,6 +28,7 @@ import Midgard.ValidationMachine (
  )
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PInputSets))
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 import Midgard.Validators.FraudProofs.ValidationTrace.Preparation (
   pprepareSelectedValidator,
@@ -49,8 +49,9 @@ data PVerifyInputSetsItemActionV1 (s :: S)
       { pverifyItem'inputIndex :: Term s (PAsData PInteger)
       , pverifyItem'outputIndex :: Term s (PAsData PInteger)
       , pverifyItem'transition :: Term s (PAsData PValidationOneStepWitnessV1)
-      , pverifyItem'collectionProof :: Term s (PAsData PItemProofV1)
-      , pverifyItem'chunkProof :: Term s (PAsData PChunkProofV1)
+      , pverifyItem'fieldIndex :: Term s (PAsData PInteger)
+      , pverifyItem'itemIndex :: Term s (PAsData PInteger)
+      , pverifyItem'carriage :: Term s (PAsData PFieldCarriageV1)
       }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -95,33 +96,38 @@ inputSetsItemSemanticV1Validator :: forall s.
   Term s
     ( PAsData PScriptHash
         :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol
         :--> PScriptContext
         :--> PUnit
     )
-inputSetsItemSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+inputSetsItemSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PVerifyInputSetsItemActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyItem inputIndex outputIndex transitionD collectionProofD chunkProofD) ->
+    \action -> pmatch action $ \(PVerifyItem inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD) ->
       plet (pfromData transitionD) $ \transition ->
-      plet (pfromData collectionProofD) $ \collectionProof ->
-      plet (pfromData chunkProofD) $ \chunkProof ->
       plet
-        (pcon $ PTransactionFieldChunkWitness collectionProofD chunkProofD)
+        (pcon $ PTransactionFieldChunkWitness fieldIndexD itemIndexD carriageD)
         $ \auxiliary ->
-          pcontinueWinning
-            (pcon PInputSets)
-            awardScriptHash
-            policyId
-            datum
-            (pfromData inputIndex)
-            (pfromData outputIndex)
-            transition
-            (pforgetData $ pdata auxiliary)
-            ( pverifyInputSetsItemSemanticsV1
-                # pvalidationSemanticPreState datum
-                # transition
-                # collectionProof
-                # chunkProof
-            )
-            ownOutRef
-            txInfo
+          pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+            plet
+              (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId)
+              $ \door ->
+                pcontinueWinning
+                  (pcon PInputSets)
+                  awardScriptHash
+                  policyId
+                  datum
+                  (pfromData inputIndex)
+                  (pfromData outputIndex)
+                  transition
+                  (pforgetData $ pdata auxiliary)
+                  ( pverifyInputSetsItemSemanticsV1
+                      # pvalidationSemanticPreState datum
+                      # transition
+                      # door
+                      # pfromData fieldIndexD
+                      # pfromData itemIndexD
+                      # pfromData carriageD
+                  )
+                  ownOutRef
+                  txInfo

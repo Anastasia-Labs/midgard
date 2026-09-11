@@ -46,7 +46,7 @@ import Plutarch.LedgerApi.V3 (
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 
-import Midgard.FraudProofs.Common (pfinalize, ppassNativeTxToNextStep)
+import Midgard.FraudProofs.Common (pfinalize, ppassNativeTxToNextStepCarried)
 import Midgard.FraudProofs.FieldOpening (
   PNativeTxAnchorV1 (..),
   paddressWitnessesFieldIndex,
@@ -89,7 +89,7 @@ invalidSignatureStep01Validator = plam $
         \args -> P.do
           PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
             pmatch txInfo
-          ppassNativeTxToNextStep
+          ppassNativeTxToNextStepCarried
             computationThreadTokenPolicyId
             hubOracle
             datum
@@ -109,8 +109,9 @@ invalidSignatureStep01Validator = plam $
                badTxId
                badTxView -> P.do
                 PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-                PNativeTxCompact {pcompact'witnessSetHash} <- pmatch pverified'txCompact
-                pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+                PNativeTxCompact {pcompact'witnessSetHash, pcompact'validityCode} <- pmatch pverified'txCompact
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
                   pexpecting
                     ( outputStateData
                         #== pforgetData

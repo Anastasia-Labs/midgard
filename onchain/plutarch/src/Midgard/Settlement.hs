@@ -20,8 +20,6 @@ module Midgard.Settlement (
 
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
-import Plutarch.Builtin.Data (pasByteStr, pasConstr, pasInt, pserialiseData)
-import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.Utils (PMaybeData)
 import Plutarch.LedgerApi.V3 (
   PCurrencySymbol,
@@ -39,11 +37,11 @@ import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.Common.Types (PMerkleRoot, PPosixTime)
 import Midgard.LedgerState (
-  PMidgardTxValidity,
   PWithdrawalInfo (..),
   PWithdrawalValidity,
   punsafeEventToKeyValuePair,
  )
+import Midgard.RejectionReason (POperatorVerdictV1)
 import Midgard.UserEvents.TxOrder (pforcedInclusionKeyValue)
 import Midgard.Common.Utils (
   pgetAuthenticInputWithNftAt,
@@ -261,8 +259,8 @@ pdecodeMintRedeemer :: forall (s :: S). Term s (PData :--> PMintRedeemer)
 pdecodeMintRedeemer = phoistAcyclic $
   plam $ \redeemerData -> P.do
     decoded <- plet $ pasConstr # redeemerData
-    tag <- plet $ pfstBuiltin # decoded
-    fields <- plet $ psndBuiltin # decoded
+    tag <- plet $ (pmatch decoded $ \(PBuiltinPair pairFirst _) -> pairFirst)
+    fields <- plet $ (pmatch decoded $ \(PBuiltinPair _ pairSecond) -> pairSecond)
     asName <- plet $ plam (\d -> pdata (pcon (PTokenName (pasByteStr # d))))
     asInt <- plet $ plam (\d -> pdata (pasInt # d))
     pif
@@ -311,7 +309,7 @@ either arrived or they did not.
 data PEventType (s :: S)
   = PDeposit
   | PWithdrawal {pevtWithdrawal'validityOverride :: Term s (PAsData PWithdrawalValidity)}
-  | PTxOrder {pevtTxOrder'validityOverride :: Term s (PAsData PMidgardTxValidity)}
+  | PTxOrder {pevtTxOrder'validityOverride :: Term s (PAsData POperatorVerdictV1)}
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PEventType)
@@ -438,7 +436,7 @@ pvalidEventInclusion
       PTxOrder {pevtTxOrder'validityOverride} -> P.do
         -- The order's datum is an OptimisticDatum, so its event is field 0.
         eventData <-
-          plet $ phead #$ psndBuiltin # (pasConstr # (eventDatumOf # txOrderScriptHash))
+          plet $ phead #$ (pmatch (pasConstr # (eventDatumOf # txOrderScriptHash)) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
         let (txOrderId, forcedInclusionTx) =
               pforcedInclusionKeyValue eventData pevtTxOrder'validityOverride
         pmatch membershipProof $ \case

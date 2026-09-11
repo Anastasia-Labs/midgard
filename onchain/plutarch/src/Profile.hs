@@ -1,6 +1,6 @@
 {-# LANGUAGE ImpredicativeTypes #-}
 
-module Profile where
+module Profile (getTracesExUnits, getExUnits, getShowTerm) where
 
 import Data.Either
 import Data.Text

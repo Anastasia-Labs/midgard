@@ -18,6 +18,9 @@ verification step is exercised rather than stubbed.
 module Testing.DaAttestationSignatures (tests) where
 
 import Data.ByteString qualified as BS
+import PlutusCore.Data qualified as PD
+import PlutusTx.Builtins (dataToBuiltinData, fromBuiltin, serialiseData, toBuiltin)
+import PlutusTx.Builtins qualified as Builtins
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -27,10 +30,11 @@ import Cardano.Crypto.Seed (mkSeedFromBytes)
 
 import Plutarch.LedgerApi.V3 (PTokenName (..))
 import Plutarch.Prelude
+import Plutarch.Unsafe (punsafeCoerce)
 
+import Midgard.AvailabilityChallenge (PCommitmentV1, pattestationMessageV1)
 import Midgard.DaAttestation.Signatures (
   pattestationAssetName,
-  pattestationMessage,
   psetAttestedSigner,
   psignerBitIsClear,
   psignerBitMask,
@@ -66,12 +70,10 @@ nameTests =
         pfails $ pattestationAssetName # pconstant (BS.replicate 32 0x01)
     , testCase "rejects a short header hash" $
         pfails $ pattestationAssetName # pconstant (BS.replicate 27 0x01)
-    , -- The domain-separating prefix is what stops a signature over a bare hash
-      -- being replayed anywhere else that asks a member to sign a hash.
-      testCase "the signed message carries a domain-separating prefix" $
+    , testCase "the signed message hashes the domain and full commitment" $
         holds $
-          pattestationMessage # pconstant headerHash
-            #== pconstant ("MidgardDAAttestationV1" <> headerHash)
+          pattestationMessageV1 commitmentTerm
+            #== pconstant attestedMessage
     ]
 
 --------------------------------------------------------------------------------
@@ -148,7 +150,7 @@ verifyTests =
         pfails $
           pverifyIndexedSignatures
             # pconstant (witness [1])
-            # (pattestationMessage # pconstant headerHash)
+            # pattestationMessageV1 commitmentTerm
             # pconstant committee
             # pconstant (bitmapWith [1])
             # 0
@@ -164,7 +166,7 @@ verifyTests =
         pfails $
           pverifyIndexedSignatures
             # pconstant (witness [0])
-            # (pattestationMessage # pconstant otherHeaderHash)
+            # pattestationMessageV1 otherCommitmentTerm
             # pconstant committee
             # pconstant emptyBitmap
             # 0
@@ -178,7 +180,7 @@ verifyTests =
     verify w =
       pverifyIndexedSignatures
         # pconstant w
-        # (pattestationMessage # pconstant headerHash)
+        # pattestationMessageV1 commitmentTerm
         # pconstant committee
         # pconstant emptyBitmap
         # 0
@@ -202,6 +204,37 @@ pand'ListT = foldr (#&&) (pconstant True)
 headerHash, otherHeaderHash :: BS.ByteString
 headerHash = BS.replicate 28 0xaa
 otherHeaderHash = BS.replicate 28 0xbb
+
+commitmentTerm, otherCommitmentTerm :: forall s. Term s PCommitmentV1
+commitmentTerm = commitmentTermFor headerHash
+otherCommitmentTerm = commitmentTermFor otherHeaderHash
+
+commitmentTermFor :: forall s. BS.ByteString -> Term s PCommitmentV1
+commitmentTermFor hh =
+  pfromData (punsafeCoerce (pconstant @PData (commitmentData hh)))
+
+commitmentData :: BS.ByteString -> PD.Data
+commitmentData hh =
+  PD.Constr
+    0
+    [ PD.I 1
+    , PD.B (BS.replicate 28 0x31)
+    , PD.B hh
+    , PD.I 1
+    , PD.Constr 0 [PD.I 4_096, PD.I (4 * 1024 * 1024), PD.I 16]
+    , PD.List
+        [ PD.Constr
+            0
+            [ PD.I 0
+            , PD.I 0
+            , PD.I 1
+            , PD.I 1
+            , PD.B (BS.replicate 32 0xac)
+            , PD.B (BS.replicate 32 0xab)
+            ]
+        ]
+    , PD.B (BS.replicate 28 0x41)
+    ]
 
 emptyBitmap :: BS.ByteString
 emptyBitmap = BS.replicate 32 0x00
@@ -244,7 +277,11 @@ signWith i msg =
 
 -- | The message the committee signs for 'headerHash'.
 attestedMessage :: BS.ByteString
-attestedMessage = "MidgardDAAttestationV1" <> headerHash
+attestedMessage =
+  fromBuiltin $
+    Builtins.blake2b_256 $
+      toBuiltin ("MidgardDaAvailabilityAttestationV1" :: BS.ByteString)
+        <> serialiseData (dataToBuiltinData (commitmentData headerHash))
 
 {- | A packed witness sequence: one index byte then a 64-byte signature, each.
 

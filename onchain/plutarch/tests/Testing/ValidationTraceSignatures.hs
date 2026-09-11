@@ -32,11 +32,11 @@ tests =
     , testCase "handoff semantic validator cancels its own computation thread" $
         psucceeds $ cancelledSemanticWith signaturesHandoffSemanticV1Validator threadName
     , testCase "address-item semantic validator cancels its own computation thread" $
-        psucceeds $ cancelledSemanticWith signaturesAddressItemSemanticV1Validator threadName
+        psucceeds $ cancelledFieldSemanticWith signaturesAddressItemSemanticV1Validator threadName
     , testCase "required-item semantic validator cancels its own computation thread" $
-        psucceeds $ cancelledSemanticWith signaturesRequiredItemSemanticV1Validator threadName
+        psucceeds $ cancelledFieldSemanticWith signaturesRequiredItemSemanticV1Validator threadName
     , testCase "required-item validator rejects cancellation of another thread" $
-        pfails $ cancelledSemanticWith signaturesRequiredItemSemanticV1Validator otherThreadName
+        pfails $ cancelledFieldSemanticWith signaturesRequiredItemSemanticV1Validator otherThreadName
     ]
 
 cancelledPreparationWith :: forall s. BS.ByteString -> Term s PUnit
@@ -56,6 +56,20 @@ cancelledSemanticWith :: forall s.
 cancelledSemanticWith validator cancellationName =
   validator
     # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pconstant (cancelContext cancellationName)
+
+cancelledFieldSemanticWith :: forall s.
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    ) ->
+  BS.ByteString ->
+  Term s PUnit
+cancelledFieldSemanticWith validator cancellationName =
+  validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
     # pdata (pconstant ctPolicy)
     # pconstant (cancelContext cancellationName)
 

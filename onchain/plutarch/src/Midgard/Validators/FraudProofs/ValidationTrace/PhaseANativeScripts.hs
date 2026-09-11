@@ -17,11 +17,10 @@ module Midgard.Validators.FraudProofs.ValidationTrace.PhaseANativeScripts (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
-import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash)
+import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo (..))
 import Plutarch.Prelude
 
-import Midgard.BoundedCollection (PItemProofV1)
-import Midgard.BoundedItem (PChunkProofV1)
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
 import Midgard.NativeScriptScan (PNativeScriptFrameV1)
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
@@ -32,6 +31,7 @@ import Midgard.ValidationMachine (
  )
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PPhaseANativeScripts))
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 import Midgard.Validators.FraudProofs.ValidationTrace.Preparation (
   pprepareSelectedValidator,
@@ -52,8 +52,9 @@ data PPhaseANativeItemActionV1 (s :: S)
       { pitem'inputIndex :: Term s (PAsData PInteger)
       , pitem'outputIndex :: Term s (PAsData PInteger)
       , pitem'transition :: Term s (PAsData PValidationOneStepWitnessV1)
-      , pitem'collectionProof :: Term s (PAsData PItemProofV1)
-      , pitem'chunkProof :: Term s (PAsData PChunkProofV1)
+      , pitem'fieldIndex :: Term s (PAsData PInteger)
+      , pitem'itemIndex :: Term s (PAsData PInteger)
+      , pitem'carriage :: Term s (PAsData PFieldCarriageV1)
       }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -97,15 +98,18 @@ phaseANativeAdvanceSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
           ownOutRef txInfo
 
 phaseANativeItemSemanticV1Validator :: forall s.
-  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
-phaseANativeItemSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+  Term s
+    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+    )
+phaseANativeItemSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PPhaseANativeItemActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyItem inputIndex outputIndex transitionD collectionProofD chunkProofD) ->
+    \action -> pmatch action $ \(PVerifyItem inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD) ->
       plet (pfromData transitionD) $ \transition ->
-      plet (pfromData collectionProofD) $ \collectionProof ->
-      plet (pfromData chunkProofD) $ \chunkProof ->
-      plet (pcon $ PTransactionFieldChunkWitness collectionProofD chunkProofD) $ \auxiliary ->
+      plet (pcon $ PTransactionFieldChunkWitness fieldIndexD itemIndexD carriageD) $ \auxiliary ->
+      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
         pcontinueWinning
           (pcon PPhaseANativeScripts)
           awardScriptHash policyId datum
@@ -113,7 +117,8 @@ phaseANativeItemSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
           (pforgetData $ pdata auxiliary)
           ( pverifyPhaseANativeItemSemanticsV1
               # pvalidationSemanticPreState datum
-              # transition # collectionProof # chunkProof
+              # transition # door # pfromData fieldIndexD # pfromData itemIndexD
+              # pfromData carriageD
           )
           ownOutRef txInfo
 

@@ -102,8 +102,8 @@ pnormalizeNativeValidityRange = phoistAcyclic $
 
 {- | Aiken @validators/fraud-proofs/invalid-range/step-01.ak@.
 
-Binds the transaction and writes the block's bounds alongside its normalised
-range.
+Binds an accepted transaction and writes the block's canonical replay slot
+alongside its normalised range.
 
 Unlike its siblings this step requires the thread's incoming state to be
 __absent__ — Aiken writes @expect None = m_input_state_data@ where the other
@@ -145,10 +145,11 @@ invalidRangeStep01Validator = plam $
                header
                _badTxId
                badTxView -> P.do
-                PHeaderV1 {pheader'startTime, pheader'endTime} <- pmatch (pfromData header)
+                PHeaderV1 {pheader'blockSlot} <- pmatch (pfromData header)
                 PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-                PNativeTxCompact {pcompact'body} <- pmatch pverified'txCompact
+                PNativeTxCompact {pcompact'body, pcompact'validityCode} <- pmatch pverified'txCompact
                 pexpecting (pstateIsAbsent mInputStateData)
+                  $ pexpecting (pcompact'validityCode #== 0)
                   $ pexpecting (outputScriptHash #== step02ValidatorScriptHash)
                   $ pexpecting
                     ( outputStateData
@@ -156,8 +157,7 @@ invalidRangeStep01Validator = plam $
                           ( pdata
                               ( pcon
                                   ( PStep02State
-                                      { pstep02State'blockValidFrom = pheader'startTime
-                                      , pstep02State'blockValidTo = pheader'endTime
+                                      { pstep02State'blockSlot = pheader'blockSlot
                                       , pstep02State'badTxNormalizedValidityRange =
                                           pdata (pnormalizeNativeValidityRange # pcompact'body)
                                       }
@@ -208,22 +208,20 @@ invalidRangeStep02Validator = plam $
             (pto (pto (pfromData ptxInfo'redeemers)))
             $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
               PStep02State
-                { pstep02State'blockValidFrom
-                , pstep02State'blockValidTo
+                { pstep02State'blockSlot
                 , pstep02State'badTxNormalizedValidityRange
                 } <-
                 pmatch (pexpectStateAs @PStep02State mInputStateData)
-              blockValidFrom <- plet $ pfromData pstep02State'blockValidFrom
-              blockValidTo <- plet $ pfromData pstep02State'blockValidTo
+              blockSlot <- plet $ pfromData pstep02State'blockSlot
               pexpecting
                 ( pmatch (pfromData pstep02State'badTxNormalizedValidityRange) $ \case
                     PClosedRange {pntr'lower, pntr'upper} ->
                       pfromData pntr'lower
-                        #< blockValidFrom
+                        #> blockSlot
                         #|| pfromData pntr'upper
-                        #>= blockValidTo
-                    PFromNegInf {pntr'upperOnly} -> pfromData pntr'upperOnly #>= blockValidTo
-                    PToPosInf {pntr'lowerOnly} -> pfromData pntr'lowerOnly #< blockValidFrom
+                        #< blockSlot
+                    PFromNegInf {pntr'upperOnly} -> pfromData pntr'upperOnly #< blockSlot
+                    PToPosInf {pntr'lowerOnly} -> pfromData pntr'lowerOnly #> blockSlot
                     -- Aiken's `fail @"The tx does not have an invalid time
                     -- range"`: an unbounded range is not a fault, so a thread
                     -- reaching here was built on a false premise.

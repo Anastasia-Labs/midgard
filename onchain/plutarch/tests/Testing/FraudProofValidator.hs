@@ -39,7 +39,10 @@ import Test.Tasty.HUnit
 
 import Plutarch.Prelude
 
-import Midgard.FraudProof (pgetProvenFraudulentBlocksHeaderHash)
+import Midgard.FraudProof (
+  pgetProvenFraudRecord,
+  pgetProvenFraudRecordWithIdentity,
+ )
 import Midgard.Validators.FraudProof (fraudProofMintValidator, fraudProofSpendValidator)
 import Testing.Eval (passertEval, pfails, psucceeds)
 import Testing.ScriptContextBuilder (
@@ -49,6 +52,7 @@ import Testing.ScriptContextBuilder (
   currencySymbolFromHex,
   mkAdaValue,
   withAddress,
+  withInlineDatum,
   withMint,
   withOutRef,
   withReferenceInput,
@@ -102,17 +106,17 @@ tests =
                 # pconstant (mintCtx (successRedeemer proofName) 0 (expectedMint proofName))
         ]
     , testGroup
-        "getProvenFraudulentBlocksHeaderHash"
-        [ testCase "drops the four-byte catalogue id prefix" $
-            passertEval $
-              headerHashAt (refInputCtx (singleton fraudProofPolicy proofName 1))
-                #== pconstant "the-28-byte-header-hash-here"
+        "getProvenFraudRecord"
+        [ testCase "returns the authenticated header prover and complete proof identity" $
+            passertEval fraudRecordIsExact
+        , testCase "two-result reader preserves the authenticated prover" $
+            passertEval fraudRecordWithoutIdentityIsExact
         , testCase "rejects a reference input under a foreign policy" $
             pfails $
-              headerHashAt (refInputCtx (singleton otherPolicy proofName 1))
+              fraudRecordHeaderIsExact (singleton otherPolicy proofName 1)
         , testCase "rejects a reference input holding two of the token" $
             pfails $
-              headerHashAt (refInputCtx (singleton fraudProofPolicy proofName 2))
+              fraudRecordHeaderIsExact (singleton fraudProofPolicy proofName 2)
         ]
     ]
 
@@ -212,16 +216,19 @@ rewardingCtx =
       <> ScriptContextBuilder
         (\scb -> scb {scbScriptInfo = MintingScript fraudProofPolicy})
 
-refInputCtx :: Value -> ScriptContext
-refInputCtx value =
+fraudRecordRefInputCtx :: ScriptContext
+fraudRecordRefInputCtx = fraudRecordRefInputCtxWith (singleton fraudProofPolicy proofName 1)
+
+fraudRecordRefInputCtxWith :: Value -> ScriptContext
+fraudRecordRefInputCtxWith value =
   buildScriptContext $
-    withMint (expectedMint proofName) (toBuiltinData ())
-      <> withOwnPolicy fraudProofPolicy
-      <> withReferenceInput
-        ( withOutRef someOutRef
-            <> withAddress (Address (ScriptCredential (ScriptHash (unCurrencySymbol fraudProofPolicy))) Nothing)
-            <> withValue (mkAdaValue 2_000_000 <> value)
-        )
+    withReferenceInput
+      ( withOutRef someOutRef
+          <> withAddress (Address (ScriptCredential (ScriptHash (unCurrencySymbol fraudProofPolicy))) Nothing)
+          <> withValue (mkAdaValue 2_000_000 <> value)
+          <> withInlineDatum
+            (dataToBuiltinData $ PD.Constr 0 [PD.B "the-authenticated-fraud-prover"])
+      )
 
 withOwnPolicy :: CurrencySymbol -> ScriptContextBuilder
 withOwnPolicy cs = ScriptContextBuilder $ \scb -> scb {scbScriptInfo = MintingScript cs}
@@ -236,12 +243,36 @@ runMint threadRedeemer redeemerIndex mintValue =
     # pdata (pconstant threadPolicy)
     # pconstant (mintCtx threadRedeemer redeemerIndex mintValue)
 
-headerHashAt :: forall s. ScriptContext -> Term s PByteString
-headerHashAt ctx =
-  pgetProvenFraudulentBlocksHeaderHash
-    # pconstant (referenceInputsOf ctx)
-    # pdata (pconstant fraudProofPolicy)
-    # 0
+fraudRecordIsExact :: forall s. Term s PBool
+fraudRecordIsExact =
+  pgetProvenFraudRecordWithIdentity
+    (pconstant $ referenceInputsOf fraudRecordRefInputCtx)
+    (pdata $ pconstant fraudProofPolicy)
+    0
+    ( \headerHash fraudProver assetName ->
+        headerHash #== pconstant "the-28-byte-header-hash-here"
+          #&& fraudProver #== pconstant "the-authenticated-fraud-prover"
+          #&& assetName #== pdata (pconstant proofName)
+    )
+
+fraudRecordWithoutIdentityIsExact :: forall s. Term s PBool
+fraudRecordWithoutIdentityIsExact =
+  pgetProvenFraudRecord
+    (pconstant $ referenceInputsOf fraudRecordRefInputCtx)
+    (pdata $ pconstant fraudProofPolicy)
+    0
+    ( \headerHash fraudProver ->
+        headerHash #== pconstant "the-28-byte-header-hash-here"
+          #&& fraudProver #== pconstant "the-authenticated-fraud-prover"
+    )
+
+fraudRecordHeaderIsExact :: forall s. Value -> Term s PBool
+fraudRecordHeaderIsExact value =
+  pgetProvenFraudRecord
+    (pconstant $ referenceInputsOf $ fraudRecordRefInputCtxWith value)
+    (pdata $ pconstant fraudProofPolicy)
+    0
+    (\headerHash _fraudProver -> headerHash #== pconstant "the-28-byte-header-hash-here")
 
 referenceInputsOf :: ScriptContext -> [TxInInfo]
 referenceInputsOf = txInfoReferenceInputs . scriptContextTxInfo

@@ -88,8 +88,10 @@ step01Tests =
           defaultStep01 {s1OutputState = Just (PD.Constr 0 [PD.B txEmptyId, PD.B phasRoot])}
   , testCase "rejects a raw root the header does not commit" $
       pfails $ runStep01 defaultStep01 {s1PhasRoot = otherRoot}
-  , testCase "rejects compact bytes that re-derive to another id" $
-      pfails $ runStep01 defaultStep01 {s1Cbor = tx1Cbor}
+  , testCase "rejects source bytes that name another id" $
+      pfails $ runStep01 defaultStep01 {s1Cbor = sourceCborWithValidity tx1 0}
+  , testCase "rejects a transaction marked invalid" $
+      pfails $ runStep01 defaultStep01 {s1Cbor = sourceCborOf txEmpty}
   , testCase "a cancel burning the thread token succeeds" $
       psucceeds $ runCancel True
   , testCase "a cancel that does not burn the thread token fails" $
@@ -155,7 +157,7 @@ defaultStep01 =
     { s1OutputScript = nextScript
     , s1OutputState = Just (PD.Constr 0 [PD.B txEmptyId])
     , s1PhasRoot = phasRoot
-    , s1Cbor = txEmptyCbor
+    , s1Cbor = sourceCborWithValidity txEmpty 0
     , s1TxId = txEmptyId
     }
 
@@ -211,7 +213,7 @@ defaultStep02 :: Step02
 defaultStep02 =
   Step02
     { s2StateTxId = txEmptyId
-    , s2OpeningCbor = txEmptyCbor
+    , s2OpeningCbor = compactWithValidity txEmpty (witnessSetHashOf txEmpty) 0
     , s2Preimage = spendInputsPreimage txEmpty
     , s2FraudProofAddress = fraudProofAddress
     , s2FraudProofName = threadName

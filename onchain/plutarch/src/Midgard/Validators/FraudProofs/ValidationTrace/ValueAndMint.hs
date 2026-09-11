@@ -1,27 +1,26 @@
 {- |
 Module      : Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMint
-Description : ValueAndMint aggregate validation-trace validator.
+Description : ValueAndMint validation-trace preparation validator.
 -}
 module Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMint (
   valueAndMintV1Validator,
 ) where
 
-import Plutarch.LedgerApi.V3 (PAddress, PCurrencySymbol, PScriptContext)
+import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash)
 import Plutarch.Prelude
 
-import Midgard.ValidationMachine (pverifyValueAndMintOneStepV1)
 import Midgard.ValidationTrace (PValidationPhase (PValueAndMint))
-import Midgard.Validators.FraudProofs.ValidationTrace.Resolution (
-  pvalidateResolutionValidator,
+import Midgard.Validators.FraudProofs.ValidationTrace.Preparation (
+  pprepareSelectedValidator,
  )
 
-valueAndMintV1Validator :: forall s.
-  Term s
-    ( PAsData PCurrencySymbol
+valueAndMintV1Validator ::
+  forall s.
+  Term
+    s
+    ( PAsData (PBuiltinList (PAsData PScriptHash))
         :--> PAsData PCurrencySymbol
-        :--> PAsData PAddress
         :--> PScriptContext
         :--> PUnit
     )
-valueAndMintV1Validator =
-  pvalidateResolutionValidator (pcon PValueAndMint) pverifyValueAndMintOneStepV1
+valueAndMintV1Validator = pprepareSelectedValidator (pcon PValueAndMint) 11

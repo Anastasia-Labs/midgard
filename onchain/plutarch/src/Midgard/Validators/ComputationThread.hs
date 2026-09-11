@@ -56,11 +56,11 @@ import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.Common.Utils (
   PAssetTriplet (..),
+  pgetSingletonAssetWithPolicy,
   pgetSingleAssetFromValue,
   pgetSingleAssetFromValueApartFromAda,
   phasSigned,
   pplutarchPhas,
-  pquantityOfMint,
  )
 import Midgard.ComputationThread (PMintRedeemer (..), PStepDatum (..))
 import Midgard.FraudProofCatalogue qualified as Catalogue
@@ -216,9 +216,11 @@ computationThreadMintValidator = plam $
           PSuccess {pctSuccess'burningTokenAssetName} ->
             -- Deliberately thin: whether the thread earned its success is
             -- decided by the fraud category's last step, which runs in the same
-            -- transaction. This only confirms the token is going away.
-            pquantityOfMint # mint # ownPolicyId # pctSuccess'burningTokenAssetName
-              #== (-1)
+            -- transaction. This only confirms that exactly the named token is
+            -- burned under this policy; the fraud-proof mint under its own
+            -- policy remains permitted alongside it.
+            (pgetSingletonAssetWithPolicy # mint # ownPolicyId)
+              #== (ppairDataBuiltin # pctSuccess'burningTokenAssetName # pdata (-1))
           ------------------------------------------------------------------
           PBurnForCancellation {pctBurnForCancellation'burningTokenAssetName} ->
             -- Stricter than @Success@: the whole mint field must be exactly this

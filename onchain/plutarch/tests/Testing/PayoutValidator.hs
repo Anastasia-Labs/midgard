@@ -52,11 +52,6 @@ import Test.Tasty.HUnit
 import Plutarch.Prelude
 
 import Midgard.Validators.Payout (payoutMintValidator, payoutSpendValidator)
-import Midgard.Common.Value (pmergeValues, pnegateValue, pvalueWithoutNft)
-import Plutarch.LedgerApi.Value qualified as PValue
-import Plutarch.LedgerApi.V3 (PLedgerValue)
-import Plutarch.Unsafe (punsafeCoerce)
-import PlutusTx.Builtins (builtinDataToData)
 import Testing.Eval (pfails, psucceeds)
 import Testing.ScriptContextBuilder (buildScriptContext, currencySymbolFromHex, mkAdaValue)
 

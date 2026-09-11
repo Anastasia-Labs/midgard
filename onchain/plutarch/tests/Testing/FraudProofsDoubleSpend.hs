@@ -95,6 +95,16 @@ fixtureTests =
       headerTransactionsRoot @?= commitCountedRoot transactionsDomain phasRoot l2Count
   ]
 
+-- Double-spend is a fault only for transactions the operator marked valid.
+-- The shared fixture defaults to validity code 1 because most fraud-proof
+-- families challenge rejected transactions, so this family gives its two
+-- subjects the accepted code explicitly.
+tx1AcceptedCbor, tx2AcceptedCbor, tx1AcceptedSourceCbor, tx2AcceptedSourceCbor :: BS.ByteString
+tx1AcceptedCbor = compactWithValidity tx1 (witnessSetHashOf tx1) 0
+tx2AcceptedCbor = compactWithValidity tx2 (witnessSetHashOf tx2) 0
+tx1AcceptedSourceCbor = sourceCborWithValidity tx1 0
+tx2AcceptedSourceCbor = sourceCborWithValidity tx2 0
+
 --------------------------------------------------------------------------------
 -- Step 01
 --------------------------------------------------------------------------------
@@ -125,7 +135,9 @@ step01Tests =
     testCase "rejects a raw root the header does not commit" $
       pfails $ runStep01 defaultStep01 {s1PhasRoot = otherRoot}
   , testCase "rejects compact bytes that re-derive to another id" $
-      pfails $ runStep01 defaultStep01 {s1Cbor = tx2Cbor}
+      pfails $ runStep01 defaultStep01 {s1Cbor = tx2AcceptedSourceCbor}
+  , testCase "rejects a first transaction marked invalid" $
+      pfails $ runStep01 defaultStep01 {s1Cbor = sourceCborOf tx1}
   ]
 
 --------------------------------------------------------------------------------
@@ -159,6 +171,8 @@ step02Tests =
       pfails $ runStep02 defaultStep02 {s2OutputState = Just (PD.Constr 0 [PD.B tx2Id])}
   , testCase "rejects a thread carrying no prior state" $
       pfails $ runStep02 defaultStep02 {s2InputState = Nothing}
+  , testCase "rejects a second transaction marked invalid" $
+      pfails $ runStep02 defaultStep02 {s2Cbor = sourceCborOf tx2}
   ]
 
 --------------------------------------------------------------------------------
@@ -176,7 +190,7 @@ step03Tests =
   [ testCase "opens tx1's field 0 and forwards the named input" $
       psucceeds $ runStep03 defaultStep03
   , testCase "rejects an opening of a transaction the thread did not anchor" $
-      pfails $ runStep03 defaultStep03 {s3OpeningCbor = tx2Cbor}
+      pfails $ runStep03 defaultStep03 {s3OpeningCbor = tx2AcceptedCbor}
   , -- §7.3: an out-of-range read aborts rather than clamping. A clamped read
     -- would let two different indices name the same input.
     testCase "rejects an input index past the end of the collection" $
@@ -225,7 +239,7 @@ step04Tests =
             , s4Preimage = Just (spendInputsPreimage tx3)
             }
   , testCase "rejects an opening of a transaction the thread did not anchor" $
-      pfails $ runStep04 defaultStep04 {s4OpeningCbor = tx1Cbor}
+      pfails $ runStep04 defaultStep04 {s4OpeningCbor = tx1AcceptedCbor}
   , testCase "rejects an input index past the end of the collection" $
       pfails $ runStep04 defaultStep04 {s4InputIndex = 3}
   , -- The conviction is what the step exists to produce, so its shape is
@@ -277,7 +291,7 @@ defaultStep01 =
     , s1OutputScript = nextScript
     , s1OutputState = Just (PD.Constr 0 [PD.B tx1Id])
     , s1PhasRoot = phasRoot
-    , s1Cbor = tx1Cbor
+    , s1Cbor = tx1AcceptedSourceCbor
     , s1TxId = tx1Id
     }
 
@@ -311,6 +325,7 @@ data Step02 = Step02
   { s2InputState :: Maybe PD.Data
   , s2OutputScript :: BS.ByteString
   , s2OutputState :: Maybe PD.Data
+  , s2Cbor :: BS.ByteString
   }
 
 defaultStep02 :: Step02
@@ -319,6 +334,7 @@ defaultStep02 =
     { s2InputState = Just (PD.Constr 0 [PD.B tx1Id])
     , s2OutputScript = nextScript
     , s2OutputState = Just (PD.Constr 0 [PD.B tx1Id, PD.B tx2Id])
+    , s2Cbor = tx2AcceptedSourceCbor
     }
 
 runStep02 :: forall s. Step02 -> Term s PUnit
@@ -330,11 +346,11 @@ runStep02 s =
     # pconstant
       ( spendContext
           (stepDatum (s2InputState s))
-          (PD.Constr 1 [inclusionArgs tx2Id tx2Cbor phasRoot])
+          (PD.Constr 1 [inclusionArgs tx2Id (s2Cbor s) phasRoot])
           [threadInput]
           [stepOutput (s2OutputScript s) (s2OutputState s)]
           referenceInputs
-          [phasEntry phasRoot tx2Id tx2Cbor]
+          [phasEntry phasRoot tx2Id (s2Cbor s)]
           mempty
       )
 
@@ -353,7 +369,7 @@ data Step03 = Step03
 defaultStep03 :: Step03
 defaultStep03 =
   Step03
-    { s3OpeningCbor = tx1Cbor
+    { s3OpeningCbor = tx1AcceptedCbor
     , s3Preimage = Nothing
     , s3InputIndex = 0
     , s3OutputScript = nextScript
@@ -407,7 +423,7 @@ defaultStep04 =
   Step04
     { s4StateTxId = tx2Id
     , s4CarriedInput = sharedInputRef
-    , s4OpeningCbor = tx2Cbor
+    , s4OpeningCbor = tx2AcceptedCbor
     , s4Preimage = Nothing
     , s4InputIndex = 0
     , s4FraudProofAddress = fraudProofAddress

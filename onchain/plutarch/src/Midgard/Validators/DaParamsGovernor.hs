@@ -11,11 +11,10 @@ invariant is applied to the datum being created, the datum being spent, and the
 datum being produced, so a parameter set that could not have been minted also
 cannot be arrived at by update.
 
-/The floor is what makes single-key capture unrepresentable./ Both thresholds
-must be at least @max(2, ceil(2 * set_len / 3))@. The clamp at two stops a
-one-signature quorum outright; the two-thirds term stops a quorum voting itself
-down to a minority slice of its own set. Neither threshold may exceed its set,
-so the parameters are always satisfiable.
+Both thresholds must be at least @ceil(2 * set_len / 3)@. One-member committee
+and owner sets therefore admit a threshold of one, as required by the current
+owner rulings. The two-thirds term stops larger quorums voting themselves down
+to a minority slice of their own set. Neither threshold may exceed its set.
 
 /Sets are proved sorted and unique as they are measured./ The committee is a
 packed bytestring of 32-byte keys and the owners a list of 28-byte hashes; both
@@ -33,7 +32,6 @@ module Midgard.Validators.DaParamsGovernor (
   pownerQuorumMet,
 ) where
 
-import Data.Kind (Type)
 import Plutarch.Builtin.Crypto (pblake2b_256)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.AssocMap qualified as AssocMap
@@ -72,46 +70,14 @@ import Midgard.DaAttestation (
 pverificationKeyHashByteCount :: forall (s :: S). Term s PInteger
 pverificationKeyHashByteCount = 28
 
-{- | Aiken @min_governed_threshold@.
-
-The lower clamp of the governed floor. Two, and this is the number that makes
-single-key capture of either threshold unrepresentable.
--}
-pminGovernedThreshold :: forall (s :: S). Term s PInteger
-pminGovernedThreshold = 2
-
-{- | Aiken @min_owner_count@.
-
-The smallest owner set the governor represents.
-
-The Aiken source is careful to say this is /redundant/ under the current floor —
-a one-owner set is already unrepresentable, because its @update_threshold@ would
-have to be both at least @governed_threshold_floor(1) == 2@ and at most one — and
-that the redundancy is an artifact of the arithmetic rather than a property of
-the governor. It is kept, here as there, as declared defence in depth: if the
-two-thirds term were ever weakened to something whose value at one is one, a
-single-owner set with @update_threshold == 1@ would become representable and
-single-key governance capture would return.
-
-It stays a separate constant from 'pminGovernedThreshold' even though both are
-two: one bounds a set size and the other a threshold, and a change to either
-must not silently move the other.
--}
-pminOwnerCount :: forall (s :: S). Term s PInteger
-pminOwnerCount = 2
-
-{- | Aiken @governed_threshold_floor@ — @max(2, ceil(2 * set_len / 3))@.
+{- | Aiken @governed_threshold_floor@ — @ceil(2 * set_len / 3)@.
 
 @ceil(2n/3)@ is written @(2n + 2) / 3@ under integer division.
 -}
 pgovernedThresholdFloor :: forall (s :: S). Term s (PInteger :--> PInteger)
 pgovernedThresholdFloor = phoistAcyclic $
   plam $ \setLen ->
-    plet (pdiv # (2 * setLen + 2) # 3) $ \twoThirdsCeiling ->
-      pif
-        (pminGovernedThreshold #< twoThirdsCeiling)
-        twoThirdsCeiling
-        pminGovernedThreshold
+    pdiv # (2 * setLen + 2) # 3
 
 --------------------------------------------------------------------------------
 -- Measuring the two sets
@@ -247,7 +213,7 @@ one appears. Its conditions, in order:
   * @committee_signers_hash@ is the hash of the committee bytes, which is what
     lets an attestation pin the committee it was made under without carrying it;
   * @da_threshold@ sits between the governed floor and the committee size;
-  * the owners are sorted, unique, within their cap and at least two; and
+  * the owners are non-empty, sorted, unique and within their cap; and
   * @update_threshold@ sits between the governed floor and the owner count.
 
 The upper bounds matter as much as the floors: a threshold above its set size
@@ -303,7 +269,6 @@ pvalidDatum = phoistAcyclic $
                 [ pfromData pdaParams'committeeSignersHash #== (pblake2b_256 # committee)
                 , (pgovernedThresholdFloor # committeeLen) #<= daThreshold
                 , daThreshold #<= committeeLen
-                , pminOwnerCount #<= ownerLen
                 , (pgovernedThresholdFloor # ownerLen) #<= updateThreshold
                 , updateThreshold #<= ownerLen
                 ]
@@ -451,10 +416,10 @@ pvalueNotDrained inputValue outputValue =
           pall
             # plam
               ( \tokenEntry ->
-                  pfromData (psndBuiltin # tokenEntry)
-                    #<= pquantityOf outputValue (pfstBuiltin # policyEntry) (pfstBuiltin # tokenEntry)
+                  pfromData (pmatch tokenEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)
+                    #<= pquantityOf outputValue (pmatch policyEntry $ \(PBuiltinPair pairFirst _) -> pairFirst) (pmatch tokenEntry $ \(PBuiltinPair pairFirst _) -> pairFirst)
               )
-            # pto (pto (pfromData (psndBuiltin # policyEntry)))
+            # pto (pto (pfromData (pmatch policyEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
       )
     # pto (pto (pto (pto (pfromData inputValue))))
 
@@ -513,8 +478,8 @@ daParamsGovernorMintValidator = plam $
           maxOwnerCount'
     pif
       ( pand'List
-          [ pfstBuiltin # mintEntry #== pdaParamsAssetName
-          , pfromData (psndBuiltin # mintEntry) #== 1
+          [ (pmatch mintEntry $ \(PBuiltinPair pairFirst _) -> pairFirst) #== pdaParamsAssetName
+          , pfromData (pmatch mintEntry $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1
           , pany
               # plam
                 ( \input ->

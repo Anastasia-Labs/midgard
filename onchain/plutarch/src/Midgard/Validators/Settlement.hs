@@ -13,7 +13,6 @@ module Midgard.Validators.Settlement (
   settlementSpendValidator,
 ) where
 
-import Plutarch.Builtin.Data (pasByteStr, pasConstr, pasInt)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.AssocMap qualified as AssocMap
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
@@ -26,7 +25,6 @@ import Plutarch.LedgerApi.V3 (
   PScriptHash,
   PScriptInfo (..),
   PScriptPurpose (..),
-  PTokenName,
   PTxInInfo (..),
   PTxInfo (..),
   PTxOut (..),
@@ -53,8 +51,6 @@ import Midgard.OperatorDirectory.ActiveOperators qualified as Active
 import Midgard.OperatorDirectory.RetiredOperators qualified as Retired
 import Midgard.Scheduler qualified as Scheduler
 import Midgard.Settlement (
-  PEventMembershipProof,
-  PEventType,
   PMintRedeemer (..),
   pvalidEventInclusion,
   PResolutionClaim (..),
@@ -123,7 +119,7 @@ settlementMintValidator = plam $ \hubOracle ctx -> P.do
                   # referenceInputs
                   # hubOracle
                   # pfromData pspawn'hubRefInputIndex
-            -- The state queue's merge redeemer, decoded positionally: tag 4 is
+            -- The state queue's merge redeemer, decoded positionally: tag 6 is
             -- MergeToConfirmedStateV1 and it has exactly 18 fields.
             mergeDecoded <-
               plet $
@@ -135,10 +131,10 @@ settlementMintValidator = plam $ \hubOracle ctx -> P.do
                         # pdata (pcon (PMinting phubOracle'stateQueue))
                         # pfromData pspawn'stateQueueMergeRedeemerIndex
                     )
-            mergeFields <- plet $ psndBuiltin # mergeDecoded
+            mergeFields <- plet $ (pmatch mergeDecoded $ \(PBuiltinPair _ pairSecond) -> pairSecond)
             fieldAt <- plet $ plam (\n -> pelemAt @PBuiltinList # n # mergeFields)
             pand'List
-              [ pfstBuiltin # mergeDecoded #== 4
+              [ (pmatch mergeDecoded $ \(PBuiltinPair pairFirst _) -> pairFirst) #== 6
               , plength # mergeFields #== 18
               , -- The settlement's id is the merged block's header-hash key.
                 pasByteStr # (fieldAt # 0) #== pto (pfromData pspawn'settlementId)
@@ -146,11 +142,11 @@ settlementMintValidator = plam $ \hubOracle ctx -> P.do
                 -- the module note on why absence would let an empty block pass.
                 plet (pasConstr #$ fieldAt # 3) $ \optionPair ->
                   pand'List
-                    [ pfstBuiltin # optionPair #== 0
-                    , plength # (psndBuiltin # optionPair) #== 1
+                    [ (pmatch optionPair $ \(PBuiltinPair pairFirst _) -> pairFirst) #== 0
+                    , plength # (pmatch optionPair $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1
                     , -- Read for its type check; the value itself is unused,
                       -- exactly as in the Aiken original.
-                      plet (pasInt #$ phead # (psndBuiltin # optionPair)) (const (pconstant True))
+                      plet (pasInt #$ phead # (pmatch optionPair $ \(PBuiltinPair _ pairSecond) -> pairSecond)) (const (pconstant True))
                     ]
               , -- The produced settlement must carry exactly the merged
                 -- block's roots and no resolution claim.
@@ -426,7 +422,7 @@ settlementSpendValidator = plam $ \hubOracle settlementPolicyId ctx -> P.do
           , pstlDisprove'unresolvedEventAssetName
           , pstlDisprove'eventType
           , pstlDisprove'membershipProof
-          , pstlDisprove'inclusionProofScriptWithdrawRedeemerIndex
+          , pstlDisprove'inclusionProofScriptWithdrawRedeemerIndex = _
           } -> P.do
             PResolutionClaim {presolutionClaim'resolutionTime, presolutionClaim'operator} <-
               pmatch $

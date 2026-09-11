@@ -59,10 +59,10 @@ pgetWithdrawScriptsRedeemerAt = phoistAcyclic $
   plam $ \withdrawScriptHash redeemers redeemerIndex -> P.do
     rdmrPair <- plet $ pelemAt # redeemerIndex # redeemers
     pif
-      ( pfstBuiltin # rdmrPair
+      ( (pmatch rdmrPair $ \(PBuiltinPair pairFirst _) -> pairFirst)
           #== pdata (pcon (PRewarding (pcon (PScriptCredential withdrawScriptHash))))
       )
-      (pto (pfromData (psndBuiltin # rdmrPair)))
+      (pto (pfromData (pmatch rdmrPair $ \(PBuiltinPair _ pairSecond) -> pairSecond)))
       perror
 
 {- | Aiken @merkelized_validator.delegated_compute@.

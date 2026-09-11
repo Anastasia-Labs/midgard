@@ -37,10 +37,16 @@ import Plutarch.LedgerApi.V3 (
   PTxInInfo (..),
   PTxOut (..),
  )
+import Plutarch.LedgerApi.Value qualified as Value
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
+import Midgard.AvailabilityChallenge (
+  PCommitmentV1 (..),
+  PParametersV1 (..),
+  pcommitmentIsCanonicalV1,
+ )
 import Midgard.DaAttestation (
   PDaAttestationDatum (..),
   PDaParamsDatum (..),
@@ -162,11 +168,12 @@ pvalidateInitOutput ::
     ( PTxOut
         :--> PAsData PCurrencySymbol
         :--> PDaParamsDatum
+        :--> PParametersV1
         :--> PByteString
         :--> PAsData PTokenName
     )
 pvalidateInitOutput = phoistAcyclic $
-  plam $ \output ownPolicyId params expectedHeaderHash -> P.do
+  plam $ \output ownPolicyId params availabilityParameters expectedHeaderHash -> P.do
     PTxOut {ptxOut'address, ptxOut'value, ptxOut'datum, ptxOut'referenceScript} <- pmatch output
     datumData <-
       plet $ pmatch ptxOut'datum $ \case
@@ -174,14 +181,30 @@ pvalidateInitOutput = phoistAcyclic $
         _ -> perror
     PDaAttestationDatum
       { pdaAttestation'headerHash
+      , pdaAttestation'availabilityCommitment
       , pdaAttestation'daThreshold
       , pdaAttestation'committeeSignersHash
+      , pdaAttestation'rescueBeneficiary
       , pdaAttestation'attestedSigners
       , pdaAttestation'attestationCount
       } <-
       pmatch (pfromData (punsafeCoerce @(PAsData PDaAttestationDatum) datumData))
     PDaParamsDatum {pdaParams'daThreshold, pdaParams'committeeSignersHash} <- pmatch params
+    commitment <- plet $ pfromData pdaAttestation'availabilityCommitment
     assetName <- plet $ pattestationAssetName # pfromData pdaAttestation'headerHash
+    let daBondLovelace =
+          pmatch availabilityParameters $ \PParametersV1 {pparameters'daBondLovelace} ->
+            pfromData pparameters'daBondLovelace
+        expectedValue =
+          Value.psingletonSortedValue
+            # Value.padaSymbol
+            # Value.padaToken
+            # daBondLovelace
+            <> ( Value.psingletonSortedValue
+                  # pfromData ownPolicyId
+                  # pfromData assetName
+                  # 1
+               )
     pif
       ( pand'List
           [ pmatch ptxOut'address $ \PAddress {paddress'credential} ->
@@ -192,12 +215,19 @@ pvalidateInitOutput = phoistAcyclic $
               PDNothing -> pconstant True
               PDJust _ -> pconstant False
           , pfromData pdaAttestation'headerHash #== expectedHeaderHash
+          , pmatch commitment $ \PCommitmentV1 {pcommitment'headerHash} ->
+              pfromData pcommitment'headerHash #== expectedHeaderHash
+          , pcommitmentIsCanonicalV1 commitment availabilityParameters
           , pdaAttestation'daThreshold #== pdaParams'daThreshold
           , pdaAttestation'committeeSignersHash #== pdaParams'committeeSignersHash
+          , pmatch (pfromData pdaAttestation'rescueBeneficiary) $ \PAddress {paddress'credential} ->
+              pmatch paddress'credential $ \case
+                PScriptCredential h -> pnot # pscriptHashIs h ownPolicyId
+                PPubKeyCredential _ -> pconstant True
           , -- An attestation starts from nothing.
             pfromData pdaAttestation'attestedSigners #== pemptyAttestedSignerBitmap
           , pfromData pdaAttestation'attestationCount #== 0
-          , phasNftStrict ptxOut'value ownPolicyId assetName
+          , pto (pfromData ptxOut'value) #== expectedValue
           ]
       )
       assetName
@@ -240,8 +270,8 @@ phasNftStrict value policyId tokenName =
         pnot
           # (pnull # entries)
           #&& pnull # (ptail # entries)
-          #&& pfstBuiltin # (phead # entries) #== tokenName
-          #&& pfromData (psndBuiltin # (phead # entries)) #== 1
+          #&& (pmatch (phead # entries) $ \(PBuiltinPair pairFirst _) -> pairFirst) #== tokenName
+          #&& pfromData (pmatch (phead # entries) $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1
 
 -- | Aiken @assets.quantity_of@; zero when absent.
 pquantityOf ::

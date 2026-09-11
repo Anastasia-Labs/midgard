@@ -33,7 +33,6 @@ import Plutarch.Prelude
 import Plutarch.Monadic qualified as P
 import Plutarch.Unsafe (punsafeCoerce)
 
-import Midgard.BoundedCollection (PItemProofV1)
 import Midgard.CanonicalDecodeItemStaging (
   PAuthenticatedCanonicalDecodeItemV1 (..),
   PPreparedCanonicalDecodeItemV1 (..),
@@ -43,12 +42,14 @@ import Midgard.CanonicalDecodeItemStaging (
  )
 import Midgard.ComputationThread (PStepDatum (..))
 import Midgard.FraudProofs.Common (pcontinue)
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1 (..))
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepWitnessV1,
   PValidationProofItemDatumV1 (..),
   pobserveCanonicalDecodeItemV1,
  )
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.ValidationResolution (
   PPreparedValidationResolutionStateV1 (..),
   PValidationResolutionStateV1 (..),
@@ -66,8 +67,7 @@ data PCanonicalDecodeItemObserveActionV1 (s :: S)
   = PObserve
       { pobserve'inputIndex :: Term s (PAsData PInteger)
       , pobserve'outputIndex :: Term s (PAsData PInteger)
-      , pobserve'collectionProof :: Term s (PAsData PItemProofV1)
-      , pobserve'itemCbor :: Term s (PAsData PByteString)
+      , pobserve'carriage :: Term s (PAsData PFieldCarriageV1)
       }
   | PObserveReference
       { pobserveReference'inputIndex :: Term s (PAsData PInteger)
@@ -83,14 +83,6 @@ data PCanonicalDecodeItemSemanticActionV1 (s :: S)
       { pverify'inputIndex :: Term s (PAsData PInteger)
       , pverify'outputIndex :: Term s (PAsData PInteger)
       , pverify'transition :: Term s (PAsData PValidationOneStepWitnessV1)
-      , pverify'collectionProof :: Term s (PAsData PItemProofV1)
-      , pverify'itemCbor :: Term s (PAsData PByteString)
-      }
-  | PVerifyReference
-      { pverifyReference'inputIndex :: Term s (PAsData PInteger)
-      , pverifyReference'outputIndex :: Term s (PAsData PInteger)
-      , pverifyReference'transition :: Term s (PAsData PValidationOneStepWitnessV1)
-      , pverifyReference'referenceInputIndex :: Term s (PAsData PInteger)
       }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -134,8 +126,10 @@ pproofItemFromReference proofItemScriptHash pre referenceInputIndex referenceInp
                   #== pfromData (pmachineState'transactionCommitment preFields)
             )
             ( pcon $ PTransactionFieldItemWitness
-                (pproofItem'collectionProof proofItemFields)
-                (pproofItem'itemCbor proofItemFields)
+                ( pdata $ pcon $ PInline
+                    { pinline'preimage = pproofItem'fieldPreimage proofItemFields
+                    }
+                )
             )
             perror)
       perror)
@@ -153,18 +147,9 @@ pobserveSemanticPreState datum =
   pmatch (pfromData $ pprepared'resolution base) $ \resolution ->
     pfromData $ presolution'preState resolution
 
-psemanticPreState :: forall s.
-  Term s (PMaybeData PStepDatum) ->
-  Term s PValidationMachineStateV1
-psemanticPreState datum =
-  pmatch (pexpectDatum datum) $ \stepDatum ->
-  plet (pexpectStateAs @PPreparedValidationResolutionStateV1 $ pstep'data stepDatum) $ \base ->
-  pmatch base $ \baseFields ->
-  pmatch (pfromData $ pprepared'resolution baseFields) $ \resolution ->
-    pfromData $ presolution'preState resolution
-
 pobserveItem :: forall s.
   Term s (PAsData PScriptHash) ->
+  Term s (PAsData PCurrencySymbol) ->
   Term s (PAsData PCurrencySymbol) ->
   Term s (PMaybeData PStepDatum) ->
   Term s PInteger ->
@@ -173,10 +158,10 @@ pobserveItem :: forall s.
   Term s PTxOutRef ->
   Term s PTxInfo ->
   Term s PBool
-pobserveItem proofVerifierScriptHash policyId datum inputIndex outputIndex auxiliary ownOutRef txInfo =
+pobserveItem proofVerifierScriptHash policyId certificatePolicyId datum inputIndex outputIndex auxiliary ownOutRef txInfo =
   pmatch auxiliary $ \case
-    PTransactionFieldItemWitness collectionProof itemCbor ->
-      pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
+    PTransactionFieldItemWitness carriage ->
+      pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs} ->
       pcontinue
         policyId
         (pexpectDatum datum)
@@ -190,24 +175,22 @@ pobserveItem proofVerifierScriptHash policyId datum inputIndex outputIndex auxil
           pmatch prepared $ \preparedFields ->
           plet (pfromData $ ppreparedCanonical'authenticated preparedFields) $ \authenticated ->
           pmatch authenticated $ \authenticatedFields ->
-          plet (pfromData $ pauthenticatedCanonical'base authenticatedFields) $ \base ->
-          pmatch base $ \baseFields ->
           plet (pfromData $ pauthenticatedCanonical'transition authenticatedFields) $ \transition ->
           plet
+            (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId)
+            $ \door ->
+          plet
             ( pobserveCanonicalDecodeItemV1
+                # (pobserveSemanticPreState datum)
                 # transition
-                # pfromData collectionProof
-                # pfromData itemCbor
+                # door
+                # pfromData carriage
             )
             $ \observation ->
           plet
             (pforgetData $ pdata $ pobserveCanonicalDecodeItem # prepared # observation)
             $ \expectedOutputState ->
               ppreparedCanonicalDecodeItemIsWellFormed # prepared
-                #&& phashOneStepEvidence
-                  # pforgetData (pauthenticatedCanonical'transition authenticatedFields)
-                  # pforgetData (pdata auxiliary)
-                  #== pfromData (pprepared'evidenceHash baseFields)
                 #&& outputScriptHash #== proofVerifierScriptHash
                 #&& outputState #== expectedOutputState
     _ -> perror
@@ -219,14 +202,11 @@ pbindItemSource :: forall s.
   Term s PInteger ->
   Term s PInteger ->
   Term s PValidationOneStepWitnessV1 ->
-  Term s PValidationAuxiliaryWitnessV1 ->
   Term s PTxOutRef ->
   Term s PTxInfo ->
   Term s PBool
-pbindItemSource sourceBinderScriptHash policyId datum inputIndex outputIndex transition auxiliary ownOutRef txInfo =
-  pmatch auxiliary $ \case
-    PTransactionFieldItemWitness _ _ ->
-      pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
+pbindItemSource sourceBinderScriptHash policyId datum inputIndex outputIndex transition ownOutRef txInfo =
+  pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
       pcontinue
         policyId
         (pexpectDatum datum)
@@ -243,26 +223,26 @@ pbindItemSource sourceBinderScriptHash policyId datum inputIndex outputIndex tra
             $ \expectedOutputState ->
               phashOneStepEvidence
                 # pforgetData (pdata transition)
-                # pforgetData (pdata auxiliary)
+                # pforgetData (pdata $ pcon PNoAuxiliaryWitness)
                 #== pfromData (pprepared'evidenceHash baseFields)
                 #&& outputScriptHash #== sourceBinderScriptHash
                 #&& outputState #== expectedOutputState
-    _ -> perror
 
 canonicalDecodeItemObserveV1Validator :: forall s.
   Term s
     ( PAsData PScriptHash :--> PAsData PCurrencySymbol
-        :--> PAsData PScriptHash :--> PScriptContext :--> PUnit
+        :--> PAsData PScriptHash :--> PAsData PCurrencySymbol
+        :--> PScriptContext :--> PUnit
     )
-canonicalDecodeItemObserveV1Validator = plam $ \proofVerifierScriptHash policyId proofItemScriptHash ctx ->
+canonicalDecodeItemObserveV1Validator = plam $ \proofVerifierScriptHash policyId proofItemScriptHash certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PCanonicalDecodeItemObserveActionV1 policyId datum redeemer ownOutRef txInfo $
     \action -> pmatch action $ \case
-      PObserve inputIndex outputIndex collectionProof itemCbor ->
+      PObserve inputIndex outputIndex carriage ->
         pobserveItem
-          proofVerifierScriptHash policyId datum
+          proofVerifierScriptHash policyId certificatePolicyId datum
           (pfromData inputIndex) (pfromData outputIndex)
-          (pcon $ PTransactionFieldItemWitness collectionProof itemCbor)
+          (pcon $ PTransactionFieldItemWitness carriage)
           ownOutRef txInfo
       PObserveReference inputIndex outputIndex referenceInputIndex ->
         pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
@@ -275,40 +255,25 @@ canonicalDecodeItemObserveV1Validator = plam $ \proofVerifierScriptHash policyId
           )
           $ \auxiliary ->
             pobserveItem
-              proofVerifierScriptHash policyId datum
+              proofVerifierScriptHash policyId certificatePolicyId datum
               (pfromData inputIndex) (pfromData outputIndex)
               auxiliary ownOutRef txInfo
 
 canonicalDecodeItemSemanticV1Validator :: forall s.
   Term s
     ( PAsData PScriptHash :--> PAsData PCurrencySymbol
-        :--> PAsData PScriptHash :--> PScriptContext :--> PUnit
+        :--> PScriptContext :--> PUnit
     )
-canonicalDecodeItemSemanticV1Validator = plam $ \sourceBinderScriptHash policyId proofItemScriptHash ctx ->
+canonicalDecodeItemSemanticV1Validator = plam $ \sourceBinderScriptHash policyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PCanonicalDecodeItemSemanticActionV1 policyId datum redeemer ownOutRef txInfo $
     \action -> pmatch action $ \case
-      PVerify inputIndex outputIndex transition collectionProof itemCbor ->
+      PVerify inputIndex outputIndex transition ->
         pbindItemSource
           sourceBinderScriptHash policyId datum
           (pfromData inputIndex) (pfromData outputIndex)
           (pfromData transition)
-          (pcon $ PTransactionFieldItemWitness collectionProof itemCbor)
           ownOutRef txInfo
-      PVerifyReference inputIndex outputIndex transition referenceInputIndex ->
-        pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
-        plet
-          ( pproofItemFromReference
-              proofItemScriptHash
-              (psemanticPreState datum)
-              (pfromData referenceInputIndex)
-              (pfromData ptxInfo'referenceInputs)
-          )
-          $ \auxiliary ->
-            pbindItemSource
-              sourceBinderScriptHash policyId datum
-              (pfromData inputIndex) (pfromData outputIndex)
-              (pfromData transition) auxiliary ownOutRef txInfo
 
 canonicalDecodeProofItemV1Validator :: forall s. Term s (PScriptContext :--> PUnit)
 canonicalDecodeProofItemV1Validator = plam $ \_ -> perror

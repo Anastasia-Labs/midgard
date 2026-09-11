@@ -11,20 +11,12 @@ either predates the block or was produced inside it, so step-03's absence from
 @prev_utxos_root@ and step-04's absence from @transactions_root@ each prove
 nothing alone.
 
-=== Two differences from @no-input@, both faithful rather than tidy
+=== The shared absence carriage
 
-__The absence proofs are redeemer-carried only.__ @no-input@ takes a
-'Midgard.FraudProofs.Common.PNonMembershipCarriage' at both absences, so a prover
-may publish the proof beforehand as chunks (issue #545); this family takes a bare
-proof, so it must ride in the step transaction. The port keeps the difference:
-the two families' redeemers are wire format and levelling them would break every
-SDK built against either.
-
-__The withdrawal index is vestigial and stays anyway.__ Aiken's
-@plutarch_pexcludes_raw@ binds it and then finds the redeemer by script hash,
-requiring uniqueness; 'Midgard.Common.Utils.pplutarchPexcludesRaw' drops the
-parameter for the same reason. It remains a field of the redeemer because the
-redeemer is the interface.
+Like @no-input@, both absence steps take
+'Midgard.FraudProofs.Common.PNonMembershipCarriage'. A fitting proof can travel
+in the transaction's withdrawal redeemer; a deeper proof can travel through
+published chunks. Both arms authenticate the same root and key.
 
 === The keys are the same two as @no-input@
 
@@ -50,12 +42,12 @@ import Plutarch.LedgerApi.V3 (
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 
-import Midgard.Common.Utils (pplutarchPexcludesRaw)
 import Midgard.FraudProofs.Common (
   pcarriageTransactionsPhasRoot,
   pcontinue,
   pfinalize,
   ppassNativeTxToNextStepCarried,
+  pverifyNonMembershipCarried,
  )
 import Midgard.FraudProofs.FieldOpening (
   PNativeTxAnchorV1 (..),
@@ -63,7 +55,11 @@ import Midgard.FraudProofs.FieldOpening (
   preferenceInputsFieldIndex,
  )
 import Midgard.FraudProofs.NativeTx.Components (pencodeMidgardTxInput)
-import Midgard.FraudProofs.NativeTx.Types (PMidgardTxInput (..))
+import Midgard.FraudProofs.NativeTx.Types (
+  PMidgardTxInput (..),
+  PNativeTxCompact (..),
+  PVerifiedMidgardNativeTxCompact (..),
+ )
 import Midgard.FraudProofs.NoReferenceInput (
   PStep02Args (..),
   PStep02State (..),
@@ -122,9 +118,12 @@ noReferenceInputStep01Validator = plam $
                outputStateData
                header
                badTxId
-               _badTxView -> P.do
+               badTxView -> P.do
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
+                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
                 PHeaderV1 {pheader'prevUtxosRoot} <- pmatch (pfromData header)
-                pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+                pexpecting (pcompact'validityCode #== 0) $
+                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
                   pexpecting
                     ( outputStateData
                         #== pforgetData
@@ -260,10 +259,10 @@ noReferenceInputStep03Validator = plam $
           PStep03Args
             { pstep03Args'inputIndex
             , pstep03Args'outputIndex
-            , pstep03Args'nonMembershipProofInLedger
+            , pstep03Args'nonMembershipInLedger
             } <-
             pmatch args
-          PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
+          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
           redeemers <- plet $ pto (pto (pfromData ptxInfo'redeemers))
           pcontinue
             computationThreadTokenPolicyId
@@ -288,10 +287,11 @@ noReferenceInputStep03Validator = plam $
               missingReferenceInput <- plet $ pfromData pstep03State'missingReferenceInput
               PMidgardTxInput {ptxInput'txId} <- pmatch missingReferenceInput
               pexpecting
-                ( pplutarchPexcludesRaw
+                ( pverifyNonMembershipCarried
+                    (pfromData pstep03Args'nonMembershipInLedger)
                     (pfromData pstep03State'blocksPrevUtxosRoot)
                     (pencodeMidgardTxInput # missingReferenceInput)
-                    (pforgetData pstep03Args'nonMembershipProofInLedger)
+                    (pfromData ptxInfo'referenceInputs)
                     redeemers
                 )
                 $ pexpecting (outputScriptHash #== step04ValidatorScriptHash)
@@ -337,11 +337,11 @@ noReferenceInputStep04Validator = plam $
           PStep04Args
             { pstep04Args'inputIndex
             , pstep04Args'outputIndex
-            , pstep04Args'nonMembershipProofInTxs
             , pstep04Args'fraudProofMintRedeemerIndex
+            , pstep04Args'nonMembershipInTxs
             } <-
             pmatch args
-          PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
+          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
           redeemers <- plet $ pto (pto (pfromData ptxInfo'redeemers))
           pfinalize
             computationThreadTokenPolicyId
@@ -362,10 +362,11 @@ noReferenceInputStep04Validator = plam $
                 } <-
                 pmatch (pexpectStateAs @PStep04State mInputStateData)
               pexpecting
-                ( pplutarchPexcludesRaw
+                ( pverifyNonMembershipCarried
+                    (pfromData pstep04Args'nonMembershipInTxs)
                     (pfromData pstep04State'blocksTransactionsRoot)
                     (pfromData pstep04State'missingReferenceInputTxId)
-                    (pforgetData pstep04Args'nonMembershipProofInTxs)
+                    (pfromData ptxInfo'referenceInputs)
                     redeemers
                 )
                 (pconstant True)

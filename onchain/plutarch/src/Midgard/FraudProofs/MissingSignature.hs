@@ -43,6 +43,7 @@ module Midgard.FraudProofs.MissingSignature (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
+import Plutarch.LedgerApi.Utils (PMaybeData)
 import Plutarch.Prelude
 
 import Midgard.FraudProofs.FieldOpening (PFieldOpeningV1)
@@ -99,20 +100,31 @@ data PStep04State (s :: S) = PStep04State
   { pstep04State'missingRequiredSignerVkey :: Term s (PAsData PByteString)
   , pstep04State'verifiedTxId :: Term s (PAsData PByteString)
   , pstep04State'verifiedWitnessSetHash :: Term s (PAsData PByteString)
+  , -- | Empty before the first batch; thereafter the hash of the exact
+    -- authenticated field-walk checkpoint emitted by the preceding scan.
+    pstep04State'fieldWalkCheckpointHash :: Term s (PAsData PByteString)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep04State)
 
 -- | Aiken @missing_signature/step_04.Args@.
-data PStep04Args (s :: S) = PStep04Args
-  { pstep04Args'inputIndex :: Term s (PAsData PInteger)
-  , pstep04Args'outputIndex :: Term s (PAsData PInteger)
-  , pstep04Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
-  , -- | The prover's chosen §8 carriage for field 7's preimage, plus the
-    -- witness set the door checks against the thread-anchored hash.
-    pstep04Args'addrTxWitsOpening :: Term s (PAsData PFieldOpeningV1)
-  }
+data PStep04Args (s :: S)
+  = -- | Consume exactly one non-terminal 32-item batch and self-loop.
+    PScan
+      { pscan'inputIndex :: Term s (PAsData PInteger)
+      , pscan'outputIndex :: Term s (PAsData PInteger)
+      , pscan'addrTxWitsOpening :: Term s (PAsData PFieldOpeningV1)
+      , pscan'checkpointCbor :: Term s (PAsData (PMaybeData PByteString))
+      }
+  | -- | Consume the terminal suffix, which may contain at most 32 items.
+    PFinalize
+      { pfinalize'inputIndex :: Term s (PAsData PInteger)
+      , pfinalize'outputIndex :: Term s (PAsData PInteger)
+      , pfinalize'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
+      , pfinalize'addrTxWitsOpening :: Term s (PAsData PFieldOpeningV1)
+      , pfinalize'checkpointCbor :: Term s (PAsData (PMaybeData PByteString))
+      }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep04Args)

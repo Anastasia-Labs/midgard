@@ -20,19 +20,34 @@ module Testing.StateQueueValidator (tests) where
 
 import Data.ByteString qualified as BS
 import PlutusCore.Data qualified as PD
-import PlutusLedgerApi.V1.Value (CurrencySymbol (..))
-import PlutusLedgerApi.V3 (Redeemer (..), ScriptPurpose (Minting))
-import PlutusTx.Builtins (dataToBuiltinData, toBuiltin)
+import PlutusLedgerApi.V1.Interval (Extended (Finite), Interval (..), LowerBound (..), UpperBound (..))
+import PlutusLedgerApi.V1.Value (CurrencySymbol (..), TokenName (..), singleton)
+import PlutusLedgerApi.V3 (
+  Address (..),
+  Credential (..),
+  Datum (..),
+  OutputDatum (..),
+  POSIXTime (..),
+  PubKeyHash (..),
+  Redeemer (..),
+  ScriptHash (..),
+  ScriptPurpose (Minting),
+  StakingCredential (..),
+  TxOut (..),
+ )
+import PlutusTx.Builtins (blake2b_224, dataToBuiltinData, fromBuiltin, serialiseData, toBuiltin)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
-import Plutarch.LedgerApi.V3 (PRedeemer, PScriptPurpose)
+import Plutarch.LedgerApi.V3 (PRedeemer, PScriptPurpose (..))
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.LedgerState (PConfirmedState, PHeaderV1)
-import Midgard.StateQueue (PMintRedeemer)
+import Midgard.AvailabilityChallenge qualified as Availability
+import Midgard.Common.Utils qualified as Utils
+import Midgard.StateQueue (PMintRedeemer, PStateQueueNode)
 import Midgard.Validators.StateQueue (
   pcommitBlockHeaderCarriesConfirmedStateV1,
   pcommitBlockHeaderCarriesPreviousBlockV1,
@@ -42,8 +57,16 @@ import Midgard.Validators.StateQueue (
   pmergeCommitmentsMatchHeader,
   pmergeSettlementBindingMatchesHeader,
   pmergeSettlementIdAtRoute,
+  pavailabilityStatusUpdateIsAuthorizedV1,
+  pfraudProverRewardOutputIsExactV1,
+  pfraudProverRewardRoutingIsExactV1,
+  pnoOutputPaysFraudProverRewardV1,
+  prouteFraudProverRewardV1,
+  pstateQueueHeadAllowsAppendV1,
+  punattestedBlockTimeoutElapsedV1,
  )
 import Testing.Eval (passertEval, pfails)
+import Testing.ScriptContextBuilder (mkAdaValue)
 
 -- | Collects the tests defined in this module.
 tests :: TestTree
@@ -53,6 +76,9 @@ tests =
     [ headerShapeTests
     , scalarTests
     , operatorTests
+    , appendFenceTests
+    , unattestedTimeoutTests
+    , fraudProverRewardTests
     , previousHeaderTests
     , confirmedGenesisTests
     , confirmedOrdinaryTests
@@ -60,7 +86,194 @@ tests =
     , mergeCommitmentTests
     , settlementBindingTests
     , settlementRedeemerRouteTests
+    , availabilityStatusAuthorizationTests
     ]
+
+fraudProverRewardTests :: TestTree
+fraudProverRewardTests =
+  testGroup
+    "fraud prover reward routing"
+    [ testCase "accepts only the exact enterprise ADA-only reward output" $
+        holds $
+          rewardOutputIsExact (rewardOutput fraudProverAddress rewardAmount NoOutputDatum Nothing)
+            #&& pnot # rewardOutputIsExact (rewardOutput fraudProverAddress (rewardAmount + 1) NoOutputDatum Nothing)
+            #&& pnot # rewardOutputIsExact (rewardOutput fraudProverAddress (rewardAmount - 1) NoOutputDatum Nothing)
+            #&& pnot # rewardOutputIsExact (rewardOutput otherFraudProverAddress rewardAmount NoOutputDatum Nothing)
+            #&& pnot # rewardOutputIsExact (rewardOutput delegatedFraudProverAddress rewardAmount NoOutputDatum Nothing)
+            #&& pnot # rewardOutputIsExact (rewardOutput scriptFraudProverAddress rewardAmount NoOutputDatum Nothing)
+            #&& pnot # rewardOutputIsExact smuggledRewardOutput
+            #&& pnot # rewardOutputIsExact (rewardOutput fraudProverAddress rewardAmount NoOutputDatum (Just foreignScriptHash))
+            #&& pnot # rewardOutputIsExact (rewardOutput fraudProverAddress rewardAmount (OutputDatum $ Datum $ dataToBuiltinData $ PD.I 0) Nothing)
+    , testCase "routes through the exact named output and permits omission only for zero" $
+        holds $
+          routing rewardOutputs (pcon $ PDJust $ pdata 1) rewardAmount
+            #&& pnot # routing rewardOutputs (pcon $ PDJust $ pdata 0) rewardAmount
+            #&& routing rewardOutputs (pcon PDNothing) 0
+            #&& pnot # routing rewardOutputs (pcon PDNothing) rewardAmount
+            #&& pnot
+              # routing
+                [ rewardOutput fraudProverAddress rewardAmount NoOutputDatum Nothing
+                , rewardOutput fraudProverAddress (rewardAmount + 1) NoOutputDatum Nothing
+                ]
+                (pcon $ PDJust $ pdata 0)
+                rewardAmount
+    , testCase "rejects an out-of-range reward output index" $
+        pfails $ routing [rewardOutput fraudProverAddress rewardAmount NoOutputDatum Nothing] (pcon $ PDJust $ pdata 7) rewardAmount
+    , testCase "forbids reward-shaped payments on the already-slashed arm" $
+        holds $
+          noReward [unrelatedOutput]
+            #&& pnot # noReward rewardOutputs
+            #&& noReward [rewardOutput fraudProverAddress (rewardAmount + 1) NoOutputDatum Nothing]
+    , testCase "route wrapper preserves permissionless reward semantics" $
+        holds $
+          route rewardOutputs (pcon $ PDJust $ pdata 1) rewardAmount
+            #&& route rewardOutputs (pcon PDNothing) 0
+            #&& pnot # route rewardOutputs (pcon PDNothing) rewardAmount
+    ]
+  where
+    rewardOutputIsExact output =
+      pfraudProverRewardOutputIsExactV1 (pconstant output) (pconstant fraudProver) (pconstant rewardAmount)
+    routing outputs index amount =
+      pfraudProverRewardRoutingIsExactV1 (pconstant outputs) index (pconstant fraudProver) (pconstant amount)
+    noReward outputs =
+      pnoOutputPaysFraudProverRewardV1 (pconstant outputs) (pconstant fraudProver) (pconstant rewardAmount)
+    route outputs index amount =
+      prouteFraudProverRewardV1 (pconstant outputs) index (pconstant fraudProver) (pconstant amount)
+
+appendFenceTests :: TestTree
+appendFenceTests =
+  testGroup
+    "stateQueueHeadAllowsAppendV1"
+    [ testCase "accepts an unattested head immediately before the timeout boundary" $
+        holds $ appendAllowed unattestedStatus (closed 3_599_199 3_600_199)
+    , testCase "rejects an unattested head at the timeout boundary" $
+        fails $ appendAllowed unattestedStatus (closed 3_599_200 3_600_200)
+    , testCase "accepts an attested head after the timeout boundary" $
+        holds $ appendAllowed (attestedStatus daBondAssetName) (closed 3_600_200 3_601_200)
+    , testCase "rejects a challenged head before the attestation timeout" $
+        fails $
+          appendAllowed
+            (challengedStatus daBondAssetName challengeAssetName)
+            (closed 3_599_199 3_600_199)
+    , testCase "accepts a published head after the timeout boundary" $
+        holds $ appendAllowed publishedStatus (closed 3_600_200 3_601_200)
+    ]
+  where
+    appendAllowed status validityRange =
+      pstateQueueHeadAllowsAppendV1
+        (stateQueueNodeTerm control status)
+        (pdata $ pconstant availabilityPolicy)
+        (pconstant validityRange)
+
+unattestedTimeoutTests :: TestTree
+unattestedTimeoutTests =
+  testGroup
+    "unattestedBlockTimeoutElapsedV1"
+    [ testCase "accepts the exact timeout boundary" $
+        holds $ elapsed controlHash controlHash unattestedStatus (closed 3_600_200 3_601_200)
+    , testCase "rejects one millisecond before the timeout boundary" $
+        fails $ elapsed controlHash controlHash unattestedStatus (closed 3_600_199 3_601_199)
+    , testCase "rejects a different requested header identity" $
+        fails $ elapsed headerHashB controlHash unattestedStatus (closed 3_600_200 3_601_200)
+    , testCase "rejects an unauthenticated node key" $
+        fails $ elapsed controlHash headerHashB unattestedStatus (closed 3_600_200 3_601_200)
+    , testCase "rejects a node whose attestation won the race" $
+        fails $ elapsed controlHash controlHash (attestedStatus daBondAssetName) (closed 3_600_200 3_601_200)
+    ]
+  where
+    elapsed requested authenticated status validityRange =
+      punattestedBlockTimeoutElapsedV1
+        (pconstant requested)
+        (pconstant authenticated)
+        (stateQueueNodeTerm control status)
+        (pconstant validityRange)
+
+availabilityStatusAuthorizationTests :: TestTree
+availabilityStatusAuthorizationTests =
+  testGroup
+    "availabilityStatusUpdateIsAuthorizedV1"
+    [ testCase "accepts exact mint-bond binding" $
+        holds $ availabilityRoute mintBondAvailabilityRedeemer availabilityPolicy 2 3
+    , testCase "decodes the mint-bond input and output positions exactly" $
+        holds availabilityMintBondFieldsAreExact
+    , testCase "retrieves the exact mint-bond redeemer payload" $
+        holds availabilityRedeemerLookupIsExact
+    , testCase "decodes exact positions after redeemer lookup" $
+        holds availabilityLookupFieldsAreExact
+    , testCase "rejects wrong input or output index" $
+        holds $
+          pnot # availabilityRoute mintBondAvailabilityRedeemer availabilityPolicy 1 3
+            #&& pnot # availabilityRoute mintBondAvailabilityRedeemer availabilityPolicy 2 4
+    , testCase "rejects timeout removal arm" $
+        holds $ pnot # availabilityRoute timeoutAvailabilityRedeemer availabilityPolicy 2 3
+    , testCase "rejects wrong policy" $
+        pfails $ availabilityRoute mintBondAvailabilityRedeemer otherAvailabilityPolicy 2 3
+    ]
+
+availabilityRoute ::
+  forall s.
+  Redeemer ->
+  CurrencySymbol ->
+  Integer ->
+  Integer ->
+  Term s PBool
+availabilityRoute redeemer policy inputIndex outputIndex =
+  pavailabilityStatusUpdateIsAuthorizedV1
+    (redeemersTerm [(Minting availabilityPolicy, redeemer)])
+    (pdata $ pconstant policy)
+    0
+    (pconstant inputIndex)
+    (pconstant outputIndex)
+
+mintBondAvailabilityRedeemer, timeoutAvailabilityRedeemer :: Redeemer
+mintBondAvailabilityRedeemer =
+  Redeemer $ dataToBuiltinData $ PD.Constr 0 $ map PD.I [0, 1, 0, 1, 2, 3]
+timeoutAvailabilityRedeemer =
+  Redeemer $ dataToBuiltinData $ PD.Constr 4 $ map PD.I [0, 1, 2, 0, 0, 1]
+
+availabilityPolicy, otherAvailabilityPolicy :: CurrencySymbol
+availabilityPolicy = CurrencySymbol $ toBuiltin $ BS.replicate 28 0xab
+otherAvailabilityPolicy = CurrencySymbol $ toBuiltin $ BS.replicate 28 0xcd
+
+availabilityMintBondFieldsAreExact :: forall s. Term s PBool
+availabilityMintBondFieldsAreExact =
+  pmatch
+    ( pfromData $
+        punsafeCoerce @(PAsData Availability.PMintRedeemerV1) $
+          pconstant @PData $ PD.Constr 0 $ map PD.I [0, 1, 0, 1, 2, 3]
+    )
+    $ \case
+      Availability.PMintBondFromAttestation _ _ _ _ boundInput boundOutput ->
+        pfromData boundInput #== 2 #&& pfromData boundOutput #== 3
+      _ -> pconstant False
+
+availabilityRedeemerLookupIsExact :: forall s. Term s PBool
+availabilityRedeemerLookupIsExact =
+  pto
+    ( pfromData $
+        Utils.pgetRedeemerAt
+          # redeemersTerm [(Minting availabilityPolicy, mintBondAvailabilityRedeemer)]
+          # pdata (pcon (PMinting $ pdata $ pconstant availabilityPolicy))
+          # 0
+    )
+    #== pconstant (PD.Constr 0 $ map PD.I [0, 1, 0, 1, 2, 3])
+
+availabilityLookupFieldsAreExact :: forall s. Term s PBool
+availabilityLookupFieldsAreExact =
+  pmatch
+    ( pfromData $
+        punsafeCoerce @(PAsData Availability.PMintRedeemerV1) $
+          pto $
+            pfromData $
+              Utils.pgetRedeemerAt
+                # redeemersTerm [(Minting availabilityPolicy, mintBondAvailabilityRedeemer)]
+                # pdata (pcon (PMinting $ pdata $ pconstant availabilityPolicy))
+                # 0
+    )
+    $ \case
+      Availability.PMintBondFromAttestation _ _ _ _ boundInput boundOutput ->
+        pfromData boundInput #== 2 #&& pfromData boundOutput #== 3
+      _ -> pconstant False
 
 --------------------------------------------------------------------------------
 -- commit_block_header_output_is_valid_v1
@@ -477,6 +690,79 @@ holds = passertEval
 fails :: (forall s. Term s PBool) -> Assertion
 fails b = passertEval (pnot # b)
 
+closed :: Integer -> Integer -> Interval POSIXTime
+closed lo hi =
+  Interval
+    (LowerBound (Finite (POSIXTime lo)) True)
+    (UpperBound (Finite (POSIXTime hi)) True)
+
+stateQueueNodeTerm :: forall s. Header -> PD.Data -> Term s PStateQueueNode
+stateQueueNodeTerm h status =
+  pfromData $
+    punsafeCoerce $
+      pconstant @PData $
+        PD.Constr 0 [headerData h, status]
+
+unattestedStatus :: PD.Data
+unattestedStatus = PD.Constr 0 []
+
+attestedStatus :: BS.ByteString -> PD.Data
+attestedStatus bondAssetName = PD.Constr 1 [PD.B bondAssetName]
+
+challengedStatus :: BS.ByteString -> BS.ByteString -> PD.Data
+challengedStatus bondAssetName challengeName =
+  PD.Constr 2 [PD.B bondAssetName, PD.B challengeName]
+
+publishedStatus :: PD.Data
+publishedStatus = PD.Constr 3 [PD.B (BS.replicate 32 0xef)]
+
+daBondAssetName, challengeAssetName :: BS.ByteString
+daBondAssetName = "DABN" <> BS.replicate 28 0x77
+challengeAssetName = "DACH" <> BS.replicate 28 0x88
+
+fraudProver, otherFraudProver :: BS.ByteString
+fraudProver = BS.replicate 28 0xee
+otherFraudProver = BS.replicate 28 0xff
+
+rewardAmount :: Integer
+rewardAmount = 400_000_000
+
+fraudProverAddress, otherFraudProverAddress, delegatedFraudProverAddress, scriptFraudProverAddress :: Address
+fraudProverAddress = Address (PubKeyCredential $ PubKeyHash $ toBuiltin fraudProver) Nothing
+otherFraudProverAddress = Address (PubKeyCredential $ PubKeyHash $ toBuiltin otherFraudProver) Nothing
+delegatedFraudProverAddress =
+  Address
+    (PubKeyCredential $ PubKeyHash $ toBuiltin fraudProver)
+    (Just $ StakingHash $ PubKeyCredential $ PubKeyHash $ toBuiltin otherFraudProver)
+scriptFraudProverAddress = Address (ScriptCredential $ ScriptHash $ toBuiltin fraudProver) Nothing
+
+foreignRewardPolicy :: CurrencySymbol
+foreignRewardPolicy = CurrencySymbol $ toBuiltin $ BS.replicate 28 0xab
+
+foreignScriptHash :: ScriptHash
+foreignScriptHash = ScriptHash $ toBuiltin $ BS.replicate 28 0xac
+
+rewardOutput :: Address -> Integer -> OutputDatum -> Maybe ScriptHash -> TxOut
+rewardOutput address lovelace datum referenceScript =
+  TxOut address (mkAdaValue $ fromInteger lovelace) datum referenceScript
+
+unrelatedOutput :: TxOut
+unrelatedOutput = rewardOutput otherFraudProverAddress rewardAmount NoOutputDatum Nothing
+
+smuggledRewardOutput :: TxOut
+smuggledRewardOutput =
+  TxOut
+    fraudProverAddress
+    (mkAdaValue (fromInteger rewardAmount) <> singleton foreignRewardPolicy (TokenName "smuggled") 1)
+    NoOutputDatum
+    Nothing
+
+rewardOutputs :: [TxOut]
+rewardOutputs =
+  [ unrelatedOutput
+  , rewardOutput fraudProverAddress rewardAmount NoOutputDatum Nothing
+  ]
+
 --------------------------------------------------------------------------------
 -- Fixtures, mirroring Aiken's q49_ constants
 --------------------------------------------------------------------------------
@@ -487,6 +773,13 @@ headerHashB = BS.replicate 28 0xbb
 genesisHeaderHash = BS.replicate 28 0x00
 operator = BS.replicate 28 0xcc
 other = BS.replicate 28 0xdd
+
+controlHash :: BS.ByteString
+controlHash =
+  fromBuiltin $
+    blake2b_224 $
+      serialiseData $
+        dataToBuiltinData (headerData control)
 
 utxoRootA, utxoRootB :: BS.ByteString
 utxoRootA = BS.replicate 32 0x11
@@ -604,7 +897,7 @@ mergeRedeemerTerm h = pfromData (punsafeCoerce (pconstant @PData dat))
   where
     dat =
       PD.Constr
-        4
+        6
         ( [ PD.B headerHashA -- header_node_key
           , PD.Constr 0 [PD.Constr 0 [PD.B (BS.replicate 32 0x01)], PD.I 0]
           , PD.I 0 -- confirmed_state_output_index

@@ -73,18 +73,13 @@ read sound is that the walk and the chunk digests behind it fail closed the
 moment the read leaves the committed bytes, so an inflated count buys extra
 indices that all abort and a deflated one only refuses reads.
 
-=== Two known limits, both loud
+=== The measured chunk boundary
 
-'pchunkBytesK' reads @15900@ and __that is not the value of K__: the Phase-4
-measurement refuted it, and §8.3 erratum E1 re-pins K to @15148@. The literal
-stands because it is compiled into an acceptance predicate and into every chunk
-boundary in the system. While the two disagree, preimages in @(15148, 15900]@
-have no admissible carriage at all, and — because the chunker cuts at this
-literal — no tier-3 preimage of any length can be published, since every tier-3
-plan's first chunk is 264 bytes over @maxTxSize@.
-
-Tier 3 is also refused outright for the witness-set fields, but that refusal
-lives one layer up in @fraud-proofs/field-opening-v1.ak@ rather than here.
+'pchunkBytesK' is @15148@. The Phase-4 signed-transaction measurement showed
+that the former 15,900-byte boundary produced a transaction above
+@maxTxSize@; §8.3 erratum E1 therefore re-pinned K to the largest measured
+publication size that fits. This literal is shared by the tier predicate, the
+chunker, and the certificate shape checks.
 -}
 module Midgard.NativeTxFieldAccess (
   -- * Shape constants
@@ -125,6 +120,10 @@ module Midgard.NativeTxFieldAccess (
 
   -- * The door
   pauthenticatedFieldView,
+  pauthenticatedFieldViewWithCommitment,
+  pauthenticatedResumableFieldViewWithCommitment,
+  pauthenticatedWholeFieldView,
+  pauthenticatedCommittedPreimage,
   pexpectedChunkCount,
 
   -- * Accessors
@@ -136,6 +135,8 @@ module Midgard.NativeTxFieldAccess (
   pfieldHeaderLen,
   pfieldReadRange,
   pfieldItemHeaderAt,
+  pfieldCountRequiresCertification,
+  pprovisionalFieldItemCountForCertification,
 ) where
 
 import Data.Kind (Type)
@@ -209,17 +210,13 @@ independent policy bound but the largest count the grammar can spell.
 pmaxFieldItemCount :: forall (s :: S). Term s PInteger
 pmaxFieldItemCount = 65535
 
-{- | Aiken @native_tx_field_access_v1.chunk_bytes_k@ — @15900@.
+{- | Aiken @native_tx_field_access_v1.chunk_bytes_k@ — @15148@.
 
-The §8.3 tier-2 bound and tier-3 chunk size. __This literal is not the value of
-K__: the Phase-4 measurement refuted it (a real signed publication of a
-15,900-byte chunk measures 16,648 bytes against a 16,384-byte @maxTxSize@) and
-§8.3 erratum E1 re-pins K to 15,148. The literal stands here because it is
-compiled into an acceptance predicate and into every chunk boundary in the
-system; see the module header for what the divergence costs while it lasts.
+The §8.3 tier-2 bound and tier-3 chunk size, re-pinned by erratum E1 from the
+measured maximum signed publication transaction.
 -}
 pchunkBytesK :: forall (s :: S). Term s PInteger
-pchunkBytesK = 15900
+pchunkBytesK = 15148
 
 {- | Aiken @native_tx_field_access_v1.max_tier1_redeemer_preimage_bytes@ — @14336@.
 
@@ -229,7 +226,7 @@ The §8.3 tier-1 bound. Provisional on the same footing as 'pchunkBytesK':
 pmaxTier1RedeemerPreimageBytes :: forall (s :: S). Term s PInteger
 pmaxTier1RedeemerPreimageBytes = 14336
 
--- | Aiken @native_tx_field_access_v1.max_tier3_chunk_count@ — @ceil(32768 / 15900)@.
+-- | Aiken @native_tx_field_access_v1.max_tier3_chunk_count@ — @ceil(32768 / 15148)@.
 pmaxTier3ChunkCount :: forall (s :: S). Term s PInteger
 pmaxTier3ChunkCount = 3
 
@@ -294,12 +291,14 @@ Constructor order is frozen consensus wire format: @Inline@ is @Constr 0@,
 data PFieldCarriageV1 (s :: S)
   = -- | Tier 1 — the step's own redeemer carries the preimage.
     PInline {pinline'preimage :: Term s (PAsData PByteString)}
-  | -- | Tier 2 — one nothing-but-bytes inline datum at the prover's key
-    -- address, named by its positional reference-input index.
+  | {- | Tier 2 — one nothing-but-bytes inline datum at the prover's key
+    address, named by its positional reference-input index.
+    -}
     PRawUtxo {prawUtxo'refInputIndex :: Term s (PAsData PInteger)}
-  | -- | Tier 3 — deterministic fixed-'pchunkBytesK' chunks plus one certified
-    -- digest manifest. @chunkRefInputIndices@ is all-chunks-positional:
-    -- element @k@ is the reference-input index of chunk @k@.
+  | {- | Tier 3 — deterministic fixed-'pchunkBytesK' chunks plus one certified
+    digest manifest. @chunkRefInputIndices@ is all-chunks-positional:
+    element @k@ is the reference-input index of chunk @k@.
+    -}
     PCertified
       { pcertified'certRefInputIndex :: Term s (PAsData PInteger)
       , pcertified'chunkRefInputIndices :: Term s (PAsData (PBuiltinList (PAsData PInteger)))
@@ -323,8 +322,18 @@ data PFieldViewV1 (s :: S)
       , pwhole'count :: Term s PInteger
       , pwhole'stride :: Term s PInteger
       }
-  | -- | Tier 3: chunks are present but unhashed until touched; the digests and
-    -- the item count come from the mint-verified certificate.
+  | {- | A variable-width tier-1/2 view whose field hash and header are
+    authenticated but whose declared count awaits bounded grammar
+    certification.
+    -}
+    PProvisionalWholeView
+      { pprovisionalWhole'bytes :: Term s PByteString
+      , pprovisionalWhole'count :: Term s PInteger
+      , pprovisionalWhole'stride :: Term s PInteger
+      }
+  | {- | Tier 3: chunks are present but unhashed until touched; the digests and
+    the item count come from the mint-verified certificate.
+    -}
     PChunkedView
       { pchunked'chunks :: Term s (PBuiltinList PByteString)
       , pchunked'chunkDigests :: Term s (PBuiltinList PByteString)
@@ -345,6 +354,7 @@ data PFieldPreimageCertificateV1 (s :: S) = PFieldPreimageCertificateV1
   { pcert'owner :: Term s (PAsData PPubKeyHash)
   , pcert'txId :: Term s (PAsData PByteString)
   , pcert'fieldIndex :: Term s (PAsData PInteger)
+  , pcert'fieldHash :: Term s (PAsData PByteString)
   , pcert'totalLength :: Term s (PAsData PInteger)
   , pcert'chunkDigests :: Term s (PAsData (PBuiltinList (PAsData PByteString)))
   }
@@ -352,26 +362,9 @@ data PFieldPreimageCertificateV1 (s :: S) = PFieldPreimageCertificateV1
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PFieldPreimageCertificateV1)
 
-{- | Aiken @native_tx_field_access_v1.field_preimage_certificate_asset_name@.
-
-@blake2b_256(field_index_byte ‖ tx_id)@ — a 33-byte preimage whose leading byte
-is the 0..8 field index and whose remaining 32 are the transaction id. The
-single-byte prefix is domain separation, not a length header: with both bounds
-enforced the preimage is unambiguous, which is why both are checked here rather
-than assumed of the caller.
-
-Fixed because both sides of the tier-3 handshake — the minting policy that
-certifies and the door that consumes — must agree on one derivation.
--}
-pfieldPreimageCertificateAssetName ::
-  forall (s :: S). Term s (PByteString :--> PInteger :--> PByteString)
-pfieldPreimageCertificateAssetName = phoistAcyclic $
-  plam $ \txId fieldIndex ->
-    plet (pexpectFieldIndex # fieldIndex) $ \index ->
-      pif
-        (plengthBS # txId #== 32)
-        (pblake2b_256 #$ pconsBS' # index # txId)
-        perror
+-- | Aiken's constant §8.6 certificate asset name (#606).
+pfieldPreimageCertificateAssetName :: forall (s :: S). Term s PByteString
+pfieldPreimageCertificateAssetName = pconstant "MIDGARD_FIELD_PREIMAGE_CERT"
 
 --------------------------------------------------------------------------------
 -- The §5.1 envelope
@@ -432,7 +425,8 @@ pencodeItems = phoistAcyclic $
 pdecodeFieldArrayHeader ::
   forall (s :: S). Term s (PByteString :--> PPair PInteger PInteger)
 pdecodeFieldArrayHeader = phoistAcyclic $
-  plam $ \preimage -> pdecodeFieldArrayHeaderAt # preimage # 0
+  plam $
+    \preimage -> pdecodeFieldArrayHeaderAt # preimage # 0
 
 {- | Aiken @native_tx_field_access_v1.decode_field_array_header_at@.
 
@@ -503,7 +497,8 @@ pfieldCommitment = phoistAcyclic $ plam $ \preimage -> pblake2b_256 # preimage
 pfieldCommitmentFromItems ::
   forall (s :: S). Term s (PBuiltinList PByteString :--> PByteString)
 pfieldCommitmentFromItems = phoistAcyclic $
-  plam $ \items -> pfieldCommitment #$ pencodeFieldPreimage # items
+  plam $
+    \items -> pfieldCommitment #$ pencodeFieldPreimage # items
 
 {- | Aiken @native_tx_field_access_v1.empty_field_commitment@.
 
@@ -625,46 +620,112 @@ pauthenticatedFieldView ::
         :--> PFieldViewV1
     )
 pauthenticatedFieldView = phoistAcyclic $
+  plam $ \verified witnessSet fieldIndex carriage referenceInputs certificatePolicyId ->
+    pmatch
+      ( pauthenticatedFieldViewWithCommitment
+          # verified
+          # witnessSet
+          # fieldIndex
+          # carriage
+          # referenceInputs
+          # certificatePolicyId
+      )
+      $ \(PPair _fieldHash view) -> view
+
+pauthenticatedFieldViewWithCommitment ::
+  forall (s :: S).
+  Term
+    s
+    ( PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PInteger
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PByteString PFieldViewV1
+    )
+pauthenticatedFieldViewWithCommitment = phoistAcyclic $
   plam $ \verified witnessSet fieldIndex carriage referenceInputs certificatePolicyId -> P.do
-    PVerifiedMidgardNativeTxCompact {pverified'txId, pverified'txCompact} <- pmatch verified
+    PPair expectedHash stride <- pmatch $ pfieldDoorPrologue # verified # witnessSet # fieldIndex
+    PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch verified
+    view <- plet $ pmatch carriage $ \case
+      PInline {pinline'preimage} ->
+        pwholeView # pfromData pinline'preimage # expectedHash # stride
+      PRawUtxo {prawUtxo'refInputIndex} ->
+        pwholeView
+          # (prawCarriageBytes # referenceInputs # pfromData prawUtxo'refInputIndex)
+          # expectedHash
+          # stride
+      PCertified {pcertified'certRefInputIndex, pcertified'chunkRefInputIndices} ->
+        pcertifiedView
+          # pverified'txId
+          # fieldIndex
+          # expectedHash
+          # stride
+          # referenceInputs
+          # pfromData pcertified'certRefInputIndex
+          # pfromData pcertified'chunkRefInputIndices
+          # certificatePolicyId
+    pcon $ PPair expectedHash view
+
+pauthenticatedResumableFieldViewWithCommitment ::
+  forall (s :: S).
+  Term
+    s
+    ( PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PInteger
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PPair PByteString PFieldViewV1
+    )
+pauthenticatedResumableFieldViewWithCommitment = phoistAcyclic $
+  plam $ \verified witnessSet fieldIndex carriage referenceInputs certificatePolicyId -> P.do
+    PPair expectedHash stride <- pmatch $ pfieldDoorPrologue # verified # witnessSet # fieldIndex
+    PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch verified
+    view <- plet $ pmatch carriage $ \case
+      PInline {pinline'preimage} ->
+        presumableWholeView # pfromData pinline'preimage # expectedHash # stride
+      PRawUtxo {prawUtxo'refInputIndex} ->
+        presumableWholeView
+          # (prawCarriageBytes # referenceInputs # pfromData prawUtxo'refInputIndex)
+          # expectedHash
+          # stride
+      PCertified {pcertified'certRefInputIndex, pcertified'chunkRefInputIndices} ->
+        pcertifiedView
+          # pverified'txId
+          # fieldIndex
+          # expectedHash
+          # stride
+          # referenceInputs
+          # pfromData pcertified'certRefInputIndex
+          # pfromData pcertified'chunkRefInputIndices
+          # certificatePolicyId
+    pcon $ PPair expectedHash view
+
+pfieldDoorPrologue ::
+  forall (s :: S).
+  Term s (PVerifiedMidgardNativeTxCompact :--> PNativeTxWitnessSetCompact :--> PInteger :--> PPair PByteString PInteger)
+pfieldDoorPrologue = phoistAcyclic $
+  plam $ \verified witnessSet fieldIndex -> P.do
+    PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch verified
     PNativeTxCompact {pcompact'body, pcompact'witnessSetHash} <- pmatch pverified'txCompact
-    pif
+    pexpecting
       ( 0
           #<= fieldIndex
           #&& fieldIndex
           #< pfieldCount
-          -- Positional identity (§4): the witness-set fields are only readable
-          -- once the supplied witness set re-derives to the `witness_set_hash`
-          -- these compact structures carry. Lazy `#||` on purpose — Aiken's
-          -- `or {}` short-circuits, so a body field never pays the hash.
           #&& ( fieldIndex
                   #< 6
                   #|| (pblake2b_256 #$ pencodeNativeTxWitnessSetCompact # witnessSet)
                   #== pcompact'witnessSetHash
               )
       )
-      ( P.do
-          expectedHash <- plet $ pfieldCommitmentAt # pcompact'body # witnessSet # fieldIndex
-          stride <- plet $ pfieldStride # fieldIndex
-          pmatch carriage $ \case
-            PInline {pinline'preimage} ->
-              pwholeView # pfromData pinline'preimage # expectedHash # stride
-            PRawUtxo {prawUtxo'refInputIndex} ->
-              pwholeView
-                # (prawCarriageBytes # referenceInputs # pfromData prawUtxo'refInputIndex)
-                # expectedHash
-                # stride
-            PCertified {pcertified'certRefInputIndex, pcertified'chunkRefInputIndices} ->
-              pcertifiedView
-                # pverified'txId
-                # fieldIndex
-                # stride
-                # referenceInputs
-                # pfromData pcertified'certRefInputIndex
-                # pfromData pcertified'chunkRefInputIndices
-                # certificatePolicyId
-      )
-      perror
+      $ pcon
+      $ PPair
+        (pfieldCommitmentAt # pcompact'body # witnessSet # fieldIndex)
+        (pfieldStride # fieldIndex)
 
 {- | Aiken @native_tx_field_access_v1.whole_view@.
 
@@ -703,10 +764,38 @@ pwholeView = phoistAcyclic $
       )
       ( pcon
           ( PWholeView
-              {pwhole'bytes = preimage, pwhole'count = count, pwhole'stride = stride}
+              { pwhole'bytes = preimage
+              , pwhole'count = count
+              , pwhole'stride = stride
+              }
           )
       )
       perror
+
+presumableWholeView ::
+  forall (s :: S).
+  Term s (PByteString :--> PByteString :--> PInteger :--> PFieldViewV1)
+presumableWholeView = phoistAcyclic $
+  plam $ \preimage expectedHash stride -> P.do
+    totalLength <- plet $ plengthBS # preimage
+    PPair headerLen count <- pmatch $ pdecodeFieldArrayHeader # preimage
+    pexpecting
+      ( pfieldCommitment
+          # preimage
+          #== expectedHash
+          #&& totalLength
+          #<= pmaxTransactionAggregateFieldBytes
+      )
+      $ pif
+        (stride #> pwalkDerivedStride)
+        ( pexpecting
+            (headerLen + stride * count #== totalLength)
+            (pcon $ PWholeView preimage count stride)
+        )
+        ( pexpecting
+            (headerLen + count #<= totalLength)
+            (pcon $ PProvisionalWholeView preimage count stride)
+        )
 
 {- | Aiken @native_tx_field_access_v1.certified_view@.
 
@@ -737,6 +826,7 @@ pcertifiedView ::
     s
     ( PByteString
         :--> PInteger
+        :--> PByteString
         :--> PInteger
         :--> PBuiltinList (PAsData PTxInInfo)
         :--> PInteger
@@ -746,7 +836,69 @@ pcertifiedView ::
     )
 pcertifiedView = phoistAcyclic $
   plam $
-    \txId fieldIndex stride referenceInputs certRefInputIndex chunkRefInputIndices certificatePolicyId -> P.do
+    \txId fieldIndex expectedHash stride referenceInputs certRefInputIndex chunkRefInputIndices certificatePolicyId ->
+      pmatch
+        ( pcertifiedChunks
+            # txId
+            # fieldIndex
+            # expectedHash
+            # referenceInputs
+            # certRefInputIndex
+            # chunkRefInputIndices
+            # certificatePolicyId
+        )
+        $ \PCertifiedChunksV1 {pcertifiedChunks'chunks, pcertifiedChunks'chunkDigests, pcertifiedChunks'totalLength} ->
+          plet
+            ( pif
+                (stride #> pwalkDerivedStride)
+                (pcountFromTotalLength # stride # pcertifiedChunks'totalLength)
+                ( P.do
+                    header <-
+                      plet $
+                        preadChunkedRange
+                          # pcertifiedChunks'chunks
+                          # pcertifiedChunks'chunkDigests
+                          # 0
+                          # 3
+                    PPair headerLen count <- pmatch (pdecodeFieldArrayHeader # header)
+                    pif (headerLen + count #<= pcertifiedChunks'totalLength) count perror
+                )
+            )
+            $ \count ->
+              pcon
+                ( PChunkedView
+                    { pchunked'chunks = pcertifiedChunks'chunks
+                    , pchunked'chunkDigests = pcertifiedChunks'chunkDigests
+                    , pchunked'count = count
+                    , pchunked'stride = stride
+                    }
+                )
+
+data PCertifiedChunksV1 (s :: S) = PCertifiedChunksV1
+  { pcertifiedChunks'chunks :: Term s (PBuiltinList PByteString)
+  , pcertifiedChunks'chunkDigests :: Term s (PBuiltinList PByteString)
+  , pcertifiedChunks'totalLength :: Term s PInteger
+  }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic)
+  deriving (PlutusType) via (DeriveAsScottStruct PCertifiedChunksV1)
+
+pcertifiedChunks ::
+  forall (s :: S).
+  Term
+    s
+    ( PByteString
+        :--> PInteger
+        :--> PByteString
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PInteger
+        :--> PBuiltinList (PAsData PInteger)
+        :--> PAsData PCurrencySymbol
+        :--> PCertifiedChunksV1
+    )
+pcertifiedChunks = phoistAcyclic $
+  plam $
+    \txId fieldIndex expectedHash referenceInputs certRefInputIndex chunkRefInputIndices certificatePolicyId -> P.do
       certInput <-
         plet $
           pif
@@ -760,28 +912,32 @@ pcertifiedView = phoistAcyclic $
           POutputDatum {poutputDatum'outputDatum} -> pto poutputDatum'outputDatum
           _ -> perror
       PFieldPreimageCertificateV1
-        {pcert'txId, pcert'fieldIndex, pcert'totalLength, pcert'chunkDigests} <-
+        { pcert'txId
+        , pcert'fieldIndex
+        , pcert'fieldHash
+        , pcert'totalLength
+        , pcert'chunkDigests
+        } <-
         pmatch (punsafeCoerceData @PFieldPreimageCertificateV1 certDatumData)
       totalLength <- plet $ pfromData pcert'totalLength
-      chunkDigests <-
-        plet $ pmap # plam pfromData # pfromData pcert'chunkDigests
+      chunkDigests <- plet $ pmap # plam pfromData # pfromData pcert'chunkDigests
       chunkCount <- plet $ plength # chunkDigests
       chunks <-
         plet $
           pmap
             # plam (\index -> prawCarriageBytes # referenceInputs # pfromData index)
             # chunkRefInputIndices
-
       pif
         ( pallLazy
             [ ( Value.pvalueOf
                   # pto (pfromData ptxOut'value)
                   # pfromData certificatePolicyId
-                  # pcon (PTokenName (pfieldPreimageCertificateAssetName # txId # fieldIndex))
+                  # pcon (PTokenName pfieldPreimageCertificateAssetName)
               )
                 #== 1
             , pfromData pcert'txId #== txId
             , pfromData pcert'fieldIndex #== fieldIndex
+            , pfromData pcert'fieldHash #== expectedHash
             , totalLength #> pchunkBytesK
             , totalLength #<= pmaxTransactionAggregateFieldBytes
             , chunkCount #== pexpectedChunkCount # totalLength
@@ -790,38 +946,127 @@ pcertifiedView = phoistAcyclic $
             , pchunkLengthsMatch # chunks # totalLength
             ]
         )
-        ( plet
-            ( pif
-                (stride #> pwalkDerivedStride)
-                -- §7.4 count consistency against the mint-verified
-                -- `total_length`; no chunk hash is spent to learn the count.
-                (pcountFromTotalLength # stride # totalLength)
-                -- A variable-width field has no arithmetic count, so the header
-                -- is read out of chunk 0 — and chunk 0 is verified at that
-                -- moment, so the number is at least the one the committed bytes
-                -- carry. Above the boundary `total_length` always leaves three
-                -- bytes to read.
-                ( P.do
-                    header <- plet $ preadChunkedRange # chunks # chunkDigests # 0 # 3
-                    PPair headerLen count <- pmatch (pdecodeFieldArrayHeader # header)
-                    -- The one O(1) count check available here: an enveloped item
-                    -- is at least one byte (`40`), so `count` items cannot fit in
-                    -- fewer than `count` bytes. This bounds the read guard in
-                    -- 'pfieldItemExtent'; it does not authenticate the count.
-                    pif (headerLen + count #<= totalLength) count perror
-                )
-            )
-            $ \count ->
-              pcon
-                ( PChunkedView
-                    { pchunked'chunks = chunks
-                    , pchunked'chunkDigests = chunkDigests
-                    , pchunked'count = count
-                    , pchunked'stride = stride
-                    }
-                )
+        ( pcon
+            PCertifiedChunksV1
+              { pcertifiedChunks'chunks = chunks
+              , pcertifiedChunks'chunkDigests = chunkDigests
+              , pcertifiedChunks'totalLength = totalLength
+              }
         )
         perror
+
+-- | Aiken @authenticated_whole_field_view@: materialize tier 3 and recheck the flat commitment.
+pauthenticatedWholeFieldView ::
+  forall (s :: S).
+  Term
+    s
+    ( PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PInteger
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PFieldViewV1
+    )
+pauthenticatedWholeFieldView = phoistAcyclic $
+  plam $ \verified witnessSet fieldIndex carriage referenceInputs certificatePolicyId -> P.do
+    PVerifiedMidgardNativeTxCompact {pverified'txId, pverified'txCompact} <- pmatch verified
+    PNativeTxCompact {pcompact'body, pcompact'witnessSetHash} <- pmatch pverified'txCompact
+    pif
+      ( 0
+          #<= fieldIndex
+          #&& fieldIndex
+          #< pfieldCount
+          #&& ( fieldIndex
+                  #< 6
+                  #|| (pblake2b_256 #$ pencodeNativeTxWitnessSetCompact # witnessSet)
+                  #== pcompact'witnessSetHash
+              )
+      )
+      ( P.do
+          expectedHash <- plet $ pfieldCommitmentAt # pcompact'body # witnessSet # fieldIndex
+          stride <- plet $ pfieldStride # fieldIndex
+          pmatch carriage $ \case
+            PInline {pinline'preimage} ->
+              pwholeView # pfromData pinline'preimage # expectedHash # stride
+            PRawUtxo {prawUtxo'refInputIndex} ->
+              pwholeView
+                # (prawCarriageBytes # referenceInputs # pfromData prawUtxo'refInputIndex)
+                # expectedHash
+                # stride
+            PCertified {pcertified'certRefInputIndex, pcertified'chunkRefInputIndices} ->
+              pmatch
+                ( pcertifiedChunks
+                    # pverified'txId
+                    # fieldIndex
+                    # expectedHash
+                    # referenceInputs
+                    # pfromData pcertified'certRefInputIndex
+                    # pfromData pcertified'chunkRefInputIndices
+                    # certificatePolicyId
+                )
+                $ \PCertifiedChunksV1 {pcertifiedChunks'chunks} ->
+                  pwholeView
+                    # ( pfoldl
+                          # plam (\joined chunk -> joined <> chunk)
+                          # pconstant ""
+                          # pcertifiedChunks'chunks
+                      )
+                    # expectedHash
+                    # stride
+      )
+      perror
+
+-- | Authenticate and return the committed bytes without applying the §5.1 grammar.
+pauthenticatedCommittedPreimage ::
+  forall (s :: S).
+  Term
+    s
+    ( PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PInteger
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PByteString
+    )
+pauthenticatedCommittedPreimage = phoistAcyclic $
+  plam $ \verified witnessSet fieldIndex carriage referenceInputs certificatePolicyId -> P.do
+    PVerifiedMidgardNativeTxCompact {pverified'txId, pverified'txCompact} <- pmatch verified
+    PNativeTxCompact {pcompact'body, pcompact'witnessSetHash} <- pmatch pverified'txCompact
+    pif
+      ( 0
+          #<= fieldIndex
+          #&& fieldIndex
+          #< pfieldCount
+          #&& ( fieldIndex
+                  #< 6
+                  #|| (pblake2b_256 #$ pencodeNativeTxWitnessSetCompact # witnessSet)
+                  #== pcompact'witnessSetHash
+              )
+      )
+      ( P.do
+          expectedHash <- plet $ pfieldCommitmentAt # pcompact'body # witnessSet # fieldIndex
+          preimage <- plet $ pmatch carriage $ \case
+            PInline {pinline'preimage} -> pfromData pinline'preimage
+            PRawUtxo {prawUtxo'refInputIndex} ->
+              prawCarriageBytes # referenceInputs # pfromData prawUtxo'refInputIndex
+            PCertified {pcertified'certRefInputIndex, pcertified'chunkRefInputIndices} ->
+              pmatch
+                ( pcertifiedChunks
+                    # pverified'txId
+                    # fieldIndex
+                    # expectedHash
+                    # referenceInputs
+                    # pfromData pcertified'certRefInputIndex
+                    # pfromData pcertified'chunkRefInputIndices
+                    # certificatePolicyId
+                )
+                $ \PCertifiedChunksV1 {pcertifiedChunks'chunks} ->
+                  pfoldl # plam (\joined chunk -> joined <> chunk) # pconstant "" # pcertifiedChunks'chunks
+          pif (pfieldCommitment # preimage #== expectedHash) preimage perror
+      )
+      perror
 
 {- | Aiken @native_tx_field_access_v1.expected_chunk_count@.
 
@@ -893,8 +1138,10 @@ pcountFromTotalLength = phoistAcyclic $
                     #>= 24
                     #&& twoByteCount
                     #<= 255
-                    #&& 2 + stride * twoByteCount
-                    #== totalLength
+                    #&& 2
+                    + stride
+                      * twoByteCount
+                        #== totalLength
                 )
                 twoByteCount
                 ( plet (pdiv # (totalLength - 3) # stride) $ \threeByteCount ->
@@ -903,8 +1150,10 @@ pcountFromTotalLength = phoistAcyclic $
                           #> 255
                           #&& threeByteCount
                           #<= pmaxFieldItemCount
-                          #&& 3 + stride * threeByteCount
-                          #== totalLength
+                          #&& 3
+                          + stride
+                            * threeByteCount
+                              #== totalLength
                       )
                       threeByteCount
                       perror
@@ -953,6 +1202,8 @@ pfieldItemCount = phoistAcyclic $
   plam $ \view ->
     pmatch view $ \case
       PWholeView {pwhole'count} -> pwhole'count
+      PProvisionalWholeView {pprovisionalWhole'count} ->
+        pexpecting (pconstant False) pprovisionalWhole'count
       PChunkedView {pchunked'count, pchunked'stride} ->
         pif (pchunked'stride #> pwalkDerivedStride) pchunked'count perror
 
@@ -967,7 +1218,21 @@ pdeclaredItemCount = phoistAcyclic $
   plam $ \view ->
     pmatch view $ \case
       PWholeView {pwhole'count} -> pwhole'count
+      PProvisionalWholeView {pprovisionalWhole'count} -> pprovisionalWhole'count
       PChunkedView {pchunked'count} -> pchunked'count
+
+pfieldCountRequiresCertification :: forall (s :: S). Term s (PFieldViewV1 :--> PBool)
+pfieldCountRequiresCertification = phoistAcyclic $
+  plam $ \view -> pmatch view $ \case
+    PWholeView {} -> pconstant False
+    PProvisionalWholeView {} -> pconstant True
+    PChunkedView {pchunked'stride} -> pchunked'stride #== pwalkDerivedStride
+
+pprovisionalFieldItemCountForCertification ::
+  forall (s :: S). Term s (PFieldViewV1 :--> PInteger)
+pprovisionalFieldItemCountForCertification = phoistAcyclic $
+  plam $ \view ->
+    pexpecting (pfieldCountRequiresCertification # view) (pdeclaredItemCount # view)
 
 -- | Aiken @native_tx_field_access_v1.field_total_length@.
 pfieldTotalLength :: forall (s :: S). Term s (PFieldViewV1 :--> PInteger)
@@ -975,6 +1240,7 @@ pfieldTotalLength = phoistAcyclic $
   plam $ \view ->
     pmatch view $ \case
       PWholeView {pwhole'bytes} -> plengthBS # pwhole'bytes
+      PProvisionalWholeView {pprovisionalWhole'bytes} -> plengthBS # pprovisionalWhole'bytes
       PChunkedView {pchunked'chunks} ->
         pfoldl # plam (\total chunk -> total + (plengthBS # chunk)) # 0 # pchunked'chunks
 
@@ -1029,9 +1295,11 @@ pfieldItemExtent = phoistAcyclic $
             -- stride pins `LL`.
             pif
               ( payloadOffset
-                  #== itemOffset + pfixedItemWrapperBytes
-                  #&& len
-                  #== stride - pfixedItemWrapperBytes
+                  #== itemOffset
+                  + pfixedItemWrapperBytes
+                    #&& len
+                    #== stride
+                  - pfixedItemWrapperBytes
               )
               (pcon (PPair payloadOffset len))
               perror
@@ -1050,6 +1318,7 @@ pfieldViewStride = phoistAcyclic $
   plam $ \view ->
     pmatch view $ \case
       PWholeView {pwhole'stride} -> pwhole'stride
+      PProvisionalWholeView {pprovisionalWhole'stride} -> pprovisionalWhole'stride
       PChunkedView {pchunked'stride} -> pchunked'stride
 
 {- | Aiken @native_tx_field_access_v1.field_header_len@.
@@ -1062,7 +1331,8 @@ steered from outside.
 -}
 pfieldHeaderLen :: forall (s :: S). Term s (PFieldViewV1 :--> PInteger)
 pfieldHeaderLen = phoistAcyclic $
-  plam $ \view -> pheaderLenForCount #$ pdeclaredItemCount # view
+  plam $
+    \view -> pheaderLenForCount #$ pdeclaredItemCount # view
 
 -- | Aiken @native_tx_field_access_v1.header_len_for_count@.
 pheaderLenForCount :: forall (s :: S). Term s (PInteger :--> PInteger)
@@ -1085,6 +1355,8 @@ pfieldReadRange = phoistAcyclic $
   plam $ \view offset len ->
     pmatch view $ \case
       PWholeView {pwhole'bytes} -> psliceExact # pwhole'bytes # offset # len
+      PProvisionalWholeView {pprovisionalWhole'bytes} ->
+        psliceExact # pprovisionalWhole'bytes # offset # len
       PChunkedView {pchunked'chunks, pchunked'chunkDigests} ->
         preadChunkedRange # pchunked'chunks # pchunked'chunkDigests # offset # len
 
@@ -1139,7 +1411,8 @@ pfieldItemHeaderAt ::
   forall (s :: S).
   Term s (PFieldViewV1 :--> PInteger :--> PPair PInteger PInteger)
 pfieldItemHeaderAt = phoistAcyclic $
-  plam $ \view offset -> pitemHeaderAt # view # offset
+  plam $
+    \view offset -> pitemHeaderAt # view # offset
 
 -- | Aiken @native_tx_field_access_v1.item_header_at@.
 pitemHeaderAt ::

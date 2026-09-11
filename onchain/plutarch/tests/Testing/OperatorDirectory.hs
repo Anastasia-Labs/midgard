@@ -19,7 +19,6 @@ import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V1.Address (scriptHashAddress)
 import PlutusLedgerApi.V1.Value (CurrencySymbol (..), TokenName (..), getValue, singleton)
 import PlutusLedgerApi.V3 (
-  Address,
   Datum (..),
   OutputDatum (..),
   PubKeyHash (..),
@@ -39,6 +38,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Plutarch.LedgerApi.V3 (PMintValue)
+import Midgard.Env (environmentName)
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
@@ -99,6 +99,12 @@ tests =
         [ testCase "accepts a slash backed by a matching state-queue removal" $
             passertEval $
               runSlash slashedOperator (removeFraudulentHeader slashedOperator) badStateReason
+        , testCase "rejects a slash that overpays the exact fee" $
+            pfails $
+              runSlashWithEconomics requiredBond (slashingPenalty + 1) slashedOperator (removeFraudulentHeader slashedOperator) badStateReason
+        , testCase "rejects a slash from a node outside an exact bond tranche" $
+            pfails $
+              runSlashWithEconomics (requiredBond - 1) slashingPenalty slashedOperator (removeFraudulentHeader slashedOperator) badStateReason
         , testCase "rejects a state-queue redeemer naming a different operator" $
             pfails $
               runSlash slashedOperator (removeFraudulentHeader "zz") badStateReason
@@ -182,6 +188,19 @@ rootRef = rootIn
 nodeRef :: BS.ByteString -> PD.Data -> TxInInfo
 nodeRef key link = TxInInfo (outRefN 1) (mkElemOut (nodeName key) (nodeDatum link))
 
+bondedNodeRef :: Int -> BS.ByteString -> PD.Data -> TxInInfo
+bondedNodeRef lovelace key link =
+  TxInInfo
+    (outRefN 1)
+    ( (mkElemOut (nodeName key) (nodeDatum link))
+        { txOutValue = mkAdaValue lovelace <> singleton dirPolicy (nodeName key) 1
+        }
+    )
+
+requiredBond, slashingPenalty :: Int
+requiredBond = if environmentName == "testnet" then 900_000_000 else 100_000_000_000
+slashingPenalty = if environmentName == "testnet" then 500_000_000 else 25_000_000_000
+
 --------------------------------------------------------------------------------
 -- Datums and mints
 --------------------------------------------------------------------------------
@@ -260,9 +279,6 @@ stateQueuePolicy = policyFor 3
 settlementPolicy :: CurrencySymbol
 settlementPolicy = policyFor 4
 
-settlementAddr :: Address
-settlementAddr = scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy))
-
 -- | The operator being slashed; also the removed node's key.
 slashedOperator :: BS.ByteString
 slashedOperator = "bb"
@@ -334,6 +350,17 @@ runSlash ::
   Term s (PAsData PSlashingReason) ->
   Term s PBool
 runSlash operator stateQueueRedeemer reason =
+  runSlashWithEconomics requiredBond slashingPenalty operator stateQueueRedeemer reason
+
+runSlashWithEconomics ::
+  forall s.
+  Int ->
+  Int ->
+  BS.ByteString ->
+  BuiltinData ->
+  Term s (PAsData PSlashingReason) ->
+  Term s PBool
+runSlashWithEconomics nodeLovelace fee operator stateQueueRedeemer reason =
   pslashFraudulentOperatorAndGetInfo
     (pdata (pconstant hubPolicy))
     ( pcon $
@@ -345,11 +372,11 @@ runSlash operator stateQueueRedeemer reason =
           , pslashArgs'slashingReason = reason
           }
     )
-    (pconstant [rootIn (linkTo slashedOperator), nodeRef slashedOperator linkNone])
+    (pconstant [rootIn (linkTo slashedOperator), bondedNodeRef nodeLovelace slashedOperator linkNone])
     (pconstant [mkElemOut rootName (rootDatum linkNone)])
     (pconstant [hubRefIn])
     (pmint (toMint (singleton dirPolicy (nodeName slashedOperator) (-1))))
-    0
+    (pconstant (fromIntegral fee :: Integer))
     ( pconstant
         [(Minting stateQueuePolicy, Redeemer stateQueueRedeemer)]
     )

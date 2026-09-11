@@ -222,7 +222,7 @@ fieldVerificationTests =
     , -- Positional identity: a preimage is only right in its own slot.
       testCase "a field preimage is rejected in another field's slot" $
         mapM_
-          (\(i, j) -> pfails $ verifyField j (fieldPreimages !! fromIntegral i))
+          (\(i, j) -> pfails $ verifyField j (fieldPreimages !! fromIntegral (i :: Integer)))
           [(0, 1), (1, 0), (3, 4), (4, 3), (6, 7), (7, 6), (2, 0)]
     , -- Consensus order is script at 6, address at 7 — the opposite of the
       -- witness set record's own order.

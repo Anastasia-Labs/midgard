@@ -8,6 +8,7 @@ module Midgard.ScriptContext (
   pobserverCollectionSummaryV1, pvalidityIntervalSummaryV1, pfeeSummaryV1,
   ptransactionIdSummaryV1, pscriptPurposeSummaryV1, ptxInfoTailFieldsSummaryV1,
   ptxInfoFromTailSummaryV1, ptxInfoSummaryV1, pspendDatumSummaryV1,
+  pledgerOutputSummariesV1,
   pcardanoScriptInfoSummaryV1, pcardanoSpendScriptInfoFromDescriptorV1,
   pscriptContextSummaryV1,
 ) where
@@ -98,15 +99,22 @@ pscriptValueData valueData =
             # pnil))
         # assets)
 
+-- | Aiken @materialise_datum@: the canonical empty byte string bypasses
+-- the stdlib decoder's exhausted-cursor gap. Other encodings keep its screen.
+pmaterialiseDatum :: forall s. Term s (PByteString :--> PMaybe PData)
+pmaterialiseDatum = phoistAcyclic $ plam $ \datumCbor ->
+  pif (datumCbor #== pconstant "\x40")
+    (pcon $ PJust $ pforgetData $ pdata $ pconstant @PByteString "")
+    (pif (pisMaterialisablePlutusDataV1 # datumCbor)
+      (pdeserialise # datumCbor) (pcon PNothing))
+
 pdatumData :: forall s. Term s PMidgardTxOutput -> Term s (PMaybe PData)
 pdatumData output = pmatch output $ \o -> pmatch (pfromData $ ptxOutput'datumCbor o) $ \case
   PDNothing -> pcon $ PJust $ pconstrData 0 pnil
   PDJust datumBytes -> plet (pfromData datumBytes) $ \datumCbor ->
-    pif (pisMaterialisablePlutusDataV1 # datumCbor)
-      (pmatch (pdeserialise # datumCbor) $ \case
-        PNothing -> pcon PNothing
-        PJust datum -> pcon $ PJust $ pconstrData 2 (pcons # datum # pnil))
-      (pcon PNothing)
+    pmatch (pmaterialiseDatum # datumCbor) $ \case
+      PNothing -> pcon PNothing
+      PJust datum -> pcon $ PJust $ pconstrData 2 (pcons # datum # pnil)
 
 preferenceScriptData :: forall s. Term s PMidgardTxOutput -> Term s PData
 preferenceScriptData output = pmatch output $ \o -> pmatch (pfromData $ ptxOutput'scriptRef o) $ \case
@@ -137,6 +145,91 @@ ptxOutSummaryV1 = phoistAcyclic $ plam $ \outputCbor midgardEncoding ->
   pmatch (ptxOutDataV1 # outputCbor # midgardEncoding) $ \case
     PNothing -> pcon PNothing
     PJust dat -> pcon $ PJust $ psemanticDataSummaryV1 # dat
+
+pspendDatumSummaryOfField :: forall s. Term s PData -> Term s PDataSummaryV1
+pspendDatumSummaryOfField datumField =
+  plet (pasConstr # datumField) $ \constructor ->
+    pif
+      ((pmatch constructor $ \(PBuiltinPair pairFirst _) -> pairFirst) #== 0)
+      pnoneSummary
+      ( plet (pmatch constructor $ \(PBuiltinPair _ pairSecond) -> pairSecond) $ \fields ->
+          pif
+            (plength # fields #== 1)
+            ( psmallConstrDataSummaryV1
+                # 0
+                # ( pprependDataListSummaryV1
+                      # (psemanticDataSummaryV1 # (pelemAt # 0 # fields))
+                      # pemptyDataListSummaryV1
+                  )
+            )
+            perror
+      )
+
+{- | Aiken @script_context_v1.ledger_output_summaries_v1@.
+
+Derives the Cardano and Midgard @TxOut@ summaries and the Cardano spend-datum
+summary from one canonical output decode.  Keeping the decode and datum
+materialisation shared is load-bearing for the one-step descriptor builder's
+execution budget.
+-}
+pledgerOutputSummariesV1 ::
+  forall s.
+  Term
+    s
+    ( PByteString
+        :--> PMaybe
+          (PPair PDataSummaryV1 (PPair PDataSummaryV1 PDataSummaryV1))
+    )
+pledgerOutputSummariesV1 = phoistAcyclic $ plam $ \outputCbor ->
+  pmatch (pdecodeCanonicalOutput # outputCbor) $ \case
+    PNothing -> pcon PNothing
+    PJust output ->
+      pmatch (pdeserialise # outputCbor) $ \case
+        PNothing -> pcon PNothing
+        PJust outputData ->
+          pmatch (poutputValueData outputData) $ \case
+            PNothing -> pcon PNothing
+            PJust valueData ->
+              pmatch (pdatumData output) $ \case
+                PNothing -> pcon PNothing
+                PJust datumField ->
+                  plet (pscriptValueData valueData) $ \value ->
+                    plet (preferenceScriptData output) $ \referenceScript ->
+                      plet
+                        ( psemanticDataSummaryV1
+                            # pconstrData
+                              0
+                              ( pcons
+                                  # paddressData output (pconstant False)
+                                  #$ pcons # value
+                                  #$ pcons # datumField
+                                  #$ pcons # referenceScript
+                                  # pnil
+                              )
+                        )
+                        $ \cardanoTxOut ->
+                          plet
+                            ( psemanticDataSummaryV1
+                                # pconstrData
+                                  0
+                                  ( pcons
+                                      # paddressData output (pconstant True)
+                                      #$ pcons # value
+                                      #$ pcons # datumField
+                                      #$ pcons # referenceScript
+                                      # pnil
+                                  )
+                            )
+                            $ \midgardTxOut ->
+                              pcon $ PJust $
+                                pcon $
+                                  PPair
+                                    cardanoTxOut
+                                    ( pcon $
+                                        PPair
+                                          midgardTxOut
+                                          (pspendDatumSummaryOfField datumField)
+                                    )
 
 ptxOutRefData :: forall s. Term s PMidgardTxInput -> Term s PData
 ptxOutRefData input = pmatch input $ \i -> pconstrData 0 $
@@ -408,12 +501,10 @@ pspendDatumSummaryV1 = phoistAcyclic $ plam $ \outputCbor ->
     PJust output -> pmatch output $ \o -> pmatch (pfromData $ ptxOutput'datumCbor o) $ \case
       PDNothing -> pcon $ PJust $ psemanticDataSummaryV1 # pconstrData 1 pnil
       PDJust datumBytes -> plet (pfromData datumBytes) $ \datumCbor ->
-        pif (pisMaterialisablePlutusDataV1 # datumCbor)
-          (pmatch (pdeserialise # datumCbor) $ \case
-            PNothing -> pcon PNothing
-            PJust datum -> pcon $ PJust $ psemanticDataSummaryV1
-              # pconstrData 0 (pcons # datum # pnil))
-          (pcon PNothing)
+        pmatch (pmaterialiseDatum # datumCbor) $ \case
+          PNothing -> pcon PNothing
+          PJust datum -> pcon $ PJust $ psemanticDataSummaryV1
+            # pconstrData 0 (pcons # datum # pnil)
 
 pcardanoScriptInfoSummaryV1 :: forall s. Term s
   (PInteger :--> PByteString :--> PByteString :--> PMaybeData PByteString :--> PMaybe PDataSummaryV1)
