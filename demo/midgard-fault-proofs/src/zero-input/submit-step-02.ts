@@ -78,7 +78,9 @@ export const submitZeroInputStep02V1 = async ({
       Buffer.from(evidence.inputFieldPreimageCbor, "hex"),
     ),
     owner: signer.paymentKeyHash,
-    publish: true,
+    // The door reads the empty field inline (the single byte `80`); nothing
+    // in the workflow publishes a tier-2 carriage for it, so never demote.
+    publish: false,
     label: "zero input field 0",
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
