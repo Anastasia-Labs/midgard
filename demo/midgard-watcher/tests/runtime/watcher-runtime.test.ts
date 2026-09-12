@@ -387,7 +387,7 @@ describe("launcher checkpoint admission with signed unit release fixtures", () =
     expect(boundary.closed).toHaveBeenCalledOnce();
     await expect(
       boundary.opened!.userEventArchive.read(seeded.frame.payloadDigest),
-    ).rejects.toThrow("statement has been finalized");
+    ).rejects.toThrow();
   });
 
   it.each(["missing", "corrupt"] as const)(
@@ -421,15 +421,17 @@ describe("launcher checkpoint admission with signed unit release fixtures", () =
       await expect(
         createWatcherRuntime({ config: seeded.config }),
       ).rejects.toThrow(
-        damage === "missing" ? "archive object is missing" : "digest mismatch",
+        damage === "missing"
+          ? "required archive record is missing"
+          : "digest mismatch",
       );
       expect(boundary.forwardedArchive).toBe(boundary.opened?.userEventArchive);
       expect(boundary.admitted).toBeUndefined();
       expect(boundary.acquireL1).not.toHaveBeenCalled();
       expect(boundary.closed).toHaveBeenCalledOnce();
-      await expect(boundary.opened!.backend.read()).rejects.toThrow(
-        "statement has been finalized",
-      );
+      // A valid backend read must fail after closure, independent of Node's
+      // SQLite error wording.
+      await expect(boundary.opened!.backend.read()).rejects.toThrow();
     },
   );
 });

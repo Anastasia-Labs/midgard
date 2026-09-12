@@ -90,9 +90,16 @@ const assertLiveObservation = ({
       provider.source.sourceMode === "local_node" &&
       provider.source.surface === "ogmios",
   );
+  if (kupo === undefined || ogmios === undefined) {
+    const missing = [
+      kupo === undefined ? "kupo" : null,
+      ogmios === undefined ? "ogmios" : null,
+    ].filter((surface) => surface !== null);
+    throw new Error(
+      `resolved block transport authority is closed or absent: ${missing.join(", ")}`,
+    );
+  }
   if (
-    kupo === undefined ||
-    ogmios === undefined ||
     normalizedEndpoint(kupo.transportEndpoint) !== sourceDetails.kupoHttpUrl ||
     normalizedEndpoint(ogmios.transportEndpoint) !== sourceDetails.ogmiosUrl
   ) {

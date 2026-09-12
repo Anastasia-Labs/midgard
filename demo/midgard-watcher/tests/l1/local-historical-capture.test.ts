@@ -213,7 +213,7 @@ type FixtureOptions = Readonly<{
   modes?: readonly string[];
   tipOffsets?: readonly number[];
   secondBlockType?: string;
-  recheckChangesHead?: boolean;
+  recheckChangesHead?: boolean | "always";
   reverseTransactions?: boolean;
   pendingHttp?: boolean;
   socketMode?: "opening" | "request";
@@ -381,7 +381,15 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
       );
     }
     close(): void {
+      if (this.closed) return;
       this.closed = true;
+      // The source waits for the physical close event before releasing the
+      // session, exactly as a real socket reports it.
+      queueMicrotask(() =>
+        this.dispatchEvent(
+          Object.assign(new Event("close"), { code: 1000, wasClean: true }),
+        ),
+      );
     }
   }
   vi.stubGlobal("WebSocket", BoundarySocket);
@@ -477,7 +485,7 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
             {
               headers: {
                 "X-Most-Recent-Checkpoint": "159845207",
-                ETag: `"${head}"`,
+                ETag: head,
               },
             },
           );
@@ -518,7 +526,10 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
         options.recheckChangesHead &&
         (await logs()).some(({ kind }) => kind === "start")
       )
-        head = "66".repeat(32);
+        head =
+          options.recheckChangesHead === "always" && head === "66".repeat(32)
+            ? "77".repeat(32)
+            : "66".repeat(32);
       return new Response(
         JSON.stringify({
           slot_no: Number(point.slot),
@@ -527,7 +538,7 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
         {
           headers: {
             "X-Most-Recent-Checkpoint": "159845207",
-            ETag: `"${head}"`,
+            ETag: head,
           },
         },
       );
@@ -646,17 +657,35 @@ describe("owned local historical capture", () => {
     ).toHaveLength(4);
   });
 
-  it("refuses a changed Kupo head after query one before opening query two", async () => {
+  it("restarts a changed Kupo capture after closing its abandoned query", async () => {
     const f = await fixture({ recheckChangesHead: true });
-    await expect(f.open()).rejects.toThrow(
-      "Kupo changed during reference acquisition",
+    const capture = await f.open();
+    expect(readWatcherLocalHistoricalCapture(capture.receipt).point).toEqual(
+      target,
     );
+    await capture.close();
+    const records = await f.logs();
+    expect(records.filter(({ kind }) => kind === "start")).toHaveLength(3);
+    expect(records.filter(({ kind }) => kind === "stop")).toHaveLength(3);
     expect(
-      (await f.logs()).filter(({ kind }) => kind === "start"),
-    ).toHaveLength(1);
-    expect((await f.logs()).filter(({ kind }) => kind === "stop")).toHaveLength(
-      1,
+      records.findIndex(({ kind, query }) => kind === "stop" && query === 1),
+    ).toBeLessThan(
+      records.findIndex(({ kind, query }) => kind === "start" && query === 2),
     );
+    expect(f.sockets.every(({ closed }) => closed)).toBe(true);
+  });
+
+  it("fails closed after bounded attempts when Kupo keeps changing", async () => {
+    const f = await fixture({ recheckChangesHead: "always" });
+    await expect(f.open()).rejects.toThrow(/Kupo (changed|advanced)/);
+    const records = await f.logs();
+    expect(
+      records.filter(({ kind }) => kind === "start").length,
+    ).toBeLessThanOrEqual(3);
+    expect(records.filter(({ kind }) => kind === "stop")).toHaveLength(
+      records.filter(({ kind }) => kind === "start").length,
+    );
+    expect(f.sockets.every(({ closed }) => closed)).toBe(true);
   });
 
   it("compares the complete ordered transaction vector", async () => {
@@ -1556,7 +1585,7 @@ describe("owned reference bodies and current receipt pairing", () => {
     expect(f.creatingLookups).toHaveLength(8);
   });
 
-  it.each(["missing", "wrong_frame", "wrong_index", "head_changed"] as const)(
+  it.each(["missing", "wrong_frame", "wrong_index"] as const)(
     "refuses %s creating evidence before issuing the final native query",
     async (referenceMode) => {
       const f = await fixture({ referenceMode });
@@ -1567,6 +1596,20 @@ describe("owned reference bodies and current receipt pairing", () => {
       expect(f.sockets.every(({ closed }) => closed)).toBe(true);
     },
   );
+
+  it("reacquires all creating bodies after their Kupo checkpoint changes", async () => {
+    const f = await fixture({ referenceMode: "head_changed" });
+    const capture = await f.open();
+    expect(
+      readWatcherLocalHistoricalCapture(capture.receipt)
+        .creatingTransactionBodies,
+    ).toHaveLength(6);
+    await capture.close();
+    const records = await f.logs();
+    expect(records.filter(({ kind }) => kind === "start")).toHaveLength(3);
+    expect(records.filter(({ kind }) => kind === "stop")).toHaveLength(3);
+    expect(f.sockets.every(({ closed }) => closed)).toBe(true);
+  });
 
   it("cancels a pending creating-body lookup and closes the owned first native query", async () => {
     const f = await fixture({ referenceMode: "wait" });

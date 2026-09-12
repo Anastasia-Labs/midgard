@@ -59,7 +59,7 @@ export const WATCHER_L1_REDEEMER_PURPOSES = [
   "propose",
 ] as const;
 
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 export const WATCHER_L1_SOURCE_MODES = [
   "local_node",
   "external_providers",
@@ -295,6 +295,7 @@ type WatcherL1TransportAttestationState = {
   ownedTransports: readonly (Socket | TLSSocket)[];
   upstreamIsLive: () => boolean;
   active: boolean;
+  renewalTimer?: ReturnType<typeof setTimeout>;
 };
 
 const transportAttestationStates = new WeakMap<
@@ -387,6 +388,7 @@ export const closeWatcherL1TransportAttestationContext = (
     transportAttestationStates.get(context) ??
     fail("invalid_field", "$.transportAttestationContext");
   state.active = false;
+  clearTimeout(state.renewalTimer);
   for (const transport of state.ownedTransports) {
     transport.destroy();
   }
@@ -1598,6 +1600,7 @@ const awaitConnectedSocket = async <T extends Socket | TLSSocket>(
       clearTimeout(timer);
       socket.off(readyEvent, onReady);
       socket.off("error", onError);
+      socket.off("close", onClose);
       if (error === undefined) resolve(socket);
       else {
         socket.destroy();
@@ -1607,6 +1610,8 @@ const awaitConnectedSocket = async <T extends Socket | TLSSocket>(
     const onReady = (): void => finish();
     const onError = (): void =>
       finish(new Error("transport connection failed"));
+    const onClose = (): void =>
+      finish(new Error("transport closed before connection"));
     const timer = setTimeout(
       () => finish(new Error("transport connection timed out")),
       timeoutMs,
@@ -1614,16 +1619,23 @@ const awaitConnectedSocket = async <T extends Socket | TLSSocket>(
     timer.unref();
     socket.once(readyEvent, onReady);
     socket.once("error", onError);
+    socket.once("close", onClose);
   });
 
 const establishTcpSocket = async (
   endpoint: ExactTcpEndpoint,
   path: string,
+  onConnecting?: (socket: Socket) => void,
 ): Promise<Readonly<{ socket: Socket; identitySha256: string }>> => {
   let socket: Socket | null = null;
   try {
+    const connecting = createNetConnection({
+      host: endpoint.host,
+      port: endpoint.port,
+    });
+    onConnecting?.(connecting);
     socket = await awaitConnectedSocket(
-      createNetConnection({ host: endpoint.host, port: endpoint.port }),
+      connecting,
       "connect",
       endpoint.connectTimeoutMs,
     );
@@ -1723,6 +1735,64 @@ export const establishWatcherLocalNodeAuthorityTransport = (
     [],
     () => watcherNativeChainSyncAuthorityDetails(nativeAuthority) !== null,
   );
+};
+
+// The endpoint-identity sockets are independent of individual HTTP reads.
+// Rotate while both connections are live, before an idle HTTP server retires
+// the old socket. This maintains authority; it never revives a lost context.
+const LOCAL_QUERY_TRANSPORT_RENEWAL_MS = 30_000;
+const maintainLocalQueryTransport = (
+  context: WatcherL1TransportAttestationContext,
+  endpoint: ExactTcpEndpoint,
+  upstreamTransports: readonly (Socket | TLSSocket)[],
+  identitySha256: string,
+): void => {
+  const state = transportAttestationStates.get(context)!;
+  const schedule = () => {
+    if (!state.active) return;
+    state.renewalTimer = setTimeout(() => {
+      void renew().catch(() =>
+        closeWatcherL1TransportAttestationContext(context),
+      );
+    }, LOCAL_QUERY_TRANSPORT_RENEWAL_MS);
+    state.renewalTimer.unref();
+  };
+  const renew = async () => {
+    if (watcherL1TransportAttestationDetails(context) === null) {
+      closeWatcherL1TransportAttestationContext(context);
+      return;
+    }
+    const previous = state.ownedTransports[0]!;
+    const candidate = await establishTcpSocket(
+      endpoint,
+      "$.localNodeQueryTransport",
+      (socket) => {
+        // Owner close also owns a candidate that has not connected yet.
+        state.ownedTransports = Object.freeze([previous, socket]);
+      },
+    );
+    if (
+      watcherL1TransportAttestationDetails(context) === null ||
+      candidate.identitySha256 !== identitySha256 ||
+      candidate.socket.destroyed ||
+      !candidate.socket.readable ||
+      !candidate.socket.writable ||
+      candidate.socket.readyState !== "open"
+    ) {
+      closeWatcherL1TransportAttestationContext(context);
+      return;
+    }
+    state.transports = Object.freeze([...upstreamTransports, candidate.socket]);
+    // Retain the retired socket until physical close, bounding ownership to
+    // two sockets even when close delivery is delayed. No next rollover starts
+    // before this close acknowledgement.
+    previous.once("close", () => {
+      state.ownedTransports = Object.freeze([candidate.socket]);
+      schedule();
+    });
+    previous.destroy();
+  };
+  schedule();
 };
 
 export const establishWatcherLocalNodeQueryTransport = async (
@@ -1833,7 +1903,7 @@ export const establishWatcherLocalNodeQueryTransport = async (
       publicIdentitySha256: established.identitySha256,
     },
   });
-  return makeTransportAttestationContext(
+  const context = makeTransportAttestationContext(
     {
       provider,
       authorityBindingSha256: trustedAuthority.authorityBindingSha256,
@@ -1844,6 +1914,15 @@ export const establishWatcherLocalNodeQueryTransport = async (
     () =>
       trustedAuthorityState.active && trustedAuthorityState.upstreamIsLive(),
   );
+  if (tcpEndpoint !== null) {
+    maintainLocalQueryTransport(
+      context,
+      tcpEndpoint,
+      trustedAuthorityState.transports,
+      established.identitySha256,
+    );
+  }
+  return context;
 };
 
 export const establishWatcherExternalProviderTransport = async (

@@ -66,6 +66,7 @@ import {
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherRetainsCanonicalMembers,
   watcherSameCanonicalJson,
   watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
@@ -156,7 +157,11 @@ export const WATCHER_SETTLEMENT_ALERT_CODES = [
   "watcher_settlement_post_finality_incident",
 ] as const;
 
-export type WatcherSettlementNetwork = "Mainnet" | "Preprod" | "Preview";
+export type WatcherSettlementNetwork =
+  | "Mainnet"
+  | "Preprod"
+  | "Preview"
+  | "Custom";
 export type WatcherSettlementTransitionKind =
   (typeof WATCHER_SETTLEMENT_TRANSITION_KINDS)[number];
 export type WatcherSettlementReasonCode =
@@ -474,7 +479,7 @@ const HEX_BYTES_OR_EMPTY = /^(?:[0-9a-f]{2})*$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const NON_ZERO_INTEGER = /^-?(?:[1-9][0-9]*)$/u;
 const FAILURE_CODE = /^[a-z][a-z0-9_]{0,63}$/u;
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 const TARGET_ROLES = new Set<WatcherSettlementResourceRole>([
   "settlement",
   "reserve",
@@ -2599,7 +2604,7 @@ const transactionInputs = (
 };
 
 const storeRetains = <T>(previous: readonly T[], next: readonly T[]): boolean =>
-  previous.every((entry) => next.some((candidate) => same(entry, candidate)));
+  watcherRetainsCanonicalMembers(previous, next);
 
 type SettlementRoleClassification = "owned" | "foreign" | "invalid";
 

@@ -52,6 +52,8 @@ export type WatcherVerificationDiagnostic = Sequenced &
     queuedAtMs: string;
     startedAtMs: string;
     completedAtMs: string;
+    /** Elapsed duration measured with a monotonic clock, rounded up to milliseconds. */
+    elapsedMs: string;
     outcome:
       | "verified"
       | "pending_da"
@@ -68,6 +70,8 @@ export type WatcherDaFetchDiagnostic = Sequenced &
     subjectDigest: string;
     startedAtMs: string;
     completedAtMs: string;
+    /** Elapsed duration measured with a monotonic clock, rounded up to milliseconds. */
+    elapsedMs: string;
     outcome: "succeeded" | "failed" | "timed_out";
   }>;
 
@@ -251,13 +255,6 @@ const hash32 = (value: string, label: string): string => {
   return value;
 };
 
-const orderedInterval = (start: string, end: string, label: string): bigint => {
-  const startValue = natural(start, `${label} start`);
-  const endValue = natural(end, `${label} end`);
-  if (endValue < startValue) throw new Error(`${label} is reversed`);
-  return endValue - startValue;
-};
-
 const percentile = (
   values: readonly bigint[],
   numerator: number,
@@ -287,11 +284,20 @@ export const createWatcherOperationsObservability = (input: {
     oldestQueuedAtMs: string | null;
   }>;
   readonly nowMs?: () => bigint;
+  readonly monotonicNowMs?: () => number;
   readonly l1FreshnessMaximumAgeMs?: number;
   readonly maximumRetainedDiagnostics?: number;
 }): WatcherOperationsObservability => {
   hash32(input.deploymentFingerprint, "observability deployment fingerprint");
   const nowMs = input.nowMs ?? (() => BigInt(Date.now()));
+  const monotonicNowMs = input.monotonicNowMs ?? (() => performance.now());
+  const monotonicTime = (): bigint => {
+    const value = Math.floor(monotonicNowMs());
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error("observability monotonic clock is invalid");
+    }
+    return BigInt(value);
+  };
   const l1FreshnessMaximumAgeMs = input.l1FreshnessMaximumAgeMs ?? 120_000;
   const maximumRetainedDiagnostics =
     input.maximumRetainedDiagnostics ?? MAXIMUM_RETAINED_DIAGNOSTICS;
@@ -314,6 +320,33 @@ export const createWatcherOperationsObservability = (input: {
   const latestEvents = new Map<string, WatcherEventDiagnostic>();
   const latestL1Sources = new Map<string, WatcherL1SourceDiagnostic>();
   const latestAlerts = new Map<string, WatcherAlertDiagnostic>();
+  type AgeAnchor = Readonly<{
+    origin: string;
+    receivedAt: bigint;
+    initialAge: bigint | null;
+  }>;
+  const sourceAges = new Map<string, AgeAnchor>();
+  const eventAges = new Map<string, AgeAnchor>();
+  let queueAge: AgeAnchor | null = null;
+  // Wall timestamps may cross a host clock adjustment. Unknown initial ages
+  // stay unknown; known ages advance only with this process's monotonic clock.
+  const anchorAge = (origin: string): AgeAnchor => {
+    const timestamp = natural(origin, "age origin");
+    const wall = nowMs();
+    if (wall < 0n) throw new Error("observability clock is invalid");
+    return {
+      origin,
+      receivedAt: monotonicTime(),
+      initialAge: timestamp > wall ? null : wall - timestamp,
+    };
+  };
+  const ageAt = (anchor: AgeAnchor, monotonic: bigint): bigint | null => {
+    if (monotonic < anchor.receivedAt)
+      throw new Error("observability monotonic clock regressed");
+    return anchor.initialAge === null
+      ? null
+      : anchor.initialAge + monotonic - anchor.receivedAt;
+  };
 
   const append = <T extends WatcherOperationsDiagnostic>(
     record: Omit<T, "sequence">,
@@ -333,29 +366,16 @@ export const createWatcherOperationsObservability = (input: {
     if (values.length > maximumRetainedDiagnostics) values.shift();
   };
 
-  const observedTime = (value: string, label: string): bigint => {
-    const time = natural(value, label);
-    const now = nowMs();
-    if (now < 0n || time > now) {
-      throw new Error(`${label} is in the future`);
-    }
-    return time;
-  };
-
   const sink: WatcherOperationsSink = Object.freeze({
     recordVerification: (value) => {
       hash32(value.subjectDigest, "verification subject digest");
-      orderedInterval(
-        value.queuedAtMs,
-        value.startedAtMs,
-        "verification queue interval",
+      natural(value.queuedAtMs, "verification queue time");
+      natural(value.startedAtMs, "verification start time");
+      natural(value.completedAtMs, "verification completion time");
+      const verificationLatency = natural(
+        value.elapsedMs,
+        "verification elapsed time",
       );
-      const verificationLatency = orderedInterval(
-        value.startedAtMs,
-        value.completedAtMs,
-        "verification interval",
-      );
-      observedTime(value.completedAtMs, "verification completion time");
       append<WatcherVerificationDiagnostic>({
         kind: "verification",
         ...value,
@@ -364,12 +384,9 @@ export const createWatcherOperationsObservability = (input: {
     },
     recordDaFetch: (value) => {
       hash32(value.subjectDigest, "DA subject digest");
-      const latency = orderedInterval(
-        value.startedAtMs,
-        value.completedAtMs,
-        "DA fetch interval",
-      );
-      observedTime(value.completedAtMs, "DA fetch completion time");
+      natural(value.startedAtMs, "DA fetch start time");
+      natural(value.completedAtMs, "DA fetch completion time");
+      const latency = natural(value.elapsedMs, "DA fetch elapsed time");
       append<WatcherDaFetchDiagnostic>({
         kind: "da_fetch",
         ...value,
@@ -382,7 +399,7 @@ export const createWatcherOperationsObservability = (input: {
       if (!WATCHER_PROOF_STAGE_KINDS.includes(value.stage)) {
         throw new Error("proof-step stage is invalid");
       }
-      observedTime(value.updatedAtMs, "proof-step update time");
+      natural(value.updatedAtMs, "proof-step update time");
       const record = append<WatcherProofStepDiagnostic>({
         kind: "proof_step",
         ...value,
@@ -394,12 +411,11 @@ export const createWatcherOperationsObservability = (input: {
     },
     recordEvent: (value) => {
       hash32(value.eventDigest, "event digest");
-      orderedInterval(
-        value.inclusionAtMs,
-        value.updatedAtMs,
-        "event observation interval",
-      );
-      observedTime(value.updatedAtMs, "event update time");
+      natural(value.inclusionAtMs, "event inclusion time");
+      natural(value.updatedAtMs, "event update time");
+      if (eventAges.get(value.eventDigest)?.origin !== value.inclusionAtMs) {
+        eventAges.set(value.eventDigest, anchorAge(value.inclusionAtMs));
+      }
       const record = append<WatcherEventDiagnostic>({
         kind: "event",
         ...value,
@@ -411,19 +427,20 @@ export const createWatcherOperationsObservability = (input: {
       hash32(value.blockHash, "L1 source block hash");
       natural(value.blockNo, "L1 source block number");
       natural(value.slot, "L1 source slot");
-      observedTime(value.observedAtMs, "L1 source observation time");
+      natural(value.observedAtMs, "L1 source observation time");
       const record = append<WatcherL1SourceDiagnostic>({
         kind: "l1_source",
         ...value,
       });
       latestL1Sources.set(value.sourceIdentityDigest, record);
+      sourceAges.set(value.sourceIdentityDigest, anchorAge(value.observedAtMs));
     },
     setAlert: (value) => {
       if (!WATCHER_ALERT_CODES.includes(value.code)) {
         throw new Error("operational alert code is invalid");
       }
       hash32(value.subjectDigest, "operational alert subject digest");
-      observedTime(value.observedAtMs, "operational alert observation time");
+      natural(value.observedAtMs, "operational alert observation time");
       const record = append<WatcherAlertDiagnostic>({
         kind: "alert",
         ...value,
@@ -450,27 +467,34 @@ export const createWatcherOperationsObservability = (input: {
     });
   };
 
-  const sourceHealth = (observedAt: bigint) => {
+  const sourceHealth = (monotonic: bigint) => {
     let fresh = 0;
     let stale = 0;
     let disagreement = 0;
     let maximumAge: bigint | null = null;
+    let unknownAge = false;
     for (const source of latestL1Sources.values()) {
-      const sourceTime = natural(source.observedAtMs, "L1 source time");
-      if (sourceTime > observedAt) {
-        throw new Error("L1 source time is in the future");
-      }
-      const age = observedAt - sourceTime;
-      if (maximumAge === null || age > maximumAge) maximumAge = age;
+      const age = ageAt(
+        sourceAges.get(source.sourceIdentityDigest)!,
+        monotonic,
+      );
+      if (age === null) unknownAge = true;
+      else if (maximumAge === null || age > maximumAge) maximumAge = age;
       if (source.status === "disagreement") disagreement += 1;
       else if (
         source.status === "stale" ||
+        age === null ||
         age > BigInt(l1FreshnessMaximumAgeMs)
       )
         stale += 1;
       else fresh += 1;
     }
-    return Object.freeze({ fresh, stale, disagreement, maximumAge });
+    return Object.freeze({
+      fresh,
+      stale,
+      disagreement,
+      maximumAge: unknownAge ? null : maximumAge,
+    });
   };
 
   const activeAlerts = () =>
@@ -492,7 +516,7 @@ export const createWatcherOperationsObservability = (input: {
     if (observedAt < 0n) throw new Error("observability clock is invalid");
     const supervisor = input.supervisor.status();
     const scope = launchScope();
-    const sources = sourceHealth(observedAt);
+    const sources = sourceHealth(monotonicTime());
     const alerts = activeAlerts();
     const reasons: WatcherOperationsStatus["readinessReasons"][number][] = [];
     if (supervisor.phase !== "accepting")
@@ -547,7 +571,7 @@ export const createWatcherOperationsObservability = (input: {
     const unprocessed = [...latestEvents.values()].filter(
       ({ status: eventStatus }) => eventStatus === "unprocessed",
     );
-    const source = sourceHealth(observedAt);
+    const source = sourceHealth(monotonicTime());
     const durableQueue = input.durableProofQueueStatus();
     if (
       !Number.isSafeInteger(durableQueue.queuedJobCount) ||
@@ -558,13 +582,23 @@ export const createWatcherOperationsObservability = (input: {
     ) {
       throw new Error("durable proof queue status differs from supervisor");
     }
-    const oldestQueuedAt =
-      durableQueue.oldestQueuedAtMs === null
-        ? null
-        : natural(durableQueue.oldestQueuedAtMs, "oldest durable proof time");
-    if (oldestQueuedAt !== null && oldestQueuedAt > observedAt) {
-      throw new Error("oldest durable proof time is in the future");
+    if (durableQueue.oldestQueuedAtMs === null) queueAge = null;
+    else if (queueAge?.origin !== durableQueue.oldestQueuedAtMs) {
+      queueAge = anchorAge(durableQueue.oldestQueuedAtMs);
     }
+    const monotonic = monotonicTime();
+    const queuedAge = queueAge === null ? null : ageAt(queueAge, monotonic);
+    const unprocessedAges = unprocessed.map(({ eventDigest }) =>
+      ageAt(eventAges.get(eventDigest)!, monotonic),
+    );
+    const oldestEventAge =
+      unprocessedAges.length === 0 ||
+      unprocessedAges.some((age) => age === null)
+        ? null
+        : unprocessedAges.reduce<bigint>(
+            (maximum, age) => (age! > maximum ? age! : maximum),
+            0n,
+          );
     const summarize = (values: readonly bigint[]) =>
       Object.freeze({
         sampleCount: values.length.toString(),
@@ -576,10 +610,7 @@ export const createWatcherOperationsObservability = (input: {
       schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
       observedAtMs: observedAt.toString(),
       queuedProofCount: durableQueue.queuedJobCount.toString(),
-      oldestQueuedProofAgeMs:
-        oldestQueuedAt === null
-          ? null
-          : (observedAt - oldestQueuedAt).toString(),
+      oldestQueuedProofAgeMs: queuedAge?.toString() ?? null,
       verificationLatencyMs: summarize(verificationLatencies),
       daLatencyMs: summarize(daLatencies),
       deadlineHealth: supervisor.deadlineHealth,
@@ -593,20 +624,7 @@ export const createWatcherOperationsObservability = (input: {
         ),
       ) as WatcherOperationsMetrics["proofSteps"],
       unprocessedEventCount: unprocessed.length.toString(),
-      oldestUnprocessedEventAgeMs:
-        unprocessed.length === 0
-          ? null
-          : (() => {
-              const oldest = unprocessed
-                .map(({ inclusionAtMs }) =>
-                  natural(inclusionAtMs, "event inclusion time"),
-                )
-                .reduce((left, right) => (right < left ? right : left));
-              if (oldest > observedAt) {
-                throw new Error("event inclusion time is in the future");
-              }
-              return (observedAt - oldest).toString();
-            })(),
+      oldestUnprocessedEventAgeMs: oldestEventAge?.toString() ?? null,
       l1Sources: Object.freeze({
         configured: latestL1Sources.size.toString(),
         fresh: source.fresh.toString(),

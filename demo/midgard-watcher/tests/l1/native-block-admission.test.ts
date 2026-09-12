@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import {
+  parseWatcherNativeChainSyncEvent,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncRollForward,
 } from "../../src/l1/native-chain-sync.js";
@@ -40,6 +41,35 @@ const fixtureEvent = async (): Promise<WatcherNativeChainSyncRollForward> => {
 };
 
 describe("native block admission", () => {
+  it("admits an actual Conway genesis block advertising the next protocol", async () => {
+    const event = parseWatcherNativeChainSyncEvent(
+      JSON.parse(
+        await readFile(
+          new URL("../support/devnet-origin-block.json", import.meta.url),
+          "utf8",
+        ),
+      ),
+    );
+    if (event.kind !== "roll_forward")
+      throw new Error("Expected captured block");
+    const admitted = admitWatcherNativeRollForwardBlock(event);
+    expect(admitted).toMatchObject({
+      blockType: "7",
+      protocolMajor: "12",
+      blockNo: "0",
+      prevHash: "",
+    });
+    expect(admitted.transactionIds).toEqual([
+      "0d49212a4eb82c4ba9a619c87cd092de8a0cbcaccb294b1437973a74038c75e8",
+    ]);
+    expect(() =>
+      admitWatcherNativeRollForwardBlock({
+        ...event,
+        prevHash: "00".repeat(32),
+      }),
+    ).toThrow();
+  });
+
   it("independently derives the era, header identity, ancestry, height and ordered transaction ids", async () => {
     const event = await fixtureEvent();
     const admitted = admitWatcherNativeRollForwardBlock(event);

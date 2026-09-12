@@ -1,47 +1,56 @@
-import { computeHash28, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
-import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { transitionTraceDepositRetainedFixture } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
+import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   credentialToAddress,
   Data,
   paymentCredentialOf,
   toUnit,
-  type TxBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import {
-  committeeSignerIndex,
-  type DaLocalSignerConfig,
-  daLocalSigners,
-} from "midgard-node/da/local-signers";
-import { availabilityParametersFromManifest } from "midgard-node/services/midgard-contracts";
-import type { publishWorkflowDeployment } from "midgard-node/tests/helpers/published-workflow-deployment";
-import {
-  activateOperatorProgram,
-  registerOperatorProgram,
-} from "midgard-node/transactions/register-active-operator";
+import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
+import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
+import { activateRegisteredOperatorProgram } from "midgard-node/transactions/register-active-operator";
 
-type Published = Awaited<ReturnType<typeof publishWorkflowDeployment>>;
+import {
+  createPublishedWatcherBlockActor,
+  type PublishedWatcherBlock,
+} from "./published-block-actor.js";
 
-const seal = async (payload: SDK.DaPayload, header: SDK.Header) => {
-  const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
-    "hex",
-  );
-  const updated = {
-    ...payload,
-    block_body: { ...payload.block_body, header, header_hash: headerHash },
-  };
-  return {
-    payload: updated,
-    header,
-    headerHash,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(updated), {
-      mode: "identity",
-    }),
-  };
+type Published = Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>;
+
+export type PublishedDepositTraceCheckpoint = {
+  predecessor: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
+  current: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
+  depositEvent: UTxO;
+  depositMetadata: Pick<
+    Effect.Effect.Success<
+      ReturnType<typeof SDK.buildUnsignedDepositTxWithMetadataProgram>
+    >["metadata"],
+    "depositAssetName" | "depositAuthUnit" | "inclusionTime"
+  >;
+  commits: string[];
+  attestationsComplete: boolean;
+  priorDeposits?: readonly {
+    event: UTxO;
+    metadata: PublishedDepositTraceCheckpoint["depositMetadata"];
+  }[];
 };
+
+/**
+ * The honest successor's durable progress. The block is persisted before its
+ * header transaction is signed, the signed bytes before submission, and the
+ * hash after inclusion, so a stopped harness resumes from whatever landed.
+ */
+export type PublishedSuccessorCheckpoint = {
+  block: PublishedWatcherBlock;
+  signedCommit?: { txHash: string; signedCbor: string };
+  commitTxHash?: string;
+};
+
+/** The successor header's validity window; block production is Poisson. */
+export const SUCCESSOR_HEADER_INTERVAL_MS = 179_999;
 
 /** Publish an ordinary deposit and retain the existing deposit-trace fixture. */
 export const stagePublishedDepositTrace = async (
@@ -50,17 +59,23 @@ export const stagePublishedDepositTrace = async (
     daSignerConfig,
     honest = false,
     onStage = () => {},
+    resume,
+    onCheckpoint = async () => {},
   }: {
     daSignerConfig: DaLocalSignerConfig;
     honest?: boolean;
     onStage?: (name: string) => void;
+    resume?: PublishedDepositTraceCheckpoint;
+    onCheckpoint?: (
+      checkpoint: PublishedDepositTraceCheckpoint,
+    ) => Promise<void>;
   },
 ) => {
-  const { contracts, emulator, references } = deployment;
+  const { contracts, chain, references } = deployment;
   let lucid = deployment.operatorLucid;
   let address = await lucid.wallet().address();
   const awaitConfirmed = async (txHash: string) => {
-    await lucid.awaitTx(txHash);
+    await lucid.awaitTx(txHash, 500);
     // Operator onboarding maintains an explicit wallet snapshot. Refresh it
     // after direct SDK transactions so their successors use the live ledger.
     lucid.overrideUTxOs(await lucid.utxosAt(address));
@@ -78,18 +93,6 @@ export const stagePublishedDepositTrace = async (
       throw new Error(`Missing actual publication ${name}`);
     return value;
   };
-  const plain = async () => {
-    const value = (await lucid.wallet().getUtxos()).find(
-      (u) =>
-        u.datum == null &&
-        u.datumHash == null &&
-        u.scriptRef == null &&
-        Object.keys(u.assets).every((unit) => unit === "lovelace"),
-    );
-    if (value === undefined)
-      throw new Error("No ordinary wallet funding input");
-    return value;
-  };
   const rootUnit = toUnit(
     contracts.stateQueue.policyId,
     SDK.STATE_QUEUE_ROOT_ASSET_NAME,
@@ -101,310 +104,244 @@ export const stagePublishedDepositTrace = async (
   const genesis = await Effect.runPromise(
     SDK.getConfirmedStateFromStateQueueDatum(rootDatum),
   );
-  const bond = SDK.getProtocolParameters("Preprod").required_bond;
   const publisher = deployment.publisherLucid;
-  const publicationAddress = await publisher.wallet().address();
-  let activeUnit = toUnit(
-    contracts.activeOperators.policyId,
-    SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorVkey,
-  );
-  let active: UTxO;
-  const schedulerUnit = toUnit(
-    contracts.scheduler.policyId,
-    SDK.SCHEDULER_ASSET_NAME,
-  );
-  const onboardOperator = async () => {
-    lucid.overrideUTxOs(await lucid.utxosAt(address));
-    onStage("operator registration");
-    await Effect.runPromise(
-      registerOperatorProgram(
-        lucid,
-        contracts,
-        bond,
-        publisher,
-        publicationAddress,
-      ),
-    );
-    emulator.awaitSlot(180);
-    onStage("operator activation");
-    await Effect.runPromise(
-      activateOperatorProgram(
-        lucid,
-        contracts,
-        bond,
-        publisher,
-        publicationAddress,
-      ),
-    );
-    active = await one(
-      contracts.activeOperators.spendingScriptAddress,
-      activeUnit,
-    );
-    const scheduler = await one(
-      contracts.scheduler.spendingScriptAddress,
-      schedulerUnit,
-    );
-    const registeredRoot = await one(
-      contracts.registeredOperators.spendingScriptAddress,
-      toUnit(
-        contracts.registeredOperators.policyId,
-        SDK.REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-      ),
-    );
-    const schedulerStart = BigInt(emulator.now() + 39_999);
-    const appointedDatum = Data.to(
-      {
-        ActiveOperator: { operator: operatorVkey, start_time: schedulerStart },
-      },
-      SDK.SchedulerDatum,
-    );
-    onStage("scheduler appointment");
-    const appointment = await lucid
-      .newTx()
-      .collectFrom([await plain()])
-      .collectFrom([scheduler], (ctx) =>
-        Data.to(
-          {
-            scheduler_input_index: SDK.requireInputIndex(
-              ctx,
-              scheduler,
-              "scheduler appointment",
-            ),
-            scheduler_output_index: SDK.requireUniqueOutputIndex(
-              ctx.outputs,
-              (output) =>
-                output.address === contracts.scheduler.spendingScriptAddress &&
-                output.assets[schedulerUnit] === 1n,
-              "appointed scheduler",
-            ),
-            advancing_approach: {
-              AppointFirstOperator: {
-                new_shifts_operator_node_ref_input_index:
-                  SDK.requireReferenceInputIndex(
-                    ctx,
-                    active,
-                    "active operator",
-                  ),
-                registered_element_ref_input_index:
-                  SDK.requireReferenceInputIndex(
-                    ctx,
-                    registeredRoot,
-                    "registered root",
-                  ),
-              },
-            },
+  let actor = await createPublishedWatcherBlockActor({
+    deployment,
+    lucid,
+    daSignerConfig,
+    onStage,
+  });
+  const onboardOperator = () => actor.onboardOperator();
+  const prepare = async () => {
+    // A stopped preparation may have published an event before its block was
+    // checkpointed. Recover every real pending deposit from the isolated chain.
+    const priorDeposits: NonNullable<
+      PublishedDepositTraceCheckpoint["priorDeposits"]
+    > = (await lucid.utxosAt(contracts.deposit.spendingScriptAddress)).map(
+      (event) => {
+        if (event.datum == null)
+          throw new Error("Published deposit has no datum");
+        const datum = Data.from(event.datum, SDK.DepositDatum);
+        const units = Object.entries(event.assets).filter(
+          ([unit, amount]) =>
+            unit.startsWith(contracts.deposit.policyId) && amount === 1n,
+        );
+        if (units.length !== 1)
+          throw new Error("Published deposit authentication is ambiguous");
+        const depositAuthUnit = units[0]![0];
+        return {
+          event,
+          metadata: {
+            depositAuthUnit,
+            depositAssetName: depositAuthUnit.slice(56),
+            inclusionTime: Number(datum.inclusion_time),
           },
-          SDK.SchedulerSpendRedeemer,
-        ),
-      )
-      .readFrom([active, registeredRoot, reference("schedulerSpend")])
-      .pay.ToContract(
-        contracts.scheduler.spendingScriptAddress,
-        { kind: "inline", value: appointedDatum },
-        scheduler.assets,
-      )
-      .validFrom(emulator.now() - 60_000)
-      .validTo(Number(schedulerStart + 1n))
-      .complete({ localUPLCEval: true });
-    await awaitConfirmed(
-      await (await appointment.sign.withWallet().complete()).submit(),
+        };
+      },
     );
-    emulator.awaitSlot(
+    // Validate the ledger before publishing another transaction.
+    await depositEventsRetainedBlock({
+      operatorVkey,
+      startTime: genesis.data.endTime,
+      endTime: genesis.data.endTime + 1n,
+      blockSlot: BigInt(lucid.currentSlot()),
+      prevHeaderHash: genesis.data.headerHash,
+      prevUtxosRoot: genesis.data.utxoRoot,
+      priorLedger: [],
+      events: [],
+    });
+    await onboardOperator();
+    // The successor registers only after correction. A registration that
+    // matures while proof construction runs prevents the last-operator rewind.
+    // Genesis itself closes a real protocol interval. Faster onboarding must
+    // not let the first header end before that confirmed-state cutoff.
+    await chain.awaitSlot(
       Math.max(
         0,
-        Math.ceil((Number(schedulerStart) + 1 - emulator.now()) / 1000),
+        Math.ceil((Number(genesis.data.endTime) + 1 - chain.now()) / 1000),
       ),
     );
-  };
-  await onboardOperator();
-  const l2Address = credentialToAddress("Preprod", {
-    type: "Key",
-    hash: operatorVkey,
-  });
-  const deposit = await Effect.runPromise(
-    SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
-      l2Address,
-      l2Datum: null,
-      lovelace: 10_000_000n,
-      additionalAssets: {},
-      referenceScripts: { depositMinting: reference("depositMint") },
-    }),
-  );
-  onStage("deposit publication");
-  await awaitConfirmed(
-    await (await deposit.tx.sign.withWallet().complete()).submit(),
-  );
-  const event = await one(
-    contracts.deposit.spendingScriptAddress,
-    deposit.metadata.depositAuthUnit,
-  );
-  const emptyEnd = BigInt(emulator.now() + 39_999);
-  if (emptyEnd >= BigInt(deposit.metadata.inclusionTime))
-    throw new Error(
-      "Ordinary deposit must become eligible after the empty predecessor",
+    const l2Address = credentialToAddress("Preprod", {
+      type: "Key",
+      hash: operatorVkey,
+    });
+    const deposit = await Effect.runPromise(
+      SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
+        l2Address,
+        l2Datum: null,
+        lovelace: 10_000_000n,
+        additionalAssets: {},
+        referenceScripts: { depositMinting: reference("depositMint") },
+      }),
     );
-  const base = await transitionTraceDepositRetainedFixture({
-    operatorVkey,
-    now: Number(emptyEnd) - 60_000,
-    event,
-    depositPolicyId: contracts.deposit.policyId,
-    assetName: deposit.metadata.depositAssetName,
-    honest,
-  });
-  const empty = await seal(base.predecessor.payload, {
-    ...base.predecessor.header,
-    startTime: genesis.data.endTime,
-    endTime: emptyEnd,
-    blockSlot: BigInt(lucid.unixTimeToSlot(Number(emptyEnd))),
-  });
-  const depositEnd = BigInt(
-    Math.ceil(deposit.metadata.inclusionTime / 1000) * 1000 + 59_999,
-  );
-  const deposited = await seal(base.current.payload, {
-    ...base.current.header,
-    prevHeaderHash: empty.headerHash,
-    startTime: emptyEnd,
-    endTime: depositEnd,
-    blockSlot: BigInt(lucid.unixTimeToSlot(Number(depositEnd))),
-  });
+    onStage("deposit publication");
+    await awaitConfirmed(
+      await (await deposit.tx.sign.withWallet().complete()).submit(),
+    );
+    const event = await one(
+      contracts.deposit.spendingScriptAddress,
+      deposit.metadata.depositAuthUnit,
+    );
+    const emptyEnd = BigInt(chain.now() + 39_999);
+    if (emptyEnd >= BigInt(deposit.metadata.inclusionTime))
+      throw new Error(
+        "Ordinary deposit must become eligible after the empty predecessor",
+      );
+    for (const prior of priorDeposits) {
+      if (
+        !(
+          genesis.data.endTime < BigInt(prior.metadata.inclusionTime) &&
+          BigInt(prior.metadata.inclusionTime) <= emptyEnd
+        )
+      )
+        throw new Error(
+          "A retained deposit is outside the recovered predecessor interval",
+        );
+    }
+    const empty = await depositEventsRetainedBlock({
+      operatorVkey,
+      startTime: genesis.data.endTime,
+      endTime: emptyEnd,
+      blockSlot: BigInt(lucid.unixTimeToSlot(Number(emptyEnd))),
+      prevHeaderHash: genesis.data.headerHash,
+      prevUtxosRoot: genesis.data.utxoRoot,
+      priorLedger: [],
+      events: priorDeposits.map(({ event, metadata }) => ({
+        event,
+        depositPolicyId: contracts.deposit.policyId,
+        assetName: metadata.depositAssetName,
+        honest: true,
+      })),
+    });
+    const depositEnd = BigInt(
+      Math.ceil(deposit.metadata.inclusionTime / 1000) * 1000 + 59_999,
+    );
+    const deposited = await depositEventsRetainedBlock({
+      operatorVkey,
+      prevHeaderHash: empty.headerHash,
+      prevUtxosRoot: empty.header.utxosRoot,
+      priorLedger: empty.payload.block_body.utxos,
+      startTime: emptyEnd,
+      endTime: depositEnd,
+      blockSlot: BigInt(lucid.unixTimeToSlot(Number(depositEnd))),
+      events: [
+        {
+          event,
+          depositPolicyId: contracts.deposit.policyId,
+          assetName: deposit.metadata.depositAssetName,
+          honest,
+        },
+      ],
+    });
+    return {
+      predecessor: empty,
+      current: deposited,
+      depositEvent: event,
+      depositMetadata: deposit.metadata,
+      commits: [],
+      attestationsComplete: false,
+      priorDeposits,
+    };
+  };
+  const prepared =
+    resume === undefined
+      ? await prepare()
+      : resume.commits.length === 0 &&
+          (resume.predecessor.header.endTime <= BigInt(chain.now()) ||
+            resume.predecessor.header.startTime >=
+              resume.predecessor.header.endTime)
+        ? await prepare()
+        : resume;
+  const {
+    predecessor: empty,
+    current: deposited,
+    depositEvent: event,
+    depositMetadata,
+  } = prepared;
+  // A stopped run may have registered the successor before its correction
+  // completed. Once that registration matures it blocks the last-operator
+  // rewind, so activate it now (permissionless; the faulty operator's wallet
+  // pays the fee) and let removal appoint the activated successor instead.
+  // The prover wallet is never touched: its outputs are leased by the
+  // watcher's funding reservation for the whole correction.
+  const activateDanglingSuccessorRegistration = async () => {
+    const successorVkey = paymentCredentialOf(
+      await publisher.wallet().address(),
+    ).hash;
+    const activeUnit = toUnit(
+      contracts.activeOperators.policyId,
+      SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + successorVkey,
+    );
+    if (
+      (
+        await lucid.utxosAtWithUnit(
+          contracts.activeOperators.spendingScriptAddress,
+          activeUnit,
+        )
+      ).length !== 0
+    )
+      return;
+    const registrations = await Promise.all(
+      (
+        await lucid.utxosAt(contracts.registeredOperators.spendingScriptAddress)
+      ).map((utxo) =>
+        Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
+      ),
+    );
+    const matching = registrations.flatMap((node) =>
+      node.key !== "Empty" &&
+      Data.castFrom(node.data, SDK.RegisteredOperatorDatum).operator ===
+        successorVkey
+        ? [node.key.Key.key]
+        : [],
+    );
+    if (matching.length === 0) return;
+    if (matching.length !== 1)
+      throw new Error("The journey successor has ambiguous registrations");
+    onStage("dangling successor activation");
+    const activationTime = Number(BigInt(`0x${matching[0]!}`));
+    await chain.awaitSlot(
+      Math.max(0, Math.ceil((activationTime + 1 - chain.now()) / 1000)),
+    );
+    lucid.overrideUTxOs(await lucid.utxosAt(address));
+    await Effect.runPromise(
+      activateRegisteredOperatorProgram(
+        lucid,
+        contracts,
+        SDK.getProtocolParameters("Preprod").required_bond,
+        successorVkey,
+        publisher,
+        await publisher.wallet().address(),
+      ),
+    );
+    if (
+      (
+        await lucid.utxosAtWithUnit(
+          contracts.activeOperators.spendingScriptAddress,
+          activeUnit,
+        )
+      ).length !== 1
+    )
+      throw new Error("Successor activation did not produce its active node");
+    lucid.overrideUTxOs(await lucid.utxosAt(address));
+  };
+  await activateDanglingSuccessorRegistration();
   let anchor = root;
   let head: UTxO | undefined;
   let headUnit: string | undefined;
-  const commits: string[] = [];
+  const commits: string[] = [...prepared.commits];
+  const checkpoint: PublishedDepositTraceCheckpoint = {
+    predecessor: empty,
+    current: deposited,
+    depositEvent: event,
+    depositMetadata,
+    commits,
+    attestationsComplete: prepared.attestationsComplete,
+    priorDeposits: prepared.priorDeposits,
+  };
+  await onCheckpoint(checkpoint);
   const commit = async (block: Pick<typeof empty, "header" | "headerHash">) => {
-    onStage(`header commit ${commits.length + 1}`);
-    const confirmed = await one(
-      contracts.stateQueue.spendingScriptAddress,
-      rootUnit,
-    );
-    const activeInput = await one(
-      contracts.activeOperators.spendingScriptAddress,
-      activeUnit,
-    );
-    const hub = await one(
-      contracts.hubOracle.spendingScriptAddress,
-      toUnit(contracts.hubOracle.policyId, SDK.HUB_ORACLE_ASSET_NAME),
-    );
-    const lock = await one(
-      contracts.correctionLock.spendingScriptAddress,
-      toUnit(contracts.hubOracle.policyId, SDK.CORRECTION_LOCK_ASSET_NAME),
-    );
-    if (
-      lock.datum == null ||
-      Data.from(lock.datum, SDK.CorrectionLockDatum) !== "Idle"
-    )
-      throw new Error("Cannot commit while correction lock is held");
-    const continuedDatum = SDK.encodeLinkedListNodeView({
-      key: { Key: { key: operatorVkey } },
-      next: "Empty",
-      data: Data.castTo(
-        {
-          bond_unlock_time:
-            block.header.endTime +
-            BigInt(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs),
-          inactivity_strikes: 0n,
-        },
-        SDK.ActiveOperatorDatum,
-      ),
-    });
-    const builder = await Effect.runPromise(
-      SDK.incompleteEmulatorCommitBlockHeaderTxProgram(
-        lucid,
-        {
-          stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-          stateQueuePolicyId: contracts.stateQueue.policyId,
-        },
-        {
-          anchorUTxO: await Effect.runPromise(
-            SDK.utxoToStateQueueUTxO(anchor, contracts.stateQueue.policyId),
-          ),
-          newHeader: block.header,
-          // Match the node's commit reserve: attaching availability status
-          // enlarges this datum while the availability policy preserves value.
-          headerNodeLovelace: 5_000_000n,
-          additionalInputs: [await plain()],
-          validFrom: BigInt(emulator.now() - 60_000),
-          validTo: block.header.endTime + 1n,
-          schedulerRefInput: await one(
-            contracts.scheduler.spendingScriptAddress,
-            schedulerUnit,
-          ),
-          correctionLockRefInput: {
-            utxo: lock,
-            datum: "Idle",
-            assetName: SDK.CORRECTION_LOCK_ASSET_NAME,
-          },
-          ...(anchor.txHash === confirmed.txHash &&
-          anchor.outputIndex === confirmed.outputIndex
-            ? {}
-            : {
-                confirmedStateRefInput: confirmed,
-                ...(head === undefined ||
-                (head.txHash === anchor.txHash &&
-                  head.outputIndex === anchor.outputIndex)
-                  ? {}
-                  : { headStateQueueNodeRefInput: head }),
-              }),
-          additionalRefInputs: [
-            hub,
-            reference("stateQueueSpend"),
-            reference("stateQueueMint"),
-            reference("activeOperatorsSpend"),
-          ],
-          activeOperatorInput: activeInput,
-          activeOperatorSpendRedeemer: (ctx) =>
-            Data.to(
-              {
-                UpdateBondHoldNewState: {
-                  active_operator: operatorVkey,
-                  active_node_input_index: SDK.requireInputIndex(
-                    ctx,
-                    activeInput,
-                    "active node",
-                  ),
-                  active_node_output_index: SDK.requireUniqueOutputIndex(
-                    ctx.outputs,
-                    (output) =>
-                      output.address ===
-                        contracts.activeOperators.spendingScriptAddress &&
-                      output.assets[activeUnit] === 1n,
-                    "continued active node",
-                  ),
-                  hub_oracle_ref_input_index: SDK.requireReferenceInputIndex(
-                    ctx,
-                    hub,
-                    "hub reference",
-                  ),
-                  state_queue_redeemer_index: SDK.requireMintRedeemerIndex(
-                    ctx,
-                    contracts.stateQueue.policyId,
-                    "state queue mint",
-                  ),
-                },
-              },
-              SDK.ActiveOperatorSpendRedeemer,
-            ),
-          activeOperatorSpendingScript:
-            contracts.activeOperators.spendingScript,
-          continuedActiveOperatorOutput: {
-            address: contracts.activeOperators.spendingScriptAddress,
-            datum: continuedDatum,
-            assets: activeInput.assets,
-          },
-          stateQueueSpendingScript: contracts.stateQueue.spendingScript,
-          stateQueueMintingScript: contracts.stateQueue.mintingScript,
-          yieldWitness: {
-            referenceInput: reference("stateQueueCommitWithdraw"),
-            script: contracts.stateQueue.yields.commit.withdrawalScript,
-          },
-        },
-      ),
-    );
-    const signed = await (await builder.complete({ localUPLCEval: true })).sign
-      .withWallet()
-      .complete();
-    const txHash = await signed.submit();
-    await awaitConfirmed(txHash);
+    const txHash = await actor.commit(block, anchor, head);
     commits.push(txHash);
     anchor = await one(
       contracts.stateQueue.spendingScriptAddress,
@@ -418,175 +355,49 @@ export const stagePublishedDepositTrace = async (
       SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.headerHash,
     );
     head = await one(contracts.stateQueue.spendingScriptAddress, headUnit);
-    active = await one(
-      contracts.activeOperators.spendingScriptAddress,
-      activeUnit,
-    );
   };
-  const attest = async (block: Awaited<ReturnType<typeof seal>>) => {
-    const submit = async (builder: TxBuilder) => {
-      const signed = await (
-        await builder.complete({ localUPLCEval: true })
-      ).sign
-        .withWallet()
-        .complete();
-      const txHash = await signed.submit();
-      await awaitConfirmed(txHash);
-      return txHash;
-    };
-    const stateQueueUnit = toUnit(
-      contracts.stateQueue.policyId,
-      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.headerHash,
-    );
-    const freshTarget =
-      async (): Promise<SDK.DaAttestationStateQueueTarget> => {
-        const stateQueueUtxo = await Effect.runPromise(
-          SDK.utxoToStateQueueUTxO(
-            await one(
-              contracts.stateQueue.spendingScriptAddress,
-              stateQueueUnit,
-            ),
-            contracts.stateQueue.policyId,
-          ),
-        );
-        const stateQueueNode = await Effect.runPromise(
-          SDK.getStateQueueNodeFromStateQueueDatum(stateQueueUtxo.datum),
-        );
-        return { stateQueueUtxo, stateQueueNode, headerHash: block.headerHash };
-      };
-    const daParamsUtxo = await one(
-      contracts.daParamsGovernor.spendingScriptAddress,
-      SDK.daParamsUnit(contracts.daParamsGovernor),
-    );
-    const daParamsDatum = Data.from(daParamsUtxo.datum!, SDK.DaParamsDatum);
-    const availabilityParameters = availabilityParametersFromManifest(
-      deployment.manifest.availabilityChallenge,
-    );
-    const availabilityCommitment = SDK.buildDaAvailabilityCommitment({
-      deploymentIdentity: contracts.hubOracle.policyId,
-      headerHash: block.headerHash,
-      payload: block.payloadEnvelopeCbor,
-      bondOwner: paymentCredentialOf(address).hash,
-      responseGeometry: availabilityParameters.response_geometry,
-    });
-    const referenceScripts: SDK.DaAttestationReferenceScripts = {
-      daAttestationMinting: reference("daAttestationMint"),
-      daAttestationSpending: reference("daAttestationSpend"),
-      stateQueueMinting: reference("stateQueueMint"),
-      stateQueueSpending: reference("stateQueueSpend"),
-      availabilityChallengeMinting: reference("availabilityChallengeMint"),
-      availabilityChallengeBondWithdrawal: reference(
-        "availabilityChallengeBondWithdraw",
-      ),
-    };
-    onStage(`DA attestation init ${block.headerHash}`);
-    await submit(
-      await Effect.runPromise(
-        SDK.incompleteInitDaAttestationTxProgram(lucid, contracts, {
-          daParamsUtxo,
-          daParamsDatum,
-          target: await freshTarget(),
-          referenceScripts,
-          attestationOutputLovelace: availabilityParameters.da_bond_lovelace,
-          rescueBeneficiary: await Effect.runPromise(
-            SDK.addressDataFromBech32(address),
-          ),
-          availabilityCommitment,
-        }),
-      ),
-    );
-    const fetchAttestation = async (): Promise<SDK.DaAttestationUtxo> => {
-      const utxo = await one(
-        contracts.daAttestation.spendingScriptAddress,
-        SDK.daAttestationUnit(contracts.daAttestation, block.headerHash),
+  const attest = (block: PublishedWatcherBlock) => actor.attest(block);
+  if (!checkpoint.attestationsComplete) {
+    if (commits.length === 0) {
+      await commit(empty);
+      await onCheckpoint(checkpoint);
+    } else if (commits.length === 1) {
+      headUnit = toUnit(
+        contracts.stateQueue.policyId,
+        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + empty.headerHash,
       );
-      return { utxo, datum: Data.from(utxo.datum!, SDK.DaAttestationDatum) };
-    };
-    const message = SDK.daAvailabilityAttestationMessage(
-      availabilityCommitment,
-    );
-    const witnesses = daLocalSigners(daSignerConfig).map((signer) => {
-      const signerIndex = committeeSignerIndex(
-        daParamsDatum.committee,
-        signer.verificationKeyHex,
-      );
-      if (signerIndex === null)
-        throw new Error(
-          "Fixture signer is absent from the deployed DA committee",
-        );
-      return { signerIndex, signatureHex: signer.sign(message) };
-    });
-    onStage(`DA attestation signatures ${block.headerHash}`);
-    await submit(
-      await Effect.runPromise(
-        SDK.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
-          daParamsUtxo,
-          daParamsDatum,
-          attestation: await fetchAttestation(),
-          witnesses,
-          referenceScripts,
-        }),
-      ),
-    );
-    const target = await freshTarget();
-    const validFrom = BigInt(lucid.slotToUnixTime(lucid.currentSlot()));
-    const deadline = block.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
-    const validTo =
-      validFrom + 120_000n < deadline ? validFrom + 120_000n : deadline;
-    onStage(`DA attestation apply ${block.headerHash}`);
-    const applyTxHash = await submit(
-      await Effect.runPromise(
-        SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
-          lucid,
-          contracts,
-          {
-            hubOracleRefInput: (
-              await Effect.runPromise(
-                SDK.fetchHubOracleUTxOProgram(lucid, {
-                  hubOracleAddress: contracts.hubOracle.spendingScriptAddress,
-                  hubOraclePolicyId: contracts.hubOracle.policyId,
-                }),
-              )
-            ).utxo,
-            daParamsUtxo,
-            daParamsDatum,
-            target,
-            attestation: await fetchAttestation(),
-            referenceScripts,
-            validityRange: { validFrom, validTo },
-          },
+      anchor = await one(contracts.stateQueue.spendingScriptAddress, headUnit);
+      head = anchor;
+    }
+    if (commits.length === 1) {
+      await chain.awaitSlot(
+        Math.max(
+          0,
+          Math.ceil((depositMetadata.inclusionTime - chain.now()) / 1000),
         ),
-      ),
-    );
-    if (
-      (await freshTarget()).stateQueueNode.da_attestation ===
-      SDK.NO_DA_ATTESTATION
-    )
-      throw new Error(
-        "Accepted DA attestation did not attach to the state queue",
       );
-    return applyTxHash;
-  };
-  await commit(empty);
-  emulator.awaitSlot(
-    Math.max(
-      0,
-      Math.ceil((deposit.metadata.inclusionTime - emulator.now()) / 1000),
-    ),
-  );
-  await commit(deposited);
-  await attest(empty);
-  await attest(deposited);
+      await commit(deposited);
+      await onCheckpoint(checkpoint);
+    }
+    if (commits.length !== 2)
+      throw new Error("Journey requires exactly two staged commitments");
+    await attest(empty);
+    await attest(deposited);
+    checkpoint.attestationsComplete = true;
+    await onCheckpoint(checkpoint);
+  }
   let honestSuccessor:
-    | Promise<Awaited<ReturnType<typeof seal>> & { commitTxHash: string }>
+    | Promise<PublishedWatcherBlock & { commitTxHash: string }>
     | undefined;
   /** Publish new work only after the watcher's actual correction has completed. */
   const commitHonestSuccessor = ({
     beforeCommit = () => {},
+    resume: successorResume,
+    onCheckpoint: onSuccessorCheckpoint = async () => {},
   }: Readonly<{
-    beforeCommit?: (
-      block: Awaited<ReturnType<typeof seal>>,
-    ) => void | Promise<void>;
+    beforeCommit?: (block: PublishedWatcherBlock) => void | Promise<void>;
+    resume?: PublishedSuccessorCheckpoint;
+    onCheckpoint?: (checkpoint: PublishedSuccessorCheckpoint) => Promise<void>;
   }> = {}) =>
     (honestSuccessor ??= (async () => {
       const fraudulentUnit = toUnit(
@@ -604,6 +415,31 @@ export const stagePublishedDepositTrace = async (
         throw new Error(
           "Honest successor requires the fraudulent commitment to be removed first",
         );
+      const headerOutput = async (hash: string) => {
+        const outputs = await lucid.utxosAtWithUnit(
+          contracts.stateQueue.spendingScriptAddress,
+          toUnit(
+            contracts.stateQueue.policyId,
+            SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
+          ),
+        );
+        if (outputs.length > 1)
+          throw new Error(`Ambiguous successor header ${hash}`);
+        return outputs[0];
+      };
+      const resumedBlock =
+        successorResume === undefined
+          ? undefined
+          : {
+              ...successorResume.block,
+              payloadEnvelopeCbor: Buffer.from(
+                successorResume.block.payloadEnvelopeCbor,
+              ),
+            };
+      let landed =
+        resumedBlock === undefined
+          ? undefined
+          : await headerOutput(resumedBlock.headerHash);
       headUnit = toUnit(
         contracts.stateQueue.policyId,
         SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + empty.headerHash,
@@ -616,10 +452,13 @@ export const stagePublishedDepositTrace = async (
         SDK.getHeaderFromStateQueueDatum(predecessorDatum),
       );
       if (
-        predecessorDatum.next !== "Empty" ||
         SDK.encodeHeaderCbor(predecessor).toString("hex") !==
-          SDK.encodeHeaderCbor(empty.header).toString("hex")
+        SDK.encodeHeaderCbor(empty.header).toString("hex")
       )
+        throw new Error(
+          "Corrected state queue does not contain the retained honest predecessor",
+        );
+      if (landed === undefined && predecessorDatum.next !== "Empty")
         throw new Error(
           "Corrected state queue does not end at the retained honest predecessor",
         );
@@ -629,17 +468,58 @@ export const stagePublishedDepositTrace = async (
       operatorVkey = paymentCredentialOf(address).hash;
       if (operatorVkey === previousOperator)
         throw new Error("Continued production requires a second operator");
-      activeUnit = toUnit(
-        contracts.activeOperators.policyId,
-        SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorVkey,
-      );
+      actor = await createPublishedWatcherBlockActor({
+        deployment,
+        lucid,
+        daSignerConfig,
+        onStage,
+      });
       await onboardOperator();
+      // A signed header that has not landed is resubmitted while its window
+      // is open; an expired one is replaced by a fresh block since nothing
+      // it referenced was spent.
+      if (
+        landed === undefined &&
+        resumedBlock !== undefined &&
+        successorResume?.signedCommit !== undefined &&
+        successorResume.commitTxHash === undefined
+      ) {
+        const { signedCbor, txHash } = successorResume.signedCommit;
+        if (
+          CML.hash_transaction(
+            CML.Transaction.from_cbor_hex(signedCbor).body(),
+          ).to_hex() !== txHash
+        )
+          throw new Error("Recorded successor header bytes changed their hash");
+        const expiry = Number(resumedBlock.header.endTime) + 1;
+        if (chain.now() + 15_000 < expiry) {
+          onStage(`header commit resubmission ${resumedBlock.headerHash}`);
+          await lucid
+            .config()
+            .provider!.submitTx(signedCbor)
+            .catch(() => undefined);
+          while (chain.now() < expiry + 30_000) {
+            landed = await headerOutput(resumedBlock.headerHash);
+            if (landed !== undefined) break;
+            await chain.awaitSlot(1);
+          }
+        }
+      }
+      if (landed !== undefined && resumedBlock !== undefined) {
+        const commitTxHash = successorResume?.commitTxHash ?? landed.txHash;
+        commits.push(commitTxHash);
+        anchor = landed;
+        head = landed;
+        await onSuccessorCheckpoint({ block: resumedBlock, commitTxHash });
+        await attest(resumedBlock);
+        return { ...resumedBlock, commitTxHash };
+      }
       const liveEvent = await one(
         contracts.deposit.spendingScriptAddress,
-        deposit.metadata.depositAuthUnit,
+        depositMetadata.depositAuthUnit,
       );
       const actualDeposit = Data.from(liveEvent.datum!, SDK.DepositDatum);
-      const endTime = BigInt(emulator.now() + 39_999);
+      const endTime = BigInt(chain.now() + SUCCESSOR_HEADER_INTERVAL_MS);
       if (
         !(
           predecessor.endTime < actualDeposit.inclusion_time &&
@@ -649,36 +529,59 @@ export const stagePublishedDepositTrace = async (
         throw new Error(
           "The unspent ordinary deposit is not due in the corrected successor interval",
         );
-      const honestFixture = await transitionTraceDepositRetainedFixture({
+      const built = await depositEventsRetainedBlock({
         operatorVkey,
-        now: Number(predecessor.endTime) - 60_000,
-        event: liveEvent,
-        depositPolicyId: contracts.deposit.policyId,
-        assetName: deposit.metadata.depositAssetName,
-        honest: true,
-      });
-      const block = await seal(honestFixture.current.payload, {
-        ...honestFixture.current.header,
         prevHeaderHash: empty.headerHash,
         prevUtxosRoot: predecessor.utxosRoot,
+        priorLedger: empty.payload.block_body.utxos,
         startTime: predecessor.endTime,
         endTime,
         blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
+        events: [
+          {
+            event: liveEvent,
+            depositPolicyId: contracts.deposit.policyId,
+            assetName: depositMetadata.depositAssetName,
+            honest: true,
+          },
+        ],
       });
+      const block: PublishedWatcherBlock = {
+        header: built.header,
+        headerHash: built.headerHash,
+        payloadEnvelopeCbor: Buffer.from(built.payloadEnvelopeCbor),
+      };
+      const successorCheckpoint: PublishedSuccessorCheckpoint = { block };
+      await onSuccessorCheckpoint(successorCheckpoint);
       // Removal spent the predecessor to update its link and replaced the lock.
       // Refetch both through the ordinary commit path before constructing inputs.
       anchor = await one(contracts.stateQueue.spendingScriptAddress, headUnit);
       head = anchor;
       await beforeCommit(block);
-      await commit(block);
+      const txHash = await actor.commit(block, anchor, head, async (signed) => {
+        successorCheckpoint.signedCommit = signed;
+        await onSuccessorCheckpoint(successorCheckpoint);
+      });
+      commits.push(txHash);
+      anchor = await one(
+        contracts.stateQueue.spendingScriptAddress,
+        toUnit(
+          contracts.stateQueue.policyId,
+          SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.headerHash,
+        ),
+      );
+      head = anchor;
+      successorCheckpoint.commitTxHash = txHash;
+      await onSuccessorCheckpoint(successorCheckpoint);
       await attest(block);
-      return { ...block, commitTxHash: commits.at(-1)! };
+      return { ...block, commitTxHash: txHash };
     })());
   return {
     predecessor: empty,
     current: deposited,
     commits,
     depositEvent: event,
+    checkpoint,
     commitHonestSuccessor,
   };
 };

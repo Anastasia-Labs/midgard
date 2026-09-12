@@ -29,6 +29,8 @@ const DIGEST = /^[0-9a-f]{64}$/u;
 const HEADER_HASH = /^[0-9a-f]{56}$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,511}$/u;
+// Production detection identities include canonical transaction output references.
+const DETECTION_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:._/#-]{0,511}$/u;
 const RECORD_FILE = /^([0-9]{20})\.json$/u;
 const MAX_RECORD_BYTES = 64 * 1024;
 const MAX_RECORDS = 65_536;
@@ -265,7 +267,7 @@ const parseDecision = (
     );
     const detectionId = exactString(
       candidate.detectionId,
-      IDENTIFIER,
+      DETECTION_IDENTIFIER,
       "persisted production decision detection id",
     );
     const position = exactString(

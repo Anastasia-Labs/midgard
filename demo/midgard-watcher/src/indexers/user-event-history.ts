@@ -24,6 +24,7 @@ import {
   acceptWatcherLocalUserEventPublication,
   acceptWatcherLocalUserEventReadmission,
   admitWatcherLocalUserEventAuthority,
+  advanceWatcherLocalUserEventCoverage,
   assertWatcherLocalUserEventHeadCurrent,
   assertWatcherLocalUserEventPointCovered,
   closeWatcherLocalUserEventHistory,
@@ -33,11 +34,14 @@ import {
   prepareWatcherLocalUserEventReadmission,
   prepareWatcherLocalUserEventTransition,
   readWatcherLocalUserEventAnchor,
+  readWatcherLocalUserEventCoverage,
   readWatcherLocalUserEventHistory,
   readWatcherLocalUserEventReadmission,
   readWatcherLocalUserEventTransition,
+  restoreWatcherLocalUserEventCoverage,
   restoreWatcherLocalUserEventHistory,
   resumeWatcherLocalUserEventHistory,
+  rewindWatcherLocalUserEventCoverage,
   suspendWatcherLocalUserEventHistory,
   type WatcherLocalUserEventAnchor,
   type WatcherLocalUserEventAuthority,
@@ -366,13 +370,48 @@ const makeLocalUserEventPublisher = (
       >[0]["point"],
     ) => {
       assertOpen();
-      await assertWatcherLocalUserEventPointCovered({
+      const coverage = await assertWatcherLocalUserEventPointCovered({
         history,
         runtime,
         archive,
         point,
       });
       assertOpen();
+      return coverage;
+    },
+    /** The moving coverage checkpoint over the quiet stretch above the head. */
+    readCoverage: () => readWatcherLocalUserEventCoverage(history),
+    /** Admits one quiet native block above the covered head; no request. */
+    advanceCoverage: (
+      header: Parameters<
+        typeof advanceWatcherLocalUserEventCoverage
+      >[0]["header"],
+    ) => {
+      assertOpen();
+      if (inFlight || pending !== null || pendingAnchor !== null)
+        throw new Error("Local user-event publication is already in flight");
+      return advanceWatcherLocalUserEventCoverage({ history, header });
+    },
+    /** Moves coverage back to a point at or above the head after a native
+     * rollback whose fork lies inside the quiet stretch. */
+    rewindCoverage: (
+      point: Parameters<typeof rewindWatcherLocalUserEventCoverage>[0]["point"],
+    ) => {
+      assertOpen();
+      if (inFlight || pending !== null || pendingAnchor !== null)
+        throw new Error("Local user-event publication is already in flight");
+      return rewindWatcherLocalUserEventCoverage({ history, point });
+    },
+    /** Restores the saved coverage record over the restored head. */
+    restoreCoverage: (
+      saved: Parameters<
+        typeof restoreWatcherLocalUserEventCoverage
+      >[0]["saved"],
+    ) => {
+      assertOpen();
+      if (inFlight || pending !== null || pendingAnchor !== null)
+        throw new Error("Local user-event publication is already in flight");
+      return restoreWatcherLocalUserEventCoverage({ history, saved });
     },
     suspend: () => {
       if (closed) throw new Error("Local user-event publisher is closed");

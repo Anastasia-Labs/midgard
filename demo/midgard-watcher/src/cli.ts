@@ -20,6 +20,24 @@ type ParsedArguments =
   | Readonly<{ kind: "help" }>
   | Readonly<{ kind: "invalid"; reason: string }>;
 
+/** Keep nested startup/cleanup failures visible without unbounded cause traversal. */
+export const watcherFailureCauses = (error: unknown) => {
+  const pending = [error];
+  const seen = new Set<Error>();
+  const causes: { error: string; errorStack: string | undefined }[] = [];
+  while (pending.length > 0 && causes.length < 8) {
+    const current = pending.shift();
+    if (!(current instanceof Error) || seen.has(current)) continue;
+    seen.add(current);
+    if (current !== error)
+      causes.push({ error: current.message, errorStack: current.stack });
+    if (current instanceof AggregateError)
+      pending.push(...current.errors.slice(0, 8));
+    if (current.cause !== undefined) pending.push(current.cause);
+  }
+  return causes;
+};
+
 export const parseWatcherArguments = (
   arguments_: readonly string[],
 ): ParsedArguments => {
@@ -80,6 +98,8 @@ export const main = async (arguments_: readonly string[]): Promise<number> => {
         productionReady: false,
         error:
           error instanceof Error ? error.message : "unknown production failure",
+        errorStack: error instanceof Error ? error.stack : undefined,
+        errorCauses: watcherFailureCauses(error),
       })}\n`,
     );
     return WATCHER_COMMAND_FAILURE_EXIT_CODE;

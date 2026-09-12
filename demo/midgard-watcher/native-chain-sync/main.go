@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -55,10 +56,11 @@ type wireBlockPoint struct {
 }
 
 type wireOperation struct {
-	Kind               string          `json:"kind"`
-	PredecessorBlockNo string          `json:"predecessorBlockNo,omitempty"`
-	Target             *wireBlockPoint `json:"target,omitempty"`
-	TimeoutMs          uint64          `json:"timeoutMs,omitempty"`
+	Credential         *wireStakeCredential `json:"credential,omitempty"`
+	Kind               string               `json:"kind"`
+	PredecessorBlockNo string               `json:"predecessorBlockNo,omitempty"`
+	Target             *wireBlockPoint      `json:"target,omitempty"`
+	TimeoutMs          uint64               `json:"timeoutMs,omitempty"`
 }
 
 // Fields are declared in canonical lexicographic JSON-key order.
@@ -172,7 +174,13 @@ func validateStartup(config startupConfig) error {
 		return errors.New("startup authority identity is invalid")
 	}
 	expectedMagic, ok := networkMagic[config.Network]
-	if !ok || expectedMagic != config.NetworkMagic {
+	if config.Network == "Custom" {
+		for _, publicMagic := range networkMagic {
+			if config.NetworkMagic == publicMagic {
+				return errors.New("custom network uses public network magic")
+			}
+		}
+	} else if !ok || expectedMagic != config.NetworkMagic {
 		return errors.New("startup network magic differs from named network")
 	}
 	if !filepath.IsAbs(config.SocketPath) || filepath.Clean(config.SocketPath) != config.SocketPath || config.SocketPath == "/" {
@@ -204,6 +212,17 @@ func parseUint64(value string) (uint64, error) {
 
 func validateOperation(config startupConfig) error {
 	op := config.Operation
+	if op.Kind == "reward_account" {
+		if op.Credential == nil || !regexp.MustCompile(`^[0-9a-f]{56}$`).MatchString(op.Credential.Hash) ||
+			(op.Credential.Type != "Key" && op.Credential.Type != "Script") ||
+			op.TimeoutMs < 100 || op.TimeoutMs > 120000 || op.Target != nil || op.PredecessorBlockNo != "" || config.Intersection.Kind != "origin" {
+			return errors.New("reward-account operation is invalid")
+		}
+		return nil
+	}
+	if op.Credential != nil {
+		return errors.New("chain-sync operation carries a reward credential")
+	}
 	if op.Kind == "stream" {
 		if op.Target != nil || op.PredecessorBlockNo != "" || op.TimeoutMs != 0 {
 			return errors.New("stream operation carries exact-query fields")
@@ -301,6 +320,47 @@ func tip(tip chainsync.Tip) wireTip {
 type queryLimitedConn struct {
 	net.Conn
 	remaining int
+	deadline  time.Time
+}
+
+// The muxer refreshes its segment deadline before every read. It must never
+// extend the exact query's absolute operation deadline.
+func (c *queryLimitedConn) SetReadDeadline(deadline time.Time) error {
+	if !c.deadline.IsZero() && (deadline.IsZero() || deadline.After(c.deadline)) {
+		deadline = c.deadline
+	}
+	return c.Conn.SetReadDeadline(deadline)
+}
+
+// The pinned muxer arms a segment deadline before reading its header. NtC may
+// legitimately wait indefinitely between segments (AwaitReply or owner
+// backpressure). Start that deadline at the first byte instead, retaining the
+// bounded read of the remaining header and payload. Only the muxer's single
+// reader calls Read and SetReadDeadline; Close still interrupts an idle read.
+type streamSegmentConn struct {
+	net.Conn
+	segmentTimeout  time.Duration
+	awaitingSegment bool
+}
+
+func (c *streamSegmentConn) SetReadDeadline(deadline time.Time) error {
+	c.awaitingSegment = !deadline.IsZero()
+	c.segmentTimeout = time.Until(deadline)
+	return c.Conn.SetReadDeadline(time.Time{})
+}
+
+func (c *streamSegmentConn) Read(buffer []byte) (int, error) {
+	if !c.awaitingSegment || len(buffer) == 0 {
+		return c.Conn.Read(buffer)
+	}
+	n, err := c.Conn.Read(buffer[:1])
+	if n > 0 {
+		c.awaitingSegment = false
+		if deadlineErr := c.Conn.SetReadDeadline(time.Now().Add(c.segmentTimeout)); deadlineErr != nil && err == nil {
+			err = deadlineErr
+		}
+	}
+	return n, err
 }
 
 func (c *queryLimitedConn) Read(buffer []byte) (int, error) {
@@ -372,12 +432,16 @@ func makeChainSyncConfig(config startupConfig, writer *canonicalWriter, readyGat
 			if err := query.checkForward(block); err != nil {
 				return err
 			}
+			prevHash := block.PrevHash().String()
+			if block.BlockNumber() == 0 && prevHash == fmt.Sprintf("%064d", 0) {
+				prevHash = ""
+			}
 			if err := writer.write(rollForwardEvent{
 				BlockHash:     block.Hash().String(),
 				BlockNo:       fmt.Sprintf("%d", block.BlockNumber()),
 				BlockType:     fmt.Sprintf("%d", blockType),
 				Kind:          "roll_forward",
-				PrevHash:      block.PrevHash().String(),
+				PrevHash:      prevHash,
 				RawBlockCBOR:  hex.EncodeToString(raw),
 				SchemaVersion: schemaVersion,
 				Slot:          fmt.Sprintf("%d", block.SlotNumber()),
@@ -420,6 +484,13 @@ func makeChainSyncConfig(config startupConfig, writer *canonicalWriter, readyGat
 	return result
 }
 
+func writeChainSyncFailure(writer *canonicalWriter, diagnostics io.Writer, cause error) error {
+	// stderr precedes the unchanged terminal stdout schema so the owner can
+	// retain the concrete cause without admitting it as chain-sync data.
+	_, _ = fmt.Fprintf(diagnostics, "native chain-sync failed: %v\n", cause)
+	return writer.write(errorEvent{Code: "chain_sync_failed", Kind: "error", SchemaVersion: schemaVersion})
+}
+
 func main() {
 	writer := &canonicalWriter{encoder: json.NewEncoder(os.Stdout)}
 	config, startupCanonical, err := readStartup()
@@ -427,48 +498,51 @@ func main() {
 		_ = writer.write(errorEvent{Code: "invalid_startup", Kind: "error", SchemaVersion: schemaVersion})
 		os.Exit(64)
 	}
+	if config.Operation.Kind == "reward_account" {
+		if err := writeRewardAccount(config, startupCanonical, writer); err != nil {
+			_ = writer.write(errorEvent{Code: "reward_account_query_failed", Kind: "error", SchemaVersion: schemaVersion})
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(69)
+		}
+		return
+	}
 
 	errorChannel := make(chan error, 4)
 	readyGate := make(chan struct{})
 	chainSyncConfig := makeChainSyncConfig(config, writer, readyGate)
-	var queryConn net.Conn
+	dialTimeout := 10 * time.Second
+	var queryDeadline time.Time
 	if config.Operation.Kind == "exact_point" {
-		deadline := time.Now().Add(time.Duration(config.Operation.TimeoutMs) * time.Millisecond)
-		queryConn, err = net.DialTimeout("unix", config.SocketPath, min(10*time.Second, time.Until(deadline)))
-		if err != nil {
-			_ = writer.write(errorEvent{Code: "node_handshake_failed", Kind: "error", SchemaVersion: schemaVersion})
-			os.Exit(69)
-		}
-		defer queryConn.Close()
-		if err := queryConn.SetDeadline(deadline); err != nil {
+		queryDeadline = time.Now().Add(time.Duration(config.Operation.TimeoutMs) * time.Millisecond)
+		dialTimeout = min(dialTimeout, time.Until(queryDeadline))
+	}
+	socket, err := net.DialTimeout("unix", config.SocketPath, dialTimeout)
+	if err != nil {
+		_ = writer.write(errorEvent{Code: "node_handshake_failed", Kind: "error", SchemaVersion: schemaVersion})
+		os.Exit(69)
+	}
+	defer socket.Close()
+	var transport net.Conn = &streamSegmentConn{Conn: socket}
+	if config.Operation.Kind == "exact_point" {
+		if err := socket.SetDeadline(queryDeadline); err != nil {
 			_ = writer.write(errorEvent{Code: "node_deadline_failed", Kind: "error", SchemaVersion: schemaVersion})
 			os.Exit(69)
 		}
-		queryConn = &queryLimitedConn{Conn: queryConn, remaining: maxQueryIngressBytes}
+		transport = &queryLimitedConn{Conn: socket, remaining: maxQueryIngressBytes, deadline: queryDeadline}
 	}
-	options := []ouroboros.ConnectionOptionFunc{
-
+	connection, err := ouroboros.New(
+		ouroboros.WithConnection(transport),
 		ouroboros.WithNetworkMagic(config.NetworkMagic),
 		ouroboros.WithNodeToNode(false),
 		ouroboros.WithErrorChan(errorChannel),
 		ouroboros.WithLogger(slog.New(slog.NewJSONHandler(os.Stderr, nil))),
 		ouroboros.WithChainSyncConfig(chainSyncConfig),
-	}
-	if queryConn != nil {
-		options = append(options, ouroboros.WithConnection(queryConn))
-	}
-	connection, err := ouroboros.New(options...)
+	)
 	if err != nil {
 		_ = writer.write(errorEvent{Code: "connection_setup_failed", Kind: "error", SchemaVersion: schemaVersion})
 		os.Exit(70)
 	}
 	defer connection.Close()
-	if queryConn == nil {
-		if err := connection.DialTimeout("unix", config.SocketPath, 10*time.Second); err != nil {
-			_ = writer.write(errorEvent{Code: "node_handshake_failed", Kind: "error", SchemaVersion: schemaVersion})
-			os.Exit(69)
-		}
-	}
 	currentTip, err := connection.ChainSync().Client.GetCurrentTip()
 	if err != nil {
 		_ = writer.write(errorEvent{Code: "tip_query_failed", Kind: "error", SchemaVersion: schemaVersion})
@@ -506,8 +580,8 @@ func main() {
 	select {
 	case <-signals:
 		return
-	case <-errorChannel:
-		_ = writer.write(errorEvent{Code: "chain_sync_failed", Kind: "error", SchemaVersion: schemaVersion})
+	case err := <-errorChannel:
+		_ = writeChainSyncFailure(writer, os.Stderr, err)
 		os.Exit(70)
 	}
 }

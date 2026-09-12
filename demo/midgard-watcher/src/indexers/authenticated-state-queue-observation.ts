@@ -3,6 +3,7 @@ import {
   computeFraudProofRawL1PointId,
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
+  LocalKupmiosCheckpointChangedError,
   LocalKupmiosExactPointNotCanonicalError,
   type LocalKupmiosFraudProofRawSource,
   localKupmiosHttpOgmiosRawSourceDetails,
@@ -49,6 +50,22 @@ export const WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-production-state-queue-observation-v1" as const;
 
 const RELEASE_FINALITY_DEPTH = 30;
+
+/**
+ * A finalized block with no queue transition becomes a durable progress
+ * record once the native point is this far past the persisted cursor. Restore
+ * replays every live block after that cursor, so without progress records a
+ * quiet queue leaves the cursor arbitrarily far behind the tip and a restart
+ * after a long quiet period must replay all of it.
+ */
+export const WATCHER_STATE_QUEUE_PROGRESS_INTERVAL_BLOCKS = 240;
+
+export const stateQueueProgressRecordDue = (
+  previous: Readonly<{ nativePoint: Readonly<{ blockNo: string }> }>,
+  nativeBlock: Readonly<{ blockNo: string }>,
+): boolean =>
+  BigInt(nativeBlock.blockNo) - BigInt(previous.nativePoint.blockNo) >=
+  BigInt(WATCHER_STATE_QUEUE_PROGRESS_INTERVAL_BLOCKS);
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;
@@ -1531,11 +1548,28 @@ export const createWatcherStateQueueObservationSource = ({
         point,
       }),
   };
+  // All four entry points begin by pinning a new boundary and publish their
+  // observation only after acquisition succeeds. A moving provider head can
+  // therefore retry the whole read while retaining exclusive source ownership.
+  const capture = <T>(read: () => Promise<T>): Promise<T> =>
+    withLocalKupmiosSourceCapture(rawSource, async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          return await read();
+        } catch (error) {
+          if (
+            !(error instanceof LocalKupmiosCheckpointChangedError) ||
+            attempt >= 2
+          )
+            throw error;
+        }
+      }
+    });
   let latestFinalized: WatcherAuthenticatedStateQueueObservation | null = null;
   const source = Object.freeze({
     latestFinalizedObservation: () => latestFinalized,
     observe: ({ nativeBlock, localObservation, previous }) =>
-      withLocalKupmiosSourceCapture(rawSource, async () => {
+      capture(async () => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -1587,11 +1621,17 @@ export const createWatcherStateQueueObservationSource = ({
           rawTransactions,
         });
         latestFinalized = admitObservation(result);
-        if (result.checkpoints.length === 0) return previous;
-        return latestFinalized;
+        if (result.checkpoints.length > 0) return latestFinalized;
+        // A quiet queue still moves the durable cursor forward periodically,
+        // so a restart replays a bounded suffix rather than every block since
+        // the last queue transaction.
+        return previous !== null &&
+          stateQueueProgressRecordDue(previous, nativeBlock)
+          ? latestFinalized
+          : previous;
       }),
     bootstrap: () =>
-      withLocalKupmiosSourceCapture(rawSource, async () => {
+      capture(async () => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -1629,26 +1669,18 @@ export const createWatcherStateQueueObservationSource = ({
         });
       }),
     restore: ({ persistedObservations }) =>
-      withLocalKupmiosSourceCapture(rawSource, async () => {
+      capture(async () => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
-        const boundary = await readAdmittedLocalKupmiosBoundary({
-          source: rawSource,
-        });
-        const intersection = Object.freeze({
-          blockHash: boundary.kupoCheckpoint.blockHash,
-          blockNo: boundary.kupoCheckpoint.blockNo,
-          slot: boundary.kupoCheckpoint.slot,
-        });
-        const restored = await restoreLongestPersistedObservationChain({
+        // Recorded final history is fact. A rollback below any row is
+        // handled by the dedicated rollback path before restore runs again,
+        // so the store is verified structurally and never re-read from Kupo.
+        const restored = restoreTrustedPersistedObservationChain({
           persistedObservations,
-          intersection,
-          ogmiosTipBlockNo: boundary.ogmiosTip.blockNo,
           authority,
           sourceId: sourceDetails.sourceId,
           maximumObservations: sourceDetails.automaticRecoveryMaxDepth,
-          readers,
         });
         return Object.freeze({
           previous: admitObservation(restored.previous),
@@ -1658,7 +1690,7 @@ export const createWatcherStateQueueObservationSource = ({
         });
       }),
     resolveRetainedHeader: ({ headerHash }) =>
-      withLocalKupmiosSourceCapture(rawSource, async () => {
+      capture(async () => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -2089,6 +2121,7 @@ const pointAtOrBefore = (
 const authenticatePersistedBootstrapTopology = async ({
   persisted,
   throughPoint,
+  historyPoint,
   authority,
   readers,
 }: {
@@ -2099,9 +2132,24 @@ const authenticatePersistedBootstrapTopology = async ({
     slot: string;
     pointId: string;
   }>;
+  // Unit history is read through the pinned catch-up boundary, which the raw
+  // source admits regardless of how far the persisted base lies behind it,
+  // and is then filtered to the persisted point. A base deeper than the
+  // release recovery window therefore restores instead of failing closed.
+  historyPoint: Readonly<{
+    blockHash: string;
+    blockNo: string;
+    slot: string;
+    pointId: string;
+  }>;
   authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthority>;
   readers: PersistedRestoreReaders;
 }): Promise<void> => {
+  if (!pointAtOrBefore(throughPoint, historyPoint)) {
+    throw new Error(
+      "persisted bootstrap history point precedes the persisted point",
+    );
+  }
   const stateQueuePolicyId = authority.protocolScriptHashes.stateQueueMint;
   const stateQueueAddress = credentialToAddress(
     authority.network,
@@ -2155,12 +2203,17 @@ const authenticatePersistedBootstrapTopology = async ({
       string,
       string,
     ];
-    const history = await readUnitHistory(unit, throughPoint);
+    const history = await readUnitHistory(unit, historyPoint);
     const creation = history.transactions.find(
       ({ txHash }) => txHash === creationHash,
     );
     if (creation === undefined) {
       throw new Error("persisted bootstrap outref is absent from unit history");
+    }
+    if (!pointAtOrBefore(creation.inclusionPoint, persisted.nativePoint)) {
+      throw new Error(
+        "persisted bootstrap outref was created after its claimed point",
+      );
     }
     const creationTransaction = await readHistoryTransaction(
       creation.txHash,
@@ -2343,14 +2396,12 @@ const restorePersistedObservationChain = async ({
     throw new Error("state-queue restore observations cross the intersection");
   }
   const latestCached = chain[chain.length - 1]!;
-  const offlineBlockDistance =
-    BigInt(ogmiosTipBlockNo) - BigInt(latestCached.nativePoint.blockNo);
-  if (
-    offlineBlockDistance < 0n ||
-    offlineBlockDistance > BigInt(maximumObservations)
-  ) {
+  // A deep catch-up is slow, never unsafe: every persisted record is
+  // re-authenticated against raw L1 below and every later block is replayed
+  // live. Only a cursor ahead of the tip is refused.
+  if (BigInt(ogmiosTipBlockNo) < BigInt(latestCached.nativePoint.blockNo)) {
     throw new Error(
-      "state-queue restore catch-up block distance exceeds its release bound",
+      "state-queue restore cursor is ahead of the native chain tip",
     );
   }
   const intersectionPoint = Object.freeze({
@@ -2386,8 +2437,22 @@ const restorePersistedObservationChain = async ({
       persisted.stateQueuePolicyId !== stateQueuePolicyId ||
       persisted.hubOraclePolicyId !== hubOraclePolicyId ||
       persisted.sourceId !== sourceId ||
+      // A checkpoint-less record is either the window base (the original
+      // bootstrap, or a compacted window that now starts at a progress
+      // record; both are authenticated as topology below) or a progress
+      // record that carries its predecessor's finalized state unchanged.
       (persisted.checkpoints.length === 0 &&
-        (prior !== null || persisted.previousObservationDigest !== null)) ||
+        prior !== null &&
+        (persisted.correctionLockWitnesses.length !== 0 ||
+          !sameQueue(prior.finalizedQueue, persisted.finalizedQueue) ||
+          !watcherSameCanonicalJson(
+            prior.finalizedHeaders,
+            persisted.finalizedHeaders,
+          ) ||
+          !watcherSameCanonicalJson(
+            prior.finalizedCorrectionLock,
+            persisted.finalizedCorrectionLock,
+          ))) ||
       (prior !== null &&
         (persisted.previousObservationDigest !== prior.observationDigest ||
           BigInt(persisted.nativePoint.blockNo) <=
@@ -2422,6 +2487,7 @@ const restorePersistedObservationChain = async ({
       await authenticatePersistedBootstrapTopology({
         persisted,
         throughPoint: point,
+        historyPoint: intersectionPoint,
         authority,
         readers,
       });
@@ -2567,7 +2633,8 @@ const restorePersistedObservationChain = async ({
       previousCheckpoint = rederived;
     }
     if (
-      (persisted.checkpoints.length === 0 &&
+      (isAuthenticatedBase &&
+        persisted.checkpoints.length === 0 &&
         (persisted.finalizedQueue.length === 0 ||
           persisted.finalizedCorrectionLock === null)) ||
       (persisted.checkpoints.length > 0 &&
@@ -2586,6 +2653,29 @@ const restorePersistedObservationChain = async ({
     prior = persisted;
   }
   const latest = chain[chain.length - 1]!;
+  // The base topology proves its outrefs were unspent at the base point only.
+  // A later cursor (a progress record, or the last transition) re-proves the
+  // same claim at its own point, so a store that dropped an intervening
+  // transition cannot pass off a stale queue as current: every state-queue
+  // transition spends at least one node of the queue it replaces.
+  if (chain.length > 1) {
+    await authenticatePersistedBootstrapTopology({
+      persisted: latest,
+      throughPoint: Object.freeze({
+        blockHash: latest.nativePoint.blockHash,
+        blockNo: latest.nativePoint.blockNo,
+        slot: latest.nativePoint.slot,
+        pointId: computeFraudProofRawL1PointId({
+          blockHash: latest.nativePoint.blockHash,
+          blockNo: latest.nativePoint.blockNo,
+          slot: latest.nativePoint.slot,
+        }),
+      }),
+      historyPoint: intersectionPoint,
+      authority,
+      readers,
+    });
+  }
   const intersectionBlock = await readers.readBlock(intersectionPoint);
   if (
     intersectionBlock.sourceId !== sourceId ||
@@ -2614,6 +2704,129 @@ const restorePersistedObservationChain = async ({
     catchupBoundary,
   });
 };
+
+/**
+ * Structural restore of the persisted cursor chain: authority binding, row
+ * linkage and checkpoint continuity, with no L1 reads. The last row is both
+ * the replay intersection and the catch-up boundary.
+ */
+const restoreTrustedPersistedObservationChain = ({
+  persistedObservations,
+  authority,
+  sourceId,
+  maximumObservations,
+}: {
+  persistedObservations: readonly unknown[];
+  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthority>;
+  sourceId: string;
+  maximumObservations: number;
+}): WatcherStateQueueRecovery => {
+  if (
+    !Number.isSafeInteger(maximumObservations) ||
+    maximumObservations <= 0 ||
+    persistedObservations.length === 0 ||
+    persistedObservations.length > maximumObservations
+  ) {
+    throw new Error("state-queue restore input exceeds its release bound");
+  }
+  const parsed = persistedObservations.map(parsePersistedObservation);
+  if (parsed.some((observation) => observation === null)) {
+    throw new Error("state-queue restore contains a non-canonical observation");
+  }
+  const chain = parsed as readonly WatcherAuthenticatedStateQueueObservation[];
+  const stateQueuePolicyId = authority.protocolScriptHashes.stateQueueMint;
+  const hubOraclePolicyId = authority.protocolScriptHashes.hubOracleMint;
+  let prior: WatcherAuthenticatedStateQueueObservation | null = null;
+  for (const persisted of chain) {
+    if (
+      persisted.deploymentIdentityDigest !== authority.deploymentFingerprint ||
+      persisted.protocolScriptAuthorityDigest !== authority.authorityDigest ||
+      persisted.stateQueuePolicyId !== stateQueuePolicyId ||
+      persisted.hubOraclePolicyId !== hubOraclePolicyId ||
+      persisted.sourceId !== sourceId ||
+      persisted.nativePoint.finalityDepth !==
+        RELEASE_FINALITY_DEPTH.toString() ||
+      persisted.nativePoint.chainPointId !==
+        computeFraudProofRawL1PointId({
+          blockHash: persisted.nativePoint.blockHash,
+          blockNo: persisted.nativePoint.blockNo,
+          slot: persisted.nativePoint.slot,
+        }) ||
+      (persisted.checkpoints.length === 0 &&
+        prior !== null &&
+        (persisted.correctionLockWitnesses.length !== 0 ||
+          !sameQueue(prior.finalizedQueue, persisted.finalizedQueue) ||
+          !watcherSameCanonicalJson(
+            prior.finalizedHeaders,
+            persisted.finalizedHeaders,
+          ) ||
+          !watcherSameCanonicalJson(
+            prior.finalizedCorrectionLock,
+            persisted.finalizedCorrectionLock,
+          ))) ||
+      (prior !== null &&
+        (persisted.previousObservationDigest !== prior.observationDigest ||
+          BigInt(persisted.nativePoint.blockNo) <=
+            BigInt(prior.nativePoint.blockNo) ||
+          BigInt(persisted.nativePoint.slot) <= BigInt(prior.nativePoint.slot)))
+    ) {
+      throw new Error(
+        "state-queue restore chain differs from deployment/source authority",
+      );
+    }
+    let previousCheckpoint: SDK.StateQueueAuthenticatedReplayCheckpoint | null =
+      null;
+    for (const checkpoint of persisted.checkpoints) {
+      if (
+        checkpoint.blockHash !== persisted.nativePoint.blockHash ||
+        checkpoint.blockNo !== persisted.nativePoint.blockNo ||
+        checkpoint.slot !== persisted.nativePoint.slot ||
+        checkpoint.chainPointId !== persisted.nativePoint.chainPointId ||
+        checkpoint.finalityDepth !== RELEASE_FINALITY_DEPTH.toString() ||
+        (prior !== null &&
+          previousCheckpoint === null &&
+          !sameQueue(prior.finalizedQueue, checkpoint.previousQueue)) ||
+        (previousCheckpoint !== null &&
+          !sameQueue(previousCheckpoint.nextQueue, checkpoint.previousQueue))
+      ) {
+        throw new Error(
+          "state-queue restore checkpoint chain is discontinuous",
+        );
+      }
+      previousCheckpoint = checkpoint;
+    }
+    if (
+      previousCheckpoint !== null &&
+      !sameQueue(previousCheckpoint.nextQueue, persisted.finalizedQueue)
+    ) {
+      throw new Error(
+        "state-queue persisted cursor differs from checkpoint replay",
+      );
+    }
+    prior = persisted;
+  }
+  const latest = chain[chain.length - 1]!;
+  const replayIntersection = Object.freeze({
+    blockHash: latest.nativePoint.blockHash,
+    blockNo: latest.nativePoint.blockNo,
+    slot: latest.nativePoint.slot,
+    chainPointId: latest.nativePoint.chainPointId,
+  });
+  return Object.freeze({
+    previous: latest,
+    discardedObservationCount: 0,
+    replayIntersection,
+    catchupBoundary: Object.freeze({
+      ...replayIntersection,
+      finalityDepth: RELEASE_FINALITY_DEPTH.toString(),
+      ogmiosTipBlockNo: latest.nativePoint.blockNo,
+    }),
+  });
+};
+
+/** Structural restore test seam; it grants no source admission authority. */
+export const unsafeRestoreTrustedWatcherStateQueueChainForTest =
+  restoreTrustedPersistedObservationChain;
 
 const restoreLongestPersistedObservationChain = async (
   input: Parameters<typeof restorePersistedObservationChain>[0],

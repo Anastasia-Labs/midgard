@@ -193,6 +193,7 @@ export const makeWatcherAuthorityContracts =
   };
 
 export type WatcherDeploymentAuthorityFixtureOptions = Readonly<{
+  network?: "Preprod" | "Custom";
   /** Reuse an already-built contract set, so the caller can derive program
    * commitments from the catalogue it is about to commit to. */
   contractSet?: WatcherAuthorityContractSet;
@@ -263,7 +264,7 @@ const buildWatcherDeploymentAuthorityFixture = (
     schemaVersion: "midgard-deployment-manifest-v1",
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
-    network: "Preprod",
+    network: options.network ?? "Preprod",
     cardanoProtocolParameters: {
       snapshot: parameters,
       digest: computeDeploymentManifestJsonDigest(parameters),
@@ -384,7 +385,7 @@ const buildWatcherDeploymentAuthorityFixture = (
     privateKey,
   ).toString("hex");
   const deploymentPolicy: WatcherDeploymentIdentityPolicy = {
-    network: "Preprod",
+    network: options.network ?? "Preprod",
     hubOracleOneShotOutRef: hubOracleOneShot.outRef,
     appliedScriptHashes: Object.fromEntries(
       DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((name) => [

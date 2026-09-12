@@ -4,6 +4,7 @@ import {
   computeFraudProofRawL1PointId,
   LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT,
   type LocalKupmiosRawBlockAtPoint,
+  readAdmittedLocalKupmiosPredecessorPoint,
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -108,6 +109,16 @@ const rawSource = (
   });
 };
 
+// Exercise HTTP acquisition directly; readBoundary begins with Ogmios
+// chain-sync to obtain an atomic tip and its height.
+const readHttpPredecessor = (source: ReturnType<typeof rawSource>) => {
+  const point = { blockHash: "11".repeat(32), blockNo: "1", slot: "2" };
+  return readAdmittedLocalKupmiosPredecessorPoint({
+    source,
+    point: { ...point, pointId: computeFraudProofRawL1PointId(point) },
+  });
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -141,7 +152,7 @@ describe("concrete raw-source operational capture bounds", () => {
       blockScanLimit: 1,
       timeoutMs: 100,
     });
-    await expect(source.readBoundary()).rejects.toThrow(
+    await expect(readHttpPredecessor(source)).rejects.toThrow(
       "exceeds the raw-source byte bound",
     );
     expect(fetcher).toHaveBeenCalledOnce();
@@ -167,12 +178,14 @@ describe("concrete raw-source operational capture bounds", () => {
       }),
     );
     const cancelled = rawSource({ signal: controller.signal, timeoutMs: 500 });
-    const outcome = cancelled.readBoundary().catch((error: unknown) => error);
+    const outcome = readHttpPredecessor(cancelled).catch(
+      (error: unknown) => error,
+    );
     await ready;
     controller.abort();
     expect(await outcome).toMatchObject({ name: "AbortError" });
     expect(requestSignal?.aborted).toBe(true);
-    await expect(cancelled.readBoundary()).rejects.toThrow("aborted");
+    await expect(readHttpPredecessor(cancelled)).rejects.toThrow("aborted");
   });
 
   it("uses the smaller supplied timeout and clears it after cancellation", async () => {
@@ -190,9 +203,9 @@ describe("concrete raw-source operational capture bounds", () => {
           ),
       ),
     );
-    const outcome = rawSource({ timeoutMs: 5 })
-      .readBoundary()
-      .catch((error: unknown) => error);
+    const outcome = readHttpPredecessor(rawSource({ timeoutMs: 5 })).catch(
+      (error: unknown) => error,
+    );
     await vi.advanceTimersByTimeAsync(5);
     expect(await outcome).toMatchObject({ name: "AbortError" });
     expect(vi.getTimerCount()).toBe(0);

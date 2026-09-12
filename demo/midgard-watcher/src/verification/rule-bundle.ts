@@ -150,8 +150,13 @@ const exactHex32 = (value: unknown, path: string): string => {
 const exactNetwork = (
   value: unknown,
   path: string,
-): "Mainnet" | "Preprod" | "Preview" => {
-  if (value !== "Mainnet" && value !== "Preprod" && value !== "Preview") {
+): "Mainnet" | "Preprod" | "Preview" | "Custom" => {
+  if (
+    value !== "Mainnet" &&
+    value !== "Preprod" &&
+    value !== "Preview" &&
+    value !== "Custom"
+  ) {
     return fail("invalid_field", path);
   }
   return value;
@@ -241,7 +246,7 @@ export type WatcherRuleBundle = Readonly<{
   schemaVersion: typeof WATCHER_RULE_BUNDLE_SCHEMA_VERSION;
   ruleBundleVersion: typeof WATCHER_RULE_BUNDLE_VERSION;
   deploymentManifestId: string;
-  network: "Mainnet" | "Preprod" | "Preview";
+  network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   blueprintHash: string;
   consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   consensusProfileDigest: string;
@@ -264,7 +269,7 @@ export type LoadedWatcherRuleBundle = Readonly<{
 
 export type WatcherRuleBundleConstructionIdentity = Readonly<{
   manifestId: string;
-  network: "Mainnet" | "Preprod" | "Preview";
+  network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   blueprintHash: string;
   programCommitments: Readonly<Record<string, string>>;
 }>;

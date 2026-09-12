@@ -712,6 +712,7 @@ const parseAuthority = (
   requireCondition(
     r.network === "Mainnet" ||
       r.network === "Preprod" ||
+      r.network === "Custom" ||
       r.network === "Preview",
     "event network",
   );

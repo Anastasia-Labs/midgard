@@ -1089,16 +1089,22 @@ describe("production prover funding calculation V1", () => {
         }),
       ).toThrow("identity mismatch");
     }
-    const released = { ...rotatedRecord, state: "released", activeInputs: [] };
+    // A released reservation restores its (empty) live plan; only a conflicted
+    // lineage is refused.
+    const conflicted = {
+      ...rotatedRecord,
+      state: "conflict",
+      conflictCode: "unexpected_spend",
+    };
     expect(() =>
       restoreWatcherProverFundingReservationPlan({
         ...restoreInput,
         record: {
-          ...released,
-          recordDigest: computeDeploymentManifestJsonDigest(released),
+          ...conflicted,
+          recordDigest: computeDeploymentManifestJsonDigest(conflicted),
         },
       }),
-    ).toThrow("not active");
+    ).toThrow("conflicted");
     expect(() =>
       planWatcherProverFundingReservation({
         deploymentIdentity,

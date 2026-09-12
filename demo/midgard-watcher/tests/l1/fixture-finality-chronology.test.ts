@@ -11,7 +11,7 @@ import { createWatcherLocalKupmiosRawSource } from "../../src/l1/local-kupmios-r
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 
 describe("local watcher fixture finality chronology", () => {
-  it("leaves activation outside the runtime boundary with forty one-slot descendants", async () => {
+  it("keeps the youngest release-final boundary above activation with forty one-slot descendants", async () => {
     const fixture = await createSyntheticUserEventOriginFixture({
       nativeTipMode: "controlled",
       blockSlotInterval: 1,
@@ -27,9 +27,15 @@ describe("local watcher fixture finality chronology", () => {
         deploymentIdentity: fixture.deploymentIdentity,
       });
       const boundary = await readAdmittedLocalKupmiosBoundary({ source });
-      expect(BigInt(boundary.kupoCheckpoint.slot)).toBeLessThan(
+      // The boundary is refined by block height to exactly the confirmation
+      // depth, so a dense one-slot chain never reaches back past activation.
+      expect(BigInt(boundary.kupoCheckpoint.slot)).toBeGreaterThan(
         BigInt(fixture.activationBlock.point.slot),
       );
+      expect(BigInt(tip.slot) - BigInt(boundary.kupoCheckpoint.slot)).toBe(29n);
+      expect(
+        BigInt(tip.blockNo) - BigInt(boundary.kupoCheckpoint.blockNo) + 1n,
+      ).toBe(30n);
     } finally {
       await fixture.close();
     }
@@ -54,12 +60,12 @@ describe("local watcher fixture finality chronology", () => {
       );
       expect(
         BigInt(initialTip.slot) - BigInt(boundary.kupoCheckpoint.slot),
-      ).toBe(600n);
+      ).toBe(580n);
       expect(
         BigInt(initialTip.blockNo) -
           BigInt(boundary.kupoCheckpoint.blockNo) +
           1n,
-      ).toBe(31n);
+      ).toBe(30n);
 
       const capture = async (
         previous: WatcherLocalBackfillFinalityReceipt | null,

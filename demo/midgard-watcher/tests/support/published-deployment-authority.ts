@@ -1,5 +1,6 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -13,7 +14,7 @@ import {
 import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
-import type { publishWorkflowDeployment } from "midgard-node/tests/helpers/published-workflow-deployment";
+import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 
 import {
   createWatcherWorkflowFundingProfileBundle,
@@ -33,11 +34,11 @@ import {
 } from "../../src/verification/rule-bundle.js";
 
 type PublishedDeployment = Awaited<
-  ReturnType<typeof publishWorkflowDeployment>
+  ReturnType<typeof publishWorkflowDeploymentOnChain>
 >;
 
 /**
- * Signs the exact emulator-published manifest with a fresh test trust root.
+ * Signs the exact published manifest once and reuses its saved test trust root.
  * The blueprint hash, published references and supplied proof program
  * commitments still pass the production identity and rule-bundle loaders.
  */
@@ -54,9 +55,9 @@ export const createPublishedWatcherDeploymentAuthority = async ({
 }) => {
   const manifest = deployment.manifest;
   verifyFinalizedDeploymentManifest(manifest);
-  if (manifest.network !== "Preprod") {
+  if (manifest.network !== "Preprod" && manifest.network !== "Custom") {
     throw new Error(
-      "Published watcher scenario requires a Preprod emulator deployment",
+      "Published watcher scenario requires a Preprod or Custom deployment",
     );
   }
   const blueprintHash = createHash("sha256")
@@ -122,7 +123,7 @@ export const createPublishedWatcherDeploymentAuthority = async ({
   const ruleBundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
       manifestId: manifest.manifestId,
-      network: "Preprod",
+      network: manifest.network,
       blueprintHash,
       programCommitments,
     },
@@ -140,6 +141,62 @@ export const createPublishedWatcherDeploymentAuthority = async ({
     },
     artifacts: { blueprintHash },
   };
+  const authorityPath = join(directory, "deployment-authority.json");
+  const ruleBundlePath = join(directory, "rules.json");
+  const manifestPath = join(directory, "deployment-manifest.json");
+  const blueprintPath = join(directory, "plutus.json");
+  const deploymentInfoPath = join(directory, "contract-deployment-info.json");
+  const fundingProfileBundlePath = join(directory, "funding-profiles.json");
+  const reopen = () =>
+    loadWatcherVerifiedDeploymentAuthority({
+      path: authorityPath,
+      ruleBundlePath,
+    });
+  if (existsSync(authorityPath)) {
+    const deploymentAuthority = await reopen();
+    const verified = deploymentAuthority.deploymentIdentity;
+    if (
+      verified.manifestId !== manifest.manifestId ||
+      verified.blueprintHash !== blueprintHash ||
+      verified.ruleBundleCommitment !== ruleBundleCommitment ||
+      verified.fundingProfileBundleDigest !== fundingProfileBundleDigest
+    )
+      throw new Error(
+        "Saved watcher authority differs from the requested deployment or release",
+      );
+    const saved: {
+      signedIdentity: unknown;
+      policy: WatcherDeploymentIdentityPolicy;
+      trustRoots: readonly {
+        trustRootId: string;
+        publicKeySpkiDerHex: string;
+      }[];
+    } = JSON.parse(await readFile(authorityPath, "utf8"));
+    const fundingProfileOverlay =
+      await loadWatcherWorkflowFundingProfileOverlay({
+        bundlePath: fundingProfileBundlePath,
+        deploymentIdentity: verified,
+      });
+    return {
+      nativeDeployment: {
+        signedIdentity: saved.signedIdentity,
+        policy: saved.policy,
+        trustRoots: saved.trustRoots,
+        result: verified,
+        marker: makeDeploymentMarker(manifest.manifestId),
+        contracts: manifest.contracts,
+      },
+      deploymentAuthority,
+      fundingProfileOverlay,
+      reopen,
+      authorityPath,
+      ruleBundlePath,
+      manifestPath,
+      blueprintPath,
+      deploymentInfoPath,
+      fundingProfileBundlePath,
+    };
+  }
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const publicKeySpkiDerHex = publicKey
     .export({ format: "der", type: "spki" })
@@ -165,7 +222,7 @@ export const createPublishedWatcherDeploymentAuthority = async ({
     },
   };
   const policy: WatcherDeploymentIdentityPolicy = {
-    network: "Preprod",
+    network: manifest.network,
     hubOracleOneShotOutRef: manifest.hubOracleOneShot.outRef,
     appliedScriptHashes: Object.fromEntries(
       DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((name) => [
@@ -204,22 +261,7 @@ export const createPublishedWatcherDeploymentAuthority = async ({
 
     blueprintHash,
   };
-  const authorityPath = join(directory, "deployment-authority.json");
-  const ruleBundlePath = join(directory, "rules.json");
-  const manifestPath = join(directory, "deployment-manifest.json");
-  const blueprintPath = join(directory, "plutus.json");
-  const deploymentInfoPath = join(directory, "contract-deployment-info.json");
-  const fundingProfileBundlePath = join(directory, "funding-profiles.json");
   await Promise.all([
-    writeFile(
-      authorityPath,
-      JSON.stringify({
-        signedIdentity,
-        policy,
-        trustRoots: [{ trustRootId, publicKeySpkiDerHex }],
-        durableMarker: makeDeploymentMarker(manifest.manifestId),
-      }),
-    ),
     writeFile(ruleBundlePath, JSON.stringify(ruleBundle)),
     writeFile(manifestPath, JSON.stringify(manifest)),
     writeFile(blueprintPath, deployment.blueprintJson),
@@ -229,11 +271,17 @@ export const createPublishedWatcherDeploymentAuthority = async ({
       fundingBundle.fundingProfileBundleBytes,
     ),
   ]);
-  const reopen = () =>
-    loadWatcherVerifiedDeploymentAuthority({
-      path: authorityPath,
-      ruleBundlePath,
-    });
+  // Publish the reusable authority only after all of its artifacts exist.
+  await writeFile(
+    authorityPath,
+    JSON.stringify({
+      signedIdentity,
+      policy,
+      trustRoots: [{ trustRootId, publicKeySpkiDerHex }],
+      durableMarker: makeDeploymentMarker(manifest.manifestId),
+    }),
+    { flag: "wx" },
+  );
   const deploymentAuthority = await reopen();
   const fundingProfileOverlay = await loadWatcherWorkflowFundingProfileOverlay({
     bundlePath: fundingProfileBundlePath,

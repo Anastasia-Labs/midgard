@@ -6,7 +6,6 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   calculateMinLovelaceFromUTxO,
-  Kupmios,
   Lucid,
   paymentCredentialOf,
   type TxSignBuilder,
@@ -20,6 +19,7 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
+import { WatcherLocalKupmios } from "../l1/native-reward-account.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
   loadWatcherSecretText,
@@ -45,6 +45,14 @@ export type WatcherAvailabilityStatus = Readonly<{
   detail?: string;
 }>;
 
+export type WatcherAvailabilityStatusTransition = Readonly<{
+  status: WatcherAvailabilityStatus;
+  observationDigest: string;
+  nativePoint: WatcherAuthenticatedStateQueueObservation["nativePoint"];
+  elapsedMs: number;
+  observedAt: string;
+}>;
+
 export type WatcherAvailabilityRuntime = Readonly<{
   reconcile(
     observation: WatcherAuthenticatedStateQueueObservation,
@@ -56,6 +64,7 @@ export type WatcherAvailabilityRuntime = Readonly<{
   invalidateForRollback(point?: WatcherNativeChainSyncPoint): void;
   invalidateForShutdown(): void;
   status(): WatcherAvailabilityStatus;
+  /** True while a header still needs attestation or the last attempt was blocked. */
   close(): Promise<void>;
 }>;
 
@@ -131,6 +140,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
   identity: VerifiedWatcherDeploymentIdentity;
   rawSource: LocalKupmiosFraudProofRawSource;
   proverWalletAddress: string;
+  onStatusTransition?: (event: WatcherAvailabilityStatusTransition) => void;
 }): Promise<WatcherAvailabilityRuntime> => {
   const source = input.config.watcherConfig.l1.source;
   if (source.sourceMode !== "local_node")
@@ -144,9 +154,16 @@ export const createWatcherAvailabilityRuntime = async (input: {
     "Ogmios source",
   );
   const lucid = await Lucid(
-    new Kupmios(kupo.endpoint, ogmios.endpoint),
+    new WatcherLocalKupmios(kupo.endpoint, ogmios.endpoint, {
+      watcherConfig: input.config.watcherConfig,
+      binaryPath: input.config.nativeChainSyncBinaryPath,
+      timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+    }),
     input.identity.network,
-    { evaluator: createScalusEvaluator() },
+    {
+      evaluator: createScalusEvaluator(),
+      slotConfig: input.config.watcherConfig.customNetwork?.slotConfig,
+    },
   );
   const secret = await loadWatcherSecretText(
     input.config.availability.keySource,
@@ -206,6 +223,43 @@ export const createWatcherAvailabilityRuntime = async (input: {
     pendingHeaders: [],
   };
   let serial: Promise<void> = Promise.resolve();
+  let lastBlockedStatus: string | undefined;
+  const reportTransition = (
+    observation: WatcherAuthenticatedStateQueueObservation,
+    startedAt: number,
+  ): void => {
+    if (input.onStatusTransition === undefined) return;
+    // A new finalized point alone must not repeat the same blocked diagnostic.
+    const blockedStatus =
+      report.phase === "blocked"
+        ? JSON.stringify({
+            ...report,
+            pendingHeaders: [...report.pendingHeaders].sort(),
+          })
+        : undefined;
+    if (blockedStatus === lastBlockedStatus) return;
+    lastBlockedStatus = blockedStatus;
+    input.onStatusTransition(
+      Object.freeze({
+        status: Object.freeze({
+          ...report,
+          pendingHeaders: Object.freeze([...report.pendingHeaders]),
+          ...(report.detail === undefined
+            ? {}
+            : {
+                // Preserve the concise cause, never an embedded transaction payload.
+                detail: report.detail
+                  .replace(/[a-fA-F0-9]{128,}/g, "[hex omitted]")
+                  .slice(0, 2048),
+              }),
+        }),
+        observationDigest: observation.observationDigest,
+        nativePoint: Object.freeze({ ...observation.nativePoint }),
+        elapsedMs: Math.max(0, performance.now() - startedAt),
+        observedAt: new Date().toISOString(),
+      }),
+    );
+  };
   const validity = () => {
     const now = BigInt(Date.now());
     return { validFrom: now - 30_000n, validTo: now + 60_000n };
@@ -474,6 +528,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     const work = serial.then(async () => {
       if (closed || epoch !== generation) return;
       assertWatcherStateQueueObservation(observation);
+      const startedAt = performance.now();
       current = observation;
       pending = new Set(
         observation.finalizedHeaders
@@ -594,6 +649,11 @@ export const createWatcherAvailabilityRuntime = async (input: {
           pendingHeaders: [...pending],
           detail: cause instanceof Error ? cause.message : String(cause),
         };
+      } finally {
+        // Diagnostics describe the completed reconciliation, not its temporary
+        // waiting state. A revoked observation cannot emit a recovery signal.
+        if (epoch === generation && !closed)
+          reportTransition(observation, startedAt);
       }
     });
     serial = work.catch(() => undefined);

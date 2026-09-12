@@ -19,15 +19,13 @@ const openBoundary = async (depth = 30, grow = false) => {
       slot: (BigInt(point.slot) + 600n).toString(),
     };
     await fixture.setNativeTip(tip);
-    const recovery = {
-      replayIntersection: { ...point, chainPointId: "ab".repeat(32) },
-      catchupBoundary: {
-        ...point,
-        chainPointId: "ab".repeat(32),
-        finalityDepth: "30",
-        ogmiosTipBlockNo: tip.blockNo,
-      },
-    };
+    const admittedIntersections = Object.freeze([
+      Object.freeze({
+        blockHash: point.blockHash,
+        blockNo: point.blockNo,
+        slot: point.slot,
+      }),
+    ]);
     if (grow) await fixture.growNativeTip();
     const native = await startWatcherNativeChainSync({
       binaryPath: fixture.nativeChainSyncBinaryPath,
@@ -41,7 +39,9 @@ const openBoundary = async (depth = 30, grow = false) => {
       onEvent: async () => undefined,
     });
     return {
-      recovery,
+      admittedIntersections,
+      tip,
+      point,
       native,
       close: async () => {
         await native.close();
@@ -60,78 +60,76 @@ describe("watcher native recovery startup boundary", () => {
     try {
       const admitted = readWatcherNativeRecoveryBoundary({
         nativeAuthority: owner.native.authority,
-        recovery: owner.recovery,
+        admittedIntersections: owner.admittedIntersections,
       });
       expect(BigInt(admitted.currentTip.blockNo)).toBe(
-        BigInt(owner.recovery.catchupBoundary.ogmiosTipBlockNo) + 1n,
+        BigInt(owner.tip.blockNo) + 1n,
       );
       expect(admitted.selectedIntersection).toEqual({
         kind: "point",
-        blockHash: owner.recovery.replayIntersection.blockHash,
-        slot: owner.recovery.replayIntersection.slot,
+        blockHash: owner.point.blockHash,
+        slot: owner.point.slot,
       });
+      expect(admitted.selectedBlockNo).toBe(owner.point.blockNo);
     } finally {
       await owner.close();
     }
   });
 
+  // Replay depth is unbounded: a watcher resuming after a long L1 gap
+  // replays every block it missed rather than failing closed at k.
   it.each([2_160, 2_161])(
-    "enforces the recovery cap at depth %i",
+    "admits a resume point %i blocks behind the native tip",
     async (depth) => {
       const owner = await openBoundary(depth);
       try {
-        const admit = () =>
+        expect(() =>
           readWatcherNativeRecoveryBoundary({
             nativeAuthority: owner.native.authority,
-            recovery: owner.recovery,
-          });
-        if (depth === 2_160) expect(admit).not.toThrow();
-        else expect(admit).toThrow("admitted state-queue recovery bound");
+            admittedIntersections: owner.admittedIntersections,
+          }),
+        ).not.toThrow();
       } finally {
         await owner.close();
       }
     },
   );
 
-  it("refuses a native tip older than the admitted Ogmios snapshot", async () => {
+  it("refuses a native tip behind the selected resume point", async () => {
     const owner = await openBoundary();
     try {
       expect(() =>
         readWatcherNativeRecoveryBoundary({
           nativeAuthority: owner.native.authority,
-          recovery: {
-            ...owner.recovery,
-            catchupBoundary: {
-              ...owner.recovery.catchupBoundary,
-              ogmiosTipBlockNo: (
-                BigInt(owner.recovery.catchupBoundary.ogmiosTipBlockNo) + 1n
-              ).toString(),
+          admittedIntersections: [
+            {
+              ...owner.admittedIntersections[0]!,
+              blockNo: (BigInt(owner.tip.blockNo) + 1n).toString(),
             },
-          },
+          ],
         }),
-      ).toThrow("admitted state-queue recovery bound");
+      ).toThrow("behind the selected resume point");
     } finally {
       await owner.close();
     }
   });
 
   it.each(["blockHash", "slot"] as const)(
-    "refuses intersection %s substitution",
+    "refuses a selection outside the recorded history (%s substitution)",
     async (field) => {
       const owner = await openBoundary();
       try {
         expect(() =>
           readWatcherNativeRecoveryBoundary({
             nativeAuthority: owner.native.authority,
-            recovery: {
-              ...owner.recovery,
-              replayIntersection: {
-                ...owner.recovery.replayIntersection,
+            admittedIntersections: [
+              {
+                ...owner.admittedIntersections[0]!,
                 [field]: field === "blockHash" ? "fe".repeat(32) : "1",
               },
-            },
+            ],
           }),
-        ).toThrow("outside state-queue restore authority");
+        ).toThrow("outside the recorded resume history");
       } finally {
         await owner.close();
       }
@@ -145,7 +143,7 @@ describe("watcher native recovery startup boundary", () => {
       expect(() =>
         readWatcherNativeRecoveryBoundary({
           nativeAuthority: owner.native.authority,
-          recovery: owner.recovery,
+          admittedIntersections: owner.admittedIntersections,
         }),
       ).toThrow("authority expired");
     } finally {

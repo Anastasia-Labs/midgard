@@ -413,74 +413,96 @@ describe("production native-chain coordinator", () => {
     },
   );
 
-  it("captures the child on arrival and persists pending finality before its child", async () => {
-    const first = block("1", "0", "100", "10");
-    const second = block("2", "1", "101", "11");
-    let state = finalityState("unobserved");
-    const observed: string[] = [];
-    const persisted: string[] = [];
-    const observation = {
-      observe: async ({
-        block: candidate,
-        depth,
-      }: {
-        readonly block: WatcherNativeBlockAdmission;
-        readonly depth: string;
-      }) => {
-        observed.push(`${candidate.blockNo}:${depth}`);
-        return {
-          block: { chainPoint: { blockNo: candidate.blockNo } },
-          consistency: {},
-          transportAttestations: [],
-        };
-      },
-      close: () => undefined,
-    } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
-    const durable = {
-      readFinality: () => state,
-      read: () => ({ currentFinalityState: state, currentStore: {} }),
-      persistCanonicalProgress: async (input: {
-        readonly block: { readonly chainPoint: { readonly blockNo: string } };
-      }) => {
-        persisted.push(input.block.chainPoint.blockNo);
-        if (
-          input.block.chainPoint.blockNo === first.blockNo &&
-          state.phase === "pending"
-        ) {
-          state = finalityState("finalized", first);
+  it.each([0, 5_000])(
+    "captures blocks %i behind the live tip and persists pending finality before the child",
+    async (lag) => {
+      const first = block("1", "0", "100", "10");
+      const second = block("2", "1", "101", "11");
+      let state = finalityState("unobserved");
+      const observed: string[] = [];
+      const persisted: string[] = [];
+      const observation = {
+        observe: async ({
+          block: candidate,
+          depth,
+        }: {
+          readonly block: WatcherNativeBlockAdmission;
+          readonly depth: string;
+        }) => {
+          observed.push(`${candidate.blockNo}:${depth}`);
+          return {
+            block: { chainPoint: { blockNo: candidate.blockNo } },
+            consistency: {},
+            transportAttestations: [],
+          };
+        },
+        close: () => undefined,
+      } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
+      const durable = {
+        readFinality: () => state,
+        read: () => ({ currentFinalityState: state, currentStore: {} }),
+        persistCanonicalProgress: async (input: {
+          readonly block: { readonly chainPoint: { readonly blockNo: string } };
+        }) => {
+          persisted.push(input.block.chainPoint.blockNo);
+          if (
+            input.block.chainPoint.blockNo === first.blockNo &&
+            state.phase === "pending"
+          ) {
+            state = finalityState("finalized", first);
+            return {
+              persistence: "committed",
+              finalityResult: { action: "finalize" },
+            };
+          }
+          state = finalityState(
+            "pending",
+            input.block.chainPoint.blockNo === first.blockNo ? first : second,
+          );
           return {
             persistence: "committed",
-            finalityResult: { action: "finalize" },
+            finalityResult: { action: "observe_pending" },
           };
-        }
-        state = finalityState(
-          "pending",
-          input.block.chainPoint.blockNo === first.blockNo ? first : second,
-        );
-        return {
-          persistence: "committed",
-          finalityResult: { action: "observe_pending" },
-        };
-      },
-    } as unknown as WatcherDurableRuntime;
-    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
-      { policy, durable, observation },
-      {
-        admitRollForward: (event) =>
-          event.blockHash === first.blockHash ? first : second,
-      },
-    );
+        },
+      } as unknown as WatcherDurableRuntime;
+      const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
+        { policy, durable, observation },
+        {
+          admitRollForward: (event) =>
+            event.blockHash === first.blockHash ? first : second,
+        },
+      );
 
-    await coordinator.handle(forward(first));
-    await coordinator.handle(forward(second));
+      await coordinator.handle(
+        forward(first, String(Number(first.blockNo) + lag)),
+      );
+      await coordinator.handle(
+        forward(second, String(Number(second.blockNo) + lag)),
+      );
 
-    expect(observed).toEqual(["10:1", "11:1", "10:2"]);
-    expect(persisted).toEqual(["10", "10", "11"]);
-    expect(coordinator.status()).toMatchObject({
-      quarantined: false,
-      bufferedBlockCount: 1,
-    });
-  });
+      if (lag === 0) {
+        // Below confirmation depth a pending block is not re-observed or
+        // re-persisted: the second observation waits for depth 30.
+        expect(observed).toEqual(["10:1", "11:1"]);
+        expect(persisted).toEqual(["10"]);
+        expect(coordinator.status()).toMatchObject({
+          quarantined: false,
+          bufferedBlockCount: 2,
+        });
+        return;
+      }
+      expect(observed).toEqual([
+        `10:${lag + 1}`,
+        `11:${lag + 1}`,
+        `10:${lag + 2}`,
+      ]);
+      expect(persisted).toEqual(["10", "10", "11"]);
+      expect(coordinator.status()).toMatchObject({
+        quarantined: false,
+        bufferedBlockCount: 1,
+      });
+    },
+  );
 
   it("journals a direct-child replacement before applying a pending rollback", async () => {
     const orphan = block("3", "1", "102", "12");

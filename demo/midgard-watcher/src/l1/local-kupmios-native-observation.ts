@@ -1,5 +1,6 @@
 import {
   computeFraudProofRawL1PointId,
+  LocalKupmiosCheckpointChangedError,
   type LocalKupmiosFraudProofRawSource,
   localKupmiosHttpOgmiosRawSourceDetails,
   type LocalKupmiosRawBlockAtPoint,
@@ -18,6 +19,7 @@ import {
   establishWatcherLocalNodeQueryTransport,
   normalizeWatcherL1BlockFromTransactionCbors,
   type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
   type WatcherNormalizedL1Block,
 } from "./l1-adapter.js";
 import { createWatcherLocalKupmiosRawSource } from "./local-kupmios-raw-source.js";
@@ -166,7 +168,8 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
   );
   if (
     watcherConfig.mode !== "acceptance" ||
-    watcherConfig.targetNetwork !== "Preprod" ||
+    (watcherConfig.targetNetwork !== "Preprod" &&
+      watcherConfig.targetNetwork !== "Custom") ||
     input.deploymentIdentity.network !== watcherConfig.targetNetwork ||
     watcherConfig.l1.source.sourceMode !== "local_node" ||
     nativeDetails === null ||
@@ -249,11 +252,15 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
       );
     }
     let closed = false;
+    let observationSource = createWatcherLocalKupmiosRawSource({
+      watcherConfig,
+      deploymentIdentity: input.deploymentIdentity,
+    });
     return Object.freeze({
       rawSource,
       observe: async ({ block, depth }) => {
         if (closed) throw new Error("local Kupo/Ogmios runtime is closed");
-        if (!NATURAL.test(depth) || BigInt(depth) > 2160n) {
+        if (!NATURAL.test(depth)) {
           throw new Error("local Kupo/Ogmios observation depth is invalid");
         }
         const point = Object.freeze({
@@ -266,11 +273,42 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
             slot: block.slot,
           }),
         });
-        const raw = await readAdmittedLocalKupmiosRawBlockAtPoint({
-          source: rawSource,
-          point,
-        });
+        const capture = async (): Promise<LocalKupmiosRawBlockAtPoint> => {
+          for (let attempt = 0; ; attempt += 1) {
+            if (closed) throw new Error("local Kupo/Ogmios runtime is closed");
+            // One source serves every observation so immutable checkpoints and
+            // blocks stay cached. A moving provider head still forces a fresh
+            // source: its pinned head belongs to the interrupted capture.
+            try {
+              return await readAdmittedLocalKupmiosRawBlockAtPoint({
+                source: observationSource,
+                point,
+              });
+            } catch (error) {
+              if (
+                !(error instanceof LocalKupmiosCheckpointChangedError) ||
+                attempt >= 2
+              )
+                throw error;
+              observationSource = createWatcherLocalKupmiosRawSource({
+                watcherConfig,
+                deploymentIdentity: input.deploymentIdentity,
+              });
+            }
+          }
+        };
+        const raw = await capture();
         assertNativeKupmiosAgreement(block, raw);
+        for (const [name, context] of [
+          ["native", authorityContext],
+          ["kupo", kupoContext],
+          ["ogmios", ogmiosContext],
+        ] as const) {
+          if (watcherL1TransportAttestationDetails(context) === null)
+            throw new Error(
+              `Local ${name} transport closed during exact block observation`,
+            );
+        }
         const chainPoint = Object.freeze({
           blockHash: block.blockHash,
           parentBlockHash: block.prevHash.length === 0 ? null : block.prevHash,

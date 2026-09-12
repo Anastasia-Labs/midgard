@@ -8,6 +8,7 @@ import type { WatcherLocalKupmiosNativeObservation } from "../l1/local-kupmios-n
 import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
 import type { WatcherSqliteStateQueueObservationStore } from "../storage/sqlite-durable-backend.js";
+import type { WatcherBlockRelevance } from "./block-relevance.js";
 import type { WatcherChainCoordinatorHooks } from "./chain-coordinator.js";
 
 export const WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION =
@@ -219,10 +220,24 @@ const createRuntime = async (input: {
         onFinalized: async ({
           nativeBlock,
           localObservation,
+          relevance,
         }: Readonly<{
           nativeBlock: WatcherNativeBlockAdmission;
-          localObservation: WatcherLocalKupmiosNativeObservation;
+          localObservation: WatcherLocalKupmiosNativeObservation | null;
+          relevance: WatcherBlockRelevance;
         }>) => {
+          if (relevance === "quiet") {
+            // Nothing the queue tracks moved in this block: the cursor stays
+            // and no reconcile or dispatch runs. Work already selected keeps
+            // its own clock; the next touched block re-enters it.
+            admitCatchupProgress(nativeBlock);
+            return;
+          }
+          if (localObservation === null) {
+            throw new Error(
+              "touched block finalized without a local observation",
+            );
+          }
           const next = await input.source.observe({
             nativeBlock,
             localObservation,

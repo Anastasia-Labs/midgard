@@ -1,12 +1,15 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
 } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { createWatcherLocalKupmiosNativeObservationRuntime } from "../../src/l1/local-kupmios-native-observation.js";
+import {
+  assertWatcherLocalKupmiosNativeObservation,
+  createWatcherLocalKupmiosNativeObservationRuntime,
+} from "../../src/l1/local-kupmios-native-observation.js";
 import { createWatcherLocalKupmiosRawSource } from "../../src/l1/local-kupmios-raw-source.js";
 import { readWatcherNativeChainSyncEventReceipt } from "../../src/l1/native-chain-sync.js";
 import {
@@ -28,6 +31,31 @@ describe("real state-queue observation source with synthetic local transports", 
     header.utxosRoot = "20".repeat(32);
     const fixture = await pendingFixture;
     expect(fixture.header).toEqual(headerSnapshot);
+    const fixtureFetch = globalThis.fetch;
+    // Kupo's head stays inside the security window above the observed blocks,
+    // so every checkpoint is young enough to be re-read instead of memoized.
+    const youngHead = (offset: bigint) =>
+      (
+        BigInt(fixture.transport.emptySuccessorBlock.point.slot) + offset
+      ).toString();
+    let checkpointSlot = youngHead(10_000n);
+    let changeDuringCapture = false;
+    let changeOnceDuringCapture = false;
+    let checkpointReads = 0;
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      const response = await fixtureFetch(...args);
+      if (response.headers.has("X-Most-Recent-Checkpoint")) {
+        checkpointReads += 1;
+        if (changeDuringCapture)
+          checkpointSlot = (BigInt(checkpointSlot) + 1n).toString();
+        if (changeOnceDuringCapture && checkpointReads === 2) {
+          checkpointSlot = (BigInt(checkpointSlot) + 1n).toString();
+          changeOnceDuringCapture = false;
+        }
+        response.headers.set("X-Most-Recent-Checkpoint", checkpointSlot);
+      }
+      return response;
+    });
     try {
       const first = await fixture.observeFresh();
       assertWatcherStateQueueObservation(first.initialObservation);
@@ -49,6 +77,38 @@ describe("real state-queue observation source with synthetic local transports", 
       expect(() =>
         assertWatcherStateQueueHeaderObservation({ ...first.header }),
       ).toThrow();
+      // A later observation must acquire its own provider snapshot, even if
+      // the shared queue source last captured a much older indexer head.
+      checkpointSlot = youngHead(20_000n);
+      const advancedObservation = await first.localRuntime.observe({
+        block: first.nativeBlock,
+        depth: first.localObservation.block.chainPoint.depth,
+      });
+      assertWatcherLocalKupmiosNativeObservation(
+        advancedObservation,
+        first.nativeBlock,
+      );
+      changeDuringCapture = true;
+      checkpointReads = 0;
+      await expect(
+        first.localRuntime.observe({
+          block: first.nativeBlock,
+          depth: first.localObservation.block.chainPoint.depth,
+        }),
+      ).rejects.toThrow(
+        "Kupo advanced or rolled back during raw snapshot capture",
+      );
+      // The pinned head refuses the first response after the change; the
+      // remaining reads were already in flight. One lookup fewer than before
+      // the source began retaining data it had already read.
+      expect(checkpointReads).toBe(5);
+      changeDuringCapture = false;
+      changeOnceDuringCapture = true;
+      checkpointReads = 0;
+      const refreshedQueue = await first.stateQueueSource.bootstrap();
+      expect(refreshedQueue.previous.finalizedHeaders).toEqual(
+        first.observation.finalizedHeaders,
+      );
       const nativeAuthority = readWatcherNativeChainSyncEventReceipt(
         first.nativeEventReceipt,
       ).authority;

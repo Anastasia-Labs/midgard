@@ -90,7 +90,7 @@ export const WATCHER_ROLLBACK_BOUNDS = Object.freeze({
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const ROLLBACK_AUTHORITY_KEY_BYTES = 32;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 const isNetwork = (value: unknown): value is (typeof NETWORKS)[number] =>
   typeof value === "string" &&
   NETWORKS.includes(value as (typeof NETWORKS)[number]);
@@ -5267,12 +5267,51 @@ export const persistWatcherRollbackDurableObservation = async (input: {
  * admitted by the live chain-sync transport and selected by the independently
  * reconciled local Kupo/Ogmios consistency result.
  */
+/**
+ * A processed-but-unrecorded stretch of blocks between the finalized
+ * authority block and a new canonical block. Quiet blocks are not persisted
+ * into the authority; the caller attests them from its block-progress store.
+ */
+export type WatcherRollbackCanonicalAncestryLink = Readonly<{
+  blockHash: string;
+  parentBlockHash: string;
+  blockNo: string;
+  slot: string;
+}>;
+
+const ancestryLinksFinalizedToBlock = (
+  finalized: Readonly<{ blockHash: string; blockNo: string; slot: string }>,
+  block: WatcherNormalizedL1Block,
+  ancestry: readonly WatcherRollbackCanonicalAncestryLink[],
+): boolean => {
+  let previous = finalized;
+  for (const link of ancestry) {
+    if (
+      link.parentBlockHash !== previous.blockHash ||
+      BigInt(link.blockNo) !== BigInt(previous.blockNo) + 1n ||
+      BigInt(link.slot) <= BigInt(previous.slot)
+    )
+      return false;
+    previous = link;
+  }
+  return (
+    block.chainPoint.parentBlockHash === previous.blockHash &&
+    BigInt(block.chainPoint.blockNo) === BigInt(previous.blockNo) + 1n &&
+    BigInt(block.chainPoint.slot) > BigInt(previous.slot)
+  );
+};
+
+/** Pure ancestry-link test seam; it grants no durable authority. */
+export const unsafeWatcherCanonicalAncestryLinksForTest =
+  ancestryLinksFinalizedToBlock;
+
 export const persistWatcherRollbackDurableCanonicalProgress = async (input: {
   readonly authority: WatcherRollbackDurableAuthority;
   readonly block: WatcherNormalizedL1Block;
   readonly observations: readonly WatcherNormalizedL1Block[];
   readonly consistency: WatcherMultiProviderConsistency;
   readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  readonly ancestry?: readonly WatcherRollbackCanonicalAncestryLink[];
 }): Promise<WatcherRollbackDurableCanonicalProgressResult> => {
   const runtime = runtimeForRollbackDurableAuthority(input.authority);
   if (!authenticatesCanonicalBlock(input)) {
@@ -5290,10 +5329,11 @@ export const persistWatcherRollbackDurableCanonicalProgress = async (input: {
     const finalized = previousFinalityState.finalized;
     if (
       finalized === null ||
-      input.block.chainPoint.parentBlockHash !== finalized.blockHash ||
-      BigInt(input.block.chainPoint.blockNo) !==
-        BigInt(finalized.blockNo) + 1n ||
-      BigInt(input.block.chainPoint.slot) <= BigInt(finalized.slot)
+      !ancestryLinksFinalizedToBlock(
+        finalized,
+        input.block,
+        input.ancestry ?? [],
+      )
     ) {
       throw new Error(
         "watcher canonical progress is not the direct child of the finalized block",

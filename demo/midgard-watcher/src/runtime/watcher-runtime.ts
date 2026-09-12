@@ -17,6 +17,7 @@ import { Kupmios, type UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import {
   createWatcherAvailabilityRuntime,
   type WatcherAvailabilityRuntime,
+  type WatcherAvailabilityStatusTransition,
 } from "../availability/runtime.js";
 import {
   createWatcherFaultDecisionBridge,
@@ -92,9 +93,10 @@ import {
   type WatcherProcessConfig,
 } from "./process-config.js";
 import {
-  createWatcherStateQueueRuntime,
-  type WatcherStateQueueRuntime,
-} from "./state-queue-runtime.js";
+  createWatcherStartupProgress,
+  type WatcherStartupProgress,
+} from "./startup-progress.js";
+import { createWatcherStateQueueRuntime } from "./state-queue-runtime.js";
 import { createWatcherTrustedHeadClientRuntime } from "./trusted-head-runtime.js";
 import {
   createWatcherUserEventRuntime,
@@ -149,48 +151,89 @@ export const assertWatcherFaultProofLaunchScope = (
   }
 };
 
-/** Check the live native stream against the previously admitted recovery cursor. */
+export type WatcherRestartIntersectionCandidate = Readonly<{
+  blockHash: string;
+  blockNo: string;
+  slot: string;
+}>;
+
+/**
+ * Check that the native stream intersected one of the recorded resume points
+ * and that its tip is not behind that point. The replay depth is unbounded:
+ * every block between the intersection and the tip is replayed, and only a
+ * node whose chain excludes all recorded history is refused.
+ */
 export const readWatcherNativeRecoveryBoundary = (input: {
   readonly nativeAuthority: WatcherNativeChainSyncAuthority;
-  readonly recovery: Pick<
-    WatcherStateQueueRuntime,
-    "replayIntersection" | "catchupBoundary"
-  >;
+  readonly admittedIntersections: readonly WatcherRestartIntersectionCandidate[];
 }) => {
   const details = watcherNativeChainSyncAuthorityDetails(input.nativeAuthority);
   if (details === null) {
     throw new Error("native chain-sync authority expired during startup");
   }
-  if (
-    details.selectedIntersection.kind !== "point" ||
-    details.selectedIntersection.blockHash !==
-      input.recovery.replayIntersection.blockHash ||
-    details.selectedIntersection.slot !== input.recovery.replayIntersection.slot
-  ) {
+  const selected = details.selectedIntersection;
+  const admitted =
+    selected.kind === "point"
+      ? input.admittedIntersections.find(
+          (candidate) =>
+            candidate.blockHash === selected.blockHash &&
+            candidate.slot === selected.slot,
+        )
+      : undefined;
+  if (selected.kind !== "point" || admitted === undefined) {
     throw new Error(
-      "native chain-sync selected a point outside state-queue restore authority",
+      "native chain-sync selected a point outside the recorded resume history",
     );
   }
-  // Recovery and native startup observe the live node at different times.
-  // Growth is admissible only inside the existing bounded replay window; the
-  // state-queue runtime still verifies the exact historical catch-up point.
   if (
     details.currentTip.kind !== "point" ||
-    BigInt(details.currentTip.blockNo) <
-      BigInt(input.recovery.catchupBoundary.ogmiosTipBlockNo) ||
-    BigInt(details.currentTip.blockNo) -
-      BigInt(input.recovery.replayIntersection.blockNo) >
-      2_160n
+    BigInt(details.currentTip.blockNo) < BigInt(admitted.blockNo)
   ) {
     throw new Error(
-      "native chain-sync tip differs from the admitted state-queue recovery bound",
+      "native chain-sync tip is behind the selected resume point",
     );
   }
   return Object.freeze({
     ...details,
-    selectedIntersection: details.selectedIntersection,
+    selectedIntersection: selected,
+    selectedBlockNo: admitted.blockNo,
     currentTip: details.currentTip,
   });
+};
+
+/**
+ * Resume point first, then spaced progress rows, the durable finality
+ * authority and the state-queue cursor, so a node that forked below the
+ * head still finds a recorded ancestor.
+ */
+export const watcherRestartIntersectionCandidates = (input: {
+  readonly progressHead: WatcherRestartIntersectionCandidate | null;
+  readonly progressCandidates: readonly WatcherRestartIntersectionCandidate[];
+  readonly authorityFinalized: WatcherRestartIntersectionCandidate | null;
+  readonly stateQueueCursor: WatcherRestartIntersectionCandidate;
+}): readonly WatcherRestartIntersectionCandidate[] => {
+  const ordered = [
+    input.progressHead ?? input.authorityFinalized ?? input.stateQueueCursor,
+    ...input.progressCandidates,
+    ...(input.authorityFinalized === null ? [] : [input.authorityFinalized]),
+    input.stateQueueCursor,
+  ];
+  const seen = new Set<string>();
+  const candidates: WatcherRestartIntersectionCandidate[] = [];
+  for (const candidate of ordered) {
+    const key = `${candidate.blockHash}@${candidate.slot}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(
+      Object.freeze({
+        blockHash: candidate.blockHash,
+        blockNo: candidate.blockNo,
+        slot: candidate.slot,
+      }),
+    );
+    if (candidates.length === 128) break;
+  }
+  return Object.freeze(candidates);
 };
 
 const parseWatcherProverFundingOutRef = (
@@ -368,13 +411,22 @@ const prepareJournalDirectory = async (path: string): Promise<void> => {
  */
 export const createWatcherRuntime = async (input: {
   readonly config: WatcherProcessConfig;
+  readonly onStartupProgress?: (progress: WatcherStartupProgress) => void;
+  readonly onAvailabilityStatusTransition?: (
+    event: WatcherAvailabilityStatusTransition,
+  ) => void;
 }): Promise<WatcherRuntime> => {
-  await requireWatcherRuntimeConfig(input.config);
+  const startup = createWatcherStartupProgress(input.onStartupProgress);
+  await startup("runtime_configuration", () =>
+    requireWatcherRuntimeConfig(input.config),
+  );
   await prepareJournalDirectory(input.config.workflowJournalDirectory);
-  const deploymentAuthority = await loadWatcherVerifiedDeploymentAuthority({
-    path: input.config.deploymentAuthorityPath,
-    ruleBundlePath: input.config.ruleBundlePath,
-  });
+  const deploymentAuthority = await startup("deployment_authority", () =>
+    loadWatcherVerifiedDeploymentAuthority({
+      path: input.config.deploymentAuthorityPath,
+      ruleBundlePath: input.config.ruleBundlePath,
+    }),
+  );
   const { deploymentIdentity } = deploymentAuthority;
   const policy = makeWatcherFinalityPolicy(
     input.config.watcherConfig,
@@ -382,7 +434,7 @@ export const createWatcherRuntime = async (input: {
   );
   if (
     policy === null ||
-    policy.network !== "Preprod" ||
+    (policy.network !== "Preprod" && policy.network !== "Custom") ||
     policy.sourceMode !== "local_node" ||
     policy.confirmationDepth !== "30" ||
     policy.maximumPreFinalityRollbackDepth !== "30" ||
@@ -424,6 +476,7 @@ export const createWatcherRuntime = async (input: {
         ReturnType<typeof createWatcherLocalKupmiosNativeObservationRuntime>
       >
     | undefined;
+  let allocatedFaultProofApplication: WatcherFaultProofApplication | undefined;
   let faultProofSupervisor: WatcherFaultProofSupervisor | undefined;
   let faultDecisionBridge: WatcherFaultDecisionBridge | undefined;
   let availability: WatcherAvailabilityRuntime | undefined;
@@ -460,6 +513,13 @@ export const createWatcherRuntime = async (input: {
     if (faultProofSupervisor !== undefined) {
       try {
         await faultProofSupervisor.close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (allocatedFaultProofApplication !== undefined) {
+      try {
+        await allocatedFaultProofApplication.close();
       } catch (error) {
         failures.push(error);
       }
@@ -526,54 +586,67 @@ export const createWatcherRuntime = async (input: {
       authenticationKey: trusted.rollbackAuthenticationKey,
       client: trusted.client,
     });
-    const eventHistory = await createWatcherUserEventRuntime({
-      watcherConfig: input.config.watcherConfig,
-      deploymentAuthority,
-      blueprintBytes: await readFile(
-        input.config.faultProofInfrastructure.blueprintPath,
-      ),
-      nativeChainSyncBinaryPath: input.config.nativeChainSyncBinaryPath,
-      runtime: durable,
-      archive: sqlite.userEventArchive,
-    });
+    const blockProgress = sqlite.openBlockProgress(
+      trusted.rollbackAuthenticationKey,
+    );
+    const blueprintBytes = await readFile(
+      input.config.faultProofInfrastructure.blueprintPath,
+    );
+    const eventHistory = await startup("user_event_runtime", async () =>
+      createWatcherUserEventRuntime({
+        watcherConfig: input.config.watcherConfig,
+        deploymentAuthority,
+        blueprintBytes,
+        nativeChainSyncBinaryPath: input.config.nativeChainSyncBinaryPath,
+        runtime: durable,
+        archive: sqlite.userEventArchive,
+        coverage: sqlite.openUserEventCoverage(
+          trusted.rollbackAuthenticationKey,
+        ),
+      }),
+    );
     userEventRuntime = eventHistory;
     const retireEventHistory = () =>
       faultDecisionBridge?.invalidateForHistoryChange();
     void eventHistory.done.then(retireEventHistory, retireEventHistory);
-    const { faultProofApplication, faultProofReadiness } = await (async () => {
-      const faultProofApplication = createWatcherFaultProofApplication({
-        deploymentAuthority,
-        replayTranscriptStore: sqlite.replayTranscripts,
-        userEventRuntime: eventHistory,
-        infrastructure: input.config.faultProofInfrastructure,
-        historicalNativeScriptCheckpointStore,
-        fundingProfileOverlay,
-      });
-      assertWatcherFaultProofLaunchScope(
-        faultProofApplication.installedCategories,
-      );
-      const faultProofReadiness: WatcherFaultProofStartupReadiness[] = [];
-      for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
-        const journalDirectory = join(
-          input.config.workflowJournalDirectory,
-          "readiness",
-          category,
-          input.config.readinessHeaderHash,
+    const { faultProofApplication, faultProofReadiness } = await startup(
+      "workflow_readiness",
+      async () => {
+        const faultProofApplication = createWatcherFaultProofApplication({
+          deploymentAuthority,
+          replayTranscriptStore: sqlite.replayTranscripts,
+          userEventRuntime: eventHistory,
+          infrastructure: input.config.faultProofInfrastructure,
+          historicalNativeScriptCheckpointStore,
+          fundingProfileOverlay,
+        });
+        allocatedFaultProofApplication = faultProofApplication;
+        assertWatcherFaultProofLaunchScope(
+          faultProofApplication.installedCategories,
         );
-        await prepareJournalDirectory(journalDirectory);
-        faultProofReadiness.push(
-          await faultProofApplication.assertStartupReady({
-            mode: "resume",
+        const faultProofReadiness: WatcherFaultProofStartupReadiness[] = [];
+        for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
+          const journalDirectory = join(
+            input.config.workflowJournalDirectory,
+            "readiness",
             category,
-            deploymentFingerprint: deploymentIdentity.manifestId,
-            headerHash: input.config.readinessHeaderHash,
-            journalDirectory,
-            runtimeConfigPath: input.config.watcherRuntimeConfigPath,
-          }),
-        );
-      }
-      return { faultProofApplication, faultProofReadiness };
-    })();
+            input.config.readinessHeaderHash,
+          );
+          await prepareJournalDirectory(journalDirectory);
+          faultProofReadiness.push(
+            await faultProofApplication.assertStartupReady({
+              mode: "resume",
+              category,
+              deploymentFingerprint: deploymentIdentity.manifestId,
+              headerHash: input.config.readinessHeaderHash,
+              journalDirectory,
+              runtimeConfigPath: input.config.watcherRuntimeConfigPath,
+            }),
+          );
+        }
+        return { faultProofApplication, faultProofReadiness };
+      },
+    );
 
     const rawSource = createWatcherLocalKupmiosRawSource({
       watcherConfig: input.config.watcherConfig,
@@ -583,10 +656,12 @@ export const createWatcherRuntime = async (input: {
       deploymentIdentity,
       rawSource,
     });
-    const stateQueueRuntime = await createWatcherStateQueueRuntime({
-      store: sqlite.stateQueueObservations,
-      source: stateQueueSource,
-    });
+    const stateQueueRuntime = await startup("state_queue_recovery", () =>
+      createWatcherStateQueueRuntime({
+        store: sqlite.stateQueueObservations,
+        source: stateQueueSource,
+      }),
+    );
     const kupoService = localL1Source.queryServices.find(
       ({ kind }) => kind === "kupo",
     );
@@ -609,6 +684,7 @@ export const createWatcherRuntime = async (input: {
       });
     const proverFundingAuthorityFactory =
       createWatcherProverFundingAuthorityFactory({
+        journalRoot: input.config.workflowJournalDirectory,
         deploymentIdentity,
         protocolParameters: proverFundingProtocolParameters,
         store: proverFundingStore.store,
@@ -755,8 +831,11 @@ export const createWatcherRuntime = async (input: {
       identity: deploymentIdentity,
       rawSource,
       proverWalletAddress,
+      onStatusTransition: input.onAvailabilityStatusTransition,
     });
-    await availability.reconcile(stateQueueRuntime.current(), false);
+    await startup("availability_reconciliation", () =>
+      availability!.reconcile(stateQueueRuntime.current(), false),
+    );
     faultDecisionBridge = await createWatcherFaultDecisionBridge({
       application: faultProofApplication,
       supervisor: faultProofSupervisor,
@@ -770,31 +849,47 @@ export const createWatcherRuntime = async (input: {
     // Capture the full finalized backlog in bounded batches before recovering
     // older queue headers. Their event views remain scoped to each header.
     const restoredQueuePoint = stateQueueRuntime.catchupBoundary;
-    await eventHistory.advanceThrough({
-      blockHash: restoredQueuePoint.blockHash,
-      blockNo: restoredQueuePoint.blockNo,
-      slot: restoredQueuePoint.slot,
-      pointId: computeFraudProofRawL1PointId(restoredQueuePoint),
-    });
-    await faultDecisionBridge.prepareForRecovery(stateQueueRuntime.current());
-    const recoveredFaultProofWorkflowCount =
-      await faultDecisionBridge.recoverExisting();
+    await startup("user_event_catchup", () =>
+      eventHistory.advanceThrough({
+        blockHash: restoredQueuePoint.blockHash,
+        blockNo: restoredQueuePoint.blockNo,
+        slot: restoredQueuePoint.slot,
+        pointId: computeFraudProofRawL1PointId(restoredQueuePoint),
+      }),
+    );
+    await startup("header_classification", () =>
+      faultDecisionBridge!.prepareForRecovery(stateQueueRuntime.current()),
+    );
+    const recoveredFaultProofWorkflowCount = await startup(
+      "workflow_recovery",
+      () => faultDecisionBridge!.recoverExisting(),
+    );
     operationsHttp = await startWatcherOperationsHttpServer({
       endpoint: input.config.operationsEndpoint,
       observability: operations,
     });
-    const replayIntersection: WatcherNativeChainSyncPoint = Object.freeze({
-      kind: "point",
-      blockHash: stateQueueRuntime.replayIntersection.blockHash,
-      slot: stateQueueRuntime.replayIntersection.slot,
+    const retainedFinality = durable.readFinality();
+    const intersectionCandidates = watcherRestartIntersectionCandidates({
+      progressHead: blockProgress.readHead(),
+      progressCandidates: blockProgress.readCandidates(),
+      authorityFinalized:
+        retainedFinality.phase === "finalized" &&
+        retainedFinality.finalized !== null
+          ? retainedFinality.finalized
+          : null,
+      stateQueueCursor: stateQueueRuntime.replayIntersection,
     });
     native = await startWatcherNativeChainSyncWithRetry({
       binaryPath: input.config.nativeChainSyncBinaryPath,
       watcherConfig: input.config.watcherConfig,
-      // State-queue authority owns this exact intersection. Retrying an older
-      // native point while retaining the latest queue cursor would skip or
-      // reverse authenticated queue transitions, so there is no fallback.
-      intersectionCandidates: Object.freeze([replayIntersection]),
+      // The node picks the newest recorded point it still has; anything the
+      // watcher recorded above it is rolled back by the coordinator.
+      intersectionCandidates: Object.freeze(
+        intersectionCandidates.map(
+          ({ blockHash, slot }): WatcherNativeChainSyncPoint =>
+            Object.freeze({ kind: "point", blockHash, slot }),
+        ),
+      ),
       startupTimeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
       onEvent: createWatcherNativeEventHandler({
         coordinator: coordinatorReady,
@@ -814,7 +909,7 @@ export const createWatcherRuntime = async (input: {
     });
     const details = readWatcherNativeRecoveryBoundary({
       nativeAuthority: native.authority,
-      recovery: stateQueueRuntime,
+      admittedIntersections: intersectionCandidates,
     });
     const queueHooks = stateQueueRuntime.bindFaultDecisionBridge(
       faultDecisionBridge,
@@ -828,6 +923,20 @@ export const createWatcherRuntime = async (input: {
       durable,
       observation,
       restartIntersection: details.selectedIntersection,
+      progress: blockProgress,
+      // One predicate decides relevance for every component: the user-event
+      // runtime's deployment policy plus its active event outrefs, extended
+      // with the queue nodes and correction lock the state queue follows.
+      relevance: (block) => {
+        const current = stateQueueRuntime.current();
+        return activeUserEventRuntime.classify(block, [
+          ...current.finalizedQueue.map(({ outRef }) => outRef),
+          ...current.finalizedHeaders.map(({ queueOutRef }) => queueOutRef),
+          ...(current.finalizedCorrectionLock === null
+            ? []
+            : [current.finalizedCorrectionLock.outRef]),
+        ]);
+      },
       hooks: {
         onRollback: async (point) => {
           activeBridge.invalidateForRollback();
@@ -836,6 +945,14 @@ export const createWatcherRuntime = async (input: {
           await queueHooks.onRollback(point);
         },
         onFinalized: async (finalized) => {
+          if (finalized.relevance === "quiet") {
+            // No deposit, withdrawal or queue movement: coverage of the
+            // block is established from its header link alone, with one
+            // in-place row write and no request.
+            await activeUserEventRuntime.coverQuiet(finalized.nativeBlock);
+            await queueHooks.onFinalized(finalized);
+            return;
+          }
           const head = activeUserEventRuntime.read().currentPoint;
           if (
             head === null ||
@@ -843,15 +960,12 @@ export const createWatcherRuntime = async (input: {
           ) {
             activeBridge.beforeHistoryAdvance();
           }
-          await activeUserEventRuntime.advanceThrough(
-            {
-              blockHash: finalized.nativeBlock.blockHash,
-              blockNo: finalized.nativeBlock.blockNo,
-              slot: finalized.nativeBlock.slot,
-              pointId: computeFraudProofRawL1PointId(finalized.nativeBlock),
-            },
-            { prefetch: true },
-          );
+          await activeUserEventRuntime.advanceThrough({
+            blockHash: finalized.nativeBlock.blockHash,
+            blockNo: finalized.nativeBlock.blockNo,
+            slot: finalized.nativeBlock.slot,
+            pointId: computeFraudProofRawL1PointId(finalized.nativeBlock),
+          });
           await queueHooks.onFinalized(finalized);
         },
       },

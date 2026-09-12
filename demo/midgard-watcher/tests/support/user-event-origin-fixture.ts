@@ -274,8 +274,32 @@ type CreatingOutput = Readonly<{
   script_hash: string | null;
   created_at: Readonly<{ slot_no: number; header_hash: string }>;
   datum: string | null;
-  script: string | null;
+  script: Readonly<{ language: string; script: string }> | null;
 }>;
+/** Kupo `resolve_hashes` script shape: language tag plus raw script bytes. */
+const kupoResolvedScript = (
+  script: CML.Script,
+): Readonly<{ language: string; script: string }> => {
+  const native = script.as_native();
+  if (native !== undefined)
+    return Object.freeze({ language: "native", script: native.to_cbor_hex() });
+  const raw = (
+    script.as_plutus_v1() ??
+    script.as_plutus_v2() ??
+    script.as_plutus_v3()
+  )?.to_raw_bytes();
+  if (raw === undefined) throw new Error("unsupported reference script");
+  const language =
+    script.as_plutus_v1() !== undefined
+      ? "plutus:v1"
+      : script.as_plutus_v2() !== undefined
+        ? "plutus:v2"
+        : "plutus:v3";
+  return Object.freeze({
+    language,
+    script: Buffer.from(raw).toString("hex"),
+  });
+};
 type Consumption = Readonly<{
   transaction_id: string;
   input_index: number;
@@ -416,8 +440,18 @@ export type SyntheticNativeQuery = Readonly<{
   target: SyntheticNativeTip;
   tip: SyntheticNativeTip;
 }>;
+type OriginDeployment = Omit<
+  ReturnType<typeof makeOriginDeployment>,
+  "signedIdentity" | "trustRoots"
+> & {
+  signedIdentity: unknown;
+  trustRoots: readonly ReturnType<
+    typeof makeOriginDeployment
+  >["trustRoots"][number][];
+};
+
 export type SyntheticUserEventOriginFixture = Readonly<{
-  deployment: ReturnType<typeof makeOriginDeployment>;
+  deployment: OriginDeployment;
   deploymentIdentity: ReturnType<typeof makeOriginDeployment>["result"];
   scriptBinding: WatcherUserEventScriptBinding;
   watcherConfig: ReturnType<typeof makeConfig>;
@@ -465,7 +499,7 @@ export const createSyntheticUserEventOriginFixture = async (
     protocolParameters?: unknown;
     /** Exact accepted transactions and identity from a live emulator deployment. */
     published?: Readonly<{
-      deployment: ReturnType<typeof makeOriginDeployment>;
+      deployment: OriginDeployment;
       transactionCbor: string;
       inclusionSlot?: number;
       creatingTransactions: readonly Readonly<{ transactionCbor: string }>[];
@@ -712,7 +746,7 @@ export const createSyntheticUserEventOriginFixture = async (
               header_hash: creatingPoint.blockHash,
             }),
             datum: inline?.to_cbor_hex() ?? null,
-            script: script?.to_canonical_cbor_hex() ?? null,
+            script: script === undefined ? null : kupoResolvedScript(script),
           });
         },
       );
@@ -846,21 +880,50 @@ setInterval(()=>{
   );
   await chmod(binaryPath, 0o700);
   class BoundarySocket extends EventTarget {
+    readyState = 0;
     intersection = { slot: Number(anchor.slot), id: anchor.blockHash };
     constructor() {
       super();
-      queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      queueMicrotask(() => {
+        if (this.readyState !== 0) return;
+        this.readyState = 1;
+        this.dispatchEvent(new Event("open"));
+      });
     }
     send(text: string): void {
+      if (this.readyState !== 1)
+        throw new Error("Synthetic Ogmios socket is not open");
       const request = JSON.parse(text) as {
         id: number;
         method: string;
-        params: { points?: { slot: number; id: string }[] };
+        params: { points?: ("origin" | { slot: number; id: string })[] };
       };
       let result: unknown;
       if (request.method === "findIntersection") {
-        this.intersection = request.params.points![0]!;
-        result = { intersection: this.intersection };
+        const intersection = request.params.points![0]!;
+        if (intersection === "origin") {
+          const tip: SyntheticNativeTip =
+            nativeTipMode === "controlled"
+              ? (
+                  JSON.parse(readFileSync(controlPath, "utf8")) as {
+                    tip: SyntheticNativeTip;
+                  }
+                ).tip
+              : (JSON.parse(
+                  readFileSync(tipPath, "utf8"),
+                ) as SyntheticNativeTip);
+          result = {
+            intersection,
+            tip: {
+              id: tip.blockHash,
+              slot: Number(tip.slot),
+              height: Number(tip.blockNo),
+            },
+          };
+        } else {
+          this.intersection = intersection;
+          result = { intersection };
+        }
       } else {
         const block = blocks.find(
           (block) => block.parentPoint.blockHash === this.intersection.id,
@@ -868,7 +931,17 @@ setInterval(()=>{
         const references = creating.filter(
           (row) => row.predecessorPoint.blockHash === this.intersection.id,
         );
-        const point = block?.point ?? references[0]?.creatingPoint;
+        // Controlled tips can also be parents of later test blocks. Kupo
+        // advertises those checkpoints, so its Ogmios peer must expose their
+        // heights when the boundary search probes them. They carry no txs.
+        const parentCheckpoint = blocks
+          .map(({ parentPoint }) => parentPoint)
+          .filter(
+            (point) => BigInt(point.slot) > BigInt(this.intersection.slot),
+          )
+          .sort((a, b) => Number(BigInt(a.slot) - BigInt(b.slot)))[0];
+        const point =
+          block?.point ?? references[0]?.creatingPoint ?? parentCheckpoint;
         if (point === undefined)
           throw new Error("Synthetic fixture has no requested child");
         const transactions =
@@ -900,7 +973,20 @@ setInterval(()=>{
         ),
       );
     }
-    close(): void {}
+    close(): void {
+      if (this.readyState >= 2) return;
+      this.readyState = 2;
+      queueMicrotask(() => {
+        this.readyState = 3;
+        this.dispatchEvent(
+          Object.assign(new Event("close"), {
+            code: 1000,
+            reason: "",
+            wasClean: true,
+          }),
+        );
+      });
+    }
   }
   vi.stubGlobal("WebSocket", BoundarySocket);
   const originalFetch = globalThis.fetch;
@@ -971,7 +1057,7 @@ setInterval(()=>{
     }
     const headers = {
       "X-Most-Recent-Checkpoint": "999999",
-      ETag: `"${"55".repeat(32)}"`,
+      ETag: "55".repeat(32),
     };
     if (path.startsWith("/matches/")) {
       const pattern = decodeURIComponent(path.slice("/matches/".length));

@@ -22,6 +22,7 @@ import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
   createWatcherStateQueueObservationSource,
+  stateQueueProgressRecordDue,
   unsafeDeriveFraudProofCorrectionIdentityForTest,
   unsafeDeriveWatcherStateQueueObservationForTest,
   unsafeResolveRetainedWatcherStateQueueHeaderForTest,
@@ -29,6 +30,7 @@ import {
   unsafeRestorePersistedWatcherStateQueueObservationForTest,
   unsafeSelectWatcherStateQueueRawCandidatesForTest,
   unsafeSnapshotWatcherStateQueueAtBoundaryForTest,
+  WATCHER_STATE_QUEUE_PROGRESS_INTERVAL_BLOCKS,
   type WatcherAuthenticatedStateQueueObservation,
 } from "../../src/indexers/authenticated-state-queue-observation.js";
 import type { WatcherLocalKupmiosNativeObservation } from "../../src/l1/local-kupmios-native-observation.js";
@@ -1441,9 +1443,58 @@ describe("production state-queue observation source", () => {
         authority: initial.authority,
         sourceId: "test-source",
         maximumObservations: 2160,
+        readers: {
+          readBlock: async () => ({
+            schemaVersion: "midgard-local-kupmios-raw-block-at-point-v1",
+            sourceId: "test-source",
+            point: initial.raw.inclusionPoint,
+            parentBlockHash: initial.nativeBlock.prevHash,
+            kupoCheckpoint: {
+              slot: Number(initial.raw.inclusionPoint.slot),
+              blockHash: initial.raw.inclusionPoint.blockHash,
+            },
+            transactions: [
+              {
+                txHash: initial.raw.txHash,
+                transactionCbor: initial.nativeBlock.transactionCbors[0]!,
+              },
+            ],
+          }),
+          readTransaction: async () => initial.raw,
+          readUnitHistory: async () => ({
+            checkpoint: initial.raw.inclusionPoint,
+            transactions: [
+              {
+                txHash: initial.raw.txHash,
+                inclusionPoint: initial.raw.inclusionPoint,
+              },
+            ],
+          }),
+          readAddress: async (): Promise<never> => {
+            throw new Error("exact recovery bound must use unit history");
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      replayIntersection: { blockNo: "100" },
+      catchupBoundary: { ogmiosTipBlockNo: "2261" },
+    });
+    expect(reads).toBe(0);
+    await expect(
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
+        persistedObservations: [JSON.parse(JSON.stringify(result))],
+        intersection: {
+          blockHash: initial.nativeBlock.blockHash,
+          blockNo: initial.nativeBlock.blockNo,
+          slot: initial.nativeBlock.slot,
+        },
+        ogmiosTipBlockNo: "99",
+        authority: initial.authority,
+        sourceId: "test-source",
+        maximumObservations: 2160,
         readers: neverReaders,
       }),
-    ).rejects.toThrow("catch-up block distance exceeds its release bound");
+    ).rejects.toThrow("cursor is ahead of the native chain tip");
     expect(reads).toBe(0);
     await expect(
       unsafeRestorePersistedWatcherStateQueueObservationForTest({
@@ -1535,6 +1586,223 @@ describe("production state-queue observation source", () => {
         rawTransactions: [current.raw],
       }),
     ).toThrow("chain point/finality differs");
+  });
+
+  it("persists a quiet-queue progress cursor and restores it without a checkpoint", async () => {
+    const initial = fixture();
+    const base = unsafeDeriveWatcherStateQueueObservationForTest({
+      nativeBlock: initial.nativeBlock,
+      localObservation: initial.localObservation,
+      authority: initial.authority,
+      sourceId: "test-source",
+      previous: null,
+      rawTransactions: [initial.raw],
+    });
+    const laterBlockNo = 100 + WATCHER_STATE_QUEUE_PROGRESS_INTERVAL_BLOCKS;
+    expect(
+      stateQueueProgressRecordDue(base, {
+        blockNo: (laterBlockNo - 1).toString(),
+      }),
+    ).toBe(false);
+    expect(
+      stateQueueProgressRecordDue(base, { blockNo: laterBlockNo.toString() }),
+    ).toBe(true);
+    const later = Object.freeze({
+      blockHash: h32("a2"),
+      blockNo: laterBlockNo.toString(),
+      slot: "5800",
+    });
+    const laterPointId = computeFraudProofRawL1PointId(later);
+    const nativeBlock = Object.freeze({
+      ...initial.nativeBlock,
+      blockHash: later.blockHash,
+      blockNo: later.blockNo,
+      slot: later.slot,
+      prevHash: initial.nativeBlock.blockHash,
+      transactionIds: Object.freeze([]),
+      transactionCbors: Object.freeze([]),
+    }) as WatcherNativeBlockAdmission;
+    const localObservation = {
+      block: {
+        chainPoint: {
+          blockHash: later.blockHash,
+          blockNo: later.blockNo,
+          chainPointId: laterPointId,
+          depth: "30",
+          parentBlockHash: initial.nativeBlock.blockHash,
+          pointDigest: h32("b4"),
+          slot: later.slot,
+        },
+        transactions: [],
+      },
+    } as unknown as WatcherLocalKupmiosNativeObservation;
+    const progress = unsafeDeriveWatcherStateQueueObservationForTest({
+      nativeBlock,
+      localObservation,
+      authority: initial.authority,
+      sourceId: "test-source",
+      previous: base,
+      rawTransactions: [],
+    });
+    expect(progress.checkpoints).toEqual([]);
+    expect(progress.previousObservationDigest).toBe(base.observationDigest);
+    expect(progress.finalizedQueue).toEqual(base.finalizedQueue);
+    expect(progress.nativePoint.blockNo).toBe(later.blockNo);
+    const rawBlock = (blockHash: string) =>
+      blockHash === later.blockHash
+        ? {
+            schemaVersion:
+              "midgard-local-kupmios-raw-block-at-point-v1" as const,
+            sourceId: "test-source",
+            point: { ...later, pointId: laterPointId },
+            parentBlockHash: initial.nativeBlock.blockHash,
+            kupoCheckpoint: {
+              slot: Number(later.slot),
+              blockHash: later.blockHash,
+            },
+            transactions: [],
+          }
+        : {
+            schemaVersion:
+              "midgard-local-kupmios-raw-block-at-point-v1" as const,
+            sourceId: "test-source",
+            point: initial.raw.inclusionPoint,
+            parentBlockHash: initial.nativeBlock.prevHash,
+            kupoCheckpoint: {
+              slot: Number(initial.raw.inclusionPoint.slot),
+              blockHash: initial.raw.inclusionPoint.blockHash,
+            },
+            transactions: [
+              {
+                txHash: initial.raw.txHash,
+                transactionCbor: initial.nativeBlock.transactionCbors[0]!,
+              },
+            ],
+          };
+    const laterHistory: {
+      txHash: string;
+      inclusionPoint: {
+        blockHash: string;
+        blockNo: string;
+        slot: string;
+        pointId: string;
+      };
+    }[] = [];
+    const spendHash = h32("cc");
+    const spendPoint = Object.freeze({
+      blockHash: h32("c3"),
+      blockNo: (laterBlockNo - 10).toString(),
+      slot: "5600",
+    });
+    const spend = {
+      ...initial.raw,
+      txHash: spendHash,
+      inclusionPoint: {
+        ...spendPoint,
+        pointId: computeFraudProofRawL1PointId(spendPoint),
+      },
+      resolvedInputs: [
+        {
+          outRef: base.finalizedQueue[0]!.outRef,
+          outputCbor: "",
+          datumCbor: null,
+          referenceScriptCbor: null,
+        },
+      ],
+    };
+    const readers = {
+      readBlock: async (point: { blockHash: string }) =>
+        rawBlock(point.blockHash),
+      readTransaction: async (txHash: string) =>
+        txHash === spendHash ? spend : initial.raw,
+      // The persisted base may lie deeper than the raw source's recovery
+      // window, so its unit history is read through the catch-up boundary.
+      readUnitHistory: async (_unit: string, point: { blockHash: string }) => {
+        if (point.blockHash !== later.blockHash) {
+          throw new Error(
+            "historical Kupmios point is outside the pinned release recovery window",
+          );
+        }
+        return {
+          checkpoint: { ...later, pointId: laterPointId },
+          transactions: [
+            {
+              txHash: initial.raw.txHash,
+              inclusionPoint: initial.raw.inclusionPoint,
+            },
+            ...laterHistory,
+          ],
+        };
+      },
+      readAddress: async (): Promise<never> => {
+        throw new Error("progress restore must use unit history");
+      },
+    };
+    const restore = (persistedObservations: readonly unknown[]) =>
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
+        persistedObservations,
+        intersection: later,
+        ogmiosTipBlockNo: (laterBlockNo + 30).toString(),
+        authority: initial.authority,
+        sourceId: "test-source",
+        maximumObservations: 2160,
+        readers,
+      });
+    const restored = await restore([
+      JSON.parse(JSON.stringify(base)),
+      JSON.parse(JSON.stringify(progress)),
+    ]);
+    expect(restored.previous.observationDigest).toBe(
+      progress.observationDigest,
+    );
+    expect(restored.replayIntersection.blockNo).toBe(later.blockNo);
+    // A compacted window may begin at a progress record; it is then the
+    // authenticated base topology.
+    const compacted = await restore([JSON.parse(JSON.stringify(progress))]);
+    expect(compacted.replayIntersection.blockNo).toBe(later.blockNo);
+    // A checkpoint-less record that changes the finalized state is not progress.
+    const forged = rehashObservation({
+      ...progress,
+      finalizedQueue: [{ headerHash: null, outRef: `${h32("ff")}#0` }],
+    });
+    await expect(
+      restore([JSON.parse(JSON.stringify(base)), forged]),
+    ).rejects.toThrow("restore chain differs");
+    // A progress record repeats the base queue, but the queue must also be
+    // unspent at the record's own point: a store that dropped a transition
+    // between the base and the cursor is refused rather than replayed stale.
+    laterHistory.push({
+      txHash: spendHash,
+      inclusionPoint: spend.inclusionPoint,
+    });
+    await expect(
+      restore([
+        JSON.parse(JSON.stringify(base)),
+        JSON.parse(JSON.stringify(progress)),
+      ]),
+    ).rejects.toThrow("already spent at its claimed point");
+    await expect(
+      restore([JSON.parse(JSON.stringify(base))]),
+    ).resolves.toMatchObject({
+      replayIntersection: { blockNo: base.nativePoint.blockNo },
+    });
+    laterHistory.pop();
+    // History read through the boundary is a superset; a creation recorded
+    // after the persisted point cannot authenticate that point's topology.
+    const movedCreation = rehashObservation({
+      ...base,
+      finalizedQueue: base.finalizedQueue.map((node) => ({
+        ...node,
+        outRef: `${h32("ee")}#0`,
+      })),
+    });
+    laterHistory.push({
+      txHash: h32("ee"),
+      inclusionPoint: { ...later, pointId: laterPointId },
+    });
+    await expect(
+      restore([JSON.parse(JSON.stringify(movedCreation))]),
+    ).rejects.toThrow("created after its claimed point");
   });
 
   it("rejects structural deployment/local-observation authority and release mismatch", async () => {

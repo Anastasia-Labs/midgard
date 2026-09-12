@@ -50,6 +50,31 @@ emit({
   startupDigest: digest,
 });
 
+if (
+  [
+    "runtime_failure",
+    "malformed_runtime_failure",
+    "runtime_failure_large_stderr",
+  ].includes(mode)
+) {
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  await new Promise((resolve) =>
+    process.stderr.write(
+      (mode === "runtime_failure_large_stderr"
+        ? "discarded stderr prefix" + "x".repeat(20_000)
+        : "") + "native chain-sync: actual underlying socket failure\n",
+      resolve,
+    ),
+  );
+  emit({
+    code: "chain_sync_failed",
+    ...(mode === "malformed_runtime_failure" ? { extra: true } : {}),
+    kind: "error",
+    schemaVersion: startup.schemaVersion,
+  });
+  process.exit(70);
+}
+
 if (mode === "crash") process.exit(23);
 
 const forward = {

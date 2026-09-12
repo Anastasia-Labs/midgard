@@ -2131,6 +2131,43 @@ describe("WatcherPublicDaLibp2pTransport", () => {
     await wrongPeerTransport.stop();
   });
 
+  it("aborts a stream returned after cancellation without sending a request", async () => {
+    const controller = new AbortController();
+    const send = vi.fn(() => true);
+    const abort = vi.fn();
+    const stream = {
+      send,
+      abort,
+      close: async () => undefined,
+      async *[Symbol.asyncIterator]() {
+        yield encodeWatcherPublicDaFrame(Buffer.from("response"));
+      },
+    };
+    const transport = new WatcherPublicDaLibp2pTransport({
+      libp2pFactory: async () => ({
+        start: async () => undefined,
+        stop: async () => undefined,
+        dialProtocol: async () => {
+          controller.abort(new Error("lease closed during dial"));
+          return stream;
+        },
+        getConnections: () => [
+          { remotePeer: { toString: () => authenticatedPeerId } },
+        ],
+      }),
+    });
+    await transport.start();
+    try {
+      await expect(
+        transport.request(requestFor(controller.signal)),
+      ).rejects.toThrow("lease closed during dial");
+      expect(send).not.toHaveBeenCalled();
+      expect(abort).toHaveBeenCalledOnce();
+    } finally {
+      await transport.stop();
+    }
+  });
+
   it("honors an already-aborted request before it can dial", async () => {
     const controller = new AbortController();
     controller.abort(new Error("test cancellation"));

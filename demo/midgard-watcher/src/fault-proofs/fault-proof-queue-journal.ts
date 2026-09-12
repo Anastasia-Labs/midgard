@@ -31,7 +31,7 @@ type QueueEvent =
       queuedAtMs: string;
     }>
   | Readonly<{
-      kind: "requeued" | "started" | "finished";
+      kind: "requeued" | "reopened" | "started" | "finished";
       jobIdentityDigest: string;
       observedAtMs: string;
     }>;
@@ -55,6 +55,7 @@ export type WatcherFaultProofQueueJournal = Readonly<{
   register(
     identity: WatcherFaultProofQueueIdentity,
     observedAtMs: string,
+    options?: Readonly<{ reopenFinished: boolean }>,
   ): Promise<Readonly<{ queuedAtMs: string; finished: boolean }>>;
   markStarted(jobIdentityDigest: string, observedAtMs: string): Promise<void>;
   markFinished(jobIdentityDigest: string, observedAtMs: string): Promise<void>;
@@ -192,6 +193,7 @@ export const openWatcherFaultProofQueueJournal = async (input: {
       const prior = states.get(event.jobIdentityDigest);
       if (
         prior === undefined ||
+        (event.kind === "reopened" && prior.state !== "finished") ||
         BigInt(event.observedAtMs) < BigInt(prior.queuedAtMs)
       ) {
         throw new Error(
@@ -282,14 +284,14 @@ export const openWatcherFaultProofQueueJournal = async (input: {
   };
 
   return Object.freeze({
-    register: (identity, observedAtMs) =>
+    register: (identity, observedAtMs, options) =>
       serialize(async () => {
         if (!NATURAL.test(observedAtMs)) {
           throw new Error("fault-proof queue enqueue time is invalid");
         }
         const digest = identityDigest(input.deploymentFingerprint, identity);
         const prior = states.get(digest);
-        if (prior?.state === "finished") {
+        if (prior?.state === "finished" && options?.reopenFinished !== true) {
           return Object.freeze({
             queuedAtMs: prior.queuedAtMs,
             finished: true,
@@ -301,10 +303,12 @@ export const openWatcherFaultProofQueueJournal = async (input: {
             finished: false,
           });
         }
-        if (prior?.state === "active") {
+        if (prior?.state === "active" || prior?.state === "finished") {
+          if (BigInt(observedAtMs) < BigInt(prior.queuedAtMs))
+            throw new Error("fault-proof queue requeue time is invalid");
           await append(
             Object.freeze({
-              kind: "requeued",
+              kind: prior.state === "finished" ? "reopened" : "requeued",
               jobIdentityDigest: digest,
               observedAtMs,
             }),

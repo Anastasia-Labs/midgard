@@ -304,4 +304,58 @@ describe("production watcher commands", () => {
     });
     expect(events[1]).toBe("authority-closed");
   });
+
+  it("retains availability failure timing when startup subsequently fails", async () => {
+    const errors: string[] = [];
+    const output: string[] = [];
+    await expect(
+      unsafeRunWatcherCommandForTest(
+        "start",
+        "/etc/watcher.json",
+        {
+          writeOutput: (text) => output.push(text),
+          writeError: (text) => errors.push(text),
+        },
+        {
+          runAuthority: async () => ({ close: async () => undefined }),
+          runWatcher: async (_config, _startup, onAvailability) => {
+            onAvailability({
+              status: {
+                phase: "blocked",
+                pendingHeaders: ["ab".repeat(28)],
+                detail: "authenticated snapshot unavailable",
+              },
+              observationDigest: "cd".repeat(32),
+              nativePoint: {
+                blockHash: "ef".repeat(32),
+                parentBlockHash: null,
+                slot: "24729",
+                blockNo: "1273",
+                chainPointId: "12".repeat(32),
+                finalityDepth: "30",
+              },
+              elapsedMs: 1250,
+              observedAt: "2026-09-11T07:00:00.000Z",
+            });
+            throw new Error("later startup failure");
+          },
+          waitForShutdown: async () => "SIGTERM",
+        },
+      ),
+    ).rejects.toThrow("later startup failure");
+    expect(output).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(JSON.parse(errors[0]!)).toMatchObject({
+      packageName: "midgard-watcher",
+      command: "start",
+      state: "availability_status",
+      productionReady: false,
+      status: {
+        phase: "blocked",
+        detail: "authenticated snapshot unavailable",
+      },
+      elapsedMs: 1250,
+      nativePoint: { slot: "24729", blockNo: "1273" },
+    });
+  });
 });

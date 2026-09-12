@@ -249,6 +249,7 @@ describe("watcher production prover funding permit mint V1", () => {
   it("refuses a structural funding authority factory without reserving", async () => {
     const { store } = await openStore();
     const admitted = createWatcherProverFundingAuthorityFactory({
+      journalRoot: process.cwd(),
       deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
       protocolParameters:
         await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
@@ -274,6 +275,7 @@ describe("watcher production prover funding permit mint V1", () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const { store } = await openStore();
     const factory = createWatcherProverFundingAuthorityFactory({
+      journalRoot: process.cwd(),
       deploymentIdentity,
       protocolParameters:
         await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
@@ -288,7 +290,7 @@ describe("watcher production prover funding permit mint V1", () => {
     expect(await reservationRecords(store)).toEqual([]);
   });
 
-  it("admits a measured runner: it reserves the wallet inputs and stops at the actuation permit", async () => {
+  it("admits a measured runner and rejects an invalid actuation permit before reserving", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const { store } = await openStore();
     const protocolParameters =
@@ -299,6 +301,7 @@ describe("watcher production prover funding permit mint V1", () => {
         fetchImpl,
       });
     const factory = createWatcherProverFundingAuthorityFactory({
+      journalRoot: process.cwd(),
       deploymentIdentity,
       protocolParameters,
       store,
@@ -319,9 +322,7 @@ describe("watcher production prover funding permit mint V1", () => {
       getUtxosByOutRef: async () => [],
     });
 
-    // The two admission gates pass, so the mint runs the real funding
-    // calculation and reservation and is stopped only by the next gate: the
-    // structural actuation permit this test hands it.
+    // A refused live authority must not create a reservation.
     await expect(
       mint({
         factory,
@@ -332,25 +333,7 @@ describe("watcher production prover funding permit mint V1", () => {
     ).rejects.toThrow("actuation permit was not admitted");
     expect(getUtxos).toHaveBeenCalledWith(fundedWalletAddress);
 
-    const records = await reservationRecords(store);
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      decisionDigest: DECISION_DIGEST,
-      state: "active",
-      revision: "0",
-    });
-    // Exactly the wallet outputs the calculation needed, leased from the
-    // wallet this mint was pointed at.
-    const leased = records[0]!.activeInputs.map(({ outRef }) => outRef);
-    expect(leased.length).toBeGreaterThan(0);
-    for (const outRef of leased) {
-      expect(
-        walletUtxos.map(
-          (utxo) => `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-        ),
-      ).toContain(outRef);
-    }
+    expect(await reservationRecords(store)).toEqual([]);
   });
 });
 

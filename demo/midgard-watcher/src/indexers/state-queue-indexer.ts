@@ -71,9 +71,11 @@ import {
   encodeWatcherDurableStore,
   journalWatcherProtocolUtxoTransition,
   parseWatcherDurableStore,
+  watcherCanonicalMembersAbsentFrom,
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherRetainsCanonicalMembers,
   watcherSameCanonicalJson,
   watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
@@ -154,7 +156,11 @@ export type WatcherStateQueueIndexerReasonCode =
   (typeof WATCHER_STATE_QUEUE_INDEXER_REASON_CODES)[number];
 export type WatcherStateQueueIndexerAlertCode =
   (typeof WATCHER_STATE_QUEUE_INDEXER_ALERT_CODES)[number];
-export type WatcherStateQueueNetwork = "Mainnet" | "Preprod" | "Preview";
+export type WatcherStateQueueNetwork =
+  | "Mainnet"
+  | "Preprod"
+  | "Preview"
+  | "Custom";
 export type WatcherStateQueueTransitionKind =
   | "bootstrap"
   | "append"
@@ -411,7 +417,7 @@ const HEX_32 = /^[0-9a-f]{64}$/u;
 const HEX_4 = /^[0-9a-f]{8}$/u;
 const HEX_BYTES = /^(?:[0-9a-f]{2})+$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const NETWORKS = ["Mainnet", "Preprod", "Preview", "Custom"] as const;
 const EMPTY_MERKLE_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 
@@ -1737,12 +1743,11 @@ const storeTransitionMatches = (
     BigInt(next.revision) !== BigInt(source.revision) + 1n ||
     !sameMarker(source.deploymentMarker, next.deploymentMarker) ||
     !nonProtocolRecordsMatch(source, next) ||
-    !source.l1Observations.every((entry) =>
-      next.l1Observations.some((candidate) => same(candidate, entry)),
+    !watcherRetainsCanonicalMembers(
+      source.l1Observations,
+      next.l1Observations,
     ) ||
-    !source.chainPoints.every((entry) =>
-      next.chainPoints.some((candidate) => same(candidate, entry)),
-    )
+    !watcherRetainsCanonicalMembers(source.chainPoints, next.chainPoints)
   ) {
     return false;
   }
@@ -1772,12 +1777,13 @@ const storeTransitionMatches = (
   ) {
     return false;
   }
-  const newObservations = next.l1Observations.filter(
-    (entry) =>
-      !source.l1Observations.some((candidate) => same(candidate, entry)),
+  const newObservations = watcherCanonicalMembersAbsentFrom(
+    next.l1Observations,
+    source.l1Observations,
   );
-  const newPoints = next.chainPoints.filter(
-    (entry) => !source.chainPoints.some((candidate) => same(candidate, entry)),
+  const newPoints = watcherCanonicalMembersAbsentFrom(
+    next.chainPoints,
+    source.chainPoints,
   );
   if (
     newObservations.length !== (sourceHasObservation ? 0 : 1) ||

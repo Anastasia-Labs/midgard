@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseWatcherConfig,
   parseWatcherConfigJson,
+  parseWatcherStrictJsonValue,
   WATCHER_CONFIG_BOUNDS,
   WATCHER_CONFIG_SCHEMA_VERSION,
   watcherConfigDiagnostic,
@@ -111,6 +112,66 @@ const validLocalNodeConfig = () => {
     },
   };
 };
+
+describe("explicit local devnet configuration", () => {
+  const customNetwork = {
+    networkMagic: 424242,
+    slotConfig: { zeroTime: 1_789_056_000_000, zeroSlot: 0, slotLength: 1000 },
+  };
+
+  it("admits a custom chain only with an explicit identity and clock", () => {
+    const config = parseWatcherConfig({
+      ...validLocalNodeConfig(),
+      targetNetwork: "Custom",
+      customNetwork,
+    });
+    expect(config).toMatchObject({ targetNetwork: "Custom", customNetwork });
+    expect(() =>
+      parseWatcherConfig({
+        ...validLocalNodeConfig(),
+        targetNetwork: "Custom",
+      }),
+    ).toThrow();
+  });
+
+  it("admits direct local DA transport only for an explicit custom devnet", () => {
+    const input = validLocalNodeConfig();
+    input.da.peers[0]!.multiaddr =
+      "/ip4/127.0.0.1/tcp/4141/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
+    expect(
+      parseWatcherConfig({ ...input, targetNetwork: "Custom", customNetwork })
+        .da.peers[0]!.multiaddr,
+    ).toBe(input.da.peers[0]!.multiaddr);
+    expect(() => parseWatcherConfig(input)).toThrow();
+    input.da.peers[0]!.multiaddr =
+      "/ip4/999.0.0.1/tcp/4141/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
+    expect(() =>
+      parseWatcherConfig({ ...input, targetNetwork: "Custom", customNetwork }),
+    ).toThrow();
+  });
+
+  it("refuses custom metadata on a named network, public magic and external authority", () => {
+    expect(() =>
+      parseWatcherConfig({ ...validLocalNodeConfig(), customNetwork }),
+    ).toThrow();
+    for (const networkMagic of [1, 2, 764824073, -1, 2 ** 32]) {
+      expect(() =>
+        parseWatcherConfig({
+          ...validLocalNodeConfig(),
+          targetNetwork: "Custom",
+          customNetwork: { ...customNetwork, networkMagic },
+        }),
+      ).toThrow();
+    }
+    expect(() =>
+      parseWatcherConfig({
+        ...validConfig(),
+        targetNetwork: "Custom",
+        customNetwork,
+      }),
+    ).toThrow();
+  });
+});
 
 const rejected = (
   action: () => unknown,
@@ -800,6 +861,21 @@ describe("strict watcher configuration", () => {
     if (text.length > 0) {
       expect(error.message).not.toContain(text);
     }
+  });
+
+  it("preserves prototype-shaped JSON keys as data without changing object prototypes", () => {
+    const text =
+      '{"__proto__":{"polluted":true},"nested":{"constructor":null}}';
+    const parsed = parseWatcherStrictJsonValue(text);
+    expect(parsed).toEqual(JSON.parse(text));
+    expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+    expect(Object.hasOwn(parsed as object, "__proto__")).toBe(true);
+    expect("polluted" in (parsed as object)).toBe(false);
+    rejected(
+      () => parseWatcherStrictJsonValue('{"__proto__":1,"__proto__":2}'),
+      "duplicate_field",
+      "$",
+    );
   });
 
   it("rejects duplicate JSON fields before materializing the object", () => {

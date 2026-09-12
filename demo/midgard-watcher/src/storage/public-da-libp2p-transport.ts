@@ -1,11 +1,18 @@
-import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import {
+  DA_PUBLIC_RETAINED_DA_PROTOCOLS,
+  DA_TRANSPORT_LIMITS,
+  daRequestResponseProtocolId,
+} from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { peerIdFromString } from "@libp2p/peer-id";
+import { ping } from "@libp2p/ping";
 import { tcp } from "@libp2p/tcp";
 import { multiaddr } from "@multiformats/multiaddr";
 import { createLibp2p, type Libp2pOptions } from "libp2p";
 
+import { parseWatcherConfig } from "../runtime/config.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type {
   WatcherPublicDaLibp2pTransportV1,
   WatcherPublicDaRequest,
@@ -19,6 +26,7 @@ type PublicDaStreamChunk =
     };
 
 type PublicDaStream = AsyncIterable<PublicDaStreamChunk> & {
+  readonly writeStatus?: string;
   send(data: Uint8Array): boolean;
   onDrain?(): Promise<void>;
   close(): Promise<void>;
@@ -47,7 +55,7 @@ export type WatcherPublicDaLibp2pTransportOptions = Readonly<{
   maxFrameBytes?: number;
 }>;
 
-/** Real watcher-owned TCP + Noise + Yamux transport. No discovery or inbound APIs. */
+/** Real watcher-owned TCP + Noise + Yamux transport. No discovery or inbound DA APIs. */
 export class WatcherPublicDaLibp2pTransport
   implements WatcherPublicDaLibp2pTransportV1
 {
@@ -74,10 +82,14 @@ export class WatcherPublicDaLibp2pTransport
       connectionEncrypters: [noise()],
       streamMuxers: [
         yamux({
-          maxInboundStreams: 0,
+          // The standard ping protocol permits two overlapping inbound streams
+          // while the remote closes one and opens its successor. No inbound
+          // DA handlers or new inbound TCP connections are admitted.
+          maxInboundStreams: 2,
           maxMessageSize: this.maxFrameBytes,
         }),
       ],
+      services: { ping: ping() },
       connectionGater: {
         denyInboundConnection: () => true,
         denyInboundEncryptedConnection: () => true,
@@ -102,41 +114,107 @@ export class WatcherPublicDaLibp2pTransport
     if (node === undefined) {
       throw new Error("watcher public DA libp2p transport is not started");
     }
-    request.signal.throwIfAborted();
+    const { signal, protocolId, peerId: expectedPeerId } = request;
+    signal.throwIfAborted();
+    const requestFrame = encodeWatcherPublicDaFrame(
+      request.requestCbor,
+      this.maxFrameBytes,
+    );
     const { address, peerId } = parseExpectedPeer(request);
-    const stream = await node.dialProtocol(address, request.protocolId, {
-      signal: request.signal,
-      negotiateFully: false,
-    });
-    let onAbort: (() => void) | undefined;
-    try {
-      // This scope starts as soon as a stream exists. A post-dial identity
-      // mismatch is a security failure and must not leave the stream open.
-      assertAuthenticatedPeer(node, peerId, request.peerId);
-      onAbort = (): void =>
-        stream.abort(
-          request.signal.reason instanceof Error
-            ? request.signal.reason
-            : new Error("public DA request aborted"),
+    const readProtocol = DA_PUBLIC_RETAINED_DA_PROTOCOLS.find(
+      (protocol) => protocol === request.protocol,
+    );
+    const fingerprint = protocolId.split("/")[2] ?? "";
+    const retryRead =
+      readProtocol !== undefined &&
+      /^[0-9a-f]{64}$/.test(fingerprint) &&
+      protocolId === daRequestResponseProtocolId(fingerprint, readProtocol);
+    for (let attempt = 1; ; attempt += 1) {
+      signal.throwIfAborted();
+      if (this.node !== node)
+        throw new Error(
+          "watcher public DA libp2p transport stopped during request",
         );
-      request.signal.addEventListener("abort", onAbort, { once: true });
-      await writeSingleFrame(stream, request.requestCbor, this.maxFrameBytes);
-      await stream.close();
-      return await readSingleFrame(stream, this.maxFrameBytes);
-    } catch (cause) {
-      stream.abort(
-        cause instanceof Error
-          ? cause
-          : new Error(`public DA request failed: ${String(cause)}`),
-      );
-      throw cause;
-    } finally {
-      if (onAbort !== undefined) {
-        request.signal.removeEventListener("abort", onAbort);
+      let stream: PublicDaStream | undefined;
+      let onAbort: (() => void) | undefined;
+      let phase = "dial";
+      try {
+        stream = await node.dialProtocol(address, protocolId, {
+          signal,
+          negotiateFully: false,
+        });
+        phase = "authenticate";
+        assertAuthenticatedPeer(node, peerId, expectedPeerId);
+        signal.throwIfAborted();
+        if (this.node !== node)
+          throw new Error(
+            "watcher public DA libp2p transport stopped during dial",
+          );
+        const activeStream = stream;
+        onAbort = (): void =>
+          activeStream.abort(
+            signal.reason instanceof Error
+              ? signal.reason
+              : new Error("public DA request aborted"),
+          );
+        signal.addEventListener("abort", onAbort, { once: true });
+        phase = "write";
+        if (!stream.send(requestFrame)) await stream.onDrain?.();
+        phase = "close";
+        await stream.close();
+        phase = "read";
+        return await readSingleFrame(stream, this.maxFrameBytes);
+      } catch (cause) {
+        const writeStatus = stream?.writeStatus;
+        stream?.abort(
+          cause instanceof Error
+            ? cause
+            : new Error("public DA request failed"),
+        );
+        signal.throwIfAborted();
+        // Public read protocols only retrieve data. A closed stream may interrupt
+        // negotiation, an underlying mux write, or a partial response. Discard
+        // that attempt and repeat the identical read once, with its original
+        // deadline. Authentication and framing failures are not closure errors.
+        if (
+          attempt === 1 &&
+          retryRead &&
+          this.node === node &&
+          isClosedPublicDaStreamError(cause)
+        )
+          continue;
+        const detail = (cause instanceof Error ? cause.message : String(cause))
+          .replace(/[a-fA-F0-9]{128,}/g, "[hex omitted]")
+          .slice(0, 1024);
+        throw new Error(
+          `public DA stream ${phase} failed (attempt ${attempt}, ${cause instanceof Error ? cause.name : "non-Error"}, writeStatus=${writeStatus ?? "unknown"}): ${detail}`,
+          { cause },
+        );
+      } finally {
+        if (onAbort !== undefined) {
+          signal.removeEventListener("abort", onAbort);
+        }
       }
     }
   }
 }
+
+const isClosedPublicDaStreamError = (cause: unknown): boolean => {
+  if (!(cause instanceof Error)) return false;
+  if (cause.name === "StreamStateError") {
+    return (
+      cause.message === "Cannot write to a stream that is closed" ||
+      cause.message === "Cannot write to a stream that is closing"
+    );
+  }
+  return [
+    "StreamClosedError",
+    "StreamResetError",
+    "ConnectionClosedError",
+    "ConnectionClosingError",
+    "MuxerClosedError",
+  ].includes(cause.name);
+};
 
 export const createWatcherPublicDaLibp2pTransport = async (
   options: WatcherPublicDaLibp2pTransportOptions = {},
@@ -161,16 +239,6 @@ export const encodeWatcherPublicDaFrame = (
   frame.writeUInt32BE(payload.length, 0);
   Buffer.from(payload).copy(frame, 4);
   return frame;
-};
-
-const writeSingleFrame = async (
-  stream: Pick<PublicDaStream, "send" | "onDrain">,
-  payload: Uint8Array,
-  maxFrameBytes: number,
-): Promise<void> => {
-  if (!stream.send(encodeWatcherPublicDaFrame(payload, maxFrameBytes))) {
-    await stream.onDrain?.();
-  }
 };
 
 export const readWatcherPublicDaFrames = async function* (
@@ -224,9 +292,29 @@ const parseExpectedPeer = (
   const address = multiaddr(request.multiaddr);
   const components = address.getComponents();
   const names = components.map((component) => component.name);
+  let customIp4 = false;
+  if (names[0] === "ip4" && request.customNetwork !== undefined) {
+    const { deploymentIdentity } = request.customNetwork;
+    assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+    const config = parseWatcherConfig(request.customNetwork.watcherConfig);
+    customIp4 =
+      config.targetNetwork === "Custom" &&
+      deploymentIdentity.network === "Custom" &&
+      request.protocolId ===
+        daRequestResponseProtocolId(
+          deploymentIdentity.manifestId,
+          request.protocol,
+        ) &&
+      config.da.peers.some(
+        (peer) =>
+          peer.identity === request.peerIdentity &&
+          peer.peerId === request.peerId &&
+          peer.multiaddr === request.multiaddr,
+      );
+  }
   if (
     names.length !== 3 ||
-    (names[0] !== "dns4" && names[0] !== "dns6") ||
+    (names[0] !== "dns4" && names[0] !== "dns6" && !customIp4) ||
     names[1] !== "tcp" ||
     names[2] !== "p2p"
   ) {

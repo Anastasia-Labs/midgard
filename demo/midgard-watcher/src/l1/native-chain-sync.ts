@@ -19,6 +19,7 @@ const HEX_32 = /^[0-9a-f]{64}$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const MAX_BLOCK_CBOR_HEX = 8 * 1024 * 1024;
 const MAX_STDERR_BYTES = 1024 * 1024;
+const MAX_STDERR_DIAGNOSTIC_BYTES = 8 * 1024;
 const MAX_INTERSECTIONS = 128;
 const MAX_IDENTITY_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_QUERY_STDOUT_BYTES = MAX_BLOCK_CBOR_HEX + 16_384;
@@ -194,7 +195,9 @@ const exactRecord = (
     actual.length !== expected.length ||
     actual.some((key, index) => key !== expected[index])
   ) {
-    throw new Error(`${label} has unknown or missing fields`);
+    throw new Error(
+      `${label} has unknown or missing fields: missing=${JSON.stringify(expected.filter((key) => !actual.includes(key)))} unknown=${JSON.stringify(actual.filter((key) => !expected.includes(key)))}`,
+    );
   }
   return record;
 };
@@ -290,7 +293,10 @@ export const parseWatcherNativeChainSyncEvent = (
       kind: "roll_forward",
       blockHash: string(base.blockHash, HEX_32, "native block hash"),
       blockType: string(base.blockType, NATURAL, "native block type"),
-      prevHash: string(base.prevHash, HEX_32, "native previous block hash"),
+      prevHash:
+        base.blockNo === "0" && base.prevHash === ""
+          ? ""
+          : string(base.prevHash, HEX_32, "native previous block hash"),
       slot: string(base.slot, NATURAL, "native chain-sync slot"),
       blockNo: string(base.blockNo, NATURAL, "native block number"),
       rawBlockCbor,
@@ -366,10 +372,17 @@ const readIdentityFile: ReadIdentityFile = async (path) => {
   return await readFile(path);
 };
 
-const deriveGenesisIdentity = async (input: {
-  readonly watcherConfig: WatcherConfig;
+export type WatcherNativeNodeConfig = Pick<
+  WatcherConfig,
+  "targetNetwork" | "customNetwork"
+> & {
+  readonly l1: Pick<WatcherConfig["l1"], "source">;
+};
+
+export const deriveWatcherNativeGenesisIdentity = async (input: {
+  readonly watcherConfig: WatcherNativeNodeConfig;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
-}): Promise<string> => {
+}): Promise<{ genesisIdentitySha256: string; networkMagic: number }> => {
   if (input.watcherConfig.l1.source.sourceMode !== "local_node") {
     throw new Error("native genesis identity requires local-node source");
   }
@@ -416,14 +429,38 @@ const deriveGenesisIdentity = async (input: {
     throw new Error("node config genesis path differs from watcher authority");
   }
   const configuredMagic = (genesis as Record<string, unknown>).networkMagic;
-  if (configuredMagic !== NETWORK_MAGIC[input.watcherConfig.targetNetwork]) {
+  const custom = input.watcherConfig.customNetwork;
+  const expectedMagic =
+    input.watcherConfig.targetNetwork === "Custom"
+      ? custom?.networkMagic
+      : NETWORK_MAGIC[input.watcherConfig.targetNetwork];
+  if (expectedMagic === undefined || configuredMagic !== expectedMagic) {
     throw new Error("node genesis network magic differs from watcher network");
+  }
+  if (input.watcherConfig.targetNetwork === "Custom") {
+    const clock = custom?.slotConfig;
+    const genesisRecord = genesis as Record<string, unknown>;
+    const configRecord = nodeConfig as Record<string, unknown>;
+    if (
+      clock === undefined ||
+      typeof genesisRecord.systemStart !== "string" ||
+      Date.parse(genesisRecord.systemStart) !== clock.zeroTime ||
+      typeof genesisRecord.slotLength !== "number" ||
+      genesisRecord.slotLength * 1000 !== clock.slotLength ||
+      clock.zeroSlot !== 0 ||
+      genesisRecord.networkId !== "Testnet" ||
+      configRecord.TestShelleyHardForkAtEpoch !== 0 ||
+      configRecord.TestConwayHardForkAtEpoch !== 0
+    )
+      throw new Error(
+        "Custom network slot clock differs from epoch-zero testnet genesis",
+      );
   }
   const derived = createHash("sha256").update(genesisBytes).digest("hex");
   if (derived !== source.chainSync.genesisIdentitySha256) {
     throw new Error("node genesis identity differs from watcher configuration");
   }
-  return derived;
+  return { genesisIdentitySha256: derived, networkMagic: expectedMagic };
 };
 
 type SpawnProcess = (binaryPath: string) => ChildProcessWithoutNullStreams;
@@ -488,21 +525,22 @@ const startNativeSupervisor = async (
     "native startup intersection",
   );
   const source = input.watcherConfig.l1.source;
-  const genesisIdentitySha256 = await deriveGenesisIdentity({
-    watcherConfig: input.watcherConfig,
-    ...(input.unsafeReadIdentityFileForTest === undefined
-      ? {}
-      : {
-          unsafeReadIdentityFileForTest: input.unsafeReadIdentityFileForTest,
-        }),
-  });
+  const { genesisIdentitySha256, networkMagic } =
+    await deriveWatcherNativeGenesisIdentity({
+      watcherConfig: input.watcherConfig,
+      ...(input.unsafeReadIdentityFileForTest === undefined
+        ? {}
+        : {
+            unsafeReadIdentityFileForTest: input.unsafeReadIdentityFileForTest,
+          }),
+    });
   input.signal?.throwIfAborted();
   const startup = Object.freeze({
     authorityNodeId: source.authorityNodeId,
     genesisIdentitySha256,
     intersection,
     network: input.watcherConfig.targetNetwork,
-    networkMagic: NETWORK_MAGIC[input.watcherConfig.targetNetwork],
+    networkMagic,
     operation: input.operation,
     schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
     socketPath: source.chainSync.socketPath,
@@ -569,11 +607,16 @@ const startNativeSupervisor = async (
   let queryCaptured = false;
   let mintedAuthority: WatcherNativeChainSyncAuthority | undefined;
 
+  let stderrTail = Buffer.alloc(0);
+  let rejectedLine: string | undefined;
   const stderrDrain = (async () => {
     try {
       let total = 0;
       for await (const chunk of child.stderr) {
         total += chunk.byteLength;
+        stderrTail = Buffer.concat([stderrTail, chunk]).subarray(
+          -MAX_STDERR_DIAGNOSTIC_BYTES,
+        );
         if (total > MAX_STDERR_BYTES) {
           child.kill("SIGKILL");
           throw new Error("native chain-sync stderr exceeded its bound");
@@ -594,28 +637,29 @@ const startNativeSupervisor = async (
           ? MAX_QUERY_STDOUT_BYTES
           : undefined,
       )) {
+        rejectedLine = line;
         const value = parseJsonLine(line);
-        if (!sawReady) {
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          (value as { kind?: unknown }).kind === "error"
+        ) {
+          const failure = exactRecord(
+            value,
+            ["code", "kind", "schemaVersion"],
+            "native chain-sync failure",
+          );
           if (
-            typeof value === "object" &&
-            value !== null &&
-            (value as { kind?: unknown }).kind === "error"
-          ) {
-            const failure = exactRecord(
-              value,
-              ["code", "kind", "schemaVersion"],
-              "native chain-sync startup failure",
-            );
-            if (
-              failure.schemaVersion !==
-                WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
-              typeof failure.code !== "string" ||
-              !/^[a-z][a-z0-9_]{0,62}$/u.test(failure.code)
-            ) {
-              throw new Error("native chain-sync emitted an invalid failure");
-            }
-            throw new NativeChainSyncStartupFailure(failure.code);
-          }
+            failure.schemaVersion !==
+              WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
+            typeof failure.code !== "string" ||
+            !/^[a-z][a-z0-9_]{0,62}$/u.test(failure.code)
+          )
+            throw new Error("native chain-sync emitted an invalid failure");
+          if (!sawReady) throw new NativeChainSyncStartupFailure(failure.code);
+          throw new Error(`native chain-sync runtime failed: ${failure.code}`);
+        }
+        if (!sawReady) {
           const record = exactRecord(
             value,
             [
@@ -676,6 +720,7 @@ const startNativeSupervisor = async (
           mintedAuthority = authority;
           sawReady = true;
           resolveReady(authority);
+          rejectedLine = undefined;
           continue;
         }
         const event = parseWatcherNativeChainSyncEvent(value);
@@ -765,6 +810,7 @@ const startNativeSupervisor = async (
           );
           receiptsByEvent.set(event, receipt);
         }
+        rejectedLine = undefined;
         await input.onEvent(event);
       }
       await stderrDrain;
@@ -775,6 +821,20 @@ const startNativeSupervisor = async (
       const failure = error instanceof Error ? error : new Error(String(error));
       rejectReady(failure);
       if (!closing) child.kill("SIGKILL");
+      if (rejectedLine !== undefined) {
+        // A terminal native error is stdout control data, not a chain event.
+        // Drain its preceding stderr after process termination, with a bound
+        // for a broken child; never include raw block payloads in diagnostics.
+        let diagnosticTimer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          stderrDrain.catch(() => undefined),
+          new Promise<void>((resolve) => {
+            diagnosticTimer = setTimeout(resolve, 1000);
+          }),
+        ]);
+        if (diagnosticTimer !== undefined) clearTimeout(diagnosticTimer);
+        failure.message += `; nativePid=${child.pid ?? "unavailable"} nativeOperation=${watcherCanonicalJson(input.operation)} nativeStartupDigest=${startupDigest} nativeLineBytes=${Buffer.byteLength(rejectedLine)} nativeLineSha256=${sha256(rejectedLine)} stderrTail=${JSON.stringify(stderrTail.toString("utf8"))}`;
+      }
       throw failure;
     } finally {
       revokeEventProvenance();

@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type {
+  WorkflowFundingAbandonmentHandoff,
+  WorkflowFundingCompletionHandoff,
+  WorkflowFundingSubmissionHandoff,
+} from "@al-ft/midgard-fault-proofs";
 import { CML, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -72,6 +77,18 @@ export type WatcherProverFundingReservationRecord = Readonly<{
 
 export type WatcherProverFundingReservationStore = Readonly<{
   readAll(): Promise<readonly unknown[]>;
+  readAbandonmentHandoff(input: {
+    readonly reservationId: string;
+  }): Promise<unknown | null>;
+  readPendingHandoff(input: {
+    readonly reservationId: string;
+  }): Promise<unknown | null>;
+  readPendingTransition(input: {
+    readonly reservationId: string;
+  }): Promise<unknown | null>;
+  readCompletionHandoff(input: {
+    readonly reservationId: string;
+  }): Promise<unknown | null>;
   readConfirmedInput(input: {
     readonly reservationId: string;
     readonly outRef: string;
@@ -80,6 +97,7 @@ export type WatcherProverFundingReservationStore = Readonly<{
     plan: WatcherProverFundingReservationPlan,
   ): Promise<"reserved" | "unchanged">;
   prepareTransition(input: {
+    readonly handoff: WorkflowFundingSubmissionHandoff;
     readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
     readonly actionKind: string;
@@ -92,12 +110,19 @@ export type WatcherProverFundingReservationStore = Readonly<{
   confirmTransition(input: {
     readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
+    readonly transactionHash: string;
     readonly transitionDigest: string;
   }): Promise<WatcherProverFundingReservationRecord>;
   abandonPendingTransition(input: {
+    readonly handoff: WorkflowFundingAbandonmentHandoff;
     readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
     readonly transitionDigest: string;
+  }): Promise<WatcherProverFundingReservationRecord>;
+  acknowledgeAbandonment(input: {
+    readonly plan: WatcherProverFundingReservationPlan;
+    readonly expectedRevision: string;
+    readonly handoff: WorkflowFundingAbandonmentHandoff;
   }): Promise<WatcherProverFundingReservationRecord>;
   markConflict(input: {
     readonly plan: WatcherProverFundingReservationPlan;
@@ -105,6 +130,7 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly code: "unexpected_spend" | "reservation_collision";
   }): Promise<WatcherProverFundingReservationRecord>;
   release(input: {
+    readonly handoff: WorkflowFundingCompletionHandoff;
     readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
   }): Promise<WatcherProverFundingReservationRecord>;
@@ -685,8 +711,8 @@ export const restoreWatcherProverFundingReservationPlan = (
     record.reservationBasisDigest !== identity.reservationBasisDigest
   )
     throw new Error("restored prover funding reservation identity mismatch");
-  if (record.state !== "active")
-    throw new Error("restored prover funding reservation is not active");
+  if (record.state === "conflict")
+    throw new Error("restored prover funding reservation is conflicted");
   const fundingAssets = new Map<string, bigint>();
   let fundingLovelace = 0n;
   let collateralLovelace = 0n;

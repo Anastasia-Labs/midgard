@@ -477,15 +477,13 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      // One isolated Lucid instance and one stopped DA transport per readiness
-      // preflight: startup must not leak a transport or share a wallet across
-      // categories.
+      // Each readiness preflight keeps an isolated Lucid instance; all leases
+      // share one DA transport until explicit application shutdown.
       expect(deps.makeLucid).toHaveBeenCalledTimes(
         FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
       );
-      expect(transport.stop).toHaveBeenCalledTimes(
-        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
-      );
+      expect(transport.factory).toHaveBeenCalledTimes(1);
+      expect(transport.stop).not.toHaveBeenCalled();
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),
@@ -493,6 +491,12 @@ describe("watcher production fault-proof application V1", () => {
       ).rejects.toThrow(
         "unsafe watcher fault-proof test application cannot execute transactions",
       );
+      await application.close();
+      await application.close();
+      expect(transport.stop).toHaveBeenCalledTimes(1);
+      await expect(
+        application.assertStartupReady(invocation(configPath, "doubleSpend")),
+      ).rejects.toThrow("owner is closed");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -555,6 +559,8 @@ describe("watcher production fault-proof application V1", () => {
       for (const contractName of stepContractNames) {
         expect(contractName).toMatch(/^fraudProofNativeScriptDecoding/u);
       }
+      expect(transport.stop).not.toHaveBeenCalled();
+      await application.close();
       expect(transport.stop).toHaveBeenCalledTimes(1);
     } finally {
       await rm(directory, { recursive: true, force: true });

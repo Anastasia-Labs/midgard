@@ -8,6 +8,10 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
+import {
+  createWatcherSqliteBlockProgressStore,
+  type WatcherBlockProgressStore,
+} from "./block-progress-store.js";
 import type { WatcherDurableAtomicBackend } from "./durable-store.js";
 import { watcherCanonicalJson } from "./durable-store.js";
 import {
@@ -16,6 +20,10 @@ import {
 } from "./replay-transcript-store.js";
 import { createWatcherSqliteRecordStore } from "./sqlite-record-store.js";
 import type { WatcherUserEventArchive } from "./user-event-checkpoint.js";
+import {
+  createWatcherSqliteUserEventCoverageStore,
+  type WatcherUserEventCoverageStore,
+} from "./user-event-coverage-store.js";
 
 export const WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION =
   "midgard-watcher-sqlite-durable-backend-v1" as const;
@@ -59,6 +67,11 @@ export type WatcherSqliteDurableBackend = Readonly<{
   stateQueueObservations: WatcherSqliteStateQueueObservationStore;
   userEventArchive: WatcherUserEventArchive;
   replayTranscripts: WatcherReplayTranscriptStore;
+  /** "Processed through block N" ring, authenticated with the rollback key. */
+  openBlockProgress(authenticationKey: Uint8Array): WatcherBlockProgressStore;
+  openUserEventCoverage(
+    authenticationKey: Uint8Array,
+  ): WatcherUserEventCoverageStore;
   close(): void;
 }>;
 
@@ -390,6 +403,13 @@ const openWatcherSqliteDurableBackendInternal = async (
     stateQueueObservations,
     userEventArchive,
     replayTranscripts: createWatcherSqliteReplayTranscriptStore(database),
+    openBlockProgress: (authenticationKey) =>
+      createWatcherSqliteBlockProgressStore({ database, authenticationKey }),
+    openUserEventCoverage: (authenticationKey) =>
+      createWatcherSqliteUserEventCoverageStore({
+        database,
+        authenticationKey,
+      }),
     close: () => database.close(),
   });
 };
