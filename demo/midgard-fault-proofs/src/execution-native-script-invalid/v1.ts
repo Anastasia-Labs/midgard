@@ -78,6 +78,7 @@ import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import type {
   HistoricalNativeScriptCheckpointStore,
@@ -393,7 +394,7 @@ export const prepareManifestBoundExecutionNativeScriptInvalidReplay =
       );
     const { workflow, sources } = input;
     const block = await fetchCanonicalBlockEvidence({
-      observation: await workflow.l1.observeHeader({
+      observation: await observeFraudProofWorkflowHeader(workflow.l1, {
         headerHash: workflow.binding.definition.headerHash,
       }),
       sources,

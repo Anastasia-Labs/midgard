@@ -42,6 +42,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import {
   type FraudProofWorkflowJournalStore,
   type JournalJsonObject,
@@ -719,7 +720,7 @@ export const runOrResumeManifestBoundDoubleWithdrawWorkflow = async ({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await workflow.l1.observeHeader({
+  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
   return await runFraudProofWorkflowFromRetainedDa({

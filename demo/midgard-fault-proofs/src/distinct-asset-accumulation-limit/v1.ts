@@ -42,6 +42,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import {
@@ -563,7 +564,7 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
       terminalVerifier: workflow.terminalVerifier,
       releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     });
-  const observation = await workflow.l1.observeHeader({
+  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
   return await runFraudProofWorkflowFromRetainedDa({

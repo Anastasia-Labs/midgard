@@ -57,6 +57,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
@@ -1021,7 +1022,10 @@ export const runOrResumeManifestBoundMintItemNonCanonicalWorkflow =
       );
     }
     const headerHash = input.workflow.binding.definition.headerHash;
-    const observation = await input.workflow.l1.observeHeader({ headerHash });
+    const observation = await observeFraudProofWorkflowHeader(
+      input.workflow.l1,
+      { headerHash },
+    );
     const canonical = await fetchCanonicalBlockEvidence({
       observation,
       sources: input.sources,
@@ -1059,7 +1063,9 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
 }): Promise<MintItemStage> => {
   const headerHash = workflow.binding.definition.headerHash;
   const canonical = await fetchCanonicalBlockEvidence({
-    observation: await workflow.l1.observeHeader({ headerHash }),
+    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
+      headerHash,
+    }),
     sources,
   });
   const evidence =

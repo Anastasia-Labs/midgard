@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 
 import {
+  encodeMidgardFieldPreimage,
+  encodeMidgardRedeemerWitnessItem,
+} from "@al-ft/midgard-core";
+import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardForcedTxProofSource,
   encodeMidgardForcedTxCanonical,
@@ -13,6 +17,10 @@ import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evi
 import { deriveFieldItemWidthIllegalAuthenticatedSource } from "../src/field-item-width-illegal/workflow.js";
 import { deriveOutputReferenceScriptDecodingAuthenticatedSource } from "../src/output-reference-script-decoding/authenticated-workflow.js";
 import { deriveProtectedOutputSignerMissingAuthenticatedSource } from "../src/protected-output-signer-missing/authenticated-workflow.js";
+import {
+  admitRedeemerWorkflowArtifact,
+  prepareRedeemerCanonicityWorkflowArtifact,
+} from "../src/redeemer-canonicity/runtime.js";
 import { deriveResolvedOutputNonCanonicalAuthenticatedSource } from "../src/resolved-output-non-canonical/authenticated-workflow.js";
 import { deriveSpendInputSignerMissingAuthenticatedSource } from "../src/spend-input-signer-missing/authenticated-workflow.js";
 import { deriveTransactionOutputNonCanonicalAuthenticatedSource } from "../src/transaction-output-non-canonical/workflow.js";
@@ -23,6 +31,7 @@ import {
   type SourceEventRecord,
 } from "../src/transition-trace/reconstruct.js";
 import { deriveWitnessScriptDecodingAuthenticatedSource } from "../src/witness-script-decoding/workflow.js";
+import { makeHeader } from "./support/emulator/header-fixtures.js";
 
 const vector = JSON.parse(
   readFileSync(
@@ -78,7 +87,10 @@ const families = [
 // its actual two-leaf counted root, so selection also has to produce a real
 // membership proof for the requested order. The evidence's family-specific
 // predicate data is deliberately outside this source-authentication boundary.
-const fixture = async (reason: SDK.RejectionReason) => {
+const fixture = async (
+  reason: SDK.RejectionReason,
+  redeemerFields?: readonly Buffer[],
+) => {
   const original = decodeMidgardForcedTxFullFromCanonicalCbor(
     Buffer.from(vector.canonical, "hex"),
   );
@@ -89,10 +101,9 @@ const fixture = async (reason: SDK.RejectionReason) => {
         body: original.body,
         witnessSet: {
           ...original.witnessSet,
-          redeemerTxWitsPreimageCbor: Buffer.from(
-            outputIndex === 0n ? "80" : "814100",
-            "hex",
-          ),
+          redeemerTxWitsPreimageCbor:
+            redeemerFields?.[Number(outputIndex)] ??
+            Buffer.from(outputIndex === 0n ? "80" : "814100", "hex"),
         },
       });
       const source = deriveMidgardForcedTxProofSource(
@@ -139,7 +150,12 @@ const fixture = async (reason: SDK.RejectionReason) => {
     };
   });
   const block = {
-    header: { forcedTransactionsRoot: root.root },
+    header: {
+      ...makeHeader("11".repeat(28), 0),
+      forcedTransactionsRoot: root.root,
+    },
+    headerHash: "22".repeat(28),
+    transactions: [],
     reconstruction: {
       forcedTransactions: entries,
       rootData: { forcedTransactions: root },
@@ -199,3 +215,41 @@ describe.each(families)(
     });
   },
 );
+
+it("retains the selected same-body forced order through redeemer workflow restart", async () => {
+  const reason = { RedeemerMalformed: { redeemer_index: 0n } };
+  // The first order is honestly rejected; the second has the same body but
+  // canonical witness data, so only its rejection can be challenged.
+  const fields = ["1800", "00"].map((data) =>
+    encodeMidgardFieldPreimage([
+      encodeMidgardRedeemerWitnessItem({
+        purpose: "Spend",
+        index: 0n,
+        redeemerCbor: Buffer.from(data, "hex"),
+        executionUnits: { memory: 1n, steps: 2n },
+      }),
+    ]),
+  );
+  const { block, entries } = await fixture(reason, fields);
+  expect(entries[0]!.value.tx_id).toBe(entries[1]!.value.tx_id);
+  const artifact = await prepareRedeemerCanonicityWorkflowArtifact(block);
+  const admitted = admitRedeemerWorkflowArtifact(
+    JSON.parse(JSON.stringify(artifact)),
+  );
+  expect(admitted.accepted).toBeNull();
+  expect(admitted.evidence.canonical).toBe(true);
+  expect(admitted.evidence.subject.source_kind).toBe(1n);
+  expect(admitted.evidence.subject.source_key).toBe(
+    entries[1]!.keyBytes.toString("hex"),
+  );
+  expect(admitted.nativeTxCompactCbor).toBe(
+    entries[1]!.value.submitted_source.compact_cbor,
+  );
+  expect(admitted.witnessSetCompactCbor).toBe(
+    entries[1]!.value.submitted_source.witness_set_compact_cbor,
+  );
+  expect(admitted.forced?.membership).toMatchObject({
+    key: entries[1]!.key,
+    value: entries[1]!.value,
+  });
+});

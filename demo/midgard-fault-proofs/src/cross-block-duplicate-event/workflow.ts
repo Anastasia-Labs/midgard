@@ -33,6 +33,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type {
   HistoricalNativeScriptCheckpointStore,
   HistoricalNativeScriptHistorySource,
@@ -319,7 +320,7 @@ export const runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow = async ({
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
 }) => {
-  const observation = await workflow.l1.observeHeader({
+  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
   const replayContext: CompleteCanonicalReplayContext = {

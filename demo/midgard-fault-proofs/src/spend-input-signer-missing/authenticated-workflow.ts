@@ -75,6 +75,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
   withFieldCarriagePrerequisite,
@@ -1171,7 +1172,10 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflow =
       );
     }
     const headerHash = input.workflow.binding.definition.headerHash;
-    const observation = await input.workflow.l1.observeHeader({ headerHash });
+    const observation = await observeFraudProofWorkflowHeader(
+      input.workflow.l1,
+      { headerHash },
+    );
     const canonical = await fetchCanonicalBlockEvidence({
       observation,
       sources: input.sources,
