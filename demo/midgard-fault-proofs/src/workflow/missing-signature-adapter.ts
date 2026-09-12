@@ -8,7 +8,11 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
-import type { JournalJsonObject } from "./journal.js";
+import {
+  journalJsonDigest,
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.js";
 import {
   missingSignatureObservation,
   reconcileMissingSignatureAction,
@@ -68,8 +72,11 @@ const TX_HASH = /^[0-9a-f]{64}$/u;
 const SCRIPT_HASH = /^[0-9a-f]{56}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
+// The orchestrator hands back the journal-normalized (key-sorted) action, so
+// equality must be structural, not byte order.
 const sameJson = (left: unknown, right: unknown): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
+  journalJsonDigest(normalizeJournalJson(left)) ===
+  journalJsonDigest(normalizeJournalJson(right));
 
 const admitReferenceScripts = (
   transaction: LocallyEvaluatedTransaction,

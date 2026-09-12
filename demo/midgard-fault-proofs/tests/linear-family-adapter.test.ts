@@ -5,9 +5,11 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
-import type {
-  FraudProofWorkflowIdentity,
-  FraudProofWorkflowTerminal,
+import {
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowTerminal,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "../src/workflow/journal.js";
 import {
   createLinearFamilyWorkflowAdapter,
@@ -211,6 +213,42 @@ describe("production linear family adapter V1", () => {
         preflight,
       }),
     ).resolves.toEqual({ kind: "submitted", txHash });
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts the orchestrator's journal-normalized copy of the required action", async () => {
+    const stage = {
+      value: {
+        kind: "not_started",
+        stateQueueBlockOutRef: outRef("10"),
+      } as const,
+    };
+    const capture = vi.fn(async () => ({ transaction: transaction() }));
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    const observation = await adapter.observe(context);
+    if (observation.kind !== "action_required") {
+      throw new Error("expected action");
+    }
+    const normalized = {
+      actionId: observation.action.actionId,
+      input: normalizeJournalJson(
+        observation.action.input,
+        "action",
+      ) as JournalJsonObject,
+    };
+    expect(Object.keys(normalized.input)).not.toEqual(
+      Object.keys(observation.action.input),
+    );
+    const preflight = await adapter.preflight({
+      ...context,
+      action: normalized,
+    });
+    expect(preflight.actionId).toBe(observation.action.actionId);
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
