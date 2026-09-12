@@ -57,15 +57,18 @@ export class LocalKupmiosExactPointNotCanonicalError extends Error {
 }
 
 /**
- * True when an exact point read failed only because Kupo's most recent
- * checkpoint had not yet reached the requested slot. The caller may wait for
- * Kupo to catch up and read again; a checkpoint at or past the slot that still
- * differs is a real divergence and is never reported as lag.
+ * True when an exact point read failed because Kupo's checkpoint at the
+ * requested slot is still an earlier block, so Kupo has not indexed a block
+ * at that slot yet. The caller may wait for Kupo to catch up and read again.
+ * A checkpoint at the requested slot that still differs is a real divergence
+ * and is never reported as lag. Kupo's advertised head is deliberately not
+ * consulted: it comes from a separate response header and can already name
+ * the requested block while the checkpoint query still resolves to its
+ * predecessor.
  */
 export const isLocalKupmiosPointBehindKupoHead = (error: unknown): boolean =>
   error instanceof LocalKupmiosExactPointNotCanonicalError &&
   error.kupoLag !== undefined &&
-  error.kupoLag.kupoHeadSlot < error.kupoLag.requestedSlot &&
   error.kupoLag.checkpointSlot < error.kupoLag.requestedSlot;
 
 export type LocalKupmiosRawBlockAtPoint = Readonly<{
@@ -2334,7 +2337,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
     const before = await getKupoCheckpoint(slot, referenceScope);
     if (!sameKupoPoint(before, expectedKupoPoint)) {
       throw new LocalKupmiosExactPointNotCanonicalError(
-        "Kupo exact checkpoint does not contain the requested block",
+        `Kupo exact checkpoint does not contain the requested block (requested slot ${slot.toString()}, checkpoint slot ${before.slot.toString()}, Kupo head slot ${latestKupoHeadSlot.toString()})`,
         {
           requestedSlot: slot,
           checkpointSlot: before.slot,

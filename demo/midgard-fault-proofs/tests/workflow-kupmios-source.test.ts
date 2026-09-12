@@ -1348,6 +1348,23 @@ describe("production local Kupmios raw source V1", () => {
     ).toEqual({ requestedSlot: 400, checkpointSlot: 400, kupoHeadSlot: 990 });
     expect(isLocalKupmiosPointBehindKupoHead(diverged)).toBe(false);
     expect(isLocalKupmiosPointBehindKupoHead(new Error("other"))).toBe(false);
+    expect((lagging as Error).message).toContain(
+      "requested slot 1200, checkpoint slot 400, Kupo head slot 990",
+    );
+    // Kupo's head header can already name the requested block while the
+    // checkpoint query still resolves to its predecessor; that is lag.
+    const raced = new LocalKupmiosExactPointNotCanonicalError("raced", {
+      requestedSlot: 1200,
+      checkpointSlot: 1190,
+      kupoHeadSlot: 1200,
+    });
+    expect(isLocalKupmiosPointBehindKupoHead(raced)).toBe(true);
+    const forked = new LocalKupmiosExactPointNotCanonicalError("forked", {
+      requestedSlot: 1200,
+      checkpointSlot: 1200,
+      kupoHeadSlot: 1300,
+    });
+    expect(isLocalKupmiosPointBehindKupoHead(forked)).toBe(false);
   });
 
   it("re-admits an exact ordered raw block only from the opaque concrete source", async () => {

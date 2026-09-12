@@ -335,10 +335,14 @@ describe("exact block capture under Kupo indexing lag", () => {
       "Kupo exact checkpoint does not contain the requested block",
       { requestedSlot: 1_000, checkpointSlot: 980, kupoHeadSlot: 980 },
     );
+  // Kupo has a block at the requested slot and it is another block: a real
+  // divergence. A checkpoint still before the slot is lag even when Kupo's
+  // advertised head already passed it (the head header and the checkpoint
+  // query are separate reads and race while Kupo applies a block).
   const divergence = () =>
     new LocalKupmiosExactPointNotCanonicalError(
       "Kupo exact checkpoint does not contain the requested block",
-      { requestedSlot: 1_000, checkpointSlot: 990, kupoHeadSlot: 1_200 },
+      { requestedSlot: 1_000, checkpointSlot: 1_000, kupoHeadSlot: 1_200 },
     );
 
   it("waits for Kupo to reach the requested slot with a fresh source each poll", async () => {

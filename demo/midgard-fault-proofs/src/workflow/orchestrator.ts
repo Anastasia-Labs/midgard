@@ -920,6 +920,14 @@ export type FraudProofWorkflowRunResult =
       readonly identity: FraudProofWorkflowIdentity;
       readonly reason: string;
       readonly entries: readonly FraudProofWorkflowJournalEntry[];
+      /**
+       * Present when a stalled run failed while the adapter built the next
+       * transaction. That transaction targets the live L1 tip while the stage
+       * it acts on is release-final, so the stall may only mean the
+       * authenticated observation still trails the tip; the caller may resume
+       * once it has caught up.
+       */
+      readonly phase?: "preflight";
     };
 
 /** Resume the existing adapter from its durable evidence only. This entrypoint
@@ -1077,9 +1085,17 @@ const runAdmittedFraudProofWorkflow = async ({
   };
   const stalled = async (
     reason: string,
+    phase?: "preflight",
   ): Promise<FraudProofWorkflowRunResult> => {
     await append({ kind: "stalled", reason });
-    return { kind: "stalled", workflowId, identity, reason, entries };
+    return {
+      kind: "stalled",
+      workflowId,
+      identity,
+      reason,
+      entries,
+      ...(phase === undefined ? {} : { phase }),
+    };
   };
 
   if (entries.length === 0) {
@@ -1552,6 +1568,7 @@ const runAdmittedFraudProofWorkflow = async ({
       );
     }
     let preflight: FraudProofWorkflowPreflight;
+    let adapterPreflightFailed = false;
     try {
       assertWorkflowJournalActuation({
         journal,
@@ -1571,13 +1588,18 @@ const runAdmittedFraudProofWorkflow = async ({
         headerHash,
         checkpoint: "before_preflight",
       });
-      preflight = validatePreflight({
-        action,
-        preflight: await adapter.preflight({ ...context, action }),
-      });
+      let captured: Awaited<ReturnType<typeof adapter.preflight>>;
+      try {
+        captured = await adapter.preflight({ ...context, action });
+      } catch (cause) {
+        adapterPreflightFailed = true;
+        throw cause;
+      }
+      preflight = validatePreflight({ action, preflight: captured });
     } catch (cause) {
       return await stalled(
         `preflight failed for ${action.actionId}: ${formatUnknownError(cause)}`,
+        adapterPreflightFailed ? "preflight" : undefined,
       );
     }
     const preflightEvent: WorkflowFundingSubmissionHandoff["preflight"] = {

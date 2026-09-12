@@ -2,9 +2,9 @@ import {
   CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
   DOUBLE_WITHDRAW_VIOLATION_ID,
   EventKey,
+  type EventKey as EventKeyValue,
   FABRICATED_DEPOSIT_VIOLATION_ID,
   FABRICATED_WITHDRAWAL_VIOLATION_ID,
-  type EventKey as EventKeyValue,
   WITHDRAWAL_MISTAG_VIOLATION_ID,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";

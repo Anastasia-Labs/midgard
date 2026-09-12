@@ -1080,6 +1080,28 @@ describe("Q51/W-O4 resumable workflow", () => {
     expect(adapter.reconcile).toHaveBeenCalledTimes(3);
   });
 
+  it("marks an adapter preflight failure as resumable once L1 observation catches up", async () => {
+    const evidence = await canonicalEvidence();
+    const adapter = makeAdapter();
+    vi.mocked(adapter.preflight).mockRejectedValueOnce(
+      new Error("Expected exactly one fraudulent block UTxO, found 0."),
+    );
+    const journal = new MemoryFraudProofWorkflowJournalStore();
+    const result = await run({ evidence, adapter, journal });
+    expect(result).toMatchObject({
+      kind: "stalled",
+      phase: "preflight",
+      reason: expect.stringContaining(
+        "preflight failed for prove: Error: Expected exactly one fraudulent block UTxO, found 0.",
+      ),
+    });
+    expect(adapter.submit).not.toHaveBeenCalled();
+    // A later resume re-observes the family and completes normally.
+    const resumed = await run({ evidence, adapter, journal });
+    expect(resumed).toMatchObject({ kind: "completed" });
+    expect(adapter.submit).toHaveBeenCalledTimes(2);
+  });
+
   it("refuses submission without passed reference-script preflight", async () => {
     const evidence = await canonicalEvidence();
     const adapter = makeAdapter({ referenceScripts: false });
@@ -1092,6 +1114,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       kind: "stalled",
       reason: expect.stringContaining("requires reference scripts"),
     });
+    expect(result).not.toHaveProperty("phase");
     expect(adapter.submit).not.toHaveBeenCalled();
   });
 

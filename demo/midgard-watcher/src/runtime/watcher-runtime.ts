@@ -34,6 +34,7 @@ import {
   createWatcherFaultProofSupervisor,
   type WatcherFaultProofSupervisor,
 } from "../fault-proofs/fault-proof-supervisor.js";
+import { runWorkflowWithPreflightStallRetries } from "../fault-proofs/preflight-stall-retry.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
 import {
   assertWatcherProverFundingAuthorityFactory,
@@ -744,7 +745,7 @@ export const createWatcherRuntime = async (input: {
         );
         await prepareJournalDirectory(journalDirectory);
         try {
-          const fundingReservationPermit =
+          const mintFundingReservationPermit = async () =>
             await mintWatcherProverFundingReservationPermit({
               category,
               runner: faultProofApplication.runners[category],
@@ -762,11 +763,25 @@ export const createWatcherRuntime = async (input: {
             headerHash,
             decisionDigest,
             actuationPermit,
-            fundingReservationPermit,
+            fundingReservationPermit: await mintFundingReservationPermit(),
             journalDirectory,
             runtimeConfigPath: input.config.watcherRuntimeConfigPath,
           };
-          const result = await faultProofApplication.runOrResume(invocation);
+          // A stall while building the next transaction may only mean the
+          // release-final family stage still trails the L1 tip; resume the
+          // same journal with a fresh funding reservation until it catches up.
+          const result = await runWorkflowWithPreflightStallRetries({
+            run: () => faultProofApplication.runOrResume(invocation),
+            resume: async () =>
+              await faultProofApplication.runOrResume({
+                ...invocation,
+                mode: "resume",
+                fundingReservationPermit: await mintFundingReservationPermit(),
+              }),
+            sleep: (ms) =>
+              new Promise<void>((resolve) => setTimeout(resolve, ms)),
+            isLive: () => phase === "live",
+          });
           if (
             typeof result !== "object" ||
             result === null ||
